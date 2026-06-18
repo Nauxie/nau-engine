@@ -9,7 +9,7 @@ fn main() {
         .insert_resource(FlightTuning::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: "nau-engine flight sandbox".into(),
+                title: "The NAU Engine Flight Sandbox".into(),
                 resolution: (1280, 720).into(),
                 ..default()
             }),

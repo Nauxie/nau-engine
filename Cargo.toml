@@ -2,7 +2,7 @@
 name = "nau-engine"
 version = "0.1.0"
 edition = "2024"
-description = "Mac-first Rust/Bevy flight traversal sandbox."
+description = "The NAU Engine: a Mac-first Rust/Bevy flight traversal sandbox."
 license = "MIT"
 repository = "https://github.com/Nauxie/nau-engine"
 

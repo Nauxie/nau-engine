@@ -2,7 +2,7 @@
 
 ## Project
 
-`nau-engine` is a Mac-first Rust/Bevy flight traversal sandbox. The early goal is not to build a full general-purpose engine; it is to create a small, well-instrumented 3D playground where glide, dive, lift, camera feel, and large-world architecture can be tuned deliberately.
+The NAU Engine is a Mac-first Rust/Bevy flight traversal sandbox. The early goal is not to build a full general-purpose engine; it is to create a small, well-instrumented 3D playground where glide, dive, lift, camera feel, and large-world architecture can be tuned deliberately.
 
 ## Stack
 
