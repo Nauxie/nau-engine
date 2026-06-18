@@ -225,7 +225,6 @@ fn setup(
                 Mesh3d(torso_mesh.clone()),
                 MeshMaterial3d(suit_material.clone()),
                 Transform::from_xyz(0.0, 0.95, 0.0),
-                Visibility::Visible,
                 CharacterPart::new(
                     CharacterPartRole::Torso,
                     Vec3::new(0.0, 0.95, 0.0),
@@ -237,7 +236,6 @@ fn setup(
                 Mesh3d(head_mesh),
                 MeshMaterial3d(skin_material),
                 Transform::from_xyz(0.0, 1.78, 0.0),
-                Visibility::Visible,
                 CharacterPart::new(
                     CharacterPartRole::Head,
                     Vec3::new(0.0, 1.78, 0.0),
@@ -260,7 +258,6 @@ fn setup(
                         rotation: arm_rotation,
                         ..default()
                     },
-                    Visibility::Visible,
                     CharacterPart::new(CharacterPartRole::Arm(side), arm_translation, arm_rotation),
                 ));
 
@@ -272,7 +269,6 @@ fn setup(
                         rotation: leg_rotation,
                         ..default()
                     },
-                    Visibility::Visible,
                     CharacterPart::new(CharacterPartRole::Leg(side), leg_translation, leg_rotation),
                 ));
 
