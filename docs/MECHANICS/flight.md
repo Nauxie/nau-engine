@@ -1,0 +1,119 @@
+# Flight Mechanics
+
+This file defines the intended traversal feel. Code can change, but behavior changes should update this spec.
+
+## Design Goal
+
+The player should feel like a human-scale character using launch sources, glider control, dive speed, and wind, not like a superhero with unrestricted free flight.
+
+The fantasy is:
+
+- launch upward from a grounded source
+- deploy a glider
+- trade altitude for distance
+- steer and bank through air
+- use dive speed and wind intelligently
+- land, recover, or chain into another launch/updraft
+
+## Current Inputs
+
+- `W`: accelerate forward
+- `S`: brake/backward input
+- `A`: steer/strafe left
+- `D`: steer/strafe right
+- `Space`: deploy glider while airborne
+- `E`: launch upward from the ground
+- `Shift`: dive
+
+Input mapping is still prototype-level. In the long run, glider controls should move toward turn/bank/pitch semantics instead of raw air strafing.
+
+## Current States
+
+- `Grounded`: player is at or near floor height.
+- `Launching`: short lockout after a valid launch.
+- `Airborne`: falling or moving through air without glider.
+- `Gliding`: glider input is held while airborne and not diving or launching.
+
+## Current Rules
+
+- `E` launch is ground-gated.
+- Launch is one use per airtime.
+- Launch gives vertical velocity and a small forward bonus.
+- Gliding reduces gravity and clamps fall speed.
+- Gliding does not create altitude on its own.
+- Diving adds downward acceleration.
+- The floor clamp prevents the player from ending below the floor or retaining downward velocity after collision.
+- Player facing follows horizontal velocity with exponential smoothing.
+
+## Forbidden Behaviors
+
+- No midair relaunch spam unless a future mechanic explicitly grants it.
+- No altitude gain from ordinary gliding without wind/updraft/launch support.
+- No camera anchor based on full 3D velocity.
+- No direct elapsed-time multiplied by speed animation phase. Animation phase should accumulate from delta time.
+- No unbounded `rate * dt` interpolation factors that can exceed `1.0` on frame hitches.
+
+## Desired Feel
+
+Launch:
+
+- clear upward impulse
+- short visual launch pose
+- camera should remain behind horizontal heading
+- no repeated midair burst by default
+
+Glide:
+
+- stable descent
+- readable wing deployment
+- broad, smooth turn behavior
+- altitude is a resource
+- speed and dive can be used to extend route choices, but not create free climbing
+
+Dive:
+
+- commits the player downward
+- increases urgency and speed
+- should be reversible only with enough altitude, wind, or later abilities
+
+Landing:
+
+- should become an explicit state later
+- needs collision and slope logic before polish
+
+Wind/updraft:
+
+- not implemented yet
+- should be visible before or while it affects the player
+- should be represented as debug volumes for testability
+
+## Test Coverage
+
+Current tests cover:
+
+- launch only fires from the ground
+- relaunch is blocked during airtime
+- gliding descends over time
+- gliding clamps fall speed
+- floor collision clears downward velocity
+- smoothing factors do not overshoot
+- camera ignores vertical-only launch velocity for follow direction
+- animation phase advances from delta time
+- wing visibility tracks glide mode
+
+Future tests should cover:
+
+- 30 FPS and 120 FPS replay drift bounds
+- launch source triggers
+- wind and updraft volumes
+- camera pitch clamp
+- camera obstruction handling
+- turn/bank behavior
+
+## Tuning Principles
+
+- Tune with debug metrics visible.
+- Change one force family at a time.
+- Keep constants in testable code.
+- Add tests for any fixed regression.
+- Prefer a small route with repeatable measurements over subjective tuning in an empty world.
