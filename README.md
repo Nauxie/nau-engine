@@ -13,13 +13,15 @@ The NAU Engine is a Mac-first Rust/Bevy sandbox for flight traversal experiments
 
 The first executable is a simple 3D flight testbed:
 
-- player capsule with air movement
-- lift/glide on `Space`
+- primitive humanoid character with separate head, torso, limbs, and visible flight poses
+- deployable glider wing panels on `Space`
+- one-launch-per-airtime vertical burst on `E`
 - dive on `Shift`
 - steering on `WASD`
 - third-person follow camera
 - basic terrain and obstacle markers
 - live debug readout for speed, altitude, and velocity
+- deterministic unit tests for movement, glider, camera, and animation-state math
 
 This is intentionally not a full physics simulation yet. The first job is to create a place where movement constants can be tuned quickly.
 
@@ -36,6 +38,7 @@ Useful development checks:
 ```sh
 cargo check
 cargo fmt --check
+cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
@@ -45,14 +48,15 @@ cargo clippy --all-targets --all-features -- -D warnings
 |-|-|
 |`W` / `S`|Accelerate forward/back|
 |`A` / `D`|Strafe/steer|
-|`Space`|Lift and glide|
+|`Space`|Deploy glider while airborne|
+|`E`|Launch upward from the ground|
 |`Shift`|Dive|
 
 ## Near-Term Roadmap
 
-1. Replace the placeholder capsule with a traversal-focused controller model and clearer orientation cues.
-2. Add deterministic movement tests around acceleration, drag, glide falloff, and speed caps.
-3. Add debug gizmos for velocity, forward vector, glide state, and camera target.
+1. Replace the primitive humanoid with a real rigged character asset.
+2. Add manual runtime capture/debug tooling for camera pitch, collision, and frame pacing.
+3. Add debug gizmos for velocity, forward vector, glide state, launch cooldown, and camera target.
 4. Introduce chunked terrain loading with deliberately tiny chunks before making the world large.
 5. Add LOD and culling experiments once flight visibility makes distant terrain matter.
 
