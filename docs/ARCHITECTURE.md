@@ -16,7 +16,9 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/main.rs` owns Bevy app setup, scene spawning, input mapping, ECS queries, and visual wiring.
 - `src/lib.rs` owns reusable and testable logic.
 - `movement` owns flight state, input state, tuning, launch/glide/dive integration, floor clamp, velocity limits, and facing smoothing.
+- `environment` owns finite visual wind/updraft field definitions and deterministic stream placement.
 - `camera` owns camera follow math and horizontal follow direction.
+- `diagnostics` owns pure helpers for frame-time and runtime metric formatting inputs.
 - `animation` owns primitive character part pose math, wing visibility state, and animation phase progression.
 
 ## Frame Flow
@@ -28,13 +30,16 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 5. Character pose phase advances from delta time.
 6. `animation::part_pose` maps flight mode and velocity into visible body/glider poses.
 7. `camera::step_camera` follows horizontal travel direction and smooths position and rotation.
-8. HUD text reports mode, speed, altitude, velocity, cooldown, and launch readiness.
+8. HUD text reports frame time, mode, speed, altitude, camera pitch/distance, velocity, visual wind-field count, cooldown, and launch readiness.
+9. Debug gizmos draw player vectors, the camera line, and visual wind/updraft field stream lines.
 
 ## Core Invariants
 
 - Movement math must stay testable outside a Bevy window.
 - `E` launch is ground-gated unless a future launch-source mechanic explicitly changes that.
 - Glider traversal descends without wind/updraft/launch-source help.
+- Wind and updraft fields are visual-only until a separate gameplay force design is accepted.
+- If wind ever affects movement, force application rules belong in `movement`, not directly in ECS systems.
 - Camera follow direction should use horizontal travel direction, not full 3D velocity.
 - Camera, animation, and HUD should run after movement.
 - `src/main.rs` should stay mostly wiring. Avoid burying gameplay rules directly in ECS systems.

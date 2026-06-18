@@ -41,6 +41,8 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Launch gives vertical velocity and a small forward bonus.
 - Gliding reduces gravity and clamps fall speed.
 - Gliding does not create altitude on its own.
+- Visual wind/updraft fields are finite axis-aligned boxes.
+- Visual wind/updraft fields do not affect player movement physics yet.
 - Diving adds downward acceleration.
 - The floor clamp prevents the player from ending below the floor or retaining downward velocity after collision.
 - Player facing follows horizontal velocity with exponential smoothing.
@@ -83,9 +85,10 @@ Landing:
 
 Wind/updraft:
 
-- not implemented yet
-- should be visible before or while it affects the player
-- should be represented as debug volumes for testability
+- represented as visible stream lines inside finite debug fields
+- used for environment readability first, not traversal force
+- should eventually be readable through particles, cloth/glider motion, vegetation, clouds, or other environment art
+- gameplay wind/updraft force needs a separate explicit design pass before it affects the player
 
 ## Test Coverage
 
@@ -96,19 +99,23 @@ Current tests cover:
 - gliding descends over time
 - gliding clamps fall speed
 - floor collision clears downward velocity
+- visual wind fields keep horizontal flow horizontal
+- visual updraft fields point upward
+- visual field bounds and stream origins are deterministic
 - smoothing factors do not overshoot
 - camera ignores vertical-only launch velocity for follow direction
+- camera pitch and distance helpers
+- frame-time diagnostics avoid invalid values
 - animation phase advances from delta time
 - wing visibility tracks glide mode
 
 Future tests should cover:
 
-- 30 FPS and 120 FPS replay drift bounds
 - launch source triggers
-- wind and updraft volumes
-- camera pitch clamp
 - camera obstruction handling
 - turn/bank behavior
+- debug visualization toggles
+- gameplay updraft/lift rules if wind ever becomes a movement force
 
 ## Tuning Principles
 

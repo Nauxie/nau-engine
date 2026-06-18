@@ -20,8 +20,10 @@ The first executable is a simple 3D flight testbed:
 - steering on `WASD`
 - third-person follow camera
 - basic terrain and obstacle markers
-- live debug readout for speed, altitude, and velocity
-- deterministic unit tests for movement, glider, camera, and animation-state math
+- live debug readout for frame time, speed, altitude, camera pitch/distance, velocity, and visual wind-field count
+- visible debug gizmos for player velocity, facing, camera line, and visual wind/updraft fields
+- authored visual wind and updraft fields that do not affect traversal physics
+- deterministic unit tests for movement, glider, visual wind fields, camera, diagnostics, and animation-state math
 
 This is intentionally not a full physics simulation yet. The first job is to create a place where movement constants can be tuned quickly.
 
@@ -51,12 +53,13 @@ cargo clippy --all-targets --all-features -- -D warnings
 |`Space`|Deploy glider while airborne|
 |`E`|Launch upward from the ground|
 |`Shift`|Dive|
+|`F1`|Toggle debug gizmos|
 
 ## Near-Term Roadmap
 
 1. Replace the primitive humanoid with a real rigged character asset.
-2. Add manual runtime capture/debug tooling for camera pitch, collision, and frame pacing.
-3. Add debug gizmos for velocity, forward vector, glide state, launch cooldown, and camera target.
+2. Add a repeatable manual route that crosses the current visual wind/updraft fields.
+3. Add camera collision/obstruction handling.
 4. Introduce chunked terrain loading with deliberately tiny chunks before making the world large.
 5. Add LOD and culling experiments once flight visibility makes distant terrain matter.
 

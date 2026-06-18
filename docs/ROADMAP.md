@@ -24,17 +24,18 @@ Goal: make the core launch/glide/dive loop feel deliberate and measurable.
 
 Work:
 
-- Add runtime debug overlay for camera pitch, camera distance, frame time, velocity, altitude, glide state, and launch state.
+- Runtime debug overlay for camera pitch, camera distance, frame time, velocity, altitude, glide state, launch state, and visual wind-field count. Initial version complete.
+- Debug gizmos for player vectors, camera line, and visual wind/updraft stream fields. Initial version complete.
+- Visual wind/updraft fields after baseline gliding is stable. Initial version complete.
 - Add manual test routes: launch, glide, dive, low-altitude recovery, landing, obstacle pass.
 - Add camera collision/obstruction handling.
 - Add camera mode profiles for launch, glide, dive, and ground.
 - Add bank/turn behavior that feels like glider traversal rather than free flight.
-- Add wind/updraft test volumes after baseline gliding is stable.
 
 Exit criteria:
 
 - From a standing start, the player can launch, deploy glider, steer, dive, land, and repeat without obvious camera snaps or limb jitter.
-- The glider cannot gain altitude without a defined force such as launch, wind, or updraft.
+- The glider cannot gain altitude without a defined force such as launch or a future accepted updraft mechanic.
 - Known feel regressions are captured by tests or debug metrics.
 
 ## Horizon 2: Character And Animation Pipeline
@@ -70,7 +71,7 @@ Work:
 Exit criteria:
 
 - Player movement queries real collision geometry.
-- Wind/updraft volumes affect traversal in a deterministic and debuggable way.
+- Wind/updraft fields become traversal forces only after a deliberate gameplay design pass.
 - Physics debug visualization can be toggled on.
 
 ## Horizon 4: Island Slice
