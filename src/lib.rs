@@ -412,6 +412,164 @@ pub mod movement {
     }
 }
 
+pub mod environment {
+    use bevy::prelude::*;
+
+    const DIRECTION_EPSILON: f32 = 0.0001;
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum WindFieldKind {
+        Crosswind,
+        Updraft,
+    }
+
+    #[derive(Component, Clone, Copy, Debug, PartialEq)]
+    pub struct WindField {
+        pub center: Vec3,
+        pub half_extents: Vec3,
+        pub direction: Vec3,
+        pub visual_speed: f32,
+        pub kind: WindFieldKind,
+    }
+
+    impl WindField {
+        pub fn crosswind(
+            center: Vec3,
+            half_extents: Vec3,
+            direction: Vec3,
+            visual_speed: f32,
+        ) -> Self {
+            let horizontal_direction = Vec3::new(direction.x, 0.0, direction.z);
+            let direction = if horizontal_direction.length_squared() > DIRECTION_EPSILON {
+                horizontal_direction.normalize()
+            } else {
+                Vec3::X
+            };
+
+            Self {
+                center,
+                half_extents,
+                direction,
+                visual_speed: visual_speed.max(0.0),
+                kind: WindFieldKind::Crosswind,
+            }
+        }
+
+        pub fn updraft(center: Vec3, half_extents: Vec3, visual_speed: f32) -> Self {
+            Self {
+                center,
+                half_extents,
+                direction: Vec3::Y,
+                visual_speed: visual_speed.max(0.0),
+                kind: WindFieldKind::Updraft,
+            }
+        }
+
+        pub fn contains(self, position: Vec3) -> bool {
+            let offset = position - self.center;
+            offset.x.abs() <= self.half_extents.x
+                && offset.y.abs() <= self.half_extents.y
+                && offset.z.abs() <= self.half_extents.z
+        }
+
+        pub fn flow_vector(self) -> Vec3 {
+            self.direction * self.visual_speed
+        }
+
+        pub fn stream_origin(self, index: usize, stream_count: usize) -> Vec3 {
+            let stream_count = stream_count.max(1);
+            let columns = (stream_count as f32).sqrt().ceil() as usize;
+            let column = index % columns;
+            let row = (index / columns).min(columns.saturating_sub(1));
+            let x_t = centered_unit(column, columns);
+            let y_t = centered_unit(row, columns);
+
+            match self.kind {
+                WindFieldKind::Crosswind => {
+                    let leading_edge = self.center - self.direction * self.half_extents.x;
+                    leading_edge
+                        + Vec3::Y * (y_t * self.half_extents.y * 0.72)
+                        + Vec3::Z * (x_t * self.half_extents.z * 0.72)
+                }
+                WindFieldKind::Updraft => {
+                    let base = self.center - Vec3::Y * self.half_extents.y;
+                    base + Vec3::X * (x_t * self.half_extents.x * 0.72)
+                        + Vec3::Z * (y_t * self.half_extents.z * 0.72)
+                }
+            }
+        }
+    }
+
+    fn centered_unit(index: usize, count: usize) -> f32 {
+        if count <= 1 {
+            0.0
+        } else {
+            (index as f32 / (count - 1) as f32) * 2.0 - 1.0
+        }
+    }
+
+    pub fn visible_fields_at(position: Vec3, fields: impl IntoIterator<Item = WindField>) -> usize {
+        fields
+            .into_iter()
+            .filter(|field| field.contains(position))
+            .count()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn crosswind_is_visual_only_and_horizontal() {
+            let field = WindField::crosswind(
+                Vec3::ZERO,
+                Vec3::new(4.0, 2.0, 4.0),
+                Vec3::new(1.0, 1.0, 0.0),
+                8.0,
+            );
+
+            assert_eq!(field.kind, WindFieldKind::Crosswind);
+            assert_eq!(field.direction, Vec3::X);
+            assert_eq!(field.flow_vector(), Vec3::new(8.0, 0.0, 0.0));
+        }
+
+        #[test]
+        fn updraft_is_visual_and_vertical() {
+            let field = WindField::updraft(Vec3::ZERO, Vec3::new(2.0, 8.0, 2.0), 6.0);
+
+            assert_eq!(field.kind, WindFieldKind::Updraft);
+            assert_eq!(field.flow_vector(), Vec3::new(0.0, 6.0, 0.0));
+        }
+
+        #[test]
+        fn field_contains_only_inside_bounds() {
+            let field = WindField::crosswind(Vec3::ZERO, Vec3::splat(4.0), Vec3::X, 8.0);
+
+            assert!(field.contains(Vec3::new(4.0, 0.0, 0.0)));
+            assert!(!field.contains(Vec3::new(4.1, 0.0, 0.0)));
+        }
+
+        #[test]
+        fn stream_origins_stay_inside_visual_field() {
+            let field = WindField::updraft(Vec3::ZERO, Vec3::new(4.0, 8.0, 4.0), 6.0);
+
+            for index in 0..16 {
+                assert!(field.contains(field.stream_origin(index, 16)));
+            }
+        }
+
+        #[test]
+        fn visible_field_count_is_deterministic() {
+            let near = WindField::crosswind(Vec3::ZERO, Vec3::splat(4.0), Vec3::X, 8.0);
+            let far = WindField::updraft(Vec3::new(20.0, 0.0, 0.0), Vec3::splat(4.0), 6.0);
+
+            assert_eq!(visible_fields_at(Vec3::ZERO, [near, far]), 1);
+            assert_eq!(visible_fields_at(Vec3::new(20.0, 0.0, 0.0), [near, far]), 1);
+            assert_eq!(visible_fields_at(Vec3::new(10.0, 0.0, 0.0), [near, far]), 0);
+        }
+    }
+}
+
 pub mod camera {
     use crate::movement::smoothing_factor;
     use bevy::prelude::*;
@@ -497,6 +655,22 @@ pub mod camera {
         }
     }
 
+    pub fn camera_distance(camera_position: Vec3, target_position: Vec3) -> f32 {
+        let distance = camera_position.distance(target_position);
+        if distance.is_finite() { distance } else { 0.0 }
+    }
+
+    pub fn camera_pitch_degrees(rotation: Quat) -> f32 {
+        let forward = rotation * Vec3::NEG_Z;
+        let y = forward.y.clamp(-1.0, 1.0);
+
+        if y.is_finite() {
+            y.asin().to_degrees()
+        } else {
+            0.0
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -523,6 +697,48 @@ pub mod camera {
             let direction = horizontal_follow_direction(Vec3::new(10.0, 40.0, 0.0), Vec3::Z);
             assert!(direction.x > 0.99);
             assert!(direction.y.abs() < 0.001);
+        }
+
+        #[test]
+        fn camera_pitch_is_negative_when_looking_downward() {
+            let rotation = Transform::from_xyz(0.0, 6.0, -12.0)
+                .looking_at(Vec3::new(0.0, 1.5, 0.0), Vec3::Y)
+                .rotation;
+
+            assert!(camera_pitch_degrees(rotation) < -15.0);
+        }
+
+        #[test]
+        fn camera_pitch_is_level_for_horizontal_forward() {
+            assert!(camera_pitch_degrees(Quat::IDENTITY).abs() < 0.001);
+        }
+
+        #[test]
+        fn camera_distance_matches_vector_length() {
+            assert_eq!(camera_distance(Vec3::new(0.0, 3.0, 4.0), Vec3::ZERO), 5.0);
+        }
+    }
+}
+
+pub mod diagnostics {
+    pub fn frame_ms(delta_seconds: f32) -> f32 {
+        if delta_seconds.is_finite() {
+            delta_seconds.max(0.0) * 1000.0
+        } else {
+            0.0
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn frame_ms_never_emits_nan_for_zero_or_invalid_delta() {
+            assert_eq!(frame_ms(0.0), 0.0);
+            assert_eq!(frame_ms(f32::NAN), 0.0);
+            assert_eq!(frame_ms(f32::NEG_INFINITY), 0.0);
+            assert!(frame_ms(1.0 / 60.0).is_finite());
         }
     }
 }

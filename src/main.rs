@@ -3,10 +3,12 @@ use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartVisibility, Side, advance_phase,
     part_pose, pose_blend,
 };
-use nau_engine::camera::{FollowCamera, step_camera};
+use nau_engine::camera::{FollowCamera, camera_distance, camera_pitch_degrees, step_camera};
+use nau_engine::diagnostics::frame_ms;
+use nau_engine::environment::{WindField, WindFieldKind, visible_fields_at};
 use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightState, FlightTuning, Velocity,
-    face_horizontal_velocity,
+    face_horizontal_velocity, step_flight,
 };
 
 const PLAYER_START: Vec3 = Vec3::new(0.0, 1.2, 0.0);
@@ -16,6 +18,7 @@ fn main() {
     App::new()
         .insert_resource(ClearColor(Color::srgb(0.55, 0.72, 0.9)))
         .insert_resource(FlightTuning::default())
+        .insert_resource(DebugVisuals::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "The NAU Engine Flight Sandbox".into(),
@@ -25,10 +28,11 @@ fn main() {
             ..default()
         }))
         .add_systems(Startup, setup)
-        .add_systems(Update, fly_player)
+        .add_systems(Update, (toggle_debug_visuals, fly_player))
+        .add_systems(Update, (animate_character, follow_camera).after(fly_player))
         .add_systems(
             Update,
-            (animate_character, follow_camera, update_debug_readout).after(fly_player),
+            (update_debug_readout, draw_debug_gizmos).after(follow_camera),
         )
         .run();
 }
@@ -38,6 +42,17 @@ struct Player;
 
 #[derive(Component)]
 struct DebugReadout;
+
+#[derive(Resource)]
+struct DebugVisuals {
+    enabled: bool,
+}
+
+impl Default for DebugVisuals {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
 
 type CameraFollowFilter = (With<Camera3d>, Without<Player>);
 
@@ -87,6 +102,29 @@ fn setup(
             Transform::from_xyz(x as f32 * 20.0, height * 0.5, z),
         ));
     }
+
+    commands.spawn((
+        WindField::crosswind(
+            Vec3::new(0.0, 5.0, 20.0),
+            Vec3::new(20.0, 4.0, 8.0),
+            Vec3::X,
+            10.0,
+        ),
+        Name::new("Visual wind ribbon"),
+    ));
+    commands.spawn((
+        WindField::updraft(Vec3::new(-28.0, 14.0, 24.0), Vec3::new(9.0, 14.0, 9.0), 8.0),
+        Name::new("Visual updraft column"),
+    ));
+    commands.spawn((
+        WindField::crosswind(
+            Vec3::new(34.0, 10.0, -8.0),
+            Vec3::new(18.0, 8.0, 10.0),
+            Vec3::new(-1.0, 0.0, 0.35),
+            7.0,
+        ),
+        Name::new("Visual crosswind volume"),
+    ));
 
     commands
         .spawn((
@@ -204,6 +242,12 @@ fn setup(
     ));
 }
 
+fn toggle_debug_visuals(keyboard: Res<ButtonInput<KeyCode>>, mut visuals: ResMut<DebugVisuals>) {
+    if keyboard.just_pressed(KeyCode::F1) {
+        visuals.enabled = !visuals.enabled;
+    }
+}
+
 fn fly_player(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -214,7 +258,7 @@ fn fly_player(
         return;
     };
 
-    let next = nau_engine::movement::step_flight(
+    let next = step_flight(
         FlightState::new(transform.translation, velocity.0, *controller),
         FlightInput {
             forward: keyboard.pressed(KeyCode::KeyW),
@@ -293,7 +337,11 @@ fn follow_camera(
 }
 
 fn update_debug_readout(
+    time: Res<Time>,
+    visuals: Res<DebugVisuals>,
     player: Query<(&Transform, &Velocity, &FlightController), With<Player>>,
+    camera: Query<&Transform, CameraFollowFilter>,
+    wind_fields: Query<&WindField>,
     mut readout: Query<&mut Text, With<DebugReadout>>,
 ) {
     let Ok((transform, velocity, controller)) = player.single() else {
@@ -302,20 +350,157 @@ fn update_debug_readout(
     let Ok(mut text) = readout.single_mut() else {
         return;
     };
+    let (distance, pitch) = camera
+        .single()
+        .map(|camera_transform| {
+            (
+                camera_distance(camera_transform.translation, transform.translation),
+                camera_pitch_degrees(camera_transform.rotation),
+            )
+        })
+        .unwrap_or_default();
+    let visible_wind_fields = visible_fields_at(transform.translation, wind_fields.iter().copied());
+    let wind_field_count = wind_fields.iter().count();
 
     **text = format!(
-        "mode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nlaunch cooldown {:>4.1}s\nlaunch ready {}\nWASD steer  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD steer  Space glider  E launch  Shift dive",
+        frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
         transform.translation.y,
+        pitch,
+        distance,
         velocity.0.x,
         velocity.0.y,
         velocity.0.z,
+        visible_wind_fields,
+        wind_field_count,
         controller.launch_cooldown_remaining,
         if controller.launch_available {
             "yes"
         } else {
             "no"
-        }
+        },
+        if visuals.enabled { "on" } else { "off" }
     );
+}
+
+fn draw_debug_gizmos(
+    mut gizmos: Gizmos,
+    visuals: Res<DebugVisuals>,
+    player: Query<(&Transform, &Velocity), With<Player>>,
+    camera: Query<&Transform, CameraFollowFilter>,
+    wind_fields: Query<&WindField>,
+) {
+    if !visuals.enabled {
+        return;
+    }
+
+    let Ok((player_transform, velocity)) = player.single() else {
+        return;
+    };
+
+    let origin = player_transform.translation + Vec3::Y * 1.4;
+    draw_vector(
+        &mut gizmos,
+        origin,
+        capped_vector(velocity.0, 0.16, 7.0),
+        Color::srgb(0.0, 0.85, 1.0),
+    );
+    draw_vector(
+        &mut gizmos,
+        origin,
+        *player_transform.forward() * 3.0,
+        Color::srgb(1.0, 0.68, 0.16),
+    );
+    draw_vector(
+        &mut gizmos,
+        origin,
+        *player_transform.right() * 2.0,
+        Color::srgb(0.55, 0.6, 0.62),
+    );
+
+    if let Ok(camera_transform) = camera.single() {
+        gizmos.line(
+            camera_transform.translation,
+            origin,
+            Color::srgb(1.0, 1.0, 1.0),
+        );
+    }
+
+    for field in &wind_fields {
+        draw_wind_field(&mut gizmos, *field);
+    }
+}
+
+fn draw_wind_field(gizmos: &mut Gizmos, field: WindField) {
+    const STREAM_COUNT: usize = 16;
+
+    let color = wind_field_color(field.kind);
+    draw_wire_box(gizmos, field.center, field.half_extents, color);
+
+    for index in 0..STREAM_COUNT {
+        let start = field.stream_origin(index, STREAM_COUNT);
+        let stream = capped_vector(field.flow_vector(), 0.65, 7.5);
+        draw_vector(gizmos, start, stream, color);
+        gizmos.line(start - stream * 0.35, start, color);
+    }
+}
+
+fn draw_vector(gizmos: &mut Gizmos, start: Vec3, vector: Vec3, color: Color) {
+    if vector.length_squared() > 0.0001 {
+        gizmos.arrow(start, start + vector, color);
+    }
+}
+
+fn capped_vector(vector: Vec3, scale: f32, max_length: f32) -> Vec3 {
+    let scaled = vector * scale;
+    let max_length_squared = max_length * max_length;
+
+    if scaled.length_squared() <= max_length_squared {
+        scaled
+    } else {
+        scaled.normalize() * max_length
+    }
+}
+
+fn draw_wire_box(gizmos: &mut Gizmos, center: Vec3, half_extents: Vec3, color: Color) {
+    const EDGES: [(usize, usize); 12] = [
+        (0, 1),
+        (1, 3),
+        (3, 2),
+        (2, 0),
+        (4, 5),
+        (5, 7),
+        (7, 6),
+        (6, 4),
+        (0, 4),
+        (1, 5),
+        (2, 6),
+        (3, 7),
+    ];
+
+    let min = center - half_extents;
+    let max = center + half_extents;
+    let corners = [
+        Vec3::new(min.x, min.y, min.z),
+        Vec3::new(max.x, min.y, min.z),
+        Vec3::new(min.x, max.y, min.z),
+        Vec3::new(max.x, max.y, min.z),
+        Vec3::new(min.x, min.y, max.z),
+        Vec3::new(max.x, min.y, max.z),
+        Vec3::new(min.x, max.y, max.z),
+        Vec3::new(max.x, max.y, max.z),
+    ];
+
+    for (start, end) in EDGES {
+        gizmos.line(corners[start], corners[end], color);
+    }
+}
+
+fn wind_field_color(kind: WindFieldKind) -> Color {
+    match kind {
+        WindFieldKind::Crosswind => Color::srgb(0.0, 0.82, 1.0),
+        WindFieldKind::Updraft => Color::srgb(0.25, 1.0, 0.45),
+    }
 }
