@@ -214,6 +214,8 @@ Every sample includes:
 - `near_lod_islands`
 - `mid_lod_islands`
 - `far_lod_islands`
+- `visible_island_detail_count`
+- `visible_route_beacon_count`
 - `entity_count`
 
 Add fields here before adding them to code. New fields should be cheap to collect, stable across runs, and useful for deciding what to fix.
@@ -245,6 +247,8 @@ The summary aggregates:
 - max active chunk count
 - max active island count
 - max near/mid/far LOD island counts
+- max visible island detail count
+- max visible route beacon count
 - max scene entity count
 - target landing sample count
 - active lift sample count
@@ -263,6 +267,8 @@ The pass/fail checks currently guard:
 - the active chunk window stays inside the scenario budget
 - enough islands enter the active chunk window
 - near/mid/far LOD island buckets remain populated
+- visible island detail stays under the scenario budget, proving distance LOD is active
+- visible route beacons stay populated so distant route readability is not culled away
 - the scene has enough entities to catch accidental content collapse
 - camera distance stayed under a loose maximum
 - camera stayed above the active ground surface
@@ -325,7 +331,8 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - There is no simulation-only binary yet.
 - There is no frame-time percentile summary yet.
 - Island collision is a simple route surface clamp, not full physics.
-- `active_chunk_count`, `active_island_count`, and LOD bucket counts are planning counters; they do not despawn terrain or load assets yet.
+- `active_chunk_count` and `active_island_count` are planning counters; they do not despawn terrain or load assets yet.
+- LOD buckets now drive visible island detail, but terrain and hidden detail entities still remain resident.
 - `entity_count` is still a coarse scene-scale proxy, not a streaming health metric.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
