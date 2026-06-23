@@ -888,11 +888,8 @@ fn spawn_sky_island(
     ));
 
     let ridge_width = island.half_extents.x * 0.32;
-    let ridge_center = Vec3::new(
-        island.center.x + island.half_extents.x * 0.28,
-        top_y + 0.1,
-        island.center.z - island.half_extents.y * 0.24,
-    );
+    let ridge_surface = island_visual_surface_position(island, Vec2::new(0.28, -0.24));
+    let ridge_center = ridge_surface + Vec3::Y * 0.375;
     let ridge_half_extents = Vec3::new(ridge_width * 0.5, 0.375, island.half_extents.y * 0.09);
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(ridge_width, 0.75, island.half_extents.y * 0.18))),
@@ -904,7 +901,11 @@ fn spawn_sky_island(
     ));
 
     if island.is_target {
-        let marker_center = Vec3::new(island.center.x, island.floor_y() + 1.8, island.center.z);
+        let marker_center = Vec3::new(
+            island.center.x,
+            island.mesh_top_y_at(island.center) + 1.8,
+            island.center.z,
+        );
         commands.spawn((
             Mesh3d(meshes.add(Cuboid::new(2.2, 6.0, 2.2))),
             MeshMaterial3d(marker_material),
@@ -931,11 +932,17 @@ fn spawn_sky_island(
     );
 }
 
+fn island_visual_surface_position(island: SkyIsland, normalized_offset: Vec2) -> Vec3 {
+    let x = island.center.x + island.half_extents.x * normalized_offset.x;
+    let z = island.center.z + island.half_extents.y * normalized_offset.y;
+
+    Vec3::new(x, island.mesh_top_y_at(Vec3::new(x, island.center.y, z)), z)
+}
+
 fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     const RINGS: usize = 8;
     const SEGMENTS: usize = 48;
 
-    let top_y = island.mesh_top_y();
     let vertex_count = 1 + RINGS * SEGMENTS;
     let mut positions = Vec::with_capacity(vertex_count);
     let mut normals = Vec::with_capacity(vertex_count);
@@ -944,7 +951,7 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
 
     positions.push([
         island.center.x,
-        top_y + island_terrain_height(island_index, 0.0, 0.0),
+        island.mesh_top_y_at(island.center),
         island.center.z,
     ]);
     normals.push([0.0, 1.0, 0.0]);
@@ -959,7 +966,7 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
                 1.0 + 0.035 * (angle * 5.0 + phase).sin() + 0.018 * (angle * 9.0).cos();
             let x = island.center.x + angle.cos() * island.half_extents.x * radius * edge_variation;
             let z = island.center.z + angle.sin() * island.half_extents.y * radius * edge_variation;
-            let y = top_y + island_terrain_height(island_index, radius, angle);
+            let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z));
 
             positions.push([x, y, z]);
             normals.push([0.0, 1.0, 0.0]);
@@ -1006,15 +1013,6 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
 }
 
-fn island_terrain_height(island_index: usize, radius: f32, angle: f32) -> f32 {
-    let phase = island_index as f32 * 0.83;
-    let ridges = (angle * 3.0 + phase).sin() * 0.035 + (angle * 7.0 - phase * 0.5).cos() * 0.018;
-    let dome = (1.0 - radius).powi(2) * 0.045;
-    let edge_softening = radius.powf(2.4) * 0.04;
-
-    (0.028 + dome + ridges * (1.0 - radius * 0.45) - edge_softening).clamp(0.008, 0.065)
-}
-
 #[allow(clippy::too_many_arguments)]
 fn spawn_sky_island_details(
     commands: &mut Commands,
@@ -1027,7 +1025,6 @@ fn spawn_sky_island_details(
     island_index: usize,
     island: SkyIsland,
 ) {
-    let floor_y = island.floor_y();
     let detail_phase = island_index as f32 * 0.77;
     let tree_offsets = [
         Vec2::new(-0.42, -0.24),
@@ -1040,12 +1037,11 @@ fn spawn_sky_island_details(
             continue;
         }
         let sway = (detail_phase + index as f32).sin() * 0.08;
-        let x = island.center.x + island.half_extents.x * (offset.x + sway);
-        let z = island.center.z + island.half_extents.y * offset.y;
+        let surface = island_visual_surface_position(island, Vec2::new(offset.x + sway, offset.y));
         let trunk_height = 2.1 + index as f32 * 0.25;
-        let trunk_center = Vec3::new(x, floor_y + trunk_height * 0.5, z);
+        let trunk_center = surface + Vec3::Y * (trunk_height * 0.5);
         let canopy_radius = 1.05 + index as f32 * 0.08;
-        let canopy_center = Vec3::new(x, floor_y + trunk_height + 0.72, z);
+        let canopy_center = surface + Vec3::Y * (trunk_height + 0.72);
 
         commands.spawn((
             Mesh3d(meshes.add(Cylinder::new(0.22, trunk_height))),
@@ -1077,11 +1073,12 @@ fn spawn_sky_island_details(
         let x = island.center.x + angle.cos() * island.half_extents.x * radius;
         let z = island.center.z + angle.sin() * island.half_extents.y * radius;
         let stone_scale = 0.45 + index as f32 * 0.08;
+        let surface_y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z));
 
         commands.spawn((
             Mesh3d(meshes.add(Sphere::new(stone_scale))),
             MeshMaterial3d(path_material.clone()),
-            Transform::from_xyz(x, floor_y + stone_scale * 0.45, z),
+            Transform::from_xyz(x, surface_y + stone_scale * 0.45, z),
             IslandLodVisual::new(island, IslandVisualLayer::Detail),
             Name::new("island stone scatter"),
         ));
@@ -1092,15 +1089,12 @@ fn spawn_sky_island_details(
     } else {
         Vec2::new(0.18, 0.28)
     };
+    let pond_surface = island_visual_surface_position(island, pond_offset);
     commands.spawn((
         Mesh3d(meshes.add(Cylinder::new(1.0, 0.08))),
         MeshMaterial3d(water_material),
         Transform {
-            translation: Vec3::new(
-                island.center.x + island.half_extents.x * pond_offset.x,
-                floor_y + 0.04,
-                island.center.z + island.half_extents.y * pond_offset.y,
-            ),
+            translation: pond_surface + Vec3::Y * 0.04,
             scale: Vec3::new(
                 island.half_extents.x * 0.12,
                 1.0,
@@ -1114,11 +1108,8 @@ fn spawn_sky_island_details(
 
     if !island.is_target && island.name != "launch mesa" {
         let beacon_height = 3.8 + (island_index % 3) as f32 * 0.7;
-        let beacon_center = Vec3::new(
-            island.center.x - island.half_extents.x * 0.18,
-            floor_y + beacon_height * 0.5,
-            island.center.z + island.half_extents.y * 0.22,
-        );
+        let beacon_surface = island_visual_surface_position(island, Vec2::new(-0.18, 0.22));
+        let beacon_center = beacon_surface + Vec3::Y * (beacon_height * 0.5);
         commands.spawn((
             Mesh3d(meshes.add(Cylinder::new(0.34, beacon_height))),
             MeshMaterial3d(flower_material.clone()),
@@ -1130,7 +1121,7 @@ fn spawn_sky_island_details(
 
     if island.is_target {
         let ring_size = 8.0;
-        for (translation, scale) in [
+        for (offset, scale) in [
             (
                 Vec3::new(0.0, 0.05, ring_size * 0.5),
                 Vec3::new(ring_size, 0.1, 0.35),
@@ -1148,20 +1139,23 @@ fn spawn_sky_island_details(
                 Vec3::new(0.35, 0.1, ring_size),
             ),
         ] {
+            let surface_y =
+                island.mesh_top_y_at(island.center + Vec3::new(offset.x, 0.0, offset.z));
             commands.spawn((
                 Mesh3d(meshes.add(Cuboid::new(scale.x, scale.y, scale.z))),
                 MeshMaterial3d(flower_material.clone()),
-                Transform::from_translation(island.center + translation),
+                Transform::from_xyz(
+                    island.center.x + offset.x,
+                    surface_y + offset.y,
+                    island.center.z + offset.z,
+                ),
                 IslandLodVisual::new(island, IslandVisualLayer::Beacon),
                 Name::new("landing garden ring"),
             ));
         }
     } else if island.name == "launch mesa" {
-        let beacon_center = Vec3::new(
-            island.center.x - island.half_extents.x * 0.42,
-            floor_y + 1.6,
-            island.center.z + island.half_extents.y * 0.38,
-        );
+        let beacon_surface = island_visual_surface_position(island, Vec2::new(-0.42, 0.38));
+        let beacon_center = beacon_surface + Vec3::Y * 1.6;
         commands.spawn((
             Mesh3d(meshes.add(Cylinder::new(0.7, 3.2))),
             MeshMaterial3d(flower_material),
@@ -1175,11 +1169,19 @@ fn spawn_sky_island_details(
         ));
 
         let launch_tree_height = 4.4;
-        let launch_tree_center =
-            Vec3::new(island.center.x, floor_y + launch_tree_height * 0.5, 8.0);
+        let launch_tree_surface_y =
+            island.mesh_top_y_at(Vec3::new(island.center.x, island.center.y, 8.0));
+        let launch_tree_center = Vec3::new(
+            island.center.x,
+            launch_tree_surface_y + launch_tree_height * 0.5,
+            8.0,
+        );
         let launch_canopy_radius = 1.55;
-        let launch_canopy_center =
-            Vec3::new(island.center.x, floor_y + launch_tree_height + 0.85, 8.0);
+        let launch_canopy_center = Vec3::new(
+            island.center.x,
+            launch_tree_surface_y + launch_tree_height + 0.85,
+            8.0,
+        );
         commands.spawn((
             Mesh3d(meshes.add(Cylinder::new(0.35, launch_tree_height))),
             MeshMaterial3d(trunk_material),
