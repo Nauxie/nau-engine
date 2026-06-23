@@ -8,9 +8,10 @@ use nau_engine::animation::{
     part_pose, pose_blend,
 };
 use nau_engine::camera::{
-    CameraControlState, CameraControlTuning, CameraInput, FollowCamera, apply_camera_input,
-    camera_distance, camera_pitch_degrees, camera_surface_clearance, camera_target_angle_degrees,
-    lift_camera_above_floor, step_camera_with_orbit,
+    CameraControlState, CameraControlTuning, CameraInput, CameraObstruction, FollowCamera,
+    apply_camera_input, avoid_camera_obstructions, camera_distance, camera_pitch_degrees,
+    camera_surface_clearance, camera_target_angle_degrees, lift_camera_above_floor,
+    step_camera_with_orbit,
 };
 use nau_engine::diagnostics::frame_ms;
 use nau_engine::environment::{
@@ -37,6 +38,7 @@ const PLAYER_START: Vec3 = START_POSITION;
 const WORLD_RADIUS: f32 = 360.0;
 const EVAL_SCREENSHOT_TIMEOUT_FRAMES: u32 = 180;
 const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
+const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
 const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
 
 fn main() -> AppExit {
@@ -59,6 +61,7 @@ fn main() -> AppExit {
         .insert_resource(FlightTuning::default())
         .insert_resource(CameraControlTuning::default())
         .insert_resource(CameraControlState::default())
+        .insert_resource(CameraDiagnostics::default())
         .insert_resource(MouseLookState::default())
         .insert_resource(DebugVisuals::default())
         .insert_resource(SkyRoute::default())
@@ -130,6 +133,15 @@ struct Player;
 #[derive(Component)]
 struct DebugReadout;
 
+#[derive(Component, Clone, Copy, Debug)]
+struct CameraObstacle(CameraObstruction);
+
+#[derive(Resource, Clone, Copy, Debug, Default)]
+struct CameraDiagnostics {
+    obstruction_adjustment_m: f32,
+    obstruction_hits: usize,
+}
+
 #[derive(Resource)]
 struct DebugVisuals {
     enabled: bool,
@@ -161,6 +173,16 @@ struct MovementWorld<'w, 's> {
 }
 
 #[derive(SystemParam)]
+struct CameraScene<'w, 's> {
+    route: Res<'w, SkyRoute>,
+    camera_control: Res<'w, CameraControlState>,
+    camera_diagnostics: ResMut<'w, CameraDiagnostics>,
+    player: Query<'w, 's, (&'static Transform, &'static Velocity), With<Player>>,
+    camera: Query<'w, 's, (&'static mut Transform, &'static FollowCamera), CameraFollowFilter>,
+    obstacles: Query<'w, 's, &'static CameraObstacle>,
+}
+
+#[derive(SystemParam)]
 struct DebugScene<'w, 's> {
     route: Res<'w, SkyRoute>,
     player: Query<
@@ -175,6 +197,7 @@ struct DebugScene<'w, 's> {
     >,
     camera: Query<'w, 's, &'static Transform, CameraFollowFilter>,
     camera_control: Res<'w, CameraControlState>,
+    camera_diagnostics: Res<'w, CameraDiagnostics>,
     mouse_look: Res<'w, MouseLookState>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
@@ -194,6 +217,7 @@ struct EvalScene<'w, 's> {
         With<Player>,
     >,
     camera: Query<'w, 's, &'static Transform, CameraFollowFilter>,
+    camera_diagnostics: Res<'w, CameraDiagnostics>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
     all_entities: Query<'w, 's, Entity>,
@@ -230,11 +254,19 @@ struct EvalRun {
     samples_path: PathBuf,
     summary_path: PathBuf,
     screenshot_path: Option<PathBuf>,
+    checkpoint_captures: Vec<EvalCheckpointCapture>,
     accumulator: EvalAccumulator,
     frame: u32,
     finalized: bool,
     screenshot_wait_frames: u32,
     io_error: Option<String>,
+}
+
+#[derive(Debug)]
+struct EvalCheckpointCapture {
+    frame: u32,
+    path: PathBuf,
+    captured: bool,
 }
 
 impl EvalRun {
@@ -246,10 +278,27 @@ impl EvalRun {
         let screenshot_path = options
             .capture_screenshot
             .then(|| options.output_dir.join("final.png"));
+        let mut checkpoint_captures = Vec::new();
 
         remove_existing_file(&summary_path)?;
         if let Some(path) = &screenshot_path {
             remove_existing_file(path)?;
+        }
+        if options.capture_screenshot {
+            let checkpoint_dir = options.output_dir.join("checkpoints");
+            remove_existing_dir(&checkpoint_dir)?;
+            fs::create_dir_all(&checkpoint_dir)?;
+            checkpoint_captures = options
+                .scenario
+                .checkpoints
+                .iter()
+                .map(|checkpoint| EvalCheckpointCapture {
+                    frame: checkpoint.frame,
+                    path: checkpoint_dir
+                        .join(format!("{:04}_{}.png", checkpoint.frame, checkpoint.name)),
+                    captured: false,
+                })
+                .collect();
         }
         File::create(&samples_path)?;
 
@@ -258,6 +307,7 @@ impl EvalRun {
             samples_path,
             summary_path,
             screenshot_path,
+            checkpoint_captures,
             accumulator: EvalAccumulator::default(),
             frame: 0,
             finalized: false,
@@ -278,6 +328,11 @@ impl EvalRun {
             summary_json: path_string(&self.summary_path),
             samples_ndjson: path_string(&self.samples_path),
             screenshot_png: self.screenshot_path.as_deref().map(path_string),
+            checkpoint_screenshots: self
+                .checkpoint_captures
+                .iter()
+                .map(|checkpoint| path_string(&checkpoint.path))
+                .collect(),
         };
         let summary = self.accumulator.summary(self.scenario, artifacts);
         let passed = summary.passed;
@@ -361,6 +416,14 @@ fn remove_existing_file(path: &Path) -> std::io::Result<()> {
     }
 }
 
+fn remove_existing_dir(path: &Path) -> std::io::Result<()> {
+    match fs::remove_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
 type CameraFollowFilter = (With<Camera3d>, Without<Player>);
 
 fn setup(
@@ -433,10 +496,15 @@ fn setup(
         let height = 5.0 + (index as f32 % 4.0) * 4.0;
         let z = if index % 2 == 0 { -28.0 } else { 34.0 };
 
+        let center = Vec3::new(x as f32 * 20.0, height * 0.5, z);
         commands.spawn((
             Mesh3d(meshes.add(Cuboid::new(5.0, height, 5.0))),
             MeshMaterial3d(materials.add(Color::srgb(0.42, 0.38, 0.31))),
-            Transform::from_xyz(x as f32 * 20.0, height * 0.5, z),
+            Transform::from_translation(center),
+            CameraObstacle(CameraObstruction::new(
+                center,
+                Vec3::new(2.5, height * 0.5, 2.5),
+            )),
         ));
     }
 
@@ -640,22 +708,28 @@ fn spawn_sky_island(
         Name::new(island.name),
     ));
 
+    let rock_body_center = Vec3::new(
+        island.center.x,
+        top_y - top_thickness - island.thickness * 0.5,
+        island.center.z,
+    );
+    let rock_body_half_extents = Vec3::new(
+        island.half_extents.x * 0.78,
+        island.thickness * 0.5,
+        island.half_extents.y * 0.78,
+    );
     commands.spawn((
         Mesh3d(meshes.add(Cylinder::new(1.0, island.thickness))),
         MeshMaterial3d(rock_material),
         Transform {
-            translation: Vec3::new(
-                island.center.x,
-                top_y - top_thickness - island.thickness * 0.5,
-                island.center.z,
-            ),
-            scale: Vec3::new(
-                island.half_extents.x * 0.78,
-                1.0,
-                island.half_extents.y * 0.78,
-            ),
+            translation: rock_body_center,
+            scale: Vec3::new(rock_body_half_extents.x, 1.0, rock_body_half_extents.z),
             ..default()
         },
+        CameraObstacle(CameraObstruction::new(
+            rock_body_center,
+            rock_body_half_extents,
+        )),
         Name::new("island rock body"),
     ));
 
@@ -679,22 +753,30 @@ fn spawn_sky_island(
     ));
 
     let ridge_width = island.half_extents.x * 0.32;
+    let ridge_center = Vec3::new(
+        island.center.x + island.half_extents.x * 0.28,
+        top_y + 0.1,
+        island.center.z - island.half_extents.y * 0.24,
+    );
+    let ridge_half_extents = Vec3::new(ridge_width * 0.5, 0.375, island.half_extents.y * 0.09);
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(ridge_width, 0.75, island.half_extents.y * 0.18))),
         MeshMaterial3d(under_material),
-        Transform::from_xyz(
-            island.center.x + island.half_extents.x * 0.28,
-            top_y + 0.1,
-            island.center.z - island.half_extents.y * 0.24,
-        ),
+        Transform::from_translation(ridge_center),
+        CameraObstacle(CameraObstruction::new(ridge_center, ridge_half_extents)),
         Name::new("island ridge"),
     ));
 
     if island.is_target {
+        let marker_center = Vec3::new(island.center.x, island.floor_y() + 1.8, island.center.z);
         commands.spawn((
             Mesh3d(meshes.add(Cuboid::new(2.2, 6.0, 2.2))),
             MeshMaterial3d(marker_material),
-            Transform::from_xyz(island.center.x, island.floor_y() + 1.8, island.center.z),
+            Transform::from_translation(marker_center),
+            CameraObstacle(CameraObstruction::new(
+                marker_center,
+                Vec3::new(1.1, 3.0, 1.1),
+            )),
             Name::new("landing target marker"),
         ));
     }
@@ -740,17 +822,28 @@ fn spawn_sky_island_details(
         let x = island.center.x + island.half_extents.x * (offset.x + sway);
         let z = island.center.z + island.half_extents.y * offset.y;
         let trunk_height = 2.1 + index as f32 * 0.25;
+        let trunk_center = Vec3::new(x, floor_y + trunk_height * 0.5, z);
+        let canopy_radius = 1.05 + index as f32 * 0.08;
+        let canopy_center = Vec3::new(x, floor_y + trunk_height + 0.72, z);
 
         commands.spawn((
             Mesh3d(meshes.add(Cylinder::new(0.22, trunk_height))),
             MeshMaterial3d(trunk_material.clone()),
-            Transform::from_xyz(x, floor_y + trunk_height * 0.5, z),
+            Transform::from_translation(trunk_center),
+            CameraObstacle(CameraObstruction::new(
+                trunk_center,
+                Vec3::new(0.22, trunk_height * 0.5, 0.22),
+            )),
             Name::new("island tree trunk"),
         ));
         commands.spawn((
-            Mesh3d(meshes.add(Sphere::new(1.05 + index as f32 * 0.08))),
+            Mesh3d(meshes.add(Sphere::new(canopy_radius))),
             MeshMaterial3d(foliage_material.clone()),
-            Transform::from_xyz(x, floor_y + trunk_height + 0.72, z),
+            Transform::from_translation(canopy_center),
+            CameraObstacle(CameraObstruction::new(
+                canopy_center,
+                Vec3::splat(canopy_radius),
+            )),
             Name::new("island tree canopy"),
         ));
     }
@@ -822,15 +915,47 @@ fn spawn_sky_island_details(
             ));
         }
     } else if island.name == "launch mesa" {
+        let beacon_center = Vec3::new(
+            island.center.x - island.half_extents.x * 0.42,
+            floor_y + 1.6,
+            island.center.z + island.half_extents.y * 0.38,
+        );
         commands.spawn((
             Mesh3d(meshes.add(Cylinder::new(0.7, 3.2))),
             MeshMaterial3d(flower_material),
-            Transform::from_xyz(
-                island.center.x - island.half_extents.x * 0.42,
-                floor_y + 1.6,
-                island.center.z + island.half_extents.y * 0.38,
-            ),
+            Transform::from_translation(beacon_center),
+            CameraObstacle(CameraObstruction::new(
+                beacon_center,
+                Vec3::new(0.7, 1.6, 0.7),
+            )),
             Name::new("launch beacon"),
+        ));
+
+        let launch_tree_height = 4.4;
+        let launch_tree_center =
+            Vec3::new(island.center.x, floor_y + launch_tree_height * 0.5, 8.0);
+        let launch_canopy_radius = 1.55;
+        let launch_canopy_center =
+            Vec3::new(island.center.x, floor_y + launch_tree_height + 0.85, 8.0);
+        commands.spawn((
+            Mesh3d(meshes.add(Cylinder::new(0.35, launch_tree_height))),
+            MeshMaterial3d(trunk_material),
+            Transform::from_translation(launch_tree_center),
+            CameraObstacle(CameraObstruction::new(
+                launch_tree_center,
+                Vec3::new(0.35, launch_tree_height * 0.5, 0.35),
+            )),
+            Name::new("launch camera tree trunk"),
+        ));
+        commands.spawn((
+            Mesh3d(meshes.add(Sphere::new(launch_canopy_radius))),
+            MeshMaterial3d(foliage_material),
+            Transform::from_translation(launch_canopy_center),
+            CameraObstacle(CameraObstruction::new(
+                launch_canopy_center,
+                Vec3::splat(launch_canopy_radius),
+            )),
+            Name::new("launch camera tree canopy"),
         ));
     }
 }
@@ -1061,18 +1186,11 @@ fn update_camera_control(
     state.orbit = apply_camera_input(state.orbit, input, &tuning);
 }
 
-fn follow_camera(
-    time: Res<Time>,
-    eval: Option<Res<EvalRun>>,
-    route: Res<SkyRoute>,
-    camera_control: Res<CameraControlState>,
-    player: Query<(&Transform, &Velocity), With<Player>>,
-    mut camera: Query<(&mut Transform, &FollowCamera), CameraFollowFilter>,
-) {
-    let Ok((player_transform, velocity)) = player.single() else {
+fn follow_camera(time: Res<Time>, eval: Option<Res<EvalRun>>, mut scene: CameraScene) {
+    let Ok((player_transform, velocity)) = scene.player.single() else {
         return;
     };
-    let Ok((mut camera_transform, follow)) = camera.single_mut() else {
+    let Ok((mut camera_transform, follow)) = scene.camera.single_mut() else {
         return;
     };
 
@@ -1083,11 +1201,28 @@ fn follow_camera(
         *player_transform.forward(),
         velocity.0,
         follow,
-        camera_control.orbit,
+        scene.camera_control.orbit,
         eval_dt(&time, eval.as_deref()),
     );
-    let camera_floor_y = route.ground_at(frame.position).floor_y;
+    let camera_floor_y = scene.route.ground_at(frame.position).floor_y;
     let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
+    let obstruction_resolution = avoid_camera_obstructions(
+        frame,
+        scene.obstacles.iter().map(|obstacle| obstacle.0),
+        CAMERA_OBSTRUCTION_CLEARANCE,
+    );
+    let camera_floor_y = scene
+        .route
+        .ground_at(obstruction_resolution.frame.position)
+        .floor_y;
+    let frame = lift_camera_above_floor(
+        obstruction_resolution.frame,
+        camera_floor_y,
+        CAMERA_MIN_SURFACE_CLEARANCE,
+    );
+
+    scene.camera_diagnostics.obstruction_adjustment_m = obstruction_resolution.adjusted_distance_m;
+    scene.camera_diagnostics.obstruction_hits = obstruction_resolution.hit_count;
 
     camera_transform.translation = frame.position;
     camera_transform.rotation = frame.rotation;
@@ -1144,7 +1279,7 @@ fn update_debug_readout(
     };
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -1154,6 +1289,8 @@ fn update_debug_readout(
         pitch,
         distance,
         framing_angle,
+        scene.camera_diagnostics.obstruction_adjustment_m,
+        scene.camera_diagnostics.obstruction_hits,
         camera_yaw,
         camera_pitch_offset,
         mouse_lock,
@@ -1226,6 +1363,8 @@ fn collect_eval_metrics(
         camera_pitch_degrees,
         camera_control.orbit.yaw_degrees(),
         camera_control.orbit.pitch_degrees(),
+        scene.camera_diagnostics.obstruction_adjustment_m,
+        scene.camera_diagnostics.obstruction_hits,
         visible_wind_fields,
         scene.wind_fields.iter().count(),
         active_lift_fields,
@@ -1269,6 +1408,8 @@ fn finish_eval_frame(
         return;
     }
 
+    capture_due_checkpoint_screenshots(&mut commands, &mut run);
+
     if run.frame < run.scenario.frame_count {
         run.frame += 1;
         return;
@@ -1301,6 +1442,23 @@ fn finish_eval_frame(
         );
     } else {
         app_exit.write(exit);
+    }
+}
+
+fn capture_due_checkpoint_screenshots(commands: &mut Commands, run: &mut EvalRun) {
+    let frame = run.frame;
+    for checkpoint in run
+        .checkpoint_captures
+        .iter_mut()
+        .filter(|checkpoint| !checkpoint.captured && checkpoint.frame == frame)
+    {
+        let screenshot_path = checkpoint.path.clone();
+        checkpoint.captured = true;
+        commands.spawn(Screenshot::primary_window()).observe(
+            move |captured: On<ScreenshotCaptured>| {
+                save_to_disk(screenshot_path.clone())(captured);
+            },
+        );
     }
 }
 

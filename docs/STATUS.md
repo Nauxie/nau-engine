@@ -39,8 +39,8 @@ Use this section for milestone handoffs, not routine worktree changes.
 - Route-surface contact can land the player on an island and applies landing damping once instead of crushing standing WASD movement every frame.
 - Runtime movement is camera-relative, with character facing smoothed toward horizontal velocity.
 - Mouse camera control has player-centered orbit pitch, separate yaw and pitch sensitivity, pitch clamps, click-to-lock cursor capture, right-mouse temporary look, and `Esc` release.
-- Camera uses horizontal follow direction instead of full 3D velocity, avoiding the known vertical launch camera snap, and stays above the active ground surface.
-- HUD reports frame time, camera pitch, camera distance, player framing angle, mouse yaw/pitch offsets, velocity, altitude, mode, launch state, target distance, visual wind-field count, active lift-field count, and sky-island count.
+- Camera uses horizontal follow direction instead of full 3D velocity, avoids tagged obstruction volumes, and stays above the active ground surface.
+- HUD reports frame time, camera pitch, camera distance, player framing angle, obstruction adjustment, mouse yaw/pitch offsets, velocity, altitude, mode, launch state, target distance, visual wind-field count, active lift-field count, and sky-island count.
 - `F1` toggles debug gizmos for player vectors, camera line, visual wind/updraft stream fields, and gameplay lift fields.
 - Visual wind/updraft fields are finite, visible, and visual-only; gameplay lift uses a separate bounded `LiftField`.
 - Traversal, route-surface geometry, visual wind-field geometry, gameplay lift math, camera, diagnostics, eval metrics, and pose math live in testable pure functions in `src/lib.rs`.
@@ -48,13 +48,13 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `camera_mouse_control` eval proves scripted mouse X/Y deltas exercise yaw and both pitch directions without hiding camera regressions behind player movement.
 - `updraft_route` eval proves a scripted route enters a gameplay lift field and gains altitude beyond the normal route ceiling.
 - `island_launch_to_landing` eval proves the scripted route reaches and lands on the target island.
-- Eval summaries now include camera surface clearance, camera-to-player framing angle, camera yaw/pitch offsets, and max scene entity count so camera/control/content regressions are visible in metrics.
+- Eval summaries now include camera surface clearance, camera-to-player framing angle, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, and max scene entity count so camera/control/content regressions are visible in metrics.
 
 ## Known Issues
 
 - The character is still primitive geometry, not a rigged character asset.
 - Limb posing is approximate and not skeletal. It is less glitchy than elapsed-time phase math, but still placeholder animation.
-- Camera has no collision sweep or obstruction avoidance beyond a ground-surface clearance lift.
+- Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep.
 - Wind/updraft visuals are debug gizmos only, not yet represented through particles, cloth/glider motion, vegetation, or environment art.
 - Sky islands are still primitive slab geometry, not authored terrain meshes.
 - Gameplay lift is a first rough updraft only; there is no crosswind force, launch-source chain, or recovery route design yet.
@@ -64,9 +64,9 @@ Use this section for milestone handoffs, not routine worktree changes.
 ## Next Tasks
 
 1. Replace primitive island slabs with authored or generated terrain meshes.
-2. Add fixed camera checkpoint screenshots to the island and updraft route evals.
-3. Add camera collision/obstruction handling before larger terrain makes clipping harder to debug.
-4. Tune gameplay updraft placement, readability, and route recovery.
+2. Add visual checks for fixed camera checkpoint screenshots.
+3. Tune gameplay updraft placement, readability, and route recovery.
+4. Add chunk/terrain counters before larger route streaming work.
 
 ## Read First
 
