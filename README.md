@@ -47,6 +47,7 @@ cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 ./tools/eval.sh ground_taxi_control target/eval/ground_taxi_control
 ./tools/eval.sh camera_mouse_control target/eval/camera_mouse_control
+./tools/eval.sh camera_yaw_stability target/eval/camera_yaw_stability
 ./tools/eval.sh camera_turn_stability target/eval/camera_turn_stability
 ./tools/eval.sh updraft_route target/eval/updraft_route
 ./tools/eval.sh island_launch_to_landing target/eval/island_launch_to_landing

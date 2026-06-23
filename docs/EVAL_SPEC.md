@@ -40,6 +40,12 @@ Run the mouse-camera control route:
 ./tools/eval.sh camera_mouse_control target/eval/camera_mouse_control
 ```
 
+Run the small-yaw no-drift camera route:
+
+```sh
+./tools/eval.sh camera_yaw_stability target/eval/camera_yaw_stability
+```
+
 Run the airborne turn and air-brake camera stability route:
 
 ```sh
@@ -115,6 +121,15 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - camera surface clearance must stay above the active ground surface
 - camera-to-player framing angle must stay below threshold so pitch cannot push the player out of frame
 - launch-side obstruction avoidance must produce a measurable camera adjustment
+- camera orbit alignment must stay below threshold so yaw is not reapplied every frame
+
+`camera_yaw_stability` is the isolated no-drift mouse regression test:
+
+- fixed spawn on the launch island
+- no movement input, so yaw drift cannot be confused with player heading changes
+- a small scripted mouse X impulse must produce a measurable yaw offset
+- input then stops for multiple seconds
+- camera orbit alignment must remain below threshold after the yaw impulse
 
 `camera_turn_stability` is the airborne camera-feel regression test:
 
@@ -122,7 +137,7 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - camera step distance and rotation delta must remain under thresholds during rapid heading changes
 - the route must keep gliding samples and traversal distance high enough to avoid a no-op pass
 
-The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and isolated. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss. The turn-stability route guards rapid airborne direction changes and backward air braking.
+The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and isolated. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss. The yaw-stability route guards against persistent mouse yaw being fed back into the camera every frame. The turn-stability route guards rapid airborne direction changes and backward air braking.
 
 ## Artifacts
 
@@ -155,6 +170,7 @@ Every sample includes:
 - `camera_pitch_offset_degrees`
 - `camera_step_distance_m`
 - `camera_rotation_delta_degrees`
+- `camera_orbit_alignment_degrees`
 - `camera_obstruction_adjustment_m`
 - `camera_obstruction_hits`
 - `visible_wind_fields`
@@ -236,6 +252,7 @@ The thin-slice target should eventually have these evals:
 - `ground_taxi_control`: current pre-launch WASD regression test.
 - `updraft_route`: current gameplay lift regression test.
 - `camera_mouse_control`: current mouse X/Y regression test.
+- `camera_yaw_stability`: current small-yaw no-drift regression test.
 - `camera_turn_stability`: current rapid air-turn and air-brake camera stability test.
 - `long_glide_visibility`: verify many distant islands remain visible during high-altitude flight.
 - `camera_stress`: fly close to geometry and record camera distance, pitch, and obstruction metrics.

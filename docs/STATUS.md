@@ -39,18 +39,19 @@ Use this section for milestone handoffs, not routine worktree changes.
 - Route-surface contact can land the player on an island and applies landing damping once instead of crushing standing WASD movement every frame.
 - Runtime movement is camera-relative, with character facing smoothed toward horizontal velocity.
 - Mouse camera control has player-centered orbit pitch, separate yaw and pitch sensitivity, pitch clamps, click-to-lock cursor capture, right-mouse temporary look, and `Esc` release.
-- Camera uses smoothed horizontal follow direction instead of full 3D velocity, avoids tagged obstruction volumes, and stays above the active ground surface.
-- HUD reports frame time, camera pitch, camera distance, player framing angle, camera motion, obstruction adjustment, mouse yaw/pitch offsets, velocity, altitude, mode, launch state, target distance, visual wind-field count, active lift-field count, and sky-island count.
+- Camera keeps smoothed horizontal follow direction independent from mouse orbit, avoids tagged obstruction volumes, and stays above the active ground surface.
+- HUD reports frame time, camera pitch, camera distance, player framing angle, camera motion, camera orbit alignment, obstruction adjustment, mouse yaw/pitch offsets, velocity, altitude, mode, launch state, target distance, visual wind-field count, active lift-field count, and sky-island count.
 - `F1` toggles debug gizmos for player vectors, camera line, visual wind/updraft stream fields, and gameplay lift fields.
 - Visual wind/updraft fields are finite, visible, and visual-only; gameplay lift uses a separate bounded `LiftField`.
 - Traversal, route-surface geometry, visual wind-field geometry, gameplay lift math, camera, diagnostics, eval metrics, and pose math live in testable pure functions in `src/lib.rs`.
 - `ground_taxi_control` eval proves pre-launch camera-relative WASD moves the player across the launch island without leaving grounded mode.
 - `camera_mouse_control` eval proves scripted mouse X/Y deltas exercise yaw and both pitch directions without hiding camera regressions behind player movement.
+- `camera_yaw_stability` eval proves a small yaw impulse does not keep rotating after mouse input stops.
 - `camera_turn_stability` eval proves rapid airborne turns and backward air-braking stay within camera step/rotation thresholds.
 - `updraft_route` eval proves a scripted route enters a gameplay lift field and gains altitude beyond the normal route ceiling.
 - `island_launch_to_landing` eval proves the scripted route reaches and lands on the target island.
 - Metric-only evals hide the native window by default; screenshot evals are explicit via `NAU_EVAL_SCREENSHOT=1`.
-- Eval summaries now include camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, and max scene entity count so camera/control/content regressions are visible in metrics.
+- Eval summaries now include camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, and max scene entity count so camera/control/content regressions are visible in metrics.
 
 ## Known Issues
 
