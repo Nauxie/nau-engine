@@ -6,25 +6,24 @@ Last updated: 2026-06-23
 
 First sky-island traversal slice.
 
-The project has a rough Bevy sandbox with a primitive humanoid, playable ground movement, deployable glider wings, one-launch-per-airtime vertical burst, mouse-look camera follow, HUD diagnostics, debug gizmos, authored visual wind/updraft fields, a separate gameplay updraft lift field, a small floating sky-island route with generated terrain relief plus deterministic props, and scripted evals for ground taxi control, mouse camera control, camera turn stability, baseline traversal, updraft lift, and island launch-to-landing.
+The project has a Bevy sandbox with a primitive humanoid, playable ground movement, deployable glider wings, one-launch-per-airtime vertical burst, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, procedural materials, drifting cloud banks, authored visual wind/updraft fields, separate gameplay updraft lift fields, a 12-island floating route with generated terrain relief plus deterministic props, and scripted evals for ground taxi control, mouse camera control, camera turn stability, baseline traversal, updraft lift, long-glide visibility, and island launch-to-landing.
 
 ## Last Known Good
 
-- Commit: `a70ed1a`
-- Merged PR: `#5` - Add traversal eval harness
+- Commit: `ee65bc8`
+- Merged PR: `#16` - Add streaming LOD diagnostics counters
 - Verification:
   - `cargo fmt --all --check`
   - `cargo check`
   - `cargo test`
   - `cargo clippy --all-targets --all-features -- -D warnings`
-  - `NAU_EVAL_NO_SCREENSHOT=1 ./tools/eval.sh baseline_route target/eval/baseline_route-noscreen`
-  - `./tools/eval.sh baseline_route target/eval/baseline_route`
+  - metric-only eval suite across baseline, ground taxi, camera control/stability, updraft, long-glide, and landing scenarios
 
 ## Active Work
 
 Use this section for milestone handoffs, not routine worktree changes.
 
-- Active branch: `abhinav/movement-camera-terrain-polish`
+- Active branch: `abhinav/visual-feel-atmosphere-materials`
 - Open PRs: consult GitHub
 
 ## What Works
@@ -35,7 +34,10 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `E` launches from the ground and is gated to one launch per airtime.
 - `Space` deploys glider wings while airborne.
 - `Shift` dives.
-- The sandbox spawns five floating sky islands with generated visual terrain relief, a launch island, and a landing target.
+- The sandbox spawns a 12-island floating archipelago with generated visual terrain relief, a launch island, long-glide route, and landing target.
+- The camera uses Bevy-native atmosphere, distance fog, volumetric fog/light, bloom, Aces tonemapping, and atmosphere-driven environment lighting.
+- Terrain, props, water, suit, glider, and markers use generated surface textures with tuned roughness/reflectance; marker and flower materials feed bloom through emissive color.
+- Drifting cloud banks provide the first non-debug weather layer without changing gameplay collision or traversal math.
 - Route-surface contact can land the player on an island and applies landing damping once instead of crushing standing WASD movement every frame.
 - Runtime movement is camera-relative, with character facing smoothed toward horizontal velocity.
 - Mouse camera control has player-centered orbit pitch, separate yaw and pitch sensitivity, pitch clamps, click-to-lock cursor capture, right-mouse temporary look, and `Esc` release.
@@ -43,7 +45,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - HUD reports frame time, camera pitch, camera distance, player framing angle, camera motion, camera orbit alignment, obstruction adjustment, mouse yaw/pitch offsets, velocity, altitude, mode, launch state, target distance, visual wind-field count, active lift-field count, and sky-island count.
 - `F1` toggles debug gizmos for player vectors, camera line, visual wind/updraft stream fields, and gameplay lift fields.
 - Visual wind/updraft fields are finite, visible, and visual-only; gameplay lift uses a separate bounded `LiftField`.
-- Traversal, route-surface geometry, visual wind-field geometry, gameplay lift math, camera, diagnostics, eval metrics, and pose math live in testable pure functions in `src/lib.rs`.
+- Traversal, route-surface geometry, visual wind-field geometry, gameplay lift math, camera, diagnostics, eval metrics, and richer pose math live in testable pure functions in `src/lib.rs`.
 - `ground_taxi_control` eval proves pre-launch camera-relative WASD moves the player across the launch island without leaving grounded mode.
 - `camera_mouse_control` eval proves scripted mouse X/Y deltas exercise yaw and both pitch directions without hiding camera regressions behind player movement.
 - `camera_yaw_stability` eval proves a small yaw impulse does not keep rotating after mouse input stops.
@@ -51,17 +53,17 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `updraft_route` eval proves a scripted route enters a gameplay lift field and gains altitude beyond the normal route ceiling.
 - `island_launch_to_landing` eval proves the scripted route reaches and lands on the target island.
 - Metric-only evals hide the native window by default; screenshot evals are explicit via `NAU_EVAL_SCREENSHOT=1`.
-- Eval summaries now include camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, hidden/resident island visual counts, and stream visibility churn so camera/control/content/streaming regressions are visible in metrics.
+- Eval summaries now include camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, weather cloud count, hidden/resident island visual counts, and stream visibility churn so camera/control/content/streaming regressions are visible in metrics.
 
 ## Known Issues
 
 - The character is still primitive geometry, not a rigged character asset.
-- Limb posing is approximate and not skeletal. It is less glitchy than elapsed-time phase math, but still placeholder animation.
+- Limb posing now has grounded stride, airborne banking, and glide posture, but it is still approximate non-skeletal animation.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep.
-- Wind/updraft visuals are debug gizmos only, not yet represented through particles, cloth/glider motion, vegetation, or environment art.
+- Wind/updraft stream fields are still debug gizmos; weather exists as fog/cloud banks, but there are no particles, cloth/glider reactions, vegetation sway, or authored environment art yet.
 - Sky-island collision follows deterministic terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - Gameplay lift is a first rough updraft only; there is no crosswind force, launch-source chain, or recovery route design yet.
-- There is no real chunk despawn, authored water, authored vegetation, or environment asset pipeline yet. Current stream-window terrain visibility, detail LOD, ponds, trees, stones, beacon, and landing markers are deterministic primitive systems.
+- There is no real chunk despawn, authored water, authored vegetation, or environment asset pipeline yet. Current stream-window terrain visibility, detail LOD, procedural materials, ponds, trees, stones, beacon, cloud banks, and landing markers are deterministic primitive systems.
 - Physics is still custom movement math, not a real collision/rigid body integration.
 
 ## Next Tasks
@@ -69,7 +71,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 1. Add visual checks for fixed camera checkpoint screenshots.
 2. Tune gameplay updraft placement, readability, and route recovery.
 3. Promote stream-window counters into actual terrain despawn and asset streaming.
-4. Start the visual-feel pass: sky lighting, weather atmosphere, material/shader polish, richer character animation, and texture assets.
+4. Replace the primitive character/environment with a glTF asset pipeline once the traversal/render targets stop moving.
 
 ## Read First
 
