@@ -11,9 +11,10 @@ use nau_engine::animation::{
 };
 use nau_engine::camera::{
     CameraControlState, CameraControlTuning, CameraInput, CameraObstruction, FollowCamera,
-    apply_camera_input, avoid_camera_obstructions, camera_distance, camera_pitch_degrees,
-    camera_surface_clearance, camera_target_angle_degrees, lift_camera_above_floor,
-    step_camera_with_orbit,
+    FollowCameraState, apply_camera_input, avoid_camera_obstructions, camera_distance,
+    camera_orbit_alignment_degrees, camera_pitch_degrees, camera_surface_clearance,
+    camera_target_angle_degrees, horizontal_follow_direction, lift_camera_above_floor,
+    step_camera_with_direction, update_follow_direction_state,
 };
 use nau_engine::diagnostics::frame_ms;
 use nau_engine::environment::{
@@ -150,6 +151,7 @@ struct CameraObstacle(CameraObstruction);
 struct CameraDiagnostics {
     step_distance_m: f32,
     rotation_delta_degrees: f32,
+    orbit_alignment_degrees: f32,
     obstruction_adjustment_m: f32,
     obstruction_hits: usize,
 }
@@ -190,7 +192,16 @@ struct CameraScene<'w, 's> {
     camera_control: Res<'w, CameraControlState>,
     camera_diagnostics: ResMut<'w, CameraDiagnostics>,
     player: Query<'w, 's, (&'static Transform, &'static Velocity), With<Player>>,
-    camera: Query<'w, 's, (&'static mut Transform, &'static FollowCamera), CameraFollowFilter>,
+    camera: Query<
+        'w,
+        's,
+        (
+            &'static mut Transform,
+            &'static FollowCamera,
+            &'static mut FollowCameraState,
+        ),
+        CameraFollowFilter,
+    >,
     obstacles: Query<'w, 's, &'static CameraObstacle>,
 }
 
@@ -660,6 +671,7 @@ fn setup(
             Vec3::Y,
         ),
         follow_camera,
+        FollowCameraState::default(),
     ));
 
     commands.spawn((
@@ -1293,21 +1305,31 @@ fn follow_camera(time: Res<Time>, eval: Option<Res<EvalRun>>, mut scene: CameraS
     let Ok((player_transform, velocity)) = scene.player.single() else {
         return;
     };
-    let Ok((mut camera_transform, follow)) = scene.camera.single_mut() else {
+    let Ok((mut camera_transform, follow, mut follow_state)) = scene.camera.single_mut() else {
         return;
     };
     let previous_camera_position = camera_transform.translation;
     let previous_camera_rotation = camera_transform.rotation;
 
-    let frame = step_camera_with_orbit(
+    let dt = eval_dt(&time, eval.as_deref());
+    let desired_follow_direction =
+        horizontal_follow_direction(velocity.0, *player_transform.forward());
+    let follow_direction =
+        update_follow_direction_state(&mut follow_state, desired_follow_direction, follow, dt);
+    let frame = step_camera_with_direction(
         camera_transform.translation,
         camera_transform.rotation,
         player_transform.translation,
-        *player_transform.forward(),
-        velocity.0,
+        follow_direction,
         follow,
         scene.camera_control.orbit,
-        eval_dt(&time, eval.as_deref()),
+        dt,
+    );
+    let orbit_alignment_degrees = camera_orbit_alignment_degrees(
+        frame.position,
+        frame.look_target,
+        follow_direction,
+        scene.camera_control.orbit,
     );
     let camera_floor_y = scene.route.ground_at(frame.position).floor_y;
     let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
@@ -1330,6 +1352,7 @@ fn follow_camera(time: Res<Time>, eval: Option<Res<EvalRun>>, mut scene: CameraS
     scene.camera_diagnostics.rotation_delta_degrees = previous_camera_rotation
         .angle_between(frame.rotation)
         .to_degrees();
+    scene.camera_diagnostics.orbit_alignment_degrees = orbit_alignment_degrees;
     scene.camera_diagnostics.obstruction_adjustment_m = obstruction_resolution.adjusted_distance_m;
     scene.camera_diagnostics.obstruction_hits = obstruction_resolution.hit_count;
 
@@ -1388,7 +1411,7 @@ fn update_debug_readout(
     };
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -1400,6 +1423,7 @@ fn update_debug_readout(
         framing_angle,
         scene.camera_diagnostics.step_distance_m,
         scene.camera_diagnostics.rotation_delta_degrees,
+        scene.camera_diagnostics.orbit_alignment_degrees,
         scene.camera_diagnostics.obstruction_adjustment_m,
         scene.camera_diagnostics.obstruction_hits,
         camera_yaw,
@@ -1476,6 +1500,7 @@ fn collect_eval_metrics(
         camera_control.orbit.pitch_degrees(),
         scene.camera_diagnostics.step_distance_m,
         scene.camera_diagnostics.rotation_delta_degrees,
+        scene.camera_diagnostics.orbit_alignment_degrees,
         scene.camera_diagnostics.obstruction_adjustment_m,
         scene.camera_diagnostics.obstruction_hits,
         visible_wind_fields,

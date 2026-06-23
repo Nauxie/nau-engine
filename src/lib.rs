@@ -1181,6 +1181,21 @@ pub mod camera {
         }
     }
 
+    #[derive(Component, Clone, Copy, Debug)]
+    pub struct FollowCameraState {
+        pub direction: Vec3,
+        initialized: bool,
+    }
+
+    impl Default for FollowCameraState {
+        fn default() -> Self {
+            Self {
+                direction: Vec3::NEG_Z,
+                initialized: false,
+            }
+        }
+    }
+
     #[derive(Resource, Clone, Copy, Debug)]
     pub struct CameraControlTuning {
         pub sensitivity_x: f32,
@@ -1308,14 +1323,57 @@ pub mod camera {
         orbit: CameraOrbit,
         dt: f32,
     ) -> CameraFrame {
-        let desired_direction = horizontal_follow_direction(player_velocity, player_forward);
-        let direction = smoothed_follow_direction(
+        let direction = horizontal_follow_direction(player_velocity, player_forward);
+        step_camera_with_direction(
             current_position,
+            current_rotation,
             player_position,
-            desired_direction,
+            direction,
             follow,
+            orbit,
             dt,
+        )
+    }
+
+    pub fn update_follow_direction_state(
+        state: &mut FollowCameraState,
+        desired_direction: Vec3,
+        follow: &FollowCamera,
+        dt: f32,
+    ) -> Vec3 {
+        let fallback = if state.initialized {
+            state.direction
+        } else {
+            Vec3::NEG_Z
+        };
+        let desired_direction = horizontal_or(desired_direction, fallback);
+        if !state.initialized {
+            state.direction = desired_direction;
+            state.initialized = true;
+            return state.direction;
+        }
+
+        state.direction = horizontal_or(
+            state.direction.lerp(
+                desired_direction,
+                smoothing_factor(follow.direction_smoothing, dt),
+            ),
+            desired_direction,
         );
+        state.direction
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn step_camera_with_direction(
+        current_position: Vec3,
+        current_rotation: Quat,
+        player_position: Vec3,
+        follow_direction: Vec3,
+        follow: &FollowCamera,
+        orbit: CameraOrbit,
+        dt: f32,
+    ) -> CameraFrame {
+        let direction = horizontal_or(follow_direction, Vec3::NEG_Z);
         let direction = yawed_horizontal_direction(direction, orbit.yaw);
         let look_target =
             player_position + Vec3::Y * follow.look_height + direction * follow.look_ahead;
@@ -1369,24 +1427,6 @@ pub mod camera {
         horizontal_or(rotated, direction)
     }
 
-    fn smoothed_follow_direction(
-        current_position: Vec3,
-        player_position: Vec3,
-        desired_direction: Vec3,
-        follow: &FollowCamera,
-        dt: f32,
-    ) -> Vec3 {
-        let current_direction =
-            horizontal_or(player_position - current_position, desired_direction);
-        horizontal_or(
-            current_direction.lerp(
-                desired_direction,
-                smoothing_factor(follow.direction_smoothing, dt),
-            ),
-            desired_direction,
-        )
-    }
-
     pub fn horizontal_follow_direction(velocity: Vec3, player_forward: Vec3) -> Vec3 {
         let horizontal_velocity = Vec3::new(velocity.x, 0.0, velocity.z);
         if horizontal_velocity.length_squared() > 1.0 {
@@ -1406,7 +1446,12 @@ pub mod camera {
         if horizontal.length_squared() > 0.0001 {
             horizontal.normalize()
         } else {
-            fallback.normalize()
+            let fallback = Vec3::new(fallback.x, 0.0, fallback.z);
+            if fallback.length_squared() > 0.0001 {
+                fallback.normalize()
+            } else {
+                Vec3::NEG_Z
+            }
         }
     }
 
@@ -1443,6 +1488,21 @@ pub mod camera {
         } else {
             0.0
         }
+    }
+
+    pub fn camera_orbit_alignment_degrees(
+        camera_position: Vec3,
+        look_target: Vec3,
+        follow_direction: Vec3,
+        orbit: CameraOrbit,
+    ) -> f32 {
+        let expected_direction = yawed_horizontal_direction(follow_direction, orbit.yaw);
+        let actual_direction = horizontal_or(look_target - camera_position, expected_direction);
+        let angle = actual_direction
+            .angle_between(expected_direction)
+            .to_degrees();
+
+        if angle.is_finite() { angle } else { 0.0 }
     }
 
     pub fn lift_camera_above_floor(
@@ -1702,12 +1762,17 @@ pub mod camera {
         #[test]
         fn follow_direction_smoothing_limits_turnaround_snap() {
             let follow = FollowCamera::default();
-            let frame = step_camera_with_orbit(
+            let mut state = FollowCameraState {
+                direction: Vec3::Z,
+                initialized: true,
+            };
+            let follow_direction =
+                update_follow_direction_state(&mut state, Vec3::NEG_Z, &follow, 1.0 / 60.0);
+            let frame = step_camera_with_direction(
                 Vec3::new(0.0, 6.0, 12.0),
                 Quat::IDENTITY,
                 Vec3::ZERO,
-                Vec3::NEG_Z,
-                Vec3::NEG_Z * 24.0,
+                follow_direction,
                 &follow,
                 CameraOrbit::default(),
                 1.0 / 60.0,
@@ -1716,6 +1781,52 @@ pub mod camera {
             assert!(
                 frame.position.z > 8.0,
                 "camera should not instantly orbit across the player on a velocity flip"
+            );
+        }
+
+        #[test]
+        fn persistent_yaw_offset_does_not_compound_into_spin() {
+            let follow = FollowCamera::default();
+            let orbit = CameraOrbit {
+                yaw: 0.2,
+                pitch: 0.0,
+            };
+            let player_position = Vec3::ZERO;
+            let player_forward = Vec3::NEG_Z;
+            let mut camera_position = Vec3::new(0.0, follow.height, follow.distance);
+            let mut camera_rotation = Transform::from_translation(camera_position)
+                .looking_at(player_position + Vec3::Y * follow.look_height, Vec3::Y)
+                .rotation;
+            let expected_direction = yawed_horizontal_direction(
+                horizontal_follow_direction(Vec3::ZERO, player_forward),
+                orbit.yaw,
+            );
+
+            for _ in 0..240 {
+                let frame = step_camera_with_orbit(
+                    camera_position,
+                    camera_rotation,
+                    player_position,
+                    player_forward,
+                    Vec3::ZERO,
+                    &follow,
+                    orbit,
+                    1.0 / 60.0,
+                );
+                camera_position = frame.position;
+                camera_rotation = frame.rotation;
+            }
+
+            let drift_degrees = camera_orbit_alignment_degrees(
+                camera_position,
+                player_position + Vec3::Y * follow.look_height,
+                expected_direction,
+                CameraOrbit::default(),
+            );
+
+            assert!(
+                drift_degrees < 3.0,
+                "persistent yaw drifted by {drift_degrees} degrees"
             );
         }
 
@@ -1862,6 +1973,7 @@ pub mod eval {
     pub const GROUND_TAXI_CONTROL: &str = "ground_taxi_control";
     pub const UPDRAFT_ROUTE: &str = "updraft_route";
     pub const CAMERA_MOUSE_CONTROL: &str = "camera_mouse_control";
+    pub const CAMERA_YAW_STABILITY: &str = "camera_yaw_stability";
     pub const CAMERA_TURN_STABILITY: &str = "camera_turn_stability";
     pub const SCENARIO_NAMES: &[&str] = &[
         BASELINE_ROUTE,
@@ -1869,6 +1981,7 @@ pub mod eval {
         GROUND_TAXI_CONTROL,
         UPDRAFT_ROUTE,
         CAMERA_MOUSE_CONTROL,
+        CAMERA_YAW_STABILITY,
         CAMERA_TURN_STABILITY,
     ];
 
@@ -1936,6 +2049,20 @@ pub mod eval {
             name: "settled_view",
         },
     ];
+    const CAMERA_YAW_STABILITY_CHECKPOINTS: &[EvalCheckpoint] = &[
+        EvalCheckpoint {
+            frame: 30,
+            name: "small_yaw_input",
+        },
+        EvalCheckpoint {
+            frame: 180,
+            name: "yaw_settle",
+        },
+        EvalCheckpoint {
+            frame: 260,
+            name: "drift_check",
+        },
+    ];
     const CAMERA_TURN_CHECKPOINTS: &[EvalCheckpoint] = &[
         EvalCheckpoint {
             frame: 90,
@@ -1993,6 +2120,7 @@ pub mod eval {
         pub max_camera_player_angle_degrees: f32,
         pub max_camera_step_distance_m: f32,
         pub max_camera_rotation_delta_degrees: f32,
+        pub max_camera_orbit_alignment_degrees: f32,
         pub min_camera_obstruction_adjustment_m: f32,
         pub min_abs_camera_yaw_degrees: f32,
         pub min_camera_pitch_offset_degrees: f32,
@@ -2005,7 +2133,7 @@ pub mod eval {
     impl EvalThresholds {
         fn to_json(self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
                 self.min_samples,
                 json_number(self.min_horizontal_distance_m),
                 json_number(self.min_max_altitude_m),
@@ -2019,6 +2147,7 @@ pub mod eval {
                 json_number(self.max_camera_player_angle_degrees),
                 json_number(self.max_camera_step_distance_m),
                 json_number(self.max_camera_rotation_delta_degrees),
+                json_number(self.max_camera_orbit_alignment_degrees),
                 json_number(self.min_camera_obstruction_adjustment_m),
                 json_number(self.min_abs_camera_yaw_degrees),
                 json_number(self.min_camera_pitch_offset_degrees),
@@ -2047,6 +2176,7 @@ pub mod eval {
         pub camera_pitch_offset_degrees: f32,
         pub camera_step_distance_m: f32,
         pub camera_rotation_delta_degrees: f32,
+        pub camera_orbit_alignment_degrees: f32,
         pub camera_obstruction_adjustment_m: f32,
         pub camera_obstruction_hits: usize,
         pub visible_wind_fields: usize,
@@ -2075,6 +2205,7 @@ pub mod eval {
             camera_pitch_offset_degrees: f32,
             camera_step_distance_m: f32,
             camera_rotation_delta_degrees: f32,
+            camera_orbit_alignment_degrees: f32,
             camera_obstruction_adjustment_m: f32,
             camera_obstruction_hits: usize,
             visible_wind_fields: usize,
@@ -2102,6 +2233,7 @@ pub mod eval {
                 camera_pitch_offset_degrees,
                 camera_step_distance_m,
                 camera_rotation_delta_degrees,
+                camera_orbit_alignment_degrees,
                 camera_obstruction_adjustment_m,
                 camera_obstruction_hits,
                 visible_wind_fields,
@@ -2117,7 +2249,7 @@ pub mod eval {
 
         pub fn to_json(&self) -> String {
             format!(
-                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"sky_island_count\":{},\"entity_count\":{}}}",
+                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"sky_island_count\":{},\"entity_count\":{}}}",
                 self.frame,
                 json_number(self.time_secs),
                 json_array3(self.position),
@@ -2133,6 +2265,7 @@ pub mod eval {
                 json_number(self.camera_pitch_offset_degrees),
                 json_number(self.camera_step_distance_m),
                 json_number(self.camera_rotation_delta_degrees),
+                json_number(self.camera_orbit_alignment_degrees),
                 json_number(self.camera_obstruction_adjustment_m),
                 self.camera_obstruction_hits,
                 self.visible_wind_fields,
@@ -2160,6 +2293,7 @@ pub mod eval {
         max_camera_player_angle_degrees: f32,
         max_camera_step_distance_m: f32,
         max_camera_rotation_delta_degrees: f32,
+        max_camera_orbit_alignment_degrees: f32,
         max_camera_obstruction_adjustment_m: f32,
         max_camera_obstruction_hits: usize,
         min_target_distance_m: f32,
@@ -2209,6 +2343,9 @@ pub mod eval {
             self.max_camera_rotation_delta_degrees = self
                 .max_camera_rotation_delta_degrees
                 .max(sample.camera_rotation_delta_degrees);
+            self.max_camera_orbit_alignment_degrees = self
+                .max_camera_orbit_alignment_degrees
+                .max(sample.camera_orbit_alignment_degrees);
             self.max_camera_obstruction_adjustment_m = self
                 .max_camera_obstruction_adjustment_m
                 .max(sample.camera_obstruction_adjustment_m);
@@ -2345,6 +2482,12 @@ pub mod eval {
                     thresholds.max_camera_rotation_delta_degrees,
                     "deg",
                 ),
+                EvalCheck::at_most(
+                    "max_camera_orbit_alignment",
+                    self.max_camera_orbit_alignment_degrees,
+                    thresholds.max_camera_orbit_alignment_degrees,
+                    "deg",
+                ),
                 EvalCheck::at_least(
                     "max_camera_obstruction_adjustment",
                     self.max_camera_obstruction_adjustment_m,
@@ -2403,6 +2546,7 @@ pub mod eval {
                     max_camera_player_angle_degrees: self.max_camera_player_angle_degrees,
                     max_camera_step_distance_m: self.max_camera_step_distance_m,
                     max_camera_rotation_delta_degrees: self.max_camera_rotation_delta_degrees,
+                    max_camera_orbit_alignment_degrees: self.max_camera_orbit_alignment_degrees,
                     max_camera_obstruction_adjustment_m: self.max_camera_obstruction_adjustment_m,
                     max_camera_obstruction_hits: self.max_camera_obstruction_hits,
                     min_target_distance_m: self.min_target_distance_m,
@@ -2468,6 +2612,7 @@ pub mod eval {
         pub max_camera_player_angle_degrees: f32,
         pub max_camera_step_distance_m: f32,
         pub max_camera_rotation_delta_degrees: f32,
+        pub max_camera_orbit_alignment_degrees: f32,
         pub max_camera_obstruction_adjustment_m: f32,
         pub max_camera_obstruction_hits: usize,
         pub min_target_distance_m: f32,
@@ -2491,7 +2636,7 @@ pub mod eval {
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
                 json_number(self.horizontal_distance_m),
                 json_number(self.max_altitude_m),
@@ -2502,6 +2647,7 @@ pub mod eval {
                 json_number(self.max_camera_player_angle_degrees),
                 json_number(self.max_camera_step_distance_m),
                 json_number(self.max_camera_rotation_delta_degrees),
+                json_number(self.max_camera_orbit_alignment_degrees),
                 json_number(self.max_camera_obstruction_adjustment_m),
                 self.max_camera_obstruction_hits,
                 json_number(self.min_target_distance_m),
@@ -2619,6 +2765,7 @@ pub mod eval {
             GROUND_TAXI_CONTROL | "ground_taxi" | "taxi" => Some(ground_taxi_control()),
             UPDRAFT_ROUTE | "updraft" => Some(updraft_route()),
             CAMERA_MOUSE_CONTROL | "camera_mouse" | "mouse_camera" => Some(camera_mouse_control()),
+            CAMERA_YAW_STABILITY | "camera_yaw" | "yaw_stability" => Some(camera_yaw_stability()),
             CAMERA_TURN_STABILITY | "camera_turn" | "turn_stability" => {
                 Some(camera_turn_stability())
             }
@@ -2628,7 +2775,7 @@ pub mod eval {
 
     pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
         let t = frame as f32 * scenario.fixed_dt;
-        if scenario.name == CAMERA_MOUSE_CONTROL {
+        if matches!(scenario.name, CAMERA_MOUSE_CONTROL | CAMERA_YAW_STABILITY) {
             return FlightInput::default();
         }
         if scenario.name == GROUND_TAXI_CONTROL {
@@ -2679,20 +2826,14 @@ pub mod eval {
 
     pub fn scripted_camera_input(scenario: EvalScenario, frame: u32) -> CameraInput {
         let t = frame as f32 * scenario.fixed_dt;
-        if scenario.name != CAMERA_MOUSE_CONTROL {
-            return CameraInput::default();
-        }
 
-        let mouse_delta = if (0.2..=0.7).contains(&t) {
-            Vec2::new(5.0, 0.0)
-        } else if (0.9..=1.3).contains(&t) {
-            Vec2::new(0.0, -5.0)
-        } else if (1.5..=2.1).contains(&t) {
-            Vec2::new(0.0, 8.0)
-        } else if (2.2..=2.55).contains(&t) {
-            Vec2::new(0.0, -8.0)
-        } else {
-            Vec2::ZERO
+        let mouse_delta = match scenario.name {
+            CAMERA_MOUSE_CONTROL if (0.2..=0.7).contains(&t) => Vec2::new(5.0, 0.0),
+            CAMERA_MOUSE_CONTROL if (0.9..=1.3).contains(&t) => Vec2::new(0.0, -5.0),
+            CAMERA_MOUSE_CONTROL if (1.5..=2.1).contains(&t) => Vec2::new(0.0, 8.0),
+            CAMERA_MOUSE_CONTROL if (2.2..=2.55).contains(&t) => Vec2::new(0.0, -8.0),
+            CAMERA_YAW_STABILITY if (0.2..=0.45).contains(&t) => Vec2::new(3.0, 0.0),
+            _ => Vec2::ZERO,
         };
 
         CameraInput { mouse_delta }
@@ -2719,6 +2860,7 @@ pub mod eval {
                 max_camera_player_angle_degrees: 18.0,
                 max_camera_step_distance_m: 12.0,
                 max_camera_rotation_delta_degrees: 28.0,
+                max_camera_orbit_alignment_degrees: 45.0,
                 min_camera_obstruction_adjustment_m: 0.0,
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
@@ -2751,6 +2893,7 @@ pub mod eval {
                 max_camera_player_angle_degrees: 18.0,
                 max_camera_step_distance_m: 12.0,
                 max_camera_rotation_delta_degrees: 28.0,
+                max_camera_orbit_alignment_degrees: 45.0,
                 min_camera_obstruction_adjustment_m: 0.0,
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
@@ -2783,6 +2926,7 @@ pub mod eval {
                 max_camera_player_angle_degrees: 18.0,
                 max_camera_step_distance_m: 10.0,
                 max_camera_rotation_delta_degrees: 25.0,
+                max_camera_orbit_alignment_degrees: 45.0,
                 min_camera_obstruction_adjustment_m: 0.0,
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
@@ -2815,6 +2959,7 @@ pub mod eval {
                 max_camera_player_angle_degrees: 18.0,
                 max_camera_step_distance_m: 12.0,
                 max_camera_rotation_delta_degrees: 28.0,
+                max_camera_orbit_alignment_degrees: 45.0,
                 min_camera_obstruction_adjustment_m: 0.0,
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
@@ -2847,10 +2992,44 @@ pub mod eval {
                 max_camera_player_angle_degrees: 18.0,
                 max_camera_step_distance_m: 14.0,
                 max_camera_rotation_delta_degrees: 35.0,
+                max_camera_orbit_alignment_degrees: 30.0,
                 min_camera_obstruction_adjustment_m: 1.0,
                 min_abs_camera_yaw_degrees: 25.0,
                 min_camera_pitch_offset_degrees: -10.0,
                 max_camera_pitch_offset_degrees: 10.0,
+                require_target_landing: false,
+                max_final_target_distance_m: 280.0,
+                min_target_landing_samples: 0,
+            },
+        }
+    }
+
+    fn camera_yaw_stability() -> EvalScenario {
+        EvalScenario {
+            name: CAMERA_YAW_STABILITY,
+            fixed_dt: 1.0 / 60.0,
+            frame_count: 300,
+            sample_stride: 5,
+            checkpoints: CAMERA_YAW_STABILITY_CHECKPOINTS,
+            thresholds: EvalThresholds {
+                min_samples: 50,
+                min_horizontal_distance_m: 0.0,
+                min_max_altitude_m: 28.0,
+                min_max_speed_mps: 0.0,
+                min_gliding_samples: 0,
+                min_grounded_samples: 50,
+                min_lifted_samples: 0,
+                min_entity_count: 100,
+                max_camera_distance_m: 36.0,
+                min_camera_surface_clearance_m: 1.0,
+                max_camera_player_angle_degrees: 18.0,
+                max_camera_step_distance_m: 14.0,
+                max_camera_rotation_delta_degrees: 25.0,
+                max_camera_orbit_alignment_degrees: 15.0,
+                min_camera_obstruction_adjustment_m: 0.0,
+                min_abs_camera_yaw_degrees: 8.0,
+                min_camera_pitch_offset_degrees: 0.0,
+                max_camera_pitch_offset_degrees: 0.0,
                 require_target_landing: false,
                 max_final_target_distance_m: 280.0,
                 min_target_landing_samples: 0,
@@ -2879,6 +3058,7 @@ pub mod eval {
                 max_camera_player_angle_degrees: 18.0,
                 max_camera_step_distance_m: 10.0,
                 max_camera_rotation_delta_degrees: 25.0,
+                max_camera_orbit_alignment_degrees: 45.0,
                 min_camera_obstruction_adjustment_m: 0.0,
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
@@ -2995,6 +3175,19 @@ pub mod eval {
         }
 
         #[test]
+        fn camera_yaw_stability_script_applies_small_yaw_then_settles() {
+            let scenario = scenario_named(CAMERA_YAW_STABILITY).expect("camera yaw route exists");
+
+            assert!(scripted_camera_input(scenario, 18).mouse_delta.x > 0.0);
+            assert_eq!(scripted_camera_input(scenario, 80), CameraInput::default());
+            assert_eq!(
+                scripted_input(scenario, 18),
+                FlightInput::default(),
+                "yaw stability eval should isolate mouse drift from movement"
+            );
+        }
+
+        #[test]
         fn camera_turn_script_exercises_air_turns_and_air_brake() {
             let scenario = scenario_named(CAMERA_TURN_STABILITY).expect("turn route exists");
 
@@ -3044,6 +3237,7 @@ pub mod eval {
                 0.2,
                 2.0,
                 0.0,
+                0.0,
                 0,
                 0,
                 3,
@@ -3068,6 +3262,7 @@ pub mod eval {
                 0.0,
                 0.2,
                 2.0,
+                0.0,
                 0.0,
                 0,
                 0,
@@ -3094,6 +3289,7 @@ pub mod eval {
                     0.0,
                     0.2,
                     2.0,
+                    0.0,
                     0.0,
                     0,
                     0,
