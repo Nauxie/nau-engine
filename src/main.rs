@@ -69,7 +69,7 @@ fn main() -> AppExit {
         .insert_resource(DebugVisuals::default())
         .insert_resource(SkyRoute::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(primary_window(eval.as_ref())),
+            primary_window: Some(primary_window(eval.as_deref())),
             ..default()
         }))
         .configure_sets(
@@ -100,7 +100,7 @@ fn main() -> AppExit {
         );
 
     if let Some(eval_options) = eval {
-        let eval_run = match EvalRun::new(eval_options) {
+        let eval_run = match EvalRun::new(*eval_options) {
             Ok(eval_run) => eval_run,
             Err(error) => {
                 eprintln!("failed to prepare eval output: {error}");
@@ -261,7 +261,7 @@ struct EvalOptions {
 
 #[derive(Clone, Debug)]
 enum CliAction {
-    Run { eval: Option<EvalOptions> },
+    Run { eval: Option<Box<EvalOptions>> },
     Help,
 }
 
@@ -408,11 +408,11 @@ fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<CliAction, S
         })?;
         let output_dir = eval_output.unwrap_or_else(|| PathBuf::from("target/eval").join(name));
 
-        Some(EvalOptions {
+        Some(Box::new(EvalOptions {
             scenario,
             output_dir,
             capture_screenshot,
-        })
+        }))
     } else {
         None
     };
@@ -1442,6 +1442,7 @@ fn update_debug_readout(
     let on_target = scene
         .route
         .on_landing_target(transform.translation, controller.mode);
+    let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
     let camera_yaw = scene.camera_control.orbit.yaw_degrees();
     let camera_pitch_offset = scene.camera_control.orbit.pitch_degrees();
     let mouse_lock = if scene.mouse_look.captured {
@@ -1451,7 +1452,7 @@ fn update_debug_readout(
     };
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -1477,6 +1478,13 @@ fn update_debug_readout(
         active_lift_fields,
         lift_field_count,
         scene.route.islands().len(),
+        streaming_lod.player_chunk.x,
+        streaming_lod.player_chunk.z,
+        streaming_lod.active_island_count,
+        streaming_lod.active_chunk_count,
+        streaming_lod.near_lod_islands,
+        streaming_lod.mid_lod_islands,
+        streaming_lod.far_lod_islands,
         controller.launch_cooldown_remaining,
         if controller.launch_available {
             "yes"
@@ -1528,6 +1536,7 @@ fn collect_eval_metrics(
         visible_fields_at(transform.translation, scene.wind_fields.iter().copied());
     let active_lift_fields =
         active_lift_fields_at(transform.translation, scene.lift_fields.iter().copied());
+    let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
     let sample = EvalSample::new(
         run.frame,
         run.scenario.fixed_dt,
@@ -1555,6 +1564,11 @@ fn collect_eval_metrics(
             .route
             .on_landing_target(transform.translation, controller.mode),
         scene.route.islands().len(),
+        streaming_lod.active_chunk_count,
+        streaming_lod.active_island_count,
+        streaming_lod.near_lod_islands,
+        streaming_lod.mid_lod_islands,
+        streaming_lod.far_lod_islands,
         scene.all_entities.iter().count(),
     );
 
