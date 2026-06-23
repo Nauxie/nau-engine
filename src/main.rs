@@ -1,20 +1,31 @@
+use bevy::ecs::system::SystemParam;
+use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
+use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartVisibility, Side, advance_phase,
     part_pose, pose_blend,
 };
-use nau_engine::camera::{FollowCamera, camera_distance, camera_pitch_degrees, step_camera};
+use nau_engine::camera::{
+    CameraControlState, CameraControlTuning, CameraInput, FollowCamera, apply_camera_input,
+    camera_distance, camera_pitch_degrees, camera_surface_clearance, camera_target_angle_degrees,
+    lift_camera_above_floor, step_camera_with_orbit,
+};
 use nau_engine::diagnostics::frame_ms;
-use nau_engine::environment::{WindField, WindFieldKind, visible_fields_at};
+use nau_engine::environment::{
+    LiftField, WindField, WindFieldKind, active_lift_fields_at, apply_lift_fields,
+    visible_fields_at,
+};
 use nau_engine::eval::{
     EvalAccumulator, EvalArtifacts, EvalSample, EvalScenario, SCENARIO_NAMES, scenario_named,
-    scripted_input,
+    scripted_camera_input, scripted_input,
 };
 use nau_engine::movement::{
-    Facing, FlightController, FlightInput, FlightState, FlightTuning, Velocity,
+    Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
     face_horizontal_velocity, step_flight,
 };
+use nau_engine::world::{START_POSITION, SkyIsland, SkyRoute};
 use std::{
     env,
     fs::{self, File, OpenOptions},
@@ -22,9 +33,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const PLAYER_START: Vec3 = Vec3::new(0.0, 1.2, 0.0);
+const PLAYER_START: Vec3 = START_POSITION;
 const WORLD_RADIUS: f32 = 360.0;
 const EVAL_SCREENSHOT_TIMEOUT_FRAMES: u32 = 180;
+const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
+const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
 
 fn main() -> AppExit {
     let cli = match CliAction::from_env() {
@@ -44,7 +57,11 @@ fn main() -> AppExit {
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::srgb(0.55, 0.72, 0.9)))
         .insert_resource(FlightTuning::default())
+        .insert_resource(CameraControlTuning::default())
+        .insert_resource(CameraControlState::default())
+        .insert_resource(MouseLookState::default())
         .insert_resource(DebugVisuals::default())
+        .insert_resource(SkyRoute::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "The NAU Engine Flight Sandbox".into(),
@@ -66,7 +83,14 @@ fn main() -> AppExit {
         .add_systems(Startup, setup)
         .add_systems(
             Update,
-            (animate_character, follow_camera).in_set(GameSet::Camera),
+            (
+                update_mouse_look_capture,
+                update_camera_control,
+                animate_character,
+                follow_camera,
+            )
+                .chain()
+                .in_set(GameSet::Camera),
         )
         .add_systems(
             Update,
@@ -111,6 +135,11 @@ struct DebugVisuals {
     enabled: bool,
 }
 
+#[derive(Resource, Clone, Copy, Debug, Default)]
+struct MouseLookState {
+    captured: bool,
+}
+
 impl Default for DebugVisuals {
     fn default() -> Self {
         Self { enabled: true }
@@ -123,6 +152,57 @@ enum GameSet {
     Camera,
     Diagnostics,
     Eval,
+}
+
+#[derive(SystemParam)]
+struct MovementWorld<'w, 's> {
+    route: Res<'w, SkyRoute>,
+    lift_fields: Query<'w, 's, &'static LiftField>,
+}
+
+#[derive(SystemParam)]
+struct DebugScene<'w, 's> {
+    route: Res<'w, SkyRoute>,
+    player: Query<
+        'w,
+        's,
+        (
+            &'static Transform,
+            &'static Velocity,
+            &'static FlightController,
+        ),
+        With<Player>,
+    >,
+    camera: Query<'w, 's, &'static Transform, CameraFollowFilter>,
+    camera_control: Res<'w, CameraControlState>,
+    mouse_look: Res<'w, MouseLookState>,
+    wind_fields: Query<'w, 's, &'static WindField>,
+    lift_fields: Query<'w, 's, &'static LiftField>,
+}
+
+#[derive(SystemParam)]
+struct EvalScene<'w, 's> {
+    route: Res<'w, SkyRoute>,
+    player: Query<
+        'w,
+        's,
+        (
+            &'static Transform,
+            &'static Velocity,
+            &'static FlightController,
+        ),
+        With<Player>,
+    >,
+    camera: Query<'w, 's, &'static Transform, CameraFollowFilter>,
+    wind_fields: Query<'w, 's, &'static WindField>,
+    lift_fields: Query<'w, 's, &'static LiftField>,
+    all_entities: Query<'w, 's, Entity>,
+}
+
+struct PlayerKinematics<'a> {
+    transform: &'a mut Transform,
+    velocity: &'a mut Velocity,
+    controller: &'a mut FlightController,
 }
 
 #[derive(Clone, Debug)]
@@ -285,6 +365,7 @@ type CameraFollowFilter = (With<Camera3d>, Without<Player>);
 
 fn setup(
     mut commands: Commands,
+    route: Res<SkyRoute>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -292,6 +373,16 @@ fn setup(
     let skin_material = materials.add(Color::srgb(0.82, 0.58, 0.42));
     let accent_material = materials.add(Color::srgb(0.96, 0.64, 0.16));
     let glider_material = materials.add(Color::srgb(0.78, 0.42, 0.18));
+    let island_grass_material = materials.add(Color::srgb(0.26, 0.58, 0.32));
+    let target_grass_material = materials.add(Color::srgb(0.34, 0.62, 0.42));
+    let island_rock_material = materials.add(Color::srgb(0.38, 0.34, 0.3));
+    let island_under_material = materials.add(Color::srgb(0.22, 0.2, 0.18));
+    let target_marker_material = materials.add(Color::srgb(0.95, 0.74, 0.22));
+    let trunk_material = materials.add(Color::srgb(0.32, 0.2, 0.12));
+    let foliage_material = materials.add(Color::srgb(0.12, 0.44, 0.24));
+    let flower_material = materials.add(Color::srgb(0.82, 0.22, 0.44));
+    let water_material = materials.add(Color::srgba(0.18, 0.54, 0.82, 0.82));
+    let path_material = materials.add(Color::srgb(0.47, 0.41, 0.32));
     let torso_mesh = meshes.add(Capsule3d::new(0.4, 1.0));
     let head_mesh = meshes.add(Sphere::new(0.3));
     let arm_mesh = meshes.add(Cuboid::new(0.2, 0.82, 0.2));
@@ -318,6 +409,25 @@ fn setup(
         MeshMaterial3d(materials.add(Color::srgb(0.2, 0.44, 0.25))),
         Transform::default(),
     ));
+
+    for (index, island) in route.islands().iter().enumerate() {
+        spawn_sky_island(
+            &mut commands,
+            &mut meshes,
+            island_grass_material.clone(),
+            target_grass_material.clone(),
+            island_rock_material.clone(),
+            island_under_material.clone(),
+            target_marker_material.clone(),
+            trunk_material.clone(),
+            foliage_material.clone(),
+            flower_material.clone(),
+            water_material.clone(),
+            path_material.clone(),
+            index,
+            *island,
+        );
+    }
 
     for (index, x) in (-5..=5).enumerate() {
         let height = 5.0 + (index as f32 % 4.0) * 4.0;
@@ -351,6 +461,15 @@ fn setup(
             7.0,
         ),
         Name::new("Visual crosswind volume"),
+    ));
+    commands.spawn((
+        LiftField::updraft(
+            Vec3::new(38.0, 68.0, -112.0),
+            Vec3::new(20.0, 34.0, 22.0),
+            28.0,
+            20.0,
+        ),
+        Name::new("Gameplay updraft lift"),
     ));
 
     commands
@@ -446,10 +565,21 @@ fn setup(
             ));
         });
 
+    let follow_camera = FollowCamera::default();
+    let initial_camera_direction = Vec3::NEG_Z;
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 7.0, -13.0).looking_at(PLAYER_START + Vec3::Y, Vec3::Y),
-        FollowCamera::default(),
+        Transform::from_translation(
+            PLAYER_START - initial_camera_direction * follow_camera.distance
+                + Vec3::Y * follow_camera.height,
+        )
+        .looking_at(
+            PLAYER_START
+                + Vec3::Y * follow_camera.look_height
+                + initial_camera_direction * follow_camera.look_ahead,
+            Vec3::Y,
+        ),
+        follow_camera,
     ));
 
     commands.spawn((
@@ -469,6 +599,242 @@ fn setup(
     ));
 }
 
+#[allow(clippy::too_many_arguments)]
+fn spawn_sky_island(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    grass_material: Handle<StandardMaterial>,
+    target_grass_material: Handle<StandardMaterial>,
+    rock_material: Handle<StandardMaterial>,
+    under_material: Handle<StandardMaterial>,
+    marker_material: Handle<StandardMaterial>,
+    trunk_material: Handle<StandardMaterial>,
+    foliage_material: Handle<StandardMaterial>,
+    flower_material: Handle<StandardMaterial>,
+    water_material: Handle<StandardMaterial>,
+    path_material: Handle<StandardMaterial>,
+    island_index: usize,
+    island: SkyIsland,
+) {
+    let top_thickness = 0.55;
+    let top_y = island.mesh_top_y();
+    let top_material = if island.is_target {
+        target_grass_material
+    } else {
+        grass_material
+    };
+
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(1.0, top_thickness))),
+        MeshMaterial3d(top_material),
+        Transform {
+            translation: Vec3::new(
+                island.center.x,
+                top_y - top_thickness * 0.5,
+                island.center.z,
+            ),
+            scale: Vec3::new(island.half_extents.x, 1.0, island.half_extents.y),
+            ..default()
+        },
+        island,
+        Name::new(island.name),
+    ));
+
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(1.0, island.thickness))),
+        MeshMaterial3d(rock_material),
+        Transform {
+            translation: Vec3::new(
+                island.center.x,
+                top_y - top_thickness - island.thickness * 0.5,
+                island.center.z,
+            ),
+            scale: Vec3::new(
+                island.half_extents.x * 0.78,
+                1.0,
+                island.half_extents.y * 0.78,
+            ),
+            ..default()
+        },
+        Name::new("island rock body"),
+    ));
+
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(1.0, island.thickness * 0.7))),
+        MeshMaterial3d(under_material.clone()),
+        Transform {
+            translation: Vec3::new(
+                island.center.x,
+                top_y - top_thickness - island.thickness * 1.08,
+                island.center.z,
+            ),
+            scale: Vec3::new(
+                island.half_extents.x * 0.42,
+                1.0,
+                island.half_extents.y * 0.42,
+            ),
+            ..default()
+        },
+        Name::new("island shadow base"),
+    ));
+
+    let ridge_width = island.half_extents.x * 0.32;
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(ridge_width, 0.75, island.half_extents.y * 0.18))),
+        MeshMaterial3d(under_material),
+        Transform::from_xyz(
+            island.center.x + island.half_extents.x * 0.28,
+            top_y + 0.1,
+            island.center.z - island.half_extents.y * 0.24,
+        ),
+        Name::new("island ridge"),
+    ));
+
+    if island.is_target {
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(2.2, 6.0, 2.2))),
+            MeshMaterial3d(marker_material),
+            Transform::from_xyz(island.center.x, island.floor_y() + 1.8, island.center.z),
+            Name::new("landing target marker"),
+        ));
+    }
+
+    spawn_sky_island_details(
+        commands,
+        meshes,
+        trunk_material,
+        foliage_material,
+        flower_material,
+        water_material,
+        path_material,
+        island_index,
+        island,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn spawn_sky_island_details(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    trunk_material: Handle<StandardMaterial>,
+    foliage_material: Handle<StandardMaterial>,
+    flower_material: Handle<StandardMaterial>,
+    water_material: Handle<StandardMaterial>,
+    path_material: Handle<StandardMaterial>,
+    island_index: usize,
+    island: SkyIsland,
+) {
+    let floor_y = island.floor_y();
+    let detail_phase = island_index as f32 * 0.77;
+    let tree_offsets = [
+        Vec2::new(-0.42, -0.24),
+        Vec2::new(0.34, -0.36),
+        Vec2::new(0.24, 0.32),
+    ];
+
+    for (index, offset) in tree_offsets.into_iter().enumerate() {
+        if island.is_target && index == 1 {
+            continue;
+        }
+        let sway = (detail_phase + index as f32).sin() * 0.08;
+        let x = island.center.x + island.half_extents.x * (offset.x + sway);
+        let z = island.center.z + island.half_extents.y * offset.y;
+        let trunk_height = 2.1 + index as f32 * 0.25;
+
+        commands.spawn((
+            Mesh3d(meshes.add(Cylinder::new(0.22, trunk_height))),
+            MeshMaterial3d(trunk_material.clone()),
+            Transform::from_xyz(x, floor_y + trunk_height * 0.5, z),
+            Name::new("island tree trunk"),
+        ));
+        commands.spawn((
+            Mesh3d(meshes.add(Sphere::new(1.05 + index as f32 * 0.08))),
+            MeshMaterial3d(foliage_material.clone()),
+            Transform::from_xyz(x, floor_y + trunk_height + 0.72, z),
+            Name::new("island tree canopy"),
+        ));
+    }
+
+    for index in 0..5 {
+        let angle = detail_phase + index as f32 * 1.37;
+        let radius = if index % 2 == 0 { 0.52 } else { 0.72 };
+        let x = island.center.x + angle.cos() * island.half_extents.x * radius;
+        let z = island.center.z + angle.sin() * island.half_extents.y * radius;
+        let stone_scale = 0.45 + index as f32 * 0.08;
+
+        commands.spawn((
+            Mesh3d(meshes.add(Sphere::new(stone_scale))),
+            MeshMaterial3d(path_material.clone()),
+            Transform::from_xyz(x, floor_y + stone_scale * 0.45, z),
+            Name::new("island stone scatter"),
+        ));
+    }
+
+    let pond_offset = if island.is_target {
+        Vec2::new(-0.34, 0.18)
+    } else {
+        Vec2::new(0.18, 0.28)
+    };
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(1.0, 0.08))),
+        MeshMaterial3d(water_material),
+        Transform {
+            translation: Vec3::new(
+                island.center.x + island.half_extents.x * pond_offset.x,
+                floor_y + 0.04,
+                island.center.z + island.half_extents.y * pond_offset.y,
+            ),
+            scale: Vec3::new(
+                island.half_extents.x * 0.12,
+                1.0,
+                island.half_extents.y * 0.08,
+            ),
+            ..default()
+        },
+        Name::new("island pond"),
+    ));
+
+    if island.is_target {
+        let ring_size = 8.0;
+        for (translation, scale) in [
+            (
+                Vec3::new(0.0, 0.05, ring_size * 0.5),
+                Vec3::new(ring_size, 0.1, 0.35),
+            ),
+            (
+                Vec3::new(0.0, 0.05, -ring_size * 0.5),
+                Vec3::new(ring_size, 0.1, 0.35),
+            ),
+            (
+                Vec3::new(ring_size * 0.5, 0.05, 0.0),
+                Vec3::new(0.35, 0.1, ring_size),
+            ),
+            (
+                Vec3::new(-ring_size * 0.5, 0.05, 0.0),
+                Vec3::new(0.35, 0.1, ring_size),
+            ),
+        ] {
+            commands.spawn((
+                Mesh3d(meshes.add(Cuboid::new(scale.x, scale.y, scale.z))),
+                MeshMaterial3d(flower_material.clone()),
+                Transform::from_translation(island.center + translation),
+                Name::new("landing garden ring"),
+            ));
+        }
+    } else if island.name == "launch mesa" {
+        commands.spawn((
+            Mesh3d(meshes.add(Cylinder::new(0.7, 3.2))),
+            MeshMaterial3d(flower_material),
+            Transform::from_xyz(
+                island.center.x - island.half_extents.x * 0.42,
+                floor_y + 1.6,
+                island.center.z + island.half_extents.y * 0.38,
+            ),
+            Name::new("launch beacon"),
+        ));
+    }
+}
+
 fn toggle_debug_visuals(keyboard: Res<ButtonInput<KeyCode>>, mut visuals: ResMut<DebugVisuals>) {
     if keyboard.just_pressed(KeyCode::F1) {
         visuals.enabled = !visuals.enabled;
@@ -479,10 +845,18 @@ fn fly_player(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     tuning: Res<FlightTuning>,
+    world: MovementWorld,
+    camera: Query<&Transform, CameraFollowFilter>,
     mut player: Query<(&mut Transform, &mut Velocity, &mut FlightController), With<Player>>,
 ) {
     let Ok((mut transform, mut velocity, mut controller)) = player.single_mut() else {
         return;
+    };
+    let facing = movement_facing(camera.single().ok(), &transform);
+    let mut kinematics = PlayerKinematics {
+        transform: &mut transform,
+        velocity: &mut velocity,
+        controller: &mut controller,
     };
 
     step_player(
@@ -496,16 +870,19 @@ fn fly_player(
             dive: keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight),
             launch: keyboard.just_pressed(KeyCode::KeyE),
         },
+        facing,
         &tuning,
-        &mut transform,
-        &mut velocity,
-        &mut controller,
+        &world.route,
+        world.lift_fields.iter().copied(),
+        &mut kinematics,
     );
 }
 
 fn eval_fly_player(
     run: Res<EvalRun>,
     tuning: Res<FlightTuning>,
+    world: MovementWorld,
+    camera: Query<&Transform, CameraFollowFilter>,
     mut player: Query<(&mut Transform, &mut Velocity, &mut FlightController), With<Player>>,
 ) {
     if run.finalized {
@@ -515,38 +892,74 @@ fn eval_fly_player(
     let Ok((mut transform, mut velocity, mut controller)) = player.single_mut() else {
         return;
     };
+    let facing = movement_facing(camera.single().ok(), &transform);
+    let mut kinematics = PlayerKinematics {
+        transform: &mut transform,
+        velocity: &mut velocity,
+        controller: &mut controller,
+    };
 
     step_player(
         run.scenario.fixed_dt,
         scripted_input(run.scenario, run.frame),
+        facing,
         &tuning,
-        &mut transform,
-        &mut velocity,
-        &mut controller,
+        &world.route,
+        world.lift_fields.iter().copied(),
+        &mut kinematics,
     );
 }
 
 fn step_player(
     dt: f32,
     input: FlightInput,
+    facing: Facing,
     tuning: &FlightTuning,
-    transform: &mut Transform,
-    velocity: &mut Velocity,
-    controller: &mut FlightController,
+    route: &SkyRoute,
+    lift_fields: impl IntoIterator<Item = LiftField>,
+    player: &mut PlayerKinematics,
 ) {
+    let mut tuning = *tuning;
+    let was_grounded = route.is_grounded_at(player.transform.translation);
+    tuning.floor_y = route.ground_at(player.transform.translation).floor_y;
     let next = step_flight(
-        FlightState::new(transform.translation, velocity.0, *controller),
+        FlightState::new(
+            player.transform.translation,
+            player.velocity.0,
+            *player.controller,
+        ),
         input,
-        Facing::new(*transform.forward(), *transform.right()),
-        tuning,
+        facing,
+        &tuning,
         dt,
     );
+    let mut next = next;
+    let lift = apply_lift_fields(
+        next.position,
+        next.velocity,
+        lift_fields,
+        dt,
+        next.controller.mode != FlightMode::Grounded,
+    );
+    next.velocity = lift.velocity;
+    let next = route.resolve_ground_contact_after_step(next, was_grounded);
 
-    transform.translation = next.position;
-    velocity.0 = next.velocity;
-    *controller = next.controller;
-    transform.rotation =
-        face_horizontal_velocity(transform.rotation, velocity.0, tuning.turn_rate, dt);
+    player.transform.translation = next.position;
+    player.velocity.0 = next.velocity;
+    *player.controller = next.controller;
+    player.transform.rotation = face_horizontal_velocity(
+        player.transform.rotation,
+        player.velocity.0,
+        tuning.turn_rate,
+        dt,
+    );
+}
+
+fn movement_facing(camera: Option<&Transform>, player_transform: &Transform) -> Facing {
+    camera.map_or_else(
+        || Facing::new(*player_transform.forward(), *player_transform.right()),
+        |camera_transform| Facing::new(*camera_transform.forward(), *camera_transform.right()),
+    )
 }
 
 fn animate_character(
@@ -576,9 +989,83 @@ fn animate_character(
     }
 }
 
+fn update_mouse_look_capture(
+    eval: Option<Res<EvalRun>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    mut mouse_look: ResMut<MouseLookState>,
+    mut window: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
+) {
+    if eval.is_some() {
+        return;
+    }
+
+    if mouse_buttons.just_pressed(MouseButton::Left) {
+        mouse_look.captured = true;
+    }
+    if keyboard.just_pressed(KeyCode::Escape) {
+        mouse_look.captured = false;
+    }
+
+    let Ok((window, mut cursor)) = window.single_mut() else {
+        return;
+    };
+    if !window.focused {
+        mouse_look.captured = false;
+    }
+
+    let grab_mode = if mouse_look.captured {
+        CursorGrabMode::Locked
+    } else {
+        CursorGrabMode::None
+    };
+    if cursor.grab_mode != grab_mode {
+        cursor.grab_mode = grab_mode;
+    }
+
+    let visible = !mouse_look.captured;
+    if cursor.visible != visible {
+        cursor.visible = visible;
+    }
+}
+
+fn update_camera_control(
+    time: Res<Time>,
+    eval: Option<Res<EvalRun>>,
+    tuning: Res<CameraControlTuning>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    mouse_look: Res<MouseLookState>,
+    mut state: ResMut<CameraControlState>,
+    mut mouse_motion: MessageReader<MouseMotion>,
+) {
+    let input = if let Some(run) = eval.as_deref() {
+        scripted_camera_input(run.scenario, run.frame)
+    } else {
+        let mouse_delta = mouse_motion
+            .read()
+            .fold(Vec2::ZERO, |delta, motion| delta + motion.delta);
+
+        CameraInput {
+            mouse_delta: if mouse_look.captured || mouse_buttons.pressed(MouseButton::Right) {
+                mouse_delta
+            } else {
+                Vec2::ZERO
+            },
+        }
+    };
+
+    if input.mouse_delta.length_squared() <= 0.0 || time.delta_secs() <= 0.0 {
+        return;
+    }
+
+    state.orbit = apply_camera_input(state.orbit, input, &tuning);
+}
+
 fn follow_camera(
     time: Res<Time>,
     eval: Option<Res<EvalRun>>,
+    route: Res<SkyRoute>,
+    camera_control: Res<CameraControlState>,
     player: Query<(&Transform, &Velocity), With<Player>>,
     mut camera: Query<(&mut Transform, &FollowCamera), CameraFollowFilter>,
 ) {
@@ -589,15 +1076,18 @@ fn follow_camera(
         return;
     };
 
-    let frame = step_camera(
+    let frame = step_camera_with_orbit(
         camera_transform.translation,
         camera_transform.rotation,
         player_transform.translation,
         *player_transform.forward(),
         velocity.0,
         follow,
+        camera_control.orbit,
         eval_dt(&time, eval.as_deref()),
     );
+    let camera_floor_y = route.ground_at(frame.position).floor_y;
+    let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
 
     camera_transform.translation = frame.position;
     camera_transform.rotation = frame.rotation;
@@ -610,42 +1100,71 @@ fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
 fn update_debug_readout(
     time: Res<Time>,
     visuals: Res<DebugVisuals>,
-    player: Query<(&Transform, &Velocity, &FlightController), With<Player>>,
-    camera: Query<&Transform, CameraFollowFilter>,
-    wind_fields: Query<&WindField>,
+    scene: DebugScene,
     mut readout: Query<&mut Text, With<DebugReadout>>,
 ) {
-    let Ok((transform, velocity, controller)) = player.single() else {
+    let Ok((transform, velocity, controller)) = scene.player.single() else {
         return;
     };
     let Ok(mut text) = readout.single_mut() else {
         return;
     };
-    let (distance, pitch) = camera
+    let player_focus = transform.translation + Vec3::Y * CAMERA_PLAYER_FOCUS_HEIGHT;
+    let (distance, pitch, framing_angle) = scene
+        .camera
         .single()
         .map(|camera_transform| {
             (
                 camera_distance(camera_transform.translation, transform.translation),
                 camera_pitch_degrees(camera_transform.rotation),
+                camera_target_angle_degrees(
+                    camera_transform.translation,
+                    camera_transform.rotation,
+                    player_focus,
+                ),
             )
         })
         .unwrap_or_default();
-    let visible_wind_fields = visible_fields_at(transform.translation, wind_fields.iter().copied());
-    let wind_field_count = wind_fields.iter().count();
+    let visible_wind_fields =
+        visible_fields_at(transform.translation, scene.wind_fields.iter().copied());
+    let wind_field_count = scene.wind_fields.iter().count();
+    let active_lift_fields =
+        active_lift_fields_at(transform.translation, scene.lift_fields.iter().copied());
+    let lift_field_count = scene.lift_fields.iter().count();
+    let target_distance = scene.route.target_distance(transform.translation);
+    let on_target = scene
+        .route
+        .on_landing_target(transform.translation, controller.mode);
+    let camera_yaw = scene.camera_control.orbit.yaw_degrees();
+    let camera_pitch_offset = scene.camera_control.orbit.pitch_degrees();
+    let mouse_lock = if scene.mouse_look.captured {
+        "locked"
+    } else {
+        "free"
+    };
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD steer  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
         transform.translation.y,
+        target_distance,
+        if on_target { "landed" } else { "out" },
         pitch,
         distance,
+        framing_angle,
+        camera_yaw,
+        camera_pitch_offset,
+        mouse_lock,
         velocity.0.x,
         velocity.0.y,
         velocity.0.z,
         visible_wind_fields,
         wind_field_count,
+        active_lift_fields,
+        lift_field_count,
+        scene.route.islands().len(),
         controller.launch_cooldown_remaining,
         if controller.launch_available {
             "yes"
@@ -658,28 +1177,43 @@ fn update_debug_readout(
 
 fn collect_eval_metrics(
     mut run: ResMut<EvalRun>,
-    player: Query<(&Transform, &Velocity, &FlightController), With<Player>>,
-    camera: Query<&Transform, CameraFollowFilter>,
-    wind_fields: Query<&WindField>,
-    all_entities: Query<Entity>,
+    camera_control: Res<CameraControlState>,
+    scene: EvalScene,
 ) {
     if run.finalized || !run.scenario.should_sample(run.frame) {
         return;
     }
 
-    let Ok((transform, velocity, controller)) = player.single() else {
+    let Ok((transform, velocity, controller)) = scene.player.single() else {
         return;
     };
-    let (camera_distance_m, camera_pitch_degrees) = camera
+    let (
+        camera_distance_m,
+        camera_surface_clearance_m,
+        camera_player_angle_degrees,
+        camera_pitch_degrees,
+    ) = scene
+        .camera
         .single()
         .map(|camera_transform| {
+            let camera_floor_y = scene.route.ground_at(camera_transform.translation).floor_y;
+            let player_focus = transform.translation + Vec3::Y * CAMERA_PLAYER_FOCUS_HEIGHT;
             (
                 camera_distance(camera_transform.translation, transform.translation),
+                camera_surface_clearance(camera_transform.translation, camera_floor_y),
+                camera_target_angle_degrees(
+                    camera_transform.translation,
+                    camera_transform.rotation,
+                    player_focus,
+                ),
                 camera_pitch_degrees(camera_transform.rotation),
             )
         })
         .unwrap_or_default();
-    let visible_wind_fields = visible_fields_at(transform.translation, wind_fields.iter().copied());
+    let visible_wind_fields =
+        visible_fields_at(transform.translation, scene.wind_fields.iter().copied());
+    let active_lift_fields =
+        active_lift_fields_at(transform.translation, scene.lift_fields.iter().copied());
     let sample = EvalSample::new(
         run.frame,
         run.scenario.fixed_dt,
@@ -687,10 +1221,21 @@ fn collect_eval_metrics(
         velocity.0,
         controller.mode,
         camera_distance_m,
+        camera_surface_clearance_m,
+        camera_player_angle_degrees,
         camera_pitch_degrees,
+        camera_control.orbit.yaw_degrees(),
+        camera_control.orbit.pitch_degrees(),
         visible_wind_fields,
-        wind_fields.iter().count(),
-        all_entities.iter().count(),
+        scene.wind_fields.iter().count(),
+        active_lift_fields,
+        scene.lift_fields.iter().count(),
+        scene.route.target_distance(transform.translation),
+        scene
+            .route
+            .on_landing_target(transform.translation, controller.mode),
+        scene.route.islands().len(),
+        scene.all_entities.iter().count(),
     );
 
     if let Err(error) = run.record_sample(sample) {
@@ -765,6 +1310,7 @@ fn draw_debug_gizmos(
     player: Query<(&Transform, &Velocity), With<Player>>,
     camera: Query<&Transform, CameraFollowFilter>,
     wind_fields: Query<&WindField>,
+    lift_fields: Query<&LiftField>,
 ) {
     if !visuals.enabled {
         return;
@@ -805,6 +1351,9 @@ fn draw_debug_gizmos(
     for field in &wind_fields {
         draw_wind_field(&mut gizmos, *field);
     }
+    for field in &lift_fields {
+        draw_lift_field(&mut gizmos, *field);
+    }
 }
 
 fn draw_wind_field(gizmos: &mut Gizmos, field: WindField) {
@@ -818,6 +1367,34 @@ fn draw_wind_field(gizmos: &mut Gizmos, field: WindField) {
         let stream = capped_vector(field.flow_vector(), 0.65, 7.5);
         draw_vector(gizmos, start, stream, color);
         gizmos.line(start - stream * 0.35, start, color);
+    }
+}
+
+fn draw_lift_field(gizmos: &mut Gizmos, field: LiftField) {
+    const STREAM_COUNT: usize = 12;
+    let color = Color::srgb(1.0, 0.82, 0.18);
+    draw_wire_box(gizmos, field.center, field.half_extents, color);
+
+    for index in 0..STREAM_COUNT {
+        let t = if STREAM_COUNT <= 1 {
+            0.0
+        } else {
+            index as f32 / (STREAM_COUNT - 1) as f32
+        };
+        let angle = t * std::f32::consts::TAU;
+        let radius = if index % 2 == 0 { 0.35 } else { 0.72 };
+        let start = field.center - Vec3::Y * field.half_extents.y
+            + Vec3::new(
+                angle.cos() * field.half_extents.x * radius,
+                0.0,
+                angle.sin() * field.half_extents.z * radius,
+            );
+        draw_vector(
+            gizmos,
+            start,
+            Vec3::Y * field.lift_accel.min(field.max_upward_speed).max(2.0) * 0.32,
+            color,
+        );
     }
 }
 
