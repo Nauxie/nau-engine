@@ -2470,6 +2470,7 @@ pub mod eval {
         pub max_visible_island_detail_count: usize,
         pub min_hidden_island_detail_count: usize,
         pub min_visible_route_beacon_count: usize,
+        pub min_weather_cloud_count: usize,
         pub max_resident_island_visual_count: usize,
         pub max_stream_visibility_changes_per_frame: usize,
         pub min_entity_count: usize,
@@ -2492,7 +2493,7 @@ pub mod eval {
     impl EvalThresholds {
         fn to_json(self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_sky_island_count\": {},\n{indent}  \"min_active_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"min_near_lod_island_count\": {},\n{indent}  \"min_mid_lod_island_count\": {},\n{indent}  \"min_far_lod_island_count\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"min_hidden_island_terrain_count\": {},\n{indent}  \"min_visible_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"min_hidden_island_detail_count\": {},\n{indent}  \"min_visible_route_beacon_count\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_sky_island_count\": {},\n{indent}  \"min_active_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"min_near_lod_island_count\": {},\n{indent}  \"min_mid_lod_island_count\": {},\n{indent}  \"min_far_lod_island_count\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"min_hidden_island_terrain_count\": {},\n{indent}  \"min_visible_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"min_hidden_island_detail_count\": {},\n{indent}  \"min_visible_route_beacon_count\": {},\n{indent}  \"min_weather_cloud_count\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
                 self.min_samples,
                 json_number(self.min_horizontal_distance_m),
                 json_number(self.min_max_altitude_m),
@@ -2512,6 +2513,7 @@ pub mod eval {
                 self.max_visible_island_detail_count,
                 self.min_hidden_island_detail_count,
                 self.min_visible_route_beacon_count,
+                self.min_weather_cloud_count,
                 self.max_resident_island_visual_count,
                 self.max_stream_visibility_changes_per_frame,
                 self.min_entity_count,
@@ -2573,6 +2575,7 @@ pub mod eval {
         pub visible_island_detail_count: usize,
         pub hidden_island_detail_count: usize,
         pub visible_route_beacon_count: usize,
+        pub weather_cloud_count: usize,
         pub resident_island_visual_count: usize,
         pub stream_visibility_changes_this_frame: usize,
         pub max_stream_visibility_changes_per_frame: usize,
@@ -2619,6 +2622,7 @@ pub mod eval {
             visible_island_detail_count: usize,
             hidden_island_detail_count: usize,
             visible_route_beacon_count: usize,
+            weather_cloud_count: usize,
             resident_island_visual_count: usize,
             stream_visibility_changes_this_frame: usize,
             max_stream_visibility_changes_per_frame: usize,
@@ -2664,6 +2668,7 @@ pub mod eval {
                 visible_island_detail_count,
                 hidden_island_detail_count,
                 visible_route_beacon_count,
+                weather_cloud_count,
                 resident_island_visual_count,
                 stream_visibility_changes_this_frame,
                 max_stream_visibility_changes_per_frame,
@@ -2674,7 +2679,7 @@ pub mod eval {
 
         pub fn to_json(&self) -> String {
             format!(
-                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"entity_count\":{}}}",
+                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"weather_cloud_count\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"entity_count\":{}}}",
                 self.frame,
                 json_number(self.time_secs),
                 json_array3(self.position),
@@ -2713,6 +2718,7 @@ pub mod eval {
                 self.visible_island_detail_count,
                 self.hidden_island_detail_count,
                 self.visible_route_beacon_count,
+                self.weather_cloud_count,
                 self.resident_island_visual_count,
                 self.stream_visibility_changes_this_frame,
                 self.max_stream_visibility_changes_per_frame,
@@ -2761,6 +2767,7 @@ pub mod eval {
         max_visible_island_detail_count: usize,
         max_hidden_island_detail_count: usize,
         max_visible_route_beacon_count: usize,
+        max_weather_cloud_count: usize,
         max_resident_island_visual_count: usize,
         max_stream_visibility_changes_per_frame: usize,
         total_stream_visibility_changes: usize,
@@ -2896,6 +2903,8 @@ pub mod eval {
             self.max_visible_route_beacon_count = self
                 .max_visible_route_beacon_count
                 .max(sample.visible_route_beacon_count);
+            self.max_weather_cloud_count =
+                self.max_weather_cloud_count.max(sample.weather_cloud_count);
             self.max_resident_island_visual_count = self
                 .max_resident_island_visual_count
                 .max(sample.resident_island_visual_count);
@@ -3051,6 +3060,12 @@ pub mod eval {
                     thresholds.min_visible_route_beacon_count as f32,
                     "entities",
                 ),
+                EvalCheck::at_least(
+                    "weather_cloud_count",
+                    self.max_weather_cloud_count as f32,
+                    thresholds.min_weather_cloud_count as f32,
+                    "entities",
+                ),
                 EvalCheck::at_most(
                     "resident_island_visual_count",
                     self.max_resident_island_visual_count as f32,
@@ -3199,6 +3214,7 @@ pub mod eval {
                     max_visible_island_detail_count: self.max_visible_island_detail_count,
                     max_hidden_island_detail_count: self.max_hidden_island_detail_count,
                     max_visible_route_beacon_count: self.max_visible_route_beacon_count,
+                    max_weather_cloud_count: self.max_weather_cloud_count,
                     max_resident_island_visual_count: self.max_resident_island_visual_count,
                     max_stream_visibility_changes_per_frame: self
                         .max_stream_visibility_changes_per_frame,
@@ -3286,6 +3302,7 @@ pub mod eval {
         pub max_visible_island_detail_count: usize,
         pub max_hidden_island_detail_count: usize,
         pub max_visible_route_beacon_count: usize,
+        pub max_weather_cloud_count: usize,
         pub max_resident_island_visual_count: usize,
         pub max_stream_visibility_changes_per_frame: usize,
         pub total_stream_visibility_changes: usize,
@@ -3300,7 +3317,7 @@ pub mod eval {
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
                 json_number(self.avg_frame_time_ms),
                 json_number(self.p95_frame_time_ms),
@@ -3341,6 +3358,7 @@ pub mod eval {
                 self.max_visible_island_detail_count,
                 self.max_hidden_island_detail_count,
                 self.max_visible_route_beacon_count,
+                self.max_weather_cloud_count,
                 self.max_resident_island_visual_count,
                 self.max_stream_visibility_changes_per_frame,
                 self.total_stream_visibility_changes,
@@ -3577,6 +3595,7 @@ pub mod eval {
                 max_visible_island_detail_count: 95,
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
+                min_weather_cloud_count: 12,
                 max_resident_island_visual_count: 240,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
@@ -3625,6 +3644,7 @@ pub mod eval {
                 max_visible_island_detail_count: 95,
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
+                min_weather_cloud_count: 12,
                 max_resident_island_visual_count: 240,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
@@ -3673,6 +3693,7 @@ pub mod eval {
                 max_visible_island_detail_count: 95,
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
+                min_weather_cloud_count: 12,
                 max_resident_island_visual_count: 240,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
@@ -3721,6 +3742,7 @@ pub mod eval {
                 max_visible_island_detail_count: 95,
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
+                min_weather_cloud_count: 12,
                 max_resident_island_visual_count: 240,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
@@ -3769,6 +3791,7 @@ pub mod eval {
                 max_visible_island_detail_count: 95,
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
+                min_weather_cloud_count: 12,
                 max_resident_island_visual_count: 240,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
@@ -3817,6 +3840,7 @@ pub mod eval {
                 max_visible_island_detail_count: 95,
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
+                min_weather_cloud_count: 12,
                 max_resident_island_visual_count: 240,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
@@ -3865,6 +3889,7 @@ pub mod eval {
                 max_visible_island_detail_count: 95,
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
+                min_weather_cloud_count: 12,
                 max_resident_island_visual_count: 240,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
@@ -3913,6 +3938,7 @@ pub mod eval {
                 max_visible_island_detail_count: 95,
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
+                min_weather_cloud_count: 12,
                 max_resident_island_visual_count: 240,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
@@ -3961,6 +3987,7 @@ pub mod eval {
                 max_visible_island_detail_count: 95,
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
+                min_weather_cloud_count: 12,
                 max_resident_island_visual_count: 240,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 220,
@@ -4228,6 +4255,7 @@ pub mod eval {
                 26,
                 118,
                 16,
+                12,
                 232,
                 0,
                 12,
@@ -4271,6 +4299,7 @@ pub mod eval {
                 26,
                 118,
                 16,
+                12,
                 232,
                 0,
                 12,
@@ -4315,6 +4344,7 @@ pub mod eval {
                     26,
                     118,
                     16,
+                    12,
                     232,
                     0,
                     12,
@@ -4417,6 +4447,11 @@ pub mod animation {
         smoothing_factor(18.0, dt)
     }
 
+    fn side_cycle(phase: f32, side: Side) -> f32 {
+        let offset = if side == Side::Left { 0.0 } else { TAU * 0.5 };
+        (phase + offset).sin()
+    }
+
     pub fn part_pose(
         part: &CharacterPart,
         mode: FlightMode,
@@ -4424,6 +4459,10 @@ pub mod animation {
         phase: f32,
     ) -> PartPose {
         let cycle = phase.sin();
+        let horizontal_speed = Vec2::new(velocity.x, velocity.z).length();
+        let gait_weight = (horizontal_speed / 16.0).clamp(0.0, 1.0);
+        let roll = (-velocity.x * 0.006).clamp(-0.14, 0.14);
+        let vertical_pitch = (-velocity.y * 0.004).clamp(-0.1, 0.1);
         let mut translation = part.base_translation;
         let mut rotation = part.base_rotation;
         let mut visibility = PartVisibility::Inherited;
@@ -4431,48 +4470,58 @@ pub mod animation {
         match part.role {
             CharacterPartRole::Torso => {
                 let pitch = match mode {
-                    FlightMode::Grounded => 0.0,
-                    FlightMode::Airborne => -0.12,
-                    FlightMode::Gliding => -0.26,
+                    FlightMode::Grounded => -0.04 * gait_weight,
+                    FlightMode::Airborne => -0.12 + vertical_pitch,
+                    FlightMode::Gliding => -0.30 + vertical_pitch * 0.5,
                     FlightMode::Launching => 0.1,
                 };
-                translation.y += cycle.abs() * 0.018;
-                rotation *= Quat::from_rotation_x(pitch);
+                translation.y += cycle.abs() * (0.014 + gait_weight * 0.018);
+                rotation *= Quat::from_rotation_x(pitch) * Quat::from_rotation_z(roll);
             }
             CharacterPartRole::Head => {
-                translation.y += cycle.abs() * 0.012;
-                rotation *= Quat::from_rotation_x(-0.06);
+                translation.y += cycle.abs() * (0.01 + gait_weight * 0.006);
+                rotation *= Quat::from_rotation_x(-0.05) * Quat::from_rotation_z(roll * 0.35);
             }
             CharacterPartRole::Arm(side) => {
                 let sign = side.sign();
+                let gait = -side_cycle(phase, side);
                 let spread = match mode {
-                    FlightMode::Grounded => cycle * 0.12,
+                    FlightMode::Grounded => 0.08 + gait.abs() * 0.06 * gait_weight,
                     FlightMode::Airborne => 0.65,
-                    FlightMode::Gliding => 1.05,
+                    FlightMode::Gliding => 1.08,
                     FlightMode::Launching => 0.28,
                 };
                 let sweep = match mode {
-                    FlightMode::Gliding => -0.52,
+                    FlightMode::Grounded => gait * 0.48 * gait_weight,
+                    FlightMode::Gliding => -0.58,
                     FlightMode::Launching => 0.22,
                     FlightMode::Airborne => -0.2,
-                    FlightMode::Grounded => 0.0,
+                };
+                translation.z += gait * 0.08 * gait_weight;
+                translation.y += match mode {
+                    FlightMode::Gliding => 0.04,
+                    FlightMode::Airborne => -0.02,
+                    _ => 0.0,
                 };
                 rotation *= Quat::from_rotation_z(sign * spread) * Quat::from_rotation_x(sweep);
             }
             CharacterPartRole::Leg(side) => {
                 let sign = side.sign();
+                let gait = side_cycle(phase, side);
                 let spread = match mode {
-                    FlightMode::Grounded => cycle * 0.08,
-                    FlightMode::Airborne => 0.12,
-                    FlightMode::Gliding => 0.18,
+                    FlightMode::Grounded => 0.04 + gait.abs() * 0.05 * gait_weight,
+                    FlightMode::Airborne => 0.14,
+                    FlightMode::Gliding => 0.2,
                     FlightMode::Launching => 0.02,
                 };
                 let trail = match mode {
-                    FlightMode::Gliding => 0.38,
-                    FlightMode::Airborne => 0.18,
+                    FlightMode::Grounded => gait * 0.52 * gait_weight,
+                    FlightMode::Gliding => 0.46 + cycle * 0.04,
+                    FlightMode::Airborne => 0.22 + vertical_pitch,
                     FlightMode::Launching => -0.12,
-                    FlightMode::Grounded => 0.0,
                 };
+                translation.z += gait * 0.18 * gait_weight;
+                translation.y += gait.max(0.0) * 0.045 * gait_weight;
                 rotation *= Quat::from_rotation_z(sign * spread) * Quat::from_rotation_x(trail);
             }
             CharacterPartRole::Wing(side) => {
@@ -4483,8 +4532,9 @@ pub mod animation {
                 };
 
                 let sign = side.sign();
-                let bank = (velocity.x * 0.012).clamp(-0.18, 0.18);
+                let bank = (velocity.x * 0.012).clamp(-0.2, 0.2);
                 let flutter = (phase * 2.4).sin() * 0.025;
+                translation.y += flutter * 0.5;
                 rotation *= Quat::from_rotation_z(sign * bank) * Quat::from_rotation_x(flutter);
             }
         }
@@ -4525,6 +4575,55 @@ pub mod animation {
                 part_pose(&wing, FlightMode::Gliding, Vec3::ZERO, 0.0).visibility,
                 PartVisibility::Visible
             );
+        }
+
+        #[test]
+        fn grounded_stride_moves_left_and_right_legs_opposite_each_other() {
+            let left_leg = CharacterPart::new(
+                CharacterPartRole::Leg(Side::Left),
+                Vec3::ZERO,
+                Quat::IDENTITY,
+            );
+            let right_leg = CharacterPart::new(
+                CharacterPartRole::Leg(Side::Right),
+                Vec3::ZERO,
+                Quat::IDENTITY,
+            );
+
+            let left_pose = part_pose(
+                &left_leg,
+                FlightMode::Grounded,
+                Vec3::new(0.0, 0.0, 12.0),
+                TAU * 0.25,
+            );
+            let right_pose = part_pose(
+                &right_leg,
+                FlightMode::Grounded,
+                Vec3::new(0.0, 0.0, 12.0),
+                TAU * 0.25,
+            );
+
+            assert!(left_pose.translation.z > 0.1);
+            assert!(right_pose.translation.z < -0.1);
+        }
+
+        #[test]
+        fn gliding_pose_lifts_arms_into_glider_posture() {
+            let arm = CharacterPart::new(
+                CharacterPartRole::Arm(Side::Left),
+                Vec3::new(-0.58, 1.05, 0.0),
+                Quat::IDENTITY,
+            );
+
+            let grounded = part_pose(
+                &arm,
+                FlightMode::Grounded,
+                Vec3::new(0.0, 0.0, 12.0),
+                TAU * 0.25,
+            );
+            let gliding = part_pose(&arm, FlightMode::Gliding, Vec3::ZERO, TAU * 0.25);
+
+            assert!(gliding.translation.y > grounded.translation.y);
         }
     }
 }
