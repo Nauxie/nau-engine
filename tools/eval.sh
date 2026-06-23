@@ -4,6 +4,15 @@ set -euo pipefail
 scenario="${1:-baseline_route}"
 output_dir="${2:-target/eval/${scenario}}"
 extra_args=()
+min_png_bytes=16384
+
+file_size_bytes() {
+  if stat -f%z "$1" >/dev/null 2>&1; then
+    stat -f%z "$1"
+  else
+    stat -c%s "$1"
+  fi
+}
 
 if [[ "${NAU_EVAL_NO_SCREENSHOT:-0}" == "1" ]]; then
   extra_args+=(--eval-no-screenshot)
@@ -26,6 +35,23 @@ fi
 if [[ ! -s "${samples}" ]]; then
   echo "missing eval samples: ${samples}" >&2
   exit 1
+fi
+
+if [[ "${NAU_EVAL_NO_SCREENSHOT:-0}" != "1" ]] && command -v jq >/dev/null 2>&1; then
+  while IFS= read -r artifact; do
+    if [[ -z "${artifact}" || "${artifact}" == "null" ]]; then
+      continue
+    fi
+    if [[ ! -s "${artifact}" ]]; then
+      echo "missing screenshot artifact: ${artifact}" >&2
+      exit 1
+    fi
+    artifact_size="$(file_size_bytes "${artifact}")"
+    if (( artifact_size < min_png_bytes )); then
+      echo "suspiciously small screenshot artifact (${artifact_size} bytes): ${artifact}" >&2
+      exit 1
+    fi
+  done < <(jq -r '.artifacts.screenshot_png, (.artifacts.checkpoint_screenshots[]?)' "${summary}")
 fi
 
 if command -v jq >/dev/null 2>&1; then

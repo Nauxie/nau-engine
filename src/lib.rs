@@ -1114,6 +1114,47 @@ pub mod camera {
         pub look_target: Vec3,
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct CameraObstruction {
+        pub center: Vec3,
+        pub half_extents: Vec3,
+    }
+
+    impl CameraObstruction {
+        pub fn new(center: Vec3, half_extents: Vec3) -> Self {
+            Self {
+                center,
+                half_extents: half_extents.abs(),
+            }
+        }
+
+        fn expanded(self, clearance: f32) -> Self {
+            Self {
+                center: self.center,
+                half_extents: self.half_extents + Vec3::splat(clearance.max(0.0)),
+            }
+        }
+
+        fn contains(self, point: Vec3) -> bool {
+            let min = self.center - self.half_extents;
+            let max = self.center + self.half_extents;
+
+            point.x >= min.x
+                && point.x <= max.x
+                && point.y >= min.y
+                && point.y <= max.y
+                && point.z >= min.z
+                && point.z <= max.z
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct CameraObstructionResolution {
+        pub frame: CameraFrame,
+        pub adjusted_distance_m: f32,
+        pub hit_count: usize,
+    }
+
     pub fn step_camera(
         current_position: Vec3,
         current_rotation: Quat,
@@ -1272,6 +1313,111 @@ pub mod camera {
         }
 
         frame
+    }
+
+    pub fn avoid_camera_obstructions(
+        frame: CameraFrame,
+        obstructions: impl IntoIterator<Item = CameraObstruction>,
+        clearance: f32,
+    ) -> CameraObstructionResolution {
+        let segment = frame.position - frame.look_target;
+        let segment_length = segment.length();
+        if segment_length <= 0.001 || !segment_length.is_finite() {
+            return CameraObstructionResolution {
+                frame,
+                adjusted_distance_m: 0.0,
+                hit_count: 0,
+            };
+        }
+
+        let direction = segment / segment_length;
+        let mut nearest_hit_distance = segment_length;
+        let mut hit_count = 0;
+
+        for obstruction in obstructions {
+            let obstruction = obstruction.expanded(clearance);
+            if obstruction.contains(frame.look_target) {
+                continue;
+            }
+            let Some(hit_distance) = segment_aabb_hit_distance(
+                frame.look_target,
+                direction,
+                segment_length,
+                obstruction,
+            ) else {
+                continue;
+            };
+            hit_count += 1;
+            nearest_hit_distance = nearest_hit_distance.min(hit_distance);
+        }
+
+        if hit_count == 0 || nearest_hit_distance >= segment_length {
+            return CameraObstructionResolution {
+                frame,
+                adjusted_distance_m: 0.0,
+                hit_count,
+            };
+        }
+
+        let min_target_distance = 2.4;
+        let adjusted_distance = nearest_hit_distance.max(min_target_distance);
+        let mut adjusted = frame;
+        adjusted.position = frame.look_target + direction * adjusted_distance;
+        adjusted.rotation = Transform::from_translation(adjusted.position)
+            .looking_at(adjusted.look_target, Vec3::Y)
+            .rotation;
+
+        CameraObstructionResolution {
+            frame: adjusted,
+            adjusted_distance_m: frame.position.distance(adjusted.position),
+            hit_count,
+        }
+    }
+
+    fn segment_aabb_hit_distance(
+        origin: Vec3,
+        direction: Vec3,
+        max_distance: f32,
+        obstruction: CameraObstruction,
+    ) -> Option<f32> {
+        let min = obstruction.center - obstruction.half_extents;
+        let max = obstruction.center + obstruction.half_extents;
+        let mut t_min = 0.0;
+        let mut t_max = max_distance;
+
+        update_slab_interval(origin.x, direction.x, min.x, max.x, &mut t_min, &mut t_max)?;
+        update_slab_interval(origin.y, direction.y, min.y, max.y, &mut t_min, &mut t_max)?;
+        update_slab_interval(origin.z, direction.z, min.z, max.z, &mut t_min, &mut t_max)?;
+
+        if t_min <= max_distance && t_max >= 0.0 {
+            Some(t_min.max(0.0))
+        } else {
+            None
+        }
+    }
+
+    fn update_slab_interval(
+        origin: f32,
+        direction: f32,
+        min: f32,
+        max: f32,
+        t_min: &mut f32,
+        t_max: &mut f32,
+    ) -> Option<()> {
+        if direction.abs() <= 0.0001 {
+            return (origin >= min && origin <= max).then_some(());
+        }
+
+        let inverse_direction = direction.recip();
+        let mut near = (min - origin) * inverse_direction;
+        let mut far = (max - origin) * inverse_direction;
+        if near > far {
+            std::mem::swap(&mut near, &mut far);
+        }
+
+        *t_min = (*t_min).max(near);
+        *t_max = (*t_max).min(far);
+        (*t_min <= *t_max).then_some(())
     }
 
     pub fn camera_pitch_degrees(rotation: Quat) -> f32 {
@@ -1439,6 +1585,79 @@ pub mod camera {
             assert_eq!(lifted.position.y, 4.5);
             assert_eq!(camera_surface_clearance(lifted.position, 2.5), 2.0);
         }
+
+        #[test]
+        fn camera_obstruction_moves_camera_in_front_of_blocker() {
+            let frame = CameraFrame {
+                position: Vec3::new(0.0, 2.0, 10.0),
+                rotation: Quat::IDENTITY,
+                look_target: Vec3::new(0.0, 2.0, 0.0),
+            };
+
+            let resolved = avoid_camera_obstructions(
+                frame,
+                [CameraObstruction::new(
+                    Vec3::new(0.0, 2.0, 5.0),
+                    Vec3::new(1.0, 1.0, 1.0),
+                )],
+                0.5,
+            );
+
+            assert_eq!(resolved.hit_count, 1);
+            assert!(resolved.adjusted_distance_m > 5.0);
+            assert!(resolved.frame.position.z < 4.0);
+            assert!(
+                camera_target_angle_degrees(
+                    resolved.frame.position,
+                    resolved.frame.rotation,
+                    resolved.frame.look_target,
+                ) < 0.001
+            );
+        }
+
+        #[test]
+        fn camera_obstruction_keeps_clear_view_when_blocker_is_off_segment() {
+            let frame = CameraFrame {
+                position: Vec3::new(0.0, 2.0, 10.0),
+                rotation: Quat::IDENTITY,
+                look_target: Vec3::new(0.0, 2.0, 0.0),
+            };
+
+            let resolved = avoid_camera_obstructions(
+                frame,
+                [CameraObstruction::new(
+                    Vec3::new(5.0, 2.0, 5.0),
+                    Vec3::new(1.0, 1.0, 1.0),
+                )],
+                0.5,
+            );
+
+            assert_eq!(resolved.hit_count, 0);
+            assert_eq!(resolved.adjusted_distance_m, 0.0);
+            assert_eq!(resolved.frame.position, frame.position);
+        }
+
+        #[test]
+        fn camera_obstruction_uses_nearest_blocker() {
+            let frame = CameraFrame {
+                position: Vec3::new(0.0, 2.0, 12.0),
+                rotation: Quat::IDENTITY,
+                look_target: Vec3::new(0.0, 2.0, 0.0),
+            };
+
+            let resolved = avoid_camera_obstructions(
+                frame,
+                [
+                    CameraObstruction::new(Vec3::new(0.0, 2.0, 8.0), Vec3::splat(1.0)),
+                    CameraObstruction::new(Vec3::new(0.0, 2.0, 4.0), Vec3::splat(1.0)),
+                ],
+                0.25,
+            );
+
+            assert_eq!(resolved.hit_count, 2);
+            assert!(resolved.frame.position.z < 3.0);
+            assert!(resolved.frame.position.z > 2.3);
+        }
     }
 }
 
@@ -1485,12 +1704,78 @@ pub mod eval {
         CAMERA_MOUSE_CONTROL,
     ];
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct EvalCheckpoint {
+        pub frame: u32,
+        pub name: &'static str,
+    }
+
+    const BASELINE_CHECKPOINTS: &[EvalCheckpoint] = &[
+        EvalCheckpoint {
+            frame: 90,
+            name: "launch_clear",
+        },
+        EvalCheckpoint {
+            frame: 260,
+            name: "glide_midroute",
+        },
+    ];
+    const ISLAND_CHECKPOINTS: &[EvalCheckpoint] = &[
+        EvalCheckpoint {
+            frame: 120,
+            name: "outbound_glide",
+        },
+        EvalCheckpoint {
+            frame: 320,
+            name: "landing_approach",
+        },
+    ];
+    const GROUND_TAXI_CHECKPOINTS: &[EvalCheckpoint] = &[
+        EvalCheckpoint {
+            frame: 60,
+            name: "ground_turn",
+        },
+        EvalCheckpoint {
+            frame: 150,
+            name: "reverse_check",
+        },
+    ];
+    const UPDRAFT_CHECKPOINTS: &[EvalCheckpoint] = &[
+        EvalCheckpoint {
+            frame: 150,
+            name: "updraft_entry",
+        },
+        EvalCheckpoint {
+            frame: 280,
+            name: "high_glide",
+        },
+    ];
+    const CAMERA_MOUSE_CHECKPOINTS: &[EvalCheckpoint] = &[
+        EvalCheckpoint {
+            frame: 5,
+            name: "launch_obstruction",
+        },
+        EvalCheckpoint {
+            frame: 50,
+            name: "yaw_check",
+        },
+        EvalCheckpoint {
+            frame: 120,
+            name: "pitch_check",
+        },
+        EvalCheckpoint {
+            frame: 180,
+            name: "settled_view",
+        },
+    ];
+
     #[derive(Clone, Copy, Debug)]
     pub struct EvalScenario {
         pub name: &'static str,
         pub fixed_dt: f32,
         pub frame_count: u32,
         pub sample_stride: u32,
+        pub checkpoints: &'static [EvalCheckpoint],
         pub thresholds: EvalThresholds,
     }
 
@@ -1501,6 +1786,13 @@ pub mod eval {
 
         pub fn should_sample(self, frame: u32) -> bool {
             frame == 0 || frame >= self.frame_count || frame.is_multiple_of(self.sample_stride)
+        }
+
+        pub fn checkpoint_at(self, frame: u32) -> Option<EvalCheckpoint> {
+            self.checkpoints
+                .iter()
+                .copied()
+                .find(|checkpoint| checkpoint.frame == frame)
         }
     }
 
@@ -1517,6 +1809,7 @@ pub mod eval {
         pub max_camera_distance_m: f32,
         pub min_camera_surface_clearance_m: f32,
         pub max_camera_player_angle_degrees: f32,
+        pub min_camera_obstruction_adjustment_m: f32,
         pub min_abs_camera_yaw_degrees: f32,
         pub min_camera_pitch_offset_degrees: f32,
         pub max_camera_pitch_offset_degrees: f32,
@@ -1528,7 +1821,7 @@ pub mod eval {
     impl EvalThresholds {
         fn to_json(self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
                 self.min_samples,
                 json_number(self.min_horizontal_distance_m),
                 json_number(self.min_max_altitude_m),
@@ -1540,6 +1833,7 @@ pub mod eval {
                 json_number(self.max_camera_distance_m),
                 json_number(self.min_camera_surface_clearance_m),
                 json_number(self.max_camera_player_angle_degrees),
+                json_number(self.min_camera_obstruction_adjustment_m),
                 json_number(self.min_abs_camera_yaw_degrees),
                 json_number(self.min_camera_pitch_offset_degrees),
                 json_number(self.max_camera_pitch_offset_degrees),
@@ -1565,6 +1859,8 @@ pub mod eval {
         pub camera_pitch_degrees: f32,
         pub camera_yaw_offset_degrees: f32,
         pub camera_pitch_offset_degrees: f32,
+        pub camera_obstruction_adjustment_m: f32,
+        pub camera_obstruction_hits: usize,
         pub visible_wind_fields: usize,
         pub wind_field_count: usize,
         pub active_lift_fields: usize,
@@ -1589,6 +1885,8 @@ pub mod eval {
             camera_pitch_degrees: f32,
             camera_yaw_offset_degrees: f32,
             camera_pitch_offset_degrees: f32,
+            camera_obstruction_adjustment_m: f32,
+            camera_obstruction_hits: usize,
             visible_wind_fields: usize,
             wind_field_count: usize,
             active_lift_fields: usize,
@@ -1612,6 +1910,8 @@ pub mod eval {
                 camera_pitch_degrees,
                 camera_yaw_offset_degrees,
                 camera_pitch_offset_degrees,
+                camera_obstruction_adjustment_m,
+                camera_obstruction_hits,
                 visible_wind_fields,
                 wind_field_count,
                 active_lift_fields,
@@ -1625,7 +1925,7 @@ pub mod eval {
 
         pub fn to_json(&self) -> String {
             format!(
-                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"sky_island_count\":{},\"entity_count\":{}}}",
+                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"sky_island_count\":{},\"entity_count\":{}}}",
                 self.frame,
                 json_number(self.time_secs),
                 json_array3(self.position),
@@ -1639,6 +1939,8 @@ pub mod eval {
                 json_number(self.camera_pitch_degrees),
                 json_number(self.camera_yaw_offset_degrees),
                 json_number(self.camera_pitch_offset_degrees),
+                json_number(self.camera_obstruction_adjustment_m),
+                self.camera_obstruction_hits,
                 self.visible_wind_fields,
                 self.wind_field_count,
                 self.active_lift_fields,
@@ -1662,6 +1964,8 @@ pub mod eval {
         max_camera_distance_m: f32,
         min_camera_surface_clearance_m: f32,
         max_camera_player_angle_degrees: f32,
+        max_camera_obstruction_adjustment_m: f32,
+        max_camera_obstruction_hits: usize,
         min_target_distance_m: f32,
         min_camera_pitch_degrees: f32,
         max_camera_pitch_degrees: f32,
@@ -1703,6 +2007,12 @@ pub mod eval {
             self.max_camera_player_angle_degrees = self
                 .max_camera_player_angle_degrees
                 .max(sample.camera_player_angle_degrees);
+            self.max_camera_obstruction_adjustment_m = self
+                .max_camera_obstruction_adjustment_m
+                .max(sample.camera_obstruction_adjustment_m);
+            self.max_camera_obstruction_hits = self
+                .max_camera_obstruction_hits
+                .max(sample.camera_obstruction_hits);
             self.min_target_distance_m = self.min_target_distance_m.min(sample.target_distance_m);
             self.min_camera_pitch_degrees = self
                 .min_camera_pitch_degrees
@@ -1822,6 +2132,12 @@ pub mod eval {
                     "deg",
                 ),
                 EvalCheck::at_least(
+                    "max_camera_obstruction_adjustment",
+                    self.max_camera_obstruction_adjustment_m,
+                    thresholds.min_camera_obstruction_adjustment_m,
+                    "m",
+                ),
+                EvalCheck::at_least(
                     "max_abs_camera_yaw_offset",
                     self.max_abs_camera_yaw_offset_degrees,
                     thresholds.min_abs_camera_yaw_degrees,
@@ -1871,6 +2187,8 @@ pub mod eval {
                     max_camera_distance_m: self.max_camera_distance_m,
                     min_camera_surface_clearance_m: self.min_camera_surface_clearance_m,
                     max_camera_player_angle_degrees: self.max_camera_player_angle_degrees,
+                    max_camera_obstruction_adjustment_m: self.max_camera_obstruction_adjustment_m,
+                    max_camera_obstruction_hits: self.max_camera_obstruction_hits,
                     min_target_distance_m: self.min_target_distance_m,
                     final_target_distance_m,
                     min_camera_pitch_degrees: self.min_camera_pitch_degrees,
@@ -1900,6 +2218,7 @@ pub mod eval {
         pub summary_json: String,
         pub samples_ndjson: String,
         pub screenshot_png: Option<String>,
+        pub checkpoint_screenshots: Vec<String>,
     }
 
     impl EvalArtifacts {
@@ -1909,12 +2228,14 @@ pub mod eval {
                 .as_deref()
                 .map(json_string)
                 .unwrap_or_else(|| "null".to_string());
+            let checkpoint_screenshots = json_string_array(&self.checkpoint_screenshots);
 
             format!(
-                "{{\n{indent}  \"summary_json\": {},\n{indent}  \"samples_ndjson\": {},\n{indent}  \"screenshot_png\": {}\n{indent}}}",
+                "{{\n{indent}  \"summary_json\": {},\n{indent}  \"samples_ndjson\": {},\n{indent}  \"screenshot_png\": {},\n{indent}  \"checkpoint_screenshots\": {}\n{indent}}}",
                 json_string(&self.summary_json),
                 json_string(&self.samples_ndjson),
                 screenshot,
+                checkpoint_screenshots,
             )
         }
     }
@@ -1929,6 +2250,8 @@ pub mod eval {
         pub max_camera_distance_m: f32,
         pub min_camera_surface_clearance_m: f32,
         pub max_camera_player_angle_degrees: f32,
+        pub max_camera_obstruction_adjustment_m: f32,
+        pub max_camera_obstruction_hits: usize,
         pub min_target_distance_m: f32,
         pub final_target_distance_m: f32,
         pub min_camera_pitch_degrees: f32,
@@ -1950,7 +2273,7 @@ pub mod eval {
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
                 json_number(self.horizontal_distance_m),
                 json_number(self.max_altitude_m),
@@ -1959,6 +2282,8 @@ pub mod eval {
                 json_number(self.max_camera_distance_m),
                 json_number(self.min_camera_surface_clearance_m),
                 json_number(self.max_camera_player_angle_degrees),
+                json_number(self.max_camera_obstruction_adjustment_m),
+                self.max_camera_obstruction_hits,
                 json_number(self.min_target_distance_m),
                 json_number(self.final_target_distance_m),
                 json_number(self.min_camera_pitch_degrees),
@@ -2145,6 +2470,7 @@ pub mod eval {
             fixed_dt: 1.0 / 60.0,
             frame_count: 420,
             sample_stride: 10,
+            checkpoints: BASELINE_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 20,
                 min_horizontal_distance_m: 80.0,
@@ -2157,6 +2483,7 @@ pub mod eval {
                 max_camera_distance_m: 35.0,
                 min_camera_surface_clearance_m: 1.0,
                 max_camera_player_angle_degrees: 18.0,
+                min_camera_obstruction_adjustment_m: 0.0,
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
                 max_camera_pitch_offset_degrees: 0.0,
@@ -2173,6 +2500,7 @@ pub mod eval {
             fixed_dt: 1.0 / 60.0,
             frame_count: 455,
             sample_stride: 5,
+            checkpoints: ISLAND_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 50,
                 min_horizontal_distance_m: 220.0,
@@ -2185,6 +2513,7 @@ pub mod eval {
                 max_camera_distance_m: 36.0,
                 min_camera_surface_clearance_m: 1.0,
                 max_camera_player_angle_degrees: 18.0,
+                min_camera_obstruction_adjustment_m: 0.0,
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
                 max_camera_pitch_offset_degrees: 0.0,
@@ -2201,6 +2530,7 @@ pub mod eval {
             fixed_dt: 1.0 / 60.0,
             frame_count: 180,
             sample_stride: 5,
+            checkpoints: GROUND_TAXI_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 30,
                 min_horizontal_distance_m: 14.0,
@@ -2213,6 +2543,7 @@ pub mod eval {
                 max_camera_distance_m: 28.0,
                 min_camera_surface_clearance_m: 1.0,
                 max_camera_player_angle_degrees: 18.0,
+                min_camera_obstruction_adjustment_m: 0.0,
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
                 max_camera_pitch_offset_degrees: 0.0,
@@ -2229,6 +2560,7 @@ pub mod eval {
             fixed_dt: 1.0 / 60.0,
             frame_count: 360,
             sample_stride: 5,
+            checkpoints: UPDRAFT_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 60,
                 min_horizontal_distance_m: 150.0,
@@ -2241,6 +2573,7 @@ pub mod eval {
                 max_camera_distance_m: 36.0,
                 min_camera_surface_clearance_m: 1.0,
                 max_camera_player_angle_degrees: 18.0,
+                min_camera_obstruction_adjustment_m: 0.0,
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
                 max_camera_pitch_offset_degrees: 0.0,
@@ -2257,6 +2590,7 @@ pub mod eval {
             fixed_dt: 1.0 / 60.0,
             frame_count: 200,
             sample_stride: 5,
+            checkpoints: CAMERA_MOUSE_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 40,
                 min_horizontal_distance_m: 0.0,
@@ -2269,6 +2603,7 @@ pub mod eval {
                 max_camera_distance_m: 36.0,
                 min_camera_surface_clearance_m: 1.0,
                 max_camera_player_angle_degrees: 18.0,
+                min_camera_obstruction_adjustment_m: 1.0,
                 min_abs_camera_yaw_degrees: 25.0,
                 min_camera_pitch_offset_degrees: -10.0,
                 max_camera_pitch_offset_degrees: 10.0,
@@ -2296,6 +2631,15 @@ pub mod eval {
             json_number(values[1]),
             json_number(values[2])
         )
+    }
+
+    fn json_string_array(values: &[String]) -> String {
+        let values = values
+            .iter()
+            .map(|value| json_string(value))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("[{values}]")
     }
 
     fn json_number(value: f32) -> String {
@@ -2375,6 +2719,25 @@ pub mod eval {
         }
 
         #[test]
+        fn scenarios_define_non_final_camera_checkpoints() {
+            for name in SCENARIO_NAMES {
+                let scenario = scenario_named(name).expect("scenario exists");
+
+                assert!(!scenario.checkpoints.is_empty());
+                assert!(
+                    scenario
+                        .checkpoints
+                        .iter()
+                        .all(|checkpoint| checkpoint.frame < scenario.frame_count)
+                );
+                assert_eq!(
+                    scenario.checkpoint_at(scenario.checkpoints[0].frame),
+                    Some(scenario.checkpoints[0])
+                );
+            }
+        }
+
+        #[test]
         fn accumulator_marks_current_baseline_shape_as_passing() {
             let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
             let mut accumulator = EvalAccumulator::default();
@@ -2391,6 +2754,8 @@ pub mod eval {
                 -20.0,
                 0.0,
                 0.0,
+                0.0,
+                0,
                 0,
                 3,
                 0,
@@ -2412,6 +2777,8 @@ pub mod eval {
                 -18.0,
                 0.0,
                 0.0,
+                0.0,
+                0,
                 0,
                 3,
                 0,
@@ -2434,6 +2801,8 @@ pub mod eval {
                     -18.0,
                     0.0,
                     0.0,
+                    0.0,
+                    0,
                     0,
                     3,
                     0,
@@ -2451,11 +2820,17 @@ pub mod eval {
                     summary_json: "summary.json".to_string(),
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
+                    checkpoint_screenshots: vec!["checkpoints/glide_midroute.png".to_string()],
                 },
             );
 
             assert!(summary.passed);
             assert!(summary.to_json().contains("\"passed\": true"));
+            assert!(
+                summary
+                    .to_json()
+                    .contains("\"checkpoint_screenshots\": [\"checkpoints/glide_midroute.png\"]")
+            );
         }
     }
 }
