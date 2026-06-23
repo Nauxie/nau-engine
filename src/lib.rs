@@ -46,6 +46,11 @@ pub mod movement {
 
     #[derive(Resource, Clone, Copy, Debug)]
     pub struct FlightTuning {
+        pub ground_accel: f32,
+        pub ground_backward_accel: f32,
+        pub ground_lateral_accel: f32,
+        pub ground_friction: f32,
+        pub ground_max_horizontal_speed: f32,
         pub forward_accel: f32,
         pub backward_accel: f32,
         pub lateral_accel: f32,
@@ -70,6 +75,11 @@ pub mod movement {
     impl Default for FlightTuning {
         fn default() -> Self {
             Self {
+                ground_accel: 34.0,
+                ground_backward_accel: 22.0,
+                ground_lateral_accel: 30.0,
+                ground_friction: 0.08,
+                ground_max_horizontal_speed: 11.0,
                 forward_accel: 28.0,
                 backward_accel: 10.0,
                 lateral_accel: 14.0,
@@ -93,7 +103,7 @@ pub mod movement {
         }
     }
 
-    #[derive(Clone, Copy, Debug, Default)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct FlightInput {
         pub forward: bool,
         pub backward: bool,
@@ -169,7 +179,20 @@ pub mod movement {
         let gliding = input.glide && !was_grounded && !input.dive && !launching;
         let mut acceleration = Vec3::ZERO;
 
-        if gliding {
+        if was_grounded && !launching {
+            if input.forward {
+                acceleration += facing.forward * tuning.ground_accel;
+            }
+            if input.backward {
+                acceleration -= facing.forward * tuning.ground_backward_accel;
+            }
+            if input.left {
+                acceleration -= facing.right * tuning.ground_lateral_accel;
+            }
+            if input.right {
+                acceleration += facing.right * tuning.ground_lateral_accel;
+            }
+        } else if gliding {
             if input.forward {
                 acceleration += facing.forward * tuning.glide_forward_accel;
             }
@@ -202,24 +225,42 @@ pub mod movement {
             acceleration.y -= tuning.dive_accel;
         }
 
-        let gravity_scale = if gliding {
-            tuning.glide_gravity_scale
+        if was_grounded && !launching && !input.dive {
+            state.velocity.y = state.velocity.y.max(0.0);
         } else {
-            1.0
-        };
-        acceleration.y -= tuning.gravity * gravity_scale;
+            let gravity_scale = if gliding {
+                tuning.glide_gravity_scale
+            } else {
+                1.0
+            };
+            acceleration.y -= tuning.gravity * gravity_scale;
+        }
 
         state.velocity += acceleration * dt;
         state.velocity *= tuning.drag.powf(dt);
+        if was_grounded && !launching {
+            let ground_friction = tuning.ground_friction.clamp(0.0, 1.0).powf(dt);
+            state.velocity.x *= ground_friction;
+            state.velocity.z *= ground_friction;
+            if horizontal(state.velocity).length_squared() < 0.01 {
+                state.velocity.x = 0.0;
+                state.velocity.z = 0.0;
+            }
+        }
 
         if gliding {
             state.velocity.y = state.velocity.y.max(-tuning.glide_max_fall_speed);
         }
 
-        state.velocity = clamp_velocity(state.velocity, tuning);
+        let max_horizontal_speed = if was_grounded && !launching {
+            tuning.ground_max_horizontal_speed
+        } else {
+            tuning.max_horizontal_speed
+        };
+        state.velocity = clamp_velocity(state.velocity, tuning, max_horizontal_speed);
         state.position += state.velocity * dt;
 
-        if state.position.y < tuning.floor_y {
+        if state.position.y <= tuning.floor_y + GROUND_EPSILON && state.velocity.y <= 0.0 {
             state.position.y = tuning.floor_y;
             state.velocity.y = state.velocity.y.max(0.0);
         }
@@ -264,12 +305,17 @@ pub mod movement {
         (1.0 - (-rate.max(0.0) * dt.max(0.0)).exp()).clamp(0.0, 1.0)
     }
 
-    fn clamp_velocity(mut velocity: Vec3, tuning: &FlightTuning) -> Vec3 {
+    fn clamp_velocity(
+        mut velocity: Vec3,
+        tuning: &FlightTuning,
+        max_horizontal_speed: f32,
+    ) -> Vec3 {
         let horizontal_velocity = horizontal(velocity);
         let horizontal_speed = horizontal_velocity.length();
+        let max_horizontal_speed = max_horizontal_speed.max(0.0);
 
-        if horizontal_speed > tuning.max_horizontal_speed {
-            let horizontal_velocity = horizontal_velocity.normalize() * tuning.max_horizontal_speed;
+        if horizontal_speed > max_horizontal_speed {
+            let horizontal_velocity = horizontal_velocity.normalize() * max_horizontal_speed;
             velocity.x = horizontal_velocity.x;
             velocity.z = horizontal_velocity.z;
         }
@@ -325,6 +371,44 @@ pub mod movement {
 
             let relaunched = step_flight(launched, input, facing, &tuning, 1.0 / 60.0);
             assert!(relaunched.velocity.y < tuning.launch_speed);
+        }
+
+        #[test]
+        fn grounded_forward_input_moves_at_walkable_speed() {
+            let tuning = FlightTuning::default();
+            let facing = Facing::new(Vec3::NEG_Z, Vec3::X);
+            let input = FlightInput {
+                forward: true,
+                ..default()
+            };
+            let mut state = default_state();
+
+            for _ in 0..60 {
+                state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+            }
+
+            assert_eq!(state.controller.mode, FlightMode::Grounded);
+            assert!((state.position.y - tuning.floor_y).abs() <= GROUND_EPSILON);
+            assert!(state.position.z < -5.0);
+            assert!(state.velocity.length() >= 7.0);
+        }
+
+        #[test]
+        fn grounded_friction_stops_released_input() {
+            let tuning = FlightTuning::default();
+            let facing = Facing::new(Vec3::NEG_Z, Vec3::X);
+            let mut state = FlightState::new(
+                Vec3::new(0.0, tuning.floor_y, 0.0),
+                Vec3::new(0.0, 0.0, -tuning.ground_max_horizontal_speed),
+                FlightController::default(),
+            );
+
+            for _ in 0..90 {
+                state = step_flight(state, FlightInput::default(), facing, &tuning, 1.0 / 60.0);
+            }
+
+            assert_eq!(state.controller.mode, FlightMode::Grounded);
+            assert!(Vec2::new(state.velocity.x, state.velocity.z).length() < 0.5);
         }
 
         #[test]
@@ -500,6 +584,88 @@ pub mod environment {
         }
     }
 
+    #[derive(Component, Clone, Copy, Debug, PartialEq)]
+    pub struct LiftField {
+        pub center: Vec3,
+        pub half_extents: Vec3,
+        pub lift_accel: f32,
+        pub max_upward_speed: f32,
+    }
+
+    impl LiftField {
+        pub fn updraft(
+            center: Vec3,
+            half_extents: Vec3,
+            lift_accel: f32,
+            max_upward_speed: f32,
+        ) -> Self {
+            Self {
+                center,
+                half_extents: half_extents.max(Vec3::splat(0.1)),
+                lift_accel: lift_accel.max(0.0),
+                max_upward_speed: max_upward_speed.max(0.0),
+            }
+        }
+
+        pub fn contains(self, position: Vec3) -> bool {
+            let offset = position - self.center;
+            offset.x.abs() <= self.half_extents.x
+                && offset.y.abs() <= self.half_extents.y
+                && offset.z.abs() <= self.half_extents.z
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct LiftApplication {
+        pub velocity: Vec3,
+        pub active_fields: usize,
+        pub applied_delta_y: f32,
+    }
+
+    pub fn apply_lift_fields(
+        position: Vec3,
+        mut velocity: Vec3,
+        fields: impl IntoIterator<Item = LiftField>,
+        dt: f32,
+        enabled: bool,
+    ) -> LiftApplication {
+        let mut active_fields = 0;
+        let mut lift_accel = 0.0_f32;
+        let mut max_upward_speed = velocity.y;
+
+        for field in fields {
+            if field.contains(position) {
+                active_fields += 1;
+                lift_accel += field.lift_accel;
+                max_upward_speed = max_upward_speed.max(field.max_upward_speed);
+            }
+        }
+
+        let applied_delta_y = if enabled && active_fields > 0 && velocity.y < max_upward_speed {
+            let delta = (lift_accel * dt.max(0.0)).min(max_upward_speed - velocity.y);
+            velocity.y += delta;
+            delta
+        } else {
+            0.0
+        };
+
+        LiftApplication {
+            velocity,
+            active_fields,
+            applied_delta_y,
+        }
+    }
+
+    pub fn active_lift_fields_at(
+        position: Vec3,
+        fields: impl IntoIterator<Item = LiftField>,
+    ) -> usize {
+        fields
+            .into_iter()
+            .filter(|field| field.contains(position))
+            .count()
+    }
+
     fn centered_unit(index: usize, count: usize) -> f32 {
         if count <= 1 {
             0.0
@@ -567,12 +733,307 @@ pub mod environment {
             assert_eq!(visible_fields_at(Vec3::new(20.0, 0.0, 0.0), [near, far]), 1);
             assert_eq!(visible_fields_at(Vec3::new(10.0, 0.0, 0.0), [near, far]), 0);
         }
+
+        #[test]
+        fn lift_field_only_applies_inside_bounds_when_enabled() {
+            let field = LiftField::updraft(Vec3::ZERO, Vec3::splat(4.0), 20.0, 12.0);
+            let outside =
+                apply_lift_fields(Vec3::new(10.0, 0.0, 0.0), Vec3::ZERO, [field], 0.5, true);
+            let disabled = apply_lift_fields(Vec3::ZERO, Vec3::ZERO, [field], 0.5, false);
+            let active = apply_lift_fields(Vec3::ZERO, Vec3::ZERO, [field], 0.5, true);
+
+            assert_eq!(outside.active_fields, 0);
+            assert_eq!(outside.velocity, Vec3::ZERO);
+            assert_eq!(disabled.active_fields, 1);
+            assert_eq!(disabled.applied_delta_y, 0.0);
+            assert_eq!(active.active_fields, 1);
+            assert!(active.velocity.y > 0.0);
+            assert!(active.velocity.y <= field.max_upward_speed);
+        }
+    }
+}
+
+pub mod world {
+    use crate::movement::{FlightMode, FlightState};
+    use bevy::prelude::*;
+
+    pub const PLAYER_STANDING_OFFSET: f32 = 1.2;
+    pub const START_FLOOR_Y: f32 = 28.0;
+    pub const START_POSITION: Vec3 = Vec3::new(0.0, START_FLOOR_Y, 0.0);
+    const GROUND_CONTACT_EPSILON: f32 = 0.05;
+    const GROUND_CONTACT_HORIZONTAL_DAMPING: f32 = 0.58;
+
+    #[derive(Resource, Clone, Debug)]
+    pub struct SkyRoute {
+        pub fallback_floor_y: f32,
+        islands: Vec<SkyIsland>,
+    }
+
+    impl Default for SkyRoute {
+        fn default() -> Self {
+            Self {
+                fallback_floor_y: PLAYER_STANDING_OFFSET,
+                islands: vec![
+                    SkyIsland::new(
+                        "launch mesa",
+                        Vec3::new(0.0, START_FLOOR_Y, 0.0),
+                        Vec2::new(34.0, 28.0),
+                        11.0,
+                        false,
+                    ),
+                    SkyIsland::new(
+                        "midpoint shelf",
+                        Vec3::new(-12.0, 44.0, -128.0),
+                        Vec2::new(28.0, 24.0),
+                        9.0,
+                        false,
+                    ),
+                    SkyIsland::new(
+                        "landing garden",
+                        Vec3::new(-38.0, 52.0, -263.0),
+                        Vec2::new(46.0, 36.0),
+                        12.0,
+                        true,
+                    ),
+                    SkyIsland::new(
+                        "distant crown",
+                        Vec3::new(82.0, 62.0, -356.0),
+                        Vec2::new(38.0, 32.0),
+                        14.0,
+                        false,
+                    ),
+                    SkyIsland::new(
+                        "wind overlook",
+                        Vec3::new(-112.0, 52.0, -204.0),
+                        Vec2::new(30.0, 26.0),
+                        10.0,
+                        false,
+                    ),
+                ],
+            }
+        }
+    }
+
+    impl SkyRoute {
+        pub fn islands(&self) -> &[SkyIsland] {
+            &self.islands
+        }
+
+        pub fn ground_at(&self, position: Vec3) -> GroundSurface {
+            self.islands
+                .iter()
+                .copied()
+                .filter(|island| island.contains_horizontal(position))
+                .max_by(|a, b| a.floor_y().total_cmp(&b.floor_y()))
+                .map(GroundSurface::from)
+                .unwrap_or(GroundSurface {
+                    floor_y: self.fallback_floor_y,
+                    is_target: false,
+                    island_name: None,
+                })
+        }
+
+        pub fn is_grounded_at(&self, position: Vec3) -> bool {
+            let ground = self.ground_at(position);
+            position.y <= ground.floor_y + GROUND_CONTACT_EPSILON
+        }
+
+        pub fn resolve_ground_contact(&self, state: FlightState) -> FlightState {
+            self.resolve_ground_contact_with_landing(state, true)
+        }
+
+        pub fn resolve_ground_contact_after_step(
+            &self,
+            state: FlightState,
+            was_grounded: bool,
+        ) -> FlightState {
+            self.resolve_ground_contact_with_landing(state, !was_grounded)
+        }
+
+        fn resolve_ground_contact_with_landing(
+            &self,
+            mut state: FlightState,
+            apply_landing_damping: bool,
+        ) -> FlightState {
+            let ground = self.ground_at(state.position);
+            if state.position.y <= ground.floor_y + GROUND_CONTACT_EPSILON {
+                state.position.y = ground.floor_y;
+                if apply_landing_damping {
+                    state.velocity.x *= GROUND_CONTACT_HORIZONTAL_DAMPING;
+                    state.velocity.z *= GROUND_CONTACT_HORIZONTAL_DAMPING;
+                }
+                state.velocity.y = state.velocity.y.max(0.0);
+                state.controller.launch_timer = 0.0;
+                state.controller.launch_available = true;
+                state.controller.mode = FlightMode::Grounded;
+            } else if state.controller.mode == FlightMode::Grounded {
+                state.controller.mode = FlightMode::Airborne;
+                state.controller.launch_timer = 0.0;
+            }
+
+            state
+        }
+
+        pub fn target_distance(&self, position: Vec3) -> f32 {
+            self.target_island()
+                .map(|island| island.horizontal_distance(position))
+                .unwrap_or(0.0)
+        }
+
+        pub fn on_landing_target(&self, position: Vec3, mode: FlightMode) -> bool {
+            let ground = self.ground_at(position);
+            ground.is_target
+                && mode == FlightMode::Grounded
+                && (position.y - ground.floor_y).abs() <= 0.1
+        }
+
+        pub fn target_island(&self) -> Option<SkyIsland> {
+            self.islands.iter().copied().find(|island| island.is_target)
+        }
+    }
+
+    #[derive(Component, Clone, Copy, Debug, PartialEq)]
+    pub struct SkyIsland {
+        pub name: &'static str,
+        pub center: Vec3,
+        pub half_extents: Vec2,
+        pub thickness: f32,
+        pub is_target: bool,
+    }
+
+    impl SkyIsland {
+        pub fn new(
+            name: &'static str,
+            center: Vec3,
+            half_extents: Vec2,
+            thickness: f32,
+            is_target: bool,
+        ) -> Self {
+            Self {
+                name,
+                center,
+                half_extents,
+                thickness: thickness.max(1.0),
+                is_target,
+            }
+        }
+
+        pub fn floor_y(self) -> f32 {
+            self.center.y
+        }
+
+        pub fn mesh_top_y(self) -> f32 {
+            self.floor_y() - PLAYER_STANDING_OFFSET
+        }
+
+        pub fn contains_horizontal(self, position: Vec3) -> bool {
+            let dx = (position.x - self.center.x) / self.half_extents.x.max(0.001);
+            let dz = (position.z - self.center.z) / self.half_extents.y.max(0.001);
+            dx * dx + dz * dz <= 1.0
+        }
+
+        pub fn horizontal_distance(self, position: Vec3) -> f32 {
+            Vec2::new(position.x - self.center.x, position.z - self.center.z).length()
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct GroundSurface {
+        pub floor_y: f32,
+        pub is_target: bool,
+        pub island_name: Option<&'static str>,
+    }
+
+    impl From<SkyIsland> for GroundSurface {
+        fn from(island: SkyIsland) -> Self {
+            Self {
+                floor_y: island.floor_y(),
+                is_target: island.is_target,
+                island_name: Some(island.name),
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::movement::{FlightController, FlightState};
+
+        #[test]
+        fn route_reports_highest_island_surface_under_player() {
+            let route = SkyRoute::default();
+            let launch_surface = route.ground_at(START_POSITION);
+
+            assert_eq!(launch_surface.floor_y, START_FLOOR_Y);
+            assert_eq!(launch_surface.island_name, Some("launch mesa"));
+        }
+
+        #[test]
+        fn target_distance_reaches_zero_near_landing_island_center() {
+            let route = SkyRoute::default();
+            let target = route.target_island().expect("target island exists");
+
+            assert_eq!(route.target_distance(target.center), 0.0);
+            assert!(route.target_distance(START_POSITION) > 200.0);
+        }
+
+        #[test]
+        fn ground_contact_marks_target_landing_as_grounded() {
+            let route = SkyRoute::default();
+            let target = route.target_island().expect("target island exists");
+            let state = FlightState::new(
+                Vec3::new(target.center.x, target.floor_y() - 2.0, target.center.z),
+                Vec3::new(20.0, -10.0, 10.0),
+                FlightController::default(),
+            );
+
+            let resolved = route.resolve_ground_contact(state);
+
+            assert_eq!(resolved.position.y, target.floor_y());
+            assert!(resolved.velocity.x < state.velocity.x);
+            assert!(resolved.velocity.z < state.velocity.z);
+            assert_eq!(resolved.controller.mode, FlightMode::Grounded);
+            assert!(route.on_landing_target(resolved.position, resolved.controller.mode));
+        }
+
+        #[test]
+        fn already_grounded_route_contact_does_not_damp_wasd_motion() {
+            let route = SkyRoute::default();
+            let state = FlightState::new(
+                START_POSITION,
+                Vec3::new(8.0, 0.0, -4.0),
+                FlightController::default(),
+            );
+
+            let resolved = route.resolve_ground_contact_after_step(state, true);
+
+            assert_eq!(resolved.position.y, START_FLOOR_Y);
+            assert_eq!(resolved.velocity.x, state.velocity.x);
+            assert_eq!(resolved.velocity.z, state.velocity.z);
+            assert_eq!(resolved.controller.mode, FlightMode::Grounded);
+        }
+
+        #[test]
+        fn walking_off_island_clears_stale_grounded_mode() {
+            let route = SkyRoute::default();
+            let state = FlightState::new(
+                Vec3::new(200.0, START_FLOOR_Y, 200.0),
+                Vec3::new(6.0, 0.0, 0.0),
+                FlightController::default(),
+            );
+
+            let resolved = route.resolve_ground_contact_after_step(state, true);
+
+            assert_eq!(resolved.controller.mode, FlightMode::Airborne);
+            assert_eq!(resolved.position.y, START_FLOOR_Y);
+        }
     }
 }
 
 pub mod camera {
     use crate::movement::smoothing_factor;
     use bevy::prelude::*;
+    use std::f32::consts::PI;
 
     #[derive(Component, Clone, Copy, Debug)]
     pub struct FollowCamera {
@@ -591,11 +1052,58 @@ pub mod camera {
                 distance: 12.0,
                 height: 5.0,
                 look_height: 1.4,
-                look_ahead: 2.0,
+                look_ahead: 0.5,
                 position_smoothing: 10.0,
                 rotation_smoothing: 14.0,
                 min_height: 1.6,
             }
+        }
+    }
+
+    #[derive(Resource, Clone, Copy, Debug)]
+    pub struct CameraControlTuning {
+        pub sensitivity_x: f32,
+        pub sensitivity_y: f32,
+        pub min_pitch: f32,
+        pub max_pitch: f32,
+        pub invert_y: bool,
+    }
+
+    impl Default for CameraControlTuning {
+        fn default() -> Self {
+            Self {
+                sensitivity_x: 0.0042,
+                sensitivity_y: 0.0036,
+                min_pitch: -35.0_f32.to_radians(),
+                max_pitch: 35.0_f32.to_radians(),
+                invert_y: false,
+            }
+        }
+    }
+
+    #[derive(Resource, Clone, Copy, Debug, Default)]
+    pub struct CameraControlState {
+        pub orbit: CameraOrbit,
+    }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    pub struct CameraInput {
+        pub mouse_delta: Vec2,
+    }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    pub struct CameraOrbit {
+        pub yaw: f32,
+        pub pitch: f32,
+    }
+
+    impl CameraOrbit {
+        pub fn yaw_degrees(self) -> f32 {
+            self.yaw.to_degrees()
+        }
+
+        pub fn pitch_degrees(self) -> f32 {
+            self.pitch.to_degrees()
         }
     }
 
@@ -615,11 +1123,44 @@ pub mod camera {
         follow: &FollowCamera,
         dt: f32,
     ) -> CameraFrame {
+        step_camera_with_orbit(
+            current_position,
+            current_rotation,
+            player_position,
+            player_forward,
+            player_velocity,
+            follow,
+            CameraOrbit::default(),
+            dt,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn step_camera_with_orbit(
+        current_position: Vec3,
+        current_rotation: Quat,
+        player_position: Vec3,
+        player_forward: Vec3,
+        player_velocity: Vec3,
+        follow: &FollowCamera,
+        orbit: CameraOrbit,
+        dt: f32,
+    ) -> CameraFrame {
         let direction = horizontal_follow_direction(player_velocity, player_forward);
+        let direction = yawed_horizontal_direction(direction, orbit.yaw);
         let look_target =
             player_position + Vec3::Y * follow.look_height + direction * follow.look_ahead;
+        let base_horizontal_distance = follow.distance + follow.look_ahead;
+        let base_vertical_offset = follow.height - follow.look_height;
+        let boom_distance = Vec2::new(base_horizontal_distance, base_vertical_offset)
+            .length()
+            .max(0.001);
+        let base_elevation = base_vertical_offset.atan2(base_horizontal_distance);
+        let elevation = base_elevation - orbit.pitch;
+        let horizontal_distance = elevation.cos().max(0.0) * boom_distance;
+        let vertical_offset = elevation.sin() * boom_distance;
         let mut desired_position =
-            player_position - direction * follow.distance + Vec3::Y * follow.height;
+            look_target - direction * horizontal_distance + Vec3::Y * vertical_offset;
         desired_position.y = desired_position.y.max(follow.min_height);
 
         let position = current_position.lerp(
@@ -641,6 +1182,24 @@ pub mod camera {
         }
     }
 
+    pub fn apply_camera_input(
+        orbit: CameraOrbit,
+        input: CameraInput,
+        tuning: &CameraControlTuning,
+    ) -> CameraOrbit {
+        let yaw = wrap_radians(orbit.yaw - input.mouse_delta.x * tuning.sensitivity_x);
+        let y_sign = if tuning.invert_y { 1.0 } else { -1.0 };
+        let pitch = (orbit.pitch + input.mouse_delta.y * tuning.sensitivity_y * y_sign)
+            .clamp(tuning.min_pitch, tuning.max_pitch);
+
+        CameraOrbit { yaw, pitch }
+    }
+
+    fn yawed_horizontal_direction(direction: Vec3, yaw: f32) -> Vec3 {
+        let rotated = Quat::from_rotation_y(yaw) * direction;
+        horizontal_or(rotated, direction)
+    }
+
     pub fn horizontal_follow_direction(velocity: Vec3, player_forward: Vec3) -> Vec3 {
         let horizontal_velocity = Vec3::new(velocity.x, 0.0, velocity.z);
         if horizontal_velocity.length_squared() > 1.0 {
@@ -655,9 +1214,64 @@ pub mod camera {
         }
     }
 
+    fn horizontal_or(value: Vec3, fallback: Vec3) -> Vec3 {
+        let horizontal = Vec3::new(value.x, 0.0, value.z);
+        if horizontal.length_squared() > 0.0001 {
+            horizontal.normalize()
+        } else {
+            fallback.normalize()
+        }
+    }
+
+    fn wrap_radians(value: f32) -> f32 {
+        (value + PI).rem_euclid(PI * 2.0) - PI
+    }
+
     pub fn camera_distance(camera_position: Vec3, target_position: Vec3) -> f32 {
         let distance = camera_position.distance(target_position);
         if distance.is_finite() { distance } else { 0.0 }
+    }
+
+    pub fn camera_surface_clearance(camera_position: Vec3, floor_y: f32) -> f32 {
+        (camera_position.y - floor_y).max(0.0)
+    }
+
+    pub fn camera_target_angle_degrees(
+        camera_position: Vec3,
+        camera_rotation: Quat,
+        target_position: Vec3,
+    ) -> f32 {
+        let to_target = target_position - camera_position;
+        if to_target.length_squared() <= 0.0001 {
+            return 0.0;
+        }
+
+        let forward = camera_rotation * Vec3::NEG_Z;
+        let dot = forward
+            .normalize_or_zero()
+            .dot(to_target.normalize())
+            .clamp(-1.0, 1.0);
+        if dot.is_finite() {
+            dot.acos().to_degrees()
+        } else {
+            0.0
+        }
+    }
+
+    pub fn lift_camera_above_floor(
+        mut frame: CameraFrame,
+        floor_y: f32,
+        min_clearance: f32,
+    ) -> CameraFrame {
+        let min_y = floor_y + min_clearance.max(0.0);
+        if frame.position.y < min_y {
+            frame.position.y = min_y;
+            frame.rotation = Transform::from_translation(frame.position)
+                .looking_at(frame.look_target, Vec3::Y)
+                .rotation;
+        }
+
+        frame
     }
 
     pub fn camera_pitch_degrees(rotation: Quat) -> f32 {
@@ -700,6 +1314,100 @@ pub mod camera {
         }
 
         #[test]
+        fn mouse_x_changes_camera_yaw_without_touching_pitch() {
+            let tuning = CameraControlTuning::default();
+            let orbit = apply_camera_input(
+                CameraOrbit::default(),
+                CameraInput {
+                    mouse_delta: Vec2::new(20.0, 0.0),
+                },
+                &tuning,
+            );
+
+            assert!(orbit.yaw < -0.08);
+            assert_eq!(orbit.pitch, 0.0);
+        }
+
+        #[test]
+        fn mouse_y_maps_to_pitch_and_clamps() {
+            let tuning = CameraControlTuning::default();
+            let up = apply_camera_input(
+                CameraOrbit::default(),
+                CameraInput {
+                    mouse_delta: Vec2::new(0.0, -20.0),
+                },
+                &tuning,
+            );
+            let clamped = apply_camera_input(
+                CameraOrbit::default(),
+                CameraInput {
+                    mouse_delta: Vec2::new(0.0, -1000.0),
+                },
+                &tuning,
+            );
+
+            assert!(up.pitch > 0.07);
+            assert_eq!(clamped.pitch, tuning.max_pitch);
+        }
+
+        #[test]
+        fn orbit_pitch_moves_view_pitch_in_expected_direction() {
+            let follow = FollowCamera::default();
+            let low = step_camera_with_orbit(
+                Vec3::new(0.0, 6.0, -12.0),
+                Quat::IDENTITY,
+                Vec3::ZERO,
+                Vec3::NEG_Z,
+                Vec3::NEG_Z * 10.0,
+                &follow,
+                CameraOrbit {
+                    pitch: -0.25,
+                    yaw: 0.0,
+                },
+                1.0,
+            );
+            let high = step_camera_with_orbit(
+                Vec3::new(0.0, 6.0, -12.0),
+                Quat::IDENTITY,
+                Vec3::ZERO,
+                Vec3::NEG_Z,
+                Vec3::NEG_Z * 10.0,
+                &follow,
+                CameraOrbit {
+                    pitch: 0.25,
+                    yaw: 0.0,
+                },
+                1.0,
+            );
+
+            assert!(camera_pitch_degrees(high.rotation) > camera_pitch_degrees(low.rotation));
+        }
+
+        #[test]
+        fn orbit_pitch_keeps_player_focus_centered() {
+            let follow = FollowCamera::default();
+            let player_position = Vec3::ZERO;
+            let frame = step_camera_with_orbit(
+                Vec3::new(0.0, follow.height, follow.distance),
+                Quat::IDENTITY,
+                player_position,
+                Vec3::NEG_Z,
+                Vec3::ZERO,
+                &follow,
+                CameraOrbit {
+                    pitch: CameraControlTuning::default().max_pitch,
+                    yaw: 0.0,
+                },
+                1.0,
+            );
+            let player_focus = player_position + Vec3::Y * follow.look_height;
+
+            assert!(
+                camera_target_angle_degrees(frame.position, frame.rotation, player_focus) < 3.0
+            );
+        }
+
+        #[test]
         fn camera_pitch_is_negative_when_looking_downward() {
             let rotation = Transform::from_xyz(0.0, 6.0, -12.0)
                 .looking_at(Vec3::new(0.0, 1.5, 0.0), Vec3::Y)
@@ -716,6 +1424,20 @@ pub mod camera {
         #[test]
         fn camera_distance_matches_vector_length() {
             assert_eq!(camera_distance(Vec3::new(0.0, 3.0, 4.0), Vec3::ZERO), 5.0);
+        }
+
+        #[test]
+        fn camera_surface_clearance_lifts_clipping_frame() {
+            let frame = CameraFrame {
+                position: Vec3::new(0.0, 3.0, 0.0),
+                rotation: Quat::IDENTITY,
+                look_target: Vec3::new(0.0, 4.0, -4.0),
+            };
+
+            let lifted = lift_camera_above_floor(frame, 2.5, 2.0);
+
+            assert_eq!(lifted.position.y, 4.5);
+            assert_eq!(camera_surface_clearance(lifted.position, 2.5), 2.0);
         }
     }
 }
@@ -744,11 +1466,24 @@ pub mod diagnostics {
 }
 
 pub mod eval {
-    use crate::movement::{FlightInput, FlightMode};
+    use crate::{
+        camera::CameraInput,
+        movement::{FlightInput, FlightMode},
+    };
     use bevy::prelude::*;
 
     pub const BASELINE_ROUTE: &str = "baseline_route";
-    pub const SCENARIO_NAMES: &[&str] = &[BASELINE_ROUTE];
+    pub const ISLAND_LAUNCH_TO_LANDING: &str = "island_launch_to_landing";
+    pub const GROUND_TAXI_CONTROL: &str = "ground_taxi_control";
+    pub const UPDRAFT_ROUTE: &str = "updraft_route";
+    pub const CAMERA_MOUSE_CONTROL: &str = "camera_mouse_control";
+    pub const SCENARIO_NAMES: &[&str] = &[
+        BASELINE_ROUTE,
+        ISLAND_LAUNCH_TO_LANDING,
+        GROUND_TAXI_CONTROL,
+        UPDRAFT_ROUTE,
+        CAMERA_MOUSE_CONTROL,
+    ];
 
     #[derive(Clone, Copy, Debug)]
     pub struct EvalScenario {
@@ -774,19 +1509,43 @@ pub mod eval {
         pub min_samples: u32,
         pub min_horizontal_distance_m: f32,
         pub min_max_altitude_m: f32,
+        pub min_max_speed_mps: f32,
         pub min_gliding_samples: u32,
+        pub min_grounded_samples: u32,
+        pub min_lifted_samples: u32,
+        pub min_entity_count: usize,
         pub max_camera_distance_m: f32,
+        pub min_camera_surface_clearance_m: f32,
+        pub max_camera_player_angle_degrees: f32,
+        pub min_abs_camera_yaw_degrees: f32,
+        pub min_camera_pitch_offset_degrees: f32,
+        pub max_camera_pitch_offset_degrees: f32,
+        pub require_target_landing: bool,
+        pub max_final_target_distance_m: f32,
+        pub min_target_landing_samples: u32,
     }
 
     impl EvalThresholds {
         fn to_json(self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"max_camera_distance_m\": {}\n{indent}}}",
+                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
                 self.min_samples,
                 json_number(self.min_horizontal_distance_m),
                 json_number(self.min_max_altitude_m),
+                json_number(self.min_max_speed_mps),
                 self.min_gliding_samples,
+                self.min_grounded_samples,
+                self.min_lifted_samples,
+                self.min_entity_count,
                 json_number(self.max_camera_distance_m),
+                json_number(self.min_camera_surface_clearance_m),
+                json_number(self.max_camera_player_angle_degrees),
+                json_number(self.min_abs_camera_yaw_degrees),
+                json_number(self.min_camera_pitch_offset_degrees),
+                json_number(self.max_camera_pitch_offset_degrees),
+                self.require_target_landing,
+                json_number(self.max_final_target_distance_m),
+                self.min_target_landing_samples,
             )
         }
     }
@@ -801,9 +1560,18 @@ pub mod eval {
         pub altitude_m: f32,
         pub mode: &'static str,
         pub camera_distance_m: f32,
+        pub camera_surface_clearance_m: f32,
+        pub camera_player_angle_degrees: f32,
         pub camera_pitch_degrees: f32,
+        pub camera_yaw_offset_degrees: f32,
+        pub camera_pitch_offset_degrees: f32,
         pub visible_wind_fields: usize,
         pub wind_field_count: usize,
+        pub active_lift_fields: usize,
+        pub lift_field_count: usize,
+        pub target_distance_m: f32,
+        pub on_landing_target: bool,
+        pub sky_island_count: usize,
         pub entity_count: usize,
     }
 
@@ -816,9 +1584,18 @@ pub mod eval {
             velocity: Vec3,
             mode: FlightMode,
             camera_distance_m: f32,
+            camera_surface_clearance_m: f32,
+            camera_player_angle_degrees: f32,
             camera_pitch_degrees: f32,
+            camera_yaw_offset_degrees: f32,
+            camera_pitch_offset_degrees: f32,
             visible_wind_fields: usize,
             wind_field_count: usize,
+            active_lift_fields: usize,
+            lift_field_count: usize,
+            target_distance_m: f32,
+            on_landing_target: bool,
+            sky_island_count: usize,
             entity_count: usize,
         ) -> Self {
             Self {
@@ -830,16 +1607,25 @@ pub mod eval {
                 altitude_m: position.y,
                 mode: mode.label(),
                 camera_distance_m,
+                camera_surface_clearance_m,
+                camera_player_angle_degrees,
                 camera_pitch_degrees,
+                camera_yaw_offset_degrees,
+                camera_pitch_offset_degrees,
                 visible_wind_fields,
                 wind_field_count,
+                active_lift_fields,
+                lift_field_count,
+                target_distance_m,
+                on_landing_target,
+                sky_island_count,
                 entity_count,
             }
         }
 
         pub fn to_json(&self) -> String {
             format!(
-                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_pitch_degrees\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"entity_count\":{}}}",
+                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"sky_island_count\":{},\"entity_count\":{}}}",
                 self.frame,
                 json_number(self.time_secs),
                 json_array3(self.position),
@@ -848,9 +1634,18 @@ pub mod eval {
                 json_number(self.altitude_m),
                 json_string(self.mode),
                 json_number(self.camera_distance_m),
+                json_number(self.camera_surface_clearance_m),
+                json_number(self.camera_player_angle_degrees),
                 json_number(self.camera_pitch_degrees),
+                json_number(self.camera_yaw_offset_degrees),
+                json_number(self.camera_pitch_offset_degrees),
                 self.visible_wind_fields,
                 self.wind_field_count,
+                self.active_lift_fields,
+                self.lift_field_count,
+                json_number(self.target_distance_m),
+                self.on_landing_target,
+                self.sky_island_count,
                 self.entity_count,
             )
         }
@@ -865,9 +1660,20 @@ pub mod eval {
         min_altitude_m: f32,
         max_speed_mps: f32,
         max_camera_distance_m: f32,
+        min_camera_surface_clearance_m: f32,
+        max_camera_player_angle_degrees: f32,
+        min_target_distance_m: f32,
         min_camera_pitch_degrees: f32,
         max_camera_pitch_degrees: f32,
+        max_abs_camera_yaw_offset_degrees: f32,
+        min_camera_pitch_offset_degrees: f32,
+        max_camera_pitch_offset_degrees: f32,
         max_visible_wind_fields: usize,
+        max_active_lift_fields: usize,
+        max_sky_island_count: usize,
+        max_entity_count: usize,
+        target_landing_samples: u32,
+        lifted_samples: u32,
         gliding_samples: u32,
         launching_samples: u32,
         grounded_samples: u32,
@@ -878,8 +1684,12 @@ pub mod eval {
             if self.first_sample.is_none() {
                 self.first_sample = Some(sample.clone());
                 self.min_altitude_m = sample.altitude_m;
+                self.min_camera_surface_clearance_m = sample.camera_surface_clearance_m;
+                self.min_target_distance_m = sample.target_distance_m;
                 self.min_camera_pitch_degrees = sample.camera_pitch_degrees;
                 self.max_camera_pitch_degrees = sample.camera_pitch_degrees;
+                self.min_camera_pitch_offset_degrees = sample.camera_pitch_offset_degrees;
+                self.max_camera_pitch_offset_degrees = sample.camera_pitch_offset_degrees;
             }
 
             self.sample_count += 1;
@@ -887,14 +1697,40 @@ pub mod eval {
             self.min_altitude_m = self.min_altitude_m.min(sample.altitude_m);
             self.max_speed_mps = self.max_speed_mps.max(sample.speed_mps);
             self.max_camera_distance_m = self.max_camera_distance_m.max(sample.camera_distance_m);
+            self.min_camera_surface_clearance_m = self
+                .min_camera_surface_clearance_m
+                .min(sample.camera_surface_clearance_m);
+            self.max_camera_player_angle_degrees = self
+                .max_camera_player_angle_degrees
+                .max(sample.camera_player_angle_degrees);
+            self.min_target_distance_m = self.min_target_distance_m.min(sample.target_distance_m);
             self.min_camera_pitch_degrees = self
                 .min_camera_pitch_degrees
                 .min(sample.camera_pitch_degrees);
             self.max_camera_pitch_degrees = self
                 .max_camera_pitch_degrees
                 .max(sample.camera_pitch_degrees);
+            self.max_abs_camera_yaw_offset_degrees = self
+                .max_abs_camera_yaw_offset_degrees
+                .max(sample.camera_yaw_offset_degrees.abs());
+            self.min_camera_pitch_offset_degrees = self
+                .min_camera_pitch_offset_degrees
+                .min(sample.camera_pitch_offset_degrees);
+            self.max_camera_pitch_offset_degrees = self
+                .max_camera_pitch_offset_degrees
+                .max(sample.camera_pitch_offset_degrees);
             self.max_visible_wind_fields =
                 self.max_visible_wind_fields.max(sample.visible_wind_fields);
+            self.max_active_lift_fields =
+                self.max_active_lift_fields.max(sample.active_lift_fields);
+            self.max_sky_island_count = self.max_sky_island_count.max(sample.sky_island_count);
+            self.max_entity_count = self.max_entity_count.max(sample.entity_count);
+            if sample.on_landing_target {
+                self.target_landing_samples += 1;
+            }
+            if sample.active_lift_fields > 0 {
+                self.lifted_samples += 1;
+            }
 
             match sample.mode {
                 "gliding" => self.gliding_samples += 1,
@@ -914,7 +1750,11 @@ pub mod eval {
                 _ => 0.0,
             };
             let thresholds = scenario.thresholds;
-            let checks = vec![
+            let final_target_distance_m = self
+                .final_sample
+                .as_ref()
+                .map_or(0.0, |sample| sample.target_distance_m);
+            let mut checks = vec![
                 EvalCheck::at_least(
                     "sample_count",
                     self.sample_count as f32,
@@ -934,10 +1774,34 @@ pub mod eval {
                     "m",
                 ),
                 EvalCheck::at_least(
+                    "max_speed",
+                    self.max_speed_mps,
+                    thresholds.min_max_speed_mps,
+                    "m/s",
+                ),
+                EvalCheck::at_least(
                     "gliding_samples",
                     self.gliding_samples as f32,
                     thresholds.min_gliding_samples as f32,
                     "samples",
+                ),
+                EvalCheck::at_least(
+                    "grounded_samples",
+                    self.grounded_samples as f32,
+                    thresholds.min_grounded_samples as f32,
+                    "samples",
+                ),
+                EvalCheck::at_least(
+                    "lifted_samples",
+                    self.lifted_samples as f32,
+                    thresholds.min_lifted_samples as f32,
+                    "samples",
+                ),
+                EvalCheck::at_least(
+                    "entity_count",
+                    self.max_entity_count as f32,
+                    thresholds.min_entity_count as f32,
+                    "entities",
                 ),
                 EvalCheck::at_most(
                     "max_camera_distance",
@@ -945,7 +1809,51 @@ pub mod eval {
                     thresholds.max_camera_distance_m,
                     "m",
                 ),
+                EvalCheck::at_least(
+                    "min_camera_surface_clearance",
+                    self.min_camera_surface_clearance_m,
+                    thresholds.min_camera_surface_clearance_m,
+                    "m",
+                ),
+                EvalCheck::at_most(
+                    "max_camera_player_angle",
+                    self.max_camera_player_angle_degrees,
+                    thresholds.max_camera_player_angle_degrees,
+                    "deg",
+                ),
+                EvalCheck::at_least(
+                    "max_abs_camera_yaw_offset",
+                    self.max_abs_camera_yaw_offset_degrees,
+                    thresholds.min_abs_camera_yaw_degrees,
+                    "deg",
+                ),
+                EvalCheck::at_most(
+                    "min_camera_pitch_offset",
+                    self.min_camera_pitch_offset_degrees,
+                    thresholds.min_camera_pitch_offset_degrees,
+                    "deg",
+                ),
+                EvalCheck::at_least(
+                    "max_camera_pitch_offset",
+                    self.max_camera_pitch_offset_degrees,
+                    thresholds.max_camera_pitch_offset_degrees,
+                    "deg",
+                ),
             ];
+            if thresholds.require_target_landing {
+                checks.push(EvalCheck::at_most(
+                    "final_target_distance",
+                    final_target_distance_m,
+                    thresholds.max_final_target_distance_m,
+                    "m",
+                ));
+                checks.push(EvalCheck::at_least(
+                    "target_landing_samples",
+                    self.target_landing_samples as f32,
+                    thresholds.min_target_landing_samples as f32,
+                    "samples",
+                ));
+            }
             let passed = checks.iter().all(|check| check.passed);
 
             EvalSummary {
@@ -961,9 +1869,21 @@ pub mod eval {
                     min_altitude_m: self.min_altitude_m,
                     max_speed_mps: self.max_speed_mps,
                     max_camera_distance_m: self.max_camera_distance_m,
+                    min_camera_surface_clearance_m: self.min_camera_surface_clearance_m,
+                    max_camera_player_angle_degrees: self.max_camera_player_angle_degrees,
+                    min_target_distance_m: self.min_target_distance_m,
+                    final_target_distance_m,
                     min_camera_pitch_degrees: self.min_camera_pitch_degrees,
                     max_camera_pitch_degrees: self.max_camera_pitch_degrees,
+                    max_abs_camera_yaw_offset_degrees: self.max_abs_camera_yaw_offset_degrees,
+                    min_camera_pitch_offset_degrees: self.min_camera_pitch_offset_degrees,
+                    max_camera_pitch_offset_degrees: self.max_camera_pitch_offset_degrees,
                     max_visible_wind_fields: self.max_visible_wind_fields,
+                    max_active_lift_fields: self.max_active_lift_fields,
+                    max_sky_island_count: self.max_sky_island_count,
+                    max_entity_count: self.max_entity_count,
+                    target_landing_samples: self.target_landing_samples,
+                    lifted_samples: self.lifted_samples,
                     gliding_samples: self.gliding_samples,
                     launching_samples: self.launching_samples,
                     grounded_samples: self.grounded_samples,
@@ -1007,9 +1927,21 @@ pub mod eval {
         pub min_altitude_m: f32,
         pub max_speed_mps: f32,
         pub max_camera_distance_m: f32,
+        pub min_camera_surface_clearance_m: f32,
+        pub max_camera_player_angle_degrees: f32,
+        pub min_target_distance_m: f32,
+        pub final_target_distance_m: f32,
         pub min_camera_pitch_degrees: f32,
         pub max_camera_pitch_degrees: f32,
+        pub max_abs_camera_yaw_offset_degrees: f32,
+        pub min_camera_pitch_offset_degrees: f32,
+        pub max_camera_pitch_offset_degrees: f32,
         pub max_visible_wind_fields: usize,
+        pub max_active_lift_fields: usize,
+        pub max_sky_island_count: usize,
+        pub max_entity_count: usize,
+        pub target_landing_samples: u32,
+        pub lifted_samples: u32,
         pub gliding_samples: u32,
         pub launching_samples: u32,
         pub grounded_samples: u32,
@@ -1018,16 +1950,28 @@ pub mod eval {
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
                 json_number(self.horizontal_distance_m),
                 json_number(self.max_altitude_m),
                 json_number(self.min_altitude_m),
                 json_number(self.max_speed_mps),
                 json_number(self.max_camera_distance_m),
+                json_number(self.min_camera_surface_clearance_m),
+                json_number(self.max_camera_player_angle_degrees),
+                json_number(self.min_target_distance_m),
+                json_number(self.final_target_distance_m),
                 json_number(self.min_camera_pitch_degrees),
                 json_number(self.max_camera_pitch_degrees),
+                json_number(self.max_abs_camera_yaw_offset_degrees),
+                json_number(self.min_camera_pitch_offset_degrees),
+                json_number(self.max_camera_pitch_offset_degrees),
                 self.max_visible_wind_fields,
+                self.max_active_lift_fields,
+                self.max_sky_island_count,
+                self.max_entity_count,
+                self.target_landing_samples,
+                self.lifted_samples,
                 self.gliding_samples,
                 self.launching_samples,
                 self.grounded_samples,
@@ -1126,13 +2070,42 @@ pub mod eval {
     pub fn scenario_named(name: &str) -> Option<EvalScenario> {
         match name {
             BASELINE_ROUTE | "baseline" => Some(baseline_route()),
+            ISLAND_LAUNCH_TO_LANDING | "island" => Some(island_launch_to_landing()),
+            GROUND_TAXI_CONTROL | "ground_taxi" | "taxi" => Some(ground_taxi_control()),
+            UPDRAFT_ROUTE | "updraft" => Some(updraft_route()),
+            CAMERA_MOUSE_CONTROL | "camera_mouse" | "mouse_camera" => Some(camera_mouse_control()),
             _ => None,
         }
     }
 
     pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
         let t = frame as f32 * scenario.fixed_dt;
-        let dive = (6.2..=7.0).contains(&t);
+        if scenario.name == CAMERA_MOUSE_CONTROL {
+            return FlightInput::default();
+        }
+        if scenario.name == GROUND_TAXI_CONTROL {
+            return FlightInput {
+                forward: (0.05..=1.95).contains(&t),
+                right: (0.75..=1.65).contains(&t),
+                backward: (2.2..=2.35).contains(&t),
+                ..default()
+            };
+        }
+        if scenario.name == UPDRAFT_ROUTE {
+            return FlightInput {
+                forward: t >= 0.05,
+                right: (1.2..=3.4).contains(&t),
+                left: (4.4..=5.0).contains(&t),
+                glide: t >= 0.45,
+                launch: frame == 1,
+                ..default()
+            };
+        }
+
+        let dive = match scenario.name {
+            ISLAND_LAUNCH_TO_LANDING => (5.8..=6.7).contains(&t),
+            _ => (6.2..=7.0).contains(&t),
+        };
 
         FlightInput {
             forward: t >= 0.05,
@@ -1145,6 +2118,27 @@ pub mod eval {
         }
     }
 
+    pub fn scripted_camera_input(scenario: EvalScenario, frame: u32) -> CameraInput {
+        let t = frame as f32 * scenario.fixed_dt;
+        if scenario.name != CAMERA_MOUSE_CONTROL {
+            return CameraInput::default();
+        }
+
+        let mouse_delta = if (0.2..=0.7).contains(&t) {
+            Vec2::new(5.0, 0.0)
+        } else if (0.9..=1.3).contains(&t) {
+            Vec2::new(0.0, -5.0)
+        } else if (1.5..=2.1).contains(&t) {
+            Vec2::new(0.0, 8.0)
+        } else if (2.2..=2.55).contains(&t) {
+            Vec2::new(0.0, -8.0)
+        } else {
+            Vec2::ZERO
+        };
+
+        CameraInput { mouse_delta }
+    }
+
     fn baseline_route() -> EvalScenario {
         EvalScenario {
             name: BASELINE_ROUTE,
@@ -1155,8 +2149,132 @@ pub mod eval {
                 min_samples: 20,
                 min_horizontal_distance_m: 80.0,
                 min_max_altitude_m: 18.0,
+                min_max_speed_mps: 20.0,
                 min_gliding_samples: 20,
+                min_grounded_samples: 0,
+                min_lifted_samples: 0,
+                min_entity_count: 100,
                 max_camera_distance_m: 35.0,
+                min_camera_surface_clearance_m: 1.0,
+                max_camera_player_angle_degrees: 18.0,
+                min_abs_camera_yaw_degrees: 0.0,
+                min_camera_pitch_offset_degrees: 0.0,
+                max_camera_pitch_offset_degrees: 0.0,
+                require_target_landing: false,
+                max_final_target_distance_m: 40.0,
+                min_target_landing_samples: 0,
+            },
+        }
+    }
+
+    fn island_launch_to_landing() -> EvalScenario {
+        EvalScenario {
+            name: ISLAND_LAUNCH_TO_LANDING,
+            fixed_dt: 1.0 / 60.0,
+            frame_count: 455,
+            sample_stride: 5,
+            thresholds: EvalThresholds {
+                min_samples: 50,
+                min_horizontal_distance_m: 220.0,
+                min_max_altitude_m: 52.0,
+                min_max_speed_mps: 30.0,
+                min_gliding_samples: 45,
+                min_grounded_samples: 1,
+                min_lifted_samples: 0,
+                min_entity_count: 100,
+                max_camera_distance_m: 36.0,
+                min_camera_surface_clearance_m: 1.0,
+                max_camera_player_angle_degrees: 18.0,
+                min_abs_camera_yaw_degrees: 0.0,
+                min_camera_pitch_offset_degrees: 0.0,
+                max_camera_pitch_offset_degrees: 0.0,
+                require_target_landing: true,
+                max_final_target_distance_m: 26.0,
+                min_target_landing_samples: 1,
+            },
+        }
+    }
+
+    fn ground_taxi_control() -> EvalScenario {
+        EvalScenario {
+            name: GROUND_TAXI_CONTROL,
+            fixed_dt: 1.0 / 60.0,
+            frame_count: 180,
+            sample_stride: 5,
+            thresholds: EvalThresholds {
+                min_samples: 30,
+                min_horizontal_distance_m: 14.0,
+                min_max_altitude_m: 28.0,
+                min_max_speed_mps: 8.0,
+                min_gliding_samples: 0,
+                min_grounded_samples: 28,
+                min_lifted_samples: 0,
+                min_entity_count: 100,
+                max_camera_distance_m: 28.0,
+                min_camera_surface_clearance_m: 1.0,
+                max_camera_player_angle_degrees: 18.0,
+                min_abs_camera_yaw_degrees: 0.0,
+                min_camera_pitch_offset_degrees: 0.0,
+                max_camera_pitch_offset_degrees: 0.0,
+                require_target_landing: false,
+                max_final_target_distance_m: 280.0,
+                min_target_landing_samples: 0,
+            },
+        }
+    }
+
+    fn updraft_route() -> EvalScenario {
+        EvalScenario {
+            name: UPDRAFT_ROUTE,
+            fixed_dt: 1.0 / 60.0,
+            frame_count: 360,
+            sample_stride: 5,
+            thresholds: EvalThresholds {
+                min_samples: 60,
+                min_horizontal_distance_m: 150.0,
+                min_max_altitude_m: 90.0,
+                min_max_speed_mps: 35.0,
+                min_gliding_samples: 45,
+                min_grounded_samples: 1,
+                min_lifted_samples: 4,
+                min_entity_count: 100,
+                max_camera_distance_m: 36.0,
+                min_camera_surface_clearance_m: 1.0,
+                max_camera_player_angle_degrees: 18.0,
+                min_abs_camera_yaw_degrees: 0.0,
+                min_camera_pitch_offset_degrees: 0.0,
+                max_camera_pitch_offset_degrees: 0.0,
+                require_target_landing: false,
+                max_final_target_distance_m: 180.0,
+                min_target_landing_samples: 0,
+            },
+        }
+    }
+
+    fn camera_mouse_control() -> EvalScenario {
+        EvalScenario {
+            name: CAMERA_MOUSE_CONTROL,
+            fixed_dt: 1.0 / 60.0,
+            frame_count: 200,
+            sample_stride: 5,
+            thresholds: EvalThresholds {
+                min_samples: 40,
+                min_horizontal_distance_m: 0.0,
+                min_max_altitude_m: 28.0,
+                min_max_speed_mps: 0.0,
+                min_gliding_samples: 0,
+                min_grounded_samples: 30,
+                min_lifted_samples: 0,
+                min_entity_count: 100,
+                max_camera_distance_m: 36.0,
+                min_camera_surface_clearance_m: 1.0,
+                max_camera_player_angle_degrees: 18.0,
+                min_abs_camera_yaw_degrees: 25.0,
+                min_camera_pitch_offset_degrees: -10.0,
+                max_camera_pitch_offset_degrees: 10.0,
+                require_target_landing: false,
+                max_final_target_distance_m: 280.0,
+                min_target_landing_samples: 0,
             },
         }
     }
@@ -1222,6 +2340,41 @@ pub mod eval {
         }
 
         #[test]
+        fn ground_taxi_script_exercises_wasd_without_launching() {
+            let scenario = scenario_named(GROUND_TAXI_CONTROL).expect("ground taxi route exists");
+
+            assert!(scripted_input(scenario, 20).forward);
+            assert!(scripted_input(scenario, 60).right);
+            assert!(scripted_input(scenario, 135).backward);
+            assert!(!scripted_input(scenario, 1).launch);
+            assert!(!scripted_input(scenario, 60).glide);
+        }
+
+        #[test]
+        fn updraft_route_steers_toward_lift_without_diving() {
+            let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
+
+            assert!(scripted_input(scenario, 1).launch);
+            assert!(scripted_input(scenario, 120).right);
+            assert!(scripted_input(scenario, 180).glide);
+            assert!(!scripted_input(scenario, 180).dive);
+        }
+
+        #[test]
+        fn camera_mouse_script_exercises_x_and_y_axes() {
+            let scenario = scenario_named(CAMERA_MOUSE_CONTROL).expect("camera route exists");
+
+            assert!(scripted_camera_input(scenario, 30).mouse_delta.x > 0.0);
+            assert!(scripted_camera_input(scenario, 70).mouse_delta.y < 0.0);
+            assert!(scripted_camera_input(scenario, 105).mouse_delta.y > 0.0);
+            assert_eq!(
+                scripted_input(scenario, 1),
+                FlightInput::default(),
+                "camera eval should not hide mouse regressions behind movement"
+            );
+        }
+
+        #[test]
         fn accumulator_marks_current_baseline_shape_as_passing() {
             let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
             let mut accumulator = EvalAccumulator::default();
@@ -1233,10 +2386,19 @@ pub mod eval {
                 Vec3::ZERO,
                 FlightMode::Grounded,
                 12.0,
+                3.0,
+                4.0,
                 -20.0,
+                0.0,
+                0.0,
                 0,
                 3,
-                32,
+                0,
+                1,
+                140.0,
+                false,
+                5,
+                130,
             ));
             accumulator.observe(EvalSample::new(
                 scenario.frame_count,
@@ -1245,10 +2407,19 @@ pub mod eval {
                 Vec3::new(0.0, -4.0, 30.0),
                 FlightMode::Gliding,
                 14.0,
+                3.0,
+                4.0,
                 -18.0,
+                0.0,
+                0.0,
                 0,
                 3,
-                32,
+                0,
+                1,
+                0.0,
+                false,
+                5,
+                130,
             ));
             for frame in 1..=scenario.thresholds.min_gliding_samples {
                 accumulator.observe(EvalSample::new(
@@ -1258,10 +2429,19 @@ pub mod eval {
                     Vec3::new(0.0, -3.0, 25.0),
                     FlightMode::Gliding,
                     13.0,
+                    3.0,
+                    4.0,
                     -18.0,
+                    0.0,
+                    0.0,
                     0,
                     3,
-                    32,
+                    0,
+                    1,
+                    140.0 - frame as f32 * 4.0,
+                    false,
+                    5,
+                    130,
                 ));
             }
 
