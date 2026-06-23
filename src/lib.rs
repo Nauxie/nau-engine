@@ -2609,6 +2609,7 @@ pub mod eval {
     pub struct EvalAccumulator {
         first_sample: Option<EvalSample>,
         final_sample: Option<EvalSample>,
+        frame_times_ms: Vec<f32>,
         sample_count: u32,
         max_altitude_m: f32,
         min_altitude_m: f32,
@@ -2648,7 +2649,40 @@ pub mod eval {
         grounded_samples: u32,
     }
 
+    #[derive(Clone, Copy, Debug, Default)]
+    struct EvalFrameTimeStats {
+        avg_ms: f32,
+        p95_ms: f32,
+        p99_ms: f32,
+        max_ms: f32,
+    }
+
+    impl EvalFrameTimeStats {
+        fn from_samples(samples: &[f32]) -> Self {
+            if samples.is_empty() {
+                return Self::default();
+            }
+
+            let mut sorted = samples.to_vec();
+            sorted.sort_by(f32::total_cmp);
+
+            let sum: f32 = sorted.iter().sum();
+            Self {
+                avg_ms: sum / sorted.len() as f32,
+                p95_ms: percentile(&sorted, 0.95),
+                p99_ms: percentile(&sorted, 0.99),
+                max_ms: *sorted.last().unwrap_or(&0.0),
+            }
+        }
+    }
+
     impl EvalAccumulator {
+        pub fn observe_frame_time_ms(&mut self, frame_time_ms: f32) {
+            if frame_time_ms.is_finite() && frame_time_ms >= 0.0 {
+                self.frame_times_ms.push(frame_time_ms);
+            }
+        }
+
         pub fn observe(&mut self, sample: EvalSample) {
             if self.first_sample.is_none() {
                 self.first_sample = Some(sample.clone());
@@ -2760,6 +2794,7 @@ pub mod eval {
                 .final_sample
                 .as_ref()
                 .map_or(0.0, |sample| sample.target_distance_m);
+            let frame_time_stats = EvalFrameTimeStats::from_samples(&self.frame_times_ms);
             let mut checks = vec![
                 EvalCheck::at_least(
                     "sample_count",
@@ -2960,6 +2995,10 @@ pub mod eval {
                 thresholds,
                 metrics: EvalMetricsSummary {
                     sample_count: self.sample_count,
+                    avg_frame_time_ms: frame_time_stats.avg_ms,
+                    p95_frame_time_ms: frame_time_stats.p95_ms,
+                    p99_frame_time_ms: frame_time_stats.p99_ms,
+                    max_frame_time_ms: frame_time_stats.max_ms,
                     horizontal_distance_m,
                     max_altitude_m: self.max_altitude_m,
                     min_altitude_m: self.min_altitude_m,
@@ -3036,6 +3075,10 @@ pub mod eval {
     #[derive(Clone, Debug)]
     pub struct EvalMetricsSummary {
         pub sample_count: u32,
+        pub avg_frame_time_ms: f32,
+        pub p95_frame_time_ms: f32,
+        pub p99_frame_time_ms: f32,
+        pub max_frame_time_ms: f32,
         pub horizontal_distance_m: f32,
         pub max_altitude_m: f32,
         pub min_altitude_m: f32,
@@ -3079,8 +3122,12 @@ pub mod eval {
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
+                json_number(self.avg_frame_time_ms),
+                json_number(self.p95_frame_time_ms),
+                json_number(self.p99_frame_time_ms),
+                json_number(self.max_frame_time_ms),
                 json_number(self.horizontal_distance_m),
                 json_number(self.max_altitude_m),
                 json_number(self.min_altitude_m),
@@ -3725,6 +3772,17 @@ pub mod eval {
         (dx * dx + dz * dz).sqrt()
     }
 
+    fn percentile(sorted_values: &[f32], percentile: f32) -> f32 {
+        if sorted_values.is_empty() {
+            return 0.0;
+        }
+
+        let index = ((sorted_values.len() as f32 * percentile).ceil() as usize)
+            .saturating_sub(1)
+            .min(sorted_values.len() - 1);
+        sorted_values[index]
+    }
+
     fn json_array3(values: [f32; 3]) -> String {
         format!(
             "[{},{},{}]",
@@ -3882,6 +3940,30 @@ pub mod eval {
                     Some(scenario.checkpoints[0])
                 );
             }
+        }
+
+        #[test]
+        fn accumulator_summarizes_frame_time_percentiles() {
+            let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+            let mut accumulator = EvalAccumulator::default();
+            for frame_time_ms in [8.0, 16.0, 33.0, 50.0] {
+                accumulator.observe_frame_time_ms(frame_time_ms);
+            }
+
+            let summary = accumulator.summary(
+                scenario,
+                EvalArtifacts {
+                    summary_json: "summary.json".to_string(),
+                    samples_ndjson: "samples.ndjson".to_string(),
+                    screenshot_png: None,
+                    checkpoint_screenshots: Vec::new(),
+                },
+            );
+
+            assert_eq!(summary.metrics.avg_frame_time_ms, 26.75);
+            assert_eq!(summary.metrics.p95_frame_time_ms, 50.0);
+            assert_eq!(summary.metrics.p99_frame_time_ms, 50.0);
+            assert_eq!(summary.metrics.max_frame_time_ms, 50.0);
         }
 
         #[test]
