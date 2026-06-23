@@ -20,13 +20,13 @@ The first executable is a simple 3D flight testbed:
 - camera-relative grounded and airborne steering on `WASD`, with separate ground friction so walking is playable before launch
 - mouse-look third-person follow camera with player-centered orbit pitch, separate yaw/pitch tuning, click-to-lock cursor capture, obstruction avoidance, and surface-clearance clamping
 - a 12-island floating archipelago with launch, midpoint, landing, high-altitude, and distant reference islands
-- deterministic island relief and detail props: varied generated terrain colors, trees, ponds, stones, route cairns, launch beacon, and landing-garden markers
+- deterministic island relief and distance-managed detail props: varied generated terrain colors, trees, ponds, stones, route cairns, launch beacon, and landing-garden markers
 - simple route-surface landing detection with one-shot landing friction
-- live debug readout for frame time, speed, altitude, target distance, camera pitch/distance/framing angle/motion/obstruction/yaw offset, velocity, visual wind-field count, lift-field count, sky-island count, active chunk window, and near/mid/far LOD island buckets
+- live debug readout for frame time, speed, altitude, target distance, camera pitch/distance/framing angle/motion/obstruction/yaw offset, velocity, visual wind-field count, lift-field count, sky-island count, active chunk window, near/mid/far LOD island buckets, and visible detail/beacon counts
 - visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
 - authored visual wind fields plus separate gameplay updraft lift fields
 - deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state math
-- scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, long-glide visibility, updraft lift, and island launch-to-landing with traversal, camera, content-scale, streaming/LOD summary metrics plus fixed camera checkpoint screenshots
+- scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, long-glide visibility, updraft lift, and island launch-to-landing with traversal, camera, content-scale, streaming/LOD, and visible-detail summary metrics plus fixed camera checkpoint screenshots
 
 This is intentionally not a full physics simulation yet. The first job is to create a place where movement constants can be tuned quickly.
 
@@ -76,7 +76,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 1. Promote generated terrain relief into collision-aware authored island terrain.
 2. Add visual checks for fixed camera checkpoint screenshots.
 3. Tune gameplay updraft placement, readability, and recovery routes.
-4. Promote streaming/LOD counters into actual chunk activation, terrain despawn, and distant impostors.
+4. Promote active chunk counters into actual chunk activation, terrain despawn, and distant impostors.
 
 ## Development Principles
 
