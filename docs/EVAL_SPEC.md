@@ -221,6 +221,7 @@ Every sample includes:
 - `visible_island_detail_count`
 - `hidden_island_detail_count`
 - `visible_route_beacon_count`
+- `weather_cloud_count`
 - `resident_island_visual_count`
 - `stream_visibility_changes_this_frame`
 - `max_stream_visibility_changes_per_frame`
@@ -267,6 +268,7 @@ The summary aggregates:
 - max visible island detail count
 - max hidden island detail count
 - max visible route beacon count
+- max weather cloud count
 - max resident island visual count
 - max stream visibility changes per frame
 - total stream visibility changes
@@ -294,6 +296,7 @@ The pass/fail checks currently guard:
 - visible island detail stays under the scenario budget, proving distance LOD is active
 - hidden island detail stays populated, proving distance LOD is actually culling resident detail
 - visible route beacons stay populated so distant route readability is not culled away
+- weather cloud count stays populated so the first non-debug weather layer cannot silently disappear
 - resident island visuals stay under budget while streaming visibility is still hide/show based
 - stream visibility changes per frame stay under budget so chunk/LOD crossings do not churn too many visuals at once
 - the scene has enough entities to catch accidental content collapse
@@ -360,6 +363,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - Island collision follows deterministic authored terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - `active_chunk_count` and `active_island_count` drive terrain visibility, but they do not despawn entities or load assets yet.
 - LOD buckets drive visible island detail, inactive chunks swap full terrain for cheap impostors, and hidden/resident/churn counters now quantify how much work remains before real streaming.
+- The weather-cloud counter verifies that cloud-bank entities exist, but screenshot or image-based checks are still needed to prove atmosphere, fog, materials, and clouds look correct.
 - `entity_count` is still a coarse scene-scale proxy, not a streaming health metric, because inactive visuals are hidden rather than despawned.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
