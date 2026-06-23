@@ -16,31 +16,40 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/main.rs` owns Bevy app setup, scene spawning, input mapping, ECS queries, and visual wiring.
 - `src/lib.rs` owns reusable and testable logic.
 - `movement` owns flight state, input state, tuning, launch/glide/dive integration, floor clamp, velocity limits, and facing smoothing.
-- `environment` owns finite visual wind/updraft field definitions and deterministic stream placement.
-- `camera` owns camera follow math and horizontal follow direction.
+- `environment` owns finite visual wind/updraft field definitions, gameplay `LiftField` updraft volumes, lift application, and deterministic stream placement.
+- `camera` owns camera follow math, orbit yaw/pitch control math, horizontal follow direction, and ground-clearance helpers.
 - `diagnostics` owns pure helpers for frame-time and runtime metric formatting inputs.
 - `animation` owns primitive character part pose math, wing visibility state, and animation phase progression.
 
 ## Frame Flow
 
-1. Bevy input is read in `fly_player`.
+1. Bevy keyboard input is read in `fly_player`; runtime mouse input is read in `update_camera_control`.
 2. Input is mapped into `movement::FlightInput`.
-3. `movement::step_flight` produces the next position, velocity, and controller state.
-4. Player orientation is smoothed toward horizontal velocity.
-5. Character pose phase advances from delta time.
-6. `animation::part_pose` maps flight mode and velocity into visible body/glider poses.
-7. `camera::step_camera` follows horizontal travel direction and smooths position and rotation.
-8. HUD text reports frame time, mode, speed, altitude, camera pitch/distance, velocity, visual wind-field count, cooldown, and launch readiness.
-9. Debug gizmos draw player vectors, the camera line, and visual wind/updraft field stream lines.
+3. Movement uses the camera's horizontal forward/right vectors when available.
+4. `movement::step_flight` produces the next position, velocity, and controller state.
+5. Gameplay lift fields apply bounded upward acceleration when the player is airborne inside an active `LiftField`.
+6. Player orientation is smoothed toward horizontal velocity.
+7. Character pose phase advances from delta time.
+8. `animation::part_pose` maps flight mode and velocity into visible body/glider poses.
+9. Mouse deltas update `CameraControlState` yaw/pitch when the cursor is locked or right mouse is held.
+10. `camera::step_camera_with_orbit` follows horizontal travel direction, applies yaw/pitch orbit offsets, smooths position and rotation, and is lifted above the active ground surface when needed.
+11. HUD text reports frame time, mode, speed, altitude, camera pitch/distance, mouse yaw/pitch offsets, velocity, visual wind-field count, lift-field count, cooldown, and launch readiness.
+12. Debug gizmos draw player vectors, the camera line, visual wind/updraft streams, and gameplay lift-field bounds.
+
+Eval samples include camera distance, camera surface clearance, camera-to-player framing angle, camera yaw/pitch offsets, `active_lift_fields`, and entity counts. Eval summaries include `lifted_samples`, camera-control/framing checks, and scene entity-count checks; `updraft_route` verifies gameplay lift and `camera_mouse_control` verifies mouse X/Y behavior.
 
 ## Core Invariants
 
 - Movement math must stay testable outside a Bevy window.
 - `E` launch is ground-gated unless a future launch-source mechanic explicitly changes that.
 - Glider traversal descends without wind/updraft/launch-source help.
-- Wind and updraft fields are visual-only until a separate gameplay force design is accepted.
-- If wind ever affects movement, force application rules belong in `movement`, not directly in ECS systems.
+- Visual `WindField` volumes do not directly move the player.
+- Gameplay `LiftField` volumes can move the player upward, but only through explicit lift application rules.
+- If crosswind ever affects movement, force application rules belong in reusable/testable code, not directly in ECS systems.
 - Camera follow direction should use horizontal travel direction, not full 3D velocity.
+- Runtime movement should stay camera-relative unless a scenario deliberately requests character-relative controls.
+- Camera orbit input should keep yaw and pitch independently measurable in evals while keeping the player focus near the camera centerline.
+- Camera should stay above the active route surface; obstruction/collision sweep is still future work.
 - Camera, animation, and HUD should run after movement.
 - `src/main.rs` should stay mostly wiring. Avoid burying gameplay rules directly in ECS systems.
 - Do not add raw Metal code until profiling proves a specific renderer hotspot.
@@ -75,7 +84,7 @@ Medium term:
 Long term:
 
 - Add LOD variants.
-- Add authoring rules for collision, nav/traversal volumes, wind zones, and visual-only geometry.
+- Add authoring rules for collision, nav/traversal volumes, gameplay lift zones, wind visuals, and visual-only geometry.
 
 ## Physics Strategy
 

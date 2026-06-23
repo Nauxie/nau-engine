@@ -16,6 +16,30 @@ Run the baseline route with screenshot capture:
 ./tools/eval.sh
 ```
 
+Run the island launch-to-landing route:
+
+```sh
+./tools/eval.sh island_launch_to_landing target/eval/island_launch_to_landing
+```
+
+Run the ground-control route:
+
+```sh
+./tools/eval.sh ground_taxi_control target/eval/ground_taxi_control
+```
+
+Run the gameplay updraft route:
+
+```sh
+./tools/eval.sh updraft_route target/eval/updraft_route
+```
+
+Run the mouse-camera control route:
+
+```sh
+./tools/eval.sh camera_mouse_control target/eval/camera_mouse_control
+```
+
 Run the app directly:
 
 ```sh
@@ -28,12 +52,12 @@ Run without screenshot capture, useful for faster local checks or environments w
 cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --eval-no-screenshot
 ```
 
-## Current Scenario
+## Current Scenarios
 
 `baseline_route` is a deterministic scripted traversal smoke test:
 
 - fixed `1 / 60` movement timestep
-- fixed spawn at `PLAYER_START`
+- fixed spawn on the launch sky island
 - launch on frame 1
 - forward input after startup
 - glider deployment after launch
@@ -43,7 +67,42 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - summary written after 420 frames
 - optional final screenshot written as `final.png`
 
-This is not yet a sky-island route completion test. It is the first contract that proves launch, glide, dive, camera follow, debug scene visibility, output writing, and autonomous app exit work.
+`island_launch_to_landing` is the first actual route-completion eval:
+
+- fixed spawn on the launch island
+- scripted launch, glide, turn, and dive
+- route passes multiple visible sky islands
+- the target island must be reached
+- final target distance must stay under threshold
+- at least one sampled frame must be grounded on the landing target
+
+`ground_taxi_control` is the manual-control regression test:
+
+- fixed spawn on the launch island
+- no launch, glide, or dive input
+- scripted `W`, `A`/`D`, and `S`-style ground movement
+- the player must stay grounded
+- final horizontal displacement and max speed must prove WASD motion is not being damped away
+
+`updraft_route` is the first traversal power-up eval:
+
+- fixed spawn on the launch island
+- scripted launch, glide, and steering into the gameplay lift field
+- the route must register active lift samples
+- max altitude must exceed the normal route ceiling
+- baseline and island routes must not accidentally hit the lift field
+
+`camera_mouse_control` is the camera-input regression test:
+
+- fixed spawn on the launch island
+- no movement input, so camera regressions are not hidden by traversal
+- scripted mouse X input must produce yaw offset
+- scripted mouse Y input must produce both upward and downward pitch offsets
+- final input settles closer to level so the screenshot artifact remains useful
+- camera surface clearance must stay above the active ground surface
+- camera-to-player framing angle must stay below threshold so pitch cannot push the player out of frame
+
+The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and isolated. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss.
 
 ## Artifacts
 
@@ -67,9 +126,18 @@ Every sample includes:
 - `altitude_m`
 - `mode`
 - `camera_distance_m`
+- `camera_surface_clearance_m`
+- `camera_player_angle_degrees`
 - `camera_pitch_degrees`
+- `camera_yaw_offset_degrees`
+- `camera_pitch_offset_degrees`
 - `visible_wind_fields`
 - `wind_field_count`
+- `active_lift_fields`
+- `lift_field_count`
+- `target_distance_m`
+- `on_landing_target`
+- `sky_island_count`
 - `entity_count`
 
 Add fields here before adding them to code. New fields should be cheap to collect, stable across runs, and useful for deciding what to fix.
@@ -83,8 +151,18 @@ The summary aggregates:
 - max and min altitude
 - max speed
 - max camera distance
+- min camera surface clearance
+- max camera-to-player framing angle
+- min and final target distance
 - min and max camera pitch
+- max absolute camera yaw offset
+- min and max camera pitch offset
 - max visible wind-field count
+- max active lift-field count
+- max sky-island count
+- max scene entity count
+- target landing sample count
+- active lift sample count
 - gliding, launching, and grounded sample counts
 
 The pass/fail checks currently guard:
@@ -92,8 +170,17 @@ The pass/fail checks currently guard:
 - enough samples were written
 - the route covered enough horizontal distance
 - launch produced enough altitude
+- max speed crossed the scenario floor
 - the route spent enough sampled frames gliding
+- the route spent enough sampled frames grounded
+- the route spent enough sampled frames inside gameplay lift when a scenario requires it
+- the scene has enough entities to catch accidental content collapse
 - camera distance stayed under a loose maximum
+- camera stayed above the active ground surface
+- camera kept the player focus near the camera centerline
+- camera mouse scenarios exercised yaw and both pitch directions
+- island-route final target distance stayed under threshold
+- island-route grounded target landing was observed
 
 Thresholds should remain loose until the intended route becomes richer. Tight thresholds belong only after a mechanic or route is deliberately locked.
 
@@ -114,11 +201,12 @@ Do not start with pixel-perfect screenshots. Metal/wgpu/native-window output can
 The thin-slice target should eventually have these evals:
 
 - `baseline_route`: current smoke test.
-- `island_launch_to_landing`: launch from one floating island and land on another.
+- `island_launch_to_landing`: current route-completion test.
+- `ground_taxi_control`: current pre-launch WASD regression test.
+- `updraft_route`: current gameplay lift regression test.
 - `long_glide_visibility`: verify many distant islands remain visible during high-altitude flight.
 - `camera_stress`: fly close to geometry and record camera distance, pitch, and obstruction metrics.
 - `streaming_route`: cross chunk boundaries and record active chunks, spawned entities, despawns, and frame time.
-- `updraft_route`: verify explicit gameplay lift only after wind/updraft rules are accepted.
 
 ## Agent Loop Contract
 
@@ -139,8 +227,8 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - The current screenshot is a final-frame capture only.
 - There is no simulation-only binary yet.
 - There is no frame-time percentile summary yet.
-- There is no terrain/chunk/island route metric yet.
+- Island collision is a simple route surface clamp, not full physics.
 - `entity_count` is a coarse scale proxy, not a streaming health metric.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
-These are acceptable for the first harness. The next meaningful upgrade is a real island-to-island scenario with route completion, landing target distance, fixed camera checkpoints, and chunk/terrain counters.
+These are acceptable for the current harness. The next meaningful upgrades are fixed camera checkpoints, frame-time percentiles, chunk/terrain counters, and visual checks for missing or blank island geometry.
