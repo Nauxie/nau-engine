@@ -29,7 +29,7 @@ use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
     face_horizontal_velocity, step_flight,
 };
-use nau_engine::world::{START_POSITION, SkyIsland, SkyRoute};
+use nau_engine::world::{LodBand, START_POSITION, SkyIsland, SkyRoute};
 use std::{
     env,
     fs::{self, File, OpenOptions},
@@ -96,7 +96,13 @@ fn main() -> AppExit {
         )
         .add_systems(
             Update,
-            (update_debug_readout, draw_debug_gizmos).in_set(GameSet::Diagnostics),
+            (
+                update_island_lod_visibility,
+                update_debug_readout,
+                draw_debug_gizmos,
+            )
+                .chain()
+                .in_set(GameSet::Diagnostics),
         );
 
     if let Some(eval_options) = eval {
@@ -143,6 +149,40 @@ struct Player;
 
 #[derive(Component)]
 struct DebugReadout;
+
+#[derive(Component, Clone, Copy, Debug)]
+struct IslandLodVisual {
+    island: SkyIsland,
+    layer: IslandVisualLayer,
+}
+
+impl IslandLodVisual {
+    fn new(island: SkyIsland, layer: IslandVisualLayer) -> Self {
+        Self { island, layer }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum IslandVisualLayer {
+    Terrain,
+    Detail,
+    Beacon,
+}
+
+impl IslandVisualLayer {
+    fn is_visible_in(self, band: LodBand) -> bool {
+        match self {
+            Self::Terrain | Self::Beacon => true,
+            Self::Detail => band == LodBand::Near,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct IslandLodVisualCounts {
+    visible_detail_count: usize,
+    visible_beacon_count: usize,
+}
 
 #[derive(Component, Clone, Copy, Debug)]
 struct CameraObstacle(CameraObstruction);
@@ -224,6 +264,7 @@ struct DebugScene<'w, 's> {
     mouse_look: Res<'w, MouseLookState>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
+    island_lod_visuals: Query<'w, 's, (&'static IslandLodVisual, &'static Visibility)>,
 }
 
 #[derive(SystemParam)]
@@ -243,6 +284,7 @@ struct EvalScene<'w, 's> {
     camera_diagnostics: Res<'w, CameraDiagnostics>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
+    island_lod_visuals: Query<'w, 's, (&'static IslandLodVisual, &'static Visibility)>,
     all_entities: Query<'w, 's, Entity>,
 }
 
@@ -755,6 +797,7 @@ fn spawn_sky_island(
             ..default()
         },
         island,
+        IslandLodVisual::new(island, IslandVisualLayer::Terrain),
         Name::new(island.name),
     ));
 
@@ -762,6 +805,7 @@ fn spawn_sky_island(
         Mesh3d(meshes.add(island_terrain_mesh(island_index, island))),
         MeshMaterial3d(top_material),
         Transform::default(),
+        IslandLodVisual::new(island, IslandVisualLayer::Terrain),
         Name::new("island terrain surface"),
     ));
 
@@ -787,6 +831,7 @@ fn spawn_sky_island(
             rock_body_center,
             rock_body_half_extents,
         )),
+        IslandLodVisual::new(island, IslandVisualLayer::Terrain),
         Name::new("island rock body"),
     ));
 
@@ -806,6 +851,7 @@ fn spawn_sky_island(
             ),
             ..default()
         },
+        IslandLodVisual::new(island, IslandVisualLayer::Terrain),
         Name::new("island shadow base"),
     ));
 
@@ -821,6 +867,7 @@ fn spawn_sky_island(
         MeshMaterial3d(under_material),
         Transform::from_translation(ridge_center),
         CameraObstacle(CameraObstruction::new(ridge_center, ridge_half_extents)),
+        IslandLodVisual::new(island, IslandVisualLayer::Terrain),
         Name::new("island ridge"),
     ));
 
@@ -834,6 +881,7 @@ fn spawn_sky_island(
                 marker_center,
                 Vec3::new(1.1, 3.0, 1.1),
             )),
+            IslandLodVisual::new(island, IslandVisualLayer::Beacon),
             Name::new("landing target marker"),
         ));
     }
@@ -975,6 +1023,7 @@ fn spawn_sky_island_details(
                 trunk_center,
                 Vec3::new(0.22, trunk_height * 0.5, 0.22),
             )),
+            IslandLodVisual::new(island, IslandVisualLayer::Detail),
             Name::new("island tree trunk"),
         ));
         commands.spawn((
@@ -985,6 +1034,7 @@ fn spawn_sky_island_details(
                 canopy_center,
                 Vec3::splat(canopy_radius),
             )),
+            IslandLodVisual::new(island, IslandVisualLayer::Detail),
             Name::new("island tree canopy"),
         ));
     }
@@ -1000,6 +1050,7 @@ fn spawn_sky_island_details(
             Mesh3d(meshes.add(Sphere::new(stone_scale))),
             MeshMaterial3d(path_material.clone()),
             Transform::from_xyz(x, floor_y + stone_scale * 0.45, z),
+            IslandLodVisual::new(island, IslandVisualLayer::Detail),
             Name::new("island stone scatter"),
         ));
     }
@@ -1025,20 +1076,22 @@ fn spawn_sky_island_details(
             ),
             ..default()
         },
+        IslandLodVisual::new(island, IslandVisualLayer::Detail),
         Name::new("island pond"),
     ));
 
     if !island.is_target && island.name != "launch mesa" {
-        let beacon_height = 1.4 + (island_index % 3) as f32 * 0.35;
+        let beacon_height = 3.8 + (island_index % 3) as f32 * 0.7;
         let beacon_center = Vec3::new(
             island.center.x - island.half_extents.x * 0.18,
             floor_y + beacon_height * 0.5,
             island.center.z + island.half_extents.y * 0.22,
         );
         commands.spawn((
-            Mesh3d(meshes.add(Cylinder::new(0.42, beacon_height))),
+            Mesh3d(meshes.add(Cylinder::new(0.34, beacon_height))),
             MeshMaterial3d(flower_material.clone()),
             Transform::from_translation(beacon_center),
+            IslandLodVisual::new(island, IslandVisualLayer::Beacon),
             Name::new("route cairn"),
         ));
     }
@@ -1067,6 +1120,7 @@ fn spawn_sky_island_details(
                 Mesh3d(meshes.add(Cuboid::new(scale.x, scale.y, scale.z))),
                 MeshMaterial3d(flower_material.clone()),
                 Transform::from_translation(island.center + translation),
+                IslandLodVisual::new(island, IslandVisualLayer::Beacon),
                 Name::new("landing garden ring"),
             ));
         }
@@ -1084,6 +1138,7 @@ fn spawn_sky_island_details(
                 beacon_center,
                 Vec3::new(0.7, 1.6, 0.7),
             )),
+            IslandLodVisual::new(island, IslandVisualLayer::Beacon),
             Name::new("launch beacon"),
         ));
 
@@ -1101,6 +1156,7 @@ fn spawn_sky_island_details(
                 launch_tree_center,
                 Vec3::new(0.35, launch_tree_height * 0.5, 0.35),
             )),
+            IslandLodVisual::new(island, IslandVisualLayer::Detail),
             Name::new("launch camera tree trunk"),
         ));
         commands.spawn((
@@ -1111,9 +1167,48 @@ fn spawn_sky_island_details(
                 launch_canopy_center,
                 Vec3::splat(launch_canopy_radius),
             )),
+            IslandLodVisual::new(island, IslandVisualLayer::Detail),
             Name::new("launch camera tree canopy"),
         ));
     }
+}
+
+fn update_island_lod_visibility(
+    player: Query<&Transform, With<Player>>,
+    mut visuals: Query<(&IslandLodVisual, &mut Visibility)>,
+) {
+    let Ok(player_transform) = player.single() else {
+        return;
+    };
+
+    for (visual, mut visibility) in &mut visuals {
+        let band = visual.island.lod_band(player_transform.translation);
+        *visibility = if visual.layer.is_visible_in(band) {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+    }
+}
+
+fn island_lod_visual_counts<'a>(
+    visuals: impl IntoIterator<Item = (&'a IslandLodVisual, &'a Visibility)>,
+) -> IslandLodVisualCounts {
+    let mut counts = IslandLodVisualCounts::default();
+
+    for (visual, visibility) in visuals {
+        if matches!(*visibility, Visibility::Hidden) {
+            continue;
+        }
+
+        match visual.layer {
+            IslandVisualLayer::Detail => counts.visible_detail_count += 1,
+            IslandVisualLayer::Beacon => counts.visible_beacon_count += 1,
+            IslandVisualLayer::Terrain => {}
+        }
+    }
+
+    counts
 }
 
 fn toggle_debug_visuals(keyboard: Res<ButtonInput<KeyCode>>, mut visuals: ResMut<DebugVisuals>) {
@@ -1443,6 +1538,7 @@ fn update_debug_readout(
         .route
         .on_landing_target(transform.translation, controller.mode);
     let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
+    let lod_visuals = island_lod_visual_counts(scene.island_lod_visuals.iter());
     let camera_yaw = scene.camera_control.orbit.yaw_degrees();
     let camera_pitch_offset = scene.camera_control.orbit.pitch_degrees();
     let mouse_lock = if scene.mouse_look.captured {
@@ -1452,7 +1548,7 @@ fn update_debug_readout(
     };
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nlod visuals detail/beacon {} / {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -1485,6 +1581,8 @@ fn update_debug_readout(
         streaming_lod.near_lod_islands,
         streaming_lod.mid_lod_islands,
         streaming_lod.far_lod_islands,
+        lod_visuals.visible_detail_count,
+        lod_visuals.visible_beacon_count,
         controller.launch_cooldown_remaining,
         if controller.launch_available {
             "yes"
@@ -1537,6 +1635,7 @@ fn collect_eval_metrics(
     let active_lift_fields =
         active_lift_fields_at(transform.translation, scene.lift_fields.iter().copied());
     let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
+    let lod_visuals = island_lod_visual_counts(scene.island_lod_visuals.iter());
     let sample = EvalSample::new(
         run.frame,
         run.scenario.fixed_dt,
@@ -1569,6 +1668,8 @@ fn collect_eval_metrics(
         streaming_lod.near_lod_islands,
         streaming_lod.mid_lod_islands,
         streaming_lod.far_lod_islands,
+        lod_visuals.visible_detail_count,
+        lod_visuals.visible_beacon_count,
         scene.all_entities.iter().count(),
     );
 
