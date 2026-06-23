@@ -26,7 +26,7 @@ The first executable is a simple 3D flight testbed:
 - visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
 - authored visual wind fields plus a separate gameplay updraft lift field
 - deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state math
-- scripted eval runs for ground taxi control, mouse camera control, camera turn stability, baseline traversal, updraft lift, and island launch-to-landing with summary metrics plus fixed camera checkpoint screenshots
+- scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, updraft lift, and island launch-to-landing with summary metrics plus fixed camera checkpoint screenshots
 
 This is intentionally not a full physics simulation yet. The first job is to create a place where movement constants can be tuned quickly.
 
@@ -49,6 +49,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ./tools/eval.sh camera_mouse_control target/eval/camera_mouse_control
 ./tools/eval.sh camera_yaw_stability target/eval/camera_yaw_stability
 ./tools/eval.sh camera_turn_stability target/eval/camera_turn_stability
+./tools/eval.sh camera_strafe_stability target/eval/camera_strafe_stability
 ./tools/eval.sh updraft_route target/eval/updraft_route
 ./tools/eval.sh island_launch_to_landing target/eval/island_launch_to_landing
 ```
