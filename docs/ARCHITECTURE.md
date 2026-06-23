@@ -13,7 +13,7 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 
 ## Current Code Shape
 
-- `src/main.rs` owns Bevy app setup, scene spawning, generated island surface meshes, island stream-window visibility, island detail LOD, input mapping, ECS queries, HUD sampling, and visual wiring.
+- `src/main.rs` owns Bevy app setup, scene spawning, generated island surface meshes, island stream-window visibility, island detail LOD, procedural material/weather setup, Bevy render-stack wiring, input mapping, ECS queries, and HUD sampling.
 - `src/lib.rs` owns reusable and testable logic.
 - `movement` owns flight state, input state, tuning, launch/glide/dive integration, floor clamp, velocity limits, and facing smoothing.
 - `environment` owns finite visual wind/updraft field definitions, gameplay `LiftField` updraft volumes, lift application, and deterministic stream placement.
@@ -38,9 +38,10 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 12. Island terrain is visible inside the active stream window, inactive chunks show cheap distant impostors, route beacons remain visible for readability, and nonessential island detail is hidden outside the near LOD band.
 13. HUD text reports frame time, mode, speed, altitude, camera pitch/distance/framing/motion/orbit alignment, obstruction adjustment, mouse yaw/pitch offsets, velocity, visual wind-field count, lift-field count, active chunk window, near/mid/far LOD island buckets, visible/hidden terrain, impostor, and detail counts, resident island visual count, stream visibility churn, route beacons, cooldown, and launch readiness.
 14. Debug gizmos draw player vectors, the camera line, visual wind/updraft streams, and gameplay lift-field bounds.
-15. The default world is a 12-island archipelago with varied primitive terrain colors, route cairns, and near/far gameplay updrafts.
+15. The render stack uses Bevy-native atmosphere, distance fog, volumetric fog/light, bloom, filmic tonemapping, procedural textures, reflective water, emissive markers, and drifting cloud banks.
+16. The default world is a 12-island archipelago with varied procedural terrain materials, route cairns, and near/far gameplay updrafts.
 
-Eval samples include camera distance, camera surface clearance, camera-to-player framing angle, per-frame camera step and rotation deltas, camera orbit alignment, camera view yaw, obstruction adjustment/hits, camera yaw/pitch offsets, `active_lift_fields`, sky-island count, active chunk count, active island count, near/mid/far LOD island counts, visible/hidden island terrain counts, visible/hidden island impostor counts, visible/hidden island detail counts, visible route beacon count, resident island visual count, stream visibility churn, and entity count. Eval summaries include frame-time avg/p95/p99/max telemetry, `lifted_samples`, camera-control/framing/orbit/view-yaw/obstruction/jerk checks, checkpoint screenshot artifact paths, sky-island/content-scale checks, streaming/LOD planning checks, stream-visibility checks, resident visual/churn checks, visible-detail/beacon checks, and scene entity-count checks; `updraft_route` verifies gameplay lift, `long_glide_visibility` verifies the larger archipelago route and distant lift traversal, `camera_mouse_control` verifies mouse X/Y behavior, `camera_yaw_stability` verifies that small yaw input does not drift after input stops, `camera_strafe_stability` verifies that `A`/`D` movement does not auto-orbit the camera, and `camera_turn_stability` verifies rapid airborne turn and air-brake camera stability.
+Eval samples include camera distance, camera surface clearance, camera-to-player framing angle, per-frame camera step and rotation deltas, camera orbit alignment, camera view yaw, obstruction adjustment/hits, camera yaw/pitch offsets, `active_lift_fields`, sky-island count, active chunk count, active island count, near/mid/far LOD island counts, visible/hidden island terrain counts, visible/hidden island impostor counts, visible/hidden island detail counts, visible route beacon count, weather cloud count, resident island visual count, stream visibility churn, and entity count. Eval summaries include frame-time avg/p95/p99/max telemetry, `lifted_samples`, camera-control/framing/orbit/view-yaw/obstruction/jerk checks, checkpoint screenshot artifact paths, sky-island/content-scale checks, streaming/LOD planning checks, stream-visibility checks, weather-cloud checks, resident visual/churn checks, visible-detail/beacon checks, and scene entity-count checks; `updraft_route` verifies gameplay lift, `long_glide_visibility` verifies the larger archipelago route and distant lift traversal, `camera_mouse_control` verifies mouse X/Y behavior, `camera_yaw_stability` verifies that small yaw input does not drift after input stops, `camera_strafe_stability` verifies that `A`/`D` movement does not auto-orbit the camera, and `camera_turn_stability` verifies rapid airborne turn and air-brake camera stability.
 
 ## Core Invariants
 
@@ -57,6 +58,7 @@ Eval samples include camera distance, camera surface clearance, camera-to-player
 - Sky-island collision queries and visible terrain meshes should use the same deterministic relief function, with launch and landing centers anchored to their authored route heights.
 - Active chunk counters drive terrain/impostor visibility, and stream diagnostics record hidden/resident visual counts plus visibility churn until a future branch adds despawn or asset streaming.
 - Camera, animation, and HUD should run after movement.
+- Visual polish should prefer Bevy-native rendering components and generated assets before custom shaders, new render passes, or raw platform code.
 - `src/main.rs` should stay mostly wiring. Avoid burying gameplay rules directly in ECS systems.
 - Do not add raw Metal code until profiling proves a specific renderer hotspot.
 - Do not add a broad engine abstraction until at least two real systems need the same boundary.
@@ -77,8 +79,8 @@ Large-world work should not begin by making a huge map. It should begin by makin
 
 Short term:
 
-- Keep primitives for fast iteration.
-- Add debug visuals before polish.
+- Keep primitives for fast iteration, but use procedural materials and Bevy-native atmosphere/weather as the interim visual layer.
+- Add debug visuals before complex behavior.
 - Use glTF for real character and environment imports.
 
 Medium term:
