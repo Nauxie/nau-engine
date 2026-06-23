@@ -870,8 +870,42 @@ pub mod world {
     pub const PLAYER_STANDING_OFFSET: f32 = 0.24;
     pub const START_FLOOR_Y: f32 = 28.0;
     pub const START_POSITION: Vec3 = Vec3::new(0.0, START_FLOOR_Y, 0.0);
+    pub const STREAM_CHUNK_SIZE_M: f32 = 160.0;
+    pub const STREAM_ACTIVE_CHUNK_RADIUS: i32 = 2;
+    pub const LOD_NEAR_DISTANCE_M: f32 = 220.0;
+    pub const LOD_MID_DISTANCE_M: f32 = 520.0;
     const GROUND_CONTACT_EPSILON: f32 = 0.05;
     const GROUND_CONTACT_HORIZONTAL_DAMPING: f32 = 0.58;
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct StreamChunkCoord {
+        pub x: i32,
+        pub z: i32,
+    }
+
+    impl StreamChunkCoord {
+        pub fn from_world(position: Vec3) -> Self {
+            Self {
+                x: (position.x / STREAM_CHUNK_SIZE_M).floor() as i32,
+                z: (position.z / STREAM_CHUNK_SIZE_M).floor() as i32,
+            }
+        }
+
+        pub fn is_inside_active_window(self, center: Self) -> bool {
+            (self.x - center.x).abs() <= STREAM_ACTIVE_CHUNK_RADIUS
+                && (self.z - center.z).abs() <= STREAM_ACTIVE_CHUNK_RADIUS
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct StreamingLodStats {
+        pub player_chunk: StreamChunkCoord,
+        pub active_chunk_count: usize,
+        pub active_island_count: usize,
+        pub near_lod_islands: usize,
+        pub mid_lod_islands: usize,
+        pub far_lod_islands: usize,
+    }
 
     #[derive(Resource, Clone, Debug)]
     pub struct SkyRoute {
@@ -976,6 +1010,36 @@ pub mod world {
     impl SkyRoute {
         pub fn islands(&self) -> &[SkyIsland] {
             &self.islands
+        }
+
+        pub fn streaming_lod_stats(&self, position: Vec3) -> StreamingLodStats {
+            let player_chunk = StreamChunkCoord::from_world(position);
+            let active_chunk_width = STREAM_ACTIVE_CHUNK_RADIUS * 2 + 1;
+            let mut stats = StreamingLodStats {
+                player_chunk,
+                active_chunk_count: (active_chunk_width * active_chunk_width) as usize,
+                ..default()
+            };
+
+            for island in &self.islands {
+                if island
+                    .streaming_chunk()
+                    .is_inside_active_window(player_chunk)
+                {
+                    stats.active_island_count += 1;
+                }
+
+                let distance = island.horizontal_distance(position);
+                if distance <= LOD_NEAR_DISTANCE_M {
+                    stats.near_lod_islands += 1;
+                } else if distance <= LOD_MID_DISTANCE_M {
+                    stats.mid_lod_islands += 1;
+                } else {
+                    stats.far_lod_islands += 1;
+                }
+            }
+
+            stats
         }
 
         pub fn ground_at(&self, position: Vec3) -> GroundSurface {
@@ -1094,6 +1158,10 @@ pub mod world {
         pub fn horizontal_distance(self, position: Vec3) -> f32 {
             Vec2::new(position.x - self.center.x, position.z - self.center.z).length()
         }
+
+        pub fn streaming_chunk(self) -> StreamChunkCoord {
+            StreamChunkCoord::from_world(self.center)
+        }
     }
 
     #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1147,6 +1215,20 @@ pub mod world {
 
             assert!(route.islands().len() >= 12);
             assert!(farthest_z < -800.0);
+        }
+
+        #[test]
+        fn streaming_lod_stats_track_active_window_and_distance_bands() {
+            let route = SkyRoute::default();
+            let stats = route.streaming_lod_stats(START_POSITION);
+
+            assert_eq!(stats.player_chunk, StreamChunkCoord { x: 0, z: 0 });
+            assert_eq!(stats.active_chunk_count, 25);
+            assert!(stats.active_island_count < route.islands().len());
+            assert!(stats.active_island_count >= 4);
+            assert!(stats.near_lod_islands >= 2);
+            assert!(stats.mid_lod_islands >= 3);
+            assert!(stats.far_lod_islands >= 3);
         }
 
         #[test]
@@ -2228,6 +2310,11 @@ pub mod eval {
         pub min_grounded_samples: u32,
         pub min_lifted_samples: u32,
         pub min_sky_island_count: usize,
+        pub min_active_island_count: usize,
+        pub max_active_chunk_count: usize,
+        pub min_near_lod_island_count: usize,
+        pub min_mid_lod_island_count: usize,
+        pub min_far_lod_island_count: usize,
         pub min_entity_count: usize,
         pub max_camera_distance_m: f32,
         pub min_camera_surface_clearance_m: f32,
@@ -2248,7 +2335,7 @@ pub mod eval {
     impl EvalThresholds {
         fn to_json(self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_sky_island_count\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_sky_island_count\": {},\n{indent}  \"min_active_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"min_near_lod_island_count\": {},\n{indent}  \"min_mid_lod_island_count\": {},\n{indent}  \"min_far_lod_island_count\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
                 self.min_samples,
                 json_number(self.min_horizontal_distance_m),
                 json_number(self.min_max_altitude_m),
@@ -2257,6 +2344,11 @@ pub mod eval {
                 self.min_grounded_samples,
                 self.min_lifted_samples,
                 self.min_sky_island_count,
+                self.min_active_island_count,
+                self.max_active_chunk_count,
+                self.min_near_lod_island_count,
+                self.min_mid_lod_island_count,
+                self.min_far_lod_island_count,
                 self.min_entity_count,
                 json_number(self.max_camera_distance_m),
                 json_number(self.min_camera_surface_clearance_m),
@@ -2304,6 +2396,11 @@ pub mod eval {
         pub target_distance_m: f32,
         pub on_landing_target: bool,
         pub sky_island_count: usize,
+        pub active_chunk_count: usize,
+        pub active_island_count: usize,
+        pub near_lod_islands: usize,
+        pub mid_lod_islands: usize,
+        pub far_lod_islands: usize,
         pub entity_count: usize,
     }
 
@@ -2334,6 +2431,11 @@ pub mod eval {
             target_distance_m: f32,
             on_landing_target: bool,
             sky_island_count: usize,
+            active_chunk_count: usize,
+            active_island_count: usize,
+            near_lod_islands: usize,
+            mid_lod_islands: usize,
+            far_lod_islands: usize,
             entity_count: usize,
         ) -> Self {
             Self {
@@ -2363,13 +2465,18 @@ pub mod eval {
                 target_distance_m,
                 on_landing_target,
                 sky_island_count,
+                active_chunk_count,
+                active_island_count,
+                near_lod_islands,
+                mid_lod_islands,
+                far_lod_islands,
                 entity_count,
             }
         }
 
         pub fn to_json(&self) -> String {
             format!(
-                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"sky_island_count\":{},\"entity_count\":{}}}",
+                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"entity_count\":{}}}",
                 self.frame,
                 json_number(self.time_secs),
                 json_array3(self.position),
@@ -2396,6 +2503,11 @@ pub mod eval {
                 json_number(self.target_distance_m),
                 self.on_landing_target,
                 self.sky_island_count,
+                self.active_chunk_count,
+                self.active_island_count,
+                self.near_lod_islands,
+                self.mid_lod_islands,
+                self.far_lod_islands,
                 self.entity_count,
             )
         }
@@ -2427,6 +2539,11 @@ pub mod eval {
         max_visible_wind_fields: usize,
         max_active_lift_fields: usize,
         max_sky_island_count: usize,
+        max_active_chunk_count: usize,
+        max_active_island_count: usize,
+        max_near_lod_islands: usize,
+        max_mid_lod_islands: usize,
+        max_far_lod_islands: usize,
         max_entity_count: usize,
         target_landing_samples: u32,
         lifted_samples: u32,
@@ -2498,6 +2615,13 @@ pub mod eval {
             self.max_active_lift_fields =
                 self.max_active_lift_fields.max(sample.active_lift_fields);
             self.max_sky_island_count = self.max_sky_island_count.max(sample.sky_island_count);
+            self.max_active_chunk_count =
+                self.max_active_chunk_count.max(sample.active_chunk_count);
+            self.max_active_island_count =
+                self.max_active_island_count.max(sample.active_island_count);
+            self.max_near_lod_islands = self.max_near_lod_islands.max(sample.near_lod_islands);
+            self.max_mid_lod_islands = self.max_mid_lod_islands.max(sample.mid_lod_islands);
+            self.max_far_lod_islands = self.max_far_lod_islands.max(sample.far_lod_islands);
             self.max_entity_count = self.max_entity_count.max(sample.entity_count);
             if sample.on_landing_target {
                 self.target_landing_samples += 1;
@@ -2575,6 +2699,36 @@ pub mod eval {
                     "sky_island_count",
                     self.max_sky_island_count as f32,
                     thresholds.min_sky_island_count as f32,
+                    "islands",
+                ),
+                EvalCheck::at_least(
+                    "active_island_count",
+                    self.max_active_island_count as f32,
+                    thresholds.min_active_island_count as f32,
+                    "islands",
+                ),
+                EvalCheck::at_most(
+                    "active_chunk_count",
+                    self.max_active_chunk_count as f32,
+                    thresholds.max_active_chunk_count as f32,
+                    "chunks",
+                ),
+                EvalCheck::at_least(
+                    "near_lod_island_count",
+                    self.max_near_lod_islands as f32,
+                    thresholds.min_near_lod_island_count as f32,
+                    "islands",
+                ),
+                EvalCheck::at_least(
+                    "mid_lod_island_count",
+                    self.max_mid_lod_islands as f32,
+                    thresholds.min_mid_lod_island_count as f32,
+                    "islands",
+                ),
+                EvalCheck::at_least(
+                    "far_lod_island_count",
+                    self.max_far_lod_islands as f32,
+                    thresholds.min_far_lod_island_count as f32,
                     "islands",
                 ),
                 EvalCheck::at_least(
@@ -2697,6 +2851,11 @@ pub mod eval {
                     max_visible_wind_fields: self.max_visible_wind_fields,
                     max_active_lift_fields: self.max_active_lift_fields,
                     max_sky_island_count: self.max_sky_island_count,
+                    max_active_chunk_count: self.max_active_chunk_count,
+                    max_active_island_count: self.max_active_island_count,
+                    max_near_lod_islands: self.max_near_lod_islands,
+                    max_mid_lod_islands: self.max_mid_lod_islands,
+                    max_far_lod_islands: self.max_far_lod_islands,
                     max_entity_count: self.max_entity_count,
                     target_landing_samples: self.target_landing_samples,
                     lifted_samples: self.lifted_samples,
@@ -2764,6 +2923,11 @@ pub mod eval {
         pub max_visible_wind_fields: usize,
         pub max_active_lift_fields: usize,
         pub max_sky_island_count: usize,
+        pub max_active_chunk_count: usize,
+        pub max_active_island_count: usize,
+        pub max_near_lod_islands: usize,
+        pub max_mid_lod_islands: usize,
+        pub max_far_lod_islands: usize,
         pub max_entity_count: usize,
         pub target_landing_samples: u32,
         pub lifted_samples: u32,
@@ -2775,7 +2939,7 @@ pub mod eval {
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
                 json_number(self.horizontal_distance_m),
                 json_number(self.max_altitude_m),
@@ -2800,6 +2964,11 @@ pub mod eval {
                 self.max_visible_wind_fields,
                 self.max_active_lift_fields,
                 self.max_sky_island_count,
+                self.max_active_chunk_count,
+                self.max_active_island_count,
+                self.max_near_lod_islands,
+                self.max_mid_lod_islands,
+                self.max_far_lod_islands,
                 self.max_entity_count,
                 self.target_landing_samples,
                 self.lifted_samples,
@@ -3022,6 +3191,11 @@ pub mod eval {
                 min_grounded_samples: 0,
                 min_lifted_samples: 0,
                 min_sky_island_count: 10,
+                min_active_island_count: 4,
+                max_active_chunk_count: 25,
+                min_near_lod_island_count: 2,
+                min_mid_lod_island_count: 3,
+                min_far_lod_island_count: 3,
                 min_entity_count: 100,
                 max_camera_distance_m: 35.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3057,6 +3231,11 @@ pub mod eval {
                 min_grounded_samples: 1,
                 min_lifted_samples: 0,
                 min_sky_island_count: 10,
+                min_active_island_count: 4,
+                max_active_chunk_count: 25,
+                min_near_lod_island_count: 2,
+                min_mid_lod_island_count: 3,
+                min_far_lod_island_count: 3,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3092,6 +3271,11 @@ pub mod eval {
                 min_grounded_samples: 28,
                 min_lifted_samples: 0,
                 min_sky_island_count: 10,
+                min_active_island_count: 4,
+                max_active_chunk_count: 25,
+                min_near_lod_island_count: 2,
+                min_mid_lod_island_count: 3,
+                min_far_lod_island_count: 3,
                 min_entity_count: 100,
                 max_camera_distance_m: 28.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3127,6 +3311,11 @@ pub mod eval {
                 min_grounded_samples: 1,
                 min_lifted_samples: 4,
                 min_sky_island_count: 10,
+                min_active_island_count: 4,
+                max_active_chunk_count: 25,
+                min_near_lod_island_count: 2,
+                min_mid_lod_island_count: 3,
+                min_far_lod_island_count: 3,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3162,6 +3351,11 @@ pub mod eval {
                 min_grounded_samples: 30,
                 min_lifted_samples: 0,
                 min_sky_island_count: 10,
+                min_active_island_count: 4,
+                max_active_chunk_count: 25,
+                min_near_lod_island_count: 2,
+                min_mid_lod_island_count: 3,
+                min_far_lod_island_count: 3,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3197,6 +3391,11 @@ pub mod eval {
                 min_grounded_samples: 50,
                 min_lifted_samples: 0,
                 min_sky_island_count: 10,
+                min_active_island_count: 4,
+                max_active_chunk_count: 25,
+                min_near_lod_island_count: 2,
+                min_mid_lod_island_count: 3,
+                min_far_lod_island_count: 3,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3232,6 +3431,11 @@ pub mod eval {
                 min_grounded_samples: 0,
                 min_lifted_samples: 0,
                 min_sky_island_count: 10,
+                min_active_island_count: 4,
+                max_active_chunk_count: 25,
+                min_near_lod_island_count: 2,
+                min_mid_lod_island_count: 3,
+                min_far_lod_island_count: 3,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3267,6 +3471,11 @@ pub mod eval {
                 min_grounded_samples: 45,
                 min_lifted_samples: 0,
                 min_sky_island_count: 10,
+                min_active_island_count: 4,
+                max_active_chunk_count: 25,
+                min_near_lod_island_count: 2,
+                min_mid_lod_island_count: 3,
+                min_far_lod_island_count: 3,
                 min_entity_count: 100,
                 max_camera_distance_m: 28.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3302,6 +3511,11 @@ pub mod eval {
                 min_grounded_samples: 0,
                 min_lifted_samples: 0,
                 min_sky_island_count: 12,
+                min_active_island_count: 4,
+                max_active_chunk_count: 25,
+                min_near_lod_island_count: 2,
+                min_mid_lod_island_count: 3,
+                min_far_lod_island_count: 3,
                 min_entity_count: 220,
                 max_camera_distance_m: 38.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3520,6 +3734,11 @@ pub mod eval {
                 140.0,
                 false,
                 12,
+                25,
+                6,
+                2,
+                4,
+                6,
                 130,
             ));
             accumulator.observe(EvalSample::new(
@@ -3547,6 +3766,11 @@ pub mod eval {
                 0.0,
                 false,
                 12,
+                25,
+                6,
+                2,
+                4,
+                6,
                 130,
             ));
             for frame in 1..=scenario.thresholds.min_gliding_samples {
@@ -3575,6 +3799,11 @@ pub mod eval {
                     140.0 - frame as f32 * 4.0,
                     false,
                     12,
+                    25,
+                    6,
+                    2,
+                    4,
+                    6,
                     130,
                 ));
             }
