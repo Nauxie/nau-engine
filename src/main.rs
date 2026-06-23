@@ -1,8 +1,18 @@
 use bevy::asset::RenderAssetUsages;
+use bevy::camera::Exposure;
+use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::system::SystemParam;
+use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::input::mouse::MouseMotion;
+use bevy::light::{
+    AtmosphereEnvironmentMapLight, CascadeShadowConfigBuilder, DirectionalLightShadowMap,
+    VolumetricFog, VolumetricLight,
+};
 use bevy::mesh::{Indices, PrimitiveTopology};
+use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
+use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use nau_engine::animation::{
@@ -44,6 +54,7 @@ const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
 const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
 const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
 const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
+const PROCEDURAL_TEXTURE_SIZE: u32 = 64;
 
 fn main() -> AppExit {
     let cli = match CliAction::from_env() {
@@ -61,7 +72,13 @@ fn main() -> AppExit {
     };
 
     let mut app = App::new();
-    app.insert_resource(ClearColor(Color::srgb(0.55, 0.72, 0.9)))
+    app.insert_resource(ClearColor(Color::srgb(0.50, 0.68, 0.92)))
+        .insert_resource(GlobalAmbientLight {
+            color: Color::srgb(0.62, 0.68, 0.78),
+            brightness: 360.0,
+            ..default()
+        })
+        .insert_resource(DirectionalLightShadowMap { size: 4096 })
         .insert_resource(FlightTuning::default())
         .insert_resource(CameraControlTuning::default())
         .insert_resource(CameraControlState::default())
@@ -100,6 +117,7 @@ fn main() -> AppExit {
             Update,
             (
                 update_island_stream_visibility,
+                update_weather_drift,
                 update_debug_readout,
                 draw_debug_gizmos,
             )
@@ -155,6 +173,16 @@ struct Player;
 
 #[derive(Component)]
 struct DebugReadout;
+
+#[derive(Component, Clone, Copy, Debug)]
+struct WeatherDrift {
+    origin: Vec3,
+    axis: Vec3,
+    amplitude: f32,
+    bob: f32,
+    speed: f32,
+    phase: f32,
+}
 
 #[derive(Component, Clone, Copy, Debug)]
 struct IslandLodVisual {
@@ -333,6 +361,7 @@ struct EvalScene<'w, 's> {
     stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
+    weather_clouds: Query<'w, 's, Entity, With<WeatherDrift>>,
     all_entities: Query<'w, 's, Entity>,
 }
 
@@ -544,25 +573,198 @@ fn setup(
     route: Res<SkyRoute>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
+    mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
 ) {
-    let suit_material = materials.add(Color::srgb(0.18, 0.23, 0.3));
-    let skin_material = materials.add(Color::srgb(0.82, 0.58, 0.42));
-    let accent_material = materials.add(Color::srgb(0.96, 0.64, 0.16));
-    let glider_material = materials.add(Color::srgb(0.78, 0.42, 0.18));
-    let island_grass_material = materials.add(Color::srgb(0.26, 0.58, 0.32));
-    let island_meadow_material = materials.add(Color::srgb(0.42, 0.58, 0.32));
-    let island_clay_material = materials.add(Color::srgb(0.52, 0.44, 0.30));
-    let island_alpine_material = materials.add(Color::srgb(0.24, 0.48, 0.52));
-    let island_highland_material = materials.add(Color::srgb(0.56, 0.54, 0.40));
-    let target_grass_material = materials.add(Color::srgb(0.34, 0.62, 0.42));
-    let island_rock_material = materials.add(Color::srgb(0.38, 0.34, 0.3));
-    let island_under_material = materials.add(Color::srgb(0.22, 0.2, 0.18));
-    let target_marker_material = materials.add(Color::srgb(0.95, 0.74, 0.22));
-    let trunk_material = materials.add(Color::srgb(0.32, 0.2, 0.12));
-    let foliage_material = materials.add(Color::srgb(0.12, 0.44, 0.24));
-    let flower_material = materials.add(Color::srgb(0.82, 0.22, 0.44));
-    let water_material = materials.add(Color::srgba(0.18, 0.54, 0.82, 0.82));
-    let path_material = materials.add(Color::srgb(0.47, 0.41, 0.32));
+    let suit_material = textured_material(
+        &mut images,
+        &mut materials,
+        [38, 48, 62, 255],
+        [24, 30, 42, 255],
+        [78, 90, 104, 255],
+        3,
+        0.82,
+        0.32,
+    );
+    let skin_material = textured_material(
+        &mut images,
+        &mut materials,
+        [206, 145, 100, 255],
+        [172, 106, 72, 255],
+        [232, 176, 130, 255],
+        5,
+        0.64,
+        0.24,
+    );
+    let accent_material = emissive_material(
+        &mut images,
+        &mut materials,
+        [238, 156, 36, 255],
+        [174, 92, 22, 255],
+        [255, 220, 94, 255],
+        7,
+        LinearRgba::rgb(3.8, 1.7, 0.35),
+    );
+    let glider_material = textured_material(
+        &mut images,
+        &mut materials,
+        [166, 88, 44, 255],
+        [98, 48, 30, 255],
+        [222, 156, 72, 255],
+        11,
+        0.86,
+        0.28,
+    );
+    let island_grass_material = textured_material(
+        &mut images,
+        &mut materials,
+        [54, 128, 70, 255],
+        [28, 92, 48, 255],
+        [128, 174, 78, 255],
+        17,
+        0.94,
+        0.2,
+    );
+    let island_meadow_material = textured_material(
+        &mut images,
+        &mut materials,
+        [96, 138, 70, 255],
+        [56, 104, 54, 255],
+        [166, 172, 90, 255],
+        19,
+        0.92,
+        0.21,
+    );
+    let island_clay_material = textured_material(
+        &mut images,
+        &mut materials,
+        [126, 104, 76, 255],
+        [80, 70, 60, 255],
+        [162, 138, 96, 255],
+        23,
+        0.98,
+        0.18,
+    );
+    let island_alpine_material = textured_material(
+        &mut images,
+        &mut materials,
+        [52, 110, 118, 255],
+        [30, 80, 94, 255],
+        [142, 176, 164, 255],
+        29,
+        0.9,
+        0.22,
+    );
+    let island_highland_material = textured_material(
+        &mut images,
+        &mut materials,
+        [132, 132, 92, 255],
+        [86, 96, 70, 255],
+        [178, 166, 112, 255],
+        31,
+        0.94,
+        0.2,
+    );
+    let target_grass_material = textured_material(
+        &mut images,
+        &mut materials,
+        [70, 150, 94, 255],
+        [34, 100, 62, 255],
+        [156, 198, 112, 255],
+        37,
+        0.9,
+        0.24,
+    );
+    let island_rock_material = textured_material(
+        &mut images,
+        &mut materials,
+        [92, 86, 80, 255],
+        [48, 48, 48, 255],
+        [140, 128, 112, 255],
+        41,
+        0.98,
+        0.16,
+    );
+    let island_under_material = textured_material(
+        &mut images,
+        &mut materials,
+        [54, 50, 44, 255],
+        [26, 24, 22, 255],
+        [88, 78, 64, 255],
+        43,
+        1.0,
+        0.12,
+    );
+    let target_marker_material = emissive_material(
+        &mut images,
+        &mut materials,
+        [242, 190, 48, 255],
+        [170, 112, 24, 255],
+        [255, 235, 120, 255],
+        47,
+        LinearRgba::rgb(4.8, 3.2, 0.7),
+    );
+    let trunk_material = textured_material(
+        &mut images,
+        &mut materials,
+        [82, 48, 28, 255],
+        [46, 28, 18, 255],
+        [132, 84, 48, 255],
+        53,
+        0.96,
+        0.16,
+    );
+    let foliage_material = textured_material(
+        &mut images,
+        &mut materials,
+        [28, 106, 54, 255],
+        [14, 70, 38, 255],
+        [86, 150, 76, 255],
+        59,
+        0.88,
+        0.22,
+    );
+    let flower_material = emissive_material(
+        &mut images,
+        &mut materials,
+        [210, 50, 96, 255],
+        [124, 28, 80, 255],
+        [255, 126, 162, 255],
+        61,
+        LinearRgba::rgb(1.2, 0.25, 0.45),
+    );
+    let water_material = water_surface_material(&mut images, &mut materials);
+    let path_material = textured_material(
+        &mut images,
+        &mut materials,
+        [118, 102, 76, 255],
+        [72, 64, 54, 255],
+        [166, 146, 104, 255],
+        67,
+        0.98,
+        0.18,
+    );
+    let ground_material = textured_material(
+        &mut images,
+        &mut materials,
+        [42, 94, 52, 255],
+        [24, 60, 40, 255],
+        [92, 130, 68, 255],
+        71,
+        0.96,
+        0.18,
+    );
+    let pillar_material = textured_material(
+        &mut images,
+        &mut materials,
+        [106, 94, 74, 255],
+        [66, 58, 52, 255],
+        [152, 134, 100, 255],
+        73,
+        0.98,
+        0.16,
+    );
+    let cloud_material = cloud_surface_material(&mut materials);
     let torso_mesh = meshes.add(Capsule3d::new(0.4, 1.0));
     let head_mesh = meshes.add(Sphere::new(0.3));
     let arm_mesh = meshes.add(Cuboid::new(0.2, 0.82, 0.2));
@@ -571,11 +773,18 @@ fn setup(
 
     commands.spawn((
         DirectionalLight {
-            illuminance: 18_000.0,
+            illuminance: 48_000.0,
             shadows_enabled: true,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.9, -0.55, 0.0)),
+        VolumetricLight,
+        CascadeShadowConfigBuilder {
+            first_cascade_far_bound: 20.0,
+            maximum_distance: 340.0,
+            ..default()
+        }
+        .build(),
     ));
 
     commands.spawn((
@@ -586,7 +795,7 @@ fn setup(
                     .size(WORLD_RADIUS * 2.0, WORLD_RADIUS * 2.0),
             ),
         ),
-        MeshMaterial3d(materials.add(Color::srgb(0.2, 0.44, 0.25))),
+        MeshMaterial3d(ground_material),
         Transform::default(),
     ));
 
@@ -627,7 +836,7 @@ fn setup(
         let center = Vec3::new(x as f32 * 20.0, height * 0.5, z);
         commands.spawn((
             Mesh3d(meshes.add(Cuboid::new(5.0, height, 5.0))),
-            MeshMaterial3d(materials.add(Color::srgb(0.42, 0.38, 0.31))),
+            MeshMaterial3d(pillar_material.clone()),
             Transform::from_translation(center),
             CameraObstacle(CameraObstruction::new(
                 center,
@@ -684,6 +893,8 @@ fn setup(
         ),
         Name::new("Distant gameplay updraft lift"),
     ));
+
+    spawn_weather_layers(&mut commands, &mut meshes, cloud_material, route.islands());
 
     commands
         .spawn((
@@ -782,6 +993,31 @@ fn setup(
     let initial_camera_direction = Vec3::NEG_Z;
     commands.spawn((
         Camera3d::default(),
+        Atmosphere::earthlike(scattering_mediums.add(ScatteringMedium::default())),
+        AtmosphereSettings {
+            scene_units_to_m: 18.0,
+            aerial_view_lut_max_distance: 26_000.0,
+            ..default()
+        },
+        Exposure { ev100: 12.6 },
+        Tonemapping::AcesFitted,
+        Bloom::NATURAL,
+        AtmosphereEnvironmentMapLight::default(),
+        VolumetricFog {
+            ambient_color: Color::srgb(0.66, 0.72, 0.84),
+            ambient_intensity: 0.035,
+            jitter: 0.35,
+            step_count: 48,
+        },
+        DistanceFog {
+            color: Color::srgba(0.56, 0.70, 0.88, 0.48),
+            directional_light_color: Color::srgba(1.0, 0.84, 0.55, 0.45),
+            directional_light_exponent: 18.0,
+            falloff: FogFalloff::Linear {
+                start: 260.0,
+                end: WORLD_RADIUS,
+            },
+        },
         Transform::from_translation(
             PLAYER_START - initial_camera_direction * follow_camera.distance
                 + Vec3::Y * follow_camera.height,
@@ -811,6 +1047,201 @@ fn setup(
         TextColor(Color::WHITE),
         DebugReadout,
     ));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn textured_material(
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
+    primary: [u8; 4],
+    secondary: [u8; 4],
+    accent: [u8; 4],
+    seed: u32,
+    perceptual_roughness: f32,
+    reflectance: f32,
+) -> Handle<StandardMaterial> {
+    materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        base_color_texture: Some(
+            images.add(procedural_surface_texture(primary, secondary, accent, seed)),
+        ),
+        perceptual_roughness,
+        reflectance,
+        ..default()
+    })
+}
+
+fn emissive_material(
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
+    primary: [u8; 4],
+    secondary: [u8; 4],
+    accent: [u8; 4],
+    seed: u32,
+    emissive: LinearRgba,
+) -> Handle<StandardMaterial> {
+    materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        base_color_texture: Some(
+            images.add(procedural_surface_texture(primary, secondary, accent, seed)),
+        ),
+        emissive,
+        emissive_exposure_weight: 0.15,
+        perceptual_roughness: 0.7,
+        reflectance: 0.38,
+        ..default()
+    })
+}
+
+fn water_surface_material(
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
+) -> Handle<StandardMaterial> {
+    materials.add(StandardMaterial {
+        base_color: Color::srgba(0.22, 0.58, 0.86, 0.76),
+        base_color_texture: Some(images.add(procedural_surface_texture(
+            [54, 154, 210, 210],
+            [22, 92, 156, 210],
+            [160, 220, 244, 210],
+            79,
+        ))),
+        alpha_mode: AlphaMode::Blend,
+        double_sided: true,
+        perceptual_roughness: 0.18,
+        reflectance: 0.82,
+        ..default()
+    })
+}
+
+fn cloud_surface_material(materials: &mut Assets<StandardMaterial>) -> Handle<StandardMaterial> {
+    materials.add(StandardMaterial {
+        base_color: Color::srgba(0.86, 0.91, 0.96, 0.38),
+        alpha_mode: AlphaMode::Blend,
+        cull_mode: None,
+        double_sided: true,
+        perceptual_roughness: 1.0,
+        reflectance: 0.12,
+        ..default()
+    })
+}
+
+fn procedural_surface_texture(
+    primary: [u8; 4],
+    secondary: [u8; 4],
+    accent: [u8; 4],
+    seed: u32,
+) -> Image {
+    let size = PROCEDURAL_TEXTURE_SIZE;
+    let mut data = Vec::with_capacity((size * size * 4) as usize);
+
+    for y in 0..size {
+        for x in 0..size {
+            let noise = texture_noise(x, y, seed);
+            let vein = (x.wrapping_mul(5) + y.wrapping_mul(3) + seed).is_multiple_of(31);
+            let check = (x / 16 + y / 16 + seed).is_multiple_of(2);
+            let mut color = if noise < 74 {
+                secondary
+            } else if noise > 216 {
+                accent
+            } else {
+                primary
+            };
+
+            if check {
+                color = mix_rgba(color, primary, 178);
+            }
+            if vein {
+                color = mix_rgba(color, accent, 112);
+            }
+
+            data.extend_from_slice(&color);
+        }
+    }
+
+    let mut image = Image::new(
+        Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        address_mode_u: ImageAddressMode::Repeat,
+        address_mode_v: ImageAddressMode::Repeat,
+        mag_filter: ImageFilterMode::Linear,
+        min_filter: ImageFilterMode::Linear,
+        mipmap_filter: ImageFilterMode::Linear,
+        ..default()
+    });
+    image
+}
+
+fn texture_noise(x: u32, y: u32, seed: u32) -> u8 {
+    let mut value = x
+        .wrapping_mul(374_761_393)
+        .wrapping_add(y.wrapping_mul(668_265_263))
+        .wrapping_add(seed.wrapping_mul(2_654_435_761));
+    value ^= value >> 13;
+    value = value.wrapping_mul(1_274_126_177);
+    ((value ^ (value >> 16)) & 0xff) as u8
+}
+
+fn mix_rgba(source: [u8; 4], target: [u8; 4], target_weight: u16) -> [u8; 4] {
+    let source_weight = 255 - target_weight;
+    [
+        ((source[0] as u16 * source_weight + target[0] as u16 * target_weight) / 255) as u8,
+        ((source[1] as u16 * source_weight + target[1] as u16 * target_weight) / 255) as u8,
+        ((source[2] as u16 * source_weight + target[2] as u16 * target_weight) / 255) as u8,
+        ((source[3] as u16 * source_weight + target[3] as u16 * target_weight) / 255) as u8,
+    ]
+}
+
+fn spawn_weather_layers(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    cloud_material: Handle<StandardMaterial>,
+    islands: &[SkyIsland],
+) {
+    let cloud_mesh = meshes.add(Sphere::new(1.0));
+
+    for (index, island) in islands.iter().enumerate() {
+        let phase = index as f32 * 0.73;
+        let offset = Vec3::new(
+            (phase * 2.1).sin() * island.half_extents.x * 0.75,
+            42.0 + (index % 4) as f32 * 7.0,
+            (phase * 1.7).cos() * island.half_extents.y * 0.85,
+        );
+        let origin = island.center + offset;
+        let axis = Vec3::new(0.96, 0.0, 0.28).normalize();
+        let scale = Vec3::new(
+            island.half_extents.x * 0.45 + 18.0,
+            2.6 + (index % 3) as f32 * 0.45,
+            island.half_extents.y * 0.26 + 8.0,
+        );
+
+        commands.spawn((
+            Mesh3d(cloud_mesh.clone()),
+            MeshMaterial3d(cloud_material.clone()),
+            Transform {
+                translation: origin,
+                scale,
+                rotation: Quat::from_rotation_y(phase * 0.35),
+            },
+            WeatherDrift {
+                origin,
+                axis,
+                amplitude: 5.5 + (index % 5) as f32 * 1.2,
+                bob: 0.8 + (index % 3) as f32 * 0.25,
+                speed: 0.07 + (index % 4) as f32 * 0.012,
+                phase,
+            },
+            Name::new("drifting cloud bank"),
+        ));
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1284,6 +1715,18 @@ fn update_island_stream_visibility(
         .max(visibility_changes);
     diagnostics.total_visibility_changes += visibility_changes;
     diagnostics.initialized = true;
+}
+
+fn update_weather_drift(time: Res<Time>, mut clouds: Query<(&WeatherDrift, &mut Transform)>) {
+    let elapsed = time.elapsed_secs();
+
+    for (drift, mut transform) in &mut clouds {
+        let sway = (elapsed * drift.speed + drift.phase).sin();
+        let bob = (elapsed * drift.speed * 0.7 + drift.phase * 1.9).cos();
+        transform.translation =
+            drift.origin + drift.axis * sway * drift.amplitude + Vec3::Y * bob * drift.bob;
+        transform.rotation = Quat::from_rotation_y(drift.phase * 0.35 + sway * 0.08);
+    }
 }
 
 fn toggle_debug_visuals(keyboard: Res<ButtonInput<KeyCode>>, mut visuals: ResMut<DebugVisuals>) {
@@ -1766,6 +2209,7 @@ fn collect_eval_metrics(
         lod_visuals.visible_detail_count,
         lod_visuals.hidden_detail_count,
         lod_visuals.visible_beacon_count,
+        scene.weather_clouds.iter().count(),
         lod_visuals.resident_count(),
         scene.stream_diagnostics.visibility_changes_this_frame,
         scene.stream_diagnostics.max_visibility_changes_per_frame,

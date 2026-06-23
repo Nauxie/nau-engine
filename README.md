@@ -13,7 +13,7 @@ The NAU Engine is a Mac-first Rust/Bevy sandbox for flight traversal experiments
 
 The first executable is a simple 3D flight testbed:
 
-- primitive humanoid character with separate head, torso, limbs, and visible flight poses
+- primitive humanoid character with separate head, torso, limbs, grounded stride poses, airborne banking, and visible flight poses
 - deployable glider wing panels on `Space`
 - one-launch-per-airtime vertical burst on `E`
 - dive on `Shift`
@@ -21,12 +21,13 @@ The first executable is a simple 3D flight testbed:
 - mouse-look third-person follow camera with player-centered orbit pitch, separate yaw/pitch tuning, click-to-lock cursor capture, obstruction avoidance, and surface-clearance clamping
 - a 12-island floating archipelago with launch, midpoint, landing, high-altitude, and distant reference islands
 - deterministic collision-aware island relief with stream-windowed terrain, distant impostors, and distance-managed detail props: varied generated terrain colors, trees, ponds, stones, route cairns, launch beacon, and landing-garden markers
+- Bevy-native atmosphere, distance fog, volumetric fog/light, bloom, filmic tonemapping, procedural surface textures, reflective water, emissive markers, and drifting cloud banks
 - simple terrain-surface landing detection with one-shot landing friction
 - live debug readout for frame time, speed, altitude, target distance, camera pitch/distance/framing angle/motion/obstruction/yaw offset, velocity, visual wind-field count, lift-field count, sky-island count, active chunk window, near/mid/far LOD island buckets, visible/hidden terrain, impostor, and detail counts, resident island visual count, and stream visibility churn
 - visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
 - authored visual wind fields plus separate gameplay updraft lift fields
-- deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state math
-- scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, long-glide visibility, updraft lift, and island launch-to-landing with traversal, camera, frame-time, content-scale, streaming/LOD, stream-visibility, resident visual, visibility-churn, and visible-detail summary metrics plus fixed camera checkpoint screenshots
+- deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state/pose math
+- scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, long-glide visibility, updraft lift, and island launch-to-landing with traversal, camera, frame-time, content-scale, streaming/LOD, stream-visibility, weather-cloud, resident visual, visibility-churn, and visible-detail summary metrics plus fixed camera checkpoint screenshots
 
 This is intentionally not a full physics simulation yet. The first job is to create a place where movement constants can be tuned quickly.
 
@@ -73,7 +74,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 ## Near-Term Roadmap
 
-1. Add visual checks for fixed camera checkpoint screenshots.
+1. Add visual checks for fixed camera checkpoint screenshots so atmosphere/material/cloud regressions are machine-visible.
 2. Tune gameplay updraft placement, readability, and recovery routes.
 3. Promote stream-window visibility counters into actual terrain despawn, asset loading, and richer distant impostors.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
