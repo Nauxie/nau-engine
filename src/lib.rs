@@ -743,6 +743,543 @@ pub mod diagnostics {
     }
 }
 
+pub mod eval {
+    use crate::movement::{FlightInput, FlightMode};
+    use bevy::prelude::*;
+
+    pub const BASELINE_ROUTE: &str = "baseline_route";
+    pub const SCENARIO_NAMES: &[&str] = &[BASELINE_ROUTE];
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct EvalScenario {
+        pub name: &'static str,
+        pub fixed_dt: f32,
+        pub frame_count: u32,
+        pub sample_stride: u32,
+        pub thresholds: EvalThresholds,
+    }
+
+    impl EvalScenario {
+        pub fn duration_secs(self) -> f32 {
+            self.frame_count as f32 * self.fixed_dt
+        }
+
+        pub fn should_sample(self, frame: u32) -> bool {
+            frame == 0 || frame >= self.frame_count || frame.is_multiple_of(self.sample_stride)
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct EvalThresholds {
+        pub min_samples: u32,
+        pub min_horizontal_distance_m: f32,
+        pub min_max_altitude_m: f32,
+        pub min_gliding_samples: u32,
+        pub max_camera_distance_m: f32,
+    }
+
+    impl EvalThresholds {
+        fn to_json(self, indent: &str) -> String {
+            format!(
+                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"max_camera_distance_m\": {}\n{indent}}}",
+                self.min_samples,
+                json_number(self.min_horizontal_distance_m),
+                json_number(self.min_max_altitude_m),
+                self.min_gliding_samples,
+                json_number(self.max_camera_distance_m),
+            )
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct EvalSample {
+        pub frame: u32,
+        pub time_secs: f32,
+        pub position: [f32; 3],
+        pub velocity: [f32; 3],
+        pub speed_mps: f32,
+        pub altitude_m: f32,
+        pub mode: &'static str,
+        pub camera_distance_m: f32,
+        pub camera_pitch_degrees: f32,
+        pub visible_wind_fields: usize,
+        pub wind_field_count: usize,
+        pub entity_count: usize,
+    }
+
+    impl EvalSample {
+        #[allow(clippy::too_many_arguments)]
+        pub fn new(
+            frame: u32,
+            fixed_dt: f32,
+            position: Vec3,
+            velocity: Vec3,
+            mode: FlightMode,
+            camera_distance_m: f32,
+            camera_pitch_degrees: f32,
+            visible_wind_fields: usize,
+            wind_field_count: usize,
+            entity_count: usize,
+        ) -> Self {
+            Self {
+                frame,
+                time_secs: frame as f32 * fixed_dt,
+                position: vec3_array(position),
+                velocity: vec3_array(velocity),
+                speed_mps: velocity.length(),
+                altitude_m: position.y,
+                mode: mode.label(),
+                camera_distance_m,
+                camera_pitch_degrees,
+                visible_wind_fields,
+                wind_field_count,
+                entity_count,
+            }
+        }
+
+        pub fn to_json(&self) -> String {
+            format!(
+                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_pitch_degrees\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"entity_count\":{}}}",
+                self.frame,
+                json_number(self.time_secs),
+                json_array3(self.position),
+                json_array3(self.velocity),
+                json_number(self.speed_mps),
+                json_number(self.altitude_m),
+                json_string(self.mode),
+                json_number(self.camera_distance_m),
+                json_number(self.camera_pitch_degrees),
+                self.visible_wind_fields,
+                self.wind_field_count,
+                self.entity_count,
+            )
+        }
+    }
+
+    #[derive(Default, Clone, Debug)]
+    pub struct EvalAccumulator {
+        first_sample: Option<EvalSample>,
+        final_sample: Option<EvalSample>,
+        sample_count: u32,
+        max_altitude_m: f32,
+        min_altitude_m: f32,
+        max_speed_mps: f32,
+        max_camera_distance_m: f32,
+        min_camera_pitch_degrees: f32,
+        max_camera_pitch_degrees: f32,
+        max_visible_wind_fields: usize,
+        gliding_samples: u32,
+        launching_samples: u32,
+        grounded_samples: u32,
+    }
+
+    impl EvalAccumulator {
+        pub fn observe(&mut self, sample: EvalSample) {
+            if self.first_sample.is_none() {
+                self.first_sample = Some(sample.clone());
+                self.min_altitude_m = sample.altitude_m;
+                self.min_camera_pitch_degrees = sample.camera_pitch_degrees;
+                self.max_camera_pitch_degrees = sample.camera_pitch_degrees;
+            }
+
+            self.sample_count += 1;
+            self.max_altitude_m = self.max_altitude_m.max(sample.altitude_m);
+            self.min_altitude_m = self.min_altitude_m.min(sample.altitude_m);
+            self.max_speed_mps = self.max_speed_mps.max(sample.speed_mps);
+            self.max_camera_distance_m = self.max_camera_distance_m.max(sample.camera_distance_m);
+            self.min_camera_pitch_degrees = self
+                .min_camera_pitch_degrees
+                .min(sample.camera_pitch_degrees);
+            self.max_camera_pitch_degrees = self
+                .max_camera_pitch_degrees
+                .max(sample.camera_pitch_degrees);
+            self.max_visible_wind_fields =
+                self.max_visible_wind_fields.max(sample.visible_wind_fields);
+
+            match sample.mode {
+                "gliding" => self.gliding_samples += 1,
+                "launching" => self.launching_samples += 1,
+                "grounded" => self.grounded_samples += 1,
+                _ => {}
+            }
+
+            self.final_sample = Some(sample);
+        }
+
+        pub fn summary(&self, scenario: EvalScenario, artifacts: EvalArtifacts) -> EvalSummary {
+            let horizontal_distance_m = match (&self.first_sample, &self.final_sample) {
+                (Some(first), Some(final_sample)) => {
+                    horizontal_distance(first.position, final_sample.position)
+                }
+                _ => 0.0,
+            };
+            let thresholds = scenario.thresholds;
+            let checks = vec![
+                EvalCheck::at_least(
+                    "sample_count",
+                    self.sample_count as f32,
+                    thresholds.min_samples as f32,
+                    "samples",
+                ),
+                EvalCheck::at_least(
+                    "horizontal_distance",
+                    horizontal_distance_m,
+                    thresholds.min_horizontal_distance_m,
+                    "m",
+                ),
+                EvalCheck::at_least(
+                    "max_altitude",
+                    self.max_altitude_m,
+                    thresholds.min_max_altitude_m,
+                    "m",
+                ),
+                EvalCheck::at_least(
+                    "gliding_samples",
+                    self.gliding_samples as f32,
+                    thresholds.min_gliding_samples as f32,
+                    "samples",
+                ),
+                EvalCheck::at_most(
+                    "max_camera_distance",
+                    self.max_camera_distance_m,
+                    thresholds.max_camera_distance_m,
+                    "m",
+                ),
+            ];
+            let passed = checks.iter().all(|check| check.passed);
+
+            EvalSummary {
+                scenario_name: scenario.name,
+                passed,
+                frame_count: scenario.frame_count,
+                duration_secs: scenario.duration_secs(),
+                thresholds,
+                metrics: EvalMetricsSummary {
+                    sample_count: self.sample_count,
+                    horizontal_distance_m,
+                    max_altitude_m: self.max_altitude_m,
+                    min_altitude_m: self.min_altitude_m,
+                    max_speed_mps: self.max_speed_mps,
+                    max_camera_distance_m: self.max_camera_distance_m,
+                    min_camera_pitch_degrees: self.min_camera_pitch_degrees,
+                    max_camera_pitch_degrees: self.max_camera_pitch_degrees,
+                    max_visible_wind_fields: self.max_visible_wind_fields,
+                    gliding_samples: self.gliding_samples,
+                    launching_samples: self.launching_samples,
+                    grounded_samples: self.grounded_samples,
+                },
+                checks,
+                artifacts,
+                final_sample: self.final_sample.clone(),
+            }
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct EvalArtifacts {
+        pub summary_json: String,
+        pub samples_ndjson: String,
+        pub screenshot_png: Option<String>,
+    }
+
+    impl EvalArtifacts {
+        fn to_json(&self, indent: &str) -> String {
+            let screenshot = self
+                .screenshot_png
+                .as_deref()
+                .map(json_string)
+                .unwrap_or_else(|| "null".to_string());
+
+            format!(
+                "{{\n{indent}  \"summary_json\": {},\n{indent}  \"samples_ndjson\": {},\n{indent}  \"screenshot_png\": {}\n{indent}}}",
+                json_string(&self.summary_json),
+                json_string(&self.samples_ndjson),
+                screenshot,
+            )
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct EvalMetricsSummary {
+        pub sample_count: u32,
+        pub horizontal_distance_m: f32,
+        pub max_altitude_m: f32,
+        pub min_altitude_m: f32,
+        pub max_speed_mps: f32,
+        pub max_camera_distance_m: f32,
+        pub min_camera_pitch_degrees: f32,
+        pub max_camera_pitch_degrees: f32,
+        pub max_visible_wind_fields: usize,
+        pub gliding_samples: u32,
+        pub launching_samples: u32,
+        pub grounded_samples: u32,
+    }
+
+    impl EvalMetricsSummary {
+        fn to_json(&self, indent: &str) -> String {
+            format!(
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                self.sample_count,
+                json_number(self.horizontal_distance_m),
+                json_number(self.max_altitude_m),
+                json_number(self.min_altitude_m),
+                json_number(self.max_speed_mps),
+                json_number(self.max_camera_distance_m),
+                json_number(self.min_camera_pitch_degrees),
+                json_number(self.max_camera_pitch_degrees),
+                self.max_visible_wind_fields,
+                self.gliding_samples,
+                self.launching_samples,
+                self.grounded_samples,
+            )
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct EvalCheck {
+        pub name: &'static str,
+        pub passed: bool,
+        pub value: f32,
+        pub threshold: f32,
+        pub comparator: &'static str,
+        pub unit: &'static str,
+    }
+
+    impl EvalCheck {
+        fn at_least(name: &'static str, value: f32, threshold: f32, unit: &'static str) -> Self {
+            Self {
+                name,
+                passed: value >= threshold,
+                value,
+                threshold,
+                comparator: ">=",
+                unit,
+            }
+        }
+
+        fn at_most(name: &'static str, value: f32, threshold: f32, unit: &'static str) -> Self {
+            Self {
+                name,
+                passed: value <= threshold,
+                value,
+                threshold,
+                comparator: "<=",
+                unit,
+            }
+        }
+
+        fn to_json(&self, indent: &str) -> String {
+            format!(
+                "{{\n{indent}  \"name\": {},\n{indent}  \"passed\": {},\n{indent}  \"value\": {},\n{indent}  \"comparator\": {},\n{indent}  \"threshold\": {},\n{indent}  \"unit\": {}\n{indent}}}",
+                json_string(self.name),
+                self.passed,
+                json_number(self.value),
+                json_string(self.comparator),
+                json_number(self.threshold),
+                json_string(self.unit),
+            )
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct EvalSummary {
+        pub scenario_name: &'static str,
+        pub passed: bool,
+        pub frame_count: u32,
+        pub duration_secs: f32,
+        pub thresholds: EvalThresholds,
+        pub metrics: EvalMetricsSummary,
+        pub checks: Vec<EvalCheck>,
+        pub artifacts: EvalArtifacts,
+        pub final_sample: Option<EvalSample>,
+    }
+
+    impl EvalSummary {
+        pub fn to_json(&self) -> String {
+            let checks = self
+                .checks
+                .iter()
+                .map(|check| check.to_json("      "))
+                .collect::<Vec<_>>()
+                .join(",\n");
+            let final_sample = self
+                .final_sample
+                .as_ref()
+                .map(EvalSample::to_json)
+                .unwrap_or_else(|| "null".to_string());
+
+            format!(
+                "{{\n  \"scenario\": {},\n  \"passed\": {},\n  \"frame_count\": {},\n  \"duration_secs\": {},\n  \"thresholds\": {},\n  \"metrics\": {},\n  \"checks\": [\n{}\n  ],\n  \"artifacts\": {},\n  \"final_sample\": {}\n}}\n",
+                json_string(self.scenario_name),
+                self.passed,
+                self.frame_count,
+                json_number(self.duration_secs),
+                self.thresholds.to_json("  "),
+                self.metrics.to_json("  "),
+                checks,
+                self.artifacts.to_json("  "),
+                final_sample,
+            )
+        }
+    }
+
+    pub fn scenario_named(name: &str) -> Option<EvalScenario> {
+        match name {
+            BASELINE_ROUTE | "baseline" => Some(baseline_route()),
+            _ => None,
+        }
+    }
+
+    pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
+        let t = frame as f32 * scenario.fixed_dt;
+        let dive = (6.2..=7.0).contains(&t);
+
+        FlightInput {
+            forward: t >= 0.05,
+            left: (3.1..=4.2).contains(&t),
+            right: (5.1..=6.0).contains(&t),
+            glide: t >= 0.45 && !dive,
+            dive,
+            launch: frame == 1,
+            ..default()
+        }
+    }
+
+    fn baseline_route() -> EvalScenario {
+        EvalScenario {
+            name: BASELINE_ROUTE,
+            fixed_dt: 1.0 / 60.0,
+            frame_count: 420,
+            sample_stride: 10,
+            thresholds: EvalThresholds {
+                min_samples: 20,
+                min_horizontal_distance_m: 80.0,
+                min_max_altitude_m: 18.0,
+                min_gliding_samples: 20,
+                max_camera_distance_m: 35.0,
+            },
+        }
+    }
+
+    fn vec3_array(value: Vec3) -> [f32; 3] {
+        [value.x, value.y, value.z]
+    }
+
+    fn horizontal_distance(start: [f32; 3], end: [f32; 3]) -> f32 {
+        let dx = end[0] - start[0];
+        let dz = end[2] - start[2];
+        (dx * dx + dz * dz).sqrt()
+    }
+
+    fn json_array3(values: [f32; 3]) -> String {
+        format!(
+            "[{},{},{}]",
+            json_number(values[0]),
+            json_number(values[1]),
+            json_number(values[2])
+        )
+    }
+
+    fn json_number(value: f32) -> String {
+        if value.is_finite() {
+            format!("{value:.4}")
+        } else {
+            "null".to_string()
+        }
+    }
+
+    fn json_string(value: &str) -> String {
+        let mut escaped = String::with_capacity(value.len() + 2);
+        escaped.push('"');
+        for character in value.chars() {
+            match character {
+                '"' => escaped.push_str("\\\""),
+                '\\' => escaped.push_str("\\\\"),
+                '\n' => escaped.push_str("\\n"),
+                '\r' => escaped.push_str("\\r"),
+                '\t' => escaped.push_str("\\t"),
+                character if character.is_control() => {
+                    escaped.push_str(&format!("\\u{:04x}", character as u32));
+                }
+                character => escaped.push(character),
+            }
+        }
+        escaped.push('"');
+        escaped
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn baseline_route_has_scripted_launch_and_glide() {
+            let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+
+            assert!(scripted_input(scenario, 1).launch);
+            assert!(!scripted_input(scenario, 2).launch);
+            assert!(scripted_input(scenario, 60).glide);
+        }
+
+        #[test]
+        fn accumulator_marks_current_baseline_shape_as_passing() {
+            let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+            let mut accumulator = EvalAccumulator::default();
+
+            accumulator.observe(EvalSample::new(
+                0,
+                scenario.fixed_dt,
+                Vec3::new(0.0, 1.2, 0.0),
+                Vec3::ZERO,
+                FlightMode::Grounded,
+                12.0,
+                -20.0,
+                0,
+                3,
+                32,
+            ));
+            accumulator.observe(EvalSample::new(
+                scenario.frame_count,
+                scenario.fixed_dt,
+                Vec3::new(0.0, 32.0, 140.0),
+                Vec3::new(0.0, -4.0, 30.0),
+                FlightMode::Gliding,
+                14.0,
+                -18.0,
+                0,
+                3,
+                32,
+            ));
+            for frame in 1..=scenario.thresholds.min_gliding_samples {
+                accumulator.observe(EvalSample::new(
+                    frame,
+                    scenario.fixed_dt,
+                    Vec3::new(0.0, 24.0, frame as f32 * 4.0),
+                    Vec3::new(0.0, -3.0, 25.0),
+                    FlightMode::Gliding,
+                    13.0,
+                    -18.0,
+                    0,
+                    3,
+                    32,
+                ));
+            }
+
+            let summary = accumulator.summary(
+                scenario,
+                EvalArtifacts {
+                    summary_json: "summary.json".to_string(),
+                    samples_ndjson: "samples.ndjson".to_string(),
+                    screenshot_png: None,
+                },
+            );
+
+            assert!(summary.passed);
+            assert!(summary.to_json().contains("\"passed\": true"));
+        }
+    }
+}
+
 pub mod animation {
     use crate::movement::{FlightMode, smoothing_factor};
     use bevy::prelude::*;
