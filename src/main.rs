@@ -40,6 +40,7 @@ use std::{
 const PLAYER_START: Vec3 = START_POSITION;
 const WORLD_RADIUS: f32 = 920.0;
 const EVAL_SCREENSHOT_TIMEOUT_FRAMES: u32 = 180;
+const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
 const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
 const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
 const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
@@ -118,7 +119,11 @@ fn main() -> AppExit {
             .add_systems(Update, eval_fly_player.in_set(GameSet::Movement))
             .add_systems(
                 Update,
-                (collect_eval_metrics, finish_eval_frame)
+                (
+                    collect_eval_frame_time,
+                    collect_eval_metrics,
+                    finish_eval_frame,
+                )
                     .chain()
                     .in_set(GameSet::Eval),
             );
@@ -1624,6 +1629,13 @@ fn update_debug_readout(
         },
         if visuals.enabled { "on" } else { "off" }
     );
+}
+
+fn collect_eval_frame_time(time: Res<Time>, mut run: ResMut<EvalRun>) {
+    if !run.finalized && run.frame >= EVAL_FRAME_TIME_WARMUP_FRAMES {
+        run.accumulator
+            .observe_frame_time_ms(frame_ms(time.delta_secs()));
+    }
 }
 
 fn collect_eval_metrics(
