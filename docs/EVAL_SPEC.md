@@ -227,6 +227,10 @@ Add fields here before adding them to code. New fields should be cheap to collec
 The summary aggregates:
 
 - sample count
+- average frame time
+- p95 frame time
+- p99 frame time
+- max frame time
 - horizontal distance from first to final sample
 - max and min altitude
 - max speed
@@ -335,7 +339,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - Screenshot evals still need a visible native Bevy window.
 - Screenshot checks still rely on human/agent inspection rather than image classification.
 - There is no simulation-only binary yet.
-- There is no frame-time percentile summary yet.
+- Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
 - Island collision is a simple route surface clamp, not full physics.
 - `active_chunk_count` and `active_island_count` drive terrain visibility, but they do not despawn entities or load assets yet.
 - LOD buckets drive visible island detail, and inactive chunks swap full terrain for cheap impostors; hidden terrain/detail entities still remain resident.
