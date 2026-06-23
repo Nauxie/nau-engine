@@ -38,7 +38,7 @@ use std::{
 };
 
 const PLAYER_START: Vec3 = START_POSITION;
-const WORLD_RADIUS: f32 = 360.0;
+const WORLD_RADIUS: f32 = 920.0;
 const EVAL_SCREENSHOT_TIMEOUT_FRAMES: u32 = 180;
 const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
 const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
@@ -460,6 +460,10 @@ fn setup(
     let accent_material = materials.add(Color::srgb(0.96, 0.64, 0.16));
     let glider_material = materials.add(Color::srgb(0.78, 0.42, 0.18));
     let island_grass_material = materials.add(Color::srgb(0.26, 0.58, 0.32));
+    let island_meadow_material = materials.add(Color::srgb(0.42, 0.58, 0.32));
+    let island_clay_material = materials.add(Color::srgb(0.52, 0.44, 0.30));
+    let island_alpine_material = materials.add(Color::srgb(0.24, 0.48, 0.52));
+    let island_highland_material = materials.add(Color::srgb(0.56, 0.54, 0.40));
     let target_grass_material = materials.add(Color::srgb(0.34, 0.62, 0.42));
     let island_rock_material = materials.add(Color::srgb(0.38, 0.34, 0.3));
     let island_under_material = materials.add(Color::srgb(0.22, 0.2, 0.18));
@@ -497,11 +501,22 @@ fn setup(
     ));
 
     for (index, island) in route.islands().iter().enumerate() {
+        let top_material = if island.is_target {
+            target_grass_material.clone()
+        } else {
+            match index % 5 {
+                0 => island_grass_material.clone(),
+                1 => island_meadow_material.clone(),
+                2 => island_clay_material.clone(),
+                3 => island_alpine_material.clone(),
+                _ => island_highland_material.clone(),
+            }
+        };
+
         spawn_sky_island(
             &mut commands,
             &mut meshes,
-            island_grass_material.clone(),
-            target_grass_material.clone(),
+            top_material,
             island_rock_material.clone(),
             island_under_material.clone(),
             target_marker_material.clone(),
@@ -554,6 +569,14 @@ fn setup(
         Name::new("Visual crosswind volume"),
     ));
     commands.spawn((
+        WindField::updraft(
+            Vec3::new(24.0, 74.0, -430.0),
+            Vec3::new(18.0, 30.0, 18.0),
+            10.0,
+        ),
+        Name::new("Distant visual updraft column"),
+    ));
+    commands.spawn((
         LiftField::updraft(
             Vec3::new(38.0, 68.0, -112.0),
             Vec3::new(20.0, 34.0, 22.0),
@@ -561,6 +584,15 @@ fn setup(
             20.0,
         ),
         Name::new("Gameplay updraft lift"),
+    ));
+    commands.spawn((
+        LiftField::updraft(
+            Vec3::new(24.0, 74.0, -430.0),
+            Vec3::new(26.0, 42.0, 26.0),
+            24.0,
+            22.0,
+        ),
+        Name::new("Distant gameplay updraft lift"),
     ));
 
     commands
@@ -695,8 +727,7 @@ fn setup(
 fn spawn_sky_island(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
-    grass_material: Handle<StandardMaterial>,
-    target_grass_material: Handle<StandardMaterial>,
+    top_material: Handle<StandardMaterial>,
     rock_material: Handle<StandardMaterial>,
     under_material: Handle<StandardMaterial>,
     marker_material: Handle<StandardMaterial>,
@@ -710,11 +741,6 @@ fn spawn_sky_island(
 ) {
     let top_thickness = 0.55;
     let top_y = island.mesh_top_y();
-    let top_material = if island.is_target {
-        target_grass_material
-    } else {
-        grass_material
-    };
 
     commands.spawn((
         Mesh3d(meshes.add(Cylinder::new(1.0, top_thickness))),
@@ -1001,6 +1027,21 @@ fn spawn_sky_island_details(
         },
         Name::new("island pond"),
     ));
+
+    if !island.is_target && island.name != "launch mesa" {
+        let beacon_height = 1.4 + (island_index % 3) as f32 * 0.35;
+        let beacon_center = Vec3::new(
+            island.center.x - island.half_extents.x * 0.18,
+            floor_y + beacon_height * 0.5,
+            island.center.z + island.half_extents.y * 0.22,
+        );
+        commands.spawn((
+            Mesh3d(meshes.add(Cylinder::new(0.42, beacon_height))),
+            MeshMaterial3d(flower_material.clone()),
+            Transform::from_translation(beacon_center),
+            Name::new("route cairn"),
+        ));
+    }
 
     if island.is_target {
         let ring_size = 8.0;

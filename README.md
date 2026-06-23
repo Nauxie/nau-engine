@@ -19,14 +19,14 @@ The first executable is a simple 3D flight testbed:
 - dive on `Shift`
 - camera-relative grounded and airborne steering on `WASD`, with separate ground friction so walking is playable before launch
 - mouse-look third-person follow camera with player-centered orbit pitch, separate yaw/pitch tuning, click-to-lock cursor capture, obstruction avoidance, and surface-clearance clamping
-- a small floating sky-island route with launch, midpoint, landing, and distant reference islands
-- deterministic island relief and detail props: generated grass surface variation, trees, ponds, stones, launch beacon, and landing-garden markers
+- a 12-island floating archipelago with launch, midpoint, landing, high-altitude, and distant reference islands
+- deterministic island relief and detail props: varied generated terrain colors, trees, ponds, stones, route cairns, launch beacon, and landing-garden markers
 - simple route-surface landing detection with one-shot landing friction
 - live debug readout for frame time, speed, altitude, target distance, camera pitch/distance/framing angle/motion/obstruction/yaw offset, velocity, visual wind-field count, lift-field count, and sky-island count
 - visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
-- authored visual wind fields plus a separate gameplay updraft lift field
+- authored visual wind fields plus separate gameplay updraft lift fields
 - deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state math
-- scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, updraft lift, and island launch-to-landing with summary metrics plus fixed camera checkpoint screenshots
+- scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, long-glide visibility, updraft lift, and island launch-to-landing with summary metrics plus fixed camera checkpoint screenshots
 
 This is intentionally not a full physics simulation yet. The first job is to create a place where movement constants can be tuned quickly.
 
@@ -51,6 +51,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ./tools/eval.sh camera_turn_stability target/eval/camera_turn_stability
 ./tools/eval.sh camera_strafe_stability target/eval/camera_strafe_stability
 ./tools/eval.sh updraft_route target/eval/updraft_route
+./tools/eval.sh long_glide_visibility target/eval/long_glide_visibility
 ./tools/eval.sh island_launch_to_landing target/eval/island_launch_to_landing
 ```
 
