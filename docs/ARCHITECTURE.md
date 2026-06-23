@@ -13,7 +13,7 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 
 ## Current Code Shape
 
-- `src/main.rs` owns Bevy app setup, scene spawning, input mapping, ECS queries, and visual wiring.
+- `src/main.rs` owns Bevy app setup, scene spawning, generated island surface meshes, input mapping, ECS queries, and visual wiring.
 - `src/lib.rs` owns reusable and testable logic.
 - `movement` owns flight state, input state, tuning, launch/glide/dive integration, floor clamp, velocity limits, and facing smoothing.
 - `environment` owns finite visual wind/updraft field definitions, gameplay `LiftField` updraft volumes, lift application, and deterministic stream placement.
@@ -32,11 +32,11 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 7. Character pose phase advances from delta time.
 8. `animation::part_pose` maps flight mode and velocity into visible body/glider poses.
 9. Mouse deltas update `CameraControlState` yaw/pitch when the cursor is locked or right mouse is held.
-10. `camera::step_camera_with_orbit` follows horizontal travel direction, applies yaw/pitch orbit offsets, smooths position and rotation, avoids tagged obstruction volumes, and is lifted above the active ground surface when needed.
-11. HUD text reports frame time, mode, speed, altitude, camera pitch/distance/framing, obstruction adjustment, mouse yaw/pitch offsets, velocity, visual wind-field count, lift-field count, cooldown, and launch readiness.
+10. `camera::step_camera_with_orbit` follows smoothed horizontal travel direction, applies yaw/pitch orbit offsets, smooths position and rotation, avoids tagged obstruction volumes, and is lifted above the active ground surface when needed.
+11. HUD text reports frame time, mode, speed, altitude, camera pitch/distance/framing/motion, obstruction adjustment, mouse yaw/pitch offsets, velocity, visual wind-field count, lift-field count, cooldown, and launch readiness.
 12. Debug gizmos draw player vectors, the camera line, visual wind/updraft streams, and gameplay lift-field bounds.
 
-Eval samples include camera distance, camera surface clearance, camera-to-player framing angle, obstruction adjustment/hits, camera yaw/pitch offsets, `active_lift_fields`, and entity counts. Eval summaries include `lifted_samples`, camera-control/framing/obstruction checks, checkpoint screenshot artifact paths, and scene entity-count checks; `updraft_route` verifies gameplay lift and `camera_mouse_control` verifies mouse X/Y behavior.
+Eval samples include camera distance, camera surface clearance, camera-to-player framing angle, per-frame camera step and rotation deltas, obstruction adjustment/hits, camera yaw/pitch offsets, `active_lift_fields`, and entity counts. Eval summaries include `lifted_samples`, camera-control/framing/obstruction/jerk checks, checkpoint screenshot artifact paths, and scene entity-count checks; `updraft_route` verifies gameplay lift, `camera_mouse_control` verifies mouse X/Y behavior, and `camera_turn_stability` verifies rapid airborne turn and air-brake camera stability.
 
 ## Core Invariants
 
