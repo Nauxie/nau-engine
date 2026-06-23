@@ -17,7 +17,7 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/lib.rs` owns reusable and testable logic.
 - `movement` owns flight state, input state, tuning, launch/glide/dive integration, floor clamp, velocity limits, and facing smoothing.
 - `environment` owns finite visual wind/updraft field definitions, gameplay `LiftField` updraft volumes, lift application, and deterministic stream placement.
-- `world` owns route surfaces, sky-island definitions, landing target queries, active chunk counters, stream-window classification, and near/mid/far LOD band classification.
+- `world` owns collision-aware route surfaces, sky-island definitions, deterministic island relief, landing target queries, active chunk counters, stream-window classification, and near/mid/far LOD band classification.
 - `camera` owns camera follow math, orbit yaw/pitch control math, horizontal follow direction, obstruction avoidance, and ground-clearance helpers.
 - `diagnostics` owns pure helpers for frame-time and runtime metric formatting inputs.
 - `animation` owns primitive character part pose math, wing visibility state, and animation phase progression.
@@ -34,7 +34,7 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 8. `animation::part_pose` maps flight mode and velocity into visible body/glider poses.
 9. Mouse deltas update `CameraControlState` yaw/pitch when the cursor is locked or right mouse is held.
 10. `camera::update_follow_direction_state` keeps smoothed travel direction independent from mouse orbit, and `camera::step_camera_with_direction` applies yaw/pitch orbit offsets once before smoothing position and rotation.
-11. The camera avoids tagged obstruction volumes and is lifted above the active ground surface when needed.
+11. The camera avoids tagged obstruction volumes and is lifted above the active collision terrain surface when needed.
 12. Island terrain is visible inside the active stream window, inactive chunks show cheap distant impostors, route beacons remain visible for readability, and nonessential island detail is hidden outside the near LOD band.
 13. HUD text reports frame time, mode, speed, altitude, camera pitch/distance/framing/motion/orbit alignment, obstruction adjustment, mouse yaw/pitch offsets, velocity, visual wind-field count, lift-field count, active chunk window, near/mid/far LOD island buckets, visible terrain/impostor counts, visible detail/beacon counts, cooldown, and launch readiness.
 14. Debug gizmos draw player vectors, the camera line, visual wind/updraft streams, and gameplay lift-field bounds.
@@ -54,6 +54,7 @@ Eval samples include camera distance, camera surface clearance, camera-to-player
 - Runtime movement should stay camera-relative unless a scenario deliberately requests character-relative controls.
 - Camera orbit input should keep yaw and pitch independently measurable in evals while keeping the player focus near the camera centerline.
 - Camera should stay above the active route surface and avoid tagged obstruction volumes between the player focus and camera boom.
+- Sky-island collision queries and visible terrain meshes should use the same deterministic relief function, with launch and landing centers anchored to their authored route heights.
 - Active chunk counters drive terrain/impostor visibility, but hidden terrain remains resident until a future branch adds despawn or asset streaming.
 - Camera, animation, and HUD should run after movement.
 - `src/main.rs` should stay mostly wiring. Avoid burying gameplay rules directly in ECS systems.
