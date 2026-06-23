@@ -914,6 +914,18 @@ pub mod world {
         Far,
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum StreamActivation {
+        Active,
+        Inactive,
+    }
+
+    impl StreamActivation {
+        pub fn is_active(self) -> bool {
+            self == Self::Active
+        }
+    }
+
     #[derive(Resource, Clone, Debug)]
     pub struct SkyRoute {
         pub fallback_floor_y: f32,
@@ -1029,10 +1041,7 @@ pub mod world {
             };
 
             for island in &self.islands {
-                if island
-                    .streaming_chunk()
-                    .is_inside_active_window(player_chunk)
-                {
+                if island.stream_activation(position).is_active() {
                     stats.active_island_count += 1;
                 }
 
@@ -1177,6 +1186,15 @@ pub mod world {
         pub fn streaming_chunk(self) -> StreamChunkCoord {
             StreamChunkCoord::from_world(self.center)
         }
+
+        pub fn stream_activation(self, position: Vec3) -> StreamActivation {
+            let player_chunk = StreamChunkCoord::from_world(position);
+            if self.streaming_chunk().is_inside_active_window(player_chunk) {
+                StreamActivation::Active
+            } else {
+                StreamActivation::Inactive
+            }
+        }
     }
 
     #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1259,6 +1277,25 @@ pub mod world {
             assert_eq!(
                 island.lod_band(Vec3::new(LOD_MID_DISTANCE_M + 1.0, 0.0, 0.0)),
                 LodBand::Far
+            );
+        }
+
+        #[test]
+        fn island_stream_activation_uses_chunk_window() {
+            let island =
+                SkyIsland::new("test island", Vec3::ZERO, Vec2::new(10.0, 10.0), 4.0, false);
+
+            assert_eq!(
+                island.stream_activation(START_POSITION),
+                StreamActivation::Active
+            );
+            assert_eq!(
+                island.stream_activation(Vec3::new(
+                    0.0,
+                    START_FLOOR_Y,
+                    STREAM_CHUNK_SIZE_M * (STREAM_ACTIVE_CHUNK_RADIUS + 2) as f32,
+                )),
+                StreamActivation::Inactive
             );
         }
 
@@ -2346,6 +2383,8 @@ pub mod eval {
         pub min_near_lod_island_count: usize,
         pub min_mid_lod_island_count: usize,
         pub min_far_lod_island_count: usize,
+        pub max_visible_island_terrain_count: usize,
+        pub min_visible_island_impostor_count: usize,
         pub max_visible_island_detail_count: usize,
         pub min_visible_route_beacon_count: usize,
         pub min_entity_count: usize,
@@ -2368,7 +2407,7 @@ pub mod eval {
     impl EvalThresholds {
         fn to_json(self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_sky_island_count\": {},\n{indent}  \"min_active_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"min_near_lod_island_count\": {},\n{indent}  \"min_mid_lod_island_count\": {},\n{indent}  \"min_far_lod_island_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"min_visible_route_beacon_count\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_sky_island_count\": {},\n{indent}  \"min_active_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"min_near_lod_island_count\": {},\n{indent}  \"min_mid_lod_island_count\": {},\n{indent}  \"min_far_lod_island_count\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"min_visible_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"min_visible_route_beacon_count\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
                 self.min_samples,
                 json_number(self.min_horizontal_distance_m),
                 json_number(self.min_max_altitude_m),
@@ -2382,6 +2421,8 @@ pub mod eval {
                 self.min_near_lod_island_count,
                 self.min_mid_lod_island_count,
                 self.min_far_lod_island_count,
+                self.max_visible_island_terrain_count,
+                self.min_visible_island_impostor_count,
                 self.max_visible_island_detail_count,
                 self.min_visible_route_beacon_count,
                 self.min_entity_count,
@@ -2436,6 +2477,8 @@ pub mod eval {
         pub near_lod_islands: usize,
         pub mid_lod_islands: usize,
         pub far_lod_islands: usize,
+        pub visible_island_terrain_count: usize,
+        pub visible_island_impostor_count: usize,
         pub visible_island_detail_count: usize,
         pub visible_route_beacon_count: usize,
         pub entity_count: usize,
@@ -2473,6 +2516,8 @@ pub mod eval {
             near_lod_islands: usize,
             mid_lod_islands: usize,
             far_lod_islands: usize,
+            visible_island_terrain_count: usize,
+            visible_island_impostor_count: usize,
             visible_island_detail_count: usize,
             visible_route_beacon_count: usize,
             entity_count: usize,
@@ -2509,6 +2554,8 @@ pub mod eval {
                 near_lod_islands,
                 mid_lod_islands,
                 far_lod_islands,
+                visible_island_terrain_count,
+                visible_island_impostor_count,
                 visible_island_detail_count,
                 visible_route_beacon_count,
                 entity_count,
@@ -2517,7 +2564,7 @@ pub mod eval {
 
         pub fn to_json(&self) -> String {
             format!(
-                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_detail_count\":{},\"visible_route_beacon_count\":{},\"entity_count\":{}}}",
+                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"visible_island_detail_count\":{},\"visible_route_beacon_count\":{},\"entity_count\":{}}}",
                 self.frame,
                 json_number(self.time_secs),
                 json_array3(self.position),
@@ -2549,6 +2596,8 @@ pub mod eval {
                 self.near_lod_islands,
                 self.mid_lod_islands,
                 self.far_lod_islands,
+                self.visible_island_terrain_count,
+                self.visible_island_impostor_count,
                 self.visible_island_detail_count,
                 self.visible_route_beacon_count,
                 self.entity_count,
@@ -2587,6 +2636,8 @@ pub mod eval {
         max_near_lod_islands: usize,
         max_mid_lod_islands: usize,
         max_far_lod_islands: usize,
+        max_visible_island_terrain_count: usize,
+        max_visible_island_impostor_count: usize,
         max_visible_island_detail_count: usize,
         max_visible_route_beacon_count: usize,
         max_entity_count: usize,
@@ -2667,6 +2718,12 @@ pub mod eval {
             self.max_near_lod_islands = self.max_near_lod_islands.max(sample.near_lod_islands);
             self.max_mid_lod_islands = self.max_mid_lod_islands.max(sample.mid_lod_islands);
             self.max_far_lod_islands = self.max_far_lod_islands.max(sample.far_lod_islands);
+            self.max_visible_island_terrain_count = self
+                .max_visible_island_terrain_count
+                .max(sample.visible_island_terrain_count);
+            self.max_visible_island_impostor_count = self
+                .max_visible_island_impostor_count
+                .max(sample.visible_island_impostor_count);
             self.max_visible_island_detail_count = self
                 .max_visible_island_detail_count
                 .max(sample.visible_island_detail_count);
@@ -2781,6 +2838,18 @@ pub mod eval {
                     self.max_far_lod_islands as f32,
                     thresholds.min_far_lod_island_count as f32,
                     "islands",
+                ),
+                EvalCheck::at_most(
+                    "visible_island_terrain_count",
+                    self.max_visible_island_terrain_count as f32,
+                    thresholds.max_visible_island_terrain_count as f32,
+                    "entities",
+                ),
+                EvalCheck::at_least(
+                    "visible_island_impostor_count",
+                    self.max_visible_island_impostor_count as f32,
+                    thresholds.min_visible_island_impostor_count as f32,
+                    "entities",
                 ),
                 EvalCheck::at_most(
                     "visible_island_detail_count",
@@ -2919,6 +2988,8 @@ pub mod eval {
                     max_near_lod_islands: self.max_near_lod_islands,
                     max_mid_lod_islands: self.max_mid_lod_islands,
                     max_far_lod_islands: self.max_far_lod_islands,
+                    max_visible_island_terrain_count: self.max_visible_island_terrain_count,
+                    max_visible_island_impostor_count: self.max_visible_island_impostor_count,
                     max_visible_island_detail_count: self.max_visible_island_detail_count,
                     max_visible_route_beacon_count: self.max_visible_route_beacon_count,
                     max_entity_count: self.max_entity_count,
@@ -2993,6 +3064,8 @@ pub mod eval {
         pub max_near_lod_islands: usize,
         pub max_mid_lod_islands: usize,
         pub max_far_lod_islands: usize,
+        pub max_visible_island_terrain_count: usize,
+        pub max_visible_island_impostor_count: usize,
         pub max_visible_island_detail_count: usize,
         pub max_visible_route_beacon_count: usize,
         pub max_entity_count: usize,
@@ -3006,7 +3079,7 @@ pub mod eval {
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
                 json_number(self.horizontal_distance_m),
                 json_number(self.max_altitude_m),
@@ -3036,6 +3109,8 @@ pub mod eval {
                 self.max_near_lod_islands,
                 self.max_mid_lod_islands,
                 self.max_far_lod_islands,
+                self.max_visible_island_terrain_count,
+                self.max_visible_island_impostor_count,
                 self.max_visible_island_detail_count,
                 self.max_visible_route_beacon_count,
                 self.max_entity_count,
@@ -3265,6 +3340,8 @@ pub mod eval {
                 min_near_lod_island_count: 2,
                 min_mid_lod_island_count: 3,
                 min_far_lod_island_count: 3,
+                max_visible_island_terrain_count: 55,
+                min_visible_island_impostor_count: 2,
                 max_visible_island_detail_count: 95,
                 min_visible_route_beacon_count: 12,
                 min_entity_count: 100,
@@ -3307,6 +3384,8 @@ pub mod eval {
                 min_near_lod_island_count: 2,
                 min_mid_lod_island_count: 3,
                 min_far_lod_island_count: 3,
+                max_visible_island_terrain_count: 55,
+                min_visible_island_impostor_count: 2,
                 max_visible_island_detail_count: 95,
                 min_visible_route_beacon_count: 12,
                 min_entity_count: 100,
@@ -3349,6 +3428,8 @@ pub mod eval {
                 min_near_lod_island_count: 2,
                 min_mid_lod_island_count: 3,
                 min_far_lod_island_count: 3,
+                max_visible_island_terrain_count: 55,
+                min_visible_island_impostor_count: 2,
                 max_visible_island_detail_count: 95,
                 min_visible_route_beacon_count: 12,
                 min_entity_count: 100,
@@ -3391,6 +3472,8 @@ pub mod eval {
                 min_near_lod_island_count: 2,
                 min_mid_lod_island_count: 3,
                 min_far_lod_island_count: 3,
+                max_visible_island_terrain_count: 55,
+                min_visible_island_impostor_count: 2,
                 max_visible_island_detail_count: 95,
                 min_visible_route_beacon_count: 12,
                 min_entity_count: 100,
@@ -3433,6 +3516,8 @@ pub mod eval {
                 min_near_lod_island_count: 2,
                 min_mid_lod_island_count: 3,
                 min_far_lod_island_count: 3,
+                max_visible_island_terrain_count: 55,
+                min_visible_island_impostor_count: 2,
                 max_visible_island_detail_count: 95,
                 min_visible_route_beacon_count: 12,
                 min_entity_count: 100,
@@ -3475,6 +3560,8 @@ pub mod eval {
                 min_near_lod_island_count: 2,
                 min_mid_lod_island_count: 3,
                 min_far_lod_island_count: 3,
+                max_visible_island_terrain_count: 55,
+                min_visible_island_impostor_count: 2,
                 max_visible_island_detail_count: 95,
                 min_visible_route_beacon_count: 12,
                 min_entity_count: 100,
@@ -3517,6 +3604,8 @@ pub mod eval {
                 min_near_lod_island_count: 2,
                 min_mid_lod_island_count: 3,
                 min_far_lod_island_count: 3,
+                max_visible_island_terrain_count: 55,
+                min_visible_island_impostor_count: 2,
                 max_visible_island_detail_count: 95,
                 min_visible_route_beacon_count: 12,
                 min_entity_count: 100,
@@ -3559,6 +3648,8 @@ pub mod eval {
                 min_near_lod_island_count: 2,
                 min_mid_lod_island_count: 3,
                 min_far_lod_island_count: 3,
+                max_visible_island_terrain_count: 55,
+                min_visible_island_impostor_count: 2,
                 max_visible_island_detail_count: 95,
                 min_visible_route_beacon_count: 12,
                 min_entity_count: 100,
@@ -3601,6 +3692,8 @@ pub mod eval {
                 min_near_lod_island_count: 2,
                 min_mid_lod_island_count: 3,
                 min_far_lod_island_count: 3,
+                max_visible_island_terrain_count: 55,
+                min_visible_island_impostor_count: 2,
                 max_visible_island_detail_count: 95,
                 min_visible_route_beacon_count: 12,
                 min_entity_count: 220,
@@ -3826,6 +3919,8 @@ pub mod eval {
                 2,
                 4,
                 6,
+                24,
+                8,
                 26,
                 16,
                 130,
@@ -3860,6 +3955,8 @@ pub mod eval {
                 2,
                 4,
                 6,
+                24,
+                8,
                 26,
                 16,
                 130,
@@ -3895,6 +3992,8 @@ pub mod eval {
                     2,
                     4,
                     6,
+                    24,
+                    8,
                     26,
                     16,
                     130,

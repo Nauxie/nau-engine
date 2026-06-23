@@ -29,7 +29,7 @@ use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
     face_horizontal_velocity, step_flight,
 };
-use nau_engine::world::{LodBand, START_POSITION, SkyIsland, SkyRoute};
+use nau_engine::world::{LodBand, START_POSITION, SkyIsland, SkyRoute, StreamActivation};
 use std::{
     env,
     fs::{self, File, OpenOptions},
@@ -97,7 +97,7 @@ fn main() -> AppExit {
         .add_systems(
             Update,
             (
-                update_island_lod_visibility,
+                update_island_stream_visibility,
                 update_debug_readout,
                 draw_debug_gizmos,
             )
@@ -167,21 +167,26 @@ enum IslandVisualLayer {
     Terrain,
     Detail,
     Beacon,
+    Impostor,
 }
 
 impl IslandVisualLayer {
-    fn is_visible_in(self, band: LodBand) -> bool {
+    fn is_visible_in(self, activation: StreamActivation, band: LodBand) -> bool {
         match self {
-            Self::Terrain | Self::Beacon => true,
-            Self::Detail => band == LodBand::Near,
+            Self::Terrain => activation.is_active(),
+            Self::Detail => activation.is_active() && band == LodBand::Near,
+            Self::Beacon => true,
+            Self::Impostor => !activation.is_active(),
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
 struct IslandLodVisualCounts {
+    visible_terrain_count: usize,
     visible_detail_count: usize,
     visible_beacon_count: usize,
+    visible_impostor_count: usize,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -801,6 +806,28 @@ fn spawn_sky_island(
         Name::new(island.name),
     ));
 
+    let impostor_height = 0.35;
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(1.0, impostor_height))),
+        MeshMaterial3d(top_material.clone()),
+        Transform {
+            translation: Vec3::new(
+                island.center.x,
+                top_y - impostor_height * 0.5,
+                island.center.z,
+            ),
+            scale: Vec3::new(
+                island.half_extents.x * 0.88,
+                1.0,
+                island.half_extents.y * 0.88,
+            ),
+            ..default()
+        },
+        IslandLodVisual::new(island, IslandVisualLayer::Impostor),
+        Visibility::Hidden,
+        Name::new("island distant impostor"),
+    ));
+
     commands.spawn((
         Mesh3d(meshes.add(island_terrain_mesh(island_index, island))),
         MeshMaterial3d(top_material),
@@ -1173,7 +1200,7 @@ fn spawn_sky_island_details(
     }
 }
 
-fn update_island_lod_visibility(
+fn update_island_stream_visibility(
     player: Query<&Transform, With<Player>>,
     mut visuals: Query<(&IslandLodVisual, &mut Visibility)>,
 ) {
@@ -1182,8 +1209,11 @@ fn update_island_lod_visibility(
     };
 
     for (visual, mut visibility) in &mut visuals {
+        let activation = visual
+            .island
+            .stream_activation(player_transform.translation);
         let band = visual.island.lod_band(player_transform.translation);
-        *visibility = if visual.layer.is_visible_in(band) {
+        *visibility = if visual.layer.is_visible_in(activation, band) {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -1202,9 +1232,10 @@ fn island_lod_visual_counts<'a>(
         }
 
         match visual.layer {
+            IslandVisualLayer::Terrain => counts.visible_terrain_count += 1,
             IslandVisualLayer::Detail => counts.visible_detail_count += 1,
             IslandVisualLayer::Beacon => counts.visible_beacon_count += 1,
-            IslandVisualLayer::Terrain => {}
+            IslandVisualLayer::Impostor => counts.visible_impostor_count += 1,
         }
     }
 
@@ -1548,7 +1579,7 @@ fn update_debug_readout(
     };
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nlod visuals detail/beacon {} / {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream visuals terrain/impostor {} / {}\nlod visuals detail/beacon {} / {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -1581,6 +1612,8 @@ fn update_debug_readout(
         streaming_lod.near_lod_islands,
         streaming_lod.mid_lod_islands,
         streaming_lod.far_lod_islands,
+        lod_visuals.visible_terrain_count,
+        lod_visuals.visible_impostor_count,
         lod_visuals.visible_detail_count,
         lod_visuals.visible_beacon_count,
         controller.launch_cooldown_remaining,
@@ -1668,6 +1701,8 @@ fn collect_eval_metrics(
         streaming_lod.near_lod_islands,
         streaming_lod.mid_lod_islands,
         streaming_lod.far_lod_islands,
+        lod_visuals.visible_terrain_count,
+        lod_visuals.visible_impostor_count,
         lod_visuals.visible_detail_count,
         lod_visuals.visible_beacon_count,
         scene.all_entities.iter().count(),

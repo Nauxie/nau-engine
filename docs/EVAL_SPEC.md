@@ -214,6 +214,8 @@ Every sample includes:
 - `near_lod_islands`
 - `mid_lod_islands`
 - `far_lod_islands`
+- `visible_island_terrain_count`
+- `visible_island_impostor_count`
 - `visible_island_detail_count`
 - `visible_route_beacon_count`
 - `entity_count`
@@ -247,6 +249,8 @@ The summary aggregates:
 - max active chunk count
 - max active island count
 - max near/mid/far LOD island counts
+- max visible island terrain count
+- max visible island impostor count
 - max visible island detail count
 - max visible route beacon count
 - max scene entity count
@@ -267,6 +271,8 @@ The pass/fail checks currently guard:
 - the active chunk window stays inside the scenario budget
 - enough islands enter the active chunk window
 - near/mid/far LOD island buckets remain populated
+- visible island terrain stays under the scenario budget, proving inactive chunks are not drawing full terrain
+- visible island impostors stay populated, proving inactive chunks retain distant silhouettes
 - visible island detail stays under the scenario budget, proving distance LOD is active
 - visible route beacons stay populated so distant route readability is not culled away
 - the scene has enough entities to catch accidental content collapse
@@ -331,9 +337,9 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - There is no simulation-only binary yet.
 - There is no frame-time percentile summary yet.
 - Island collision is a simple route surface clamp, not full physics.
-- `active_chunk_count` and `active_island_count` are planning counters; they do not despawn terrain or load assets yet.
-- LOD buckets now drive visible island detail, but terrain and hidden detail entities still remain resident.
-- `entity_count` is still a coarse scene-scale proxy, not a streaming health metric.
+- `active_chunk_count` and `active_island_count` drive terrain visibility, but they do not despawn entities or load assets yet.
+- LOD buckets drive visible island detail, and inactive chunks swap full terrain for cheap impostors; hidden terrain/detail entities still remain resident.
+- `entity_count` is still a coarse scene-scale proxy, not a streaming health metric, because inactive visuals are hidden rather than despawned.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
 These are acceptable for the current harness. The next meaningful upgrades are frame-time percentiles, real chunk activation/despawn counters, and visual checks for missing or blank island geometry.
