@@ -51,7 +51,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `updraft_route` eval proves a scripted route enters a gameplay lift field and gains altitude beyond the normal route ceiling.
 - `island_launch_to_landing` eval proves the scripted route reaches and lands on the target island.
 - Metric-only evals hide the native window by default; screenshot evals are explicit via `NAU_EVAL_SCREENSHOT=1`.
-- Eval summaries now include camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, and max scene entity count so camera/control/content regressions are visible in metrics.
+- Eval summaries now include camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, hidden/resident island visual counts, and stream visibility churn so camera/control/content/streaming regressions are visible in metrics.
 
 ## Known Issues
 
@@ -59,17 +59,17 @@ Use this section for milestone handoffs, not routine worktree changes.
 - Limb posing is approximate and not skeletal. It is less glitchy than elapsed-time phase math, but still placeholder animation.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep.
 - Wind/updraft visuals are debug gizmos only, not yet represented through particles, cloth/glider motion, vegetation, or environment art.
-- Sky-island collision is still a simple route surface; generated terrain relief is visual and not yet collision-aware authored terrain.
+- Sky-island collision follows deterministic terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - Gameplay lift is a first rough updraft only; there is no crosswind force, launch-source chain, or recovery route design yet.
-- There is no chunk streaming, LOD, authored water, authored vegetation, or environment asset pipeline yet. Current ponds, trees, stones, beacon, and landing markers are deterministic primitive props.
+- There is no real chunk despawn, authored water, authored vegetation, or environment asset pipeline yet. Current stream-window terrain visibility, detail LOD, ponds, trees, stones, beacon, and landing markers are deterministic primitive systems.
 - Physics is still custom movement math, not a real collision/rigid body integration.
 
 ## Next Tasks
 
-1. Promote generated terrain relief into collision-aware authored island terrain.
-2. Add visual checks for fixed camera checkpoint screenshots.
-3. Tune gameplay updraft placement, readability, and route recovery.
-4. Add chunk/terrain counters before larger route streaming work.
+1. Add visual checks for fixed camera checkpoint screenshots.
+2. Tune gameplay updraft placement, readability, and route recovery.
+3. Promote stream-window counters into actual terrain despawn and asset streaming.
+4. Start the visual-feel pass: sky lighting, weather atmosphere, material/shader polish, richer character animation, and texture assets.
 
 ## Read First
 

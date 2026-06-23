@@ -215,9 +215,16 @@ Every sample includes:
 - `mid_lod_islands`
 - `far_lod_islands`
 - `visible_island_terrain_count`
+- `hidden_island_terrain_count`
 - `visible_island_impostor_count`
+- `hidden_island_impostor_count`
 - `visible_island_detail_count`
+- `hidden_island_detail_count`
 - `visible_route_beacon_count`
+- `resident_island_visual_count`
+- `stream_visibility_changes_this_frame`
+- `max_stream_visibility_changes_per_frame`
+- `total_stream_visibility_changes`
 - `entity_count`
 
 Add fields here before adding them to code. New fields should be cheap to collect, stable across runs, and useful for deciding what to fix.
@@ -254,9 +261,15 @@ The summary aggregates:
 - max active island count
 - max near/mid/far LOD island counts
 - max visible island terrain count
+- max hidden island terrain count
 - max visible island impostor count
+- max hidden island impostor count
 - max visible island detail count
+- max hidden island detail count
 - max visible route beacon count
+- max resident island visual count
+- max stream visibility changes per frame
+- total stream visibility changes
 - max scene entity count
 - target landing sample count
 - active lift sample count
@@ -276,9 +289,13 @@ The pass/fail checks currently guard:
 - enough islands enter the active chunk window
 - near/mid/far LOD island buckets remain populated
 - visible island terrain stays under the scenario budget, proving inactive chunks are not drawing full terrain
+- hidden island terrain stays populated, proving inactive chunk terrain remains measurable before real despawn work
 - visible island impostors stay populated, proving inactive chunks retain distant silhouettes
 - visible island detail stays under the scenario budget, proving distance LOD is active
+- hidden island detail stays populated, proving distance LOD is actually culling resident detail
 - visible route beacons stay populated so distant route readability is not culled away
+- resident island visuals stay under budget while streaming visibility is still hide/show based
+- stream visibility changes per frame stay under budget so chunk/LOD crossings do not churn too many visuals at once
 - the scene has enough entities to catch accidental content collapse
 - camera distance stayed under a loose maximum
 - camera stayed above the active ground surface
@@ -342,8 +359,8 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
 - Island collision follows deterministic authored terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - `active_chunk_count` and `active_island_count` drive terrain visibility, but they do not despawn entities or load assets yet.
-- LOD buckets drive visible island detail, and inactive chunks swap full terrain for cheap impostors; hidden terrain/detail entities still remain resident.
+- LOD buckets drive visible island detail, inactive chunks swap full terrain for cheap impostors, and hidden/resident/churn counters now quantify how much work remains before real streaming.
 - `entity_count` is still a coarse scene-scale proxy, not a streaming health metric, because inactive visuals are hidden rather than despawned.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
-These are acceptable for the current harness. The next meaningful upgrades are real chunk activation/despawn counters, visual checks for missing or blank island geometry, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
+These are acceptable for the current harness. The next meaningful upgrades are real chunk despawn counters, visual checks for missing or blank island geometry, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
