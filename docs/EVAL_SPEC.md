@@ -129,7 +129,7 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - scripted launch, glide, and wide steering across the expanded island chain
 - the route must cover hundreds of meters without leaving camera thresholds
 - the distant gameplay updraft must keep altitude high enough for a sustained glide
-- sky-island and entity-count thresholds must catch accidental content collapse
+- sky-island, active chunk, LOD bucket, and entity-count thresholds must catch accidental content or scale-signal collapse
 
 `camera_mouse_control` is the camera-input regression test:
 
@@ -165,7 +165,7 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - camera view yaw must stay near the starting heading so strafe velocity cannot auto-orbit the camera
 - max speed and grounded samples must prove the route was not a no-op
 
-The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and isolated. The long-glide route guards the first larger-map slice before streaming or LOD exists. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss. The yaw-stability route guards against persistent mouse yaw being fed back into the camera every frame. The strafe-stability route guards against `A`/`D` movement being treated as camera orbit input. The turn-stability route guards rapid airborne direction changes and backward air braking.
+The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and isolated. The long-glide route guards the first larger-map slice before actual streaming, despawn, or impostors exist. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss. The yaw-stability route guards against persistent mouse yaw being fed back into the camera every frame. The strafe-stability route guards against `A`/`D` movement being treated as camera orbit input. The turn-stability route guards rapid airborne direction changes and backward air braking.
 
 ## Artifacts
 
@@ -209,6 +209,11 @@ Every sample includes:
 - `target_distance_m`
 - `on_landing_target`
 - `sky_island_count`
+- `active_chunk_count`
+- `active_island_count`
+- `near_lod_islands`
+- `mid_lod_islands`
+- `far_lod_islands`
 - `entity_count`
 
 Add fields here before adding them to code. New fields should be cheap to collect, stable across runs, and useful for deciding what to fix.
@@ -237,6 +242,9 @@ The summary aggregates:
 - max visible wind-field count
 - max active lift-field count
 - max sky-island count
+- max active chunk count
+- max active island count
+- max near/mid/far LOD island counts
 - max scene entity count
 - target landing sample count
 - active lift sample count
@@ -252,6 +260,9 @@ The pass/fail checks currently guard:
 - the route spent enough sampled frames grounded
 - the route spent enough sampled frames inside gameplay lift when a scenario requires it
 - the world has enough sky islands to catch accidental route collapse
+- the active chunk window stays inside the scenario budget
+- enough islands enter the active chunk window
+- near/mid/far LOD island buckets remain populated
 - the scene has enough entities to catch accidental content collapse
 - camera distance stayed under a loose maximum
 - camera stayed above the active ground surface
@@ -291,7 +302,7 @@ The thin-slice target should eventually have these evals:
 - `camera_turn_stability`: current rapid air-turn and air-brake camera stability test.
 - `camera_strafe_stability`: current `A`/`D` no-auto-orbit camera stability test.
 - `camera_stress`: fly close to geometry and record camera distance, pitch, and obstruction metrics.
-- `streaming_route`: cross chunk boundaries and record active chunks, spawned entities, despawns, and frame time.
+- `streaming_route`: cross chunk boundaries and record active chunks, active islands, spawned entities, despawns, and frame time.
 
 ## Agent Loop Contract
 
@@ -314,7 +325,8 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - There is no simulation-only binary yet.
 - There is no frame-time percentile summary yet.
 - Island collision is a simple route surface clamp, not full physics.
-- `entity_count` is a coarse scale proxy, not a streaming health metric.
+- `active_chunk_count`, `active_island_count`, and LOD bucket counts are planning counters; they do not despawn terrain or load assets yet.
+- `entity_count` is still a coarse scene-scale proxy, not a streaming health metric.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
-These are acceptable for the current harness. The next meaningful upgrades are frame-time percentiles, chunk/terrain counters, and visual checks for missing or blank island geometry.
+These are acceptable for the current harness. The next meaningful upgrades are frame-time percentiles, real chunk activation/despawn counters, and visual checks for missing or blank island geometry.
