@@ -10,7 +10,7 @@ The harness is repo-native. The game owns deterministic input, state collection,
 
 ## Current Command
 
-Run the baseline route with screenshot capture:
+Run the baseline route as a background metric eval:
 
 ```sh
 ./tools/eval.sh
@@ -40,13 +40,25 @@ Run the mouse-camera control route:
 ./tools/eval.sh camera_mouse_control target/eval/camera_mouse_control
 ```
 
-Run the app directly:
+Run the airborne turn and air-brake camera stability route:
+
+```sh
+./tools/eval.sh camera_turn_stability target/eval/camera_turn_stability
+```
+
+Request screenshot artifacts explicitly:
+
+```sh
+NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh camera_turn_stability target/eval/camera_turn_stability
+```
+
+Run the app directly with screenshot capture:
 
 ```sh
 cargo run -- --eval baseline_route --eval-output target/eval/baseline_route
 ```
 
-Run without screenshot capture, useful for faster local checks or environments where the native window cannot render:
+Run the app directly without screenshot capture. This hides the native window so metric-only loops do not steal focus:
 
 ```sh
 cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --eval-no-screenshot
@@ -65,8 +77,8 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - left and right steering segments
 - metrics sampled every 10 frames and at the final frame
 - summary written after 420 frames
-- optional final screenshot written as `final.png`
-- optional fixed camera checkpoint screenshots written under `checkpoints/`
+- optional final screenshot written as `final.png` when screenshots are requested
+- optional fixed camera checkpoint screenshots written under `checkpoints/` when screenshots are requested
 
 `island_launch_to_landing` is the first actual route-completion eval:
 
@@ -104,7 +116,13 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - camera-to-player framing angle must stay below threshold so pitch cannot push the player out of frame
 - launch-side obstruction avoidance must produce a measurable camera adjustment
 
-The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and isolated. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss.
+`camera_turn_stability` is the airborne camera-feel regression test:
+
+- scripted launch, glide deployment, alternating left/right air turns, and a late backward air-brake segment
+- camera step distance and rotation delta must remain under thresholds during rapid heading changes
+- the route must keep gliding samples and traversal distance high enough to avoid a no-op pass
+
+The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and isolated. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss. The turn-stability route guards rapid airborne direction changes and backward air braking.
 
 ## Artifacts
 
@@ -135,6 +153,8 @@ Every sample includes:
 - `camera_pitch_degrees`
 - `camera_yaw_offset_degrees`
 - `camera_pitch_offset_degrees`
+- `camera_step_distance_m`
+- `camera_rotation_delta_degrees`
 - `camera_obstruction_adjustment_m`
 - `camera_obstruction_hits`
 - `visible_wind_fields`
@@ -159,6 +179,8 @@ The summary aggregates:
 - max camera distance
 - min camera surface clearance
 - max camera-to-player framing angle
+- max per-frame camera step distance
+- max per-frame camera rotation delta
 - max camera obstruction adjustment
 - max camera obstruction hit count
 - min and final target distance
@@ -186,6 +208,7 @@ The pass/fail checks currently guard:
 - camera distance stayed under a loose maximum
 - camera stayed above the active ground surface
 - camera kept the player focus near the camera centerline
+- camera per-frame movement and rotation stayed under scenario jerk thresholds
 - camera obstruction avoidance was exercised when a scenario requires it
 - camera mouse scenarios exercised yaw and both pitch directions
 - island-route final target distance stayed under threshold
@@ -212,6 +235,8 @@ The thin-slice target should eventually have these evals:
 - `island_launch_to_landing`: current route-completion test.
 - `ground_taxi_control`: current pre-launch WASD regression test.
 - `updraft_route`: current gameplay lift regression test.
+- `camera_mouse_control`: current mouse X/Y regression test.
+- `camera_turn_stability`: current rapid air-turn and air-brake camera stability test.
 - `long_glide_visibility`: verify many distant islands remain visible during high-altitude flight.
 - `camera_stress`: fly close to geometry and record camera distance, pitch, and obstruction metrics.
 - `streaming_route`: cross chunk boundaries and record active chunks, spawned entities, despawns, and frame time.
@@ -231,7 +256,8 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 
 ## Known Limitations
 
-- The current eval still opens a native Bevy window.
+- Metric-only evals hide the native Bevy window, but still instantiate the window/rendering stack.
+- Screenshot evals still need a visible native Bevy window.
 - Screenshot checks still rely on human/agent inspection rather than image classification.
 - There is no simulation-only binary yet.
 - There is no frame-time percentile summary yet.
