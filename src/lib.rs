@@ -919,6 +919,55 @@ pub mod world {
                         10.0,
                         false,
                     ),
+                    SkyIsland::new(
+                        "copper stair",
+                        Vec3::new(36.0, 58.0, -332.0),
+                        Vec2::new(26.0, 22.0),
+                        9.0,
+                        false,
+                    ),
+                    SkyIsland::new(
+                        "sunlit terrace",
+                        Vec3::new(42.0, 64.0, -444.0),
+                        Vec2::new(54.0, 30.0),
+                        13.0,
+                        false,
+                    ),
+                    SkyIsland::new(
+                        "western refuge",
+                        Vec3::new(-150.0, 70.0, -432.0),
+                        Vec2::new(38.0, 30.0),
+                        12.0,
+                        false,
+                    ),
+                    SkyIsland::new(
+                        "storm porch",
+                        Vec3::new(-74.0, 76.0, -548.0),
+                        Vec2::new(42.0, 28.0),
+                        15.0,
+                        false,
+                    ),
+                    SkyIsland::new(
+                        "high orchard",
+                        Vec3::new(18.0, 82.0, -662.0),
+                        Vec2::new(58.0, 38.0),
+                        14.0,
+                        false,
+                    ),
+                    SkyIsland::new(
+                        "far needle",
+                        Vec3::new(142.0, 92.0, -742.0),
+                        Vec2::new(24.0, 22.0),
+                        18.0,
+                        false,
+                    ),
+                    SkyIsland::new(
+                        "sapphire basin",
+                        Vec3::new(-58.0, 88.0, -818.0),
+                        Vec2::new(46.0, 34.0),
+                        16.0,
+                        false,
+                    ),
                 ],
             }
         }
@@ -1085,6 +1134,19 @@ pub mod world {
 
             assert_eq!(route.target_distance(target.center), 0.0);
             assert!(route.target_distance(START_POSITION) > 200.0);
+        }
+
+        #[test]
+        fn route_has_archipelago_scale_and_distant_landmarks() {
+            let route = SkyRoute::default();
+            let farthest_z = route
+                .islands()
+                .iter()
+                .map(|island| island.center.z)
+                .fold(0.0_f32, f32::min);
+
+            assert!(route.islands().len() >= 12);
+            assert!(farthest_z < -800.0);
         }
 
         #[test]
@@ -1995,6 +2057,7 @@ pub mod eval {
     pub const CAMERA_YAW_STABILITY: &str = "camera_yaw_stability";
     pub const CAMERA_TURN_STABILITY: &str = "camera_turn_stability";
     pub const CAMERA_STRAFE_STABILITY: &str = "camera_strafe_stability";
+    pub const LONG_GLIDE_VISIBILITY: &str = "long_glide_visibility";
     pub const SCENARIO_NAMES: &[&str] = &[
         BASELINE_ROUTE,
         ISLAND_LAUNCH_TO_LANDING,
@@ -2004,6 +2067,7 @@ pub mod eval {
         CAMERA_YAW_STABILITY,
         CAMERA_TURN_STABILITY,
         CAMERA_STRAFE_STABILITY,
+        LONG_GLIDE_VISIBILITY,
     ];
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2112,6 +2176,20 @@ pub mod eval {
             name: "settled_strafe",
         },
     ];
+    const LONG_GLIDE_CHECKPOINTS: &[EvalCheckpoint] = &[
+        EvalCheckpoint {
+            frame: 180,
+            name: "far_route_entry",
+        },
+        EvalCheckpoint {
+            frame: 420,
+            name: "archipelago_midroute",
+        },
+        EvalCheckpoint {
+            frame: 640,
+            name: "distant_islands",
+        },
+    ];
 
     #[derive(Clone, Copy, Debug)]
     pub struct EvalScenario {
@@ -2149,6 +2227,7 @@ pub mod eval {
         pub min_gliding_samples: u32,
         pub min_grounded_samples: u32,
         pub min_lifted_samples: u32,
+        pub min_sky_island_count: usize,
         pub min_entity_count: usize,
         pub max_camera_distance_m: f32,
         pub min_camera_surface_clearance_m: f32,
@@ -2169,7 +2248,7 @@ pub mod eval {
     impl EvalThresholds {
         fn to_json(self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_sky_island_count\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
                 self.min_samples,
                 json_number(self.min_horizontal_distance_m),
                 json_number(self.min_max_altitude_m),
@@ -2177,6 +2256,7 @@ pub mod eval {
                 self.min_gliding_samples,
                 self.min_grounded_samples,
                 self.min_lifted_samples,
+                self.min_sky_island_count,
                 self.min_entity_count,
                 json_number(self.max_camera_distance_m),
                 json_number(self.min_camera_surface_clearance_m),
@@ -2490,6 +2570,12 @@ pub mod eval {
                     self.lifted_samples as f32,
                     thresholds.min_lifted_samples as f32,
                     "samples",
+                ),
+                EvalCheck::at_least(
+                    "sky_island_count",
+                    self.max_sky_island_count as f32,
+                    thresholds.min_sky_island_count as f32,
+                    "islands",
                 ),
                 EvalCheck::at_least(
                     "entity_count",
@@ -2826,6 +2912,9 @@ pub mod eval {
             CAMERA_STRAFE_STABILITY | "camera_strafe" | "strafe_stability" => {
                 Some(camera_strafe_stability())
             }
+            LONG_GLIDE_VISIBILITY | "long_glide" | "glide_visibility" => {
+                Some(long_glide_visibility())
+            }
             _ => None,
         }
     }
@@ -2855,6 +2944,16 @@ pub mod eval {
                 forward: t >= 0.05,
                 right: (1.2..=3.4).contains(&t),
                 left: (4.4..=5.0).contains(&t),
+                glide: t >= 0.45,
+                launch: frame == 1,
+                ..default()
+            };
+        }
+        if scenario.name == LONG_GLIDE_VISIBILITY {
+            return FlightInput {
+                forward: t >= 0.05,
+                right: (1.1..=2.75).contains(&t) || (7.2..=8.05).contains(&t),
+                left: (4.2..=5.65).contains(&t),
                 glide: t >= 0.45,
                 launch: frame == 1,
                 ..default()
@@ -2922,6 +3021,7 @@ pub mod eval {
                 min_gliding_samples: 20,
                 min_grounded_samples: 0,
                 min_lifted_samples: 0,
+                min_sky_island_count: 10,
                 min_entity_count: 100,
                 max_camera_distance_m: 35.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -2956,6 +3056,7 @@ pub mod eval {
                 min_gliding_samples: 45,
                 min_grounded_samples: 1,
                 min_lifted_samples: 0,
+                min_sky_island_count: 10,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -2990,6 +3091,7 @@ pub mod eval {
                 min_gliding_samples: 0,
                 min_grounded_samples: 28,
                 min_lifted_samples: 0,
+                min_sky_island_count: 10,
                 min_entity_count: 100,
                 max_camera_distance_m: 28.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3024,6 +3126,7 @@ pub mod eval {
                 min_gliding_samples: 45,
                 min_grounded_samples: 1,
                 min_lifted_samples: 4,
+                min_sky_island_count: 10,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3058,6 +3161,7 @@ pub mod eval {
                 min_gliding_samples: 0,
                 min_grounded_samples: 30,
                 min_lifted_samples: 0,
+                min_sky_island_count: 10,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3092,6 +3196,7 @@ pub mod eval {
                 min_gliding_samples: 0,
                 min_grounded_samples: 50,
                 min_lifted_samples: 0,
+                min_sky_island_count: 10,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3126,6 +3231,7 @@ pub mod eval {
                 min_gliding_samples: 40,
                 min_grounded_samples: 0,
                 min_lifted_samples: 0,
+                min_sky_island_count: 10,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3160,6 +3266,7 @@ pub mod eval {
                 min_gliding_samples: 0,
                 min_grounded_samples: 45,
                 min_lifted_samples: 0,
+                min_sky_island_count: 10,
                 min_entity_count: 100,
                 max_camera_distance_m: 28.0,
                 min_camera_surface_clearance_m: 1.0,
@@ -3174,6 +3281,41 @@ pub mod eval {
                 max_camera_pitch_offset_degrees: 0.0,
                 require_target_landing: false,
                 max_final_target_distance_m: 280.0,
+                min_target_landing_samples: 0,
+            },
+        }
+    }
+
+    fn long_glide_visibility() -> EvalScenario {
+        EvalScenario {
+            name: LONG_GLIDE_VISIBILITY,
+            fixed_dt: 1.0 / 60.0,
+            frame_count: 660,
+            sample_stride: 10,
+            checkpoints: LONG_GLIDE_CHECKPOINTS,
+            thresholds: EvalThresholds {
+                min_samples: 60,
+                min_horizontal_distance_m: 430.0,
+                min_max_altitude_m: 80.0,
+                min_max_speed_mps: 45.0,
+                min_gliding_samples: 55,
+                min_grounded_samples: 0,
+                min_lifted_samples: 0,
+                min_sky_island_count: 12,
+                min_entity_count: 220,
+                max_camera_distance_m: 38.0,
+                min_camera_surface_clearance_m: 1.0,
+                max_camera_player_angle_degrees: 18.0,
+                max_camera_step_distance_m: 12.0,
+                max_camera_rotation_delta_degrees: 28.0,
+                max_camera_orbit_alignment_degrees: 45.0,
+                max_abs_camera_view_yaw_degrees: 8.0,
+                min_camera_obstruction_adjustment_m: 0.0,
+                min_abs_camera_yaw_degrees: 0.0,
+                min_camera_pitch_offset_degrees: 0.0,
+                max_camera_pitch_offset_degrees: 0.0,
+                require_target_landing: false,
+                max_final_target_distance_m: 520.0,
                 min_target_landing_samples: 0,
             },
         }
@@ -3318,6 +3460,18 @@ pub mod eval {
         }
 
         #[test]
+        fn long_glide_visibility_script_crosses_archipelago() {
+            let scenario = scenario_named(LONG_GLIDE_VISIBILITY).expect("long glide route exists");
+
+            assert!(scripted_input(scenario, 1).launch);
+            assert!(scripted_input(scenario, 120).right);
+            assert!(scripted_input(scenario, 285).left);
+            assert!(scripted_input(scenario, 620).glide);
+            assert!(!scripted_input(scenario, 620).dive);
+            assert!(scenario.thresholds.min_sky_island_count >= 12);
+        }
+
+        #[test]
         fn scenarios_define_non_final_camera_checkpoints() {
             for name in SCENARIO_NAMES {
                 let scenario = scenario_named(name).expect("scenario exists");
@@ -3365,7 +3519,7 @@ pub mod eval {
                 1,
                 140.0,
                 false,
-                5,
+                12,
                 130,
             ));
             accumulator.observe(EvalSample::new(
@@ -3392,7 +3546,7 @@ pub mod eval {
                 1,
                 0.0,
                 false,
-                5,
+                12,
                 130,
             ));
             for frame in 1..=scenario.thresholds.min_gliding_samples {
@@ -3420,7 +3574,7 @@ pub mod eval {
                     1,
                     140.0 - frame as f32 * 4.0,
                     false,
-                    5,
+                    12,
                     130,
                 ));
             }

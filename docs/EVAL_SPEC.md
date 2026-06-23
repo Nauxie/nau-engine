@@ -34,6 +34,12 @@ Run the gameplay updraft route:
 ./tools/eval.sh updraft_route target/eval/updraft_route
 ```
 
+Run the long-glide archipelago route:
+
+```sh
+./tools/eval.sh long_glide_visibility target/eval/long_glide_visibility
+```
+
 Run the mouse-camera control route:
 
 ```sh
@@ -117,6 +123,14 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - max altitude must exceed the normal route ceiling
 - baseline and island routes must not accidentally hit the lift field
 
+`long_glide_visibility` is the larger-archipelago traversal eval:
+
+- fixed spawn on the launch island
+- scripted launch, glide, and wide steering across the expanded island chain
+- the route must cover hundreds of meters without leaving camera thresholds
+- the distant gameplay updraft must keep altitude high enough for a sustained glide
+- sky-island and entity-count thresholds must catch accidental content collapse
+
 `camera_mouse_control` is the camera-input regression test:
 
 - fixed spawn on the launch island
@@ -151,7 +165,7 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - camera view yaw must stay near the starting heading so strafe velocity cannot auto-orbit the camera
 - max speed and grounded samples must prove the route was not a no-op
 
-The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and isolated. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss. The yaw-stability route guards against persistent mouse yaw being fed back into the camera every frame. The strafe-stability route guards against `A`/`D` movement being treated as camera orbit input. The turn-stability route guards rapid airborne direction changes and backward air braking.
+The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and isolated. The long-glide route guards the first larger-map slice before streaming or LOD exists. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss. The yaw-stability route guards against persistent mouse yaw being fed back into the camera every frame. The strafe-stability route guards against `A`/`D` movement being treated as camera orbit input. The turn-stability route guards rapid airborne direction changes and backward air braking.
 
 ## Artifacts
 
@@ -237,6 +251,7 @@ The pass/fail checks currently guard:
 - the route spent enough sampled frames gliding
 - the route spent enough sampled frames grounded
 - the route spent enough sampled frames inside gameplay lift when a scenario requires it
+- the world has enough sky islands to catch accidental route collapse
 - the scene has enough entities to catch accidental content collapse
 - camera distance stayed under a loose maximum
 - camera stayed above the active ground surface
@@ -270,11 +285,11 @@ The thin-slice target should eventually have these evals:
 - `island_launch_to_landing`: current route-completion test.
 - `ground_taxi_control`: current pre-launch WASD regression test.
 - `updraft_route`: current gameplay lift regression test.
+- `long_glide_visibility`: current larger-archipelago traversal and content-scale test.
 - `camera_mouse_control`: current mouse X/Y regression test.
 - `camera_yaw_stability`: current small-yaw no-drift regression test.
 - `camera_turn_stability`: current rapid air-turn and air-brake camera stability test.
 - `camera_strafe_stability`: current `A`/`D` no-auto-orbit camera stability test.
-- `long_glide_visibility`: verify many distant islands remain visible during high-altitude flight.
 - `camera_stress`: fly close to geometry and record camera distance, pitch, and obstruction metrics.
 - `streaming_route`: cross chunk boundaries and record active chunks, spawned entities, despawns, and frame time.
 
