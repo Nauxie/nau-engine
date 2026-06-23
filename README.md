@@ -20,8 +20,8 @@ The first executable is a simple 3D flight testbed:
 - camera-relative grounded and airborne steering on `WASD`, with separate ground friction so walking is playable before launch
 - mouse-look third-person follow camera with player-centered orbit pitch, separate yaw/pitch tuning, click-to-lock cursor capture, obstruction avoidance, and surface-clearance clamping
 - a 12-island floating archipelago with launch, midpoint, landing, high-altitude, and distant reference islands
-- deterministic island relief with stream-windowed terrain, distant impostors, and distance-managed detail props: varied generated terrain colors, trees, ponds, stones, route cairns, launch beacon, and landing-garden markers
-- simple route-surface landing detection with one-shot landing friction
+- deterministic collision-aware island relief with stream-windowed terrain, distant impostors, and distance-managed detail props: varied generated terrain colors, trees, ponds, stones, route cairns, launch beacon, and landing-garden markers
+- simple terrain-surface landing detection with one-shot landing friction
 - live debug readout for frame time, speed, altitude, target distance, camera pitch/distance/framing angle/motion/obstruction/yaw offset, velocity, visual wind-field count, lift-field count, sky-island count, active chunk window, near/mid/far LOD island buckets, visible terrain/impostor counts, and visible detail/beacon counts
 - visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
 - authored visual wind fields plus separate gameplay updraft lift fields
@@ -73,10 +73,10 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 ## Near-Term Roadmap
 
-1. Promote generated terrain relief into collision-aware authored island terrain.
-2. Add visual checks for fixed camera checkpoint screenshots.
-3. Tune gameplay updraft placement, readability, and recovery routes.
-4. Promote stream-window visibility into actual terrain despawn, asset loading, and richer distant impostors.
+1. Add visual checks for fixed camera checkpoint screenshots.
+2. Tune gameplay updraft placement, readability, and recovery routes.
+3. Promote stream-window visibility into actual terrain despawn, asset loading, and richer distant impostors.
+4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
 
 ## Development Principles
 

@@ -340,10 +340,10 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - Screenshot checks still rely on human/agent inspection rather than image classification.
 - There is no simulation-only binary yet.
 - Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
-- Island collision is a simple route surface clamp, not full physics.
+- Island collision follows deterministic authored terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - `active_chunk_count` and `active_island_count` drive terrain visibility, but they do not despawn entities or load assets yet.
 - LOD buckets drive visible island detail, and inactive chunks swap full terrain for cheap impostors; hidden terrain/detail entities still remain resident.
 - `entity_count` is still a coarse scene-scale proxy, not a streaming health metric, because inactive visuals are hidden rather than despawned.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
-These are acceptable for the current harness. The next meaningful upgrades are frame-time percentiles, real chunk activation/despawn counters, and visual checks for missing or blank island geometry.
+These are acceptable for the current harness. The next meaningful upgrades are real chunk activation/despawn counters, visual checks for missing or blank island geometry, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.

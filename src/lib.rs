@@ -874,6 +874,9 @@ pub mod world {
     pub const STREAM_ACTIVE_CHUNK_RADIUS: i32 = 2;
     pub const LOD_NEAR_DISTANCE_M: f32 = 220.0;
     pub const LOD_MID_DISTANCE_M: f32 = 520.0;
+    pub const TERRAIN_MAX_RISE_M: f32 = 0.45;
+    pub const TERRAIN_MAX_DROP_M: f32 = 0.75;
+    pub const TERRAIN_VISUAL_FOOTING_OFFSET_M: f32 = 0.18;
     const GROUND_CONTACT_EPSILON: f32 = 0.05;
     const GROUND_CONTACT_HORIZONTAL_DAMPING: f32 = 0.58;
 
@@ -1060,8 +1063,8 @@ pub mod world {
                 .iter()
                 .copied()
                 .filter(|island| island.contains_horizontal(position))
-                .max_by(|a, b| a.floor_y().total_cmp(&b.floor_y()))
-                .map(GroundSurface::from)
+                .map(|island| GroundSurface::from_island_at(island, position))
+                .max_by(|a, b| a.floor_y.total_cmp(&b.floor_y))
                 .unwrap_or(GroundSurface {
                     floor_y: self.fallback_floor_y,
                     is_target: false,
@@ -1162,6 +1165,44 @@ pub mod world {
             self.floor_y() - PLAYER_STANDING_OFFSET
         }
 
+        pub fn terrain_surface_y_at(self, position: Vec3) -> f32 {
+            let dx = (position.x - self.center.x) / self.half_extents.x.max(0.001);
+            let dz = (position.z - self.center.z) / self.half_extents.y.max(0.001);
+            let radius = Vec2::new(dx, dz).length().clamp(0.0, 1.0);
+            let angle = dz.atan2(dx);
+
+            self.terrain_surface_y_at_polar(radius, angle)
+        }
+
+        pub fn terrain_surface_y_at_polar(self, radius: f32, angle: f32) -> f32 {
+            self.floor_y() + self.terrain_relief_m(radius, angle)
+        }
+
+        pub fn mesh_top_y_at(self, position: Vec3) -> f32 {
+            self.terrain_surface_y_at(position) - TERRAIN_VISUAL_FOOTING_OFFSET_M
+        }
+
+        pub fn mesh_top_y_at_polar(self, radius: f32, angle: f32) -> f32 {
+            self.terrain_surface_y_at_polar(radius, angle) - TERRAIN_VISUAL_FOOTING_OFFSET_M
+        }
+
+        pub fn terrain_relief_m(self, radius: f32, angle: f32) -> f32 {
+            let radius = radius.clamp(0.0, 1.0);
+            if radius <= f32::EPSILON {
+                return 0.0;
+            }
+
+            let phase = self.terrain_phase();
+            let ridge = radius
+                * ((angle * 3.0 + phase).sin() * 0.28 + (angle * 7.0 - phase * 0.5).cos() * 0.14);
+            let shoulder = (radius * std::f32::consts::PI).sin() * 0.24;
+            let center_falloff = ((1.0 - radius).powi(2) - 1.0) * 0.16;
+            let edge_drop = -radius.powf(2.35) * 0.42;
+
+            (ridge + shoulder + center_falloff + edge_drop)
+                .clamp(-TERRAIN_MAX_DROP_M, TERRAIN_MAX_RISE_M)
+        }
+
         pub fn contains_horizontal(self, position: Vec3) -> bool {
             let dx = (position.x - self.center.x) / self.half_extents.x.max(0.001);
             let dz = (position.z - self.center.z) / self.half_extents.y.max(0.001);
@@ -1195,6 +1236,13 @@ pub mod world {
                 StreamActivation::Inactive
             }
         }
+
+        fn terrain_phase(self) -> f32 {
+            self.center.x * 0.013
+                + self.center.z * 0.009
+                + self.half_extents.x * 0.021
+                + self.half_extents.y * 0.017
+        }
     }
 
     #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1204,10 +1252,10 @@ pub mod world {
         pub island_name: Option<&'static str>,
     }
 
-    impl From<SkyIsland> for GroundSurface {
-        fn from(island: SkyIsland) -> Self {
+    impl GroundSurface {
+        fn from_island_at(island: SkyIsland, position: Vec3) -> Self {
             Self {
-                floor_y: island.floor_y(),
+                floor_y: island.terrain_surface_y_at(position),
                 is_target: island.is_target,
                 island_name: Some(island.name),
             }
@@ -1226,6 +1274,34 @@ pub mod world {
 
             assert_eq!(launch_surface.floor_y, START_FLOOR_Y);
             assert_eq!(launch_surface.island_name, Some("launch mesa"));
+        }
+
+        #[test]
+        fn route_surface_follows_island_relief() {
+            let route = SkyRoute::default();
+            let island = route.islands()[0];
+            let ridge_position = Vec3::new(
+                island.center.x + island.half_extents.x * 0.46,
+                START_FLOOR_Y,
+                island.center.z + island.half_extents.y * 0.18,
+            );
+            let edge_position = Vec3::new(
+                island.center.x + island.half_extents.x * 0.84,
+                START_FLOOR_Y,
+                island.center.z - island.half_extents.y * 0.22,
+            );
+
+            let center_surface = route.ground_at(island.center);
+            let ridge_surface = route.ground_at(ridge_position);
+            let edge_surface = route.ground_at(edge_position);
+
+            assert_eq!(center_surface.floor_y, START_FLOOR_Y);
+            assert_ne!(ridge_surface.floor_y, center_surface.floor_y);
+            assert_ne!(edge_surface.floor_y, center_surface.floor_y);
+            assert!(
+                ridge_surface.floor_y <= island.floor_y() + TERRAIN_MAX_RISE_M
+                    && edge_surface.floor_y >= island.floor_y() - TERRAIN_MAX_DROP_M
+            );
         }
 
         #[test]
@@ -1354,7 +1430,12 @@ pub mod world {
         fn island_visual_top_stays_close_to_player_footing() {
             let route = SkyRoute::default();
             let island = route.islands()[0];
-            let visual_offset = island.floor_y() - island.mesh_top_y();
+            let sample = Vec3::new(
+                island.center.x + island.half_extents.x * 0.35,
+                island.center.y,
+                island.center.z - island.half_extents.y * 0.25,
+            );
+            let visual_offset = island.terrain_surface_y_at(sample) - island.mesh_top_y_at(sample);
 
             assert!((0.15..=0.3).contains(&visual_offset));
         }
