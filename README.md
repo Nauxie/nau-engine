@@ -18,15 +18,15 @@ The first executable is a simple 3D flight testbed:
 - one-launch-per-airtime vertical burst on `E`
 - dive on `Shift`
 - camera-relative grounded and airborne steering on `WASD`, with separate ground friction so walking is playable before launch
-- mouse-look third-person follow camera with player-centered orbit pitch, separate yaw/pitch tuning, click-to-lock cursor capture, and surface-clearance clamping
+- mouse-look third-person follow camera with player-centered orbit pitch, separate yaw/pitch tuning, click-to-lock cursor capture, obstruction avoidance, and surface-clearance clamping
 - a small floating sky-island route with launch, midpoint, landing, and distant reference islands
 - deterministic island detail props: trees, ponds, stones, launch beacon, and landing-garden markers
 - simple route-surface landing detection with one-shot landing friction
-- live debug readout for frame time, speed, altitude, target distance, camera pitch/distance/framing angle/yaw offset, velocity, visual wind-field count, lift-field count, and sky-island count
+- live debug readout for frame time, speed, altitude, target distance, camera pitch/distance/framing angle/obstruction/yaw offset, velocity, visual wind-field count, lift-field count, and sky-island count
 - visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
 - authored visual wind fields plus a separate gameplay updraft lift field
 - deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state math
-- scripted eval runs for ground taxi control, mouse camera control, baseline traversal, updraft lift, and island launch-to-landing
+- scripted eval runs for ground taxi control, mouse camera control, baseline traversal, updraft lift, and island launch-to-landing with summary metrics plus fixed camera checkpoint screenshots
 
 This is intentionally not a full physics simulation yet. The first job is to create a place where movement constants can be tuned quickly.
 
@@ -68,10 +68,9 @@ cargo clippy --all-targets --all-features -- -D warnings
 ## Near-Term Roadmap
 
 1. Replace primitive island slabs with authored or generated terrain meshes.
-2. Add fixed camera checkpoint screenshots to the island and updraft evals.
-3. Add camera collision/obstruction handling.
-4. Tune gameplay updraft placement, readability, and recovery routes.
-5. Introduce chunked terrain loading with deliberately tiny chunks before making the world large.
+2. Add visual checks for fixed camera checkpoint screenshots.
+3. Tune gameplay updraft placement, readability, and recovery routes.
+4. Introduce chunked terrain loading with deliberately tiny chunks before making the world large.
 
 ## Development Principles
 

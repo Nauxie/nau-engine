@@ -106,17 +106,17 @@ Current tests cover:
 - visual field bounds and stream origins are deterministic
 - smoothing factors do not overshoot
 - camera ignores vertical-only launch velocity for follow direction
-- camera mouse X/Y input, pitch clamps, pitch/distance/framing helpers, and surface-clearance lift
+- camera mouse X/Y input, pitch clamps, pitch/distance/framing helpers, surface-clearance lift, and obstruction avoidance
 - frame-time diagnostics avoid invalid values
 - animation phase advances from delta time
 - wing visibility tracks glide mode
 - `updraft_route` eval tracks `active_lift_fields` and requires `lifted_samples`
-- `camera_mouse_control` eval tracks yaw/pitch offsets without player movement
+- `camera_mouse_control` eval tracks yaw/pitch offsets and obstruction adjustment without player movement
 
 Future tests should cover:
 
 - launch source triggers
-- camera obstruction handling
+- image-level camera checkpoint classification
 - turn/bank behavior
 - debug visualization toggles
 - crosswind gameplay force rules if visual wind becomes a movement force
