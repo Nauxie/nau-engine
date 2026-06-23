@@ -41,6 +41,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Launch gives vertical velocity and a small forward bonus.
 - Gliding reduces gravity and clamps fall speed.
 - Gliding does not create altitude on its own.
+- Airborne `S` input brakes forward motion first, then allows limited backward drift instead of unrestricted reverse flight.
 - Visual `WindField` volumes are finite axis-aligned boxes for readable wind/updraft debug streams.
 - Gameplay `LiftField` updraft volumes are separate finite boxes that add upward velocity while the player is airborne inside them.
 - Lift fields clamp against their configured maximum upward speed instead of granting unbounded climb.
@@ -107,11 +108,13 @@ Current tests cover:
 - smoothing factors do not overshoot
 - camera ignores vertical-only launch velocity for follow direction
 - camera mouse X/Y input, pitch clamps, pitch/distance/framing helpers, surface-clearance lift, and obstruction avoidance
+- camera follow direction smoothing limits rapid turn snaps
 - frame-time diagnostics avoid invalid values
 - animation phase advances from delta time
 - wing visibility tracks glide mode
 - `updraft_route` eval tracks `active_lift_fields` and requires `lifted_samples`
 - `camera_mouse_control` eval tracks yaw/pitch offsets and obstruction adjustment without player movement
+- `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking
 
 Future tests should cover:
 

@@ -27,7 +27,7 @@ Work:
 - Runtime debug overlay for camera pitch, camera distance, frame time, velocity, altitude, glide state, launch state, and visual wind-field count. Initial version complete.
 - Debug gizmos for player vectors, camera line, and visual wind/updraft stream fields. Initial version complete.
 - Visual wind/updraft fields after baseline gliding is stable. Initial version complete.
-- Fixed camera checkpoint screenshots and initial camera obstruction avoidance. Initial version complete.
+- Fixed camera checkpoint screenshots, initial camera obstruction avoidance, and camera jerk metrics. Initial version complete.
 - Add manual test routes: launch, glide, dive, low-altitude recovery, landing, obstacle pass.
 - Add camera mode profiles for launch, glide, dive, and ground.
 - Add bank/turn behavior that feels like glider traversal rather than free flight.
@@ -80,7 +80,7 @@ Goal: build one high-quality island route before attempting a massive world.
 
 Work:
 
-- Import or generate an island terrain mesh.
+- Import or generate an island terrain mesh. Initial generated visual relief complete; collision is still a simple route surface.
 - Add water plane, sky, fog, lighting, shadows, and PBR materials.
 - Add launch point, glide route, landing target, and recovery path.
 - Add simple vegetation/rocks/landmarks.

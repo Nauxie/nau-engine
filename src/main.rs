@@ -1,5 +1,7 @@
+use bevy::asset::RenderAssetUsages;
 use bevy::ecs::system::SystemParam;
 use bevy::input::mouse::MouseMotion;
+use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
@@ -9,9 +11,10 @@ use nau_engine::animation::{
 };
 use nau_engine::camera::{
     CameraControlState, CameraControlTuning, CameraInput, CameraObstruction, FollowCamera,
-    apply_camera_input, avoid_camera_obstructions, camera_distance, camera_pitch_degrees,
-    camera_surface_clearance, camera_target_angle_degrees, lift_camera_above_floor,
-    step_camera_with_orbit,
+    FollowCameraState, apply_camera_input, avoid_camera_obstructions, camera_distance,
+    camera_orbit_alignment_degrees, camera_pitch_degrees, camera_surface_clearance,
+    camera_target_angle_degrees, horizontal_follow_direction, lift_camera_above_floor,
+    step_camera_with_direction, update_follow_direction_state,
 };
 use nau_engine::diagnostics::frame_ms;
 use nau_engine::environment::{
@@ -66,11 +69,7 @@ fn main() -> AppExit {
         .insert_resource(DebugVisuals::default())
         .insert_resource(SkyRoute::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "The NAU Engine Flight Sandbox".into(),
-                resolution: (1280, 720).into(),
-                ..default()
-            }),
+            primary_window: Some(primary_window(eval.as_ref())),
             ..default()
         }))
         .configure_sets(
@@ -127,6 +126,18 @@ fn main() -> AppExit {
     app.run()
 }
 
+fn primary_window(eval: Option<&EvalOptions>) -> Window {
+    let hidden_metric_eval = eval.is_some_and(|options| !options.capture_screenshot);
+
+    Window {
+        title: "The NAU Engine Flight Sandbox".into(),
+        resolution: (1280, 720).into(),
+        visible: !hidden_metric_eval,
+        focused: !hidden_metric_eval,
+        ..default()
+    }
+}
+
 #[derive(Component)]
 struct Player;
 
@@ -138,6 +149,9 @@ struct CameraObstacle(CameraObstruction);
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
 struct CameraDiagnostics {
+    step_distance_m: f32,
+    rotation_delta_degrees: f32,
+    orbit_alignment_degrees: f32,
     obstruction_adjustment_m: f32,
     obstruction_hits: usize,
 }
@@ -178,7 +192,16 @@ struct CameraScene<'w, 's> {
     camera_control: Res<'w, CameraControlState>,
     camera_diagnostics: ResMut<'w, CameraDiagnostics>,
     player: Query<'w, 's, (&'static Transform, &'static Velocity), With<Player>>,
-    camera: Query<'w, 's, (&'static mut Transform, &'static FollowCamera), CameraFollowFilter>,
+    camera: Query<
+        'w,
+        's,
+        (
+            &'static mut Transform,
+            &'static FollowCamera,
+            &'static mut FollowCameraState,
+        ),
+        CameraFollowFilter,
+    >,
     obstacles: Query<'w, 's, &'static CameraObstacle>,
 }
 
@@ -648,6 +671,7 @@ fn setup(
             Vec3::Y,
         ),
         follow_camera,
+        FollowCameraState::default(),
     ));
 
     commands.spawn((
@@ -694,7 +718,7 @@ fn spawn_sky_island(
 
     commands.spawn((
         Mesh3d(meshes.add(Cylinder::new(1.0, top_thickness))),
-        MeshMaterial3d(top_material),
+        MeshMaterial3d(top_material.clone()),
         Transform {
             translation: Vec3::new(
                 island.center.x,
@@ -706,6 +730,13 @@ fn spawn_sky_island(
         },
         island,
         Name::new(island.name),
+    ));
+
+    commands.spawn((
+        Mesh3d(meshes.add(island_terrain_mesh(island_index, island))),
+        MeshMaterial3d(top_material),
+        Transform::default(),
+        Name::new("island terrain surface"),
     ));
 
     let rock_body_center = Vec3::new(
@@ -792,6 +823,90 @@ fn spawn_sky_island(
         island_index,
         island,
     );
+}
+
+fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
+    const RINGS: usize = 8;
+    const SEGMENTS: usize = 48;
+
+    let top_y = island.mesh_top_y();
+    let vertex_count = 1 + RINGS * SEGMENTS;
+    let mut positions = Vec::with_capacity(vertex_count);
+    let mut normals = Vec::with_capacity(vertex_count);
+    let mut uvs = Vec::with_capacity(vertex_count);
+    let mut indices = Vec::with_capacity(SEGMENTS * 3 + (RINGS - 1) * SEGMENTS * 6);
+
+    positions.push([
+        island.center.x,
+        top_y + island_terrain_height(island_index, 0.0, 0.0),
+        island.center.z,
+    ]);
+    normals.push([0.0, 1.0, 0.0]);
+    uvs.push([0.5, 0.5]);
+
+    for ring in 1..=RINGS {
+        let radius = ring as f32 / RINGS as f32;
+        for segment in 0..SEGMENTS {
+            let angle = segment as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+            let phase = island_index as f32 * 0.73;
+            let edge_variation =
+                1.0 + 0.035 * (angle * 5.0 + phase).sin() + 0.018 * (angle * 9.0).cos();
+            let x = island.center.x + angle.cos() * island.half_extents.x * radius * edge_variation;
+            let z = island.center.z + angle.sin() * island.half_extents.y * radius * edge_variation;
+            let y = top_y + island_terrain_height(island_index, radius, angle);
+
+            positions.push([x, y, z]);
+            normals.push([0.0, 1.0, 0.0]);
+            uvs.push([
+                0.5 + angle.cos() * radius * 0.5,
+                0.5 + angle.sin() * radius * 0.5,
+            ]);
+        }
+    }
+
+    let ring_index = |ring: usize, segment: usize| -> u32 {
+        (1 + (ring - 1) * SEGMENTS + segment % SEGMENTS) as u32
+    };
+
+    for segment in 0..SEGMENTS {
+        indices.extend([0, ring_index(1, segment + 1), ring_index(1, segment)]);
+    }
+
+    for ring in 1..RINGS {
+        for segment in 0..SEGMENTS {
+            let inner_current = ring_index(ring, segment);
+            let inner_next = ring_index(ring, segment + 1);
+            let outer_current = ring_index(ring + 1, segment);
+            let outer_next = ring_index(ring + 1, segment + 1);
+
+            indices.extend([
+                inner_current,
+                inner_next,
+                outer_current,
+                inner_next,
+                outer_next,
+                outer_current,
+            ]);
+        }
+    }
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+fn island_terrain_height(island_index: usize, radius: f32, angle: f32) -> f32 {
+    let phase = island_index as f32 * 0.83;
+    let ridges = (angle * 3.0 + phase).sin() * 0.035 + (angle * 7.0 - phase * 0.5).cos() * 0.018;
+    let dome = (1.0 - radius).powi(2) * 0.045;
+    let edge_softening = radius.powf(2.4) * 0.04;
+
+    (0.028 + dome + ridges * (1.0 - radius * 0.45) - edge_softening).clamp(0.008, 0.065)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1190,19 +1305,31 @@ fn follow_camera(time: Res<Time>, eval: Option<Res<EvalRun>>, mut scene: CameraS
     let Ok((player_transform, velocity)) = scene.player.single() else {
         return;
     };
-    let Ok((mut camera_transform, follow)) = scene.camera.single_mut() else {
+    let Ok((mut camera_transform, follow, mut follow_state)) = scene.camera.single_mut() else {
         return;
     };
+    let previous_camera_position = camera_transform.translation;
+    let previous_camera_rotation = camera_transform.rotation;
 
-    let frame = step_camera_with_orbit(
+    let dt = eval_dt(&time, eval.as_deref());
+    let desired_follow_direction =
+        horizontal_follow_direction(velocity.0, *player_transform.forward());
+    let follow_direction =
+        update_follow_direction_state(&mut follow_state, desired_follow_direction, follow, dt);
+    let frame = step_camera_with_direction(
         camera_transform.translation,
         camera_transform.rotation,
         player_transform.translation,
-        *player_transform.forward(),
-        velocity.0,
+        follow_direction,
         follow,
         scene.camera_control.orbit,
-        eval_dt(&time, eval.as_deref()),
+        dt,
+    );
+    let orbit_alignment_degrees = camera_orbit_alignment_degrees(
+        frame.position,
+        frame.look_target,
+        follow_direction,
+        scene.camera_control.orbit,
     );
     let camera_floor_y = scene.route.ground_at(frame.position).floor_y;
     let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
@@ -1221,6 +1348,11 @@ fn follow_camera(time: Res<Time>, eval: Option<Res<EvalRun>>, mut scene: CameraS
         CAMERA_MIN_SURFACE_CLEARANCE,
     );
 
+    scene.camera_diagnostics.step_distance_m = previous_camera_position.distance(frame.position);
+    scene.camera_diagnostics.rotation_delta_degrees = previous_camera_rotation
+        .angle_between(frame.rotation)
+        .to_degrees();
+    scene.camera_diagnostics.orbit_alignment_degrees = orbit_alignment_degrees;
     scene.camera_diagnostics.obstruction_adjustment_m = obstruction_resolution.adjusted_distance_m;
     scene.camera_diagnostics.obstruction_hits = obstruction_resolution.hit_count;
 
@@ -1279,7 +1411,7 @@ fn update_debug_readout(
     };
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -1289,6 +1421,9 @@ fn update_debug_readout(
         pitch,
         distance,
         framing_angle,
+        scene.camera_diagnostics.step_distance_m,
+        scene.camera_diagnostics.rotation_delta_degrees,
+        scene.camera_diagnostics.orbit_alignment_degrees,
         scene.camera_diagnostics.obstruction_adjustment_m,
         scene.camera_diagnostics.obstruction_hits,
         camera_yaw,
@@ -1363,6 +1498,9 @@ fn collect_eval_metrics(
         camera_pitch_degrees,
         camera_control.orbit.yaw_degrees(),
         camera_control.orbit.pitch_degrees(),
+        scene.camera_diagnostics.step_distance_m,
+        scene.camera_diagnostics.rotation_delta_degrees,
+        scene.camera_diagnostics.orbit_alignment_degrees,
         scene.camera_diagnostics.obstruction_adjustment_m,
         scene.camera_diagnostics.obstruction_hits,
         visible_wind_fields,

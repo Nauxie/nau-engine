@@ -5,6 +5,8 @@ scenario="${1:-baseline_route}"
 output_dir="${2:-target/eval/${scenario}}"
 extra_args=()
 min_png_bytes=16384
+screenshot_requested="${NAU_EVAL_SCREENSHOT:-0}"
+no_screenshot_requested="${NAU_EVAL_NO_SCREENSHOT:-0}"
 
 file_size_bytes() {
   if stat -f%z "$1" >/dev/null 2>&1; then
@@ -14,7 +16,7 @@ file_size_bytes() {
   fi
 }
 
-if [[ "${NAU_EVAL_NO_SCREENSHOT:-0}" == "1" ]]; then
+if [[ "${no_screenshot_requested}" == "1" || "${screenshot_requested}" != "1" ]]; then
   extra_args+=(--eval-no-screenshot)
 fi
 
@@ -37,7 +39,7 @@ if [[ ! -s "${samples}" ]]; then
   exit 1
 fi
 
-if [[ "${NAU_EVAL_NO_SCREENSHOT:-0}" != "1" ]] && command -v jq >/dev/null 2>&1; then
+if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]] && command -v jq >/dev/null 2>&1; then
   while IFS= read -r artifact; do
     if [[ -z "${artifact}" || "${artifact}" == "null" ]]; then
       continue
