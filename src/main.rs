@@ -66,6 +66,7 @@ fn main() -> AppExit {
         .insert_resource(CameraControlTuning::default())
         .insert_resource(CameraControlState::default())
         .insert_resource(CameraDiagnostics::default())
+        .insert_resource(IslandStreamDiagnostics::default())
         .insert_resource(MouseLookState::default())
         .insert_resource(DebugVisuals::default())
         .insert_resource(SkyRoute::default())
@@ -189,9 +190,46 @@ impl IslandVisualLayer {
 #[derive(Clone, Copy, Debug, Default)]
 struct IslandLodVisualCounts {
     visible_terrain_count: usize,
+    hidden_terrain_count: usize,
     visible_detail_count: usize,
+    hidden_detail_count: usize,
     visible_beacon_count: usize,
     visible_impostor_count: usize,
+    hidden_impostor_count: usize,
+}
+
+impl IslandLodVisualCounts {
+    fn record(&mut self, layer: IslandVisualLayer, hidden: bool) {
+        match (layer, hidden) {
+            (IslandVisualLayer::Terrain, false) => self.visible_terrain_count += 1,
+            (IslandVisualLayer::Terrain, true) => self.hidden_terrain_count += 1,
+            (IslandVisualLayer::Detail, false) => self.visible_detail_count += 1,
+            (IslandVisualLayer::Detail, true) => self.hidden_detail_count += 1,
+            (IslandVisualLayer::Beacon, false) => self.visible_beacon_count += 1,
+            (IslandVisualLayer::Beacon, true) => {}
+            (IslandVisualLayer::Impostor, false) => self.visible_impostor_count += 1,
+            (IslandVisualLayer::Impostor, true) => self.hidden_impostor_count += 1,
+        }
+    }
+
+    fn resident_count(self) -> usize {
+        self.visible_terrain_count
+            + self.hidden_terrain_count
+            + self.visible_detail_count
+            + self.hidden_detail_count
+            + self.visible_beacon_count
+            + self.visible_impostor_count
+            + self.hidden_impostor_count
+    }
+}
+
+#[derive(Resource, Clone, Copy, Debug, Default)]
+struct IslandStreamDiagnostics {
+    counts: IslandLodVisualCounts,
+    visibility_changes_this_frame: usize,
+    max_visibility_changes_per_frame: usize,
+    total_visibility_changes: usize,
+    initialized: bool,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -272,9 +310,9 @@ struct DebugScene<'w, 's> {
     camera_control: Res<'w, CameraControlState>,
     camera_diagnostics: Res<'w, CameraDiagnostics>,
     mouse_look: Res<'w, MouseLookState>,
+    stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
-    island_lod_visuals: Query<'w, 's, (&'static IslandLodVisual, &'static Visibility)>,
 }
 
 #[derive(SystemParam)]
@@ -292,9 +330,9 @@ struct EvalScene<'w, 's> {
     >,
     camera: Query<'w, 's, &'static Transform, CameraFollowFilter>,
     camera_diagnostics: Res<'w, CameraDiagnostics>,
+    stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
-    island_lod_visuals: Query<'w, 's, (&'static IslandLodVisual, &'static Visibility)>,
     all_entities: Query<'w, 's, Entity>,
 }
 
@@ -1210,43 +1248,42 @@ fn spawn_sky_island_details(
 fn update_island_stream_visibility(
     player: Query<&Transform, With<Player>>,
     mut visuals: Query<(&IslandLodVisual, &mut Visibility)>,
+    mut diagnostics: ResMut<IslandStreamDiagnostics>,
 ) {
     let Ok(player_transform) = player.single() else {
         return;
     };
+
+    let mut counts = IslandLodVisualCounts::default();
+    let mut visibility_changes = 0;
 
     for (visual, mut visibility) in &mut visuals {
         let activation = visual
             .island
             .stream_activation(player_transform.translation);
         let band = visual.island.lod_band(player_transform.translation);
-        *visibility = if visual.layer.is_visible_in(activation, band) {
-            Visibility::Inherited
-        } else {
+        let next_hidden = !visual.layer.is_visible_in(activation, band);
+        let was_hidden = matches!(*visibility, Visibility::Hidden);
+        if diagnostics.initialized && was_hidden != next_hidden {
+            visibility_changes += 1;
+        }
+
+        *visibility = if next_hidden {
             Visibility::Hidden
+        } else {
+            Visibility::Inherited
         };
-    }
-}
 
-fn island_lod_visual_counts<'a>(
-    visuals: impl IntoIterator<Item = (&'a IslandLodVisual, &'a Visibility)>,
-) -> IslandLodVisualCounts {
-    let mut counts = IslandLodVisualCounts::default();
-
-    for (visual, visibility) in visuals {
-        if matches!(*visibility, Visibility::Hidden) {
-            continue;
-        }
-
-        match visual.layer {
-            IslandVisualLayer::Terrain => counts.visible_terrain_count += 1,
-            IslandVisualLayer::Detail => counts.visible_detail_count += 1,
-            IslandVisualLayer::Beacon => counts.visible_beacon_count += 1,
-            IslandVisualLayer::Impostor => counts.visible_impostor_count += 1,
-        }
+        counts.record(visual.layer, next_hidden);
     }
 
-    counts
+    diagnostics.counts = counts;
+    diagnostics.visibility_changes_this_frame = visibility_changes;
+    diagnostics.max_visibility_changes_per_frame = diagnostics
+        .max_visibility_changes_per_frame
+        .max(visibility_changes);
+    diagnostics.total_visibility_changes += visibility_changes;
+    diagnostics.initialized = true;
 }
 
 fn toggle_debug_visuals(keyboard: Res<ButtonInput<KeyCode>>, mut visuals: ResMut<DebugVisuals>) {
@@ -1576,7 +1613,7 @@ fn update_debug_readout(
         .route
         .on_landing_target(transform.translation, controller.mode);
     let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
-    let lod_visuals = island_lod_visual_counts(scene.island_lod_visuals.iter());
+    let lod_visuals = scene.stream_diagnostics.counts;
     let camera_yaw = scene.camera_control.orbit.yaw_degrees();
     let camera_pitch_offset = scene.camera_control.orbit.pitch_degrees();
     let mouse_lock = if scene.mouse_look.captured {
@@ -1586,7 +1623,7 @@ fn update_debug_readout(
     };
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream visuals terrain/impostor {} / {}\nlod visuals detail/beacon {} / {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nresident island visuals {}\nstream visibility changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -1620,8 +1657,15 @@ fn update_debug_readout(
         streaming_lod.mid_lod_islands,
         streaming_lod.far_lod_islands,
         lod_visuals.visible_terrain_count,
+        lod_visuals.hidden_terrain_count,
         lod_visuals.visible_impostor_count,
+        lod_visuals.hidden_impostor_count,
         lod_visuals.visible_detail_count,
+        lod_visuals.hidden_detail_count,
+        lod_visuals.resident_count(),
+        scene.stream_diagnostics.visibility_changes_this_frame,
+        scene.stream_diagnostics.max_visibility_changes_per_frame,
+        scene.stream_diagnostics.total_visibility_changes,
         lod_visuals.visible_beacon_count,
         controller.launch_cooldown_remaining,
         if controller.launch_available {
@@ -1682,7 +1726,7 @@ fn collect_eval_metrics(
     let active_lift_fields =
         active_lift_fields_at(transform.translation, scene.lift_fields.iter().copied());
     let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
-    let lod_visuals = island_lod_visual_counts(scene.island_lod_visuals.iter());
+    let lod_visuals = scene.stream_diagnostics.counts;
     let sample = EvalSample::new(
         run.frame,
         run.scenario.fixed_dt,
@@ -1716,9 +1760,16 @@ fn collect_eval_metrics(
         streaming_lod.mid_lod_islands,
         streaming_lod.far_lod_islands,
         lod_visuals.visible_terrain_count,
+        lod_visuals.hidden_terrain_count,
         lod_visuals.visible_impostor_count,
+        lod_visuals.hidden_impostor_count,
         lod_visuals.visible_detail_count,
+        lod_visuals.hidden_detail_count,
         lod_visuals.visible_beacon_count,
+        lod_visuals.resident_count(),
+        scene.stream_diagnostics.visibility_changes_this_frame,
+        scene.stream_diagnostics.max_visibility_changes_per_frame,
+        scene.stream_diagnostics.total_visibility_changes,
         scene.all_entities.iter().count(),
     );
 
