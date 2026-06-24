@@ -143,7 +143,7 @@ pub mod asset_pipeline {
         VisualAssetSpec {
             kind: VisualAssetKind::IslandRock,
             label: "island rock kit",
-            gltf_scene_path: "models/world/rocks.glb",
+            gltf_scene_path: "models/world/rocks.gltf",
             animation_clip_names: &[],
             residency: VisualAssetResidency::StreamWindow,
         },
@@ -157,21 +157,21 @@ pub mod asset_pipeline {
         VisualAssetSpec {
             kind: VisualAssetKind::RouteMarker,
             label: "route marker kit",
-            gltf_scene_path: "models/world/route_markers.glb",
+            gltf_scene_path: "models/world/route_markers.gltf",
             animation_clip_names: &[],
             residency: VisualAssetResidency::Always,
         },
         VisualAssetSpec {
             kind: VisualAssetKind::WeatherLayer,
             label: "weather cloud layer kit",
-            gltf_scene_path: "models/world/weather_layers.glb",
+            gltf_scene_path: "models/world/weather_layers.gltf",
             animation_clip_names: &[],
             residency: VisualAssetResidency::Weather,
         },
         VisualAssetSpec {
             kind: VisualAssetKind::DistantImpostor,
             label: "sky island distant impostor kit",
-            gltf_scene_path: "models/world/island_impostors.glb",
+            gltf_scene_path: "models/world/island_impostors.gltf",
             animation_clip_names: &[],
             residency: VisualAssetResidency::FarLod,
         },
@@ -185,10 +185,10 @@ pub mod asset_pipeline {
     pub const FAR_LOD_VISUAL_ASSET_SLOT_COUNT: usize = 1;
     pub const WEATHER_VISUAL_ASSET_SLOT_COUNT: usize = 1;
     pub const DECLARED_VISUAL_ANIMATION_CLIP_COUNT: usize = PLAYER_ANIMATION_CLIP_NAMES.len();
-    pub const MIN_READY_VISUAL_ASSET_SLOT_COUNT: usize = 1;
-    pub const MIN_LOADED_VISUAL_ASSET_SCENE_COUNT: usize = 1;
-    pub const MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT: usize = 1;
-    pub const MIN_READY_VISUAL_ASSET_SCENE_COUNT: usize = 1;
+    pub const MIN_READY_VISUAL_ASSET_SLOT_COUNT: usize = 5;
+    pub const MIN_LOADED_VISUAL_ASSET_SCENE_COUNT: usize = 5;
+    pub const MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT: usize = 5;
+    pub const MIN_READY_VISUAL_ASSET_SCENE_COUNT: usize = 5;
     pub const MAX_MISSING_VISUAL_ASSET_SLOT_COUNT: usize =
         VISUAL_ASSET_SLOT_COUNT - MIN_READY_VISUAL_ASSET_SLOT_COUNT;
 
@@ -366,6 +366,12 @@ pub mod asset_pipeline {
                     .iter()
                     .any(|spec| spec.kind == VisualAssetKind::Glider
                         && spec.gltf_scene_path == "models/player/glider.gltf")
+            );
+            assert!(
+                VISUAL_ASSET_SPECS
+                    .iter()
+                    .any(|spec| spec.kind == VisualAssetKind::RouteMarker
+                        && spec.gltf_scene_path == "models/world/route_markers.gltf")
             );
         }
 
