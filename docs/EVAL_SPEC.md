@@ -241,6 +241,7 @@ Every sample includes:
 - `velocity`
 - `speed_mps`
 - `altitude_m`
+- `visual_foot_gap_m`
 - `mode`
 - `desired_body_yaw_error_degrees`
 - `desired_body_heading_error_degrees`
@@ -382,6 +383,7 @@ The summary aggregates:
 - max frame time
 - horizontal distance from first to final sample
 - max and min altitude
+- max grounded authored visual foot gap from the rendered terrain surface
 - max speed
 - average, p95, and max desired body-heading error
 - max body-yaw error step and body-yaw oscillation count
@@ -510,6 +512,7 @@ The pass/fail checks currently guard:
 - spawned and despawned island visuals each stay under the per-frame churn budget so future asset streaming can distinguish load pressure from unload pressure
 - the scene has enough entities to catch accidental content collapse
 - camera distance stayed under a loose maximum
+- grounded authored player feet stayed aligned to the rendered terrain surface
 - camera stayed above the active ground surface
 - camera kept the player focus near the camera centerline
 - camera per-frame movement and rotation stayed under scenario jerk thresholds
