@@ -13,6 +13,7 @@ The fantasy is:
 - trade altitude for distance
 - steer and bank through air
 - use dive speed and wind intelligently
+- collect simple aerial boost gates
 - land, recover, or chain into another launch/updraft
 
 ## Current Inputs
@@ -46,6 +47,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Gameplay `LiftField` updraft volumes are separate finite boxes that add upward velocity while the player is airborne inside them.
 - Authored gameplay updraft route nodes must pair the visual `WindField` and gameplay `LiftField` at the same center and extents.
 - Lift fields clamp against their configured maximum upward speed instead of granting unbounded climb.
+- Aerial power-up gates are one-time route pickups that apply a small capped forward/upward boost while airborne, then disappear.
 - Diving adds downward acceleration.
 - The floor clamp prevents the player from ending below the floor or retaining downward velocity after collision.
 - Player facing follows horizontal velocity with exponential smoothing.
@@ -54,6 +56,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 
 - No midair relaunch spam unless a future mechanic explicitly grants it.
 - No altitude gain from ordinary gliding without wind/updraft/launch support.
+- No repeatable power-up farming from the same gate in one flight.
 - No camera anchor based on full 3D velocity.
 - No direct elapsed-time multiplied by speed animation phase. Animation phase should accumulate from delta time.
 - No unbounded `rate * dt` interpolation factors that can exceed `1.0` on frame hitches.
@@ -93,6 +96,12 @@ Wind/updraft:
 - active lift should be readable through paired updraft visuals plus debug bounds before richer particles, cloth/glider motion, vegetation, clouds, or other environment art
 - visual wind and gameplay force math should stay separate until crosswind forces have their own explicit movement design
 
+Power-ups:
+
+- boost gates should read as route affordances, not hidden stat changes
+- boosts add momentum and a small lift bump, but stay capped below launch/updraft power
+- collected gates disappear and are counted in HUD/eval metrics
+
 ## Test Coverage
 
 Current tests cover:
@@ -106,6 +115,7 @@ Current tests cover:
 - visual updraft fields point upward
 - lift fields only apply inside bounds while enabled
 - authored gameplay lift route nodes pair visual and lift volumes
+- aerial power-up route gates are collectible, directional, and capped
 - visual field bounds and stream origins are deterministic
 - smoothing factors do not overshoot
 - camera ignores vertical-only launch velocity for follow direction
@@ -119,11 +129,12 @@ Current tests cover:
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
 - `camera_strafe_stability` eval tracks lateral movement without camera auto-orbit
 - `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking
-- `long_glide_visibility` eval tracks sustained archipelago traversal and content-scale signals
+- `long_glide_visibility` eval tracks sustained archipelago traversal, aerial power-up collection/effect samples, and content-scale signals
 
 Future tests should cover:
 
 - launch source triggers
+- power-up reset rules once explicit flight/session state exists
 - explicit player and route-marker classification beyond the current scene-composition visual audit
 - turn/bank behavior
 - debug visualization toggles
