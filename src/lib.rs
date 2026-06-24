@@ -559,9 +559,9 @@ pub mod movement {
                 ground_max_horizontal_speed: 11.0,
                 forward_accel: 28.0,
                 backward_accel: 10.0,
-                lateral_accel: 14.0,
+                lateral_accel: 16.0,
                 glide_forward_accel: 12.0,
-                glide_lateral_accel: 9.0,
+                glide_lateral_accel: 10.0,
                 glide_brake_drag: 0.42,
                 air_brake_accel: 46.0,
                 glide_brake_accel: 38.0,
@@ -577,14 +577,14 @@ pub mod movement {
                 drag: 0.82,
                 max_horizontal_speed: 58.0,
                 max_fall_speed: 70.0,
-                air_steer_accel: 48.0,
-                glide_steer_accel: 36.0,
-                air_counter_steer_accel: 76.0,
-                glide_counter_steer_accel: 68.0,
+                air_steer_accel: 52.0,
+                glide_steer_accel: 34.0,
+                air_counter_steer_accel: 120.0,
+                glide_counter_steer_accel: 116.0,
                 air_steer_min_speed: 16.0,
                 max_bank_degrees: 20.0,
-                turn_rate: 10.0,
-                input_turn_rate_boost: 4.0,
+                turn_rate: 11.0,
+                input_turn_rate_boost: 5.5,
                 floor_y: 1.2,
             }
         }
@@ -1270,7 +1270,7 @@ pub mod movement {
                 ..default()
             };
 
-            for _ in 0..30 {
+            for _ in 0..18 {
                 state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
             }
 
@@ -1278,6 +1278,41 @@ pub mod movement {
             assert!(
                 left_response > 4.0,
                 "expected left reversal to recover promptly, got {left_response}"
+            );
+        }
+
+        #[test]
+        fn diagonal_glide_input_rotates_body_toward_camera_relative_heading() {
+            let tuning = FlightTuning::default();
+            let facing = Facing::new(Vec3::Z, Vec3::X);
+            let input = FlightInput {
+                forward: true,
+                right: true,
+                glide: true,
+                ..default()
+            };
+            let mut rotation = Transform::from_translation(Vec3::ZERO)
+                .looking_to(facing.forward, Vec3::Y)
+                .rotation;
+            let desired_direction = desired_planar_movement_direction(input, facing)
+                .expect("diagonal input has a movement direction");
+
+            for _ in 0..12 {
+                rotation = face_flight_direction(
+                    rotation,
+                    Vec3::new(0.0, -2.0, 34.0),
+                    input,
+                    facing,
+                    FlightMode::Gliding,
+                    &tuning,
+                    1.0 / 60.0,
+                );
+            }
+
+            let heading_error = body_heading_error_degrees(rotation, desired_direction);
+            assert!(
+                heading_error < 8.0,
+                "expected diagonal input to turn toward camera-relative heading, got {heading_error} deg"
             );
         }
 
@@ -1340,7 +1375,7 @@ pub mod movement {
 
             let heading_error = body_heading_error_degrees(rotation, -facing.right);
             assert!(
-                heading_error < 70.0,
+                heading_error < 35.0,
                 "expected rapid body-yaw recovery after lateral reversal, got {heading_error} deg"
             );
         }
@@ -1370,7 +1405,7 @@ pub mod movement {
 
             let heading_error = body_heading_error_degrees(rotation, -facing.right);
             assert!(
-                heading_error < 85.0,
+                heading_error < 60.0,
                 "expected first-frame lateral reversal to stay bounded, got {heading_error} deg"
             );
         }
@@ -3590,14 +3625,14 @@ pub mod eval {
     const MIN_ISLAND_TERRAIN_RELIEF_RANGE_M: f32 = 0.8;
     const MIN_ISLAND_CLIFF_COLOR_BANDS: usize = 9;
     const AIR_CONTROL_RESPONSE_THRESHOLD_MPS: f32 = 4.0;
-    const AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS: f32 = 0.5;
-    const AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS: f32 = 10.0;
-    const AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS: f32 = 14.0;
-    const AIR_CONTROL_MAX_AVG_BODY_HEADING_ERROR_DEGREES: f32 = 55.0;
-    const AIR_CONTROL_MAX_P95_BODY_HEADING_ERROR_DEGREES: f32 = 55.0;
-    const AIR_CONTROL_MAX_BODY_HEADING_ERROR_DEGREES: f32 = 85.0;
-    const AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES: f32 = 85.0;
-    const AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS: f32 = 6.0;
+    const AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS: f32 = 0.35;
+    const AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS: f32 = 18.0;
+    const AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS: f32 = 20.0;
+    const AIR_CONTROL_MAX_AVG_BODY_HEADING_ERROR_DEGREES: f32 = 12.0;
+    const AIR_CONTROL_MAX_P95_BODY_HEADING_ERROR_DEGREES: f32 = 35.0;
+    const AIR_CONTROL_MAX_BODY_HEADING_ERROR_DEGREES: f32 = 60.0;
+    const AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES: f32 = 60.0;
+    const AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS: f32 = 4.0;
     const AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES: f32 = 0.01;
     const AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 2.0;
     const AIR_CONTROL_MAX_AVG_CAMERA_FOLLOW_ERROR_DEGREES: f32 = 55.0;
@@ -7558,9 +7593,9 @@ pub mod eval {
             accumulator.observe(air_control_metric_sample(
                 scenario,
                 90,
-                Vec3::new(16.0, -2.0, -18.0),
+                Vec3::new(20.0, -2.0, -18.0),
                 Vec2::new(1.0, 0.0),
-                16.0,
+                20.0,
                 18.0,
                 4.0,
             ));
@@ -7596,7 +7631,7 @@ pub mod eval {
 
             assert!(right_check.passed);
             assert!(!left_check.passed);
-            assert_eq!(summary.metrics.max_right_lateral_response_mps, 16.0);
+            assert_eq!(summary.metrics.max_right_lateral_response_mps, 20.0);
             assert_eq!(summary.metrics.max_left_lateral_response_mps, 2.0);
         }
 
@@ -7614,9 +7649,9 @@ pub mod eval {
                     air_control_metric_sample(
                         scenario,
                         frame,
-                        Vec3::new(16.0, -2.0, -18.0),
+                        Vec3::new(20.0, -2.0, -18.0),
                         movement_axis,
-                        16.0,
+                        20.0,
                         18.0,
                         4.0,
                     )
@@ -7671,9 +7706,9 @@ pub mod eval {
                     air_control_metric_sample(
                         scenario,
                         frame,
-                        Vec3::new(16.0, -2.0, -18.0),
+                        Vec3::new(20.0, -2.0, -18.0),
                         Vec2::new(1.0, 0.0),
-                        16.0,
+                        20.0,
                         18.0,
                         4.0,
                     )
@@ -7721,9 +7756,9 @@ pub mod eval {
             accumulator.observe(air_control_metric_sample(
                 scenario,
                 90,
-                Vec3::new(16.0, -2.0, -18.0),
+                Vec3::new(20.0, -2.0, -18.0),
                 Vec2::new(1.0, 0.0),
-                16.0,
+                20.0,
                 18.0,
                 90.0,
             ));
