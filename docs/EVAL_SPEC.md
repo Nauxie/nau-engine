@@ -64,6 +64,12 @@ Run the airborne turn and air-brake camera stability route:
 ./tools/eval.sh camera_turn_stability target/eval/camera_turn_stability
 ```
 
+Run the airborne planar air-control response route:
+
+```sh
+./tools/eval.sh air_control_response target/eval/air_control_response
+```
+
 Run the lateral strafe camera stability route:
 
 ```sh
@@ -179,6 +185,16 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - camera step distance and rotation delta must remain under thresholds during rapid heading changes
 - the route must keep gliding samples and traversal distance high enough to avoid a no-op pass
 
+`air_control_response` is the airborne movement-feel regression test:
+
+- scripted launch, glide deployment, diagonal air steering, pure right/left air steering, backward braking, a short dive, and forward recovery
+- no scripted camera input, so camera orbit yaw offset must remain zero while `A`/`D` move Nau
+- actual camera rotation delta must stay small during the movement-only route
+- desired body heading error and desired-heading velocity alignment must stay within thresholds
+- right and left lateral input must each produce measurable response within the response-latency threshold
+- backward input must produce measurable air-brake speed drop, and the final forward segment must recover forward alignment
+- body-yaw oscillation count must remain bounded so input reversals do not become spin or wobble regressions
+
 `camera_strafe_stability` is the lateral-movement camera regression test:
 
 - fixed spawn on the launch island
@@ -187,7 +203,7 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - camera view yaw must stay near the starting heading so strafe velocity cannot auto-orbit the camera
 - max speed and grounded samples must prove the route was not a no-op
 
-The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and visually signaled. The branch recovery route proves a named alternate landing island can be targeted, reached, and validated without changing the primary landing-garden route. The long-glide route guards the first larger-map slice before real despawn, asset streaming, or richer impostor work exists. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss. The yaw-stability route guards against persistent mouse yaw being fed back into the camera every frame. The strafe-stability route guards against `A`/`D` movement being treated as camera orbit input. The turn-stability route guards rapid airborne direction changes and backward air braking.
+The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and visually signaled. The branch recovery route proves a named alternate landing island can be targeted, reached, and validated without changing the primary landing-garden route. The long-glide route guards the first larger-map slice before real despawn, asset streaming, or richer impostor work exists. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss. The yaw-stability route guards against persistent mouse yaw being fed back into the camera every frame. The strafe-stability route guards against `A`/`D` movement being treated as camera orbit input. The turn-stability route guards rapid airborne direction changes and backward air braking. The air-control route guards the actual flight-feel response that manual play exposed as jank.
 
 ## Artifacts
 
@@ -213,6 +229,13 @@ Every sample includes:
 - `speed_mps`
 - `altitude_m`
 - `mode`
+- `desired_body_yaw_error_degrees`
+- `desired_body_heading_error_degrees`
+- `desired_heading_alignment_mps`
+- `lateral_response_mps`
+- `lateral_input_active`
+- `movement_input_lateral_axis`
+- `movement_input_forward_axis`
 - `camera_distance_m`
 - `camera_surface_clearance_m`
 - `camera_player_angle_degrees`
@@ -303,13 +326,19 @@ The summary aggregates:
 - horizontal distance from first to final sample
 - max and min altitude
 - max speed
+- average and max desired body-heading error
+- max body-yaw error step and body-yaw oscillation count
+- max desired-heading velocity alignment
+- max lateral response speed and first-response latency
+- max right and left lateral response speed and response latency
+- max air-brake speed drop and max post-brake forward alignment
 - max camera distance
 - min camera surface clearance
 - max camera-to-player framing angle
 - max per-frame camera step distance
 - max per-frame camera rotation delta
 - max camera orbit alignment
-- max absolute camera view yaw
+- max absolute camera view yaw and view-yaw drift
 - max camera obstruction adjustment
 - max camera obstruction hit count
 - min and final scenario-target distance
@@ -404,6 +433,7 @@ The pass/fail checks currently guard:
 - camera view yaw stayed within scenario limits when movement should not rotate the camera
 - camera obstruction avoidance was exercised when a scenario requires it
 - camera mouse scenarios exercised yaw and both pitch directions
+- air-control response latency, right/left lateral response, air-brake speed drop, post-brake forward alignment, desired-heading alignment, average body-heading error, yaw oscillation count, camera orbit yaw offset, and camera rotation delta stayed inside thresholds
 - island-route final scenario-target distance stayed under threshold
 - island-route grounded target landing was observed on the configured target island
 
@@ -434,6 +464,7 @@ The thin-slice target should eventually have these evals:
 - `camera_yaw_stability`: current small-yaw no-drift regression test.
 - `camera_turn_stability`: current rapid air-turn and air-brake camera stability test.
 - `camera_strafe_stability`: current `A`/`D` no-auto-orbit camera stability test.
+- `air_control_response`: current diagonal/lateral/brake/recovery air-control response test.
 - `camera_stress`: fly close to geometry and record camera distance, pitch, and obstruction metrics.
 - `streaming_route`: cross chunk boundaries and record active chunks, active islands, spawned entities, despawns, and frame time.
 

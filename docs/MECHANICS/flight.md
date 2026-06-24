@@ -42,6 +42,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Launch gives vertical velocity and a small forward bonus.
 - Gliding reduces gravity and clamps fall speed.
 - Gliding does not create altitude on its own.
+- Airborne and gliding `W`/`A`/`D` input applies camera-relative planar steering toward the intended movement direction, not camera orbit.
 - Airborne `S` input brakes forward motion first, then allows limited backward drift instead of unrestricted reverse flight.
 - Visual `WindField` volumes are finite axis-aligned boxes for readable wind/updraft streams.
 - Gameplay `LiftField` updraft volumes are separate finite boxes that add upward velocity while the player is airborne inside them.
@@ -50,7 +51,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Aerial power-up gates are one-time route pickups that apply a small capped forward/upward boost while airborne, then disappear.
 - Diving adds downward acceleration.
 - The floor clamp prevents the player from ending below the floor or retaining downward velocity after collision.
-- Player facing follows horizontal velocity with exponential smoothing.
+- Player facing follows desired airborne steering direction with exponential smoothing and bank response, falling back to horizontal velocity when no steering input is active.
 
 ## Forbidden Behaviors
 
@@ -121,6 +122,8 @@ Current tests cover:
 - camera ignores vertical-only launch velocity for follow direction
 - camera mouse X/Y input, pitch clamps, pitch/distance/framing helpers, surface-clearance lift, and obstruction avoidance
 - camera follow direction smoothing limits rapid turn snaps
+- lateral air input steers velocity toward the camera-relative plane
+- flight body yaw tracks lateral input direction
 - frame-time diagnostics avoid invalid values
 - animation phase advances from delta time
 - wing visibility tracks glide mode
@@ -129,6 +132,7 @@ Current tests cover:
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
 - `camera_strafe_stability` eval tracks lateral movement without camera auto-orbit
 - `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking
+- `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, backward braking, post-brake recovery, desired heading alignment, body-yaw oscillation, and movement-input camera non-coupling
 - `long_glide_visibility` eval tracks sustained archipelago traversal, aerial power-up collection/effect samples, and content-scale signals
 
 Future tests should cover:

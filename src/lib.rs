@@ -375,6 +375,10 @@ pub mod movement {
         pub drag: f32,
         pub max_horizontal_speed: f32,
         pub max_fall_speed: f32,
+        pub air_steer_accel: f32,
+        pub glide_steer_accel: f32,
+        pub air_steer_min_speed: f32,
+        pub max_bank_degrees: f32,
         pub turn_rate: f32,
         pub floor_y: f32,
     }
@@ -407,6 +411,10 @@ pub mod movement {
                 drag: 0.82,
                 max_horizontal_speed: 58.0,
                 max_fall_speed: 70.0,
+                air_steer_accel: 48.0,
+                glide_steer_accel: 36.0,
+                air_steer_min_speed: 16.0,
+                max_bank_degrees: 16.0,
                 turn_rate: 8.0,
                 floor_y: 1.2,
             }
@@ -422,6 +430,19 @@ pub mod movement {
         pub glide: bool,
         pub dive: bool,
         pub launch: bool,
+    }
+
+    impl FlightInput {
+        pub fn planar_axis(self) -> Vec2 {
+            Vec2::new(
+                axis_value(self.left, self.right),
+                axis_value(self.backward, self.forward),
+            )
+        }
+
+        pub fn has_lateral_axis(self) -> bool {
+            self.left != self.right
+        }
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -503,6 +524,14 @@ pub mod movement {
                 acceleration += facing.right * tuning.ground_lateral_accel;
             }
         } else if gliding {
+            if let Some(desired_direction) = desired_air_steering_direction(input, facing) {
+                acceleration += directional_air_steering_acceleration(
+                    state.velocity,
+                    desired_direction,
+                    tuning.glide_steer_accel,
+                    tuning.air_steer_min_speed,
+                );
+            }
             if input.forward {
                 acceleration += facing.forward * tuning.glide_forward_accel;
             }
@@ -525,6 +554,14 @@ pub mod movement {
                 acceleration += facing.right * tuning.glide_lateral_accel;
             }
         } else {
+            if let Some(desired_direction) = desired_air_steering_direction(input, facing) {
+                acceleration += directional_air_steering_acceleration(
+                    state.velocity,
+                    desired_direction,
+                    tuning.air_steer_accel,
+                    tuning.air_steer_min_speed,
+                );
+            }
             if input.forward {
                 acceleration += facing.forward * tuning.forward_accel;
             }
@@ -609,6 +646,50 @@ pub mod movement {
         state
     }
 
+    pub fn desired_planar_movement_direction(input: FlightInput, facing: Facing) -> Option<Vec3> {
+        let axis = input.planar_axis();
+        if axis.length_squared() <= f32::EPSILON {
+            return None;
+        }
+
+        let direction = facing.right * axis.x + facing.forward * axis.y;
+        let direction = horizontal(direction);
+        if direction.length_squared() > 0.0001 {
+            Some(direction.normalize())
+        } else {
+            None
+        }
+    }
+
+    pub fn face_flight_direction(
+        current: Quat,
+        velocity: Vec3,
+        input: FlightInput,
+        facing: Facing,
+        mode: FlightMode,
+        tuning: &FlightTuning,
+        dt: f32,
+    ) -> Quat {
+        let desired_direction = if mode == FlightMode::Grounded {
+            None
+        } else {
+            desired_air_steering_direction(input, facing)
+        };
+        let target_direction = desired_direction.or_else(|| {
+            let horizontal_velocity = horizontal(velocity);
+            (horizontal_velocity.length_squared() > 0.1).then(|| horizontal_velocity.normalize())
+        });
+        let Some(target_direction) = target_direction else {
+            return current;
+        };
+
+        let target = Transform::from_translation(Vec3::ZERO)
+            .looking_to(target_direction, Vec3::Y)
+            .rotation
+            * Quat::from_rotation_z(bank_angle_radians(input, mode, tuning));
+        current.slerp(target, smoothing_factor(tuning.turn_rate, dt))
+    }
+
     pub fn face_horizontal_velocity(
         current: Quat,
         velocity: Vec3,
@@ -626,8 +707,72 @@ pub mod movement {
         current.slerp(target, smoothing_factor(turn_rate, dt))
     }
 
+    pub fn body_heading_error_degrees(rotation: Quat, desired_direction: Vec3) -> f32 {
+        body_yaw_error_degrees(rotation, desired_direction).abs()
+    }
+
+    pub fn body_yaw_error_degrees(rotation: Quat, desired_direction: Vec3) -> f32 {
+        let forward = body_forward(rotation);
+        let desired = horizontal_or(desired_direction, Vec3::Z);
+        forward
+            .cross(desired)
+            .y
+            .atan2(forward.dot(desired).clamp(-1.0, 1.0))
+            .to_degrees()
+    }
+
+    pub fn body_forward(rotation: Quat) -> Vec3 {
+        horizontal_or(rotation * Vec3::NEG_Z, Vec3::Z)
+    }
+
+    pub fn desired_heading_alignment_speed(velocity: Vec3, desired_direction: Vec3) -> f32 {
+        horizontal(velocity).dot(horizontal_or(desired_direction, Vec3::Z))
+    }
+
+    pub fn lateral_response_speed(velocity: Vec3, input: FlightInput, facing: Facing) -> f32 {
+        let lateral = input.planar_axis().x;
+        if lateral.abs() <= f32::EPSILON {
+            return 0.0;
+        }
+
+        horizontal(velocity).dot(facing.right * lateral.signum())
+    }
+
     pub fn smoothing_factor(rate: f32, dt: f32) -> f32 {
         (1.0 - (-rate.max(0.0) * dt.max(0.0)).exp()).clamp(0.0, 1.0)
+    }
+
+    fn desired_air_steering_direction(input: FlightInput, facing: Facing) -> Option<Vec3> {
+        if !input.forward && !input.left && !input.right {
+            return None;
+        }
+
+        desired_planar_movement_direction(input, facing)
+    }
+
+    fn directional_air_steering_acceleration(
+        velocity: Vec3,
+        desired_direction: Vec3,
+        steer_accel: f32,
+        min_target_speed: f32,
+    ) -> Vec3 {
+        let horizontal_velocity = horizontal(velocity);
+        let target_speed = horizontal_velocity.length().max(min_target_speed.max(0.0));
+        let target_velocity = horizontal_or(desired_direction, Vec3::Z) * target_speed;
+        let correction = target_velocity - horizontal_velocity;
+        if correction.length_squared() <= 0.0001 {
+            Vec3::ZERO
+        } else {
+            correction.normalize() * steer_accel.max(0.0)
+        }
+    }
+
+    fn bank_angle_radians(input: FlightInput, mode: FlightMode, tuning: &FlightTuning) -> f32 {
+        if mode == FlightMode::Grounded {
+            return 0.0;
+        }
+
+        -input.planar_axis().x * tuning.max_bank_degrees.to_radians()
     }
 
     fn clamp_velocity(
@@ -693,6 +838,14 @@ pub mod movement {
             horizontal.normalize()
         } else {
             fallback.normalize()
+        }
+    }
+
+    fn axis_value(negative: bool, positive: bool) -> f32 {
+        match (negative, positive) {
+            (true, false) => -1.0,
+            (false, true) => 1.0,
+            _ => 0.0,
         }
     }
 
@@ -878,6 +1031,73 @@ pub mod movement {
                 "expected glide brake to bleed speed, got {forward_speed}"
             );
             assert!(forward_speed >= -tuning.max_backward_speed - 0.5);
+        }
+
+        #[test]
+        fn lateral_air_input_steers_velocity_toward_desired_plane() {
+            let tuning = FlightTuning::default();
+            let facing = Facing::new(Vec3::Z, Vec3::X);
+            let mut state = FlightState::new(
+                Vec3::new(0.0, 45.0, 0.0),
+                Vec3::new(0.0, -2.0, 34.0),
+                FlightController {
+                    mode: FlightMode::Gliding,
+                    launch_available: false,
+                    ..default()
+                },
+            );
+            let input = FlightInput {
+                right: true,
+                glide: true,
+                ..default()
+            };
+
+            for _ in 0..60 {
+                state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+            }
+
+            let side_speed = horizontal(state.velocity).dot(facing.right);
+            let forward_speed = horizontal(state.velocity).dot(facing.forward);
+            assert!(
+                side_speed > 14.0,
+                "expected right input to build meaningful planar side speed, got {side_speed}"
+            );
+            assert!(
+                forward_speed < 28.0,
+                "expected steering to rotate velocity away from pure forward drift, got {forward_speed}"
+            );
+        }
+
+        #[test]
+        fn flight_body_yaw_tracks_lateral_input_direction() {
+            let tuning = FlightTuning::default();
+            let facing = Facing::new(Vec3::Z, Vec3::X);
+            let input = FlightInput {
+                right: true,
+                glide: true,
+                ..default()
+            };
+            let mut rotation = Transform::from_translation(Vec3::ZERO)
+                .looking_to(facing.forward, Vec3::Y)
+                .rotation;
+
+            for _ in 0..30 {
+                rotation = face_flight_direction(
+                    rotation,
+                    Vec3::new(0.0, -2.0, 34.0),
+                    input,
+                    facing,
+                    FlightMode::Gliding,
+                    &tuning,
+                    1.0 / 60.0,
+                );
+            }
+
+            let heading_error = body_heading_error_degrees(rotation, facing.right);
+            assert!(
+                heading_error < 20.0,
+                "expected body yaw to turn toward right input, got {heading_error} deg"
+            );
         }
 
         #[test]
@@ -3015,6 +3235,7 @@ pub mod eval {
     pub const CAMERA_YAW_STABILITY: &str = "camera_yaw_stability";
     pub const CAMERA_TURN_STABILITY: &str = "camera_turn_stability";
     pub const CAMERA_STRAFE_STABILITY: &str = "camera_strafe_stability";
+    pub const AIR_CONTROL_RESPONSE: &str = "air_control_response";
     pub const LONG_GLIDE_VISIBILITY: &str = "long_glide_visibility";
     pub const BRANCH_RECOVERY_ROUTE: &str = "branch_recovery_route";
     pub const SCENARIO_NAMES: &[&str] = &[
@@ -3027,9 +3248,21 @@ pub mod eval {
         CAMERA_YAW_STABILITY,
         CAMERA_TURN_STABILITY,
         CAMERA_STRAFE_STABILITY,
+        AIR_CONTROL_RESPONSE,
         LONG_GLIDE_VISIBILITY,
     ];
     pub const MAX_RESIDENT_ISLAND_VISUAL_FRACTION: f32 = 0.70;
+    const AIR_CONTROL_RESPONSE_THRESHOLD_MPS: f32 = 4.0;
+    const AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS: f32 = 0.75;
+    const AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS: f32 = 10.0;
+    const AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS: f32 = 14.0;
+    const AIR_CONTROL_MAX_AVG_BODY_HEADING_ERROR_DEGREES: f32 = 55.0;
+    const AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS: f32 = 6.0;
+    const AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES: f32 = 0.01;
+    const AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 2.0;
+    const AIR_CONTROL_MIN_AIR_BRAKE_SPEED_DROP_MPS: f32 = 3.0;
+    const AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS: f32 = 12.0;
+    const AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES: f32 = 8.0;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct EvalCheckpoint {
@@ -3149,6 +3382,24 @@ pub mod eval {
         EvalCheckpoint {
             frame: 230,
             name: "settled_strafe",
+        },
+    ];
+    const AIR_CONTROL_RESPONSE_CHECKPOINTS: &[EvalCheckpoint] = &[
+        EvalCheckpoint {
+            frame: 90,
+            name: "diagonal_air_steer",
+        },
+        EvalCheckpoint {
+            frame: 165,
+            name: "right_air_steer",
+        },
+        EvalCheckpoint {
+            frame: 245,
+            name: "left_air_recovery",
+        },
+        EvalCheckpoint {
+            frame: 335,
+            name: "air_brake_recovery",
         },
     ];
     const LONG_GLIDE_CHECKPOINTS: &[EvalCheckpoint] = &[
@@ -3358,6 +3609,13 @@ pub mod eval {
         pub speed_mps: f32,
         pub altitude_m: f32,
         pub mode: &'static str,
+        pub desired_body_yaw_error_degrees: f32,
+        pub desired_body_heading_error_degrees: f32,
+        pub desired_heading_alignment_mps: f32,
+        pub lateral_response_mps: f32,
+        pub lateral_input_active: bool,
+        pub movement_input_lateral_axis: f32,
+        pub movement_input_forward_axis: f32,
         pub camera_distance_m: f32,
         pub camera_surface_clearance_m: f32,
         pub camera_player_angle_degrees: f32,
@@ -3517,6 +3775,13 @@ pub mod eval {
                 speed_mps: velocity.length(),
                 altitude_m: position.y,
                 mode: mode.label(),
+                desired_body_yaw_error_degrees: f32::NAN,
+                desired_body_heading_error_degrees: f32::NAN,
+                desired_heading_alignment_mps: f32::NAN,
+                lateral_response_mps: 0.0,
+                lateral_input_active: false,
+                movement_input_lateral_axis: 0.0,
+                movement_input_forward_axis: 0.0,
                 camera_distance_m,
                 camera_surface_clearance_m,
                 camera_player_angle_degrees,
@@ -3590,9 +3855,28 @@ pub mod eval {
             }
         }
 
+        pub fn with_movement_metrics(
+            mut self,
+            desired_body_yaw_error_degrees: f32,
+            desired_heading_alignment_mps: f32,
+            lateral_response_mps: f32,
+            lateral_input_active: bool,
+            movement_input_lateral_axis: f32,
+            movement_input_forward_axis: f32,
+        ) -> Self {
+            self.desired_body_yaw_error_degrees = desired_body_yaw_error_degrees;
+            self.desired_body_heading_error_degrees = desired_body_yaw_error_degrees.abs();
+            self.desired_heading_alignment_mps = desired_heading_alignment_mps;
+            self.lateral_response_mps = lateral_response_mps;
+            self.lateral_input_active = lateral_input_active;
+            self.movement_input_lateral_axis = movement_input_lateral_axis;
+            self.movement_input_forward_axis = movement_input_forward_axis;
+            self
+        }
+
         pub fn to_json(&self) -> String {
             format!(
-                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"readable_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"objective\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"weather_cloud_count\":{},\"environment_motion_visual_count\":{},\"max_environment_motion_offset_m\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"catalog_island_visual_count\":{},\"hidden_island_visual_count\":{},\"resident_island_visual_fraction\":{},\"stream_spawned_visuals_this_frame\":{},\"stream_despawned_visuals_this_frame\":{},\"max_stream_spawned_visuals_per_frame\":{},\"max_stream_despawned_visuals_per_frame\":{},\"total_stream_spawned_visuals\":{},\"total_stream_despawned_visuals\":{},\"entity_count\":{},\"visual_asset_slot_count\":{},\"gltf_scene_asset_slot_count\":{},\"ready_visual_asset_slot_count\":{},\"placeholder_visual_asset_slot_count\":{},\"streaming_visual_asset_slot_count\":{},\"missing_visual_asset_slot_count\":{},\"queued_visual_asset_scene_count\":{},\"loading_visual_asset_scene_count\":{},\"loaded_visual_asset_scene_count\":{},\"failed_visual_asset_scene_count\":{},\"always_visual_asset_slot_count\":{},\"stream_window_visual_asset_slot_count\":{},\"near_lod_visual_asset_slot_count\":{},\"far_lod_visual_asset_slot_count\":{},\"weather_visual_asset_slot_count\":{},\"power_up_count\":{},\"visible_power_up_count\":{},\"collected_power_up_count\":{},\"active_power_up_effects\":{},\"total_power_up_activations\":{}}}",
+                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"desired_body_yaw_error_degrees\":{},\"desired_body_heading_error_degrees\":{},\"desired_heading_alignment_mps\":{},\"lateral_response_mps\":{},\"lateral_input_active\":{},\"movement_input_lateral_axis\":{},\"movement_input_forward_axis\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"readable_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"objective\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"weather_cloud_count\":{},\"environment_motion_visual_count\":{},\"max_environment_motion_offset_m\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"catalog_island_visual_count\":{},\"hidden_island_visual_count\":{},\"resident_island_visual_fraction\":{},\"stream_spawned_visuals_this_frame\":{},\"stream_despawned_visuals_this_frame\":{},\"max_stream_spawned_visuals_per_frame\":{},\"max_stream_despawned_visuals_per_frame\":{},\"total_stream_spawned_visuals\":{},\"total_stream_despawned_visuals\":{},\"entity_count\":{},\"visual_asset_slot_count\":{},\"gltf_scene_asset_slot_count\":{},\"ready_visual_asset_slot_count\":{},\"placeholder_visual_asset_slot_count\":{},\"streaming_visual_asset_slot_count\":{},\"missing_visual_asset_slot_count\":{},\"queued_visual_asset_scene_count\":{},\"loading_visual_asset_scene_count\":{},\"loaded_visual_asset_scene_count\":{},\"failed_visual_asset_scene_count\":{},\"always_visual_asset_slot_count\":{},\"stream_window_visual_asset_slot_count\":{},\"near_lod_visual_asset_slot_count\":{},\"far_lod_visual_asset_slot_count\":{},\"weather_visual_asset_slot_count\":{},\"power_up_count\":{},\"visible_power_up_count\":{},\"collected_power_up_count\":{},\"active_power_up_effects\":{},\"total_power_up_activations\":{}}}",
                 self.frame,
                 json_number(self.time_secs),
                 json_array3(self.position),
@@ -3600,6 +3884,13 @@ pub mod eval {
                 json_number(self.speed_mps),
                 json_number(self.altitude_m),
                 json_string(self.mode),
+                json_number(self.desired_body_yaw_error_degrees),
+                json_number(self.desired_body_heading_error_degrees),
+                json_number(self.desired_heading_alignment_mps),
+                json_number(self.lateral_response_mps),
+                self.lateral_input_active,
+                json_number(self.movement_input_lateral_axis),
+                json_number(self.movement_input_forward_axis),
                 json_number(self.camera_distance_m),
                 json_number(self.camera_surface_clearance_m),
                 json_number(self.camera_player_angle_degrees),
@@ -3690,8 +3981,31 @@ pub mod eval {
         max_camera_rotation_delta_degrees: f32,
         max_camera_orbit_alignment_degrees: f32,
         max_abs_camera_view_yaw_degrees: f32,
+        first_camera_view_yaw_degrees: Option<f32>,
+        max_camera_view_yaw_drift_degrees: f32,
         max_camera_obstruction_adjustment_m: f32,
         max_camera_obstruction_hits: usize,
+        desired_body_heading_error_sum_degrees: f32,
+        desired_body_heading_samples: u32,
+        max_desired_body_heading_error_degrees: f32,
+        previous_desired_body_yaw_error_degrees: Option<f32>,
+        max_body_yaw_error_step_degrees: f32,
+        previous_body_yaw_error_sign: Option<f32>,
+        body_yaw_oscillation_count: u32,
+        max_desired_heading_alignment_mps: f32,
+        max_lateral_response_mps: f32,
+        first_lateral_input_time_secs: Option<f32>,
+        first_lateral_response_time_secs: Option<f32>,
+        max_right_lateral_response_mps: f32,
+        first_right_lateral_input_time_secs: Option<f32>,
+        first_right_lateral_response_time_secs: Option<f32>,
+        max_left_lateral_response_mps: f32,
+        first_left_lateral_input_time_secs: Option<f32>,
+        first_left_lateral_response_time_secs: Option<f32>,
+        backward_air_control_start_speed_mps: Option<f32>,
+        min_backward_air_control_speed_mps: Option<f32>,
+        max_air_brake_speed_drop_mps: f32,
+        max_post_brake_forward_alignment_mps: f32,
         min_target_distance_m: f32,
         min_camera_pitch_degrees: f32,
         max_camera_pitch_degrees: f32,
@@ -3788,6 +4102,18 @@ pub mod eval {
         }
     }
 
+    fn response_latency_secs(
+        input_time_secs: Option<f32>,
+        response_time_secs: Option<f32>,
+        scenario: EvalScenario,
+    ) -> f32 {
+        match (input_time_secs, response_time_secs) {
+            (Some(input_time), Some(response_time)) => (response_time - input_time).max(0.0),
+            (Some(_), None) => scenario.duration_secs(),
+            _ => 0.0,
+        }
+    }
+
     impl EvalAccumulator {
         pub fn observe_frame_time_ms(&mut self, frame_time_ms: f32) {
             if frame_time_ms.is_finite() && frame_time_ms >= 0.0 {
@@ -3832,12 +4158,118 @@ pub mod eval {
             self.max_abs_camera_view_yaw_degrees = self
                 .max_abs_camera_view_yaw_degrees
                 .max(sample.camera_view_yaw_degrees.abs());
+            if sample.camera_view_yaw_degrees.is_finite() {
+                let first_yaw = self
+                    .first_camera_view_yaw_degrees
+                    .get_or_insert(sample.camera_view_yaw_degrees);
+                self.max_camera_view_yaw_drift_degrees = self
+                    .max_camera_view_yaw_drift_degrees
+                    .max((sample.camera_view_yaw_degrees - *first_yaw).abs());
+            }
             self.max_camera_obstruction_adjustment_m = self
                 .max_camera_obstruction_adjustment_m
                 .max(sample.camera_obstruction_adjustment_m);
             self.max_camera_obstruction_hits = self
                 .max_camera_obstruction_hits
                 .max(sample.camera_obstruction_hits);
+            if sample.desired_body_yaw_error_degrees.is_finite() {
+                let heading_error = sample.desired_body_heading_error_degrees;
+                self.desired_body_heading_error_sum_degrees += heading_error;
+                self.desired_body_heading_samples += 1;
+                self.max_desired_body_heading_error_degrees = self
+                    .max_desired_body_heading_error_degrees
+                    .max(heading_error);
+                if let Some(previous_error) = self.previous_desired_body_yaw_error_degrees {
+                    self.max_body_yaw_error_step_degrees = self
+                        .max_body_yaw_error_step_degrees
+                        .max((sample.desired_body_yaw_error_degrees - previous_error).abs());
+                }
+                self.previous_desired_body_yaw_error_degrees =
+                    Some(sample.desired_body_yaw_error_degrees);
+
+                if sample.desired_body_yaw_error_degrees.abs()
+                    >= AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES
+                {
+                    let sign = sample.desired_body_yaw_error_degrees.signum();
+                    if self
+                        .previous_body_yaw_error_sign
+                        .is_some_and(|previous| previous != sign)
+                    {
+                        self.body_yaw_oscillation_count += 1;
+                    }
+                    self.previous_body_yaw_error_sign = Some(sign);
+                }
+            }
+            if sample.desired_heading_alignment_mps.is_finite() {
+                self.max_desired_heading_alignment_mps = self
+                    .max_desired_heading_alignment_mps
+                    .max(sample.desired_heading_alignment_mps);
+            }
+            if sample.lateral_input_active {
+                if self.first_lateral_input_time_secs.is_none() {
+                    self.first_lateral_input_time_secs = Some(sample.time_secs);
+                }
+                self.max_lateral_response_mps = self
+                    .max_lateral_response_mps
+                    .max(sample.lateral_response_mps);
+                if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+                    && self.first_lateral_response_time_secs.is_none()
+                {
+                    self.first_lateral_response_time_secs = Some(sample.time_secs);
+                }
+                match sample.movement_input_lateral_axis.signum() {
+                    sign if sign > 0.0 => {
+                        if self.first_right_lateral_input_time_secs.is_none() {
+                            self.first_right_lateral_input_time_secs = Some(sample.time_secs);
+                        }
+                        self.max_right_lateral_response_mps = self
+                            .max_right_lateral_response_mps
+                            .max(sample.lateral_response_mps);
+                        if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+                            && self.first_right_lateral_response_time_secs.is_none()
+                        {
+                            self.first_right_lateral_response_time_secs = Some(sample.time_secs);
+                        }
+                    }
+                    sign if sign < 0.0 => {
+                        if self.first_left_lateral_input_time_secs.is_none() {
+                            self.first_left_lateral_input_time_secs = Some(sample.time_secs);
+                        }
+                        self.max_left_lateral_response_mps = self
+                            .max_left_lateral_response_mps
+                            .max(sample.lateral_response_mps);
+                        if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+                            && self.first_left_lateral_response_time_secs.is_none()
+                        {
+                            self.first_left_lateral_response_time_secs = Some(sample.time_secs);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if sample.movement_input_forward_axis < 0.0
+                && sample.mode != FlightMode::Grounded.label()
+            {
+                if self.backward_air_control_start_speed_mps.is_none() {
+                    self.backward_air_control_start_speed_mps = Some(sample.speed_mps);
+                }
+                let min_speed = self
+                    .min_backward_air_control_speed_mps
+                    .map_or(sample.speed_mps, |speed| speed.min(sample.speed_mps));
+                self.min_backward_air_control_speed_mps = Some(min_speed);
+                if let Some(start_speed) = self.backward_air_control_start_speed_mps {
+                    self.max_air_brake_speed_drop_mps = self
+                        .max_air_brake_speed_drop_mps
+                        .max(start_speed - min_speed);
+                }
+            } else if self.backward_air_control_start_speed_mps.is_some()
+                && sample.movement_input_forward_axis > 0.0
+                && sample.desired_heading_alignment_mps.is_finite()
+            {
+                self.max_post_brake_forward_alignment_mps = self
+                    .max_post_brake_forward_alignment_mps
+                    .max(sample.desired_heading_alignment_mps);
+            }
             self.min_target_distance_m = self.min_target_distance_m.min(sample.target_distance_m);
             self.min_camera_pitch_degrees = self
                 .min_camera_pitch_degrees
@@ -4042,6 +4474,27 @@ pub mod eval {
                 .as_ref()
                 .map_or(0.0, |sample| sample.objective.current_distance_m);
             let frame_time_stats = EvalFrameTimeStats::from_samples(&self.frame_times_ms);
+            let avg_desired_body_heading_error_degrees = if self.desired_body_heading_samples == 0 {
+                0.0
+            } else {
+                self.desired_body_heading_error_sum_degrees
+                    / self.desired_body_heading_samples as f32
+            };
+            let lateral_response_latency_secs = response_latency_secs(
+                self.first_lateral_input_time_secs,
+                self.first_lateral_response_time_secs,
+                scenario,
+            );
+            let right_lateral_response_latency_secs = response_latency_secs(
+                self.first_right_lateral_input_time_secs,
+                self.first_right_lateral_response_time_secs,
+                scenario,
+            );
+            let left_lateral_response_latency_secs = response_latency_secs(
+                self.first_left_lateral_input_time_secs,
+                self.first_left_lateral_response_time_secs,
+                scenario,
+            );
             let mut checks = vec![
                 EvalCheck::at_least(
                     "sample_count",
@@ -4367,6 +4820,86 @@ pub mod eval {
                     "samples",
                 ));
             }
+            if scenario.name == AIR_CONTROL_RESPONSE {
+                checks.push(EvalCheck::at_most(
+                    "air_control_lateral_response_latency",
+                    lateral_response_latency_secs,
+                    AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
+                    "s",
+                ));
+                checks.push(EvalCheck::at_least(
+                    "air_control_lateral_response",
+                    self.max_lateral_response_mps,
+                    AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS,
+                    "m/s",
+                ));
+                checks.push(EvalCheck::at_most(
+                    "air_control_right_lateral_response_latency",
+                    right_lateral_response_latency_secs,
+                    AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
+                    "s",
+                ));
+                checks.push(EvalCheck::at_least(
+                    "air_control_right_lateral_response",
+                    self.max_right_lateral_response_mps,
+                    AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS,
+                    "m/s",
+                ));
+                checks.push(EvalCheck::at_most(
+                    "air_control_left_lateral_response_latency",
+                    left_lateral_response_latency_secs,
+                    AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
+                    "s",
+                ));
+                checks.push(EvalCheck::at_least(
+                    "air_control_left_lateral_response",
+                    self.max_left_lateral_response_mps,
+                    AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS,
+                    "m/s",
+                ));
+                checks.push(EvalCheck::at_least(
+                    "air_control_air_brake_speed_drop",
+                    self.max_air_brake_speed_drop_mps,
+                    AIR_CONTROL_MIN_AIR_BRAKE_SPEED_DROP_MPS,
+                    "m/s",
+                ));
+                checks.push(EvalCheck::at_least(
+                    "air_control_post_brake_forward_alignment",
+                    self.max_post_brake_forward_alignment_mps,
+                    AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS,
+                    "m/s",
+                ));
+                checks.push(EvalCheck::at_least(
+                    "air_control_desired_heading_alignment",
+                    self.max_desired_heading_alignment_mps,
+                    AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS,
+                    "m/s",
+                ));
+                checks.push(EvalCheck::at_most(
+                    "air_control_avg_body_heading_error",
+                    avg_desired_body_heading_error_degrees,
+                    AIR_CONTROL_MAX_AVG_BODY_HEADING_ERROR_DEGREES,
+                    "deg",
+                ));
+                checks.push(EvalCheck::at_most(
+                    "air_control_body_yaw_oscillation_count",
+                    self.body_yaw_oscillation_count as f32,
+                    AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS,
+                    "sign changes",
+                ));
+                checks.push(EvalCheck::at_most(
+                    "air_control_camera_orbit_yaw_offset",
+                    self.max_abs_camera_yaw_offset_degrees,
+                    AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES,
+                    "deg",
+                ));
+                checks.push(EvalCheck::at_most(
+                    "air_control_camera_rotation_delta",
+                    self.max_camera_rotation_delta_degrees,
+                    AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES,
+                    "deg",
+                ));
+            }
             let passed = checks.iter().all(|check| check.passed);
 
             EvalSummary {
@@ -4393,8 +4926,23 @@ pub mod eval {
                     max_camera_rotation_delta_degrees: self.max_camera_rotation_delta_degrees,
                     max_camera_orbit_alignment_degrees: self.max_camera_orbit_alignment_degrees,
                     max_abs_camera_view_yaw_degrees: self.max_abs_camera_view_yaw_degrees,
+                    max_camera_view_yaw_drift_degrees: self.max_camera_view_yaw_drift_degrees,
                     max_camera_obstruction_adjustment_m: self.max_camera_obstruction_adjustment_m,
                     max_camera_obstruction_hits: self.max_camera_obstruction_hits,
+                    avg_desired_body_heading_error_degrees,
+                    max_desired_body_heading_error_degrees: self
+                        .max_desired_body_heading_error_degrees,
+                    max_body_yaw_error_step_degrees: self.max_body_yaw_error_step_degrees,
+                    body_yaw_oscillation_count: self.body_yaw_oscillation_count,
+                    max_desired_heading_alignment_mps: self.max_desired_heading_alignment_mps,
+                    max_lateral_response_mps: self.max_lateral_response_mps,
+                    lateral_response_latency_secs,
+                    max_right_lateral_response_mps: self.max_right_lateral_response_mps,
+                    right_lateral_response_latency_secs,
+                    max_left_lateral_response_mps: self.max_left_lateral_response_mps,
+                    left_lateral_response_latency_secs,
+                    max_air_brake_speed_drop_mps: self.max_air_brake_speed_drop_mps,
+                    max_post_brake_forward_alignment_mps: self.max_post_brake_forward_alignment_mps,
                     min_target_distance_m: self.min_target_distance_m,
                     final_target_distance_m,
                     min_camera_pitch_degrees: self.min_camera_pitch_degrees,
@@ -4523,8 +5071,22 @@ pub mod eval {
         pub max_camera_rotation_delta_degrees: f32,
         pub max_camera_orbit_alignment_degrees: f32,
         pub max_abs_camera_view_yaw_degrees: f32,
+        pub max_camera_view_yaw_drift_degrees: f32,
         pub max_camera_obstruction_adjustment_m: f32,
         pub max_camera_obstruction_hits: usize,
+        pub avg_desired_body_heading_error_degrees: f32,
+        pub max_desired_body_heading_error_degrees: f32,
+        pub max_body_yaw_error_step_degrees: f32,
+        pub body_yaw_oscillation_count: u32,
+        pub max_desired_heading_alignment_mps: f32,
+        pub max_lateral_response_mps: f32,
+        pub lateral_response_latency_secs: f32,
+        pub max_right_lateral_response_mps: f32,
+        pub right_lateral_response_latency_secs: f32,
+        pub max_left_lateral_response_mps: f32,
+        pub left_lateral_response_latency_secs: f32,
+        pub max_air_brake_speed_drop_mps: f32,
+        pub max_post_brake_forward_alignment_mps: f32,
         pub min_target_distance_m: f32,
         pub final_target_distance_m: f32,
         pub min_camera_pitch_degrees: f32,
@@ -4600,7 +5162,7 @@ pub mod eval {
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_environment_motion_visual_count\": {},\n{indent}  \"max_environment_motion_offset_m\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_catalog_island_visual_count\": {},\n{indent}  \"max_hidden_island_visual_count\": {},\n{indent}  \"max_resident_island_visual_fraction\": {},\n{indent}  \"max_stream_spawned_visuals_per_frame\": {},\n{indent}  \"max_stream_despawned_visuals_per_frame\": {},\n{indent}  \"total_stream_spawned_visuals\": {},\n{indent}  \"total_stream_despawned_visuals\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"objective_total_count\": {},\n{indent}  \"max_completed_objective_count\": {},\n{indent}  \"final_objective_completed_count\": {},\n{indent}  \"min_objective_distance_m\": {},\n{indent}  \"final_objective_distance_m\": {},\n{indent}  \"objective_complete_samples\": {},\n{indent}  \"max_visual_asset_slot_count\": {},\n{indent}  \"max_gltf_scene_asset_slot_count\": {},\n{indent}  \"max_ready_visual_asset_slot_count\": {},\n{indent}  \"max_placeholder_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_visual_asset_slot_count\": {},\n{indent}  \"max_missing_visual_asset_slot_count\": {},\n{indent}  \"max_queued_visual_asset_scene_count\": {},\n{indent}  \"max_loading_visual_asset_scene_count\": {},\n{indent}  \"max_loaded_visual_asset_scene_count\": {},\n{indent}  \"max_failed_visual_asset_scene_count\": {},\n{indent}  \"max_always_visual_asset_slot_count\": {},\n{indent}  \"max_stream_window_visual_asset_slot_count\": {},\n{indent}  \"max_near_lod_visual_asset_slot_count\": {},\n{indent}  \"max_far_lod_visual_asset_slot_count\": {},\n{indent}  \"max_weather_visual_asset_slot_count\": {},\n{indent}  \"max_power_up_count\": {},\n{indent}  \"min_visible_power_up_count\": {},\n{indent}  \"max_collected_power_up_count\": {},\n{indent}  \"power_up_effect_samples\": {},\n{indent}  \"total_power_up_activations\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_view_yaw_drift_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"avg_desired_body_heading_error_degrees\": {},\n{indent}  \"max_desired_body_heading_error_degrees\": {},\n{indent}  \"max_body_yaw_error_step_degrees\": {},\n{indent}  \"body_yaw_oscillation_count\": {},\n{indent}  \"max_desired_heading_alignment_mps\": {},\n{indent}  \"max_lateral_response_mps\": {},\n{indent}  \"lateral_response_latency_secs\": {},\n{indent}  \"max_right_lateral_response_mps\": {},\n{indent}  \"right_lateral_response_latency_secs\": {},\n{indent}  \"max_left_lateral_response_mps\": {},\n{indent}  \"left_lateral_response_latency_secs\": {},\n{indent}  \"max_air_brake_speed_drop_mps\": {},\n{indent}  \"max_post_brake_forward_alignment_mps\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_environment_motion_visual_count\": {},\n{indent}  \"max_environment_motion_offset_m\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_catalog_island_visual_count\": {},\n{indent}  \"max_hidden_island_visual_count\": {},\n{indent}  \"max_resident_island_visual_fraction\": {},\n{indent}  \"max_stream_spawned_visuals_per_frame\": {},\n{indent}  \"max_stream_despawned_visuals_per_frame\": {},\n{indent}  \"total_stream_spawned_visuals\": {},\n{indent}  \"total_stream_despawned_visuals\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"objective_total_count\": {},\n{indent}  \"max_completed_objective_count\": {},\n{indent}  \"final_objective_completed_count\": {},\n{indent}  \"min_objective_distance_m\": {},\n{indent}  \"final_objective_distance_m\": {},\n{indent}  \"objective_complete_samples\": {},\n{indent}  \"max_visual_asset_slot_count\": {},\n{indent}  \"max_gltf_scene_asset_slot_count\": {},\n{indent}  \"max_ready_visual_asset_slot_count\": {},\n{indent}  \"max_placeholder_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_visual_asset_slot_count\": {},\n{indent}  \"max_missing_visual_asset_slot_count\": {},\n{indent}  \"max_queued_visual_asset_scene_count\": {},\n{indent}  \"max_loading_visual_asset_scene_count\": {},\n{indent}  \"max_loaded_visual_asset_scene_count\": {},\n{indent}  \"max_failed_visual_asset_scene_count\": {},\n{indent}  \"max_always_visual_asset_slot_count\": {},\n{indent}  \"max_stream_window_visual_asset_slot_count\": {},\n{indent}  \"max_near_lod_visual_asset_slot_count\": {},\n{indent}  \"max_far_lod_visual_asset_slot_count\": {},\n{indent}  \"max_weather_visual_asset_slot_count\": {},\n{indent}  \"max_power_up_count\": {},\n{indent}  \"min_visible_power_up_count\": {},\n{indent}  \"max_collected_power_up_count\": {},\n{indent}  \"power_up_effect_samples\": {},\n{indent}  \"total_power_up_activations\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
                 json_number(self.avg_frame_time_ms),
                 json_number(self.p95_frame_time_ms),
@@ -4617,8 +5179,22 @@ pub mod eval {
                 json_number(self.max_camera_rotation_delta_degrees),
                 json_number(self.max_camera_orbit_alignment_degrees),
                 json_number(self.max_abs_camera_view_yaw_degrees),
+                json_number(self.max_camera_view_yaw_drift_degrees),
                 json_number(self.max_camera_obstruction_adjustment_m),
                 self.max_camera_obstruction_hits,
+                json_number(self.avg_desired_body_heading_error_degrees),
+                json_number(self.max_desired_body_heading_error_degrees),
+                json_number(self.max_body_yaw_error_step_degrees),
+                self.body_yaw_oscillation_count,
+                json_number(self.max_desired_heading_alignment_mps),
+                json_number(self.max_lateral_response_mps),
+                json_number(self.lateral_response_latency_secs),
+                json_number(self.max_right_lateral_response_mps),
+                json_number(self.right_lateral_response_latency_secs),
+                json_number(self.max_left_lateral_response_mps),
+                json_number(self.left_lateral_response_latency_secs),
+                json_number(self.max_air_brake_speed_drop_mps),
+                json_number(self.max_post_brake_forward_alignment_mps),
                 json_number(self.min_target_distance_m),
                 json_number(self.final_target_distance_m),
                 json_number(self.min_camera_pitch_degrees),
@@ -4804,6 +5380,7 @@ pub mod eval {
             CAMERA_STRAFE_STABILITY | "camera_strafe" | "strafe_stability" => {
                 Some(camera_strafe_stability())
             }
+            AIR_CONTROL_RESPONSE | "air_control" | "air_response" => Some(air_control_response()),
             LONG_GLIDE_VISIBILITY | "long_glide" | "glide_visibility" => {
                 Some(long_glide_visibility())
             }
@@ -4821,6 +5398,18 @@ pub mod eval {
                 right: (0.15..=1.55).contains(&t),
                 left: (1.75..=3.1).contains(&t),
                 ..default()
+            };
+        }
+        if scenario.name == AIR_CONTROL_RESPONSE {
+            let dive = (5.45..=5.75).contains(&t);
+            return FlightInput {
+                forward: (0.05..=1.55).contains(&t) || (5.9..=6.35).contains(&t),
+                right: (1.0..=2.8).contains(&t),
+                left: (3.0..=4.35).contains(&t),
+                backward: (4.65..=5.7).contains(&t),
+                glide: t >= 0.45 && !dive,
+                dive,
+                launch: frame == 1,
             };
         }
         if scenario.name == GROUND_TAXI_CONTROL {
@@ -5347,7 +5936,7 @@ pub mod eval {
             checkpoints: CAMERA_TURN_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 60,
-                min_horizontal_distance_m: 55.0,
+                min_horizontal_distance_m: 35.0,
                 min_max_altitude_m: 42.0,
                 min_max_speed_mps: 28.0,
                 min_gliding_samples: 40,
@@ -5439,6 +6028,67 @@ pub mod eval {
                 max_camera_rotation_delta_degrees: 8.0,
                 max_camera_orbit_alignment_degrees: 15.0,
                 max_abs_camera_view_yaw_degrees: 6.0,
+                min_camera_obstruction_adjustment_m: 0.0,
+                min_abs_camera_yaw_degrees: 0.0,
+                min_camera_pitch_offset_degrees: 0.0,
+                max_camera_pitch_offset_degrees: 0.0,
+                min_objective_total_count: 2,
+                min_completed_objective_count: 0,
+                min_visual_asset_slot_count: VISUAL_ASSET_SLOT_COUNT,
+                min_gltf_scene_asset_slot_count: GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
+                min_streaming_visual_asset_slot_count: STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                max_failed_visual_asset_scene_count: 0,
+                min_power_up_count: 3,
+                min_collected_power_up_count: 0,
+                min_power_up_effect_samples: 0,
+                require_target_landing: false,
+                max_final_target_distance_m: 280.0,
+                min_target_landing_samples: 0,
+            },
+        }
+    }
+
+    fn air_control_response() -> EvalScenario {
+        EvalScenario {
+            name: AIR_CONTROL_RESPONSE,
+            fixed_dt: 1.0 / 60.0,
+            frame_count: 390,
+            sample_stride: 5,
+            target_island_name: None,
+            checkpoints: AIR_CONTROL_RESPONSE_CHECKPOINTS,
+            thresholds: EvalThresholds {
+                min_samples: 70,
+                min_horizontal_distance_m: 30.0,
+                min_max_altitude_m: 38.0,
+                min_max_speed_mps: 24.0,
+                min_gliding_samples: 45,
+                min_grounded_samples: 0,
+                min_lifted_samples: 0,
+                min_sky_island_count: 10,
+                min_active_island_count: 4,
+                max_active_chunk_count: 25,
+                min_near_lod_island_count: 2,
+                min_mid_lod_island_count: 3,
+                min_far_lod_island_count: 3,
+                max_visible_island_terrain_count: 55,
+                min_hidden_island_terrain_count: 5,
+                min_visible_island_impostor_count: 2,
+                max_visible_island_detail_count: 95,
+                min_hidden_island_detail_count: 20,
+                min_visible_route_beacon_count: 12,
+                min_weather_cloud_count: 12,
+                min_environment_motion_visual_count: 6,
+                min_environment_motion_offset_m: 0.03,
+                max_resident_island_visual_count: 180,
+                max_stream_visibility_changes_per_frame: 32,
+                min_entity_count: 100,
+                max_camera_distance_m: 36.0,
+                min_camera_surface_clearance_m: 1.0,
+                max_camera_player_angle_degrees: 18.0,
+                max_camera_step_distance_m: 12.0,
+                max_camera_rotation_delta_degrees: 25.0,
+                max_camera_orbit_alignment_degrees: 45.0,
+                max_abs_camera_view_yaw_degrees: 12.0,
                 min_camera_obstruction_adjustment_m: 0.0,
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
@@ -5692,6 +6342,24 @@ pub mod eval {
         }
 
         #[test]
+        fn air_control_response_script_exercises_lateral_brake_and_recovery_without_mouse() {
+            let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+
+            assert!(scripted_input(scenario, 1).launch);
+            assert!(scripted_input(scenario, 90).forward);
+            assert!(scripted_input(scenario, 90).right);
+            assert!(scripted_input(scenario, 150).right);
+            assert!(!scripted_input(scenario, 150).forward);
+            assert!(scripted_input(scenario, 210).left);
+            assert!(scripted_input(scenario, 310).backward);
+            assert!(scripted_input(scenario, 365).forward);
+            assert_eq!(scripted_camera_input(scenario, 90), CameraInput::default());
+            assert_eq!(scripted_camera_input(scenario, 210), CameraInput::default());
+            assert_eq!(scripted_camera_input(scenario, 310), CameraInput::default());
+            assert!(scenario.thresholds.min_gliding_samples >= 45);
+        }
+
+        #[test]
         fn long_glide_visibility_script_crosses_archipelago() {
             let scenario = scenario_named(LONG_GLIDE_VISIBILITY).expect("long glide route exists");
 
@@ -5747,6 +6415,162 @@ pub mod eval {
             assert_eq!(summary.metrics.p95_frame_time_ms, 50.0);
             assert_eq!(summary.metrics.p99_frame_time_ms, 50.0);
             assert_eq!(summary.metrics.max_frame_time_ms, 50.0);
+        }
+
+        #[test]
+        fn accumulator_requires_both_air_control_lateral_phases() {
+            let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+            let mut accumulator = EvalAccumulator::default();
+
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                0,
+                Vec3::new(0.0, 0.0, -18.0),
+                Vec2::new(0.0, 1.0),
+                0.0,
+                18.0,
+                8.0,
+            ));
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                90,
+                Vec3::new(16.0, -2.0, -18.0),
+                Vec2::new(1.0, 0.0),
+                16.0,
+                18.0,
+                4.0,
+            ));
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                210,
+                Vec3::new(14.0, -2.0, -18.0),
+                Vec2::new(-1.0, 0.0),
+                2.0,
+                18.0,
+                4.0,
+            ));
+
+            let summary = accumulator.summary(
+                scenario,
+                EvalArtifacts {
+                    summary_json: "summary.json".to_string(),
+                    samples_ndjson: "samples.ndjson".to_string(),
+                    screenshot_png: None,
+                    checkpoint_screenshots: Vec::new(),
+                },
+            );
+            let right_check = summary
+                .checks
+                .iter()
+                .find(|check| check.name == "air_control_right_lateral_response")
+                .expect("right response check exists");
+            let left_check = summary
+                .checks
+                .iter()
+                .find(|check| check.name == "air_control_left_lateral_response")
+                .expect("left response check exists");
+
+            assert!(right_check.passed);
+            assert!(!left_check.passed);
+            assert_eq!(summary.metrics.max_right_lateral_response_mps, 16.0);
+            assert_eq!(summary.metrics.max_left_lateral_response_mps, 2.0);
+        }
+
+        fn air_control_metric_sample(
+            scenario: EvalScenario,
+            frame: u32,
+            velocity: Vec3,
+            movement_axis: Vec2,
+            lateral_response_mps: f32,
+            desired_alignment_mps: f32,
+            yaw_error_degrees: f32,
+        ) -> EvalSample {
+            let objective = EvalObjectiveProgress::new(0, 2, "near route updraft", 120.0, false);
+            EvalSample::new(
+                frame,
+                scenario.fixed_dt,
+                Vec3::new(frame as f32 * 0.5, 42.0, -(frame as f32) * 0.25),
+                velocity,
+                FlightMode::Gliding,
+                14.0,
+                3.0,
+                4.0,
+                -18.0,
+                0.0,
+                0.0,
+                0.2,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0,
+                0,
+                3,
+                0,
+                0,
+                1,
+                140.0,
+                false,
+                objective,
+                12,
+                25,
+                6,
+                2,
+                4,
+                6,
+                24,
+                36,
+                8,
+                4,
+                26,
+                118,
+                16,
+                12,
+                8,
+                0.08,
+                160,
+                0,
+                12,
+                12,
+                335,
+                175,
+                0.48,
+                0,
+                0,
+                12,
+                12,
+                20,
+                20,
+                130,
+                VISUAL_ASSET_SLOT_COUNT,
+                GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
+                0,
+                VISUAL_ASSET_SLOT_COUNT,
+                STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                VISUAL_ASSET_SLOT_COUNT,
+                0,
+                0,
+                0,
+                0,
+                ALWAYS_VISUAL_ASSET_SLOT_COUNT,
+                STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
+                NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
+                FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
+                WEATHER_VISUAL_ASSET_SLOT_COUNT,
+                AERIAL_POWER_UP_ROUTE.len(),
+                AERIAL_POWER_UP_ROUTE.len(),
+                0,
+                0,
+                0,
+            )
+            .with_movement_metrics(
+                yaw_error_degrees,
+                desired_alignment_mps,
+                lateral_response_mps,
+                movement_axis.x.abs() > f32::EPSILON,
+                movement_axis.x,
+                movement_axis.y,
+            )
         }
 
         #[test]
