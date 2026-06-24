@@ -6,19 +6,21 @@ Last updated: 2026-06-24
 
 First sky-island traversal slice.
 
-The project has a Bevy sandbox with a primitive humanoid, playable ground movement, camera-relative planar air control, deployable glider wings, one-launch-per-airtime vertical burst, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, multi-lobed drifting cloud banks and layered high-cirrus clusters, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes and cinematic lift ribbons, marked recovery branch islands, a 12-island floating route with higher-resolution vertex-colored terrain relief, quantized terrain material-region identity, sharper terrain-specific procedural PBR textures, irregular procedural rims, stratified generated cliff/underside body meshes, batched ground-cover/detail props, deterministic tapered/multi-lobed near-LOD trees and wind-responsive ponds, Bevy-native glTF scene/animation readiness hooks, background-safe terrain export/audit artifacts, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, air-control response, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
+The project has a Bevy sandbox with a primitive humanoid, playable ground movement, camera-relative planar air control, deployable glider wings, one-launch-per-airtime vertical burst, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, multi-lobed drifting cloud banks and layered high-cirrus clusters, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes and cinematic lift ribbons, marked recovery branch islands, a 12-island floating route with higher-resolution vertex-colored terrain relief, world-space tiled terrain UVs, quantized terrain material-region identity, sharper terrain-specific procedural PBR textures with smoothed broad material noise, irregular procedural rims, stratified generated cliff/underside body meshes, batched ground-cover/detail props, deterministic tapered/multi-lobed near-LOD trees and wind-responsive ponds, Bevy-native glTF scene/animation readiness hooks, background-safe terrain export/audit artifacts, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, air-control response, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
 
 ## Last Known Good
 
-- Commit: `445cb5a`
-- Merged PR: `#41` - Add streaming LOD pressure counters
+- Commit: `e0046d7`
+- Merged PR: `#62` - Add terrain texture detail gates
 - Verification:
   - `cargo fmt --all --check`
+  - `git diff --check`
   - `cargo check`
   - `cargo test`
   - `cargo clippy --all-targets --all-features -- -D warnings`
-  - `cargo naux -- --help`
-  - metric-only evals for baseline traversal, ground taxi control, long-glide visibility, and branch recovery traversal, including streaming residency and directional churn gates
+  - `./tools/terrain_export.sh target/terrain_material_granularity_export`
+  - metric-only evals for baseline traversal and air-control response
+  - screenshot baseline eval with visual audit, opaque PNG alpha, and foreign-canvas checks
 
 ## Active Work
 
@@ -35,9 +37,9 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `E` launches from the ground and is gated to one launch per airtime.
 - `Space` deploys glider wings while airborne, with speed-responsive wing flex and subtle wingtip airflow trails.
 - `Shift` dives.
-- The sandbox spawns a 12-island floating archipelago with higher-resolution generated visual terrain relief, vertex-color surface variation, encoded terrain material-weight channels, derived material regions, terrain-specific texture-detail bands, irregular island rims, stratified generated cliff/underside body meshes, smooth terrain normals, batched near-LOD ground cover, a launch island, long-glide route, and landing target.
+- The sandbox spawns a 12-island floating archipelago with higher-resolution generated visual terrain relief, vertex-color surface variation, world-space tiled terrain UVs, encoded terrain material-weight channels, derived material regions, terrain-specific texture-detail bands, irregular island rims, stratified generated cliff/underside body meshes, smooth terrain normals, batched near-LOD ground cover, a launch island, long-glide route, and landing target.
 - The camera uses Bevy-native atmosphere, dynamic distance fog, volumetric fog/light, bloom, Aces tonemapping, exposure tuning, and atmosphere-driven environment lighting.
-- Terrain, ground cover, props, water, suit, glider, and markers use generated surface textures with PBR roughness, occlusion, and parallax depth maps; marker and flower materials feed bloom through emissive color.
+- Terrain, ground cover, props, water, suit, glider, and markers use generated surface textures with PBR roughness, occlusion, and parallax depth maps; terrain albedo uses smoothed broad material noise plus fine mineral flecks so large islands do not stretch one blurred texture over the whole surface; marker and flower materials feed bloom through emissive color.
 - Multi-lobed drifting cloud banks, layered high-cirrus clusters, and wind-responsive near-LOD generated tree/pond visuals provide non-debug weather/environment motion layers without changing gameplay collision or traversal math.
 - Route-surface contact can land the player on an island and applies landing damping once instead of crushing standing WASD movement every frame.
 - Runtime movement is camera-relative, with airborne planar steering, targeted counter-steer authority for lateral reversals, backward air-brake control, body yaw smoothed toward intended movement, error-scaled turn recovery for large lateral input changes, and horizontal velocity as the no-input facing fallback.
