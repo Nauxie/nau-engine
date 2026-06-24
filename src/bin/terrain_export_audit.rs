@@ -19,6 +19,8 @@ const MIN_TERRAIN_HIGHLAND_REGION_PROMILLE: u64 = 180;
 const MIN_TERRAIN_EXPOSED_REGION_PROMILLE: u64 = 150;
 const MIN_TERRAIN_RELIEF_RANGE_M: f64 = 0.8;
 const MIN_CLIFF_COLOR_BANDS: u64 = 9;
+const MIN_ISLAND_IMPOSTOR_MESH_VERTICES: u64 = 140;
+const MIN_ISLAND_IMPOSTOR_COLOR_BANDS: u64 = 18;
 
 fn main() {
     let args = env::args().skip(1).map(PathBuf::from).collect::<Vec<_>>();
@@ -121,7 +123,7 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
     checks.push(check_eq_u64(
         "mesh_count",
         mesh_count,
-        island_count.saturating_mul(3),
+        island_count.saturating_mul(4),
         "meshes",
     ));
     checks.push(check_at_least_u64(
@@ -186,10 +188,22 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         MIN_CLIFF_COLOR_BANDS,
         "bands",
     ));
+    checks.push(check_at_least_u64(
+        "impostor_mesh_vertices",
+        value_u64(minimums, "impostor_mesh_vertices"),
+        MIN_ISLAND_IMPOSTOR_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_u64(
+        "impostor_color_bands",
+        value_u64(minimums, "impostor_color_bands"),
+        MIN_ISLAND_IMPOSTOR_COLOR_BANDS,
+        "bands",
+    ));
 
     for island in &islands {
         let island_name = island.get("name").and_then(Value::as_str).unwrap_or("");
-        for mesh_kind in ["terrain", "cliff", "underside"] {
+        for mesh_kind in ["terrain", "cliff", "underside", "impostor"] {
             let mesh = island.get(mesh_kind).unwrap_or(&Value::Null);
             expected_artifact_count += 1;
             let Some(obj_path) = relative_path(mesh, "obj") else {
@@ -601,6 +615,74 @@ mod tests {
     }
 
     #[test]
+    fn audit_manifest_requires_impostor_entries_and_minimums() {
+        let manifest = json!({
+            "schema": "nau_terrain_export.v1",
+            "island_count": 1,
+            "mesh_count": 3,
+            "total_vertex_count": 2305,
+            "total_triangle_count": 4000,
+            "minimums": {
+                "terrain_mesh_vertices": 2305,
+                "terrain_color_bands": 32,
+                "terrain_material_weight_bands": 24,
+                "terrain_material_channels": 3,
+                "terrain_material_regions": 4,
+                "terrain_texture_detail_bands": 44,
+                "terrain_relief_range_m": 0.8,
+                "cliff_color_bands": 9,
+                "impostor_mesh_vertices": 42,
+                "impostor_color_bands": 4
+            },
+            "islands": [{
+                "name": "launch mesa",
+                "terrain": {
+                    "obj": "missing_terrain.obj",
+                    "material_weights_csv": "missing_weights.csv",
+                    "vertex_count": 2305,
+                    "triangle_count": 4000,
+                    "material_weight_bands": 24,
+                    "material_channels": 3,
+                    "material_regions": 4
+                },
+                "cliff": {
+                    "obj": "missing_cliff.obj",
+                    "vertex_count": 96,
+                    "triangle_count": 180
+                },
+                "underside": {
+                    "obj": "missing_underside.obj",
+                    "vertex_count": 96,
+                    "triangle_count": 180
+                }
+            }]
+        });
+        let report = audit_manifest(&manifest, Path::new("."), "manifest.json");
+
+        assert!(
+            !report
+                .get("passed")
+                .and_then(Value::as_bool)
+                .unwrap_or(true)
+        );
+        assert!(!audit_check_passed(&report, "mesh_count"));
+        assert!(!audit_check_passed(&report, "impostor_mesh_vertices"));
+        assert!(!audit_check_passed(&report, "impostor_color_bands"));
+        assert!(
+            report
+                .get("artifacts")
+                .and_then(Value::as_array)
+                .expect("artifacts should be present")
+                .iter()
+                .any(
+                    |artifact| artifact.get("kind").and_then(Value::as_str) == Some("impostor")
+                        && artifact.get("error").and_then(Value::as_str)
+                            == Some("missing obj path")
+                )
+        );
+    }
+
+    #[test]
     fn material_weight_csv_audit_counts_quantized_bands_and_channels() {
         let audit = audit_weight_csv_text(
             "vertex,lush_highland,exposed_edge\n\
@@ -622,5 +704,18 @@ mod tests {
         assert_eq!(audit.material_channels, 3);
         assert_eq!(audit.material_regions, 4);
         assert_eq!(audit.region_promille, [200, 400, 200, 200]);
+    }
+
+    fn audit_check_passed(report: &Value, name: &str) -> bool {
+        report
+            .get("checks")
+            .and_then(Value::as_array)
+            .and_then(|checks| {
+                checks
+                    .iter()
+                    .find(|check| check.get("name").and_then(Value::as_str) == Some(name))
+            })
+            .and_then(|check| check.get("passed").and_then(Value::as_bool))
+            .unwrap_or(false)
     }
 }

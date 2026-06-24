@@ -1324,6 +1324,8 @@ struct TerrainExportReport {
     min_terrain_texture_detail_bands: usize,
     min_terrain_relief_range_m: f32,
     min_cliff_color_bands: usize,
+    min_impostor_mesh_vertices: usize,
+    min_impostor_color_bands: usize,
     islands: Vec<TerrainExportIslandSummary>,
 }
 
@@ -1335,6 +1337,7 @@ struct TerrainExportIslandSummary {
     terrain: TerrainExportMeshSummary,
     cliff: TerrainExportMeshSummary,
     underside: TerrainExportMeshSummary,
+    impostor: TerrainExportMeshSummary,
 }
 
 #[derive(Debug)]
@@ -1375,7 +1378,9 @@ impl TerrainExportReport {
                 "    \"terrain_material_regions\": {},\n",
                 "    \"terrain_texture_detail_bands\": {},\n",
                 "    \"terrain_relief_range_m\": {},\n",
-                "    \"cliff_color_bands\": {}\n",
+                "    \"cliff_color_bands\": {},\n",
+                "    \"impostor_mesh_vertices\": {},\n",
+                "    \"impostor_color_bands\": {}\n",
                 "  }},\n",
                 "  \"islands\": [\n",
                 "{}\n",
@@ -1394,6 +1399,8 @@ impl TerrainExportReport {
             self.min_terrain_texture_detail_bands,
             terrain_export_json_number(self.min_terrain_relief_range_m),
             self.min_cliff_color_bands,
+            self.min_impostor_mesh_vertices,
+            self.min_impostor_color_bands,
             islands
         )
     }
@@ -1412,7 +1419,8 @@ impl TerrainExportIslandSummary {
              {indent}  \"target\": {},\n\
              {indent}  \"terrain\": {},\n\
              {indent}  \"cliff\": {},\n\
-             {indent}  \"underside\": {}\n\
+             {indent}  \"underside\": {},\n\
+             {indent}  \"impostor\": {}\n\
              {indent}}}",
             self.index,
             terrain_export_json_string(self.island.name),
@@ -1424,6 +1432,7 @@ impl TerrainExportIslandSummary {
             self.terrain.to_json(),
             self.cliff.to_json(),
             self.underside.to_json(),
+            self.impostor.to_json(),
         )
     }
 }
@@ -1471,12 +1480,14 @@ fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<TerrainExport
         let terrain_mesh = island_terrain_mesh(index, island);
         let cliff_mesh = island_cliff_mesh(index, island);
         let underside_mesh = island_underside_mesh(index, island);
+        let impostor_mesh = island_impostor_mesh(index, island);
 
         let terrain_obj = PathBuf::from("islands").join(format!("{prefix}_terrain.obj"));
         let terrain_material_weights =
             PathBuf::from("islands").join(format!("{prefix}_terrain_material_weights.csv"));
         let cliff_obj = PathBuf::from("islands").join(format!("{prefix}_cliff.obj"));
         let underside_obj = PathBuf::from("islands").join(format!("{prefix}_underside.obj"));
+        let impostor_obj = PathBuf::from("islands").join(format!("{prefix}_impostor.obj"));
 
         write_mesh_obj(&output_dir.join(&terrain_obj), &terrain_mesh, "terrain")?;
         write_terrain_material_weights_csv(
@@ -1489,6 +1500,7 @@ fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<TerrainExport
             &underside_mesh,
             "underside",
         )?;
+        write_mesh_obj(&output_dir.join(&impostor_obj), &impostor_mesh, "impostor")?;
 
         islands.push(TerrainExportIslandSummary {
             index,
@@ -1501,15 +1513,19 @@ fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<TerrainExport
             ),
             cliff: terrain_export_mesh_summary(cliff_obj, None, &cliff_mesh),
             underside: terrain_export_mesh_summary(underside_obj, None, &underside_mesh),
+            impostor: terrain_export_mesh_summary(impostor_obj, None, &impostor_mesh),
         });
     }
 
     let island_count = islands.len();
-    let mesh_count = island_count * 3;
+    let mesh_count = island_count * 4;
     let total_vertex_count = islands
         .iter()
         .map(|island| {
-            island.terrain.vertex_count + island.cliff.vertex_count + island.underside.vertex_count
+            island.terrain.vertex_count
+                + island.cliff.vertex_count
+                + island.underside.vertex_count
+                + island.impostor.vertex_count
         })
         .sum();
     let total_triangle_count = islands
@@ -1518,6 +1534,7 @@ fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<TerrainExport
             island.terrain.triangle_count
                 + island.cliff.triangle_count
                 + island.underside.triangle_count
+                + island.impostor.triangle_count
         })
         .sum();
     let min_terrain_mesh_vertices = islands
@@ -1556,6 +1573,16 @@ fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<TerrainExport
         .flat_map(|island| [island.cliff.color_bands, island.underside.color_bands])
         .min()
         .unwrap_or(0);
+    let min_impostor_mesh_vertices = islands
+        .iter()
+        .map(|island| island.impostor.vertex_count)
+        .min()
+        .unwrap_or(0);
+    let min_impostor_color_bands = islands
+        .iter()
+        .map(|island| island.impostor.color_bands)
+        .min()
+        .unwrap_or(0);
 
     let manifest_path = output_dir.join("manifest.json");
     let report = TerrainExportReport {
@@ -1572,6 +1599,8 @@ fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<TerrainExport
         min_terrain_texture_detail_bands,
         min_terrain_relief_range_m,
         min_cliff_color_bands,
+        min_impostor_mesh_vertices,
+        min_impostor_color_bands,
         islands,
     };
 
@@ -7254,13 +7283,14 @@ mod tests {
         let manifest =
             fs::read_to_string(&report.manifest_path).expect("manifest should be readable");
         let launch_terrain = output_dir.join("islands/00_launch_mesa_terrain.obj");
+        let launch_impostor = output_dir.join("islands/00_launch_mesa_impostor.obj");
         let launch_weights = output_dir.join("islands/00_launch_mesa_terrain_material_weights.csv");
         let weights =
             fs::read_to_string(&launch_weights).expect("material weights csv should be readable");
 
         assert_eq!(report.island_count, SkyRoute::default().islands().len());
-        assert_eq!(report.mesh_count, report.island_count * 3);
-        assert!(report.total_vertex_count > report.island_count * 2305);
+        assert_eq!(report.mesh_count, report.island_count * 4);
+        assert!(report.total_vertex_count > report.island_count * (2305 + 140));
         assert!(report.total_triangle_count > report.island_count * 4000);
         assert!(report.min_terrain_mesh_vertices >= 2305);
         assert!(report.min_terrain_color_bands >= ISLAND_TERRAIN_COLOR_BANDS);
@@ -7270,7 +7300,10 @@ mod tests {
         assert!(report.min_terrain_texture_detail_bands >= ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS);
         assert!(report.min_terrain_relief_range_m >= 0.8);
         assert!(report.min_cliff_color_bands >= ISLAND_CLIFF_STRATA_BANDS / 2);
+        assert!(report.min_impostor_mesh_vertices >= 2 + ISLAND_IMPOSTOR_SEGMENTS * 3);
+        assert!(report.min_impostor_color_bands >= ISLAND_IMPOSTOR_COLOR_BANDS);
         assert!(launch_terrain.exists());
+        assert!(launch_impostor.exists());
         assert!(launch_weights.exists());
         assert!(weights.starts_with("vertex,lush_highland,exposed_edge\n"));
         assert!(weights.lines().count() > 2000);
@@ -7281,6 +7314,11 @@ mod tests {
         assert!(manifest.contains("\"terrain_material_weight_bands\": 36"));
         assert!(manifest.contains("\"terrain_material_regions\": 4"));
         assert!(manifest.contains("\"terrain_texture_detail_bands\": 47"));
+        assert!(manifest.contains("\"impostor_mesh_vertices\": 146"));
+        assert!(manifest.contains("\"impostor_color_bands\": 21"));
+        assert!(
+            manifest.contains("\"impostor\": {\"obj\": \"islands/00_launch_mesa_impostor.obj\"")
+        );
 
         remove_existing_dir(&output_dir).expect("terrain export test dir should be removable");
     }
