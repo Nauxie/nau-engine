@@ -428,6 +428,8 @@ pub mod movement {
         pub max_fall_speed: f32,
         pub air_steer_accel: f32,
         pub glide_steer_accel: f32,
+        pub air_counter_steer_accel: f32,
+        pub glide_counter_steer_accel: f32,
         pub air_steer_min_speed: f32,
         pub max_bank_degrees: f32,
         pub turn_rate: f32,
@@ -465,10 +467,12 @@ pub mod movement {
                 max_fall_speed: 70.0,
                 air_steer_accel: 48.0,
                 glide_steer_accel: 36.0,
+                air_counter_steer_accel: 76.0,
+                glide_counter_steer_accel: 68.0,
                 air_steer_min_speed: 16.0,
-                max_bank_degrees: 16.0,
-                turn_rate: 8.0,
-                input_turn_rate_boost: 2.2,
+                max_bank_degrees: 20.0,
+                turn_rate: 10.0,
+                input_turn_rate_boost: 2.8,
                 floor_y: 1.2,
             }
         }
@@ -582,6 +586,7 @@ pub mod movement {
                     state.velocity,
                     desired_direction,
                     tuning.glide_steer_accel,
+                    tuning.glide_counter_steer_accel,
                     tuning.air_steer_min_speed,
                 );
             }
@@ -612,6 +617,7 @@ pub mod movement {
                     state.velocity,
                     desired_direction,
                     tuning.air_steer_accel,
+                    tuning.air_counter_steer_accel,
                     tuning.air_steer_min_speed,
                 );
             }
@@ -811,16 +817,24 @@ pub mod movement {
         velocity: Vec3,
         desired_direction: Vec3,
         steer_accel: f32,
+        counter_steer_accel: f32,
         min_target_speed: f32,
     ) -> Vec3 {
         let horizontal_velocity = horizontal(velocity);
         let target_speed = horizontal_velocity.length().max(min_target_speed.max(0.0));
-        let target_velocity = horizontal_or(desired_direction, Vec3::Z) * target_speed;
+        let desired_direction = horizontal_or(desired_direction, Vec3::Z);
+        let target_velocity = desired_direction * target_speed;
         let correction = target_velocity - horizontal_velocity;
         if correction.length_squared() <= 0.0001 {
             Vec3::ZERO
         } else {
-            correction.normalize() * steer_accel.max(0.0)
+            let reversing = horizontal_velocity.dot(desired_direction) < -0.1;
+            let accel = if reversing {
+                counter_steer_accel
+            } else {
+                steer_accel
+            };
+            correction.normalize() * accel.max(0.0)
         }
     }
 
@@ -1122,6 +1136,36 @@ pub mod movement {
             assert!(
                 forward_speed < 28.0,
                 "expected steering to rotate velocity away from pure forward drift, got {forward_speed}"
+            );
+        }
+
+        #[test]
+        fn lateral_air_input_reverses_side_velocity_before_it_feels_stuck() {
+            let tuning = FlightTuning::default();
+            let facing = Facing::new(Vec3::Z, Vec3::X);
+            let mut state = FlightState::new(
+                Vec3::new(0.0, 45.0, 0.0),
+                Vec3::new(26.0, -2.0, 18.0),
+                FlightController {
+                    mode: FlightMode::Gliding,
+                    launch_available: false,
+                    ..default()
+                },
+            );
+            let input = FlightInput {
+                left: true,
+                glide: true,
+                ..default()
+            };
+
+            for _ in 0..30 {
+                state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+            }
+
+            let left_response = horizontal(state.velocity).dot(-facing.right);
+            assert!(
+                left_response > 4.0,
+                "expected left reversal to recover promptly, got {left_response}"
             );
         }
 
@@ -3392,7 +3436,7 @@ pub mod eval {
     const MIN_MAX_WEATHER_CLOUD_LOBE_COUNT: usize = 7;
     const MIN_WEATHER_CLOUD_MESH_VERTICES: usize = 160;
     const AIR_CONTROL_RESPONSE_THRESHOLD_MPS: f32 = 4.0;
-    const AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS: f32 = 0.75;
+    const AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS: f32 = 0.5;
     const AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS: f32 = 10.0;
     const AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS: f32 = 14.0;
     const AIR_CONTROL_MAX_AVG_BODY_HEADING_ERROR_DEGREES: f32 = 55.0;
