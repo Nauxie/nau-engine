@@ -380,6 +380,7 @@ pub mod movement {
         pub air_steer_min_speed: f32,
         pub max_bank_degrees: f32,
         pub turn_rate: f32,
+        pub input_turn_rate_boost: f32,
         pub floor_y: f32,
     }
 
@@ -416,6 +417,7 @@ pub mod movement {
                 air_steer_min_speed: 16.0,
                 max_bank_degrees: 16.0,
                 turn_rate: 8.0,
+                input_turn_rate_boost: 2.2,
                 floor_y: 1.2,
             }
         }
@@ -687,7 +689,11 @@ pub mod movement {
             .looking_to(target_direction, Vec3::Y)
             .rotation
             * Quat::from_rotation_z(bank_angle_radians(input, mode, tuning));
-        current.slerp(target, smoothing_factor(tuning.turn_rate, dt))
+        let yaw_error = body_heading_error_degrees(current, target_direction);
+        let planar_input_weight = input.planar_axis().length().clamp(0.0, 1.0);
+        let turn_rate = tuning.turn_rate
+            * (1.0 + yaw_error / 180.0 * planar_input_weight * tuning.input_turn_rate_boost);
+        current.slerp(target, smoothing_factor(turn_rate, dt))
     }
 
     pub fn face_horizontal_velocity(
@@ -1097,6 +1103,38 @@ pub mod movement {
             assert!(
                 heading_error < 20.0,
                 "expected body yaw to turn toward right input, got {heading_error} deg"
+            );
+        }
+
+        #[test]
+        fn flight_body_yaw_reverses_lateral_air_input_quickly() {
+            let tuning = FlightTuning::default();
+            let facing = Facing::new(Vec3::Z, Vec3::X);
+            let mut rotation = Transform::from_translation(Vec3::ZERO)
+                .looking_to(facing.right, Vec3::Y)
+                .rotation;
+            let input = FlightInput {
+                left: true,
+                glide: true,
+                ..default()
+            };
+
+            for _ in 0..6 {
+                rotation = face_flight_direction(
+                    rotation,
+                    Vec3::new(26.0, -2.0, 18.0),
+                    input,
+                    facing,
+                    FlightMode::Gliding,
+                    &tuning,
+                    1.0 / 60.0,
+                );
+            }
+
+            let heading_error = body_heading_error_degrees(rotation, -facing.right);
+            assert!(
+                heading_error < 70.0,
+                "expected rapid body-yaw recovery after lateral reversal, got {heading_error} deg"
             );
         }
 
@@ -3299,6 +3337,7 @@ pub mod eval {
     const AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS: f32 = 10.0;
     const AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS: f32 = 14.0;
     const AIR_CONTROL_MAX_AVG_BODY_HEADING_ERROR_DEGREES: f32 = 55.0;
+    const AIR_CONTROL_MAX_P95_BODY_HEADING_ERROR_DEGREES: f32 = 55.0;
     const AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS: f32 = 6.0;
     const AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES: f32 = 0.01;
     const AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 2.0;
@@ -4103,6 +4142,7 @@ pub mod eval {
         max_camera_obstruction_hits: usize,
         desired_body_heading_error_sum_degrees: f32,
         desired_body_heading_samples: u32,
+        desired_body_heading_error_values_degrees: Vec<f32>,
         max_desired_body_heading_error_degrees: f32,
         previous_desired_body_yaw_error_degrees: Option<f32>,
         max_body_yaw_error_step_degrees: f32,
@@ -4318,6 +4358,8 @@ pub mod eval {
                 let heading_error = sample.desired_body_heading_error_degrees;
                 self.desired_body_heading_error_sum_degrees += heading_error;
                 self.desired_body_heading_samples += 1;
+                self.desired_body_heading_error_values_degrees
+                    .push(heading_error);
                 self.max_desired_body_heading_error_degrees = self
                     .max_desired_body_heading_error_degrees
                     .max(heading_error);
@@ -4637,6 +4679,11 @@ pub mod eval {
                 self.desired_body_heading_error_sum_degrees
                     / self.desired_body_heading_samples as f32
             };
+            let mut desired_body_heading_error_values_degrees =
+                self.desired_body_heading_error_values_degrees.clone();
+            desired_body_heading_error_values_degrees.sort_by(f32::total_cmp);
+            let p95_desired_body_heading_error_degrees =
+                percentile(&desired_body_heading_error_values_degrees, 0.95);
             let avg_camera_follow_direction_error_degrees =
                 if self.camera_follow_direction_error_samples == 0 {
                     0.0
@@ -5069,6 +5116,12 @@ pub mod eval {
                     "deg",
                 ));
                 checks.push(EvalCheck::at_most(
+                    "air_control_p95_body_heading_error",
+                    p95_desired_body_heading_error_degrees,
+                    AIR_CONTROL_MAX_P95_BODY_HEADING_ERROR_DEGREES,
+                    "deg",
+                ));
+                checks.push(EvalCheck::at_most(
                     "air_control_body_yaw_oscillation_count",
                     self.body_yaw_oscillation_count as f32,
                     AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS,
@@ -5148,6 +5201,7 @@ pub mod eval {
                     max_camera_obstruction_adjustment_m: self.max_camera_obstruction_adjustment_m,
                     max_camera_obstruction_hits: self.max_camera_obstruction_hits,
                     avg_desired_body_heading_error_degrees,
+                    p95_desired_body_heading_error_degrees,
                     max_desired_body_heading_error_degrees: self
                         .max_desired_body_heading_error_degrees,
                     max_body_yaw_error_step_degrees: self.max_body_yaw_error_step_degrees,
@@ -5303,6 +5357,7 @@ pub mod eval {
         pub max_camera_obstruction_adjustment_m: f32,
         pub max_camera_obstruction_hits: usize,
         pub avg_desired_body_heading_error_degrees: f32,
+        pub p95_desired_body_heading_error_degrees: f32,
         pub max_desired_body_heading_error_degrees: f32,
         pub max_body_yaw_error_step_degrees: f32,
         pub body_yaw_oscillation_count: u32,
@@ -5395,7 +5450,7 @@ pub mod eval {
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"avg_camera_follow_direction_error_degrees\": {},\n{indent}  \"p95_camera_follow_direction_error_degrees\": {},\n{indent}  \"max_camera_follow_direction_error_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_view_yaw_drift_degrees\": {},\n{indent}  \"max_camera_world_yaw_drift_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"avg_desired_body_heading_error_degrees\": {},\n{indent}  \"max_desired_body_heading_error_degrees\": {},\n{indent}  \"max_body_yaw_error_step_degrees\": {},\n{indent}  \"body_yaw_oscillation_count\": {},\n{indent}  \"max_desired_heading_alignment_mps\": {},\n{indent}  \"max_lateral_response_mps\": {},\n{indent}  \"lateral_response_latency_secs\": {},\n{indent}  \"max_right_lateral_response_mps\": {},\n{indent}  \"right_lateral_response_latency_secs\": {},\n{indent}  \"max_left_lateral_response_mps\": {},\n{indent}  \"left_lateral_response_latency_secs\": {},\n{indent}  \"max_air_brake_speed_drop_mps\": {},\n{indent}  \"max_post_brake_forward_alignment_mps\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_environment_motion_visual_count\": {},\n{indent}  \"max_environment_motion_offset_m\": {},\n{indent}  \"min_procedural_island_body_count\": {},\n{indent}  \"max_primitive_island_body_count\": {},\n{indent}  \"min_island_body_silhouette_segments\": {},\n{indent}  \"max_avg_island_body_silhouette_segments\": {},\n{indent}  \"max_island_body_mesh_vertices\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_catalog_island_visual_count\": {},\n{indent}  \"max_hidden_island_visual_count\": {},\n{indent}  \"max_resident_island_visual_fraction\": {},\n{indent}  \"max_stream_spawned_visuals_per_frame\": {},\n{indent}  \"max_stream_despawned_visuals_per_frame\": {},\n{indent}  \"total_stream_spawned_visuals\": {},\n{indent}  \"total_stream_despawned_visuals\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"objective_total_count\": {},\n{indent}  \"max_completed_objective_count\": {},\n{indent}  \"final_objective_completed_count\": {},\n{indent}  \"min_objective_distance_m\": {},\n{indent}  \"final_objective_distance_m\": {},\n{indent}  \"objective_complete_samples\": {},\n{indent}  \"max_visual_asset_slot_count\": {},\n{indent}  \"max_gltf_scene_asset_slot_count\": {},\n{indent}  \"max_ready_visual_asset_slot_count\": {},\n{indent}  \"max_placeholder_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_visual_asset_slot_count\": {},\n{indent}  \"max_missing_visual_asset_slot_count\": {},\n{indent}  \"max_queued_visual_asset_scene_count\": {},\n{indent}  \"max_loading_visual_asset_scene_count\": {},\n{indent}  \"max_loaded_visual_asset_scene_count\": {},\n{indent}  \"max_failed_visual_asset_scene_count\": {},\n{indent}  \"max_always_visual_asset_slot_count\": {},\n{indent}  \"max_stream_window_visual_asset_slot_count\": {},\n{indent}  \"max_near_lod_visual_asset_slot_count\": {},\n{indent}  \"max_far_lod_visual_asset_slot_count\": {},\n{indent}  \"max_weather_visual_asset_slot_count\": {},\n{indent}  \"max_power_up_count\": {},\n{indent}  \"min_visible_power_up_count\": {},\n{indent}  \"max_collected_power_up_count\": {},\n{indent}  \"power_up_effect_samples\": {},\n{indent}  \"total_power_up_activations\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"avg_camera_follow_direction_error_degrees\": {},\n{indent}  \"p95_camera_follow_direction_error_degrees\": {},\n{indent}  \"max_camera_follow_direction_error_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_view_yaw_drift_degrees\": {},\n{indent}  \"max_camera_world_yaw_drift_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"avg_desired_body_heading_error_degrees\": {},\n{indent}  \"p95_desired_body_heading_error_degrees\": {},\n{indent}  \"max_desired_body_heading_error_degrees\": {},\n{indent}  \"max_body_yaw_error_step_degrees\": {},\n{indent}  \"body_yaw_oscillation_count\": {},\n{indent}  \"max_desired_heading_alignment_mps\": {},\n{indent}  \"max_lateral_response_mps\": {},\n{indent}  \"lateral_response_latency_secs\": {},\n{indent}  \"max_right_lateral_response_mps\": {},\n{indent}  \"right_lateral_response_latency_secs\": {},\n{indent}  \"max_left_lateral_response_mps\": {},\n{indent}  \"left_lateral_response_latency_secs\": {},\n{indent}  \"max_air_brake_speed_drop_mps\": {},\n{indent}  \"max_post_brake_forward_alignment_mps\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_environment_motion_visual_count\": {},\n{indent}  \"max_environment_motion_offset_m\": {},\n{indent}  \"min_procedural_island_body_count\": {},\n{indent}  \"max_primitive_island_body_count\": {},\n{indent}  \"min_island_body_silhouette_segments\": {},\n{indent}  \"max_avg_island_body_silhouette_segments\": {},\n{indent}  \"max_island_body_mesh_vertices\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_catalog_island_visual_count\": {},\n{indent}  \"max_hidden_island_visual_count\": {},\n{indent}  \"max_resident_island_visual_fraction\": {},\n{indent}  \"max_stream_spawned_visuals_per_frame\": {},\n{indent}  \"max_stream_despawned_visuals_per_frame\": {},\n{indent}  \"total_stream_spawned_visuals\": {},\n{indent}  \"total_stream_despawned_visuals\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"objective_total_count\": {},\n{indent}  \"max_completed_objective_count\": {},\n{indent}  \"final_objective_completed_count\": {},\n{indent}  \"min_objective_distance_m\": {},\n{indent}  \"final_objective_distance_m\": {},\n{indent}  \"objective_complete_samples\": {},\n{indent}  \"max_visual_asset_slot_count\": {},\n{indent}  \"max_gltf_scene_asset_slot_count\": {},\n{indent}  \"max_ready_visual_asset_slot_count\": {},\n{indent}  \"max_placeholder_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_visual_asset_slot_count\": {},\n{indent}  \"max_missing_visual_asset_slot_count\": {},\n{indent}  \"max_queued_visual_asset_scene_count\": {},\n{indent}  \"max_loading_visual_asset_scene_count\": {},\n{indent}  \"max_loaded_visual_asset_scene_count\": {},\n{indent}  \"max_failed_visual_asset_scene_count\": {},\n{indent}  \"max_always_visual_asset_slot_count\": {},\n{indent}  \"max_stream_window_visual_asset_slot_count\": {},\n{indent}  \"max_near_lod_visual_asset_slot_count\": {},\n{indent}  \"max_far_lod_visual_asset_slot_count\": {},\n{indent}  \"max_weather_visual_asset_slot_count\": {},\n{indent}  \"max_power_up_count\": {},\n{indent}  \"min_visible_power_up_count\": {},\n{indent}  \"max_collected_power_up_count\": {},\n{indent}  \"power_up_effect_samples\": {},\n{indent}  \"total_power_up_activations\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
                 json_number(self.avg_frame_time_ms),
                 json_number(self.p95_frame_time_ms),
@@ -5420,6 +5475,7 @@ pub mod eval {
                 json_number(self.max_camera_obstruction_adjustment_m),
                 self.max_camera_obstruction_hits,
                 json_number(self.avg_desired_body_heading_error_degrees),
+                json_number(self.p95_desired_body_heading_error_degrees),
                 json_number(self.max_desired_body_heading_error_degrees),
                 json_number(self.max_body_yaw_error_step_degrees),
                 self.body_yaw_oscillation_count,
@@ -6847,6 +6903,52 @@ pub mod eval {
                 summary.metrics.p95_camera_follow_direction_error_degrees,
                 90.0
             );
+            assert_eq!(p95_check.value, 90.0);
+            assert!(!p95_check.passed);
+        }
+
+        #[test]
+        fn accumulator_gates_air_control_body_heading_spikes() {
+            let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+            let mut accumulator = EvalAccumulator::default();
+
+            for frame in 0..20 {
+                accumulator.observe(air_control_metric_sample(
+                    scenario,
+                    frame,
+                    Vec3::new(16.0, -2.0, -18.0),
+                    Vec2::new(0.0, 1.0),
+                    0.0,
+                    18.0,
+                    4.0,
+                ));
+            }
+            for frame in [90, 210] {
+                accumulator.observe(air_control_metric_sample(
+                    scenario,
+                    frame,
+                    Vec3::new(16.0, -2.0, -18.0),
+                    Vec2::new(1.0, 0.0),
+                    16.0,
+                    18.0,
+                    90.0,
+                ));
+            }
+
+            let summary = accumulator.summary(
+                scenario,
+                EvalArtifacts {
+                    summary_json: "summary.json".to_string(),
+                    samples_ndjson: "samples.ndjson".to_string(),
+                    screenshot_png: None,
+                    checkpoint_screenshots: Vec::new(),
+                },
+            );
+            let avg_check = named_check(&summary, "air_control_avg_body_heading_error");
+            let p95_check = named_check(&summary, "air_control_p95_body_heading_error");
+
+            assert!(avg_check.passed);
+            assert_eq!(summary.metrics.p95_desired_body_heading_error_degrees, 90.0);
             assert_eq!(p95_check.value, 90.0);
             assert!(!p95_check.passed);
         }
