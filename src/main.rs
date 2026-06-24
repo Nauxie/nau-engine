@@ -86,6 +86,7 @@ fn main() -> AppExit {
         .insert_resource(CameraControlTuning::default())
         .insert_resource(CameraControlState::default())
         .insert_resource(CameraDiagnostics::default())
+        .insert_resource(CinematicWeather::default())
         .insert_resource(IslandStreamDiagnostics::default())
         .insert_resource(RouteObjectiveTracker::default())
         .insert_resource(MouseLookState::default())
@@ -121,6 +122,7 @@ fn main() -> AppExit {
             Update,
             (
                 update_island_stream_visibility,
+                update_cinematic_weather,
                 update_weather_drift,
                 update_updraft_guides,
                 update_route_objectives,
@@ -180,6 +182,26 @@ struct Player;
 #[derive(Component)]
 struct DebugReadout;
 
+#[derive(Component)]
+struct CinematicSun;
+
+#[derive(Resource, Clone, Copy, Debug)]
+struct CinematicWeather {
+    cycle_seconds: f32,
+    haze_floor_m: f32,
+    haze_ceiling_m: f32,
+}
+
+impl Default for CinematicWeather {
+    fn default() -> Self {
+        Self {
+            cycle_seconds: 96.0,
+            haze_floor_m: 240.0,
+            haze_ceiling_m: WORLD_RADIUS,
+        }
+    }
+}
+
 #[derive(Resource, Clone, Debug, Default)]
 struct RouteObjectiveTracker {
     target_island_name: Option<&'static str>,
@@ -198,6 +220,8 @@ struct WeatherDrift {
     bob: f32,
     speed: f32,
     phase: f32,
+    spin_speed: f32,
+    base_rotation: Quat,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -810,6 +834,7 @@ fn setup(
         0.16,
     );
     let cloud_material = cloud_surface_material(&mut materials);
+    let cloud_veil_material = cloud_veil_material(&mut materials);
     let updraft_column_material = updraft_column_material(&mut materials);
     let updraft_marker_material = emissive_material(
         &mut images,
@@ -834,6 +859,7 @@ fn setup(
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.9, -0.55, 0.0)),
         VolumetricLight,
+        CinematicSun,
         CascadeShadowConfigBuilder {
             first_cascade_far_bound: 20.0,
             maximum_distance: 340.0,
@@ -941,7 +967,13 @@ fn setup(
         );
     }
 
-    spawn_weather_layers(&mut commands, &mut meshes, cloud_material, route.islands());
+    spawn_weather_layers(
+        &mut commands,
+        &mut meshes,
+        cloud_material,
+        cloud_veil_material,
+        route.islands(),
+    );
 
     commands
         .spawn((
@@ -1107,11 +1139,24 @@ fn textured_material(
     perceptual_roughness: f32,
     reflectance: f32,
 ) -> Handle<StandardMaterial> {
+    let material_seed = seed.wrapping_add(1_337);
     materials.add(StandardMaterial {
         base_color: Color::WHITE,
         base_color_texture: Some(
             images.add(procedural_surface_texture(primary, secondary, accent, seed)),
         ),
+        metallic_roughness_texture: Some(
+            images.add(procedural_material_map(material_seed, perceptual_roughness)),
+        ),
+        occlusion_texture: Some(
+            images.add(procedural_occlusion_map(material_seed.wrapping_add(23))),
+        ),
+        depth_map: Some(images.add(procedural_depth_map(
+            material_seed.wrapping_add(47),
+            ImageFilterMode::Nearest,
+        ))),
+        parallax_depth_scale: 0.012,
+        max_parallax_layer_count: 8.0,
         perceptual_roughness,
         reflectance,
         ..default()
@@ -1152,10 +1197,20 @@ fn water_surface_material(
             [160, 220, 244, 210],
             79,
         ))),
+        metallic_roughness_texture: Some(images.add(procedural_material_map(1_079, 0.22))),
+        depth_map: Some(images.add(procedural_depth_map(1_113, ImageFilterMode::Linear))),
+        parallax_depth_scale: 0.018,
+        max_parallax_layer_count: 10.0,
         alpha_mode: AlphaMode::Blend,
         double_sided: true,
         perceptual_roughness: 0.18,
         reflectance: 0.82,
+        clearcoat: 0.85,
+        clearcoat_perceptual_roughness: 0.06,
+        diffuse_transmission: 0.18,
+        specular_transmission: 0.08,
+        thickness: 0.08,
+        ior: 1.33,
         ..default()
     })
 }
@@ -1168,6 +1223,20 @@ fn cloud_surface_material(materials: &mut Assets<StandardMaterial>) -> Handle<St
         double_sided: true,
         perceptual_roughness: 1.0,
         reflectance: 0.12,
+        diffuse_transmission: 0.18,
+        ..default()
+    })
+}
+
+fn cloud_veil_material(materials: &mut Assets<StandardMaterial>) -> Handle<StandardMaterial> {
+    materials.add(StandardMaterial {
+        base_color: Color::srgba(0.76, 0.84, 0.96, 0.24),
+        alpha_mode: AlphaMode::Blend,
+        cull_mode: None,
+        double_sided: true,
+        perceptual_roughness: 1.0,
+        reflectance: 0.06,
+        diffuse_transmission: 0.34,
         ..default()
     })
 }
@@ -1242,6 +1311,90 @@ fn procedural_surface_texture(
     image
 }
 
+fn procedural_material_map(seed: u32, roughness: f32) -> Image {
+    let size = PROCEDURAL_TEXTURE_SIZE;
+    let mut data = Vec::with_capacity((size * size * 4) as usize);
+
+    for y in 0..size {
+        for x in 0..size {
+            let noise = texture_noise(x, y, seed) as f32 / 255.0;
+            let pore = texture_noise(x / 2, y / 2, seed.wrapping_add(9)) as f32 / 255.0;
+            let roughness_value =
+                (roughness * (0.82 + noise * 0.28) + pore * 0.08).clamp(0.08, 1.0);
+            data.extend_from_slice(&[0, (roughness_value * 255.0) as u8, 0, 255]);
+        }
+    }
+
+    procedural_data_texture(data, ImageFilterMode::Linear)
+}
+
+fn procedural_occlusion_map(seed: u32) -> Image {
+    let size = PROCEDURAL_TEXTURE_SIZE;
+    let mut data = Vec::with_capacity((size * size * 4) as usize);
+
+    for y in 0..size {
+        for x in 0..size {
+            let noise = texture_noise(x, y, seed) as u16;
+            let large = texture_noise(x / 4, y / 4, seed.wrapping_add(17)) as u16;
+            let occlusion = (190 + noise / 5 + large / 7).min(255) as u8;
+            data.extend_from_slice(&[occlusion, occlusion, occlusion, 255]);
+        }
+    }
+
+    procedural_data_texture(data, ImageFilterMode::Linear)
+}
+
+fn procedural_depth_map(seed: u32, filter: ImageFilterMode) -> Image {
+    let size = PROCEDURAL_TEXTURE_SIZE;
+    let mut data = Vec::with_capacity((size * size * 4) as usize);
+
+    for y in 0..size {
+        for x in 0..size {
+            let fine = texture_noise(x, y, seed) as u16;
+            let broad = texture_noise(x / 4, y / 4, seed.wrapping_add(31)) as u16;
+            let ridge = if (x.wrapping_mul(7) + y.wrapping_mul(11) + seed).is_multiple_of(37) {
+                18
+            } else {
+                0
+            };
+            let depth = (64 + fine / 3 + broad / 4 + ridge).min(255) as u8;
+            data.extend_from_slice(&[depth, depth, depth, 255]);
+        }
+    }
+
+    procedural_data_texture(data, filter)
+}
+
+fn procedural_data_texture(data: Vec<u8>, filter: ImageFilterMode) -> Image {
+    let size = PROCEDURAL_TEXTURE_SIZE;
+    let anisotropy_clamp = if filter == ImageFilterMode::Linear {
+        8
+    } else {
+        1
+    };
+    let mut image = Image::new(
+        Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8Unorm,
+        RenderAssetUsages::default(),
+    );
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        address_mode_u: ImageAddressMode::Repeat,
+        address_mode_v: ImageAddressMode::Repeat,
+        mag_filter: filter,
+        min_filter: filter,
+        mipmap_filter: filter,
+        anisotropy_clamp,
+        ..default()
+    });
+    image
+}
+
 fn texture_noise(x: u32, y: u32, seed: u32) -> u8 {
     let mut value = x
         .wrapping_mul(374_761_393)
@@ -1260,6 +1413,10 @@ fn mix_rgba(source: [u8; 4], target: [u8; 4], target_weight: u16) -> [u8; 4] {
         ((source[2] as u16 * source_weight + target[2] as u16 * target_weight) / 255) as u8,
         ((source[3] as u16 * source_weight + target[3] as u16 * target_weight) / 255) as u8,
     ]
+}
+
+fn mix_color(source: Color, target: Color, target_weight: f32) -> Color {
+    source.mix(&target, target_weight.clamp(0.0, 1.0))
 }
 
 fn spawn_updraft_guide(
@@ -1309,9 +1466,11 @@ fn spawn_weather_layers(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     cloud_material: Handle<StandardMaterial>,
+    cloud_veil_material: Handle<StandardMaterial>,
     islands: &[SkyIsland],
 ) {
     let cloud_mesh = meshes.add(Sphere::new(1.0));
+    let veil_mesh = meshes.add(Plane3d::default().mesh().size(1.0, 1.0));
 
     for (index, island) in islands.iter().enumerate() {
         let phase = index as f32 * 0.73;
@@ -1343,9 +1502,45 @@ fn spawn_weather_layers(
                 bob: 0.8 + (index % 3) as f32 * 0.25,
                 speed: 0.07 + (index % 4) as f32 * 0.012,
                 phase,
+                spin_speed: 0.012 + (index % 4) as f32 * 0.004,
+                base_rotation: Quat::from_rotation_y(phase * 0.35),
             },
             Name::new("drifting cloud bank"),
         ));
+
+        if index % 2 == 0 {
+            let veil_origin = island.center
+                + Vec3::new(
+                    (phase * 1.3).cos() * island.half_extents.x,
+                    78.0 + (index % 3) as f32 * 8.0,
+                    (phase * 1.9).sin() * island.half_extents.y,
+                );
+            let veil_rotation = Quat::from_euler(EulerRot::XYZ, -0.04, phase * 0.27, 0.06);
+            commands.spawn((
+                Mesh3d(veil_mesh.clone()),
+                MeshMaterial3d(cloud_veil_material.clone()),
+                Transform {
+                    translation: veil_origin,
+                    scale: Vec3::new(
+                        island.half_extents.x * 1.35 + 36.0,
+                        1.0,
+                        island.half_extents.y * 0.42 + 18.0,
+                    ),
+                    rotation: veil_rotation,
+                },
+                WeatherDrift {
+                    origin: veil_origin,
+                    axis: Vec3::new(0.74, 0.0, -0.18).normalize(),
+                    amplitude: 8.0 + (index % 5) as f32,
+                    bob: 0.35,
+                    speed: 0.025 + (index % 3) as f32 * 0.006,
+                    phase,
+                    spin_speed: 0.004,
+                    base_rotation: veil_rotation,
+                },
+                Name::new("high cirrus veil"),
+            ));
+        }
     }
 }
 
@@ -2039,6 +2234,70 @@ fn update_island_stream_visibility(
     diagnostics.initialized = true;
 }
 
+fn update_cinematic_weather(
+    time: Res<Time>,
+    weather: Res<CinematicWeather>,
+    mut clear_color: ResMut<ClearColor>,
+    mut ambient: ResMut<GlobalAmbientLight>,
+    mut sun: Query<(&mut DirectionalLight, &mut Transform), With<CinematicSun>>,
+    mut camera_fx: Query<(&mut Exposure, &mut DistanceFog, &mut VolumetricFog), With<Camera3d>>,
+) {
+    let cycle = (time.elapsed_secs() / weather.cycle_seconds * std::f32::consts::TAU).sin();
+    let warm = (cycle * 0.5 + 0.5).clamp(0.0, 1.0);
+    let storm = ((time.elapsed_secs() * 0.037).sin() * 0.5 + 0.5).powf(2.2) * 0.34;
+    let cool_light = Color::srgb(0.78, 0.84, 1.0);
+    let warm_light = Color::srgb(1.0, 0.82, 0.55);
+    let sky_clear = Color::srgb(0.46, 0.66, 0.92);
+    let sky_weather = Color::srgb(0.38, 0.48, 0.64);
+
+    clear_color.0 = mix_color(
+        mix_color(sky_weather, sky_clear, warm),
+        Color::srgb(0.56, 0.70, 0.88),
+        0.18,
+    );
+    ambient.color = mix_color(
+        Color::srgb(0.48, 0.56, 0.72),
+        Color::srgb(0.72, 0.68, 0.60),
+        warm,
+    );
+    ambient.brightness = 260.0 + warm * 170.0 - storm * 80.0;
+
+    for (mut light, mut transform) in &mut sun {
+        light.color = mix_color(cool_light, warm_light, warm);
+        light.illuminance = 34_000.0 + warm * 24_000.0 - storm * 7_000.0;
+        let elevation = -0.62 - warm * 0.34;
+        let yaw = -0.62 + cycle * 0.18;
+        transform.rotation = Quat::from_euler(EulerRot::XYZ, elevation, yaw, 0.0);
+    }
+
+    for (mut exposure, mut fog, mut volumetric_fog) in &mut camera_fx {
+        exposure.ev100 = 12.35 + warm * 0.42 - storm * 0.2;
+        fog.color = mix_color(
+            Color::srgba(0.44, 0.52, 0.66, 0.58),
+            Color::srgba(0.60, 0.74, 0.92, 0.42),
+            warm,
+        );
+        fog.directional_light_color = mix_color(
+            Color::srgba(0.72, 0.78, 1.0, 0.36),
+            Color::srgba(1.0, 0.78, 0.46, 0.58),
+            warm,
+        );
+        fog.directional_light_exponent = 12.0 + warm * 14.0;
+        fog.falloff = FogFalloff::Linear {
+            start: weather.haze_floor_m - storm * 70.0,
+            end: weather.haze_ceiling_m - storm * 150.0,
+        };
+        volumetric_fog.ambient_color = mix_color(
+            Color::srgb(0.48, 0.56, 0.70),
+            Color::srgb(0.76, 0.70, 0.60),
+            warm,
+        );
+        volumetric_fog.ambient_intensity = 0.028 + warm * 0.022 + storm * 0.012;
+        volumetric_fog.jitter = 0.42;
+        volumetric_fog.step_count = 56;
+    }
+}
+
 fn update_weather_drift(time: Res<Time>, mut clouds: Query<(&WeatherDrift, &mut Transform)>) {
     let elapsed = time.elapsed_secs();
 
@@ -2047,7 +2306,8 @@ fn update_weather_drift(time: Res<Time>, mut clouds: Query<(&WeatherDrift, &mut 
         let bob = (elapsed * drift.speed * 0.7 + drift.phase * 1.9).cos();
         transform.translation =
             drift.origin + drift.axis * sway * drift.amplitude + Vec3::Y * bob * drift.bob;
-        transform.rotation = Quat::from_rotation_y(drift.phase * 0.35 + sway * 0.08);
+        transform.rotation =
+            drift.base_rotation * Quat::from_rotation_y(elapsed * drift.spin_speed + sway * 0.08);
     }
 }
 
