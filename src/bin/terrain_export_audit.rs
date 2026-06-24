@@ -21,6 +21,8 @@ const MIN_TERRAIN_RELIEF_RANGE_M: f64 = 0.8;
 const MIN_CLIFF_COLOR_BANDS: u64 = 9;
 const MIN_ISLAND_IMPOSTOR_MESH_VERTICES: u64 = 140;
 const MIN_ISLAND_IMPOSTOR_COLOR_BANDS: u64 = 18;
+const MIN_ISLAND_IMPOSTOR_VERTICAL_RANGE_M: f64 = 8.0;
+const MIN_ISLAND_IMPOSTOR_HORIZONTAL_RADIUS_BANDS: u64 = 6;
 
 fn main() {
     let args = env::args().skip(1).map(PathBuf::from).collect::<Vec<_>>();
@@ -77,6 +79,8 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
     let mut csv_channel_mismatch_count = 0u64;
     let mut csv_region_mismatch_count = 0u64;
     let mut min_region_promille = [u64::MAX; TERRAIN_MATERIAL_REGION_COUNT];
+    let mut min_impostor_vertical_range_m = f64::INFINITY;
+    let mut min_impostor_horizontal_radius_bands = u64::MAX;
 
     let schema = manifest.get("schema").and_then(Value::as_str).unwrap_or("");
     checks.push(check_eq_str(
@@ -224,6 +228,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
                     obj_vertex_mismatch_count += u64::from(vertex_mismatch);
                     obj_face_mismatch_count += u64::from(face_mismatch);
                     obj_color_mismatch_count += u64::from(color_mismatch);
+                    if mesh_kind == "impostor" {
+                        min_impostor_vertical_range_m =
+                            min_impostor_vertical_range_m.min(obj.vertical_range_m);
+                        min_impostor_horizontal_radius_bands =
+                            min_impostor_horizontal_radius_bands.min(obj.horizontal_radius_bands);
+                    }
 
                     artifacts.push(json!({
                         "island": island_name,
@@ -232,6 +242,8 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
                         "vertex_count": obj.vertex_count,
                         "triangle_count": obj.face_count,
                         "colored_vertex_count": obj.colored_vertex_count,
+                        "vertical_range_m": obj.vertical_range_m,
+                        "horizontal_radius_bands": obj.horizontal_radius_bands,
                         "vertex_count_matches_manifest": !vertex_mismatch,
                         "triangle_count_matches_manifest": !face_mismatch,
                         "all_vertices_have_color": !color_mismatch,
@@ -387,6 +399,26 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         MIN_TERRAIN_EXPOSED_REGION_PROMILLE,
         "promille",
     ));
+    if !min_impostor_vertical_range_m.is_finite() {
+        min_impostor_vertical_range_m = 0.0;
+    }
+    let min_impostor_horizontal_radius_bands = if min_impostor_horizontal_radius_bands == u64::MAX {
+        0
+    } else {
+        min_impostor_horizontal_radius_bands
+    };
+    checks.push(check_at_least_f64(
+        "impostor_vertical_range",
+        min_impostor_vertical_range_m,
+        MIN_ISLAND_IMPOSTOR_VERTICAL_RANGE_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "impostor_horizontal_radius_bands",
+        min_impostor_horizontal_radius_bands,
+        MIN_ISLAND_IMPOSTOR_HORIZONTAL_RADIUS_BANDS,
+        "bands",
+    ));
 
     let passed = checks.iter().all(|check| {
         check
@@ -403,11 +435,13 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
     })
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 struct ObjAudit {
     vertex_count: u64,
     face_count: u64,
     colored_vertex_count: u64,
+    vertical_range_m: f64,
+    horizontal_radius_bands: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -428,23 +462,80 @@ fn audit_obj_text(text: &str) -> ObjAudit {
     let mut vertex_count = 0;
     let mut face_count = 0;
     let mut colored_vertex_count = 0;
+    let mut positions = Vec::new();
 
     for line in text.lines() {
         if let Some(rest) = line.strip_prefix("v ") {
             vertex_count += 1;
-            if rest.split_whitespace().count() >= 6 {
+            let columns = rest.split_whitespace().collect::<Vec<_>>();
+            if columns.len() >= 6 {
                 colored_vertex_count += 1;
+            }
+            if columns.len() >= 3 {
+                let x = columns[0].parse::<f64>().unwrap_or(0.0);
+                let y = columns[1].parse::<f64>().unwrap_or(0.0);
+                let z = columns[2].parse::<f64>().unwrap_or(0.0);
+                positions.push([x, y, z]);
             }
         } else if line.starts_with("f ") {
             face_count += 1;
         }
     }
+    let vertical_range_m = vertical_position_range_m(&positions);
+    let horizontal_radius_bands = horizontal_radius_band_count(&positions);
 
     ObjAudit {
         vertex_count,
         face_count,
         colored_vertex_count,
+        vertical_range_m,
+        horizontal_radius_bands,
     }
+}
+
+fn vertical_position_range_m(positions: &[[f64; 3]]) -> f64 {
+    if positions.is_empty() {
+        return 0.0;
+    }
+    let min_y = positions
+        .iter()
+        .map(|position| position[1])
+        .fold(f64::INFINITY, f64::min);
+    let max_y = positions
+        .iter()
+        .map(|position| position[1])
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    (max_y - min_y).max(0.0)
+}
+
+fn horizontal_radius_band_count(positions: &[[f64; 3]]) -> u64 {
+    if positions.len() < 3 {
+        return 0;
+    }
+    let inv_count = 1.0 / positions.len() as f64;
+    let center_x = positions.iter().map(|position| position[0]).sum::<f64>() * inv_count;
+    let center_z = positions.iter().map(|position| position[2]).sum::<f64>() * inv_count;
+    let radii = positions
+        .iter()
+        .map(|position| {
+            let x = position[0] - center_x;
+            let z = position[2] - center_z;
+            (x * x + z * z).sqrt()
+        })
+        .collect::<Vec<_>>();
+    let max_radius = radii.iter().copied().fold(0.0, f64::max);
+    if max_radius <= f64::EPSILON {
+        return 0;
+    }
+
+    radii
+        .iter()
+        .copied()
+        .filter(|radius| *radius > max_radius * 0.08)
+        .map(|radius| ((radius / max_radius) * 24.0).round() as u64)
+        .collect::<HashSet<_>>()
+        .len() as u64
 }
 
 fn audit_weight_csv_path(path: &Path) -> Result<WeightCsvAudit, String> {
@@ -604,13 +695,30 @@ mod tests {
              f 1//1 2//1 3//1\n",
         );
 
-        assert_eq!(
-            audit,
-            ObjAudit {
-                vertex_count: 3,
-                face_count: 1,
-                colored_vertex_count: 2,
-            }
+        assert_eq!(audit.vertex_count, 3);
+        assert_eq!(audit.face_count, 1);
+        assert_eq!(audit.colored_vertex_count, 2);
+        assert_eq!(audit.vertical_range_m, 1.0);
+        assert_eq!(audit.horizontal_radius_bands, 2);
+    }
+
+    #[test]
+    fn obj_audit_tracks_vertical_mass_and_radius_variation() {
+        let audit = audit_obj_text(
+            "# sample\n\
+             v 0.0 0.0 0.0 0.1 0.2 0.3\n\
+             v 3.0 0.0 0.0 0.1 0.2 0.3\n\
+             v -2.0 0.0 0.0 0.1 0.2 0.3\n\
+             v 0.0 -9.0 0.0 0.1 0.2 0.3\n\
+             v 0.0 -4.0 1.5 0.1 0.2 0.3\n\
+             f 1 2 5\n\
+             f 1 5 4\n",
+        );
+
+        assert_eq!(audit.vertical_range_m, 9.0);
+        assert!(
+            audit.horizontal_radius_bands >= 3,
+            "radius bands should reflect broad, shoulder, and center mass"
         );
     }
 
@@ -668,6 +776,11 @@ mod tests {
         assert!(!audit_check_passed(&report, "mesh_count"));
         assert!(!audit_check_passed(&report, "impostor_mesh_vertices"));
         assert!(!audit_check_passed(&report, "impostor_color_bands"));
+        assert!(!audit_check_passed(&report, "impostor_vertical_range"));
+        assert!(!audit_check_passed(
+            &report,
+            "impostor_horizontal_radius_bands"
+        ));
         assert!(
             report
                 .get("artifacts")
