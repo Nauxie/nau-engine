@@ -20,6 +20,9 @@ const MIN_SEQUENCE_TOP_SKY_FRACTION: f64 = 0.25;
 const MIN_LOWER_SCENE_FRACTION: f64 = 0.25;
 const MIN_CENTER_SCENE_FRACTION: f64 = 0.18;
 const MIN_CENTER_EDGE_DENSITY: f64 = 0.02;
+const MIN_PLAYER_FOCUS_FRACTION: f64 = 0.0015;
+const MIN_PLAYER_WARM_FOCUS_FRACTION: f64 = 0.0004;
+const MIN_SEQUENCE_ROUTE_MARKER_FRACTION: f64 = 0.00008;
 const MAX_HUD_TEXT_FRACTION: f64 = 0.06;
 
 fn main() {
@@ -78,6 +81,11 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
     let mut lower_pixels = 0usize;
     let mut center_scene_pixels = 0usize;
     let mut center_pixels = 0usize;
+    let mut player_focus_pixels = 0usize;
+    let mut player_warm_focus_pixels = 0usize;
+    let mut player_focus_region_pixels = 0usize;
+    let mut route_marker_pixels = 0usize;
+    let mut route_marker_region_pixels = 0usize;
     let mut hud_text_pixels = 0usize;
 
     let width_usize = width as usize;
@@ -113,6 +121,7 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
         let y = index / width_usize;
         let sky_like = is_sky_like(r, g, b, luma);
         let scene_like = is_scene_like(r, g, b, luma, sky_like);
+        let hud_region = is_hud_region(x, y, width_usize, height_usize);
 
         if y < top_limit {
             top_pixels += 1;
@@ -132,7 +141,22 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
                 center_scene_pixels += 1;
             }
         }
-        if is_hud_region(x, y, width_usize, height_usize) && is_hud_text_like(r, g, b) {
+        if is_player_focus_region(x, y, width_usize, height_usize) {
+            player_focus_region_pixels += 1;
+            if is_player_warm_like(r, g, b) {
+                player_warm_focus_pixels += 1;
+            }
+            if is_player_focus_like(r, g, b, luma) {
+                player_focus_pixels += 1;
+            }
+        }
+        if !hud_region && y >= top_limit && is_route_marker_like(r, g, b, luma) {
+            route_marker_region_pixels += 1;
+            route_marker_pixels += 1;
+        } else if !hud_region && y >= top_limit {
+            route_marker_region_pixels += 1;
+        }
+        if hud_region && is_hud_text_like(r, g, b) {
             hud_text_pixels += 1;
         }
     }
@@ -159,6 +183,9 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
     let top_sky_fraction = fraction(top_sky_pixels, top_pixels);
     let lower_scene_fraction = fraction(lower_scene_pixels, lower_pixels);
     let center_scene_fraction = fraction(center_scene_pixels, center_pixels);
+    let player_focus_fraction = fraction(player_focus_pixels, player_focus_region_pixels);
+    let player_warm_focus_fraction = fraction(player_warm_focus_pixels, player_focus_region_pixels);
+    let route_marker_fraction = fraction(route_marker_pixels, route_marker_region_pixels);
     let hud_text_fraction = fraction(hud_text_pixels, pixel_count);
 
     let checks = vec![
@@ -199,6 +226,18 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
             MIN_CENTER_EDGE_DENSITY,
             "ratio",
         ),
+        Check::at_least(
+            "player_focus_fraction",
+            player_focus_fraction,
+            MIN_PLAYER_FOCUS_FRACTION,
+            "ratio",
+        ),
+        Check::at_least(
+            "player_warm_focus_fraction",
+            player_warm_focus_fraction,
+            MIN_PLAYER_WARM_FOCUS_FRACTION,
+            "ratio",
+        ),
         Check::at_most(
             "hud_text_fraction",
             hud_text_fraction,
@@ -221,6 +260,9 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
         lower_scene_fraction,
         center_scene_fraction,
         center_edge_density,
+        player_focus_fraction,
+        player_warm_focus_fraction,
+        route_marker_fraction,
         hud_text_fraction,
         passed,
         checks,
@@ -312,6 +354,36 @@ fn is_hud_region(x: usize, y: usize, width: usize, height: usize) -> bool {
     left_panel || bottom_help
 }
 
+fn is_player_focus_region(x: usize, y: usize, width: usize, height: usize) -> bool {
+    let center_x = width / 2;
+    let x_radius = width * 18 / 100;
+    let y_start = height * 36 / 100;
+    let y_end = height * 82 / 100;
+    x >= center_x.saturating_sub(x_radius) && x <= center_x + x_radius && y >= y_start && y <= y_end
+}
+
+fn is_player_focus_like(r: f64, g: f64, b: f64, luma: f64) -> bool {
+    let dark_body = (10.0..=85.0).contains(&luma) && r <= 95.0 && g <= 95.0 && b <= 105.0;
+    is_player_warm_like(r, g, b) || dark_body
+}
+
+fn is_player_warm_like(r: f64, g: f64, b: f64) -> bool {
+    r >= 115.0 && (35.0..=125.0).contains(&g) && b <= 95.0 && r >= g + 35.0
+}
+
+fn is_route_marker_like(r: f64, g: f64, b: f64, luma: f64) -> bool {
+    if luma < 90.0 {
+        return false;
+    }
+
+    let max_channel = r.max(g).max(b);
+    let min_channel = r.min(g).min(b);
+    let saturation = max_channel - min_channel;
+    max_channel >= 190.0
+        && saturation >= 90.0
+        && (r >= g + 60.0 || g >= r + 60.0 || b >= g + 50.0 || b >= r + 50.0)
+}
+
 fn is_hud_text_like(r: f64, g: f64, b: f64) -> bool {
     let max_channel = r.max(g).max(b);
     let min_channel = r.min(g).min(b);
@@ -332,6 +404,9 @@ struct ImageAudit {
     lower_scene_fraction: f64,
     center_scene_fraction: f64,
     center_edge_density: f64,
+    player_focus_fraction: f64,
+    player_warm_focus_fraction: f64,
+    route_marker_fraction: f64,
     hud_text_fraction: f64,
     passed: bool,
     checks: Vec<Check>,
@@ -376,13 +451,25 @@ fn report_checks(audits: &[ImageAudit]) -> Vec<Check> {
         .iter()
         .map(|audit| audit.top_sky_fraction)
         .fold(0.0, f64::max);
+    let max_route_marker_fraction = audits
+        .iter()
+        .map(|audit| audit.route_marker_fraction)
+        .fold(0.0, f64::max);
 
-    vec![Check::at_least(
-        "max_top_sky_fraction",
-        max_top_sky_fraction,
-        MIN_SEQUENCE_TOP_SKY_FRACTION,
-        "ratio",
-    )]
+    vec![
+        Check::at_least(
+            "max_top_sky_fraction",
+            max_top_sky_fraction,
+            MIN_SEQUENCE_TOP_SKY_FRACTION,
+            "ratio",
+        ),
+        Check::at_least(
+            "max_route_marker_fraction",
+            max_route_marker_fraction,
+            MIN_SEQUENCE_ROUTE_MARKER_FRACTION,
+            "ratio",
+        ),
+    ]
 }
 
 fn report_passed(audits: &[ImageAudit], report_checks: &[Check]) -> bool {
@@ -417,7 +504,7 @@ fn image_audit_json(audit: &ImageAudit) -> String {
         .collect::<Vec<_>>()
         .join(",\n      ");
     format!(
-        "{{\n      \"path\": {},\n      \"passed\": {},\n      \"width\": {},\n      \"height\": {},\n      \"mean_luma\": {},\n      \"luma_stddev\": {},\n      \"colorfulness\": {},\n      \"quantized_colors\": {},\n      \"edge_density\": {},\n      \"top_sky_fraction\": {},\n      \"lower_scene_fraction\": {},\n      \"center_scene_fraction\": {},\n      \"center_edge_density\": {},\n      \"hud_text_fraction\": {},\n      \"checks\": [\n      {}\n      ]\n    }}",
+        "{{\n      \"path\": {},\n      \"passed\": {},\n      \"width\": {},\n      \"height\": {},\n      \"mean_luma\": {},\n      \"luma_stddev\": {},\n      \"colorfulness\": {},\n      \"quantized_colors\": {},\n      \"edge_density\": {},\n      \"top_sky_fraction\": {},\n      \"lower_scene_fraction\": {},\n      \"center_scene_fraction\": {},\n      \"center_edge_density\": {},\n      \"player_focus_fraction\": {},\n      \"player_warm_focus_fraction\": {},\n      \"route_marker_fraction\": {},\n      \"hud_text_fraction\": {},\n      \"checks\": [\n      {}\n      ]\n    }}",
         json_string(&audit.path),
         audit.passed,
         audit.width,
@@ -431,6 +518,9 @@ fn image_audit_json(audit: &ImageAudit) -> String {
         json_number(audit.lower_scene_fraction),
         json_number(audit.center_scene_fraction),
         json_number(audit.center_edge_density),
+        json_number(audit.player_focus_fraction),
+        json_number(audit.player_warm_focus_fraction),
+        json_number(audit.route_marker_fraction),
         json_number(audit.hud_text_fraction),
         checks,
     )
@@ -482,6 +572,28 @@ mod tests {
     use super::*;
     use image::Rgb;
 
+    fn paint_readability_signals(image: &mut RgbImage) {
+        let width = image.width();
+        let height = image.height();
+        let center_x = width / 2;
+
+        for y in height * 54 / 100..height * 72 / 100 {
+            for x in center_x - width / 80..=center_x + width / 80 {
+                image.put_pixel(x, y, Rgb([24, 28, 26]));
+            }
+        }
+        for y in height * 48 / 100..height * 56 / 100 {
+            for x in center_x - width / 22..=center_x + width / 22 {
+                image.put_pixel(x, y, Rgb([188, 84, 34]));
+            }
+        }
+        for y in height * 48 / 100..height * 72 / 100 {
+            let x = width * 68 / 100 + (y % 3);
+            image.put_pixel(x, y, Rgb([246, 58, 142]));
+            image.put_pixel(x + 8, y, Rgb([64, 226, 92]));
+        }
+    }
+
     #[test]
     fn audit_passes_textured_color_image() {
         let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
@@ -498,6 +610,7 @@ mod tests {
                 image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
             }
         }
+        paint_readability_signals(&mut image);
 
         let audit = audit_image("synthetic.png".to_string(), image).expect("audit should load");
 
@@ -558,6 +671,7 @@ mod tests {
                 close_image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
             }
         }
+        paint_readability_signals(&mut close_image);
 
         let close_audit =
             audit_image("close.png".to_string(), close_image).expect("audit should load");
@@ -584,6 +698,7 @@ mod tests {
                 checkpoint_image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
             }
         }
+        paint_readability_signals(&mut checkpoint_image);
 
         let checkpoint_audit =
             audit_image("checkpoint.png".to_string(), checkpoint_image).expect("audit should load");
@@ -622,6 +737,7 @@ mod tests {
                 image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
             }
         }
+        paint_readability_signals(&mut image);
 
         let audit = audit_image("water.png".to_string(), image).expect("audit should load");
 
@@ -650,11 +766,79 @@ mod tests {
                 image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
             }
         }
+        paint_readability_signals(&mut image);
 
         let audit = audit_image("clouds.png".to_string(), image).expect("audit should load");
 
         assert!(audit.passed, "{audit:?}");
         assert!(audit.hud_text_fraction <= MAX_HUD_TEXT_FRACTION);
+    }
+
+    #[test]
+    fn audit_rejects_missing_player_focus() {
+        let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        for y in 0..MIN_HEIGHT {
+            for x in 0..MIN_WIDTH {
+                let (r, g, b) = if y < MIN_HEIGHT / 3 {
+                    (126 + (x % 36), 158 + (y % 36), 196 + ((x + y) % 36))
+                } else {
+                    (54 + (x % 90), 112 + (y % 78), 58 + ((x + y) % 48))
+                };
+                image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+            }
+        }
+
+        let audit =
+            audit_image("missing_player.png".to_string(), image).expect("audit should load");
+
+        assert!(!audit.passed);
+        assert!(
+            audit
+                .checks
+                .iter()
+                .any(|check| check.name == "player_focus_fraction" && !check.passed)
+        );
+    }
+
+    #[test]
+    fn report_rejects_missing_route_markers() {
+        let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        for y in 0..MIN_HEIGHT {
+            for x in 0..MIN_WIDTH {
+                let checker = (x + y) % 2 == 0;
+                let (r, g, b) = if y < MIN_HEIGHT / 3 {
+                    (126 + (x % 34), 158 + (y % 34), 196 + ((x + y) % 34))
+                } else if checker {
+                    (48 + (x % 92), 110 + (y % 80), 58 + ((x + y) % 50))
+                } else {
+                    (112 + (x % 70), 82 + (y % 60), 54 + ((x + y) % 44))
+                };
+                image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+            }
+        }
+        let center_x = MIN_WIDTH / 2;
+        for y in MIN_HEIGHT * 54 / 100..MIN_HEIGHT * 72 / 100 {
+            for x in center_x - MIN_WIDTH / 80..=center_x + MIN_WIDTH / 80 {
+                image.put_pixel(x, y, Rgb([24, 28, 26]));
+            }
+        }
+        for y in MIN_HEIGHT * 48 / 100..MIN_HEIGHT * 56 / 100 {
+            for x in center_x - MIN_WIDTH / 22..=center_x + MIN_WIDTH / 22 {
+                image.put_pixel(x, y, Rgb([188, 84, 34]));
+            }
+        }
+
+        let audit =
+            audit_image("missing_route_marker.png".to_string(), image).expect("audit should load");
+        assert!(audit.passed, "{audit:?}");
+        let checks = report_checks(std::slice::from_ref(&audit));
+
+        assert!(!report_passed(std::slice::from_ref(&audit), &checks));
+        assert!(
+            checks
+                .iter()
+                .any(|check| check.name == "max_route_marker_fraction" && !check.passed)
+        );
     }
 
     #[test]
