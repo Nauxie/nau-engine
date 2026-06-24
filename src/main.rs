@@ -4030,6 +4030,86 @@ fn color_array(color: Vec3) -> [f32; 4] {
     ]
 }
 
+#[derive(Clone, Copy, Debug)]
+struct TerrainBiomePalette {
+    grass: Vec3,
+    moss: Vec3,
+    meadow: Vec3,
+    clay: Vec3,
+    rock: Vec3,
+    region_tints: [Vec3; 4],
+}
+
+fn terrain_biome_palette(island_index: usize) -> TerrainBiomePalette {
+    match island_index % 5 {
+        1 => TerrainBiomePalette {
+            grass: Vec3::new(0.30, 0.56, 0.24),
+            moss: Vec3::new(0.20, 0.38, 0.24),
+            meadow: Vec3::new(0.62, 0.56, 0.30),
+            clay: Vec3::new(0.50, 0.38, 0.27),
+            rock: Vec3::new(0.43, 0.42, 0.38),
+            region_tints: [
+                Vec3::new(0.26, 0.50, 0.22),
+                Vec3::new(0.57, 0.53, 0.28),
+                Vec3::new(0.18, 0.34, 0.25),
+                Vec3::new(0.40, 0.36, 0.30),
+            ],
+        },
+        2 => TerrainBiomePalette {
+            grass: Vec3::new(0.36, 0.49, 0.24),
+            moss: Vec3::new(0.25, 0.34, 0.25),
+            meadow: Vec3::new(0.61, 0.45, 0.24),
+            clay: Vec3::new(0.56, 0.32, 0.20),
+            rock: Vec3::new(0.48, 0.39, 0.33),
+            region_tints: [
+                Vec3::new(0.34, 0.46, 0.22),
+                Vec3::new(0.59, 0.42, 0.23),
+                Vec3::new(0.24, 0.32, 0.24),
+                Vec3::new(0.43, 0.32, 0.27),
+            ],
+        },
+        3 => TerrainBiomePalette {
+            grass: Vec3::new(0.18, 0.48, 0.42),
+            moss: Vec3::new(0.12, 0.34, 0.38),
+            meadow: Vec3::new(0.42, 0.52, 0.44),
+            clay: Vec3::new(0.35, 0.36, 0.34),
+            rock: Vec3::new(0.38, 0.44, 0.46),
+            region_tints: [
+                Vec3::new(0.16, 0.44, 0.36),
+                Vec3::new(0.40, 0.50, 0.40),
+                Vec3::new(0.10, 0.30, 0.36),
+                Vec3::new(0.34, 0.40, 0.42),
+            ],
+        },
+        4 => TerrainBiomePalette {
+            grass: Vec3::new(0.42, 0.52, 0.25),
+            moss: Vec3::new(0.30, 0.39, 0.23),
+            meadow: Vec3::new(0.62, 0.55, 0.30),
+            clay: Vec3::new(0.48, 0.39, 0.25),
+            rock: Vec3::new(0.43, 0.40, 0.34),
+            region_tints: [
+                Vec3::new(0.36, 0.48, 0.23),
+                Vec3::new(0.59, 0.52, 0.29),
+                Vec3::new(0.28, 0.36, 0.22),
+                Vec3::new(0.42, 0.36, 0.28),
+            ],
+        },
+        _ => TerrainBiomePalette {
+            grass: Vec3::new(0.22, 0.58, 0.29),
+            moss: Vec3::new(0.15, 0.42, 0.32),
+            meadow: Vec3::new(0.55, 0.52, 0.28),
+            clay: Vec3::new(0.48, 0.36, 0.25),
+            rock: Vec3::new(0.42, 0.40, 0.36),
+            region_tints: [
+                Vec3::new(0.19, 0.52, 0.24),
+                Vec3::new(0.50, 0.49, 0.25),
+                Vec3::new(0.14, 0.36, 0.30),
+                Vec3::new(0.39, 0.34, 0.29),
+            ],
+        },
+    }
+}
+
 fn island_terrain_material_factors(
     island_index: usize,
     radius: f32,
@@ -4066,11 +4146,7 @@ fn island_terrain_vertex_color(
     angle: f32,
     relief_m: f32,
 ) -> [f32; 4] {
-    let grass = Vec3::new(0.22, 0.58, 0.29);
-    let moss = Vec3::new(0.15, 0.42, 0.32);
-    let dry_meadow = Vec3::new(0.55, 0.52, 0.28);
-    let clay = Vec3::new(0.48, 0.36, 0.25);
-    let rock = Vec3::new(0.42, 0.4, 0.36);
+    let palette = terrain_biome_palette(island_index);
     let (inner_meadow, exposed_edge, highland, dapple) =
         island_terrain_material_factors(island_index, radius, angle, relief_m);
     let region = terrain_material_region_id(island_terrain_material_weights(
@@ -4079,18 +4155,13 @@ fn island_terrain_vertex_color(
         angle,
         relief_m,
     ));
-    let region_tint = match region {
-        0 => Vec3::new(0.19, 0.52, 0.24),
-        1 => Vec3::new(0.50, 0.49, 0.25),
-        2 => Vec3::new(0.14, 0.36, 0.30),
-        _ => Vec3::new(0.39, 0.34, 0.29),
-    };
-    let color = grass
-        .lerp(dry_meadow, inner_meadow * 0.36)
-        .lerp(moss, highland * 0.42)
-        .lerp(clay, exposed_edge * 0.38)
-        .lerp(rock, exposed_edge.powf(1.7) * 0.48)
-        .lerp(region_tint, 0.32)
+    let color = palette
+        .grass
+        .lerp(palette.meadow, inner_meadow * 0.36)
+        .lerp(palette.moss, highland * 0.42)
+        .lerp(palette.clay, exposed_edge * 0.38)
+        .lerp(palette.rock, exposed_edge.powf(1.7) * 0.48)
+        .lerp(palette.region_tints[region as usize], 0.32)
         + Vec3::splat(dapple);
     color_array(color)
 }
@@ -6881,6 +6952,45 @@ mod tests {
         assert!(
             texture_detail_band_count(&data) >= ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS,
             "terrain texture should carry enough high-frequency color bins to avoid blurry flat fills"
+        );
+    }
+
+    #[test]
+    fn terrain_biome_palettes_vary_base_hues() {
+        let palette_keys = (0..5)
+            .map(|index| {
+                let grass = terrain_biome_palette(index).grass;
+                [
+                    (grass.x * 31.0).round() as u8,
+                    (grass.y * 31.0).round() as u8,
+                    (grass.z * 31.0).round() as u8,
+                ]
+            })
+            .collect::<HashSet<_>>();
+
+        assert_eq!(
+            palette_keys.len(),
+            5,
+            "terrain palettes should give repeated island materials distinct base hues"
+        );
+    }
+
+    #[test]
+    fn terrain_vertex_colors_use_biome_palette_variation() {
+        let color_keys = (0..5)
+            .map(|index| {
+                let color = island_terrain_vertex_color(index, 0.56, 1.2, 0.24);
+                [
+                    (color[0] * 31.0).round() as u8,
+                    (color[1] * 31.0).round() as u8,
+                    (color[2] * 31.0).round() as u8,
+                ]
+            })
+            .collect::<HashSet<_>>();
+
+        assert!(
+            color_keys.len() >= 4,
+            "same-region terrain samples should not collapse into one shared island palette"
         );
     }
 
