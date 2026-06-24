@@ -56,7 +56,7 @@ Eval samples include camera distance, camera surface clearance, camera-to-player
 - Camera orbit input should keep yaw and pitch independently measurable in evals while keeping the player focus near the camera centerline.
 - Camera should stay above the active route surface and avoid tagged obstruction volumes between the player focus and camera boom.
 - Sky-island collision queries and visible terrain meshes should use the same deterministic relief function, with launch and landing centers anchored to their authored route heights.
-- Active chunk counters drive terrain/impostor visibility, and stream diagnostics record hidden/resident visual counts plus visibility churn until a future branch adds despawn or asset streaming.
+- Active chunk counters drive resident terrain/detail/impostor entities, and stream diagnostics record hidden/resident visual counts plus entity churn until a future branch adds asset streaming.
 - Camera, animation, and HUD should run after movement.
 - Visual polish should prefer Bevy-native rendering components and generated assets before custom shaders, new render passes, or raw platform code.
 - `src/main.rs` should stay mostly wiring. Avoid burying gameplay rules directly in ECS systems.
