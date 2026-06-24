@@ -253,6 +253,15 @@ Every sample includes:
 - `stream_visibility_changes_this_frame`
 - `max_stream_visibility_changes_per_frame`
 - `total_stream_visibility_changes`
+- `catalog_island_visual_count`
+- `hidden_island_visual_count`
+- `resident_island_visual_fraction`
+- `stream_spawned_visuals_this_frame`
+- `stream_despawned_visuals_this_frame`
+- `max_stream_spawned_visuals_per_frame`
+- `max_stream_despawned_visuals_per_frame`
+- `total_stream_spawned_visuals`
+- `total_stream_despawned_visuals`
 - `entity_count`
 - `visual_asset_slot_count`
 - `gltf_scene_asset_slot_count`
@@ -277,7 +286,7 @@ Every sample includes:
 
 Add fields here before adding them to code. New fields should be cheap to collect, stable across runs, and useful for deciding what to fix.
 
-The island terrain/detail/impostor hidden counts are catalog entries that are not currently resident. The `stream_visibility_*` names are retained for artifact compatibility, but now report resident island visual spawn/despawn churn rather than `Visibility` flag flips.
+The island terrain/detail/impostor hidden counts are catalog entries that are not currently resident. `catalog_island_visual_count`, `hidden_island_visual_count`, and `resident_island_visual_fraction` report stream pressure directly so future optimization work does not have to infer it from per-layer fields. The `stream_visibility_*` names are retained for artifact compatibility, but now report resident island visual spawn/despawn churn rather than `Visibility` flag flips; the `stream_spawned_*` and `stream_despawned_*` fields split that churn into directional budget signals.
 The visual asset fields report the declared glTF scene inventory, how many slots have files available under `assets/`, how many are still using generated placeholders, how many Bevy scene handles are queued/loading/loaded/failed, and how those slots divide across always-loaded, stream-window, near-LOD, far-LOD, and weather residency classes. They are readiness signals for replacing primitives with real assets; they do not prove final art quality yet.
 The power-up fields report authored aerial boost gates, how many remain visible, how many have been collected, whether an effect is currently active, and the total activation count. They are route-readiness signals for the simple power-up slice, not final ability design.
 The environment-motion fields report how many resident near-LOD visuals are wind-responsive and the largest sampled transform offset from their base placement. They prove the visual motion layer exists and is active; they do not evaluate final animation quality.
@@ -327,6 +336,11 @@ The summary aggregates:
 - max resident island visual count
 - max stream visibility changes per frame
 - total stream visibility changes
+- max catalog island visual count
+- max hidden island visual count
+- max resident island visual fraction
+- max stream spawned/despawned visuals per frame
+- total stream spawned/despawned visuals
 - max scene entity count
 - objective total count
 - max and final completed objective count
@@ -379,6 +393,8 @@ The pass/fail checks currently guard:
 - environment-motion visual count and offset stay populated so wind-responsive near-LOD trees/ponds cannot silently disappear or freeze
 - resident island visuals stay under budget while streaming visibility is still hide/show based
 - stream visibility changes per frame stay under budget so chunk/LOD crossings do not churn too many visuals at once
+- hidden island visual count stays populated and resident visual fraction stays under budget so the catalog does not collapse into always-resident rendering
+- spawned and despawned island visuals each stay under the per-frame churn budget so future asset streaming can distinguish load pressure from unload pressure
 - the scene has enough entities to catch accidental content collapse
 - camera distance stayed under a loose maximum
 - camera stayed above the active ground surface
