@@ -61,7 +61,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ./tools/eval.sh island_launch_to_landing target/eval/island_launch_to_landing
 ```
 
-`tools/eval.sh` runs metric-only evals by default and hides the native window during those runs. Use `NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh ...` when checkpoint PNG artifacts and the non-golden visual audit are needed; screenshot evals require `jq` for artifact extraction, disable debug gizmos, and use an opaque window surface so transparent clouds/updrafts cannot composite against other desktop windows. The audit checks image quality plus basic scene composition signals such as per-frame scene coverage, center detail, player visibility, HUD-text balance, severe border clipping, sequence-level route-marker readability and identity, and sequence-level sky coverage across final and checkpoint screenshots. Set `NAU_EVAL_VISUAL_AUDIT=0` to collect screenshots without the audit.
+`tools/eval.sh` runs metric-only evals by default and hides the native window during those runs. Use `NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh ...` when checkpoint PNG artifacts and the non-golden visual audit are needed; screenshot evals require `jq` for artifact extraction, disable debug gizmos, and use an opaque window surface so transparent clouds/updrafts cannot composite against other desktop windows. The audit checks image quality plus basic scene composition signals such as per-frame scene coverage, center detail, scene detail tile frequency, flat low-detail scene-tile dominance, player visibility, HUD-text balance, severe border clipping, sequence-level route-marker readability/component identity, route-marker hue telemetry, and sequence-level sky coverage across final and checkpoint screenshots. Set `NAU_EVAL_VISUAL_AUDIT=0` to collect screenshots without the audit.
 
 ## Controls
 
@@ -81,7 +81,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 1. Replace placeholder visual asset slots with real compatible glTF scenes, starting with character/glider scale, the declared player animation clip set, vegetation, and island impostor kits.
 2. Add explicit streaming budget checks around asynchronous asset loading once real imported scenes exist.
-3. Add richer texture/detail-frequency, terrain-material, vegetation-shape, cloud-depth, and route-marker identity signals on top of the current non-golden screenshot audit.
+3. Add richer terrain-material identity, vegetation-shape, cloud-depth, and route-marker semantic signals on top of the current non-golden screenshot audit.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
 
 ## Development Principles

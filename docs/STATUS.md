@@ -61,7 +61,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `island_launch_to_landing` eval proves the scripted route reaches and lands on the target island.
 - The HUD and eval samples now track a route objective sequence: main routes point from the near updraft to the landing garden, while branch-target evals add the distant recovery updraft before the named branch landing.
 - Metric-only evals hide the native window by default; screenshot evals are explicit via `NAU_EVAL_SCREENSHOT=1`.
-- Screenshot evals run a non-golden visual audit for resolution, exposure, contrast, color variety, edge density, sky/scene balance, center-scene detail, player visibility, severe border clipping, route-marker readability/identity, and HUD-text dominance when launched through `tools/eval.sh`, and disable debug gizmos while using opaque window composition so transparent scene effects cannot reveal desktop content.
+- Screenshot evals run a non-golden visual audit for resolution, exposure, contrast, color variety, edge density, sky/scene balance, center-scene detail, scene detail tile frequency, flat low-detail scene-tile dominance, player visibility, severe border clipping, route-marker readability/component identity, route-marker hue telemetry, and HUD-text dominance when launched through `tools/eval.sh`, and disable debug gizmos while using opaque window composition so transparent scene effects cannot reveal desktop content.
 - Eval summaries now include the scenario target island, route objective progress, body-heading error, desired-heading velocity alignment, lateral response speed/latency, separate right/left air-control response, air-brake recovery metrics, yaw oscillation count, camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, average/p95/max camera follow-direction error, camera view-yaw drift, camera world-yaw drift, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, weather cloud count, environment-motion count/offset, island terrain surface count, terrain mesh vertex floor, terrain vertex-color band floor, terrain relief range, cliff color-band floor, procedural island body count, primitive island body count, island body silhouette complexity, island body mesh vertex count, generated tree/cloud mesh complexity, visual asset slot/load-state/scene-instance/animation readiness counts, aerial power-up inventory/collection/effect counters, readable/unreadable lift samples, hidden/resident/catalog island visual counts, resident visual fraction, and directional stream spawn/despawn churn so camera/control/content/streaming regressions are visible in metrics.
 
 ## Known Issues
@@ -79,7 +79,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 
 1. Replace the primitive character/environment with authored or compatible generated glTF assets that satisfy the declared scene and player animation clip readiness metrics.
 2. Add richer impostors on top of the resident island visual catalog.
-3. Add richer terrain/material, texture-frequency, vegetation-shape, cloud-depth, and exact route-marker semantic checks to the screenshot audit.
+3. Add richer terrain-material identity, vegetation-shape, cloud-depth, and exact route-marker semantic checks to the screenshot audit.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
 
 ## Read First
