@@ -418,6 +418,7 @@ The summary aggregates:
 - max missing visual asset slot count
 - max queued/loading/loaded/failed visual asset scene counts
 - max spawned/ready visual asset scene instance counts
+- max declared/ready animation clip counts and animation player/graph counts
 - max always-loaded, stream-window, near-LOD, far-LOD, and weather visual asset slot counts
 - max power-up count
 - min visible power-up count
@@ -531,7 +532,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
 - Island collision follows deterministic authored terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - `active_chunk_count` and `active_island_count` drive resident terrain/detail entities, and visual asset slots are declared, counted, and split by residency class, but there is no asynchronous asset streaming policy yet.
-- Missing glTF files are counted as placeholders and intentionally do not trigger load errors; only files that exist under `assets/` are queued through Bevy's `AssetServer`, and queued handles then report queued/loading/loaded/failed state. `ready_visual_asset_slot_count` means Bevy has loaded the scene asset, not merely that the file exists. `spawned_visual_asset_scene_count` and `ready_visual_asset_scene_count` track Bevy scene-instance lifecycle separately from load state. `declared_animation_clip_count`, `ready_animation_clip_count`, `animation_player_count`, and `animation_graph_count` track the player scene's named clip/graph path separately from scene readiness.
+- Missing glTF files are counted as placeholders and intentionally do not trigger load errors; only files that exist under `assets/` are queued through Bevy's `AssetServer`, and queued handles then report queued/loading/loaded/failed state. `ready_visual_asset_slot_count` means Bevy has loaded the scene asset, not merely that the file exists. `spawned_visual_asset_scene_count` and `ready_visual_asset_scene_count` track Bevy scene-instance lifecycle separately from load state. `declared_animation_clip_count`, `ready_animation_clip_count`, `animation_player_count`, and `animation_graph_count` track the player scene's named clip/graph path separately from scene readiness; the eval checks gate the declared clip inventory so the future player asset contract cannot silently disappear.
 - LOD buckets drive resident island detail, inactive or non-near chunks use cheap impostors, and hidden/resident/churn counters quantify stream-window pressure.
 - The weather-cloud, generated tree/cloud shape, and environment-motion counters verify that cloud-layer entities, lobe counts, mesh vertex floors, and wind-responsive near-LOD visual motion exist. Focused unit tests assert that generated trunks, canopies, and cloud clusters are no longer single cylinder/sphere meshes. The screenshot audit catches gross visual/composition failure, but neither proves atmosphere, fog, materials, vegetation, clouds, or animation look correct.
 - `entity_count` is still a coarse scene-scale proxy; streaming health should be read from resident island visual count and stream entity churn.
