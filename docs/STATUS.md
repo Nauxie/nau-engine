@@ -33,7 +33,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - Player entity has movement, velocity, flight controller state, animation state, and a primitive child-model hierarchy.
 - `WASD` works on the ground before launch; ground movement has separate acceleration, top speed, and friction from airborne/glider motion.
 - `E` launches from the ground and is gated to one launch per airtime.
-- `Space` deploys glider wings while airborne.
+- `Space` deploys glider wings while airborne, with speed-responsive wing flex and subtle wingtip airflow trails.
 - `Shift` dives.
 - The sandbox spawns a 12-island floating archipelago with generated visual terrain relief, smooth terrain normals, batched near-LOD ground cover, a launch island, long-glide route, and landing target.
 - The camera uses Bevy-native atmosphere, dynamic distance fog, volumetric fog/light, bloom, Aces tonemapping, exposure tuning, and atmosphere-driven environment lighting.
@@ -66,9 +66,9 @@ Use this section for milestone handoffs, not routine worktree changes.
 ## Known Issues
 
 - The character is still primitive geometry, not a rigged character asset.
-- Limb posing now has grounded stride, airborne banking, and glide posture, but it is still approximate non-skeletal animation.
+- Limb posing now has grounded stride, airborne banking, glide posture, and speed-responsive wing flex, but it is still approximate non-skeletal animation.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep.
-- Crosswind stream fields are still debug gizmos; updrafts now have cinematic primitive airflow cues, but there are no particles, cloth/glider reactions, vegetation sway, or authored environment art assets yet.
+- Crosswind stream fields are still debug gizmos; updrafts and glider wings now have cinematic primitive airflow cues, but there are no particles, cloth simulation, vegetation sway, or authored environment art assets yet.
 - Sky-island collision follows deterministic terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - Gameplay lift and power-ups are still first rough authored routes; there is no crosswind force, launch-source chain, inventory UI, or authored recovery-route design beyond two marked primitive branch islands.
 - There is no asynchronous asset loading, authored water, authored vegetation, or environment asset pipeline yet. Current stream-window terrain residency, detail LOD, procedural materials, ground cover, ponds, trees, stones, beacon, cloud layers, and landing markers are deterministic primitive systems.

@@ -5820,6 +5820,17 @@ pub mod animation {
         smoothing_factor(18.0, dt)
     }
 
+    pub fn wing_airflow_strength(mode: FlightMode, velocity: Vec3) -> f32 {
+        if mode != FlightMode::Gliding {
+            return 0.0;
+        }
+
+        let horizontal_speed = Vec2::new(velocity.x, velocity.z).length();
+        let speed_pressure = ((horizontal_speed - 18.0) / 44.0).clamp(0.0, 1.0);
+        let sink_pressure = (-velocity.y / 28.0).clamp(0.0, 1.0) * 0.18;
+        (speed_pressure + sink_pressure).clamp(0.0, 1.0)
+    }
+
     fn side_cycle(phase: f32, side: Side) -> f32 {
         let offset = if side == Side::Left { 0.0 } else { TAU * 0.5 };
         (phase + offset).sin()
@@ -5906,9 +5917,13 @@ pub mod animation {
 
                 let sign = side.sign();
                 let bank = (velocity.x * 0.012).clamp(-0.2, 0.2);
-                let flutter = (phase * 2.4).sin() * 0.025;
-                translation.y += flutter * 0.5;
-                rotation *= Quat::from_rotation_z(sign * bank) * Quat::from_rotation_x(flutter);
+                let airflow = wing_airflow_strength(mode, velocity);
+                let flutter = (phase * 2.4).sin() * (0.018 + airflow * 0.038);
+                translation.y += flutter * 0.5 + airflow * 0.045;
+                translation.z += airflow * 0.06;
+                rotation *= Quat::from_rotation_z(sign * (bank + airflow * 0.05))
+                    * Quat::from_rotation_y(sign * airflow * 0.08)
+                    * Quat::from_rotation_x(flutter - airflow * 0.09);
             }
         }
 
@@ -5948,6 +5963,39 @@ pub mod animation {
                 part_pose(&wing, FlightMode::Gliding, Vec3::ZERO, 0.0).visibility,
                 PartVisibility::Visible
             );
+        }
+
+        #[test]
+        fn wing_airflow_strength_requires_fast_gliding_motion() {
+            let fast_glide =
+                wing_airflow_strength(FlightMode::Gliding, Vec3::new(0.0, -18.0, -55.0));
+            let slow_glide = wing_airflow_strength(FlightMode::Gliding, Vec3::new(0.0, 0.0, -8.0));
+            let fast_ground =
+                wing_airflow_strength(FlightMode::Grounded, Vec3::new(0.0, -18.0, -55.0));
+
+            assert!(fast_glide > 0.9);
+            assert_eq!(slow_glide, 0.0);
+            assert_eq!(fast_ground, 0.0);
+        }
+
+        #[test]
+        fn fast_gliding_wings_flex_under_airflow() {
+            let wing = CharacterPart::new(
+                CharacterPartRole::Wing(Side::Left),
+                Vec3::ZERO,
+                Quat::IDENTITY,
+            );
+
+            let slow = part_pose(&wing, FlightMode::Gliding, Vec3::new(0.0, 0.0, -8.0), 0.0);
+            let fast = part_pose(
+                &wing,
+                FlightMode::Gliding,
+                Vec3::new(0.0, -18.0, -55.0),
+                0.0,
+            );
+
+            assert!(fast.translation.y > slow.translation.y + 0.035);
+            assert!(fast.translation.z > slow.translation.z);
         }
 
         #[test]

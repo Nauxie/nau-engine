@@ -18,7 +18,7 @@ use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_dis
 use bevy::window::{CompositeAlphaMode, CursorGrabMode, CursorOptions, PrimaryWindow};
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartVisibility, Side, advance_phase,
-    part_pose, pose_blend,
+    part_pose, pose_blend, wing_airflow_strength,
 };
 use nau_engine::asset_pipeline::{
     VISUAL_ASSET_SPECS, VisualAssetLoadState, VisualAssetPipelineMetrics, VisualAssetSpec,
@@ -126,6 +126,7 @@ fn main() -> AppExit {
                 update_mouse_look_capture,
                 update_camera_control,
                 animate_character,
+                update_glider_airflow_trails,
                 follow_camera,
             )
                 .chain()
@@ -239,6 +240,13 @@ struct WeatherDrift {
     speed: f32,
     phase: f32,
     spin_speed: f32,
+    base_rotation: Quat,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+struct GliderAirflowTrail {
+    side: Side,
+    base_translation: Vec3,
     base_rotation: Quat,
 }
 
@@ -793,6 +801,7 @@ fn setup(
         0.86,
         0.28,
     );
+    let glider_airflow_material = glider_airflow_material(&mut materials);
     let island_grass_material = textured_material(
         &mut images,
         &mut materials,
@@ -970,6 +979,7 @@ fn setup(
     let arm_mesh = meshes.add(Cuboid::new(0.2, 0.82, 0.2));
     let leg_mesh = meshes.add(Cuboid::new(0.24, 0.9, 0.24));
     let wing_mesh = meshes.add(Cuboid::new(2.15, 0.05, 0.75));
+    let glider_airflow_mesh = meshes.add(glider_airflow_trail_mesh());
 
     commands.spawn((
         DirectionalLight {
@@ -1182,6 +1192,25 @@ fn setup(
                         wing_rotation,
                     ),
                 ));
+
+                let trail_translation = Vec3::new(sign * 1.74, 1.38, 0.86);
+                let trail_rotation =
+                    Quat::from_rotation_z(sign * 0.08) * Quat::from_rotation_x(0.04);
+                parent.spawn((
+                    Mesh3d(glider_airflow_mesh.clone()),
+                    MeshMaterial3d(glider_airflow_material.clone()),
+                    Transform {
+                        translation: trail_translation,
+                        rotation: trail_rotation,
+                        scale: Vec3::new(0.35, 1.0, 0.05),
+                    },
+                    Visibility::Hidden,
+                    GliderAirflowTrail {
+                        side,
+                        base_translation: trail_translation,
+                        base_rotation: trail_rotation,
+                    },
+                ));
             }
 
             parent.spawn((
@@ -1353,6 +1382,21 @@ fn water_surface_material(
         specular_transmission: 0.08,
         thickness: 0.08,
         ior: 1.33,
+        ..default()
+    })
+}
+
+fn glider_airflow_material(materials: &mut Assets<StandardMaterial>) -> Handle<StandardMaterial> {
+    materials.add(StandardMaterial {
+        base_color: Color::srgba(0.58, 0.88, 1.0, 0.14),
+        emissive: LinearRgba::rgb(0.035, 0.18, 0.42),
+        emissive_exposure_weight: 0.12,
+        alpha_mode: AlphaMode::Add,
+        cull_mode: None,
+        double_sided: true,
+        unlit: true,
+        perceptual_roughness: 0.72,
+        reflectance: 0.1,
         ..default()
     })
 }
@@ -1691,6 +1735,27 @@ fn updraft_ribbon_mesh(radius: f32, height: f32, phase: f32) -> Mesh {
             indices.extend([start, start + 1, start + 2, start + 1, start + 3, start + 2]);
         }
     }
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+fn glider_airflow_trail_mesh() -> Mesh {
+    let positions = vec![
+        [-0.5, 0.0, -0.5],
+        [0.5, 0.0, -0.5],
+        [-0.14, 0.0, 0.5],
+        [0.14, 0.0, 0.5],
+    ];
+    let normals = vec![[0.0, 1.0, 0.0]; positions.len()];
+    let uvs = vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+    let indices = vec![0, 1, 2, 1, 3, 2];
 
     Mesh::new(
         PrimitiveTopology::TriangleList,
@@ -3086,6 +3151,36 @@ fn animate_character(
             PartVisibility::Hidden => Visibility::Hidden,
             PartVisibility::Visible => Visibility::Visible,
         };
+    }
+}
+
+fn update_glider_airflow_trails(
+    time: Res<Time>,
+    player: Query<(&Velocity, &FlightController), With<Player>>,
+    mut trails: Query<(&GliderAirflowTrail, &mut Transform, &mut Visibility)>,
+) {
+    let Ok((velocity, controller)) = player.single() else {
+        return;
+    };
+
+    let airflow = wing_airflow_strength(controller.mode, velocity.0);
+    let visible = airflow > 0.04;
+    let pulse = (time.elapsed_secs() * 9.0).sin() * 0.04 * airflow;
+
+    for (trail, mut transform, mut visibility) in &mut trails {
+        *visibility = if visible {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+
+        let sign = trail.side.sign();
+        transform.translation =
+            trail.base_translation + Vec3::new(sign * airflow * 0.08, pulse, airflow * 0.55);
+        transform.rotation = trail.base_rotation
+            * Quat::from_rotation_y(sign * airflow * 0.14)
+            * Quat::from_rotation_x(-airflow * 0.07);
+        transform.scale = Vec3::new(0.24 + airflow * 0.38, 1.0, 0.12 + airflow * 2.2);
     }
 }
 
