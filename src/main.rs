@@ -43,6 +43,7 @@ use nau_engine::world::{
     LodBand, START_POSITION, SkyIsland, SkyRoute, StreamActivation, is_recovery_branch_island,
 };
 use std::{
+    collections::{HashMap, HashSet},
     env,
     fs::{self, File, OpenOptions},
     io::Write,
@@ -197,18 +198,9 @@ struct UpdraftGuide {
 }
 
 #[derive(Component, Clone, Copy, Debug)]
-struct IslandLodVisual {
-    island: SkyIsland,
-    layer: IslandVisualLayer,
-}
+struct IslandLodVisual;
 
-impl IslandLodVisual {
-    fn new(island: SkyIsland, layer: IslandVisualLayer) -> Self {
-        Self { island, layer }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum IslandVisualLayer {
     Terrain,
     Detail,
@@ -217,12 +209,12 @@ enum IslandVisualLayer {
 }
 
 impl IslandVisualLayer {
-    fn is_visible_in(self, activation: StreamActivation, band: LodBand) -> bool {
+    fn is_resident_in(self, activation: StreamActivation, band: LodBand) -> bool {
         match self {
             Self::Terrain => activation.is_active(),
             Self::Detail => activation.is_active() && band == LodBand::Near,
             Self::Beacon => true,
-            Self::Impostor => !activation.is_active(),
+            Self::Impostor => !activation.is_active() || band != LodBand::Near,
         }
     }
 }
@@ -254,12 +246,9 @@ impl IslandLodVisualCounts {
 
     fn resident_count(self) -> usize {
         self.visible_terrain_count
-            + self.hidden_terrain_count
             + self.visible_detail_count
-            + self.hidden_detail_count
             + self.visible_beacon_count
             + self.visible_impostor_count
-            + self.hidden_impostor_count
     }
 }
 
@@ -274,6 +263,35 @@ struct IslandStreamDiagnostics {
 
 #[derive(Component, Clone, Copy, Debug)]
 struct CameraObstacle(CameraObstruction);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct IslandVisualKey {
+    island_name: &'static str,
+    layer: IslandVisualLayer,
+    index: usize,
+}
+
+#[derive(Clone)]
+struct IslandVisualEntry {
+    key: IslandVisualKey,
+    island: SkyIsland,
+    layer: IslandVisualLayer,
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+    transform: Transform,
+    obstacle: Option<CameraObstacle>,
+    name: &'static str,
+}
+
+#[derive(Resource, Default)]
+struct IslandVisualCatalog {
+    entries: Vec<IslandVisualEntry>,
+}
+
+#[derive(Resource, Default)]
+struct IslandStreamState {
+    spawned: HashMap<IslandVisualKey, Entity>,
+}
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
 struct CameraDiagnostics {
@@ -823,6 +841,8 @@ fn setup(
         Transform::default(),
     ));
 
+    let mut island_visual_catalog = IslandVisualCatalog::default();
+
     for (index, island) in route.islands().iter().enumerate() {
         let top_material = if island.is_target {
             target_grass_material.clone()
@@ -836,8 +856,8 @@ fn setup(
             }
         };
 
-        spawn_sky_island(
-            &mut commands,
+        queue_sky_island(
+            &mut island_visual_catalog.entries,
             &mut meshes,
             top_material,
             island_rock_material.clone(),
@@ -853,6 +873,11 @@ fn setup(
             *island,
         );
     }
+
+    let island_stream_state =
+        spawn_initial_island_visuals(&mut commands, &island_visual_catalog, PLAYER_START);
+    commands.insert_resource(island_visual_catalog);
+    commands.insert_resource(island_stream_state);
 
     for (index, x) in (-5..=5).enumerate() {
         let height = 5.0 + (index as f32 % 4.0) * 4.0;
@@ -1312,8 +1337,39 @@ fn spawn_weather_layers(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn spawn_sky_island(
-    commands: &mut Commands,
+fn queue_island_visual(
+    entries: &mut Vec<IslandVisualEntry>,
+    visual_index: &mut usize,
+    island: SkyIsland,
+    layer: IslandVisualLayer,
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+    transform: Transform,
+    obstacle: Option<CameraObstacle>,
+    name: &'static str,
+) {
+    let key = IslandVisualKey {
+        island_name: island.name,
+        layer,
+        index: *visual_index,
+    };
+    *visual_index += 1;
+
+    entries.push(IslandVisualEntry {
+        key,
+        island,
+        layer,
+        mesh,
+        material,
+        transform,
+        obstacle,
+        name,
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+fn queue_sky_island(
+    entries: &mut Vec<IslandVisualEntry>,
     meshes: &mut Assets<Mesh>,
     top_material: Handle<StandardMaterial>,
     rock_material: Handle<StandardMaterial>,
@@ -1330,10 +1386,15 @@ fn spawn_sky_island(
 ) {
     let top_thickness = 0.55;
     let top_y = island.mesh_top_y();
+    let mut visual_index = 0;
 
-    commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(1.0, top_thickness))),
-        MeshMaterial3d(top_material.clone()),
+    queue_island_visual(
+        entries,
+        &mut visual_index,
+        island,
+        IslandVisualLayer::Terrain,
+        meshes.add(Cylinder::new(1.0, top_thickness)),
+        top_material.clone(),
         Transform {
             translation: Vec3::new(
                 island.center.x,
@@ -1343,15 +1404,18 @@ fn spawn_sky_island(
             scale: Vec3::new(island.half_extents.x, 1.0, island.half_extents.y),
             ..default()
         },
-        island,
-        IslandLodVisual::new(island, IslandVisualLayer::Terrain),
-        Name::new(island.name),
-    ));
+        None,
+        island.name,
+    );
 
     let impostor_height = 0.35;
-    commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(1.0, impostor_height))),
-        MeshMaterial3d(top_material.clone()),
+    queue_island_visual(
+        entries,
+        &mut visual_index,
+        island,
+        IslandVisualLayer::Impostor,
+        meshes.add(Cylinder::new(1.0, impostor_height)),
+        top_material.clone(),
         Transform {
             translation: Vec3::new(
                 island.center.x,
@@ -1365,18 +1429,21 @@ fn spawn_sky_island(
             ),
             ..default()
         },
-        IslandLodVisual::new(island, IslandVisualLayer::Impostor),
-        Visibility::Hidden,
-        Name::new("island distant impostor"),
-    ));
+        None,
+        "island distant impostor",
+    );
 
-    commands.spawn((
-        Mesh3d(meshes.add(island_terrain_mesh(island_index, island))),
-        MeshMaterial3d(top_material),
+    queue_island_visual(
+        entries,
+        &mut visual_index,
+        island,
+        IslandVisualLayer::Terrain,
+        meshes.add(island_terrain_mesh(island_index, island)),
+        top_material,
         Transform::default(),
-        IslandLodVisual::new(island, IslandVisualLayer::Terrain),
-        Name::new("island terrain surface"),
-    ));
+        None,
+        "island terrain surface",
+    );
 
     let rock_body_center = Vec3::new(
         island.center.x,
@@ -1388,25 +1455,32 @@ fn spawn_sky_island(
         island.thickness * 0.5,
         island.half_extents.y * 0.78,
     );
-    commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(1.0, island.thickness))),
-        MeshMaterial3d(rock_material),
+    queue_island_visual(
+        entries,
+        &mut visual_index,
+        island,
+        IslandVisualLayer::Terrain,
+        meshes.add(Cylinder::new(1.0, island.thickness)),
+        rock_material,
         Transform {
             translation: rock_body_center,
             scale: Vec3::new(rock_body_half_extents.x, 1.0, rock_body_half_extents.z),
             ..default()
         },
-        CameraObstacle(CameraObstruction::new(
+        Some(CameraObstacle(CameraObstruction::new(
             rock_body_center,
             rock_body_half_extents,
-        )),
-        IslandLodVisual::new(island, IslandVisualLayer::Terrain),
-        Name::new("island rock body"),
-    ));
+        ))),
+        "island rock body",
+    );
 
-    commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(1.0, island.thickness * 0.7))),
-        MeshMaterial3d(under_material.clone()),
+    queue_island_visual(
+        entries,
+        &mut visual_index,
+        island,
+        IslandVisualLayer::Terrain,
+        meshes.add(Cylinder::new(1.0, island.thickness * 0.7)),
+        under_material.clone(),
         Transform {
             translation: Vec3::new(
                 island.center.x,
@@ -1420,22 +1494,28 @@ fn spawn_sky_island(
             ),
             ..default()
         },
-        IslandLodVisual::new(island, IslandVisualLayer::Terrain),
-        Name::new("island shadow base"),
-    ));
+        None,
+        "island shadow base",
+    );
 
     let ridge_width = island.half_extents.x * 0.32;
     let ridge_surface = island_visual_surface_position(island, Vec2::new(0.28, -0.24));
     let ridge_center = ridge_surface + Vec3::Y * 0.375;
     let ridge_half_extents = Vec3::new(ridge_width * 0.5, 0.375, island.half_extents.y * 0.09);
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(ridge_width, 0.75, island.half_extents.y * 0.18))),
-        MeshMaterial3d(under_material),
+    queue_island_visual(
+        entries,
+        &mut visual_index,
+        island,
+        IslandVisualLayer::Terrain,
+        meshes.add(Cuboid::new(ridge_width, 0.75, island.half_extents.y * 0.18)),
+        under_material,
         Transform::from_translation(ridge_center),
-        CameraObstacle(CameraObstruction::new(ridge_center, ridge_half_extents)),
-        IslandLodVisual::new(island, IslandVisualLayer::Terrain),
-        Name::new("island ridge"),
-    ));
+        Some(CameraObstacle(CameraObstruction::new(
+            ridge_center,
+            ridge_half_extents,
+        ))),
+        "island ridge",
+    );
 
     if island.is_target {
         let marker_center = Vec3::new(
@@ -1443,24 +1523,34 @@ fn spawn_sky_island(
             island.mesh_top_y_at(island.center) + 1.8,
             island.center.z,
         );
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(2.2, 6.0, 2.2))),
-            MeshMaterial3d(marker_material),
+        queue_island_visual(
+            entries,
+            &mut visual_index,
+            island,
+            IslandVisualLayer::Beacon,
+            meshes.add(Cuboid::new(2.2, 6.0, 2.2)),
+            marker_material,
             Transform::from_translation(marker_center),
-            CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::new(
                 marker_center,
                 Vec3::new(1.1, 3.0, 1.1),
-            )),
-            IslandLodVisual::new(island, IslandVisualLayer::Beacon),
-            Name::new("landing target marker"),
-        ));
+            ))),
+            "landing target marker",
+        );
     }
     if is_recovery_branch_island(island.name) {
-        spawn_recovery_branch_marker(commands, meshes, branch_marker_material, island);
+        queue_recovery_branch_marker(
+            entries,
+            &mut visual_index,
+            meshes,
+            branch_marker_material,
+            island,
+        );
     }
 
-    spawn_sky_island_details(
-        commands,
+    queue_sky_island_details(
+        entries,
+        &mut visual_index,
         meshes,
         trunk_material,
         foliage_material,
@@ -1472,8 +1562,9 @@ fn spawn_sky_island(
     );
 }
 
-fn spawn_recovery_branch_marker(
-    commands: &mut Commands,
+fn queue_recovery_branch_marker(
+    entries: &mut Vec<IslandVisualEntry>,
+    visual_index: &mut usize,
     meshes: &mut Assets<Mesh>,
     marker_material: Handle<StandardMaterial>,
     island: SkyIsland,
@@ -1481,13 +1572,17 @@ fn spawn_recovery_branch_marker(
     let mast_height = 5.6;
     let mast_surface = island_visual_surface_position(island, Vec2::new(-0.08, 0.08));
     let mast_center = mast_surface + Vec3::Y * (mast_height * 0.5);
-    commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(0.42, mast_height))),
-        MeshMaterial3d(marker_material.clone()),
+    queue_island_visual(
+        entries,
+        visual_index,
+        island,
+        IslandVisualLayer::Beacon,
+        meshes.add(Cylinder::new(0.42, mast_height)),
+        marker_material.clone(),
         Transform::from_translation(mast_center),
-        IslandLodVisual::new(island, IslandVisualLayer::Beacon),
-        Name::new("recovery branch mast"),
-    ));
+        None,
+        "recovery branch mast",
+    );
 
     let ring_size = 7.2;
     for (offset, scale) in [
@@ -1509,17 +1604,21 @@ fn spawn_recovery_branch_marker(
         ),
     ] {
         let surface_y = island.mesh_top_y_at(island.center + Vec3::new(offset.x, 0.0, offset.z));
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(scale.x, scale.y, scale.z))),
-            MeshMaterial3d(marker_material.clone()),
+        queue_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Beacon,
+            meshes.add(Cuboid::new(scale.x, scale.y, scale.z)),
+            marker_material.clone(),
             Transform::from_xyz(
                 island.center.x + offset.x,
                 surface_y + offset.y,
                 island.center.z + offset.z,
             ),
-            IslandLodVisual::new(island, IslandVisualLayer::Beacon),
-            Name::new("recovery branch ring"),
-        ));
+            None,
+            "recovery branch ring",
+        );
     }
 }
 
@@ -1605,8 +1704,9 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn spawn_sky_island_details(
-    commands: &mut Commands,
+fn queue_sky_island_details(
+    entries: &mut Vec<IslandVisualEntry>,
+    visual_index: &mut usize,
     meshes: &mut Assets<Mesh>,
     trunk_material: Handle<StandardMaterial>,
     foliage_material: Handle<StandardMaterial>,
@@ -1634,28 +1734,34 @@ fn spawn_sky_island_details(
         let canopy_radius = 1.05 + index as f32 * 0.08;
         let canopy_center = surface + Vec3::Y * (trunk_height + 0.72);
 
-        commands.spawn((
-            Mesh3d(meshes.add(Cylinder::new(0.22, trunk_height))),
-            MeshMaterial3d(trunk_material.clone()),
+        queue_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Detail,
+            meshes.add(Cylinder::new(0.22, trunk_height)),
+            trunk_material.clone(),
             Transform::from_translation(trunk_center),
-            CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::new(
                 trunk_center,
                 Vec3::new(0.22, trunk_height * 0.5, 0.22),
-            )),
-            IslandLodVisual::new(island, IslandVisualLayer::Detail),
-            Name::new("island tree trunk"),
-        ));
-        commands.spawn((
-            Mesh3d(meshes.add(Sphere::new(canopy_radius))),
-            MeshMaterial3d(foliage_material.clone()),
+            ))),
+            "island tree trunk",
+        );
+        queue_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Detail,
+            meshes.add(Sphere::new(canopy_radius)),
+            foliage_material.clone(),
             Transform::from_translation(canopy_center),
-            CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::new(
                 canopy_center,
                 Vec3::splat(canopy_radius),
-            )),
-            IslandLodVisual::new(island, IslandVisualLayer::Detail),
-            Name::new("island tree canopy"),
-        ));
+            ))),
+            "island tree canopy",
+        );
     }
 
     for index in 0..5 {
@@ -1666,13 +1772,17 @@ fn spawn_sky_island_details(
         let stone_scale = 0.45 + index as f32 * 0.08;
         let surface_y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z));
 
-        commands.spawn((
-            Mesh3d(meshes.add(Sphere::new(stone_scale))),
-            MeshMaterial3d(path_material.clone()),
+        queue_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Detail,
+            meshes.add(Sphere::new(stone_scale)),
+            path_material.clone(),
             Transform::from_xyz(x, surface_y + stone_scale * 0.45, z),
-            IslandLodVisual::new(island, IslandVisualLayer::Detail),
-            Name::new("island stone scatter"),
-        ));
+            None,
+            "island stone scatter",
+        );
     }
 
     let pond_offset = if island.is_target {
@@ -1681,9 +1791,13 @@ fn spawn_sky_island_details(
         Vec2::new(0.18, 0.28)
     };
     let pond_surface = island_visual_surface_position(island, pond_offset);
-    commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(1.0, 0.08))),
-        MeshMaterial3d(water_material),
+    queue_island_visual(
+        entries,
+        visual_index,
+        island,
+        IslandVisualLayer::Detail,
+        meshes.add(Cylinder::new(1.0, 0.08)),
+        water_material,
         Transform {
             translation: pond_surface + Vec3::Y * 0.04,
             scale: Vec3::new(
@@ -1693,21 +1807,25 @@ fn spawn_sky_island_details(
             ),
             ..default()
         },
-        IslandLodVisual::new(island, IslandVisualLayer::Detail),
-        Name::new("island pond"),
-    ));
+        None,
+        "island pond",
+    );
 
     if !island.is_target && island.name != "launch mesa" {
         let beacon_height = 3.8 + (island_index % 3) as f32 * 0.7;
         let beacon_surface = island_visual_surface_position(island, Vec2::new(-0.18, 0.22));
         let beacon_center = beacon_surface + Vec3::Y * (beacon_height * 0.5);
-        commands.spawn((
-            Mesh3d(meshes.add(Cylinder::new(0.34, beacon_height))),
-            MeshMaterial3d(flower_material.clone()),
+        queue_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Beacon,
+            meshes.add(Cylinder::new(0.34, beacon_height)),
+            flower_material.clone(),
             Transform::from_translation(beacon_center),
-            IslandLodVisual::new(island, IslandVisualLayer::Beacon),
-            Name::new("route cairn"),
-        ));
+            None,
+            "route cairn",
+        );
     }
 
     if island.is_target {
@@ -1732,32 +1850,39 @@ fn spawn_sky_island_details(
         ] {
             let surface_y =
                 island.mesh_top_y_at(island.center + Vec3::new(offset.x, 0.0, offset.z));
-            commands.spawn((
-                Mesh3d(meshes.add(Cuboid::new(scale.x, scale.y, scale.z))),
-                MeshMaterial3d(flower_material.clone()),
+            queue_island_visual(
+                entries,
+                visual_index,
+                island,
+                IslandVisualLayer::Beacon,
+                meshes.add(Cuboid::new(scale.x, scale.y, scale.z)),
+                flower_material.clone(),
                 Transform::from_xyz(
                     island.center.x + offset.x,
                     surface_y + offset.y,
                     island.center.z + offset.z,
                 ),
-                IslandLodVisual::new(island, IslandVisualLayer::Beacon),
-                Name::new("landing garden ring"),
-            ));
+                None,
+                "landing garden ring",
+            );
         }
     } else if island.name == "launch mesa" {
         let beacon_surface = island_visual_surface_position(island, Vec2::new(-0.42, 0.38));
         let beacon_center = beacon_surface + Vec3::Y * 1.6;
-        commands.spawn((
-            Mesh3d(meshes.add(Cylinder::new(0.7, 3.2))),
-            MeshMaterial3d(flower_material),
+        queue_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Beacon,
+            meshes.add(Cylinder::new(0.7, 3.2)),
+            flower_material,
             Transform::from_translation(beacon_center),
-            CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::new(
                 beacon_center,
                 Vec3::new(0.7, 1.6, 0.7),
-            )),
-            IslandLodVisual::new(island, IslandVisualLayer::Beacon),
-            Name::new("launch beacon"),
-        ));
+            ))),
+            "launch beacon",
+        );
 
         let launch_tree_height = 4.4;
         let launch_tree_surface_y =
@@ -1773,34 +1898,83 @@ fn spawn_sky_island_details(
             launch_tree_surface_y + launch_tree_height + 0.85,
             8.0,
         );
-        commands.spawn((
-            Mesh3d(meshes.add(Cylinder::new(0.35, launch_tree_height))),
-            MeshMaterial3d(trunk_material),
+        queue_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Detail,
+            meshes.add(Cylinder::new(0.35, launch_tree_height)),
+            trunk_material,
             Transform::from_translation(launch_tree_center),
-            CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::new(
                 launch_tree_center,
                 Vec3::new(0.35, launch_tree_height * 0.5, 0.35),
-            )),
-            IslandLodVisual::new(island, IslandVisualLayer::Detail),
-            Name::new("launch camera tree trunk"),
-        ));
-        commands.spawn((
-            Mesh3d(meshes.add(Sphere::new(launch_canopy_radius))),
-            MeshMaterial3d(foliage_material),
+            ))),
+            "launch camera tree trunk",
+        );
+        queue_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Detail,
+            meshes.add(Sphere::new(launch_canopy_radius)),
+            foliage_material,
             Transform::from_translation(launch_canopy_center),
-            CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::new(
                 launch_canopy_center,
                 Vec3::splat(launch_canopy_radius),
-            )),
-            IslandLodVisual::new(island, IslandVisualLayer::Detail),
-            Name::new("launch camera tree canopy"),
-        ));
+            ))),
+            "launch camera tree canopy",
+        );
     }
 }
 
+fn island_visual_is_resident(entry: &IslandVisualEntry, player_position: Vec3) -> bool {
+    let activation = entry.island.stream_activation(player_position);
+    let band = entry.island.lod_band(player_position);
+
+    entry.layer.is_resident_in(activation, band)
+}
+
+fn spawn_initial_island_visuals(
+    commands: &mut Commands,
+    catalog: &IslandVisualCatalog,
+    player_position: Vec3,
+) -> IslandStreamState {
+    let mut state = IslandStreamState::default();
+
+    for entry in catalog
+        .entries
+        .iter()
+        .filter(|entry| island_visual_is_resident(entry, player_position))
+    {
+        let entity = spawn_island_visual_entry(commands, entry);
+        state.spawned.insert(entry.key, entity);
+    }
+
+    state
+}
+
+fn spawn_island_visual_entry(commands: &mut Commands, entry: &IslandVisualEntry) -> Entity {
+    let mut entity = commands.spawn((
+        Mesh3d(entry.mesh.clone()),
+        MeshMaterial3d(entry.material.clone()),
+        entry.transform,
+        IslandLodVisual,
+        Name::new(entry.name),
+    ));
+    if let Some(obstacle) = entry.obstacle {
+        entity.insert(obstacle);
+    }
+
+    entity.id()
+}
+
 fn update_island_stream_visibility(
+    mut commands: Commands,
     player: Query<&Transform, With<Player>>,
-    mut visuals: Query<(&IslandLodVisual, &mut Visibility)>,
+    catalog: Res<IslandVisualCatalog>,
+    mut stream_state: ResMut<IslandStreamState>,
     mut diagnostics: ResMut<IslandStreamDiagnostics>,
 ) {
     let Ok(player_transform) = player.single() else {
@@ -1808,34 +1982,47 @@ fn update_island_stream_visibility(
     };
 
     let mut counts = IslandLodVisualCounts::default();
-    let mut visibility_changes = 0;
+    let mut desired_keys = HashSet::new();
+    let mut stream_changes = 0;
 
-    for (visual, mut visibility) in &mut visuals {
-        let activation = visual
-            .island
-            .stream_activation(player_transform.translation);
-        let band = visual.island.lod_band(player_transform.translation);
-        let next_hidden = !visual.layer.is_visible_in(activation, band);
-        let was_hidden = matches!(*visibility, Visibility::Hidden);
-        if diagnostics.initialized && was_hidden != next_hidden {
-            visibility_changes += 1;
+    for entry in &catalog.entries {
+        let resident = island_visual_is_resident(entry, player_transform.translation);
+        counts.record(entry.layer, !resident);
+
+        if resident {
+            desired_keys.insert(entry.key);
+            if let std::collections::hash_map::Entry::Vacant(slot) =
+                stream_state.spawned.entry(entry.key)
+            {
+                let entity = spawn_island_visual_entry(&mut commands, entry);
+                slot.insert(entity);
+                if diagnostics.initialized {
+                    stream_changes += 1;
+                }
+            }
         }
+    }
 
-        *visibility = if next_hidden {
-            Visibility::Hidden
-        } else {
-            Visibility::Inherited
-        };
+    let despawned_visuals = stream_state
+        .spawned
+        .iter()
+        .filter_map(|(key, entity)| (!desired_keys.contains(key)).then_some((*key, *entity)))
+        .collect::<Vec<_>>();
 
-        counts.record(visual.layer, next_hidden);
+    for (key, entity) in despawned_visuals {
+        commands.entity(entity).despawn();
+        stream_state.spawned.remove(&key);
+        if diagnostics.initialized {
+            stream_changes += 1;
+        }
     }
 
     diagnostics.counts = counts;
-    diagnostics.visibility_changes_this_frame = visibility_changes;
+    diagnostics.visibility_changes_this_frame = stream_changes;
     diagnostics.max_visibility_changes_per_frame = diagnostics
         .max_visibility_changes_per_frame
-        .max(visibility_changes);
-    diagnostics.total_visibility_changes += visibility_changes;
+        .max(stream_changes);
+    diagnostics.total_visibility_changes += stream_changes;
     diagnostics.initialized = true;
 }
 
@@ -2208,7 +2395,7 @@ fn update_debug_readout(
     };
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nresident island visuals {}\nstream visibility changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nresident island visuals {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
