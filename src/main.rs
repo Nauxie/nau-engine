@@ -69,6 +69,7 @@ const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
 const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
 const PROCEDURAL_TEXTURE_SIZE: u32 = 64;
 const TERRAIN_TEXTURE_SIZE: u32 = 128;
+const TERRAIN_UV_TILES_PER_METER: f32 = 1.0 / 12.0;
 const INITIAL_SKY_CLEAR_COLOR: Color = Color::srgb(0.50, 0.68, 0.92);
 const TREE_CANOPY_LATITUDE_SEGMENTS: usize = 6;
 const TREE_CANOPY_LONGITUDE_SEGMENTS: usize = 12;
@@ -2575,31 +2576,34 @@ fn procedural_terrain_surface_texture_data(
 
     for y in 0..size {
         for x in 0..size {
-            let fine = texture_noise(x.wrapping_mul(3), y.wrapping_mul(3), seed);
-            let grain = texture_noise(x.wrapping_mul(11), y.wrapping_mul(7), seed.wrapping_add(71));
-            let broad = texture_noise(x / 3, y / 3, seed.wrapping_add(19));
-            let shelf = (x / 9 + y / 7 + seed).is_multiple_of(5);
-            let pebble = fine > 226 && grain > 156;
-            let crack = (x.wrapping_mul(13) + y.wrapping_mul(17) + seed).is_multiple_of(41);
-            let mut color = if broad < 82 {
-                secondary
-            } else if broad > 206 || pebble {
-                accent
-            } else {
-                primary
-            };
+            let fine = texture_noise(x.wrapping_mul(5), y.wrapping_mul(5), seed);
+            let grain = texture_noise(x.wrapping_mul(13), y.wrapping_mul(7), seed.wrapping_add(71));
+            let broad = smooth_texture_noise(x, y, 22, seed.wrapping_add(19));
+            let streak = smooth_texture_noise(
+                x.wrapping_mul(2).wrapping_add(y / 2),
+                y.wrapping_mul(5).wrapping_add(x / 2),
+                12,
+                seed.wrapping_add(137),
+            );
+            let secondary_weight = ((118i16 - broad as i16).max(0) as u16 * 126 / 118)
+                .saturating_add((grain > 192) as u16 * 24)
+                .min(150);
+            let accent_weight = ((broad as i16 - 164).max(0) as u16 * 142 / 91)
+                .saturating_add((fine > 222 && grain > 142) as u16 * 70)
+                .min(172);
+            let vein = (x.wrapping_mul(17) + y.wrapping_mul(29) + seed).is_multiple_of(53);
+            let mineral_fleck = fine > 222 && grain > 142;
+            let mut color = mix_rgba(primary, secondary, secondary_weight);
+            color = mix_rgba(color, accent, accent_weight);
 
-            if shelf {
-                color = mix_rgba(color, primary, 96);
+            if vein {
+                color = mix_rgba(color, secondary, 104);
             }
-            if crack {
-                color = mix_rgba(color, secondary, 150);
-            }
-            if pebble {
-                color = mix_rgba(color, accent, 168);
+            if mineral_fleck {
+                color = mix_rgba(color, accent, 96);
             }
 
-            let shade = fine as i16 / 6 + grain as i16 / 11 - 34;
+            let shade = fine as i16 / 4 + grain as i16 / 7 + streak as i16 / 9 - 82;
             data.extend_from_slice(&shade_rgba(color, shade));
         }
     }
@@ -2743,6 +2747,27 @@ fn texture_noise(x: u32, y: u32, seed: u32) -> u8 {
     value ^= value >> 13;
     value = value.wrapping_mul(1_274_126_177);
     ((value ^ (value >> 16)) & 0xff) as u8
+}
+
+fn smooth_texture_noise(x: u32, y: u32, cell_size: u32, seed: u32) -> u8 {
+    let cell_size = cell_size.max(1);
+    let grid_x = x / cell_size;
+    let grid_y = y / cell_size;
+    let local_x = (x % cell_size) as f32 / cell_size as f32;
+    let local_y = (y % cell_size) as f32 / cell_size as f32;
+    let weight_x = local_x * local_x * (3.0 - 2.0 * local_x);
+    let weight_y = local_y * local_y * (3.0 - 2.0 * local_y);
+
+    let north_west = texture_noise(grid_x, grid_y, seed) as f32;
+    let north_east = texture_noise(grid_x + 1, grid_y, seed) as f32;
+    let south_west = texture_noise(grid_x, grid_y + 1, seed) as f32;
+    let south_east = texture_noise(grid_x + 1, grid_y + 1, seed) as f32;
+    let north = north_west + (north_east - north_west) * weight_x;
+    let south = south_west + (south_east - south_west) * weight_x;
+
+    (north + (south - north) * weight_y)
+        .round()
+        .clamp(0.0, 255.0) as u8
 }
 
 fn mix_rgba(source: [u8; 4], target: [u8; 4], target_weight: u16) -> [u8; 4] {
@@ -3804,6 +3829,14 @@ fn island_rock_vertex_color(island_index: usize, angle: f32, t: f32, underside: 
     color_array(color)
 }
 
+fn island_terrain_uv(island_index: usize, island: SkyIsland, x: f32, z: f32) -> [f32; 2] {
+    let island_offset = island_index as f32 * 0.173;
+    [
+        (x - island.center.x) * TERRAIN_UV_TILES_PER_METER + 0.5 + island_offset,
+        (z - island.center.z) * TERRAIN_UV_TILES_PER_METER + 0.5 + island_offset * 1.37,
+    ]
+}
+
 fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     let vertex_count = 1 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS;
     let mut positions = Vec::with_capacity(vertex_count);
@@ -3816,7 +3849,12 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
 
     let center_y = island.mesh_top_y_at(island.center);
     positions.push([island.center.x, center_y, island.center.z]);
-    uvs.push([0.5, 0.5]);
+    uvs.push(island_terrain_uv(
+        island_index,
+        island,
+        island.center.x,
+        island.center.z,
+    ));
     colors.push(island_terrain_vertex_color(
         island_index,
         0.0,
@@ -3841,10 +3879,7 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
             let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z));
 
             positions.push([x, y, z]);
-            uvs.push([
-                0.5 + angle.cos() * radius * 0.5,
-                0.5 + angle.sin() * radius * 0.5,
-            ]);
+            uvs.push(island_terrain_uv(island_index, island, x, z));
             colors.push(island_terrain_vertex_color(
                 island_index,
                 radius,
@@ -6302,6 +6337,15 @@ mod tests {
         assert!(
             mesh_terrain_material_region_count(&mesh) >= ISLAND_TERRAIN_MATERIAL_REGIONS,
             "terrain mesh should expose distinct meadow, transition, highland, and edge regions"
+        );
+        let uvs = mesh_uv0(&mesh).expect("terrain mesh should expose material uvs");
+        let min_u = uvs.iter().map(|uv| uv[0]).fold(f32::INFINITY, f32::min);
+        let max_u = uvs.iter().map(|uv| uv[0]).fold(f32::NEG_INFINITY, f32::max);
+        let min_v = uvs.iter().map(|uv| uv[1]).fold(f32::INFINITY, f32::min);
+        let max_v = uvs.iter().map(|uv| uv[1]).fold(f32::NEG_INFINITY, f32::max);
+        assert!(
+            max_u - min_u >= 3.0 && max_v - min_v >= 2.0,
+            "terrain albedo should tile across large islands instead of stretching one texture over the whole surface"
         );
         assert!(
             mesh_y_range(&mesh) >= 0.8,
