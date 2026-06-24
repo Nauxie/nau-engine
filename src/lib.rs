@@ -583,9 +583,9 @@ pub mod movement {
                 lateral_accel: 16.0,
                 glide_forward_accel: 12.0,
                 glide_lateral_accel: 10.0,
-                glide_brake_drag: 0.42,
+                glide_brake_drag: 0.36,
                 air_brake_accel: 46.0,
-                glide_brake_accel: 38.0,
+                glide_brake_accel: 48.0,
                 max_backward_speed: 12.0,
                 dive_accel: 32.0,
                 gravity: 18.0,
@@ -733,6 +733,7 @@ pub mod movement {
                     tuning.glide_brake_accel,
                     tuning.backward_accel,
                     tuning.max_backward_speed,
+                    !input.has_lateral_axis(),
                     dt,
                 );
                 state.velocity.x *= tuning.glide_brake_drag.powf(dt);
@@ -764,6 +765,7 @@ pub mod movement {
                     tuning.air_brake_accel,
                     tuning.backward_accel,
                     tuning.max_backward_speed,
+                    !input.has_lateral_axis(),
                     dt,
                 );
             }
@@ -1006,18 +1008,31 @@ pub mod movement {
         brake_accel: f32,
         reverse_accel: f32,
         max_backward_speed: f32,
+        brake_sideways_momentum: bool,
         dt: f32,
     ) {
         let forward = horizontal_or(forward, Vec3::Z);
-        let forward_speed = horizontal(*velocity).dot(forward);
+        let horizontal_velocity = horizontal(*velocity);
+        let horizontal_speed = horizontal_velocity.length();
+        let backward_alignment = horizontal_velocity.dot(-forward);
+        let sideways_speed = (horizontal_speed.powi(2) - backward_alignment.max(0.0).powi(2))
+            .max(0.0)
+            .sqrt();
 
-        if forward_speed > 0.0 {
-            let reduction = forward_speed.min(brake_accel.max(0.0) * dt);
-            velocity.x -= forward.x * reduction;
-            velocity.z -= forward.z * reduction;
-            return;
+        if brake_sideways_momentum
+            && horizontal_speed > 0.01
+            && (backward_alignment <= 0.1 || sideways_speed > 0.75)
+        {
+            let reduction = horizontal_speed.min(brake_accel.max(0.0) * dt);
+            let braking = horizontal_velocity / horizontal_speed * reduction;
+            velocity.x -= braking.x;
+            velocity.z -= braking.z;
+            if horizontal_speed - reduction > 0.05 {
+                return;
+            }
         }
 
+        let forward_speed = horizontal(*velocity).dot(forward);
         let max_backward_speed = max_backward_speed.max(0.0);
         if forward_speed > -max_backward_speed {
             let next_forward_speed =
@@ -1235,6 +1250,77 @@ pub mod movement {
                 "expected glide brake to bleed speed, got {forward_speed}"
             );
             assert!(forward_speed >= -tuning.max_backward_speed - 0.5);
+        }
+
+        #[test]
+        fn gliding_backward_input_brakes_sideways_momentum() {
+            let tuning = FlightTuning::default();
+            let facing = Facing::new(Vec3::Z, Vec3::X);
+            let mut state = FlightState::new(
+                Vec3::new(0.0, 45.0, 0.0),
+                Vec3::new(26.0, -2.0, 4.0),
+                FlightController {
+                    mode: FlightMode::Gliding,
+                    launch_available: false,
+                    ..default()
+                },
+            );
+            let input = FlightInput {
+                backward: true,
+                glide: true,
+                ..default()
+            };
+
+            for _ in 0..30 {
+                state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+            }
+
+            let side_speed = horizontal(state.velocity).dot(facing.right);
+            let horizontal_speed = horizontal(state.velocity).length();
+            assert!(
+                side_speed.abs() < 5.0,
+                "expected air brake to bleed sideways drift, got {side_speed}"
+            );
+            assert!(
+                horizontal_speed < 12.0,
+                "expected air brake to shed planar speed, got {horizontal_speed}"
+            );
+        }
+
+        #[test]
+        fn backward_diagonal_glide_input_steers_toward_rear_quadrant() {
+            let tuning = FlightTuning::default();
+            let facing = Facing::new(Vec3::Z, Vec3::X);
+            let mut state = FlightState::new(
+                Vec3::new(0.0, 45.0, 0.0),
+                Vec3::new(18.0, -2.0, 26.0),
+                FlightController {
+                    mode: FlightMode::Gliding,
+                    launch_available: false,
+                    ..default()
+                },
+            );
+            let input = FlightInput {
+                backward: true,
+                left: true,
+                glide: true,
+                ..default()
+            };
+
+            for _ in 0..45 {
+                state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+            }
+
+            let left_speed = horizontal(state.velocity).dot(-facing.right);
+            let forward_speed = horizontal(state.velocity).dot(facing.forward);
+            assert!(
+                left_speed > 10.0,
+                "expected back-left input to build leftward control, got {left_speed}"
+            );
+            assert!(
+                forward_speed < 6.0,
+                "expected back-left input to brake forward drift, got {forward_speed}"
+            );
         }
 
         #[test]
@@ -3660,7 +3746,7 @@ pub mod eval {
     const AIR_CONTROL_MAX_AVG_CAMERA_FOLLOW_ERROR_DEGREES: f32 = 55.0;
     const AIR_CONTROL_MAX_P95_CAMERA_FOLLOW_ERROR_DEGREES: f32 = 70.0;
     const MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES: f32 = 15.0;
-    const AIR_CONTROL_MIN_AIR_BRAKE_SPEED_DROP_MPS: f32 = 3.0;
+    const AIR_CONTROL_MIN_AIR_BRAKE_SPEED_DROP_MPS: f32 = 10.0;
     const AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS: f32 = 12.0;
     const AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES: f32 = 8.0;
 
@@ -6927,7 +7013,7 @@ pub mod eval {
                 max_camera_step_distance_m: 14.0,
                 max_camera_rotation_delta_degrees: 30.0,
                 max_camera_orbit_alignment_degrees: 45.0,
-                max_abs_camera_view_yaw_degrees: 12.0,
+                max_abs_camera_view_yaw_degrees: 14.0,
                 min_camera_obstruction_adjustment_m: 0.0,
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
