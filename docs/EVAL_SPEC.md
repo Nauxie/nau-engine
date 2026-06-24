@@ -200,7 +200,7 @@ Each run writes to the eval output directory:
 - `visual_audit.json`: non-golden image audit for screenshot evals run through `tools/eval.sh` unless `NAU_EVAL_VISUAL_AUDIT=0` is set.
 
 The summary is the primary artifact for agents. Screenshots are for visual review and should not be treated as pixel-perfect golden images.
-`tools/eval.sh` checks that declared PNG artifacts exist, are large enough, and pass a lightweight visual audit for resolution, nonblack/nonwhite exposure, luma variance, color variety, edge density, top-sky coverage, lower-scene coverage, center-scene coverage, center detail, and HUD-text dominance. The audit catches gross render and composition failures; it does not prove exact player visibility, route-marker readability, or AAA-quality art direction.
+`tools/eval.sh` checks that declared PNG artifacts exist, are large enough, and pass a lightweight visual audit for resolution, nonblack/nonwhite exposure, luma variance, color variety, edge density, per-frame scene coverage, per-frame center detail, per-frame HUD-text dominance, and sequence-level top-sky coverage across the final screenshot plus fixed checkpoints. The audit catches gross render and composition failures; it does not prove exact player visibility, route-marker readability, or AAA-quality art direction.
 
 ## Sample Fields
 
@@ -394,7 +394,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - Island collision follows deterministic authored terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - `active_chunk_count` and `active_island_count` drive resident terrain/detail entities, but there is no asynchronous asset loading yet.
 - LOD buckets drive resident island detail, inactive or non-near chunks use cheap impostors, and hidden/resident/churn counters quantify stream-window pressure.
-- The weather-cloud counter verifies that cloud-bank entities exist, and the screenshot audit catches gross visual/composition failure, but neither proves atmosphere, fog, materials, and clouds look correct.
+- The weather-cloud counter verifies that cloud-layer entities exist, and the screenshot audit catches gross visual/composition failure, but neither proves atmosphere, fog, materials, and clouds look correct.
 - `entity_count` is still a coarse scene-scale proxy; streaming health should be read from resident island visual count and stream entity churn.
 - Route objectives are currently HUD/debug state backed by pure route objective helpers; objective progress is not yet serialized in eval samples.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.

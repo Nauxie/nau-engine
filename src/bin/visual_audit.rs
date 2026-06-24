@@ -15,7 +15,8 @@ const MIN_LUMA_STDDEV: f64 = 4.5;
 const MIN_COLORFULNESS: f64 = 6.0;
 const MIN_QUANTIZED_COLORS: usize = 24;
 const MIN_EDGE_DENSITY: f64 = 0.0025;
-const MIN_TOP_SKY_FRACTION: f64 = 0.25;
+const MIN_FRAME_TOP_SKY_FRACTION: f64 = 0.04;
+const MIN_SEQUENCE_TOP_SKY_FRACTION: f64 = 0.25;
 const MIN_LOWER_SCENE_FRACTION: f64 = 0.25;
 const MIN_CENTER_SCENE_FRACTION: f64 = 0.18;
 const MIN_CENTER_EDGE_DENSITY: f64 = 0.02;
@@ -39,8 +40,9 @@ fn main() {
         }
     }
 
-    let passed = audits.iter().all(|audit| audit.passed);
-    println!("{}", audit_report_json(passed, &audits));
+    let report_checks = report_checks(&audits);
+    let passed = report_passed(&audits, &report_checks);
+    println!("{}", audit_report_json(passed, &report_checks, &audits));
     if !passed {
         process::exit(1);
     }
@@ -176,7 +178,7 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
         Check::at_least(
             "top_sky_fraction",
             top_sky_fraction,
-            MIN_TOP_SKY_FRACTION,
+            MIN_FRAME_TOP_SKY_FRACTION,
             "ratio",
         ),
         Check::at_least(
@@ -369,16 +371,40 @@ impl Check {
     }
 }
 
-fn audit_report_json(passed: bool, audits: &[ImageAudit]) -> String {
+fn report_checks(audits: &[ImageAudit]) -> Vec<Check> {
+    let max_top_sky_fraction = audits
+        .iter()
+        .map(|audit| audit.top_sky_fraction)
+        .fold(0.0, f64::max);
+
+    vec![Check::at_least(
+        "max_top_sky_fraction",
+        max_top_sky_fraction,
+        MIN_SEQUENCE_TOP_SKY_FRACTION,
+        "ratio",
+    )]
+}
+
+fn report_passed(audits: &[ImageAudit], report_checks: &[Check]) -> bool {
+    audits.iter().all(|audit| audit.passed) && report_checks.iter().all(|check| check.passed)
+}
+
+fn audit_report_json(passed: bool, report_checks: &[Check], audits: &[ImageAudit]) -> String {
+    let checks = report_checks
+        .iter()
+        .map(check_json)
+        .collect::<Vec<_>>()
+        .join(",\n    ");
     let images = audits
         .iter()
         .map(image_audit_json)
         .collect::<Vec<_>>()
         .join(",\n    ");
     format!(
-        "{{\n  \"passed\": {},\n  \"image_count\": {},\n  \"images\": [\n    {}\n  ]\n}}",
+        "{{\n  \"passed\": {},\n  \"image_count\": {},\n  \"checks\": [\n    {}\n  ],\n  \"images\": [\n    {}\n  ]\n}}",
         passed,
         audits.len(),
+        checks,
         images
     )
 }
@@ -512,6 +538,59 @@ mod tests {
                 .iter()
                 .any(|check| check.name == "top_sky_fraction" && !check.passed)
         );
+    }
+
+    #[test]
+    fn report_allows_low_sky_close_frame_when_checkpoint_has_sky() {
+        let mut close_image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        for y in 0..MIN_HEIGHT {
+            for x in 0..MIN_WIDTH {
+                let checker = (x + y) % 2 == 0;
+                let (r, g, b) = if y < MIN_HEIGHT / 18 {
+                    (124 + (x % 32), 154 + (y % 32), 190 + ((x + y) % 32))
+                } else if y < MIN_HEIGHT / 3 {
+                    (72 + (x % 74), 60 + (y % 58), 42 + ((x + y) % 42))
+                } else if checker {
+                    (42 + (x % 95), 105 + (y % 90), 54 + ((x + y) % 56))
+                } else {
+                    (112 + (x % 82), 82 + (y % 64), 50 + ((x + y) % 52))
+                };
+                close_image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+            }
+        }
+
+        let close_audit =
+            audit_image("close.png".to_string(), close_image).expect("audit should load");
+        assert!(close_audit.passed, "{close_audit:?}");
+        assert!(close_audit.top_sky_fraction < MIN_SEQUENCE_TOP_SKY_FRACTION);
+
+        let close_only_checks = report_checks(std::slice::from_ref(&close_audit));
+        assert!(!report_passed(
+            std::slice::from_ref(&close_audit),
+            &close_only_checks
+        ));
+
+        let mut checkpoint_image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        for y in 0..MIN_HEIGHT {
+            for x in 0..MIN_WIDTH {
+                let checker = (x + y) % 2 == 0;
+                let (r, g, b) = if y < MIN_HEIGHT / 3 {
+                    (132 + (x % 32), 162 + (y % 32), 198 + ((x + y) % 32))
+                } else if checker {
+                    (44 + (x % 90), 110 + (y % 90), 58 + ((x + y) % 52))
+                } else {
+                    (118 + (x % 78), 84 + (y % 58), 52 + ((x + y) % 48))
+                };
+                checkpoint_image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+            }
+        }
+
+        let checkpoint_audit =
+            audit_image("checkpoint.png".to_string(), checkpoint_image).expect("audit should load");
+        let audits = vec![close_audit, checkpoint_audit];
+        let checks = report_checks(&audits);
+
+        assert!(report_passed(&audits, &checks), "{checks:?}");
     }
 
     #[test]
