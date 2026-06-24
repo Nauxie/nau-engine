@@ -12,6 +12,10 @@ const MIN_TERRAIN_COLOR_BANDS: u64 = 5;
 const MIN_TERRAIN_MATERIAL_WEIGHT_BANDS: u64 = 12;
 const MIN_TERRAIN_MATERIAL_CHANNELS: u64 = 3;
 const MIN_TERRAIN_MATERIAL_REGIONS: u64 = 4;
+const MIN_TERRAIN_BASE_REGION_PROMILLE: u64 = 180;
+const MIN_TERRAIN_TRANSITION_REGION_PROMILLE: u64 = 350;
+const MIN_TERRAIN_HIGHLAND_REGION_PROMILLE: u64 = 180;
+const MIN_TERRAIN_EXPOSED_REGION_PROMILLE: u64 = 150;
 const MIN_TERRAIN_RELIEF_RANGE_M: f64 = 0.8;
 const MIN_CLIFF_COLOR_BANDS: u64 = 9;
 
@@ -69,6 +73,7 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
     let mut csv_band_mismatch_count = 0u64;
     let mut csv_channel_mismatch_count = 0u64;
     let mut csv_region_mismatch_count = 0u64;
+    let mut min_region_promille = [u64::MAX; TERRAIN_MATERIAL_REGION_COUNT];
 
     let schema = manifest.get("schema").and_then(Value::as_str).unwrap_or("");
     checks.push(check_eq_str(
@@ -244,6 +249,9 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
                         csv_band_mismatch_count += u64::from(band_mismatch);
                         csv_channel_mismatch_count += u64::from(channel_mismatch);
                         csv_region_mismatch_count += u64::from(region_mismatch);
+                        for (index, promille) in csv.region_promille.iter().enumerate() {
+                            min_region_promille[index] = min_region_promille[index].min(*promille);
+                        }
 
                         artifacts.push(json!({
                             "island": island_name,
@@ -253,6 +261,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
                             "material_weight_bands": csv.material_weight_bands,
                             "material_channels": csv.material_channels,
                             "material_regions": csv.material_regions,
+                            "region_promille": {
+                                "base": csv.region_promille[0],
+                                "transition": csv.region_promille[1],
+                                "highland": csv.region_promille[2],
+                                "exposed": csv.region_promille[3]
+                            },
                             "row_count_matches_manifest": !row_mismatch,
                             "material_weight_bands_match_manifest": !band_mismatch,
                             "material_channels_match_manifest": !channel_mismatch,
@@ -326,6 +340,32 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         0,
         "csvs",
     ));
+    let min_region_promille =
+        min_region_promille.map(|value| if value == u64::MAX { 0 } else { value });
+    checks.push(check_at_least_u64(
+        "terrain_base_region_promille",
+        min_region_promille[0],
+        MIN_TERRAIN_BASE_REGION_PROMILLE,
+        "promille",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_transition_region_promille",
+        min_region_promille[1],
+        MIN_TERRAIN_TRANSITION_REGION_PROMILLE,
+        "promille",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_highland_region_promille",
+        min_region_promille[2],
+        MIN_TERRAIN_HIGHLAND_REGION_PROMILLE,
+        "promille",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_exposed_region_promille",
+        min_region_promille[3],
+        MIN_TERRAIN_EXPOSED_REGION_PROMILLE,
+        "promille",
+    ));
 
     let passed = checks.iter().all(|check| {
         check
@@ -355,6 +395,7 @@ struct WeightCsvAudit {
     material_weight_bands: u64,
     material_channels: u64,
     material_regions: u64,
+    region_promille: [u64; TERRAIN_MATERIAL_REGION_COUNT],
 }
 
 fn audit_obj_path(path: &Path) -> Result<ObjAudit, String> {
@@ -405,6 +446,7 @@ fn audit_weight_csv_text(text: &str) -> Result<WeightCsvAudit, String> {
     let mut lush = false;
     let mut exposed = false;
     let mut regions = HashSet::new();
+    let mut region_counts = [0u64; TERRAIN_MATERIAL_REGION_COUNT];
 
     for line in lines {
         let columns = line.split(',').collect::<Vec<_>>();
@@ -424,20 +466,31 @@ fn audit_weight_csv_text(text: &str) -> Result<WeightCsvAudit, String> {
             (lush_highland * 15.0).round() as u8,
             (exposed_edge * 15.0).round() as u8,
         ]);
-        regions.insert(terrain_material_region_id(lush_highland, exposed_edge));
+        let region = terrain_material_region_id(lush_highland, exposed_edge);
+        regions.insert(region);
+        region_counts[region as usize] += 1;
         base |= lush_highland < 0.18 && exposed_edge < 0.18;
         lush |= lush_highland > 0.18;
         exposed |= exposed_edge > 0.18;
         row_count += 1;
     }
 
+    let region_promille = if row_count == 0 {
+        [0; TERRAIN_MATERIAL_REGION_COUNT]
+    } else {
+        region_counts.map(|count| count * 1000 / row_count)
+    };
+
     Ok(WeightCsvAudit {
         row_count,
         material_weight_bands: bands.len() as u64,
         material_channels: u64::from(base) + u64::from(lush) + u64::from(exposed),
         material_regions: regions.len() as u64,
+        region_promille,
     })
 }
+
+const TERRAIN_MATERIAL_REGION_COUNT: usize = 4;
 
 fn terrain_material_region_id(lush_highland: f32, exposed_edge: f32) -> u8 {
     if exposed_edge >= 0.48 {
@@ -546,13 +599,21 @@ mod tests {
             "vertex,lush_highland,exposed_edge\n\
              0,0.0000,0.0000\n\
              1,0.3000,0.0000\n\
-             2,0.7000,0.8000\n",
+             2,0.7000,0.0000\n\
+             3,0.1000,0.8000\n\
+             4,0.0000,0.0000\n\
+             5,0.3000,0.0000\n\
+             6,0.3000,0.0000\n\
+             7,0.3000,0.0000\n\
+             8,0.7000,0.0000\n\
+             9,0.1000,0.8000\n",
         )
         .expect("csv should audit");
 
-        assert_eq!(audit.row_count, 3);
-        assert_eq!(audit.material_weight_bands, 3);
+        assert_eq!(audit.row_count, 10);
+        assert_eq!(audit.material_weight_bands, 4);
         assert_eq!(audit.material_channels, 3);
-        assert_eq!(audit.material_regions, 3);
+        assert_eq!(audit.material_regions, 4);
+        assert_eq!(audit.region_promille, [200, 400, 200, 200]);
     }
 }
