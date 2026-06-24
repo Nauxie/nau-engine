@@ -281,6 +281,14 @@ Every sample includes:
 - `min_island_body_silhouette_segments`
 - `avg_island_body_silhouette_segments`
 - `max_island_body_mesh_vertices`
+- `generated_tree_trunk_count`
+- `generated_tree_canopy_count`
+- `min_tree_trunk_mesh_vertices`
+- `min_tree_canopy_mesh_vertices`
+- `generated_weather_cloud_count`
+- `min_weather_cloud_lobe_count`
+- `max_weather_cloud_lobe_count`
+- `min_weather_cloud_mesh_vertices`
 - `resident_island_visual_count`
 - `stream_visibility_changes_this_frame`
 - `max_stream_visibility_changes_per_frame`
@@ -380,6 +388,11 @@ The summary aggregates:
 - min island body silhouette segment count
 - max average island body silhouette segment count
 - max island body mesh vertex count
+- min generated tree trunk/canopy counts
+- min generated tree trunk/canopy mesh vertex counts
+- min generated weather cloud count
+- min/max weather cloud lobe counts
+- min weather cloud mesh vertex count
 - max resident island visual count
 - max stream visibility changes per frame
 - total stream visibility changes
@@ -516,7 +529,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - `active_chunk_count` and `active_island_count` drive resident terrain/detail entities, and visual asset slots are declared, counted, and split by residency class, but there is no asynchronous asset streaming policy yet.
 - Missing glTF files are counted as placeholders and intentionally do not trigger load errors; only files that exist under `assets/` are queued through Bevy's `AssetServer`, and queued handles then report queued/loading/loaded/failed state. `ready_visual_asset_slot_count` means Bevy has loaded the scene asset, not merely that the file exists. `spawned_visual_asset_scene_count` and `ready_visual_asset_scene_count` track Bevy scene-instance lifecycle separately from load state.
 - LOD buckets drive resident island detail, inactive or non-near chunks use cheap impostors, and hidden/resident/churn counters quantify stream-window pressure.
-- The weather-cloud and environment-motion counters verify that cloud-layer entities and wind-responsive near-LOD visual motion exist, and focused unit tests assert that generated trunks, canopies, and cloud clusters are no longer single cylinder/sphere meshes. The screenshot audit catches gross visual/composition failure, but neither proves atmosphere, fog, materials, vegetation, clouds, or animation look correct.
+- The weather-cloud, generated tree/cloud shape, and environment-motion counters verify that cloud-layer entities, lobe counts, mesh vertex floors, and wind-responsive near-LOD visual motion exist. Focused unit tests assert that generated trunks, canopies, and cloud clusters are no longer single cylinder/sphere meshes. The screenshot audit catches gross visual/composition failure, but neither proves atmosphere, fog, materials, vegetation, clouds, or animation look correct.
 - `entity_count` is still a coarse scene-scale proxy; streaming health should be read from resident island visual count and stream entity churn.
 - Route objectives are HUD/debug state backed by pure route objective helpers and serialized into eval samples, but only updraft and branch-recovery routes currently gate objective completion.
 - Aerial power-up gates are primitive glowing route rings with simple one-time collection state; there is no inventory UI, reset flow, audio/particles, or authored ability progression yet.
