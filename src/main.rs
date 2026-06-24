@@ -80,7 +80,10 @@ const TREE_BRANCH_SEGMENTS: usize = 6;
 const CLOUD_BANK_LOBES: usize = 10;
 const CLOUD_VEIL_LOBES: usize = 6;
 const AUTHORED_ASSET_PROBE_KINDS: &[VisualAssetKind] = &[
+    VisualAssetKind::IslandTerrain,
+    VisualAssetKind::IslandFoliage,
     VisualAssetKind::IslandRock,
+    VisualAssetKind::IslandWater,
     VisualAssetKind::RouteMarker,
     VisualAssetKind::WeatherLayer,
     VisualAssetKind::DistantImpostor,
