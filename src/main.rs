@@ -6286,6 +6286,7 @@ fn collect_eval_metrics(
         content_metrics.generated_tree_canopy_count,
         content_metrics.min_tree_trunk_mesh_vertices,
         content_metrics.min_tree_canopy_mesh_vertices,
+        content_metrics.detail_biome_palette_count(),
         content_metrics.generated_weather_cloud_count,
         content_metrics.min_weather_cloud_lobe_count,
         content_metrics.max_weather_cloud_lobe_count,
