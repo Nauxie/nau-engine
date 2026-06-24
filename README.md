@@ -20,7 +20,7 @@ The first executable is a simple 3D flight testbed:
 - camera-relative grounded and airborne steering on `WASD`, with separate ground friction so walking is playable before launch
 - mouse-look third-person follow camera with player-centered orbit pitch, separate yaw/pitch tuning, click-to-lock cursor capture, obstruction avoidance, and surface-clearance clamping
 - a 12-island floating archipelago with launch, midpoint, landing, high-altitude, and distant reference islands
-- deterministic collision-aware island relief with stream-windowed terrain, low-poly distant impostors, and distance-managed detail props: varied generated terrain colors, trees, ponds, stones, route cairns, launch beacon, and landing-garden markers
+- deterministic collision-aware island relief with smoother generated terrain normals, stream-windowed terrain, low-poly distant impostors, and distance-managed detail props: varied generated terrain colors, batched ground-cover blades, trees, ponds, stones, route cairns, launch beacon, and landing-garden markers
 - declared glTF visual asset slots for future player, glider, island, route-marker, weather, and impostor assets, with runtime missing/queued/loading/loaded/failed and residency-split diagnostics while primitives remain the active implementation
 - Bevy-native atmosphere, dynamic sun/fog/exposure weather, volumetric fog/light, bloom, filmic tonemapping, procedural PBR surface maps, reflective/transmissive water, emissive markers, drifting cloud banks, and high cirrus veils
 - simple terrain-surface landing detection with one-shot landing friction
@@ -60,7 +60,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ./tools/eval.sh island_launch_to_landing target/eval/island_launch_to_landing
 ```
 
-`tools/eval.sh` runs metric-only evals by default and hides the native window during those runs. Use `NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh ...` when checkpoint PNG artifacts and the non-golden visual audit are needed; screenshot evals require `jq` for artifact extraction. The audit checks image quality plus basic scene composition signals such as per-frame scene coverage, center detail, player visibility, HUD-text balance, sequence-level route-marker readability, and sequence-level sky coverage across final and checkpoint screenshots. Set `NAU_EVAL_VISUAL_AUDIT=0` to collect screenshots without the audit.
+`tools/eval.sh` runs metric-only evals by default and hides the native window during those runs. Use `NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh ...` when checkpoint PNG artifacts and the non-golden visual audit are needed; screenshot evals require `jq` for artifact extraction and use an opaque window surface so transparent clouds/updrafts cannot composite against other desktop windows. The audit checks image quality plus basic scene composition signals such as per-frame scene coverage, center detail, player visibility, HUD-text balance, sequence-level route-marker readability, and sequence-level sky coverage across final and checkpoint screenshots. Set `NAU_EVAL_VISUAL_AUDIT=0` to collect screenshots without the audit.
 
 ## Controls
 
