@@ -71,6 +71,7 @@ const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
 const PROCEDURAL_TEXTURE_SIZE: u32 = 64;
 const TERRAIN_TEXTURE_SIZE: u32 = 128;
 const TERRAIN_UV_TILES_PER_METER: f32 = 1.0 / 12.0;
+const TERRAIN_BIOME_PALETTE_COUNT: usize = 5;
 const INITIAL_SKY_CLEAR_COLOR: Color = Color::srgb(0.50, 0.68, 0.92);
 const TREE_CANOPY_LATITUDE_SEGMENTS: usize = 6;
 const TREE_CANOPY_LONGITUDE_SEGMENTS: usize = 12;
@@ -497,6 +498,7 @@ struct IslandContentDiagnostics {
     generated_tree_canopy_count: usize,
     min_tree_trunk_mesh_vertices: usize,
     min_tree_canopy_mesh_vertices: usize,
+    detail_biome_palette_mask: u32,
     generated_weather_cloud_count: usize,
     min_weather_cloud_lobe_count: usize,
     max_weather_cloud_lobe_count: usize,
@@ -606,6 +608,14 @@ impl IslandContentDiagnostics {
                 self.min_tree_canopy_mesh_vertices.min(mesh_vertices);
         }
         self.generated_tree_canopy_count += 1;
+    }
+
+    fn record_detail_biome_palette(&mut self, palette_index: usize) {
+        self.detail_biome_palette_mask |= 1_u32 << (palette_index % TERRAIN_BIOME_PALETTE_COUNT);
+    }
+
+    fn detail_biome_palette_count(self) -> usize {
+        self.detail_biome_palette_mask.count_ones() as usize
     }
 
     fn record_generated_weather_cloud(&mut self, lobe_count: usize, mesh_vertices: usize) {
@@ -1819,27 +1829,9 @@ fn setup(
         47,
         LinearRgba::rgb(4.8, 3.2, 0.7),
     );
-    let trunk_material = textured_material(
-        &mut images,
-        &mut materials,
-        [82, 48, 28, 255],
-        [46, 28, 18, 255],
-        [132, 84, 48, 255],
-        53,
-        0.96,
-        0.16,
-    );
-    let foliage_material = textured_material(
-        &mut images,
-        &mut materials,
-        [28, 106, 54, 255],
-        [14, 70, 38, 255],
-        [86, 150, 76, 255],
-        59,
-        0.88,
-        0.22,
-    );
-    let ground_cover_material = ground_cover_material(&mut images, &mut materials);
+    let biome_detail_material_sets = (0..TERRAIN_BIOME_PALETTE_COUNT)
+        .map(|index| biome_detail_materials(&mut images, &mut materials, index))
+        .collect::<Vec<_>>();
     let flower_material = emissive_material(
         &mut images,
         &mut materials,
@@ -1850,16 +1842,6 @@ fn setup(
         LinearRgba::rgb(1.2, 0.25, 0.45),
     );
     let water_material = water_surface_material(&mut images, &mut materials);
-    let path_material = textured_material(
-        &mut images,
-        &mut materials,
-        [118, 102, 76, 255],
-        [72, 64, 54, 255],
-        [166, 146, 104, 255],
-        67,
-        0.98,
-        0.18,
-    );
     let ground_material = textured_material(
         &mut images,
         &mut materials,
@@ -1957,7 +1939,7 @@ fn setup(
         let top_material = if island.is_target {
             target_grass_material.clone()
         } else {
-            match index % 5 {
+            match index % TERRAIN_BIOME_PALETTE_COUNT {
                 0 => island_grass_material.clone(),
                 1 => island_meadow_material.clone(),
                 2 => island_clay_material.clone(),
@@ -1975,12 +1957,9 @@ fn setup(
             island_under_material.clone(),
             target_marker_material.clone(),
             updraft_marker_material.clone(),
-            trunk_material.clone(),
-            foliage_material.clone(),
-            ground_cover_material.clone(),
+            biome_detail_material_sets[index % TERRAIN_BIOME_PALETTE_COUNT].clone(),
             flower_material.clone(),
             water_material.clone(),
-            path_material.clone(),
             index,
             *island,
         );
@@ -2710,16 +2689,19 @@ fn updraft_ribbon_material(materials: &mut Assets<StandardMaterial>) -> Handle<S
 fn ground_cover_material(
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
+    primary: [u8; 4],
+    secondary: [u8; 4],
+    accent: [u8; 4],
+    seed: u32,
 ) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial {
         base_color: Color::WHITE,
-        base_color_texture: Some(images.add(procedural_surface_texture(
-            [62, 138, 62, 255],
-            [26, 92, 46, 255],
-            [212, 178, 86, 255],
-            97,
-        ))),
-        metallic_roughness_texture: Some(images.add(procedural_material_map(1_397, 0.94))),
+        base_color_texture: Some(
+            images.add(procedural_surface_texture(primary, secondary, accent, seed)),
+        ),
+        metallic_roughness_texture: Some(
+            images.add(procedural_material_map(seed.wrapping_add(1_300), 0.94)),
+        ),
         alpha_mode: AlphaMode::Opaque,
         cull_mode: None,
         double_sided: true,
@@ -3661,12 +3643,9 @@ fn queue_sky_island(
     under_material: Handle<StandardMaterial>,
     marker_material: Handle<StandardMaterial>,
     branch_marker_material: Handle<StandardMaterial>,
-    trunk_material: Handle<StandardMaterial>,
-    foliage_material: Handle<StandardMaterial>,
-    ground_cover_material: Handle<StandardMaterial>,
+    detail_materials: IslandDetailMaterials,
     flower_material: Handle<StandardMaterial>,
     water_material: Handle<StandardMaterial>,
-    path_material: Handle<StandardMaterial>,
     island_index: usize,
     island: SkyIsland,
 ) {
@@ -3808,12 +3787,9 @@ fn queue_sky_island(
         &mut visual_index,
         content_diagnostics,
         meshes,
-        trunk_material,
-        foliage_material,
-        ground_cover_material,
+        detail_materials,
         flower_material,
         water_material,
-        path_material,
         island_index,
         island,
     );
@@ -4041,7 +4017,7 @@ struct TerrainBiomePalette {
 }
 
 fn terrain_biome_palette(island_index: usize) -> TerrainBiomePalette {
-    match island_index % 5 {
+    match island_index % TERRAIN_BIOME_PALETTE_COUNT {
         1 => TerrainBiomePalette {
             grass: Vec3::new(0.30, 0.56, 0.24),
             moss: Vec3::new(0.20, 0.38, 0.24),
@@ -4107,6 +4083,112 @@ fn terrain_biome_palette(island_index: usize) -> TerrainBiomePalette {
                 Vec3::new(0.39, 0.34, 0.29),
             ],
         },
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct BiomeDetailColorSet {
+    trunk_primary: [u8; 4],
+    trunk_secondary: [u8; 4],
+    trunk_accent: [u8; 4],
+    foliage_primary: [u8; 4],
+    foliage_secondary: [u8; 4],
+    foliage_accent: [u8; 4],
+    ground_primary: [u8; 4],
+    ground_secondary: [u8; 4],
+    ground_accent: [u8; 4],
+    stone_primary: [u8; 4],
+    stone_secondary: [u8; 4],
+    stone_accent: [u8; 4],
+}
+
+#[derive(Clone)]
+struct IslandDetailMaterials {
+    trunk: Handle<StandardMaterial>,
+    foliage: Handle<StandardMaterial>,
+    ground_cover: Handle<StandardMaterial>,
+    stone: Handle<StandardMaterial>,
+}
+
+fn rgba8(color: Vec3) -> [u8; 4] {
+    [
+        (color.x.clamp(0.0, 1.0) * 255.0).round() as u8,
+        (color.y.clamp(0.0, 1.0) * 255.0).round() as u8,
+        (color.z.clamp(0.0, 1.0) * 255.0).round() as u8,
+        255,
+    ]
+}
+
+fn biome_detail_color_set(island_index: usize) -> BiomeDetailColorSet {
+    let palette = terrain_biome_palette(island_index);
+    let bark_base = palette.clay.lerp(Vec3::new(0.25, 0.14, 0.08), 0.46);
+    let foliage_base = palette.grass.lerp(palette.moss, 0.54);
+    let ground_base = palette.grass.lerp(palette.meadow, 0.24);
+    let stone_base = palette.rock.lerp(palette.clay, 0.28);
+
+    BiomeDetailColorSet {
+        trunk_primary: rgba8(bark_base),
+        trunk_secondary: rgba8(bark_base * 0.58),
+        trunk_accent: rgba8(bark_base.lerp(Vec3::new(0.72, 0.46, 0.26), 0.38)),
+        foliage_primary: rgba8(foliage_base),
+        foliage_secondary: rgba8(palette.moss * 0.72),
+        foliage_accent: rgba8(foliage_base.lerp(palette.meadow, 0.34)),
+        ground_primary: rgba8(ground_base),
+        ground_secondary: rgba8(palette.moss.lerp(palette.rock, 0.16)),
+        ground_accent: rgba8(palette.meadow.lerp(Vec3::new(0.92, 0.78, 0.38), 0.22)),
+        stone_primary: rgba8(stone_base),
+        stone_secondary: rgba8(palette.rock * 0.68),
+        stone_accent: rgba8(stone_base.lerp(Vec3::splat(0.76), 0.22)),
+    }
+}
+
+fn biome_detail_materials(
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
+    island_index: usize,
+) -> IslandDetailMaterials {
+    let colors = biome_detail_color_set(island_index);
+    let seed_base = 211 + island_index as u32 * 41;
+
+    IslandDetailMaterials {
+        trunk: textured_material(
+            images,
+            materials,
+            colors.trunk_primary,
+            colors.trunk_secondary,
+            colors.trunk_accent,
+            seed_base,
+            0.96,
+            0.16,
+        ),
+        foliage: textured_material(
+            images,
+            materials,
+            colors.foliage_primary,
+            colors.foliage_secondary,
+            colors.foliage_accent,
+            seed_base + 7,
+            0.88,
+            0.22,
+        ),
+        ground_cover: ground_cover_material(
+            images,
+            materials,
+            colors.ground_primary,
+            colors.ground_secondary,
+            colors.ground_accent,
+            seed_base + 13,
+        ),
+        stone: textured_material(
+            images,
+            materials,
+            colors.stone_primary,
+            colors.stone_secondary,
+            colors.stone_accent,
+            seed_base + 19,
+            0.98,
+            0.18,
+        ),
     }
 }
 
@@ -4607,23 +4689,21 @@ fn queue_sky_island_details(
     visual_index: &mut usize,
     content_diagnostics: &mut IslandContentDiagnostics,
     meshes: &mut Assets<Mesh>,
-    trunk_material: Handle<StandardMaterial>,
-    foliage_material: Handle<StandardMaterial>,
-    ground_cover_material: Handle<StandardMaterial>,
+    detail_materials: IslandDetailMaterials,
     flower_material: Handle<StandardMaterial>,
     water_material: Handle<StandardMaterial>,
-    path_material: Handle<StandardMaterial>,
     island_index: usize,
     island: SkyIsland,
 ) {
     let detail_phase = island_index as f32 * 0.77;
+    content_diagnostics.record_detail_biome_palette(island_index);
     queue_island_visual(
         entries,
         visual_index,
         island,
         IslandVisualLayer::Detail,
         meshes.add(island_ground_cover_mesh(island_index, island)),
-        ground_cover_material,
+        detail_materials.ground_cover.clone(),
         Transform::default(),
         None,
         "island ground cover",
@@ -4663,7 +4743,7 @@ fn queue_sky_island_details(
             island,
             IslandVisualLayer::Detail,
             meshes.add(trunk_mesh),
-            trunk_material.clone(),
+            detail_materials.trunk.clone(),
             Transform::from_translation(trunk_center),
             Some(CameraObstacle(CameraObstruction::new(
                 trunk_center,
@@ -4678,7 +4758,7 @@ fn queue_sky_island_details(
             island,
             IslandVisualLayer::Detail,
             meshes.add(canopy_mesh),
-            foliage_material.clone(),
+            detail_materials.foliage.clone(),
             Transform::from_translation(canopy_center),
             Some(CameraObstacle(CameraObstruction::new(
                 canopy_center,
@@ -4703,7 +4783,7 @@ fn queue_sky_island_details(
             island,
             IslandVisualLayer::Detail,
             meshes.add(Sphere::new(stone_scale)),
-            path_material.clone(),
+            detail_materials.stone.clone(),
             Transform::from_xyz(x, surface_y + stone_scale * 0.45, z),
             None,
             "island stone scatter",
@@ -4837,7 +4917,7 @@ fn queue_sky_island_details(
             island,
             IslandVisualLayer::Detail,
             meshes.add(launch_trunk_mesh),
-            trunk_material,
+            detail_materials.trunk,
             Transform::from_translation(launch_tree_center),
             Some(CameraObstacle(CameraObstruction::new(
                 launch_tree_center,
@@ -4852,7 +4932,7 @@ fn queue_sky_island_details(
             island,
             IslandVisualLayer::Detail,
             meshes.add(launch_canopy_mesh),
-            foliage_material,
+            detail_materials.foliage,
             Transform::from_translation(launch_canopy_center),
             Some(CameraObstacle(CameraObstruction::new(
                 launch_canopy_center,
@@ -5864,7 +5944,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -5941,6 +6021,7 @@ fn update_debug_readout(
         content_metrics.generated_tree_canopy_count,
         content_metrics.min_tree_trunk_mesh_vertices,
         content_metrics.min_tree_canopy_mesh_vertices,
+        content_metrics.detail_biome_palette_count(),
         content_metrics.generated_weather_cloud_count,
         content_metrics.min_weather_cloud_lobe_count,
         content_metrics.max_weather_cloud_lobe_count,
@@ -7029,9 +7110,32 @@ mod tests {
     }
 
     #[test]
+    fn biome_detail_color_sets_vary_vegetation_and_stone_hues() {
+        let foliage_keys = (0..TERRAIN_BIOME_PALETTE_COUNT)
+            .map(|index| biome_detail_color_set(index).foliage_primary)
+            .collect::<HashSet<_>>();
+        let stone_keys = (0..TERRAIN_BIOME_PALETTE_COUNT)
+            .map(|index| biome_detail_color_set(index).stone_primary)
+            .collect::<HashSet<_>>();
+
+        assert_eq!(
+            foliage_keys.len(),
+            TERRAIN_BIOME_PALETTE_COUNT,
+            "generated tree canopies should inherit per-island biome identity"
+        );
+        assert!(
+            stone_keys.len() >= TERRAIN_BIOME_PALETTE_COUNT - 1,
+            "stone scatter should vary with the island biome instead of sharing one material"
+        );
+    }
+
+    #[test]
     fn content_diagnostics_tracks_generated_tree_and_cloud_complexity() {
         let mut diagnostics = IslandContentDiagnostics::default();
 
+        diagnostics.record_detail_biome_palette(0);
+        diagnostics.record_detail_biome_palette(2);
+        diagnostics.record_detail_biome_palette(2);
         diagnostics.record_generated_tree_trunk(26);
         diagnostics.record_generated_tree_trunk(30);
         diagnostics.record_generated_tree_canopy(226);
@@ -7043,6 +7147,7 @@ mod tests {
         assert_eq!(diagnostics.generated_tree_canopy_count, 2);
         assert_eq!(diagnostics.min_tree_trunk_mesh_vertices, 26);
         assert_eq!(diagnostics.min_tree_canopy_mesh_vertices, 226);
+        assert_eq!(diagnostics.detail_biome_palette_count(), 2);
         assert_eq!(diagnostics.generated_weather_cloud_count, 2);
         assert_eq!(diagnostics.min_weather_cloud_lobe_count, 4);
         assert_eq!(diagnostics.max_weather_cloud_lobe_count, 7);
