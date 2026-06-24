@@ -25,9 +25,9 @@ The first executable is a simple 3D flight testbed:
 - simple terrain-surface landing detection with one-shot landing friction
 - live debug readout for frame time, speed, altitude, target distance, camera pitch/distance/framing angle/motion/obstruction/yaw offset, velocity, visual wind-field count, lift-field count, sky-island count, active chunk window, near/mid/far LOD island buckets, visible/hidden terrain, impostor, and detail counts, resident island visual count, and stream visibility churn
 - visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
-- authored crosswind fields plus a paired gameplay updraft route with aligned visual wind volumes and visible lift-column guide markers
+- authored crosswind fields plus a paired gameplay updraft route with aligned visual wind volumes, visible lift-column guide markers, and marked recovery branch islands
 - deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state/pose math
-- scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, long-glide visibility, updraft lift, and island launch-to-landing with traversal, camera, frame-time, content-scale, streaming/LOD, stream-visibility, weather-cloud, resident visual, visibility-churn, and visible-detail summary metrics plus fixed camera checkpoint screenshots
+- scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, long-glide visibility, updraft lift, branch recovery landing, and island launch-to-landing with traversal, camera, frame-time, content-scale, streaming/LOD, stream-visibility, weather-cloud, resident visual, visibility-churn, and visible-detail summary metrics plus fixed camera checkpoint screenshots
 
 This is intentionally not a full physics simulation yet. The first job is to create a place where movement constants can be tuned quickly.
 
@@ -52,6 +52,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ./tools/eval.sh camera_turn_stability target/eval/camera_turn_stability
 ./tools/eval.sh camera_strafe_stability target/eval/camera_strafe_stability
 ./tools/eval.sh updraft_route target/eval/updraft_route
+./tools/eval.sh branch_recovery_route target/eval/branch_recovery_route
 ./tools/eval.sh long_glide_visibility target/eval/long_glide_visibility
 ./tools/eval.sh island_launch_to_landing target/eval/island_launch_to_landing
 ```
@@ -75,7 +76,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ## Near-Term Roadmap
 
 1. Extend screenshot audits toward explicit player visibility, route-marker readability, and severe clipping classification.
-2. Add route recovery choices around the gameplay updrafts instead of relying on one scripted line.
+2. Add an objective/checkpoint layer so branch choices become explicit player goals instead of only eval targets.
 3. Promote stream-window visibility counters into actual terrain despawn, asset loading, and richer distant impostors.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
 
