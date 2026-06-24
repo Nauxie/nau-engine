@@ -108,7 +108,7 @@ Export the generated island substrate for offline terrain/material inspection wi
 ./tools/terrain_export.sh target/terrain_export
 ```
 
-The export writes `manifest.json`, per-island terrain/cliff/underside OBJ meshes, `*_terrain_material_weights.csv` sidecars, and `audit.json`. The audit validates schema, mesh/material floors, artifact presence, OBJ vertex/face/color counts, and terrain material-weight CSV rows/bands/channels. This is still an offline structural gate rather than a final art-quality score.
+The export writes `manifest.json`, per-island terrain/cliff/underside OBJ meshes, `*_terrain_material_weights.csv` sidecars, and `audit.json`. The audit validates schema, mesh/material floors, artifact presence, OBJ vertex/face/color counts, terrain material-weight CSV rows/bands/channels, and derived material-region coverage. This is still an offline structural gate rather than a final art-quality score.
 
 ## Current Scenarios
 
@@ -289,6 +289,7 @@ Every sample includes:
 - `min_island_terrain_color_bands`
 - `min_island_terrain_material_weight_bands`
 - `min_island_terrain_material_channels`
+- `min_island_terrain_material_regions`
 - `min_island_terrain_relief_range_m`
 - `min_island_cliff_color_bands`
 - `procedural_island_body_count`
@@ -351,7 +352,7 @@ The island terrain/detail/impostor hidden counts are catalog entries that are no
 The visual asset fields report the declared glTF scene inventory, how many slots are loaded and ready, how many are still using generated placeholders, how many Bevy scene handles are queued/loading/loaded/failed, how many optional scene instances have spawned/reported ready, how many named player animation clips are declared/ready, whether nested animation players were linked, whether animation graphs were prepared, and how slots divide across always-loaded, stream-window, near-LOD, far-LOD, and weather residency classes. Missing files and failed loads count as placeholder-backed; queued/loading files are not counted as ready until Bevy reports them loaded. These are readiness signals for replacing primitives with real assets; they do not prove final art quality yet.
 The power-up fields report authored aerial boost gates, how many remain visible, how many have been collected, whether an effect is currently active, and the total activation count. They are route-readiness signals for the simple power-up slice, not final ability design.
 The environment-motion fields report how many resident near-LOD visuals are wind-responsive and the largest sampled transform offset from their base placement. They prove the visual motion layer exists and is active; they do not evaluate final animation quality.
-The island-terrain fields report generated terrain surface count, minimum terrain mesh vertex count, minimum vertex-color band count, minimum encoded material-weight band count, minimum material channel count, minimum sampled terrain relief range, and minimum cliff/underside color-band count. The material weights are currently encoded into `UV_1` as lush/highland and exposed-edge blend channels so future PBR material blending or glTF export has a measurable substrate. These are structural signals for denser terrain and stratified rock detail; they do not replace screenshot or human review for final material quality.
+The island-terrain fields report generated terrain surface count, minimum terrain mesh vertex count, minimum vertex-color band count, minimum encoded material-weight band count, minimum material channel count, minimum derived material-region count, minimum sampled terrain relief range, and minimum cliff/underside color-band count. The material weights are currently encoded into `UV_1` as lush/highland and exposed-edge blend channels; material regions quantize those channels into stable base, transition, lush, and exposed-edge identities so future PBR material blending or glTF export has a measurable substrate. These are structural signals for denser terrain and stratified rock detail; they do not replace screenshot or human review for final material quality.
 The island-body fields report whether the catalogued route island bodies are generated procedural meshes or registered primitive/fallback body placeholders, plus the minimum silhouette segment count and body mesh vertex count signal. They are a structural signal for replacing cylinder-like islands; they do not prove final terrain art quality or texture fidelity.
 
 ## Summary Metrics
@@ -408,6 +409,7 @@ The summary aggregates:
 - min island terrain vertex-color band count
 - min island terrain material-weight band count
 - min island terrain material channel count
+- min island terrain material-region count
 - min island terrain relief range
 - min island cliff color-band count
 - min procedural island body count
@@ -481,7 +483,7 @@ The pass/fail checks currently guard:
 - authored aerial power-up counts stay populated, and power-up scenarios collect enough gates with enough sampled active-effect frames
 - weather cloud count stays populated so the first non-debug weather layer cannot silently disappear
 - environment-motion visual count and offset stay populated so wind-responsive near-LOD trees/ponds cannot silently disappear or freeze
-- island terrain surface count, mesh vertex floor, vertex-color band floor, material-weight band/channel floors, relief-range floor, and cliff color-band floor stay populated so the generated world cannot silently regress to lower-resolution, flatter, or visually single-tone island surfaces
+- island terrain surface count, mesh vertex floor, vertex-color band floor, material-weight band/channel/region floors, relief-range floor, and cliff color-band floor stay populated so the generated world cannot silently regress to lower-resolution, flatter, or visually single-tone island surfaces
 - procedural island body count stays populated throughout the run so sky-island bodies cannot silently disappear or fall below the expected generated catalog
 - registered primitive island body count remains zero so explicit fallback body placeholders fail the eval loop
 - island body silhouette segment count stays above the scenario floor so the route cannot collapse back to low-resolution round islands

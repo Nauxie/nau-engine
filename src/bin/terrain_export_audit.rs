@@ -11,6 +11,7 @@ const MIN_TERRAIN_MESH_VERTICES: u64 = 2305;
 const MIN_TERRAIN_COLOR_BANDS: u64 = 5;
 const MIN_TERRAIN_MATERIAL_WEIGHT_BANDS: u64 = 12;
 const MIN_TERRAIN_MATERIAL_CHANNELS: u64 = 3;
+const MIN_TERRAIN_MATERIAL_REGIONS: u64 = 4;
 const MIN_TERRAIN_RELIEF_RANGE_M: f64 = 0.8;
 const MIN_CLIFF_COLOR_BANDS: u64 = 9;
 
@@ -67,6 +68,7 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
     let mut csv_row_mismatch_count = 0u64;
     let mut csv_band_mismatch_count = 0u64;
     let mut csv_channel_mismatch_count = 0u64;
+    let mut csv_region_mismatch_count = 0u64;
 
     let schema = manifest.get("schema").and_then(Value::as_str).unwrap_or("");
     checks.push(check_eq_str(
@@ -154,6 +156,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         MIN_TERRAIN_MATERIAL_CHANNELS,
         "channels",
     ));
+    checks.push(check_at_least_u64(
+        "terrain_material_regions",
+        value_u64(minimums, "terrain_material_regions"),
+        MIN_TERRAIN_MATERIAL_REGIONS,
+        "regions",
+    ));
     checks.push(check_at_least_f64(
         "terrain_relief_range",
         value_f64(minimums, "terrain_relief_range_m"),
@@ -227,12 +235,15 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
                         let expected_rows = manifest_vertices;
                         let expected_bands = value_u64(mesh, "material_weight_bands");
                         let expected_channels = value_u64(mesh, "material_channels");
+                        let expected_regions = value_u64(mesh, "material_regions");
                         let row_mismatch = csv.row_count != expected_rows;
                         let band_mismatch = csv.material_weight_bands != expected_bands;
                         let channel_mismatch = csv.material_channels != expected_channels;
+                        let region_mismatch = csv.material_regions != expected_regions;
                         csv_row_mismatch_count += u64::from(row_mismatch);
                         csv_band_mismatch_count += u64::from(band_mismatch);
                         csv_channel_mismatch_count += u64::from(channel_mismatch);
+                        csv_region_mismatch_count += u64::from(region_mismatch);
 
                         artifacts.push(json!({
                             "island": island_name,
@@ -241,9 +252,11 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
                             "row_count": csv.row_count,
                             "material_weight_bands": csv.material_weight_bands,
                             "material_channels": csv.material_channels,
+                            "material_regions": csv.material_regions,
                             "row_count_matches_manifest": !row_mismatch,
                             "material_weight_bands_match_manifest": !band_mismatch,
                             "material_channels_match_manifest": !channel_mismatch,
+                            "material_regions_match_manifest": !region_mismatch,
                         }));
                     }
                     Err(error) => {
@@ -307,6 +320,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         0,
         "csvs",
     ));
+    checks.push(check_eq_u64(
+        "terrain_weight_csv_region_mismatch_count",
+        csv_region_mismatch_count,
+        0,
+        "csvs",
+    ));
 
     let passed = checks.iter().all(|check| {
         check
@@ -335,6 +354,7 @@ struct WeightCsvAudit {
     row_count: u64,
     material_weight_bands: u64,
     material_channels: u64,
+    material_regions: u64,
 }
 
 fn audit_obj_path(path: &Path) -> Result<ObjAudit, String> {
@@ -384,6 +404,7 @@ fn audit_weight_csv_text(text: &str) -> Result<WeightCsvAudit, String> {
     let mut base = false;
     let mut lush = false;
     let mut exposed = false;
+    let mut regions = HashSet::new();
 
     for line in lines {
         let columns = line.split(',').collect::<Vec<_>>();
@@ -403,6 +424,7 @@ fn audit_weight_csv_text(text: &str) -> Result<WeightCsvAudit, String> {
             (lush_highland * 15.0).round() as u8,
             (exposed_edge * 15.0).round() as u8,
         ]);
+        regions.insert(terrain_material_region_id(lush_highland, exposed_edge));
         base |= lush_highland < 0.18 && exposed_edge < 0.18;
         lush |= lush_highland > 0.18;
         exposed |= exposed_edge > 0.18;
@@ -413,7 +435,20 @@ fn audit_weight_csv_text(text: &str) -> Result<WeightCsvAudit, String> {
         row_count,
         material_weight_bands: bands.len() as u64,
         material_channels: u64::from(base) + u64::from(lush) + u64::from(exposed),
+        material_regions: regions.len() as u64,
     })
+}
+
+fn terrain_material_region_id(lush_highland: f32, exposed_edge: f32) -> u8 {
+    if exposed_edge >= 0.48 {
+        3
+    } else if lush_highland >= 0.42 {
+        2
+    } else if lush_highland >= 0.24 || exposed_edge >= 0.10 {
+        1
+    } else {
+        0
+    }
 }
 
 fn value_u64(value: &Value, key: &str) -> u64 {
@@ -518,5 +553,6 @@ mod tests {
         assert_eq!(audit.row_count, 3);
         assert_eq!(audit.material_weight_bands, 3);
         assert_eq!(audit.material_channels, 3);
+        assert_eq!(audit.material_regions, 3);
     }
 }
