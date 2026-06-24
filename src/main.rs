@@ -15,7 +15,7 @@ use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
-use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+use bevy::window::{CompositeAlphaMode, CursorGrabMode, CursorOptions, PrimaryWindow};
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartVisibility, Side, advance_phase,
     part_pose, pose_blend,
@@ -180,6 +180,8 @@ fn primary_window(eval: Option<&EvalOptions>) -> Window {
     Window {
         title: "The NAU Engine Flight Sandbox".into(),
         resolution: (1280, 720).into(),
+        composite_alpha_mode: CompositeAlphaMode::Opaque,
+        transparent: false,
         visible: !hidden_metric_eval,
         focused: !hidden_metric_eval,
         ..default()
@@ -888,6 +890,7 @@ fn setup(
         0.88,
         0.22,
     );
+    let ground_cover_material = ground_cover_material(&mut images, &mut materials);
     let flower_material = emissive_material(
         &mut images,
         &mut materials,
@@ -1009,6 +1012,7 @@ fn setup(
             updraft_marker_material.clone(),
             trunk_material.clone(),
             foliage_material.clone(),
+            ground_cover_material.clone(),
             flower_material.clone(),
             water_material.clone(),
             path_material.clone(),
@@ -1375,6 +1379,28 @@ fn updraft_column_material(materials: &mut Assets<StandardMaterial>) -> Handle<S
         double_sided: true,
         unlit: true,
         perceptual_roughness: 0.32,
+        reflectance: 0.2,
+        ..default()
+    })
+}
+
+fn ground_cover_material(
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
+) -> Handle<StandardMaterial> {
+    materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        base_color_texture: Some(images.add(procedural_surface_texture(
+            [62, 138, 62, 255],
+            [26, 92, 46, 255],
+            [212, 178, 86, 255],
+            97,
+        ))),
+        metallic_roughness_texture: Some(images.add(procedural_material_map(1_397, 0.94))),
+        alpha_mode: AlphaMode::Opaque,
+        cull_mode: None,
+        double_sided: true,
+        perceptual_roughness: 0.94,
         reflectance: 0.2,
         ..default()
     })
@@ -1759,6 +1785,7 @@ fn queue_sky_island(
     branch_marker_material: Handle<StandardMaterial>,
     trunk_material: Handle<StandardMaterial>,
     foliage_material: Handle<StandardMaterial>,
+    ground_cover_material: Handle<StandardMaterial>,
     flower_material: Handle<StandardMaterial>,
     water_material: Handle<StandardMaterial>,
     path_material: Handle<StandardMaterial>,
@@ -1922,6 +1949,7 @@ fn queue_sky_island(
         meshes,
         trunk_material,
         foliage_material,
+        ground_cover_material,
         flower_material,
         water_material,
         path_material,
@@ -1998,12 +2026,11 @@ fn island_visual_surface_position(island: SkyIsland, normalized_offset: Vec2) ->
 }
 
 fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
-    const RINGS: usize = 8;
+    const RINGS: usize = 12;
     const SEGMENTS: usize = 48;
 
     let vertex_count = 1 + RINGS * SEGMENTS;
     let mut positions = Vec::with_capacity(vertex_count);
-    let mut normals = Vec::with_capacity(vertex_count);
     let mut uvs = Vec::with_capacity(vertex_count);
     let mut indices = Vec::with_capacity(SEGMENTS * 3 + (RINGS - 1) * SEGMENTS * 6);
 
@@ -2012,7 +2039,6 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
         island.mesh_top_y_at(island.center),
         island.center.z,
     ]);
-    normals.push([0.0, 1.0, 0.0]);
     uvs.push([0.5, 0.5]);
 
     for ring in 1..=RINGS {
@@ -2027,7 +2053,6 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
             let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z));
 
             positions.push([x, y, z]);
-            normals.push([0.0, 1.0, 0.0]);
             uvs.push([
                 0.5 + angle.cos() * radius * 0.5,
                 0.5 + angle.sin() * radius * 0.5,
@@ -2061,6 +2086,8 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
         }
     }
 
+    let normals = smooth_normals_from_triangles(&positions, &indices);
+
     Mesh::new(
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::default(),
@@ -2069,6 +2096,42 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+fn smooth_normals_from_triangles(positions: &[[f32; 3]], indices: &[u32]) -> Vec<[f32; 3]> {
+    let mut normals = vec![Vec3::ZERO; positions.len()];
+
+    for triangle in indices.chunks_exact(3) {
+        let a_index = triangle[0] as usize;
+        let b_index = triangle[1] as usize;
+        let c_index = triangle[2] as usize;
+        let a = Vec3::from_array(positions[a_index]);
+        let b = Vec3::from_array(positions[b_index]);
+        let c = Vec3::from_array(positions[c_index]);
+        let mut face_normal = (b - a).cross(c - a).normalize_or_zero();
+
+        if face_normal.y < 0.0 {
+            face_normal = -face_normal;
+        }
+        if face_normal.length_squared() <= f32::EPSILON {
+            face_normal = Vec3::Y;
+        }
+
+        normals[a_index] += face_normal;
+        normals[b_index] += face_normal;
+        normals[c_index] += face_normal;
+    }
+
+    normals
+        .into_iter()
+        .map(|normal| {
+            if normal.length_squared() <= f32::EPSILON {
+                Vec3::Y.to_array()
+            } else {
+                normal.normalize().to_array()
+            }
+        })
+        .collect()
 }
 
 fn island_impostor_mesh(island_index: usize, island: SkyIsland) -> Mesh {
@@ -2154,6 +2217,7 @@ fn queue_sky_island_details(
     meshes: &mut Assets<Mesh>,
     trunk_material: Handle<StandardMaterial>,
     foliage_material: Handle<StandardMaterial>,
+    ground_cover_material: Handle<StandardMaterial>,
     flower_material: Handle<StandardMaterial>,
     water_material: Handle<StandardMaterial>,
     path_material: Handle<StandardMaterial>,
@@ -2161,6 +2225,18 @@ fn queue_sky_island_details(
     island: SkyIsland,
 ) {
     let detail_phase = island_index as f32 * 0.77;
+    queue_island_visual(
+        entries,
+        visual_index,
+        island,
+        IslandVisualLayer::Detail,
+        meshes.add(island_ground_cover_mesh(island_index, island)),
+        ground_cover_material,
+        Transform::default(),
+        None,
+        "island ground cover",
+    );
+
     let tree_offsets = [
         Vec2::new(-0.42, -0.24),
         Vec2::new(0.34, -0.36),
@@ -2371,6 +2447,103 @@ fn queue_sky_island_details(
             "launch camera tree canopy",
         );
     }
+}
+
+fn island_ground_cover_mesh(island_index: usize, island: SkyIsland) -> Mesh {
+    const PATCHES: usize = 34;
+    const BLADES_PER_PATCH: usize = 3;
+    const VERTICES_PER_BLADE: usize = 3;
+    const INDICES_PER_BLADE: usize = 3;
+
+    let blade_count = PATCHES * BLADES_PER_PATCH;
+    let mut positions = Vec::with_capacity(blade_count * VERTICES_PER_BLADE);
+    let mut normals = Vec::with_capacity(blade_count * VERTICES_PER_BLADE);
+    let mut uvs = Vec::with_capacity(blade_count * VERTICES_PER_BLADE);
+    let mut indices = Vec::with_capacity(blade_count * INDICES_PER_BLADE);
+    let seed = island_index as u32 * 41 + 503;
+
+    for patch in 0..PATCHES {
+        let base_angle = random_unit(seed, patch as u32, 3) * std::f32::consts::TAU;
+        let radius = random_unit(seed, patch as u32, 11).sqrt() * 0.86;
+        let jitter = Vec2::new(
+            (random_unit(seed, patch as u32, 17) - 0.5) * 0.06,
+            (random_unit(seed, patch as u32, 23) - 0.5) * 0.06,
+        );
+        let normalized_offset = Vec2::new(base_angle.cos(), base_angle.sin()) * radius + jitter;
+        let x = island.center.x + normalized_offset.x * island.half_extents.x;
+        let z = island.center.z + normalized_offset.y * island.half_extents.y;
+        let surface_y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z)) + 0.08;
+
+        for blade in 0..BLADES_PER_PATCH {
+            let blade_phase =
+                base_angle + blade as f32 * std::f32::consts::TAU / BLADES_PER_PATCH as f32;
+            let width = 0.18 + random_unit(seed, patch as u32, 31 + blade as u32) * 0.16;
+            let height = 0.78 + random_unit(seed, patch as u32, 43 + blade as u32) * 0.72;
+            let lean = Vec3::new(blade_phase.cos(), 0.0, blade_phase.sin())
+                * (0.1 + random_unit(seed, patch as u32, 53 + blade as u32) * 0.24);
+            push_ground_cover_blade(
+                &mut positions,
+                &mut normals,
+                &mut uvs,
+                &mut indices,
+                Vec3::new(x, surface_y, z),
+                blade_phase,
+                width,
+                height,
+                lean,
+                patch,
+            );
+        }
+    }
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_ground_cover_blade(
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    uvs: &mut Vec<[f32; 2]>,
+    indices: &mut Vec<u32>,
+    origin: Vec3,
+    angle: f32,
+    width: f32,
+    height: f32,
+    lean: Vec3,
+    patch: usize,
+) {
+    let right = Vec3::new(angle.cos(), 0.0, angle.sin());
+    let side = right * (width * 0.5);
+    let tip = origin + Vec3::Y * height + lean;
+    let blade_normal = Vec3::new(right.z * 0.35, 0.8, -right.x * 0.35).normalize();
+    let start = positions.len() as u32;
+
+    positions.extend([
+        (origin - side).to_array(),
+        (origin + side).to_array(),
+        tip.to_array(),
+    ]);
+    normals.extend([blade_normal.to_array(); VERTICES_PER_GROUND_BLADE]);
+    let uv_offset = if patch.is_multiple_of(2) { 0.0 } else { 0.5 };
+    uvs.extend([
+        [uv_offset, 1.0],
+        [uv_offset + 0.42, 1.0],
+        [uv_offset + 0.21, 0.0],
+    ]);
+    indices.extend([start, start + 1, start + 2]);
+}
+
+const VERTICES_PER_GROUND_BLADE: usize = 3;
+
+fn random_unit(seed: u32, x: u32, salt: u32) -> f32 {
+    texture_noise(x.wrapping_mul(17).wrapping_add(salt), salt, seed) as f32 / 255.0
 }
 
 fn island_visual_is_resident(entry: &IslandVisualEntry, player_position: Vec3) -> bool {
