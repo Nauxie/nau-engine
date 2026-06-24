@@ -38,6 +38,29 @@ pub mod asset_pipeline {
         pub residency: VisualAssetResidency,
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub enum VisualAssetLoadState {
+        Missing,
+        Queued,
+        Loading,
+        Loaded,
+        Failed,
+    }
+
+    impl VisualAssetLoadState {
+        pub fn from_asset_exists(asset_exists: bool) -> Self {
+            if asset_exists {
+                Self::Queued
+            } else {
+                Self::Missing
+            }
+        }
+
+        pub fn is_available(self) -> bool {
+            self != Self::Missing
+        }
+    }
+
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct VisualAssetPipelineMetrics {
         pub slot_count: usize,
@@ -45,6 +68,16 @@ pub mod asset_pipeline {
         pub ready_slot_count: usize,
         pub placeholder_slot_count: usize,
         pub streaming_slot_count: usize,
+        pub missing_slot_count: usize,
+        pub queued_scene_count: usize,
+        pub loading_scene_count: usize,
+        pub loaded_scene_count: usize,
+        pub failed_scene_count: usize,
+        pub always_slot_count: usize,
+        pub stream_window_slot_count: usize,
+        pub near_lod_slot_count: usize,
+        pub far_lod_slot_count: usize,
+        pub weather_slot_count: usize,
     }
 
     pub const VISUAL_ASSET_SPECS: [VisualAssetSpec; 9] = [
@@ -106,10 +139,24 @@ pub mod asset_pipeline {
     pub const VISUAL_ASSET_SLOT_COUNT: usize = VISUAL_ASSET_SPECS.len();
     pub const GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT: usize = VISUAL_ASSET_SPECS.len();
     pub const STREAMING_VISUAL_ASSET_SLOT_COUNT: usize = 6;
+    pub const ALWAYS_VISUAL_ASSET_SLOT_COUNT: usize = 3;
+    pub const STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT: usize = 2;
+    pub const NEAR_LOD_VISUAL_ASSET_SLOT_COUNT: usize = 2;
+    pub const FAR_LOD_VISUAL_ASSET_SLOT_COUNT: usize = 1;
+    pub const WEATHER_VISUAL_ASSET_SLOT_COUNT: usize = 1;
 
     pub fn visual_asset_pipeline_metrics(
         specs: &[VisualAssetSpec],
         mut asset_exists: impl FnMut(&str) -> bool,
+    ) -> VisualAssetPipelineMetrics {
+        visual_asset_pipeline_metrics_with_load_states(specs, |spec| {
+            VisualAssetLoadState::from_asset_exists(asset_exists(spec.gltf_scene_path))
+        })
+    }
+
+    pub fn visual_asset_pipeline_metrics_with_load_states(
+        specs: &[VisualAssetSpec],
+        mut asset_load_state: impl FnMut(&VisualAssetSpec) -> VisualAssetLoadState,
     ) -> VisualAssetPipelineMetrics {
         let mut metrics = VisualAssetPipelineMetrics::default();
 
@@ -118,13 +165,50 @@ pub mod asset_pipeline {
             if !spec.gltf_scene_path.is_empty() {
                 metrics.gltf_scene_slot_count += 1;
             }
-            if spec.residency.is_stream_managed() {
-                metrics.streaming_slot_count += 1;
+            match spec.residency {
+                VisualAssetResidency::Always => metrics.always_slot_count += 1,
+                VisualAssetResidency::StreamWindow => {
+                    metrics.stream_window_slot_count += 1;
+                    metrics.streaming_slot_count += 1;
+                }
+                VisualAssetResidency::NearLod => {
+                    metrics.near_lod_slot_count += 1;
+                    metrics.streaming_slot_count += 1;
+                }
+                VisualAssetResidency::FarLod => {
+                    metrics.far_lod_slot_count += 1;
+                    metrics.streaming_slot_count += 1;
+                }
+                VisualAssetResidency::Weather => {
+                    metrics.weather_slot_count += 1;
+                    metrics.streaming_slot_count += 1;
+                }
             }
-            if asset_exists(spec.gltf_scene_path) {
-                metrics.ready_slot_count += 1;
-            } else {
-                metrics.placeholder_slot_count += 1;
+
+            match asset_load_state(spec) {
+                VisualAssetLoadState::Missing => {
+                    metrics.placeholder_slot_count += 1;
+                    metrics.missing_slot_count += 1;
+                }
+                VisualAssetLoadState::Queued => {
+                    metrics.ready_slot_count += 1;
+                    metrics.queued_scene_count += 1;
+                }
+                VisualAssetLoadState::Loading => {
+                    metrics.ready_slot_count += 1;
+                    metrics.queued_scene_count += 1;
+                    metrics.loading_scene_count += 1;
+                }
+                VisualAssetLoadState::Loaded => {
+                    metrics.ready_slot_count += 1;
+                    metrics.queued_scene_count += 1;
+                    metrics.loaded_scene_count += 1;
+                }
+                VisualAssetLoadState::Failed => {
+                    metrics.ready_slot_count += 1;
+                    metrics.queued_scene_count += 1;
+                    metrics.failed_scene_count += 1;
+                }
             }
         }
 
@@ -133,6 +217,12 @@ pub mod asset_pipeline {
 
     #[cfg(test)]
     mod tests {
+        use crate::asset_pipeline::{
+            ALWAYS_VISUAL_ASSET_SLOT_COUNT, FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
+            NEAR_LOD_VISUAL_ASSET_SLOT_COUNT, STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
+            WEATHER_VISUAL_ASSET_SLOT_COUNT,
+        };
+
         use super::*;
 
         #[test]
@@ -144,6 +234,8 @@ pub mod asset_pipeline {
             assert!(metrics.streaming_slot_count >= 5);
             assert_eq!(metrics.ready_slot_count, 0);
             assert_eq!(metrics.placeholder_slot_count, VISUAL_ASSET_SPECS.len());
+            assert_eq!(metrics.missing_slot_count, VISUAL_ASSET_SPECS.len());
+            assert_eq!(metrics.queued_scene_count, 0);
             assert_eq!(metrics.slot_count, VISUAL_ASSET_SLOT_COUNT);
             assert_eq!(
                 metrics.gltf_scene_slot_count,
@@ -153,6 +245,17 @@ pub mod asset_pipeline {
                 metrics.streaming_slot_count,
                 STREAMING_VISUAL_ASSET_SLOT_COUNT
             );
+            assert_eq!(metrics.always_slot_count, ALWAYS_VISUAL_ASSET_SLOT_COUNT);
+            assert_eq!(
+                metrics.stream_window_slot_count,
+                STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT
+            );
+            assert_eq!(
+                metrics.near_lod_slot_count,
+                NEAR_LOD_VISUAL_ASSET_SLOT_COUNT
+            );
+            assert_eq!(metrics.far_lod_slot_count, FAR_LOD_VISUAL_ASSET_SLOT_COUNT);
+            assert_eq!(metrics.weather_slot_count, WEATHER_VISUAL_ASSET_SLOT_COUNT);
             assert!(
                 VISUAL_ASSET_SPECS
                     .iter()
@@ -172,7 +275,29 @@ pub mod asset_pipeline {
             });
 
             assert_eq!(metrics.ready_slot_count, 2);
+            assert_eq!(metrics.queued_scene_count, 2);
+            assert_eq!(metrics.missing_slot_count, VISUAL_ASSET_SPECS.len() - 2);
             assert_eq!(metrics.placeholder_slot_count, VISUAL_ASSET_SPECS.len() - 2);
+        }
+
+        #[test]
+        fn asset_metrics_track_bevy_load_state_buckets() {
+            let metrics =
+                visual_asset_pipeline_metrics_with_load_states(&VISUAL_ASSET_SPECS, |spec| {
+                    match spec.kind {
+                        VisualAssetKind::PlayerCharacter => VisualAssetLoadState::Loading,
+                        VisualAssetKind::Glider => VisualAssetLoadState::Loaded,
+                        VisualAssetKind::DistantImpostor => VisualAssetLoadState::Failed,
+                        _ => VisualAssetLoadState::Missing,
+                    }
+                });
+
+            assert_eq!(metrics.ready_slot_count, 3);
+            assert_eq!(metrics.placeholder_slot_count, VISUAL_ASSET_SPECS.len() - 3);
+            assert_eq!(metrics.queued_scene_count, 3);
+            assert_eq!(metrics.loading_scene_count, 1);
+            assert_eq!(metrics.loaded_scene_count, 1);
+            assert_eq!(metrics.failed_scene_count, 1);
         }
     }
 }
@@ -2950,6 +3075,7 @@ pub mod eval {
         pub min_visual_asset_slot_count: usize,
         pub min_gltf_scene_asset_slot_count: usize,
         pub min_streaming_visual_asset_slot_count: usize,
+        pub max_failed_visual_asset_scene_count: usize,
         pub require_target_landing: bool,
         pub max_final_target_distance_m: f32,
         pub min_target_landing_samples: u32,
@@ -2958,7 +3084,7 @@ pub mod eval {
     impl EvalThresholds {
         fn to_json(self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_sky_island_count\": {},\n{indent}  \"min_active_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"min_near_lod_island_count\": {},\n{indent}  \"min_mid_lod_island_count\": {},\n{indent}  \"min_far_lod_island_count\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"min_hidden_island_terrain_count\": {},\n{indent}  \"min_visible_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"min_hidden_island_detail_count\": {},\n{indent}  \"min_visible_route_beacon_count\": {},\n{indent}  \"min_weather_cloud_count\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"min_objective_total_count\": {},\n{indent}  \"min_completed_objective_count\": {},\n{indent}  \"min_visual_asset_slot_count\": {},\n{indent}  \"min_gltf_scene_asset_slot_count\": {},\n{indent}  \"min_streaming_visual_asset_slot_count\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_sky_island_count\": {},\n{indent}  \"min_active_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"min_near_lod_island_count\": {},\n{indent}  \"min_mid_lod_island_count\": {},\n{indent}  \"min_far_lod_island_count\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"min_hidden_island_terrain_count\": {},\n{indent}  \"min_visible_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"min_hidden_island_detail_count\": {},\n{indent}  \"min_visible_route_beacon_count\": {},\n{indent}  \"min_weather_cloud_count\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"min_objective_total_count\": {},\n{indent}  \"min_completed_objective_count\": {},\n{indent}  \"min_visual_asset_slot_count\": {},\n{indent}  \"min_gltf_scene_asset_slot_count\": {},\n{indent}  \"min_streaming_visual_asset_slot_count\": {},\n{indent}  \"max_failed_visual_asset_scene_count\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
                 self.min_samples,
                 json_number(self.min_horizontal_distance_m),
                 json_number(self.min_max_altitude_m),
@@ -2998,6 +3124,7 @@ pub mod eval {
                 self.min_visual_asset_slot_count,
                 self.min_gltf_scene_asset_slot_count,
                 self.min_streaming_visual_asset_slot_count,
+                self.max_failed_visual_asset_scene_count,
                 self.require_target_landing,
                 json_number(self.max_final_target_distance_m),
                 self.min_target_landing_samples,
@@ -3105,6 +3232,16 @@ pub mod eval {
         pub ready_visual_asset_slot_count: usize,
         pub placeholder_visual_asset_slot_count: usize,
         pub streaming_visual_asset_slot_count: usize,
+        pub missing_visual_asset_slot_count: usize,
+        pub queued_visual_asset_scene_count: usize,
+        pub loading_visual_asset_scene_count: usize,
+        pub loaded_visual_asset_scene_count: usize,
+        pub failed_visual_asset_scene_count: usize,
+        pub always_visual_asset_slot_count: usize,
+        pub stream_window_visual_asset_slot_count: usize,
+        pub near_lod_visual_asset_slot_count: usize,
+        pub far_lod_visual_asset_slot_count: usize,
+        pub weather_visual_asset_slot_count: usize,
     }
 
     impl EvalSample {
@@ -3159,6 +3296,16 @@ pub mod eval {
             ready_visual_asset_slot_count: usize,
             placeholder_visual_asset_slot_count: usize,
             streaming_visual_asset_slot_count: usize,
+            missing_visual_asset_slot_count: usize,
+            queued_visual_asset_scene_count: usize,
+            loading_visual_asset_scene_count: usize,
+            loaded_visual_asset_scene_count: usize,
+            failed_visual_asset_scene_count: usize,
+            always_visual_asset_slot_count: usize,
+            stream_window_visual_asset_slot_count: usize,
+            near_lod_visual_asset_slot_count: usize,
+            far_lod_visual_asset_slot_count: usize,
+            weather_visual_asset_slot_count: usize,
         ) -> Self {
             Self {
                 frame,
@@ -3212,12 +3359,22 @@ pub mod eval {
                 ready_visual_asset_slot_count,
                 placeholder_visual_asset_slot_count,
                 streaming_visual_asset_slot_count,
+                missing_visual_asset_slot_count,
+                queued_visual_asset_scene_count,
+                loading_visual_asset_scene_count,
+                loaded_visual_asset_scene_count,
+                failed_visual_asset_scene_count,
+                always_visual_asset_slot_count,
+                stream_window_visual_asset_slot_count,
+                near_lod_visual_asset_slot_count,
+                far_lod_visual_asset_slot_count,
+                weather_visual_asset_slot_count,
             }
         }
 
         pub fn to_json(&self) -> String {
             format!(
-                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"readable_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"objective\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"weather_cloud_count\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"entity_count\":{},\"visual_asset_slot_count\":{},\"gltf_scene_asset_slot_count\":{},\"ready_visual_asset_slot_count\":{},\"placeholder_visual_asset_slot_count\":{},\"streaming_visual_asset_slot_count\":{}}}",
+                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"readable_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"objective\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"weather_cloud_count\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"entity_count\":{},\"visual_asset_slot_count\":{},\"gltf_scene_asset_slot_count\":{},\"ready_visual_asset_slot_count\":{},\"placeholder_visual_asset_slot_count\":{},\"streaming_visual_asset_slot_count\":{},\"missing_visual_asset_slot_count\":{},\"queued_visual_asset_scene_count\":{},\"loading_visual_asset_scene_count\":{},\"loaded_visual_asset_scene_count\":{},\"failed_visual_asset_scene_count\":{},\"always_visual_asset_slot_count\":{},\"stream_window_visual_asset_slot_count\":{},\"near_lod_visual_asset_slot_count\":{},\"far_lod_visual_asset_slot_count\":{},\"weather_visual_asset_slot_count\":{}}}",
                 self.frame,
                 json_number(self.time_secs),
                 json_array3(self.position),
@@ -3269,6 +3426,16 @@ pub mod eval {
                 self.ready_visual_asset_slot_count,
                 self.placeholder_visual_asset_slot_count,
                 self.streaming_visual_asset_slot_count,
+                self.missing_visual_asset_slot_count,
+                self.queued_visual_asset_scene_count,
+                self.loading_visual_asset_scene_count,
+                self.loaded_visual_asset_scene_count,
+                self.failed_visual_asset_scene_count,
+                self.always_visual_asset_slot_count,
+                self.stream_window_visual_asset_slot_count,
+                self.near_lod_visual_asset_slot_count,
+                self.far_lod_visual_asset_slot_count,
+                self.weather_visual_asset_slot_count,
             )
         }
     }
@@ -3327,6 +3494,16 @@ pub mod eval {
         max_ready_visual_asset_slot_count: usize,
         max_placeholder_visual_asset_slot_count: usize,
         max_streaming_visual_asset_slot_count: usize,
+        max_missing_visual_asset_slot_count: usize,
+        max_queued_visual_asset_scene_count: usize,
+        max_loading_visual_asset_scene_count: usize,
+        max_loaded_visual_asset_scene_count: usize,
+        max_failed_visual_asset_scene_count: usize,
+        max_always_visual_asset_slot_count: usize,
+        max_stream_window_visual_asset_slot_count: usize,
+        max_near_lod_visual_asset_slot_count: usize,
+        max_far_lod_visual_asset_slot_count: usize,
+        max_weather_visual_asset_slot_count: usize,
         target_landing_samples: u32,
         lifted_samples: u32,
         readable_lift_samples: u32,
@@ -3503,6 +3680,36 @@ pub mod eval {
             self.max_streaming_visual_asset_slot_count = self
                 .max_streaming_visual_asset_slot_count
                 .max(sample.streaming_visual_asset_slot_count);
+            self.max_missing_visual_asset_slot_count = self
+                .max_missing_visual_asset_slot_count
+                .max(sample.missing_visual_asset_slot_count);
+            self.max_queued_visual_asset_scene_count = self
+                .max_queued_visual_asset_scene_count
+                .max(sample.queued_visual_asset_scene_count);
+            self.max_loading_visual_asset_scene_count = self
+                .max_loading_visual_asset_scene_count
+                .max(sample.loading_visual_asset_scene_count);
+            self.max_loaded_visual_asset_scene_count = self
+                .max_loaded_visual_asset_scene_count
+                .max(sample.loaded_visual_asset_scene_count);
+            self.max_failed_visual_asset_scene_count = self
+                .max_failed_visual_asset_scene_count
+                .max(sample.failed_visual_asset_scene_count);
+            self.max_always_visual_asset_slot_count = self
+                .max_always_visual_asset_slot_count
+                .max(sample.always_visual_asset_slot_count);
+            self.max_stream_window_visual_asset_slot_count = self
+                .max_stream_window_visual_asset_slot_count
+                .max(sample.stream_window_visual_asset_slot_count);
+            self.max_near_lod_visual_asset_slot_count = self
+                .max_near_lod_visual_asset_slot_count
+                .max(sample.near_lod_visual_asset_slot_count);
+            self.max_far_lod_visual_asset_slot_count = self
+                .max_far_lod_visual_asset_slot_count
+                .max(sample.far_lod_visual_asset_slot_count);
+            self.max_weather_visual_asset_slot_count = self
+                .max_weather_visual_asset_slot_count
+                .max(sample.weather_visual_asset_slot_count);
             if sample.on_landing_target {
                 self.target_landing_samples += 1;
             }
@@ -3716,6 +3923,12 @@ pub mod eval {
                     "assets",
                 ),
                 EvalCheck::at_most(
+                    "failed_visual_asset_scene_count",
+                    self.max_failed_visual_asset_scene_count as f32,
+                    thresholds.max_failed_visual_asset_scene_count as f32,
+                    "assets",
+                ),
+                EvalCheck::at_most(
                     "max_camera_distance",
                     self.max_camera_distance_m,
                     thresholds.max_camera_distance_m,
@@ -3880,6 +4093,17 @@ pub mod eval {
                         .max_placeholder_visual_asset_slot_count,
                     max_streaming_visual_asset_slot_count: self
                         .max_streaming_visual_asset_slot_count,
+                    max_missing_visual_asset_slot_count: self.max_missing_visual_asset_slot_count,
+                    max_queued_visual_asset_scene_count: self.max_queued_visual_asset_scene_count,
+                    max_loading_visual_asset_scene_count: self.max_loading_visual_asset_scene_count,
+                    max_loaded_visual_asset_scene_count: self.max_loaded_visual_asset_scene_count,
+                    max_failed_visual_asset_scene_count: self.max_failed_visual_asset_scene_count,
+                    max_always_visual_asset_slot_count: self.max_always_visual_asset_slot_count,
+                    max_stream_window_visual_asset_slot_count: self
+                        .max_stream_window_visual_asset_slot_count,
+                    max_near_lod_visual_asset_slot_count: self.max_near_lod_visual_asset_slot_count,
+                    max_far_lod_visual_asset_slot_count: self.max_far_lod_visual_asset_slot_count,
+                    max_weather_visual_asset_slot_count: self.max_weather_visual_asset_slot_count,
                     target_landing_samples: self.target_landing_samples,
                     lifted_samples: self.lifted_samples,
                     readable_lift_samples: self.readable_lift_samples,
@@ -3981,6 +4205,16 @@ pub mod eval {
         pub max_ready_visual_asset_slot_count: usize,
         pub max_placeholder_visual_asset_slot_count: usize,
         pub max_streaming_visual_asset_slot_count: usize,
+        pub max_missing_visual_asset_slot_count: usize,
+        pub max_queued_visual_asset_scene_count: usize,
+        pub max_loading_visual_asset_scene_count: usize,
+        pub max_loaded_visual_asset_scene_count: usize,
+        pub max_failed_visual_asset_scene_count: usize,
+        pub max_always_visual_asset_slot_count: usize,
+        pub max_stream_window_visual_asset_slot_count: usize,
+        pub max_near_lod_visual_asset_slot_count: usize,
+        pub max_far_lod_visual_asset_slot_count: usize,
+        pub max_weather_visual_asset_slot_count: usize,
         pub target_landing_samples: u32,
         pub lifted_samples: u32,
         pub readable_lift_samples: u32,
@@ -3993,7 +4227,7 @@ pub mod eval {
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"objective_total_count\": {},\n{indent}  \"max_completed_objective_count\": {},\n{indent}  \"final_objective_completed_count\": {},\n{indent}  \"min_objective_distance_m\": {},\n{indent}  \"final_objective_distance_m\": {},\n{indent}  \"objective_complete_samples\": {},\n{indent}  \"max_visual_asset_slot_count\": {},\n{indent}  \"max_gltf_scene_asset_slot_count\": {},\n{indent}  \"max_ready_visual_asset_slot_count\": {},\n{indent}  \"max_placeholder_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_visual_asset_slot_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"objective_total_count\": {},\n{indent}  \"max_completed_objective_count\": {},\n{indent}  \"final_objective_completed_count\": {},\n{indent}  \"min_objective_distance_m\": {},\n{indent}  \"final_objective_distance_m\": {},\n{indent}  \"objective_complete_samples\": {},\n{indent}  \"max_visual_asset_slot_count\": {},\n{indent}  \"max_gltf_scene_asset_slot_count\": {},\n{indent}  \"max_ready_visual_asset_slot_count\": {},\n{indent}  \"max_placeholder_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_visual_asset_slot_count\": {},\n{indent}  \"max_missing_visual_asset_slot_count\": {},\n{indent}  \"max_queued_visual_asset_scene_count\": {},\n{indent}  \"max_loading_visual_asset_scene_count\": {},\n{indent}  \"max_loaded_visual_asset_scene_count\": {},\n{indent}  \"max_failed_visual_asset_scene_count\": {},\n{indent}  \"max_always_visual_asset_slot_count\": {},\n{indent}  \"max_stream_window_visual_asset_slot_count\": {},\n{indent}  \"max_near_lod_visual_asset_slot_count\": {},\n{indent}  \"max_far_lod_visual_asset_slot_count\": {},\n{indent}  \"max_weather_visual_asset_slot_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
                 json_number(self.avg_frame_time_ms),
                 json_number(self.p95_frame_time_ms),
@@ -4051,6 +4285,16 @@ pub mod eval {
                 self.max_ready_visual_asset_slot_count,
                 self.max_placeholder_visual_asset_slot_count,
                 self.max_streaming_visual_asset_slot_count,
+                self.max_missing_visual_asset_slot_count,
+                self.max_queued_visual_asset_scene_count,
+                self.max_loading_visual_asset_scene_count,
+                self.max_loaded_visual_asset_scene_count,
+                self.max_failed_visual_asset_scene_count,
+                self.max_always_visual_asset_slot_count,
+                self.max_stream_window_visual_asset_slot_count,
+                self.max_near_lod_visual_asset_slot_count,
+                self.max_far_lod_visual_asset_slot_count,
+                self.max_weather_visual_asset_slot_count,
                 self.target_landing_samples,
                 self.lifted_samples,
                 self.readable_lift_samples,
@@ -4327,6 +4571,7 @@ pub mod eval {
                 min_visual_asset_slot_count: VISUAL_ASSET_SLOT_COUNT,
                 min_gltf_scene_asset_slot_count: GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
                 min_streaming_visual_asset_slot_count: STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                max_failed_visual_asset_scene_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 40.0,
                 min_target_landing_samples: 0,
@@ -4382,6 +4627,7 @@ pub mod eval {
                 min_visual_asset_slot_count: VISUAL_ASSET_SLOT_COUNT,
                 min_gltf_scene_asset_slot_count: GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
                 min_streaming_visual_asset_slot_count: STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                max_failed_visual_asset_scene_count: 0,
                 require_target_landing: true,
                 max_final_target_distance_m: 26.0,
                 min_target_landing_samples: 1,
@@ -4437,6 +4683,7 @@ pub mod eval {
                 min_visual_asset_slot_count: VISUAL_ASSET_SLOT_COUNT,
                 min_gltf_scene_asset_slot_count: GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
                 min_streaming_visual_asset_slot_count: STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                max_failed_visual_asset_scene_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 280.0,
                 min_target_landing_samples: 0,
@@ -4492,6 +4739,7 @@ pub mod eval {
                 min_visual_asset_slot_count: VISUAL_ASSET_SLOT_COUNT,
                 min_gltf_scene_asset_slot_count: GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
                 min_streaming_visual_asset_slot_count: STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                max_failed_visual_asset_scene_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 180.0,
                 min_target_landing_samples: 0,
@@ -4547,6 +4795,7 @@ pub mod eval {
                 min_visual_asset_slot_count: VISUAL_ASSET_SLOT_COUNT,
                 min_gltf_scene_asset_slot_count: GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
                 min_streaming_visual_asset_slot_count: STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                max_failed_visual_asset_scene_count: 0,
                 require_target_landing: true,
                 max_final_target_distance_m: 18.0,
                 min_target_landing_samples: 2,
@@ -4602,6 +4851,7 @@ pub mod eval {
                 min_visual_asset_slot_count: VISUAL_ASSET_SLOT_COUNT,
                 min_gltf_scene_asset_slot_count: GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
                 min_streaming_visual_asset_slot_count: STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                max_failed_visual_asset_scene_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 280.0,
                 min_target_landing_samples: 0,
@@ -4657,6 +4907,7 @@ pub mod eval {
                 min_visual_asset_slot_count: VISUAL_ASSET_SLOT_COUNT,
                 min_gltf_scene_asset_slot_count: GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
                 min_streaming_visual_asset_slot_count: STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                max_failed_visual_asset_scene_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 280.0,
                 min_target_landing_samples: 0,
@@ -4712,6 +4963,7 @@ pub mod eval {
                 min_visual_asset_slot_count: VISUAL_ASSET_SLOT_COUNT,
                 min_gltf_scene_asset_slot_count: GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
                 min_streaming_visual_asset_slot_count: STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                max_failed_visual_asset_scene_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 280.0,
                 min_target_landing_samples: 0,
@@ -4767,6 +5019,7 @@ pub mod eval {
                 min_visual_asset_slot_count: VISUAL_ASSET_SLOT_COUNT,
                 min_gltf_scene_asset_slot_count: GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
                 min_streaming_visual_asset_slot_count: STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                max_failed_visual_asset_scene_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 280.0,
                 min_target_landing_samples: 0,
@@ -4822,6 +5075,7 @@ pub mod eval {
                 min_visual_asset_slot_count: VISUAL_ASSET_SLOT_COUNT,
                 min_gltf_scene_asset_slot_count: GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
                 min_streaming_visual_asset_slot_count: STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                max_failed_visual_asset_scene_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 520.0,
                 min_target_landing_samples: 0,
@@ -4898,6 +5152,12 @@ pub mod eval {
 
     #[cfg(test)]
     mod tests {
+        use crate::asset_pipeline::{
+            ALWAYS_VISUAL_ASSET_SLOT_COUNT, FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
+            NEAR_LOD_VISUAL_ASSET_SLOT_COUNT, STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
+            WEATHER_VISUAL_ASSET_SLOT_COUNT,
+        };
+
         use super::*;
 
         #[test]
@@ -5104,6 +5364,16 @@ pub mod eval {
                 0,
                 VISUAL_ASSET_SLOT_COUNT,
                 STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                VISUAL_ASSET_SLOT_COUNT,
+                0,
+                0,
+                0,
+                0,
+                ALWAYS_VISUAL_ASSET_SLOT_COUNT,
+                STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
+                NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
+                FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
+                WEATHER_VISUAL_ASSET_SLOT_COUNT,
             ));
             accumulator.observe(EvalSample::new(
                 scenario.frame_count,
@@ -5155,6 +5425,16 @@ pub mod eval {
                 0,
                 VISUAL_ASSET_SLOT_COUNT,
                 STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                VISUAL_ASSET_SLOT_COUNT,
+                0,
+                0,
+                0,
+                0,
+                ALWAYS_VISUAL_ASSET_SLOT_COUNT,
+                STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
+                NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
+                FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
+                WEATHER_VISUAL_ASSET_SLOT_COUNT,
             ));
             for frame in 1..=scenario.thresholds.min_gliding_samples {
                 accumulator.observe(EvalSample::new(
@@ -5207,6 +5487,16 @@ pub mod eval {
                     0,
                     VISUAL_ASSET_SLOT_COUNT,
                     STREAMING_VISUAL_ASSET_SLOT_COUNT,
+                    VISUAL_ASSET_SLOT_COUNT,
+                    0,
+                    0,
+                    0,
+                    0,
+                    ALWAYS_VISUAL_ASSET_SLOT_COUNT,
+                    STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
+                    NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
+                    FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
+                    WEATHER_VISUAL_ASSET_SLOT_COUNT,
                 ));
             }
 
