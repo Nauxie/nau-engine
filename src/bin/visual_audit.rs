@@ -35,9 +35,18 @@ const MAX_FLAT_TILE_EDGE_DENSITY: f64 = 0.008;
 const MIN_PLAYER_FOCUS_FRACTION: f64 = 0.0015;
 const MIN_SEQUENCE_ROUTE_MARKER_FRACTION: f64 = 0.00008;
 const MIN_SEQUENCE_ROUTE_MARKER_COMPONENTS: usize = 2;
-const MIN_SEQUENCE_ROUTE_MARKER_HUE_FAMILIES: usize = 1;
+const MIN_SEQUENCE_ROUTE_MARKER_HUE_FAMILIES: usize = 2;
 const MIN_ROUTE_MARKER_COMPONENT_PIXELS: usize = 3;
 const MIN_ROUTE_MARKER_HUE_FAMILY_PIXELS: usize = 8;
+const MIN_SEQUENCE_DISTANT_SCENE_FRACTION: f64 = 0.004;
+const MIN_SEQUENCE_DISTANT_SCENE_COMPONENTS: usize = 2;
+const MIN_SEQUENCE_DISTANT_SCENE_COLOR_BUCKETS: usize = 6;
+const MIN_DISTANT_SCENE_COMPONENT_PIXELS: usize = 28;
+const MIN_DISTANT_SCENE_COMPONENT_WIDTH: usize = 10;
+const MIN_DISTANT_SCENE_COMPONENT_HEIGHT: usize = 3;
+const MIN_DISTANT_SCENE_COMPONENT_ASPECT: f64 = 1.15;
+const MAX_DISTANT_SCENE_COMPONENT_WIDTH_FRACTION: f64 = 0.58;
+const MAX_DISTANT_SCENE_COMPONENT_HEIGHT_FRACTION: f64 = 0.34;
 const MAX_TRANSPARENT_PIXEL_FRACTION: f64 = 0.0;
 const MAX_FOREIGN_CANVAS_FRACTION: f64 = 0.08;
 const MAX_HUD_TEXT_FRACTION: f64 = 0.06;
@@ -121,6 +130,10 @@ fn audit_image_with_alpha(
     let mut route_marker_region_pixels = 0usize;
     let mut route_marker_hue_family_pixels = [0usize; ROUTE_MARKER_HUE_FAMILY_COUNT];
     let mut route_marker_mask = vec![false; pixel_count];
+    let mut distant_scene_pixels = 0usize;
+    let mut distant_scene_region_pixels = 0usize;
+    let mut distant_scene_color_buckets = HashSet::new();
+    let mut distant_scene_mask = vec![false; pixel_count];
     let mut border_occluder_pixels = [0usize; BORDER_REGION_COUNT];
     let mut border_region_pixels = [0usize; BORDER_REGION_COUNT];
     let mut inner_border_occluder_pixels = [0usize; BORDER_REGION_COUNT];
@@ -168,6 +181,12 @@ fn audit_image_with_alpha(
         let hud_region = is_hud_region(x, y, width_usize, height_usize);
         let route_marker_like =
             !hud_region && y >= top_limit && is_route_marker_like(r, g, b, luma);
+        let distant_scene_region = !hud_region
+            && is_distant_scene_region(x, y, width_usize, height_usize)
+            && !is_player_focus_region(x, y, width_usize, height_usize);
+        let distant_scene_like = distant_scene_region
+            && !route_marker_like
+            && is_distant_scene_like(r, g, b, luma, sky_like);
         scene_mask[index] = scene_like && !hud_region;
 
         if y < top_limit {
@@ -206,6 +225,14 @@ fn audit_image_with_alpha(
             }
         } else if !hud_region && y >= top_limit {
             route_marker_region_pixels += 1;
+        }
+        if distant_scene_region {
+            distant_scene_region_pixels += 1;
+            if distant_scene_like {
+                distant_scene_mask[index] = true;
+                distant_scene_pixels += 1;
+                distant_scene_color_buckets.insert(key);
+            }
         }
         if !hud_region {
             foreign_canvas_region_pixels += 1;
@@ -270,6 +297,10 @@ fn audit_image_with_alpha(
         .into_iter()
         .filter(|pixels| *pixels >= MIN_ROUTE_MARKER_HUE_FAMILY_PIXELS)
         .count();
+    let distant_scene_fraction = fraction(distant_scene_pixels, distant_scene_region_pixels);
+    let distant_scene_component_count =
+        distant_scene_component_count(&distant_scene_mask, width_usize, height_usize);
+    let distant_scene_color_bucket_count = distant_scene_color_buckets.len();
     let severe_clipping_fraction = severe_clipping_fraction(
         &border_occluder_pixels,
         &border_region_pixels,
@@ -389,6 +420,9 @@ fn audit_image_with_alpha(
         route_marker_fraction,
         route_marker_component_count,
         route_marker_hue_family_count,
+        distant_scene_fraction,
+        distant_scene_component_count,
+        distant_scene_color_bucket_count,
         severe_clipping_fraction,
         transparent_pixel_fraction,
         foreign_canvas_fraction,
@@ -697,6 +731,69 @@ fn route_marker_component_count(mask: &[bool], width: usize, height: usize) -> u
     components
 }
 
+fn distant_scene_component_count(mask: &[bool], width: usize, height: usize) -> usize {
+    if width == 0 || height == 0 || mask.len() != width.saturating_mul(height) {
+        return 0;
+    }
+
+    let mut visited = vec![false; mask.len()];
+    let mut stack = Vec::new();
+    let mut components = 0usize;
+    for index in 0..mask.len() {
+        if visited[index] || !mask[index] {
+            continue;
+        }
+
+        let mut pixel_count = 0usize;
+        let mut min_x = width;
+        let mut max_x = 0usize;
+        let mut min_y = height;
+        let mut max_y = 0usize;
+        visited[index] = true;
+        stack.push(index);
+        while let Some(current) = stack.pop() {
+            pixel_count += 1;
+            let x = current % width;
+            let y = current / width;
+            min_x = min_x.min(x);
+            max_x = max_x.max(x);
+            min_y = min_y.min(y);
+            max_y = max_y.max(y);
+
+            if x > 0 {
+                push_marker_neighbor(current - 1, mask, &mut visited, &mut stack);
+            }
+            if x + 1 < width {
+                push_marker_neighbor(current + 1, mask, &mut visited, &mut stack);
+            }
+            if y > 0 {
+                push_marker_neighbor(current - width, mask, &mut visited, &mut stack);
+            }
+            if y + 1 < height {
+                push_marker_neighbor(current + width, mask, &mut visited, &mut stack);
+            }
+        }
+
+        let component_width = max_x.saturating_sub(min_x) + 1;
+        let component_height = max_y.saturating_sub(min_y) + 1;
+        let aspect = component_width as f64 / component_height.max(1) as f64;
+        let max_width = (width as f64 * MAX_DISTANT_SCENE_COMPONENT_WIDTH_FRACTION) as usize;
+        let max_height = (height as f64 * MAX_DISTANT_SCENE_COMPONENT_HEIGHT_FRACTION) as usize;
+        let readable_component = pixel_count >= MIN_DISTANT_SCENE_COMPONENT_PIXELS
+            && component_width >= MIN_DISTANT_SCENE_COMPONENT_WIDTH
+            && component_height >= MIN_DISTANT_SCENE_COMPONENT_HEIGHT
+            && component_width <= max_width.max(MIN_DISTANT_SCENE_COMPONENT_WIDTH)
+            && component_height <= max_height.max(MIN_DISTANT_SCENE_COMPONENT_HEIGHT)
+            && aspect >= MIN_DISTANT_SCENE_COMPONENT_ASPECT;
+
+        if readable_component {
+            components += 1;
+        }
+    }
+
+    components
+}
+
 fn push_marker_neighbor(index: usize, mask: &[bool], visited: &mut [bool], stack: &mut Vec<usize>) {
     if !visited[index] && mask[index] {
         visited[index] = true;
@@ -756,6 +853,32 @@ fn is_player_focus_like(r: f64, g: f64, b: f64, luma: f64) -> bool {
 
 fn is_player_warm_like(r: f64, g: f64, b: f64) -> bool {
     r >= 115.0 && (35.0..=125.0).contains(&g) && b <= 95.0 && r >= g + 35.0
+}
+
+fn is_distant_scene_region(x: usize, y: usize, width: usize, height: usize) -> bool {
+    let y_start = height * 16 / 100;
+    let y_end = height * 64 / 100;
+    let x_margin = width * 4 / 100;
+    x >= x_margin && x < width.saturating_sub(x_margin) && y >= y_start && y < y_end
+}
+
+fn is_distant_scene_like(r: f64, g: f64, b: f64, luma: f64, sky_like: bool) -> bool {
+    if sky_like || !(12.0..=210.0).contains(&luma) {
+        return false;
+    }
+
+    let water_like =
+        r <= 115.0 && g >= 45.0 && b >= 40.0 && r <= g + 25.0 && (g >= r + 8.0 || b >= r + 8.0);
+    if water_like {
+        return false;
+    }
+
+    let foliage = g >= 58.0 && g >= r * 0.72 && g >= b * 0.58;
+    let earth = r >= 50.0 && g >= 38.0 && r >= b + 8.0 && g >= b * 0.68;
+    let rock_or_shadow =
+        (18.0..=155.0).contains(&luma) && (r - g).abs() <= 50.0 && b <= r.max(g) + 20.0;
+
+    foliage || earth || rock_or_shadow
 }
 
 fn is_route_marker_like(r: f64, g: f64, b: f64, luma: f64) -> bool {
@@ -842,6 +965,9 @@ struct ImageAudit {
     route_marker_fraction: f64,
     route_marker_component_count: usize,
     route_marker_hue_family_count: usize,
+    distant_scene_fraction: f64,
+    distant_scene_component_count: usize,
+    distant_scene_color_bucket_count: usize,
     severe_clipping_fraction: f64,
     transparent_pixel_fraction: f64,
     foreign_canvas_fraction: f64,
@@ -903,6 +1029,20 @@ fn report_checks(audits: &[ImageAudit]) -> Vec<Check> {
         .map(|audit| audit.route_marker_hue_family_count)
         .max()
         .unwrap_or_default();
+    let max_distant_scene_fraction = audits
+        .iter()
+        .map(|audit| audit.distant_scene_fraction)
+        .fold(0.0, f64::max);
+    let max_distant_scene_component_count = audits
+        .iter()
+        .map(|audit| audit.distant_scene_component_count)
+        .max()
+        .unwrap_or_default();
+    let max_distant_scene_color_bucket_count = audits
+        .iter()
+        .map(|audit| audit.distant_scene_color_bucket_count)
+        .max()
+        .unwrap_or_default();
 
     vec![
         Check::at_least(
@@ -928,6 +1068,24 @@ fn report_checks(audits: &[ImageAudit]) -> Vec<Check> {
             max_route_marker_hue_family_count as f64,
             MIN_SEQUENCE_ROUTE_MARKER_HUE_FAMILIES as f64,
             "families",
+        ),
+        Check::at_least(
+            "max_distant_scene_fraction",
+            max_distant_scene_fraction,
+            MIN_SEQUENCE_DISTANT_SCENE_FRACTION,
+            "ratio",
+        ),
+        Check::at_least(
+            "max_distant_scene_component_count",
+            max_distant_scene_component_count as f64,
+            MIN_SEQUENCE_DISTANT_SCENE_COMPONENTS as f64,
+            "components",
+        ),
+        Check::at_least(
+            "max_distant_scene_color_bucket_count",
+            max_distant_scene_color_bucket_count as f64,
+            MIN_SEQUENCE_DISTANT_SCENE_COLOR_BUCKETS as f64,
+            "buckets",
         ),
     ]
 }
@@ -964,7 +1122,7 @@ fn image_audit_json(audit: &ImageAudit) -> String {
         .collect::<Vec<_>>()
         .join(",\n      ");
     format!(
-        "{{\n      \"path\": {},\n      \"passed\": {},\n      \"width\": {},\n      \"height\": {},\n      \"mean_luma\": {},\n      \"luma_stddev\": {},\n      \"colorfulness\": {},\n      \"quantized_colors\": {},\n      \"edge_density\": {},\n      \"top_sky_fraction\": {},\n      \"lower_scene_fraction\": {},\n      \"center_scene_fraction\": {},\n      \"center_edge_density\": {},\n      \"scene_detail_tile_fraction\": {},\n      \"flat_scene_tile_fraction\": {},\n      \"scene_detail_tile_count\": {},\n      \"flat_scene_tile_count\": {},\n      \"scene_candidate_tile_count\": {},\n      \"player_focus_fraction\": {},\n      \"player_warm_focus_fraction\": {},\n      \"route_marker_fraction\": {},\n      \"route_marker_component_count\": {},\n      \"route_marker_hue_family_count\": {},\n      \"severe_clipping_fraction\": {},\n      \"transparent_pixel_fraction\": {},\n      \"foreign_canvas_fraction\": {},\n      \"hud_text_fraction\": {},\n      \"checks\": [\n      {}\n      ]\n    }}",
+        "{{\n      \"path\": {},\n      \"passed\": {},\n      \"width\": {},\n      \"height\": {},\n      \"mean_luma\": {},\n      \"luma_stddev\": {},\n      \"colorfulness\": {},\n      \"quantized_colors\": {},\n      \"edge_density\": {},\n      \"top_sky_fraction\": {},\n      \"lower_scene_fraction\": {},\n      \"center_scene_fraction\": {},\n      \"center_edge_density\": {},\n      \"scene_detail_tile_fraction\": {},\n      \"flat_scene_tile_fraction\": {},\n      \"scene_detail_tile_count\": {},\n      \"flat_scene_tile_count\": {},\n      \"scene_candidate_tile_count\": {},\n      \"player_focus_fraction\": {},\n      \"player_warm_focus_fraction\": {},\n      \"route_marker_fraction\": {},\n      \"route_marker_component_count\": {},\n      \"route_marker_hue_family_count\": {},\n      \"distant_scene_fraction\": {},\n      \"distant_scene_component_count\": {},\n      \"distant_scene_color_bucket_count\": {},\n      \"severe_clipping_fraction\": {},\n      \"transparent_pixel_fraction\": {},\n      \"foreign_canvas_fraction\": {},\n      \"hud_text_fraction\": {},\n      \"checks\": [\n      {}\n      ]\n    }}",
         json_string(&audit.path),
         audit.passed,
         audit.width,
@@ -988,6 +1146,9 @@ fn image_audit_json(audit: &ImageAudit) -> String {
         json_number(audit.route_marker_fraction),
         audit.route_marker_component_count,
         audit.route_marker_hue_family_count,
+        json_number(audit.distant_scene_fraction),
+        audit.distant_scene_component_count,
+        audit.distant_scene_color_bucket_count,
         json_number(audit.severe_clipping_fraction),
         json_number(audit.transparent_pixel_fraction),
         json_number(audit.foreign_canvas_fraction),
@@ -1042,7 +1203,7 @@ mod tests {
     use super::*;
     use image::Rgb;
 
-    fn paint_readability_signals(image: &mut RgbImage) {
+    fn paint_player_and_route_markers(image: &mut RgbImage) {
         let width = image.width();
         let height = image.height();
         let center_x = width / 2;
@@ -1062,6 +1223,77 @@ mod tests {
             image.put_pixel(x, y, Rgb([246, 58, 142]));
             image.put_pixel(x + 8, y, Rgb([64, 226, 92]));
         }
+    }
+
+    fn paint_distant_scene_signals(image: &mut RgbImage) {
+        let width = image.width();
+        let height = image.height();
+
+        for y in height * 19 / 100..height * 30 / 100 {
+            for x in width * 42 / 100..width * 54 / 100 {
+                let cap = y < height * 24 / 100;
+                let r = if cap { 68 + (x % 34) } else { 50 + (x % 46) };
+                let g = if cap { 112 + (y % 48) } else { 54 + (y % 42) };
+                let b = if cap {
+                    48 + ((x + y) % 24)
+                } else {
+                    32 + ((x + y) % 22)
+                };
+                image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+            }
+        }
+
+        for y in height * 22 / 100..height * 32 / 100 {
+            for x in width * 72 / 100..width * 86 / 100 {
+                let cap = y < height * 27 / 100;
+                let r = if cap { 96 + (x % 38) } else { 58 + (x % 52) };
+                let g = if cap { 118 + (y % 44) } else { 50 + (y % 38) };
+                let b = if cap {
+                    54 + ((x + y) % 28)
+                } else {
+                    34 + ((x + y) % 26)
+                };
+                image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+            }
+        }
+    }
+
+    fn paint_high_sky_textured_scene(image: &mut RgbImage) {
+        let width = image.width();
+        let height = image.height();
+        for y in 0..height {
+            for x in 0..width {
+                let checker = (x + y) % 2 == 0;
+                let (r, g, b) = if y < height * 64 / 100 {
+                    (126 + (x % 34), 158 + (y % 34), 196 + ((x + y) % 34))
+                } else if checker {
+                    (48 + (x % 92), 110 + (y % 80), 58 + ((x + y) % 50))
+                } else {
+                    (112 + (x % 70), 82 + (y % 60), 54 + ((x + y) % 44))
+                };
+                image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+            }
+        }
+    }
+
+    fn paint_flat_distant_scene_signals(image: &mut RgbImage) {
+        let width = image.width();
+        let height = image.height();
+        for y in height * 20 / 100..height * 29 / 100 {
+            for x in width * 42 / 100..width * 54 / 100 {
+                image.put_pixel(x, y, Rgb([132, 92, 52]));
+            }
+        }
+        for y in height * 22 / 100..height * 31 / 100 {
+            for x in width * 72 / 100..width * 86 / 100 {
+                image.put_pixel(x, y, Rgb([132, 92, 52]));
+            }
+        }
+    }
+
+    fn paint_readability_signals(image: &mut RgbImage) {
+        paint_player_and_route_markers(image);
+        paint_distant_scene_signals(image);
     }
 
     #[test]
@@ -1286,6 +1518,44 @@ mod tests {
     }
 
     #[test]
+    fn report_rejects_sequence_without_distant_scene_components() {
+        let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        paint_high_sky_textured_scene(&mut image);
+        paint_player_and_route_markers(&mut image);
+
+        let audit =
+            audit_image("missing_distant_scene.png".to_string(), image).expect("audit should load");
+        let checks = report_checks(std::slice::from_ref(&audit));
+
+        assert!(audit.passed, "{audit:?}");
+        assert!(!report_passed(std::slice::from_ref(&audit), &checks));
+        assert!(
+            checks
+                .iter()
+                .any(|check| check.name == "max_distant_scene_component_count" && !check.passed)
+        );
+    }
+
+    #[test]
+    fn report_rejects_flat_distant_scene_identity() {
+        let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        paint_high_sky_textured_scene(&mut image);
+        paint_player_and_route_markers(&mut image);
+        paint_flat_distant_scene_signals(&mut image);
+
+        let audit =
+            audit_image("flat_distant_scene.png".to_string(), image).expect("audit should load");
+        let checks = report_checks(std::slice::from_ref(&audit));
+
+        assert!(audit.passed, "{audit:?}");
+        assert!(audit.distant_scene_component_count >= MIN_SEQUENCE_DISTANT_SCENE_COMPONENTS);
+        assert!(!report_passed(std::slice::from_ref(&audit), &checks));
+        assert!(checks.iter().any(|check| {
+            check.name == "max_distant_scene_color_bucket_count" && !check.passed
+        }));
+    }
+
+    #[test]
     fn audit_rejects_sky_only_frame() {
         let image = RgbImage::from_pixel(MIN_WIDTH, MIN_HEIGHT, Rgb([136, 170, 208]));
 
@@ -1504,6 +1774,7 @@ mod tests {
                 image.put_pixel(x, y, Rgb([188, 84, 34]));
             }
         }
+        paint_distant_scene_signals(&mut image);
 
         let audit =
             audit_image("missing_route_marker.png".to_string(), image).expect("audit should load");
@@ -1551,6 +1822,7 @@ mod tests {
                 image.put_pixel(x, y, Rgb([246, 184, 48]));
             }
         }
+        paint_distant_scene_signals(&mut image);
 
         let audit =
             audit_image("single_route_marker.png".to_string(), image).expect("audit should load");
@@ -1566,7 +1838,11 @@ mod tests {
                 .iter()
                 .any(|check| check.name == "max_route_marker_component_count" && !check.passed)
         );
-        assert_eq!(checks.iter().filter(|check| !check.passed).count(), 1);
+        assert!(
+            checks
+                .iter()
+                .any(|check| check.name == "max_route_marker_hue_family_count" && !check.passed)
+        );
     }
 
     #[test]
