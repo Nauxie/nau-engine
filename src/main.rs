@@ -43,7 +43,8 @@ use nau_engine::eval::{
 };
 use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
-    face_horizontal_velocity, step_flight,
+    body_yaw_error_degrees, desired_heading_alignment_speed, desired_planar_movement_direction,
+    face_flight_direction, lateral_response_speed, step_flight,
 };
 use nau_engine::world::{
     LodBand, START_POSITION, SkyIsland, SkyRoute, StreamActivation, is_recovery_branch_island,
@@ -161,6 +162,7 @@ fn main() -> AppExit {
         };
 
         app.insert_resource(eval_run)
+            .insert_resource(EvalMovementBasis::default())
             .add_systems(Update, eval_fly_player.in_set(GameSet::Movement))
             .add_systems(
                 Update,
@@ -623,6 +625,12 @@ struct EvalRun {
     screenshot_wait_frames: u32,
     pending_screenshot_exit_success: Option<bool>,
     io_error: Option<String>,
+}
+
+#[derive(Resource, Clone, Copy, Debug, Default)]
+struct EvalMovementBasis {
+    frame: u32,
+    facing: Option<Facing>,
 }
 
 #[derive(Debug)]
@@ -3184,6 +3192,7 @@ fn eval_fly_player(
     tuning: Res<FlightTuning>,
     mut world: MovementWorld,
     camera: Query<&Transform, CameraFollowFilter>,
+    mut movement_basis: ResMut<EvalMovementBasis>,
     mut player: Query<(&mut Transform, &mut Velocity, &mut FlightController), With<Player>>,
 ) {
     if run.finalized {
@@ -3194,6 +3203,10 @@ fn eval_fly_player(
         return;
     };
     let facing = movement_facing(camera.single().ok(), &transform);
+    *movement_basis = EvalMovementBasis {
+        frame: run.frame,
+        facing: Some(facing),
+    };
     let mut kinematics = PlayerKinematics {
         transform: &mut transform,
         velocity: &mut velocity,
@@ -3259,10 +3272,13 @@ fn step_player(
     player.transform.translation = next.position;
     player.velocity.0 = next.velocity;
     *player.controller = next.controller;
-    player.transform.rotation = face_horizontal_velocity(
+    player.transform.rotation = face_flight_direction(
         player.transform.rotation,
         player.velocity.0,
-        tuning.turn_rate,
+        input,
+        facing,
+        player.controller.mode,
+        &tuning,
         dt,
     );
 }
@@ -3679,6 +3695,7 @@ fn collect_eval_frame_time(time: Res<Time>, mut run: ResMut<EvalRun>) {
 fn collect_eval_metrics(
     mut run: ResMut<EvalRun>,
     camera_control: Res<CameraControlState>,
+    movement_basis: Res<EvalMovementBasis>,
     scene: EvalScene,
 ) {
     if run.finalized || !run.scenario.should_sample(run.frame) {
@@ -3743,6 +3760,34 @@ fn collect_eval_metrics(
     let asset_metrics = scene.asset_diagnostics.metrics;
     let (environment_motion_visuals, max_environment_motion_offset_m) =
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
+    let movement_input = scripted_input(run.scenario, run.frame);
+    let movement_axis = movement_input.planar_axis();
+    let movement_facing = if movement_basis.frame == run.frame {
+        movement_basis
+            .facing
+            .unwrap_or_else(|| movement_facing(scene.camera.single().ok(), transform))
+    } else {
+        movement_facing(scene.camera.single().ok(), transform)
+    };
+    let desired_movement_direction =
+        if movement_input.forward || movement_input.left || movement_input.right {
+            desired_planar_movement_direction(movement_input, movement_facing)
+        } else {
+            None
+        };
+    let desired_body_yaw_error_degrees = desired_movement_direction
+        .map(|direction| body_yaw_error_degrees(transform.rotation, direction))
+        .unwrap_or(f32::NAN);
+    let desired_heading_alignment_mps = desired_movement_direction
+        .map(|direction| desired_heading_alignment_speed(velocity.0, direction))
+        .unwrap_or(f32::NAN);
+    let lateral_input_active =
+        movement_input.has_lateral_axis() && controller.mode != FlightMode::Grounded;
+    let lateral_response_mps = if lateral_input_active {
+        lateral_response_speed(velocity.0, movement_input, movement_facing)
+    } else {
+        0.0
+    };
     let sample = EvalSample::new(
         run.frame,
         run.scenario.fixed_dt,
@@ -3819,6 +3864,14 @@ fn collect_eval_metrics(
         scene.power_ups.collected_count(),
         scene.power_ups.active_effects(),
         scene.power_ups.total_activations,
+    )
+    .with_movement_metrics(
+        desired_body_yaw_error_degrees,
+        desired_heading_alignment_mps,
+        lateral_response_mps,
+        lateral_input_active,
+        movement_axis.x,
+        movement_axis.y,
     );
 
     if let Err(error) = run.record_sample(sample) {
