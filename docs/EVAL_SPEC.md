@@ -247,6 +247,8 @@ Every sample includes:
 - `hidden_island_detail_count`
 - `visible_route_beacon_count`
 - `weather_cloud_count`
+- `environment_motion_visual_count`
+- `max_environment_motion_offset_m`
 - `resident_island_visual_count`
 - `stream_visibility_changes_this_frame`
 - `max_stream_visibility_changes_per_frame`
@@ -278,6 +280,7 @@ Add fields here before adding them to code. New fields should be cheap to collec
 The island terrain/detail/impostor hidden counts are catalog entries that are not currently resident. The `stream_visibility_*` names are retained for artifact compatibility, but now report resident island visual spawn/despawn churn rather than `Visibility` flag flips.
 The visual asset fields report the declared glTF scene inventory, how many slots have files available under `assets/`, how many are still using generated placeholders, how many Bevy scene handles are queued/loading/loaded/failed, and how those slots divide across always-loaded, stream-window, near-LOD, far-LOD, and weather residency classes. They are readiness signals for replacing primitives with real assets; they do not prove final art quality yet.
 The power-up fields report authored aerial boost gates, how many remain visible, how many have been collected, whether an effect is currently active, and the total activation count. They are route-readiness signals for the simple power-up slice, not final ability design.
+The environment-motion fields report how many resident near-LOD visuals are wind-responsive and the largest sampled transform offset from their base placement. They prove the visual motion layer exists and is active; they do not evaluate final animation quality.
 
 ## Summary Metrics
 
@@ -319,6 +322,8 @@ The summary aggregates:
 - max hidden island detail count
 - max visible route beacon count
 - max weather cloud count
+- max environment-motion visual count
+- max environment-motion offset
 - max resident island visual count
 - max stream visibility changes per frame
 - total stream visibility changes
@@ -371,6 +376,7 @@ The pass/fail checks currently guard:
 - failed visual asset scene count remains zero so broken imported assets fail the eval loop once real files are present
 - authored aerial power-up counts stay populated, and power-up scenarios collect enough gates with enough sampled active-effect frames
 - weather cloud count stays populated so the first non-debug weather layer cannot silently disappear
+- environment-motion visual count and offset stay populated so wind-responsive near-LOD trees/ponds cannot silently disappear or freeze
 - resident island visuals stay under budget while streaming visibility is still hide/show based
 - stream visibility changes per frame stay under budget so chunk/LOD crossings do not churn too many visuals at once
 - the scene has enough entities to catch accidental content collapse
@@ -439,7 +445,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - `active_chunk_count` and `active_island_count` drive resident terrain/detail entities, and visual asset slots are declared, counted, and split by residency class, but there is no asynchronous asset streaming policy yet.
 - Missing glTF files are counted as placeholders and intentionally do not trigger load errors; only files that exist under `assets/` are queued through Bevy's `AssetServer`, and queued handles then report queued/loading/loaded/failed state.
 - LOD buckets drive resident island detail, inactive or non-near chunks use cheap impostors, and hidden/resident/churn counters quantify stream-window pressure.
-- The weather-cloud counter verifies that cloud-layer entities exist, and the screenshot audit catches gross visual/composition failure, but neither proves atmosphere, fog, materials, and clouds look correct.
+- The weather-cloud and environment-motion counters verify that cloud-layer entities and wind-responsive near-LOD visual motion exist, and the screenshot audit catches gross visual/composition failure, but neither proves atmosphere, fog, materials, clouds, or animation look correct.
 - `entity_count` is still a coarse scene-scale proxy; streaming health should be read from resident island visual count and stream entity churn.
 - Route objectives are HUD/debug state backed by pure route objective helpers and serialized into eval samples, but only updraft and branch-recovery routes currently gate objective completion.
 - Aerial power-up gates are primitive glowing route rings with simple one-time collection state; there is no inventory UI, reset flow, audio/particles, or authored ability progression yet.
