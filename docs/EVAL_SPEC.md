@@ -257,11 +257,21 @@ Every sample includes:
 - `ready_visual_asset_slot_count`
 - `placeholder_visual_asset_slot_count`
 - `streaming_visual_asset_slot_count`
+- `missing_visual_asset_slot_count`
+- `queued_visual_asset_scene_count`
+- `loading_visual_asset_scene_count`
+- `loaded_visual_asset_scene_count`
+- `failed_visual_asset_scene_count`
+- `always_visual_asset_slot_count`
+- `stream_window_visual_asset_slot_count`
+- `near_lod_visual_asset_slot_count`
+- `far_lod_visual_asset_slot_count`
+- `weather_visual_asset_slot_count`
 
 Add fields here before adding them to code. New fields should be cheap to collect, stable across runs, and useful for deciding what to fix.
 
 The island terrain/detail/impostor hidden counts are catalog entries that are not currently resident. The `stream_visibility_*` names are retained for artifact compatibility, but now report resident island visual spawn/despawn churn rather than `Visibility` flag flips.
-The visual asset fields report the declared glTF scene inventory, how many slots have files available under `assets/`, how many are still using generated placeholders, and how many are stream-managed slots. They are readiness signals for replacing primitives with real assets; they do not prove asynchronous loading or final art quality yet.
+The visual asset fields report the declared glTF scene inventory, how many slots have files available under `assets/`, how many are still using generated placeholders, how many Bevy scene handles are queued/loading/loaded/failed, and how those slots divide across always-loaded, stream-window, near-LOD, far-LOD, and weather residency classes. They are readiness signals for replacing primitives with real assets; they do not prove final art quality yet.
 
 ## Summary Metrics
 
@@ -316,6 +326,9 @@ The summary aggregates:
 - max ready visual asset slot count
 - max placeholder visual asset slot count
 - max stream-managed visual asset slot count
+- max missing visual asset slot count
+- max queued/loading/loaded/failed visual asset scene counts
+- max always-loaded, stream-window, near-LOD, far-LOD, and weather visual asset slot counts
 - target landing sample count
 - active lift sample count
 - readable and unreadable active-lift sample counts
@@ -344,6 +357,7 @@ The pass/fail checks currently guard:
 - visible route beacons stay populated so distant route readability is not culled away
 - objective totals stay populated, and objective-route scenarios complete their required objective count
 - declared visual asset slots, glTF scene slots, and stream-managed asset slots stay populated so the real-asset migration surface cannot silently disappear
+- failed visual asset scene count remains zero so broken imported assets fail the eval loop once real files are present
 - weather cloud count stays populated so the first non-debug weather layer cannot silently disappear
 - resident island visuals stay under budget while streaming visibility is still hide/show based
 - stream visibility changes per frame stay under budget so chunk/LOD crossings do not churn too many visuals at once
@@ -410,8 +424,8 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - There is no simulation-only binary yet.
 - Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
 - Island collision follows deterministic authored terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
-- `active_chunk_count` and `active_island_count` drive resident terrain/detail entities, and visual asset slots are declared and counted, but there is no asynchronous asset streaming yet.
-- Missing glTF files are counted as placeholders and intentionally do not trigger load errors; only files that exist under `assets/` are queued through Bevy's `AssetServer`.
+- `active_chunk_count` and `active_island_count` drive resident terrain/detail entities, and visual asset slots are declared, counted, and split by residency class, but there is no asynchronous asset streaming policy yet.
+- Missing glTF files are counted as placeholders and intentionally do not trigger load errors; only files that exist under `assets/` are queued through Bevy's `AssetServer`, and queued handles then report queued/loading/loaded/failed state.
 - LOD buckets drive resident island detail, inactive or non-near chunks use cheap impostors, and hidden/resident/churn counters quantify stream-window pressure.
 - The weather-cloud counter verifies that cloud-layer entities exist, and the screenshot audit catches gross visual/composition failure, but neither proves atmosphere, fog, materials, and clouds look correct.
 - `entity_count` is still a coarse scene-scale proxy; streaming health should be read from resident island visual count and stream entity churn.
