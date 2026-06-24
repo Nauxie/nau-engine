@@ -80,8 +80,8 @@ const TREE_BRANCH_COUNT: usize = 3;
 const TREE_BRANCH_SEGMENTS: usize = 6;
 const ROCK_MESH_SEGMENTS: usize = 12;
 const ROCK_MESH_RINGS: usize = 6;
-const CLOUD_BANK_LOBES: usize = 10;
-const CLOUD_VEIL_LOBES: usize = 6;
+const CLOUD_BANK_LOBES: usize = 14;
+const CLOUD_VEIL_LOBES: usize = 7;
 const AUTHORED_ASSET_PROBE_KINDS: &[VisualAssetKind] = &[
     VisualAssetKind::IslandTerrain,
     VisualAssetKind::IslandFoliage,
@@ -504,6 +504,8 @@ struct IslandContentDiagnostics {
     generated_rock_count: usize,
     min_rock_mesh_vertices: usize,
     generated_weather_cloud_count: usize,
+    generated_weather_cloud_bank_count: usize,
+    min_weather_cloud_bank_depth_cm: usize,
     min_weather_cloud_lobe_count: usize,
     max_weather_cloud_lobe_count: usize,
     min_weather_cloud_mesh_vertices: usize,
@@ -631,7 +633,13 @@ impl IslandContentDiagnostics {
         self.generated_rock_count += 1;
     }
 
-    fn record_generated_weather_cloud(&mut self, lobe_count: usize, mesh_vertices: usize) {
+    fn record_generated_weather_cloud(
+        &mut self,
+        lobe_count: usize,
+        mesh_vertices: usize,
+        depth_m: f32,
+        is_bank: bool,
+    ) {
         if self.generated_weather_cloud_count == 0 {
             self.min_weather_cloud_lobe_count = lobe_count;
             self.min_weather_cloud_mesh_vertices = mesh_vertices;
@@ -642,6 +650,20 @@ impl IslandContentDiagnostics {
         }
         self.generated_weather_cloud_count += 1;
         self.max_weather_cloud_lobe_count = self.max_weather_cloud_lobe_count.max(lobe_count);
+        if is_bank {
+            let depth_cm = (depth_m.max(0.0) * 100.0).round() as usize;
+            if self.generated_weather_cloud_bank_count == 0 {
+                self.min_weather_cloud_bank_depth_cm = depth_cm;
+            } else {
+                self.min_weather_cloud_bank_depth_cm =
+                    self.min_weather_cloud_bank_depth_cm.min(depth_cm);
+            }
+            self.generated_weather_cloud_bank_count += 1;
+        }
+    }
+
+    fn min_weather_cloud_bank_depth_m(self) -> f32 {
+        self.min_weather_cloud_bank_depth_cm as f32 / 100.0
     }
 }
 
@@ -3302,11 +3324,25 @@ fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
     for lobe in 0..lobe_count {
         let phase = lobe as f32 / lobe_count as f32 * std::f32::consts::TAU
             + random_unit(seed, lobe as u32, 5) * 0.8;
-        let radius = 0.34 + random_unit(seed, lobe as u32, 19) * 0.28;
+        let layer = lobe % 4;
+        let layer_height = match layer {
+            0 => -0.34,
+            1 => -0.08,
+            2 => 0.18,
+            _ => 0.40,
+        };
+        let layer_spread = match layer {
+            0 => 0.72,
+            1 => 0.56,
+            2 => 0.40,
+            _ => 0.24,
+        };
+        let radius =
+            0.36 + random_unit(seed, lobe as u32, 19) * 0.27 + if layer == 0 { 0.08 } else { 0.0 };
         let center = Vec3::new(
-            phase.cos() * (0.28 + random_unit(seed, lobe as u32, 29) * 0.38),
-            (random_unit(seed, lobe as u32, 41) - 0.5) * 0.22,
-            phase.sin() * (0.18 + random_unit(seed, lobe as u32, 53) * 0.32),
+            phase.cos() * (0.18 + layer_spread * random_unit(seed, lobe as u32, 29)),
+            layer_height + (random_unit(seed, lobe as u32, 41) - 0.5) * 0.16,
+            phase.sin() * (0.14 + layer_spread * random_unit(seed, lobe as u32, 53) * 0.82),
         );
         append_ellipsoid_lobe(
             &mut positions,
@@ -3314,11 +3350,15 @@ fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
             &mut uvs,
             &mut indices,
             center,
-            Vec3::new(radius * 1.28, radius * 0.44, radius * 0.82),
-            4,
-            8,
+            Vec3::new(
+                radius * (1.20 + layer as f32 * 0.04),
+                radius * (0.54 + layer as f32 * 0.03),
+                radius * (0.82 + layer as f32 * 0.05),
+            ),
+            5,
+            10,
             seed.wrapping_add(lobe as u32 * 101),
-            0.12,
+            0.15,
         );
     }
 
@@ -3573,12 +3613,17 @@ fn spawn_weather_layers(
         let axis = Vec3::new(0.96, 0.0, 0.28).normalize();
         let scale = Vec3::new(
             island.half_extents.x * 0.45 + 18.0,
-            2.6 + (index % 3) as f32 * 0.45,
+            3.8 + (index % 3) as f32 * 0.55,
             island.half_extents.y * 0.26 + 8.0,
         );
         let cloud_mesh_data = cloud_cluster_mesh(2_000 + index as u32 * 37, CLOUD_BANK_LOBES);
-        content_diagnostics
-            .record_generated_weather_cloud(CLOUD_BANK_LOBES, cloud_mesh_data.count_vertices());
+        let cloud_depth_m = mesh_y_range(&cloud_mesh_data) * scale.y;
+        content_diagnostics.record_generated_weather_cloud(
+            CLOUD_BANK_LOBES,
+            cloud_mesh_data.count_vertices(),
+            cloud_depth_m,
+            true,
+        );
         let cloud_mesh = meshes.add(cloud_mesh_data);
 
         commands.spawn((
@@ -3622,9 +3667,17 @@ fn spawn_weather_layers(
                     3_000 + index as u32 * 53 + puff_index as u32 * 11,
                     CLOUD_VEIL_LOBES,
                 );
+                let veil_scale = Vec3::new(
+                    island.half_extents.x * 0.36 + 14.0 + puff_index as f32 * 4.0,
+                    0.52 + puff_index as f32 * 0.12,
+                    island.half_extents.y * 0.13 + 6.0 + puff_index as f32 * 1.8,
+                );
+                let veil_depth_m = mesh_y_range(&veil_mesh_data) * veil_scale.y;
                 content_diagnostics.record_generated_weather_cloud(
                     CLOUD_VEIL_LOBES,
                     veil_mesh_data.count_vertices(),
+                    veil_depth_m,
+                    false,
                 );
                 let veil_mesh = meshes.add(veil_mesh_data);
 
@@ -3633,11 +3686,7 @@ fn spawn_weather_layers(
                     MeshMaterial3d(cloud_veil_material.clone()),
                     Transform {
                         translation: veil_origin,
-                        scale: Vec3::new(
-                            island.half_extents.x * 0.36 + 14.0 + puff_index as f32 * 4.0,
-                            0.52 + puff_index as f32 * 0.12,
-                            island.half_extents.y * 0.13 + 6.0 + puff_index as f32 * 1.8,
-                        ),
+                        scale: veil_scale,
                         rotation: veil_rotation,
                     },
                     WeatherDrift {
@@ -6059,7 +6108,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -6140,6 +6189,8 @@ fn update_debug_readout(
         content_metrics.generated_rock_count,
         content_metrics.min_rock_mesh_vertices,
         content_metrics.generated_weather_cloud_count,
+        content_metrics.generated_weather_cloud_bank_count,
+        content_metrics.min_weather_cloud_bank_depth_m(),
         content_metrics.min_weather_cloud_lobe_count,
         content_metrics.max_weather_cloud_lobe_count,
         content_metrics.min_weather_cloud_mesh_vertices,
@@ -6407,6 +6458,8 @@ fn collect_eval_metrics(
         content_metrics.generated_rock_count,
         content_metrics.min_rock_mesh_vertices,
         content_metrics.generated_weather_cloud_count,
+        content_metrics.generated_weather_cloud_bank_count,
+        content_metrics.min_weather_cloud_bank_depth_m(),
         content_metrics.min_weather_cloud_lobe_count,
         content_metrics.max_weather_cloud_lobe_count,
         content_metrics.min_weather_cloud_mesh_vertices,
@@ -6996,7 +7049,7 @@ mod tests {
     fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
         let mesh = cloud_cluster_mesh(99, CLOUD_BANK_LOBES);
         let positions = positions(&mesh);
-        let lobe_vertices = (4 + 1) * (8 + 1);
+        let lobe_vertices = (5 + 1) * (10 + 1);
         let min_x = positions
             .iter()
             .map(|position| position[0])
@@ -7013,11 +7066,23 @@ mod tests {
             .iter()
             .map(|position| position[2])
             .fold(f32::NEG_INFINITY, f32::max);
+        let min_y = positions
+            .iter()
+            .map(|position| position[1])
+            .fold(f32::INFINITY, f32::min);
+        let max_y = positions
+            .iter()
+            .map(|position| position[1])
+            .fold(f32::NEG_INFINITY, f32::max);
 
         assert_eq!(mesh.count_vertices(), CLOUD_BANK_LOBES * lobe_vertices);
         assert!(
             max_x - min_x > 1.2,
             "cloud clusters should have lateral lobe structure"
+        );
+        assert!(
+            max_y - min_y > 1.0,
+            "cloud clusters should stack lobes vertically instead of staying wafer-flat"
         );
         assert!(
             max_z - min_z > 0.8,
@@ -7308,8 +7373,8 @@ mod tests {
         diagnostics.record_generated_tree_canopy(240);
         diagnostics.record_generated_rock(74);
         diagnostics.record_generated_rock(80);
-        diagnostics.record_generated_weather_cloud(7, 315);
-        diagnostics.record_generated_weather_cloud(4, 180);
+        diagnostics.record_generated_weather_cloud(7, 315, 4.2, true);
+        diagnostics.record_generated_weather_cloud(4, 180, 0.8, false);
 
         assert_eq!(diagnostics.generated_tree_trunk_count, 2);
         assert_eq!(diagnostics.generated_tree_canopy_count, 2);
@@ -7319,6 +7384,8 @@ mod tests {
         assert_eq!(diagnostics.generated_rock_count, 2);
         assert_eq!(diagnostics.min_rock_mesh_vertices, 74);
         assert_eq!(diagnostics.generated_weather_cloud_count, 2);
+        assert_eq!(diagnostics.generated_weather_cloud_bank_count, 1);
+        assert_eq!(diagnostics.min_weather_cloud_bank_depth_m(), 4.2);
         assert_eq!(diagnostics.min_weather_cloud_lobe_count, 4);
         assert_eq!(diagnostics.max_weather_cloud_lobe_count, 7);
         assert_eq!(diagnostics.min_weather_cloud_mesh_vertices, 180);
