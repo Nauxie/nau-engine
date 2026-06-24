@@ -3029,6 +3029,7 @@ pub mod eval {
         CAMERA_STRAFE_STABILITY,
         LONG_GLIDE_VISIBILITY,
     ];
+    pub const MAX_RESIDENT_ISLAND_VISUAL_FRACTION: f32 = 0.70;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct EvalCheckpoint {
@@ -3397,6 +3398,15 @@ pub mod eval {
         pub stream_visibility_changes_this_frame: usize,
         pub max_stream_visibility_changes_per_frame: usize,
         pub total_stream_visibility_changes: usize,
+        pub catalog_island_visual_count: usize,
+        pub hidden_island_visual_count: usize,
+        pub resident_island_visual_fraction: f32,
+        pub stream_spawned_visuals_this_frame: usize,
+        pub stream_despawned_visuals_this_frame: usize,
+        pub max_stream_spawned_visuals_per_frame: usize,
+        pub max_stream_despawned_visuals_per_frame: usize,
+        pub total_stream_spawned_visuals: usize,
+        pub total_stream_despawned_visuals: usize,
         pub entity_count: usize,
         pub visual_asset_slot_count: usize,
         pub gltf_scene_asset_slot_count: usize,
@@ -3468,6 +3478,15 @@ pub mod eval {
             stream_visibility_changes_this_frame: usize,
             max_stream_visibility_changes_per_frame: usize,
             total_stream_visibility_changes: usize,
+            catalog_island_visual_count: usize,
+            hidden_island_visual_count: usize,
+            resident_island_visual_fraction: f32,
+            stream_spawned_visuals_this_frame: usize,
+            stream_despawned_visuals_this_frame: usize,
+            max_stream_spawned_visuals_per_frame: usize,
+            max_stream_despawned_visuals_per_frame: usize,
+            total_stream_spawned_visuals: usize,
+            total_stream_despawned_visuals: usize,
             entity_count: usize,
             visual_asset_slot_count: usize,
             gltf_scene_asset_slot_count: usize,
@@ -3538,6 +3557,15 @@ pub mod eval {
                 stream_visibility_changes_this_frame,
                 max_stream_visibility_changes_per_frame,
                 total_stream_visibility_changes,
+                catalog_island_visual_count,
+                hidden_island_visual_count,
+                resident_island_visual_fraction,
+                stream_spawned_visuals_this_frame,
+                stream_despawned_visuals_this_frame,
+                max_stream_spawned_visuals_per_frame,
+                max_stream_despawned_visuals_per_frame,
+                total_stream_spawned_visuals,
+                total_stream_despawned_visuals,
                 entity_count,
                 visual_asset_slot_count,
                 gltf_scene_asset_slot_count,
@@ -3564,7 +3592,7 @@ pub mod eval {
 
         pub fn to_json(&self) -> String {
             format!(
-                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"readable_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"objective\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"weather_cloud_count\":{},\"environment_motion_visual_count\":{},\"max_environment_motion_offset_m\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"entity_count\":{},\"visual_asset_slot_count\":{},\"gltf_scene_asset_slot_count\":{},\"ready_visual_asset_slot_count\":{},\"placeholder_visual_asset_slot_count\":{},\"streaming_visual_asset_slot_count\":{},\"missing_visual_asset_slot_count\":{},\"queued_visual_asset_scene_count\":{},\"loading_visual_asset_scene_count\":{},\"loaded_visual_asset_scene_count\":{},\"failed_visual_asset_scene_count\":{},\"always_visual_asset_slot_count\":{},\"stream_window_visual_asset_slot_count\":{},\"near_lod_visual_asset_slot_count\":{},\"far_lod_visual_asset_slot_count\":{},\"weather_visual_asset_slot_count\":{},\"power_up_count\":{},\"visible_power_up_count\":{},\"collected_power_up_count\":{},\"active_power_up_effects\":{},\"total_power_up_activations\":{}}}",
+                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"readable_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"objective\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"weather_cloud_count\":{},\"environment_motion_visual_count\":{},\"max_environment_motion_offset_m\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"catalog_island_visual_count\":{},\"hidden_island_visual_count\":{},\"resident_island_visual_fraction\":{},\"stream_spawned_visuals_this_frame\":{},\"stream_despawned_visuals_this_frame\":{},\"max_stream_spawned_visuals_per_frame\":{},\"max_stream_despawned_visuals_per_frame\":{},\"total_stream_spawned_visuals\":{},\"total_stream_despawned_visuals\":{},\"entity_count\":{},\"visual_asset_slot_count\":{},\"gltf_scene_asset_slot_count\":{},\"ready_visual_asset_slot_count\":{},\"placeholder_visual_asset_slot_count\":{},\"streaming_visual_asset_slot_count\":{},\"missing_visual_asset_slot_count\":{},\"queued_visual_asset_scene_count\":{},\"loading_visual_asset_scene_count\":{},\"loaded_visual_asset_scene_count\":{},\"failed_visual_asset_scene_count\":{},\"always_visual_asset_slot_count\":{},\"stream_window_visual_asset_slot_count\":{},\"near_lod_visual_asset_slot_count\":{},\"far_lod_visual_asset_slot_count\":{},\"weather_visual_asset_slot_count\":{},\"power_up_count\":{},\"visible_power_up_count\":{},\"collected_power_up_count\":{},\"active_power_up_effects\":{},\"total_power_up_activations\":{}}}",
                 self.frame,
                 json_number(self.time_secs),
                 json_array3(self.position),
@@ -3612,6 +3640,15 @@ pub mod eval {
                 self.stream_visibility_changes_this_frame,
                 self.max_stream_visibility_changes_per_frame,
                 self.total_stream_visibility_changes,
+                self.catalog_island_visual_count,
+                self.hidden_island_visual_count,
+                json_number(self.resident_island_visual_fraction),
+                self.stream_spawned_visuals_this_frame,
+                self.stream_despawned_visuals_this_frame,
+                self.max_stream_spawned_visuals_per_frame,
+                self.max_stream_despawned_visuals_per_frame,
+                self.total_stream_spawned_visuals,
+                self.total_stream_despawned_visuals,
                 self.entity_count,
                 self.visual_asset_slot_count,
                 self.gltf_scene_asset_slot_count,
@@ -3683,6 +3720,13 @@ pub mod eval {
         max_resident_island_visual_count: usize,
         max_stream_visibility_changes_per_frame: usize,
         total_stream_visibility_changes: usize,
+        max_catalog_island_visual_count: usize,
+        max_hidden_island_visual_count: usize,
+        max_resident_island_visual_fraction: f32,
+        max_stream_spawned_visuals_per_frame: usize,
+        max_stream_despawned_visuals_per_frame: usize,
+        total_stream_spawned_visuals: usize,
+        total_stream_despawned_visuals: usize,
         max_entity_count: usize,
         max_objective_total_count: usize,
         max_completed_objective_count: usize,
@@ -3863,6 +3907,27 @@ pub mod eval {
             self.total_stream_visibility_changes = self
                 .total_stream_visibility_changes
                 .max(sample.total_stream_visibility_changes);
+            self.max_catalog_island_visual_count = self
+                .max_catalog_island_visual_count
+                .max(sample.catalog_island_visual_count);
+            self.max_hidden_island_visual_count = self
+                .max_hidden_island_visual_count
+                .max(sample.hidden_island_visual_count);
+            self.max_resident_island_visual_fraction = self
+                .max_resident_island_visual_fraction
+                .max(sample.resident_island_visual_fraction);
+            self.max_stream_spawned_visuals_per_frame = self
+                .max_stream_spawned_visuals_per_frame
+                .max(sample.max_stream_spawned_visuals_per_frame);
+            self.max_stream_despawned_visuals_per_frame = self
+                .max_stream_despawned_visuals_per_frame
+                .max(sample.max_stream_despawned_visuals_per_frame);
+            self.total_stream_spawned_visuals = self
+                .total_stream_spawned_visuals
+                .max(sample.total_stream_spawned_visuals);
+            self.total_stream_despawned_visuals = self
+                .total_stream_despawned_visuals
+                .max(sample.total_stream_despawned_visuals);
             self.max_entity_count = self.max_entity_count.max(sample.entity_count);
             self.max_objective_total_count = self
                 .max_objective_total_count
@@ -4123,6 +4188,31 @@ pub mod eval {
                     "entities/frame",
                 ),
                 EvalCheck::at_least(
+                    "hidden_island_visual_count",
+                    self.max_hidden_island_visual_count as f32,
+                    (thresholds.min_hidden_island_terrain_count
+                        + thresholds.min_hidden_island_detail_count) as f32,
+                    "entities",
+                ),
+                EvalCheck::at_most(
+                    "resident_island_visual_fraction",
+                    self.max_resident_island_visual_fraction,
+                    MAX_RESIDENT_ISLAND_VISUAL_FRACTION,
+                    "ratio",
+                ),
+                EvalCheck::at_most(
+                    "stream_spawned_visuals_per_frame",
+                    self.max_stream_spawned_visuals_per_frame as f32,
+                    thresholds.max_stream_visibility_changes_per_frame as f32,
+                    "entities/frame",
+                ),
+                EvalCheck::at_most(
+                    "stream_despawned_visuals_per_frame",
+                    self.max_stream_despawned_visuals_per_frame as f32,
+                    thresholds.max_stream_visibility_changes_per_frame as f32,
+                    "entities/frame",
+                ),
+                EvalCheck::at_least(
                     "entity_count",
                     self.max_entity_count as f32,
                     thresholds.min_entity_count as f32,
@@ -4335,6 +4425,14 @@ pub mod eval {
                     max_stream_visibility_changes_per_frame: self
                         .max_stream_visibility_changes_per_frame,
                     total_stream_visibility_changes: self.total_stream_visibility_changes,
+                    max_catalog_island_visual_count: self.max_catalog_island_visual_count,
+                    max_hidden_island_visual_count: self.max_hidden_island_visual_count,
+                    max_resident_island_visual_fraction: self.max_resident_island_visual_fraction,
+                    max_stream_spawned_visuals_per_frame: self.max_stream_spawned_visuals_per_frame,
+                    max_stream_despawned_visuals_per_frame: self
+                        .max_stream_despawned_visuals_per_frame,
+                    total_stream_spawned_visuals: self.total_stream_spawned_visuals,
+                    total_stream_despawned_visuals: self.total_stream_despawned_visuals,
                     max_entity_count: self.max_entity_count,
                     objective_total_count: self.max_objective_total_count,
                     max_completed_objective_count: self.max_completed_objective_count,
@@ -4456,6 +4554,13 @@ pub mod eval {
         pub max_resident_island_visual_count: usize,
         pub max_stream_visibility_changes_per_frame: usize,
         pub total_stream_visibility_changes: usize,
+        pub max_catalog_island_visual_count: usize,
+        pub max_hidden_island_visual_count: usize,
+        pub max_resident_island_visual_fraction: f32,
+        pub max_stream_spawned_visuals_per_frame: usize,
+        pub max_stream_despawned_visuals_per_frame: usize,
+        pub total_stream_spawned_visuals: usize,
+        pub total_stream_despawned_visuals: usize,
         pub max_entity_count: usize,
         pub objective_total_count: usize,
         pub max_completed_objective_count: usize,
@@ -4495,7 +4600,7 @@ pub mod eval {
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_environment_motion_visual_count\": {},\n{indent}  \"max_environment_motion_offset_m\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"objective_total_count\": {},\n{indent}  \"max_completed_objective_count\": {},\n{indent}  \"final_objective_completed_count\": {},\n{indent}  \"min_objective_distance_m\": {},\n{indent}  \"final_objective_distance_m\": {},\n{indent}  \"objective_complete_samples\": {},\n{indent}  \"max_visual_asset_slot_count\": {},\n{indent}  \"max_gltf_scene_asset_slot_count\": {},\n{indent}  \"max_ready_visual_asset_slot_count\": {},\n{indent}  \"max_placeholder_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_visual_asset_slot_count\": {},\n{indent}  \"max_missing_visual_asset_slot_count\": {},\n{indent}  \"max_queued_visual_asset_scene_count\": {},\n{indent}  \"max_loading_visual_asset_scene_count\": {},\n{indent}  \"max_loaded_visual_asset_scene_count\": {},\n{indent}  \"max_failed_visual_asset_scene_count\": {},\n{indent}  \"max_always_visual_asset_slot_count\": {},\n{indent}  \"max_stream_window_visual_asset_slot_count\": {},\n{indent}  \"max_near_lod_visual_asset_slot_count\": {},\n{indent}  \"max_far_lod_visual_asset_slot_count\": {},\n{indent}  \"max_weather_visual_asset_slot_count\": {},\n{indent}  \"max_power_up_count\": {},\n{indent}  \"min_visible_power_up_count\": {},\n{indent}  \"max_collected_power_up_count\": {},\n{indent}  \"power_up_effect_samples\": {},\n{indent}  \"total_power_up_activations\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_environment_motion_visual_count\": {},\n{indent}  \"max_environment_motion_offset_m\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_catalog_island_visual_count\": {},\n{indent}  \"max_hidden_island_visual_count\": {},\n{indent}  \"max_resident_island_visual_fraction\": {},\n{indent}  \"max_stream_spawned_visuals_per_frame\": {},\n{indent}  \"max_stream_despawned_visuals_per_frame\": {},\n{indent}  \"total_stream_spawned_visuals\": {},\n{indent}  \"total_stream_despawned_visuals\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"objective_total_count\": {},\n{indent}  \"max_completed_objective_count\": {},\n{indent}  \"final_objective_completed_count\": {},\n{indent}  \"min_objective_distance_m\": {},\n{indent}  \"final_objective_distance_m\": {},\n{indent}  \"objective_complete_samples\": {},\n{indent}  \"max_visual_asset_slot_count\": {},\n{indent}  \"max_gltf_scene_asset_slot_count\": {},\n{indent}  \"max_ready_visual_asset_slot_count\": {},\n{indent}  \"max_placeholder_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_visual_asset_slot_count\": {},\n{indent}  \"max_missing_visual_asset_slot_count\": {},\n{indent}  \"max_queued_visual_asset_scene_count\": {},\n{indent}  \"max_loading_visual_asset_scene_count\": {},\n{indent}  \"max_loaded_visual_asset_scene_count\": {},\n{indent}  \"max_failed_visual_asset_scene_count\": {},\n{indent}  \"max_always_visual_asset_slot_count\": {},\n{indent}  \"max_stream_window_visual_asset_slot_count\": {},\n{indent}  \"max_near_lod_visual_asset_slot_count\": {},\n{indent}  \"max_far_lod_visual_asset_slot_count\": {},\n{indent}  \"max_weather_visual_asset_slot_count\": {},\n{indent}  \"max_power_up_count\": {},\n{indent}  \"min_visible_power_up_count\": {},\n{indent}  \"max_collected_power_up_count\": {},\n{indent}  \"power_up_effect_samples\": {},\n{indent}  \"total_power_up_activations\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
                 json_number(self.avg_frame_time_ms),
                 json_number(self.p95_frame_time_ms),
@@ -4543,6 +4648,13 @@ pub mod eval {
                 self.max_resident_island_visual_count,
                 self.max_stream_visibility_changes_per_frame,
                 self.total_stream_visibility_changes,
+                self.max_catalog_island_visual_count,
+                self.max_hidden_island_visual_count,
+                json_number(self.max_resident_island_visual_fraction),
+                self.max_stream_spawned_visuals_per_frame,
+                self.max_stream_despawned_visuals_per_frame,
+                self.total_stream_spawned_visuals,
+                self.total_stream_despawned_visuals,
                 self.max_entity_count,
                 self.objective_total_count,
                 self.max_completed_objective_count,
@@ -5689,6 +5801,15 @@ pub mod eval {
                 0,
                 12,
                 12,
+                335,
+                175,
+                0.48,
+                0,
+                0,
+                12,
+                12,
+                20,
+                20,
                 130,
                 VISUAL_ASSET_SLOT_COUNT,
                 GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
@@ -5757,6 +5878,15 @@ pub mod eval {
                 0,
                 12,
                 12,
+                335,
+                175,
+                0.48,
+                0,
+                0,
+                12,
+                12,
+                20,
+                20,
                 130,
                 VISUAL_ASSET_SLOT_COUNT,
                 GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
@@ -5826,6 +5956,15 @@ pub mod eval {
                     0,
                     12,
                     12,
+                    335,
+                    175,
+                    0.48,
+                    0,
+                    0,
+                    12,
+                    12,
+                    20,
+                    20,
                     130,
                     VISUAL_ASSET_SLOT_COUNT,
                     GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
