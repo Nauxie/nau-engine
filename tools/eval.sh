@@ -9,6 +9,7 @@ screenshot_requested="${NAU_EVAL_SCREENSHOT:-0}"
 no_screenshot_requested="${NAU_EVAL_NO_SCREENSHOT:-0}"
 visual_audit_requested="${NAU_EVAL_VISUAL_AUDIT:-1}"
 visual_audit_path="${output_dir}/visual_audit.json"
+visual_audit_status=0
 
 file_size_bytes() {
   if stat -f%z "$1" >/dev/null 2>&1; then
@@ -67,8 +68,11 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
   done < <(jq -r '.artifacts.screenshot_png, (.artifacts.checkpoint_screenshots[]?)' "${summary}")
 
   if [[ "${visual_audit_requested}" != "0" && "${#screenshot_artifacts[@]}" -gt 0 ]]; then
+    set +e
     cargo run --quiet --bin visual_audit -- "${screenshot_artifacts[@]}" \
       > "${visual_audit_path}"
+    visual_audit_status=$?
+    set -e
   fi
 fi
 
@@ -76,4 +80,13 @@ if command -v jq >/dev/null 2>&1; then
   jq '{scenario, passed, metrics, checks, artifacts}' "${summary}"
 else
   sed -n '1,220p' "${summary}"
+fi
+
+if (( visual_audit_status != 0 )); then
+  echo "visual audit failed: ${visual_audit_path}" >&2
+  if command -v jq >/dev/null 2>&1 && [[ -s "${visual_audit_path}" ]]; then
+    jq '{passed, checks, failed_images: [.images[] | select(.passed == false) | {path, checks: [.checks[] | select(.passed == false)]}]}' \
+      "${visual_audit_path}" >&2 || true
+  fi
+  exit "${visual_audit_status}"
 fi
