@@ -431,7 +431,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 ## Known Limitations
 
 - Metric-only evals hide the native Bevy window, but still instantiate the window/rendering stack.
-- Screenshot evals still need a visible native Bevy window. The window uses opaque surface composition so transparent scene effects blend against the game frame rather than desktop content behind the window.
+- Screenshot evals still need a visible native Bevy window. Screenshot runs disable debug gizmos and use opaque surface composition so transparent scene effects blend against the game frame rather than desktop content behind the window.
 - Screenshot evals now run a lightweight image and scene-composition audit, including basic player visibility and route-marker readability heuristics, but terrain identity, severe clipping class, route-marker identity, and art quality still need human/agent inspection.
 - There is no simulation-only binary yet.
 - Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
