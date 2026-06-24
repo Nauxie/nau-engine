@@ -192,7 +192,7 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - actual camera rotation delta must stay small during the movement-only route
 - average and p95 camera follow-direction error must stay bounded so a stable camera cannot hide a stale follow target
 - camera world-yaw drift must stay bounded so movement input cannot quietly rotate the camera
-- desired body heading error and desired-heading velocity alignment must stay within thresholds
+- average and p95 desired body heading error plus desired-heading velocity alignment must stay within thresholds
 - right and left lateral input must each produce measurable response within the response-latency threshold
 - backward input must produce measurable air-brake speed drop, and the final forward segment must recover forward alignment
 - body-yaw oscillation count must remain bounded so input reversals do not become spin or wobble regressions
@@ -336,7 +336,7 @@ The summary aggregates:
 - horizontal distance from first to final sample
 - max and min altitude
 - max speed
-- average and max desired body-heading error
+- average, p95, and max desired body-heading error
 - max body-yaw error step and body-yaw oscillation count
 - max desired-heading velocity alignment
 - max lateral response speed and first-response latency
@@ -452,7 +452,7 @@ The pass/fail checks currently guard:
 - camera view yaw and world-yaw drift stayed within scenario limits when movement should not rotate the camera
 - camera obstruction avoidance was exercised when a scenario requires it
 - camera mouse scenarios exercised yaw and both pitch directions
-- air-control response latency, right/left lateral response, air-brake speed drop, post-brake forward alignment, desired-heading alignment, average body-heading error, yaw oscillation count, camera orbit yaw offset, and camera rotation delta stayed inside thresholds
+- air-control response latency, right/left lateral response, air-brake speed drop, post-brake forward alignment, desired-heading alignment, average/p95 body-heading error, yaw oscillation count, camera orbit yaw offset, and camera rotation delta stayed inside thresholds
 - air-control average and p95 camera follow-direction error stayed inside threshold so movement-only routes cannot pass with a stale follow direction
 - air-control movement-only camera world-yaw drift stayed inside threshold
 - island-route final scenario-target distance stayed under threshold

@@ -10,7 +10,7 @@ This document records local code audits for external Bevy references used to ste
 - `olekspickle/bevy_new_3d_rpg` at `54d1dbb`
 - `manankarnik/bevy_generative` at `74a17cc`
 
-The current local audit used refreshed clones under `/tmp/nau-reference-repos` so source, manifests, documentation, shader/material examples, and license text were available for direct inspection. Earlier sparse-clone notes remain useful, but this pass treated the repositories as codebases to audit rather than search results.
+The current local audit used refreshed clones under `/tmp/nau-engine-reference` so source, manifests, documentation, shader/material examples, and license text were available for direct inspection. Earlier sparse-clone notes remain useful, but this pass treated the repositories as codebases to audit rather than search results.
 
 ## Foxtrot
 
@@ -72,7 +72,7 @@ Patterns to reject or replace:
 ## NAU Implementation Order
 
 1. Fix flight feel with NAU's existing pure movement and evaluated camera. Add desired planar heading, body-yaw smoothing, bank response, and eval metrics before touching the camera package stack.
-2. Add an eval scenario for diagonal/lateral air steering and braking. Gate body-heading error, lateral response, yaw overshoot, and movement-input camera non-coupling.
+2. Add an eval scenario for diagonal/lateral air steering and braking. Gate average/p95 body-heading error, lateral response, yaw overshoot, and movement-input camera non-coupling.
 3. Adapt the `bevy_new_3d_rpg` asset/animation shape for NAU: glTF `Models`/asset resource, named clips, `SceneRoot`, and `AnimationGraph` setup. Keep this as a dedicated PR after flight feel.
 4. Adapt Foxtrot's asset preload/resource tracking and render infrastructure once real assets start replacing primitives.
 5. Build an internal island mesh generator inspired by `bevy_generative`, but with NAU-specific requirements: irregular island masks, rim/cliff/underside geometry, computed normals, deterministic LOD outputs, collision surface compatibility, material weights, and streaming counters.
