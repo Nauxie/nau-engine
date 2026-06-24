@@ -17,7 +17,7 @@ The first executable is a simple 3D flight testbed:
 - deployable glider wing panels with subtle wingtip airflow trails on `Space`
 - one-launch-per-airtime vertical burst on `E`
 - dive on `Shift`
-- camera-relative grounded and airborne steering on `WASD`, with separate ground friction so walking is playable before launch
+- camera-relative grounded and airborne steering on `WASD`, with planar air-control response, smoothed body yaw toward intended movement, airborne banking, and separate ground friction so walking is playable before launch
 - mouse-look third-person follow camera with player-centered orbit pitch, separate yaw/pitch tuning, click-to-lock cursor capture, obstruction avoidance, and surface-clearance clamping
 - a 12-island floating archipelago with launch, midpoint, landing, high-altitude, and distant reference islands
 - deterministic collision-aware island relief with smoother generated terrain normals, stream-windowed terrain, low-poly distant impostors, and distance-managed detail props: varied generated terrain colors, batched ground-cover blades, wind-responsive trees and ponds, stones, route cairns, launch beacon, and landing-garden markers
@@ -28,7 +28,7 @@ The first executable is a simple 3D flight testbed:
 - visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
 - authored crosswind fields, a paired gameplay updraft route with aligned visual wind volumes, collectible aerial boost gates with glowing route-ring markers, cinematic lift haze/ribbon/mote cues, and marked recovery branch islands
 - deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state/pose/airflow math
-- scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, long-glide visibility, updraft lift, branch recovery landing, and island launch-to-landing with traversal, camera, objective-progress, aerial power-up collection/effect, frame-time, content-scale, asset-slot/load-state readiness, streaming/LOD, spawn/despawn churn, resident pressure, weather-cloud, environment-motion, resident visual, entity-churn, and visible-detail summary metrics plus fixed camera checkpoint screenshots
+- scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, air-control response, baseline traversal, long-glide visibility, updraft lift, branch recovery landing, and island launch-to-landing with traversal, camera, movement-heading/response, objective-progress, aerial power-up collection/effect, frame-time, content-scale, asset-slot/load-state readiness, streaming/LOD, spawn/despawn churn, resident pressure, weather-cloud, environment-motion, resident visual, entity-churn, and visible-detail summary metrics plus fixed camera checkpoint screenshots
 
 This is intentionally not a full physics simulation yet. The first job is to create a place where movement constants can be tuned quickly.
 
@@ -54,6 +54,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ./tools/eval.sh camera_yaw_stability target/eval/camera_yaw_stability
 ./tools/eval.sh camera_turn_stability target/eval/camera_turn_stability
 ./tools/eval.sh camera_strafe_stability target/eval/camera_strafe_stability
+./tools/eval.sh air_control_response target/eval/air_control_response
 ./tools/eval.sh updraft_route target/eval/updraft_route
 ./tools/eval.sh branch_recovery_route target/eval/branch_recovery_route
 ./tools/eval.sh long_glide_visibility target/eval/long_glide_visibility
