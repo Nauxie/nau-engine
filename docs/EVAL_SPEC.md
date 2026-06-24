@@ -108,7 +108,7 @@ Export the generated island substrate for offline terrain/material inspection wi
 ./tools/terrain_export.sh target/terrain_export
 ```
 
-The export writes `manifest.json`, per-island terrain/cliff/underside/impostor OBJ meshes, `*_terrain_material_weights.csv` sidecars, and `audit.json`. The audit validates schema, mesh/material/texture-detail/impostor floors, artifact presence, OBJ vertex/face/color counts, terrain material-weight CSV rows/bands/channels, derived material-region coverage, and minimum base/transition/highland/exposed region distribution. This is still an offline structural gate rather than a final art-quality score.
+The export writes `manifest.json`, per-island terrain/cliff/underside/impostor OBJ meshes, `*_terrain_material_weights.csv` sidecars, and `audit.json`. The audit validates schema, mesh/material/texture-detail/impostor floors, artifact presence, OBJ vertex/face/color counts, impostor vertical range and horizontal radius variation, terrain material-weight CSV rows/bands/channels, derived material-region coverage, and minimum base/transition/highland/exposed region distribution. This is still an offline structural gate rather than a final art-quality score.
 
 ## Current Scenarios
 
@@ -585,7 +585,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 
 - Metric-only evals hide the native Bevy window, but still instantiate the window/rendering stack.
 - Screenshot evals still need a visible native Bevy window. Screenshot runs disable debug gizmos and use opaque surface composition so transparent scene effects blend against the game frame rather than desktop content behind the window.
-- Screenshot evals now run a lightweight image and scene-composition audit, including basic player visibility, scene detail tile frequency, flat low-detail scene-tile dominance, severe border-clipping, route-marker readability, route-marker component identity, and route-marker hue-family telemetry, but exact marker semantics, vegetation/cloud mesh quality, distant-impostor art direction, and art quality still need human/agent inspection. Headless terrain export audit covers the first terrain-material identity floor by requiring every exported island to retain base, transition, highland, and exposed material-region coverage; runtime and export/audit metric gates now cover the first distant-impostor mesh/color substrate floor.
+- Screenshot evals now run a lightweight image and scene-composition audit, including basic player visibility, scene detail tile frequency, flat low-detail scene-tile dominance, severe border-clipping, route-marker readability, route-marker component identity, and route-marker hue-family telemetry, but exact marker semantics, vegetation/cloud mesh quality, distant-impostor art direction, and art quality still need human/agent inspection. Headless terrain export audit covers the first terrain-material identity floor by requiring every exported island to retain base, transition, highland, and exposed material-region coverage; runtime and export/audit metric gates now cover the first distant-impostor mesh/color/shape substrate floor.
 - There is no simulation-only binary yet.
 - Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
 - Island collision follows deterministic authored terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
