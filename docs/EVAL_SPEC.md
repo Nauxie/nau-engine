@@ -267,11 +267,17 @@ Every sample includes:
 - `near_lod_visual_asset_slot_count`
 - `far_lod_visual_asset_slot_count`
 - `weather_visual_asset_slot_count`
+- `power_up_count`
+- `visible_power_up_count`
+- `collected_power_up_count`
+- `active_power_up_effects`
+- `total_power_up_activations`
 
 Add fields here before adding them to code. New fields should be cheap to collect, stable across runs, and useful for deciding what to fix.
 
 The island terrain/detail/impostor hidden counts are catalog entries that are not currently resident. The `stream_visibility_*` names are retained for artifact compatibility, but now report resident island visual spawn/despawn churn rather than `Visibility` flag flips.
 The visual asset fields report the declared glTF scene inventory, how many slots have files available under `assets/`, how many are still using generated placeholders, how many Bevy scene handles are queued/loading/loaded/failed, and how those slots divide across always-loaded, stream-window, near-LOD, far-LOD, and weather residency classes. They are readiness signals for replacing primitives with real assets; they do not prove final art quality yet.
+The power-up fields report authored aerial boost gates, how many remain visible, how many have been collected, whether an effect is currently active, and the total activation count. They are route-readiness signals for the simple power-up slice, not final ability design.
 
 ## Summary Metrics
 
@@ -329,6 +335,11 @@ The summary aggregates:
 - max missing visual asset slot count
 - max queued/loading/loaded/failed visual asset scene counts
 - max always-loaded, stream-window, near-LOD, far-LOD, and weather visual asset slot counts
+- max power-up count
+- min visible power-up count
+- max collected power-up count
+- power-up effect sample count
+- total power-up activation count
 - target landing sample count
 - active lift sample count
 - readable and unreadable active-lift sample counts
@@ -358,6 +369,7 @@ The pass/fail checks currently guard:
 - objective totals stay populated, and objective-route scenarios complete their required objective count
 - declared visual asset slots, glTF scene slots, and stream-managed asset slots stay populated so the real-asset migration surface cannot silently disappear
 - failed visual asset scene count remains zero so broken imported assets fail the eval loop once real files are present
+- authored aerial power-up counts stay populated, and power-up scenarios collect enough gates with enough sampled active-effect frames
 - weather cloud count stays populated so the first non-debug weather layer cannot silently disappear
 - resident island visuals stay under budget while streaming visibility is still hide/show based
 - stream visibility changes per frame stay under budget so chunk/LOD crossings do not churn too many visuals at once
@@ -395,7 +407,7 @@ The thin-slice target should eventually have these evals:
 - `ground_taxi_control`: current pre-launch WASD regression test.
 - `updraft_route`: current gameplay lift regression test.
 - `branch_recovery_route`: current named branch landing and recovery-route test.
-- `long_glide_visibility`: current larger-archipelago traversal and content-scale test.
+- `long_glide_visibility`: current larger-archipelago traversal, aerial boost-gate, and content-scale test.
 - `camera_mouse_control`: current mouse X/Y regression test.
 - `camera_yaw_stability`: current small-yaw no-drift regression test.
 - `camera_turn_stability`: current rapid air-turn and air-brake camera stability test.
@@ -430,6 +442,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - The weather-cloud counter verifies that cloud-layer entities exist, and the screenshot audit catches gross visual/composition failure, but neither proves atmosphere, fog, materials, and clouds look correct.
 - `entity_count` is still a coarse scene-scale proxy; streaming health should be read from resident island visual count and stream entity churn.
 - Route objectives are HUD/debug state backed by pure route objective helpers and serialized into eval samples, but only updraft and branch-recovery routes currently gate objective completion.
+- Aerial power-up gates are primitive glowing route rings with simple one-time collection state; there is no inventory UI, reset flow, audio/particles, or authored ability progression yet.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
 These are acceptable for the current harness. The next meaningful upgrades are severe-clipping classification, route-marker identity checks, asynchronous asset-loading simulation, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
