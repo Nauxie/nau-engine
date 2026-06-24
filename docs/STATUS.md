@@ -6,12 +6,12 @@ Last updated: 2026-06-24
 
 First sky-island traversal slice.
 
-The project has a Bevy sandbox with a primitive humanoid, playable ground movement, deployable glider wings, one-launch-per-airtime vertical burst, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, procedural materials, drifting cloud banks, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes and visible lift-column guide markers, a 12-island floating route with generated terrain relief plus deterministic props, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, baseline traversal, updraft lift, long-glide visibility, and island launch-to-landing.
+The project has a Bevy sandbox with a primitive humanoid, playable ground movement, deployable glider wings, one-launch-per-airtime vertical burst, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, procedural materials, drifting cloud banks, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes, visible lift-column guide markers, marked recovery branch islands, a 12-island floating route with generated terrain relief plus deterministic props, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, baseline traversal, updraft lift, branch recovery landing, long-glide visibility, and island launch-to-landing.
 
 ## Last Known Good
 
-- Commit: `bdefc1a`
-- Merged PR: `#19` - Add semantic screenshot visual audit
+- Commit: `152b74d`
+- Merged PR: `#20` - Add readable gameplay updraft route
 - Verification:
   - `cargo fmt --all --check`
   - `cargo check`
@@ -23,7 +23,7 @@ The project has a Bevy sandbox with a primitive humanoid, playable ground moveme
 
 Use this section for milestone handoffs, not routine worktree changes.
 
-- Active branch: `abhinav/updraft-route-readability`
+- Active branch: `abhinav/branching-recovery-route`
 - Open PRs: consult GitHub
 
 ## What Works
@@ -45,6 +45,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - HUD reports frame time, camera pitch, camera distance, player framing angle, camera motion, camera orbit alignment, obstruction adjustment, mouse yaw/pitch offsets, velocity, altitude, mode, launch state, target distance, visual wind-field count, active lift-field count, and sky-island count.
 - `F1` toggles debug gizmos for player vectors, camera line, visual wind/updraft stream fields, and gameplay lift fields.
 - Crosswind fields remain visual-only; gameplay updrafts are authored as paired visual wind volumes plus bounded `LiftField`s, with visible guide columns/motes in the normal scene.
+- `sunlit terrace` and `western refuge` are marked as recovery branch islands with visible mast/ring beacons.
 - Traversal, route-surface geometry, visual wind-field geometry, gameplay lift math, camera, diagnostics, eval metrics, and richer pose math live in testable pure functions in `src/lib.rs`.
 - `ground_taxi_control` eval proves pre-launch camera-relative WASD moves the player across the launch island without leaving grounded mode.
 - `camera_mouse_control` eval proves scripted mouse X/Y deltas exercise yaw and both pitch directions without hiding camera regressions behind player movement.
@@ -52,11 +53,12 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `camera_strafe_stability` eval proves `A`/`D` movement does not auto-orbit the camera.
 - `camera_turn_stability` eval proves rapid airborne turns and backward air-braking stay within camera step/rotation thresholds.
 - `updraft_route` eval proves a scripted route enters a gameplay lift field, sees a paired visible updraft while lift is active, and gains altitude beyond the normal route ceiling.
+- `branch_recovery_route` eval proves a scripted route can target and land on the named `sunlit terrace` branch island after using readable lift and late air-braking.
 - `long_glide_visibility` eval proves sustained traversal across the larger archipelago while preserving content-scale and LOD signals.
 - `island_launch_to_landing` eval proves the scripted route reaches and lands on the target island.
 - Metric-only evals hide the native window by default; screenshot evals are explicit via `NAU_EVAL_SCREENSHOT=1`.
 - Screenshot evals run a non-golden visual audit for resolution, exposure, contrast, color variety, edge density, sky/scene balance, center-scene detail, and HUD-text dominance when launched through `tools/eval.sh`.
-- Eval summaries now include camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, weather cloud count, readable/unreadable lift samples, hidden/resident island visual counts, and stream visibility churn so camera/control/content/streaming regressions are visible in metrics.
+- Eval summaries now include the scenario target island, camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, weather cloud count, readable/unreadable lift samples, hidden/resident island visual counts, and stream visibility churn so camera/control/content/streaming regressions are visible in metrics.
 
 ## Known Issues
 
@@ -65,14 +67,14 @@ Use this section for milestone handoffs, not routine worktree changes.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep.
 - Crosswind stream fields are still debug gizmos; updrafts now have primitive visible guide markers, but there are no particles, cloth/glider reactions, vegetation sway, or authored environment art yet.
 - Sky-island collision follows deterministic terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
-- Gameplay lift is still a first rough updraft route; there is no crosswind force, launch-source chain, or branching recovery route design yet.
+- Gameplay lift is still a first rough updraft route; there is no crosswind force, launch-source chain, objective layer, or authored recovery-route design beyond two marked primitive branch islands.
 - There is no real chunk despawn, authored water, authored vegetation, or environment asset pipeline yet. Current stream-window terrain visibility, detail LOD, procedural materials, ponds, trees, stones, beacon, cloud banks, and landing markers are deterministic primitive systems.
 - Physics is still custom movement math, not a real collision/rigid body integration.
 
 ## Next Tasks
 
 1. Extend screenshot audits toward explicit player visibility, severe clipping, and route-marker readability checks.
-2. Add branching recovery choices around the gameplay updrafts.
+2. Add an objective/checkpoint layer so branch choices become explicit player goals instead of only eval targets.
 3. Promote stream-window counters into actual terrain despawn and asset streaming.
 4. Replace the primitive character/environment with a glTF asset pipeline once the traversal/render targets stop moving.
 

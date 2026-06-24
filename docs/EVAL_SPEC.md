@@ -34,6 +34,12 @@ Run the gameplay updraft route:
 ./tools/eval.sh updraft_route target/eval/updraft_route
 ```
 
+Run the branch recovery landing route:
+
+```sh
+./tools/eval.sh branch_recovery_route target/eval/branch_recovery_route
+```
+
 Run the long-glide archipelago route:
 
 ```sh
@@ -131,6 +137,14 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - every sampled active lift frame must also register a paired visible updraft field so gameplay lift cannot silently drift away from its readable signal
 - max altitude must exceed the normal route ceiling
 
+`branch_recovery_route` is the first alternate-route recovery eval:
+
+- fixed spawn on the launch island
+- scripted launch, glide, steering, late dive, and air-brake into `sunlit terrace`
+- the scenario tracks `sunlit terrace` as its target island instead of the primary landing garden
+- the route must use readable gameplay lift, preserve larger-world content/LOD signals, and end grounded on the branch island
+- final target distance and grounded target landing samples must pass against the named branch island
+
 `long_glide_visibility` is the larger-archipelago traversal eval:
 
 - fixed spawn on the launch island
@@ -173,14 +187,14 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - camera view yaw must stay near the starting heading so strafe velocity cannot auto-orbit the camera
 - max speed and grounded samples must prove the route was not a no-op
 
-The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and visually signaled. The long-glide route guards the first larger-map slice before real despawn, asset streaming, or richer impostor work exists. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss. The yaw-stability route guards against persistent mouse yaw being fed back into the camera every frame. The strafe-stability route guards against `A`/`D` movement being treated as camera orbit input. The turn-stability route guards rapid airborne direction changes and backward air braking.
+The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and visually signaled. The branch recovery route proves a named alternate landing island can be targeted, reached, and validated without changing the primary landing-garden route. The long-glide route guards the first larger-map slice before real despawn, asset streaming, or richer impostor work exists. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss. The yaw-stability route guards against persistent mouse yaw being fed back into the camera every frame. The strafe-stability route guards against `A`/`D` movement being treated as camera orbit input. The turn-stability route guards rapid airborne direction changes and backward air braking.
 
 ## Artifacts
 
 Each run writes to the eval output directory:
 
 - `samples.ndjson`: newline-delimited per-sample telemetry.
-- `summary.json`: pass/fail checks, aggregate metrics, artifact paths, and final state.
+- `summary.json`: pass/fail checks, optional named target island, aggregate metrics, artifact paths, and final state.
 - `final.png`: final rendered screenshot when screenshot capture is enabled.
 - `checkpoints/*.png`: fixed-frame camera screenshots when screenshot capture is enabled.
 - `visual_audit.json`: non-golden image audit for screenshot evals run through `tools/eval.sh` unless `NAU_EVAL_VISUAL_AUDIT=0` is set.
@@ -216,8 +230,8 @@ Every sample includes:
 - `active_lift_fields`
 - `readable_lift_fields`
 - `lift_field_count`
-- `target_distance_m`
-- `on_landing_target`
+- `target_distance_m`, measured against the scenario target island
+- `on_landing_target`, measured against the scenario target island
 - `sky_island_count`
 - `active_chunk_count`
 - `active_island_count`
@@ -261,7 +275,7 @@ The summary aggregates:
 - max absolute camera view yaw
 - max camera obstruction adjustment
 - max camera obstruction hit count
-- min and final target distance
+- min and final scenario-target distance
 - min and max camera pitch
 - max absolute camera yaw offset
 - min and max camera pitch offset
@@ -322,8 +336,8 @@ The pass/fail checks currently guard:
 - camera view yaw stayed within scenario limits when movement should not rotate the camera
 - camera obstruction avoidance was exercised when a scenario requires it
 - camera mouse scenarios exercised yaw and both pitch directions
-- island-route final target distance stayed under threshold
-- island-route grounded target landing was observed
+- island-route final scenario-target distance stayed under threshold
+- island-route grounded target landing was observed on the configured target island
 
 Thresholds should remain loose until the intended route becomes richer. Tight thresholds belong only after a mechanic or route is deliberately locked.
 
@@ -346,6 +360,7 @@ The thin-slice target should eventually have these evals:
 - `island_launch_to_landing`: current route-completion test.
 - `ground_taxi_control`: current pre-launch WASD regression test.
 - `updraft_route`: current gameplay lift regression test.
+- `branch_recovery_route`: current named branch landing and recovery-route test.
 - `long_glide_visibility`: current larger-archipelago traversal and content-scale test.
 - `camera_mouse_control`: current mouse X/Y regression test.
 - `camera_yaw_stability`: current small-yaw no-drift regression test.
