@@ -129,14 +129,14 @@ pub mod asset_pipeline {
         VisualAssetSpec {
             kind: VisualAssetKind::IslandTerrain,
             label: "island terrain kit",
-            gltf_scene_path: "models/world/island_terrain.glb",
+            gltf_scene_path: "models/world/island_terrain.gltf",
             animation_clip_names: &[],
             residency: VisualAssetResidency::StreamWindow,
         },
         VisualAssetSpec {
             kind: VisualAssetKind::IslandFoliage,
             label: "island foliage kit",
-            gltf_scene_path: "models/world/foliage.glb",
+            gltf_scene_path: "models/world/foliage.gltf",
             animation_clip_names: &[],
             residency: VisualAssetResidency::NearLod,
         },
@@ -150,7 +150,7 @@ pub mod asset_pipeline {
         VisualAssetSpec {
             kind: VisualAssetKind::IslandWater,
             label: "pond and water kit",
-            gltf_scene_path: "models/world/water.glb",
+            gltf_scene_path: "models/world/water.gltf",
             animation_clip_names: &[],
             residency: VisualAssetResidency::NearLod,
         },
@@ -185,10 +185,10 @@ pub mod asset_pipeline {
     pub const FAR_LOD_VISUAL_ASSET_SLOT_COUNT: usize = 1;
     pub const WEATHER_VISUAL_ASSET_SLOT_COUNT: usize = 1;
     pub const DECLARED_VISUAL_ANIMATION_CLIP_COUNT: usize = PLAYER_ANIMATION_CLIP_NAMES.len();
-    pub const MIN_READY_VISUAL_ASSET_SLOT_COUNT: usize = 6;
-    pub const MIN_LOADED_VISUAL_ASSET_SCENE_COUNT: usize = 6;
-    pub const MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT: usize = 6;
-    pub const MIN_READY_VISUAL_ASSET_SCENE_COUNT: usize = 6;
+    pub const MIN_READY_VISUAL_ASSET_SLOT_COUNT: usize = VISUAL_ASSET_SLOT_COUNT;
+    pub const MIN_LOADED_VISUAL_ASSET_SCENE_COUNT: usize = VISUAL_ASSET_SLOT_COUNT;
+    pub const MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT: usize = VISUAL_ASSET_SLOT_COUNT;
+    pub const MIN_READY_VISUAL_ASSET_SCENE_COUNT: usize = VISUAL_ASSET_SLOT_COUNT;
     pub const MAX_MISSING_VISUAL_ASSET_SLOT_COUNT: usize =
         VISUAL_ASSET_SLOT_COUNT - MIN_READY_VISUAL_ASSET_SLOT_COUNT;
     pub const MIN_READY_VISUAL_ANIMATION_CLIP_COUNT: usize = DECLARED_VISUAL_ANIMATION_CLIP_COUNT;
@@ -373,6 +373,24 @@ pub mod asset_pipeline {
             assert!(
                 VISUAL_ASSET_SPECS
                     .iter()
+                    .any(|spec| spec.kind == VisualAssetKind::IslandTerrain
+                        && spec.gltf_scene_path == "models/world/island_terrain.gltf")
+            );
+            assert!(
+                VISUAL_ASSET_SPECS
+                    .iter()
+                    .any(|spec| spec.kind == VisualAssetKind::IslandFoliage
+                        && spec.gltf_scene_path == "models/world/foliage.gltf")
+            );
+            assert!(
+                VISUAL_ASSET_SPECS
+                    .iter()
+                    .any(|spec| spec.kind == VisualAssetKind::IslandWater
+                        && spec.gltf_scene_path == "models/world/water.gltf")
+            );
+            assert!(
+                VISUAL_ASSET_SPECS
+                    .iter()
                     .any(|spec| spec.kind == VisualAssetKind::RouteMarker
                         && spec.gltf_scene_path == "models/world/route_markers.gltf")
             );
@@ -381,7 +399,7 @@ pub mod asset_pipeline {
         #[test]
         fn asset_metrics_count_queued_and_placeholder_slots() {
             let metrics = visual_asset_pipeline_metrics(&VISUAL_ASSET_SPECS, |path| {
-                path == "models/player/player.gltf" || path == "models/world/foliage.glb"
+                path == "models/player/player.gltf" || path == "models/world/foliage.gltf"
             });
 
             assert_eq!(metrics.ready_slot_count, 0);
