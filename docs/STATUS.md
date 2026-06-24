@@ -6,19 +6,19 @@ Last updated: 2026-06-24
 
 First sky-island traversal slice.
 
-The project has a Bevy sandbox with a primitive humanoid, playable ground movement, deployable glider wings, one-launch-per-airtime vertical burst, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, drifting cloud banks and high cirrus veils, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes, visible lift-column guide markers, marked recovery branch islands, a 12-island floating route with generated terrain relief plus deterministic props, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
+The project has a Bevy sandbox with a primitive humanoid, playable ground movement, deployable glider wings, one-launch-per-airtime vertical burst, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, drifting cloud banks and high cirrus veils, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes, visible lift-column guide markers, marked recovery branch islands, a 12-island floating route with smooth generated terrain relief plus batched ground-cover/detail props, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
 
 ## Last Known Good
 
-- Commit: `ccbcca9`
-- Merged PR: `#29` - Add aerial boost gate route
+- Commit: `b24e532`
+- Merged PR: `#31` - Add organic island ground cover
 - Verification:
   - `cargo fmt --all --check`
   - `cargo check`
   - `cargo test`
   - `cargo clippy --all-targets --all-features -- -D warnings`
   - metric-only eval suite across baseline, ground taxi, camera control/stability, updraft, branch recovery, long-glide, and landing scenarios
-  - screenshot eval for long-glide route with visual audit
+  - screenshot eval for long-glide route with visual audit and manual checkpoint inspection
 
 ## Active Work
 
@@ -35,9 +35,9 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `E` launches from the ground and is gated to one launch per airtime.
 - `Space` deploys glider wings while airborne.
 - `Shift` dives.
-- The sandbox spawns a 12-island floating archipelago with generated visual terrain relief, a launch island, long-glide route, and landing target.
+- The sandbox spawns a 12-island floating archipelago with generated visual terrain relief, smooth terrain normals, batched near-LOD ground cover, a launch island, long-glide route, and landing target.
 - The camera uses Bevy-native atmosphere, dynamic distance fog, volumetric fog/light, bloom, Aces tonemapping, exposure tuning, and atmosphere-driven environment lighting.
-- Terrain, props, water, suit, glider, and markers use generated surface textures with PBR roughness, occlusion, and parallax depth maps; marker and flower materials feed bloom through emissive color.
+- Terrain, ground cover, props, water, suit, glider, and markers use generated surface textures with PBR roughness, occlusion, and parallax depth maps; marker and flower materials feed bloom through emissive color.
 - Drifting cloud banks and high cirrus veils provide non-debug weather layers without changing gameplay collision or traversal math.
 - Route-surface contact can land the player on an island and applies landing damping once instead of crushing standing WASD movement every frame.
 - Runtime movement is camera-relative, with character facing smoothed toward horizontal velocity.
@@ -60,7 +60,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `island_launch_to_landing` eval proves the scripted route reaches and lands on the target island.
 - The HUD and eval samples now track a route objective sequence: main routes point from the near updraft to the landing garden, while branch-target evals add the distant recovery updraft before the named branch landing.
 - Metric-only evals hide the native window by default; screenshot evals are explicit via `NAU_EVAL_SCREENSHOT=1`.
-- Screenshot evals run a non-golden visual audit for resolution, exposure, contrast, color variety, edge density, sky/scene balance, center-scene detail, player visibility, route-marker readability, and HUD-text dominance when launched through `tools/eval.sh`.
+- Screenshot evals run a non-golden visual audit for resolution, exposure, contrast, color variety, edge density, sky/scene balance, center-scene detail, player visibility, route-marker readability, and HUD-text dominance when launched through `tools/eval.sh`, and use opaque window composition so transparent scene effects cannot reveal desktop content.
 - Eval summaries now include the scenario target island, route objective progress, camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, weather cloud count, aerial power-up inventory/collection/effect counters, readable/unreadable lift samples, hidden/resident island visual counts, and stream entity churn so camera/control/content/streaming regressions are visible in metrics.
 
 ## Known Issues
@@ -71,7 +71,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - Crosswind stream fields are still debug gizmos; updrafts now have primitive visible guide markers, but there are no particles, cloth/glider reactions, vegetation sway, or authored environment art assets yet.
 - Sky-island collision follows deterministic terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - Gameplay lift and power-ups are still first rough authored routes; there is no crosswind force, launch-source chain, inventory UI, or authored recovery-route design beyond two marked primitive branch islands.
-- There is no asynchronous asset loading, authored water, authored vegetation, or environment asset pipeline yet. Current stream-window terrain residency, detail LOD, procedural materials, ponds, trees, stones, beacon, cloud layers, and landing markers are deterministic primitive systems.
+- There is no asynchronous asset loading, authored water, authored vegetation, or environment asset pipeline yet. Current stream-window terrain residency, detail LOD, procedural materials, ground cover, ponds, trees, stones, beacon, cloud layers, and landing markers are deterministic primitive systems.
 - Physics is still custom movement math, not a real collision/rigid body integration.
 
 ## Next Tasks
