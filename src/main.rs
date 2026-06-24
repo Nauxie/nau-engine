@@ -434,6 +434,14 @@ struct IslandContentDiagnostics {
     max_island_body_silhouette_segments: usize,
     total_island_body_silhouette_segments: usize,
     max_island_body_mesh_vertices: usize,
+    generated_tree_trunk_count: usize,
+    generated_tree_canopy_count: usize,
+    min_tree_trunk_mesh_vertices: usize,
+    min_tree_canopy_mesh_vertices: usize,
+    generated_weather_cloud_count: usize,
+    min_weather_cloud_lobe_count: usize,
+    max_weather_cloud_lobe_count: usize,
+    min_weather_cloud_mesh_vertices: usize,
 }
 
 impl IslandContentDiagnostics {
@@ -460,6 +468,39 @@ impl IslandContentDiagnostics {
             self.total_island_body_silhouette_segments as f32
                 / self.procedural_island_body_count as f32
         }
+    }
+
+    fn record_generated_tree_trunk(&mut self, mesh_vertices: usize) {
+        if self.generated_tree_trunk_count == 0 {
+            self.min_tree_trunk_mesh_vertices = mesh_vertices;
+        } else {
+            self.min_tree_trunk_mesh_vertices =
+                self.min_tree_trunk_mesh_vertices.min(mesh_vertices);
+        }
+        self.generated_tree_trunk_count += 1;
+    }
+
+    fn record_generated_tree_canopy(&mut self, mesh_vertices: usize) {
+        if self.generated_tree_canopy_count == 0 {
+            self.min_tree_canopy_mesh_vertices = mesh_vertices;
+        } else {
+            self.min_tree_canopy_mesh_vertices =
+                self.min_tree_canopy_mesh_vertices.min(mesh_vertices);
+        }
+        self.generated_tree_canopy_count += 1;
+    }
+
+    fn record_generated_weather_cloud(&mut self, lobe_count: usize, mesh_vertices: usize) {
+        if self.generated_weather_cloud_count == 0 {
+            self.min_weather_cloud_lobe_count = lobe_count;
+            self.min_weather_cloud_mesh_vertices = mesh_vertices;
+        } else {
+            self.min_weather_cloud_lobe_count = self.min_weather_cloud_lobe_count.min(lobe_count);
+            self.min_weather_cloud_mesh_vertices =
+                self.min_weather_cloud_mesh_vertices.min(mesh_vertices);
+        }
+        self.generated_weather_cloud_count += 1;
+        self.max_weather_cloud_lobe_count = self.max_weather_cloud_lobe_count.max(lobe_count);
     }
 }
 
@@ -1205,7 +1246,6 @@ fn setup(
     let island_stream_state =
         spawn_initial_island_visuals(&mut commands, &island_visual_catalog, PLAYER_START);
     commands.insert_resource(island_visual_catalog);
-    commands.insert_resource(island_content_diagnostics);
     commands.insert_resource(island_stream_state);
 
     for (index, x) in (-5..=5).enumerate() {
@@ -1261,11 +1301,13 @@ fn setup(
 
     spawn_weather_layers(
         &mut commands,
+        &mut island_content_diagnostics,
         &mut meshes,
         cloud_material,
         cloud_veil_material,
         route.islands(),
     );
+    commands.insert_resource(island_content_diagnostics);
 
     commands
         .spawn((
@@ -2236,6 +2278,7 @@ fn spawn_power_up_guides(
 
 fn spawn_weather_layers(
     commands: &mut Commands,
+    content_diagnostics: &mut IslandContentDiagnostics,
     meshes: &mut Assets<Mesh>,
     cloud_material: Handle<StandardMaterial>,
     cloud_veil_material: Handle<StandardMaterial>,
@@ -2255,10 +2298,10 @@ fn spawn_weather_layers(
             2.6 + (index % 3) as f32 * 0.45,
             island.half_extents.y * 0.26 + 8.0,
         );
-        let cloud_mesh = meshes.add(cloud_cluster_mesh(
-            2_000 + index as u32 * 37,
-            CLOUD_BANK_LOBES,
-        ));
+        let cloud_mesh_data = cloud_cluster_mesh(2_000 + index as u32 * 37, CLOUD_BANK_LOBES);
+        content_diagnostics
+            .record_generated_weather_cloud(CLOUD_BANK_LOBES, cloud_mesh_data.count_vertices());
+        let cloud_mesh = meshes.add(cloud_mesh_data);
 
         commands.spawn((
             Mesh3d(cloud_mesh),
@@ -2297,10 +2340,15 @@ fn spawn_weather_layers(
                 );
                 let veil_origin = veil_anchor + layer_offset;
                 let veil_rotation = Quat::from_euler(EulerRot::XYZ, -0.04, puff_phase * 0.27, 0.06);
-                let veil_mesh = meshes.add(cloud_cluster_mesh(
+                let veil_mesh_data = cloud_cluster_mesh(
                     3_000 + index as u32 * 53 + puff_index as u32 * 11,
                     CLOUD_VEIL_LOBES,
-                ));
+                );
+                content_diagnostics.record_generated_weather_cloud(
+                    CLOUD_VEIL_LOBES,
+                    veil_mesh_data.count_vertices(),
+                );
+                let veil_mesh = meshes.add(veil_mesh_data);
 
                 commands.spawn((
                     Mesh3d(veil_mesh),
@@ -2561,6 +2609,7 @@ fn queue_sky_island(
     queue_sky_island_details(
         entries,
         &mut visual_index,
+        content_diagnostics,
         meshes,
         trunk_material,
         foliage_material,
@@ -3057,6 +3106,7 @@ fn island_impostor_mesh(island_index: usize, island: SkyIsland) -> Mesh {
 fn queue_sky_island_details(
     entries: &mut Vec<IslandVisualEntry>,
     visual_index: &mut usize,
+    content_diagnostics: &mut IslandContentDiagnostics,
     meshes: &mut Assets<Mesh>,
     trunk_material: Handle<StandardMaterial>,
     foliage_material: Handle<StandardMaterial>,
@@ -3096,17 +3146,24 @@ fn queue_sky_island_details(
         let trunk_center = surface + Vec3::Y * (trunk_height * 0.5);
         let canopy_radius = 1.05 + index as f32 * 0.08;
         let canopy_center = surface + Vec3::Y * (trunk_height + 0.72);
+        let trunk_mesh = tree_trunk_mesh(
+            0.22,
+            trunk_height,
+            5_000 + island_index as u32 * 97 + index as u32 * 13,
+        );
+        content_diagnostics.record_generated_tree_trunk(trunk_mesh.count_vertices());
+        let canopy_mesh = tree_canopy_mesh(
+            canopy_radius,
+            6_000 + island_index as u32 * 101 + index as u32 * 17,
+        );
+        content_diagnostics.record_generated_tree_canopy(canopy_mesh.count_vertices());
 
         queue_wind_island_visual(
             entries,
             visual_index,
             island,
             IslandVisualLayer::Detail,
-            meshes.add(tree_trunk_mesh(
-                0.22,
-                trunk_height,
-                5_000 + island_index as u32 * 97 + index as u32 * 13,
-            )),
+            meshes.add(trunk_mesh),
             trunk_material.clone(),
             Transform::from_translation(trunk_center),
             Some(CameraObstacle(CameraObstruction::new(
@@ -3121,10 +3178,7 @@ fn queue_sky_island_details(
             visual_index,
             island,
             IslandVisualLayer::Detail,
-            meshes.add(tree_canopy_mesh(
-                canopy_radius,
-                6_000 + island_index as u32 * 101 + index as u32 * 17,
-            )),
+            meshes.add(canopy_mesh),
             foliage_material.clone(),
             Transform::from_translation(canopy_center),
             Some(CameraObstacle(CameraObstruction::new(
@@ -3271,16 +3325,19 @@ fn queue_sky_island_details(
             launch_tree_surface_y + launch_tree_height + 0.85,
             8.0,
         );
+        let launch_trunk_mesh =
+            tree_trunk_mesh(0.35, launch_tree_height, 7_000 + island_index as u32 * 97);
+        content_diagnostics.record_generated_tree_trunk(launch_trunk_mesh.count_vertices());
+        let launch_canopy_mesh =
+            tree_canopy_mesh(launch_canopy_radius, 8_000 + island_index as u32 * 101);
+        content_diagnostics.record_generated_tree_canopy(launch_canopy_mesh.count_vertices());
+
         queue_wind_island_visual(
             entries,
             visual_index,
             island,
             IslandVisualLayer::Detail,
-            meshes.add(tree_trunk_mesh(
-                0.35,
-                launch_tree_height,
-                7_000 + island_index as u32 * 97,
-            )),
+            meshes.add(launch_trunk_mesh),
             trunk_material,
             Transform::from_translation(launch_tree_center),
             Some(CameraObstacle(CameraObstruction::new(
@@ -3295,10 +3352,7 @@ fn queue_sky_island_details(
             visual_index,
             island,
             IslandVisualLayer::Detail,
-            meshes.add(tree_canopy_mesh(
-                launch_canopy_radius,
-                8_000 + island_index as u32 * 101,
-            )),
+            meshes.add(launch_canopy_mesh),
             foliage_material,
             Transform::from_translation(launch_canopy_center),
             Some(CameraObstacle(CameraObstruction::new(
@@ -4230,7 +4284,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset scene spawned/ready {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset scene spawned/ready {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -4286,6 +4340,14 @@ fn update_debug_readout(
         content_metrics.min_island_body_silhouette_segments,
         content_metrics.average_island_body_silhouette_segments(),
         content_metrics.max_island_body_mesh_vertices,
+        content_metrics.generated_tree_trunk_count,
+        content_metrics.generated_tree_canopy_count,
+        content_metrics.min_tree_trunk_mesh_vertices,
+        content_metrics.min_tree_canopy_mesh_vertices,
+        content_metrics.generated_weather_cloud_count,
+        content_metrics.min_weather_cloud_lobe_count,
+        content_metrics.max_weather_cloud_lobe_count,
+        content_metrics.min_weather_cloud_mesh_vertices,
         streaming_lod.player_chunk.x,
         streaming_lod.player_chunk.z,
         streaming_lod.active_island_count,
@@ -4521,6 +4583,16 @@ fn collect_eval_metrics(
         content_metrics.min_island_body_silhouette_segments,
         content_metrics.average_island_body_silhouette_segments(),
         content_metrics.max_island_body_mesh_vertices,
+    )
+    .with_generated_visual_shape_metrics(
+        content_metrics.generated_tree_trunk_count,
+        content_metrics.generated_tree_canopy_count,
+        content_metrics.min_tree_trunk_mesh_vertices,
+        content_metrics.min_tree_canopy_mesh_vertices,
+        content_metrics.generated_weather_cloud_count,
+        content_metrics.min_weather_cloud_lobe_count,
+        content_metrics.max_weather_cloud_lobe_count,
+        content_metrics.min_weather_cloud_mesh_vertices,
     )
     .with_movement_metrics(
         desired_body_yaw_error_degrees,
@@ -5038,5 +5110,26 @@ mod tests {
             ISLAND_BODY_SEGMENTS as f32
         );
         assert_eq!(diagnostics.max_island_body_mesh_vertices, 833);
+    }
+
+    #[test]
+    fn content_diagnostics_tracks_generated_tree_and_cloud_complexity() {
+        let mut diagnostics = IslandContentDiagnostics::default();
+
+        diagnostics.record_generated_tree_trunk(26);
+        diagnostics.record_generated_tree_trunk(30);
+        diagnostics.record_generated_tree_canopy(226);
+        diagnostics.record_generated_tree_canopy(240);
+        diagnostics.record_generated_weather_cloud(7, 315);
+        diagnostics.record_generated_weather_cloud(4, 180);
+
+        assert_eq!(diagnostics.generated_tree_trunk_count, 2);
+        assert_eq!(diagnostics.generated_tree_canopy_count, 2);
+        assert_eq!(diagnostics.min_tree_trunk_mesh_vertices, 26);
+        assert_eq!(diagnostics.min_tree_canopy_mesh_vertices, 226);
+        assert_eq!(diagnostics.generated_weather_cloud_count, 2);
+        assert_eq!(diagnostics.min_weather_cloud_lobe_count, 4);
+        assert_eq!(diagnostics.max_weather_cloud_lobe_count, 7);
+        assert_eq!(diagnostics.min_weather_cloud_mesh_vertices, 180);
     }
 }
