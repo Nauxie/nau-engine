@@ -90,7 +90,7 @@ Patterns to reject or replace:
 
 1. Fix flight feel with NAU's existing pure movement and evaluated camera. Add a pure camera-relative planar input helper, desired planar heading, body-yaw smoothing, bank response, and eval metrics before touching the camera package stack.
 2. Add or strengthen an eval scenario for diagonal/lateral air steering and braking. Gate average/p95 body-heading error, lateral response, yaw overshoot, and movement-input camera non-coupling.
-3. Adapt the `bevy_new_3d_rpg` asset/animation shape for NAU in stages: first keep declared glTF slots, `SceneRoot` spawning, scene-instance readiness, and placeholder fallback measurable; next add named clips, `AnimationGraph`, and `AnimationPlayer` discovery once compatible character assets exist.
+3. Keep extending the `bevy_new_3d_rpg` asset/animation shape in stages: NAU now has declared glTF slots, `SceneRoot` spawning, scene-instance readiness, named player clip declarations, `Gltf` lookup, `AnimationPlayer` discovery, and `AnimationGraph`/`AnimationTransitions` readiness metrics; the next asset branch should supply compatible character clips and then drive real state transitions.
 4. Adapt Foxtrot's asset preload/resource tracking and render infrastructure once real assets start replacing primitives.
 5. Build an internal island mesh generator inspired by `bevy_generative`, but with NAU-specific requirements: irregular island masks, rim/cliff/underside geometry, computed normals, deterministic LOD outputs, collision surface compatibility, material weights, and streaming counters.
 6. Add visual eval gates for primitive-shape dominance, terrain silhouette complexity, texture/detail frequency, cloud depth/readability, glTF readiness, and asset residency.
