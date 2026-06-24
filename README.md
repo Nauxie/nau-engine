@@ -56,7 +56,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ./tools/eval.sh island_launch_to_landing target/eval/island_launch_to_landing
 ```
 
-`tools/eval.sh` runs metric-only evals by default and hides the native window during those runs. Use `NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh ...` when checkpoint PNG artifacts are needed.
+`tools/eval.sh` runs metric-only evals by default and hides the native window during those runs. Use `NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh ...` when checkpoint PNG artifacts and the non-golden visual audit are needed; screenshot evals require `jq` for artifact extraction. Set `NAU_EVAL_VISUAL_AUDIT=0` to collect screenshots without the audit.
 
 ## Controls
 
@@ -74,7 +74,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 ## Near-Term Roadmap
 
-1. Add visual checks for fixed camera checkpoint screenshots so atmosphere/material/cloud regressions are machine-visible.
+1. Broaden screenshot visual audits toward semantic checks for missing terrain, player framing, route readability, and severe clipping.
 2. Tune gameplay updraft placement, readability, and recovery routes.
 3. Promote stream-window visibility counters into actual terrain despawn, asset loading, and richer distant impostors.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
