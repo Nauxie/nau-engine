@@ -15,13 +15,11 @@ const MIN_LUMA_STDDEV: f64 = 4.5;
 const MIN_COLORFULNESS: f64 = 6.0;
 const MIN_QUANTIZED_COLORS: usize = 24;
 const MIN_EDGE_DENSITY: f64 = 0.0025;
-const MIN_FRAME_TOP_SKY_FRACTION: f64 = 0.04;
 const MIN_SEQUENCE_TOP_SKY_FRACTION: f64 = 0.25;
 const MIN_LOWER_SCENE_FRACTION: f64 = 0.25;
 const MIN_CENTER_SCENE_FRACTION: f64 = 0.18;
 const MIN_CENTER_EDGE_DENSITY: f64 = 0.02;
 const MIN_PLAYER_FOCUS_FRACTION: f64 = 0.0015;
-const MIN_PLAYER_WARM_FOCUS_FRACTION: f64 = 0.0004;
 const MIN_SEQUENCE_ROUTE_MARKER_FRACTION: f64 = 0.00008;
 const MAX_HUD_TEXT_FRACTION: f64 = 0.06;
 
@@ -203,12 +201,6 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
         ),
         Check::at_least("edge_density", edge_density, MIN_EDGE_DENSITY, "ratio"),
         Check::at_least(
-            "top_sky_fraction",
-            top_sky_fraction,
-            MIN_FRAME_TOP_SKY_FRACTION,
-            "ratio",
-        ),
-        Check::at_least(
             "lower_scene_fraction",
             lower_scene_fraction,
             MIN_LOWER_SCENE_FRACTION,
@@ -230,12 +222,6 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
             "player_focus_fraction",
             player_focus_fraction,
             MIN_PLAYER_FOCUS_FRACTION,
-            "ratio",
-        ),
-        Check::at_least(
-            "player_warm_focus_fraction",
-            player_warm_focus_fraction,
-            MIN_PLAYER_WARM_FOCUS_FRACTION,
             "ratio",
         ),
         Check::at_most(
@@ -639,17 +625,30 @@ mod tests {
     }
 
     #[test]
-    fn audit_rejects_missing_sky() {
-        let image = RgbImage::from_pixel(MIN_WIDTH, MIN_HEIGHT, Rgb([80, 130, 72]));
+    fn report_rejects_readable_sequence_without_sky() {
+        let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        for y in 0..MIN_HEIGHT {
+            for x in 0..MIN_WIDTH {
+                let checker = (x + y) % 2 == 0;
+                let (r, g, b) = if checker {
+                    (46 + (x % 90), 104 + (y % 86), 56 + ((x + y) % 54))
+                } else {
+                    (108 + (x % 76), 78 + (y % 62), 50 + ((x + y) % 48))
+                };
+                image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+            }
+        }
+        paint_readability_signals(&mut image);
 
         let audit = audit_image("no_sky.png".to_string(), image).expect("audit should load");
+        let checks = report_checks(std::slice::from_ref(&audit));
 
-        assert!(!audit.passed);
+        assert!(audit.passed, "{audit:?}");
+        assert!(!report_passed(std::slice::from_ref(&audit), &checks));
         assert!(
-            audit
-                .checks
+            checks
                 .iter()
-                .any(|check| check.name == "top_sky_fraction" && !check.passed)
+                .any(|check| check.name == "max_top_sky_fraction" && !check.passed)
         );
     }
 
@@ -744,6 +743,37 @@ mod tests {
         assert!(audit.passed, "{audit:?}");
         assert!(audit.lower_scene_fraction >= MIN_LOWER_SCENE_FRACTION);
         assert!(audit.center_scene_fraction >= MIN_CENTER_SCENE_FRACTION);
+    }
+
+    #[test]
+    fn audit_allows_dark_player_without_warm_focus_pixels() {
+        let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        for y in 0..MIN_HEIGHT {
+            for x in 0..MIN_WIDTH {
+                let checker = (x + y) % 2 == 0;
+                let (r, g, b) = if y < MIN_HEIGHT / 3 {
+                    (126 + (x % 36), 158 + (y % 36), 196 + ((x + y) % 36))
+                } else if checker {
+                    (42 + (x % 70), 96 + (y % 60), 58 + ((x + y) % 48))
+                } else {
+                    (52 + (x % 52), 64 + (y % 48), 72 + ((x + y) % 36))
+                };
+                image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+            }
+        }
+
+        let center_x = MIN_WIDTH / 2;
+        for y in MIN_HEIGHT * 50 / 100..MIN_HEIGHT * 72 / 100 {
+            for x in center_x - MIN_WIDTH / 70..=center_x + MIN_WIDTH / 70 {
+                image.put_pixel(x, y, Rgb([24, 28, 26]));
+            }
+        }
+
+        let audit = audit_image("dark_player.png".to_string(), image).expect("audit should load");
+
+        assert!(audit.passed, "{audit:?}");
+        assert!(audit.player_focus_fraction >= MIN_PLAYER_FOCUS_FRACTION);
+        assert_eq!(audit.player_warm_focus_fraction, 0.0);
     }
 
     #[test]
