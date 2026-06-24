@@ -138,6 +138,7 @@ fn main() -> AppExit {
                 update_cinematic_weather,
                 update_weather_drift,
                 update_updraft_guides,
+                update_updraft_ribbons,
                 update_power_up_guides,
                 update_route_objectives,
                 update_visual_asset_diagnostics,
@@ -248,6 +249,12 @@ struct UpdraftGuide {
     height_offset: f32,
     phase: f32,
     angular_speed: f32,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+struct UpdraftRibbon {
+    spin_speed: f32,
+    base_rotation: Quat,
 }
 
 #[derive(Resource, Clone, Debug, Default)]
@@ -939,6 +946,7 @@ fn setup(
     let cloud_material = cloud_surface_material(&mut materials);
     let cloud_veil_material = cloud_veil_material(&mut materials);
     let updraft_column_material = updraft_column_material(&mut materials);
+    let updraft_ribbon_material = updraft_ribbon_material(&mut materials);
     let updraft_marker_material = emissive_material(
         &mut images,
         &mut materials,
@@ -1075,6 +1083,7 @@ fn setup(
             &mut commands,
             &mut meshes,
             updraft_column_material.clone(),
+            updraft_ribbon_material.clone(),
             updraft_marker_material.clone(),
             lift,
         );
@@ -1376,15 +1385,30 @@ fn cloud_veil_material(materials: &mut Assets<StandardMaterial>) -> Handle<Stand
 
 fn updraft_column_material(materials: &mut Assets<StandardMaterial>) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial {
-        base_color: Color::srgba(0.18, 0.74, 1.0, 0.16),
-        emissive: LinearRgba::rgb(0.08, 0.65, 1.4),
-        emissive_exposure_weight: 0.25,
-        alpha_mode: AlphaMode::Blend,
+        base_color: Color::srgba(0.18, 0.74, 1.0, 0.006),
+        emissive: LinearRgba::rgb(0.004, 0.025, 0.045),
+        emissive_exposure_weight: 0.12,
+        alpha_mode: AlphaMode::Add,
         cull_mode: None,
         double_sided: true,
         unlit: true,
         perceptual_roughness: 0.32,
         reflectance: 0.2,
+        ..default()
+    })
+}
+
+fn updraft_ribbon_material(materials: &mut Assets<StandardMaterial>) -> Handle<StandardMaterial> {
+    materials.add(StandardMaterial {
+        base_color: Color::srgba(0.44, 0.92, 1.0, 0.32),
+        emissive: LinearRgba::rgb(0.06, 0.9, 1.8),
+        emissive_exposure_weight: 0.2,
+        alpha_mode: AlphaMode::Add,
+        cull_mode: None,
+        double_sided: true,
+        unlit: true,
+        perceptual_roughness: 0.4,
+        reflectance: 0.18,
         ..default()
     })
 }
@@ -1578,22 +1602,42 @@ fn spawn_updraft_guide(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     column_material: Handle<StandardMaterial>,
+    ribbon_material: Handle<StandardMaterial>,
     marker_material: Handle<StandardMaterial>,
     lift: LiftRouteNode,
 ) {
     let radius = lift.half_extents.x.min(lift.half_extents.z);
     let height = lift.half_extents.y * 2.0;
     commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(radius, height))),
+        Mesh3d(meshes.add(Cylinder::new(radius * 0.34, height))),
         MeshMaterial3d(column_material),
         Transform::from_translation(lift.center),
-        Name::new(format!("{} visible column", lift.name)),
+        Name::new(format!("{} atmospheric lift haze", lift.name)),
     ));
 
-    let marker_mesh = meshes.add(Sphere::new(0.72));
-    let ring_radius = radius * 0.82;
+    for ribbon_index in 0..3 {
+        let phase = ribbon_index as f32 / 3.0 * std::f32::consts::TAU;
+        let base_rotation = Quat::from_rotation_y(phase * 0.35);
+        commands.spawn((
+            Mesh3d(meshes.add(updraft_ribbon_mesh(radius, height, phase))),
+            MeshMaterial3d(ribbon_material.clone()),
+            Transform {
+                translation: lift.center,
+                rotation: base_rotation,
+                ..default()
+            },
+            UpdraftRibbon {
+                spin_speed: 0.035 + ribbon_index as f32 * 0.012,
+                base_rotation,
+            },
+            Name::new(format!("{} spiral airflow ribbon", lift.name)),
+        ));
+    }
+
+    let marker_mesh = meshes.add(Sphere::new(0.32));
+    let ring_radius = radius * 0.5;
     let ring_levels = [-0.78, -0.34, 0.1, 0.54, 0.9];
-    let markers_per_ring = 9;
+    let markers_per_ring = 7;
 
     for (level_index, level) in ring_levels.into_iter().enumerate() {
         for marker_index in 0..markers_per_ring {
@@ -1604,7 +1648,7 @@ fn spawn_updraft_guide(
                 radius: ring_radius,
                 height_offset: level * lift.half_extents.y,
                 phase,
-                angular_speed: 0.35 + level_index as f32 * 0.04,
+                angular_speed: 0.26 + level_index as f32 * 0.035,
             };
             commands.spawn((
                 Mesh3d(marker_mesh.clone()),
@@ -1615,6 +1659,47 @@ fn spawn_updraft_guide(
             ));
         }
     }
+}
+
+fn updraft_ribbon_mesh(radius: f32, height: f32, phase: f32) -> Mesh {
+    const SEGMENTS: usize = 44;
+    const STRANDS: f32 = 1.45;
+
+    let width = (radius * 0.03).clamp(0.32, 0.65);
+    let ribbon_radius = radius * 0.42;
+    let mut positions = Vec::with_capacity((SEGMENTS + 1) * 2);
+    let mut normals = Vec::with_capacity((SEGMENTS + 1) * 2);
+    let mut uvs = Vec::with_capacity((SEGMENTS + 1) * 2);
+    let mut indices = Vec::with_capacity(SEGMENTS * 6);
+
+    for segment in 0..=SEGMENTS {
+        let t = segment as f32 / SEGMENTS as f32;
+        let angle = phase + t * std::f32::consts::TAU * STRANDS;
+        let y = -height * 0.5 + t * height;
+        let breathing = 1.0 + 0.08 * (angle * 2.0 + phase).sin();
+        let radial = Vec3::new(angle.cos(), 0.0, angle.sin());
+        let center = radial * ribbon_radius * breathing + Vec3::Y * y;
+        let side = radial * width;
+        let normal = Vec3::new(radial.x * 0.32, 0.78, radial.z * 0.32).normalize();
+
+        positions.extend([(center - side).to_array(), (center + side).to_array()]);
+        normals.extend([normal.to_array(), normal.to_array()]);
+        uvs.extend([[0.0, t], [1.0, t]]);
+
+        if segment < SEGMENTS {
+            let start = (segment * 2) as u32;
+            indices.extend([start, start + 1, start + 2, start + 1, start + 3, start + 2]);
+        }
+    }
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
 }
 
 fn spawn_power_up_guides(
@@ -2731,6 +2816,15 @@ fn update_updraft_guides(time: Res<Time>, mut guides: Query<(&UpdraftGuide, &mut
     for (guide, mut transform) in &mut guides {
         transform.translation = updraft_guide_position(guide, elapsed);
         transform.rotation = Quat::from_rotation_y(guide.phase + elapsed * guide.angular_speed);
+    }
+}
+
+fn update_updraft_ribbons(time: Res<Time>, mut ribbons: Query<(&UpdraftRibbon, &mut Transform)>) {
+    let elapsed = time.elapsed_secs();
+
+    for (ribbon, mut transform) in &mut ribbons {
+        transform.rotation =
+            ribbon.base_rotation * Quat::from_rotation_y(elapsed * ribbon.spin_speed);
     }
 }
 
