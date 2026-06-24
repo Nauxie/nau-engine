@@ -10,7 +10,7 @@ This document records local code audits for external Bevy references used to ste
 - `olekspickle/bevy_new_3d_rpg` at `54d1dbb`
 - `manankarnik/bevy_generative` at `74a17cc`
 
-The current local audit used refreshed clones under `/tmp/nau-engine-references` so source, manifests, documentation, shader/material examples, and license text were available for direct inspection. Earlier sparse-clone notes remain useful, but this pass treated the repositories as codebases to audit rather than search results.
+The current local audit used refreshed clones under `/tmp/nau-reference` so source, manifests, documentation, shader/material examples, and license text were available for direct inspection. Earlier sparse-clone notes remain useful, but this pass treated the repositories as codebases to audit rather than search results.
 
 ## Foxtrot
 
@@ -73,6 +73,8 @@ Patterns worth adopting:
 - Use the planet/cube-sphere displacement as inspiration for non-heightfield rock masses and underside silhouettes.
 - Keep deterministic tests around generator dimensions and noise bounds. The existing tests only assert coarse shape and value ranges, but that is still the right minimum for NAU's future island generator before adding visual gates.
 
+NAU follow-through from this audit now uses the same broad shape without adding `bevy_generative` as a dependency: deterministic mesh generation writes positions, indices, normals, uvs, and vertex colors in one pass; island surfaces have denser radial topology; cliff/underside meshes carry measurable strata/color bands; and eval gates now track terrain surface count, mesh vertex floors, vertex-color bands, relief range, and cliff color-band floors.
+
 Patterns to reject or replace:
 
 - Do not use the terrain generator directly for NAU sky islands. It emits a rectangular heightfield, regenerates in `Update`, uses flat up normals, and has no island rim, cliff skirt, underside mass, chunk LOD, collider generation, erosion, PBR material weights, or streaming integration.
@@ -92,8 +94,8 @@ Patterns to reject or replace:
 2. Add or strengthen an eval scenario for diagonal/lateral air steering and braking. Gate average/p95 body-heading error, lateral response, yaw overshoot, and movement-input camera non-coupling.
 3. Keep extending the `bevy_new_3d_rpg` asset/animation shape in stages: NAU now has declared glTF slots, `SceneRoot` spawning, scene-instance readiness, named player clip declarations, `Gltf` lookup, `AnimationPlayer` discovery, and `AnimationGraph`/`AnimationTransitions` readiness metrics; the next asset branch should supply compatible character clips and then drive real state transitions.
 4. Adapt Foxtrot's asset preload/resource tracking and render infrastructure once real assets start replacing primitives.
-5. Build an internal island mesh generator inspired by `bevy_generative`, but with NAU-specific requirements: irregular island masks, rim/cliff/underside geometry, computed normals, deterministic LOD outputs, collision surface compatibility, material weights, and streaming counters.
-6. Add visual eval gates for primitive-shape dominance, terrain silhouette complexity, texture/detail frequency, cloud depth/readability, glTF readiness, and asset residency.
+5. Continue the internal island mesh generator inspired by `bevy_generative`: NAU now has irregular island masks, rim/cliff/underside geometry, computed normals, deterministic vertex-color/strata signals, collision surface compatibility, and streaming counters; the next terrain branch should add stronger material-weight semantics and export/offline inspection tools.
+6. Add the next visual eval gates for screenshot-level terrain/material identity, vegetation/cloud depth/readability, glTF readiness, and asset residency.
 
 ## License Notes
 

@@ -9,7 +9,7 @@ use bevy::light::{
     AtmosphereEnvironmentMapLight, CascadeShadowConfigBuilder, DirectionalLightShadowMap,
     VolumetricFog, VolumetricLight,
 };
-use bevy::mesh::{Indices, PrimitiveTopology};
+use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
@@ -73,6 +73,9 @@ const TREE_CANOPY_LONGITUDE_SEGMENTS: usize = 12;
 const TREE_TRUNK_SEGMENTS: usize = 8;
 const CLOUD_BANK_LOBES: usize = 7;
 const CLOUD_VEIL_LOBES: usize = 4;
+#[cfg(test)]
+const ISLAND_TERRAIN_COLOR_BANDS: usize = 5;
+const ISLAND_CLIFF_STRATA_BANDS: usize = 9;
 
 fn main() -> AppExit {
     let cli = match CliAction::from_env() {
@@ -430,6 +433,11 @@ struct IslandStreamDiagnostics {
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
 struct IslandContentDiagnostics {
+    island_terrain_surface_count: usize,
+    min_island_terrain_mesh_vertices: usize,
+    min_island_terrain_color_bands: usize,
+    min_island_terrain_relief_range_cm: usize,
+    min_island_cliff_color_bands: usize,
     procedural_island_body_count: usize,
     primitive_island_body_count: usize,
     min_island_body_silhouette_segments: usize,
@@ -447,6 +455,40 @@ struct IslandContentDiagnostics {
 }
 
 impl IslandContentDiagnostics {
+    fn record_island_terrain_surface(
+        &mut self,
+        mesh_vertices: usize,
+        color_bands: usize,
+        relief_range_m: f32,
+    ) {
+        let relief_range_cm = (relief_range_m.max(0.0) * 100.0).round() as usize;
+        if self.island_terrain_surface_count == 0 {
+            self.min_island_terrain_mesh_vertices = mesh_vertices;
+            self.min_island_terrain_color_bands = color_bands;
+            self.min_island_terrain_relief_range_cm = relief_range_cm;
+        } else {
+            self.min_island_terrain_mesh_vertices =
+                self.min_island_terrain_mesh_vertices.min(mesh_vertices);
+            self.min_island_terrain_color_bands =
+                self.min_island_terrain_color_bands.min(color_bands);
+            self.min_island_terrain_relief_range_cm =
+                self.min_island_terrain_relief_range_cm.min(relief_range_cm);
+        }
+        self.island_terrain_surface_count += 1;
+    }
+
+    fn record_island_cliff_detail(&mut self, color_bands: usize) {
+        if self.min_island_cliff_color_bands == 0 {
+            self.min_island_cliff_color_bands = color_bands;
+        } else {
+            self.min_island_cliff_color_bands = self.min_island_cliff_color_bands.min(color_bands);
+        }
+    }
+
+    fn min_island_terrain_relief_range_m(self) -> f32 {
+        self.min_island_terrain_relief_range_cm as f32 / 100.0
+    }
+
     fn record_procedural_island_body(&mut self, silhouette_segments: usize, mesh_vertices: usize) {
         if self.procedural_island_body_count == 0 {
             self.min_island_body_silhouette_segments = silhouette_segments;
@@ -2622,12 +2664,18 @@ fn queue_sky_island(
         "island distant impostor",
     );
 
+    let terrain_mesh = island_terrain_mesh(island_index, island);
+    content_diagnostics.record_island_terrain_surface(
+        terrain_mesh.count_vertices(),
+        mesh_vertex_color_band_count(&terrain_mesh),
+        mesh_y_range(&terrain_mesh),
+    );
     queue_island_visual(
         entries,
         &mut visual_index,
         island,
         IslandVisualLayer::Terrain,
-        meshes.add(island_terrain_mesh(island_index, island)),
+        meshes.add(terrain_mesh),
         top_material,
         Transform::default(),
         None,
@@ -2646,6 +2694,7 @@ fn queue_sky_island(
     );
     let cliff_mesh = island_cliff_mesh(island_index, island);
     let cliff_vertex_count = cliff_mesh.count_vertices();
+    content_diagnostics.record_island_cliff_detail(mesh_vertex_color_band_count(&cliff_mesh));
     queue_island_visual(
         entries,
         &mut visual_index,
@@ -2663,6 +2712,7 @@ fn queue_sky_island(
 
     let underside_mesh = island_underside_mesh(island_index, island);
     let underside_vertex_count = underside_mesh.count_vertices();
+    content_diagnostics.record_island_cliff_detail(mesh_vertex_color_band_count(&underside_mesh));
     queue_island_visual(
         entries,
         &mut visual_index,
@@ -2832,10 +2882,10 @@ fn wind_visual_motion(
     }
 }
 
-const ISLAND_TERRAIN_RINGS: usize = 16;
-const ISLAND_BODY_SEGMENTS: usize = 64;
-const ISLAND_CLIFF_RINGS: usize = 6;
-const ISLAND_UNDERSIDE_RINGS: usize = 5;
+const ISLAND_TERRAIN_RINGS: usize = 24;
+const ISLAND_BODY_SEGMENTS: usize = 96;
+const ISLAND_CLIFF_RINGS: usize = 8;
+const ISLAND_UNDERSIDE_RINGS: usize = 7;
 
 fn island_silhouette_scale(island_index: usize, angle: f32) -> f32 {
     let phase = island_index as f32 * 0.73;
@@ -2857,20 +2907,115 @@ fn island_polar_position(island: SkyIsland, angle: f32, radius_scale: f32, y: f3
     ]
 }
 
+fn mesh_y_range(mesh: &Mesh) -> f32 {
+    let Some(VertexAttributeValues::Float32x3(positions)) =
+        mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+    else {
+        return 0.0;
+    };
+    let mut min_y = f32::INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+    for position in positions {
+        min_y = min_y.min(position[1]);
+        max_y = max_y.max(position[1]);
+    }
+    if min_y.is_finite() && max_y.is_finite() {
+        max_y - min_y
+    } else {
+        0.0
+    }
+}
+
+fn mesh_vertex_color_band_count(mesh: &Mesh) -> usize {
+    let Some(VertexAttributeValues::Float32x4(colors)) = mesh.attribute(Mesh::ATTRIBUTE_COLOR)
+    else {
+        return 0;
+    };
+    let mut bands = HashSet::new();
+    for color in colors {
+        bands.insert([
+            (color[0].clamp(0.0, 1.0) * 31.0).round() as u8,
+            (color[1].clamp(0.0, 1.0) * 31.0).round() as u8,
+            (color[2].clamp(0.0, 1.0) * 31.0).round() as u8,
+        ]);
+    }
+    bands.len()
+}
+
+fn color_array(color: Vec3) -> [f32; 4] {
+    [
+        color.x.clamp(0.0, 1.0),
+        color.y.clamp(0.0, 1.0),
+        color.z.clamp(0.0, 1.0),
+        1.0,
+    ]
+}
+
+fn island_terrain_vertex_color(
+    island_index: usize,
+    radius: f32,
+    angle: f32,
+    relief_m: f32,
+) -> [f32; 4] {
+    let phase = island_index as f32 * 0.49;
+    let grass = Vec3::new(0.22, 0.58, 0.29);
+    let moss = Vec3::new(0.15, 0.42, 0.32);
+    let dry_meadow = Vec3::new(0.55, 0.52, 0.28);
+    let clay = Vec3::new(0.48, 0.36, 0.25);
+    let rock = Vec3::new(0.42, 0.4, 0.36);
+    let inner_meadow = ((0.42 - radius) / 0.42).clamp(0.0, 1.0);
+    let exposed_edge = ((radius - 0.72) / 0.28).clamp(0.0, 1.0);
+    let highland = ((relief_m + 0.18) / 0.82).clamp(0.0, 1.0);
+    let dapple = (angle * 13.0 + phase).sin() * 0.025
+        + (angle * 29.0 - phase * 0.6).cos() * 0.015
+        + (radius * 31.0 + phase).sin() * 0.018;
+    let color = grass
+        .lerp(dry_meadow, inner_meadow * 0.36)
+        .lerp(moss, highland * 0.42)
+        .lerp(clay, exposed_edge * 0.38)
+        .lerp(rock, exposed_edge.powf(1.7) * 0.48)
+        + Vec3::splat(dapple);
+    color_array(color)
+}
+
+fn island_rock_vertex_color(island_index: usize, angle: f32, t: f32, underside: bool) -> [f32; 4] {
+    let phase = island_index as f32 * 0.61;
+    let band = ((t * ISLAND_CLIFF_STRATA_BANDS as f32 + phase * 0.13).floor() as usize)
+        % ISLAND_CLIFF_STRATA_BANDS;
+    let band_tint = band as f32 / (ISLAND_CLIFF_STRATA_BANDS - 1) as f32;
+    let vertical_stain = (angle * 17.0 + phase + t * 4.0).sin().abs() * 0.08;
+    let base = if underside {
+        Vec3::new(0.25, 0.22, 0.18)
+    } else {
+        Vec3::new(0.38, 0.35, 0.3)
+    };
+    let warm = Vec3::new(0.48, 0.39, 0.29);
+    let cool = Vec3::new(0.28, 0.3, 0.31);
+    let color = base
+        .lerp(warm, band_tint * 0.32)
+        .lerp(cool, ((band % 3) as f32 / 2.0) * 0.22)
+        - Vec3::splat(vertical_stain + if underside { 0.07 } else { 0.0 });
+    color_array(color)
+}
+
 fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     let vertex_count = 1 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS;
     let mut positions = Vec::with_capacity(vertex_count);
     let mut uvs = Vec::with_capacity(vertex_count);
+    let mut colors = Vec::with_capacity(vertex_count);
     let mut indices = Vec::with_capacity(
         ISLAND_BODY_SEGMENTS * 3 + (ISLAND_TERRAIN_RINGS - 1) * ISLAND_BODY_SEGMENTS * 6,
     );
 
-    positions.push([
-        island.center.x,
-        island.mesh_top_y_at(island.center),
-        island.center.z,
-    ]);
+    let center_y = island.mesh_top_y_at(island.center);
+    positions.push([island.center.x, center_y, island.center.z]);
     uvs.push([0.5, 0.5]);
+    colors.push(island_terrain_vertex_color(
+        island_index,
+        0.0,
+        0.0,
+        center_y - island.mesh_top_y(),
+    ));
 
     for ring in 1..=ISLAND_TERRAIN_RINGS {
         let radius = ring as f32 / ISLAND_TERRAIN_RINGS as f32;
@@ -2887,6 +3032,12 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
                 0.5 + angle.cos() * radius * 0.5,
                 0.5 + angle.sin() * radius * 0.5,
             ]);
+            colors.push(island_terrain_vertex_color(
+                island_index,
+                radius,
+                angle,
+                y - island.mesh_top_y(),
+            ));
         }
     }
 
@@ -2925,6 +3076,7 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     .with_inserted_indices(Indices::U32(indices))
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
 }
 
@@ -2938,9 +3090,12 @@ fn island_cliff_surface_position(
     let shelf_variation = 1.0
         + t * 0.035 * (angle * 5.0 + phase + t * 1.7).sin()
         + t * 0.025 * (angle * 13.0 - phase * 0.3 + t * 2.1).cos();
+    let ledge_phase = (t * ISLAND_CLIFF_STRATA_BANDS as f32 + phase * 0.11).fract();
+    let ledge_shelf = (1.0 - (ledge_phase - 0.5).abs() * 2.0).max(0.0).powf(2.2);
     let radius_scale = island_playable_silhouette_scale(island_index, angle)
         * (1.0 - t.powf(1.18) * 0.34)
-        * shelf_variation;
+        * shelf_variation
+        * (1.0 + ledge_shelf * 0.028);
     let x = island.center.x + angle.cos() * island.half_extents.x * radius_scale;
     let z = island.center.z + angle.sin() * island.half_extents.y * radius_scale;
     let vertical_fracture = t
@@ -2950,6 +3105,7 @@ fn island_cliff_surface_position(
     let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z))
         - 0.06
         - island.thickness * (t * 0.78)
+        - ledge_shelf * island.thickness * 0.018
         - vertical_fracture;
 
     [x, y, z]
@@ -2958,6 +3114,7 @@ fn island_cliff_surface_position(
 fn island_cliff_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     let mut positions = Vec::with_capacity((ISLAND_CLIFF_RINGS + 1) * ISLAND_BODY_SEGMENTS);
     let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut colors = Vec::with_capacity(positions.capacity());
     let mut indices = Vec::with_capacity(ISLAND_CLIFF_RINGS * ISLAND_BODY_SEGMENTS * 6);
 
     for ring in 0..=ISLAND_CLIFF_RINGS {
@@ -2971,6 +3128,7 @@ fn island_cliff_mesh(island_index: usize, island: SkyIsland) -> Mesh {
                 t,
             ));
             uvs.push([segment as f32 / ISLAND_BODY_SEGMENTS as f32 * 4.0, t]);
+            colors.push(island_rock_vertex_color(island_index, angle, t, false));
         }
     }
 
@@ -3005,6 +3163,7 @@ fn island_cliff_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     .with_inserted_indices(Indices::U32(indices))
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
 }
 
@@ -3013,6 +3172,7 @@ fn island_underside_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     let bottom_index = ring_vertex_count as u32;
     let mut positions = Vec::with_capacity(ring_vertex_count + 1);
     let mut uvs = Vec::with_capacity(ring_vertex_count + 1);
+    let mut colors = Vec::with_capacity(ring_vertex_count + 1);
     let mut indices = Vec::with_capacity(
         ISLAND_UNDERSIDE_RINGS * ISLAND_BODY_SEGMENTS * 6 + ISLAND_BODY_SEGMENTS * 3,
     );
@@ -3031,6 +3191,7 @@ fn island_underside_mesh(island_index: usize, island: SkyIsland) -> Mesh {
                     1.0,
                 ));
                 uvs.push([0.5 + angle.cos() * 0.34, 0.5 + angle.sin() * 0.34]);
+                colors.push(island_rock_vertex_color(island_index, angle, t, true));
                 continue;
             }
 
@@ -3047,6 +3208,7 @@ fn island_underside_mesh(island_index: usize, island: SkyIsland) -> Mesh {
                 0.5 + angle.cos() * (0.34 - t * 0.19),
                 0.5 + angle.sin() * (0.34 - t * 0.19),
             ]);
+            colors.push(island_rock_vertex_color(island_index, angle, t, true));
         }
     }
 
@@ -3056,6 +3218,7 @@ fn island_underside_mesh(island_index: usize, island: SkyIsland) -> Mesh {
         island.center.z,
     ]);
     uvs.push([0.5, 0.5]);
+    colors.push(island_rock_vertex_color(island_index, 0.0, 1.0, true));
 
     let ring_index = |ring: usize, segment: usize| -> u32 {
         (ring * ISLAND_BODY_SEGMENTS + segment % ISLAND_BODY_SEGMENTS) as u32
@@ -3095,6 +3258,7 @@ fn island_underside_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     .with_inserted_indices(Indices::U32(indices))
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
 }
 
@@ -4408,7 +4572,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -4463,6 +4627,11 @@ fn update_debug_readout(
         active_lift_fields,
         lift_field_count,
         scene.route.islands().len(),
+        content_metrics.island_terrain_surface_count,
+        content_metrics.min_island_terrain_mesh_vertices,
+        content_metrics.min_island_terrain_color_bands,
+        content_metrics.min_island_terrain_relief_range_m(),
+        content_metrics.min_island_cliff_color_bands,
         content_metrics.procedural_island_body_count,
         content_metrics.primitive_island_body_count,
         content_metrics.min_island_body_silhouette_segments,
@@ -4710,6 +4879,11 @@ fn collect_eval_metrics(
     .with_camera_follow_metrics(scene.camera_diagnostics.follow_direction_error_degrees)
     .with_camera_world_yaw_metrics(camera_world_yaw)
     .with_content_metrics(
+        content_metrics.island_terrain_surface_count,
+        content_metrics.min_island_terrain_mesh_vertices,
+        content_metrics.min_island_terrain_color_bands,
+        content_metrics.min_island_terrain_relief_range_m(),
+        content_metrics.min_island_cliff_color_bands,
         content_metrics.procedural_island_body_count,
         content_metrics.primitive_island_body_count,
         content_metrics.min_island_body_silhouette_segments,
@@ -5030,6 +5204,13 @@ mod tests {
         }
     }
 
+    fn colors(mesh: &Mesh) -> &[[f32; 4]] {
+        match mesh.attribute(Mesh::ATTRIBUTE_COLOR) {
+            Some(VertexAttributeValues::Float32x4(values)) => values,
+            _ => panic!("mesh should expose Float32x4 vertex colors"),
+        }
+    }
+
     fn triangle_normal_y(positions: &[[f32; 3]], indices: &[u32]) -> f32 {
         let a = Vec3::from_array(positions[indices[0] as usize]);
         let b = Vec3::from_array(positions[indices[1] as usize]);
@@ -5158,6 +5339,7 @@ mod tests {
         let island = test_island();
         let mesh = island_terrain_mesh(2, island);
         let positions = positions(&mesh);
+        let colors = colors(&mesh);
         let outer_ring_start = 1 + (ISLAND_TERRAIN_RINGS - 1) * ISLAND_BODY_SEGMENTS;
         let outer_ring = &positions[outer_ring_start..outer_ring_start + ISLAND_BODY_SEGMENTS];
         let min_radius = outer_ring
@@ -5181,6 +5363,15 @@ mod tests {
             max_radius - min_radius > 0.10,
             "outer ring should not read as a perfect cylinder"
         );
+        assert_eq!(colors.len(), positions.len());
+        assert!(
+            mesh_vertex_color_band_count(&mesh) >= ISLAND_TERRAIN_COLOR_BANDS,
+            "terrain mesh should carry vertex-color biome/detail variation"
+        );
+        assert!(
+            mesh_y_range(&mesh) >= 0.8,
+            "terrain mesh should have enough relief range to avoid flat plateaus"
+        );
     }
 
     #[test]
@@ -5203,6 +5394,14 @@ mod tests {
         assert!(underside_top_radius > 0.55);
         assert!(normalized_radius(island, underside_tip) < 0.01);
         assert!(underside_tip[1] < island.mesh_top_y() - island.thickness * 1.5);
+        assert!(
+            mesh_vertex_color_band_count(&cliff_mesh) >= ISLAND_CLIFF_STRATA_BANDS,
+            "cliff mesh should carry visible strata color bands"
+        );
+        assert!(
+            mesh_vertex_color_band_count(&underside_mesh) >= ISLAND_CLIFF_STRATA_BANDS / 2,
+            "underside mesh should not be one flat rock color"
+        );
     }
 
     #[test]
@@ -5230,8 +5429,17 @@ mod tests {
 
         diagnostics.record_procedural_island_body(ISLAND_BODY_SEGMENTS, 833);
         diagnostics.record_procedural_island_body(ISLAND_BODY_SEGMENTS, 821);
+        diagnostics.record_island_terrain_surface(2305, 9, 1.12);
+        diagnostics.record_island_terrain_surface(2305, 7, 0.92);
+        diagnostics.record_island_cliff_detail(11);
+        diagnostics.record_island_cliff_detail(10);
 
         assert_eq!(diagnostics.procedural_island_body_count, 2);
+        assert_eq!(diagnostics.island_terrain_surface_count, 2);
+        assert_eq!(diagnostics.min_island_terrain_mesh_vertices, 2305);
+        assert_eq!(diagnostics.min_island_terrain_color_bands, 7);
+        assert_eq!(diagnostics.min_island_terrain_relief_range_m(), 0.92);
+        assert_eq!(diagnostics.min_island_cliff_color_bands, 10);
         assert_eq!(diagnostics.primitive_island_body_count, 0);
         assert_eq!(
             diagnostics.min_island_body_silhouette_segments,
