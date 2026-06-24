@@ -112,6 +112,8 @@ const ISLAND_TERRAIN_MATERIAL_REGIONS: usize = 4;
 #[cfg(test)]
 const ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS: usize = 44;
 #[cfg(test)]
+const ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE: usize = 240;
+#[cfg(test)]
 const ISLAND_IMPOSTOR_COLOR_BANDS: usize = 18;
 const ISLAND_CLIFF_STRATA_BANDS: usize = 9;
 
@@ -1322,6 +1324,7 @@ struct TerrainExportReport {
     min_terrain_material_channels: usize,
     min_terrain_material_regions: usize,
     min_terrain_texture_detail_bands: usize,
+    min_terrain_texture_edge_promille: usize,
     min_terrain_relief_range_m: f32,
     min_cliff_color_bands: usize,
     min_impostor_mesh_vertices: usize,
@@ -1377,6 +1380,7 @@ impl TerrainExportReport {
                 "    \"terrain_material_channels\": {},\n",
                 "    \"terrain_material_regions\": {},\n",
                 "    \"terrain_texture_detail_bands\": {},\n",
+                "    \"terrain_texture_edge_promille\": {},\n",
                 "    \"terrain_relief_range_m\": {},\n",
                 "    \"cliff_color_bands\": {},\n",
                 "    \"impostor_mesh_vertices\": {},\n",
@@ -1397,6 +1401,7 @@ impl TerrainExportReport {
             self.min_terrain_material_channels,
             self.min_terrain_material_regions,
             self.min_terrain_texture_detail_bands,
+            self.min_terrain_texture_edge_promille,
             terrain_export_json_number(self.min_terrain_relief_range_m),
             self.min_cliff_color_bands,
             self.min_impostor_mesh_vertices,
@@ -1563,6 +1568,7 @@ fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<TerrainExport
         .min()
         .unwrap_or(0);
     let min_terrain_texture_detail_bands = terrain_export_texture_detail_band_floor();
+    let min_terrain_texture_edge_promille = terrain_export_texture_edge_promille_floor();
     let min_terrain_relief_range_m = islands
         .iter()
         .map(|island| island.terrain.relief_range_m)
@@ -1597,6 +1603,7 @@ fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<TerrainExport
         min_terrain_material_channels,
         min_terrain_material_regions,
         min_terrain_texture_detail_bands,
+        min_terrain_texture_edge_promille,
         min_terrain_relief_range_m,
         min_cliff_color_bands,
         min_impostor_mesh_vertices,
@@ -1627,6 +1634,14 @@ fn terrain_export_mesh_summary(
 }
 
 fn terrain_export_texture_detail_band_floor() -> usize {
+    terrain_export_texture_metric_floor(texture_detail_band_count)
+}
+
+fn terrain_export_texture_edge_promille_floor() -> usize {
+    terrain_export_texture_metric_floor(|data| texture_edge_promille(data, TERRAIN_TEXTURE_SIZE))
+}
+
+fn terrain_export_texture_metric_floor(mut metric: impl FnMut(&[u8]) -> usize) -> usize {
     [
         (
             [54, 128, 70, 255],
@@ -1667,13 +1682,14 @@ fn terrain_export_texture_detail_band_floor() -> usize {
     ]
     .into_iter()
     .map(|(primary, secondary, accent, seed)| {
-        texture_detail_band_count(&procedural_terrain_surface_texture_data(
+        let data = procedural_terrain_surface_texture_data(
             primary,
             secondary,
             accent,
             seed,
             TERRAIN_TEXTURE_SIZE,
-        ))
+        );
+        metric(&data)
     })
     .min()
     .unwrap_or(0)
@@ -3122,6 +3138,38 @@ fn texture_detail_band_count(data: &[u8]) -> usize {
         .map(|pixel| [pixel[0] / 16, pixel[1] / 16, pixel[2] / 16])
         .collect::<HashSet<_>>()
         .len()
+}
+
+fn texture_edge_promille(data: &[u8], size: u32) -> usize {
+    if size < 2 {
+        return 0;
+    }
+    let stride = size as usize * 4;
+    let mut edge_count = 0usize;
+    let mut sample_count = 0usize;
+    for y in 0..size as usize {
+        for x in 0..size as usize {
+            let offset = y * stride + x * 4;
+            let luma = texture_luma(&data[offset..offset + 3]);
+            if x + 1 < size as usize {
+                let right = texture_luma(&data[offset + 4..offset + 7]);
+                edge_count += usize::from(luma.abs_diff(right) >= 18);
+                sample_count += 1;
+            }
+            if y + 1 < size as usize {
+                let down_offset = offset + stride;
+                let down = texture_luma(&data[down_offset..down_offset + 3]);
+                edge_count += usize::from(luma.abs_diff(down) >= 18);
+                sample_count += 1;
+            }
+        }
+    }
+
+    (edge_count * 1000).checked_div(sample_count).unwrap_or(0)
+}
+
+fn texture_luma(rgb: &[u8]) -> u8 {
+    ((u16::from(rgb[0]) * 77 + u16::from(rgb[1]) * 150 + u16::from(rgb[2]) * 29) / 256) as u8
 }
 
 fn texture_noise(x: u32, y: u32, seed: u32) -> u8 {
@@ -7298,6 +7346,7 @@ mod tests {
         assert!(report.min_terrain_material_channels >= ISLAND_TERRAIN_MATERIAL_CHANNELS);
         assert!(report.min_terrain_material_regions >= ISLAND_TERRAIN_MATERIAL_REGIONS);
         assert!(report.min_terrain_texture_detail_bands >= ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS);
+        assert!(report.min_terrain_texture_edge_promille >= ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE);
         assert!(report.min_terrain_relief_range_m >= 0.8);
         assert!(report.min_cliff_color_bands >= ISLAND_CLIFF_STRATA_BANDS / 2);
         assert!(report.min_impostor_mesh_vertices >= 2 + ISLAND_IMPOSTOR_SEGMENTS * 3);
@@ -7314,6 +7363,10 @@ mod tests {
         assert!(manifest.contains("\"terrain_material_weight_bands\": 36"));
         assert!(manifest.contains("\"terrain_material_regions\": 4"));
         assert!(manifest.contains("\"terrain_texture_detail_bands\": 47"));
+        assert!(manifest.contains(&format!(
+            "\"terrain_texture_edge_promille\": {}",
+            report.min_terrain_texture_edge_promille
+        )));
         assert!(manifest.contains("\"impostor_mesh_vertices\": 146"));
         assert!(manifest.contains("\"impostor_color_bands\": 21"));
         assert!(
@@ -7732,6 +7785,11 @@ mod tests {
         assert!(
             texture_detail_band_count(&data) >= ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS,
             "terrain texture should carry enough high-frequency color bins to avoid blurry flat fills"
+        );
+        assert!(
+            texture_edge_promille(&data, TERRAIN_TEXTURE_SIZE)
+                >= ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE,
+            "terrain texture should carry enough local edge contrast to avoid smeared low-frequency fills"
         );
     }
 
