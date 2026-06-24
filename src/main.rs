@@ -389,6 +389,18 @@ impl IslandLodVisualCounts {
             + self.visible_beacon_count
             + self.visible_impostor_count
     }
+
+    fn hidden_count(self) -> usize {
+        self.hidden_terrain_count + self.hidden_detail_count + self.hidden_impostor_count
+    }
+
+    fn catalog_count(self) -> usize {
+        self.resident_count() + self.hidden_count()
+    }
+
+    fn resident_fraction(self) -> f32 {
+        self.resident_count() as f32 / self.catalog_count().max(1) as f32
+    }
 }
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
@@ -397,6 +409,12 @@ struct IslandStreamDiagnostics {
     visibility_changes_this_frame: usize,
     max_visibility_changes_per_frame: usize,
     total_visibility_changes: usize,
+    spawned_visuals_this_frame: usize,
+    despawned_visuals_this_frame: usize,
+    max_spawned_visuals_per_frame: usize,
+    max_despawned_visuals_per_frame: usize,
+    total_spawned_visuals: usize,
+    total_despawned_visuals: usize,
     initialized: bool,
 }
 
@@ -2864,7 +2882,8 @@ fn update_island_stream_visibility(
 
     let mut counts = IslandLodVisualCounts::default();
     let mut desired_keys = HashSet::new();
-    let mut stream_changes = 0;
+    let mut spawned_visuals = 0;
+    let mut despawned_visual_count = 0;
 
     for entry in &catalog.entries {
         let resident = island_visual_is_resident(entry, player_transform.translation);
@@ -2878,7 +2897,7 @@ fn update_island_stream_visibility(
                 let entity = spawn_island_visual_entry(&mut commands, entry);
                 slot.insert(entity);
                 if diagnostics.initialized {
-                    stream_changes += 1;
+                    spawned_visuals += 1;
                 }
             }
         }
@@ -2894,16 +2913,27 @@ fn update_island_stream_visibility(
         commands.entity(entity).despawn();
         stream_state.spawned.remove(&key);
         if diagnostics.initialized {
-            stream_changes += 1;
+            despawned_visual_count += 1;
         }
     }
 
+    let stream_changes = spawned_visuals + despawned_visual_count;
     diagnostics.counts = counts;
     diagnostics.visibility_changes_this_frame = stream_changes;
     diagnostics.max_visibility_changes_per_frame = diagnostics
         .max_visibility_changes_per_frame
         .max(stream_changes);
     diagnostics.total_visibility_changes += stream_changes;
+    diagnostics.spawned_visuals_this_frame = spawned_visuals;
+    diagnostics.despawned_visuals_this_frame = despawned_visual_count;
+    diagnostics.max_spawned_visuals_per_frame = diagnostics
+        .max_spawned_visuals_per_frame
+        .max(spawned_visuals);
+    diagnostics.max_despawned_visuals_per_frame = diagnostics
+        .max_despawned_visuals_per_frame
+        .max(despawned_visual_count);
+    diagnostics.total_spawned_visuals += spawned_visuals;
+    diagnostics.total_despawned_visuals += despawned_visual_count;
     diagnostics.initialized = true;
 }
 
@@ -3551,7 +3581,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nresident island visuals {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -3616,6 +3646,15 @@ fn update_debug_readout(
         environment_motion_visuals,
         max_environment_motion_offset_m,
         lod_visuals.resident_count(),
+        lod_visuals.catalog_count(),
+        lod_visuals.resident_fraction() * 100.0,
+        lod_visuals.hidden_count(),
+        scene.stream_diagnostics.spawned_visuals_this_frame,
+        scene.stream_diagnostics.despawned_visuals_this_frame,
+        scene.stream_diagnostics.max_spawned_visuals_per_frame,
+        scene.stream_diagnostics.max_despawned_visuals_per_frame,
+        scene.stream_diagnostics.total_spawned_visuals,
+        scene.stream_diagnostics.total_despawned_visuals,
         scene.stream_diagnostics.visibility_changes_this_frame,
         scene.stream_diagnostics.max_visibility_changes_per_frame,
         scene.stream_diagnostics.total_visibility_changes,
@@ -3750,6 +3789,15 @@ fn collect_eval_metrics(
         scene.stream_diagnostics.visibility_changes_this_frame,
         scene.stream_diagnostics.max_visibility_changes_per_frame,
         scene.stream_diagnostics.total_visibility_changes,
+        lod_visuals.catalog_count(),
+        lod_visuals.hidden_count(),
+        lod_visuals.resident_fraction(),
+        scene.stream_diagnostics.spawned_visuals_this_frame,
+        scene.stream_diagnostics.despawned_visuals_this_frame,
+        scene.stream_diagnostics.max_spawned_visuals_per_frame,
+        scene.stream_diagnostics.max_despawned_visuals_per_frame,
+        scene.stream_diagnostics.total_spawned_visuals,
+        scene.stream_diagnostics.total_despawned_visuals,
         scene.all_entities.iter().count(),
         asset_metrics.slot_count,
         asset_metrics.gltf_scene_slot_count,
