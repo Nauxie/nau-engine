@@ -72,12 +72,12 @@ Use this section for milestone handoffs, not routine worktree changes.
 - Crosswind stream fields are still debug gizmos; updrafts, glider wings, generated trees, clouds, and ponds now have cinematic primitive motion cues, but there are no particles, cloth simulation, or authored environment art assets yet.
 - Sky-island collision follows deterministic terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - Gameplay lift and power-ups are still first rough authored routes; there is no crosswind force, launch-source chain, inventory UI, or authored recovery-route design beyond two marked primitive branch islands.
-- There is no asynchronous asset streaming policy, authored water, authored vegetation, or complete environment asset pipeline yet. The declared glTF slots are measurable, player/glider files can spawn as Bevy `SceneRoot` children when present, the player scene can attach a named-clip `AnimationGraph`/`AnimationTransitions` pair when compatible clips exist, and primitives remain the fallback until those scene instances report ready. Current stream-window terrain residency, detail LOD, procedural island bodies, procedural materials, ground cover, generated tapered/lobed trees, wind-responsive ponds, stones, beacon, multi-lobed cloud layers, and landing markers are deterministic generated systems.
+- There is no asynchronous asset streaming policy, authored water, authored vegetation, or complete environment asset pipeline yet. The declared glTF slots are measurable, a self-authored glider fixture now loads/spawns/reports ready as the first real `SceneRoot` asset, the player scene can attach a named-clip `AnimationGraph`/`AnimationTransitions` pair when compatible clips exist, and primitives remain the fallback until authored scene instances report ready. Current stream-window terrain residency, detail LOD, procedural island bodies, procedural materials, ground cover, generated tapered/lobed trees, wind-responsive ponds, stones, beacon, multi-lobed cloud layers, and landing markers are deterministic generated systems.
 - Physics is still custom movement math, not a real collision/rigid body integration.
 
 ## Next Tasks
 
-1. Replace the primitive character/environment with authored or compatible generated glTF assets that satisfy the declared scene and player animation clip readiness metrics.
+1. Replace the primitive character/environment and the temporary glider fixture with authored or compatible generated glTF assets that satisfy the declared scene and player animation clip readiness metrics.
 2. Add richer impostors on top of the resident island visual catalog.
 3. Add richer terrain-material identity, vegetation-shape, cloud-depth, and exact route-marker semantic checks to the screenshot audit.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
