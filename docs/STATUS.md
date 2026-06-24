@@ -56,6 +56,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `branch_recovery_route` eval proves a scripted route can target and land on the named `sunlit terrace` branch island after using readable lift and late air-braking.
 - `long_glide_visibility` eval proves sustained traversal across the larger archipelago while preserving content-scale and LOD signals.
 - `island_launch_to_landing` eval proves the scripted route reaches and lands on the target island.
+- The HUD now tracks a route objective sequence: main routes point from the near updraft to the landing garden, while branch-target evals add the distant recovery updraft before the named branch landing.
 - Metric-only evals hide the native window by default; screenshot evals are explicit via `NAU_EVAL_SCREENSHOT=1`.
 - Screenshot evals run a non-golden visual audit for resolution, exposure, contrast, color variety, edge density, sky/scene balance, center-scene detail, and HUD-text dominance when launched through `tools/eval.sh`.
 - Eval summaries now include the scenario target island, camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, weather cloud count, readable/unreadable lift samples, hidden/resident island visual counts, and stream entity churn so camera/control/content/streaming regressions are visible in metrics.
@@ -74,8 +75,8 @@ Use this section for milestone handoffs, not routine worktree changes.
 ## Next Tasks
 
 1. Extend screenshot audits toward explicit player visibility, severe clipping, and route-marker readability checks.
-2. Add an objective/checkpoint layer so branch choices become explicit player goals instead of only eval targets.
-3. Add streaming budget regression checks, asset-loading hooks, and richer impostors on top of the resident island visual catalog.
+2. Add objective-progress fields and gates to eval samples so HUD goals become metric-visible.
+3. Add asset-loading hooks and richer impostors on top of the resident island visual catalog.
 4. Replace the primitive character/environment with a glTF asset pipeline once the traversal/render targets stop moving.
 
 ## Read First
