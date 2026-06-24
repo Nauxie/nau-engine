@@ -28,8 +28,8 @@ use nau_engine::camera::{
     CameraControlState, CameraControlTuning, CameraInput, CameraObstruction, FollowCamera,
     FollowCameraState, apply_camera_input, avoid_camera_obstructions, camera_distance,
     camera_orbit_alignment_degrees, camera_pitch_degrees, camera_surface_clearance,
-    camera_target_angle_degrees, camera_view_yaw_degrees, lift_camera_above_floor,
-    step_camera_with_direction, update_follow_direction_state,
+    camera_target_angle_degrees, camera_view_yaw_degrees, horizontal_follow_direction,
+    lift_camera_above_floor, step_camera_with_direction, update_follow_direction_state,
 };
 use nau_engine::diagnostics::frame_ms;
 use nau_engine::environment::{
@@ -511,6 +511,8 @@ struct CameraDiagnostics {
     step_distance_m: f32,
     rotation_delta_degrees: f32,
     orbit_alignment_degrees: f32,
+    follow_direction: Vec3,
+    follow_direction_error_degrees: f32,
     obstruction_adjustment_m: f32,
     obstruction_hits: usize,
 }
@@ -551,7 +553,7 @@ struct CameraScene<'w, 's> {
     route: Res<'w, SkyRoute>,
     camera_control: Res<'w, CameraControlState>,
     camera_diagnostics: ResMut<'w, CameraDiagnostics>,
-    player: Query<'w, 's, &'static Transform, With<Player>>,
+    player: Query<'w, 's, (&'static Transform, &'static Velocity), With<Player>>,
     camera: Query<
         'w,
         's,
@@ -3664,7 +3666,7 @@ fn update_camera_control(
 }
 
 fn follow_camera(time: Res<Time>, eval: Option<Res<EvalRun>>, mut scene: CameraScene) {
-    let Ok(player_transform) = scene.player.single() else {
+    let Ok((player_transform, player_velocity)) = scene.player.single() else {
         return;
     };
     let Ok((mut camera_transform, follow, mut follow_state)) = scene.camera.single_mut() else {
@@ -3674,7 +3676,8 @@ fn follow_camera(time: Res<Time>, eval: Option<Res<EvalRun>>, mut scene: CameraS
     let previous_camera_rotation = camera_transform.rotation;
 
     let dt = eval_dt(&time, eval.as_deref());
-    let desired_follow_direction = follow_state.direction;
+    let desired_follow_direction =
+        horizontal_follow_direction(player_velocity.0, *player_transform.forward());
     let follow_direction =
         update_follow_direction_state(&mut follow_state, desired_follow_direction, follow, dt);
     let frame = step_camera_with_direction(
@@ -3714,6 +3717,10 @@ fn follow_camera(time: Res<Time>, eval: Option<Res<EvalRun>>, mut scene: CameraS
         .angle_between(frame.rotation)
         .to_degrees();
     scene.camera_diagnostics.orbit_alignment_degrees = orbit_alignment_degrees;
+    scene.camera_diagnostics.follow_direction = follow_direction;
+    scene.camera_diagnostics.follow_direction_error_degrees = follow_direction
+        .angle_between(desired_follow_direction)
+        .to_degrees();
     scene.camera_diagnostics.obstruction_adjustment_m = obstruction_resolution.adjusted_distance_m;
     scene.camera_diagnostics.obstruction_hits = obstruction_resolution.hit_count;
 
@@ -3963,7 +3970,10 @@ fn collect_eval_metrics(
                     player_focus,
                 ),
                 camera_pitch_degrees(camera_transform.rotation),
-                camera_view_yaw_degrees(camera_transform.rotation, Vec3::NEG_Z),
+                camera_view_yaw_degrees(
+                    camera_transform.rotation,
+                    scene.camera_diagnostics.follow_direction,
+                ),
             )
         })
         .unwrap_or_default();
@@ -4103,6 +4113,7 @@ fn collect_eval_metrics(
         scene.power_ups.active_effects(),
         scene.power_ups.total_activations,
     )
+    .with_camera_follow_metrics(scene.camera_diagnostics.follow_direction_error_degrees)
     .with_content_metrics(
         content_metrics.procedural_island_body_count,
         content_metrics.primitive_island_body_count,
