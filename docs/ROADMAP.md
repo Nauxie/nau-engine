@@ -28,6 +28,7 @@ Work:
 - Debug gizmos for player vectors, camera line, and visual wind/updraft stream fields. Initial version complete.
 - Visual wind/updraft fields after baseline gliding is stable. Initial version complete.
 - Fixed camera checkpoint screenshots, initial camera obstruction avoidance, and camera jerk metrics. Initial version complete.
+- Simple aerial boost/power-up gates along the long-glide route. Initial version complete.
 - Add manual test routes: launch, glide, dive, low-altitude recovery, landing, obstacle pass.
 - Add camera mode profiles for launch, glide, dive, and ground.
 - Add bank/turn behavior that feels like glider traversal rather than free flight.
@@ -66,6 +67,7 @@ Work:
 - Choose kinematic character controller vs custom controller with physics queries.
 - Add terrain collision and slope/ground detection.
 - Add trigger volumes for launch sources, wind, updrafts, hazards, and checkpoints.
+- Replace prototype power-up intersection checks with explicit trigger-volume/collision queries.
 - Add basic dynamic objects that react to wind or impact.
 
 Exit criteria:
