@@ -13,8 +13,8 @@ The NAU Engine is a Mac-first Rust/Bevy sandbox for flight traversal experiments
 
 The first executable is a simple 3D flight testbed:
 
-- primitive humanoid character with separate head, torso, limbs, grounded stride poses, airborne banking, and visible flight poses
-- deployable glider wing panels on `Space`
+- primitive humanoid character with separate head, torso, limbs, grounded stride poses, airborne banking, speed-responsive glider wing flex, and visible flight poses
+- deployable glider wing panels with subtle wingtip airflow trails on `Space`
 - one-launch-per-airtime vertical burst on `E`
 - dive on `Shift`
 - camera-relative grounded and airborne steering on `WASD`, with separate ground friction so walking is playable before launch
@@ -27,7 +27,7 @@ The first executable is a simple 3D flight testbed:
 - live debug readout for frame time, speed, altitude, target distance, current route objective, camera pitch/distance/framing angle/motion/obstruction/yaw offset, velocity, aerial power-up visibility/collection/effect state, visual asset slot/load-state/LOD-residency readiness, visual wind-field count, lift-field count, sky-island count, active chunk window, near/mid/far LOD island buckets, visible/hidden terrain, impostor, and detail counts, resident island visual count, and stream entity churn
 - visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
 - authored crosswind fields, a paired gameplay updraft route with aligned visual wind volumes, collectible aerial boost gates with glowing route-ring markers, cinematic lift haze/ribbon/mote cues, and marked recovery branch islands
-- deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state/pose math
+- deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state/pose/airflow math
 - scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, long-glide visibility, updraft lift, branch recovery landing, and island launch-to-landing with traversal, camera, objective-progress, aerial power-up collection/effect, frame-time, content-scale, asset-slot/load-state readiness, streaming/LOD, stream-churn, weather-cloud, resident visual, entity-churn, and visible-detail summary metrics plus fixed camera checkpoint screenshots
 
 This is intentionally not a full physics simulation yet. The first job is to create a place where movement constants can be tuned quickly.
