@@ -10,15 +10,15 @@ The project has a Bevy sandbox with a primitive humanoid, playable ground moveme
 
 ## Last Known Good
 
-- Commit: `24027a1`
-- Merged PR: `#34` - Add cinematic updraft visuals
+- Commit: `856a938`
+- Merged PR: `#36` - Add glider airflow polish
 - Verification:
   - `cargo fmt --all --check`
   - `cargo check`
   - `cargo test`
   - `cargo clippy --all-targets --all-features -- -D warnings`
-  - metric-only evals for updraft, branch recovery, and long-glide scenarios
-  - screenshot eval for updraft route with visual audit and manual checkpoint inspection
+  - metric-only eval for branch recovery traversal
+  - screenshot eval for long-glide route with visual audit and manual checkpoint inspection
 
 ## Active Work
 
