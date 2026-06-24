@@ -61,7 +61,7 @@ Eval samples include camera distance, camera surface clearance, camera-to-player
 - Sky-island collision queries and visible terrain meshes should use the same deterministic relief function, with launch and landing centers anchored to their authored route heights.
 - Active chunk counters drive resident terrain/detail/impostor entities, and stream diagnostics record hidden/resident visual counts plus entity churn until a future branch adds asset streaming.
 - Declared visual asset slots should stay measurable even while missing assets fall back to generated placeholders, and any queued Bevy scene handle must report a load state with failed loads gated in evals.
-- Screenshot eval windows must use opaque surface composition so transparent weather and lift visuals cannot reveal unrelated desktop content in checkpoint artifacts.
+- Screenshot eval windows must disable debug gizmos and use opaque surface composition so checkpoint artifacts show the normal scene and transparent weather/lift visuals cannot reveal unrelated desktop content.
 - Camera, animation, and HUD should run after movement.
 - Visual polish should prefer Bevy-native rendering components and generated assets before custom shaders, new render passes, or raw platform code.
 - `src/main.rs` should stay mostly wiring. Avoid burying gameplay rules directly in ECS systems.
