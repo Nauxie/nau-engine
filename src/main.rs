@@ -66,6 +66,11 @@ const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
 const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
 const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
 const PROCEDURAL_TEXTURE_SIZE: u32 = 64;
+const TREE_CANOPY_LATITUDE_SEGMENTS: usize = 6;
+const TREE_CANOPY_LONGITUDE_SEGMENTS: usize = 12;
+const TREE_TRUNK_SEGMENTS: usize = 8;
+const CLOUD_BANK_LOBES: usize = 7;
+const CLOUD_VEIL_LOBES: usize = 4;
 
 fn main() -> AppExit {
     let cli = match CliAction::from_env() {
@@ -1846,6 +1851,215 @@ fn mix_color(source: Color, target: Color, target_weight: f32) -> Color {
     source.mix(&target, target_weight.clamp(0.0, 1.0))
 }
 
+fn tree_trunk_mesh(radius: f32, height: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::with_capacity(TREE_TRUNK_SEGMENTS * 3 + 2);
+    let mut normals = Vec::with_capacity(TREE_TRUNK_SEGMENTS * 3 + 2);
+    let mut uvs = Vec::with_capacity(TREE_TRUNK_SEGMENTS * 3 + 2);
+    let mut indices = Vec::with_capacity(TREE_TRUNK_SEGMENTS * 18);
+    let bend = Vec2::new(
+        (random_unit(seed, 3, 11) - 0.5) * radius * 0.95,
+        (random_unit(seed, 7, 17) - 0.5) * radius * 0.95,
+    );
+    let rings = [
+        (-0.5, radius * 1.18, Vec2::ZERO),
+        (0.0, radius * 0.96, bend * 0.42),
+        (0.5, radius * 0.68, bend),
+    ];
+
+    for (ring_index, (height_factor, ring_radius, center_offset)) in rings.into_iter().enumerate() {
+        for segment in 0..TREE_TRUNK_SEGMENTS {
+            let phase = segment as f32 / TREE_TRUNK_SEGMENTS as f32 * std::f32::consts::TAU;
+            let bark_noise = 0.9 + random_unit(seed, segment as u32, ring_index as u32) * 0.2;
+            let x = center_offset.x + phase.cos() * ring_radius * bark_noise;
+            let z = center_offset.y + phase.sin() * ring_radius * bark_noise;
+            positions.push([x, height * height_factor, z]);
+            normals.push(
+                Vec3::new(phase.cos(), 0.16, phase.sin())
+                    .normalize()
+                    .to_array(),
+            );
+            uvs.push([
+                segment as f32 / TREE_TRUNK_SEGMENTS as f32,
+                ring_index as f32 / 2.0,
+            ]);
+        }
+    }
+
+    for ring in 0..2 {
+        let start = (ring * TREE_TRUNK_SEGMENTS) as u32;
+        let next = ((ring + 1) * TREE_TRUNK_SEGMENTS) as u32;
+        for segment in 0..TREE_TRUNK_SEGMENTS {
+            let a = start + segment as u32;
+            let b = start + ((segment + 1) % TREE_TRUNK_SEGMENTS) as u32;
+            let c = next + segment as u32;
+            let d = next + ((segment + 1) % TREE_TRUNK_SEGMENTS) as u32;
+            indices.extend([a, c, b, b, c, d]);
+        }
+    }
+
+    let bottom_center = positions.len() as u32;
+    positions.push([0.0, -height * 0.5, 0.0]);
+    normals.push(Vec3::NEG_Y.to_array());
+    uvs.push([0.5, 0.5]);
+    let top_center = positions.len() as u32;
+    positions.push([bend.x, height * 0.5, bend.y]);
+    normals.push(Vec3::Y.to_array());
+    uvs.push([0.5, 0.5]);
+
+    for segment in 0..TREE_TRUNK_SEGMENTS {
+        let next = ((segment + 1) % TREE_TRUNK_SEGMENTS) as u32;
+        indices.extend([bottom_center, segment as u32, next]);
+        let top_start = (2 * TREE_TRUNK_SEGMENTS) as u32;
+        indices.extend([top_center, top_start + next, top_start + segment as u32]);
+    }
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+fn tree_canopy_mesh(radius: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+
+    append_ellipsoid_lobe(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        Vec3::ZERO,
+        Vec3::new(radius * 1.08, radius * 0.82, radius),
+        TREE_CANOPY_LATITUDE_SEGMENTS,
+        TREE_CANOPY_LONGITUDE_SEGMENTS,
+        seed,
+        0.22,
+    );
+
+    for lobe in 0..3 {
+        let phase =
+            lobe as f32 / 3.0 * std::f32::consts::TAU + random_unit(seed, lobe as u32, 71) * 0.45;
+        append_ellipsoid_lobe(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            Vec3::new(
+                phase.cos() * radius * 0.32,
+                radius * (0.04 + lobe as f32 * 0.03),
+                phase.sin() * radius * 0.28,
+            ),
+            Vec3::new(radius * 0.62, radius * 0.54, radius * 0.58),
+            4,
+            8,
+            seed.wrapping_add(100 + lobe as u32 * 17),
+            0.18,
+        );
+    }
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+
+    for lobe in 0..lobe_count {
+        let phase = lobe as f32 / lobe_count as f32 * std::f32::consts::TAU
+            + random_unit(seed, lobe as u32, 5) * 0.8;
+        let radius = 0.34 + random_unit(seed, lobe as u32, 19) * 0.28;
+        let center = Vec3::new(
+            phase.cos() * (0.28 + random_unit(seed, lobe as u32, 29) * 0.38),
+            (random_unit(seed, lobe as u32, 41) - 0.5) * 0.22,
+            phase.sin() * (0.18 + random_unit(seed, lobe as u32, 53) * 0.32),
+        );
+        append_ellipsoid_lobe(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            center,
+            Vec3::new(radius * 1.28, radius * 0.44, radius * 0.82),
+            4,
+            8,
+            seed.wrapping_add(lobe as u32 * 101),
+            0.12,
+        );
+    }
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn append_ellipsoid_lobe(
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    uvs: &mut Vec<[f32; 2]>,
+    indices: &mut Vec<u32>,
+    center: Vec3,
+    radii: Vec3,
+    latitude_segments: usize,
+    longitude_segments: usize,
+    seed: u32,
+    noise_strength: f32,
+) {
+    let start = positions.len() as u32;
+
+    for lat in 0..=latitude_segments {
+        let theta = lat as f32 / latitude_segments as f32 * std::f32::consts::PI;
+        let sin_theta = theta.sin();
+        let cos_theta = theta.cos();
+        for lon in 0..=longitude_segments {
+            let phi = lon as f32 / longitude_segments as f32 * std::f32::consts::TAU;
+            let unit = Vec3::new(sin_theta * phi.cos(), cos_theta, sin_theta * phi.sin());
+            let noise =
+                (random_unit(seed, lat as u32 * 31 + lon as u32, 83) - 0.5) * noise_strength;
+            let position = center + unit * radii * (1.0 + noise);
+            let normal =
+                Vec3::new(unit.x / radii.x, unit.y / radii.y, unit.z / radii.z).normalize_or_zero();
+            positions.push(position.to_array());
+            normals.push(normal.to_array());
+            uvs.push([
+                lon as f32 / longitude_segments as f32,
+                lat as f32 / latitude_segments as f32,
+            ]);
+        }
+    }
+
+    let stride = longitude_segments + 1;
+    for lat in 0..latitude_segments {
+        for lon in 0..longitude_segments {
+            let a = start + (lat * stride + lon) as u32;
+            let b = start + (lat * stride + lon + 1) as u32;
+            let c = start + ((lat + 1) * stride + lon) as u32;
+            let d = start + ((lat + 1) * stride + lon + 1) as u32;
+            indices.extend([a, c, b, b, c, d]);
+        }
+    }
+}
+
 fn spawn_updraft_guide(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -2027,8 +2241,6 @@ fn spawn_weather_layers(
     cloud_veil_material: Handle<StandardMaterial>,
     islands: &[SkyIsland],
 ) {
-    let cloud_mesh = meshes.add(Sphere::new(1.0));
-
     for (index, island) in islands.iter().enumerate() {
         let phase = index as f32 * 0.73;
         let offset = Vec3::new(
@@ -2043,9 +2255,13 @@ fn spawn_weather_layers(
             2.6 + (index % 3) as f32 * 0.45,
             island.half_extents.y * 0.26 + 8.0,
         );
+        let cloud_mesh = meshes.add(cloud_cluster_mesh(
+            2_000 + index as u32 * 37,
+            CLOUD_BANK_LOBES,
+        ));
 
         commands.spawn((
-            Mesh3d(cloud_mesh.clone()),
+            Mesh3d(cloud_mesh),
             MeshMaterial3d(cloud_material.clone()),
             Transform {
                 translation: origin,
@@ -2081,9 +2297,13 @@ fn spawn_weather_layers(
                 );
                 let veil_origin = veil_anchor + layer_offset;
                 let veil_rotation = Quat::from_euler(EulerRot::XYZ, -0.04, puff_phase * 0.27, 0.06);
+                let veil_mesh = meshes.add(cloud_cluster_mesh(
+                    3_000 + index as u32 * 53 + puff_index as u32 * 11,
+                    CLOUD_VEIL_LOBES,
+                ));
 
                 commands.spawn((
-                    Mesh3d(cloud_mesh.clone()),
+                    Mesh3d(veil_mesh),
                     MeshMaterial3d(cloud_veil_material.clone()),
                     Transform {
                         translation: veil_origin,
@@ -2882,7 +3102,11 @@ fn queue_sky_island_details(
             visual_index,
             island,
             IslandVisualLayer::Detail,
-            meshes.add(Cylinder::new(0.22, trunk_height)),
+            meshes.add(tree_trunk_mesh(
+                0.22,
+                trunk_height,
+                5_000 + island_index as u32 * 97 + index as u32 * 13,
+            )),
             trunk_material.clone(),
             Transform::from_translation(trunk_center),
             Some(CameraObstacle(CameraObstruction::new(
@@ -2897,7 +3121,10 @@ fn queue_sky_island_details(
             visual_index,
             island,
             IslandVisualLayer::Detail,
-            meshes.add(Sphere::new(canopy_radius)),
+            meshes.add(tree_canopy_mesh(
+                canopy_radius,
+                6_000 + island_index as u32 * 101 + index as u32 * 17,
+            )),
             foliage_material.clone(),
             Transform::from_translation(canopy_center),
             Some(CameraObstacle(CameraObstruction::new(
@@ -3049,7 +3276,11 @@ fn queue_sky_island_details(
             visual_index,
             island,
             IslandVisualLayer::Detail,
-            meshes.add(Cylinder::new(0.35, launch_tree_height)),
+            meshes.add(tree_trunk_mesh(
+                0.35,
+                launch_tree_height,
+                7_000 + island_index as u32 * 97,
+            )),
             trunk_material,
             Transform::from_translation(launch_tree_center),
             Some(CameraObstacle(CameraObstruction::new(
@@ -3064,7 +3295,10 @@ fn queue_sky_island_details(
             visual_index,
             island,
             IslandVisualLayer::Detail,
-            meshes.add(Sphere::new(launch_canopy_radius)),
+            meshes.add(tree_canopy_mesh(
+                launch_canopy_radius,
+                8_000 + island_index as u32 * 101,
+            )),
             foliage_material,
             Transform::from_translation(launch_canopy_center),
             Some(CameraObstacle(CameraObstruction::new(
@@ -4585,12 +4819,134 @@ mod tests {
         }
     }
 
+    fn u32_indices(mesh: &Mesh) -> &[u32] {
+        match mesh.indices() {
+            Some(Indices::U32(values)) => values,
+            _ => panic!("mesh should expose U32 indices"),
+        }
+    }
+
+    fn triangle_normal_y(positions: &[[f32; 3]], indices: &[u32]) -> f32 {
+        let a = Vec3::from_array(positions[indices[0] as usize]);
+        let b = Vec3::from_array(positions[indices[1] as usize]);
+        let c = Vec3::from_array(positions[indices[2] as usize]);
+        (b - a).cross(c - a).y
+    }
+
     fn normalized_radius(island: SkyIsland, position: [f32; 3]) -> f32 {
         Vec2::new(
             (position[0] - island.center.x) / island.half_extents.x,
             (position[2] - island.center.z) / island.half_extents.y,
         )
         .length()
+    }
+
+    #[test]
+    fn tree_trunk_mesh_is_tapered_instead_of_a_straight_cylinder() {
+        let mesh = tree_trunk_mesh(0.3, 4.0, 123);
+        let positions = positions(&mesh);
+        let bottom_ring = &positions[..TREE_TRUNK_SEGMENTS];
+        let top_ring = &positions[2 * TREE_TRUNK_SEGMENTS..3 * TREE_TRUNK_SEGMENTS];
+        let top_center = top_ring
+            .iter()
+            .map(|position| Vec2::new(position[0], position[2]))
+            .sum::<Vec2>()
+            / TREE_TRUNK_SEGMENTS as f32;
+        let average_bottom_radius = bottom_ring
+            .iter()
+            .map(|position| Vec2::new(position[0], position[2]).length())
+            .sum::<f32>()
+            / TREE_TRUNK_SEGMENTS as f32;
+        let average_top_radius = top_ring
+            .iter()
+            .map(|position| (Vec2::new(position[0], position[2]) - top_center).length())
+            .sum::<f32>()
+            / TREE_TRUNK_SEGMENTS as f32;
+
+        assert_eq!(mesh.count_vertices(), TREE_TRUNK_SEGMENTS * 3 + 2);
+        assert!(
+            average_bottom_radius > average_top_radius * 1.45,
+            "tree trunks should taper enough to stop reading as plain cylinders"
+        );
+    }
+
+    #[test]
+    fn tree_trunk_cap_winding_matches_declared_normals() {
+        let mesh = tree_trunk_mesh(0.3, 4.0, 123);
+        let positions = positions(&mesh);
+        let indices = u32_indices(&mesh);
+        let cap_start = TREE_TRUNK_SEGMENTS * 12;
+
+        for segment in 0..TREE_TRUNK_SEGMENTS {
+            let bottom = &indices[cap_start + segment * 6..cap_start + segment * 6 + 3];
+            let top = &indices[cap_start + segment * 6 + 3..cap_start + segment * 6 + 6];
+
+            assert!(
+                triangle_normal_y(positions, bottom) < 0.0,
+                "bottom cap triangles should face downward"
+            );
+            assert!(
+                triangle_normal_y(positions, top) > 0.0,
+                "top cap triangles should face upward"
+            );
+        }
+    }
+
+    #[test]
+    fn tree_canopy_mesh_uses_overlapping_lobes_instead_of_one_sphere() {
+        let mesh = tree_canopy_mesh(1.4, 42);
+        let positions = positions(&mesh);
+        let single_lobe_vertices =
+            (TREE_CANOPY_LATITUDE_SEGMENTS + 1) * (TREE_CANOPY_LONGITUDE_SEGMENTS + 1);
+        let min_y = positions
+            .iter()
+            .map(|position| position[1])
+            .fold(f32::INFINITY, f32::min);
+        let max_y = positions
+            .iter()
+            .map(|position| position[1])
+            .fold(f32::NEG_INFINITY, f32::max);
+        let horizontal_span = positions
+            .iter()
+            .map(|position| Vec2::new(position[0], position[2]).length())
+            .fold(0.0, f32::max);
+
+        assert!(mesh.count_vertices() > single_lobe_vertices);
+        assert!(max_y - min_y > 1.9);
+        assert!(horizontal_span > 1.45);
+    }
+
+    #[test]
+    fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
+        let mesh = cloud_cluster_mesh(99, CLOUD_BANK_LOBES);
+        let positions = positions(&mesh);
+        let lobe_vertices = (4 + 1) * (8 + 1);
+        let min_x = positions
+            .iter()
+            .map(|position| position[0])
+            .fold(f32::INFINITY, f32::min);
+        let max_x = positions
+            .iter()
+            .map(|position| position[0])
+            .fold(f32::NEG_INFINITY, f32::max);
+        let min_z = positions
+            .iter()
+            .map(|position| position[2])
+            .fold(f32::INFINITY, f32::min);
+        let max_z = positions
+            .iter()
+            .map(|position| position[2])
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        assert_eq!(mesh.count_vertices(), CLOUD_BANK_LOBES * lobe_vertices);
+        assert!(
+            max_x - min_x > 1.2,
+            "cloud clusters should have lateral lobe structure"
+        );
+        assert!(
+            max_z - min_z > 0.8,
+            "cloud clusters should have visible depth, not one flat blob"
+        );
     }
 
     #[test]

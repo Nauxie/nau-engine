@@ -20,9 +20,9 @@ The first executable is a simple 3D flight testbed:
 - camera-relative grounded and airborne steering on `WASD`, with planar air-control response, smoothed body yaw toward intended movement, airborne banking, and separate ground friction so walking is playable before launch
 - mouse-look third-person follow camera with player-centered orbit pitch, separate yaw/pitch tuning, click-to-lock cursor capture, obstruction avoidance, and surface-clearance clamping
 - a 12-island floating archipelago with launch, midpoint, landing, high-altitude, and distant reference islands
-- deterministic collision-aware island relief with smoother generated terrain normals, irregular procedural island rims, generated cliff/underside body meshes, stream-windowed terrain, low-poly distant impostors, and distance-managed detail props: varied generated terrain colors, batched ground-cover blades, wind-responsive trees and ponds, stones, route cairns, launch beacon, and landing-garden markers
+- deterministic collision-aware island relief with smoother generated terrain normals, irregular procedural island rims, generated cliff/underside body meshes, stream-windowed terrain, low-poly distant impostors, and distance-managed detail props: varied generated terrain colors, batched ground-cover blades, tapered/multi-lobed wind-responsive trees, ponds, stones, route cairns, launch beacon, and landing-garden markers
 - declared glTF visual asset slots for future player, glider, island, route-marker, weather, and impostor assets, with optional Bevy `SceneRoot` spawning for player/glider files, missing/queued/loading/loaded/failed load diagnostics, spawned/ready scene-instance diagnostics, and residency-split metrics while generated placeholders remain the fallback
-- Bevy-native atmosphere, dynamic sun/fog/exposure weather, volumetric fog/light, bloom, filmic tonemapping, procedural PBR surface maps, reflective/transmissive water, emissive markers, drifting cloud banks, layered high-cirrus puffs, and wind-responsive near-LOD environment motion
+- Bevy-native atmosphere, dynamic sun/fog/exposure weather, volumetric fog/light, bloom, filmic tonemapping, procedural PBR surface maps, reflective/transmissive water, emissive markers, multi-lobed drifting cloud banks, layered high-cirrus cloud clusters, and wind-responsive near-LOD environment motion
 - simple terrain-surface landing detection with one-shot landing friction
 - live debug readout for frame time, speed, altitude, target distance, current route objective, camera pitch/distance/framing angle/motion/obstruction/yaw offset, velocity, aerial power-up visibility/collection/effect state, visual asset slot/load-state/scene-readiness/LOD-residency metrics, visual wind-field count, lift-field count, sky-island count, procedural-vs-primitive island body counts, island body silhouette complexity, active chunk window, near/mid/far LOD island buckets, visible/hidden terrain, impostor, detail counts, environment-motion count/offset, resident/catalog/hidden island visual pressure, and stream spawn/despawn churn
 - visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
@@ -81,7 +81,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 1. Replace placeholder visual asset slots with real glTF scenes, starting with character/glider scale, animation clips, vegetation, and island impostor kits.
 2. Add explicit streaming budget checks around asynchronous asset loading once real imported scenes exist.
-3. Add richer texture/detail-frequency, terrain-material, vegetation, cloud-depth, and route-marker identity signals on top of the current non-golden screenshot audit.
+3. Add richer texture/detail-frequency, terrain-material, vegetation-shape, cloud-depth, and route-marker identity signals on top of the current non-golden screenshot audit.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
 
 ## Development Principles

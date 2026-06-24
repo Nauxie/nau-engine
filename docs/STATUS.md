@@ -6,7 +6,7 @@ Last updated: 2026-06-24
 
 First sky-island traversal slice.
 
-The project has a Bevy sandbox with a primitive humanoid, playable ground movement, camera-relative planar air control, deployable glider wings, one-launch-per-airtime vertical burst, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, drifting cloud banks and layered high-cirrus puffs, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes and cinematic lift ribbons, marked recovery branch islands, a 12-island floating route with smooth generated terrain relief, irregular procedural rims, generated cliff/underside body meshes, batched ground-cover/detail props, wind-responsive near-LOD trees and ponds, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, air-control response, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
+The project has a Bevy sandbox with a primitive humanoid, playable ground movement, camera-relative planar air control, deployable glider wings, one-launch-per-airtime vertical burst, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, multi-lobed drifting cloud banks and layered high-cirrus clusters, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes and cinematic lift ribbons, marked recovery branch islands, a 12-island floating route with smooth generated terrain relief, irregular procedural rims, generated cliff/underside body meshes, batched ground-cover/detail props, deterministic tapered/multi-lobed near-LOD trees and wind-responsive ponds, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, air-control response, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
 
 ## Last Known Good
 
@@ -38,7 +38,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - The sandbox spawns a 12-island floating archipelago with generated visual terrain relief, irregular island rims, generated cliff/underside body meshes, smooth terrain normals, batched near-LOD ground cover, a launch island, long-glide route, and landing target.
 - The camera uses Bevy-native atmosphere, dynamic distance fog, volumetric fog/light, bloom, Aces tonemapping, exposure tuning, and atmosphere-driven environment lighting.
 - Terrain, ground cover, props, water, suit, glider, and markers use generated surface textures with PBR roughness, occlusion, and parallax depth maps; marker and flower materials feed bloom through emissive color.
-- Drifting cloud banks, layered high-cirrus puffs, and wind-responsive near-LOD trees/ponds provide non-debug weather/environment motion layers without changing gameplay collision or traversal math.
+- Multi-lobed drifting cloud banks, layered high-cirrus clusters, and wind-responsive near-LOD generated tree/pond visuals provide non-debug weather/environment motion layers without changing gameplay collision or traversal math.
 - Route-surface contact can land the player on an island and applies landing damping once instead of crushing standing WASD movement every frame.
 - Runtime movement is camera-relative, with airborne planar steering, backward air-brake control, body yaw smoothed toward intended movement, error-scaled turn recovery for large lateral input changes, and horizontal velocity as the no-input facing fallback.
 - Mouse camera control has player-centered orbit pitch, separate yaw and pitch sensitivity, pitch clamps, click-to-lock cursor capture, right-mouse temporary look, and `Esc` release.
@@ -69,17 +69,17 @@ Use this section for milestone handoffs, not routine worktree changes.
 - The character is still primitive geometry, not a rigged character asset.
 - Limb posing now has grounded stride, airborne banking, glide posture, and speed-responsive wing flex, but it is still approximate non-skeletal animation.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep.
-- Crosswind stream fields are still debug gizmos; updrafts, glider wings, trees, and ponds now have cinematic primitive motion cues, but there are no particles, cloth simulation, or authored environment art assets yet.
+- Crosswind stream fields are still debug gizmos; updrafts, glider wings, generated trees, clouds, and ponds now have cinematic primitive motion cues, but there are no particles, cloth simulation, or authored environment art assets yet.
 - Sky-island collision follows deterministic terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - Gameplay lift and power-ups are still first rough authored routes; there is no crosswind force, launch-source chain, inventory UI, or authored recovery-route design beyond two marked primitive branch islands.
-- There is no asynchronous asset streaming policy, authored water, authored vegetation, or complete environment asset pipeline yet. The declared glTF slots are measurable, player/glider files can spawn as Bevy `SceneRoot` children when present, and primitives remain the fallback until those scene instances report ready. Current stream-window terrain residency, detail LOD, procedural island bodies, procedural materials, ground cover, wind-responsive ponds/trees, stones, beacon, cloud layers, and landing markers are deterministic generated systems.
+- There is no asynchronous asset streaming policy, authored water, authored vegetation, or complete environment asset pipeline yet. The declared glTF slots are measurable, player/glider files can spawn as Bevy `SceneRoot` children when present, and primitives remain the fallback until those scene instances report ready. Current stream-window terrain residency, detail LOD, procedural island bodies, procedural materials, ground cover, generated tapered/lobed trees, wind-responsive ponds, stones, beacon, multi-lobed cloud layers, and landing markers are deterministic generated systems.
 - Physics is still custom movement math, not a real collision/rigid body integration.
 
 ## Next Tasks
 
 1. Add named glTF animation-clip discovery/`AnimationGraph` hooks for the player scene and richer impostors on top of the resident island visual catalog.
 2. Replace the primitive character/environment with authored or compatible generated glTF assets once the traversal/render targets stop moving.
-3. Add richer terrain/material, texture-frequency, vegetation, cloud-depth, and exact route-marker semantic checks to the screenshot audit.
+3. Add richer terrain/material, texture-frequency, vegetation-shape, cloud-depth, and exact route-marker semantic checks to the screenshot audit.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
 
 ## Read First
