@@ -204,7 +204,7 @@ The export writes `manifest.json`, per-island terrain/cliff/underside OBJ meshes
 - right and left lateral input must each produce measurable response within the response-latency threshold
 - backward input must produce measurable air-brake speed drop, and the final forward segment must recover forward alignment
 - max body-yaw error step and oscillation count must remain bounded so input reversals do not become spin or wobble regressions
-- current gates require lateral response within 0.35 seconds, at least 18 m/s directional lateral response, p95 body-heading error at or under 35 degrees, and max body-heading/yaw-step error at or under 60 degrees
+- current gates require lateral response within 0.35 seconds, at least 18 m/s directional lateral response, at least 10 m/s of air-brake speed drop, p95 body-heading error at or under 35 degrees, and max body-heading/yaw-step error at or under 60 degrees
 
 `camera_strafe_stability` is the lateral-movement camera regression test:
 
