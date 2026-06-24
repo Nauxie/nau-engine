@@ -272,6 +272,11 @@ Every sample includes:
 - `weather_cloud_count`
 - `environment_motion_visual_count`
 - `max_environment_motion_offset_m`
+- `procedural_island_body_count`
+- `primitive_island_body_count`
+- `min_island_body_silhouette_segments`
+- `avg_island_body_silhouette_segments`
+- `max_island_body_mesh_vertices`
 - `resident_island_visual_count`
 - `stream_visibility_changes_this_frame`
 - `max_stream_visibility_changes_per_frame`
@@ -313,6 +318,7 @@ The island terrain/detail/impostor hidden counts are catalog entries that are no
 The visual asset fields report the declared glTF scene inventory, how many slots have files available under `assets/`, how many are still using generated placeholders, how many Bevy scene handles are queued/loading/loaded/failed, and how those slots divide across always-loaded, stream-window, near-LOD, far-LOD, and weather residency classes. They are readiness signals for replacing primitives with real assets; they do not prove final art quality yet.
 The power-up fields report authored aerial boost gates, how many remain visible, how many have been collected, whether an effect is currently active, and the total activation count. They are route-readiness signals for the simple power-up slice, not final ability design.
 The environment-motion fields report how many resident near-LOD visuals are wind-responsive and the largest sampled transform offset from their base placement. They prove the visual motion layer exists and is active; they do not evaluate final animation quality.
+The island-body fields report whether the catalogued route island bodies are generated procedural meshes or registered primitive/fallback body placeholders, plus the minimum silhouette segment count and body mesh vertex count signal. They are a structural signal for replacing cylinder-like islands; they do not prove final terrain art quality or texture fidelity.
 
 ## Summary Metrics
 
@@ -362,6 +368,11 @@ The summary aggregates:
 - max weather cloud count
 - max environment-motion visual count
 - max environment-motion offset
+- min procedural island body count
+- max primitive island body count
+- min island body silhouette segment count
+- max average island body silhouette segment count
+- max island body mesh vertex count
 - max resident island visual count
 - max stream visibility changes per frame
 - total stream visibility changes
@@ -420,6 +431,9 @@ The pass/fail checks currently guard:
 - authored aerial power-up counts stay populated, and power-up scenarios collect enough gates with enough sampled active-effect frames
 - weather cloud count stays populated so the first non-debug weather layer cannot silently disappear
 - environment-motion visual count and offset stay populated so wind-responsive near-LOD trees/ponds cannot silently disappear or freeze
+- procedural island body count stays populated throughout the run so sky-island bodies cannot silently disappear or fall below the expected generated catalog
+- registered primitive island body count remains zero so explicit fallback body placeholders fail the eval loop
+- island body silhouette segment count stays above the scenario floor so the route cannot collapse back to low-resolution round islands
 - resident island visuals stay under budget while streaming visibility is still hide/show based
 - stream visibility changes per frame stay under budget so chunk/LOD crossings do not churn too many visuals at once
 - hidden island visual count stays populated and resident visual fraction stays under budget so the catalog does not collapse into always-resident rendering
