@@ -1,3 +1,4 @@
+use bevy::animation::graph::AnimationNodeIndex;
 use bevy::asset::{LoadState, RenderAssetUsages};
 use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
 use bevy::core_pipeline::tonemapping::Tonemapping;
@@ -177,6 +178,7 @@ fn main() -> AppExit {
                 update_mouse_look_capture,
                 update_camera_control,
                 animate_character,
+                update_authored_player_animation,
                 update_glider_airflow_trails,
                 follow_camera,
             )
@@ -736,6 +738,45 @@ struct VisualAssetDiagnostics {
 #[derive(Component, Clone, Copy, Debug)]
 struct AuthoredVisualScene {
     kind: VisualAssetKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AuthoredPlayerClip {
+    Idle,
+    Jog,
+    Launch,
+    Glide,
+    AirBrake,
+    Land,
+}
+
+impl AuthoredPlayerClip {
+    fn index(self) -> usize {
+        match self {
+            Self::Idle => 0,
+            Self::Jog => 1,
+            Self::Launch => 2,
+            Self::Glide => 3,
+            Self::AirBrake => 4,
+            Self::Land => 5,
+        }
+    }
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+struct AuthoredPlayerAnimation {
+    nodes: [AnimationNodeIndex; 6],
+    current: AuthoredPlayerClip,
+}
+
+impl AuthoredPlayerAnimation {
+    fn new(nodes: [AnimationNodeIndex; 6], current: AuthoredPlayerClip) -> Self {
+        Self { nodes, current }
+    }
+
+    fn node(self, clip: AuthoredPlayerClip) -> AnimationNodeIndex {
+        self.nodes[clip.index()]
+    }
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -2317,6 +2358,17 @@ fn mark_authored_scene_ready(
     };
     let (animation_graph, animation_nodes) = AnimationGraph::from_clips(clips);
     let graph_handle = animation_graphs.add(animation_graph);
+    let player_animation = if kind == VisualAssetKind::PlayerCharacter {
+        let Ok(nodes) = <[AnimationNodeIndex; 6]>::try_from(animation_nodes.as_slice()) else {
+            return;
+        };
+        Some(AuthoredPlayerAnimation::new(
+            nodes,
+            AuthoredPlayerClip::Idle,
+        ))
+    } else {
+        None
+    };
     let mut transitions = AnimationTransitions::default();
     if let Some(idle_node) = animation_nodes.first().copied() {
         transitions
@@ -2327,6 +2379,11 @@ fn mark_authored_scene_ready(
     commands
         .entity(animation_player_entity)
         .insert((AnimationGraphHandle(graph_handle), transitions));
+    if let Some(player_animation) = player_animation {
+        commands
+            .entity(animation_player_entity)
+            .insert(player_animation);
+    }
     registry.mark_animation_graph_ready(kind, animation_player_entity, animation_nodes.len());
 }
 
@@ -5282,6 +5339,50 @@ fn animate_character(
     }
 }
 
+fn authored_player_clip_for_state(mode: FlightMode, speed_mps: f32) -> AuthoredPlayerClip {
+    match mode {
+        FlightMode::Grounded if speed_mps > 0.8 => AuthoredPlayerClip::Jog,
+        FlightMode::Grounded => AuthoredPlayerClip::Idle,
+        FlightMode::Launching => AuthoredPlayerClip::Launch,
+        FlightMode::Gliding => AuthoredPlayerClip::Glide,
+        FlightMode::Airborne if speed_mps < 8.0 => AuthoredPlayerClip::Land,
+        FlightMode::Airborne => AuthoredPlayerClip::AirBrake,
+    }
+}
+
+fn update_authored_player_animation(
+    player: Query<(&Velocity, &FlightController), With<Player>>,
+    mut authored_players: Query<(
+        &mut AnimationPlayer,
+        &mut AnimationTransitions,
+        &mut AuthoredPlayerAnimation,
+    )>,
+) {
+    let Ok((velocity, controller)) = player.single() else {
+        return;
+    };
+    let desired = authored_player_clip_for_state(controller.mode, velocity.0.length());
+
+    for (mut animation_player, mut transitions, mut authored_animation) in &mut authored_players {
+        let desired_node = authored_animation.node(desired);
+        if authored_animation.current == desired
+            && animation_player.is_playing_animation(desired_node)
+        {
+            continue;
+        }
+
+        let transition_duration = if authored_animation.current == desired {
+            Duration::ZERO
+        } else {
+            Duration::from_millis(140)
+        };
+        transitions
+            .play(&mut animation_player, desired_node, transition_duration)
+            .repeat();
+        authored_animation.current = desired;
+    }
+}
+
 fn update_glider_airflow_trails(
     time: Res<Time>,
     visual_assets: Res<VisualAssetRegistry>,
@@ -6225,6 +6326,44 @@ mod tests {
             (position[2] - island.center.z) / island.half_extents.y,
         )
         .length()
+    }
+
+    #[test]
+    fn authored_player_clip_selection_tracks_flight_state() {
+        assert_eq!(
+            authored_player_clip_for_state(FlightMode::Grounded, 0.2),
+            AuthoredPlayerClip::Idle
+        );
+        assert_eq!(
+            authored_player_clip_for_state(FlightMode::Grounded, 4.0),
+            AuthoredPlayerClip::Jog
+        );
+        assert_eq!(
+            authored_player_clip_for_state(FlightMode::Launching, 18.0),
+            AuthoredPlayerClip::Launch
+        );
+        assert_eq!(
+            authored_player_clip_for_state(FlightMode::Gliding, 40.0),
+            AuthoredPlayerClip::Glide
+        );
+        assert_eq!(
+            authored_player_clip_for_state(FlightMode::Airborne, 16.0),
+            AuthoredPlayerClip::AirBrake
+        );
+        assert_eq!(
+            authored_player_clip_for_state(FlightMode::Airborne, 4.0),
+            AuthoredPlayerClip::Land
+        );
+    }
+
+    #[test]
+    fn authored_player_clip_indices_match_declared_gltf_order() {
+        assert_eq!(AuthoredPlayerClip::Idle.index(), 0);
+        assert_eq!(AuthoredPlayerClip::Jog.index(), 1);
+        assert_eq!(AuthoredPlayerClip::Launch.index(), 2);
+        assert_eq!(AuthoredPlayerClip::Glide.index(), 3);
+        assert_eq!(AuthoredPlayerClip::AirBrake.index(), 4);
+        assert_eq!(AuthoredPlayerClip::Land.index(), 5);
     }
 
     #[test]
