@@ -200,7 +200,7 @@ Each run writes to the eval output directory:
 - `visual_audit.json`: non-golden image audit for screenshot evals run through `tools/eval.sh` unless `NAU_EVAL_VISUAL_AUDIT=0` is set.
 
 The summary is the primary artifact for agents. Screenshots are for visual review and should not be treated as pixel-perfect golden images.
-`tools/eval.sh` checks that declared PNG artifacts exist, are large enough, and pass a lightweight visual audit for resolution, nonblack/nonwhite exposure, luma variance, color variety, edge density, per-frame scene coverage, per-frame center detail, per-frame player visibility, per-frame HUD-text dominance, sequence-level route-marker readability, and sequence-level top-sky coverage across the final screenshot plus fixed checkpoints. The audit catches gross render and composition failures; it does not prove route-marker identity, severe clipping class, or AAA-quality art direction.
+`tools/eval.sh` checks that declared PNG artifacts exist, are large enough, and pass a lightweight visual audit for resolution, nonblack/nonwhite exposure, luma variance, color variety, edge density, per-frame scene coverage, per-frame center detail, per-frame player visibility, per-frame severe border clipping, per-frame HUD-text dominance, sequence-level route-marker readability, sequence-level route-marker component and hue-family identity, and sequence-level top-sky coverage across the final screenshot plus fixed checkpoints. The audit catches gross render and composition failures; it does not prove terrain identity, exact marker semantics, or AAA-quality art direction.
 
 ## Sample Fields
 
@@ -438,7 +438,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 
 - Metric-only evals hide the native Bevy window, but still instantiate the window/rendering stack.
 - Screenshot evals still need a visible native Bevy window. Screenshot runs disable debug gizmos and use opaque surface composition so transparent scene effects blend against the game frame rather than desktop content behind the window.
-- Screenshot evals now run a lightweight image and scene-composition audit, including basic player visibility and route-marker readability heuristics, but terrain identity, severe clipping class, route-marker identity, and art quality still need human/agent inspection.
+- Screenshot evals now run a lightweight image and scene-composition audit, including basic player visibility, severe border-clipping, route-marker readability, and route-marker component/hue-family identity heuristics, but terrain identity, exact marker semantics, and art quality still need human/agent inspection.
 - There is no simulation-only binary yet.
 - Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
 - Island collision follows deterministic authored terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
@@ -451,4 +451,4 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - Aerial power-up gates are primitive glowing route rings with simple one-time collection state; there is no inventory UI, reset flow, audio/particles, or authored ability progression yet.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
-These are acceptable for the current harness. The next meaningful upgrades are severe-clipping classification, route-marker identity checks, asynchronous asset-loading simulation, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
+These are acceptable for the current harness. The next meaningful upgrades are asynchronous asset-loading simulation, richer terrain/material identity checks, exact route-marker semantic checks, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.

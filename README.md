@@ -60,7 +60,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ./tools/eval.sh island_launch_to_landing target/eval/island_launch_to_landing
 ```
 
-`tools/eval.sh` runs metric-only evals by default and hides the native window during those runs. Use `NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh ...` when checkpoint PNG artifacts and the non-golden visual audit are needed; screenshot evals require `jq` for artifact extraction, disable debug gizmos, and use an opaque window surface so transparent clouds/updrafts cannot composite against other desktop windows. The audit checks image quality plus basic scene composition signals such as per-frame scene coverage, center detail, player visibility, HUD-text balance, sequence-level route-marker readability, and sequence-level sky coverage across final and checkpoint screenshots. Set `NAU_EVAL_VISUAL_AUDIT=0` to collect screenshots without the audit.
+`tools/eval.sh` runs metric-only evals by default and hides the native window during those runs. Use `NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh ...` when checkpoint PNG artifacts and the non-golden visual audit are needed; screenshot evals require `jq` for artifact extraction, disable debug gizmos, and use an opaque window surface so transparent clouds/updrafts cannot composite against other desktop windows. The audit checks image quality plus basic scene composition signals such as per-frame scene coverage, center detail, player visibility, HUD-text balance, severe border clipping, sequence-level route-marker readability and identity, and sequence-level sky coverage across final and checkpoint screenshots. Set `NAU_EVAL_VISUAL_AUDIT=0` to collect screenshots without the audit.
 
 ## Controls
 
@@ -78,9 +78,9 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 ## Near-Term Roadmap
 
-1. Extend screenshot audits toward severe clipping classification and route-marker identity, not just marker-color readability.
-2. Replace placeholder visual asset slots with real glTF scenes, starting with character/glider scale and island impostor kits.
-3. Add explicit streaming budget checks around asynchronous asset loading once real imported scenes exist.
+1. Replace placeholder visual asset slots with real glTF scenes, starting with character/glider scale and island impostor kits.
+2. Add explicit streaming budget checks around asynchronous asset loading once real imported scenes exist.
+3. Add richer terrain and route-marker identity signals on top of the current non-golden screenshot audit.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
 
 ## Development Principles
