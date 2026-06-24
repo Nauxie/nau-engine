@@ -2,6 +2,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::camera::Exposure;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::system::SystemParam;
+use bevy::gltf::GltfAssetLabel;
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::input::mouse::MouseMotion;
 use bevy::light::{
@@ -18,6 +19,9 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartVisibility, Side, advance_phase,
     part_pose, pose_blend,
+};
+use nau_engine::asset_pipeline::{
+    VISUAL_ASSET_SPECS, VisualAssetPipelineMetrics, visual_asset_pipeline_metrics,
 };
 use nau_engine::camera::{
     CameraControlState, CameraControlTuning, CameraInput, CameraObstruction, FollowCamera,
@@ -87,6 +91,7 @@ fn main() -> AppExit {
         .insert_resource(CameraControlState::default())
         .insert_resource(CameraDiagnostics::default())
         .insert_resource(CinematicWeather::default())
+        .insert_resource(VisualAssetDiagnostics::default())
         .insert_resource(IslandStreamDiagnostics::default())
         .insert_resource(RouteObjectiveTracker::default())
         .insert_resource(MouseLookState::default())
@@ -126,6 +131,7 @@ fn main() -> AppExit {
                 update_weather_drift,
                 update_updraft_guides,
                 update_route_objectives,
+                update_visual_asset_diagnostics,
                 update_debug_readout,
                 draw_debug_gizmos,
             )
@@ -297,6 +303,18 @@ struct IslandStreamDiagnostics {
     initialized: bool,
 }
 
+#[derive(Resource, Debug, Default)]
+struct VisualAssetRegistry {
+    scene_handles: Vec<Handle<Scene>>,
+    metrics: VisualAssetPipelineMetrics,
+}
+
+#[derive(Resource, Clone, Copy, Debug, Default)]
+struct VisualAssetDiagnostics {
+    metrics: VisualAssetPipelineMetrics,
+    queued_scene_count: usize,
+}
+
 #[derive(Component, Clone, Copy, Debug)]
 struct CameraObstacle(CameraObstruction);
 
@@ -405,6 +423,7 @@ struct DebugScene<'w, 's> {
     camera_diagnostics: Res<'w, CameraDiagnostics>,
     mouse_look: Res<'w, MouseLookState>,
     stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
+    asset_diagnostics: Res<'w, VisualAssetDiagnostics>,
     route_objectives: Res<'w, RouteObjectiveTracker>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
@@ -426,6 +445,7 @@ struct EvalScene<'w, 's> {
     camera: Query<'w, 's, &'static Transform, CameraFollowFilter>,
     camera_diagnostics: Res<'w, CameraDiagnostics>,
     stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
+    asset_diagnostics: Res<'w, VisualAssetDiagnostics>,
     route_objectives: Res<'w, RouteObjectiveTracker>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
@@ -645,7 +665,10 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
     mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
+    asset_server: Res<AssetServer>,
 ) {
+    commands.insert_resource(prepare_visual_asset_registry(&asset_server));
+
     let suit_material = textured_material(
         &mut images,
         &mut materials,
@@ -1127,6 +1150,24 @@ fn setup(
         TextColor(Color::WHITE),
         DebugReadout,
     ));
+}
+
+fn prepare_visual_asset_registry(asset_server: &AssetServer) -> VisualAssetRegistry {
+    let metrics = visual_asset_pipeline_metrics(&VISUAL_ASSET_SPECS, visual_asset_path_exists);
+    let scene_handles = VISUAL_ASSET_SPECS
+        .iter()
+        .filter(|spec| visual_asset_path_exists(spec.gltf_scene_path))
+        .map(|spec| asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf_scene_path)))
+        .collect();
+
+    VisualAssetRegistry {
+        scene_handles,
+        metrics,
+    }
+}
+
+fn visual_asset_path_exists(asset_path: &str) -> bool {
+    Path::new("assets").join(asset_path).is_file()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1617,27 +1658,14 @@ fn queue_sky_island(
         island.name,
     );
 
-    let impostor_height = 0.35;
     queue_island_visual(
         entries,
         &mut visual_index,
         island,
         IslandVisualLayer::Impostor,
-        meshes.add(Cylinder::new(1.0, impostor_height)),
+        meshes.add(island_impostor_mesh(island_index, island)),
         top_material.clone(),
-        Transform {
-            translation: Vec3::new(
-                island.center.x,
-                top_y - impostor_height * 0.5,
-                island.center.z,
-            ),
-            scale: Vec3::new(
-                island.half_extents.x * 0.88,
-                1.0,
-                island.half_extents.y * 0.88,
-            ),
-            ..default()
-        },
+        Transform::default(),
         None,
         "island distant impostor",
     );
@@ -1900,6 +1928,82 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
                 outer_current,
             ]);
         }
+    }
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+fn island_impostor_mesh(island_index: usize, island: SkyIsland) -> Mesh {
+    const SEGMENTS: usize = 20;
+
+    let top_center_y = island.mesh_top_y() - 0.16;
+    let lower_center_y = top_center_y - island.thickness * 0.42;
+    let bottom_y = top_center_y - island.thickness * 0.92;
+    let phase = island_index as f32 * 0.71;
+    let top_ring_start = 1;
+    let lower_ring_start = top_ring_start + SEGMENTS;
+    let bottom_index = lower_ring_start + SEGMENTS;
+    let mut positions = Vec::with_capacity(bottom_index + 1);
+    let mut normals = Vec::with_capacity(bottom_index + 1);
+    let mut uvs = Vec::with_capacity(bottom_index + 1);
+    let mut indices = Vec::with_capacity(SEGMENTS * 12);
+
+    positions.push([island.center.x, top_center_y, island.center.z]);
+    normals.push([0.0, 1.0, 0.0]);
+    uvs.push([0.5, 0.5]);
+
+    for segment in 0..SEGMENTS {
+        let angle = segment as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+        let edge_variation =
+            1.0 + 0.09 * (angle * 3.0 + phase).sin() + 0.045 * (angle * 7.0 - phase).cos();
+        let radius_x = island.half_extents.x * 0.9 * edge_variation;
+        let radius_z = island.half_extents.y * 0.9 * edge_variation;
+        let x = island.center.x + angle.cos() * radius_x;
+        let z = island.center.z + angle.sin() * radius_z;
+        let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z)) - 0.18;
+
+        positions.push([x, y, z]);
+        normals.push([0.0, 1.0, 0.0]);
+        uvs.push([0.5 + angle.cos() * 0.45, 0.5 + angle.sin() * 0.45]);
+    }
+
+    for segment in 0..SEGMENTS {
+        let angle = segment as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+        let edge_variation = 1.0 + 0.08 * (angle * 4.0 + phase).sin() - 0.035 * (angle * 8.0).cos();
+        let radius_x = island.half_extents.x * 0.66 * edge_variation;
+        let radius_z = island.half_extents.y * 0.66 * edge_variation;
+        let x = island.center.x + angle.cos() * radius_x;
+        let z = island.center.z + angle.sin() * radius_z;
+        let y = lower_center_y - 0.9 * (angle * 5.0 + phase).sin().abs();
+
+        positions.push([x, y, z]);
+        normals.push([angle.cos() * 0.55, 0.24, angle.sin() * 0.55]);
+        uvs.push([0.5 + angle.cos() * 0.34, 0.82 + angle.sin() * 0.1]);
+    }
+
+    positions.push([island.center.x, bottom_y, island.center.z]);
+    normals.push([0.0, -1.0, 0.0]);
+    uvs.push([0.5, 1.0]);
+
+    for segment in 0..SEGMENTS {
+        let next = (segment + 1) % SEGMENTS;
+        let top_current = (top_ring_start + segment) as u32;
+        let top_next = (top_ring_start + next) as u32;
+        let lower_current = (lower_ring_start + segment) as u32;
+        let lower_next = (lower_ring_start + next) as u32;
+        let bottom = bottom_index as u32;
+
+        indices.extend([0, top_next, top_current]);
+        indices.extend([top_current, top_next, lower_current]);
+        indices.extend([top_next, lower_next, lower_current]);
+        indices.extend([lower_current, lower_next, bottom]);
     }
 
     Mesh::new(
@@ -2662,6 +2766,14 @@ fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
     eval.map_or_else(|| time.delta_secs(), |run| run.scenario.fixed_dt)
 }
 
+fn update_visual_asset_diagnostics(
+    registry: Res<VisualAssetRegistry>,
+    mut diagnostics: ResMut<VisualAssetDiagnostics>,
+) {
+    diagnostics.metrics = registry.metrics;
+    diagnostics.queued_scene_count = registry.scene_handles.len();
+}
+
 fn update_debug_readout(
     time: Res<Time>,
     visuals: Res<DebugVisuals>,
@@ -2702,6 +2814,7 @@ fn update_debug_readout(
         .on_landing_target(transform.translation, controller.mode);
     let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
     let lod_visuals = scene.stream_diagnostics.counts;
+    let asset_metrics = scene.asset_diagnostics.metrics;
     let camera_yaw = scene.camera_control.orbit.yaw_degrees();
     let camera_pitch_offset = scene.camera_control.orbit.pitch_degrees();
     let mouse_lock = if scene.mouse_look.captured {
@@ -2718,7 +2831,7 @@ fn update_debug_readout(
     };
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nresident island visuals {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual assets {} gltf {} ready {} placeholders {} stream {} queued {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nresident island visuals {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -2744,6 +2857,12 @@ fn update_debug_readout(
         velocity.0.x,
         velocity.0.y,
         velocity.0.z,
+        asset_metrics.slot_count,
+        asset_metrics.gltf_scene_slot_count,
+        asset_metrics.ready_slot_count,
+        asset_metrics.placeholder_slot_count,
+        asset_metrics.streaming_slot_count,
+        scene.asset_diagnostics.queued_scene_count,
         visible_wind_fields,
         wind_field_count,
         active_lift_fields,
@@ -2848,6 +2967,7 @@ fn collect_eval_metrics(
     );
     let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
     let lod_visuals = scene.stream_diagnostics.counts;
+    let asset_metrics = scene.asset_diagnostics.metrics;
     let sample = EvalSample::new(
         run.frame,
         run.scenario.fixed_dt,
@@ -2893,6 +3013,11 @@ fn collect_eval_metrics(
         scene.stream_diagnostics.max_visibility_changes_per_frame,
         scene.stream_diagnostics.total_visibility_changes,
         scene.all_entities.iter().count(),
+        asset_metrics.slot_count,
+        asset_metrics.gltf_scene_slot_count,
+        asset_metrics.ready_slot_count,
+        asset_metrics.placeholder_slot_count,
+        asset_metrics.streaming_slot_count,
     );
 
     if let Err(error) = run.record_sample(sample) {
