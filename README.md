@@ -20,14 +20,15 @@ The first executable is a simple 3D flight testbed:
 - camera-relative grounded and airborne steering on `WASD`, with separate ground friction so walking is playable before launch
 - mouse-look third-person follow camera with player-centered orbit pitch, separate yaw/pitch tuning, click-to-lock cursor capture, obstruction avoidance, and surface-clearance clamping
 - a 12-island floating archipelago with launch, midpoint, landing, high-altitude, and distant reference islands
-- deterministic collision-aware island relief with stream-windowed terrain, distant impostors, and distance-managed detail props: varied generated terrain colors, trees, ponds, stones, route cairns, launch beacon, and landing-garden markers
+- deterministic collision-aware island relief with stream-windowed terrain, low-poly distant impostors, and distance-managed detail props: varied generated terrain colors, trees, ponds, stones, route cairns, launch beacon, and landing-garden markers
+- declared glTF visual asset slots for future player, glider, island, route-marker, weather, and impostor assets, with runtime ready/placeholder/stream-managed diagnostics while primitives remain the active implementation
 - Bevy-native atmosphere, dynamic sun/fog/exposure weather, volumetric fog/light, bloom, filmic tonemapping, procedural PBR surface maps, reflective/transmissive water, emissive markers, drifting cloud banks, and high cirrus veils
 - simple terrain-surface landing detection with one-shot landing friction
-- live debug readout for frame time, speed, altitude, target distance, current route objective, camera pitch/distance/framing angle/motion/obstruction/yaw offset, velocity, visual wind-field count, lift-field count, sky-island count, active chunk window, near/mid/far LOD island buckets, visible/hidden terrain, impostor, and detail counts, resident island visual count, and stream entity churn
+- live debug readout for frame time, speed, altitude, target distance, current route objective, camera pitch/distance/framing angle/motion/obstruction/yaw offset, velocity, visual asset slot readiness, visual wind-field count, lift-field count, sky-island count, active chunk window, near/mid/far LOD island buckets, visible/hidden terrain, impostor, and detail counts, resident island visual count, and stream entity churn
 - visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
 - authored crosswind fields plus a paired gameplay updraft route with aligned visual wind volumes, visible lift-column guide markers, and marked recovery branch islands
 - deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state/pose math
-- scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, long-glide visibility, updraft lift, branch recovery landing, and island launch-to-landing with traversal, camera, objective-progress, frame-time, content-scale, streaming/LOD, stream-churn, weather-cloud, resident visual, entity-churn, and visible-detail summary metrics plus fixed camera checkpoint screenshots
+- scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, long-glide visibility, updraft lift, branch recovery landing, and island launch-to-landing with traversal, camera, objective-progress, frame-time, content-scale, asset-slot readiness, streaming/LOD, stream-churn, weather-cloud, resident visual, entity-churn, and visible-detail summary metrics plus fixed camera checkpoint screenshots
 
 This is intentionally not a full physics simulation yet. The first job is to create a place where movement constants can be tuned quickly.
 
@@ -78,8 +79,8 @@ cargo clippy --all-targets --all-features -- -D warnings
 ## Near-Term Roadmap
 
 1. Extend screenshot audits toward severe clipping classification and route-marker identity, not just marker-color readability.
-2. Add explicit streaming budget checks, asset loading hooks, and richer distant impostors on top of the resident island visual catalog.
-3. Replace primitive character/environment assets with a glTF-driven asset pipeline once traversal/render targets stop moving.
+2. Replace placeholder visual asset slots with real glTF scenes, starting with character/glider scale and island impostor kits.
+3. Add explicit streaming budget checks around asynchronous asset loading once real imported scenes exist.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
 
 ## Development Principles
