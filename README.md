@@ -17,7 +17,7 @@ The first executable is a simple 3D flight testbed:
 - deployable glider wing panels with subtle wingtip airflow trails on `Space`
 - one-launch-per-airtime vertical burst on `E`
 - dive on `Shift`
-- camera-relative grounded and airborne steering on `WASD`, with planar air-control response, smoothed body yaw toward intended movement, airborne banking, and separate ground friction so walking is playable before launch
+- camera-relative grounded and airborne steering on `WASD`, with planar air-control response, smoothed body yaw toward intended movement, bounded lateral reversal spikes, airborne banking, and separate ground friction so walking is playable before launch
 - mouse-look third-person follow camera with player-centered orbit pitch, separate yaw/pitch tuning, click-to-lock cursor capture, obstruction avoidance, and surface-clearance clamping
 - a 12-island floating archipelago with launch, midpoint, landing, high-altitude, and distant reference islands
 - deterministic collision-aware island relief with smoother generated terrain normals, higher-resolution vertex-colored terrain, irregular procedural island rims, generated stratified cliff/underside body meshes, stream-windowed terrain, low-poly distant impostors, and distance-managed detail props: varied generated terrain colors, batched ground-cover blades, tapered/multi-lobed wind-responsive trees, ponds, stones, route cairns, launch beacon, and landing-garden markers
