@@ -6,7 +6,7 @@ Last updated: 2026-06-24
 
 First sky-island traversal slice.
 
-The project has a Bevy sandbox with a primitive humanoid, playable ground movement, deployable glider wings, one-launch-per-airtime vertical burst, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, drifting cloud banks and high cirrus veils, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes, visible lift-column guide markers, marked recovery branch islands, a 12-island floating route with smooth generated terrain relief plus batched ground-cover/detail props, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
+The project has a Bevy sandbox with a primitive humanoid, playable ground movement, deployable glider wings, one-launch-per-airtime vertical burst, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, drifting cloud banks and high cirrus veils, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes and cinematic lift ribbons, marked recovery branch islands, a 12-island floating route with smooth generated terrain relief plus batched ground-cover/detail props, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
 
 ## Last Known Good
 
@@ -45,7 +45,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - Camera keeps smoothed horizontal follow direction independent from mouse orbit, avoids tagged obstruction volumes, and stays above the active ground surface.
 - HUD reports frame time, camera pitch, camera distance, player framing angle, camera motion, camera orbit alignment, obstruction adjustment, mouse yaw/pitch offsets, velocity, altitude, mode, launch state, target distance, visual wind-field count, active lift-field count, and sky-island count.
 - `F1` toggles debug gizmos for player vectors, camera line, visual wind/updraft stream fields, and gameplay lift fields.
-- Crosswind fields remain visual-only; gameplay updrafts are authored as paired visual wind volumes plus bounded `LiftField`s, with visible guide columns/motes in the normal scene.
+- Crosswind fields remain visual-only; gameplay updrafts are authored as paired visual wind volumes plus bounded `LiftField`s, with faint lift haze, animated spiral airflow ribbons, and small motes in the normal scene.
 - Three authored aerial boost gates are visible as glowing route rings, apply capped forward/upward boosts while airborne, disappear after collection, and report visible/collected/active-effect counters in HUD/eval metrics.
 - `sunlit terrace` and `western refuge` are marked as recovery branch islands with visible mast/ring beacons.
 - Traversal, route-surface geometry, visual wind-field geometry, gameplay lift math, camera, diagnostics, eval metrics, and richer pose math live in testable pure functions in `src/lib.rs`.
@@ -68,7 +68,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - The character is still primitive geometry, not a rigged character asset.
 - Limb posing now has grounded stride, airborne banking, and glide posture, but it is still approximate non-skeletal animation.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep.
-- Crosswind stream fields are still debug gizmos; updrafts now have primitive visible guide markers, but there are no particles, cloth/glider reactions, vegetation sway, or authored environment art assets yet.
+- Crosswind stream fields are still debug gizmos; updrafts now have cinematic primitive airflow cues, but there are no particles, cloth/glider reactions, vegetation sway, or authored environment art assets yet.
 - Sky-island collision follows deterministic terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - Gameplay lift and power-ups are still first rough authored routes; there is no crosswind force, launch-source chain, inventory UI, or authored recovery-route design beyond two marked primitive branch islands.
 - There is no asynchronous asset loading, authored water, authored vegetation, or environment asset pipeline yet. Current stream-window terrain residency, detail LOD, procedural materials, ground cover, ponds, trees, stones, beacon, cloud layers, and landing markers are deterministic primitive systems.
