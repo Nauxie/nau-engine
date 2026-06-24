@@ -33,8 +33,9 @@ use nau_engine::camera::{
 };
 use nau_engine::diagnostics::frame_ms;
 use nau_engine::environment::{
-    GAMEPLAY_LIFT_ROUTE, LiftField, LiftRouteNode, WindField, WindFieldKind, active_lift_fields_at,
-    apply_lift_fields, readable_lift_fields_at, visible_fields_at,
+    AERIAL_POWER_UP_ROUTE, AerialPowerUp, GAMEPLAY_LIFT_ROUTE, LiftField, LiftRouteNode, WindField,
+    WindFieldKind, active_lift_fields_at, apply_aerial_power_up, apply_lift_fields,
+    readable_lift_fields_at, visible_fields_at,
 };
 use nau_engine::eval::{
     EvalAccumulator, EvalArtifacts, EvalObjectiveProgress, EvalSample, EvalScenario,
@@ -95,6 +96,7 @@ fn main() -> AppExit {
         .insert_resource(VisualAssetDiagnostics::default())
         .insert_resource(IslandStreamDiagnostics::default())
         .insert_resource(RouteObjectiveTracker::default())
+        .insert_resource(PowerUpCollectionState::default())
         .insert_resource(MouseLookState::default())
         .insert_resource(DebugVisuals::default())
         .insert_resource(SkyRoute::default())
@@ -131,6 +133,7 @@ fn main() -> AppExit {
                 update_cinematic_weather,
                 update_weather_drift,
                 update_updraft_guides,
+                update_power_up_guides,
                 update_route_objectives,
                 update_visual_asset_diagnostics,
                 update_debug_readout,
@@ -236,6 +239,59 @@ struct UpdraftGuide {
     center: Vec3,
     radius: f32,
     height_offset: f32,
+    phase: f32,
+    angular_speed: f32,
+}
+
+#[derive(Resource, Clone, Debug, Default)]
+struct PowerUpCollectionState {
+    collected: HashSet<&'static str>,
+    activations_this_frame: usize,
+    total_activations: usize,
+    effect_timer_secs: f32,
+}
+
+impl PowerUpCollectionState {
+    fn begin_frame(&mut self, dt: f32) {
+        self.activations_this_frame = 0;
+        self.effect_timer_secs = (self.effect_timer_secs - dt.max(0.0)).max(0.0);
+    }
+
+    fn collect(&mut self, power_up: AerialPowerUp) -> bool {
+        if !self.collected.insert(power_up.name) {
+            return false;
+        }
+
+        self.activations_this_frame += 1;
+        self.total_activations += 1;
+        self.effect_timer_secs = self.effect_timer_secs.max(power_up.effect_duration_secs);
+        true
+    }
+
+    fn is_collected(&self, power_up: AerialPowerUp) -> bool {
+        self.collected.contains(power_up.name)
+    }
+
+    fn collected_count(&self) -> usize {
+        self.collected.len()
+    }
+
+    fn visible_count(&self) -> usize {
+        AERIAL_POWER_UP_ROUTE
+            .len()
+            .saturating_sub(self.collected.len())
+    }
+
+    fn active_effects(&self) -> usize {
+        usize::from(self.effect_timer_secs > 0.0)
+    }
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+struct AerialPowerUpVisual {
+    power_up: AerialPowerUp,
+    offset: Vec3,
+    scale: f32,
     phase: f32,
     angular_speed: f32,
 }
@@ -389,6 +445,7 @@ enum GameSet {
 struct MovementWorld<'w, 's> {
     route: Res<'w, SkyRoute>,
     lift_fields: Query<'w, 's, &'static LiftField>,
+    power_ups: ResMut<'w, PowerUpCollectionState>,
 }
 
 #[derive(SystemParam)]
@@ -430,6 +487,7 @@ struct DebugScene<'w, 's> {
     stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
     asset_diagnostics: Res<'w, VisualAssetDiagnostics>,
     route_objectives: Res<'w, RouteObjectiveTracker>,
+    power_ups: Res<'w, PowerUpCollectionState>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
 }
@@ -452,6 +510,7 @@ struct EvalScene<'w, 's> {
     stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
     asset_diagnostics: Res<'w, VisualAssetDiagnostics>,
     route_objectives: Res<'w, RouteObjectiveTracker>,
+    power_ups: Res<'w, PowerUpCollectionState>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
     weather_clouds: Query<'w, 's, Entity, With<WeatherDrift>>,
@@ -462,6 +521,13 @@ struct PlayerKinematics<'a> {
     transform: &'a mut Transform,
     velocity: &'a mut Velocity,
     controller: &'a mut FlightController,
+}
+
+struct PlayerStepContext<'a> {
+    tuning: &'a FlightTuning,
+    route: &'a SkyRoute,
+    lift_fields: &'a [LiftField],
+    power_ups: &'a mut PowerUpCollectionState,
 }
 
 #[derive(Clone, Debug)]
@@ -874,6 +940,15 @@ fn setup(
         83,
         LinearRgba::rgb(0.5, 3.2, 5.8),
     );
+    let power_up_material = emissive_material(
+        &mut images,
+        &mut materials,
+        [255, 210, 70, 230],
+        [210, 82, 34, 220],
+        [255, 246, 150, 255],
+        89,
+        LinearRgba::rgb(5.6, 2.4, 0.5),
+    );
     let torso_mesh = meshes.add(Capsule3d::new(0.4, 1.0));
     let head_mesh = meshes.add(Sphere::new(0.3));
     let arm_mesh = meshes.add(Cuboid::new(0.2, 0.82, 0.2));
@@ -995,6 +1070,7 @@ fn setup(
             lift,
         );
     }
+    spawn_power_up_guides(&mut commands, &mut meshes, power_up_material);
 
     spawn_weather_layers(
         &mut commands,
@@ -1505,6 +1581,55 @@ fn spawn_updraft_guide(
                 Transform::from_translation(updraft_guide_position(&guide, 0.0)),
                 guide,
                 Name::new(format!("{} guide mote", lift.name)),
+            ));
+        }
+    }
+}
+
+fn spawn_power_up_guides(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    material: Handle<StandardMaterial>,
+) {
+    let bar_mesh = meshes.add(Cuboid::new(5.0, 0.22, 0.22));
+    let core_mesh = meshes.add(Sphere::new(1.1));
+    let segments = 10;
+
+    for (power_index, power_up) in AERIAL_POWER_UP_ROUTE.into_iter().enumerate() {
+        commands.spawn((
+            Mesh3d(core_mesh.clone()),
+            MeshMaterial3d(material.clone()),
+            Transform::from_translation(power_up.center),
+            AerialPowerUpVisual {
+                power_up,
+                offset: Vec3::ZERO,
+                scale: 1.0,
+                phase: power_index as f32 * 0.7,
+                angular_speed: 0.75,
+            },
+            Name::new(format!("{} core", power_up.name)),
+        ));
+
+        for segment in 0..segments {
+            let phase = segment as f32 / segments as f32 * std::f32::consts::TAU;
+            let radius = power_up.radius_m * 0.58;
+            let offset = Vec3::new(phase.cos() * radius, phase.sin() * radius, 0.0);
+            commands.spawn((
+                Mesh3d(bar_mesh.clone()),
+                MeshMaterial3d(material.clone()),
+                Transform {
+                    translation: power_up.center + offset,
+                    rotation: Quat::from_rotation_z(phase + std::f32::consts::FRAC_PI_2),
+                    scale: Vec3::splat(1.0),
+                },
+                AerialPowerUpVisual {
+                    power_up,
+                    offset,
+                    scale: 1.0 + power_index as f32 * 0.08,
+                    phase,
+                    angular_speed: 0.55 + power_index as f32 * 0.08,
+                },
+                Name::new(format!("{} ring segment", power_up.name)),
             ));
         }
     }
@@ -2431,6 +2556,29 @@ fn update_updraft_guides(time: Res<Time>, mut guides: Query<(&UpdraftGuide, &mut
     }
 }
 
+fn update_power_up_guides(
+    time: Res<Time>,
+    collection: Res<PowerUpCollectionState>,
+    mut guides: Query<(&AerialPowerUpVisual, &mut Transform, &mut Visibility)>,
+) {
+    let elapsed = time.elapsed_secs();
+
+    for (guide, mut transform, mut visibility) in &mut guides {
+        if collection.is_collected(guide.power_up) {
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+
+        *visibility = Visibility::Inherited;
+        let spin = guide.phase + elapsed * guide.angular_speed;
+        let pulse = 1.0 + 0.08 * (elapsed * 3.4 + guide.phase).sin();
+        transform.translation =
+            guide.power_up.center + Quat::from_rotation_z(spin * 0.18).mul_vec3(guide.offset);
+        transform.rotation = Quat::from_rotation_z(spin + std::f32::consts::FRAC_PI_2);
+        transform.scale = Vec3::splat(guide.scale * pulse);
+    }
+}
+
 fn update_route_objectives(
     eval: Option<Res<EvalRun>>,
     route: Res<SkyRoute>,
@@ -2494,7 +2642,7 @@ fn fly_player(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     tuning: Res<FlightTuning>,
-    world: MovementWorld,
+    mut world: MovementWorld,
     camera: Query<&Transform, CameraFollowFilter>,
     mut player: Query<(&mut Transform, &mut Velocity, &mut FlightController), With<Player>>,
 ) {
@@ -2507,9 +2655,18 @@ fn fly_player(
         velocity: &mut velocity,
         controller: &mut controller,
     };
+    let dt = time.delta_secs();
+    let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
+    world.power_ups.begin_frame(dt);
+    let mut context = PlayerStepContext {
+        tuning: &tuning,
+        route: &world.route,
+        lift_fields: &lift_fields,
+        power_ups: &mut world.power_ups,
+    };
 
     step_player(
-        time.delta_secs(),
+        dt,
         FlightInput {
             forward: keyboard.pressed(KeyCode::KeyW),
             backward: keyboard.pressed(KeyCode::KeyS),
@@ -2520,9 +2677,7 @@ fn fly_player(
             launch: keyboard.just_pressed(KeyCode::KeyE),
         },
         facing,
-        &tuning,
-        &world.route,
-        world.lift_fields.iter().copied(),
+        &mut context,
         &mut kinematics,
     );
 }
@@ -2530,7 +2685,7 @@ fn fly_player(
 fn eval_fly_player(
     run: Res<EvalRun>,
     tuning: Res<FlightTuning>,
-    world: MovementWorld,
+    mut world: MovementWorld,
     camera: Query<&Transform, CameraFollowFilter>,
     mut player: Query<(&mut Transform, &mut Velocity, &mut FlightController), With<Player>>,
 ) {
@@ -2547,14 +2702,21 @@ fn eval_fly_player(
         velocity: &mut velocity,
         controller: &mut controller,
     };
+    let dt = run.scenario.fixed_dt;
+    let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
+    world.power_ups.begin_frame(dt);
+    let mut context = PlayerStepContext {
+        tuning: &tuning,
+        route: &world.route,
+        lift_fields: &lift_fields,
+        power_ups: &mut world.power_ups,
+    };
 
     step_player(
-        run.scenario.fixed_dt,
+        dt,
         scripted_input(run.scenario, run.frame),
         facing,
-        &tuning,
-        &world.route,
-        world.lift_fields.iter().copied(),
+        &mut context,
         &mut kinematics,
     );
 }
@@ -2563,14 +2725,15 @@ fn step_player(
     dt: f32,
     input: FlightInput,
     facing: Facing,
-    tuning: &FlightTuning,
-    route: &SkyRoute,
-    lift_fields: impl IntoIterator<Item = LiftField>,
+    context: &mut PlayerStepContext,
     player: &mut PlayerKinematics,
 ) {
-    let mut tuning = *tuning;
-    let was_grounded = route.is_grounded_at(player.transform.translation);
-    tuning.floor_y = route.ground_at(player.transform.translation).floor_y;
+    let mut tuning = *context.tuning;
+    let was_grounded = context.route.is_grounded_at(player.transform.translation);
+    tuning.floor_y = context
+        .route
+        .ground_at(player.transform.translation)
+        .floor_y;
     let next = step_flight(
         FlightState::new(
             player.transform.translation,
@@ -2586,12 +2749,15 @@ fn step_player(
     let lift = apply_lift_fields(
         next.position,
         next.velocity,
-        lift_fields,
+        context.lift_fields.iter().copied(),
         dt,
         next.controller.mode != FlightMode::Grounded,
     );
     next.velocity = lift.velocity;
-    let next = route.resolve_ground_contact_after_step(next, was_grounded);
+    collect_aerial_power_ups(&mut next, context.power_ups);
+    let next = context
+        .route
+        .resolve_ground_contact_after_step(next, was_grounded);
 
     player.transform.translation = next.position;
     player.velocity.0 = next.velocity;
@@ -2602,6 +2768,19 @@ fn step_player(
         tuning.turn_rate,
         dt,
     );
+}
+
+fn collect_aerial_power_ups(state: &mut FlightState, collection: &mut PowerUpCollectionState) {
+    if state.controller.mode == FlightMode::Grounded {
+        return;
+    }
+
+    for power_up in AERIAL_POWER_UP_ROUTE {
+        if !collection.is_collected(power_up) && power_up.contains(state.position) {
+            state.velocity = apply_aerial_power_up(state.velocity, power_up);
+            collection.collect(power_up);
+        }
+    }
 }
 
 fn movement_facing(camera: Option<&Transform>, player_transform: &Transform) -> Facing {
@@ -2862,7 +3041,7 @@ fn update_debug_readout(
     };
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nresident island visuals {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nresident island visuals {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -2888,6 +3067,9 @@ fn update_debug_readout(
         velocity.0.x,
         velocity.0.y,
         velocity.0.z,
+        scene.power_ups.visible_count(),
+        scene.power_ups.collected_count(),
+        scene.power_ups.active_effects(),
         asset_metrics.slot_count,
         asset_metrics.gltf_scene_slot_count,
         asset_metrics.ready_slot_count,
@@ -3068,6 +3250,11 @@ fn collect_eval_metrics(
         asset_metrics.near_lod_slot_count,
         asset_metrics.far_lod_slot_count,
         asset_metrics.weather_slot_count,
+        AERIAL_POWER_UP_ROUTE.len(),
+        scene.power_ups.visible_count(),
+        scene.power_ups.collected_count(),
+        scene.power_ups.active_effects(),
+        scene.power_ups.total_activations,
     );
 
     if let Err(error) = run.record_sample(sample) {
