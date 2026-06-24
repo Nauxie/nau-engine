@@ -695,11 +695,11 @@ pub mod movement {
                 air_steer_accel: 52.0,
                 glide_steer_accel: 34.0,
                 air_counter_steer_accel: 120.0,
-                glide_counter_steer_accel: 116.0,
+                glide_counter_steer_accel: 150.0,
                 air_steer_min_speed: 16.0,
                 max_bank_degrees: 20.0,
                 turn_rate: 11.0,
-                input_turn_rate_boost: 5.5,
+                input_turn_rate_boost: 7.5,
                 floor_y: 1.2,
             }
         }
@@ -1471,7 +1471,7 @@ pub mod movement {
                 ..default()
             };
 
-            for _ in 0..18 {
+            for _ in 0..15 {
                 state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
             }
 
@@ -1606,7 +1606,7 @@ pub mod movement {
 
             let heading_error = body_heading_error_degrees(rotation, -facing.right);
             assert!(
-                heading_error < 60.0,
+                heading_error < 45.0,
                 "expected first-frame lateral reversal to stay bounded, got {heading_error} deg"
             );
         }
@@ -3838,13 +3838,13 @@ pub mod eval {
     const MIN_ISLAND_TERRAIN_RELIEF_RANGE_M: f32 = 0.8;
     const MIN_ISLAND_CLIFF_COLOR_BANDS: usize = 9;
     const AIR_CONTROL_RESPONSE_THRESHOLD_MPS: f32 = 4.0;
-    const AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS: f32 = 0.35;
+    const AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS: f32 = 0.30;
     const AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS: f32 = 18.0;
     const AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS: f32 = 20.0;
-    const AIR_CONTROL_MAX_AVG_BODY_HEADING_ERROR_DEGREES: f32 = 12.0;
-    const AIR_CONTROL_MAX_P95_BODY_HEADING_ERROR_DEGREES: f32 = 35.0;
-    const AIR_CONTROL_MAX_BODY_HEADING_ERROR_DEGREES: f32 = 60.0;
-    const AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES: f32 = 60.0;
+    const AIR_CONTROL_MAX_AVG_BODY_HEADING_ERROR_DEGREES: f32 = 8.0;
+    const AIR_CONTROL_MAX_P95_BODY_HEADING_ERROR_DEGREES: f32 = 30.0;
+    const AIR_CONTROL_MAX_BODY_HEADING_ERROR_DEGREES: f32 = 45.0;
+    const AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES: f32 = 45.0;
     const AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS: f32 = 4.0;
     const AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES: f32 = 0.01;
     const AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 2.0;
@@ -8211,7 +8211,7 @@ pub mod eval {
                     Vec2::new(0.0, 1.0),
                     0.0,
                     18.0,
-                    4.0,
+                    3.0,
                 ));
             }
             accumulator.observe(air_control_metric_sample(
