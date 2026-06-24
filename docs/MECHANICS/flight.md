@@ -119,7 +119,7 @@ Current tests cover:
 Future tests should cover:
 
 - launch source triggers
-- image-level camera checkpoint classification
+- semantic camera checkpoint classification beyond the current non-golden visual audit
 - turn/bank behavior
 - debug visualization toggles
 - crosswind gameplay force rules if visual wind becomes a movement force
