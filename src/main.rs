@@ -6626,6 +6626,40 @@ mod tests {
     }
 
     #[test]
+    fn metric_only_eval_window_is_hidden_and_unfocused() {
+        let scenario = scenario_named("baseline_route").expect("baseline scenario should exist");
+        let options = EvalOptions {
+            scenario,
+            output_dir: PathBuf::from("target/eval/test_hidden_window"),
+            capture_screenshot: false,
+        };
+
+        let window = primary_window(Some(&options));
+
+        assert!(!window.visible);
+        assert!(!window.focused);
+        assert!(!window.transparent);
+        assert_eq!(window.composite_alpha_mode, CompositeAlphaMode::Opaque);
+    }
+
+    #[test]
+    fn screenshot_eval_window_remains_visible_for_capture() {
+        let scenario = scenario_named("baseline_route").expect("baseline scenario should exist");
+        let options = EvalOptions {
+            scenario,
+            output_dir: PathBuf::from("target/eval/test_visible_window"),
+            capture_screenshot: true,
+        };
+
+        let window = primary_window(Some(&options));
+
+        assert!(window.visible);
+        assert!(window.focused);
+        assert!(!window.transparent);
+        assert_eq!(window.composite_alpha_mode, CompositeAlphaMode::Opaque);
+    }
+
+    #[test]
     fn terrain_export_writes_manifest_meshes_and_weight_sidecars() {
         let output_dir = std::env::temp_dir().join(format!(
             "nau-terrain-export-test-{}-{}",
