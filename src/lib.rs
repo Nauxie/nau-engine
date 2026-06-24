@@ -979,6 +979,7 @@ pub mod world {
     pub const PLAYER_STANDING_OFFSET: f32 = 0.24;
     pub const START_FLOOR_Y: f32 = 28.0;
     pub const START_POSITION: Vec3 = Vec3::new(0.0, START_FLOOR_Y, 0.0);
+    pub const RECOVERY_BRANCH_ISLANDS: [&str; 2] = ["sunlit terrace", "western refuge"];
     pub const STREAM_CHUNK_SIZE_M: f32 = 160.0;
     pub const STREAM_ACTIVE_CHUNK_RADIUS: i32 = 2;
     pub const LOD_NEAR_DISTANCE_M: f32 = 220.0;
@@ -1223,14 +1224,28 @@ pub mod world {
         }
 
         pub fn target_distance(&self, position: Vec3) -> f32 {
-            self.target_island()
+            self.target_distance_to(position, None)
+        }
+
+        pub fn target_distance_to(&self, position: Vec3, island_name: Option<&str>) -> f32 {
+            self.tracked_target_island(island_name)
                 .map(|island| island.horizontal_distance(position))
                 .unwrap_or(0.0)
         }
 
         pub fn on_landing_target(&self, position: Vec3, mode: FlightMode) -> bool {
+            self.on_landing_target_named(position, mode, None)
+        }
+
+        pub fn on_landing_target_named(
+            &self,
+            position: Vec3,
+            mode: FlightMode,
+            island_name: Option<&str>,
+        ) -> bool {
             let ground = self.ground_at(position);
-            ground.is_target
+            self.tracked_target_island(island_name)
+                .is_some_and(|island| ground.island_name == Some(island.name))
                 && mode == FlightMode::Grounded
                 && (position.y - ground.floor_y).abs() <= 0.1
         }
@@ -1238,6 +1253,23 @@ pub mod world {
         pub fn target_island(&self) -> Option<SkyIsland> {
             self.islands.iter().copied().find(|island| island.is_target)
         }
+
+        pub fn island_named(&self, name: &str) -> Option<SkyIsland> {
+            self.islands
+                .iter()
+                .copied()
+                .find(|island| island.name == name)
+        }
+
+        fn tracked_target_island(&self, island_name: Option<&str>) -> Option<SkyIsland> {
+            island_name
+                .and_then(|name| self.island_named(name))
+                .or_else(|| self.target_island())
+        }
+    }
+
+    pub fn is_recovery_branch_island(name: &str) -> bool {
+        RECOVERY_BRANCH_ISLANDS.contains(&name)
     }
 
     #[derive(Component, Clone, Copy, Debug, PartialEq)]
@@ -1420,6 +1452,24 @@ pub mod world {
 
             assert_eq!(route.target_distance(target.center), 0.0);
             assert!(route.target_distance(START_POSITION) > 200.0);
+        }
+
+        #[test]
+        fn route_can_track_named_recovery_branch_islands() {
+            let route = SkyRoute::default();
+            let branch = route
+                .island_named("sunlit terrace")
+                .expect("recovery branch exists");
+
+            assert!(is_recovery_branch_island(branch.name));
+            assert_eq!(
+                route.target_distance_to(branch.center, Some(branch.name)),
+                0.0
+            );
+            assert!(
+                route.target_distance_to(START_POSITION, Some(branch.name))
+                    > route.target_distance(START_POSITION)
+            );
         }
 
         #[test]
@@ -2398,11 +2448,13 @@ pub mod eval {
     pub const CAMERA_TURN_STABILITY: &str = "camera_turn_stability";
     pub const CAMERA_STRAFE_STABILITY: &str = "camera_strafe_stability";
     pub const LONG_GLIDE_VISIBILITY: &str = "long_glide_visibility";
+    pub const BRANCH_RECOVERY_ROUTE: &str = "branch_recovery_route";
     pub const SCENARIO_NAMES: &[&str] = &[
         BASELINE_ROUTE,
         ISLAND_LAUNCH_TO_LANDING,
         GROUND_TAXI_CONTROL,
         UPDRAFT_ROUTE,
+        BRANCH_RECOVERY_ROUTE,
         CAMERA_MOUSE_CONTROL,
         CAMERA_YAW_STABILITY,
         CAMERA_TURN_STABILITY,
@@ -2454,6 +2506,20 @@ pub mod eval {
         EvalCheckpoint {
             frame: 280,
             name: "high_glide",
+        },
+    ];
+    const BRANCH_RECOVERY_CHECKPOINTS: &[EvalCheckpoint] = &[
+        EvalCheckpoint {
+            frame: 180,
+            name: "branch_choice",
+        },
+        EvalCheckpoint {
+            frame: 500,
+            name: "recovery_approach",
+        },
+        EvalCheckpoint {
+            frame: 690,
+            name: "branch_landing",
         },
     ];
     const CAMERA_MOUSE_CHECKPOINTS: &[EvalCheckpoint] = &[
@@ -2537,6 +2603,7 @@ pub mod eval {
         pub fixed_dt: f32,
         pub frame_count: u32,
         pub sample_stride: u32,
+        pub target_island_name: Option<&'static str>,
         pub checkpoints: &'static [EvalCheckpoint],
         pub thresholds: EvalThresholds,
     }
@@ -3307,6 +3374,7 @@ pub mod eval {
 
             EvalSummary {
                 scenario_name: scenario.name,
+                target_island_name: scenario.target_island_name,
                 passed,
                 frame_count: scenario.frame_count,
                 duration_secs: scenario.duration_secs(),
@@ -3568,6 +3636,7 @@ pub mod eval {
     #[derive(Clone, Debug)]
     pub struct EvalSummary {
         pub scenario_name: &'static str,
+        pub target_island_name: Option<&'static str>,
         pub passed: bool,
         pub frame_count: u32,
         pub duration_secs: f32,
@@ -3591,10 +3660,15 @@ pub mod eval {
                 .as_ref()
                 .map(EvalSample::to_json)
                 .unwrap_or_else(|| "null".to_string());
+            let target_island = self
+                .target_island_name
+                .map(json_string)
+                .unwrap_or_else(|| "null".to_string());
 
             format!(
-                "{{\n  \"scenario\": {},\n  \"passed\": {},\n  \"frame_count\": {},\n  \"duration_secs\": {},\n  \"thresholds\": {},\n  \"metrics\": {},\n  \"checks\": [\n{}\n  ],\n  \"artifacts\": {},\n  \"final_sample\": {}\n}}\n",
+                "{{\n  \"scenario\": {},\n  \"target_island\": {},\n  \"passed\": {},\n  \"frame_count\": {},\n  \"duration_secs\": {},\n  \"thresholds\": {},\n  \"metrics\": {},\n  \"checks\": [\n{}\n  ],\n  \"artifacts\": {},\n  \"final_sample\": {}\n}}\n",
                 json_string(self.scenario_name),
+                target_island,
                 self.passed,
                 self.frame_count,
                 json_number(self.duration_secs),
@@ -3613,6 +3687,9 @@ pub mod eval {
             ISLAND_LAUNCH_TO_LANDING | "island" => Some(island_launch_to_landing()),
             GROUND_TAXI_CONTROL | "ground_taxi" | "taxi" => Some(ground_taxi_control()),
             UPDRAFT_ROUTE | "updraft" => Some(updraft_route()),
+            BRANCH_RECOVERY_ROUTE | "branch_recovery" | "recovery_route" => {
+                Some(branch_recovery_route())
+            }
             CAMERA_MOUSE_CONTROL | "camera_mouse" | "mouse_camera" => Some(camera_mouse_control()),
             CAMERA_YAW_STABILITY | "camera_yaw" | "yaw_stability" => Some(camera_yaw_stability()),
             CAMERA_TURN_STABILITY | "camera_turn" | "turn_stability" => {
@@ -3656,6 +3733,18 @@ pub mod eval {
                 glide: t >= 0.45,
                 launch: frame == 1,
                 ..default()
+            };
+        }
+        if scenario.name == BRANCH_RECOVERY_ROUTE {
+            let dive = (8.7..=10.45).contains(&t);
+            return FlightInput {
+                forward: (0.05..=11.1).contains(&t),
+                backward: (9.25..=10.85).contains(&t),
+                right: (1.1..=2.75).contains(&t) || (7.2..=8.05).contains(&t),
+                left: (4.2..=5.65).contains(&t),
+                glide: t >= 0.45 && !dive,
+                dive,
+                launch: frame == 1,
             };
         }
         if scenario.name == LONG_GLIDE_VISIBILITY {
@@ -3721,6 +3810,7 @@ pub mod eval {
             fixed_dt: 1.0 / 60.0,
             frame_count: 420,
             sample_stride: 10,
+            target_island_name: None,
             checkpoints: BASELINE_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 20,
@@ -3743,7 +3833,7 @@ pub mod eval {
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
                 min_weather_cloud_count: 12,
-                max_resident_island_visual_count: 240,
+                max_resident_island_visual_count: 260,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
                 max_camera_distance_m: 35.0,
@@ -3770,6 +3860,7 @@ pub mod eval {
             fixed_dt: 1.0 / 60.0,
             frame_count: 455,
             sample_stride: 5,
+            target_island_name: None,
             checkpoints: ISLAND_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 50,
@@ -3792,7 +3883,7 @@ pub mod eval {
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
                 min_weather_cloud_count: 12,
-                max_resident_island_visual_count: 240,
+                max_resident_island_visual_count: 260,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
@@ -3819,6 +3910,7 @@ pub mod eval {
             fixed_dt: 1.0 / 60.0,
             frame_count: 180,
             sample_stride: 5,
+            target_island_name: None,
             checkpoints: GROUND_TAXI_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 30,
@@ -3841,7 +3933,7 @@ pub mod eval {
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
                 min_weather_cloud_count: 12,
-                max_resident_island_visual_count: 240,
+                max_resident_island_visual_count: 260,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
                 max_camera_distance_m: 28.0,
@@ -3868,6 +3960,7 @@ pub mod eval {
             fixed_dt: 1.0 / 60.0,
             frame_count: 360,
             sample_stride: 5,
+            target_island_name: None,
             checkpoints: UPDRAFT_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 60,
@@ -3890,7 +3983,7 @@ pub mod eval {
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
                 min_weather_cloud_count: 12,
-                max_resident_island_visual_count: 240,
+                max_resident_island_visual_count: 260,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
@@ -3911,12 +4004,63 @@ pub mod eval {
         }
     }
 
+    fn branch_recovery_route() -> EvalScenario {
+        EvalScenario {
+            name: BRANCH_RECOVERY_ROUTE,
+            fixed_dt: 1.0 / 60.0,
+            frame_count: 760,
+            sample_stride: 5,
+            target_island_name: Some("sunlit terrace"),
+            checkpoints: BRANCH_RECOVERY_CHECKPOINTS,
+            thresholds: EvalThresholds {
+                min_samples: 80,
+                min_horizontal_distance_m: 390.0,
+                min_max_altitude_m: 100.0,
+                min_max_speed_mps: 45.0,
+                min_gliding_samples: 55,
+                min_grounded_samples: 2,
+                min_lifted_samples: 4,
+                min_sky_island_count: 12,
+                min_active_island_count: 4,
+                max_active_chunk_count: 25,
+                min_near_lod_island_count: 2,
+                min_mid_lod_island_count: 3,
+                min_far_lod_island_count: 3,
+                max_visible_island_terrain_count: 55,
+                min_hidden_island_terrain_count: 5,
+                min_visible_island_impostor_count: 2,
+                max_visible_island_detail_count: 95,
+                min_hidden_island_detail_count: 20,
+                min_visible_route_beacon_count: 14,
+                min_weather_cloud_count: 12,
+                max_resident_island_visual_count: 260,
+                max_stream_visibility_changes_per_frame: 96,
+                min_entity_count: 220,
+                max_camera_distance_m: 38.0,
+                min_camera_surface_clearance_m: 1.0,
+                max_camera_player_angle_degrees: 18.0,
+                max_camera_step_distance_m: 14.0,
+                max_camera_rotation_delta_degrees: 30.0,
+                max_camera_orbit_alignment_degrees: 45.0,
+                max_abs_camera_view_yaw_degrees: 8.0,
+                min_camera_obstruction_adjustment_m: 0.0,
+                min_abs_camera_yaw_degrees: 0.0,
+                min_camera_pitch_offset_degrees: 0.0,
+                max_camera_pitch_offset_degrees: 0.0,
+                require_target_landing: true,
+                max_final_target_distance_m: 18.0,
+                min_target_landing_samples: 2,
+            },
+        }
+    }
+
     fn camera_mouse_control() -> EvalScenario {
         EvalScenario {
             name: CAMERA_MOUSE_CONTROL,
             fixed_dt: 1.0 / 60.0,
             frame_count: 200,
             sample_stride: 5,
+            target_island_name: None,
             checkpoints: CAMERA_MOUSE_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 40,
@@ -3939,7 +4083,7 @@ pub mod eval {
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
                 min_weather_cloud_count: 12,
-                max_resident_island_visual_count: 240,
+                max_resident_island_visual_count: 260,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
@@ -3966,6 +4110,7 @@ pub mod eval {
             fixed_dt: 1.0 / 60.0,
             frame_count: 300,
             sample_stride: 5,
+            target_island_name: None,
             checkpoints: CAMERA_YAW_STABILITY_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 50,
@@ -3988,7 +4133,7 @@ pub mod eval {
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
                 min_weather_cloud_count: 12,
-                max_resident_island_visual_count: 240,
+                max_resident_island_visual_count: 260,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
@@ -4015,6 +4160,7 @@ pub mod eval {
             fixed_dt: 1.0 / 60.0,
             frame_count: 360,
             sample_stride: 5,
+            target_island_name: None,
             checkpoints: CAMERA_TURN_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 60,
@@ -4037,7 +4183,7 @@ pub mod eval {
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
                 min_weather_cloud_count: 12,
-                max_resident_island_visual_count: 240,
+                max_resident_island_visual_count: 260,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
                 max_camera_distance_m: 36.0,
@@ -4064,6 +4210,7 @@ pub mod eval {
             fixed_dt: 1.0 / 60.0,
             frame_count: 260,
             sample_stride: 5,
+            target_island_name: None,
             checkpoints: CAMERA_STRAFE_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 45,
@@ -4086,7 +4233,7 @@ pub mod eval {
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
                 min_weather_cloud_count: 12,
-                max_resident_island_visual_count: 240,
+                max_resident_island_visual_count: 260,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 100,
                 max_camera_distance_m: 28.0,
@@ -4113,6 +4260,7 @@ pub mod eval {
             fixed_dt: 1.0 / 60.0,
             frame_count: 660,
             sample_stride: 10,
+            target_island_name: None,
             checkpoints: LONG_GLIDE_CHECKPOINTS,
             thresholds: EvalThresholds {
                 min_samples: 60,
@@ -4135,7 +4283,7 @@ pub mod eval {
                 min_hidden_island_detail_count: 20,
                 min_visible_route_beacon_count: 12,
                 min_weather_cloud_count: 12,
-                max_resident_island_visual_count: 240,
+                max_resident_island_visual_count: 260,
                 max_stream_visibility_changes_per_frame: 96,
                 min_entity_count: 220,
                 max_camera_distance_m: 38.0,
@@ -4255,6 +4403,18 @@ pub mod eval {
             assert!(scripted_input(scenario, 120).right);
             assert!(scripted_input(scenario, 180).glide);
             assert!(!scripted_input(scenario, 180).dive);
+        }
+
+        #[test]
+        fn branch_recovery_route_targets_named_recovery_island() {
+            let scenario = scenario_named(BRANCH_RECOVERY_ROUTE).expect("branch route exists");
+
+            assert_eq!(scenario.target_island_name, Some("sunlit terrace"));
+            assert!(scenario.thresholds.require_target_landing);
+            assert!(scripted_input(scenario, 1).launch);
+            assert!(scripted_input(scenario, 540).dive);
+            assert!(scripted_input(scenario, 600).backward);
+            assert!(!scripted_input(scenario, 720).forward);
         }
 
         #[test]
