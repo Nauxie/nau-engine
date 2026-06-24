@@ -10,15 +10,15 @@ The project has a Bevy sandbox with a primitive humanoid, playable ground moveme
 
 ## Last Known Good
 
-- Commit: `856a938`
-- Merged PR: `#36` - Add glider airflow polish
+- Commit: `f55f319`
+- Merged PR: `#38` - Add wind responsive environment motion
 - Verification:
   - `cargo fmt --all --check`
   - `cargo check`
   - `cargo test`
   - `cargo clippy --all-targets --all-features -- -D warnings`
-  - metric-only eval for branch recovery traversal
-  - screenshot eval for long-glide route with visual audit and manual checkpoint inspection
+  - `cargo naux -- --help`
+  - metric-only evals for baseline traversal, ground taxi control, long-glide visibility, and branch recovery traversal
 
 ## Active Work
 
