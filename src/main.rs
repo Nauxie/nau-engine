@@ -87,6 +87,7 @@ fn main() -> AppExit {
         .insert_resource(CameraControlState::default())
         .insert_resource(CameraDiagnostics::default())
         .insert_resource(IslandStreamDiagnostics::default())
+        .insert_resource(RouteObjectiveTracker::default())
         .insert_resource(MouseLookState::default())
         .insert_resource(DebugVisuals::default())
         .insert_resource(SkyRoute::default())
@@ -122,6 +123,7 @@ fn main() -> AppExit {
                 update_island_stream_visibility,
                 update_weather_drift,
                 update_updraft_guides,
+                update_route_objectives,
                 update_debug_readout,
                 draw_debug_gizmos,
             )
@@ -177,6 +179,16 @@ struct Player;
 
 #[derive(Component)]
 struct DebugReadout;
+
+#[derive(Resource, Clone, Debug, Default)]
+struct RouteObjectiveTracker {
+    target_island_name: Option<&'static str>,
+    completed_count: usize,
+    total_count: usize,
+    current_label: &'static str,
+    current_distance_m: f32,
+    complete: bool,
+}
 
 #[derive(Component, Clone, Copy, Debug)]
 struct WeatherDrift {
@@ -369,6 +381,7 @@ struct DebugScene<'w, 's> {
     camera_diagnostics: Res<'w, CameraDiagnostics>,
     mouse_look: Res<'w, MouseLookState>,
     stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
+    route_objectives: Res<'w, RouteObjectiveTracker>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
 }
@@ -2047,6 +2060,48 @@ fn update_updraft_guides(time: Res<Time>, mut guides: Query<(&UpdraftGuide, &mut
     }
 }
 
+fn update_route_objectives(
+    eval: Option<Res<EvalRun>>,
+    route: Res<SkyRoute>,
+    player: Query<(&Transform, &FlightController), With<Player>>,
+    mut tracker: ResMut<RouteObjectiveTracker>,
+) {
+    let Ok((transform, controller)) = player.single() else {
+        return;
+    };
+    let target_island_name = eval
+        .as_deref()
+        .and_then(|run| run.scenario.target_island_name);
+
+    if tracker.target_island_name != target_island_name {
+        *tracker = RouteObjectiveTracker {
+            target_island_name,
+            ..default()
+        };
+    }
+
+    let objectives = route.route_objectives(target_island_name);
+    tracker.total_count = objectives.len();
+    tracker.completed_count = tracker.completed_count.min(objectives.len());
+
+    while let Some(objective) = objectives.get(tracker.completed_count).copied() {
+        if !objective.is_complete(&route, transform.translation, controller.mode) {
+            break;
+        }
+        tracker.completed_count += 1;
+    }
+
+    if let Some(objective) = objectives.get(tracker.completed_count).copied() {
+        tracker.current_label = objective.label;
+        tracker.current_distance_m = objective.horizontal_distance(transform.translation);
+        tracker.complete = false;
+    } else {
+        tracker.current_label = "complete";
+        tracker.current_distance_m = 0.0;
+        tracker.complete = !objectives.is_empty();
+    }
+}
+
 fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
     let angle = guide.phase + elapsed * guide.angular_speed;
     let bob = (elapsed * 1.4 + guide.phase).sin() * 0.35;
@@ -2393,15 +2448,27 @@ fn update_debug_readout(
     } else {
         "free"
     };
+    let objective_step =
+        (scene.route_objectives.completed_count + 1).min(scene.route_objectives.total_count);
+    let objective_state = if scene.route_objectives.complete {
+        "done"
+    } else {
+        "go"
+    };
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nresident island visuals {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nresident island visuals {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
         transform.translation.y,
         target_distance,
         if on_target { "landed" } else { "out" },
+        objective_step,
+        scene.route_objectives.total_count,
+        scene.route_objectives.current_label,
+        scene.route_objectives.current_distance_m,
+        objective_state,
         pitch,
         distance,
         framing_angle,
