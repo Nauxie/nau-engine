@@ -190,6 +190,7 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - scripted launch, glide deployment, diagonal air steering, pure right/left air steering, backward braking, a short dive, and forward recovery
 - no scripted camera input, so camera orbit yaw offset must remain zero while `A`/`D` move Nau
 - actual camera rotation delta must stay small during the movement-only route
+- average camera follow-direction error must stay bounded so a stable camera cannot hide a stale follow target
 - desired body heading error and desired-heading velocity alignment must stay within thresholds
 - right and left lateral input must each produce measurable response within the response-latency threshold
 - backward input must produce measurable air-brake speed drop, and the final forward segment must recover forward alignment
@@ -245,6 +246,7 @@ Every sample includes:
 - `camera_step_distance_m`
 - `camera_rotation_delta_degrees`
 - `camera_orbit_alignment_degrees`
+- `camera_follow_direction_error_degrees`
 - `camera_view_yaw_degrees`
 - `camera_obstruction_adjustment_m`
 - `camera_obstruction_hits`
@@ -344,6 +346,7 @@ The summary aggregates:
 - max per-frame camera step distance
 - max per-frame camera rotation delta
 - max camera orbit alignment
+- average and max camera follow-direction error
 - max absolute camera view yaw and view-yaw drift
 - max camera obstruction adjustment
 - max camera obstruction hit count
@@ -448,6 +451,7 @@ The pass/fail checks currently guard:
 - camera obstruction avoidance was exercised when a scenario requires it
 - camera mouse scenarios exercised yaw and both pitch directions
 - air-control response latency, right/left lateral response, air-brake speed drop, post-brake forward alignment, desired-heading alignment, average body-heading error, yaw oscillation count, camera orbit yaw offset, and camera rotation delta stayed inside thresholds
+- air-control average camera follow-direction error stayed inside threshold so movement-only routes cannot pass with a stale follow direction
 - island-route final scenario-target distance stayed under threshold
 - island-route grounded target landing was observed on the configured target island
 

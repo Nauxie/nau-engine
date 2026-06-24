@@ -10,7 +10,7 @@ This document records local code audits for external Bevy references used to ste
 - `olekspickle/bevy_new_3d_rpg` at `54d1dbb`
 - `manankarnik/bevy_generative` at `74a17cc`
 
-The local audit used sparse clones under `/tmp/nau-reference-audit` so source, manifests, documentation, shader/material examples, and license text were available without pulling large asset payloads.
+The current local audit used refreshed clones under `/tmp/nau-reference-repos` so source, manifests, documentation, shader/material examples, and license text were available for direct inspection. Earlier sparse-clone notes remain useful, but this pass treated the repositories as codebases to audit rather than search results.
 
 ## Foxtrot
 
@@ -20,7 +20,8 @@ Patterns worth adopting:
 
 - Keep one wrapper module per third-party plugin. Foxtrot's `src/third_party` isolates Avian, `bevy_ahoy`, Landmass, TrenchBroom, Yarnspinner, Hanabi, and frame pacing setup so app wiring stays understandable.
 - Add explicit asset preload resources. Foxtrot's `asset_tracking` pattern waits for all handles in a resource before gameplay screens spawn, which is the right shape for NAU's future glTF player/world/detail asset pipeline.
-- Use Bevy glTF settings deliberately. Foxtrot configures `GltfPlugin` coordinate conversion and uses `GltfLoaderSettings`/`RenderAssetUsages` for model assets.
+- Use Bevy glTF settings deliberately. Foxtrot configures `GltfPlugin` coordinate conversion and uses `GltfLoaderSettings`/`RenderAssetUsages` through load-with-settings paths for model assets.
+- Discover scene-owned animation players after spawn instead of assuming handles are immediately ready. Foxtrot's runtime asset wiring is a useful reminder that NAU's future animation setup needs explicit readiness/discovery states.
 - Treat render quality as app-level infrastructure. Foxtrot enables HDR, tonemapping, bloom, TAA/FXAA choices, deferred prepass, environment maps, skybox, shadow filtering, and texture sampler defaults rather than scattering one-off render tweaks.
 - Precompile shaders through a loading phase. Foxtrot spawns a shader compilation map before gameplay; NAU should adapt the idea once custom shaders/materials become user-visible.
 - Validate asset readiness in dev. Foxtrot has dev tooling that warns when meshes, materials, scenes, and audio appear before preload has completed.
@@ -41,7 +42,7 @@ Patterns worth adopting:
 - Rotate the visible character toward desired planar movement, not toward the camera. Its player control code slerps the model toward `atan2(input_dir.x, input_dir.z)`, which directly addresses Nau's lateral/diagonal air-control problem.
 - Keep camera rotation input separate from movement input. Movement reads an enhanced-input `Movement` action while camera yaw/pitch reads `RotateCamera`; this matches NAU's invariant that `A`/`D` must not orbit the camera.
 - Use named glTF animations and `AnimationGraph::from_clips`. The template loads named clips such as idle, jog, sprint, jump, land, crouch, and roll, builds an animation graph on `SceneInstanceReady`, and transitions with `AnimationTransitions`.
-- Keep player assets as preloaded resources. Its `Models` resource loads `models/player.glb` and `models/scene.gltf` before gameplay spawn, which is a useful shape for NAU's character/glider/island/detail assets.
+- Keep player/world assets as preloaded resources and spawn them through Bevy scene roots. Its model resources load `models/player.glb` and `models/scene.gltf` before gameplay spawn, which is a useful shape for NAU's character/glider/island/detail assets.
 - Keep particle and shader examples asset-driven. Its particle RON assets and `ExtendedMaterial<StandardMaterial, _>` examples are a better next step than hand-building every visual effect as primitive mesh animation.
 
 Patterns to reject or defer:
