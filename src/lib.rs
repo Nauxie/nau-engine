@@ -3850,28 +3850,29 @@ pub mod eval {
     const MIN_GENERATED_GROUND_COVER_PATCH_COUNT: usize = 500;
     const MIN_GROUND_COVER_BLADE_COUNT: usize = 200;
     const MIN_GROUND_COVER_MESH_VERTICES: usize = 1000;
-    const MIN_GENERATED_TREE_TRUNK_COUNT: usize = 12;
-    const MIN_GENERATED_TREE_CANOPY_COUNT: usize = 12;
+    const MIN_GENERATED_TREE_TRUNK_COUNT: usize = 30;
+    const MIN_GENERATED_TREE_CANOPY_COUNT: usize = 30;
     const MIN_TREE_TRUNK_MESH_VERTICES: usize = 60;
-    const MIN_TREE_CANOPY_MESH_VERTICES: usize = 300;
+    const MIN_TREE_CANOPY_MESH_VERTICES: usize = 400;
     const MIN_DETAIL_BIOME_PALETTE_COUNT: usize = 5;
-    const MIN_GENERATED_ROCK_COUNT: usize = 48;
+    const MIN_GENERATED_ROCK_COUNT: usize = 55;
     const MIN_ROCK_MESH_VERTICES: usize = 70;
-    const MIN_GENERATED_WEATHER_CLOUD_COUNT: usize = 12;
+    const MIN_GENERATED_WEATHER_CLOUD_COUNT: usize = 24;
     const MIN_GENERATED_WEATHER_CLOUD_BANK_COUNT: usize = 12;
     const MIN_WEATHER_CLOUD_BANK_DEPTH_M: f32 = 4.0;
     const MIN_WEATHER_CLOUD_LOBE_COUNT: usize = 6;
     const MIN_MAX_WEATHER_CLOUD_LOBE_COUNT: usize = 10;
-    const MIN_WEATHER_CLOUD_MESH_VERTICES: usize = 270;
+    const MIN_WEATHER_CLOUD_MESH_VERTICES: usize = 560;
     const MIN_ISLAND_TERRAIN_SURFACE_COUNT: usize = 12;
     const MIN_ISLAND_TERRAIN_MESH_VERTICES: usize = 2305;
-    const MIN_ISLAND_TERRAIN_COLOR_BANDS: usize = 5;
-    const MIN_ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS: usize = 12;
+    const MIN_ISLAND_TERRAIN_COLOR_BANDS: usize = 32;
+    const MIN_ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS: usize = 24;
     const MIN_ISLAND_TERRAIN_MATERIAL_CHANNELS: usize = 3;
     const MIN_ISLAND_TERRAIN_MATERIAL_REGIONS: usize = 4;
-    const MIN_ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS: usize = 40;
+    const MIN_ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS: usize = 44;
     const MIN_ISLAND_TERRAIN_RELIEF_RANGE_M: f32 = 0.8;
     const MIN_ISLAND_CLIFF_COLOR_BANDS: usize = 9;
+    const MIN_ISLAND_BODY_MESH_VERTICES: usize = 1600;
     const AIR_CONTROL_RESPONSE_THRESHOLD_MPS: f32 = 4.0;
     const AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS: f32 = 0.30;
     const AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS: f32 = 18.0;
@@ -4314,6 +4315,7 @@ pub mod eval {
         pub primitive_island_body_count: usize,
         pub min_island_body_silhouette_segments: usize,
         pub avg_island_body_silhouette_segments: f32,
+        pub min_island_body_mesh_vertices: usize,
         pub max_island_body_mesh_vertices: usize,
         pub generated_ground_cover_patch_count: usize,
         pub min_ground_cover_blade_count: usize,
@@ -4533,6 +4535,7 @@ pub mod eval {
                 primitive_island_body_count: 0,
                 min_island_body_silhouette_segments: 0,
                 avg_island_body_silhouette_segments: 0.0,
+                min_island_body_mesh_vertices: 0,
                 max_island_body_mesh_vertices: 0,
                 generated_ground_cover_patch_count: 0,
                 min_ground_cover_blade_count: 0,
@@ -4656,6 +4659,7 @@ pub mod eval {
             primitive_island_body_count: usize,
             min_island_body_silhouette_segments: usize,
             avg_island_body_silhouette_segments: f32,
+            min_island_body_mesh_vertices: usize,
             max_island_body_mesh_vertices: usize,
         ) -> Self {
             self.island_terrain_surface_count = island_terrain_surface_count;
@@ -4667,6 +4671,7 @@ pub mod eval {
             self.primitive_island_body_count = primitive_island_body_count;
             self.min_island_body_silhouette_segments = min_island_body_silhouette_segments;
             self.avg_island_body_silhouette_segments = avg_island_body_silhouette_segments;
+            self.min_island_body_mesh_vertices = min_island_body_mesh_vertices;
             self.max_island_body_mesh_vertices = max_island_body_mesh_vertices;
             self
         }
@@ -4726,7 +4731,7 @@ pub mod eval {
         }
 
         pub fn to_json(&self) -> String {
-            format!(
+            let json = format!(
                 "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"desired_body_yaw_error_degrees\":{},\"desired_body_heading_error_degrees\":{},\"desired_heading_alignment_mps\":{},\"lateral_response_mps\":{},\"lateral_input_active\":{},\"movement_input_lateral_axis\":{},\"movement_input_forward_axis\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_follow_direction_error_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_world_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"readable_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"objective\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"weather_cloud_count\":{},\"environment_motion_visual_count\":{},\"max_environment_motion_offset_m\":{},\"island_terrain_surface_count\":{},\"min_island_terrain_mesh_vertices\":{},\"min_island_terrain_color_bands\":{},\"min_island_terrain_material_weight_bands\":{},\"min_island_terrain_material_channels\":{},\"min_island_terrain_material_regions\":{},\"min_island_terrain_texture_detail_bands\":{},\"min_island_terrain_relief_range_m\":{},\"min_island_cliff_color_bands\":{},\"procedural_island_body_count\":{},\"primitive_island_body_count\":{},\"min_island_body_silhouette_segments\":{},\"avg_island_body_silhouette_segments\":{},\"max_island_body_mesh_vertices\":{},\"generated_ground_cover_patch_count\":{},\"min_ground_cover_blade_count\":{},\"min_ground_cover_mesh_vertices\":{},\"generated_tree_trunk_count\":{},\"generated_tree_canopy_count\":{},\"min_tree_trunk_mesh_vertices\":{},\"min_tree_canopy_mesh_vertices\":{},\"detail_biome_palette_count\":{},\"generated_rock_count\":{},\"min_rock_mesh_vertices\":{},\"generated_weather_cloud_count\":{},\"generated_weather_cloud_bank_count\":{},\"min_weather_cloud_bank_depth_m\":{},\"min_weather_cloud_lobe_count\":{},\"max_weather_cloud_lobe_count\":{},\"min_weather_cloud_mesh_vertices\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"catalog_island_visual_count\":{},\"hidden_island_visual_count\":{},\"resident_island_visual_fraction\":{},\"stream_spawned_visuals_this_frame\":{},\"stream_despawned_visuals_this_frame\":{},\"max_stream_spawned_visuals_per_frame\":{},\"max_stream_despawned_visuals_per_frame\":{},\"total_stream_spawned_visuals\":{},\"total_stream_despawned_visuals\":{},\"entity_count\":{},\"visual_asset_slot_count\":{},\"gltf_scene_asset_slot_count\":{},\"ready_visual_asset_slot_count\":{},\"placeholder_visual_asset_slot_count\":{},\"streaming_visual_asset_slot_count\":{},\"missing_visual_asset_slot_count\":{},\"queued_visual_asset_scene_count\":{},\"loading_visual_asset_scene_count\":{},\"loaded_visual_asset_scene_count\":{},\"dependency_loaded_visual_asset_scene_count\":{},\"preload_ready_visual_asset_scene_count\":{},\"failed_visual_asset_scene_count\":{},\"spawned_visual_asset_scene_count\":{},\"ready_visual_asset_scene_count\":{},\"always_visual_asset_slot_count\":{},\"stream_window_visual_asset_slot_count\":{},\"near_lod_visual_asset_slot_count\":{},\"far_lod_visual_asset_slot_count\":{},\"weather_visual_asset_slot_count\":{},\"always_preload_ready_visual_asset_slot_count\":{},\"streaming_preload_ready_visual_asset_slot_count\":{},\"declared_animation_clip_count\":{},\"ready_animation_clip_count\":{},\"animation_player_count\":{},\"animation_graph_count\":{},\"power_up_count\":{},\"visible_power_up_count\":{},\"collected_power_up_count\":{},\"active_power_up_effects\":{},\"total_power_up_activations\":{},\"visual_foot_gap_m\":{}}}",
                 self.frame,
                 json_number(self.time_secs),
@@ -4855,7 +4860,13 @@ pub mod eval {
                 self.active_power_up_effects,
                 self.total_power_up_activations,
                 json_number(self.visual_foot_gap_m),
-            )
+            );
+            let body_mesh_key = "\"max_island_body_mesh_vertices\"";
+            let body_mesh_metrics = format!(
+                "\"min_island_body_mesh_vertices\":{},{}",
+                self.min_island_body_mesh_vertices, body_mesh_key
+            );
+            json.replacen(body_mesh_key, &body_mesh_metrics, 1)
         }
     }
 
@@ -4957,6 +4968,7 @@ pub mod eval {
         max_primitive_island_body_count: usize,
         min_island_body_silhouette_segments: usize,
         max_avg_island_body_silhouette_segments: f32,
+        min_island_body_mesh_vertices: usize,
         max_island_body_mesh_vertices: usize,
         min_generated_ground_cover_patch_count: usize,
         min_ground_cover_blade_count: usize,
@@ -5117,6 +5129,7 @@ pub mod eval {
                 self.min_procedural_island_body_count = sample.procedural_island_body_count;
                 self.min_island_body_silhouette_segments =
                     sample.min_island_body_silhouette_segments;
+                self.min_island_body_mesh_vertices = sample.min_island_body_mesh_vertices;
                 self.min_generated_ground_cover_patch_count =
                     sample.generated_ground_cover_patch_count;
                 self.min_ground_cover_blade_count = sample.min_ground_cover_blade_count;
@@ -5457,6 +5470,9 @@ pub mod eval {
             self.max_avg_island_body_silhouette_segments = self
                 .max_avg_island_body_silhouette_segments
                 .max(sample.avg_island_body_silhouette_segments);
+            self.min_island_body_mesh_vertices = self
+                .min_island_body_mesh_vertices
+                .min(sample.min_island_body_mesh_vertices);
             self.max_island_body_mesh_vertices = self
                 .max_island_body_mesh_vertices
                 .max(sample.max_island_body_mesh_vertices);
@@ -5945,6 +5961,12 @@ pub mod eval {
                     self.min_island_body_silhouette_segments as f32,
                     thresholds.min_island_body_silhouette_segments as f32,
                     "segments",
+                ),
+                EvalCheck::at_least(
+                    "island_body_mesh_vertices",
+                    self.min_island_body_mesh_vertices as f32,
+                    MIN_ISLAND_BODY_MESH_VERTICES as f32,
+                    "vertices",
                 ),
                 EvalCheck::at_least(
                     "generated_ground_cover_patch_count",
@@ -6586,6 +6608,7 @@ pub mod eval {
                     min_island_body_silhouette_segments: self.min_island_body_silhouette_segments,
                     max_avg_island_body_silhouette_segments: self
                         .max_avg_island_body_silhouette_segments,
+                    min_island_body_mesh_vertices: self.min_island_body_mesh_vertices,
                     max_island_body_mesh_vertices: self.max_island_body_mesh_vertices,
                     min_generated_ground_cover_patch_count: self
                         .min_generated_ground_cover_patch_count,
@@ -6790,6 +6813,7 @@ pub mod eval {
         pub max_primitive_island_body_count: usize,
         pub min_island_body_silhouette_segments: usize,
         pub max_avg_island_body_silhouette_segments: f32,
+        pub min_island_body_mesh_vertices: usize,
         pub max_island_body_mesh_vertices: usize,
         pub min_generated_ground_cover_patch_count: usize,
         pub min_ground_cover_blade_count: usize,
@@ -7029,7 +7053,13 @@ pub mod eval {
                 json_number(self.max_backward_left_rear_response_mps),
                 air_brake_key
             );
-            json.replacen(&air_brake_key, &rear_response_metrics, 1)
+            let json = json.replacen(&air_brake_key, &rear_response_metrics, 1);
+            let body_mesh_key = format!("{indent}  \"max_island_body_mesh_vertices\"");
+            let body_mesh_metrics = format!(
+                "{indent}  \"min_island_body_mesh_vertices\": {},\n{}",
+                self.min_island_body_mesh_vertices, body_mesh_key
+            );
+            json.replacen(&body_mesh_key, &body_mesh_metrics, 1)
         }
     }
 
@@ -8815,10 +8845,10 @@ pub mod eval {
                 0,
                 0,
             )
-            .with_content_metrics(12, 2305, 5, 0.8, 9, 12, 0, 96, 96.0, 833)
-            .with_terrain_material_metrics(12, 3, 4, 64)
+            .with_content_metrics(12, 2305, 61, 0.8, 9, 12, 0, 96, 96.0, 1633, 1633)
+            .with_terrain_material_metrics(36, 3, 4, 64)
             .with_generated_visual_shape_metrics(
-                528, 220, 1100, 37, 37, 62, 316, 5, 60, 74, 30, 12, 4.8, 7, 14, 462,
+                528, 220, 1100, 37, 37, 62, 412, 5, 60, 74, 30, 12, 4.8, 7, 14, 574,
             )
             .with_movement_metrics(
                 yaw_error_degrees,
@@ -8849,14 +8879,15 @@ pub mod eval {
             .with_content_metrics(
                 12,
                 2305,
-                5,
+                61,
                 0.8,
                 9,
                 procedural_body_count,
                 primitive_body_count,
                 silhouette_segments,
                 silhouette_segments as f32,
-                833,
+                1633,
+                1633,
             )
         }
 
@@ -8947,6 +8978,10 @@ pub mod eval {
             let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
             let mut accumulator = EvalAccumulator::default();
             accumulator.observe(content_metric_sample(scenario, 0, 12, 1, 48));
+            accumulator.observe(
+                content_metric_sample(scenario, 5, 12, 0, 96)
+                    .with_content_metrics(12, 2305, 61, 0.8, 9, 12, 0, 96, 96.0, 900, 1633),
+            );
             accumulator.observe(content_metric_sample(scenario, 10, 12, 0, 96));
 
             let summary = accumulator.summary(
@@ -8960,11 +8995,14 @@ pub mod eval {
             );
             let primitive_check = named_check(&summary, "primitive_island_body_count");
             let silhouette_check = named_check(&summary, "island_body_silhouette_segments");
+            let mesh_check = named_check(&summary, "island_body_mesh_vertices");
 
             assert!(!primitive_check.passed);
             assert_eq!(primitive_check.value, 1.0);
             assert!(!silhouette_check.passed);
             assert_eq!(silhouette_check.value, 48.0);
+            assert!(!mesh_check.passed);
+            assert_eq!(mesh_check.value, 900.0);
         }
 
         #[test]
@@ -8974,7 +9012,7 @@ pub mod eval {
             accumulator.observe(content_metric_sample(scenario, 0, 12, 0, 96));
             accumulator.observe(
                 content_metric_sample(scenario, 10, 12, 0, 96)
-                    .with_content_metrics(10, 1200, 2, 0.2, 3, 12, 0, 96, 96.0, 833)
+                    .with_content_metrics(10, 1200, 2, 0.2, 3, 12, 0, 96, 96.0, 1633, 1633)
                     .with_terrain_material_metrics(4, 2, 2, 16),
             );
 
@@ -9036,21 +9074,24 @@ pub mod eval {
 
             assert!(summary_json.contains("\"min_island_terrain_surface_count\": 12"));
             assert!(summary_json.contains("\"min_island_terrain_mesh_vertices\": 2305"));
-            assert!(summary_json.contains("\"min_island_terrain_color_bands\": 5"));
-            assert!(summary_json.contains("\"min_island_terrain_material_weight_bands\": 12"));
+            assert!(summary_json.contains("\"min_island_terrain_color_bands\": 61"));
+            assert!(summary_json.contains("\"min_island_terrain_material_weight_bands\": 36"));
             assert!(summary_json.contains("\"min_island_terrain_material_channels\": 3"));
             assert!(summary_json.contains("\"min_island_terrain_material_regions\": 4"));
             assert!(summary_json.contains("\"min_island_terrain_texture_detail_bands\": 64"));
             assert!(summary_json.contains("\"min_island_terrain_relief_range_m\": 0.8000"));
             assert!(summary_json.contains("\"min_island_cliff_color_bands\": 9"));
+            assert!(summary_json.contains("\"min_island_body_mesh_vertices\": 1633"));
             assert!(summary_json.contains("\"min_generated_ground_cover_patch_count\": 528"));
             assert!(summary_json.contains("\"min_ground_cover_blade_count\": 220"));
             assert!(summary_json.contains("\"min_ground_cover_mesh_vertices\": 1100"));
+            assert!(summary_json.contains("\"min_tree_canopy_mesh_vertices\": 412"));
             assert!(summary_json.contains("\"min_detail_biome_palette_count\": 5"));
             assert!(summary_json.contains("\"min_generated_rock_count\": 60"));
             assert!(summary_json.contains("\"min_rock_mesh_vertices\": 74"));
             assert!(summary_json.contains("\"min_generated_weather_cloud_bank_count\": 12"));
             assert!(summary_json.contains("\"min_weather_cloud_bank_depth_m\": 4.8000"));
+            assert!(summary_json.contains("\"min_weather_cloud_mesh_vertices\": 574"));
         }
 
         #[test]
@@ -9421,10 +9462,10 @@ pub mod eval {
         fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample) {
             accumulator.observe(
                 sample
-                    .with_content_metrics(12, 2305, 5, 0.8, 9, 12, 0, 96, 96.0, 833)
-                    .with_terrain_material_metrics(12, 3, 4, 64)
+                    .with_content_metrics(12, 2305, 61, 0.8, 9, 12, 0, 96, 96.0, 1633, 1633)
+                    .with_terrain_material_metrics(36, 3, 4, 64)
                     .with_generated_visual_shape_metrics(
-                        528, 220, 1100, 37, 37, 62, 316, 5, 60, 74, 30, 12, 4.8, 7, 14, 462,
+                        528, 220, 1100, 37, 37, 62, 412, 5, 60, 74, 30, 12, 4.8, 7, 14, 574,
                     ),
             );
         }

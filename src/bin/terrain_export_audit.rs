@@ -8,10 +8,11 @@ use std::{
 
 const MIN_ISLAND_COUNT: u64 = 12;
 const MIN_TERRAIN_MESH_VERTICES: u64 = 2305;
-const MIN_TERRAIN_COLOR_BANDS: u64 = 5;
-const MIN_TERRAIN_MATERIAL_WEIGHT_BANDS: u64 = 12;
+const MIN_TERRAIN_COLOR_BANDS: u64 = 32;
+const MIN_TERRAIN_MATERIAL_WEIGHT_BANDS: u64 = 24;
 const MIN_TERRAIN_MATERIAL_CHANNELS: u64 = 3;
 const MIN_TERRAIN_MATERIAL_REGIONS: u64 = 4;
+const MIN_TERRAIN_TEXTURE_DETAIL_BANDS: u64 = 44;
 const MIN_TERRAIN_BASE_REGION_PROMILLE: u64 = 180;
 const MIN_TERRAIN_TRANSITION_REGION_PROMILLE: u64 = 350;
 const MIN_TERRAIN_HIGHLAND_REGION_PROMILLE: u64 = 180;
@@ -166,6 +167,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         value_u64(minimums, "terrain_material_regions"),
         MIN_TERRAIN_MATERIAL_REGIONS,
         "regions",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_texture_detail_bands",
+        value_u64(minimums, "terrain_texture_detail_bands"),
+        MIN_TERRAIN_TEXTURE_DETAIL_BANDS,
+        "bands",
     ));
     checks.push(check_at_least_f64(
         "terrain_relief_range",

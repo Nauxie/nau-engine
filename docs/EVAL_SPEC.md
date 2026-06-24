@@ -108,7 +108,7 @@ Export the generated island substrate for offline terrain/material inspection wi
 ./tools/terrain_export.sh target/terrain_export
 ```
 
-The export writes `manifest.json`, per-island terrain/cliff/underside OBJ meshes, `*_terrain_material_weights.csv` sidecars, and `audit.json`. The audit validates schema, mesh/material floors, artifact presence, OBJ vertex/face/color counts, terrain material-weight CSV rows/bands/channels, and derived material-region coverage. This is still an offline structural gate rather than a final art-quality score.
+The export writes `manifest.json`, per-island terrain/cliff/underside OBJ meshes, `*_terrain_material_weights.csv` sidecars, and `audit.json`. The audit validates schema, mesh/material/texture-detail floors, artifact presence, OBJ vertex/face/color counts, terrain material-weight CSV rows/bands/channels, derived material-region coverage, and minimum base/transition/highland/exposed region distribution. This is still an offline structural gate rather than a final art-quality score.
 
 ## Current Scenarios
 
@@ -302,6 +302,7 @@ Every sample includes:
 - `primitive_island_body_count`
 - `min_island_body_silhouette_segments`
 - `avg_island_body_silhouette_segments`
+- `min_island_body_mesh_vertices`
 - `max_island_body_mesh_vertices`
 - `generated_ground_cover_patch_count`
 - `min_ground_cover_blade_count`
@@ -371,7 +372,8 @@ The visual asset fields report the declared glTF scene inventory, how many slots
 The power-up fields report authored aerial boost gates, how many remain visible, how many have been collected, whether an effect is currently active, and the total activation count. They are route-readiness signals for the simple power-up slice, not final ability design.
 The environment-motion fields report how many resident near-LOD visuals are wind-responsive and the largest sampled transform offset from their base placement. They prove the visual motion layer exists and is active; they do not evaluate final animation quality.
 The island-terrain fields report generated terrain surface count, minimum terrain mesh vertex count, minimum vertex-color band count, minimum encoded material-weight band count, minimum material channel count, minimum derived material-region count, minimum terrain texture-detail band count, minimum sampled terrain relief range, and minimum cliff/underside color-band count. The material weights are currently encoded into `UV_1` as lush/highland and exposed-edge blend channels; material regions quantize those channels into stable base, transition, lush, and exposed-edge identities; texture-detail bands count coarse color bins in the terrain-specific procedural albedo maps, which are tiled across world-space terrain UVs instead of stretched once across an island, so future PBR material blending or glTF export has a measurable substrate. These are structural signals for denser terrain and stratified rock detail; they do not replace screenshot or human review for final material quality.
-The island-body fields report whether the catalogued route island bodies are generated procedural meshes or registered primitive/fallback body placeholders, plus the minimum silhouette segment count and body mesh vertex count signal. They are a structural signal for replacing cylinder-like islands; they do not prove final terrain art quality or texture fidelity.
+The island-body fields report whether the catalogued route island bodies are generated procedural meshes or registered primitive/fallback body placeholders, plus the minimum silhouette segment count and minimum/maximum body mesh vertex count signals. They are a structural signal for replacing cylinder-like islands; they do not prove final terrain art quality or texture fidelity.
+Current substrate gates require at least 32 terrain color bands, 24 terrain material-weight bands, 44 terrain texture-detail bands, 1600 island-body mesh vertices, 30 generated trunks/canopies, 400 canopy mesh vertices, 55 generated rocks, 24 generated weather clouds, and 560 weather-cloud mesh vertices.
 
 ## Summary Metrics
 
@@ -437,6 +439,7 @@ The summary aggregates:
 - max primitive island body count
 - min island body silhouette segment count
 - max average island body silhouette segment count
+- min island body mesh vertex count
 - max island body mesh vertex count
 - min generated tree trunk/canopy counts
 - min generated tree trunk/canopy mesh vertex counts
@@ -508,6 +511,7 @@ The pass/fail checks currently guard:
 - procedural island body count stays populated throughout the run so sky-island bodies cannot silently disappear or fall below the expected generated catalog
 - registered primitive island body count remains zero so explicit fallback body placeholders fail the eval loop
 - island body silhouette segment count stays above the scenario floor so the route cannot collapse back to low-resolution round islands
+- island body mesh vertex count stays above the generated-body floor so low-resolution cylinder-like bodies fail even if their silhouette segment count is high
 - resident island visuals stay under budget while streaming visibility is still hide/show based
 - stream visibility changes per frame stay under budget so chunk/LOD crossings do not churn too many visuals at once
 - hidden island visual count stays populated and resident visual fraction stays under budget so the catalog does not collapse into always-resident rendering
@@ -583,7 +587,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - `active_chunk_count` and `active_island_count` drive resident terrain/detail entities, and visual asset slots are declared, counted, and split by residency class, but there is no asynchronous asset streaming policy yet.
 - Missing glTF files are counted as placeholders and intentionally do not trigger load errors; only files that exist under `assets/` are queued through Bevy's `AssetServer`, and queued handles then report queued/loading/loaded/failed state. `ready_visual_asset_slot_count` means Bevy has loaded the scene asset, not merely that the file exists. `dependency_loaded_visual_asset_scene_count` and `preload_ready_visual_asset_scene_count` use Bevy's recursive dependency readiness so textures/buffers/subassets cannot lag behind a top-level scene handle without showing in evals; the always/streaming preload-ready counters split that signal by residency class. `spawned_visual_asset_scene_count` and `ready_visual_asset_scene_count` track Bevy scene-instance lifecycle separately from load state. The eval checks require all nine declared slots to load, dependency-preload, spawn, and report ready, and fail if any current fixture disappears; the self-authored player, glider, terrain, foliage, rock, water, route-marker, weather-layer, and distant-impostor fixtures are the current minimum viable asset pipeline surface. `asset_fixture_audit.json` now carries semantic component-name, mesh/material/vertex/triangle, normal/UV, blend-material, provenance, and named-player-clip fixture complexity checks that previously required ad hoc PR `jq`. `declared_animation_clip_count`, `ready_animation_clip_count`, `animation_player_count`, and `animation_graph_count` track the player scene's named clip/graph path separately from scene readiness; the eval checks gate the declared and ready clip inventory so the player animation contract cannot silently disappear.
 - LOD buckets drive resident island detail, inactive or non-near chunks use cheap impostors, and hidden/resident/churn counters quantify stream-window pressure.
-- The weather-cloud, generated ground-cover/tree/cloud/rock shape, detail biome palette, and environment-motion counters verify that cloud-layer entities, lobe counts, cloud-bank vertical depth, ground-cover patch/blade density, mesh vertex floors, per-island generated detail material identity, non-spherical stone scatter, and wind-responsive near-LOD visual motion exist. Focused unit tests assert that generated ground cover uses dense curved blades, generated trunks include branch mass, canopies use overlapping lobes, rocks use flattened irregular silhouettes, generated detail materials vary across biome families, and cloud clusters stack lobes vertically instead of collapsing into single cylinder/sphere/blob meshes. The screenshot audit now catches gross visual/composition failure and large low-detail scene surfaces, but neither proves atmosphere, fog, materials, vegetation, clouds, or animation look correct.
+- The weather-cloud, generated ground-cover/tree/cloud/rock shape, detail biome palette, and environment-motion counters verify that cloud-layer entities, lobe counts, cloud-bank vertical depth, ground-cover patch/blade density, mesh vertex floors, per-island generated detail material identity, non-spherical stone scatter, and wind-responsive near-LOD visual motion exist. Focused unit tests assert that generated ground cover uses dense curved blades, generated trunks include branch mass, canopies use overlapping lobes plus detail cards, rocks use flattened irregular silhouettes, generated detail materials vary across biome families, and cloud clusters stack lobes vertically with wisp-card edge geometry instead of collapsing into single cylinder/sphere/blob meshes. The screenshot audit now catches gross visual/composition failure and large low-detail scene surfaces, but neither proves atmosphere, fog, materials, vegetation, clouds, or animation look correct.
 - `entity_count` is still a coarse scene-scale proxy; streaming health should be read from resident island visual count and stream entity churn.
 - Route objectives are HUD/debug state backed by pure route objective helpers and serialized into eval samples, but only updraft and branch-recovery routes currently gate objective completion.
 - Aerial power-up gates are primitive glowing route rings with simple one-time collection state; there is no inventory UI, reset flow, audio/particles, or authored ability progression yet.

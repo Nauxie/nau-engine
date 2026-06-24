@@ -77,6 +77,7 @@ const TERRAIN_BIOME_PALETTE_COUNT: usize = 5;
 const INITIAL_SKY_CLEAR_COLOR: Color = Color::srgb(0.50, 0.68, 0.92);
 const TREE_CANOPY_LATITUDE_SEGMENTS: usize = 6;
 const TREE_CANOPY_LONGITUDE_SEGMENTS: usize = 12;
+const TREE_CANOPY_CARD_COUNT: usize = 12;
 const TREE_TRUNK_SEGMENTS: usize = 8;
 const TREE_BRANCH_COUNT: usize = 3;
 const TREE_BRANCH_SEGMENTS: usize = 6;
@@ -84,8 +85,11 @@ const ROCK_MESH_SEGMENTS: usize = 12;
 const ROCK_MESH_RINGS: usize = 6;
 const CLOUD_BANK_LOBES: usize = 14;
 const CLOUD_VEIL_LOBES: usize = 7;
+const CLOUD_WISP_CARDS_PER_LOBE: usize = 2;
 const GROUND_COVER_PATCHES: usize = 44;
 const GROUND_COVER_BLADES_PER_PATCH: usize = 5;
+#[cfg(test)]
+const DETAIL_CARD_VERTICES: usize = 8;
 const VERTICES_PER_GROUND_BLADE: usize = 5;
 const INDICES_PER_GROUND_BLADE: usize = 9;
 const AUTHORED_ASSET_PROBE_KINDS: &[VisualAssetKind] = &[
@@ -106,7 +110,7 @@ const ISLAND_TERRAIN_MATERIAL_CHANNELS: usize = 3;
 #[cfg(test)]
 const ISLAND_TERRAIN_MATERIAL_REGIONS: usize = 4;
 #[cfg(test)]
-const ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS: usize = 40;
+const ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS: usize = 44;
 const ISLAND_CLIFF_STRATA_BANDS: usize = 9;
 
 fn main() -> AppExit {
@@ -519,6 +523,7 @@ struct IslandContentDiagnostics {
     min_island_body_silhouette_segments: usize,
     max_island_body_silhouette_segments: usize,
     total_island_body_silhouette_segments: usize,
+    min_island_body_mesh_vertices: usize,
     max_island_body_mesh_vertices: usize,
     generated_ground_cover_patch_count: usize,
     min_ground_cover_blade_count: usize,
@@ -601,10 +606,13 @@ impl IslandContentDiagnostics {
     fn record_procedural_island_body(&mut self, silhouette_segments: usize, mesh_vertices: usize) {
         if self.procedural_island_body_count == 0 {
             self.min_island_body_silhouette_segments = silhouette_segments;
+            self.min_island_body_mesh_vertices = mesh_vertices;
         } else {
             self.min_island_body_silhouette_segments = self
                 .min_island_body_silhouette_segments
                 .min(silhouette_segments);
+            self.min_island_body_mesh_vertices =
+                self.min_island_body_mesh_vertices.min(mesh_vertices);
         }
         self.procedural_island_body_count += 1;
         self.max_island_body_silhouette_segments = self
@@ -1297,6 +1305,7 @@ struct TerrainExportReport {
     min_terrain_material_weight_bands: usize,
     min_terrain_material_channels: usize,
     min_terrain_material_regions: usize,
+    min_terrain_texture_detail_bands: usize,
     min_terrain_relief_range_m: f32,
     min_cliff_color_bands: usize,
     islands: Vec<TerrainExportIslandSummary>,
@@ -1348,6 +1357,7 @@ impl TerrainExportReport {
                 "    \"terrain_material_weight_bands\": {},\n",
                 "    \"terrain_material_channels\": {},\n",
                 "    \"terrain_material_regions\": {},\n",
+                "    \"terrain_texture_detail_bands\": {},\n",
                 "    \"terrain_relief_range_m\": {},\n",
                 "    \"cliff_color_bands\": {}\n",
                 "  }},\n",
@@ -1365,6 +1375,7 @@ impl TerrainExportReport {
             self.min_terrain_material_weight_bands,
             self.min_terrain_material_channels,
             self.min_terrain_material_regions,
+            self.min_terrain_texture_detail_bands,
             terrain_export_json_number(self.min_terrain_relief_range_m),
             self.min_cliff_color_bands,
             islands
@@ -1518,6 +1529,7 @@ fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<TerrainExport
         .map(|island| island.terrain.material_regions)
         .min()
         .unwrap_or(0);
+    let min_terrain_texture_detail_bands = terrain_export_texture_detail_band_floor();
     let min_terrain_relief_range_m = islands
         .iter()
         .map(|island| island.terrain.relief_range_m)
@@ -1541,6 +1553,7 @@ fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<TerrainExport
         min_terrain_material_weight_bands,
         min_terrain_material_channels,
         min_terrain_material_regions,
+        min_terrain_texture_detail_bands,
         min_terrain_relief_range_m,
         min_cliff_color_bands,
         islands,
@@ -1566,6 +1579,59 @@ fn terrain_export_mesh_summary(
         material_regions: mesh_terrain_material_region_count(mesh),
         relief_range_m: mesh_y_range(mesh),
     }
+}
+
+fn terrain_export_texture_detail_band_floor() -> usize {
+    [
+        (
+            [54, 128, 70, 255],
+            [28, 92, 48, 255],
+            [128, 174, 78, 255],
+            17,
+        ),
+        (
+            [96, 138, 70, 255],
+            [56, 104, 54, 255],
+            [166, 172, 90, 255],
+            19,
+        ),
+        (
+            [126, 104, 76, 255],
+            [80, 70, 60, 255],
+            [162, 138, 96, 255],
+            23,
+        ),
+        (
+            [52, 110, 118, 255],
+            [30, 80, 94, 255],
+            [142, 176, 164, 255],
+            29,
+        ),
+        (
+            [132, 132, 92, 255],
+            [86, 96, 70, 255],
+            [178, 166, 112, 255],
+            31,
+        ),
+        (
+            [70, 150, 94, 255],
+            [34, 100, 62, 255],
+            [156, 198, 112, 255],
+            37,
+        ),
+    ]
+    .into_iter()
+    .map(|(primary, secondary, accent, seed)| {
+        texture_detail_band_count(&procedural_terrain_surface_texture_data(
+            primary,
+            secondary,
+            accent,
+            seed,
+            TERRAIN_TEXTURE_SIZE,
+        ))
+    })
+    .min()
+    .unwrap_or(0)
 }
 
 fn write_mesh_obj(path: &Path, mesh: &Mesh, object_name: &str) -> std::io::Result<()> {
@@ -3303,6 +3369,32 @@ fn tree_canopy_mesh(radius: f32, seed: u32) -> Mesh {
         );
     }
 
+    for card in 0..TREE_CANOPY_CARD_COUNT {
+        let phase = card as f32 / TREE_CANOPY_CARD_COUNT as f32 * std::f32::consts::TAU
+            + random_unit(seed, card as u32, 151) * 0.24;
+        let outward = Vec3::new(phase.cos(), 0.0, phase.sin());
+        let tangent = Vec3::new(-phase.sin(), 0.0, phase.cos()).normalize();
+        let up = (Vec3::Y + outward * 0.16).normalize();
+        let center = Vec3::new(
+            outward.x * radius * (0.58 + random_unit(seed, card as u32, 163) * 0.22),
+            radius * (-0.08 + random_unit(seed, card as u32, 167) * 0.34),
+            outward.z * radius * (0.54 + random_unit(seed, card as u32, 173) * 0.20),
+        );
+        let half_width = radius * (0.20 + random_unit(seed, card as u32, 179) * 0.08);
+        let half_height = radius * (0.28 + random_unit(seed, card as u32, 181) * 0.12);
+        append_double_sided_detail_card(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            center,
+            tangent,
+            up,
+            half_width,
+            half_height,
+        );
+    }
+
     Mesh::new(
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::default(),
@@ -3404,6 +3496,39 @@ fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
             seed.wrapping_add(lobe as u32 * 101),
             0.15,
         );
+
+        for card in 0..CLOUD_WISP_CARDS_PER_LOBE {
+            let card_phase = phase
+                + card as f32 / CLOUD_WISP_CARDS_PER_LOBE as f32 * 1.9
+                + random_unit(seed, lobe as u32, 211 + card as u32) * 0.45;
+            let outward = Vec3::new(
+                card_phase.cos(),
+                0.10 + layer as f32 * 0.025,
+                card_phase.sin(),
+            )
+            .normalize();
+            let tangent = Vec3::new(-card_phase.sin(), 0.0, card_phase.cos()).normalize();
+            let up = (Vec3::Y * 0.78 + outward * 0.22).normalize();
+            let card_center = center
+                + outward
+                    * radius
+                    * (0.58 + random_unit(seed, lobe as u32, 223 + card as u32) * 0.22);
+            let half_width =
+                radius * (0.62 + random_unit(seed, lobe as u32, 229 + card as u32) * 0.22);
+            let half_height =
+                radius * (0.20 + random_unit(seed, lobe as u32, 233 + card as u32) * 0.10);
+            append_double_sided_detail_card(
+                &mut positions,
+                &mut normals,
+                &mut uvs,
+                &mut indices,
+                card_center,
+                tangent,
+                up,
+                half_width,
+                half_height,
+            );
+        }
     }
 
     Mesh::new(
@@ -3414,6 +3539,66 @@ fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn append_double_sided_detail_card(
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    uvs: &mut Vec<[f32; 2]>,
+    indices: &mut Vec<u32>,
+    center: Vec3,
+    tangent: Vec3,
+    up: Vec3,
+    half_width: f32,
+    half_height: f32,
+) {
+    let tangent = tangent.normalize_or_zero();
+    let up = up.normalize_or_zero();
+    if tangent.length_squared() <= 0.0001 || up.length_squared() <= 0.0001 {
+        return;
+    }
+    let normal = tangent.cross(up).normalize_or_zero();
+    if normal.length_squared() <= 0.0001 {
+        return;
+    }
+
+    let side = tangent * half_width;
+    let vertical = up * half_height;
+    let card_positions = [
+        center - side,
+        center + vertical,
+        center + side,
+        center - vertical,
+    ];
+    let card_uvs = [[0.0, 0.5], [0.5, 0.0], [1.0, 0.5], [0.5, 1.0]];
+    let start = positions.len() as u32;
+
+    for position in card_positions {
+        positions.push(position.to_array());
+        normals.push(normal.to_array());
+    }
+    uvs.extend(card_uvs);
+    for position in card_positions {
+        positions.push(position.to_array());
+        normals.push((-normal).to_array());
+    }
+    uvs.extend(card_uvs);
+
+    indices.extend([
+        start,
+        start + 1,
+        start + 2,
+        start,
+        start + 2,
+        start + 3,
+        start + 6,
+        start + 5,
+        start + 4,
+        start + 7,
+        start + 6,
+        start + 4,
+    ]);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -6167,7 +6352,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\nground cover patches {} blades {} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices min/max {} / {}\nground cover patches {} blades {} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -6239,6 +6424,7 @@ fn update_debug_readout(
         content_metrics.primitive_island_body_count,
         content_metrics.min_island_body_silhouette_segments,
         content_metrics.average_island_body_silhouette_segments(),
+        content_metrics.min_island_body_mesh_vertices,
         content_metrics.max_island_body_mesh_vertices,
         content_metrics.generated_ground_cover_patch_count,
         content_metrics.min_ground_cover_blade_count,
@@ -6510,6 +6696,7 @@ fn collect_eval_metrics(
         content_metrics.primitive_island_body_count,
         content_metrics.min_island_body_silhouette_segments,
         content_metrics.average_island_body_silhouette_segments(),
+        content_metrics.min_island_body_mesh_vertices,
         content_metrics.max_island_body_mesh_vertices,
     )
     .with_terrain_material_metrics(
@@ -7030,6 +7217,7 @@ mod tests {
         assert!(report.min_terrain_material_weight_bands >= ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS);
         assert!(report.min_terrain_material_channels >= ISLAND_TERRAIN_MATERIAL_CHANNELS);
         assert!(report.min_terrain_material_regions >= ISLAND_TERRAIN_MATERIAL_REGIONS);
+        assert!(report.min_terrain_texture_detail_bands >= ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS);
         assert!(report.min_terrain_relief_range_m >= 0.8);
         assert!(report.min_cliff_color_bands >= ISLAND_CLIFF_STRATA_BANDS / 2);
         assert!(launch_terrain.exists());
@@ -7042,6 +7230,7 @@ mod tests {
         ));
         assert!(manifest.contains("\"terrain_material_weight_bands\": 36"));
         assert!(manifest.contains("\"terrain_material_regions\": 4"));
+        assert!(manifest.contains("\"terrain_texture_detail_bands\": 47"));
 
         remove_existing_dir(&output_dir).expect("terrain export test dir should be removable");
     }
@@ -7115,6 +7304,7 @@ mod tests {
         let positions = positions(&mesh);
         let single_lobe_vertices =
             (TREE_CANOPY_LATITUDE_SEGMENTS + 1) * (TREE_CANOPY_LONGITUDE_SEGMENTS + 1);
+        let expected_card_vertices = TREE_CANOPY_CARD_COUNT * DETAIL_CARD_VERTICES;
         let min_y = positions
             .iter()
             .map(|position| position[1])
@@ -7129,6 +7319,7 @@ mod tests {
             .fold(0.0, f32::max);
 
         assert!(mesh.count_vertices() > single_lobe_vertices * 3);
+        assert!(mesh.count_vertices() >= single_lobe_vertices + expected_card_vertices);
         assert!(max_y - min_y > 1.9);
         assert!(horizontal_span > 1.45);
     }
@@ -7138,6 +7329,7 @@ mod tests {
         let mesh = cloud_cluster_mesh(99, CLOUD_BANK_LOBES);
         let positions = positions(&mesh);
         let lobe_vertices = (5 + 1) * (10 + 1);
+        let card_vertices = CLOUD_WISP_CARDS_PER_LOBE * DETAIL_CARD_VERTICES;
         let min_x = positions
             .iter()
             .map(|position| position[0])
@@ -7163,7 +7355,10 @@ mod tests {
             .map(|position| position[1])
             .fold(f32::NEG_INFINITY, f32::max);
 
-        assert_eq!(mesh.count_vertices(), CLOUD_BANK_LOBES * lobe_vertices);
+        assert_eq!(
+            mesh.count_vertices(),
+            CLOUD_BANK_LOBES * (lobe_vertices + card_vertices)
+        );
         assert!(
             max_x - min_x > 1.2,
             "cloud clusters should have lateral lobe structure"
@@ -7392,6 +7587,7 @@ mod tests {
             diagnostics.average_island_body_silhouette_segments(),
             ISLAND_BODY_SEGMENTS as f32
         );
+        assert_eq!(diagnostics.min_island_body_mesh_vertices, 821);
         assert_eq!(diagnostics.max_island_body_mesh_vertices, 833);
     }
 
