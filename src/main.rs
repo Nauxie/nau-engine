@@ -79,6 +79,9 @@ fn main() -> AppExit {
         println!("{}", usage());
         return AppExit::Success;
     };
+    let screenshot_eval = eval
+        .as_deref()
+        .is_some_and(|options| options.capture_screenshot);
 
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::srgb(0.50, 0.68, 0.92)))
@@ -98,7 +101,9 @@ fn main() -> AppExit {
         .insert_resource(RouteObjectiveTracker::default())
         .insert_resource(PowerUpCollectionState::default())
         .insert_resource(MouseLookState::default())
-        .insert_resource(DebugVisuals::default())
+        .insert_resource(DebugVisuals {
+            enabled: !screenshot_eval,
+        })
         .insert_resource(SkyRoute::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(primary_window(eval.as_deref())),
