@@ -10,8 +10,8 @@ The project has a Bevy sandbox with a primitive humanoid, playable ground moveme
 
 ## Last Known Good
 
-- Commit: `ee65bc8`
-- Merged PR: `#16` - Add streaming LOD diagnostics counters
+- Commit: `97e9aca`
+- Merged PR: `#17` - Add visual feel atmosphere and materials
 - Verification:
   - `cargo fmt --all --check`
   - `cargo check`
@@ -23,7 +23,7 @@ The project has a Bevy sandbox with a primitive humanoid, playable ground moveme
 
 Use this section for milestone handoffs, not routine worktree changes.
 
-- Active branch: `abhinav/visual-feel-atmosphere-materials`
+- Active branch: `abhinav/visual-screenshot-audit`
 - Open PRs: consult GitHub
 
 ## What Works
@@ -53,6 +53,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `updraft_route` eval proves a scripted route enters a gameplay lift field and gains altitude beyond the normal route ceiling.
 - `island_launch_to_landing` eval proves the scripted route reaches and lands on the target island.
 - Metric-only evals hide the native window by default; screenshot evals are explicit via `NAU_EVAL_SCREENSHOT=1`.
+- Screenshot evals run a non-golden visual audit for resolution, exposure, contrast, color variety, and edge density when launched through `tools/eval.sh`.
 - Eval summaries now include camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, weather cloud count, hidden/resident island visual counts, and stream visibility churn so camera/control/content/streaming regressions are visible in metrics.
 
 ## Known Issues
@@ -68,7 +69,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 
 ## Next Tasks
 
-1. Add visual checks for fixed camera checkpoint screenshots.
+1. Broaden screenshot audits toward semantic player, terrain, clipping, and route-readability checks.
 2. Tune gameplay updraft placement, readability, and route recovery.
 3. Promote stream-window counters into actual terrain despawn and asset streaming.
 4. Replace the primitive character/environment with a glTF asset pipeline once the traversal/render targets stop moving.
