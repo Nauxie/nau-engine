@@ -50,7 +50,8 @@ use nau_engine::movement::{
     face_flight_direction, lateral_response_speed, step_flight,
 };
 use nau_engine::world::{
-    LodBand, START_POSITION, SkyIsland, SkyRoute, StreamActivation, is_recovery_branch_island,
+    LodBand, START_POSITION, SkyIsland, SkyRoute, StreamActivation,
+    TERRAIN_VISUAL_FOOTING_OFFSET_M, is_recovery_branch_island,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -68,6 +69,7 @@ const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
 const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
 const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
 const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
+const ATTACHED_PLAYER_VISUAL_OFFSET_Y: f32 = -TERRAIN_VISUAL_FOOTING_OFFSET_M;
 const PROCEDURAL_TEXTURE_SIZE: u32 = 64;
 const TERRAIN_TEXTURE_SIZE: u32 = 128;
 const TERRAIN_UV_TILES_PER_METER: f32 = 1.0 / 12.0;
@@ -259,6 +261,24 @@ fn primary_window(eval: Option<&EvalOptions>) -> Window {
         focused: !hidden_metric_eval,
         ..default()
     }
+}
+
+fn authored_player_scene_transform() -> Transform {
+    Transform::from_xyz(0.0, ATTACHED_PLAYER_VISUAL_OFFSET_Y, 0.0)
+}
+
+fn authored_glider_scene_transform() -> Transform {
+    Transform::from_xyz(0.0, 1.35 + ATTACHED_PLAYER_VISUAL_OFFSET_Y, -0.45)
+}
+
+fn grounded_visual_foot_gap_m(player_y: f32, ground_floor_y: f32, mode: FlightMode) -> f32 {
+    if mode != FlightMode::Grounded {
+        return 0.0;
+    }
+
+    let visual_foot_y = player_y + authored_player_scene_transform().translation.y;
+    let terrain_visual_y = ground_floor_y - TERRAIN_VISUAL_FOOTING_OFFSET_M;
+    visual_foot_y - terrain_visual_y
 }
 
 #[derive(Component)]
@@ -2116,7 +2136,7 @@ fn setup(
             if let Some(scene_handle) = player_scene_handle.clone() {
                 let mut scene = parent.spawn((
                     SceneRoot(scene_handle),
-                    Transform::IDENTITY,
+                    authored_player_scene_transform(),
                     Visibility::Hidden,
                     AuthoredVisualScene {
                         kind: VisualAssetKind::PlayerCharacter,
@@ -2130,7 +2150,7 @@ fn setup(
             if let Some(scene_handle) = glider_scene_handle.clone() {
                 let mut scene = parent.spawn((
                     SceneRoot(scene_handle),
-                    Transform::from_xyz(0.0, 1.35, -0.45),
+                    authored_glider_scene_transform(),
                     Visibility::Hidden,
                     AuthoredVisualScene {
                         kind: VisualAssetKind::Glider,
@@ -6334,6 +6354,12 @@ fn collect_eval_metrics(
         scene.lift_fields.iter().copied(),
         scene.wind_fields.iter().copied(),
     );
+    let player_ground = scene.route.ground_at(transform.translation);
+    let visual_foot_gap_m = grounded_visual_foot_gap_m(
+        transform.translation.y,
+        player_ground.floor_y,
+        controller.mode,
+    );
     let scenario_target = run.scenario.target_island_name;
     let target_distance_m = scene
         .route
@@ -6473,6 +6499,7 @@ fn collect_eval_metrics(
     )
     .with_camera_follow_metrics(scene.camera_diagnostics.follow_direction_error_degrees)
     .with_camera_world_yaw_metrics(camera_world_yaw)
+    .with_visual_foot_gap(visual_foot_gap_m)
     .with_content_metrics(
         content_metrics.island_terrain_surface_count,
         content_metrics.min_island_terrain_mesh_vertices,
@@ -6871,6 +6898,22 @@ mod tests {
         assert_eq!(AuthoredPlayerClip::Glide.index(), 3);
         assert_eq!(AuthoredPlayerClip::AirBrake.index(), 4);
         assert_eq!(AuthoredPlayerClip::Land.index(), 5);
+    }
+
+    #[test]
+    fn attached_authored_visuals_share_terrain_footing_offset() {
+        assert_eq!(
+            authored_player_scene_transform().translation.y,
+            -TERRAIN_VISUAL_FOOTING_OFFSET_M
+        );
+        assert_eq!(
+            authored_glider_scene_transform().translation.y,
+            1.35 - TERRAIN_VISUAL_FOOTING_OFFSET_M
+        );
+        assert_eq!(
+            grounded_visual_foot_gap_m(28.0, 28.0, FlightMode::Grounded),
+            0.0
+        );
     }
 
     #[test]
