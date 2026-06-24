@@ -2762,6 +2762,8 @@ pub mod eval {
         pub min_abs_camera_yaw_degrees: f32,
         pub min_camera_pitch_offset_degrees: f32,
         pub max_camera_pitch_offset_degrees: f32,
+        pub min_objective_total_count: usize,
+        pub min_completed_objective_count: usize,
         pub require_target_landing: bool,
         pub max_final_target_distance_m: f32,
         pub min_target_landing_samples: u32,
@@ -2770,7 +2772,7 @@ pub mod eval {
     impl EvalThresholds {
         fn to_json(self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_sky_island_count\": {},\n{indent}  \"min_active_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"min_near_lod_island_count\": {},\n{indent}  \"min_mid_lod_island_count\": {},\n{indent}  \"min_far_lod_island_count\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"min_hidden_island_terrain_count\": {},\n{indent}  \"min_visible_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"min_hidden_island_detail_count\": {},\n{indent}  \"min_visible_route_beacon_count\": {},\n{indent}  \"min_weather_cloud_count\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"min_samples\": {},\n{indent}  \"min_horizontal_distance_m\": {},\n{indent}  \"min_max_altitude_m\": {},\n{indent}  \"min_max_speed_mps\": {},\n{indent}  \"min_gliding_samples\": {},\n{indent}  \"min_grounded_samples\": {},\n{indent}  \"min_lifted_samples\": {},\n{indent}  \"min_sky_island_count\": {},\n{indent}  \"min_active_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"min_near_lod_island_count\": {},\n{indent}  \"min_mid_lod_island_count\": {},\n{indent}  \"min_far_lod_island_count\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"min_hidden_island_terrain_count\": {},\n{indent}  \"min_visible_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"min_hidden_island_detail_count\": {},\n{indent}  \"min_visible_route_beacon_count\": {},\n{indent}  \"min_weather_cloud_count\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"min_entity_count\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"min_camera_obstruction_adjustment_m\": {},\n{indent}  \"min_abs_camera_yaw_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"min_objective_total_count\": {},\n{indent}  \"min_completed_objective_count\": {},\n{indent}  \"require_target_landing\": {},\n{indent}  \"max_final_target_distance_m\": {},\n{indent}  \"min_target_landing_samples\": {}\n{indent}}}",
                 self.min_samples,
                 json_number(self.min_horizontal_distance_m),
                 json_number(self.min_max_altitude_m),
@@ -2805,9 +2807,58 @@ pub mod eval {
                 json_number(self.min_abs_camera_yaw_degrees),
                 json_number(self.min_camera_pitch_offset_degrees),
                 json_number(self.max_camera_pitch_offset_degrees),
+                self.min_objective_total_count,
+                self.min_completed_objective_count,
                 self.require_target_landing,
                 json_number(self.max_final_target_distance_m),
                 self.min_target_landing_samples,
+            )
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct EvalObjectiveProgress {
+        pub completed_count: usize,
+        pub total_count: usize,
+        pub current_label: &'static str,
+        pub current_distance_m: f32,
+        pub complete: bool,
+    }
+
+    impl EvalObjectiveProgress {
+        pub fn new(
+            completed_count: usize,
+            total_count: usize,
+            current_label: &'static str,
+            current_distance_m: f32,
+            complete: bool,
+        ) -> Self {
+            Self {
+                completed_count: completed_count.min(total_count),
+                total_count,
+                current_label,
+                current_distance_m,
+                complete,
+            }
+        }
+
+        pub fn current_step(self) -> usize {
+            if self.total_count == 0 {
+                0
+            } else {
+                (self.completed_count + 1).min(self.total_count)
+            }
+        }
+
+        fn to_json(self) -> String {
+            format!(
+                "{{\"completed_count\":{},\"total_count\":{},\"current_step\":{},\"current_label\":{},\"current_distance_m\":{},\"complete\":{}}}",
+                self.completed_count,
+                self.total_count,
+                self.current_step(),
+                json_string(self.current_label),
+                json_number(self.current_distance_m),
+                self.complete,
             )
         }
     }
@@ -2840,6 +2891,7 @@ pub mod eval {
         pub lift_field_count: usize,
         pub target_distance_m: f32,
         pub on_landing_target: bool,
+        pub objective: EvalObjectiveProgress,
         pub sky_island_count: usize,
         pub active_chunk_count: usize,
         pub active_island_count: usize,
@@ -2888,6 +2940,7 @@ pub mod eval {
             lift_field_count: usize,
             target_distance_m: f32,
             on_landing_target: bool,
+            objective: EvalObjectiveProgress,
             sky_island_count: usize,
             active_chunk_count: usize,
             active_island_count: usize,
@@ -2935,6 +2988,7 @@ pub mod eval {
                 lift_field_count,
                 target_distance_m,
                 on_landing_target,
+                objective,
                 sky_island_count,
                 active_chunk_count,
                 active_island_count,
@@ -2959,7 +3013,7 @@ pub mod eval {
 
         pub fn to_json(&self) -> String {
             format!(
-                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"readable_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"weather_cloud_count\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"entity_count\":{}}}",
+                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"readable_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"objective\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"weather_cloud_count\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"entity_count\":{}}}",
                 self.frame,
                 json_number(self.time_secs),
                 json_array3(self.position),
@@ -2986,6 +3040,7 @@ pub mod eval {
                 self.lift_field_count,
                 json_number(self.target_distance_m),
                 self.on_landing_target,
+                self.objective.to_json(),
                 self.sky_island_count,
                 self.active_chunk_count,
                 self.active_island_count,
@@ -3054,6 +3109,10 @@ pub mod eval {
         max_stream_visibility_changes_per_frame: usize,
         total_stream_visibility_changes: usize,
         max_entity_count: usize,
+        max_objective_total_count: usize,
+        max_completed_objective_count: usize,
+        min_objective_distance_m: f32,
+        objective_complete_samples: u32,
         target_landing_samples: u32,
         lifted_samples: u32,
         readable_lift_samples: u32,
@@ -3103,6 +3162,7 @@ pub mod eval {
                 self.min_altitude_m = sample.altitude_m;
                 self.min_camera_surface_clearance_m = sample.camera_surface_clearance_m;
                 self.min_target_distance_m = sample.target_distance_m;
+                self.min_objective_distance_m = sample.objective.current_distance_m;
                 self.min_camera_pitch_degrees = sample.camera_pitch_degrees;
                 self.max_camera_pitch_degrees = sample.camera_pitch_degrees;
                 self.min_camera_pitch_offset_degrees = sample.camera_pitch_offset_degrees;
@@ -3202,6 +3262,18 @@ pub mod eval {
                 .total_stream_visibility_changes
                 .max(sample.total_stream_visibility_changes);
             self.max_entity_count = self.max_entity_count.max(sample.entity_count);
+            self.max_objective_total_count = self
+                .max_objective_total_count
+                .max(sample.objective.total_count);
+            self.max_completed_objective_count = self
+                .max_completed_objective_count
+                .max(sample.objective.completed_count);
+            self.min_objective_distance_m = self
+                .min_objective_distance_m
+                .min(sample.objective.current_distance_m);
+            if sample.objective.complete {
+                self.objective_complete_samples += 1;
+            }
             if sample.on_landing_target {
                 self.target_landing_samples += 1;
             }
@@ -3236,6 +3308,14 @@ pub mod eval {
                 .final_sample
                 .as_ref()
                 .map_or(0.0, |sample| sample.target_distance_m);
+            let final_objective_completed_count = self
+                .final_sample
+                .as_ref()
+                .map_or(0, |sample| sample.objective.completed_count);
+            let final_objective_distance_m = self
+                .final_sample
+                .as_ref()
+                .map_or(0.0, |sample| sample.objective.current_distance_m);
             let frame_time_stats = EvalFrameTimeStats::from_samples(&self.frame_times_ms);
             let mut checks = vec![
                 EvalCheck::at_least(
@@ -3375,6 +3455,18 @@ pub mod eval {
                     self.max_entity_count as f32,
                     thresholds.min_entity_count as f32,
                     "entities",
+                ),
+                EvalCheck::at_least(
+                    "objective_total_count",
+                    self.max_objective_total_count as f32,
+                    thresholds.min_objective_total_count as f32,
+                    "objectives",
+                ),
+                EvalCheck::at_least(
+                    "completed_objective_count",
+                    self.max_completed_objective_count as f32,
+                    thresholds.min_completed_objective_count as f32,
+                    "objectives",
                 ),
                 EvalCheck::at_most(
                     "max_camera_distance",
@@ -3528,6 +3620,12 @@ pub mod eval {
                         .max_stream_visibility_changes_per_frame,
                     total_stream_visibility_changes: self.total_stream_visibility_changes,
                     max_entity_count: self.max_entity_count,
+                    objective_total_count: self.max_objective_total_count,
+                    max_completed_objective_count: self.max_completed_objective_count,
+                    final_objective_completed_count,
+                    min_objective_distance_m: self.min_objective_distance_m,
+                    final_objective_distance_m,
+                    objective_complete_samples: self.objective_complete_samples,
                     target_landing_samples: self.target_landing_samples,
                     lifted_samples: self.lifted_samples,
                     readable_lift_samples: self.readable_lift_samples,
@@ -3618,6 +3716,12 @@ pub mod eval {
         pub max_stream_visibility_changes_per_frame: usize,
         pub total_stream_visibility_changes: usize,
         pub max_entity_count: usize,
+        pub objective_total_count: usize,
+        pub max_completed_objective_count: usize,
+        pub final_objective_completed_count: usize,
+        pub min_objective_distance_m: f32,
+        pub final_objective_distance_m: f32,
+        pub objective_complete_samples: u32,
         pub target_landing_samples: u32,
         pub lifted_samples: u32,
         pub readable_lift_samples: u32,
@@ -3630,7 +3734,7 @@ pub mod eval {
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"objective_total_count\": {},\n{indent}  \"max_completed_objective_count\": {},\n{indent}  \"final_objective_completed_count\": {},\n{indent}  \"min_objective_distance_m\": {},\n{indent}  \"final_objective_distance_m\": {},\n{indent}  \"objective_complete_samples\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
                 json_number(self.avg_frame_time_ms),
                 json_number(self.p95_frame_time_ms),
@@ -3677,6 +3781,12 @@ pub mod eval {
                 self.max_stream_visibility_changes_per_frame,
                 self.total_stream_visibility_changes,
                 self.max_entity_count,
+                self.objective_total_count,
+                self.max_completed_objective_count,
+                self.final_objective_completed_count,
+                json_number(self.min_objective_distance_m),
+                json_number(self.final_objective_distance_m),
+                self.objective_complete_samples,
                 self.target_landing_samples,
                 self.lifted_samples,
                 self.readable_lift_samples,
@@ -3948,6 +4058,8 @@ pub mod eval {
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
                 max_camera_pitch_offset_degrees: 0.0,
+                min_objective_total_count: 2,
+                min_completed_objective_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 40.0,
                 min_target_landing_samples: 0,
@@ -3998,6 +4110,8 @@ pub mod eval {
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
                 max_camera_pitch_offset_degrees: 0.0,
+                min_objective_total_count: 2,
+                min_completed_objective_count: 0,
                 require_target_landing: true,
                 max_final_target_distance_m: 26.0,
                 min_target_landing_samples: 1,
@@ -4048,6 +4162,8 @@ pub mod eval {
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
                 max_camera_pitch_offset_degrees: 0.0,
+                min_objective_total_count: 2,
+                min_completed_objective_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 280.0,
                 min_target_landing_samples: 0,
@@ -4098,6 +4214,8 @@ pub mod eval {
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
                 max_camera_pitch_offset_degrees: 0.0,
+                min_objective_total_count: 2,
+                min_completed_objective_count: 1,
                 require_target_landing: false,
                 max_final_target_distance_m: 180.0,
                 min_target_landing_samples: 0,
@@ -4148,6 +4266,8 @@ pub mod eval {
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
                 max_camera_pitch_offset_degrees: 0.0,
+                min_objective_total_count: 3,
+                min_completed_objective_count: 3,
                 require_target_landing: true,
                 max_final_target_distance_m: 18.0,
                 min_target_landing_samples: 2,
@@ -4198,6 +4318,8 @@ pub mod eval {
                 min_abs_camera_yaw_degrees: 25.0,
                 min_camera_pitch_offset_degrees: -10.0,
                 max_camera_pitch_offset_degrees: 10.0,
+                min_objective_total_count: 2,
+                min_completed_objective_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 280.0,
                 min_target_landing_samples: 0,
@@ -4248,6 +4370,8 @@ pub mod eval {
                 min_abs_camera_yaw_degrees: 8.0,
                 min_camera_pitch_offset_degrees: 0.0,
                 max_camera_pitch_offset_degrees: 0.0,
+                min_objective_total_count: 2,
+                min_completed_objective_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 280.0,
                 min_target_landing_samples: 0,
@@ -4298,6 +4422,8 @@ pub mod eval {
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
                 max_camera_pitch_offset_degrees: 0.0,
+                min_objective_total_count: 2,
+                min_completed_objective_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 280.0,
                 min_target_landing_samples: 0,
@@ -4348,6 +4474,8 @@ pub mod eval {
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
                 max_camera_pitch_offset_degrees: 0.0,
+                min_objective_total_count: 2,
+                min_completed_objective_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 280.0,
                 min_target_landing_samples: 0,
@@ -4398,6 +4526,8 @@ pub mod eval {
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
                 max_camera_pitch_offset_degrees: 0.0,
+                min_objective_total_count: 2,
+                min_completed_objective_count: 0,
                 require_target_landing: false,
                 max_final_target_distance_m: 520.0,
                 min_target_landing_samples: 0,
@@ -4504,6 +4634,7 @@ pub mod eval {
             assert!(scripted_input(scenario, 120).right);
             assert!(scripted_input(scenario, 180).glide);
             assert!(!scripted_input(scenario, 180).dive);
+            assert_eq!(scenario.thresholds.min_completed_objective_count, 1);
         }
 
         #[test]
@@ -4512,6 +4643,8 @@ pub mod eval {
 
             assert_eq!(scenario.target_island_name, Some("sunlit terrace"));
             assert!(scenario.thresholds.require_target_landing);
+            assert_eq!(scenario.thresholds.min_objective_total_count, 3);
+            assert_eq!(scenario.thresholds.min_completed_objective_count, 3);
             assert!(scripted_input(scenario, 1).launch);
             assert!(scripted_input(scenario, 540).dive);
             assert!(scripted_input(scenario, 600).backward);
@@ -4625,6 +4758,7 @@ pub mod eval {
         fn accumulator_marks_current_baseline_shape_as_passing() {
             let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
             let mut accumulator = EvalAccumulator::default();
+            let objective = EvalObjectiveProgress::new(0, 2, "near route updraft", 140.0, false);
 
             accumulator.observe(EvalSample::new(
                 0,
@@ -4651,6 +4785,7 @@ pub mod eval {
                 1,
                 140.0,
                 false,
+                objective,
                 12,
                 25,
                 6,
@@ -4696,6 +4831,7 @@ pub mod eval {
                 1,
                 0.0,
                 false,
+                objective,
                 12,
                 25,
                 6,
@@ -4742,6 +4878,7 @@ pub mod eval {
                     1,
                     140.0 - frame as f32 * 4.0,
                     false,
+                    objective,
                     12,
                     25,
                     6,
@@ -4775,7 +4912,10 @@ pub mod eval {
             );
 
             assert!(summary.passed);
+            assert_eq!(summary.metrics.objective_total_count, 2);
+            assert_eq!(summary.metrics.max_completed_objective_count, 0);
             assert!(summary.to_json().contains("\"passed\": true"));
+            assert!(summary.to_json().contains("\"objective\":"));
             assert!(
                 summary
                     .to_json()

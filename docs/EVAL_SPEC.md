@@ -200,7 +200,7 @@ Each run writes to the eval output directory:
 - `visual_audit.json`: non-golden image audit for screenshot evals run through `tools/eval.sh` unless `NAU_EVAL_VISUAL_AUDIT=0` is set.
 
 The summary is the primary artifact for agents. Screenshots are for visual review and should not be treated as pixel-perfect golden images.
-`tools/eval.sh` checks that declared PNG artifacts exist, are large enough, and pass a lightweight visual audit for resolution, nonblack/nonwhite exposure, luma variance, color variety, edge density, per-frame scene coverage, per-frame center detail, per-frame HUD-text dominance, and sequence-level top-sky coverage across the final screenshot plus fixed checkpoints. The audit catches gross render and composition failures; it does not prove exact player visibility, route-marker readability, or AAA-quality art direction.
+`tools/eval.sh` checks that declared PNG artifacts exist, are large enough, and pass a lightweight visual audit for resolution, nonblack/nonwhite exposure, luma variance, color variety, edge density, per-frame scene coverage, per-frame center detail, per-frame player visibility, per-frame HUD-text dominance, sequence-level route-marker readability, and sequence-level top-sky coverage across the final screenshot plus fixed checkpoints. The audit catches gross render and composition failures; it does not prove route-marker identity, severe clipping class, or AAA-quality art direction.
 
 ## Sample Fields
 
@@ -232,6 +232,7 @@ Every sample includes:
 - `lift_field_count`
 - `target_distance_m`, measured against the scenario target island
 - `on_landing_target`, measured against the scenario target island
+- `objective`, containing completed count, total count, current step, current label, current distance, and complete state
 - `sky_island_count`
 - `active_chunk_count`
 - `active_island_count`
@@ -300,6 +301,10 @@ The summary aggregates:
 - max stream visibility changes per frame
 - total stream visibility changes
 - max scene entity count
+- objective total count
+- max and final completed objective count
+- min and final objective distance
+- objective complete sample count
 - target landing sample count
 - active lift sample count
 - readable and unreadable active-lift sample counts
@@ -326,6 +331,7 @@ The pass/fail checks currently guard:
 - visible island detail stays under the scenario budget, proving distance LOD is active
 - hidden island detail stays populated, proving distance LOD is actually culling resident detail
 - visible route beacons stay populated so distant route readability is not culled away
+- objective totals stay populated, and objective-route scenarios complete their required objective count
 - weather cloud count stays populated so the first non-debug weather layer cannot silently disappear
 - resident island visuals stay under budget while streaming visibility is still hide/show based
 - stream visibility changes per frame stay under budget so chunk/LOD crossings do not churn too many visuals at once
@@ -388,7 +394,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 
 - Metric-only evals hide the native Bevy window, but still instantiate the window/rendering stack.
 - Screenshot evals still need a visible native Bevy window.
-- Screenshot evals now run a lightweight image and scene-composition audit, but exact player visibility, terrain identity, route-marker readability, and art quality still need human/agent inspection.
+- Screenshot evals now run a lightweight image and scene-composition audit, including basic player visibility and route-marker readability heuristics, but terrain identity, severe clipping class, route-marker identity, and art quality still need human/agent inspection.
 - There is no simulation-only binary yet.
 - Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
 - Island collision follows deterministic authored terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
@@ -396,7 +402,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - LOD buckets drive resident island detail, inactive or non-near chunks use cheap impostors, and hidden/resident/churn counters quantify stream-window pressure.
 - The weather-cloud counter verifies that cloud-layer entities exist, and the screenshot audit catches gross visual/composition failure, but neither proves atmosphere, fog, materials, and clouds look correct.
 - `entity_count` is still a coarse scene-scale proxy; streaming health should be read from resident island visual count and stream entity churn.
-- Route objectives are currently HUD/debug state backed by pure route objective helpers; objective progress is not yet serialized in eval samples.
+- Route objectives are HUD/debug state backed by pure route objective helpers and serialized into eval samples, but only updraft and branch-recovery routes currently gate objective completion.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
-These are acceptable for the current harness. The next meaningful upgrades are explicit visual checks for player and route-marker readability, objective-progress eval fields, asynchronous asset-loading simulation, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
+These are acceptable for the current harness. The next meaningful upgrades are severe-clipping classification, route-marker identity checks, asynchronous asset-loading simulation, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
