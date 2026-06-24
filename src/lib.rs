@@ -35,6 +35,7 @@ pub mod asset_pipeline {
         pub kind: VisualAssetKind,
         pub label: &'static str,
         pub gltf_scene_path: &'static str,
+        pub animation_clip_names: &'static [&'static str],
         pub residency: VisualAssetResidency,
     }
 
@@ -69,6 +70,13 @@ pub mod asset_pipeline {
         Ready,
     }
 
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+    pub struct VisualAssetAnimationState {
+        pub ready_clip_count: usize,
+        pub animation_player_linked: bool,
+        pub animation_graph_ready: bool,
+    }
+
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct VisualAssetPipelineMetrics {
         pub slot_count: usize,
@@ -88,61 +96,83 @@ pub mod asset_pipeline {
         pub near_lod_slot_count: usize,
         pub far_lod_slot_count: usize,
         pub weather_slot_count: usize,
+        pub declared_animation_clip_count: usize,
+        pub ready_animation_clip_count: usize,
+        pub animation_player_count: usize,
+        pub animation_graph_count: usize,
     }
+
+    pub const PLAYER_ANIMATION_CLIP_NAMES: &[&str] = &[
+        "Idle_Loop",
+        "Jog_Fwd_Loop",
+        "Launch_Start",
+        "Glide_Loop",
+        "Air_Brake",
+        "Land",
+    ];
 
     pub const VISUAL_ASSET_SPECS: [VisualAssetSpec; 9] = [
         VisualAssetSpec {
             kind: VisualAssetKind::PlayerCharacter,
             label: "player character rig",
             gltf_scene_path: "models/player/player.glb",
+            animation_clip_names: PLAYER_ANIMATION_CLIP_NAMES,
             residency: VisualAssetResidency::Always,
         },
         VisualAssetSpec {
             kind: VisualAssetKind::Glider,
             label: "player glider",
             gltf_scene_path: "models/player/glider.glb",
+            animation_clip_names: &[],
             residency: VisualAssetResidency::Always,
         },
         VisualAssetSpec {
             kind: VisualAssetKind::IslandTerrain,
             label: "island terrain kit",
             gltf_scene_path: "models/world/island_terrain.glb",
+            animation_clip_names: &[],
             residency: VisualAssetResidency::StreamWindow,
         },
         VisualAssetSpec {
             kind: VisualAssetKind::IslandFoliage,
             label: "island foliage kit",
             gltf_scene_path: "models/world/foliage.glb",
+            animation_clip_names: &[],
             residency: VisualAssetResidency::NearLod,
         },
         VisualAssetSpec {
             kind: VisualAssetKind::IslandRock,
             label: "island rock kit",
             gltf_scene_path: "models/world/rocks.glb",
+            animation_clip_names: &[],
             residency: VisualAssetResidency::StreamWindow,
         },
         VisualAssetSpec {
             kind: VisualAssetKind::IslandWater,
             label: "pond and water kit",
             gltf_scene_path: "models/world/water.glb",
+            animation_clip_names: &[],
             residency: VisualAssetResidency::NearLod,
         },
         VisualAssetSpec {
             kind: VisualAssetKind::RouteMarker,
             label: "route marker kit",
             gltf_scene_path: "models/world/route_markers.glb",
+            animation_clip_names: &[],
             residency: VisualAssetResidency::Always,
         },
         VisualAssetSpec {
             kind: VisualAssetKind::WeatherLayer,
             label: "weather cloud layer kit",
             gltf_scene_path: "models/world/weather_layers.glb",
+            animation_clip_names: &[],
             residency: VisualAssetResidency::Weather,
         },
         VisualAssetSpec {
             kind: VisualAssetKind::DistantImpostor,
             label: "sky island distant impostor kit",
             gltf_scene_path: "models/world/island_impostors.glb",
+            animation_clip_names: &[],
             residency: VisualAssetResidency::FarLod,
         },
     ];
@@ -154,6 +184,7 @@ pub mod asset_pipeline {
     pub const NEAR_LOD_VISUAL_ASSET_SLOT_COUNT: usize = 2;
     pub const FAR_LOD_VISUAL_ASSET_SLOT_COUNT: usize = 1;
     pub const WEATHER_VISUAL_ASSET_SLOT_COUNT: usize = 1;
+    pub const DECLARED_VISUAL_ANIMATION_CLIP_COUNT: usize = PLAYER_ANIMATION_CLIP_NAMES.len();
 
     pub fn visual_asset_pipeline_metrics(
         specs: &[VisualAssetSpec],
@@ -180,6 +211,20 @@ pub mod asset_pipeline {
         mut asset_load_state: impl FnMut(&VisualAssetSpec) -> VisualAssetLoadState,
         mut scene_state: impl FnMut(&VisualAssetSpec) -> VisualAssetSceneState,
     ) -> VisualAssetPipelineMetrics {
+        visual_asset_pipeline_metrics_with_animation_states(
+            specs,
+            |spec| asset_load_state(spec),
+            |spec| scene_state(spec),
+            |_| VisualAssetAnimationState::default(),
+        )
+    }
+
+    pub fn visual_asset_pipeline_metrics_with_animation_states(
+        specs: &[VisualAssetSpec],
+        mut asset_load_state: impl FnMut(&VisualAssetSpec) -> VisualAssetLoadState,
+        mut scene_state: impl FnMut(&VisualAssetSpec) -> VisualAssetSceneState,
+        mut animation_state: impl FnMut(&VisualAssetSpec) -> VisualAssetAnimationState,
+    ) -> VisualAssetPipelineMetrics {
         let mut metrics = VisualAssetPipelineMetrics::default();
 
         for spec in specs {
@@ -187,6 +232,7 @@ pub mod asset_pipeline {
             if !spec.gltf_scene_path.is_empty() {
                 metrics.gltf_scene_slot_count += 1;
             }
+            metrics.declared_animation_clip_count += spec.animation_clip_names.len();
             match spec.residency {
                 VisualAssetResidency::Always => metrics.always_slot_count += 1,
                 VisualAssetResidency::StreamWindow => {
@@ -206,6 +252,13 @@ pub mod asset_pipeline {
                     metrics.streaming_slot_count += 1;
                 }
             }
+
+            let animation_state = animation_state(spec);
+            metrics.ready_animation_clip_count += animation_state
+                .ready_clip_count
+                .min(spec.animation_clip_names.len());
+            metrics.animation_player_count += usize::from(animation_state.animation_player_linked);
+            metrics.animation_graph_count += usize::from(animation_state.animation_graph_ready);
 
             match asset_load_state(spec) {
                 VisualAssetLoadState::Missing => {
@@ -247,9 +300,9 @@ pub mod asset_pipeline {
     #[cfg(test)]
     mod tests {
         use crate::asset_pipeline::{
-            ALWAYS_VISUAL_ASSET_SLOT_COUNT, FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
-            NEAR_LOD_VISUAL_ASSET_SLOT_COUNT, STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
-            WEATHER_VISUAL_ASSET_SLOT_COUNT,
+            ALWAYS_VISUAL_ASSET_SLOT_COUNT, DECLARED_VISUAL_ANIMATION_CLIP_COUNT,
+            FAR_LOD_VISUAL_ASSET_SLOT_COUNT, NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
+            STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT, WEATHER_VISUAL_ASSET_SLOT_COUNT,
         };
 
         use super::*;
@@ -285,6 +338,13 @@ pub mod asset_pipeline {
             );
             assert_eq!(metrics.far_lod_slot_count, FAR_LOD_VISUAL_ASSET_SLOT_COUNT);
             assert_eq!(metrics.weather_slot_count, WEATHER_VISUAL_ASSET_SLOT_COUNT);
+            assert_eq!(
+                metrics.declared_animation_clip_count,
+                DECLARED_VISUAL_ANIMATION_CLIP_COUNT
+            );
+            assert_eq!(metrics.ready_animation_clip_count, 0);
+            assert_eq!(metrics.animation_player_count, 0);
+            assert_eq!(metrics.animation_graph_count, 0);
             assert!(
                 VISUAL_ASSET_SPECS
                     .iter()
@@ -349,6 +409,40 @@ pub mod asset_pipeline {
             assert_eq!(metrics.ready_slot_count, 3);
             assert_eq!(metrics.spawned_scene_count, 2);
             assert_eq!(metrics.ready_scene_count, 1);
+        }
+
+        #[test]
+        fn asset_metrics_track_animation_graph_readiness() {
+            let metrics = visual_asset_pipeline_metrics_with_animation_states(
+                &VISUAL_ASSET_SPECS,
+                |spec| match spec.kind {
+                    VisualAssetKind::PlayerCharacter => VisualAssetLoadState::Loaded,
+                    _ => VisualAssetLoadState::Missing,
+                },
+                |spec| match spec.kind {
+                    VisualAssetKind::PlayerCharacter => VisualAssetSceneState::Ready,
+                    _ => VisualAssetSceneState::NotSpawned,
+                },
+                |spec| match spec.kind {
+                    VisualAssetKind::PlayerCharacter => VisualAssetAnimationState {
+                        ready_clip_count: PLAYER_ANIMATION_CLIP_NAMES.len(),
+                        animation_player_linked: true,
+                        animation_graph_ready: true,
+                    },
+                    _ => VisualAssetAnimationState::default(),
+                },
+            );
+
+            assert_eq!(
+                metrics.declared_animation_clip_count,
+                DECLARED_VISUAL_ANIMATION_CLIP_COUNT
+            );
+            assert_eq!(
+                metrics.ready_animation_clip_count,
+                DECLARED_VISUAL_ANIMATION_CLIP_COUNT
+            );
+            assert_eq!(metrics.animation_player_count, 1);
+            assert_eq!(metrics.animation_graph_count, 1);
         }
     }
 }
@@ -3891,6 +3985,10 @@ pub mod eval {
         pub near_lod_visual_asset_slot_count: usize,
         pub far_lod_visual_asset_slot_count: usize,
         pub weather_visual_asset_slot_count: usize,
+        pub declared_animation_clip_count: usize,
+        pub ready_animation_clip_count: usize,
+        pub animation_player_count: usize,
+        pub animation_graph_count: usize,
         pub power_up_count: usize,
         pub visible_power_up_count: usize,
         pub collected_power_up_count: usize,
@@ -3973,6 +4071,10 @@ pub mod eval {
             near_lod_visual_asset_slot_count: usize,
             far_lod_visual_asset_slot_count: usize,
             weather_visual_asset_slot_count: usize,
+            declared_animation_clip_count: usize,
+            ready_animation_clip_count: usize,
+            animation_player_count: usize,
+            animation_graph_count: usize,
             power_up_count: usize,
             visible_power_up_count: usize,
             collected_power_up_count: usize,
@@ -4076,6 +4178,10 @@ pub mod eval {
                 near_lod_visual_asset_slot_count,
                 far_lod_visual_asset_slot_count,
                 weather_visual_asset_slot_count,
+                declared_animation_clip_count,
+                ready_animation_clip_count,
+                animation_player_count,
+                animation_graph_count,
                 power_up_count,
                 visible_power_up_count,
                 collected_power_up_count,
@@ -4166,7 +4272,7 @@ pub mod eval {
 
         pub fn to_json(&self) -> String {
             format!(
-                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"desired_body_yaw_error_degrees\":{},\"desired_body_heading_error_degrees\":{},\"desired_heading_alignment_mps\":{},\"lateral_response_mps\":{},\"lateral_input_active\":{},\"movement_input_lateral_axis\":{},\"movement_input_forward_axis\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_follow_direction_error_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_world_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"readable_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"objective\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"weather_cloud_count\":{},\"environment_motion_visual_count\":{},\"max_environment_motion_offset_m\":{},\"procedural_island_body_count\":{},\"primitive_island_body_count\":{},\"min_island_body_silhouette_segments\":{},\"avg_island_body_silhouette_segments\":{},\"max_island_body_mesh_vertices\":{},\"generated_tree_trunk_count\":{},\"generated_tree_canopy_count\":{},\"min_tree_trunk_mesh_vertices\":{},\"min_tree_canopy_mesh_vertices\":{},\"generated_weather_cloud_count\":{},\"min_weather_cloud_lobe_count\":{},\"max_weather_cloud_lobe_count\":{},\"min_weather_cloud_mesh_vertices\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"catalog_island_visual_count\":{},\"hidden_island_visual_count\":{},\"resident_island_visual_fraction\":{},\"stream_spawned_visuals_this_frame\":{},\"stream_despawned_visuals_this_frame\":{},\"max_stream_spawned_visuals_per_frame\":{},\"max_stream_despawned_visuals_per_frame\":{},\"total_stream_spawned_visuals\":{},\"total_stream_despawned_visuals\":{},\"entity_count\":{},\"visual_asset_slot_count\":{},\"gltf_scene_asset_slot_count\":{},\"ready_visual_asset_slot_count\":{},\"placeholder_visual_asset_slot_count\":{},\"streaming_visual_asset_slot_count\":{},\"missing_visual_asset_slot_count\":{},\"queued_visual_asset_scene_count\":{},\"loading_visual_asset_scene_count\":{},\"loaded_visual_asset_scene_count\":{},\"failed_visual_asset_scene_count\":{},\"spawned_visual_asset_scene_count\":{},\"ready_visual_asset_scene_count\":{},\"always_visual_asset_slot_count\":{},\"stream_window_visual_asset_slot_count\":{},\"near_lod_visual_asset_slot_count\":{},\"far_lod_visual_asset_slot_count\":{},\"weather_visual_asset_slot_count\":{},\"power_up_count\":{},\"visible_power_up_count\":{},\"collected_power_up_count\":{},\"active_power_up_effects\":{},\"total_power_up_activations\":{}}}",
+                "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"desired_body_yaw_error_degrees\":{},\"desired_body_heading_error_degrees\":{},\"desired_heading_alignment_mps\":{},\"lateral_response_mps\":{},\"lateral_input_active\":{},\"movement_input_lateral_axis\":{},\"movement_input_forward_axis\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_follow_direction_error_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_world_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"readable_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"objective\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"weather_cloud_count\":{},\"environment_motion_visual_count\":{},\"max_environment_motion_offset_m\":{},\"procedural_island_body_count\":{},\"primitive_island_body_count\":{},\"min_island_body_silhouette_segments\":{},\"avg_island_body_silhouette_segments\":{},\"max_island_body_mesh_vertices\":{},\"generated_tree_trunk_count\":{},\"generated_tree_canopy_count\":{},\"min_tree_trunk_mesh_vertices\":{},\"min_tree_canopy_mesh_vertices\":{},\"generated_weather_cloud_count\":{},\"min_weather_cloud_lobe_count\":{},\"max_weather_cloud_lobe_count\":{},\"min_weather_cloud_mesh_vertices\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"catalog_island_visual_count\":{},\"hidden_island_visual_count\":{},\"resident_island_visual_fraction\":{},\"stream_spawned_visuals_this_frame\":{},\"stream_despawned_visuals_this_frame\":{},\"max_stream_spawned_visuals_per_frame\":{},\"max_stream_despawned_visuals_per_frame\":{},\"total_stream_spawned_visuals\":{},\"total_stream_despawned_visuals\":{},\"entity_count\":{},\"visual_asset_slot_count\":{},\"gltf_scene_asset_slot_count\":{},\"ready_visual_asset_slot_count\":{},\"placeholder_visual_asset_slot_count\":{},\"streaming_visual_asset_slot_count\":{},\"missing_visual_asset_slot_count\":{},\"queued_visual_asset_scene_count\":{},\"loading_visual_asset_scene_count\":{},\"loaded_visual_asset_scene_count\":{},\"failed_visual_asset_scene_count\":{},\"spawned_visual_asset_scene_count\":{},\"ready_visual_asset_scene_count\":{},\"always_visual_asset_slot_count\":{},\"stream_window_visual_asset_slot_count\":{},\"near_lod_visual_asset_slot_count\":{},\"far_lod_visual_asset_slot_count\":{},\"weather_visual_asset_slot_count\":{},\"declared_animation_clip_count\":{},\"ready_animation_clip_count\":{},\"animation_player_count\":{},\"animation_graph_count\":{},\"power_up_count\":{},\"visible_power_up_count\":{},\"collected_power_up_count\":{},\"active_power_up_effects\":{},\"total_power_up_activations\":{}}}",
                 self.frame,
                 json_number(self.time_secs),
                 json_array3(self.position),
@@ -4263,6 +4369,10 @@ pub mod eval {
                 self.near_lod_visual_asset_slot_count,
                 self.far_lod_visual_asset_slot_count,
                 self.weather_visual_asset_slot_count,
+                self.declared_animation_clip_count,
+                self.ready_animation_clip_count,
+                self.animation_player_count,
+                self.animation_graph_count,
                 self.power_up_count,
                 self.visible_power_up_count,
                 self.collected_power_up_count,
@@ -4390,6 +4500,10 @@ pub mod eval {
         max_near_lod_visual_asset_slot_count: usize,
         max_far_lod_visual_asset_slot_count: usize,
         max_weather_visual_asset_slot_count: usize,
+        max_declared_animation_clip_count: usize,
+        max_ready_animation_clip_count: usize,
+        max_animation_player_count: usize,
+        max_animation_graph_count: usize,
         max_power_up_count: usize,
         min_visible_power_up_count: usize,
         max_collected_power_up_count: usize,
@@ -4823,6 +4937,18 @@ pub mod eval {
             self.max_weather_visual_asset_slot_count = self
                 .max_weather_visual_asset_slot_count
                 .max(sample.weather_visual_asset_slot_count);
+            self.max_declared_animation_clip_count = self
+                .max_declared_animation_clip_count
+                .max(sample.declared_animation_clip_count);
+            self.max_ready_animation_clip_count = self
+                .max_ready_animation_clip_count
+                .max(sample.ready_animation_clip_count);
+            self.max_animation_player_count = self
+                .max_animation_player_count
+                .max(sample.animation_player_count);
+            self.max_animation_graph_count = self
+                .max_animation_graph_count
+                .max(sample.animation_graph_count);
             self.max_power_up_count = self.max_power_up_count.max(sample.power_up_count);
             self.min_visible_power_up_count = self
                 .min_visible_power_up_count
@@ -5548,6 +5674,10 @@ pub mod eval {
                     max_near_lod_visual_asset_slot_count: self.max_near_lod_visual_asset_slot_count,
                     max_far_lod_visual_asset_slot_count: self.max_far_lod_visual_asset_slot_count,
                     max_weather_visual_asset_slot_count: self.max_weather_visual_asset_slot_count,
+                    max_declared_animation_clip_count: self.max_declared_animation_clip_count,
+                    max_ready_animation_clip_count: self.max_ready_animation_clip_count,
+                    max_animation_player_count: self.max_animation_player_count,
+                    max_animation_graph_count: self.max_animation_graph_count,
                     max_power_up_count: self.max_power_up_count,
                     min_visible_power_up_count: self.min_visible_power_up_count,
                     max_collected_power_up_count: self.max_collected_power_up_count,
@@ -5707,6 +5837,10 @@ pub mod eval {
         pub max_near_lod_visual_asset_slot_count: usize,
         pub max_far_lod_visual_asset_slot_count: usize,
         pub max_weather_visual_asset_slot_count: usize,
+        pub max_declared_animation_clip_count: usize,
+        pub max_ready_animation_clip_count: usize,
+        pub max_animation_player_count: usize,
+        pub max_animation_graph_count: usize,
         pub max_power_up_count: usize,
         pub min_visible_power_up_count: usize,
         pub max_collected_power_up_count: usize,
@@ -5724,7 +5858,7 @@ pub mod eval {
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
             format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"avg_camera_follow_direction_error_degrees\": {},\n{indent}  \"p95_camera_follow_direction_error_degrees\": {},\n{indent}  \"max_camera_follow_direction_error_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_view_yaw_drift_degrees\": {},\n{indent}  \"max_camera_world_yaw_drift_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"avg_desired_body_heading_error_degrees\": {},\n{indent}  \"p95_desired_body_heading_error_degrees\": {},\n{indent}  \"max_desired_body_heading_error_degrees\": {},\n{indent}  \"max_body_yaw_error_step_degrees\": {},\n{indent}  \"body_yaw_oscillation_count\": {},\n{indent}  \"max_desired_heading_alignment_mps\": {},\n{indent}  \"max_lateral_response_mps\": {},\n{indent}  \"lateral_response_latency_secs\": {},\n{indent}  \"max_right_lateral_response_mps\": {},\n{indent}  \"right_lateral_response_latency_secs\": {},\n{indent}  \"max_left_lateral_response_mps\": {},\n{indent}  \"left_lateral_response_latency_secs\": {},\n{indent}  \"max_air_brake_speed_drop_mps\": {},\n{indent}  \"max_post_brake_forward_alignment_mps\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_environment_motion_visual_count\": {},\n{indent}  \"max_environment_motion_offset_m\": {},\n{indent}  \"min_procedural_island_body_count\": {},\n{indent}  \"max_primitive_island_body_count\": {},\n{indent}  \"min_island_body_silhouette_segments\": {},\n{indent}  \"max_avg_island_body_silhouette_segments\": {},\n{indent}  \"max_island_body_mesh_vertices\": {},\n{indent}  \"min_generated_tree_trunk_count\": {},\n{indent}  \"min_generated_tree_canopy_count\": {},\n{indent}  \"min_tree_trunk_mesh_vertices\": {},\n{indent}  \"min_tree_canopy_mesh_vertices\": {},\n{indent}  \"min_generated_weather_cloud_count\": {},\n{indent}  \"min_weather_cloud_lobe_count\": {},\n{indent}  \"min_max_weather_cloud_lobe_count\": {},\n{indent}  \"min_weather_cloud_mesh_vertices\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_catalog_island_visual_count\": {},\n{indent}  \"max_hidden_island_visual_count\": {},\n{indent}  \"max_resident_island_visual_fraction\": {},\n{indent}  \"max_stream_spawned_visuals_per_frame\": {},\n{indent}  \"max_stream_despawned_visuals_per_frame\": {},\n{indent}  \"total_stream_spawned_visuals\": {},\n{indent}  \"total_stream_despawned_visuals\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"objective_total_count\": {},\n{indent}  \"max_completed_objective_count\": {},\n{indent}  \"final_objective_completed_count\": {},\n{indent}  \"min_objective_distance_m\": {},\n{indent}  \"final_objective_distance_m\": {},\n{indent}  \"objective_complete_samples\": {},\n{indent}  \"max_visual_asset_slot_count\": {},\n{indent}  \"max_gltf_scene_asset_slot_count\": {},\n{indent}  \"max_ready_visual_asset_slot_count\": {},\n{indent}  \"max_placeholder_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_visual_asset_slot_count\": {},\n{indent}  \"max_missing_visual_asset_slot_count\": {},\n{indent}  \"max_queued_visual_asset_scene_count\": {},\n{indent}  \"max_loading_visual_asset_scene_count\": {},\n{indent}  \"max_loaded_visual_asset_scene_count\": {},\n{indent}  \"max_failed_visual_asset_scene_count\": {},\n{indent}  \"max_spawned_visual_asset_scene_count\": {},\n{indent}  \"max_ready_visual_asset_scene_count\": {},\n{indent}  \"max_always_visual_asset_slot_count\": {},\n{indent}  \"max_stream_window_visual_asset_slot_count\": {},\n{indent}  \"max_near_lod_visual_asset_slot_count\": {},\n{indent}  \"max_far_lod_visual_asset_slot_count\": {},\n{indent}  \"max_weather_visual_asset_slot_count\": {},\n{indent}  \"max_power_up_count\": {},\n{indent}  \"min_visible_power_up_count\": {},\n{indent}  \"max_collected_power_up_count\": {},\n{indent}  \"power_up_effect_samples\": {},\n{indent}  \"total_power_up_activations\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"avg_camera_follow_direction_error_degrees\": {},\n{indent}  \"p95_camera_follow_direction_error_degrees\": {},\n{indent}  \"max_camera_follow_direction_error_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_view_yaw_drift_degrees\": {},\n{indent}  \"max_camera_world_yaw_drift_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"avg_desired_body_heading_error_degrees\": {},\n{indent}  \"p95_desired_body_heading_error_degrees\": {},\n{indent}  \"max_desired_body_heading_error_degrees\": {},\n{indent}  \"max_body_yaw_error_step_degrees\": {},\n{indent}  \"body_yaw_oscillation_count\": {},\n{indent}  \"max_desired_heading_alignment_mps\": {},\n{indent}  \"max_lateral_response_mps\": {},\n{indent}  \"lateral_response_latency_secs\": {},\n{indent}  \"max_right_lateral_response_mps\": {},\n{indent}  \"right_lateral_response_latency_secs\": {},\n{indent}  \"max_left_lateral_response_mps\": {},\n{indent}  \"left_lateral_response_latency_secs\": {},\n{indent}  \"max_air_brake_speed_drop_mps\": {},\n{indent}  \"max_post_brake_forward_alignment_mps\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_environment_motion_visual_count\": {},\n{indent}  \"max_environment_motion_offset_m\": {},\n{indent}  \"min_procedural_island_body_count\": {},\n{indent}  \"max_primitive_island_body_count\": {},\n{indent}  \"min_island_body_silhouette_segments\": {},\n{indent}  \"max_avg_island_body_silhouette_segments\": {},\n{indent}  \"max_island_body_mesh_vertices\": {},\n{indent}  \"min_generated_tree_trunk_count\": {},\n{indent}  \"min_generated_tree_canopy_count\": {},\n{indent}  \"min_tree_trunk_mesh_vertices\": {},\n{indent}  \"min_tree_canopy_mesh_vertices\": {},\n{indent}  \"min_generated_weather_cloud_count\": {},\n{indent}  \"min_weather_cloud_lobe_count\": {},\n{indent}  \"min_max_weather_cloud_lobe_count\": {},\n{indent}  \"min_weather_cloud_mesh_vertices\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_catalog_island_visual_count\": {},\n{indent}  \"max_hidden_island_visual_count\": {},\n{indent}  \"max_resident_island_visual_fraction\": {},\n{indent}  \"max_stream_spawned_visuals_per_frame\": {},\n{indent}  \"max_stream_despawned_visuals_per_frame\": {},\n{indent}  \"total_stream_spawned_visuals\": {},\n{indent}  \"total_stream_despawned_visuals\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"objective_total_count\": {},\n{indent}  \"max_completed_objective_count\": {},\n{indent}  \"final_objective_completed_count\": {},\n{indent}  \"min_objective_distance_m\": {},\n{indent}  \"final_objective_distance_m\": {},\n{indent}  \"objective_complete_samples\": {},\n{indent}  \"max_visual_asset_slot_count\": {},\n{indent}  \"max_gltf_scene_asset_slot_count\": {},\n{indent}  \"max_ready_visual_asset_slot_count\": {},\n{indent}  \"max_placeholder_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_visual_asset_slot_count\": {},\n{indent}  \"max_missing_visual_asset_slot_count\": {},\n{indent}  \"max_queued_visual_asset_scene_count\": {},\n{indent}  \"max_loading_visual_asset_scene_count\": {},\n{indent}  \"max_loaded_visual_asset_scene_count\": {},\n{indent}  \"max_failed_visual_asset_scene_count\": {},\n{indent}  \"max_spawned_visual_asset_scene_count\": {},\n{indent}  \"max_ready_visual_asset_scene_count\": {},\n{indent}  \"max_always_visual_asset_slot_count\": {},\n{indent}  \"max_stream_window_visual_asset_slot_count\": {},\n{indent}  \"max_near_lod_visual_asset_slot_count\": {},\n{indent}  \"max_far_lod_visual_asset_slot_count\": {},\n{indent}  \"max_weather_visual_asset_slot_count\": {},\n{indent}  \"max_declared_animation_clip_count\": {},\n{indent}  \"max_ready_animation_clip_count\": {},\n{indent}  \"max_animation_player_count\": {},\n{indent}  \"max_animation_graph_count\": {},\n{indent}  \"max_power_up_count\": {},\n{indent}  \"min_visible_power_up_count\": {},\n{indent}  \"max_collected_power_up_count\": {},\n{indent}  \"power_up_effect_samples\": {},\n{indent}  \"total_power_up_activations\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
                 json_number(self.avg_frame_time_ms),
                 json_number(self.p95_frame_time_ms),
@@ -5835,6 +5969,10 @@ pub mod eval {
                 self.max_near_lod_visual_asset_slot_count,
                 self.max_far_lod_visual_asset_slot_count,
                 self.max_weather_visual_asset_slot_count,
+                self.max_declared_animation_clip_count,
+                self.max_ready_animation_clip_count,
+                self.max_animation_player_count,
+                self.max_animation_graph_count,
                 self.max_power_up_count,
                 self.min_visible_power_up_count,
                 self.max_collected_power_up_count,
@@ -6853,9 +6991,9 @@ pub mod eval {
     #[cfg(test)]
     mod tests {
         use crate::asset_pipeline::{
-            ALWAYS_VISUAL_ASSET_SLOT_COUNT, FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
-            NEAR_LOD_VISUAL_ASSET_SLOT_COUNT, STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
-            WEATHER_VISUAL_ASSET_SLOT_COUNT,
+            ALWAYS_VISUAL_ASSET_SLOT_COUNT, DECLARED_VISUAL_ANIMATION_CLIP_COUNT,
+            FAR_LOD_VISUAL_ASSET_SLOT_COUNT, NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
+            STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT, WEATHER_VISUAL_ASSET_SLOT_COUNT,
         };
         use crate::environment::AERIAL_POWER_UP_ROUTE;
 
@@ -7348,6 +7486,10 @@ pub mod eval {
                 NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
                 FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
                 WEATHER_VISUAL_ASSET_SLOT_COUNT,
+                DECLARED_VISUAL_ANIMATION_CLIP_COUNT,
+                0,
+                0,
+                0,
                 AERIAL_POWER_UP_ROUTE.len(),
                 AERIAL_POWER_UP_ROUTE.len(),
                 0,
@@ -7564,6 +7706,10 @@ pub mod eval {
                     NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
                     FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
                     WEATHER_VISUAL_ASSET_SLOT_COUNT,
+                    DECLARED_VISUAL_ANIMATION_CLIP_COUNT,
+                    0,
+                    0,
+                    0,
                     AERIAL_POWER_UP_ROUTE.len(),
                     AERIAL_POWER_UP_ROUTE.len(),
                     0,
@@ -7646,6 +7792,10 @@ pub mod eval {
                     NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
                     FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
                     WEATHER_VISUAL_ASSET_SLOT_COUNT,
+                    DECLARED_VISUAL_ANIMATION_CLIP_COUNT,
+                    0,
+                    0,
+                    0,
                     AERIAL_POWER_UP_ROUTE.len(),
                     AERIAL_POWER_UP_ROUTE.len(),
                     0,
@@ -7729,6 +7879,10 @@ pub mod eval {
                         NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
                         FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
                         WEATHER_VISUAL_ASSET_SLOT_COUNT,
+                        DECLARED_VISUAL_ANIMATION_CLIP_COUNT,
+                        0,
+                        0,
+                        0,
                         AERIAL_POWER_UP_ROUTE.len(),
                         AERIAL_POWER_UP_ROUTE.len(),
                         0,

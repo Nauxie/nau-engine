@@ -2,7 +2,7 @@ use bevy::asset::{LoadState, RenderAssetUsages};
 use bevy::camera::Exposure;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::system::SystemParam;
-use bevy::gltf::GltfAssetLabel;
+use bevy::gltf::{Gltf, GltfAssetLabel};
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::input::mouse::MouseMotion;
 use bevy::light::{
@@ -22,8 +22,9 @@ use nau_engine::animation::{
     part_pose, pose_blend, wing_airflow_strength,
 };
 use nau_engine::asset_pipeline::{
-    VISUAL_ASSET_SPECS, VisualAssetKind, VisualAssetLoadState, VisualAssetPipelineMetrics,
-    VisualAssetSceneState, VisualAssetSpec, visual_asset_pipeline_metrics_with_runtime_states,
+    VISUAL_ASSET_SPECS, VisualAssetAnimationState, VisualAssetKind, VisualAssetLoadState,
+    VisualAssetPipelineMetrics, VisualAssetSceneState, VisualAssetSpec,
+    visual_asset_pipeline_metrics_with_animation_states,
 };
 use nau_engine::camera::{
     CameraControlState, CameraControlTuning, CameraInput, CameraObstruction, FollowCamera,
@@ -56,6 +57,7 @@ use std::{
     fs::{self, File, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 const PLAYER_START: Vec3 = START_POSITION;
@@ -517,6 +519,20 @@ impl VisualAssetRegistry {
             .and_then(|slot| slot.scene_handle.clone())
     }
 
+    fn gltf_handle(&self, kind: VisualAssetKind) -> Option<Handle<Gltf>> {
+        self.slots
+            .iter()
+            .find(|slot| slot.spec.kind == kind)
+            .and_then(|slot| slot.gltf_handle.clone())
+    }
+
+    fn spec(&self, kind: VisualAssetKind) -> Option<VisualAssetSpec> {
+        self.slots
+            .iter()
+            .find(|slot| slot.spec.kind == kind)
+            .map(|slot| slot.spec)
+    }
+
     fn mark_scene_spawned(&mut self, kind: VisualAssetKind, entity: Entity) {
         if let Some(slot) = self.slots.iter_mut().find(|slot| slot.spec.kind == kind) {
             slot.scene_entity = Some(entity);
@@ -536,6 +552,31 @@ impl VisualAssetRegistry {
             .is_some_and(|slot| slot.scene_ready)
     }
 
+    fn mark_animation_player_linked(
+        &mut self,
+        kind: VisualAssetKind,
+        entity: Entity,
+        ready_clip_count: usize,
+    ) {
+        if let Some(slot) = self.slots.iter_mut().find(|slot| slot.spec.kind == kind) {
+            slot.animation_player_entity = Some(entity);
+            slot.ready_animation_clip_count =
+                ready_clip_count.min(slot.spec.animation_clip_names.len());
+        }
+    }
+
+    fn mark_animation_graph_ready(
+        &mut self,
+        kind: VisualAssetKind,
+        entity: Entity,
+        ready_clip_count: usize,
+    ) {
+        self.mark_animation_player_linked(kind, entity, ready_clip_count);
+        if let Some(slot) = self.slots.iter_mut().find(|slot| slot.spec.kind == kind) {
+            slot.animation_graph_ready = true;
+        }
+    }
+
     fn scene_state_for(&self, spec: &VisualAssetSpec) -> VisualAssetSceneState {
         self.slots
             .iter()
@@ -550,14 +591,31 @@ impl VisualAssetRegistry {
                 }
             })
     }
+
+    fn animation_state_for(&self, spec: &VisualAssetSpec) -> VisualAssetAnimationState {
+        self.slots
+            .iter()
+            .find(|slot| slot.spec.kind == spec.kind)
+            .map_or(VisualAssetAnimationState::default(), |slot| {
+                VisualAssetAnimationState {
+                    ready_clip_count: slot.ready_animation_clip_count,
+                    animation_player_linked: slot.animation_player_entity.is_some(),
+                    animation_graph_ready: slot.animation_graph_ready,
+                }
+            })
+    }
 }
 
 #[derive(Debug)]
 struct VisualAssetSlot {
     spec: VisualAssetSpec,
+    gltf_handle: Option<Handle<Gltf>>,
     scene_handle: Option<Handle<Scene>>,
     scene_entity: Option<Entity>,
     scene_ready: bool,
+    animation_player_entity: Option<Entity>,
+    ready_animation_clip_count: usize,
+    animation_graph_ready: bool,
 }
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
@@ -1525,11 +1583,16 @@ fn prepare_visual_asset_registry(asset_server: &AssetServer) -> VisualAssetRegis
         .copied()
         .map(|spec| VisualAssetSlot {
             spec,
+            gltf_handle: visual_asset_path_exists(spec.gltf_scene_path)
+                .then(|| asset_server.load(spec.gltf_scene_path)),
             scene_handle: visual_asset_path_exists(spec.gltf_scene_path).then(|| {
                 asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf_scene_path))
             }),
             scene_entity: None,
             scene_ready: false,
+            animation_player_entity: None,
+            ready_animation_clip_count: 0,
+            animation_graph_ready: false,
         })
         .collect();
 
@@ -1540,14 +1603,74 @@ fn visual_asset_path_exists(asset_path: &str) -> bool {
     Path::new("assets").join(asset_path).is_file()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn mark_authored_scene_ready(
     scene_ready: On<SceneInstanceReady>,
     authored_scenes: Query<&AuthoredVisualScene>,
+    children: Query<&Children>,
+    animation_player_entities: Query<Entity, With<AnimationPlayer>>,
+    mut animation_players: Query<&mut AnimationPlayer>,
+    gltfs: Res<Assets<Gltf>>,
+    mut animation_graphs: ResMut<Assets<AnimationGraph>>,
     mut registry: ResMut<VisualAssetRegistry>,
+    mut commands: Commands,
 ) {
-    if let Ok(scene) = authored_scenes.get(scene_ready.entity) {
-        registry.mark_scene_ready(scene.kind);
+    let Ok(scene) = authored_scenes.get(scene_ready.entity) else {
+        return;
+    };
+    let kind = scene.kind;
+
+    registry.mark_scene_ready(kind);
+
+    let Some(spec) = registry.spec(kind) else {
+        return;
+    };
+    if spec.animation_clip_names.is_empty() {
+        return;
     }
+
+    let Some(animation_player_entity) = children
+        .iter_descendants(scene_ready.entity)
+        .find(|entity| animation_player_entities.get(*entity).is_ok())
+    else {
+        return;
+    };
+
+    let Some(gltf_handle) = registry.gltf_handle(kind) else {
+        registry.mark_animation_player_linked(kind, animation_player_entity, 0);
+        return;
+    };
+    let Some(gltf) = gltfs.get(&gltf_handle) else {
+        registry.mark_animation_player_linked(kind, animation_player_entity, 0);
+        return;
+    };
+
+    let clips = spec
+        .animation_clip_names
+        .iter()
+        .filter_map(|clip_name| gltf.named_animations.get(*clip_name).cloned())
+        .collect::<Vec<_>>();
+    registry.mark_animation_player_linked(kind, animation_player_entity, clips.len());
+    if clips.len() != spec.animation_clip_names.len() {
+        return;
+    }
+
+    let Ok(mut animation_player) = animation_players.get_mut(animation_player_entity) else {
+        return;
+    };
+    let (animation_graph, animation_nodes) = AnimationGraph::from_clips(clips);
+    let graph_handle = animation_graphs.add(animation_graph);
+    let mut transitions = AnimationTransitions::default();
+    if let Some(idle_node) = animation_nodes.first().copied() {
+        transitions
+            .play(&mut animation_player, idle_node, Duration::ZERO)
+            .repeat();
+    }
+
+    commands
+        .entity(animation_player_entity)
+        .insert((AnimationGraphHandle(graph_handle), transitions));
+    registry.mark_animation_graph_ready(kind, animation_player_entity, animation_nodes.len());
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4182,7 +4305,7 @@ fn update_visual_asset_diagnostics(
     registry: Res<VisualAssetRegistry>,
     mut diagnostics: ResMut<VisualAssetDiagnostics>,
 ) {
-    diagnostics.metrics = visual_asset_pipeline_metrics_with_runtime_states(
+    diagnostics.metrics = visual_asset_pipeline_metrics_with_animation_states(
         &VISUAL_ASSET_SPECS,
         |spec| {
             registry
@@ -4194,6 +4317,7 @@ fn update_visual_asset_diagnostics(
                 })
         },
         |spec| registry.scene_state_for(spec),
+        |spec| registry.animation_state_for(spec),
     );
 }
 
@@ -4284,7 +4408,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset scene spawned/ready {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -4325,6 +4449,10 @@ fn update_debug_readout(
         asset_metrics.failed_scene_count,
         asset_metrics.spawned_scene_count,
         asset_metrics.ready_scene_count,
+        asset_metrics.ready_animation_clip_count,
+        asset_metrics.declared_animation_clip_count,
+        asset_metrics.animation_player_count,
+        asset_metrics.animation_graph_count,
         asset_metrics.always_slot_count,
         asset_metrics.stream_window_slot_count,
         asset_metrics.near_lod_slot_count,
@@ -4569,6 +4697,10 @@ fn collect_eval_metrics(
         asset_metrics.near_lod_slot_count,
         asset_metrics.far_lod_slot_count,
         asset_metrics.weather_slot_count,
+        asset_metrics.declared_animation_clip_count,
+        asset_metrics.ready_animation_clip_count,
+        asset_metrics.animation_player_count,
+        asset_metrics.animation_graph_count,
         AERIAL_POWER_UP_ROUTE.len(),
         scene.power_ups.visible_count(),
         scene.power_ups.collected_count(),
