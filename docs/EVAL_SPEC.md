@@ -205,7 +205,7 @@ The export writes `manifest.json`, per-island terrain/cliff/underside/impostor O
 - rear-right and rear-left samples must also build a rearward component, exposed as `max_backward_right_rear_response_mps` and `max_backward_left_rear_response_mps`, so pure sideways drift cannot satisfy the diagonal-control gate
 - backward input must produce measurable total and planar air-brake speed drop, and the final forward segment must recover forward alignment
 - max body-yaw error step and oscillation count must remain bounded so input reversals do not become spin or wobble regressions
-- current gates require lateral response within 0.30 seconds, at least 18 m/s directional right/left lateral response, at least 10 m/s rear-right and rear-left lateral response, at least 8 m/s rear-right and rear-left rearward response, at least 10 m/s of total and planar air-brake speed drop, camera view-yaw drift at or under 12 degrees, p95 body-heading error at or under 30 degrees, and max body-heading/yaw-step error at or under 45 degrees
+- current gates require lateral response within 0.30 seconds, at least 18 m/s directional right/left lateral response, at least 10 m/s rear-right and rear-left lateral response, at least 8 m/s rear-right and rear-left rearward response, at least 10 m/s of total and planar air-brake speed drop, camera view-yaw and world-yaw drift at or under 2 degrees, p95 body-heading error at or under 30 degrees, and max body-heading/yaw-step error at or under 45 degrees
 
 `camera_strafe_stability` is the lateral-movement camera regression test:
 
