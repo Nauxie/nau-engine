@@ -114,12 +114,15 @@ Current tests cover:
 - wing visibility tracks glide mode
 - `updraft_route` eval tracks `active_lift_fields` and requires `lifted_samples`
 - `camera_mouse_control` eval tracks yaw/pitch offsets and obstruction adjustment without player movement
+- `camera_yaw_stability` eval tracks stopped-input yaw stability
+- `camera_strafe_stability` eval tracks lateral movement without camera auto-orbit
 - `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking
+- `long_glide_visibility` eval tracks sustained archipelago traversal and content-scale signals
 
 Future tests should cover:
 
 - launch source triggers
-- semantic camera checkpoint classification beyond the current non-golden visual audit
+- explicit player and route-marker classification beyond the current scene-composition visual audit
 - turn/bank behavior
 - debug visualization toggles
 - crosswind gameplay force rules if visual wind becomes a movement force
