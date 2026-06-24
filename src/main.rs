@@ -420,6 +420,43 @@ struct IslandStreamDiagnostics {
     initialized: bool,
 }
 
+#[derive(Resource, Clone, Copy, Debug, Default)]
+struct IslandContentDiagnostics {
+    procedural_island_body_count: usize,
+    primitive_island_body_count: usize,
+    min_island_body_silhouette_segments: usize,
+    max_island_body_silhouette_segments: usize,
+    total_island_body_silhouette_segments: usize,
+    max_island_body_mesh_vertices: usize,
+}
+
+impl IslandContentDiagnostics {
+    fn record_procedural_island_body(&mut self, silhouette_segments: usize, mesh_vertices: usize) {
+        if self.procedural_island_body_count == 0 {
+            self.min_island_body_silhouette_segments = silhouette_segments;
+        } else {
+            self.min_island_body_silhouette_segments = self
+                .min_island_body_silhouette_segments
+                .min(silhouette_segments);
+        }
+        self.procedural_island_body_count += 1;
+        self.max_island_body_silhouette_segments = self
+            .max_island_body_silhouette_segments
+            .max(silhouette_segments);
+        self.total_island_body_silhouette_segments += silhouette_segments;
+        self.max_island_body_mesh_vertices = self.max_island_body_mesh_vertices.max(mesh_vertices);
+    }
+
+    fn average_island_body_silhouette_segments(self) -> f32 {
+        if self.procedural_island_body_count == 0 {
+            0.0
+        } else {
+            self.total_island_body_silhouette_segments as f32
+                / self.procedural_island_body_count as f32
+        }
+    }
+}
+
 #[derive(Resource, Debug)]
 struct VisualAssetRegistry {
     slots: Vec<VisualAssetSlot>,
@@ -546,6 +583,7 @@ struct DebugScene<'w, 's> {
     camera_diagnostics: Res<'w, CameraDiagnostics>,
     mouse_look: Res<'w, MouseLookState>,
     stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
+    content_diagnostics: Res<'w, IslandContentDiagnostics>,
     asset_diagnostics: Res<'w, VisualAssetDiagnostics>,
     route_objectives: Res<'w, RouteObjectiveTracker>,
     power_ups: Res<'w, PowerUpCollectionState>,
@@ -570,6 +608,7 @@ struct EvalScene<'w, 's> {
     camera: Query<'w, 's, &'static Transform, CameraFollowFilter>,
     camera_diagnostics: Res<'w, CameraDiagnostics>,
     stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
+    content_diagnostics: Res<'w, IslandContentDiagnostics>,
     asset_diagnostics: Res<'w, VisualAssetDiagnostics>,
     route_objectives: Res<'w, RouteObjectiveTracker>,
     power_ups: Res<'w, PowerUpCollectionState>,
@@ -1058,6 +1097,7 @@ fn setup(
     ));
 
     let mut island_visual_catalog = IslandVisualCatalog::default();
+    let mut island_content_diagnostics = IslandContentDiagnostics::default();
 
     for (index, island) in route.islands().iter().enumerate() {
         let top_material = if island.is_target {
@@ -1074,6 +1114,7 @@ fn setup(
 
         queue_sky_island(
             &mut island_visual_catalog.entries,
+            &mut island_content_diagnostics,
             &mut meshes,
             top_material,
             island_rock_material.clone(),
@@ -1094,6 +1135,7 @@ fn setup(
     let island_stream_state =
         spawn_initial_island_visuals(&mut commands, &island_visual_catalog, PLAYER_START);
     commands.insert_resource(island_visual_catalog);
+    commands.insert_resource(island_content_diagnostics);
     commands.insert_resource(island_stream_state);
 
     for (index, x) in (-5..=5).enumerate() {
@@ -1871,7 +1913,6 @@ fn spawn_weather_layers(
     islands: &[SkyIsland],
 ) {
     let cloud_mesh = meshes.add(Sphere::new(1.0));
-    let veil_mesh = meshes.add(Plane3d::default().mesh().size(1.0, 1.0));
 
     for (index, island) in islands.iter().enumerate() {
         let phase = index as f32 * 0.73;
@@ -1910,37 +1951,47 @@ fn spawn_weather_layers(
         ));
 
         if index % 2 == 0 {
-            let veil_origin = island.center
+            let veil_anchor = island.center
                 + Vec3::new(
                     (phase * 1.3).cos() * island.half_extents.x,
                     78.0 + (index % 3) as f32 * 8.0,
                     (phase * 1.9).sin() * island.half_extents.y,
                 );
-            let veil_rotation = Quat::from_euler(EulerRot::XYZ, -0.04, phase * 0.27, 0.06);
-            commands.spawn((
-                Mesh3d(veil_mesh.clone()),
-                MeshMaterial3d(cloud_veil_material.clone()),
-                Transform {
-                    translation: veil_origin,
-                    scale: Vec3::new(
-                        island.half_extents.x * 1.35 + 36.0,
-                        1.0,
-                        island.half_extents.y * 0.42 + 18.0,
-                    ),
-                    rotation: veil_rotation,
-                },
-                WeatherDrift {
-                    origin: veil_origin,
-                    axis: Vec3::new(0.74, 0.0, -0.18).normalize(),
-                    amplitude: 8.0 + (index % 5) as f32,
-                    bob: 0.35,
-                    speed: 0.025 + (index % 3) as f32 * 0.006,
-                    phase,
-                    spin_speed: 0.004,
-                    base_rotation: veil_rotation,
-                },
-                Name::new("high cirrus veil"),
-            ));
+            for puff_index in 0..3 {
+                let puff_phase = phase + puff_index as f32 * 1.17;
+                let layer_offset = Vec3::new(
+                    (puff_phase * 0.9).cos() * (14.0 + puff_index as f32 * 5.0),
+                    (puff_index as f32 - 1.0) * 1.7,
+                    (puff_phase * 1.1).sin() * (9.0 + puff_index as f32 * 3.5),
+                );
+                let veil_origin = veil_anchor + layer_offset;
+                let veil_rotation = Quat::from_euler(EulerRot::XYZ, -0.04, puff_phase * 0.27, 0.06);
+
+                commands.spawn((
+                    Mesh3d(cloud_mesh.clone()),
+                    MeshMaterial3d(cloud_veil_material.clone()),
+                    Transform {
+                        translation: veil_origin,
+                        scale: Vec3::new(
+                            island.half_extents.x * 0.36 + 14.0 + puff_index as f32 * 4.0,
+                            0.52 + puff_index as f32 * 0.12,
+                            island.half_extents.y * 0.13 + 6.0 + puff_index as f32 * 1.8,
+                        ),
+                        rotation: veil_rotation,
+                    },
+                    WeatherDrift {
+                        origin: veil_origin,
+                        axis: Vec3::new(0.74, 0.0, -0.18).normalize(),
+                        amplitude: 5.0 + (index % 5) as f32 * 0.7 + puff_index as f32 * 0.6,
+                        bob: 0.22 + puff_index as f32 * 0.05,
+                        speed: 0.021 + (index % 3) as f32 * 0.005,
+                        phase: puff_phase,
+                        spin_speed: 0.003 + puff_index as f32 * 0.001,
+                        base_rotation: veil_rotation,
+                    },
+                    Name::new("high cirrus puff"),
+                ));
+            }
         }
     }
 }
@@ -2034,6 +2085,7 @@ fn queue_island_visual_with_motion(
 #[allow(clippy::too_many_arguments)]
 fn queue_sky_island(
     entries: &mut Vec<IslandVisualEntry>,
+    content_diagnostics: &mut IslandContentDiagnostics,
     meshes: &mut Assets<Mesh>,
     top_material: Handle<StandardMaterial>,
     rock_material: Handle<StandardMaterial>,
@@ -2049,29 +2101,8 @@ fn queue_sky_island(
     island_index: usize,
     island: SkyIsland,
 ) {
-    let top_thickness = 0.55;
     let top_y = island.mesh_top_y();
     let mut visual_index = 0;
-
-    queue_island_visual(
-        entries,
-        &mut visual_index,
-        island,
-        IslandVisualLayer::Terrain,
-        meshes.add(Cylinder::new(1.0, top_thickness)),
-        top_material.clone(),
-        Transform {
-            translation: Vec3::new(
-                island.center.x,
-                top_y - top_thickness * 0.5,
-                island.center.z,
-            ),
-            scale: Vec3::new(island.half_extents.x, 1.0, island.half_extents.y),
-            ..default()
-        },
-        None,
-        island.name,
-    );
 
     queue_island_visual(
         entries,
@@ -2099,7 +2130,7 @@ fn queue_sky_island(
 
     let rock_body_center = Vec3::new(
         island.center.x,
-        top_y - top_thickness - island.thickness * 0.5,
+        top_y - island.thickness * 0.54,
         island.center.z,
     );
     let rock_body_half_extents = Vec3::new(
@@ -2107,47 +2138,39 @@ fn queue_sky_island(
         island.thickness * 0.5,
         island.half_extents.y * 0.78,
     );
+    let cliff_mesh = island_cliff_mesh(island_index, island);
+    let cliff_vertex_count = cliff_mesh.count_vertices();
     queue_island_visual(
         entries,
         &mut visual_index,
         island,
         IslandVisualLayer::Terrain,
-        meshes.add(Cylinder::new(1.0, island.thickness)),
+        meshes.add(cliff_mesh),
         rock_material,
-        Transform {
-            translation: rock_body_center,
-            scale: Vec3::new(rock_body_half_extents.x, 1.0, rock_body_half_extents.z),
-            ..default()
-        },
+        Transform::default(),
         Some(CameraObstacle(CameraObstruction::new(
             rock_body_center,
             rock_body_half_extents,
         ))),
-        "island rock body",
+        "island procedural cliff body",
     );
 
+    let underside_mesh = island_underside_mesh(island_index, island);
+    let underside_vertex_count = underside_mesh.count_vertices();
     queue_island_visual(
         entries,
         &mut visual_index,
         island,
         IslandVisualLayer::Terrain,
-        meshes.add(Cylinder::new(1.0, island.thickness * 0.7)),
+        meshes.add(underside_mesh),
         under_material.clone(),
-        Transform {
-            translation: Vec3::new(
-                island.center.x,
-                top_y - top_thickness - island.thickness * 1.08,
-                island.center.z,
-            ),
-            scale: Vec3::new(
-                island.half_extents.x * 0.42,
-                1.0,
-                island.half_extents.y * 0.42,
-            ),
-            ..default()
-        },
+        Transform::default(),
         None,
-        "island shadow base",
+        "island tapered underside",
+    );
+    content_diagnostics.record_procedural_island_body(
+        ISLAND_BODY_SEGMENTS,
+        cliff_vertex_count + underside_vertex_count,
     );
 
     let ridge_width = island.half_extents.x * 0.32;
@@ -2302,14 +2325,38 @@ fn wind_visual_motion(
     }
 }
 
-fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
-    const RINGS: usize = 12;
-    const SEGMENTS: usize = 48;
+const ISLAND_TERRAIN_RINGS: usize = 16;
+const ISLAND_BODY_SEGMENTS: usize = 64;
+const ISLAND_CLIFF_RINGS: usize = 6;
+const ISLAND_UNDERSIDE_RINGS: usize = 5;
 
-    let vertex_count = 1 + RINGS * SEGMENTS;
+fn island_silhouette_scale(island_index: usize, angle: f32) -> f32 {
+    let phase = island_index as f32 * 0.73;
+    (1.0 + 0.09 * (angle * 3.0 + phase).sin()
+        + 0.055 * (angle * 7.0 - phase * 0.4).cos()
+        + 0.032 * (angle * 11.0 + phase * 1.7).sin())
+    .clamp(0.82, 1.18)
+}
+
+fn island_playable_silhouette_scale(island_index: usize, angle: f32) -> f32 {
+    island_silhouette_scale(island_index, angle).min(1.0)
+}
+
+fn island_polar_position(island: SkyIsland, angle: f32, radius_scale: f32, y: f32) -> [f32; 3] {
+    [
+        island.center.x + angle.cos() * island.half_extents.x * radius_scale,
+        y,
+        island.center.z + angle.sin() * island.half_extents.y * radius_scale,
+    ]
+}
+
+fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
+    let vertex_count = 1 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS;
     let mut positions = Vec::with_capacity(vertex_count);
     let mut uvs = Vec::with_capacity(vertex_count);
-    let mut indices = Vec::with_capacity(SEGMENTS * 3 + (RINGS - 1) * SEGMENTS * 6);
+    let mut indices = Vec::with_capacity(
+        ISLAND_BODY_SEGMENTS * 3 + (ISLAND_TERRAIN_RINGS - 1) * ISLAND_BODY_SEGMENTS * 6,
+    );
 
     positions.push([
         island.center.x,
@@ -2318,15 +2365,14 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     ]);
     uvs.push([0.5, 0.5]);
 
-    for ring in 1..=RINGS {
-        let radius = ring as f32 / RINGS as f32;
-        for segment in 0..SEGMENTS {
-            let angle = segment as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
-            let phase = island_index as f32 * 0.73;
-            let edge_variation =
-                1.0 + 0.035 * (angle * 5.0 + phase).sin() + 0.018 * (angle * 9.0).cos();
-            let x = island.center.x + angle.cos() * island.half_extents.x * radius * edge_variation;
-            let z = island.center.z + angle.sin() * island.half_extents.y * radius * edge_variation;
+    for ring in 1..=ISLAND_TERRAIN_RINGS {
+        let radius = ring as f32 / ISLAND_TERRAIN_RINGS as f32;
+        for segment in 0..ISLAND_BODY_SEGMENTS {
+            let angle = segment as f32 / ISLAND_BODY_SEGMENTS as f32 * std::f32::consts::TAU;
+            let edge_scale = island_playable_silhouette_scale(island_index, angle);
+            let radius_scale = radius * (1.0 + radius.powf(1.35) * (edge_scale - 1.0));
+            let x = island.center.x + angle.cos() * island.half_extents.x * radius_scale;
+            let z = island.center.z + angle.sin() * island.half_extents.y * radius_scale;
             let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z));
 
             positions.push([x, y, z]);
@@ -2338,15 +2384,15 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     }
 
     let ring_index = |ring: usize, segment: usize| -> u32 {
-        (1 + (ring - 1) * SEGMENTS + segment % SEGMENTS) as u32
+        (1 + (ring - 1) * ISLAND_BODY_SEGMENTS + segment % ISLAND_BODY_SEGMENTS) as u32
     };
 
-    for segment in 0..SEGMENTS {
+    for segment in 0..ISLAND_BODY_SEGMENTS {
         indices.extend([0, ring_index(1, segment + 1), ring_index(1, segment)]);
     }
 
-    for ring in 1..RINGS {
-        for segment in 0..SEGMENTS {
+    for ring in 1..ISLAND_TERRAIN_RINGS {
+        for segment in 0..ISLAND_BODY_SEGMENTS {
             let inner_current = ring_index(ring, segment);
             let inner_next = ring_index(ring, segment + 1);
             let outer_current = ring_index(ring + 1, segment);
@@ -2375,8 +2421,193 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
 }
 
+fn island_cliff_surface_position(
+    island_index: usize,
+    island: SkyIsland,
+    angle: f32,
+    t: f32,
+) -> [f32; 3] {
+    let phase = island_index as f32 * 0.73;
+    let shelf_variation = 1.0
+        + t * 0.035 * (angle * 5.0 + phase + t * 1.7).sin()
+        + t * 0.025 * (angle * 13.0 - phase * 0.3 + t * 2.1).cos();
+    let radius_scale = island_playable_silhouette_scale(island_index, angle)
+        * (1.0 - t.powf(1.18) * 0.34)
+        * shelf_variation;
+    let x = island.center.x + angle.cos() * island.half_extents.x * radius_scale;
+    let z = island.center.z + angle.sin() * island.half_extents.y * radius_scale;
+    let vertical_fracture = t
+        * ((angle * 8.0 + phase).sin() * (0.45 + t) + (angle * 17.0 - phase).cos() * 0.22).abs()
+        * island.thickness
+        * 0.045;
+    let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z))
+        - 0.06
+        - island.thickness * (t * 0.78)
+        - vertical_fracture;
+
+    [x, y, z]
+}
+
+fn island_cliff_mesh(island_index: usize, island: SkyIsland) -> Mesh {
+    let mut positions = Vec::with_capacity((ISLAND_CLIFF_RINGS + 1) * ISLAND_BODY_SEGMENTS);
+    let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut indices = Vec::with_capacity(ISLAND_CLIFF_RINGS * ISLAND_BODY_SEGMENTS * 6);
+
+    for ring in 0..=ISLAND_CLIFF_RINGS {
+        let t = ring as f32 / ISLAND_CLIFF_RINGS as f32;
+        for segment in 0..ISLAND_BODY_SEGMENTS {
+            let angle = segment as f32 / ISLAND_BODY_SEGMENTS as f32 * std::f32::consts::TAU;
+            positions.push(island_cliff_surface_position(
+                island_index,
+                island,
+                angle,
+                t,
+            ));
+            uvs.push([segment as f32 / ISLAND_BODY_SEGMENTS as f32 * 4.0, t]);
+        }
+    }
+
+    let ring_index = |ring: usize, segment: usize| -> u32 {
+        (ring * ISLAND_BODY_SEGMENTS + segment % ISLAND_BODY_SEGMENTS) as u32
+    };
+
+    for ring in 0..ISLAND_CLIFF_RINGS {
+        for segment in 0..ISLAND_BODY_SEGMENTS {
+            let upper_current = ring_index(ring, segment);
+            let upper_next = ring_index(ring, segment + 1);
+            let lower_current = ring_index(ring + 1, segment);
+            let lower_next = ring_index(ring + 1, segment + 1);
+
+            indices.extend([
+                upper_current,
+                upper_next,
+                lower_current,
+                upper_next,
+                lower_next,
+                lower_current,
+            ]);
+        }
+    }
+
+    let normals = smooth_normals_from_triangles_oriented(&positions, &indices, Vec3::Z, false);
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+fn island_underside_mesh(island_index: usize, island: SkyIsland) -> Mesh {
+    let ring_vertex_count = (ISLAND_UNDERSIDE_RINGS + 1) * ISLAND_BODY_SEGMENTS;
+    let bottom_index = ring_vertex_count as u32;
+    let mut positions = Vec::with_capacity(ring_vertex_count + 1);
+    let mut uvs = Vec::with_capacity(ring_vertex_count + 1);
+    let mut indices = Vec::with_capacity(
+        ISLAND_UNDERSIDE_RINGS * ISLAND_BODY_SEGMENTS * 6 + ISLAND_BODY_SEGMENTS * 3,
+    );
+    let phase = island_index as f32 * 0.73;
+    let top_y = island.mesh_top_y();
+
+    for ring in 0..=ISLAND_UNDERSIDE_RINGS {
+        let t = ring as f32 / ISLAND_UNDERSIDE_RINGS as f32;
+        for segment in 0..ISLAND_BODY_SEGMENTS {
+            let angle = segment as f32 / ISLAND_BODY_SEGMENTS as f32 * std::f32::consts::TAU;
+            if ring == 0 {
+                positions.push(island_cliff_surface_position(
+                    island_index,
+                    island,
+                    angle,
+                    1.0,
+                ));
+                uvs.push([0.5 + angle.cos() * 0.34, 0.5 + angle.sin() * 0.34]);
+                continue;
+            }
+
+            let twist = 0.045 * (angle * 6.0 + phase + t * 2.4).sin();
+            let radius_scale = island_playable_silhouette_scale(island_index, angle)
+                * (0.66 * (1.0 - t).powf(1.35) + 0.18 * t)
+                * (1.0 + twist);
+            let y = top_y
+                - island.thickness * (0.82 + t * 0.58)
+                - island.thickness * 0.06 * (angle * 5.0 - phase).sin().abs();
+
+            positions.push(island_polar_position(island, angle, radius_scale, y));
+            uvs.push([
+                0.5 + angle.cos() * (0.34 - t * 0.19),
+                0.5 + angle.sin() * (0.34 - t * 0.19),
+            ]);
+        }
+    }
+
+    positions.push([
+        island.center.x,
+        top_y - island.thickness * 1.58,
+        island.center.z,
+    ]);
+    uvs.push([0.5, 0.5]);
+
+    let ring_index = |ring: usize, segment: usize| -> u32 {
+        (ring * ISLAND_BODY_SEGMENTS + segment % ISLAND_BODY_SEGMENTS) as u32
+    };
+
+    for ring in 0..ISLAND_UNDERSIDE_RINGS {
+        for segment in 0..ISLAND_BODY_SEGMENTS {
+            let upper_current = ring_index(ring, segment);
+            let upper_next = ring_index(ring, segment + 1);
+            let lower_current = ring_index(ring + 1, segment);
+            let lower_next = ring_index(ring + 1, segment + 1);
+
+            indices.extend([
+                upper_current,
+                upper_next,
+                lower_current,
+                upper_next,
+                lower_next,
+                lower_current,
+            ]);
+        }
+    }
+    for segment in 0..ISLAND_BODY_SEGMENTS {
+        indices.extend([
+            ring_index(ISLAND_UNDERSIDE_RINGS, segment),
+            ring_index(ISLAND_UNDERSIDE_RINGS, segment + 1),
+            bottom_index,
+        ]);
+    }
+
+    let normals = smooth_normals_from_triangles_oriented(&positions, &indices, Vec3::NEG_Y, false);
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
 fn smooth_normals_from_triangles(positions: &[[f32; 3]], indices: &[u32]) -> Vec<[f32; 3]> {
+    smooth_normals_from_triangles_oriented(positions, indices, Vec3::Y, true)
+}
+
+fn smooth_normals_from_triangles_oriented(
+    positions: &[[f32; 3]],
+    indices: &[u32],
+    fallback: Vec3,
+    force_positive_y: bool,
+) -> Vec<[f32; 3]> {
     let mut normals = vec![Vec3::ZERO; positions.len()];
+    let fallback = fallback.normalize_or_zero();
+    let fallback = if fallback.length_squared() <= f32::EPSILON {
+        Vec3::Y
+    } else {
+        fallback
+    };
 
     for triangle in indices.chunks_exact(3) {
         let a_index = triangle[0] as usize;
@@ -2387,11 +2618,11 @@ fn smooth_normals_from_triangles(positions: &[[f32; 3]], indices: &[u32]) -> Vec
         let c = Vec3::from_array(positions[c_index]);
         let mut face_normal = (b - a).cross(c - a).normalize_or_zero();
 
-        if face_normal.y < 0.0 {
+        if force_positive_y && face_normal.y < 0.0 {
             face_normal = -face_normal;
         }
         if face_normal.length_squared() <= f32::EPSILON {
-            face_normal = Vec3::Y;
+            face_normal = fallback;
         }
 
         normals[a_index] += face_normal;
@@ -2403,7 +2634,7 @@ fn smooth_normals_from_triangles(positions: &[[f32; 3]], indices: &[u32]) -> Vec
         .into_iter()
         .map(|normal| {
             if normal.length_squared() <= f32::EPSILON {
-                Vec3::Y.to_array()
+                fallback.to_array()
             } else {
                 normal.normalize().to_array()
             }
@@ -3579,6 +3810,7 @@ fn update_debug_readout(
     let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
     let lod_visuals = scene.stream_diagnostics.counts;
     let asset_metrics = scene.asset_diagnostics.metrics;
+    let content_metrics = *scene.content_diagnostics;
     let camera_yaw = scene.camera_control.orbit.yaw_degrees();
     let camera_pitch_offset = scene.camera_control.orbit.pitch_degrees();
     let mouse_lock = if scene.mouse_look.captured {
@@ -3597,7 +3829,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -3646,6 +3878,11 @@ fn update_debug_readout(
         active_lift_fields,
         lift_field_count,
         scene.route.islands().len(),
+        content_metrics.procedural_island_body_count,
+        content_metrics.primitive_island_body_count,
+        content_metrics.min_island_body_silhouette_segments,
+        content_metrics.average_island_body_silhouette_segments(),
+        content_metrics.max_island_body_mesh_vertices,
         streaming_lod.player_chunk.x,
         streaming_lod.player_chunk.z,
         streaming_lod.active_island_count,
@@ -3758,6 +3995,7 @@ fn collect_eval_metrics(
     let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
     let lod_visuals = scene.stream_diagnostics.counts;
     let asset_metrics = scene.asset_diagnostics.metrics;
+    let content_metrics = *scene.content_diagnostics;
     let (environment_motion_visuals, max_environment_motion_offset_m) =
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
     let movement_input = scripted_input(run.scenario, run.frame);
@@ -3864,6 +4102,13 @@ fn collect_eval_metrics(
         scene.power_ups.collected_count(),
         scene.power_ups.active_effects(),
         scene.power_ups.total_activations,
+    )
+    .with_content_metrics(
+        content_metrics.procedural_island_body_count,
+        content_metrics.primitive_island_body_count,
+        content_metrics.min_island_body_silhouette_segments,
+        content_metrics.average_island_body_silhouette_segments(),
+        content_metrics.max_island_body_mesh_vertices,
     )
     .with_movement_metrics(
         desired_body_yaw_error_degrees,
@@ -4137,5 +4382,127 @@ fn wind_field_color(kind: WindFieldKind) -> Color {
     match kind {
         WindFieldKind::Crosswind => Color::srgb(0.0, 0.82, 1.0),
         WindFieldKind::Updraft => Color::srgb(0.25, 1.0, 0.45),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::mesh::VertexAttributeValues;
+
+    fn test_island() -> SkyIsland {
+        SkyIsland::new(
+            "test island",
+            Vec3::new(12.0, 40.0, -8.0),
+            Vec2::new(22.0, 15.0),
+            12.0,
+            false,
+        )
+    }
+
+    fn positions(mesh: &Mesh) -> &[[f32; 3]] {
+        match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
+            Some(VertexAttributeValues::Float32x3(values)) => values,
+            _ => panic!("mesh should expose Float32x3 positions"),
+        }
+    }
+
+    fn normalized_radius(island: SkyIsland, position: [f32; 3]) -> f32 {
+        Vec2::new(
+            (position[0] - island.center.x) / island.half_extents.x,
+            (position[2] - island.center.z) / island.half_extents.y,
+        )
+        .length()
+    }
+
+    #[test]
+    fn terrain_mesh_uses_high_resolution_irregular_silhouette() {
+        let island = test_island();
+        let mesh = island_terrain_mesh(2, island);
+        let positions = positions(&mesh);
+        let outer_ring_start = 1 + (ISLAND_TERRAIN_RINGS - 1) * ISLAND_BODY_SEGMENTS;
+        let outer_ring = &positions[outer_ring_start..outer_ring_start + ISLAND_BODY_SEGMENTS];
+        let min_radius = outer_ring
+            .iter()
+            .map(|position| normalized_radius(island, *position))
+            .fold(f32::INFINITY, f32::min);
+        let max_radius = outer_ring
+            .iter()
+            .map(|position| normalized_radius(island, *position))
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        assert_eq!(
+            mesh.count_vertices(),
+            1 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS
+        );
+        assert!(
+            max_radius <= 1.001,
+            "playable terrain must stay inside the route collision footprint"
+        );
+        assert!(
+            max_radius - min_radius > 0.10,
+            "outer ring should not read as a perfect cylinder"
+        );
+    }
+
+    #[test]
+    fn cliff_and_underside_meshes_replace_cylinder_body_resolution() {
+        let island = test_island();
+        let cliff_mesh = island_cliff_mesh(3, island);
+        let underside_mesh = island_underside_mesh(3, island);
+        let underside_positions = positions(&underside_mesh);
+        let underside_top_radius = normalized_radius(island, underside_positions[0]);
+        let underside_tip = *underside_positions.last().expect("bottom tip exists");
+
+        assert_eq!(
+            cliff_mesh.count_vertices(),
+            (ISLAND_CLIFF_RINGS + 1) * ISLAND_BODY_SEGMENTS
+        );
+        assert_eq!(
+            underside_mesh.count_vertices(),
+            (ISLAND_UNDERSIDE_RINGS + 1) * ISLAND_BODY_SEGMENTS + 1
+        );
+        assert!(underside_top_radius > 0.55);
+        assert!(normalized_radius(island, underside_tip) < 0.01);
+        assert!(underside_tip[1] < island.mesh_top_y() - island.thickness * 1.5);
+    }
+
+    #[test]
+    fn cliff_and_underside_share_their_transition_ring() {
+        let island = test_island();
+        let cliff_mesh = island_cliff_mesh(3, island);
+        let underside_mesh = island_underside_mesh(3, island);
+        let cliff_positions = positions(&cliff_mesh);
+        let underside_positions = positions(&underside_mesh);
+        let cliff_bottom_start = ISLAND_CLIFF_RINGS * ISLAND_BODY_SEGMENTS;
+
+        for segment in 0..ISLAND_BODY_SEGMENTS {
+            let cliff = Vec3::from_array(cliff_positions[cliff_bottom_start + segment]);
+            let underside = Vec3::from_array(underside_positions[segment]);
+            assert!(
+                cliff.distance(underside) < 0.001,
+                "cliff and underside should not leave a visible body seam"
+            );
+        }
+    }
+
+    #[test]
+    fn content_diagnostics_tracks_procedural_body_complexity() {
+        let mut diagnostics = IslandContentDiagnostics::default();
+
+        diagnostics.record_procedural_island_body(ISLAND_BODY_SEGMENTS, 833);
+        diagnostics.record_procedural_island_body(ISLAND_BODY_SEGMENTS, 821);
+
+        assert_eq!(diagnostics.procedural_island_body_count, 2);
+        assert_eq!(diagnostics.primitive_island_body_count, 0);
+        assert_eq!(
+            diagnostics.min_island_body_silhouette_segments,
+            ISLAND_BODY_SEGMENTS
+        );
+        assert_eq!(
+            diagnostics.average_island_body_silhouette_segments(),
+            ISLAND_BODY_SEGMENTS as f32
+        );
+        assert_eq!(diagnostics.max_island_body_mesh_vertices, 833);
     }
 }

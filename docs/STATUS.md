@@ -6,7 +6,7 @@ Last updated: 2026-06-24
 
 First sky-island traversal slice.
 
-The project has a Bevy sandbox with a primitive humanoid, playable ground movement, camera-relative planar air control, deployable glider wings, one-launch-per-airtime vertical burst, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, drifting cloud banks and high cirrus veils, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes and cinematic lift ribbons, marked recovery branch islands, a 12-island floating route with smooth generated terrain relief plus batched ground-cover/detail props, wind-responsive near-LOD trees and ponds, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, air-control response, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
+The project has a Bevy sandbox with a primitive humanoid, playable ground movement, camera-relative planar air control, deployable glider wings, one-launch-per-airtime vertical burst, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, drifting cloud banks and layered high-cirrus puffs, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes and cinematic lift ribbons, marked recovery branch islands, a 12-island floating route with smooth generated terrain relief, irregular procedural rims, generated cliff/underside body meshes, batched ground-cover/detail props, wind-responsive near-LOD trees and ponds, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, air-control response, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
 
 ## Last Known Good
 
@@ -35,10 +35,10 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `E` launches from the ground and is gated to one launch per airtime.
 - `Space` deploys glider wings while airborne, with speed-responsive wing flex and subtle wingtip airflow trails.
 - `Shift` dives.
-- The sandbox spawns a 12-island floating archipelago with generated visual terrain relief, smooth terrain normals, batched near-LOD ground cover, a launch island, long-glide route, and landing target.
+- The sandbox spawns a 12-island floating archipelago with generated visual terrain relief, irregular island rims, generated cliff/underside body meshes, smooth terrain normals, batched near-LOD ground cover, a launch island, long-glide route, and landing target.
 - The camera uses Bevy-native atmosphere, dynamic distance fog, volumetric fog/light, bloom, Aces tonemapping, exposure tuning, and atmosphere-driven environment lighting.
 - Terrain, ground cover, props, water, suit, glider, and markers use generated surface textures with PBR roughness, occlusion, and parallax depth maps; marker and flower materials feed bloom through emissive color.
-- Drifting cloud banks, high cirrus veils, and wind-responsive near-LOD trees/ponds provide non-debug weather/environment motion layers without changing gameplay collision or traversal math.
+- Drifting cloud banks, layered high-cirrus puffs, and wind-responsive near-LOD trees/ponds provide non-debug weather/environment motion layers without changing gameplay collision or traversal math.
 - Route-surface contact can land the player on an island and applies landing damping once instead of crushing standing WASD movement every frame.
 - Runtime movement is camera-relative, with airborne planar steering, backward air-brake control, body yaw smoothed toward intended movement, and horizontal velocity as the no-input facing fallback.
 - Mouse camera control has player-centered orbit pitch, separate yaw and pitch sensitivity, pitch clamps, click-to-lock cursor capture, right-mouse temporary look, and `Esc` release.
@@ -62,7 +62,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - The HUD and eval samples now track a route objective sequence: main routes point from the near updraft to the landing garden, while branch-target evals add the distant recovery updraft before the named branch landing.
 - Metric-only evals hide the native window by default; screenshot evals are explicit via `NAU_EVAL_SCREENSHOT=1`.
 - Screenshot evals run a non-golden visual audit for resolution, exposure, contrast, color variety, edge density, sky/scene balance, center-scene detail, player visibility, severe border clipping, route-marker readability/identity, and HUD-text dominance when launched through `tools/eval.sh`, and disable debug gizmos while using opaque window composition so transparent scene effects cannot reveal desktop content.
-- Eval summaries now include the scenario target island, route objective progress, body-heading error, desired-heading velocity alignment, lateral response speed/latency, separate right/left air-control response, air-brake recovery metrics, yaw oscillation count, camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, camera view-yaw drift, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, weather cloud count, environment-motion count/offset, aerial power-up inventory/collection/effect counters, readable/unreadable lift samples, hidden/resident/catalog island visual counts, resident visual fraction, and directional stream spawn/despawn churn so camera/control/content/streaming regressions are visible in metrics.
+- Eval summaries now include the scenario target island, route objective progress, body-heading error, desired-heading velocity alignment, lateral response speed/latency, separate right/left air-control response, air-brake recovery metrics, yaw oscillation count, camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, camera view-yaw drift, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, weather cloud count, environment-motion count/offset, procedural island body count, primitive island body count, island body silhouette complexity, island body mesh vertex count, aerial power-up inventory/collection/effect counters, readable/unreadable lift samples, hidden/resident/catalog island visual counts, resident visual fraction, and directional stream spawn/despawn churn so camera/control/content/streaming regressions are visible in metrics.
 
 ## Known Issues
 
@@ -72,14 +72,14 @@ Use this section for milestone handoffs, not routine worktree changes.
 - Crosswind stream fields are still debug gizmos; updrafts, glider wings, trees, and ponds now have cinematic primitive motion cues, but there are no particles, cloth simulation, or authored environment art assets yet.
 - Sky-island collision follows deterministic terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - Gameplay lift and power-ups are still first rough authored routes; there is no crosswind force, launch-source chain, inventory UI, or authored recovery-route design beyond two marked primitive branch islands.
-- There is no asynchronous asset loading, authored water, authored vegetation, or environment asset pipeline yet. Current stream-window terrain residency, detail LOD, procedural materials, ground cover, wind-responsive ponds/trees, stones, beacon, cloud layers, and landing markers are deterministic primitive systems.
+- There is no asynchronous asset loading, authored water, authored vegetation, or environment asset pipeline yet. Current stream-window terrain residency, detail LOD, procedural island bodies, procedural materials, ground cover, wind-responsive ponds/trees, stones, beacon, cloud layers, and landing markers are deterministic generated systems.
 - Physics is still custom movement math, not a real collision/rigid body integration.
 
 ## Next Tasks
 
 1. Add asset-loading hooks and richer impostors on top of the resident island visual catalog.
 2. Replace the primitive character/environment with a glTF asset pipeline once the traversal/render targets stop moving.
-3. Add richer terrain/material identity checks and exact route-marker semantic checks to the screenshot audit.
+3. Add richer terrain/material, texture-frequency, vegetation, cloud-depth, and exact route-marker semantic checks to the screenshot audit.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
 
 ## Read First
