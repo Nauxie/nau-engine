@@ -3171,6 +3171,21 @@ pub mod camera {
         }
     }
 
+    pub fn movement_input_stable_follow_direction(
+        velocity: Vec3,
+        player_forward: Vec3,
+        current_follow_direction: Vec3,
+        movement_axis: Vec2,
+    ) -> Vec3 {
+        let current_direction = horizontal_or(current_follow_direction, Vec3::NEG_Z);
+        let forward_only = movement_axis.y > 0.0 && movement_axis.x.abs() <= f32::EPSILON;
+        if forward_only {
+            movement_stable_follow_direction(velocity, player_forward, current_direction)
+        } else {
+            current_direction
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn step_camera_with_direction(
         current_position: Vec3,
@@ -3198,10 +3213,14 @@ pub mod camera {
             look_target - direction * horizontal_distance + Vec3::Y * vertical_offset;
         desired_position.y = desired_position.y.max(follow.min_height);
 
-        let position = current_position.lerp(
+        let mut position = current_position.lerp(
             desired_position,
             smoothing_factor(follow.position_smoothing, dt),
         );
+        let lateral_axis = direction.cross(Vec3::Y).normalize_or_zero();
+        if lateral_axis.length_squared() > 0.0001 {
+            position += lateral_axis * (desired_position - position).dot(lateral_axis);
+        }
         let target_rotation = Transform::from_translation(position)
             .looking_at(look_target, Vec3::Y)
             .rotation;
@@ -3497,6 +3516,46 @@ pub mod camera {
             let direction = movement_stable_follow_direction(velocity, Vec3::NEG_Z, Vec3::NEG_Z);
 
             assert!(direction.distance(velocity.normalize()) < 0.001);
+        }
+
+        #[test]
+        fn lateral_or_released_input_does_not_drag_camera_follow_direction() {
+            let velocity = Vec3::new(1.0, 0.0, -20.0);
+            let lateral_direction = movement_input_stable_follow_direction(
+                velocity,
+                Vec3::X,
+                Vec3::NEG_Z,
+                Vec2::new(1.0, 0.0),
+            );
+            let released_direction =
+                movement_input_stable_follow_direction(velocity, Vec3::X, Vec3::NEG_Z, Vec2::ZERO);
+            let forward_direction =
+                movement_input_stable_follow_direction(velocity, Vec3::NEG_Z, Vec3::NEG_Z, Vec2::Y);
+
+            assert!(lateral_direction.distance(Vec3::NEG_Z) < 0.001);
+            assert!(released_direction.distance(Vec3::NEG_Z) < 0.001);
+            assert!(forward_direction.distance(velocity.normalize()) < 0.001);
+        }
+
+        #[test]
+        fn lateral_camera_tracking_translates_without_yawing_view() {
+            let follow = FollowCamera::default();
+            let player_position = Vec3::new(8.0, 30.0, 0.0);
+            let frame = step_camera_with_direction(
+                Vec3::new(0.0, 34.0, 12.0),
+                Quat::IDENTITY,
+                player_position,
+                Vec3::NEG_Z,
+                &follow,
+                CameraOrbit::default(),
+                1.0 / 60.0,
+            );
+
+            assert!(
+                (frame.position.x - player_position.x).abs() < 0.001,
+                "camera should translate laterally with the player instead of lagging into a yaw"
+            );
+            assert!(camera_view_yaw_degrees(frame.rotation, Vec3::NEG_Z).abs() < 0.001);
         }
 
         #[test]
@@ -3888,12 +3947,12 @@ pub mod eval {
     const AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS: f32 = 4.0;
     const AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES: f32 = 0.01;
     const AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 2.0;
-    const AIR_CONTROL_MAX_CAMERA_VIEW_YAW_DRIFT_DEGREES: f32 = 12.0;
+    const AIR_CONTROL_MAX_CAMERA_VIEW_YAW_DRIFT_DEGREES: f32 = 2.0;
     const AIR_CONTROL_MAX_AVG_CAMERA_FOLLOW_ERROR_DEGREES: f32 = 55.0;
     const AIR_CONTROL_MAX_P95_CAMERA_FOLLOW_ERROR_DEGREES: f32 = 70.0;
     const CAMERA_STRAFE_MIN_LATERAL_RESPONSE_MPS: f32 = 8.0;
-    const CAMERA_STRAFE_MAX_VIEW_YAW_DRIFT_DEGREES: f32 = 6.0;
-    const MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES: f32 = 15.0;
+    const CAMERA_STRAFE_MAX_VIEW_YAW_DRIFT_DEGREES: f32 = 2.0;
+    const MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES: f32 = 2.0;
     const MAX_GROUNDED_VISUAL_FOOT_GAP_M: f32 = 0.05;
     const AIR_CONTROL_MIN_AIR_BRAKE_SPEED_DROP_MPS: f32 = 10.0;
     const AIR_CONTROL_MIN_AIR_BRAKE_PLANAR_SPEED_DROP_MPS: f32 = 10.0;
@@ -7317,7 +7376,7 @@ pub mod eval {
         }
         if scenario.name == CAMERA_STRAFE_STABILITY {
             return FlightInput {
-                right: (0.15..=1.55).contains(&t),
+                right: (0.15..=1.65).contains(&t),
                 left: (1.75..=3.1).contains(&t),
                 ..default()
             };
@@ -8027,7 +8086,7 @@ pub mod eval {
                 max_camera_step_distance_m: 10.0,
                 max_camera_rotation_delta_degrees: 8.0,
                 max_camera_orbit_alignment_degrees: 15.0,
-                max_abs_camera_view_yaw_degrees: 6.0,
+                max_abs_camera_view_yaw_degrees: 2.0,
                 min_camera_obstruction_adjustment_m: 0.0,
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,
@@ -8097,7 +8156,7 @@ pub mod eval {
                 max_camera_step_distance_m: 12.0,
                 max_camera_rotation_delta_degrees: 25.0,
                 max_camera_orbit_alignment_degrees: 45.0,
-                max_abs_camera_view_yaw_degrees: 12.0,
+                max_abs_camera_view_yaw_degrees: 2.0,
                 min_camera_obstruction_adjustment_m: 0.0,
                 min_abs_camera_yaw_degrees: 0.0,
                 min_camera_pitch_offset_degrees: 0.0,

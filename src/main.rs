@@ -32,7 +32,8 @@ use nau_engine::camera::{
     FollowCameraState, apply_camera_input, avoid_camera_obstructions, camera_distance,
     camera_orbit_alignment_degrees, camera_pitch_degrees, camera_surface_clearance,
     camera_target_angle_degrees, camera_view_yaw_degrees, lift_camera_above_floor,
-    movement_stable_follow_direction, step_camera_with_direction, update_follow_direction_state,
+    movement_input_stable_follow_direction, step_camera_with_direction,
+    update_follow_direction_state,
 };
 use nau_engine::diagnostics::frame_ms;
 use nau_engine::environment::{
@@ -5930,19 +5931,23 @@ fn fly_player(
 
     step_player(
         dt,
-        FlightInput {
-            forward: keyboard.pressed(KeyCode::KeyW),
-            backward: keyboard.pressed(KeyCode::KeyS),
-            left: keyboard.pressed(KeyCode::KeyA),
-            right: keyboard.pressed(KeyCode::KeyD),
-            glide: keyboard.pressed(KeyCode::Space),
-            dive: keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight),
-            launch: keyboard.just_pressed(KeyCode::KeyE),
-        },
+        keyboard_flight_input(&keyboard),
         facing,
         &mut context,
         &mut kinematics,
     );
+}
+
+fn keyboard_flight_input(keyboard: &ButtonInput<KeyCode>) -> FlightInput {
+    FlightInput {
+        forward: keyboard.pressed(KeyCode::KeyW),
+        backward: keyboard.pressed(KeyCode::KeyS),
+        left: keyboard.pressed(KeyCode::KeyA),
+        right: keyboard.pressed(KeyCode::KeyD),
+        glide: keyboard.pressed(KeyCode::Space),
+        dive: keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight),
+        launch: keyboard.just_pressed(KeyCode::KeyE),
+    }
 }
 
 fn eval_fly_player(
@@ -6275,7 +6280,12 @@ fn update_camera_control(
     state.orbit = apply_camera_input(state.orbit, input, &tuning);
 }
 
-fn follow_camera(time: Res<Time>, eval: Option<Res<EvalRun>>, mut scene: CameraScene) {
+fn follow_camera(
+    time: Res<Time>,
+    eval: Option<Res<EvalRun>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut scene: CameraScene,
+) {
     let Ok((player_transform, player_velocity)) = scene.player.single() else {
         return;
     };
@@ -6286,10 +6296,15 @@ fn follow_camera(time: Res<Time>, eval: Option<Res<EvalRun>>, mut scene: CameraS
     let previous_camera_rotation = camera_transform.rotation;
 
     let dt = eval_dt(&time, eval.as_deref());
-    let desired_follow_direction = movement_stable_follow_direction(
+    let movement_input = eval.as_deref().map_or_else(
+        || keyboard_flight_input(&keyboard),
+        |run| scripted_input(run.scenario, run.frame),
+    );
+    let desired_follow_direction = movement_input_stable_follow_direction(
         player_velocity.0,
         *player_transform.forward(),
         follow_state.direction,
+        movement_input.planar_axis(),
     );
     let follow_direction =
         update_follow_direction_state(&mut follow_state, desired_follow_direction, follow, dt);
