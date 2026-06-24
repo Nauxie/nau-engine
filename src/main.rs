@@ -39,7 +39,9 @@ use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
     face_horizontal_velocity, step_flight,
 };
-use nau_engine::world::{LodBand, START_POSITION, SkyIsland, SkyRoute, StreamActivation};
+use nau_engine::world::{
+    LodBand, START_POSITION, SkyIsland, SkyRoute, StreamActivation, is_recovery_branch_island,
+};
 use std::{
     env,
     fs::{self, File, OpenOptions},
@@ -841,6 +843,7 @@ fn setup(
             island_rock_material.clone(),
             island_under_material.clone(),
             target_marker_material.clone(),
+            updraft_marker_material.clone(),
             trunk_material.clone(),
             foliage_material.clone(),
             flower_material.clone(),
@@ -1316,6 +1319,7 @@ fn spawn_sky_island(
     rock_material: Handle<StandardMaterial>,
     under_material: Handle<StandardMaterial>,
     marker_material: Handle<StandardMaterial>,
+    branch_marker_material: Handle<StandardMaterial>,
     trunk_material: Handle<StandardMaterial>,
     foliage_material: Handle<StandardMaterial>,
     flower_material: Handle<StandardMaterial>,
@@ -1451,6 +1455,9 @@ fn spawn_sky_island(
             Name::new("landing target marker"),
         ));
     }
+    if is_recovery_branch_island(island.name) {
+        spawn_recovery_branch_marker(commands, meshes, branch_marker_material, island);
+    }
 
     spawn_sky_island_details(
         commands,
@@ -1463,6 +1470,57 @@ fn spawn_sky_island(
         island_index,
         island,
     );
+}
+
+fn spawn_recovery_branch_marker(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    marker_material: Handle<StandardMaterial>,
+    island: SkyIsland,
+) {
+    let mast_height = 5.6;
+    let mast_surface = island_visual_surface_position(island, Vec2::new(-0.08, 0.08));
+    let mast_center = mast_surface + Vec3::Y * (mast_height * 0.5);
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(0.42, mast_height))),
+        MeshMaterial3d(marker_material.clone()),
+        Transform::from_translation(mast_center),
+        IslandLodVisual::new(island, IslandVisualLayer::Beacon),
+        Name::new("recovery branch mast"),
+    ));
+
+    let ring_size = 7.2;
+    for (offset, scale) in [
+        (
+            Vec3::new(0.0, 0.09, ring_size * 0.5),
+            Vec3::new(ring_size, 0.12, 0.34),
+        ),
+        (
+            Vec3::new(0.0, 0.09, -ring_size * 0.5),
+            Vec3::new(ring_size, 0.12, 0.34),
+        ),
+        (
+            Vec3::new(ring_size * 0.5, 0.09, 0.0),
+            Vec3::new(0.34, 0.12, ring_size),
+        ),
+        (
+            Vec3::new(-ring_size * 0.5, 0.09, 0.0),
+            Vec3::new(0.34, 0.12, ring_size),
+        ),
+    ] {
+        let surface_y = island.mesh_top_y_at(island.center + Vec3::new(offset.x, 0.0, offset.z));
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(scale.x, scale.y, scale.z))),
+            MeshMaterial3d(marker_material.clone()),
+            Transform::from_xyz(
+                island.center.x + offset.x,
+                surface_y + offset.y,
+                island.center.z + offset.z,
+            ),
+            IslandLodVisual::new(island, IslandVisualLayer::Beacon),
+            Name::new("recovery branch ring"),
+        ));
+    }
 }
 
 fn island_visual_surface_position(island: SkyIsland, normalized_offset: Vec2) -> Vec3 {
@@ -2257,6 +2315,15 @@ fn collect_eval_metrics(
         scene.lift_fields.iter().copied(),
         scene.wind_fields.iter().copied(),
     );
+    let scenario_target = run.scenario.target_island_name;
+    let target_distance_m = scene
+        .route
+        .target_distance_to(transform.translation, scenario_target);
+    let on_landing_target = scene.route.on_landing_target_named(
+        transform.translation,
+        controller.mode,
+        scenario_target,
+    );
     let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
     let lod_visuals = scene.stream_diagnostics.counts;
     let sample = EvalSample::new(
@@ -2282,10 +2349,8 @@ fn collect_eval_metrics(
         active_lift_fields,
         readable_lift_fields,
         scene.lift_fields.iter().count(),
-        scene.route.target_distance(transform.translation),
-        scene
-            .route
-            .on_landing_target(transform.translation, controller.mode),
+        target_distance_m,
+        on_landing_target,
         scene.route.islands().len(),
         streaming_lod.active_chunk_count,
         streaming_lod.active_island_count,
