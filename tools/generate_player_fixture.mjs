@@ -93,12 +93,17 @@ const faceData = [
 
 const positions = [];
 const normals = [];
+const uvs = [];
 const indices = [];
 for (const [normal, verts] of faceData) {
   const start = positions.length / 3;
+  const faceUvs = [[0, 0], [1, 0], [1, 1], [0, 1]];
   for (const vertex of verts) {
     positions.push(...vertex);
     normals.push(...normal);
+  }
+  for (const uv of faceUvs) {
+    uvs.push(...uv);
   }
   indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
 }
@@ -115,6 +120,7 @@ const normalAccessor = gltfBuffer.addFloatAccessor(
   [-1.0, -1.0, -1.0],
   [1.0, 1.0, 1.0],
 );
+const uvAccessor = gltfBuffer.addFloatAccessor(uvs, "VEC2", [0.0, 0.0], [1.0, 1.0]);
 const indexAccessor = gltfBuffer.addIndexAccessor(indices);
 
 const meshes = [
@@ -131,6 +137,7 @@ function cuboidMesh(name, material) {
         attributes: {
           POSITION: positionAccessor,
           NORMAL: normalAccessor,
+          TEXCOORD_0: uvAccessor,
         },
         indices: indexAccessor,
         material,

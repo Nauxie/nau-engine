@@ -485,6 +485,165 @@ function waterFixture() {
   });
 }
 
+function verticalRingMesh(name, radiusOuter, radiusInner, thickness, segments, material) {
+  const positions = [];
+  const uvs = [];
+  for (let i = 0; i < segments; i++) {
+    const angle = (i / segments) * Math.PI * 2;
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    for (const z of [-thickness, thickness]) {
+      positions.push([c * radiusOuter, s * radiusOuter, z]);
+      positions.push([c * radiusInner, s * radiusInner, z]);
+      uvs.push([i / segments, 0], [i / segments, 1]);
+    }
+  }
+  const indices = [];
+  for (let i = 0; i < segments; i++) {
+    const next = (i + 1) % segments;
+    const a = i * 4;
+    const b = next * 4;
+    indices.push(a, b, a + 1, a + 1, b, b + 1);
+    indices.push(a + 2, a + 3, b + 2, b + 2, a + 3, b + 3);
+    indices.push(a, a + 2, b, b, a + 2, b + 2);
+    indices.push(a + 1, b + 1, a + 3, a + 3, b + 1, b + 3);
+  }
+  return { name, positions, indices, uvs, material };
+}
+
+function rocksFixture() {
+  const materials = [
+    pbrMaterial("weathered basalt", [0.22, 0.2, 0.18, 1.0], 0.9),
+    pbrMaterial("warm exposed stone", [0.42, 0.34, 0.25, 1.0], 0.86),
+    pbrMaterial("lichen highlight", [0.38, 0.48, 0.26, 1.0], 0.95),
+  ];
+  const meshes = [
+    ellipsoidMesh("large fractured boulder", [0, 0.42, 0], [0.76, 0.46, 0.58], 6, 12, 0),
+    ellipsoidMesh("leaning side stone", [-0.66, 0.28, 0.14], [0.38, 0.3, 0.32], 5, 10, 1),
+    ellipsoidMesh("low foreground stone", [0.62, 0.18, -0.36], [0.46, 0.2, 0.3], 5, 10, 0),
+    irregularRingMesh("lichen strata band", 0.84, 0.62, 0.54, 0.46, 24, 2),
+  ];
+  const nodes = [
+    { name: "Self Authored Rock Kit", children: meshes.map((_, index) => index + 1) },
+    ...meshes.map((mesh, index) => ({ name: mesh.name, mesh: index })),
+  ];
+  writeFixture({
+    path: join("assets", "models", "world", "rocks.gltf"),
+    generator: "NAU Engine self-authored rock fixture generator",
+    copyright: "Self-authored for NAU Engine; no third-party assets.",
+    materials,
+    meshes,
+    nodes,
+  });
+}
+
+function routeMarkerFixture() {
+  const materials = [
+    pbrMaterial("glowing route ring", [1.0, 0.42, 0.52, 1.0], 0.36, 0.0, {
+      emissiveFactor: [1.4, 0.2, 0.28],
+    }),
+    pbrMaterial("weathered route mast", [0.33, 0.24, 0.15, 1.0], 0.82),
+    pbrMaterial("cool objective shard", [0.36, 0.76, 1.0, 1.0], 0.45, 0.0, {
+      emissiveFactor: [0.1, 0.35, 0.7],
+    }),
+    pbrMaterial("stone base cairn", [0.27, 0.26, 0.24, 1.0], 0.88),
+  ];
+  const meshes = [
+    verticalRingMesh("route gate ring", 0.72, 0.58, 0.035, 32, 0),
+    prismBetween("left support mast", [-0.62, -0.85, -0.02], [-0.62, 0.62, -0.02], 0.035, 1),
+    prismBetween("right support mast", [0.62, -0.85, -0.02], [0.62, 0.62, -0.02], 0.035, 1),
+    ellipsoidMesh("objective shard", [0.0, 0.03, -0.02], [0.12, 0.34, 0.08], 5, 8, 2),
+    ellipsoidMesh("stacked cairn base", [0.0, -0.92, 0.0], [0.48, 0.18, 0.34], 4, 10, 3),
+  ];
+  const nodes = [
+    { name: "Self Authored Route Marker Kit", children: meshes.map((_, index) => index + 1) },
+    ...meshes.map((mesh, index) => ({ name: mesh.name, mesh: index })),
+  ];
+  writeFixture({
+    path: join("assets", "models", "world", "route_markers.gltf"),
+    generator: "NAU Engine self-authored route marker fixture generator",
+    copyright: "Self-authored for NAU Engine; no third-party assets.",
+    materials,
+    meshes,
+    nodes,
+  });
+}
+
+function weatherLayerFixture() {
+  const materials = [
+    pbrMaterial("soft cloud lobe", [0.78, 0.84, 0.88, 0.72], 0.62, 0.0, {
+      alphaMode: "BLEND",
+      doubleSided: true,
+    }),
+    pbrMaterial("shadowed cloud belly", [0.48, 0.56, 0.62, 0.68], 0.75, 0.0, {
+      alphaMode: "BLEND",
+      doubleSided: true,
+    }),
+    pbrMaterial("high cirrus veil", [0.9, 0.95, 1.0, 0.36], 0.48, 0.0, {
+      alphaMode: "BLEND",
+      doubleSided: true,
+    }),
+  ];
+  const meshes = [
+    ellipsoidMesh("cloud bank lobe center", [0, 0, 0], [1.2, 0.34, 0.62], 5, 12, 0),
+    ellipsoidMesh("cloud bank lobe left", [-0.86, -0.04, 0.08], [0.68, 0.28, 0.42], 5, 10, 0),
+    ellipsoidMesh("cloud bank lobe right", [0.92, -0.02, -0.1], [0.74, 0.3, 0.46], 5, 10, 0),
+    ellipsoidMesh("shadow belly lobe", [0.18, -0.24, 0.05], [0.95, 0.18, 0.5], 4, 10, 1),
+    leafPlane("high cirrus slash a", [-0.18, 0.22, -0.02], 1.1, 0.18, 0.35, 2),
+    leafPlane("high cirrus slash b", [0.34, 0.3, 0.2], 0.88, 0.12, -0.24, 2),
+  ];
+  const nodes = [
+    { name: "Self Authored Weather Layer Kit", children: meshes.map((_, index) => index + 1) },
+    ...meshes.map((mesh, index) => ({ name: mesh.name, mesh: index })),
+  ];
+  writeFixture({
+    path: join("assets", "models", "world", "weather_layers.gltf"),
+    generator: "NAU Engine self-authored weather layer fixture generator",
+    copyright: "Self-authored for NAU Engine; no third-party assets.",
+    materials,
+    meshes,
+    nodes,
+  });
+}
+
+function impostorFixture() {
+  const materials = [
+    pbrMaterial("distant grassy cap", [0.16, 0.38, 0.18, 1.0], 0.9),
+    pbrMaterial("distant cliff mass", [0.24, 0.22, 0.2, 1.0], 0.88),
+    pbrMaterial("distant haze rim", [0.44, 0.56, 0.58, 0.65], 0.72, 0.0, {
+      alphaMode: "BLEND",
+      doubleSided: true,
+    }),
+  ];
+  const meshes = [
+    terrainPatch(
+      3.2,
+      1.5,
+      5,
+      (u, v) => 0.04 * Math.sin(u * Math.PI * 3.0) + 0.03 * Math.cos(v * Math.PI * 2.0),
+      0,
+    ),
+    irregularRingMesh("distant underside silhouette", 1.72, 0.78, -0.04, -0.74, 24, 1),
+    irregularRingMesh("hazy far rim", 1.92, 0.9, 0.02, -0.08, 24, 2),
+  ];
+  const nodes = [
+    { name: "Self Authored Island Impostor Kit", children: meshes.map((_, index) => index + 1) },
+    ...meshes.map((mesh, index) => ({ name: mesh.name, mesh: index })),
+  ];
+  writeFixture({
+    path: join("assets", "models", "world", "island_impostors.gltf"),
+    generator: "NAU Engine self-authored distant impostor fixture generator",
+    copyright: "Self-authored for NAU Engine; no third-party assets.",
+    materials,
+    meshes,
+    nodes,
+  });
+}
+
 terrainFixture();
 foliageFixture();
+rocksFixture();
 waterFixture();
+routeMarkerFixture();
+weatherLayerFixture();
+impostorFixture();
