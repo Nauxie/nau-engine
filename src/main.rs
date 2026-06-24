@@ -91,9 +91,29 @@ fn main() -> AppExit {
         }
     };
 
-    let CliAction::Run { eval } = cli else {
-        println!("{}", usage());
-        return AppExit::Success;
+    let eval = match cli {
+        CliAction::Run { eval } => eval,
+        CliAction::ExportTerrain { output_dir } => {
+            return match export_terrain_inspection(&output_dir) {
+                Ok(report) => {
+                    println!(
+                        "exported {} islands / {} meshes to {}",
+                        report.island_count,
+                        report.mesh_count,
+                        path_string(&report.manifest_path)
+                    );
+                    AppExit::Success
+                }
+                Err(error) => {
+                    eprintln!("terrain export failed: {error}");
+                    AppExit::from_code(1)
+                }
+            };
+        }
+        CliAction::Help => {
+            println!("{}", usage());
+            return AppExit::Success;
+        }
     };
     let screenshot_eval = eval
         .as_deref()
@@ -860,6 +880,7 @@ struct EvalOptions {
 #[derive(Clone, Debug)]
 enum CliAction {
     Run { eval: Option<Box<EvalOptions>> },
+    ExportTerrain { output_dir: PathBuf },
     Help,
 }
 
@@ -974,6 +995,7 @@ impl EvalRun {
 fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<CliAction, String> {
     let mut eval_name = None;
     let mut eval_output = None;
+    let mut export_terrain_output = None;
     let mut capture_screenshot = true;
     let mut saw_eval = false;
     let mut args = args.into_iter();
@@ -999,9 +1021,23 @@ fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<CliAction, S
             eval_output = Some(PathBuf::from(value));
         } else if arg == "--eval-no-screenshot" {
             capture_screenshot = false;
+        } else if arg == "--export-terrain" {
+            export_terrain_output =
+                Some(PathBuf::from(args.next().ok_or_else(|| {
+                    "--export-terrain requires an output directory".to_string()
+                })?));
+        } else if let Some(value) = arg.strip_prefix("--export-terrain=") {
+            export_terrain_output = Some(PathBuf::from(value));
         } else {
             return Err(format!("unknown argument: {arg}"));
         }
+    }
+
+    if let Some(output_dir) = export_terrain_output {
+        if saw_eval {
+            return Err("--export-terrain cannot be combined with --eval".to_string());
+        }
+        return Ok(CliAction::ExportTerrain { output_dir });
     }
 
     let eval = if saw_eval {
@@ -1028,7 +1064,7 @@ fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<CliAction, S
 
 fn usage() -> String {
     format!(
-        "Usage:\n  cargo run\n  cargo run -- --eval <scenario> [--eval-output <dir>] [--eval-no-screenshot]\n\nScenarios: {}",
+        "Usage:\n  cargo run\n  cargo run -- --eval <scenario> [--eval-output <dir>] [--eval-no-screenshot]\n  cargo run -- --export-terrain <dir>\n\nScenarios: {}",
         SCENARIO_NAMES.join(", ")
     )
 }
@@ -1051,6 +1087,464 @@ fn remove_existing_dir(path: &Path) -> std::io::Result<()> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),
     }
+}
+
+#[derive(Debug)]
+struct TerrainExportReport {
+    manifest_path: PathBuf,
+    island_count: usize,
+    mesh_count: usize,
+    total_vertex_count: usize,
+    total_triangle_count: usize,
+    min_terrain_mesh_vertices: usize,
+    min_terrain_color_bands: usize,
+    min_terrain_material_weight_bands: usize,
+    min_terrain_material_channels: usize,
+    min_terrain_relief_range_m: f32,
+    min_cliff_color_bands: usize,
+    islands: Vec<TerrainExportIslandSummary>,
+}
+
+#[derive(Debug)]
+struct TerrainExportIslandSummary {
+    index: usize,
+    island: SkyIsland,
+    slug: String,
+    terrain: TerrainExportMeshSummary,
+    cliff: TerrainExportMeshSummary,
+    underside: TerrainExportMeshSummary,
+}
+
+#[derive(Debug)]
+struct TerrainExportMeshSummary {
+    obj_path: PathBuf,
+    material_weights_path: Option<PathBuf>,
+    vertex_count: usize,
+    triangle_count: usize,
+    color_bands: usize,
+    material_weight_bands: usize,
+    material_channels: usize,
+    relief_range_m: f32,
+}
+
+impl TerrainExportReport {
+    fn to_json(&self) -> String {
+        let islands = self
+            .islands
+            .iter()
+            .map(|island| island.to_json("    "))
+            .collect::<Vec<_>>()
+            .join(",\n");
+
+        format!(
+            concat!(
+                "{{\n",
+                "  \"schema\": \"nau_terrain_export.v1\",\n",
+                "  \"island_count\": {},\n",
+                "  \"mesh_count\": {},\n",
+                "  \"total_vertex_count\": {},\n",
+                "  \"total_triangle_count\": {},\n",
+                "  \"minimums\": {{\n",
+                "    \"terrain_mesh_vertices\": {},\n",
+                "    \"terrain_color_bands\": {},\n",
+                "    \"terrain_material_weight_bands\": {},\n",
+                "    \"terrain_material_channels\": {},\n",
+                "    \"terrain_relief_range_m\": {},\n",
+                "    \"cliff_color_bands\": {}\n",
+                "  }},\n",
+                "  \"islands\": [\n",
+                "{}\n",
+                "  ]\n",
+                "}}\n"
+            ),
+            self.island_count,
+            self.mesh_count,
+            self.total_vertex_count,
+            self.total_triangle_count,
+            self.min_terrain_mesh_vertices,
+            self.min_terrain_color_bands,
+            self.min_terrain_material_weight_bands,
+            self.min_terrain_material_channels,
+            terrain_export_json_number(self.min_terrain_relief_range_m),
+            self.min_cliff_color_bands,
+            islands
+        )
+    }
+}
+
+impl TerrainExportIslandSummary {
+    fn to_json(&self, indent: &str) -> String {
+        format!(
+            "{indent}{{\n\
+             {indent}  \"index\": {},\n\
+             {indent}  \"name\": {},\n\
+             {indent}  \"slug\": {},\n\
+             {indent}  \"center\": {},\n\
+             {indent}  \"half_extents\": {},\n\
+             {indent}  \"thickness_m\": {},\n\
+             {indent}  \"target\": {},\n\
+             {indent}  \"terrain\": {},\n\
+             {indent}  \"cliff\": {},\n\
+             {indent}  \"underside\": {}\n\
+             {indent}}}",
+            self.index,
+            terrain_export_json_string(self.island.name),
+            terrain_export_json_string(&self.slug),
+            terrain_export_json_vec3(self.island.center),
+            terrain_export_json_vec2(self.island.half_extents),
+            terrain_export_json_number(self.island.thickness),
+            self.island.is_target,
+            self.terrain.to_json(),
+            self.cliff.to_json(),
+            self.underside.to_json(),
+        )
+    }
+}
+
+impl TerrainExportMeshSummary {
+    fn to_json(&self) -> String {
+        let material_weights_path = self
+            .material_weights_path
+            .as_deref()
+            .map(|path| terrain_export_json_string(&path_string(path)))
+            .unwrap_or_else(|| "null".to_string());
+
+        format!(
+            concat!(
+                "{{\"obj\": {}, \"material_weights_csv\": {}, ",
+                "\"vertex_count\": {}, \"triangle_count\": {}, ",
+                "\"color_bands\": {}, \"material_weight_bands\": {}, ",
+                "\"material_channels\": {}, \"relief_range_m\": {}}}"
+            ),
+            terrain_export_json_string(&path_string(&self.obj_path)),
+            material_weights_path,
+            self.vertex_count,
+            self.triangle_count,
+            self.color_bands,
+            self.material_weight_bands,
+            self.material_channels,
+            terrain_export_json_number(self.relief_range_m)
+        )
+    }
+}
+
+fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<TerrainExportReport> {
+    fs::create_dir_all(output_dir)?;
+    let islands_dir = output_dir.join("islands");
+    remove_existing_dir(&islands_dir)?;
+    fs::create_dir_all(&islands_dir)?;
+
+    let route = SkyRoute::default();
+    let mut islands = Vec::with_capacity(route.islands().len());
+
+    for (index, island) in route.islands().iter().copied().enumerate() {
+        let slug = terrain_export_slug(island.name);
+        let prefix = format!("{index:02}_{slug}");
+        let terrain_mesh = island_terrain_mesh(index, island);
+        let cliff_mesh = island_cliff_mesh(index, island);
+        let underside_mesh = island_underside_mesh(index, island);
+
+        let terrain_obj = PathBuf::from("islands").join(format!("{prefix}_terrain.obj"));
+        let terrain_material_weights =
+            PathBuf::from("islands").join(format!("{prefix}_terrain_material_weights.csv"));
+        let cliff_obj = PathBuf::from("islands").join(format!("{prefix}_cliff.obj"));
+        let underside_obj = PathBuf::from("islands").join(format!("{prefix}_underside.obj"));
+
+        write_mesh_obj(&output_dir.join(&terrain_obj), &terrain_mesh, "terrain")?;
+        write_terrain_material_weights_csv(
+            &output_dir.join(&terrain_material_weights),
+            &terrain_mesh,
+        )?;
+        write_mesh_obj(&output_dir.join(&cliff_obj), &cliff_mesh, "cliff")?;
+        write_mesh_obj(
+            &output_dir.join(&underside_obj),
+            &underside_mesh,
+            "underside",
+        )?;
+
+        islands.push(TerrainExportIslandSummary {
+            index,
+            island,
+            slug,
+            terrain: terrain_export_mesh_summary(
+                terrain_obj,
+                Some(terrain_material_weights),
+                &terrain_mesh,
+            ),
+            cliff: terrain_export_mesh_summary(cliff_obj, None, &cliff_mesh),
+            underside: terrain_export_mesh_summary(underside_obj, None, &underside_mesh),
+        });
+    }
+
+    let island_count = islands.len();
+    let mesh_count = island_count * 3;
+    let total_vertex_count = islands
+        .iter()
+        .map(|island| {
+            island.terrain.vertex_count + island.cliff.vertex_count + island.underside.vertex_count
+        })
+        .sum();
+    let total_triangle_count = islands
+        .iter()
+        .map(|island| {
+            island.terrain.triangle_count
+                + island.cliff.triangle_count
+                + island.underside.triangle_count
+        })
+        .sum();
+    let min_terrain_mesh_vertices = islands
+        .iter()
+        .map(|island| island.terrain.vertex_count)
+        .min()
+        .unwrap_or(0);
+    let min_terrain_color_bands = islands
+        .iter()
+        .map(|island| island.terrain.color_bands)
+        .min()
+        .unwrap_or(0);
+    let min_terrain_material_weight_bands = islands
+        .iter()
+        .map(|island| island.terrain.material_weight_bands)
+        .min()
+        .unwrap_or(0);
+    let min_terrain_material_channels = islands
+        .iter()
+        .map(|island| island.terrain.material_channels)
+        .min()
+        .unwrap_or(0);
+    let min_terrain_relief_range_m = islands
+        .iter()
+        .map(|island| island.terrain.relief_range_m)
+        .min_by(f32::total_cmp)
+        .unwrap_or(0.0);
+    let min_cliff_color_bands = islands
+        .iter()
+        .flat_map(|island| [island.cliff.color_bands, island.underside.color_bands])
+        .min()
+        .unwrap_or(0);
+
+    let manifest_path = output_dir.join("manifest.json");
+    let report = TerrainExportReport {
+        manifest_path,
+        island_count,
+        mesh_count,
+        total_vertex_count,
+        total_triangle_count,
+        min_terrain_mesh_vertices,
+        min_terrain_color_bands,
+        min_terrain_material_weight_bands,
+        min_terrain_material_channels,
+        min_terrain_relief_range_m,
+        min_cliff_color_bands,
+        islands,
+    };
+
+    fs::write(&report.manifest_path, report.to_json())?;
+    Ok(report)
+}
+
+fn terrain_export_mesh_summary(
+    obj_path: PathBuf,
+    material_weights_path: Option<PathBuf>,
+    mesh: &Mesh,
+) -> TerrainExportMeshSummary {
+    TerrainExportMeshSummary {
+        obj_path,
+        material_weights_path,
+        vertex_count: mesh.count_vertices(),
+        triangle_count: mesh_index_values(mesh).len() / 3,
+        color_bands: mesh_vertex_color_band_count(mesh),
+        material_weight_bands: mesh_terrain_material_weight_band_count(mesh),
+        material_channels: mesh_terrain_material_channel_count(mesh),
+        relief_range_m: mesh_y_range(mesh),
+    }
+}
+
+fn write_mesh_obj(path: &Path, mesh: &Mesh, object_name: &str) -> std::io::Result<()> {
+    let positions = mesh_positions(mesh);
+    let normals = mesh_normals(mesh).filter(|normals| normals.len() == positions.len());
+    let uvs = mesh_uv0(mesh).filter(|uvs| uvs.len() == positions.len());
+    let colors = mesh_colors(mesh).filter(|colors| colors.len() == positions.len());
+    let indices = mesh_index_values(mesh);
+    let mut file = File::create(path)?;
+
+    writeln!(file, "# NAU terrain export")?;
+    writeln!(file, "o {}", terrain_export_slug(object_name))?;
+    for (index, position) in positions.iter().enumerate() {
+        if let Some(colors) = colors {
+            let color = colors[index];
+            writeln!(
+                file,
+                "v {:.4} {:.4} {:.4} {:.4} {:.4} {:.4}",
+                position[0], position[1], position[2], color[0], color[1], color[2]
+            )?;
+        } else {
+            writeln!(
+                file,
+                "v {:.4} {:.4} {:.4}",
+                position[0], position[1], position[2]
+            )?;
+        }
+    }
+    if let Some(uvs) = uvs {
+        for uv in uvs {
+            writeln!(file, "vt {:.4} {:.4}", uv[0], uv[1])?;
+        }
+    }
+    if let Some(normals) = normals {
+        for normal in normals {
+            writeln!(
+                file,
+                "vn {:.4} {:.4} {:.4}",
+                normal[0], normal[1], normal[2]
+            )?;
+        }
+    }
+
+    let has_uvs = uvs.is_some();
+    let has_normals = normals.is_some();
+    for triangle in indices.chunks_exact(3) {
+        writeln!(
+            file,
+            "f {} {} {}",
+            obj_face_index(triangle[0], has_uvs, has_normals),
+            obj_face_index(triangle[1], has_uvs, has_normals),
+            obj_face_index(triangle[2], has_uvs, has_normals)
+        )?;
+    }
+
+    Ok(())
+}
+
+fn write_terrain_material_weights_csv(path: &Path, mesh: &Mesh) -> std::io::Result<()> {
+    let Some(weights) = mesh_terrain_material_weights(mesh) else {
+        return Ok(());
+    };
+    let mut file = File::create(path)?;
+    writeln!(file, "vertex,lush_highland,exposed_edge")?;
+    for (index, weight) in weights.iter().enumerate() {
+        writeln!(file, "{index},{:.4},{:.4}", weight[0], weight[1])?;
+    }
+    Ok(())
+}
+
+fn obj_face_index(index: u32, has_uvs: bool, has_normals: bool) -> String {
+    let obj_index = index + 1;
+    match (has_uvs, has_normals) {
+        (true, true) => format!("{obj_index}/{obj_index}/{obj_index}"),
+        (true, false) => format!("{obj_index}/{obj_index}"),
+        (false, true) => format!("{obj_index}//{obj_index}"),
+        (false, false) => obj_index.to_string(),
+    }
+}
+
+fn mesh_positions(mesh: &Mesh) -> &[[f32; 3]] {
+    match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
+        Some(VertexAttributeValues::Float32x3(values)) => values,
+        _ => &[],
+    }
+}
+
+fn mesh_normals(mesh: &Mesh) -> Option<&[[f32; 3]]> {
+    match mesh.attribute(Mesh::ATTRIBUTE_NORMAL) {
+        Some(VertexAttributeValues::Float32x3(values)) => Some(values),
+        _ => None,
+    }
+}
+
+fn mesh_uv0(mesh: &Mesh) -> Option<&[[f32; 2]]> {
+    match mesh.attribute(Mesh::ATTRIBUTE_UV_0) {
+        Some(VertexAttributeValues::Float32x2(values)) => Some(values),
+        _ => None,
+    }
+}
+
+fn mesh_colors(mesh: &Mesh) -> Option<&[[f32; 4]]> {
+    match mesh.attribute(Mesh::ATTRIBUTE_COLOR) {
+        Some(VertexAttributeValues::Float32x4(values)) => Some(values),
+        _ => None,
+    }
+}
+
+fn mesh_terrain_material_weights(mesh: &Mesh) -> Option<&[[f32; 2]]> {
+    match mesh.attribute(Mesh::ATTRIBUTE_UV_1) {
+        Some(VertexAttributeValues::Float32x2(values)) => Some(values),
+        _ => None,
+    }
+}
+
+fn mesh_index_values(mesh: &Mesh) -> Vec<u32> {
+    match mesh.indices() {
+        Some(Indices::U16(values)) => values.iter().map(|index| u32::from(*index)).collect(),
+        Some(Indices::U32(values)) => values.clone(),
+        None => (0..mesh.count_vertices() as u32).collect(),
+    }
+}
+
+fn terrain_export_slug(value: &str) -> String {
+    let mut slug = String::new();
+    let mut last_was_separator = false;
+
+    for character in value.chars().flat_map(char::to_lowercase) {
+        if character.is_ascii_alphanumeric() {
+            slug.push(character);
+            last_was_separator = false;
+        } else if !last_was_separator && !slug.is_empty() {
+            slug.push('_');
+            last_was_separator = true;
+        }
+    }
+
+    if last_was_separator {
+        slug.pop();
+    }
+    if slug.is_empty() {
+        "unnamed".to_string()
+    } else {
+        slug
+    }
+}
+
+fn terrain_export_json_vec3(value: Vec3) -> String {
+    format!(
+        "[{}, {}, {}]",
+        terrain_export_json_number(value.x),
+        terrain_export_json_number(value.y),
+        terrain_export_json_number(value.z)
+    )
+}
+
+fn terrain_export_json_vec2(value: Vec2) -> String {
+    format!(
+        "[{}, {}]",
+        terrain_export_json_number(value.x),
+        terrain_export_json_number(value.y)
+    )
+}
+
+fn terrain_export_json_number(value: f32) -> String {
+    if value.is_finite() {
+        format!("{value:.4}")
+    } else {
+        "0.0000".to_string()
+    }
+}
+
+fn terrain_export_json_string(value: &str) -> String {
+    let mut output = String::from("\"");
+    for character in value.chars() {
+        match character {
+            '\\' => output.push_str("\\\\"),
+            '"' => output.push_str("\\\""),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            value if value.is_control() => output.push_str(&format!("\\u{:04x}", value as u32)),
+            value => output.push(value),
+        }
+    }
+    output.push('"');
+    output
 }
 
 type CameraFollowFilter = (With<Camera3d>, Without<Player>);
@@ -5315,6 +5809,83 @@ mod tests {
             (position[2] - island.center.z) / island.half_extents.y,
         )
         .length()
+    }
+
+    #[test]
+    fn parse_cli_args_accepts_terrain_export() {
+        let action = parse_cli_args(
+            ["--export-terrain", "target/terrain_export"]
+                .into_iter()
+                .map(str::to_string),
+        )
+        .expect("terrain export args should parse");
+
+        match action {
+            CliAction::ExportTerrain { output_dir } => {
+                assert_eq!(output_dir, PathBuf::from("target/terrain_export"));
+            }
+            _ => panic!("expected terrain export action"),
+        }
+    }
+
+    #[test]
+    fn parse_cli_args_rejects_eval_and_terrain_export_together() {
+        let error = parse_cli_args(
+            [
+                "--eval",
+                "baseline_route",
+                "--export-terrain",
+                "target/terrain_export",
+            ]
+            .into_iter()
+            .map(str::to_string),
+        )
+        .expect_err("eval and terrain export should be mutually exclusive");
+
+        assert!(error.contains("cannot be combined"));
+    }
+
+    #[test]
+    fn terrain_export_writes_manifest_meshes_and_weight_sidecars() {
+        let output_dir = std::env::temp_dir().join(format!(
+            "nau-terrain-export-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+        remove_existing_dir(&output_dir).expect("stale terrain export dir should be removable");
+
+        let report = export_terrain_inspection(&output_dir).expect("terrain export should succeed");
+        let manifest =
+            fs::read_to_string(&report.manifest_path).expect("manifest should be readable");
+        let launch_terrain = output_dir.join("islands/00_launch_mesa_terrain.obj");
+        let launch_weights = output_dir.join("islands/00_launch_mesa_terrain_material_weights.csv");
+        let weights =
+            fs::read_to_string(&launch_weights).expect("material weights csv should be readable");
+
+        assert_eq!(report.island_count, SkyRoute::default().islands().len());
+        assert_eq!(report.mesh_count, report.island_count * 3);
+        assert!(report.total_vertex_count > report.island_count * 2305);
+        assert!(report.total_triangle_count > report.island_count * 4000);
+        assert!(report.min_terrain_mesh_vertices >= 2305);
+        assert!(report.min_terrain_color_bands >= ISLAND_TERRAIN_COLOR_BANDS);
+        assert!(report.min_terrain_material_weight_bands >= ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS);
+        assert!(report.min_terrain_material_channels >= ISLAND_TERRAIN_MATERIAL_CHANNELS);
+        assert!(report.min_terrain_relief_range_m >= 0.8);
+        assert!(report.min_cliff_color_bands >= ISLAND_CLIFF_STRATA_BANDS / 2);
+        assert!(launch_terrain.exists());
+        assert!(launch_weights.exists());
+        assert!(weights.starts_with("vertex,lush_highland,exposed_edge\n"));
+        assert!(weights.lines().count() > 2000);
+        assert!(manifest.contains("\"schema\": \"nau_terrain_export.v1\""));
+        assert!(manifest.contains(
+            "\"material_weights_csv\": \"islands/00_launch_mesa_terrain_material_weights.csv\""
+        ));
+        assert!(manifest.contains("\"terrain_material_weight_bands\": 36"));
+
+        remove_existing_dir(&output_dir).expect("terrain export test dir should be removable");
     }
 
     #[test]
