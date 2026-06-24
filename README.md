@@ -62,11 +62,14 @@ cargo clippy --all-targets --all-features -- -D warnings
 ./tools/eval.sh long_glide_visibility target/eval/long_glide_visibility
 ./tools/eval.sh island_launch_to_landing target/eval/island_launch_to_landing
 ./tools/terrain_export.sh target/terrain_export
+./tools/visual_content_export.sh target/visual_content_export
 ```
 
 `tools/eval.sh` runs metric-only evals by default and hides the native window during those runs. It also writes `asset_fixture_audit.json` unless `NAU_EVAL_ASSET_AUDIT=0` is set. Use `NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh ...` when checkpoint PNG artifacts and the non-golden visual audit are needed; screenshot evals require `jq` for artifact extraction, disable debug gizmos, and use an opaque window surface so transparent clouds/updrafts cannot composite against other desktop windows. The visual audit checks image quality plus basic scene composition signals such as per-frame scene coverage, center detail, scene detail tile frequency, flat low-detail scene-tile dominance, player visibility, HUD-text balance, severe border clipping, non-opaque PNG alpha, large foreign bright-canvas regions, sequence-level route-marker readability/component identity, route-marker hue telemetry, and sequence-level sky coverage across final and checkpoint screenshots. Set `NAU_EVAL_VISUAL_AUDIT=0` to collect screenshots without the visual audit.
 
 `./tools/terrain_export.sh target/terrain_export` does not open the native window. It writes `manifest.json`, per-island OBJ meshes, `*_terrain_material_weights.csv` files, and `audit.json` so terrain shape, color variation, topology counts, material-weight coverage, texture-detail and local edge-frequency floors, derived material-region coverage, and minimum base/transition/highland/exposed region distribution can be checked outside the live app. The underlying export can also be run directly with `cargo run -- --export-terrain target/terrain_export`.
+
+`./tools/visual_content_export.sh target/visual_content_export` also runs without opening the native window. It writes a visual-content `manifest.json`, OBJ artifacts, and `audit.json` for generated ground cover, trees, clouds, and biome detail palettes. The audit checks artifact presence plus OBJ vertex/face counts, blade density/height variance, trunk taper, branch reach, canopy lobe/card structure, cloud lobe/wisp/depth floors, and palette diversity so high-vertex blobs cannot silently replace the current generated visual substrate.
 
 ## Controls
 
@@ -86,7 +89,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 1. Replace the self-authored fixture scenes with real compatible glTF scenes, starting with a rigged character, production terrain, foliage, water, route props, and richer island impostor kits.
 2. Add explicit streaming budget checks around asynchronous asset loading once real imported scenes exist.
-3. Add richer terrain-material identity, vegetation-shape, cloud-depth, and route-marker semantic signals on top of the current non-golden screenshot audit.
+3. Add screenshot-level terrain-material identity, distant-impostor readability, and route-marker semantic signals on top of the current structural export audits.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
 
 ## Development Principles
