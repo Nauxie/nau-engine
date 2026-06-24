@@ -6,7 +6,7 @@ Last updated: 2026-06-24
 
 First sky-island traversal slice.
 
-The project has a Bevy sandbox with a primitive humanoid, playable ground movement, deployable glider wings, one-launch-per-airtime vertical burst, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, procedural materials, drifting cloud banks, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes, visible lift-column guide markers, marked recovery branch islands, a 12-island floating route with generated terrain relief plus deterministic props, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, baseline traversal, updraft lift, branch recovery landing, long-glide visibility, and island launch-to-landing.
+The project has a Bevy sandbox with a primitive humanoid, playable ground movement, deployable glider wings, one-launch-per-airtime vertical burst, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, drifting cloud banks and high cirrus veils, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes, visible lift-column guide markers, marked recovery branch islands, a 12-island floating route with generated terrain relief plus deterministic props, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, baseline traversal, updraft lift, branch recovery landing, long-glide visibility, and island launch-to-landing.
 
 ## Last Known Good
 
@@ -23,7 +23,7 @@ The project has a Bevy sandbox with a primitive humanoid, playable ground moveme
 
 Use this section for milestone handoffs, not routine worktree changes.
 
-- Active branch: `abhinav/branching-recovery-route`
+- Active branch: `abhinav/cinematic-weather-materials`
 - Open PRs: consult GitHub
 
 ## What Works
@@ -35,9 +35,9 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `Space` deploys glider wings while airborne.
 - `Shift` dives.
 - The sandbox spawns a 12-island floating archipelago with generated visual terrain relief, a launch island, long-glide route, and landing target.
-- The camera uses Bevy-native atmosphere, distance fog, volumetric fog/light, bloom, Aces tonemapping, and atmosphere-driven environment lighting.
-- Terrain, props, water, suit, glider, and markers use generated surface textures with tuned roughness/reflectance; marker and flower materials feed bloom through emissive color.
-- Drifting cloud banks provide the first non-debug weather layer without changing gameplay collision or traversal math.
+- The camera uses Bevy-native atmosphere, dynamic distance fog, volumetric fog/light, bloom, Aces tonemapping, exposure tuning, and atmosphere-driven environment lighting.
+- Terrain, props, water, suit, glider, and markers use generated surface textures with PBR roughness, occlusion, and parallax depth maps; marker and flower materials feed bloom through emissive color.
+- Drifting cloud banks and high cirrus veils provide non-debug weather layers without changing gameplay collision or traversal math.
 - Route-surface contact can land the player on an island and applies landing damping once instead of crushing standing WASD movement every frame.
 - Runtime movement is camera-relative, with character facing smoothed toward horizontal velocity.
 - Mouse camera control has player-centered orbit pitch, separate yaw and pitch sensitivity, pitch clamps, click-to-lock cursor capture, right-mouse temporary look, and `Esc` release.
@@ -66,10 +66,10 @@ Use this section for milestone handoffs, not routine worktree changes.
 - The character is still primitive geometry, not a rigged character asset.
 - Limb posing now has grounded stride, airborne banking, and glide posture, but it is still approximate non-skeletal animation.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep.
-- Crosswind stream fields are still debug gizmos; updrafts now have primitive visible guide markers, but there are no particles, cloth/glider reactions, vegetation sway, or authored environment art yet.
+- Crosswind stream fields are still debug gizmos; updrafts now have primitive visible guide markers, but there are no particles, cloth/glider reactions, vegetation sway, or authored environment art assets yet.
 - Sky-island collision follows deterministic terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - Gameplay lift is still a first rough updraft route; there is no crosswind force, launch-source chain, objective layer, or authored recovery-route design beyond two marked primitive branch islands.
-- There is no asynchronous asset loading, authored water, authored vegetation, or environment asset pipeline yet. Current stream-window terrain residency, detail LOD, procedural materials, ponds, trees, stones, beacon, cloud banks, and landing markers are deterministic primitive systems.
+- There is no asynchronous asset loading, authored water, authored vegetation, or environment asset pipeline yet. Current stream-window terrain residency, detail LOD, procedural materials, ponds, trees, stones, beacon, cloud layers, and landing markers are deterministic primitive systems.
 - Physics is still custom movement math, not a real collision/rigid body integration.
 
 ## Next Tasks
