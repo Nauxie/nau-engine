@@ -70,6 +70,14 @@ Request screenshot artifacts explicitly:
 NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh camera_turn_stability target/eval/camera_turn_stability
 ```
 
+Screenshot artifact validation in `tools/eval.sh` requires `jq` so the script can read artifact paths from `summary.json`.
+
+Collect screenshots without running the image audit:
+
+```sh
+NAU_EVAL_SCREENSHOT=1 NAU_EVAL_VISUAL_AUDIT=0 ./tools/eval.sh camera_turn_stability target/eval/camera_turn_stability
+```
+
 Run the app directly with screenshot capture:
 
 ```sh
@@ -175,9 +183,10 @@ Each run writes to the eval output directory:
 - `summary.json`: pass/fail checks, aggregate metrics, artifact paths, and final state.
 - `final.png`: final rendered screenshot when screenshot capture is enabled.
 - `checkpoints/*.png`: fixed-frame camera screenshots when screenshot capture is enabled.
+- `visual_audit.json`: non-golden image audit for screenshot evals run through `tools/eval.sh` unless `NAU_EVAL_VISUAL_AUDIT=0` is set.
 
 The summary is the primary artifact for agents. Screenshots are for visual review and should not be treated as pixel-perfect golden images.
-`tools/eval.sh` also checks that declared PNG artifacts exist and are large enough to catch empty or blank early-frame captures.
+`tools/eval.sh` checks that declared PNG artifacts exist, are large enough, and pass a lightweight visual audit for resolution, nonblack/nonwhite exposure, luma variance, color variety, and edge density. The audit catches gross render failures; it does not prove good composition or AAA-quality art direction.
 
 ## Sample Fields
 
@@ -320,7 +329,7 @@ As the world grows, extend the harness in this order:
 1. Add scenario-specific scripted routes.
 2. Add metrics that explain known failure modes.
 3. Add low-cost assertions around those metrics.
-4. Add visual comparison or computer-vision checks only when the raw metrics and checkpoint screenshots are insufficient.
+4. Extend visual checks only when raw metrics and the current non-golden screenshot audit are insufficient.
 
 Do not start with pixel-perfect screenshots. Metal/wgpu/native-window output can shift slightly across machines and driver state. Visual evals should classify obvious failures: blank frame, missing terrain, player not visible, severe clipping, unreadable route, or incoherent composition.
 
@@ -346,7 +355,7 @@ A future Codex or orchestrator loop should:
 
 1. Read this spec and `summary.json`.
 2. Inspect `samples.ndjson` only for the failing or suspicious interval.
-3. Inspect screenshots only when the summary points to a visual, camera, terrain, or visibility issue.
+3. Inspect `visual_audit.json` and screenshots when the summary points to a visual, camera, terrain, or visibility issue.
 4. Make one narrow change.
 5. Run `cargo fmt --check`, `cargo check`, `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and the relevant eval.
 6. Commit the checkpoint with the eval artifacts path in the commit or PR notes when useful.
@@ -357,14 +366,14 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 
 - Metric-only evals hide the native Bevy window, but still instantiate the window/rendering stack.
 - Screenshot evals still need a visible native Bevy window.
-- Screenshot checks still rely on human/agent inspection rather than image classification.
+- Screenshot evals now run a lightweight image audit, but semantic composition, player visibility, terrain identity, and art quality still need human/agent inspection.
 - There is no simulation-only binary yet.
 - Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
 - Island collision follows deterministic authored terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - `active_chunk_count` and `active_island_count` drive terrain visibility, but they do not despawn entities or load assets yet.
 - LOD buckets drive visible island detail, inactive chunks swap full terrain for cheap impostors, and hidden/resident/churn counters now quantify how much work remains before real streaming.
-- The weather-cloud counter verifies that cloud-bank entities exist, but screenshot or image-based checks are still needed to prove atmosphere, fog, materials, and clouds look correct.
+- The weather-cloud counter verifies that cloud-bank entities exist, and the screenshot audit catches gross visual failure, but neither proves atmosphere, fog, materials, and clouds look correct.
 - `entity_count` is still a coarse scene-scale proxy, not a streaming health metric, because inactive visuals are hidden rather than despawned.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
-These are acceptable for the current harness. The next meaningful upgrades are real chunk despawn counters, visual checks for missing or blank island geometry, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
+These are acceptable for the current harness. The next meaningful upgrades are real chunk despawn counters, semantic visual checks for player/terrain/route readability, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.

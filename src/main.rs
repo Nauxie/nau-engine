@@ -401,6 +401,7 @@ struct EvalRun {
     frame: u32,
     finalized: bool,
     screenshot_wait_frames: u32,
+    pending_screenshot_exit_success: Option<bool>,
     io_error: Option<String>,
 }
 
@@ -454,6 +455,7 @@ impl EvalRun {
             frame: 0,
             finalized: false,
             screenshot_wait_frames: 0,
+            pending_screenshot_exit_success: None,
             io_error: None,
         })
     }
@@ -2235,15 +2237,31 @@ fn finish_eval_frame(
     }
 
     if run.finalized {
-        run.screenshot_wait_frames += 1;
-        if run.screenshot_path.is_some()
-            && run.screenshot_wait_frames > EVAL_SCREENSHOT_TIMEOUT_FRAMES
-        {
-            eprintln!(
-                "eval screenshot did not finish within {} frames",
-                EVAL_SCREENSHOT_TIMEOUT_FRAMES
-            );
-            app_exit.write(AppExit::error());
+        if let Some(exit_success) = run.pending_screenshot_exit_success {
+            if run
+                .screenshot_path
+                .as_deref()
+                .is_some_and(screenshot_file_ready)
+            {
+                run.pending_screenshot_exit_success = None;
+                let exit = if exit_success {
+                    AppExit::Success
+                } else {
+                    AppExit::error()
+                };
+                app_exit.write(exit);
+                return;
+            }
+
+            run.screenshot_wait_frames += 1;
+            if run.screenshot_wait_frames > EVAL_SCREENSHOT_TIMEOUT_FRAMES {
+                run.pending_screenshot_exit_success = None;
+                eprintln!(
+                    "eval screenshot did not finish within {} frames",
+                    EVAL_SCREENSHOT_TIMEOUT_FRAMES
+                );
+                app_exit.write(AppExit::error());
+            }
         }
         return;
     }
@@ -2267,22 +2285,35 @@ fn finish_eval_frame(
 
     run.finalized = true;
     eprintln!("eval summary: {}", path_string(&run.summary_path));
-    let exit = if passed {
-        AppExit::Success
-    } else {
-        AppExit::error()
-    };
 
     if let Some(screenshot_path) = run.screenshot_path.clone() {
+        run.screenshot_wait_frames = 0;
+        run.pending_screenshot_exit_success = Some(passed);
         commands.spawn(Screenshot::primary_window()).observe(
-            move |captured: On<ScreenshotCaptured>, mut app_exit_writer: MessageWriter<AppExit>| {
+            move |captured: On<ScreenshotCaptured>| {
                 save_to_disk(screenshot_path.clone())(captured);
-                app_exit_writer.write(exit.clone());
             },
         );
+    } else if passed {
+        app_exit.write(AppExit::Success);
     } else {
-        app_exit.write(exit);
+        app_exit.write(AppExit::error());
     }
+}
+
+fn screenshot_file_ready(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    if metadata.len() == 0 {
+        return false;
+    }
+
+    image::ImageReader::open(path)
+        .and_then(|reader| reader.with_guessed_format())
+        .ok()
+        .and_then(|reader| reader.decode().ok())
+        .is_some_and(|image| image.width() > 0 && image.height() > 0)
 }
 
 fn capture_due_checkpoint_screenshots(commands: &mut Commands, run: &mut EvalRun) {
