@@ -35,7 +35,7 @@ use nau_engine::diagnostics::frame_ms;
 use nau_engine::environment::{
     AERIAL_POWER_UP_ROUTE, AerialPowerUp, GAMEPLAY_LIFT_ROUTE, LiftField, LiftRouteNode, WindField,
     WindFieldKind, active_lift_fields_at, apply_aerial_power_up, apply_lift_fields,
-    readable_lift_fields_at, visible_fields_at,
+    readable_lift_fields_at, visible_fields_at, wind_sway_motion,
 };
 use nau_engine::eval::{
     EvalAccumulator, EvalArtifacts, EvalObjectiveProgress, EvalSample, EvalScenario,
@@ -138,6 +138,7 @@ fn main() -> AppExit {
                 update_island_stream_visibility,
                 update_cinematic_weather,
                 update_weather_drift,
+                update_wind_responsive_visuals,
                 update_updraft_guides,
                 update_updraft_ribbons,
                 update_power_up_guides,
@@ -241,6 +242,23 @@ struct WeatherDrift {
     phase: f32,
     spin_speed: f32,
     base_rotation: Quat,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WindVisualMotion {
+    phase: f32,
+    amplitude_m: f32,
+    bend_radians: f32,
+    gust_speed: f32,
+    wind_direction: Vec3,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+struct WindResponsiveVisual {
+    base_translation: Vec3,
+    base_rotation: Quat,
+    base_scale: Vec3,
+    motion: WindVisualMotion,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -417,6 +435,7 @@ struct IslandVisualEntry {
     material: Handle<StandardMaterial>,
     transform: Transform,
     obstacle: Option<CameraObstacle>,
+    wind_motion: Option<WindVisualMotion>,
     name: &'static str,
 }
 
@@ -512,6 +531,7 @@ struct DebugScene<'w, 's> {
     power_ups: Res<'w, PowerUpCollectionState>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
+    wind_responsive_visuals: Query<'w, 's, (&'static WindResponsiveVisual, &'static Transform)>,
 }
 
 #[derive(SystemParam)]
@@ -536,6 +556,7 @@ struct EvalScene<'w, 's> {
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
     weather_clouds: Query<'w, 's, Entity, With<WeatherDrift>>,
+    wind_responsive_visuals: Query<'w, 's, (&'static WindResponsiveVisual, &'static Transform)>,
     all_entities: Query<'w, 's, Entity>,
 }
 
@@ -1910,6 +1931,60 @@ fn queue_island_visual(
     obstacle: Option<CameraObstacle>,
     name: &'static str,
 ) {
+    queue_island_visual_with_motion(
+        entries,
+        visual_index,
+        island,
+        layer,
+        mesh,
+        material,
+        transform,
+        obstacle,
+        None,
+        name,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn queue_wind_island_visual(
+    entries: &mut Vec<IslandVisualEntry>,
+    visual_index: &mut usize,
+    island: SkyIsland,
+    layer: IslandVisualLayer,
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+    transform: Transform,
+    obstacle: Option<CameraObstacle>,
+    wind_motion: WindVisualMotion,
+    name: &'static str,
+) {
+    queue_island_visual_with_motion(
+        entries,
+        visual_index,
+        island,
+        layer,
+        mesh,
+        material,
+        transform,
+        obstacle,
+        Some(wind_motion),
+        name,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn queue_island_visual_with_motion(
+    entries: &mut Vec<IslandVisualEntry>,
+    visual_index: &mut usize,
+    island: SkyIsland,
+    layer: IslandVisualLayer,
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+    transform: Transform,
+    obstacle: Option<CameraObstacle>,
+    wind_motion: Option<WindVisualMotion>,
+    name: &'static str,
+) {
     let key = IslandVisualKey {
         island_name: island.name,
         layer,
@@ -1925,6 +2000,7 @@ fn queue_island_visual(
         material,
         transform,
         obstacle,
+        wind_motion,
         name,
     });
 }
@@ -2180,6 +2256,26 @@ fn island_visual_surface_position(island: SkyIsland, normalized_offset: Vec2) ->
     Vec3::new(x, island.mesh_top_y_at(Vec3::new(x, island.center.y, z)), z)
 }
 
+fn wind_visual_motion(
+    island_index: usize,
+    phase_offset: f32,
+    amplitude_m: f32,
+    bend_radians: f32,
+    gust_speed: f32,
+) -> WindVisualMotion {
+    let island_phase = island_index as f32 * 0.91;
+    let wind_direction =
+        Vec3::new(0.9, 0.0, -0.34 + (island_phase * 0.8).sin() * 0.22).normalize_or_zero();
+
+    WindVisualMotion {
+        phase: island_phase + phase_offset,
+        amplitude_m,
+        bend_radians,
+        gust_speed,
+        wind_direction,
+    }
+}
+
 fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     const RINGS: usize = 12;
     const SEGMENTS: usize = 48;
@@ -2409,7 +2505,7 @@ fn queue_sky_island_details(
         let canopy_radius = 1.05 + index as f32 * 0.08;
         let canopy_center = surface + Vec3::Y * (trunk_height + 0.72);
 
-        queue_island_visual(
+        queue_wind_island_visual(
             entries,
             visual_index,
             island,
@@ -2421,9 +2517,10 @@ fn queue_sky_island_details(
                 trunk_center,
                 Vec3::new(0.22, trunk_height * 0.5, 0.22),
             ))),
+            wind_visual_motion(island_index, index as f32 * 0.61, 0.025, 0.018, 0.9),
             "island tree trunk",
         );
-        queue_island_visual(
+        queue_wind_island_visual(
             entries,
             visual_index,
             island,
@@ -2435,6 +2532,7 @@ fn queue_sky_island_details(
                 canopy_center,
                 Vec3::splat(canopy_radius),
             ))),
+            wind_visual_motion(island_index, index as f32 * 0.83 + 1.7, 0.22, 0.075, 1.35),
             "island tree canopy",
         );
     }
@@ -2466,7 +2564,7 @@ fn queue_sky_island_details(
         Vec2::new(0.18, 0.28)
     };
     let pond_surface = island_visual_surface_position(island, pond_offset);
-    queue_island_visual(
+    queue_wind_island_visual(
         entries,
         visual_index,
         island,
@@ -2483,6 +2581,7 @@ fn queue_sky_island_details(
             ..default()
         },
         None,
+        wind_visual_motion(island_index, 3.4, 0.035, 0.018, 1.1),
         "island pond",
     );
 
@@ -2573,7 +2672,7 @@ fn queue_sky_island_details(
             launch_tree_surface_y + launch_tree_height + 0.85,
             8.0,
         );
-        queue_island_visual(
+        queue_wind_island_visual(
             entries,
             visual_index,
             island,
@@ -2585,9 +2684,10 @@ fn queue_sky_island_details(
                 launch_tree_center,
                 Vec3::new(0.35, launch_tree_height * 0.5, 0.35),
             ))),
+            wind_visual_motion(island_index, 4.2, 0.035, 0.02, 0.9),
             "launch camera tree trunk",
         );
-        queue_island_visual(
+        queue_wind_island_visual(
             entries,
             visual_index,
             island,
@@ -2599,6 +2699,7 @@ fn queue_sky_island_details(
                 launch_canopy_center,
                 Vec3::splat(launch_canopy_radius),
             ))),
+            wind_visual_motion(island_index, 5.1, 0.28, 0.09, 1.25),
             "launch camera tree canopy",
         );
     }
@@ -2738,6 +2839,14 @@ fn spawn_island_visual_entry(commands: &mut Commands, entry: &IslandVisualEntry)
     if let Some(obstacle) = entry.obstacle {
         entity.insert(obstacle);
     }
+    if let Some(motion) = entry.wind_motion {
+        entity.insert(WindResponsiveVisual {
+            base_translation: entry.transform.translation,
+            base_rotation: entry.transform.rotation,
+            base_scale: entry.transform.scale,
+            motion,
+        });
+    }
 
     entity.id()
 }
@@ -2872,6 +2981,27 @@ fn update_weather_drift(time: Res<Time>, mut clouds: Query<(&WeatherDrift, &mut 
             drift.origin + drift.axis * sway * drift.amplitude + Vec3::Y * bob * drift.bob;
         transform.rotation =
             drift.base_rotation * Quat::from_rotation_y(elapsed * drift.spin_speed + sway * 0.08);
+    }
+}
+
+fn update_wind_responsive_visuals(
+    time: Res<Time>,
+    mut visuals: Query<(&WindResponsiveVisual, &mut Transform)>,
+) {
+    let elapsed = time.elapsed_secs();
+
+    for (visual, mut transform) in &mut visuals {
+        let motion = wind_sway_motion(
+            elapsed,
+            visual.motion.phase,
+            visual.motion.amplitude_m,
+            visual.motion.bend_radians,
+            visual.motion.gust_speed,
+            visual.motion.wind_direction,
+        );
+        transform.translation = visual.base_translation + motion.offset;
+        transform.rotation = visual.base_rotation * motion.rotation;
+        transform.scale = visual.base_scale * motion.scale;
     }
 }
 
@@ -3351,6 +3481,17 @@ fn visual_asset_load_state(
     }
 }
 
+fn wind_responsive_visual_metrics<'a>(
+    visuals: impl Iterator<Item = (&'a WindResponsiveVisual, &'a Transform)>,
+) -> (usize, f32) {
+    visuals.fold((0, 0.0_f32), |(count, max_offset), (visual, transform)| {
+        (
+            count + 1,
+            max_offset.max(transform.translation.distance(visual.base_translation)),
+        )
+    })
+}
+
 fn update_debug_readout(
     time: Res<Time>,
     visuals: Res<DebugVisuals>,
@@ -3406,9 +3547,11 @@ fn update_debug_readout(
     } else {
         "go"
     };
+    let (environment_motion_visuals, max_environment_motion_offset_m) =
+        wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nresident island visuals {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nresident island visuals {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -3470,6 +3613,8 @@ fn update_debug_readout(
         lod_visuals.hidden_impostor_count,
         lod_visuals.visible_detail_count,
         lod_visuals.hidden_detail_count,
+        environment_motion_visuals,
+        max_environment_motion_offset_m,
         lod_visuals.resident_count(),
         scene.stream_diagnostics.visibility_changes_this_frame,
         scene.stream_diagnostics.max_visibility_changes_per_frame,
@@ -3557,6 +3702,8 @@ fn collect_eval_metrics(
     let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
     let lod_visuals = scene.stream_diagnostics.counts;
     let asset_metrics = scene.asset_diagnostics.metrics;
+    let (environment_motion_visuals, max_environment_motion_offset_m) =
+        wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
     let sample = EvalSample::new(
         run.frame,
         run.scenario.fixed_dt,
@@ -3597,6 +3744,8 @@ fn collect_eval_metrics(
         lod_visuals.hidden_detail_count,
         lod_visuals.visible_beacon_count,
         scene.weather_clouds.iter().count(),
+        environment_motion_visuals,
+        max_environment_motion_offset_m,
         lod_visuals.resident_count(),
         scene.stream_diagnostics.visibility_changes_this_frame,
         scene.stream_diagnostics.max_visibility_changes_per_frame,
