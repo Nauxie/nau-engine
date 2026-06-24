@@ -10,15 +10,15 @@ The project has a Bevy sandbox with a primitive humanoid, playable ground moveme
 
 ## Last Known Good
 
-- Commit: `f55f319`
-- Merged PR: `#38` - Add wind responsive environment motion
+- Commit: `445cb5a`
+- Merged PR: `#41` - Add streaming LOD pressure counters
 - Verification:
   - `cargo fmt --all --check`
   - `cargo check`
   - `cargo test`
   - `cargo clippy --all-targets --all-features -- -D warnings`
   - `cargo naux -- --help`
-  - metric-only evals for baseline traversal, ground taxi control, long-glide visibility, and branch recovery traversal
+  - metric-only evals for baseline traversal, ground taxi control, long-glide visibility, and branch recovery traversal, including streaming residency and directional churn gates
 
 ## Active Work
 
