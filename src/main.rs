@@ -82,6 +82,10 @@ const ROCK_MESH_SEGMENTS: usize = 12;
 const ROCK_MESH_RINGS: usize = 6;
 const CLOUD_BANK_LOBES: usize = 14;
 const CLOUD_VEIL_LOBES: usize = 7;
+const GROUND_COVER_PATCHES: usize = 44;
+const GROUND_COVER_BLADES_PER_PATCH: usize = 5;
+const VERTICES_PER_GROUND_BLADE: usize = 5;
+const INDICES_PER_GROUND_BLADE: usize = 9;
 const AUTHORED_ASSET_PROBE_KINDS: &[VisualAssetKind] = &[
     VisualAssetKind::IslandTerrain,
     VisualAssetKind::IslandFoliage,
@@ -496,6 +500,9 @@ struct IslandContentDiagnostics {
     max_island_body_silhouette_segments: usize,
     total_island_body_silhouette_segments: usize,
     max_island_body_mesh_vertices: usize,
+    generated_ground_cover_patch_count: usize,
+    min_ground_cover_blade_count: usize,
+    min_ground_cover_mesh_vertices: usize,
     generated_tree_trunk_count: usize,
     generated_tree_canopy_count: usize,
     min_tree_trunk_mesh_vertices: usize,
@@ -594,6 +601,23 @@ impl IslandContentDiagnostics {
             self.total_island_body_silhouette_segments as f32
                 / self.procedural_island_body_count as f32
         }
+    }
+
+    fn record_generated_ground_cover(
+        &mut self,
+        patch_count: usize,
+        blade_count: usize,
+        mesh_vertices: usize,
+    ) {
+        if self.generated_ground_cover_patch_count == 0 {
+            self.min_ground_cover_blade_count = blade_count;
+            self.min_ground_cover_mesh_vertices = mesh_vertices;
+        } else {
+            self.min_ground_cover_blade_count = self.min_ground_cover_blade_count.min(blade_count);
+            self.min_ground_cover_mesh_vertices =
+                self.min_ground_cover_mesh_vertices.min(mesh_vertices);
+        }
+        self.generated_ground_cover_patch_count += patch_count;
     }
 
     fn record_generated_tree_trunk(&mut self, mesh_vertices: usize) {
@@ -4856,12 +4880,18 @@ fn queue_sky_island_details(
 ) {
     let detail_phase = island_index as f32 * 0.77;
     content_diagnostics.record_detail_biome_palette(island_index);
+    let ground_cover_mesh = island_ground_cover_mesh(island_index, island);
+    content_diagnostics.record_generated_ground_cover(
+        GROUND_COVER_PATCHES,
+        GROUND_COVER_PATCHES * GROUND_COVER_BLADES_PER_PATCH,
+        ground_cover_mesh.count_vertices(),
+    );
     queue_island_visual(
         entries,
         visual_index,
         island,
         IslandVisualLayer::Detail,
-        meshes.add(island_ground_cover_mesh(island_index, island)),
+        meshes.add(ground_cover_mesh),
         detail_materials.ground_cover.clone(),
         Transform::default(),
         None,
@@ -5109,35 +5139,30 @@ fn queue_sky_island_details(
 }
 
 fn island_ground_cover_mesh(island_index: usize, island: SkyIsland) -> Mesh {
-    const PATCHES: usize = 34;
-    const BLADES_PER_PATCH: usize = 3;
-    const VERTICES_PER_BLADE: usize = 3;
-    const INDICES_PER_BLADE: usize = 3;
-
-    let blade_count = PATCHES * BLADES_PER_PATCH;
-    let mut positions = Vec::with_capacity(blade_count * VERTICES_PER_BLADE);
-    let mut normals = Vec::with_capacity(blade_count * VERTICES_PER_BLADE);
-    let mut uvs = Vec::with_capacity(blade_count * VERTICES_PER_BLADE);
-    let mut indices = Vec::with_capacity(blade_count * INDICES_PER_BLADE);
+    let blade_count = GROUND_COVER_PATCHES * GROUND_COVER_BLADES_PER_PATCH;
+    let mut positions = Vec::with_capacity(blade_count * VERTICES_PER_GROUND_BLADE);
+    let mut normals = Vec::with_capacity(blade_count * VERTICES_PER_GROUND_BLADE);
+    let mut uvs = Vec::with_capacity(blade_count * VERTICES_PER_GROUND_BLADE);
+    let mut indices = Vec::with_capacity(blade_count * INDICES_PER_GROUND_BLADE);
     let seed = island_index as u32 * 41 + 503;
 
-    for patch in 0..PATCHES {
+    for patch in 0..GROUND_COVER_PATCHES {
         let base_angle = random_unit(seed, patch as u32, 3) * std::f32::consts::TAU;
-        let radius = random_unit(seed, patch as u32, 11).sqrt() * 0.86;
+        let radius = random_unit(seed, patch as u32, 11).sqrt() * 0.90;
         let jitter = Vec2::new(
-            (random_unit(seed, patch as u32, 17) - 0.5) * 0.06,
-            (random_unit(seed, patch as u32, 23) - 0.5) * 0.06,
+            (random_unit(seed, patch as u32, 17) - 0.5) * 0.08,
+            (random_unit(seed, patch as u32, 23) - 0.5) * 0.08,
         );
         let normalized_offset = Vec2::new(base_angle.cos(), base_angle.sin()) * radius + jitter;
         let x = island.center.x + normalized_offset.x * island.half_extents.x;
         let z = island.center.z + normalized_offset.y * island.half_extents.y;
         let surface_y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z)) + 0.08;
 
-        for blade in 0..BLADES_PER_PATCH {
-            let blade_phase =
-                base_angle + blade as f32 * std::f32::consts::TAU / BLADES_PER_PATCH as f32;
-            let width = 0.18 + random_unit(seed, patch as u32, 31 + blade as u32) * 0.16;
-            let height = 0.78 + random_unit(seed, patch as u32, 43 + blade as u32) * 0.72;
+        for blade in 0..GROUND_COVER_BLADES_PER_PATCH {
+            let blade_phase = base_angle
+                + blade as f32 * std::f32::consts::TAU / GROUND_COVER_BLADES_PER_PATCH as f32;
+            let width = 0.14 + random_unit(seed, patch as u32, 31 + blade as u32) * 0.15;
+            let height = 0.72 + random_unit(seed, patch as u32, 43 + blade as u32) * 0.86;
             let lean = Vec3::new(blade_phase.cos(), 0.0, blade_phase.sin())
                 * (0.1 + random_unit(seed, patch as u32, 53 + blade as u32) * 0.24);
             push_ground_cover_blade(
@@ -5180,6 +5205,8 @@ fn push_ground_cover_blade(
 ) {
     let right = Vec3::new(angle.cos(), 0.0, angle.sin());
     let side = right * (width * 0.5);
+    let mid_side = right * (width * 0.26);
+    let mid = origin + Vec3::Y * (height * 0.54) + lean * 0.42;
     let tip = origin + Vec3::Y * height + lean;
     let blade_normal = Vec3::new(right.z * 0.35, 0.8, -right.x * 0.35).normalize();
     let start = positions.len() as u32;
@@ -5187,6 +5214,8 @@ fn push_ground_cover_blade(
     positions.extend([
         (origin - side).to_array(),
         (origin + side).to_array(),
+        (mid - mid_side).to_array(),
+        (mid + mid_side).to_array(),
         tip.to_array(),
     ]);
     normals.extend([blade_normal.to_array(); VERTICES_PER_GROUND_BLADE]);
@@ -5194,12 +5223,22 @@ fn push_ground_cover_blade(
     uvs.extend([
         [uv_offset, 1.0],
         [uv_offset + 0.42, 1.0],
+        [uv_offset + 0.10, 0.46],
+        [uv_offset + 0.32, 0.46],
         [uv_offset + 0.21, 0.0],
     ]);
-    indices.extend([start, start + 1, start + 2]);
+    indices.extend([
+        start,
+        start + 1,
+        start + 2,
+        start + 1,
+        start + 3,
+        start + 2,
+        start + 2,
+        start + 3,
+        start + 4,
+    ]);
 }
-
-const VERTICES_PER_GROUND_BLADE: usize = 3;
 
 fn random_unit(seed: u32, x: u32, salt: u32) -> f32 {
     texture_noise(x.wrapping_mul(17).wrapping_add(salt), salt, seed) as f32 / 255.0
@@ -6108,7 +6147,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\nground cover patches {} blades {} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -6181,6 +6220,9 @@ fn update_debug_readout(
         content_metrics.min_island_body_silhouette_segments,
         content_metrics.average_island_body_silhouette_segments(),
         content_metrics.max_island_body_mesh_vertices,
+        content_metrics.generated_ground_cover_patch_count,
+        content_metrics.min_ground_cover_blade_count,
+        content_metrics.min_ground_cover_mesh_vertices,
         content_metrics.generated_tree_trunk_count,
         content_metrics.generated_tree_canopy_count,
         content_metrics.min_tree_trunk_mesh_vertices,
@@ -6450,6 +6492,9 @@ fn collect_eval_metrics(
         content_metrics.min_island_terrain_texture_detail_bands,
     )
     .with_generated_visual_shape_metrics(
+        content_metrics.generated_ground_cover_patch_count,
+        content_metrics.min_ground_cover_blade_count,
+        content_metrics.min_ground_cover_mesh_vertices,
         content_metrics.generated_tree_trunk_count,
         content_metrics.generated_tree_canopy_count,
         content_metrics.min_tree_trunk_mesh_vertices,
@@ -7091,6 +7136,32 @@ mod tests {
     }
 
     #[test]
+    fn ground_cover_mesh_uses_dense_curved_blades() {
+        let mesh = island_ground_cover_mesh(2, test_island());
+        let positions = positions(&mesh);
+        let indices = u32_indices(&mesh);
+        let blade_count = GROUND_COVER_PATCHES * GROUND_COVER_BLADES_PER_PATCH;
+        let min_y = positions
+            .iter()
+            .map(|position| position[1])
+            .fold(f32::INFINITY, f32::min);
+        let max_y = positions
+            .iter()
+            .map(|position| position[1])
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        assert_eq!(
+            mesh.count_vertices(),
+            blade_count * VERTICES_PER_GROUND_BLADE
+        );
+        assert_eq!(indices.len(), blade_count * INDICES_PER_GROUND_BLADE);
+        assert!(
+            max_y - min_y > 1.0,
+            "ground cover should have enough varied height to read as dense vegetation"
+        );
+    }
+
+    #[test]
     fn rock_scatter_mesh_has_flattened_irregular_silhouette() {
         let mesh = rock_scatter_mesh(0.7, 1234);
         let positions = positions(&mesh);
@@ -7367,6 +7438,8 @@ mod tests {
         diagnostics.record_detail_biome_palette(0);
         diagnostics.record_detail_biome_palette(2);
         diagnostics.record_detail_biome_palette(2);
+        diagnostics.record_generated_ground_cover(44, 220, 1100);
+        diagnostics.record_generated_ground_cover(44, 220, 1100);
         diagnostics.record_generated_tree_trunk(26);
         diagnostics.record_generated_tree_trunk(30);
         diagnostics.record_generated_tree_canopy(226);
@@ -7376,6 +7449,9 @@ mod tests {
         diagnostics.record_generated_weather_cloud(7, 315, 4.2, true);
         diagnostics.record_generated_weather_cloud(4, 180, 0.8, false);
 
+        assert_eq!(diagnostics.generated_ground_cover_patch_count, 88);
+        assert_eq!(diagnostics.min_ground_cover_blade_count, 220);
+        assert_eq!(diagnostics.min_ground_cover_mesh_vertices, 1100);
         assert_eq!(diagnostics.generated_tree_trunk_count, 2);
         assert_eq!(diagnostics.generated_tree_canopy_count, 2);
         assert_eq!(diagnostics.min_tree_trunk_mesh_vertices, 26);
