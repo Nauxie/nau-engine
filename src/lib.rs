@@ -973,6 +973,7 @@ pub mod environment {
 }
 
 pub mod world {
+    use crate::environment::{GAMEPLAY_LIFT_ROUTE, LiftRouteNode};
     use crate::movement::{FlightMode, FlightState};
     use bevy::prelude::*;
 
@@ -1144,6 +1145,21 @@ pub mod world {
             &self.islands
         }
 
+        pub fn route_objectives(&self, island_name: Option<&str>) -> Vec<RouteObjective> {
+            let mut objectives = vec![RouteObjective::fly_through(GAMEPLAY_LIFT_ROUTE[0])];
+            if self
+                .tracked_target_island(island_name)
+                .is_some_and(|island| !island.is_target)
+            {
+                objectives.push(RouteObjective::fly_through(GAMEPLAY_LIFT_ROUTE[1]));
+            }
+            if let Some(target) = self.tracked_target_island(island_name) {
+                objectives.push(RouteObjective::land_on(target));
+            }
+
+            objectives
+        }
+
         pub fn streaming_lod_stats(&self, position: Vec3) -> StreamingLodStats {
             let player_chunk = StreamChunkCoord::from_world(position);
             let active_chunk_width = STREAM_ACTIVE_CHUNK_RADIUS * 2 + 1;
@@ -1270,6 +1286,58 @@ pub mod world {
 
     pub fn is_recovery_branch_island(name: &str) -> bool {
         RECOVERY_BRANCH_ISLANDS.contains(&name)
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum RouteObjectiveKind {
+        FlyThrough,
+        Land,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct RouteObjective {
+        pub label: &'static str,
+        pub position: Vec3,
+        pub radius_m: f32,
+        pub kind: RouteObjectiveKind,
+        pub island_name: Option<&'static str>,
+    }
+
+    impl RouteObjective {
+        pub fn fly_through(node: LiftRouteNode) -> Self {
+            Self {
+                label: node.name,
+                position: node.center,
+                radius_m: node.half_extents.x.max(node.half_extents.z) + 8.0,
+                kind: RouteObjectiveKind::FlyThrough,
+                island_name: None,
+            }
+        }
+
+        pub fn land_on(island: SkyIsland) -> Self {
+            Self {
+                label: island.name,
+                position: island.center,
+                radius_m: island.half_extents.x.max(island.half_extents.y),
+                kind: RouteObjectiveKind::Land,
+                island_name: Some(island.name),
+            }
+        }
+
+        pub fn horizontal_distance(self, position: Vec3) -> f32 {
+            Vec2::new(position.x - self.position.x, position.z - self.position.z).length()
+        }
+
+        pub fn is_complete(self, route: &SkyRoute, position: Vec3, mode: FlightMode) -> bool {
+            match self.kind {
+                RouteObjectiveKind::FlyThrough => {
+                    self.horizontal_distance(position) <= self.radius_m
+                }
+                RouteObjectiveKind::Land => {
+                    route.on_landing_target_named(position, mode, self.island_name)
+                }
+            }
+        }
     }
 
     #[derive(Component, Clone, Copy, Debug, PartialEq)]
@@ -1470,6 +1538,39 @@ pub mod world {
                 route.target_distance_to(START_POSITION, Some(branch.name))
                     > route.target_distance(START_POSITION)
             );
+        }
+
+        #[test]
+        fn route_objectives_track_main_and_branch_targets() {
+            let route = SkyRoute::default();
+            let main = route.route_objectives(None);
+            let branch = route.route_objectives(Some("sunlit terrace"));
+
+            assert_eq!(main.len(), 2);
+            assert_eq!(main[0].label, "near route updraft");
+            assert_eq!(main[1].label, "landing garden");
+            assert_eq!(branch.len(), 3);
+            assert_eq!(branch[1].label, "distant recovery updraft");
+            assert_eq!(branch[2].label, "sunlit terrace");
+        }
+
+        #[test]
+        fn route_objective_completion_tracks_flythrough_and_landing() {
+            let route = SkyRoute::default();
+            let objectives = route.route_objectives(None);
+            let target = route.target_island().expect("target island exists");
+
+            assert!(objectives[0].is_complete(
+                &route,
+                GAMEPLAY_LIFT_ROUTE[0].center,
+                FlightMode::Gliding
+            ));
+            assert!(!objectives[1].is_complete(
+                &route,
+                target.center + Vec3::Y * 8.0,
+                FlightMode::Gliding
+            ));
+            assert!(objectives[1].is_complete(&route, target.center, FlightMode::Grounded));
         }
 
         #[test]
