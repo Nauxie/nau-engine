@@ -43,6 +43,12 @@ const MIN_SEQUENCE_DISTANT_SCENE_COMPONENTS: usize = 2;
 const MIN_SEQUENCE_DISTANT_SCENE_COLOR_BUCKETS: usize = 6;
 const MIN_SEQUENCE_SCENE_MATERIAL_FAMILIES: usize = 3;
 const MIN_SCENE_MATERIAL_FAMILY_PIXELS: usize = 180;
+const MIN_SEQUENCE_FOLIAGE_SCENE_FRACTION: f64 = 0.08;
+const MIN_SEQUENCE_CLOUD_LAYER_FRACTION: f64 = 0.015;
+const MIN_SEQUENCE_CLOUD_LAYER_COMPONENTS: usize = 2;
+const MIN_CLOUD_LAYER_COMPONENT_PIXELS: usize = 36;
+const MIN_CLOUD_LAYER_COMPONENT_WIDTH: usize = 8;
+const MIN_CLOUD_LAYER_COMPONENT_HEIGHT: usize = 3;
 const MIN_DISTANT_SCENE_COMPONENT_PIXELS: usize = 28;
 const MIN_DISTANT_SCENE_COMPONENT_WIDTH: usize = 10;
 const MIN_DISTANT_SCENE_COMPONENT_HEIGHT: usize = 3;
@@ -137,6 +143,11 @@ fn audit_image_with_alpha(
     let mut distant_scene_color_buckets = HashSet::new();
     let mut distant_scene_mask = vec![false; pixel_count];
     let mut scene_material_family_pixels = [0usize; SCENE_MATERIAL_FAMILY_COUNT];
+    let mut scene_material_pixels = 0usize;
+    let mut foliage_scene_pixels = 0usize;
+    let mut cloud_layer_pixels = 0usize;
+    let mut cloud_layer_region_pixels = 0usize;
+    let mut cloud_layer_mask = vec![false; pixel_count];
     let mut border_occluder_pixels = [0usize; BORDER_REGION_COUNT];
     let mut border_region_pixels = [0usize; BORDER_REGION_COUNT];
     let mut inner_border_occluder_pixels = [0usize; BORDER_REGION_COUNT];
@@ -195,6 +206,9 @@ fn audit_image_with_alpha(
             && y < height_usize * 9 / 10
             && !route_marker_like
             && !is_player_focus_region(x, y, width_usize, height_usize);
+        let cloud_layer_region = !hud_region
+            && !is_player_focus_region(x, y, width_usize, height_usize)
+            && is_cloud_layer_region(x, y, width_usize, height_usize);
         scene_mask[index] = scene_like && !hud_region;
 
         if y < top_limit {
@@ -243,7 +257,18 @@ fn audit_image_with_alpha(
             }
         }
         if material_region && let Some(family) = scene_material_family(r, g, b, luma, sky_like) {
+            scene_material_pixels += 1;
             scene_material_family_pixels[family] += 1;
+            if family == 1 {
+                foliage_scene_pixels += 1;
+            }
+        }
+        if cloud_layer_region {
+            cloud_layer_region_pixels += 1;
+            if !route_marker_like && is_cloud_layer_like(r, g, b, luma, sky_like) {
+                cloud_layer_mask[index] = true;
+                cloud_layer_pixels += 1;
+            }
         }
         if !hud_region {
             foreign_canvas_region_pixels += 1;
@@ -316,6 +341,10 @@ fn audit_image_with_alpha(
         .into_iter()
         .filter(|pixels| *pixels >= MIN_SCENE_MATERIAL_FAMILY_PIXELS)
         .count();
+    let foliage_scene_fraction = fraction(foliage_scene_pixels, scene_material_pixels);
+    let cloud_layer_fraction = fraction(cloud_layer_pixels, cloud_layer_region_pixels);
+    let cloud_layer_component_count =
+        cloud_layer_component_count(&cloud_layer_mask, width_usize, height_usize);
     let severe_clipping_fraction = severe_clipping_fraction(
         &border_occluder_pixels,
         &border_region_pixels,
@@ -439,6 +468,9 @@ fn audit_image_with_alpha(
         distant_scene_component_count,
         distant_scene_color_bucket_count,
         scene_material_family_count,
+        foliage_scene_fraction,
+        cloud_layer_fraction,
+        cloud_layer_component_count,
         severe_clipping_fraction,
         transparent_pixel_fraction,
         foreign_canvas_fraction,
@@ -811,6 +843,63 @@ fn distant_scene_component_count(mask: &[bool], width: usize, height: usize) -> 
     components
 }
 
+fn cloud_layer_component_count(mask: &[bool], width: usize, height: usize) -> usize {
+    if width == 0 || height == 0 || mask.len() != width.saturating_mul(height) {
+        return 0;
+    }
+
+    let mut visited = vec![false; mask.len()];
+    let mut stack = Vec::new();
+    let mut components = 0usize;
+    for index in 0..mask.len() {
+        if visited[index] || !mask[index] {
+            continue;
+        }
+
+        let mut pixel_count = 0usize;
+        let mut min_x = width;
+        let mut max_x = 0usize;
+        let mut min_y = height;
+        let mut max_y = 0usize;
+        visited[index] = true;
+        stack.push(index);
+        while let Some(current) = stack.pop() {
+            pixel_count += 1;
+            let x = current % width;
+            let y = current / width;
+            min_x = min_x.min(x);
+            max_x = max_x.max(x);
+            min_y = min_y.min(y);
+            max_y = max_y.max(y);
+
+            if x > 0 {
+                push_marker_neighbor(current - 1, mask, &mut visited, &mut stack);
+            }
+            if x + 1 < width {
+                push_marker_neighbor(current + 1, mask, &mut visited, &mut stack);
+            }
+            if y > 0 {
+                push_marker_neighbor(current - width, mask, &mut visited, &mut stack);
+            }
+            if y + 1 < height {
+                push_marker_neighbor(current + width, mask, &mut visited, &mut stack);
+            }
+        }
+
+        let component_width = max_x.saturating_sub(min_x) + 1;
+        let component_height = max_y.saturating_sub(min_y) + 1;
+        let readable_component = pixel_count >= MIN_CLOUD_LAYER_COMPONENT_PIXELS
+            && component_width >= MIN_CLOUD_LAYER_COMPONENT_WIDTH
+            && component_height >= MIN_CLOUD_LAYER_COMPONENT_HEIGHT;
+
+        if readable_component {
+            components += 1;
+        }
+    }
+
+    components
+}
+
 fn push_marker_neighbor(index: usize, mask: &[bool], visited: &mut [bool], stack: &mut Vec<usize>) {
     if !visited[index] && mask[index] {
         visited[index] = true;
@@ -906,6 +995,34 @@ fn is_distant_scene_region(x: usize, y: usize, width: usize, height: usize) -> b
     let y_end = height * 64 / 100;
     let x_margin = width * 4 / 100;
     x >= x_margin && x < width.saturating_sub(x_margin) && y >= y_start && y < y_end
+}
+
+fn is_cloud_layer_region(x: usize, y: usize, width: usize, height: usize) -> bool {
+    let y_start = height * 4 / 100;
+    let y_end = height * 55 / 100;
+    let x_margin = width * 4 / 100;
+    x >= x_margin && x < width.saturating_sub(x_margin) && y >= y_start && y < y_end
+}
+
+fn is_cloud_layer_like(r: f64, g: f64, b: f64, luma: f64, sky_like: bool) -> bool {
+    if !(72.0..=238.0).contains(&luma) {
+        return false;
+    }
+
+    let max_channel = r.max(g).max(b);
+    let min_channel = r.min(g).min(b);
+    let saturation = max_channel - min_channel;
+    let blue_sky = sky_like && b >= r + 22.0 && b >= g + 10.0 && saturation >= 40.0;
+    if blue_sky {
+        return false;
+    }
+
+    let pale_cloud = sky_like && luma >= 118.0 && saturation <= 72.0 && b <= r + 28.0;
+    let gray_bank =
+        saturation <= 44.0 && r >= 68.0 && g >= 68.0 && b >= 68.0 && b + 20.0 >= r && b + 20.0 >= g;
+    let warm_haze_bank = saturation <= 54.0 && r >= 86.0 && g >= 78.0 && b >= 68.0 && r + 16.0 >= b;
+
+    pale_cloud || gray_bank || warm_haze_bank
 }
 
 fn is_distant_scene_like(r: f64, g: f64, b: f64, luma: f64, sky_like: bool) -> bool {
@@ -1015,6 +1132,9 @@ struct ImageAudit {
     distant_scene_component_count: usize,
     distant_scene_color_bucket_count: usize,
     scene_material_family_count: usize,
+    foliage_scene_fraction: f64,
+    cloud_layer_fraction: f64,
+    cloud_layer_component_count: usize,
     severe_clipping_fraction: f64,
     transparent_pixel_fraction: f64,
     foreign_canvas_fraction: f64,
@@ -1095,6 +1215,19 @@ fn report_checks(audits: &[ImageAudit]) -> Vec<Check> {
         .map(|audit| audit.scene_material_family_count)
         .max()
         .unwrap_or_default();
+    let max_foliage_scene_fraction = audits
+        .iter()
+        .map(|audit| audit.foliage_scene_fraction)
+        .fold(0.0, f64::max);
+    let max_cloud_layer_fraction = audits
+        .iter()
+        .map(|audit| audit.cloud_layer_fraction)
+        .fold(0.0, f64::max);
+    let max_cloud_layer_component_count = audits
+        .iter()
+        .map(|audit| audit.cloud_layer_component_count)
+        .max()
+        .unwrap_or_default();
 
     vec![
         Check::at_least(
@@ -1145,6 +1278,24 @@ fn report_checks(audits: &[ImageAudit]) -> Vec<Check> {
             MIN_SEQUENCE_SCENE_MATERIAL_FAMILIES as f64,
             "families",
         ),
+        Check::at_least(
+            "max_foliage_scene_fraction",
+            max_foliage_scene_fraction,
+            MIN_SEQUENCE_FOLIAGE_SCENE_FRACTION,
+            "ratio",
+        ),
+        Check::at_least(
+            "max_cloud_layer_fraction",
+            max_cloud_layer_fraction,
+            MIN_SEQUENCE_CLOUD_LAYER_FRACTION,
+            "ratio",
+        ),
+        Check::at_least(
+            "max_cloud_layer_component_count",
+            max_cloud_layer_component_count as f64,
+            MIN_SEQUENCE_CLOUD_LAYER_COMPONENTS as f64,
+            "components",
+        ),
     ]
 }
 
@@ -1180,7 +1331,7 @@ fn image_audit_json(audit: &ImageAudit) -> String {
         .collect::<Vec<_>>()
         .join(",\n      ");
     format!(
-        "{{\n      \"path\": {},\n      \"passed\": {},\n      \"width\": {},\n      \"height\": {},\n      \"mean_luma\": {},\n      \"luma_stddev\": {},\n      \"colorfulness\": {},\n      \"quantized_colors\": {},\n      \"edge_density\": {},\n      \"top_sky_fraction\": {},\n      \"lower_scene_fraction\": {},\n      \"center_scene_fraction\": {},\n      \"center_edge_density\": {},\n      \"scene_detail_tile_fraction\": {},\n      \"flat_scene_tile_fraction\": {},\n      \"scene_detail_tile_count\": {},\n      \"flat_scene_tile_count\": {},\n      \"scene_candidate_tile_count\": {},\n      \"player_focus_fraction\": {},\n      \"player_warm_focus_fraction\": {},\n      \"route_marker_fraction\": {},\n      \"route_marker_component_count\": {},\n      \"route_marker_hue_family_count\": {},\n      \"distant_scene_fraction\": {},\n      \"distant_scene_component_count\": {},\n      \"distant_scene_color_bucket_count\": {},\n      \"scene_material_family_count\": {},\n      \"severe_clipping_fraction\": {},\n      \"transparent_pixel_fraction\": {},\n      \"foreign_canvas_fraction\": {},\n      \"hud_text_fraction\": {},\n      \"checks\": [\n      {}\n      ]\n    }}",
+        "{{\n      \"path\": {},\n      \"passed\": {},\n      \"width\": {},\n      \"height\": {},\n      \"mean_luma\": {},\n      \"luma_stddev\": {},\n      \"colorfulness\": {},\n      \"quantized_colors\": {},\n      \"edge_density\": {},\n      \"top_sky_fraction\": {},\n      \"lower_scene_fraction\": {},\n      \"center_scene_fraction\": {},\n      \"center_edge_density\": {},\n      \"scene_detail_tile_fraction\": {},\n      \"flat_scene_tile_fraction\": {},\n      \"scene_detail_tile_count\": {},\n      \"flat_scene_tile_count\": {},\n      \"scene_candidate_tile_count\": {},\n      \"player_focus_fraction\": {},\n      \"player_warm_focus_fraction\": {},\n      \"route_marker_fraction\": {},\n      \"route_marker_component_count\": {},\n      \"route_marker_hue_family_count\": {},\n      \"distant_scene_fraction\": {},\n      \"distant_scene_component_count\": {},\n      \"distant_scene_color_bucket_count\": {},\n      \"scene_material_family_count\": {},\n      \"foliage_scene_fraction\": {},\n      \"cloud_layer_fraction\": {},\n      \"cloud_layer_component_count\": {},\n      \"severe_clipping_fraction\": {},\n      \"transparent_pixel_fraction\": {},\n      \"foreign_canvas_fraction\": {},\n      \"hud_text_fraction\": {},\n      \"checks\": [\n      {}\n      ]\n    }}",
         json_string(&audit.path),
         audit.passed,
         audit.width,
@@ -1208,6 +1359,9 @@ fn image_audit_json(audit: &ImageAudit) -> String {
         audit.distant_scene_component_count,
         audit.distant_scene_color_bucket_count,
         audit.scene_material_family_count,
+        json_number(audit.foliage_scene_fraction),
+        json_number(audit.cloud_layer_fraction),
+        audit.cloud_layer_component_count,
         json_number(audit.severe_clipping_fraction),
         json_number(audit.transparent_pixel_fraction),
         json_number(audit.foreign_canvas_fraction),
@@ -1324,7 +1478,7 @@ mod tests {
             for x in 0..width {
                 let checker = (x + y) % 2 == 0;
                 let (r, g, b) = if y < height * 64 / 100 {
-                    (126 + (x % 34), 158 + (y % 34), 196 + ((x + y) % 34))
+                    (104 + (x % 18), 136 + (y % 22), 198 + ((x + y) % 24))
                 } else if checker {
                     (48 + (x % 92), 110 + (y % 80), 58 + ((x + y) % 50))
                 } else {
@@ -1344,6 +1498,26 @@ mod tests {
                     (112 + (x % 84), 142 + (y % 78), 178 + ((x + y) % 72))
                 } else {
                     (36 + (x % 84), 124 + (y % 76), 18 + ((x + y) % 22))
+                };
+                image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+            }
+        }
+    }
+
+    fn paint_high_sky_non_foliage_scene(image: &mut RgbImage) {
+        let width = image.width();
+        let height = image.height();
+        for y in 0..height {
+            for x in 0..width {
+                let checker = (x + y) % 3;
+                let (r, g, b) = if y < height * 64 / 100 {
+                    (104 + (x % 18), 136 + (y % 22), 198 + ((x + y) % 24))
+                } else if checker == 0 {
+                    (34 + (x % 28), 86 + (y % 38), 118 + ((x + y) % 42))
+                } else if checker == 1 {
+                    (126 + (x % 50), 62 + (y % 24), 46 + ((x + y) % 26))
+                } else {
+                    (80 + (x % 32), 46 + (y % 10), 60 + ((x + y) % 16))
                 };
                 image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
             }
@@ -1396,9 +1570,49 @@ mod tests {
         }
     }
 
+    fn paint_cloud_layer_signals(image: &mut RgbImage) {
+        let width = image.width();
+        let height = image.height();
+        for y in height * 7 / 100..height * 15 / 100 {
+            for x in width * 45 / 100..width * 66 / 100 {
+                let dx = x as i64 - (width * 55 / 100) as i64;
+                let dy = y as i64 - (height * 11 / 100) as i64;
+                if dx * dx * 36 + dy * dy * 240 <= (width as i64 * width as i64) / 3 {
+                    image.put_pixel(
+                        x,
+                        y,
+                        Rgb([
+                            164 + (x % 18) as u8,
+                            174 + (y % 16) as u8,
+                            184 + ((x + y) % 18) as u8,
+                        ]),
+                    );
+                }
+            }
+        }
+        for y in height * 15 / 100..height * 23 / 100 {
+            for x in width * 74 / 100..width * 92 / 100 {
+                let dx = x as i64 - (width * 83 / 100) as i64;
+                let dy = y as i64 - (height * 19 / 100) as i64;
+                if dx * dx * 44 + dy * dy * 280 <= (width as i64 * width as i64) / 4 {
+                    image.put_pixel(
+                        x,
+                        y,
+                        Rgb([
+                            148 + (x % 20) as u8,
+                            158 + (y % 18) as u8,
+                            168 + ((x + y) % 20) as u8,
+                        ]),
+                    );
+                }
+            }
+        }
+    }
+
     fn paint_readability_signals(image: &mut RgbImage) {
         paint_player_and_route_markers(image);
         paint_distant_scene_signals(image);
+        paint_cloud_layer_signals(image);
     }
 
     #[test]
@@ -1666,6 +1880,7 @@ mod tests {
         paint_high_sky_foliage_scene(&mut image);
         paint_player_and_route_markers(&mut image);
         paint_foliage_distant_scene_signals(&mut image);
+        paint_cloud_layer_signals(&mut image);
 
         let audit = audit_image("single_family_materials.png".to_string(), image)
             .expect("audit should load");
@@ -1679,6 +1894,58 @@ mod tests {
                 .iter()
                 .any(|check| check.name == "max_scene_material_family_count" && !check.passed)
         );
+    }
+
+    #[test]
+    fn report_rejects_sequence_without_foliage_readability() {
+        let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        paint_high_sky_non_foliage_scene(&mut image);
+        paint_player_and_route_markers(&mut image);
+        paint_flat_distant_scene_signals(&mut image);
+        paint_cloud_layer_signals(&mut image);
+
+        let audit =
+            audit_image("missing_foliage.png".to_string(), image).expect("audit should load");
+        let checks = report_checks(std::slice::from_ref(&audit));
+
+        assert!(audit.passed, "{audit:?}");
+        assert!(audit.scene_material_family_count >= MIN_SEQUENCE_SCENE_MATERIAL_FAMILIES);
+        assert!(
+            audit.foliage_scene_fraction < MIN_SEQUENCE_FOLIAGE_SCENE_FRACTION,
+            "foliage_scene_fraction {} should stay below {}",
+            audit.foliage_scene_fraction,
+            MIN_SEQUENCE_FOLIAGE_SCENE_FRACTION
+        );
+        assert!(!report_passed(std::slice::from_ref(&audit), &checks));
+        assert!(
+            checks
+                .iter()
+                .any(|check| check.name == "max_foliage_scene_fraction" && !check.passed)
+        );
+    }
+
+    #[test]
+    fn report_rejects_sequence_without_cloud_layer_components() {
+        let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        paint_high_sky_textured_scene(&mut image);
+        paint_player_and_route_markers(&mut image);
+        paint_distant_scene_signals(&mut image);
+
+        let audit =
+            audit_image("missing_cloud_layer.png".to_string(), image).expect("audit should load");
+        let checks = report_checks(std::slice::from_ref(&audit));
+
+        assert!(audit.passed, "{audit:?}");
+        assert!(
+            audit.cloud_layer_fraction < MIN_SEQUENCE_CLOUD_LAYER_FRACTION
+                || audit.cloud_layer_component_count < MIN_SEQUENCE_CLOUD_LAYER_COMPONENTS
+        );
+        assert!(!report_passed(std::slice::from_ref(&audit), &checks));
+        assert!(checks.iter().any(|check| {
+            (check.name == "max_cloud_layer_fraction"
+                || check.name == "max_cloud_layer_component_count")
+                && !check.passed
+        }));
     }
 
     #[test]
