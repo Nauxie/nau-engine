@@ -6589,9 +6589,9 @@ fn collect_eval_metrics(
     let desired_heading_alignment_mps = desired_movement_direction
         .map(|direction| desired_heading_alignment_speed(velocity.0, direction))
         .unwrap_or(f32::NAN);
-    let lateral_input_active =
-        movement_input.has_lateral_axis() && controller.mode != FlightMode::Grounded;
-    let lateral_response_mps = if lateral_input_active {
+    let lateral_axis_active = movement_input.has_lateral_axis();
+    let lateral_input_active = lateral_axis_active && controller.mode != FlightMode::Grounded;
+    let lateral_response_mps = if lateral_axis_active {
         lateral_response_speed(velocity.0, movement_input, movement_facing)
     } else {
         0.0

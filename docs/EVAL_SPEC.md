@@ -199,19 +199,20 @@ The export writes `manifest.json`, per-island terrain/cliff/underside OBJ meshes
 - no scripted camera input, so camera orbit yaw offset must remain zero while `A`/`D` move Nau
 - actual camera rotation delta must stay small during the movement-only route
 - average and p95 camera follow-direction error must stay bounded so a stable camera cannot hide a stale follow target
-- camera world-yaw drift must stay bounded so movement input cannot quietly rotate the camera
+- camera view-yaw and world-yaw drift must stay bounded so movement input cannot quietly rotate the camera
 - average, p95, and max desired body heading error plus desired-heading velocity alignment must stay within thresholds
 - right, left, rear-right, and rear-left lateral input must each produce measurable response within the response-latency threshold
 - rear-right and rear-left samples must also build a rearward component, exposed as `max_backward_right_rear_response_mps` and `max_backward_left_rear_response_mps`, so pure sideways drift cannot satisfy the diagonal-control gate
-- backward input must produce measurable air-brake speed drop, and the final forward segment must recover forward alignment
+- backward input must produce measurable total and planar air-brake speed drop, and the final forward segment must recover forward alignment
 - max body-yaw error step and oscillation count must remain bounded so input reversals do not become spin or wobble regressions
-- current gates require lateral response within 0.30 seconds, at least 18 m/s directional right/left lateral response, at least 10 m/s rear-right and rear-left lateral response, at least 8 m/s rear-right and rear-left rearward response, at least 10 m/s of air-brake speed drop, p95 body-heading error at or under 30 degrees, and max body-heading/yaw-step error at or under 45 degrees
+- current gates require lateral response within 0.30 seconds, at least 18 m/s directional right/left lateral response, at least 10 m/s rear-right and rear-left lateral response, at least 8 m/s rear-right and rear-left rearward response, at least 10 m/s of total and planar air-brake speed drop, camera view-yaw drift at or under 12 degrees, p95 body-heading error at or under 30 degrees, and max body-heading/yaw-step error at or under 45 degrees
 
 `camera_strafe_stability` is the lateral-movement camera regression test:
 
 - fixed spawn on the launch island
 - no mouse input, launch, glide, or dive
 - scripted `D` and `A` segments exercise lateral ground motion
+- right and left lateral movement must each reach at least 8 m/s so camera-stability gates cannot pass on a no-op strafe
 - camera view yaw must stay near the starting heading so strafe velocity cannot auto-orbit the camera
 - max speed and grounded samples must prove the route was not a no-op
 
@@ -394,7 +395,7 @@ The summary aggregates:
 - max lateral response speed and first-response latency
 - max right, left, rear-right, and rear-left lateral response speed and response latency
 - max rear-right and rear-left rearward response speed
-- max air-brake speed drop and max post-brake forward alignment
+- max total air-brake speed drop, max planar air-brake speed drop, and max post-brake forward alignment
 - max camera distance
 - min camera surface clearance
 - max camera-to-player framing angle
@@ -526,7 +527,7 @@ The pass/fail checks currently guard:
 - camera view yaw and world-yaw drift stayed within scenario limits when movement should not rotate the camera
 - camera obstruction avoidance was exercised when a scenario requires it
 - camera mouse scenarios exercised yaw and both pitch directions
-- air-control response latency, right/left/rear-right/rear-left lateral response, rear-right/rear-left rearward response, air-brake speed drop, post-brake forward alignment, desired-heading alignment, average/p95/max body-heading error, max yaw-error step, yaw oscillation count, camera orbit yaw offset, and camera rotation delta stayed inside thresholds
+- air-control response latency, right/left/rear-right/rear-left lateral response, rear-right/rear-left rearward response, total and planar air-brake speed drop, post-brake forward alignment, desired-heading alignment, average/p95/max body-heading error, max yaw-error step, yaw oscillation count, camera orbit yaw offset, camera view-yaw drift, and camera rotation delta stayed inside thresholds
 - air-control average and p95 camera follow-direction error stayed inside threshold so movement-only routes cannot pass with a stale follow direction
 - air-control movement-only camera world-yaw drift stayed inside threshold
 - island-route final scenario-target distance stayed under threshold
