@@ -373,8 +373,9 @@ The visual asset fields report the declared glTF scene inventory, how many slots
 The power-up fields report authored aerial boost gates, how many remain visible, how many have been collected, whether an effect is currently active, and the total activation count. They are route-readiness signals for the simple power-up slice, not final ability design.
 The environment-motion fields report how many resident near-LOD visuals are wind-responsive and the largest sampled transform offset from their base placement. They prove the visual motion layer exists and is active; they do not evaluate final animation quality.
 The island-terrain fields report generated terrain surface count, minimum terrain mesh vertex count, minimum vertex-color band count, minimum encoded material-weight band count, minimum material channel count, minimum derived material-region count, minimum terrain texture-detail band count, minimum sampled terrain relief range, and minimum cliff/underside color-band count. The material weights are currently encoded into `UV_1` as lush/highland and exposed-edge blend channels; material regions quantize those channels into stable base, transition, lush, and exposed-edge identities; texture-detail bands count coarse color bins in the terrain-specific procedural albedo maps, which are tiled across world-space terrain UVs instead of stretched once across an island, so future PBR material blending or glTF export has a measurable substrate. These are structural signals for denser terrain and stratified rock detail; they do not replace screenshot or human review for final material quality.
+The island-impostor fields report the minimum generated far-LOD impostor mesh vertex count and vertex-color band count. They are structural gates for distant island silhouettes and layered terrain/cliff/underside color variation, not final far-field art quality.
 The island-body fields report whether the catalogued route island bodies are generated procedural meshes or registered primitive/fallback body placeholders, plus the minimum silhouette segment count and minimum/maximum body mesh vertex count signals. They are a structural signal for replacing cylinder-like islands; they do not prove final terrain art quality or texture fidelity.
-Current substrate gates require at least 32 terrain color bands, 24 terrain material-weight bands, 44 terrain texture-detail bands, 1600 island-body mesh vertices, 30 generated trunks/canopies, 400 canopy mesh vertices, 55 generated rocks, 24 generated weather clouds, and 560 weather-cloud mesh vertices.
+Current substrate gates require at least 32 terrain color bands, 24 terrain material-weight bands, 44 terrain texture-detail bands, 140 island-impostor mesh vertices, 18 island-impostor color bands, 1600 island-body mesh vertices, 30 generated trunks/canopies, 400 canopy mesh vertices, 55 generated rocks, 24 generated weather clouds, and 560 weather-cloud mesh vertices.
 
 ## Summary Metrics
 
@@ -421,6 +422,8 @@ The summary aggregates:
 - max hidden island terrain count
 - max visible island impostor count
 - max hidden island impostor count
+- min island impostor mesh vertex count
+- min island impostor vertex-color band count
 - max visible island detail count
 - max hidden island detail count
 - max visible route beacon count
@@ -498,6 +501,7 @@ The pass/fail checks currently guard:
 - visible island terrain stays under the scenario budget, proving inactive chunks are not drawing full terrain
 - hidden island terrain stays populated, proving inactive chunk terrain remains measurable before real despawn work
 - visible island impostors stay populated, proving inactive chunks retain distant silhouettes
+- distant island impostor mesh vertex and color-band floors stay populated so far LOD cannot silently collapse back to a flat low-detail blob
 - visible island detail stays under the scenario budget, proving distance LOD is active
 - hidden island detail stays populated, proving distance LOD is actually culling resident detail
 - visible route beacons stay populated so distant route readability is not culled away
@@ -581,7 +585,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 
 - Metric-only evals hide the native Bevy window, but still instantiate the window/rendering stack.
 - Screenshot evals still need a visible native Bevy window. Screenshot runs disable debug gizmos and use opaque surface composition so transparent scene effects blend against the game frame rather than desktop content behind the window.
-- Screenshot evals now run a lightweight image and scene-composition audit, including basic player visibility, scene detail tile frequency, flat low-detail scene-tile dominance, severe border-clipping, route-marker readability, route-marker component identity, and route-marker hue-family telemetry, but exact marker semantics, vegetation/cloud mesh quality, and art quality still need human/agent inspection. Headless terrain export audit covers the first terrain-material identity floor by requiring every exported island to retain base, transition, highland, and exposed material-region coverage.
+- Screenshot evals now run a lightweight image and scene-composition audit, including basic player visibility, scene detail tile frequency, flat low-detail scene-tile dominance, severe border-clipping, route-marker readability, route-marker component identity, and route-marker hue-family telemetry, but exact marker semantics, vegetation/cloud mesh quality, distant-impostor art direction, and art quality still need human/agent inspection. Headless terrain export audit covers the first terrain-material identity floor by requiring every exported island to retain base, transition, highland, and exposed material-region coverage; runtime metric gates now cover the first distant-impostor mesh/color substrate floor.
 - There is no simulation-only binary yet.
 - Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
 - Island collision follows deterministic authored terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
@@ -594,4 +598,4 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - Aerial power-up gates are primitive glowing route rings with simple one-time collection state; there is no inventory UI, reset flow, audio/particles, or authored ability progression yet.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
-These are acceptable for the current harness. The next meaningful upgrades are asynchronous asset-loading simulation, richer terrain/material identity checks, vegetation/cloud-depth image checks, exact route-marker semantic checks, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
+These are acceptable for the current harness. The next meaningful upgrades are asynchronous asset-loading simulation, richer screenshot-level terrain/material and distant-impostor identity checks, vegetation/cloud-depth image checks, exact route-marker semantic checks, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
