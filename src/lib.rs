@@ -692,8 +692,8 @@ pub mod movement {
                 drag: 0.82,
                 max_horizontal_speed: 58.0,
                 max_fall_speed: 70.0,
-                air_steer_accel: 52.0,
-                glide_steer_accel: 34.0,
+                air_steer_accel: 54.0,
+                glide_steer_accel: 36.0,
                 air_counter_steer_accel: 120.0,
                 glide_counter_steer_accel: 150.0,
                 air_steer_min_speed: 16.0,
@@ -3886,11 +3886,15 @@ pub mod eval {
     const AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS: f32 = 4.0;
     const AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES: f32 = 0.01;
     const AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 2.0;
+    const AIR_CONTROL_MAX_CAMERA_VIEW_YAW_DRIFT_DEGREES: f32 = 12.0;
     const AIR_CONTROL_MAX_AVG_CAMERA_FOLLOW_ERROR_DEGREES: f32 = 55.0;
     const AIR_CONTROL_MAX_P95_CAMERA_FOLLOW_ERROR_DEGREES: f32 = 70.0;
+    const CAMERA_STRAFE_MIN_LATERAL_RESPONSE_MPS: f32 = 8.0;
+    const CAMERA_STRAFE_MAX_VIEW_YAW_DRIFT_DEGREES: f32 = 6.0;
     const MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES: f32 = 15.0;
     const MAX_GROUNDED_VISUAL_FOOT_GAP_M: f32 = 0.05;
     const AIR_CONTROL_MIN_AIR_BRAKE_SPEED_DROP_MPS: f32 = 10.0;
+    const AIR_CONTROL_MIN_AIR_BRAKE_PLANAR_SPEED_DROP_MPS: f32 = 10.0;
     const AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS: f32 = 12.0;
     const AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES: f32 = 8.0;
 
@@ -4642,6 +4646,15 @@ pub mod eval {
             self
         }
 
+        pub fn with_camera_view_yaw_metrics(mut self, camera_view_yaw_degrees: f32) -> Self {
+            self.camera_view_yaw_degrees = if camera_view_yaw_degrees.is_finite() {
+                camera_view_yaw_degrees
+            } else {
+                0.0
+            };
+            self
+        }
+
         pub fn with_visual_foot_gap(mut self, visual_foot_gap_m: f32) -> Self {
             self.visual_foot_gap_m = visual_foot_gap_m;
             self
@@ -4928,7 +4941,10 @@ pub mod eval {
         first_backward_left_lateral_response_time_secs: Option<f32>,
         backward_air_control_start_speed_mps: Option<f32>,
         min_backward_air_control_speed_mps: Option<f32>,
+        backward_air_control_start_planar_speed_mps: Option<f32>,
+        min_backward_air_control_planar_speed_mps: Option<f32>,
         max_air_brake_speed_drop_mps: f32,
+        max_air_brake_planar_speed_drop_mps: f32,
         max_post_brake_forward_alignment_mps: f32,
         min_target_distance_m: f32,
         min_camera_pitch_degrees: f32,
@@ -5245,7 +5261,9 @@ pub mod eval {
                     .max_desired_heading_alignment_mps
                     .max(sample.desired_heading_alignment_mps);
             }
-            if sample.lateral_input_active {
+            let lateral_axis_active = sample.lateral_input_active
+                || sample.movement_input_lateral_axis.abs() > f32::EPSILON;
+            if lateral_axis_active {
                 if self.first_lateral_input_time_secs.is_none() {
                     self.first_lateral_input_time_secs = Some(sample.time_secs);
                 }
@@ -5351,17 +5369,30 @@ pub mod eval {
             if sample.movement_input_forward_axis < 0.0
                 && sample.mode != FlightMode::Grounded.label()
             {
+                let planar_speed = Vec2::new(sample.velocity[0], sample.velocity[2]).length();
                 if self.backward_air_control_start_speed_mps.is_none() {
                     self.backward_air_control_start_speed_mps = Some(sample.speed_mps);
+                }
+                if self.backward_air_control_start_planar_speed_mps.is_none() {
+                    self.backward_air_control_start_planar_speed_mps = Some(planar_speed);
                 }
                 let min_speed = self
                     .min_backward_air_control_speed_mps
                     .map_or(sample.speed_mps, |speed| speed.min(sample.speed_mps));
                 self.min_backward_air_control_speed_mps = Some(min_speed);
+                let min_planar_speed = self
+                    .min_backward_air_control_planar_speed_mps
+                    .map_or(planar_speed, |speed| speed.min(planar_speed));
+                self.min_backward_air_control_planar_speed_mps = Some(min_planar_speed);
                 if let Some(start_speed) = self.backward_air_control_start_speed_mps {
                     self.max_air_brake_speed_drop_mps = self
                         .max_air_brake_speed_drop_mps
                         .max(start_speed - min_speed);
+                }
+                if let Some(start_planar_speed) = self.backward_air_control_start_planar_speed_mps {
+                    self.max_air_brake_planar_speed_drop_mps = self
+                        .max_air_brake_planar_speed_drop_mps
+                        .max(start_planar_speed - min_planar_speed);
                 }
             } else if self.backward_air_control_start_speed_mps.is_some()
                 && sample.movement_input_forward_axis > 0.0
@@ -6426,6 +6457,12 @@ pub mod eval {
                     "m/s",
                 ));
                 checks.push(EvalCheck::at_least(
+                    "air_control_air_brake_planar_speed_drop",
+                    self.max_air_brake_planar_speed_drop_mps,
+                    AIR_CONTROL_MIN_AIR_BRAKE_PLANAR_SPEED_DROP_MPS,
+                    "m/s",
+                ));
+                checks.push(EvalCheck::at_least(
                     "air_control_post_brake_forward_alignment",
                     self.max_post_brake_forward_alignment_mps,
                     AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS,
@@ -6480,6 +6517,12 @@ pub mod eval {
                     "deg",
                 ));
                 checks.push(EvalCheck::at_most(
+                    "air_control_camera_view_yaw_drift",
+                    self.max_camera_view_yaw_drift_degrees,
+                    AIR_CONTROL_MAX_CAMERA_VIEW_YAW_DRIFT_DEGREES,
+                    "deg",
+                ));
+                checks.push(EvalCheck::at_most(
                     "air_control_avg_camera_follow_direction_error",
                     avg_camera_follow_direction_error_degrees,
                     AIR_CONTROL_MAX_AVG_CAMERA_FOLLOW_ERROR_DEGREES,
@@ -6499,6 +6542,24 @@ pub mod eval {
                 ));
             }
             if scenario.name == CAMERA_STRAFE_STABILITY {
+                checks.push(EvalCheck::at_least(
+                    "camera_strafe_right_lateral_response",
+                    self.max_right_lateral_response_mps,
+                    CAMERA_STRAFE_MIN_LATERAL_RESPONSE_MPS,
+                    "m/s",
+                ));
+                checks.push(EvalCheck::at_least(
+                    "camera_strafe_left_lateral_response",
+                    self.max_left_lateral_response_mps,
+                    CAMERA_STRAFE_MIN_LATERAL_RESPONSE_MPS,
+                    "m/s",
+                ));
+                checks.push(EvalCheck::at_most(
+                    "camera_strafe_view_yaw_drift",
+                    self.max_camera_view_yaw_drift_degrees,
+                    CAMERA_STRAFE_MAX_VIEW_YAW_DRIFT_DEGREES,
+                    "deg",
+                ));
                 checks.push(EvalCheck::at_most(
                     "camera_strafe_world_yaw_drift",
                     self.max_camera_world_yaw_drift_degrees,
@@ -6565,6 +6626,7 @@ pub mod eval {
                     backward_left_lateral_response_latency_secs,
                     max_backward_left_rear_response_mps: self.max_backward_left_rear_response_mps,
                     max_air_brake_speed_drop_mps: self.max_air_brake_speed_drop_mps,
+                    max_air_brake_planar_speed_drop_mps: self.max_air_brake_planar_speed_drop_mps,
                     max_post_brake_forward_alignment_mps: self.max_post_brake_forward_alignment_mps,
                     min_target_distance_m: self.min_target_distance_m,
                     final_target_distance_m,
@@ -6773,6 +6835,7 @@ pub mod eval {
         pub backward_left_lateral_response_latency_secs: f32,
         pub max_backward_left_rear_response_mps: f32,
         pub max_air_brake_speed_drop_mps: f32,
+        pub max_air_brake_planar_speed_drop_mps: f32,
         pub max_post_brake_forward_alignment_mps: f32,
         pub min_target_distance_m: f32,
         pub final_target_distance_m: f32,
@@ -7054,6 +7117,13 @@ pub mod eval {
                 air_brake_key
             );
             let json = json.replacen(&air_brake_key, &rear_response_metrics, 1);
+            let post_brake_key = format!("{indent}  \"max_post_brake_forward_alignment_mps\"");
+            let planar_brake_metrics = format!(
+                "{indent}  \"max_air_brake_planar_speed_drop_mps\": {},\n{}",
+                json_number(self.max_air_brake_planar_speed_drop_mps),
+                post_brake_key
+            );
+            let json = json.replacen(&post_brake_key, &planar_brake_metrics, 1);
             let body_mesh_key = format!("{indent}  \"max_island_body_mesh_vertices\"");
             let body_mesh_metrics = format!(
                 "{indent}  \"min_island_body_mesh_vertices\": {},\n{}",
@@ -8720,6 +8790,127 @@ pub mod eval {
             assert_eq!(summary.metrics.max_camera_world_yaw_drift_degrees, 20.0);
             assert_eq!(check.value, 20.0);
             assert!(!check.passed);
+        }
+
+        #[test]
+        fn accumulator_gates_movement_only_camera_view_yaw_drift() {
+            let scenario = scenario_named(CAMERA_STRAFE_STABILITY).expect("strafe route exists");
+            let mut accumulator = EvalAccumulator::default();
+
+            accumulator.observe(
+                content_metric_sample(scenario, 0, 12, 0, 64).with_camera_view_yaw_metrics(0.0),
+            );
+            accumulator.observe(
+                content_metric_sample(scenario, 60, 12, 0, 64).with_camera_view_yaw_metrics(12.0),
+            );
+
+            let summary = accumulator.summary(
+                scenario,
+                EvalArtifacts {
+                    summary_json: "summary.json".to_string(),
+                    samples_ndjson: "samples.ndjson".to_string(),
+                    screenshot_png: None,
+                    checkpoint_screenshots: Vec::new(),
+                },
+            );
+            let check = named_check(&summary, "camera_strafe_view_yaw_drift");
+
+            assert_eq!(summary.metrics.max_camera_view_yaw_drift_degrees, 12.0);
+            assert_eq!(check.value, 12.0);
+            assert!(!check.passed);
+        }
+
+        #[test]
+        fn accumulator_gates_ground_strafe_directional_response() {
+            let scenario = scenario_named(CAMERA_STRAFE_STABILITY).expect("strafe route exists");
+            let mut accumulator = EvalAccumulator::default();
+
+            accumulator.observe(
+                content_metric_sample(scenario, 0, 12, 0, 64).with_movement_metrics(
+                    f32::NAN,
+                    f32::NAN,
+                    9.0,
+                    false,
+                    1.0,
+                    0.0,
+                ),
+            );
+            accumulator.observe(
+                content_metric_sample(scenario, 60, 12, 0, 64).with_movement_metrics(
+                    f32::NAN,
+                    f32::NAN,
+                    3.0,
+                    false,
+                    -1.0,
+                    0.0,
+                ),
+            );
+
+            let summary = accumulator.summary(
+                scenario,
+                EvalArtifacts {
+                    summary_json: "summary.json".to_string(),
+                    samples_ndjson: "samples.ndjson".to_string(),
+                    screenshot_png: None,
+                    checkpoint_screenshots: Vec::new(),
+                },
+            );
+            let right_check = named_check(&summary, "camera_strafe_right_lateral_response");
+            let left_check = named_check(&summary, "camera_strafe_left_lateral_response");
+
+            assert!(right_check.passed);
+            assert_eq!(summary.metrics.max_right_lateral_response_mps, 9.0);
+            assert_eq!(summary.metrics.max_left_lateral_response_mps, 3.0);
+            assert!(!left_check.passed);
+        }
+
+        #[test]
+        fn accumulator_gates_planar_air_brake_drop() {
+            let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+            let mut accumulator = EvalAccumulator::default();
+
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                240,
+                Vec3::new(10.0, -52.0, 0.0),
+                Vec2::new(0.0, -1.0),
+                0.0,
+                0.0,
+                f32::NAN,
+            ));
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                245,
+                Vec3::new(10.0, -8.0, 0.0),
+                Vec2::new(0.0, -1.0),
+                0.0,
+                0.0,
+                f32::NAN,
+            ));
+
+            let summary = accumulator.summary(
+                scenario,
+                EvalArtifacts {
+                    summary_json: "summary.json".to_string(),
+                    samples_ndjson: "samples.ndjson".to_string(),
+                    screenshot_png: None,
+                    checkpoint_screenshots: Vec::new(),
+                },
+            );
+            let total_speed_check = named_check(&summary, "air_control_air_brake_speed_drop");
+            let planar_speed_check =
+                named_check(&summary, "air_control_air_brake_planar_speed_drop");
+
+            assert!(summary.metrics.max_air_brake_speed_drop_mps > 40.0);
+            assert!(total_speed_check.passed);
+            assert_eq!(summary.metrics.max_air_brake_planar_speed_drop_mps, 0.0);
+            assert_eq!(planar_speed_check.value, 0.0);
+            assert!(!planar_speed_check.passed);
+            assert!(
+                summary
+                    .to_json()
+                    .contains("\"max_air_brake_planar_speed_drop_mps\"")
+            );
         }
 
         #[test]
