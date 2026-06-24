@@ -254,6 +254,8 @@ Every sample includes:
 
 Add fields here before adding them to code. New fields should be cheap to collect, stable across runs, and useful for deciding what to fix.
 
+The island terrain/detail/impostor hidden counts are catalog entries that are not currently resident. The `stream_visibility_*` names are retained for artifact compatibility, but now report resident island visual spawn/despawn churn rather than `Visibility` flag flips.
+
 ## Summary Metrics
 
 The summary aggregates:
@@ -390,10 +392,10 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - There is no simulation-only binary yet.
 - Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
 - Island collision follows deterministic authored terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
-- `active_chunk_count` and `active_island_count` drive terrain visibility, but they do not despawn entities or load assets yet.
-- LOD buckets drive visible island detail, inactive chunks swap full terrain for cheap impostors, and hidden/resident/churn counters now quantify how much work remains before real streaming.
+- `active_chunk_count` and `active_island_count` drive resident terrain/detail entities, but there is no asynchronous asset loading yet.
+- LOD buckets drive resident island detail, inactive or non-near chunks use cheap impostors, and hidden/resident/churn counters quantify stream-window pressure.
 - The weather-cloud counter verifies that cloud-bank entities exist, and the screenshot audit catches gross visual/composition failure, but neither proves atmosphere, fog, materials, and clouds look correct.
-- `entity_count` is still a coarse scene-scale proxy, not a streaming health metric, because inactive visuals are hidden rather than despawned.
+- `entity_count` is still a coarse scene-scale proxy; streaming health should be read from resident island visual count and stream entity churn.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
-These are acceptable for the current harness. The next meaningful upgrades are real chunk despawn counters, explicit visual checks for player and route-marker readability, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
+These are acceptable for the current harness. The next meaningful upgrades are explicit visual checks for player and route-marker readability, tighter streaming budget regressions, asynchronous asset-loading simulation, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
