@@ -105,10 +105,10 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 Export the generated island substrate for offline terrain/material inspection without creating a native window:
 
 ```sh
-cargo run -- --export-terrain target/terrain_export
+./tools/terrain_export.sh target/terrain_export
 ```
 
-The export writes `manifest.json`, per-island terrain/cliff/underside OBJ meshes, and `*_terrain_material_weights.csv` sidecars. This is not a pass/fail eval yet; it is an inspection artifact for reviewing generated topology, vertex-color variation, and material-weight coverage before adding richer screenshot/material identity gates.
+The export writes `manifest.json`, per-island terrain/cliff/underside OBJ meshes, `*_terrain_material_weights.csv` sidecars, and `audit.json`. The audit validates schema, mesh/material floors, artifact presence, OBJ vertex/face/color counts, and terrain material-weight CSV rows/bands/channels. This is still an offline structural gate rather than a final art-quality score.
 
 ## Current Scenarios
 
