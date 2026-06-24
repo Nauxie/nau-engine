@@ -42,8 +42,9 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Gliding reduces gravity and clamps fall speed.
 - Gliding does not create altitude on its own.
 - Airborne `S` input brakes forward motion first, then allows limited backward drift instead of unrestricted reverse flight.
-- Visual `WindField` volumes are finite axis-aligned boxes for readable wind/updraft debug streams.
+- Visual `WindField` volumes are finite axis-aligned boxes for readable wind/updraft streams.
 - Gameplay `LiftField` updraft volumes are separate finite boxes that add upward velocity while the player is airborne inside them.
+- Authored gameplay updraft route nodes must pair the visual `WindField` and gameplay `LiftField` at the same center and extents.
 - Lift fields clamp against their configured maximum upward speed instead of granting unbounded climb.
 - Diving adds downward acceleration.
 - The floor clamp prevents the player from ending below the floor or retaining downward velocity after collision.
@@ -87,10 +88,10 @@ Landing:
 
 Wind/updraft:
 
-- visual wind is represented as stream lines inside finite debug fields
+- crosswind is represented as stream lines inside finite debug fields
 - gameplay lift is represented as separate updraft volumes that affect airborne traversal
-- active lift should be readable through debug visuals first, then particles, cloth/glider motion, vegetation, clouds, or other environment art
-- visual wind and gameplay lift should stay separate until crosswind forces have their own explicit movement design
+- active lift should be readable through paired updraft visuals plus debug bounds before richer particles, cloth/glider motion, vegetation, clouds, or other environment art
+- visual wind and gameplay force math should stay separate until crosswind forces have their own explicit movement design
 
 ## Test Coverage
 
@@ -104,6 +105,7 @@ Current tests cover:
 - visual wind fields keep horizontal flow horizontal
 - visual updraft fields point upward
 - lift fields only apply inside bounds while enabled
+- authored gameplay lift route nodes pair visual and lift volumes
 - visual field bounds and stream origins are deterministic
 - smoothing factors do not overshoot
 - camera ignores vertical-only launch velocity for follow direction
@@ -112,7 +114,7 @@ Current tests cover:
 - frame-time diagnostics avoid invalid values
 - animation phase advances from delta time
 - wing visibility tracks glide mode
-- `updraft_route` eval tracks `active_lift_fields` and requires `lifted_samples`
+- `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, and unreadable lift samples so active lift must overlap its paired visible updraft
 - `camera_mouse_control` eval tracks yaw/pitch offsets and obstruction adjustment without player movement
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
 - `camera_strafe_stability` eval tracks lateral movement without camera auto-orbit

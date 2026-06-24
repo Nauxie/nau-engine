@@ -25,7 +25,7 @@ The first executable is a simple 3D flight testbed:
 - simple terrain-surface landing detection with one-shot landing friction
 - live debug readout for frame time, speed, altitude, target distance, camera pitch/distance/framing angle/motion/obstruction/yaw offset, velocity, visual wind-field count, lift-field count, sky-island count, active chunk window, near/mid/far LOD island buckets, visible/hidden terrain, impostor, and detail counts, resident island visual count, and stream visibility churn
 - visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
-- authored visual wind fields plus separate gameplay updraft lift fields
+- authored crosswind fields plus a paired gameplay updraft route with aligned visual wind volumes and visible lift-column guide markers
 - deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state/pose math
 - scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, baseline traversal, long-glide visibility, updraft lift, and island launch-to-landing with traversal, camera, frame-time, content-scale, streaming/LOD, stream-visibility, weather-cloud, resident visual, visibility-churn, and visible-detail summary metrics plus fixed camera checkpoint screenshots
 
@@ -75,7 +75,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ## Near-Term Roadmap
 
 1. Extend screenshot audits toward explicit player visibility, route-marker readability, and severe clipping classification.
-2. Tune gameplay updraft placement, readability, and recovery routes.
+2. Add route recovery choices around the gameplay updrafts instead of relying on one scripted line.
 3. Promote stream-window visibility counters into actual terrain despawn, asset loading, and richer distant impostors.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
 
