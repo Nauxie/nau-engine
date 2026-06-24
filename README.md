@@ -77,7 +77,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 1. Extend screenshot audits toward explicit player visibility, route-marker readability, and severe clipping classification.
 2. Add an objective/checkpoint layer so branch choices become explicit player goals instead of only eval targets.
-3. Promote stream-window visibility counters into actual terrain despawn, asset loading, and richer distant impostors.
+3. Add explicit streaming budget checks, asset loading hooks, and richer distant impostors on top of the resident island visual catalog.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
 
 ## Development Principles
