@@ -1,5 +1,5 @@
 use bevy::asset::{LoadState, RenderAssetUsages};
-use bevy::camera::Exposure;
+use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::system::SystemParam;
 use bevy::gltf::{Gltf, GltfAssetLabel};
@@ -13,7 +13,7 @@ use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::render::render_resource::{BlendState, Extent3d, TextureDimension, TextureFormat};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
 use bevy::scene::SceneInstanceReady;
 use bevy::window::{CompositeAlphaMode, CursorGrabMode, CursorOptions, PrimaryWindow};
@@ -68,6 +68,8 @@ const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
 const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
 const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
 const PROCEDURAL_TEXTURE_SIZE: u32 = 64;
+const TERRAIN_TEXTURE_SIZE: u32 = 128;
+const INITIAL_SKY_CLEAR_COLOR: Color = Color::srgb(0.50, 0.68, 0.92);
 const TREE_CANOPY_LATITUDE_SEGMENTS: usize = 6;
 const TREE_CANOPY_LONGITUDE_SEGMENTS: usize = 12;
 const TREE_TRUNK_SEGMENTS: usize = 8;
@@ -81,6 +83,8 @@ const ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS: usize = 12;
 const ISLAND_TERRAIN_MATERIAL_CHANNELS: usize = 3;
 #[cfg(test)]
 const ISLAND_TERRAIN_MATERIAL_REGIONS: usize = 4;
+#[cfg(test)]
+const ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS: usize = 40;
 const ISLAND_CLIFF_STRATA_BANDS: usize = 9;
 
 fn main() -> AppExit {
@@ -122,7 +126,7 @@ fn main() -> AppExit {
         .is_some_and(|options| options.capture_screenshot);
 
     let mut app = App::new();
-    app.insert_resource(ClearColor(Color::srgb(0.50, 0.68, 0.92)))
+    app.insert_resource(ClearColor(INITIAL_SKY_CLEAR_COLOR))
         .insert_resource(GlobalAmbientLight {
             color: Color::srgb(0.62, 0.68, 0.78),
             brightness: 360.0,
@@ -465,6 +469,7 @@ struct IslandContentDiagnostics {
     min_island_terrain_material_weight_bands: usize,
     min_island_terrain_material_channels: usize,
     min_island_terrain_material_regions: usize,
+    min_island_terrain_texture_detail_bands: usize,
     min_island_terrain_relief_range_cm: usize,
     min_island_cliff_color_bands: usize,
     procedural_island_body_count: usize,
@@ -519,6 +524,16 @@ impl IslandContentDiagnostics {
                 self.min_island_terrain_relief_range_cm.min(relief_range_cm);
         }
         self.island_terrain_surface_count += 1;
+    }
+
+    fn record_terrain_material_texture_detail(&mut self, detail_bands: usize) {
+        if self.min_island_terrain_texture_detail_bands == 0 {
+            self.min_island_terrain_texture_detail_bands = detail_bands;
+        } else {
+            self.min_island_terrain_texture_detail_bands = self
+                .min_island_terrain_texture_detail_bands
+                .min(detail_bands);
+        }
     }
 
     fn record_island_cliff_detail(&mut self, color_bands: usize) {
@@ -1629,7 +1644,7 @@ fn setup(
         0.28,
     );
     let glider_airflow_material = glider_airflow_material(&mut materials);
-    let island_grass_material = textured_material(
+    let (island_grass_material, island_grass_texture_detail_bands) = terrain_surface_material(
         &mut images,
         &mut materials,
         [54, 128, 70, 255],
@@ -1639,7 +1654,7 @@ fn setup(
         0.94,
         0.2,
     );
-    let island_meadow_material = textured_material(
+    let (island_meadow_material, island_meadow_texture_detail_bands) = terrain_surface_material(
         &mut images,
         &mut materials,
         [96, 138, 70, 255],
@@ -1649,7 +1664,7 @@ fn setup(
         0.92,
         0.21,
     );
-    let island_clay_material = textured_material(
+    let (island_clay_material, island_clay_texture_detail_bands) = terrain_surface_material(
         &mut images,
         &mut materials,
         [126, 104, 76, 255],
@@ -1659,7 +1674,7 @@ fn setup(
         0.98,
         0.18,
     );
-    let island_alpine_material = textured_material(
+    let (island_alpine_material, island_alpine_texture_detail_bands) = terrain_surface_material(
         &mut images,
         &mut materials,
         [52, 110, 118, 255],
@@ -1669,7 +1684,7 @@ fn setup(
         0.9,
         0.22,
     );
-    let island_highland_material = textured_material(
+    let (island_highland_material, island_highland_texture_detail_bands) = terrain_surface_material(
         &mut images,
         &mut materials,
         [132, 132, 92, 255],
@@ -1679,7 +1694,7 @@ fn setup(
         0.94,
         0.2,
     );
-    let target_grass_material = textured_material(
+    let (target_grass_material, target_grass_texture_detail_bands) = terrain_surface_material(
         &mut images,
         &mut materials,
         [70, 150, 94, 255],
@@ -1839,6 +1854,18 @@ fn setup(
 
     let mut island_visual_catalog = IslandVisualCatalog::default();
     let mut island_content_diagnostics = IslandContentDiagnostics::default();
+    let terrain_texture_detail_bands = [
+        island_grass_texture_detail_bands,
+        island_meadow_texture_detail_bands,
+        island_clay_texture_detail_bands,
+        island_alpine_texture_detail_bands,
+        island_highland_texture_detail_bands,
+        target_grass_texture_detail_bands,
+    ]
+    .into_iter()
+    .min()
+    .unwrap_or(0);
+    island_content_diagnostics.record_terrain_material_texture_detail(terrain_texture_detail_bands);
 
     for (index, island) in route.islands().iter().enumerate() {
         let top_material = if island.is_target {
@@ -2093,6 +2120,14 @@ fn setup(
     let initial_camera_direction = Vec3::NEG_Z;
     commands.spawn((
         Camera3d::default(),
+        Camera {
+            clear_color: ClearColorConfig::Custom(INITIAL_SKY_CLEAR_COLOR),
+            output_mode: CameraOutputMode::Write {
+                blend_state: Some(BlendState::REPLACE),
+                clear_color: ClearColorConfig::Custom(INITIAL_SKY_CLEAR_COLOR),
+            },
+            ..default()
+        },
         Atmosphere::earthlike(scattering_mediums.add(ScatteringMedium::default())),
         AtmosphereSettings {
             scene_units_to_m: 18.0,
@@ -2280,6 +2315,61 @@ fn textured_material(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn terrain_surface_material(
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
+    primary: [u8; 4],
+    secondary: [u8; 4],
+    accent: [u8; 4],
+    seed: u32,
+    perceptual_roughness: f32,
+    reflectance: f32,
+) -> (Handle<StandardMaterial>, usize) {
+    let material_seed = seed.wrapping_add(1_337);
+    let surface_data = procedural_terrain_surface_texture_data(
+        primary,
+        secondary,
+        accent,
+        seed,
+        TERRAIN_TEXTURE_SIZE,
+    );
+    let detail_bands = texture_detail_band_count(&surface_data);
+    let base_color_texture = procedural_srgb_texture(
+        surface_data,
+        TERRAIN_TEXTURE_SIZE,
+        ImageFilterMode::Linear,
+        16,
+    );
+
+    (
+        materials.add(StandardMaterial {
+            base_color: Color::WHITE,
+            base_color_texture: Some(images.add(base_color_texture)),
+            metallic_roughness_texture: Some(images.add(procedural_material_map_with_size(
+                material_seed,
+                perceptual_roughness,
+                TERRAIN_TEXTURE_SIZE,
+            ))),
+            occlusion_texture: Some(images.add(procedural_occlusion_map_with_size(
+                material_seed.wrapping_add(23),
+                TERRAIN_TEXTURE_SIZE,
+            ))),
+            depth_map: Some(images.add(procedural_depth_map_with_size(
+                material_seed.wrapping_add(47),
+                ImageFilterMode::Linear,
+                TERRAIN_TEXTURE_SIZE,
+            ))),
+            parallax_depth_scale: 0.018,
+            max_parallax_layer_count: 12.0,
+            perceptual_roughness,
+            reflectance,
+            ..default()
+        }),
+        detail_bands,
+    )
+}
+
 fn emissive_material(
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
@@ -2431,9 +2521,22 @@ fn procedural_surface_texture(
     accent: [u8; 4],
     seed: u32,
 ) -> Image {
-    let size = PROCEDURAL_TEXTURE_SIZE;
-    let mut data = Vec::with_capacity((size * size * 4) as usize);
+    procedural_srgb_texture(
+        procedural_surface_texture_data(primary, secondary, accent, seed, PROCEDURAL_TEXTURE_SIZE),
+        PROCEDURAL_TEXTURE_SIZE,
+        ImageFilterMode::Linear,
+        8,
+    )
+}
 
+fn procedural_surface_texture_data(
+    primary: [u8; 4],
+    secondary: [u8; 4],
+    accent: [u8; 4],
+    seed: u32,
+    size: u32,
+) -> Vec<u8> {
+    let mut data = Vec::with_capacity((size * size * 4) as usize);
     for y in 0..size {
         for x in 0..size {
             let noise = texture_noise(x, y, seed);
@@ -2458,6 +2561,58 @@ fn procedural_surface_texture(
         }
     }
 
+    data
+}
+
+fn procedural_terrain_surface_texture_data(
+    primary: [u8; 4],
+    secondary: [u8; 4],
+    accent: [u8; 4],
+    seed: u32,
+    size: u32,
+) -> Vec<u8> {
+    let mut data = Vec::with_capacity((size * size * 4) as usize);
+
+    for y in 0..size {
+        for x in 0..size {
+            let fine = texture_noise(x.wrapping_mul(3), y.wrapping_mul(3), seed);
+            let grain = texture_noise(x.wrapping_mul(11), y.wrapping_mul(7), seed.wrapping_add(71));
+            let broad = texture_noise(x / 3, y / 3, seed.wrapping_add(19));
+            let shelf = (x / 9 + y / 7 + seed).is_multiple_of(5);
+            let pebble = fine > 226 && grain > 156;
+            let crack = (x.wrapping_mul(13) + y.wrapping_mul(17) + seed).is_multiple_of(41);
+            let mut color = if broad < 82 {
+                secondary
+            } else if broad > 206 || pebble {
+                accent
+            } else {
+                primary
+            };
+
+            if shelf {
+                color = mix_rgba(color, primary, 96);
+            }
+            if crack {
+                color = mix_rgba(color, secondary, 150);
+            }
+            if pebble {
+                color = mix_rgba(color, accent, 168);
+            }
+
+            let shade = fine as i16 / 6 + grain as i16 / 11 - 34;
+            data.extend_from_slice(&shade_rgba(color, shade));
+        }
+    }
+
+    data
+}
+
+fn procedural_srgb_texture(
+    data: Vec<u8>,
+    size: u32,
+    filter: ImageFilterMode,
+    anisotropy_clamp: u16,
+) -> Image {
     let mut image = Image::new(
         Extent3d {
             width: size,
@@ -2472,16 +2627,20 @@ fn procedural_surface_texture(
     image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
         address_mode_u: ImageAddressMode::Repeat,
         address_mode_v: ImageAddressMode::Repeat,
-        mag_filter: ImageFilterMode::Linear,
-        min_filter: ImageFilterMode::Linear,
-        mipmap_filter: ImageFilterMode::Linear,
+        mag_filter: filter,
+        min_filter: filter,
+        mipmap_filter: filter,
+        anisotropy_clamp,
         ..default()
     });
     image
 }
 
 fn procedural_material_map(seed: u32, roughness: f32) -> Image {
-    let size = PROCEDURAL_TEXTURE_SIZE;
+    procedural_material_map_with_size(seed, roughness, PROCEDURAL_TEXTURE_SIZE)
+}
+
+fn procedural_material_map_with_size(seed: u32, roughness: f32, size: u32) -> Image {
     let mut data = Vec::with_capacity((size * size * 4) as usize);
 
     for y in 0..size {
@@ -2494,11 +2653,14 @@ fn procedural_material_map(seed: u32, roughness: f32) -> Image {
         }
     }
 
-    procedural_data_texture(data, ImageFilterMode::Linear)
+    procedural_data_texture_with_size(data, ImageFilterMode::Linear, size)
 }
 
 fn procedural_occlusion_map(seed: u32) -> Image {
-    let size = PROCEDURAL_TEXTURE_SIZE;
+    procedural_occlusion_map_with_size(seed, PROCEDURAL_TEXTURE_SIZE)
+}
+
+fn procedural_occlusion_map_with_size(seed: u32, size: u32) -> Image {
     let mut data = Vec::with_capacity((size * size * 4) as usize);
 
     for y in 0..size {
@@ -2510,11 +2672,14 @@ fn procedural_occlusion_map(seed: u32) -> Image {
         }
     }
 
-    procedural_data_texture(data, ImageFilterMode::Linear)
+    procedural_data_texture_with_size(data, ImageFilterMode::Linear, size)
 }
 
 fn procedural_depth_map(seed: u32, filter: ImageFilterMode) -> Image {
-    let size = PROCEDURAL_TEXTURE_SIZE;
+    procedural_depth_map_with_size(seed, filter, PROCEDURAL_TEXTURE_SIZE)
+}
+
+fn procedural_depth_map_with_size(seed: u32, filter: ImageFilterMode, size: u32) -> Image {
     let mut data = Vec::with_capacity((size * size * 4) as usize);
 
     for y in 0..size {
@@ -2531,11 +2696,10 @@ fn procedural_depth_map(seed: u32, filter: ImageFilterMode) -> Image {
         }
     }
 
-    procedural_data_texture(data, filter)
+    procedural_data_texture_with_size(data, filter, size)
 }
 
-fn procedural_data_texture(data: Vec<u8>, filter: ImageFilterMode) -> Image {
-    let size = PROCEDURAL_TEXTURE_SIZE;
+fn procedural_data_texture_with_size(data: Vec<u8>, filter: ImageFilterMode, size: u32) -> Image {
     let anisotropy_clamp = if filter == ImageFilterMode::Linear {
         8
     } else {
@@ -2564,6 +2728,13 @@ fn procedural_data_texture(data: Vec<u8>, filter: ImageFilterMode) -> Image {
     image
 }
 
+fn texture_detail_band_count(data: &[u8]) -> usize {
+    data.chunks_exact(4)
+        .map(|pixel| [pixel[0] / 16, pixel[1] / 16, pixel[2] / 16])
+        .collect::<HashSet<_>>()
+        .len()
+}
+
 fn texture_noise(x: u32, y: u32, seed: u32) -> u8 {
     let mut value = x
         .wrapping_mul(374_761_393)
@@ -2581,6 +2752,15 @@ fn mix_rgba(source: [u8; 4], target: [u8; 4], target_weight: u16) -> [u8; 4] {
         ((source[1] as u16 * source_weight + target[1] as u16 * target_weight) / 255) as u8,
         ((source[2] as u16 * source_weight + target[2] as u16 * target_weight) / 255) as u8,
         ((source[3] as u16 * source_weight + target[3] as u16 * target_weight) / 255) as u8,
+    ]
+}
+
+fn shade_rgba(source: [u8; 4], shade: i16) -> [u8; 4] {
+    [
+        (source[0] as i16 + shade).clamp(0, 255) as u8,
+        (source[1] as i16 + shade).clamp(0, 255) as u8,
+        (source[2] as i16 + shade).clamp(0, 255) as u8,
+        source[3],
     ]
 }
 
@@ -4512,7 +4692,15 @@ fn update_cinematic_weather(
     mut clear_color: ResMut<ClearColor>,
     mut ambient: ResMut<GlobalAmbientLight>,
     mut sun: Query<(&mut DirectionalLight, &mut Transform), With<CinematicSun>>,
-    mut camera_fx: Query<(&mut Exposure, &mut DistanceFog, &mut VolumetricFog), With<Camera3d>>,
+    mut camera_fx: Query<
+        (
+            &mut Camera,
+            &mut Exposure,
+            &mut DistanceFog,
+            &mut VolumetricFog,
+        ),
+        With<Camera3d>,
+    >,
 ) {
     let cycle = (time.elapsed_secs() / weather.cycle_seconds * std::f32::consts::TAU).sin();
     let warm = (cycle * 0.5 + 0.5).clamp(0.0, 1.0);
@@ -4522,11 +4710,12 @@ fn update_cinematic_weather(
     let sky_clear = Color::srgb(0.46, 0.66, 0.92);
     let sky_weather = Color::srgb(0.38, 0.48, 0.64);
 
-    clear_color.0 = mix_color(
+    let sky_color = mix_color(
         mix_color(sky_weather, sky_clear, warm),
         Color::srgb(0.56, 0.70, 0.88),
         0.18,
     );
+    clear_color.0 = sky_color;
     ambient.color = mix_color(
         Color::srgb(0.48, 0.56, 0.72),
         Color::srgb(0.72, 0.68, 0.60),
@@ -4542,7 +4731,12 @@ fn update_cinematic_weather(
         transform.rotation = Quat::from_euler(EulerRot::XYZ, elevation, yaw, 0.0);
     }
 
-    for (mut exposure, mut fog, mut volumetric_fog) in &mut camera_fx {
+    for (mut camera, mut exposure, mut fog, mut volumetric_fog) in &mut camera_fx {
+        camera.clear_color = ClearColorConfig::Custom(sky_color);
+        camera.output_mode = CameraOutputMode::Write {
+            blend_state: Some(BlendState::REPLACE),
+            clear_color: ClearColorConfig::Custom(sky_color),
+        };
         exposure.ev100 = 12.35 + warm * 0.42 - storm * 0.2;
         fog.color = mix_color(
             Color::srgba(0.44, 0.52, 0.66, 0.58),
@@ -5212,7 +5406,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -5273,6 +5467,7 @@ fn update_debug_readout(
         content_metrics.min_island_terrain_material_weight_bands,
         content_metrics.min_island_terrain_material_channels,
         content_metrics.min_island_terrain_material_regions,
+        content_metrics.min_island_terrain_texture_detail_bands,
         content_metrics.min_island_terrain_relief_range_m(),
         content_metrics.min_island_cliff_color_bands,
         content_metrics.procedural_island_body_count,
@@ -5537,6 +5732,7 @@ fn collect_eval_metrics(
         content_metrics.min_island_terrain_material_weight_bands,
         content_metrics.min_island_terrain_material_channels,
         content_metrics.min_island_terrain_material_regions,
+        content_metrics.min_island_terrain_texture_detail_bands,
     )
     .with_generated_visual_shape_metrics(
         content_metrics.generated_tree_trunk_count,
@@ -6170,6 +6366,8 @@ mod tests {
         diagnostics.record_procedural_island_body(ISLAND_BODY_SEGMENTS, 821);
         diagnostics.record_island_terrain_surface(2305, 9, 16, 3, 4, 1.12);
         diagnostics.record_island_terrain_surface(2305, 7, 12, 3, 4, 0.92);
+        diagnostics.record_terrain_material_texture_detail(72);
+        diagnostics.record_terrain_material_texture_detail(64);
         diagnostics.record_island_cliff_detail(11);
         diagnostics.record_island_cliff_detail(10);
 
@@ -6180,6 +6378,7 @@ mod tests {
         assert_eq!(diagnostics.min_island_terrain_material_weight_bands, 12);
         assert_eq!(diagnostics.min_island_terrain_material_channels, 3);
         assert_eq!(diagnostics.min_island_terrain_material_regions, 4);
+        assert_eq!(diagnostics.min_island_terrain_texture_detail_bands, 64);
         assert_eq!(diagnostics.min_island_terrain_relief_range_m(), 0.92);
         assert_eq!(diagnostics.min_island_cliff_color_bands, 10);
         assert_eq!(diagnostics.primitive_island_body_count, 0);
@@ -6192,6 +6391,26 @@ mod tests {
             ISLAND_BODY_SEGMENTS as f32
         );
         assert_eq!(diagnostics.max_island_body_mesh_vertices, 833);
+    }
+
+    #[test]
+    fn terrain_surface_texture_has_sharp_material_detail() {
+        let data = procedural_terrain_surface_texture_data(
+            [54, 128, 70, 255],
+            [28, 92, 48, 255],
+            [128, 174, 78, 255],
+            17,
+            TERRAIN_TEXTURE_SIZE,
+        );
+
+        assert_eq!(
+            data.len(),
+            (TERRAIN_TEXTURE_SIZE * TERRAIN_TEXTURE_SIZE * 4) as usize
+        );
+        assert!(
+            texture_detail_band_count(&data) >= ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS,
+            "terrain texture should carry enough high-frequency color bins to avoid blurry flat fills"
+        );
     }
 
     #[test]
