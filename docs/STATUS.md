@@ -46,6 +46,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - Mouse camera control has player-centered orbit pitch, separate yaw and pitch sensitivity, pitch clamps, click-to-lock cursor capture, right-mouse temporary look, and `Esc` release.
 - Camera keeps smoothed mostly-forward follow direction independent from mouse orbit, ignores sideways/backward movement for automatic follow-heading changes, avoids tagged obstruction volumes, and stays above the active ground surface.
 - HUD reports frame time, camera pitch, camera distance, player framing angle, camera motion, camera orbit alignment, obstruction adjustment, mouse yaw/pitch offsets, velocity, altitude, mode, launch state, target distance, visual asset load/preload/scene/animation readiness, visual wind-field count, active lift-field count, environment-motion count/offset, and sky-island count.
+- Authored glTF scene readiness and animation linking are split: `SceneInstanceReady` marks scene lifecycle state, then a retryable update path discovers nested `AnimationPlayer`s, validates the declared named clips, and attaches the animation graph once dependencies are present.
 - `F1` toggles debug gizmos for player vectors, camera line, visual wind/updraft stream fields, and gameplay lift fields.
 - Crosswind fields remain visual-only; gameplay updrafts are authored as paired visual wind volumes plus bounded `LiftField`s, with faint lift haze, animated spiral airflow ribbons, and small motes in the normal scene.
 - Three authored aerial boost gates are visible as glowing route rings, apply capped forward/upward boosts while airborne, disappear after collection, and report visible/collected/active-effect counters in HUD/eval metrics.
@@ -70,7 +71,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 ## Known Issues
 
 - The character now has a self-authored animated glTF fixture, but it is still a simple cuboid stand-in rather than a rigged production character.
-- Limb posing has grounded stride, airborne banking, glide posture, and speed-responsive wing flex for generated fallback geometry; the authored fixture now proves named animation clips, graph readiness, and runtime clip transitions, but it is still approximate non-skeletal animation.
+- Limb posing has grounded stride, airborne banking, glide posture, and speed-responsive wing flex for generated fallback geometry; the authored fixture now proves retryable named-clip validation, graph readiness, and runtime clip transitions, but it is still approximate non-skeletal animation.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep.
 - Crosswind stream fields are still debug gizmos; updrafts, generated trees, clouds, and ponds now have cinematic primitive motion cues, and the visible glider has a multi-part authored glTF fixture, but there are no particles, cloth simulation, or production environment art assets yet.
 - Sky-island collision follows deterministic terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
