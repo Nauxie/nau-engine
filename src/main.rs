@@ -1,4 +1,4 @@
-use bevy::asset::RenderAssetUsages;
+use bevy::asset::{LoadState, RenderAssetUsages};
 use bevy::camera::Exposure;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::system::SystemParam;
@@ -21,7 +21,8 @@ use nau_engine::animation::{
     part_pose, pose_blend,
 };
 use nau_engine::asset_pipeline::{
-    VISUAL_ASSET_SPECS, VisualAssetPipelineMetrics, visual_asset_pipeline_metrics,
+    VISUAL_ASSET_SPECS, VisualAssetLoadState, VisualAssetPipelineMetrics, VisualAssetSpec,
+    visual_asset_pipeline_metrics_with_load_states,
 };
 use nau_engine::camera::{
     CameraControlState, CameraControlTuning, CameraInput, CameraObstruction, FollowCamera,
@@ -303,16 +304,20 @@ struct IslandStreamDiagnostics {
     initialized: bool,
 }
 
-#[derive(Resource, Debug, Default)]
+#[derive(Resource, Debug)]
 struct VisualAssetRegistry {
-    scene_handles: Vec<Handle<Scene>>,
-    metrics: VisualAssetPipelineMetrics,
+    slots: Vec<VisualAssetSlot>,
+}
+
+#[derive(Debug)]
+struct VisualAssetSlot {
+    spec: VisualAssetSpec,
+    scene_handle: Option<Handle<Scene>>,
 }
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
 struct VisualAssetDiagnostics {
     metrics: VisualAssetPipelineMetrics,
-    queued_scene_count: usize,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -1153,17 +1158,18 @@ fn setup(
 }
 
 fn prepare_visual_asset_registry(asset_server: &AssetServer) -> VisualAssetRegistry {
-    let metrics = visual_asset_pipeline_metrics(&VISUAL_ASSET_SPECS, visual_asset_path_exists);
-    let scene_handles = VISUAL_ASSET_SPECS
+    let slots = VISUAL_ASSET_SPECS
         .iter()
-        .filter(|spec| visual_asset_path_exists(spec.gltf_scene_path))
-        .map(|spec| asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf_scene_path)))
+        .copied()
+        .map(|spec| VisualAssetSlot {
+            spec,
+            scene_handle: visual_asset_path_exists(spec.gltf_scene_path).then(|| {
+                asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf_scene_path))
+            }),
+        })
         .collect();
 
-    VisualAssetRegistry {
-        scene_handles,
-        metrics,
-    }
+    VisualAssetRegistry { slots }
 }
 
 fn visual_asset_path_exists(asset_path: &str) -> bool {
@@ -2767,11 +2773,36 @@ fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
 }
 
 fn update_visual_asset_diagnostics(
+    asset_server: Res<AssetServer>,
     registry: Res<VisualAssetRegistry>,
     mut diagnostics: ResMut<VisualAssetDiagnostics>,
 ) {
-    diagnostics.metrics = registry.metrics;
-    diagnostics.queued_scene_count = registry.scene_handles.len();
+    diagnostics.metrics =
+        visual_asset_pipeline_metrics_with_load_states(&VISUAL_ASSET_SPECS, |spec| {
+            registry
+                .slots
+                .iter()
+                .find(|slot| slot.spec.gltf_scene_path == spec.gltf_scene_path)
+                .map_or(VisualAssetLoadState::Missing, |slot| {
+                    visual_asset_load_state(&asset_server, slot)
+                })
+        });
+}
+
+fn visual_asset_load_state(
+    asset_server: &AssetServer,
+    slot: &VisualAssetSlot,
+) -> VisualAssetLoadState {
+    let Some(scene_handle) = &slot.scene_handle else {
+        return VisualAssetLoadState::Missing;
+    };
+
+    match asset_server.load_state(scene_handle) {
+        LoadState::NotLoaded => VisualAssetLoadState::Queued,
+        LoadState::Loading => VisualAssetLoadState::Loading,
+        LoadState::Loaded => VisualAssetLoadState::Loaded,
+        LoadState::Failed(_) => VisualAssetLoadState::Failed,
+    }
 }
 
 fn update_debug_readout(
@@ -2831,7 +2862,7 @@ fn update_debug_readout(
     };
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual assets {} gltf {} ready {} placeholders {} stream {} queued {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nresident island visuals {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nresident island visuals {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -2861,8 +2892,17 @@ fn update_debug_readout(
         asset_metrics.gltf_scene_slot_count,
         asset_metrics.ready_slot_count,
         asset_metrics.placeholder_slot_count,
+        asset_metrics.missing_slot_count,
         asset_metrics.streaming_slot_count,
-        scene.asset_diagnostics.queued_scene_count,
+        asset_metrics.queued_scene_count,
+        asset_metrics.loading_scene_count,
+        asset_metrics.loaded_scene_count,
+        asset_metrics.failed_scene_count,
+        asset_metrics.always_slot_count,
+        asset_metrics.stream_window_slot_count,
+        asset_metrics.near_lod_slot_count,
+        asset_metrics.far_lod_slot_count,
+        asset_metrics.weather_slot_count,
         visible_wind_fields,
         wind_field_count,
         active_lift_fields,
@@ -3018,6 +3058,16 @@ fn collect_eval_metrics(
         asset_metrics.ready_slot_count,
         asset_metrics.placeholder_slot_count,
         asset_metrics.streaming_slot_count,
+        asset_metrics.missing_slot_count,
+        asset_metrics.queued_scene_count,
+        asset_metrics.loading_scene_count,
+        asset_metrics.loaded_scene_count,
+        asset_metrics.failed_scene_count,
+        asset_metrics.always_slot_count,
+        asset_metrics.stream_window_slot_count,
+        asset_metrics.near_lod_slot_count,
+        asset_metrics.far_lod_slot_count,
+        asset_metrics.weather_slot_count,
     );
 
     if let Err(error) = run.record_sample(sample) {
