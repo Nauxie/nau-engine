@@ -3872,6 +3872,8 @@ pub mod eval {
     const MIN_ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS: usize = 44;
     const MIN_ISLAND_TERRAIN_RELIEF_RANGE_M: f32 = 0.8;
     const MIN_ISLAND_CLIFF_COLOR_BANDS: usize = 9;
+    const MIN_ISLAND_IMPOSTOR_MESH_VERTICES: usize = 140;
+    const MIN_ISLAND_IMPOSTOR_COLOR_BANDS: usize = 18;
     const MIN_ISLAND_BODY_MESH_VERTICES: usize = 1600;
     const AIR_CONTROL_RESPONSE_THRESHOLD_MPS: f32 = 4.0;
     const AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS: f32 = 0.30;
@@ -4315,6 +4317,8 @@ pub mod eval {
         pub min_island_terrain_texture_detail_bands: usize,
         pub min_island_terrain_relief_range_m: f32,
         pub min_island_cliff_color_bands: usize,
+        pub min_island_impostor_mesh_vertices: usize,
+        pub min_island_impostor_color_bands: usize,
         pub procedural_island_body_count: usize,
         pub primitive_island_body_count: usize,
         pub min_island_body_silhouette_segments: usize,
@@ -4535,6 +4539,8 @@ pub mod eval {
                 min_island_terrain_texture_detail_bands: 0,
                 min_island_terrain_relief_range_m: 0.0,
                 min_island_cliff_color_bands: 0,
+                min_island_impostor_mesh_vertices: 0,
+                min_island_impostor_color_bands: 0,
                 procedural_island_body_count: 0,
                 primitive_island_body_count: 0,
                 min_island_body_silhouette_segments: 0,
@@ -4686,6 +4692,16 @@ pub mod eval {
             self.avg_island_body_silhouette_segments = avg_island_body_silhouette_segments;
             self.min_island_body_mesh_vertices = min_island_body_mesh_vertices;
             self.max_island_body_mesh_vertices = max_island_body_mesh_vertices;
+            self
+        }
+
+        pub fn with_island_impostor_metrics(
+            mut self,
+            min_island_impostor_mesh_vertices: usize,
+            min_island_impostor_color_bands: usize,
+        ) -> Self {
+            self.min_island_impostor_mesh_vertices = min_island_impostor_mesh_vertices;
+            self.min_island_impostor_color_bands = min_island_impostor_color_bands;
             self
         }
 
@@ -4874,6 +4890,14 @@ pub mod eval {
                 self.total_power_up_activations,
                 json_number(self.visual_foot_gap_m),
             );
+            let impostor_count_key = "\"visible_island_detail_count\"";
+            let impostor_metrics = format!(
+                "\"min_island_impostor_mesh_vertices\":{},\"min_island_impostor_color_bands\":{},{}",
+                self.min_island_impostor_mesh_vertices,
+                self.min_island_impostor_color_bands,
+                impostor_count_key
+            );
+            let json = json.replacen(impostor_count_key, &impostor_metrics, 1);
             let body_mesh_key = "\"max_island_body_mesh_vertices\"";
             let body_mesh_metrics = format!(
                 "\"min_island_body_mesh_vertices\":{},{}",
@@ -4980,6 +5004,8 @@ pub mod eval {
         min_island_terrain_texture_detail_bands: usize,
         min_island_terrain_relief_range_m: f32,
         min_island_cliff_color_bands: usize,
+        min_island_impostor_mesh_vertices: usize,
+        min_island_impostor_color_bands: usize,
         min_procedural_island_body_count: usize,
         max_primitive_island_body_count: usize,
         min_island_body_silhouette_segments: usize,
@@ -5142,6 +5168,8 @@ pub mod eval {
                     sample.min_island_terrain_texture_detail_bands;
                 self.min_island_terrain_relief_range_m = sample.min_island_terrain_relief_range_m;
                 self.min_island_cliff_color_bands = sample.min_island_cliff_color_bands;
+                self.min_island_impostor_mesh_vertices = sample.min_island_impostor_mesh_vertices;
+                self.min_island_impostor_color_bands = sample.min_island_impostor_color_bands;
                 self.min_procedural_island_body_count = sample.procedural_island_body_count;
                 self.min_island_body_silhouette_segments =
                     sample.min_island_body_silhouette_segments;
@@ -5489,6 +5517,12 @@ pub mod eval {
             self.min_island_cliff_color_bands = self
                 .min_island_cliff_color_bands
                 .min(sample.min_island_cliff_color_bands);
+            self.min_island_impostor_mesh_vertices = self
+                .min_island_impostor_mesh_vertices
+                .min(sample.min_island_impostor_mesh_vertices);
+            self.min_island_impostor_color_bands = self
+                .min_island_impostor_color_bands
+                .min(sample.min_island_impostor_color_bands);
             self.min_procedural_island_body_count = self
                 .min_procedural_island_body_count
                 .min(sample.procedural_island_body_count);
@@ -5973,6 +6007,18 @@ pub mod eval {
                     "island_cliff_color_bands",
                     self.min_island_cliff_color_bands as f32,
                     thresholds.min_island_cliff_color_bands as f32,
+                    "bands",
+                ),
+                EvalCheck::at_least(
+                    "island_impostor_mesh_vertices",
+                    self.min_island_impostor_mesh_vertices as f32,
+                    MIN_ISLAND_IMPOSTOR_MESH_VERTICES as f32,
+                    "vertices",
+                ),
+                EvalCheck::at_least(
+                    "island_impostor_color_bands",
+                    self.min_island_impostor_color_bands as f32,
+                    MIN_ISLAND_IMPOSTOR_COLOR_BANDS as f32,
                     "bands",
                 ),
                 EvalCheck::at_least(
@@ -6665,6 +6711,8 @@ pub mod eval {
                         .min_island_terrain_texture_detail_bands,
                     min_island_terrain_relief_range_m: self.min_island_terrain_relief_range_m,
                     min_island_cliff_color_bands: self.min_island_cliff_color_bands,
+                    min_island_impostor_mesh_vertices: self.min_island_impostor_mesh_vertices,
+                    min_island_impostor_color_bands: self.min_island_impostor_color_bands,
                     min_procedural_island_body_count: self.min_procedural_island_body_count,
                     max_primitive_island_body_count: self.max_primitive_island_body_count,
                     min_island_body_silhouette_segments: self.min_island_body_silhouette_segments,
@@ -6872,6 +6920,8 @@ pub mod eval {
         pub min_island_terrain_texture_detail_bands: usize,
         pub min_island_terrain_relief_range_m: f32,
         pub min_island_cliff_color_bands: usize,
+        pub min_island_impostor_mesh_vertices: usize,
+        pub min_island_impostor_color_bands: usize,
         pub min_procedural_island_body_count: usize,
         pub max_primitive_island_body_count: usize,
         pub min_island_body_silhouette_segments: usize,
@@ -7124,6 +7174,14 @@ pub mod eval {
                 post_brake_key
             );
             let json = json.replacen(&post_brake_key, &planar_brake_metrics, 1);
+            let procedural_body_key = format!("{indent}  \"min_procedural_island_body_count\"");
+            let impostor_metrics = format!(
+                "{indent}  \"min_island_impostor_mesh_vertices\": {},\n{indent}  \"min_island_impostor_color_bands\": {},\n{}",
+                self.min_island_impostor_mesh_vertices,
+                self.min_island_impostor_color_bands,
+                procedural_body_key
+            );
+            let json = json.replacen(&procedural_body_key, &impostor_metrics, 1);
             let body_mesh_key = format!("{indent}  \"max_island_body_mesh_vertices\"");
             let body_mesh_metrics = format!(
                 "{indent}  \"min_island_body_mesh_vertices\": {},\n{}",
@@ -9037,6 +9095,7 @@ pub mod eval {
                 0,
             )
             .with_content_metrics(12, 2305, 61, 0.8, 9, 12, 0, 96, 96.0, 1633, 1633)
+            .with_island_impostor_metrics(146, 24)
             .with_terrain_material_metrics(36, 3, 4, 64)
             .with_generated_visual_shape_metrics(
                 528, 220, 1100, 37, 37, 62, 412, 5, 60, 74, 30, 12, 4.8, 7, 14, 574,
@@ -9080,6 +9139,7 @@ pub mod eval {
                 1633,
                 1633,
             )
+            .with_island_impostor_metrics(146, 24)
         }
 
         fn named_check<'a>(summary: &'a EvalSummary, name: &str) -> &'a EvalCheck {
@@ -9194,6 +9254,38 @@ pub mod eval {
             assert_eq!(silhouette_check.value, 48.0);
             assert!(!mesh_check.passed);
             assert_eq!(mesh_check.value, 900.0);
+        }
+
+        #[test]
+        fn accumulator_fails_low_detail_island_impostors() {
+            let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+            let mut accumulator = EvalAccumulator::default();
+            accumulator.observe(content_metric_sample(scenario, 0, 12, 0, 96));
+            accumulator.observe(
+                content_metric_sample(scenario, 10, 12, 0, 96).with_island_impostor_metrics(42, 4),
+            );
+
+            let summary = accumulator.summary(
+                scenario,
+                EvalArtifacts {
+                    summary_json: "summary.json".to_string(),
+                    samples_ndjson: "samples.ndjson".to_string(),
+                    screenshot_png: None,
+                    checkpoint_screenshots: Vec::new(),
+                },
+            );
+            let mesh_check = named_check(&summary, "island_impostor_mesh_vertices");
+            let color_check = named_check(&summary, "island_impostor_color_bands");
+
+            assert!(!mesh_check.passed);
+            assert_eq!(mesh_check.value, 42.0);
+            assert!(!color_check.passed);
+            assert_eq!(color_check.value, 4.0);
+            assert!(
+                summary
+                    .to_json()
+                    .contains("\"min_island_impostor_mesh_vertices\"")
+            );
         }
 
         #[test]
@@ -9654,6 +9746,7 @@ pub mod eval {
             accumulator.observe(
                 sample
                     .with_content_metrics(12, 2305, 61, 0.8, 9, 12, 0, 96, 96.0, 1633, 1633)
+                    .with_island_impostor_metrics(146, 24)
                     .with_terrain_material_metrics(36, 3, 4, 64)
                     .with_generated_visual_shape_metrics(
                         528, 220, 1100, 37, 37, 62, 412, 5, 60, 74, 30, 12, 4.8, 7, 14, 574,

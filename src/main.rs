@@ -111,6 +111,8 @@ const ISLAND_TERRAIN_MATERIAL_CHANNELS: usize = 3;
 const ISLAND_TERRAIN_MATERIAL_REGIONS: usize = 4;
 #[cfg(test)]
 const ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS: usize = 44;
+#[cfg(test)]
+const ISLAND_IMPOSTOR_COLOR_BANDS: usize = 18;
 const ISLAND_CLIFF_STRATA_BANDS: usize = 9;
 
 fn main() -> AppExit {
@@ -518,6 +520,8 @@ struct IslandContentDiagnostics {
     min_island_terrain_texture_detail_bands: usize,
     min_island_terrain_relief_range_cm: usize,
     min_island_cliff_color_bands: usize,
+    min_island_impostor_mesh_vertices: usize,
+    min_island_impostor_color_bands: usize,
     procedural_island_body_count: usize,
     primitive_island_body_count: usize,
     min_island_body_silhouette_segments: usize,
@@ -601,6 +605,18 @@ impl IslandContentDiagnostics {
 
     fn min_island_terrain_relief_range_m(self) -> f32 {
         self.min_island_terrain_relief_range_cm as f32 / 100.0
+    }
+
+    fn record_island_impostor(&mut self, mesh_vertices: usize, color_bands: usize) {
+        if self.min_island_impostor_mesh_vertices == 0 {
+            self.min_island_impostor_mesh_vertices = mesh_vertices;
+            self.min_island_impostor_color_bands = color_bands;
+        } else {
+            self.min_island_impostor_mesh_vertices =
+                self.min_island_impostor_mesh_vertices.min(mesh_vertices);
+            self.min_island_impostor_color_bands =
+                self.min_island_impostor_color_bands.min(color_bands);
+        }
     }
 
     fn record_procedural_island_body(&mut self, silhouette_segments: usize, mesh_vertices: usize) {
@@ -4040,12 +4056,17 @@ fn queue_sky_island(
     let top_y = island.mesh_top_y();
     let mut visual_index = 0;
 
+    let impostor_mesh = island_impostor_mesh(island_index, island);
+    content_diagnostics.record_island_impostor(
+        impostor_mesh.count_vertices(),
+        mesh_vertex_color_band_count(&impostor_mesh),
+    );
     queue_island_visual(
         entries,
         &mut visual_index,
         island,
         IslandVisualLayer::Impostor,
-        meshes.add(island_impostor_mesh(island_index, island)),
+        meshes.add(impostor_mesh),
         top_material.clone(),
         Transform::default(),
         None,
@@ -4272,6 +4293,7 @@ fn wind_visual_motion(
 
 const ISLAND_TERRAIN_RINGS: usize = 24;
 const ISLAND_BODY_SEGMENTS: usize = 96;
+const ISLAND_IMPOSTOR_SEGMENTS: usize = 48;
 const ISLAND_CLIFF_RINGS: usize = 8;
 const ISLAND_UNDERSIDE_RINGS: usize = 7;
 
@@ -4996,26 +5018,26 @@ fn smooth_normals_from_triangles_oriented(
 }
 
 fn island_impostor_mesh(island_index: usize, island: SkyIsland) -> Mesh {
-    const SEGMENTS: usize = 20;
-
     let top_center_y = island.mesh_top_y() - 0.16;
-    let lower_center_y = top_center_y - island.thickness * 0.42;
+    let shoulder_center_y = top_center_y - island.thickness * 0.30;
+    let lower_center_y = top_center_y - island.thickness * 0.62;
     let bottom_y = top_center_y - island.thickness * 0.92;
     let phase = island_index as f32 * 0.71;
     let top_ring_start = 1;
-    let lower_ring_start = top_ring_start + SEGMENTS;
-    let bottom_index = lower_ring_start + SEGMENTS;
+    let shoulder_ring_start = top_ring_start + ISLAND_IMPOSTOR_SEGMENTS;
+    let lower_ring_start = shoulder_ring_start + ISLAND_IMPOSTOR_SEGMENTS;
+    let bottom_index = lower_ring_start + ISLAND_IMPOSTOR_SEGMENTS;
     let mut positions = Vec::with_capacity(bottom_index + 1);
-    let mut normals = Vec::with_capacity(bottom_index + 1);
     let mut uvs = Vec::with_capacity(bottom_index + 1);
-    let mut indices = Vec::with_capacity(SEGMENTS * 12);
+    let mut colors = Vec::with_capacity(bottom_index + 1);
+    let mut indices = Vec::with_capacity(ISLAND_IMPOSTOR_SEGMENTS * 18);
 
     positions.push([island.center.x, top_center_y, island.center.z]);
-    normals.push([0.0, 1.0, 0.0]);
     uvs.push([0.5, 0.5]);
+    colors.push(island_terrain_vertex_color(island_index, 0.0, 0.0, 0.0));
 
-    for segment in 0..SEGMENTS {
-        let angle = segment as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+    for segment in 0..ISLAND_IMPOSTOR_SEGMENTS {
+        let angle = segment as f32 / ISLAND_IMPOSTOR_SEGMENTS as f32 * std::f32::consts::TAU;
         let edge_variation =
             1.0 + 0.09 * (angle * 3.0 + phase).sin() + 0.045 * (angle * 7.0 - phase).cos();
         let radius_x = island.half_extents.x * 0.9 * edge_variation;
@@ -5025,41 +5047,64 @@ fn island_impostor_mesh(island_index: usize, island: SkyIsland) -> Mesh {
         let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z)) - 0.18;
 
         positions.push([x, y, z]);
-        normals.push([0.0, 1.0, 0.0]);
         uvs.push([0.5 + angle.cos() * 0.45, 0.5 + angle.sin() * 0.45]);
+        colors.push(island_terrain_vertex_color(
+            island_index,
+            0.9,
+            angle,
+            y - island.mesh_top_y(),
+        ));
     }
 
-    for segment in 0..SEGMENTS {
-        let angle = segment as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
-        let edge_variation = 1.0 + 0.08 * (angle * 4.0 + phase).sin() - 0.035 * (angle * 8.0).cos();
-        let radius_x = island.half_extents.x * 0.66 * edge_variation;
-        let radius_z = island.half_extents.y * 0.66 * edge_variation;
-        let x = island.center.x + angle.cos() * radius_x;
-        let z = island.center.z + angle.sin() * radius_z;
-        let y = lower_center_y - 0.9 * (angle * 5.0 + phase).sin().abs();
+    for (ring, (center_y, radius_scale, t, underside)) in [
+        (shoulder_center_y, 0.72, 0.34, false),
+        (lower_center_y, 0.48, 0.78, true),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        for segment in 0..ISLAND_IMPOSTOR_SEGMENTS {
+            let angle = segment as f32 / ISLAND_IMPOSTOR_SEGMENTS as f32 * std::f32::consts::TAU;
+            let edge_variation =
+                1.0 + 0.08 * (angle * 4.0 + phase).sin() - 0.035 * (angle * 8.0).cos();
+            let radius_x = island.half_extents.x * radius_scale * edge_variation;
+            let radius_z = island.half_extents.y * radius_scale * edge_variation;
+            let x = island.center.x + angle.cos() * radius_x;
+            let z = island.center.z + angle.sin() * radius_z;
+            let y = center_y - island.thickness * 0.05 * (angle * 5.0 + phase).sin().abs();
 
-        positions.push([x, y, z]);
-        normals.push([angle.cos() * 0.55, 0.24, angle.sin() * 0.55]);
-        uvs.push([0.5 + angle.cos() * 0.34, 0.82 + angle.sin() * 0.1]);
+            positions.push([x, y, z]);
+            uvs.push([
+                0.5 + angle.cos() * (0.35 - ring as f32 * 0.11),
+                0.78 + angle.sin() * 0.11 + ring as f32 * 0.14,
+            ]);
+            colors.push(island_rock_vertex_color(island_index, angle, t, underside));
+        }
     }
 
     positions.push([island.center.x, bottom_y, island.center.z]);
-    normals.push([0.0, -1.0, 0.0]);
     uvs.push([0.5, 1.0]);
+    colors.push(island_rock_vertex_color(island_index, 0.0, 1.0, true));
 
-    for segment in 0..SEGMENTS {
-        let next = (segment + 1) % SEGMENTS;
+    for segment in 0..ISLAND_IMPOSTOR_SEGMENTS {
+        let next = (segment + 1) % ISLAND_IMPOSTOR_SEGMENTS;
         let top_current = (top_ring_start + segment) as u32;
         let top_next = (top_ring_start + next) as u32;
+        let shoulder_current = (shoulder_ring_start + segment) as u32;
+        let shoulder_next = (shoulder_ring_start + next) as u32;
         let lower_current = (lower_ring_start + segment) as u32;
         let lower_next = (lower_ring_start + next) as u32;
         let bottom = bottom_index as u32;
 
         indices.extend([0, top_next, top_current]);
-        indices.extend([top_current, top_next, lower_current]);
-        indices.extend([top_next, lower_next, lower_current]);
+        indices.extend([top_current, top_next, shoulder_current]);
+        indices.extend([top_next, shoulder_next, shoulder_current]);
+        indices.extend([shoulder_current, shoulder_next, lower_current]);
+        indices.extend([shoulder_next, lower_next, lower_current]);
         indices.extend([lower_current, lower_next, bottom]);
     }
+
+    let normals = smooth_normals_from_triangles(&positions, &indices);
 
     Mesh::new(
         PrimitiveTopology::TriangleList,
@@ -5068,6 +5113,7 @@ fn island_impostor_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     .with_inserted_indices(Indices::U32(indices))
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
 }
 
@@ -6699,6 +6745,10 @@ fn collect_eval_metrics(
         content_metrics.min_island_body_mesh_vertices,
         content_metrics.max_island_body_mesh_vertices,
     )
+    .with_island_impostor_metrics(
+        content_metrics.min_island_impostor_mesh_vertices,
+        content_metrics.min_island_impostor_color_bands,
+    )
     .with_terrain_material_metrics(
         content_metrics.min_island_terrain_material_weight_bands,
         content_metrics.min_island_terrain_material_channels,
@@ -7507,6 +7557,38 @@ mod tests {
     }
 
     #[test]
+    fn island_impostor_mesh_uses_layered_color_and_silhouette() {
+        let island = test_island();
+        let mesh = island_impostor_mesh(4, island);
+        let positions = positions(&mesh);
+        let colors = colors(&mesh);
+        let top_ring = &positions[1..1 + ISLAND_IMPOSTOR_SEGMENTS];
+        let min_radius = top_ring
+            .iter()
+            .map(|position| normalized_radius(island, *position))
+            .fold(f32::INFINITY, f32::min);
+        let max_radius = top_ring
+            .iter()
+            .map(|position| normalized_radius(island, *position))
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        assert_eq!(mesh.count_vertices(), 2 + ISLAND_IMPOSTOR_SEGMENTS * 3);
+        assert_eq!(colors.len(), positions.len());
+        assert!(
+            max_radius - min_radius > 0.08,
+            "distant impostor should keep an irregular island silhouette"
+        );
+        assert!(
+            mesh_y_range(&mesh) >= island.thickness * 0.85,
+            "distant impostor should include a readable underside mass"
+        );
+        assert!(
+            mesh_vertex_color_band_count(&mesh) >= ISLAND_IMPOSTOR_COLOR_BANDS,
+            "distant impostor should carry terrain, cliff, and underside color variation"
+        );
+    }
+
+    #[test]
     fn cliff_and_underside_meshes_replace_cylinder_body_resolution() {
         let island = test_island();
         let cliff_mesh = island_cliff_mesh(3, island);
@@ -7567,6 +7649,8 @@ mod tests {
         diagnostics.record_terrain_material_texture_detail(64);
         diagnostics.record_island_cliff_detail(11);
         diagnostics.record_island_cliff_detail(10);
+        diagnostics.record_island_impostor(146, 22);
+        diagnostics.record_island_impostor(144, 19);
 
         assert_eq!(diagnostics.procedural_island_body_count, 2);
         assert_eq!(diagnostics.island_terrain_surface_count, 2);
@@ -7578,6 +7662,8 @@ mod tests {
         assert_eq!(diagnostics.min_island_terrain_texture_detail_bands, 64);
         assert_eq!(diagnostics.min_island_terrain_relief_range_m(), 0.92);
         assert_eq!(diagnostics.min_island_cliff_color_bands, 10);
+        assert_eq!(diagnostics.min_island_impostor_mesh_vertices, 144);
+        assert_eq!(diagnostics.min_island_impostor_color_bands, 19);
         assert_eq!(diagnostics.primitive_island_body_count, 0);
         assert_eq!(
             diagnostics.min_island_body_silhouette_segments,
