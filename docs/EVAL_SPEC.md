@@ -396,6 +396,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - LOD buckets drive resident island detail, inactive or non-near chunks use cheap impostors, and hidden/resident/churn counters quantify stream-window pressure.
 - The weather-cloud counter verifies that cloud-bank entities exist, and the screenshot audit catches gross visual/composition failure, but neither proves atmosphere, fog, materials, and clouds look correct.
 - `entity_count` is still a coarse scene-scale proxy; streaming health should be read from resident island visual count and stream entity churn.
+- Route objectives are currently HUD/debug state backed by pure route objective helpers; objective progress is not yet serialized in eval samples.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
-These are acceptable for the current harness. The next meaningful upgrades are explicit visual checks for player and route-marker readability, tighter streaming budget regressions, asynchronous asset-loading simulation, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
+These are acceptable for the current harness. The next meaningful upgrades are explicit visual checks for player and route-marker readability, objective-progress eval fields, asynchronous asset-loading simulation, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
