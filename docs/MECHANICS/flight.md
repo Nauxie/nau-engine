@@ -119,7 +119,7 @@ Current tests cover:
 - aerial power-up route gates are collectible, directional, and capped
 - visual field bounds and stream origins are deterministic
 - smoothing factors do not overshoot
-- camera ignores vertical-only launch velocity for follow direction
+- camera ignores vertical-only launch velocity and sideways/backward movement for automatic follow-heading changes
 - camera mouse X/Y input, pitch clamps, pitch/distance/framing helpers, surface-clearance lift, and obstruction avoidance
 - camera follow direction smoothing limits rapid turn snaps
 - lateral air input steers velocity toward the camera-relative plane
@@ -130,9 +130,9 @@ Current tests cover:
 - `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, and unreadable lift samples so active lift must overlap its paired visible updraft
 - `camera_mouse_control` eval tracks yaw/pitch offsets and obstruction adjustment without player movement
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
-- `camera_strafe_stability` eval tracks lateral movement without camera auto-orbit
+- `camera_strafe_stability` eval tracks lateral movement without camera auto-orbit, including world-yaw drift
 - `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking
-- `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, backward braking, post-brake recovery, desired heading alignment, body-yaw oscillation, and movement-input camera non-coupling
+- `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, backward braking, post-brake recovery, desired heading alignment, body-yaw oscillation, follow-direction error distribution, world-yaw drift, and movement-input camera non-coupling
 - `long_glide_visibility` eval tracks sustained archipelago traversal, aerial power-up collection/effect samples, and content-scale signals
 
 Future tests should cover:

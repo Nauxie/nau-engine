@@ -28,8 +28,8 @@ use nau_engine::camera::{
     CameraControlState, CameraControlTuning, CameraInput, CameraObstruction, FollowCamera,
     FollowCameraState, apply_camera_input, avoid_camera_obstructions, camera_distance,
     camera_orbit_alignment_degrees, camera_pitch_degrees, camera_surface_clearance,
-    camera_target_angle_degrees, camera_view_yaw_degrees, horizontal_follow_direction,
-    lift_camera_above_floor, step_camera_with_direction, update_follow_direction_state,
+    camera_target_angle_degrees, camera_view_yaw_degrees, lift_camera_above_floor,
+    movement_stable_follow_direction, step_camera_with_direction, update_follow_direction_state,
 };
 use nau_engine::diagnostics::frame_ms;
 use nau_engine::environment::{
@@ -3676,8 +3676,11 @@ fn follow_camera(time: Res<Time>, eval: Option<Res<EvalRun>>, mut scene: CameraS
     let previous_camera_rotation = camera_transform.rotation;
 
     let dt = eval_dt(&time, eval.as_deref());
-    let desired_follow_direction =
-        horizontal_follow_direction(player_velocity.0, *player_transform.forward());
+    let desired_follow_direction = movement_stable_follow_direction(
+        player_velocity.0,
+        *player_transform.forward(),
+        follow_state.direction,
+    );
     let follow_direction =
         update_follow_direction_state(&mut follow_state, desired_follow_direction, follow, dt);
     let frame = step_camera_with_direction(
@@ -3955,6 +3958,7 @@ fn collect_eval_metrics(
         camera_player_angle_degrees,
         camera_pitch_degrees,
         camera_view_yaw,
+        camera_world_yaw,
     ) = scene
         .camera
         .single()
@@ -3974,6 +3978,7 @@ fn collect_eval_metrics(
                     camera_transform.rotation,
                     scene.camera_diagnostics.follow_direction,
                 ),
+                camera_view_yaw_degrees(camera_transform.rotation, Vec3::NEG_Z),
             )
         })
         .unwrap_or_default();
@@ -4114,6 +4119,7 @@ fn collect_eval_metrics(
         scene.power_ups.total_activations,
     )
     .with_camera_follow_metrics(scene.camera_diagnostics.follow_direction_error_degrees)
+    .with_camera_world_yaw_metrics(camera_world_yaw)
     .with_content_metrics(
         content_metrics.procedural_island_body_count,
         content_metrics.primitive_island_body_count,
