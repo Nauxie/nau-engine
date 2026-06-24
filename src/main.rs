@@ -75,6 +75,10 @@ const CLOUD_BANK_LOBES: usize = 7;
 const CLOUD_VEIL_LOBES: usize = 4;
 #[cfg(test)]
 const ISLAND_TERRAIN_COLOR_BANDS: usize = 5;
+#[cfg(test)]
+const ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS: usize = 12;
+#[cfg(test)]
+const ISLAND_TERRAIN_MATERIAL_CHANNELS: usize = 3;
 const ISLAND_CLIFF_STRATA_BANDS: usize = 9;
 
 fn main() -> AppExit {
@@ -436,6 +440,8 @@ struct IslandContentDiagnostics {
     island_terrain_surface_count: usize,
     min_island_terrain_mesh_vertices: usize,
     min_island_terrain_color_bands: usize,
+    min_island_terrain_material_weight_bands: usize,
+    min_island_terrain_material_channels: usize,
     min_island_terrain_relief_range_cm: usize,
     min_island_cliff_color_bands: usize,
     procedural_island_body_count: usize,
@@ -459,18 +465,28 @@ impl IslandContentDiagnostics {
         &mut self,
         mesh_vertices: usize,
         color_bands: usize,
+        material_weight_bands: usize,
+        material_channels: usize,
         relief_range_m: f32,
     ) {
         let relief_range_cm = (relief_range_m.max(0.0) * 100.0).round() as usize;
         if self.island_terrain_surface_count == 0 {
             self.min_island_terrain_mesh_vertices = mesh_vertices;
             self.min_island_terrain_color_bands = color_bands;
+            self.min_island_terrain_material_weight_bands = material_weight_bands;
+            self.min_island_terrain_material_channels = material_channels;
             self.min_island_terrain_relief_range_cm = relief_range_cm;
         } else {
             self.min_island_terrain_mesh_vertices =
                 self.min_island_terrain_mesh_vertices.min(mesh_vertices);
             self.min_island_terrain_color_bands =
                 self.min_island_terrain_color_bands.min(color_bands);
+            self.min_island_terrain_material_weight_bands = self
+                .min_island_terrain_material_weight_bands
+                .min(material_weight_bands);
+            self.min_island_terrain_material_channels = self
+                .min_island_terrain_material_channels
+                .min(material_channels);
             self.min_island_terrain_relief_range_cm =
                 self.min_island_terrain_relief_range_cm.min(relief_range_cm);
         }
@@ -2668,6 +2684,8 @@ fn queue_sky_island(
     content_diagnostics.record_island_terrain_surface(
         terrain_mesh.count_vertices(),
         mesh_vertex_color_band_count(&terrain_mesh),
+        mesh_terrain_material_weight_band_count(&terrain_mesh),
+        mesh_terrain_material_channel_count(&terrain_mesh),
         mesh_y_range(&terrain_mesh),
     );
     queue_island_visual(
@@ -2942,6 +2960,34 @@ fn mesh_vertex_color_band_count(mesh: &Mesh) -> usize {
     bands.len()
 }
 
+fn mesh_terrain_material_weight_band_count(mesh: &Mesh) -> usize {
+    let Some(VertexAttributeValues::Float32x2(weights)) = mesh.attribute(Mesh::ATTRIBUTE_UV_1)
+    else {
+        return 0;
+    };
+    let mut bands = HashSet::new();
+    for weight in weights {
+        bands.insert([
+            (weight[0].clamp(0.0, 1.0) * 15.0).round() as u8,
+            (weight[1].clamp(0.0, 1.0) * 15.0).round() as u8,
+        ]);
+    }
+    bands.len()
+}
+
+fn mesh_terrain_material_channel_count(mesh: &Mesh) -> usize {
+    let Some(VertexAttributeValues::Float32x2(weights)) = mesh.attribute(Mesh::ATTRIBUTE_UV_1)
+    else {
+        return 0;
+    };
+    let base = weights
+        .iter()
+        .any(|weight| weight[0] < 0.18 && weight[1] < 0.18);
+    let lush = weights.iter().any(|weight| weight[0] > 0.18);
+    let exposed = weights.iter().any(|weight| weight[1] > 0.18);
+    usize::from(base) + usize::from(lush) + usize::from(exposed)
+}
+
 fn color_array(color: Vec3) -> [f32; 4] {
     [
         color.x.clamp(0.0, 1.0),
@@ -2951,24 +2997,49 @@ fn color_array(color: Vec3) -> [f32; 4] {
     ]
 }
 
-fn island_terrain_vertex_color(
+fn island_terrain_material_factors(
     island_index: usize,
     radius: f32,
     angle: f32,
     relief_m: f32,
-) -> [f32; 4] {
+) -> (f32, f32, f32, f32) {
     let phase = island_index as f32 * 0.49;
-    let grass = Vec3::new(0.22, 0.58, 0.29);
-    let moss = Vec3::new(0.15, 0.42, 0.32);
-    let dry_meadow = Vec3::new(0.55, 0.52, 0.28);
-    let clay = Vec3::new(0.48, 0.36, 0.25);
-    let rock = Vec3::new(0.42, 0.4, 0.36);
     let inner_meadow = ((0.42 - radius) / 0.42).clamp(0.0, 1.0);
     let exposed_edge = ((radius - 0.72) / 0.28).clamp(0.0, 1.0);
     let highland = ((relief_m + 0.18) / 0.82).clamp(0.0, 1.0);
     let dapple = (angle * 13.0 + phase).sin() * 0.025
         + (angle * 29.0 - phase * 0.6).cos() * 0.015
         + (radius * 31.0 + phase).sin() * 0.018;
+    (inner_meadow, exposed_edge, highland, dapple)
+}
+
+fn island_terrain_material_weights(
+    island_index: usize,
+    radius: f32,
+    angle: f32,
+    relief_m: f32,
+) -> [f32; 2] {
+    let (inner_meadow, exposed_edge, highland, _) =
+        island_terrain_material_factors(island_index, radius, angle, relief_m);
+    [
+        (highland * 0.72 + inner_meadow * 0.28).clamp(0.0, 1.0),
+        exposed_edge.clamp(0.0, 1.0),
+    ]
+}
+
+fn island_terrain_vertex_color(
+    island_index: usize,
+    radius: f32,
+    angle: f32,
+    relief_m: f32,
+) -> [f32; 4] {
+    let grass = Vec3::new(0.22, 0.58, 0.29);
+    let moss = Vec3::new(0.15, 0.42, 0.32);
+    let dry_meadow = Vec3::new(0.55, 0.52, 0.28);
+    let clay = Vec3::new(0.48, 0.36, 0.25);
+    let rock = Vec3::new(0.42, 0.4, 0.36);
+    let (inner_meadow, exposed_edge, highland, dapple) =
+        island_terrain_material_factors(island_index, radius, angle, relief_m);
     let color = grass
         .lerp(dry_meadow, inner_meadow * 0.36)
         .lerp(moss, highland * 0.42)
@@ -3002,6 +3073,7 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     let vertex_count = 1 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS;
     let mut positions = Vec::with_capacity(vertex_count);
     let mut uvs = Vec::with_capacity(vertex_count);
+    let mut material_weights = Vec::with_capacity(vertex_count);
     let mut colors = Vec::with_capacity(vertex_count);
     let mut indices = Vec::with_capacity(
         ISLAND_BODY_SEGMENTS * 3 + (ISLAND_TERRAIN_RINGS - 1) * ISLAND_BODY_SEGMENTS * 6,
@@ -3011,6 +3083,12 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     positions.push([island.center.x, center_y, island.center.z]);
     uvs.push([0.5, 0.5]);
     colors.push(island_terrain_vertex_color(
+        island_index,
+        0.0,
+        0.0,
+        center_y - island.mesh_top_y(),
+    ));
+    material_weights.push(island_terrain_material_weights(
         island_index,
         0.0,
         0.0,
@@ -3033,6 +3111,12 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
                 0.5 + angle.sin() * radius * 0.5,
             ]);
             colors.push(island_terrain_vertex_color(
+                island_index,
+                radius,
+                angle,
+                y - island.mesh_top_y(),
+            ));
+            material_weights.push(island_terrain_material_weights(
                 island_index,
                 radius,
                 angle,
@@ -3077,6 +3161,7 @@ fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
     .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_1, material_weights)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
 }
 
@@ -4572,7 +4657,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -4630,6 +4715,8 @@ fn update_debug_readout(
         content_metrics.island_terrain_surface_count,
         content_metrics.min_island_terrain_mesh_vertices,
         content_metrics.min_island_terrain_color_bands,
+        content_metrics.min_island_terrain_material_weight_bands,
+        content_metrics.min_island_terrain_material_channels,
         content_metrics.min_island_terrain_relief_range_m(),
         content_metrics.min_island_cliff_color_bands,
         content_metrics.procedural_island_body_count,
@@ -4889,6 +4976,10 @@ fn collect_eval_metrics(
         content_metrics.min_island_body_silhouette_segments,
         content_metrics.average_island_body_silhouette_segments(),
         content_metrics.max_island_body_mesh_vertices,
+    )
+    .with_terrain_material_metrics(
+        content_metrics.min_island_terrain_material_weight_bands,
+        content_metrics.min_island_terrain_material_channels,
     )
     .with_generated_visual_shape_metrics(
         content_metrics.generated_tree_trunk_count,
@@ -5369,6 +5460,14 @@ mod tests {
             "terrain mesh should carry vertex-color biome/detail variation"
         );
         assert!(
+            mesh_terrain_material_weight_band_count(&mesh) >= ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS,
+            "terrain mesh should carry material-weight variation for future PBR blends"
+        );
+        assert!(
+            mesh_terrain_material_channel_count(&mesh) >= ISLAND_TERRAIN_MATERIAL_CHANNELS,
+            "terrain mesh should expose base, lush, and edge material channels"
+        );
+        assert!(
             mesh_y_range(&mesh) >= 0.8,
             "terrain mesh should have enough relief range to avoid flat plateaus"
         );
@@ -5429,8 +5528,8 @@ mod tests {
 
         diagnostics.record_procedural_island_body(ISLAND_BODY_SEGMENTS, 833);
         diagnostics.record_procedural_island_body(ISLAND_BODY_SEGMENTS, 821);
-        diagnostics.record_island_terrain_surface(2305, 9, 1.12);
-        diagnostics.record_island_terrain_surface(2305, 7, 0.92);
+        diagnostics.record_island_terrain_surface(2305, 9, 16, 3, 1.12);
+        diagnostics.record_island_terrain_surface(2305, 7, 12, 3, 0.92);
         diagnostics.record_island_cliff_detail(11);
         diagnostics.record_island_cliff_detail(10);
 
@@ -5438,6 +5537,8 @@ mod tests {
         assert_eq!(diagnostics.island_terrain_surface_count, 2);
         assert_eq!(diagnostics.min_island_terrain_mesh_vertices, 2305);
         assert_eq!(diagnostics.min_island_terrain_color_bands, 7);
+        assert_eq!(diagnostics.min_island_terrain_material_weight_bands, 12);
+        assert_eq!(diagnostics.min_island_terrain_material_channels, 3);
         assert_eq!(diagnostics.min_island_terrain_relief_range_m(), 0.92);
         assert_eq!(diagnostics.min_island_cliff_color_bands, 10);
         assert_eq!(diagnostics.primitive_island_body_count, 0);
