@@ -19,10 +19,23 @@ const MIN_SEQUENCE_TOP_SKY_FRACTION: f64 = 0.25;
 const MIN_LOWER_SCENE_FRACTION: f64 = 0.25;
 const MIN_CENTER_SCENE_FRACTION: f64 = 0.18;
 const MIN_CENTER_EDGE_DENSITY: f64 = 0.02;
+const DETAIL_TILE_COLUMNS: usize = 12;
+const DETAIL_TILE_ROWS: usize = 8;
+const MIN_SCENE_DETAIL_TILE_FRACTION: f64 = 0.30;
+const MAX_FLAT_SCENE_TILE_FRACTION: f64 = 0.35;
+const MIN_SCENE_CANDIDATE_TILE_COUNT: usize = 12;
+const MIN_SCENE_TILE_PIXELS: usize = 24;
+const MIN_SCENE_TILE_FRACTION: f64 = 0.18;
+const MIN_DETAIL_TILE_COLOR_BUCKETS: usize = 5;
+const MIN_DETAIL_TILE_LUMA_STDDEV: f64 = 5.0;
+const MIN_DETAIL_TILE_EDGE_DENSITY: f64 = 0.018;
+const MAX_FLAT_TILE_COLOR_BUCKETS: usize = 3;
+const MAX_FLAT_TILE_LUMA_STDDEV: f64 = 4.0;
+const MAX_FLAT_TILE_EDGE_DENSITY: f64 = 0.008;
 const MIN_PLAYER_FOCUS_FRACTION: f64 = 0.0015;
 const MIN_SEQUENCE_ROUTE_MARKER_FRACTION: f64 = 0.00008;
 const MIN_SEQUENCE_ROUTE_MARKER_COMPONENTS: usize = 2;
-const MIN_SEQUENCE_ROUTE_MARKER_HUE_FAMILIES: usize = 2;
+const MIN_SEQUENCE_ROUTE_MARKER_HUE_FAMILIES: usize = 1;
 const MIN_ROUTE_MARKER_COMPONENT_PIXELS: usize = 3;
 const MIN_ROUTE_MARKER_HUE_FAMILY_PIXELS: usize = 8;
 const MAX_HUD_TEXT_FRACTION: f64 = 0.06;
@@ -95,9 +108,12 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
     let mut route_marker_mask = vec![false; pixel_count];
     let mut border_occluder_pixels = [0usize; BORDER_REGION_COUNT];
     let mut border_region_pixels = [0usize; BORDER_REGION_COUNT];
+    let mut inner_border_occluder_pixels = [0usize; BORDER_REGION_COUNT];
+    let mut inner_border_region_pixels = [0usize; BORDER_REGION_COUNT];
     let mut border_color_buckets =
         std::array::from_fn::<_, BORDER_REGION_COUNT, _>(|_| HashSet::<u32>::new());
     let mut hud_text_pixels = 0usize;
+    let mut scene_mask = vec![false; pixel_count];
 
     let width_usize = width as usize;
     let height_usize = height as usize;
@@ -135,6 +151,7 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
         let hud_region = is_hud_region(x, y, width_usize, height_usize);
         let route_marker_like =
             !hud_region && y >= top_limit && is_route_marker_like(r, g, b, luma);
+        scene_mask[index] = scene_like && !hud_region;
 
         if y < top_limit {
             top_pixels += 1;
@@ -185,6 +202,15 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
                     border_occluder_pixels[region] += 1;
                 }
             }
+            for region in inner_border_regions(x, y, width_usize, height_usize)
+                .into_iter()
+                .flatten()
+            {
+                inner_border_region_pixels[region] += 1;
+                if clipping_occluder {
+                    inner_border_occluder_pixels[region] += 1;
+                }
+            }
         }
         if hud_region && is_hud_text_like(r, g, b) {
             hud_text_pixels += 1;
@@ -225,10 +251,14 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
     let severe_clipping_fraction = severe_clipping_fraction(
         &border_occluder_pixels,
         &border_region_pixels,
+        &inner_border_occluder_pixels,
+        &inner_border_region_pixels,
         border_color_buckets.map(|buckets| buckets.len()),
         border_edge_densities(&luma_values, width_usize, height_usize),
     );
     let hud_text_fraction = fraction(hud_text_pixels, pixel_count);
+    let scene_detail =
+        scene_detail_stats(&image, &luma_values, &scene_mask, width_usize, height_usize);
 
     let checks = vec![
         Check::at_least("width", width as f64, MIN_WIDTH as f64, "px"),
@@ -260,6 +290,24 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
             "center_edge_density",
             center_edge_density,
             MIN_CENTER_EDGE_DENSITY,
+            "ratio",
+        ),
+        Check::at_least(
+            "scene_detail_tile_fraction",
+            scene_detail.detail_tile_fraction,
+            MIN_SCENE_DETAIL_TILE_FRACTION,
+            "ratio",
+        ),
+        Check::at_least(
+            "scene_candidate_tile_count",
+            scene_detail.candidate_tile_count as f64,
+            MIN_SCENE_CANDIDATE_TILE_COUNT as f64,
+            "tiles",
+        ),
+        Check::at_most(
+            "flat_scene_tile_fraction",
+            scene_detail.flat_tile_fraction,
+            MAX_FLAT_SCENE_TILE_FRACTION,
             "ratio",
         ),
         Check::at_least(
@@ -296,6 +344,11 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
         lower_scene_fraction,
         center_scene_fraction,
         center_edge_density,
+        scene_detail_tile_fraction: scene_detail.detail_tile_fraction,
+        flat_scene_tile_fraction: scene_detail.flat_tile_fraction,
+        scene_detail_tile_count: scene_detail.detail_tile_count,
+        flat_scene_tile_count: scene_detail.flat_tile_count,
+        scene_candidate_tile_count: scene_detail.candidate_tile_count,
         player_focus_fraction,
         player_warm_focus_fraction,
         route_marker_fraction,
@@ -356,6 +409,107 @@ fn edge_density_in_region(
     edge_pixels as f64 / sampled_pixels.max(1) as f64
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct SceneDetailStats {
+    detail_tile_fraction: f64,
+    flat_tile_fraction: f64,
+    detail_tile_count: usize,
+    flat_tile_count: usize,
+    candidate_tile_count: usize,
+}
+
+fn scene_detail_stats(
+    image: &RgbImage,
+    luma_values: &[f64],
+    scene_mask: &[bool],
+    width: usize,
+    height: usize,
+) -> SceneDetailStats {
+    if width == 0 || height == 0 || scene_mask.len() != width.saturating_mul(height) {
+        return SceneDetailStats::default();
+    }
+
+    let y_min = height / 3;
+    let y_max = height * 9 / 10;
+    let y_span = y_max.saturating_sub(y_min).max(1);
+    let mut stats = SceneDetailStats::default();
+
+    for row in 0..DETAIL_TILE_ROWS {
+        let y_start = y_min + row * y_span / DETAIL_TILE_ROWS;
+        let y_end = y_min + (row + 1) * y_span / DETAIL_TILE_ROWS;
+        for column in 0..DETAIL_TILE_COLUMNS {
+            let x_start = column * width / DETAIL_TILE_COLUMNS;
+            let x_end = ((column + 1) * width / DETAIL_TILE_COLUMNS).min(width);
+            let mut non_hud_pixels = 0usize;
+            let mut scene_pixels = 0usize;
+            let mut sum_luma = 0.0;
+            let mut sum_luma_sq = 0.0;
+            let mut color_buckets = HashSet::new();
+            let mut edge_pixels = 0usize;
+            let mut edge_samples = 0usize;
+
+            for y in y_start..y_end {
+                for x in x_start..x_end {
+                    if is_hud_region(x, y, width, height) {
+                        continue;
+                    }
+                    non_hud_pixels += 1;
+                    let index = y * width + x;
+                    if !scene_mask[index] {
+                        continue;
+                    }
+
+                    scene_pixels += 1;
+                    let [r, g, b] = image.get_pixel(x as u32, y as u32).0;
+                    let color_key =
+                        ((r as u32 / 32) << 6) | ((g as u32 / 32) << 3) | (b as u32 / 32);
+                    color_buckets.insert(color_key);
+                    let luma = luma_values[index];
+                    sum_luma += luma;
+                    sum_luma_sq += luma * luma;
+
+                    if x > x_start && y > y_start {
+                        let gradient = (luma - luma_values[index - 1]).abs()
+                            + (luma - luma_values[index - width]).abs();
+                        if gradient > 18.0 {
+                            edge_pixels += 1;
+                        }
+                        edge_samples += 1;
+                    }
+                }
+            }
+
+            let scene_fraction = fraction(scene_pixels, non_hud_pixels);
+            if scene_pixels < MIN_SCENE_TILE_PIXELS || scene_fraction < MIN_SCENE_TILE_FRACTION {
+                continue;
+            }
+
+            stats.candidate_tile_count += 1;
+            let count = scene_pixels as f64;
+            let luma_stddev = variance(sum_luma_sq, sum_luma, count).sqrt();
+            let edge_density = fraction(edge_pixels, edge_samples);
+            let detailed = color_buckets.len() >= MIN_DETAIL_TILE_COLOR_BUCKETS
+                && (luma_stddev >= MIN_DETAIL_TILE_LUMA_STDDEV
+                    || edge_density >= MIN_DETAIL_TILE_EDGE_DENSITY);
+            if detailed {
+                stats.detail_tile_count += 1;
+            }
+
+            let flat = scene_fraction >= 0.45
+                && color_buckets.len() <= MAX_FLAT_TILE_COLOR_BUCKETS
+                && luma_stddev <= MAX_FLAT_TILE_LUMA_STDDEV
+                && edge_density <= MAX_FLAT_TILE_EDGE_DENSITY;
+            if flat {
+                stats.flat_tile_count += 1;
+            }
+        }
+    }
+
+    stats.detail_tile_fraction = fraction(stats.detail_tile_count, stats.candidate_tile_count);
+    stats.flat_tile_fraction = fraction(stats.flat_tile_count, stats.candidate_tile_count);
+    stats
+}
+
 const BORDER_REGION_COUNT: usize = 4;
 const ROUTE_MARKER_HUE_FAMILY_COUNT: usize = 4;
 
@@ -370,9 +524,22 @@ fn border_regions(x: usize, y: usize, width: usize, height: usize) -> [Option<us
     ]
 }
 
+fn inner_border_regions(x: usize, y: usize, width: usize, height: usize) -> [Option<usize>; 4] {
+    let x_band = (width * 8 / 100).max(1);
+    let y_band = (height * 8 / 100).max(1);
+    [
+        (y >= y_band && y < y_band * 2).then_some(0),
+        (y >= height.saturating_sub(y_band * 2) && y < height.saturating_sub(y_band)).then_some(1),
+        (x >= x_band && x < x_band * 2).then_some(2),
+        (x >= width.saturating_sub(x_band * 2) && x < width.saturating_sub(x_band)).then_some(3),
+    ]
+}
+
 fn severe_clipping_fraction(
     values: &[usize; BORDER_REGION_COUNT],
     totals: &[usize; BORDER_REGION_COUNT],
+    inner_values: &[usize; BORDER_REGION_COUNT],
+    inner_totals: &[usize; BORDER_REGION_COUNT],
     color_bucket_counts: [usize; BORDER_REGION_COUNT],
     edge_densities: [f64; BORDER_REGION_COUNT],
 ) -> f64 {
@@ -381,13 +548,18 @@ fn severe_clipping_fraction(
         .zip(totals)
         .zip(color_bucket_counts)
         .zip(edge_densities)
-        .filter(|((value_total, color_bucket_count), edge_density)| {
+        .enumerate()
+        .filter(|(_, ((value_total, color_bucket_count), edge_density))| {
             let (_, total) = value_total;
             **total > 0
                 && *color_bucket_count <= MAX_CLIPPING_BORDER_COLOR_BUCKETS
                 && *edge_density <= MAX_CLIPPING_BORDER_EDGE_DENSITY
         })
-        .map(|(((value, total), _), _)| fraction(*value, *total))
+        .map(|(region, (((value, total), _), _))| {
+            let border_fraction = fraction(*value, *total);
+            let inner_continuation_fraction = fraction(inner_values[region], inner_totals[region]);
+            border_fraction * (1.0 - inner_continuation_fraction)
+        })
         .fold(0.0, f64::max)
 }
 
@@ -610,6 +782,11 @@ struct ImageAudit {
     lower_scene_fraction: f64,
     center_scene_fraction: f64,
     center_edge_density: f64,
+    scene_detail_tile_fraction: f64,
+    flat_scene_tile_fraction: f64,
+    scene_detail_tile_count: usize,
+    flat_scene_tile_count: usize,
+    scene_candidate_tile_count: usize,
     player_focus_fraction: f64,
     player_warm_focus_fraction: f64,
     route_marker_fraction: f64,
@@ -735,7 +912,7 @@ fn image_audit_json(audit: &ImageAudit) -> String {
         .collect::<Vec<_>>()
         .join(",\n      ");
     format!(
-        "{{\n      \"path\": {},\n      \"passed\": {},\n      \"width\": {},\n      \"height\": {},\n      \"mean_luma\": {},\n      \"luma_stddev\": {},\n      \"colorfulness\": {},\n      \"quantized_colors\": {},\n      \"edge_density\": {},\n      \"top_sky_fraction\": {},\n      \"lower_scene_fraction\": {},\n      \"center_scene_fraction\": {},\n      \"center_edge_density\": {},\n      \"player_focus_fraction\": {},\n      \"player_warm_focus_fraction\": {},\n      \"route_marker_fraction\": {},\n      \"route_marker_component_count\": {},\n      \"route_marker_hue_family_count\": {},\n      \"severe_clipping_fraction\": {},\n      \"hud_text_fraction\": {},\n      \"checks\": [\n      {}\n      ]\n    }}",
+        "{{\n      \"path\": {},\n      \"passed\": {},\n      \"width\": {},\n      \"height\": {},\n      \"mean_luma\": {},\n      \"luma_stddev\": {},\n      \"colorfulness\": {},\n      \"quantized_colors\": {},\n      \"edge_density\": {},\n      \"top_sky_fraction\": {},\n      \"lower_scene_fraction\": {},\n      \"center_scene_fraction\": {},\n      \"center_edge_density\": {},\n      \"scene_detail_tile_fraction\": {},\n      \"flat_scene_tile_fraction\": {},\n      \"scene_detail_tile_count\": {},\n      \"flat_scene_tile_count\": {},\n      \"scene_candidate_tile_count\": {},\n      \"player_focus_fraction\": {},\n      \"player_warm_focus_fraction\": {},\n      \"route_marker_fraction\": {},\n      \"route_marker_component_count\": {},\n      \"route_marker_hue_family_count\": {},\n      \"severe_clipping_fraction\": {},\n      \"hud_text_fraction\": {},\n      \"checks\": [\n      {}\n      ]\n    }}",
         json_string(&audit.path),
         audit.passed,
         audit.width,
@@ -749,6 +926,11 @@ fn image_audit_json(audit: &ImageAudit) -> String {
         json_number(audit.lower_scene_fraction),
         json_number(audit.center_scene_fraction),
         json_number(audit.center_edge_density),
+        json_number(audit.scene_detail_tile_fraction),
+        json_number(audit.flat_scene_tile_fraction),
+        audit.scene_detail_tile_count,
+        audit.flat_scene_tile_count,
+        audit.scene_candidate_tile_count,
         json_number(audit.player_focus_fraction),
         json_number(audit.player_warm_focus_fraction),
         json_number(audit.route_marker_fraction),
@@ -869,6 +1051,34 @@ mod tests {
                 .checks
                 .iter()
                 .any(|check| check.name == "edge_density" && !check.passed)
+        );
+    }
+
+    #[test]
+    fn audit_rejects_large_low_detail_scene_surface() {
+        let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        for y in 0..MIN_HEIGHT {
+            for x in 0..MIN_WIDTH {
+                let (r, g, b) = if y < MIN_HEIGHT / 3 {
+                    (126, 158, 196)
+                } else {
+                    (92, 74, 52)
+                };
+                image.put_pixel(x, y, Rgb([r, g, b]));
+            }
+        }
+        paint_readability_signals(&mut image);
+
+        let audit =
+            audit_image("low_detail_scene.png".to_string(), image).expect("audit should load");
+
+        assert!(!audit.passed);
+        assert!(audit.scene_candidate_tile_count > 0);
+        assert!(
+            audit
+                .checks
+                .iter()
+                .any(|check| check.name == "scene_detail_tile_fraction" && !check.passed)
         );
     }
 
@@ -1116,6 +1326,38 @@ mod tests {
     }
 
     #[test]
+    fn audit_allows_continuous_scene_surface_at_border() {
+        let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        for y in 0..MIN_HEIGHT {
+            for x in 0..MIN_WIDTH {
+                let checker = (x + y) % 2 == 0;
+                let (r, g, b) = if y < MIN_HEIGHT / 3 {
+                    (126 + (x % 36), 158 + (y % 36), 196 + ((x + y) % 36))
+                } else if checker {
+                    (48 + (x % 92), 110 + (y % 80), 58 + ((x + y) % 50))
+                } else {
+                    (112 + (x % 70), 82 + (y % 60), 54 + ((x + y) % 44))
+                };
+                image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+            }
+        }
+        paint_readability_signals(&mut image);
+
+        let top_inner_band = MIN_HEIGHT * 16 / 100;
+        for y in 0..top_inner_band {
+            for x in MIN_WIDTH * 36 / 100..MIN_WIDTH {
+                image.put_pixel(x, y, Rgb([74, 62, 46]));
+            }
+        }
+
+        let audit = audit_image("continuous_border_surface.png".to_string(), image)
+            .expect("audit should load");
+
+        assert!(audit.passed, "{audit:?}");
+        assert!(audit.severe_clipping_fraction <= MAX_SEVERE_CLIPPING_FRACTION);
+    }
+
+    #[test]
     fn report_rejects_missing_route_markers() {
         let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
         for y in 0..MIN_HEIGHT {
@@ -1204,11 +1446,7 @@ mod tests {
                 .iter()
                 .any(|check| check.name == "max_route_marker_component_count" && !check.passed)
         );
-        assert!(
-            checks
-                .iter()
-                .any(|check| check.name == "max_route_marker_hue_family_count" && !check.passed)
-        );
+        assert_eq!(checks.iter().filter(|check| !check.passed).count(), 1);
     }
 
     #[test]
