@@ -115,7 +115,7 @@ pub mod asset_pipeline {
         VisualAssetSpec {
             kind: VisualAssetKind::PlayerCharacter,
             label: "player character rig",
-            gltf_scene_path: "models/player/player.glb",
+            gltf_scene_path: "models/player/player.gltf",
             animation_clip_names: PLAYER_ANIMATION_CLIP_NAMES,
             residency: VisualAssetResidency::Always,
         },
@@ -185,12 +185,15 @@ pub mod asset_pipeline {
     pub const FAR_LOD_VISUAL_ASSET_SLOT_COUNT: usize = 1;
     pub const WEATHER_VISUAL_ASSET_SLOT_COUNT: usize = 1;
     pub const DECLARED_VISUAL_ANIMATION_CLIP_COUNT: usize = PLAYER_ANIMATION_CLIP_NAMES.len();
-    pub const MIN_READY_VISUAL_ASSET_SLOT_COUNT: usize = 5;
-    pub const MIN_LOADED_VISUAL_ASSET_SCENE_COUNT: usize = 5;
-    pub const MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT: usize = 5;
-    pub const MIN_READY_VISUAL_ASSET_SCENE_COUNT: usize = 5;
+    pub const MIN_READY_VISUAL_ASSET_SLOT_COUNT: usize = 6;
+    pub const MIN_LOADED_VISUAL_ASSET_SCENE_COUNT: usize = 6;
+    pub const MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT: usize = 6;
+    pub const MIN_READY_VISUAL_ASSET_SCENE_COUNT: usize = 6;
     pub const MAX_MISSING_VISUAL_ASSET_SLOT_COUNT: usize =
         VISUAL_ASSET_SLOT_COUNT - MIN_READY_VISUAL_ASSET_SLOT_COUNT;
+    pub const MIN_READY_VISUAL_ANIMATION_CLIP_COUNT: usize = DECLARED_VISUAL_ANIMATION_CLIP_COUNT;
+    pub const MIN_VISUAL_ANIMATION_PLAYER_COUNT: usize = 1;
+    pub const MIN_VISUAL_ANIMATION_GRAPH_COUNT: usize = 1;
 
     pub fn visual_asset_pipeline_metrics(
         specs: &[VisualAssetSpec],
@@ -378,7 +381,7 @@ pub mod asset_pipeline {
         #[test]
         fn asset_metrics_count_queued_and_placeholder_slots() {
             let metrics = visual_asset_pipeline_metrics(&VISUAL_ASSET_SPECS, |path| {
-                path == "models/player/player.glb" || path == "models/world/foliage.glb"
+                path == "models/player/player.gltf" || path == "models/world/foliage.glb"
             });
 
             assert_eq!(metrics.ready_slot_count, 0);
@@ -3573,9 +3576,10 @@ pub mod eval {
         asset_pipeline::{
             DECLARED_VISUAL_ANIMATION_CLIP_COUNT, GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
             MAX_MISSING_VISUAL_ASSET_SLOT_COUNT, MIN_LOADED_VISUAL_ASSET_SCENE_COUNT,
-            MIN_READY_VISUAL_ASSET_SCENE_COUNT, MIN_READY_VISUAL_ASSET_SLOT_COUNT,
-            MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT, STREAMING_VISUAL_ASSET_SLOT_COUNT,
-            VISUAL_ASSET_SLOT_COUNT,
+            MIN_READY_VISUAL_ANIMATION_CLIP_COUNT, MIN_READY_VISUAL_ASSET_SCENE_COUNT,
+            MIN_READY_VISUAL_ASSET_SLOT_COUNT, MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT,
+            MIN_VISUAL_ANIMATION_GRAPH_COUNT, MIN_VISUAL_ANIMATION_PLAYER_COUNT,
+            STREAMING_VISUAL_ASSET_SLOT_COUNT, VISUAL_ASSET_SLOT_COUNT,
         },
         camera::CameraInput,
         movement::{FlightInput, FlightMode},
@@ -5616,6 +5620,24 @@ pub mod eval {
                     thresholds.min_declared_animation_clip_count as f32,
                     "clips",
                 ),
+                EvalCheck::at_least(
+                    "ready_animation_clip_count",
+                    self.max_ready_animation_clip_count as f32,
+                    MIN_READY_VISUAL_ANIMATION_CLIP_COUNT as f32,
+                    "clips",
+                ),
+                EvalCheck::at_least(
+                    "animation_player_count",
+                    self.max_animation_player_count as f32,
+                    MIN_VISUAL_ANIMATION_PLAYER_COUNT as f32,
+                    "players",
+                ),
+                EvalCheck::at_least(
+                    "animation_graph_count",
+                    self.max_animation_graph_count as f32,
+                    MIN_VISUAL_ANIMATION_GRAPH_COUNT as f32,
+                    "graphs",
+                ),
                 EvalCheck::at_most(
                     "failed_visual_asset_scene_count",
                     self.max_failed_visual_asset_scene_count as f32,
@@ -7400,8 +7422,10 @@ pub mod eval {
     mod tests {
         use crate::asset_pipeline::{
             ALWAYS_VISUAL_ASSET_SLOT_COUNT, DECLARED_VISUAL_ANIMATION_CLIP_COUNT,
-            FAR_LOD_VISUAL_ASSET_SLOT_COUNT, NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
-            STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT, WEATHER_VISUAL_ASSET_SLOT_COUNT,
+            FAR_LOD_VISUAL_ASSET_SLOT_COUNT, MIN_READY_VISUAL_ANIMATION_CLIP_COUNT,
+            MIN_VISUAL_ANIMATION_GRAPH_COUNT, MIN_VISUAL_ANIMATION_PLAYER_COUNT,
+            NEAR_LOD_VISUAL_ASSET_SLOT_COUNT, STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
+            WEATHER_VISUAL_ASSET_SLOT_COUNT,
         };
         use crate::environment::AERIAL_POWER_UP_ROUTE;
 
@@ -7905,9 +7929,9 @@ pub mod eval {
                 FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
                 WEATHER_VISUAL_ASSET_SLOT_COUNT,
                 DECLARED_VISUAL_ANIMATION_CLIP_COUNT,
-                0,
-                0,
-                0,
+                MIN_READY_VISUAL_ANIMATION_CLIP_COUNT,
+                MIN_VISUAL_ANIMATION_PLAYER_COUNT,
+                MIN_VISUAL_ANIMATION_GRAPH_COUNT,
                 AERIAL_POWER_UP_ROUTE.len(),
                 AERIAL_POWER_UP_ROUTE.len(),
                 0,
@@ -7976,6 +8000,9 @@ pub mod eval {
             sample.loaded_visual_asset_scene_count = 0;
             sample.spawned_visual_asset_scene_count = 0;
             sample.ready_visual_asset_scene_count = 0;
+            sample.ready_animation_clip_count = 0;
+            sample.animation_player_count = 0;
+            sample.animation_graph_count = 0;
 
             let mut accumulator = EvalAccumulator::default();
             accumulator.observe(sample);
@@ -7995,6 +8022,9 @@ pub mod eval {
                 "loaded_visual_asset_scene_count",
                 "spawned_visual_asset_scene_count",
                 "ready_visual_asset_scene_count",
+                "ready_animation_clip_count",
+                "animation_player_count",
+                "animation_graph_count",
             ] {
                 assert!(
                     !named_check(&summary, check_name).passed,
@@ -8247,9 +8277,9 @@ pub mod eval {
                     FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
                     WEATHER_VISUAL_ASSET_SLOT_COUNT,
                     DECLARED_VISUAL_ANIMATION_CLIP_COUNT,
-                    0,
-                    0,
-                    0,
+                    MIN_READY_VISUAL_ANIMATION_CLIP_COUNT,
+                    MIN_VISUAL_ANIMATION_PLAYER_COUNT,
+                    MIN_VISUAL_ANIMATION_GRAPH_COUNT,
                     AERIAL_POWER_UP_ROUTE.len(),
                     AERIAL_POWER_UP_ROUTE.len(),
                     0,
@@ -8333,9 +8363,9 @@ pub mod eval {
                     FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
                     WEATHER_VISUAL_ASSET_SLOT_COUNT,
                     DECLARED_VISUAL_ANIMATION_CLIP_COUNT,
-                    0,
-                    0,
-                    0,
+                    MIN_READY_VISUAL_ANIMATION_CLIP_COUNT,
+                    MIN_VISUAL_ANIMATION_PLAYER_COUNT,
+                    MIN_VISUAL_ANIMATION_GRAPH_COUNT,
                     AERIAL_POWER_UP_ROUTE.len(),
                     AERIAL_POWER_UP_ROUTE.len(),
                     0,
@@ -8420,9 +8450,9 @@ pub mod eval {
                         FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
                         WEATHER_VISUAL_ASSET_SLOT_COUNT,
                         DECLARED_VISUAL_ANIMATION_CLIP_COUNT,
-                        0,
-                        0,
-                        0,
+                        MIN_READY_VISUAL_ANIMATION_CLIP_COUNT,
+                        MIN_VISUAL_ANIMATION_PLAYER_COUNT,
+                        MIN_VISUAL_ANIMATION_GRAPH_COUNT,
                         AERIAL_POWER_UP_ROUTE.len(),
                         AERIAL_POWER_UP_ROUTE.len(),
                         0,
