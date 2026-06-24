@@ -56,10 +56,10 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `branch_recovery_route` eval proves a scripted route can target and land on the named `sunlit terrace` branch island after using readable lift and late air-braking.
 - `long_glide_visibility` eval proves sustained traversal across the larger archipelago while preserving content-scale and LOD signals.
 - `island_launch_to_landing` eval proves the scripted route reaches and lands on the target island.
-- The HUD now tracks a route objective sequence: main routes point from the near updraft to the landing garden, while branch-target evals add the distant recovery updraft before the named branch landing.
+- The HUD and eval samples now track a route objective sequence: main routes point from the near updraft to the landing garden, while branch-target evals add the distant recovery updraft before the named branch landing.
 - Metric-only evals hide the native window by default; screenshot evals are explicit via `NAU_EVAL_SCREENSHOT=1`.
-- Screenshot evals run a non-golden visual audit for resolution, exposure, contrast, color variety, edge density, sky/scene balance, center-scene detail, and HUD-text dominance when launched through `tools/eval.sh`.
-- Eval summaries now include the scenario target island, camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, weather cloud count, readable/unreadable lift samples, hidden/resident island visual counts, and stream entity churn so camera/control/content/streaming regressions are visible in metrics.
+- Screenshot evals run a non-golden visual audit for resolution, exposure, contrast, color variety, edge density, sky/scene balance, center-scene detail, player visibility, route-marker readability, and HUD-text dominance when launched through `tools/eval.sh`.
+- Eval summaries now include the scenario target island, route objective progress, camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, weather cloud count, readable/unreadable lift samples, hidden/resident island visual counts, and stream entity churn so camera/control/content/streaming regressions are visible in metrics.
 
 ## Known Issues
 
@@ -68,16 +68,16 @@ Use this section for milestone handoffs, not routine worktree changes.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep.
 - Crosswind stream fields are still debug gizmos; updrafts now have primitive visible guide markers, but there are no particles, cloth/glider reactions, vegetation sway, or authored environment art assets yet.
 - Sky-island collision follows deterministic terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
-- Gameplay lift is still a first rough updraft route; there is no crosswind force, launch-source chain, objective layer, or authored recovery-route design beyond two marked primitive branch islands.
+- Gameplay lift is still a first rough updraft route; there is no crosswind force, launch-source chain, or authored recovery-route design beyond two marked primitive branch islands.
 - There is no asynchronous asset loading, authored water, authored vegetation, or environment asset pipeline yet. Current stream-window terrain residency, detail LOD, procedural materials, ponds, trees, stones, beacon, cloud layers, and landing markers are deterministic primitive systems.
 - Physics is still custom movement math, not a real collision/rigid body integration.
 
 ## Next Tasks
 
-1. Extend screenshot audits toward explicit player visibility, severe clipping, and route-marker readability checks.
-2. Add objective-progress fields and gates to eval samples so HUD goals become metric-visible.
-3. Add asset-loading hooks and richer impostors on top of the resident island visual catalog.
-4. Replace the primitive character/environment with a glTF asset pipeline once the traversal/render targets stop moving.
+1. Extend screenshot audits toward severe clipping and route-marker identity classification.
+2. Add asset-loading hooks and richer impostors on top of the resident island visual catalog.
+3. Replace the primitive character/environment with a glTF asset pipeline once the traversal/render targets stop moving.
+4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
 
 ## Read First
 
