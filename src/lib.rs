@@ -676,7 +676,7 @@ pub mod movement {
                 backward_accel: 10.0,
                 lateral_accel: 16.0,
                 glide_forward_accel: 12.0,
-                glide_lateral_accel: 10.0,
+                glide_lateral_accel: 11.0,
                 glide_brake_drag: 0.36,
                 air_brake_accel: 46.0,
                 glide_brake_accel: 48.0,
@@ -1514,6 +1514,41 @@ pub mod movement {
             assert!(
                 heading_error < 8.0,
                 "expected diagonal input to turn toward camera-relative heading, got {heading_error} deg"
+            );
+        }
+
+        #[test]
+        fn backward_diagonal_glide_input_rotates_body_toward_rear_quadrant() {
+            let tuning = FlightTuning::default();
+            let facing = Facing::new(Vec3::Z, Vec3::X);
+            let input = FlightInput {
+                backward: true,
+                right: true,
+                glide: true,
+                ..default()
+            };
+            let mut rotation = Transform::from_translation(Vec3::ZERO)
+                .looking_to(facing.forward, Vec3::Y)
+                .rotation;
+            let desired_direction = desired_planar_movement_direction(input, facing)
+                .expect("backward-diagonal input has a movement direction");
+
+            for _ in 0..18 {
+                rotation = face_flight_direction(
+                    rotation,
+                    Vec3::new(0.0, -2.0, 28.0),
+                    input,
+                    facing,
+                    FlightMode::Gliding,
+                    &tuning,
+                    1.0 / 60.0,
+                );
+            }
+
+            let heading_error = body_heading_error_degrees(rotation, desired_direction);
+            assert!(
+                heading_error < 18.0,
+                "expected backward-diagonal input to turn toward rear quadrant, got {heading_error} deg"
             );
         }
 
@@ -3840,6 +3875,8 @@ pub mod eval {
     const AIR_CONTROL_RESPONSE_THRESHOLD_MPS: f32 = 4.0;
     const AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS: f32 = 0.30;
     const AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS: f32 = 18.0;
+    const AIR_CONTROL_MIN_BACKWARD_LATERAL_RESPONSE_MPS: f32 = 10.0;
+    const AIR_CONTROL_MIN_BACKWARD_DIAGONAL_REAR_RESPONSE_MPS: f32 = 8.0;
     const AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS: f32 = 20.0;
     const AIR_CONTROL_MAX_AVG_BODY_HEADING_ERROR_DEGREES: f32 = 8.0;
     const AIR_CONTROL_MAX_P95_BODY_HEADING_ERROR_DEGREES: f32 = 30.0;
@@ -4867,6 +4904,17 @@ pub mod eval {
         max_left_lateral_response_mps: f32,
         first_left_lateral_input_time_secs: Option<f32>,
         first_left_lateral_response_time_secs: Option<f32>,
+        max_backward_lateral_response_mps: f32,
+        first_backward_lateral_input_time_secs: Option<f32>,
+        first_backward_lateral_response_time_secs: Option<f32>,
+        max_backward_right_lateral_response_mps: f32,
+        max_backward_right_rear_response_mps: f32,
+        first_backward_right_lateral_input_time_secs: Option<f32>,
+        first_backward_right_lateral_response_time_secs: Option<f32>,
+        max_backward_left_lateral_response_mps: f32,
+        max_backward_left_rear_response_mps: f32,
+        first_backward_left_lateral_input_time_secs: Option<f32>,
+        first_backward_left_lateral_response_time_secs: Option<f32>,
         backward_air_control_start_speed_mps: Option<f32>,
         min_backward_air_control_speed_mps: Option<f32>,
         max_air_brake_speed_drop_mps: f32,
@@ -5017,6 +5065,21 @@ pub mod eval {
             (Some(_), None) => scenario.duration_secs(),
             _ => 0.0,
         }
+    }
+
+    fn backward_diagonal_rear_response_mps(sample: &EvalSample) -> Option<f32> {
+        if sample.movement_input_forward_axis >= 0.0
+            || sample.movement_input_lateral_axis.abs() <= f32::EPSILON
+            || !sample.desired_heading_alignment_mps.is_finite()
+            || !sample.lateral_response_mps.is_finite()
+        {
+            return None;
+        }
+
+        Some(
+            sample.desired_heading_alignment_mps * std::f32::consts::SQRT_2
+                - sample.lateral_response_mps,
+        )
     }
 
     impl EvalAccumulator {
@@ -5194,6 +5257,30 @@ pub mod eval {
                         {
                             self.first_right_lateral_response_time_secs = Some(sample.time_secs);
                         }
+                        if sample.movement_input_forward_axis < 0.0 {
+                            if self.first_backward_right_lateral_input_time_secs.is_none() {
+                                self.first_backward_right_lateral_input_time_secs =
+                                    Some(sample.time_secs);
+                            }
+                            self.max_backward_right_lateral_response_mps = self
+                                .max_backward_right_lateral_response_mps
+                                .max(sample.lateral_response_mps);
+                            if let Some(rear_response_mps) =
+                                backward_diagonal_rear_response_mps(&sample)
+                            {
+                                self.max_backward_right_rear_response_mps = self
+                                    .max_backward_right_rear_response_mps
+                                    .max(rear_response_mps);
+                            }
+                            if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+                                && self
+                                    .first_backward_right_lateral_response_time_secs
+                                    .is_none()
+                            {
+                                self.first_backward_right_lateral_response_time_secs =
+                                    Some(sample.time_secs);
+                            }
+                        }
                     }
                     sign if sign < 0.0 => {
                         if self.first_left_lateral_input_time_secs.is_none() {
@@ -5207,8 +5294,45 @@ pub mod eval {
                         {
                             self.first_left_lateral_response_time_secs = Some(sample.time_secs);
                         }
+                        if sample.movement_input_forward_axis < 0.0 {
+                            if self.first_backward_left_lateral_input_time_secs.is_none() {
+                                self.first_backward_left_lateral_input_time_secs =
+                                    Some(sample.time_secs);
+                            }
+                            self.max_backward_left_lateral_response_mps = self
+                                .max_backward_left_lateral_response_mps
+                                .max(sample.lateral_response_mps);
+                            if let Some(rear_response_mps) =
+                                backward_diagonal_rear_response_mps(&sample)
+                            {
+                                self.max_backward_left_rear_response_mps = self
+                                    .max_backward_left_rear_response_mps
+                                    .max(rear_response_mps);
+                            }
+                            if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+                                && self
+                                    .first_backward_left_lateral_response_time_secs
+                                    .is_none()
+                            {
+                                self.first_backward_left_lateral_response_time_secs =
+                                    Some(sample.time_secs);
+                            }
+                        }
                     }
                     _ => {}
+                }
+                if sample.movement_input_forward_axis < 0.0 {
+                    if self.first_backward_lateral_input_time_secs.is_none() {
+                        self.first_backward_lateral_input_time_secs = Some(sample.time_secs);
+                    }
+                    self.max_backward_lateral_response_mps = self
+                        .max_backward_lateral_response_mps
+                        .max(sample.lateral_response_mps);
+                    if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+                        && self.first_backward_lateral_response_time_secs.is_none()
+                    {
+                        self.first_backward_lateral_response_time_secs = Some(sample.time_secs);
+                    }
                 }
             }
             if sample.movement_input_forward_axis < 0.0
@@ -5594,6 +5718,21 @@ pub mod eval {
             let left_lateral_response_latency_secs = response_latency_secs(
                 self.first_left_lateral_input_time_secs,
                 self.first_left_lateral_response_time_secs,
+                scenario,
+            );
+            let backward_lateral_response_latency_secs = response_latency_secs(
+                self.first_backward_lateral_input_time_secs,
+                self.first_backward_lateral_response_time_secs,
+                scenario,
+            );
+            let backward_right_lateral_response_latency_secs = response_latency_secs(
+                self.first_backward_right_lateral_input_time_secs,
+                self.first_backward_right_lateral_response_time_secs,
+                scenario,
+            );
+            let backward_left_lateral_response_latency_secs = response_latency_secs(
+                self.first_backward_left_lateral_input_time_secs,
+                self.first_backward_left_lateral_response_time_secs,
                 scenario,
             );
             let mut checks = vec![
@@ -6210,6 +6349,54 @@ pub mod eval {
                     AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS,
                     "m/s",
                 ));
+                checks.push(EvalCheck::at_most(
+                    "air_control_backward_lateral_response_latency",
+                    backward_lateral_response_latency_secs,
+                    AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
+                    "s",
+                ));
+                checks.push(EvalCheck::at_least(
+                    "air_control_backward_lateral_response",
+                    self.max_backward_lateral_response_mps,
+                    AIR_CONTROL_MIN_BACKWARD_LATERAL_RESPONSE_MPS,
+                    "m/s",
+                ));
+                checks.push(EvalCheck::at_most(
+                    "air_control_backward_right_lateral_response_latency",
+                    backward_right_lateral_response_latency_secs,
+                    AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
+                    "s",
+                ));
+                checks.push(EvalCheck::at_least(
+                    "air_control_backward_right_lateral_response",
+                    self.max_backward_right_lateral_response_mps,
+                    AIR_CONTROL_MIN_BACKWARD_LATERAL_RESPONSE_MPS,
+                    "m/s",
+                ));
+                checks.push(EvalCheck::at_least(
+                    "air_control_backward_right_rear_response",
+                    self.max_backward_right_rear_response_mps,
+                    AIR_CONTROL_MIN_BACKWARD_DIAGONAL_REAR_RESPONSE_MPS,
+                    "m/s",
+                ));
+                checks.push(EvalCheck::at_most(
+                    "air_control_backward_left_lateral_response_latency",
+                    backward_left_lateral_response_latency_secs,
+                    AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
+                    "s",
+                ));
+                checks.push(EvalCheck::at_least(
+                    "air_control_backward_left_lateral_response",
+                    self.max_backward_left_lateral_response_mps,
+                    AIR_CONTROL_MIN_BACKWARD_LATERAL_RESPONSE_MPS,
+                    "m/s",
+                ));
+                checks.push(EvalCheck::at_least(
+                    "air_control_backward_left_rear_response",
+                    self.max_backward_left_rear_response_mps,
+                    AIR_CONTROL_MIN_BACKWARD_DIAGONAL_REAR_RESPONSE_MPS,
+                    "m/s",
+                ));
                 checks.push(EvalCheck::at_least(
                     "air_control_air_brake_speed_drop",
                     self.max_air_brake_speed_drop_mps,
@@ -6345,6 +6532,16 @@ pub mod eval {
                     right_lateral_response_latency_secs,
                     max_left_lateral_response_mps: self.max_left_lateral_response_mps,
                     left_lateral_response_latency_secs,
+                    max_backward_lateral_response_mps: self.max_backward_lateral_response_mps,
+                    backward_lateral_response_latency_secs,
+                    max_backward_right_lateral_response_mps: self
+                        .max_backward_right_lateral_response_mps,
+                    backward_right_lateral_response_latency_secs,
+                    max_backward_right_rear_response_mps: self.max_backward_right_rear_response_mps,
+                    max_backward_left_lateral_response_mps: self
+                        .max_backward_left_lateral_response_mps,
+                    backward_left_lateral_response_latency_secs,
+                    max_backward_left_rear_response_mps: self.max_backward_left_rear_response_mps,
                     max_air_brake_speed_drop_mps: self.max_air_brake_speed_drop_mps,
                     max_post_brake_forward_alignment_mps: self.max_post_brake_forward_alignment_mps,
                     min_target_distance_m: self.min_target_distance_m,
@@ -6544,6 +6741,14 @@ pub mod eval {
         pub right_lateral_response_latency_secs: f32,
         pub max_left_lateral_response_mps: f32,
         pub left_lateral_response_latency_secs: f32,
+        pub max_backward_lateral_response_mps: f32,
+        pub backward_lateral_response_latency_secs: f32,
+        pub max_backward_right_lateral_response_mps: f32,
+        pub backward_right_lateral_response_latency_secs: f32,
+        pub max_backward_right_rear_response_mps: f32,
+        pub max_backward_left_lateral_response_mps: f32,
+        pub backward_left_lateral_response_latency_secs: f32,
+        pub max_backward_left_rear_response_mps: f32,
         pub max_air_brake_speed_drop_mps: f32,
         pub max_post_brake_forward_alignment_mps: f32,
         pub min_target_distance_m: f32,
@@ -6660,8 +6865,8 @@ pub mod eval {
 
     impl EvalMetricsSummary {
         fn to_json(&self, indent: &str) -> String {
-            format!(
-                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_grounded_visual_foot_gap_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"avg_camera_follow_direction_error_degrees\": {},\n{indent}  \"p95_camera_follow_direction_error_degrees\": {},\n{indent}  \"max_camera_follow_direction_error_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_view_yaw_drift_degrees\": {},\n{indent}  \"max_camera_world_yaw_drift_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"avg_desired_body_heading_error_degrees\": {},\n{indent}  \"p95_desired_body_heading_error_degrees\": {},\n{indent}  \"max_desired_body_heading_error_degrees\": {},\n{indent}  \"max_body_yaw_error_step_degrees\": {},\n{indent}  \"body_yaw_oscillation_count\": {},\n{indent}  \"max_desired_heading_alignment_mps\": {},\n{indent}  \"max_lateral_response_mps\": {},\n{indent}  \"lateral_response_latency_secs\": {},\n{indent}  \"max_right_lateral_response_mps\": {},\n{indent}  \"right_lateral_response_latency_secs\": {},\n{indent}  \"max_left_lateral_response_mps\": {},\n{indent}  \"left_lateral_response_latency_secs\": {},\n{indent}  \"max_air_brake_speed_drop_mps\": {},\n{indent}  \"max_post_brake_forward_alignment_mps\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_environment_motion_visual_count\": {},\n{indent}  \"max_environment_motion_offset_m\": {},\n{indent}  \"min_island_terrain_surface_count\": {},\n{indent}  \"min_island_terrain_mesh_vertices\": {},\n{indent}  \"min_island_terrain_color_bands\": {},\n{indent}  \"min_island_terrain_material_weight_bands\": {},\n{indent}  \"min_island_terrain_material_channels\": {},\n{indent}  \"min_island_terrain_material_regions\": {},\n{indent}  \"min_island_terrain_texture_detail_bands\": {},\n{indent}  \"min_island_terrain_relief_range_m\": {},\n{indent}  \"min_island_cliff_color_bands\": {},\n{indent}  \"min_procedural_island_body_count\": {},\n{indent}  \"max_primitive_island_body_count\": {},\n{indent}  \"min_island_body_silhouette_segments\": {},\n{indent}  \"max_avg_island_body_silhouette_segments\": {},\n{indent}  \"max_island_body_mesh_vertices\": {},\n{indent}  \"min_generated_ground_cover_patch_count\": {},\n{indent}  \"min_ground_cover_blade_count\": {},\n{indent}  \"min_ground_cover_mesh_vertices\": {},\n{indent}  \"min_generated_tree_trunk_count\": {},\n{indent}  \"min_generated_tree_canopy_count\": {},\n{indent}  \"min_tree_trunk_mesh_vertices\": {},\n{indent}  \"min_tree_canopy_mesh_vertices\": {},\n{indent}  \"min_detail_biome_palette_count\": {},\n{indent}  \"min_generated_rock_count\": {},\n{indent}  \"min_rock_mesh_vertices\": {},\n{indent}  \"min_generated_weather_cloud_count\": {},\n{indent}  \"min_generated_weather_cloud_bank_count\": {},\n{indent}  \"min_weather_cloud_bank_depth_m\": {},\n{indent}  \"min_weather_cloud_lobe_count\": {},\n{indent}  \"min_max_weather_cloud_lobe_count\": {},\n{indent}  \"min_weather_cloud_mesh_vertices\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_catalog_island_visual_count\": {},\n{indent}  \"max_hidden_island_visual_count\": {},\n{indent}  \"max_resident_island_visual_fraction\": {},\n{indent}  \"max_stream_spawned_visuals_per_frame\": {},\n{indent}  \"max_stream_despawned_visuals_per_frame\": {},\n{indent}  \"total_stream_spawned_visuals\": {},\n{indent}  \"total_stream_despawned_visuals\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"objective_total_count\": {},\n{indent}  \"max_completed_objective_count\": {},\n{indent}  \"final_objective_completed_count\": {},\n{indent}  \"min_objective_distance_m\": {},\n{indent}  \"final_objective_distance_m\": {},\n{indent}  \"objective_complete_samples\": {},\n{indent}  \"max_visual_asset_slot_count\": {},\n{indent}  \"max_gltf_scene_asset_slot_count\": {},\n{indent}  \"max_ready_visual_asset_slot_count\": {},\n{indent}  \"max_placeholder_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_visual_asset_slot_count\": {},\n{indent}  \"max_missing_visual_asset_slot_count\": {},\n{indent}  \"max_queued_visual_asset_scene_count\": {},\n{indent}  \"max_loading_visual_asset_scene_count\": {},\n{indent}  \"max_loaded_visual_asset_scene_count\": {},\n{indent}  \"max_dependency_loaded_visual_asset_scene_count\": {},\n{indent}  \"max_preload_ready_visual_asset_scene_count\": {},\n{indent}  \"max_failed_visual_asset_scene_count\": {},\n{indent}  \"max_spawned_visual_asset_scene_count\": {},\n{indent}  \"max_ready_visual_asset_scene_count\": {},\n{indent}  \"max_always_visual_asset_slot_count\": {},\n{indent}  \"max_stream_window_visual_asset_slot_count\": {},\n{indent}  \"max_near_lod_visual_asset_slot_count\": {},\n{indent}  \"max_far_lod_visual_asset_slot_count\": {},\n{indent}  \"max_weather_visual_asset_slot_count\": {},\n{indent}  \"max_always_preload_ready_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_preload_ready_visual_asset_slot_count\": {},\n{indent}  \"max_declared_animation_clip_count\": {},\n{indent}  \"max_ready_animation_clip_count\": {},\n{indent}  \"max_animation_player_count\": {},\n{indent}  \"max_animation_graph_count\": {},\n{indent}  \"max_power_up_count\": {},\n{indent}  \"min_visible_power_up_count\": {},\n{indent}  \"max_collected_power_up_count\": {},\n{indent}  \"power_up_effect_samples\": {},\n{indent}  \"total_power_up_activations\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
+            let json = format!(
+                "{{\n{indent}  \"sample_count\": {},\n{indent}  \"avg_frame_time_ms\": {},\n{indent}  \"p95_frame_time_ms\": {},\n{indent}  \"p99_frame_time_ms\": {},\n{indent}  \"max_frame_time_ms\": {},\n{indent}  \"horizontal_distance_m\": {},\n{indent}  \"max_altitude_m\": {},\n{indent}  \"min_altitude_m\": {},\n{indent}  \"max_grounded_visual_foot_gap_m\": {},\n{indent}  \"max_speed_mps\": {},\n{indent}  \"max_camera_distance_m\": {},\n{indent}  \"min_camera_surface_clearance_m\": {},\n{indent}  \"max_camera_player_angle_degrees\": {},\n{indent}  \"max_camera_step_distance_m\": {},\n{indent}  \"max_camera_rotation_delta_degrees\": {},\n{indent}  \"max_camera_orbit_alignment_degrees\": {},\n{indent}  \"avg_camera_follow_direction_error_degrees\": {},\n{indent}  \"p95_camera_follow_direction_error_degrees\": {},\n{indent}  \"max_camera_follow_direction_error_degrees\": {},\n{indent}  \"max_abs_camera_view_yaw_degrees\": {},\n{indent}  \"max_camera_view_yaw_drift_degrees\": {},\n{indent}  \"max_camera_world_yaw_drift_degrees\": {},\n{indent}  \"max_camera_obstruction_adjustment_m\": {},\n{indent}  \"max_camera_obstruction_hits\": {},\n{indent}  \"avg_desired_body_heading_error_degrees\": {},\n{indent}  \"p95_desired_body_heading_error_degrees\": {},\n{indent}  \"max_desired_body_heading_error_degrees\": {},\n{indent}  \"max_body_yaw_error_step_degrees\": {},\n{indent}  \"body_yaw_oscillation_count\": {},\n{indent}  \"max_desired_heading_alignment_mps\": {},\n{indent}  \"max_lateral_response_mps\": {},\n{indent}  \"lateral_response_latency_secs\": {},\n{indent}  \"max_right_lateral_response_mps\": {},\n{indent}  \"right_lateral_response_latency_secs\": {},\n{indent}  \"max_left_lateral_response_mps\": {},\n{indent}  \"left_lateral_response_latency_secs\": {},\n{indent}  \"max_backward_lateral_response_mps\": {},\n{indent}  \"backward_lateral_response_latency_secs\": {},\n{indent}  \"max_backward_right_lateral_response_mps\": {},\n{indent}  \"backward_right_lateral_response_latency_secs\": {},\n{indent}  \"max_backward_left_lateral_response_mps\": {},\n{indent}  \"backward_left_lateral_response_latency_secs\": {},\n{indent}  \"max_air_brake_speed_drop_mps\": {},\n{indent}  \"max_post_brake_forward_alignment_mps\": {},\n{indent}  \"min_target_distance_m\": {},\n{indent}  \"final_target_distance_m\": {},\n{indent}  \"min_camera_pitch_degrees\": {},\n{indent}  \"max_camera_pitch_degrees\": {},\n{indent}  \"max_abs_camera_yaw_offset_degrees\": {},\n{indent}  \"min_camera_pitch_offset_degrees\": {},\n{indent}  \"max_camera_pitch_offset_degrees\": {},\n{indent}  \"max_visible_wind_fields\": {},\n{indent}  \"max_active_lift_fields\": {},\n{indent}  \"max_readable_lift_fields\": {},\n{indent}  \"max_sky_island_count\": {},\n{indent}  \"max_active_chunk_count\": {},\n{indent}  \"max_active_island_count\": {},\n{indent}  \"max_near_lod_islands\": {},\n{indent}  \"max_mid_lod_islands\": {},\n{indent}  \"max_far_lod_islands\": {},\n{indent}  \"max_visible_island_terrain_count\": {},\n{indent}  \"max_hidden_island_terrain_count\": {},\n{indent}  \"max_visible_island_impostor_count\": {},\n{indent}  \"max_hidden_island_impostor_count\": {},\n{indent}  \"max_visible_island_detail_count\": {},\n{indent}  \"max_hidden_island_detail_count\": {},\n{indent}  \"max_visible_route_beacon_count\": {},\n{indent}  \"max_weather_cloud_count\": {},\n{indent}  \"max_environment_motion_visual_count\": {},\n{indent}  \"max_environment_motion_offset_m\": {},\n{indent}  \"min_island_terrain_surface_count\": {},\n{indent}  \"min_island_terrain_mesh_vertices\": {},\n{indent}  \"min_island_terrain_color_bands\": {},\n{indent}  \"min_island_terrain_material_weight_bands\": {},\n{indent}  \"min_island_terrain_material_channels\": {},\n{indent}  \"min_island_terrain_material_regions\": {},\n{indent}  \"min_island_terrain_texture_detail_bands\": {},\n{indent}  \"min_island_terrain_relief_range_m\": {},\n{indent}  \"min_island_cliff_color_bands\": {},\n{indent}  \"min_procedural_island_body_count\": {},\n{indent}  \"max_primitive_island_body_count\": {},\n{indent}  \"min_island_body_silhouette_segments\": {},\n{indent}  \"max_avg_island_body_silhouette_segments\": {},\n{indent}  \"max_island_body_mesh_vertices\": {},\n{indent}  \"min_generated_ground_cover_patch_count\": {},\n{indent}  \"min_ground_cover_blade_count\": {},\n{indent}  \"min_ground_cover_mesh_vertices\": {},\n{indent}  \"min_generated_tree_trunk_count\": {},\n{indent}  \"min_generated_tree_canopy_count\": {},\n{indent}  \"min_tree_trunk_mesh_vertices\": {},\n{indent}  \"min_tree_canopy_mesh_vertices\": {},\n{indent}  \"min_detail_biome_palette_count\": {},\n{indent}  \"min_generated_rock_count\": {},\n{indent}  \"min_rock_mesh_vertices\": {},\n{indent}  \"min_generated_weather_cloud_count\": {},\n{indent}  \"min_generated_weather_cloud_bank_count\": {},\n{indent}  \"min_weather_cloud_bank_depth_m\": {},\n{indent}  \"min_weather_cloud_lobe_count\": {},\n{indent}  \"min_max_weather_cloud_lobe_count\": {},\n{indent}  \"min_weather_cloud_mesh_vertices\": {},\n{indent}  \"max_resident_island_visual_count\": {},\n{indent}  \"max_stream_visibility_changes_per_frame\": {},\n{indent}  \"total_stream_visibility_changes\": {},\n{indent}  \"max_catalog_island_visual_count\": {},\n{indent}  \"max_hidden_island_visual_count\": {},\n{indent}  \"max_resident_island_visual_fraction\": {},\n{indent}  \"max_stream_spawned_visuals_per_frame\": {},\n{indent}  \"max_stream_despawned_visuals_per_frame\": {},\n{indent}  \"total_stream_spawned_visuals\": {},\n{indent}  \"total_stream_despawned_visuals\": {},\n{indent}  \"max_entity_count\": {},\n{indent}  \"objective_total_count\": {},\n{indent}  \"max_completed_objective_count\": {},\n{indent}  \"final_objective_completed_count\": {},\n{indent}  \"min_objective_distance_m\": {},\n{indent}  \"final_objective_distance_m\": {},\n{indent}  \"objective_complete_samples\": {},\n{indent}  \"max_visual_asset_slot_count\": {},\n{indent}  \"max_gltf_scene_asset_slot_count\": {},\n{indent}  \"max_ready_visual_asset_slot_count\": {},\n{indent}  \"max_placeholder_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_visual_asset_slot_count\": {},\n{indent}  \"max_missing_visual_asset_slot_count\": {},\n{indent}  \"max_queued_visual_asset_scene_count\": {},\n{indent}  \"max_loading_visual_asset_scene_count\": {},\n{indent}  \"max_loaded_visual_asset_scene_count\": {},\n{indent}  \"max_dependency_loaded_visual_asset_scene_count\": {},\n{indent}  \"max_preload_ready_visual_asset_scene_count\": {},\n{indent}  \"max_failed_visual_asset_scene_count\": {},\n{indent}  \"max_spawned_visual_asset_scene_count\": {},\n{indent}  \"max_ready_visual_asset_scene_count\": {},\n{indent}  \"max_always_visual_asset_slot_count\": {},\n{indent}  \"max_stream_window_visual_asset_slot_count\": {},\n{indent}  \"max_near_lod_visual_asset_slot_count\": {},\n{indent}  \"max_far_lod_visual_asset_slot_count\": {},\n{indent}  \"max_weather_visual_asset_slot_count\": {},\n{indent}  \"max_always_preload_ready_visual_asset_slot_count\": {},\n{indent}  \"max_streaming_preload_ready_visual_asset_slot_count\": {},\n{indent}  \"max_declared_animation_clip_count\": {},\n{indent}  \"max_ready_animation_clip_count\": {},\n{indent}  \"max_animation_player_count\": {},\n{indent}  \"max_animation_graph_count\": {},\n{indent}  \"max_power_up_count\": {},\n{indent}  \"min_visible_power_up_count\": {},\n{indent}  \"max_collected_power_up_count\": {},\n{indent}  \"power_up_effect_samples\": {},\n{indent}  \"total_power_up_activations\": {},\n{indent}  \"target_landing_samples\": {},\n{indent}  \"lifted_samples\": {},\n{indent}  \"readable_lift_samples\": {},\n{indent}  \"unreadable_lift_samples\": {},\n{indent}  \"gliding_samples\": {},\n{indent}  \"launching_samples\": {},\n{indent}  \"grounded_samples\": {}\n{indent}}}",
                 self.sample_count,
                 json_number(self.avg_frame_time_ms),
                 json_number(self.p95_frame_time_ms),
@@ -6698,6 +6903,12 @@ pub mod eval {
                 json_number(self.right_lateral_response_latency_secs),
                 json_number(self.max_left_lateral_response_mps),
                 json_number(self.left_lateral_response_latency_secs),
+                json_number(self.max_backward_lateral_response_mps),
+                json_number(self.backward_lateral_response_latency_secs),
+                json_number(self.max_backward_right_lateral_response_mps),
+                json_number(self.backward_right_lateral_response_latency_secs),
+                json_number(self.max_backward_left_lateral_response_mps),
+                json_number(self.backward_left_lateral_response_latency_secs),
                 json_number(self.max_air_brake_speed_drop_mps),
                 json_number(self.max_post_brake_forward_alignment_mps),
                 json_number(self.min_target_distance_m),
@@ -6810,7 +7021,15 @@ pub mod eval {
                 self.gliding_samples,
                 self.launching_samples,
                 self.grounded_samples,
-            )
+            );
+            let air_brake_key = format!("{indent}  \"max_air_brake_speed_drop_mps\"");
+            let rear_response_metrics = format!(
+                "{indent}  \"max_backward_right_rear_response_mps\": {},\n{indent}  \"max_backward_left_rear_response_mps\": {},\n{}",
+                json_number(self.max_backward_right_rear_response_mps),
+                json_number(self.max_backward_left_rear_response_mps),
+                air_brake_key
+            );
+            json.replacen(&air_brake_key, &rear_response_metrics, 1)
         }
     }
 
@@ -6946,12 +7165,12 @@ pub mod eval {
             };
         }
         if scenario.name == AIR_CONTROL_RESPONSE {
-            let dive = (5.45..=5.75).contains(&t);
+            let dive = (5.75..=6.0).contains(&t);
             return FlightInput {
-                forward: (0.05..=1.55).contains(&t) || (5.9..=6.35).contains(&t),
-                right: (1.0..=2.8).contains(&t),
-                left: (3.0..=4.35).contains(&t),
-                backward: (4.65..=5.7).contains(&t),
+                forward: (0.05..=1.55).contains(&t) || (6.1..=6.45).contains(&t),
+                right: (1.0..=2.45).contains(&t) || (4.0..=4.55).contains(&t),
+                left: (2.65..=3.75).contains(&t) || (4.75..=5.3).contains(&t),
+                backward: (4.0..=5.65).contains(&t),
                 glide: t >= 0.45 && !dive,
                 dive,
                 launch: frame == 1,
@@ -7992,11 +8211,14 @@ pub mod eval {
             assert!(scripted_input(scenario, 1).launch);
             assert!(scripted_input(scenario, 90).forward);
             assert!(scripted_input(scenario, 90).right);
-            assert!(scripted_input(scenario, 150).right);
-            assert!(!scripted_input(scenario, 150).forward);
+            assert!(scripted_input(scenario, 140).right);
+            assert!(!scripted_input(scenario, 140).forward);
             assert!(scripted_input(scenario, 210).left);
+            assert!(scripted_input(scenario, 250).backward);
+            assert!(scripted_input(scenario, 250).right);
             assert!(scripted_input(scenario, 310).backward);
-            assert!(scripted_input(scenario, 365).forward);
+            assert!(scripted_input(scenario, 310).left);
+            assert!(scripted_input(scenario, 370).forward);
             assert_eq!(scripted_camera_input(scenario, 90), CameraInput::default());
             assert_eq!(scripted_camera_input(scenario, 210), CameraInput::default());
             assert_eq!(scripted_camera_input(scenario, 310), CameraInput::default());
@@ -8093,6 +8315,15 @@ pub mod eval {
                 18.0,
                 4.0,
             ));
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                270,
+                Vec3::new(12.0, -2.0, 8.0),
+                Vec2::new(1.0, -1.0),
+                12.0,
+                18.0,
+                4.0,
+            ));
 
             let summary = accumulator.summary(
                 scenario,
@@ -8118,6 +8349,161 @@ pub mod eval {
             assert!(!left_check.passed);
             assert_eq!(summary.metrics.max_right_lateral_response_mps, 20.0);
             assert_eq!(summary.metrics.max_left_lateral_response_mps, 2.0);
+        }
+
+        #[test]
+        fn accumulator_requires_backward_diagonal_air_control_response() {
+            let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+            let mut accumulator = EvalAccumulator::default();
+
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                0,
+                Vec3::new(0.0, 0.0, -18.0),
+                Vec2::new(0.0, 1.0),
+                0.0,
+                18.0,
+                8.0,
+            ));
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                90,
+                Vec3::new(20.0, -2.0, -18.0),
+                Vec2::new(1.0, 0.0),
+                20.0,
+                18.0,
+                4.0,
+            ));
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                210,
+                Vec3::new(-20.0, -2.0, -18.0),
+                Vec2::new(-1.0, 0.0),
+                20.0,
+                18.0,
+                4.0,
+            ));
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                270,
+                Vec3::new(2.0, -2.0, 8.0),
+                Vec2::new(1.0, -1.0),
+                2.0,
+                18.0,
+                4.0,
+            ));
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                320,
+                Vec3::new(-2.0, -2.0, 8.0),
+                Vec2::new(-1.0, -1.0),
+                2.0,
+                18.0,
+                4.0,
+            ));
+
+            let summary = accumulator.summary(
+                scenario,
+                EvalArtifacts {
+                    summary_json: "summary.json".to_string(),
+                    samples_ndjson: "samples.ndjson".to_string(),
+                    screenshot_png: None,
+                    checkpoint_screenshots: Vec::new(),
+                },
+            );
+            let aggregate_check = named_check(&summary, "air_control_backward_lateral_response");
+            let backward_right_check =
+                named_check(&summary, "air_control_backward_right_lateral_response");
+            let backward_left_check =
+                named_check(&summary, "air_control_backward_left_lateral_response");
+
+            assert_eq!(summary.metrics.max_backward_lateral_response_mps, 2.0);
+            assert_eq!(summary.metrics.max_backward_right_lateral_response_mps, 2.0);
+            assert_eq!(summary.metrics.max_backward_left_lateral_response_mps, 2.0);
+            assert!(!aggregate_check.passed);
+            assert!(!backward_right_check.passed);
+            assert!(!backward_left_check.passed);
+        }
+
+        #[test]
+        fn accumulator_requires_backward_diagonal_rear_component() {
+            let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+            let mut accumulator = EvalAccumulator::default();
+            let lateral_only_diagonal_alignment = 12.0 / std::f32::consts::SQRT_2;
+
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                0,
+                Vec3::new(0.0, 0.0, -18.0),
+                Vec2::new(0.0, 1.0),
+                0.0,
+                20.0,
+                8.0,
+            ));
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                90,
+                Vec3::new(20.0, -2.0, -18.0),
+                Vec2::new(1.0, 0.0),
+                20.0,
+                20.0,
+                4.0,
+            ));
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                210,
+                Vec3::new(-20.0, -2.0, -18.0),
+                Vec2::new(-1.0, 0.0),
+                20.0,
+                20.0,
+                4.0,
+            ));
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                270,
+                Vec3::new(12.0, -2.0, 0.0),
+                Vec2::new(1.0, -1.0),
+                12.0,
+                lateral_only_diagonal_alignment,
+                4.0,
+            ));
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                320,
+                Vec3::new(-12.0, -2.0, 0.0),
+                Vec2::new(-1.0, -1.0),
+                12.0,
+                lateral_only_diagonal_alignment,
+                4.0,
+            ));
+
+            let summary = accumulator.summary(
+                scenario,
+                EvalArtifacts {
+                    summary_json: "summary.json".to_string(),
+                    samples_ndjson: "samples.ndjson".to_string(),
+                    screenshot_png: None,
+                    checkpoint_screenshots: Vec::new(),
+                },
+            );
+            let backward_right_lateral_check =
+                named_check(&summary, "air_control_backward_right_lateral_response");
+            let backward_left_lateral_check =
+                named_check(&summary, "air_control_backward_left_lateral_response");
+            let backward_right_rear_check =
+                named_check(&summary, "air_control_backward_right_rear_response");
+            let backward_left_rear_check =
+                named_check(&summary, "air_control_backward_left_rear_response");
+
+            assert!(backward_right_lateral_check.passed);
+            assert!(backward_left_lateral_check.passed);
+            assert!(!backward_right_rear_check.passed);
+            assert!(!backward_left_rear_check.passed);
+            assert!(summary.metrics.max_backward_right_rear_response_mps.abs() < 0.001);
+            assert!(summary.metrics.max_backward_left_rear_response_mps.abs() < 0.001);
+            let summary_json = summary.to_json();
+            assert!(summary_json.contains("\"max_backward_right_rear_response_mps\""));
+            assert!(summary_json.contains("\"max_backward_left_rear_response_mps\""));
         }
 
         #[test]
