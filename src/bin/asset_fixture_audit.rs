@@ -12,9 +12,20 @@ struct Requirement {
     min_materials: u64,
     min_vertices: u64,
     min_triangles: u64,
+    required_name_fragments: &'static [&'static str],
     require_blend_material: bool,
     require_player_clips: bool,
 }
+
+const PLAYER_NAME_FRAGMENTS: &[&str] = &["suit", "skin", "accent"];
+const GLIDER_NAME_FRAGMENTS: &[&str] = &["cloth panel", "spar", "rib", "tether", "grip"];
+const TERRAIN_NAME_FRAGMENTS: &[&str] = &["relief", "cliff", "underside", "landing"];
+const FOLIAGE_NAME_FRAGMENTS: &[&str] = &["trunk", "branch", "canopy", "grass"];
+const ROCK_NAME_FRAGMENTS: &[&str] = &["boulder", "stone", "strata"];
+const WATER_NAME_FRAGMENTS: &[&str] = &["pond", "rim", "ripple", "reed"];
+const ROUTE_MARKER_NAME_FRAGMENTS: &[&str] = &["gate", "mast", "shard", "cairn"];
+const WEATHER_NAME_FRAGMENTS: &[&str] = &["cloud bank", "shadow belly", "cirrus"];
+const IMPOSTOR_NAME_FRAGMENTS: &[&str] = &["terrain", "underside", "rim"];
 
 const REQUIREMENTS: &[Requirement] = &[
     Requirement {
@@ -24,6 +35,7 @@ const REQUIREMENTS: &[Requirement] = &[
         min_materials: 3,
         min_vertices: 72,
         min_triangles: 36,
+        required_name_fragments: PLAYER_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: true,
     },
@@ -34,6 +46,7 @@ const REQUIREMENTS: &[Requirement] = &[
         min_materials: 5,
         min_vertices: 100,
         min_triangles: 120,
+        required_name_fragments: GLIDER_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: false,
     },
@@ -44,6 +57,7 @@ const REQUIREMENTS: &[Requirement] = &[
         min_materials: 4,
         min_vertices: 200,
         min_triangles: 250,
+        required_name_fragments: TERRAIN_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: false,
     },
@@ -54,6 +68,7 @@ const REQUIREMENTS: &[Requirement] = &[
         min_materials: 4,
         min_vertices: 180,
         min_triangles: 250,
+        required_name_fragments: FOLIAGE_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: false,
     },
@@ -64,6 +79,7 @@ const REQUIREMENTS: &[Requirement] = &[
         min_materials: 3,
         min_vertices: 180,
         min_triangles: 250,
+        required_name_fragments: ROCK_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: false,
     },
@@ -74,6 +90,7 @@ const REQUIREMENTS: &[Requirement] = &[
         min_materials: 4,
         min_vertices: 120,
         min_triangles: 120,
+        required_name_fragments: WATER_NAME_FRAGMENTS,
         require_blend_material: true,
         require_player_clips: false,
     },
@@ -84,6 +101,7 @@ const REQUIREMENTS: &[Requirement] = &[
         min_materials: 4,
         min_vertices: 200,
         min_triangles: 300,
+        required_name_fragments: ROUTE_MARKER_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: false,
     },
@@ -94,6 +112,7 @@ const REQUIREMENTS: &[Requirement] = &[
         min_materials: 3,
         min_vertices: 200,
         min_triangles: 300,
+        required_name_fragments: WEATHER_NAME_FRAGMENTS,
         require_blend_material: true,
         require_player_clips: false,
     },
@@ -104,6 +123,7 @@ const REQUIREMENTS: &[Requirement] = &[
         min_materials: 3,
         min_vertices: 120,
         min_triangles: 120,
+        required_name_fragments: IMPOSTOR_NAME_FRAGMENTS,
         require_blend_material: true,
         require_player_clips: false,
     },
@@ -202,6 +222,7 @@ fn audit_fixture(path: &Path, requirement: &Requirement) -> Result<Value, String
     let nodes = array_len(&gltf, "nodes");
     let meshes = array_len(&gltf, "meshes");
     let materials = array_len(&gltf, "materials");
+    let component_names = named_components(&gltf);
     let metrics = geometry_metrics(&gltf);
     let blend_material_count = gltf
         .get("materials")
@@ -265,6 +286,13 @@ fn audit_fixture(path: &Path, requirement: &Requirement) -> Result<Value, String
             "primitives",
         ),
     ];
+    for name_fragment in requirement.required_name_fragments {
+        checks.push(check_bool(
+            "semantic_name_present",
+            has_name_fragment(&component_names, name_fragment),
+            name_fragment,
+        ));
+    }
 
     if requirement.require_blend_material {
         checks.push(check_at_least_u64(
@@ -293,6 +321,7 @@ fn audit_fixture(path: &Path, requirement: &Requirement) -> Result<Value, String
         "node_count": nodes,
         "mesh_count": meshes,
         "material_count": materials,
+        "semantic_name_count": component_names.len(),
         "position_vertices": metrics.position_vertices,
         "indexed_triangles": metrics.indexed_triangles,
         "missing_normal_primitives": metrics.missing_normals,
@@ -301,6 +330,27 @@ fn audit_fixture(path: &Path, requirement: &Requirement) -> Result<Value, String
         "player_named_clip_count": ready_player_clip_count,
         "checks": checks,
     }))
+}
+
+fn named_components(gltf: &Value) -> Vec<String> {
+    ["nodes", "meshes"]
+        .into_iter()
+        .flat_map(|key| {
+            gltf.get(key)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|value| value.get("name").and_then(Value::as_str))
+                .map(|name| name.to_ascii_lowercase())
+        })
+        .collect()
+}
+
+fn has_name_fragment(component_names: &[String], fragment: &str) -> bool {
+    let fragment = fragment.to_ascii_lowercase();
+    component_names
+        .iter()
+        .any(|component_name| component_name.contains(&fragment))
 }
 
 #[derive(Default)]
@@ -447,5 +497,30 @@ fn kind_name(kind: VisualAssetKind) -> &'static str {
         VisualAssetKind::RouteMarker => "route_marker",
         VisualAssetKind::WeatherLayer => "weather_layer",
         VisualAssetKind::DistantImpostor => "distant_impostor",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn semantic_name_fragments_can_match_nodes_or_meshes() {
+        let gltf = json!({
+            "nodes": [
+                {"name": "Readable Landing Soil Strip"},
+                {"name": "World Root"}
+            ],
+            "meshes": [
+                {"name": "Authored Cliff Skirt"},
+                {"name": "Underside Rock Mass"}
+            ]
+        });
+        let names = named_components(&gltf);
+
+        assert!(has_name_fragment(&names, "landing"));
+        assert!(has_name_fragment(&names, "cliff"));
+        assert!(has_name_fragment(&names, "underside"));
+        assert!(!has_name_fragment(&names, "missing route ring"));
     }
 }
