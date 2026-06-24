@@ -122,7 +122,7 @@ pub mod asset_pipeline {
         VisualAssetSpec {
             kind: VisualAssetKind::Glider,
             label: "player glider",
-            gltf_scene_path: "models/player/glider.glb",
+            gltf_scene_path: "models/player/glider.gltf",
             animation_clip_names: &[],
             residency: VisualAssetResidency::Always,
         },
@@ -185,6 +185,12 @@ pub mod asset_pipeline {
     pub const FAR_LOD_VISUAL_ASSET_SLOT_COUNT: usize = 1;
     pub const WEATHER_VISUAL_ASSET_SLOT_COUNT: usize = 1;
     pub const DECLARED_VISUAL_ANIMATION_CLIP_COUNT: usize = PLAYER_ANIMATION_CLIP_NAMES.len();
+    pub const MIN_READY_VISUAL_ASSET_SLOT_COUNT: usize = 1;
+    pub const MIN_LOADED_VISUAL_ASSET_SCENE_COUNT: usize = 1;
+    pub const MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT: usize = 1;
+    pub const MIN_READY_VISUAL_ASSET_SCENE_COUNT: usize = 1;
+    pub const MAX_MISSING_VISUAL_ASSET_SLOT_COUNT: usize =
+        VISUAL_ASSET_SLOT_COUNT - MIN_READY_VISUAL_ASSET_SLOT_COUNT;
 
     pub fn visual_asset_pipeline_metrics(
         specs: &[VisualAssetSpec],
@@ -354,6 +360,12 @@ pub mod asset_pipeline {
                 VISUAL_ASSET_SPECS
                     .iter()
                     .any(|spec| spec.kind == VisualAssetKind::DistantImpostor)
+            );
+            assert!(
+                VISUAL_ASSET_SPECS
+                    .iter()
+                    .any(|spec| spec.kind == VisualAssetKind::Glider
+                        && spec.gltf_scene_path == "models/player/glider.gltf")
             );
         }
 
@@ -3519,7 +3531,10 @@ pub mod eval {
     use crate::{
         asset_pipeline::{
             DECLARED_VISUAL_ANIMATION_CLIP_COUNT, GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
-            STREAMING_VISUAL_ASSET_SLOT_COUNT, VISUAL_ASSET_SLOT_COUNT,
+            MAX_MISSING_VISUAL_ASSET_SLOT_COUNT, MIN_LOADED_VISUAL_ASSET_SCENE_COUNT,
+            MIN_READY_VISUAL_ASSET_SCENE_COUNT, MIN_READY_VISUAL_ASSET_SLOT_COUNT,
+            MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT, STREAMING_VISUAL_ASSET_SLOT_COUNT,
+            VISUAL_ASSET_SLOT_COUNT,
         },
         camera::CameraInput,
         movement::{FlightInput, FlightMode},
@@ -5440,9 +5455,39 @@ pub mod eval {
                     "assets",
                 ),
                 EvalCheck::at_least(
+                    "ready_visual_asset_slot_count",
+                    self.max_ready_visual_asset_slot_count as f32,
+                    MIN_READY_VISUAL_ASSET_SLOT_COUNT as f32,
+                    "assets",
+                ),
+                EvalCheck::at_most(
+                    "missing_visual_asset_slot_count",
+                    self.max_missing_visual_asset_slot_count as f32,
+                    MAX_MISSING_VISUAL_ASSET_SLOT_COUNT as f32,
+                    "assets",
+                ),
+                EvalCheck::at_least(
                     "streaming_visual_asset_slot_count",
                     self.max_streaming_visual_asset_slot_count as f32,
                     thresholds.min_streaming_visual_asset_slot_count as f32,
+                    "assets",
+                ),
+                EvalCheck::at_least(
+                    "loaded_visual_asset_scene_count",
+                    self.max_loaded_visual_asset_scene_count as f32,
+                    MIN_LOADED_VISUAL_ASSET_SCENE_COUNT as f32,
+                    "assets",
+                ),
+                EvalCheck::at_least(
+                    "spawned_visual_asset_scene_count",
+                    self.max_spawned_visual_asset_scene_count as f32,
+                    MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT as f32,
+                    "assets",
+                ),
+                EvalCheck::at_least(
+                    "ready_visual_asset_scene_count",
+                    self.max_ready_visual_asset_scene_count as f32,
+                    MIN_READY_VISUAL_ASSET_SCENE_COUNT as f32,
                     "assets",
                 ),
                 EvalCheck::at_least(
@@ -7710,16 +7755,16 @@ pub mod eval {
                 130,
                 VISUAL_ASSET_SLOT_COUNT,
                 GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
-                0,
-                VISUAL_ASSET_SLOT_COUNT,
+                MIN_READY_VISUAL_ASSET_SLOT_COUNT,
+                MAX_MISSING_VISUAL_ASSET_SLOT_COUNT,
                 STREAMING_VISUAL_ASSET_SLOT_COUNT,
-                VISUAL_ASSET_SLOT_COUNT,
+                MAX_MISSING_VISUAL_ASSET_SLOT_COUNT,
+                MIN_LOADED_VISUAL_ASSET_SCENE_COUNT,
                 0,
+                MIN_LOADED_VISUAL_ASSET_SCENE_COUNT,
                 0,
-                0,
-                0,
-                0,
-                0,
+                MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT,
+                MIN_READY_VISUAL_ASSET_SCENE_COUNT,
                 ALWAYS_VISUAL_ASSET_SLOT_COUNT,
                 STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
                 NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
@@ -7783,6 +7828,44 @@ pub mod eval {
                 .iter()
                 .find(|check| check.name == name)
                 .unwrap_or_else(|| panic!("{name} check exists"))
+        }
+
+        #[test]
+        fn accumulator_gates_authored_asset_readiness() {
+            let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+            let mut sample = content_metric_sample(scenario, 0, 12, 0, 96);
+            sample.ready_visual_asset_slot_count = 0;
+            sample.placeholder_visual_asset_slot_count = VISUAL_ASSET_SLOT_COUNT;
+            sample.missing_visual_asset_slot_count = VISUAL_ASSET_SLOT_COUNT;
+            sample.queued_visual_asset_scene_count = 0;
+            sample.loaded_visual_asset_scene_count = 0;
+            sample.spawned_visual_asset_scene_count = 0;
+            sample.ready_visual_asset_scene_count = 0;
+
+            let mut accumulator = EvalAccumulator::default();
+            accumulator.observe(sample);
+            let summary = accumulator.summary(
+                scenario,
+                EvalArtifacts {
+                    summary_json: "summary.json".to_string(),
+                    samples_ndjson: "samples.ndjson".to_string(),
+                    screenshot_png: None,
+                    checkpoint_screenshots: Vec::new(),
+                },
+            );
+
+            for check_name in [
+                "ready_visual_asset_slot_count",
+                "missing_visual_asset_slot_count",
+                "loaded_visual_asset_scene_count",
+                "spawned_visual_asset_scene_count",
+                "ready_visual_asset_scene_count",
+            ] {
+                assert!(
+                    !named_check(&summary, check_name).passed,
+                    "{check_name} should fail without a loaded authored scene"
+                );
+            }
         }
 
         #[test]
@@ -7996,16 +8079,16 @@ pub mod eval {
                     130,
                     VISUAL_ASSET_SLOT_COUNT,
                     GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
-                    0,
-                    VISUAL_ASSET_SLOT_COUNT,
+                    MIN_READY_VISUAL_ASSET_SLOT_COUNT,
+                    MAX_MISSING_VISUAL_ASSET_SLOT_COUNT,
                     STREAMING_VISUAL_ASSET_SLOT_COUNT,
-                    VISUAL_ASSET_SLOT_COUNT,
+                    MAX_MISSING_VISUAL_ASSET_SLOT_COUNT,
+                    MIN_LOADED_VISUAL_ASSET_SCENE_COUNT,
                     0,
+                    MIN_LOADED_VISUAL_ASSET_SCENE_COUNT,
                     0,
-                    0,
-                    0,
-                    0,
-                    0,
+                    MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT,
+                    MIN_READY_VISUAL_ASSET_SCENE_COUNT,
                     ALWAYS_VISUAL_ASSET_SLOT_COUNT,
                     STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
                     NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
@@ -8082,16 +8165,16 @@ pub mod eval {
                     130,
                     VISUAL_ASSET_SLOT_COUNT,
                     GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
-                    0,
-                    VISUAL_ASSET_SLOT_COUNT,
+                    MIN_READY_VISUAL_ASSET_SLOT_COUNT,
+                    MAX_MISSING_VISUAL_ASSET_SLOT_COUNT,
                     STREAMING_VISUAL_ASSET_SLOT_COUNT,
-                    VISUAL_ASSET_SLOT_COUNT,
+                    MAX_MISSING_VISUAL_ASSET_SLOT_COUNT,
+                    MIN_LOADED_VISUAL_ASSET_SCENE_COUNT,
                     0,
+                    MIN_LOADED_VISUAL_ASSET_SCENE_COUNT,
                     0,
-                    0,
-                    0,
-                    0,
-                    0,
+                    MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT,
+                    MIN_READY_VISUAL_ASSET_SCENE_COUNT,
                     ALWAYS_VISUAL_ASSET_SLOT_COUNT,
                     STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
                     NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
@@ -8169,16 +8252,16 @@ pub mod eval {
                         130,
                         VISUAL_ASSET_SLOT_COUNT,
                         GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
-                        0,
-                        VISUAL_ASSET_SLOT_COUNT,
+                        MIN_READY_VISUAL_ASSET_SLOT_COUNT,
+                        MAX_MISSING_VISUAL_ASSET_SLOT_COUNT,
                         STREAMING_VISUAL_ASSET_SLOT_COUNT,
-                        VISUAL_ASSET_SLOT_COUNT,
+                        MAX_MISSING_VISUAL_ASSET_SLOT_COUNT,
+                        MIN_LOADED_VISUAL_ASSET_SCENE_COUNT,
                         0,
+                        MIN_LOADED_VISUAL_ASSET_SCENE_COUNT,
                         0,
-                        0,
-                        0,
-                        0,
-                        0,
+                        MIN_SPAWNED_VISUAL_ASSET_SCENE_COUNT,
+                        MIN_READY_VISUAL_ASSET_SCENE_COUNT,
                         ALWAYS_VISUAL_ASSET_SLOT_COUNT,
                         STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
                         NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
