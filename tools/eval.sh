@@ -7,6 +7,8 @@ extra_args=()
 min_png_bytes=16384
 screenshot_requested="${NAU_EVAL_SCREENSHOT:-0}"
 no_screenshot_requested="${NAU_EVAL_NO_SCREENSHOT:-0}"
+visual_audit_requested="${NAU_EVAL_VISUAL_AUDIT:-1}"
+visual_audit_path="${output_dir}/visual_audit.json"
 
 file_size_bytes() {
   if stat -f%z "$1" >/dev/null 2>&1; then
@@ -20,10 +22,17 @@ if [[ "${no_screenshot_requested}" == "1" || "${screenshot_requested}" != "1" ]]
   extra_args+=(--eval-no-screenshot)
 fi
 
+rm -f "${visual_audit_path}"
+
+if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]] && ! command -v jq >/dev/null 2>&1; then
+  echo "jq is required for screenshot artifact validation; install jq or run without NAU_EVAL_SCREENSHOT=1" >&2
+  exit 1
+fi
+
 if [[ "${#extra_args[@]}" -gt 0 ]]; then
-  cargo run -- --eval "${scenario}" --eval-output "${output_dir}" "${extra_args[@]}"
+  cargo run --bin nau-engine -- --eval "${scenario}" --eval-output "${output_dir}" "${extra_args[@]}"
 else
-  cargo run -- --eval "${scenario}" --eval-output "${output_dir}"
+  cargo run --bin nau-engine -- --eval "${scenario}" --eval-output "${output_dir}"
 fi
 
 summary="${output_dir}/summary.json"
@@ -39,7 +48,8 @@ if [[ ! -s "${samples}" ]]; then
   exit 1
 fi
 
-if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]] && command -v jq >/dev/null 2>&1; then
+if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]; then
+  screenshot_artifacts=()
   while IFS= read -r artifact; do
     if [[ -z "${artifact}" || "${artifact}" == "null" ]]; then
       continue
@@ -53,7 +63,13 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
       echo "suspiciously small screenshot artifact (${artifact_size} bytes): ${artifact}" >&2
       exit 1
     fi
+    screenshot_artifacts+=("${artifact}")
   done < <(jq -r '.artifacts.screenshot_png, (.artifacts.checkpoint_screenshots[]?)' "${summary}")
+
+  if [[ "${visual_audit_requested}" != "0" && "${#screenshot_artifacts[@]}" -gt 0 ]]; then
+    cargo run --quiet --bin visual_audit -- "${screenshot_artifacts[@]}" \
+      > "${visual_audit_path}"
+  fi
 fi
 
 if command -v jq >/dev/null 2>&1; then
