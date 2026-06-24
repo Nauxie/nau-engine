@@ -566,7 +566,7 @@ pub mod movement {
                 air_steer_min_speed: 16.0,
                 max_bank_degrees: 20.0,
                 turn_rate: 10.0,
-                input_turn_rate_boost: 2.8,
+                input_turn_rate_boost: 4.0,
                 floor_y: 1.2,
             }
         }
@@ -1324,6 +1324,36 @@ pub mod movement {
             assert!(
                 heading_error < 70.0,
                 "expected rapid body-yaw recovery after lateral reversal, got {heading_error} deg"
+            );
+        }
+
+        #[test]
+        fn flight_body_yaw_limits_first_frame_reversal_spike() {
+            let tuning = FlightTuning::default();
+            let facing = Facing::new(Vec3::Z, Vec3::X);
+            let rotation = Transform::from_translation(Vec3::ZERO)
+                .looking_to(facing.right, Vec3::Y)
+                .rotation;
+            let input = FlightInput {
+                left: true,
+                glide: true,
+                ..default()
+            };
+
+            let rotation = face_flight_direction(
+                rotation,
+                Vec3::new(24.0, -2.0, 5.0),
+                input,
+                facing,
+                FlightMode::Gliding,
+                &tuning,
+                1.0 / 60.0,
+            );
+
+            let heading_error = body_heading_error_degrees(rotation, -facing.right);
+            assert!(
+                heading_error < 85.0,
+                "expected first-frame lateral reversal to stay bounded, got {heading_error} deg"
             );
         }
 
@@ -3540,6 +3570,8 @@ pub mod eval {
     const AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS: f32 = 14.0;
     const AIR_CONTROL_MAX_AVG_BODY_HEADING_ERROR_DEGREES: f32 = 55.0;
     const AIR_CONTROL_MAX_P95_BODY_HEADING_ERROR_DEGREES: f32 = 55.0;
+    const AIR_CONTROL_MAX_BODY_HEADING_ERROR_DEGREES: f32 = 85.0;
+    const AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES: f32 = 85.0;
     const AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS: f32 = 6.0;
     const AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES: f32 = 0.01;
     const AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 2.0;
@@ -5606,6 +5638,18 @@ pub mod eval {
                     "deg",
                 ));
                 checks.push(EvalCheck::at_most(
+                    "air_control_max_body_heading_error",
+                    self.max_desired_body_heading_error_degrees,
+                    AIR_CONTROL_MAX_BODY_HEADING_ERROR_DEGREES,
+                    "deg",
+                ));
+                checks.push(EvalCheck::at_most(
+                    "air_control_max_body_yaw_error_step",
+                    self.max_body_yaw_error_step_degrees,
+                    AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES,
+                    "deg",
+                ));
+                checks.push(EvalCheck::at_most(
                     "air_control_body_yaw_oscillation_count",
                     self.body_yaw_oscillation_count as f32,
                     AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS,
@@ -7530,17 +7574,15 @@ pub mod eval {
                     4.0,
                 ));
             }
-            for frame in [90, 210] {
-                accumulator.observe(air_control_metric_sample(
-                    scenario,
-                    frame,
-                    Vec3::new(16.0, -2.0, -18.0),
-                    Vec2::new(1.0, 0.0),
-                    16.0,
-                    18.0,
-                    90.0,
-                ));
-            }
+            accumulator.observe(air_control_metric_sample(
+                scenario,
+                90,
+                Vec3::new(16.0, -2.0, -18.0),
+                Vec2::new(1.0, 0.0),
+                16.0,
+                18.0,
+                90.0,
+            ));
 
             let summary = accumulator.summary(
                 scenario,
@@ -7553,11 +7595,23 @@ pub mod eval {
             );
             let avg_check = named_check(&summary, "air_control_avg_body_heading_error");
             let p95_check = named_check(&summary, "air_control_p95_body_heading_error");
+            let max_check = named_check(&summary, "air_control_max_body_heading_error");
+            let step_check = named_check(&summary, "air_control_max_body_yaw_error_step");
 
             assert!(avg_check.passed);
-            assert_eq!(summary.metrics.p95_desired_body_heading_error_degrees, 90.0);
-            assert_eq!(p95_check.value, 90.0);
-            assert!(!p95_check.passed);
+            assert!(p95_check.passed);
+            assert_eq!(summary.metrics.max_desired_body_heading_error_degrees, 90.0);
+            assert_eq!(max_check.value, 90.0);
+            assert!(!max_check.passed);
+            assert!(
+                summary.metrics.max_body_yaw_error_step_degrees
+                    > AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES
+            );
+            assert_eq!(
+                step_check.value,
+                summary.metrics.max_body_yaw_error_step_degrees
+            );
+            assert!(!step_check.passed);
         }
 
         #[test]
