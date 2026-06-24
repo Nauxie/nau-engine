@@ -18,7 +18,10 @@ const MIN_TERRAIN_TRANSITION_REGION_PROMILLE: u64 = 350;
 const MIN_TERRAIN_HIGHLAND_REGION_PROMILLE: u64 = 180;
 const MIN_TERRAIN_EXPOSED_REGION_PROMILLE: u64 = 150;
 const MIN_TERRAIN_RELIEF_RANGE_M: f64 = 0.8;
+const MIN_TERRAIN_SILHOUETTE_RADIUS_BANDS: u64 = 5;
 const MIN_CLIFF_COLOR_BANDS: u64 = 9;
+const MIN_ISLAND_BODY_VERTICAL_RANGE_M: f64 = 6.5;
+const MIN_ISLAND_BODY_SILHOUETTE_RADIUS_BANDS: u64 = 5;
 const MIN_ISLAND_IMPOSTOR_MESH_VERTICES: u64 = 140;
 const MIN_ISLAND_IMPOSTOR_COLOR_BANDS: u64 = 18;
 const MIN_ISLAND_IMPOSTOR_VERTICAL_RANGE_M: f64 = 8.0;
@@ -79,6 +82,9 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
     let mut csv_channel_mismatch_count = 0u64;
     let mut csv_region_mismatch_count = 0u64;
     let mut min_region_promille = [u64::MAX; TERRAIN_MATERIAL_REGION_COUNT];
+    let mut min_terrain_silhouette_radius_bands = u64::MAX;
+    let mut min_island_body_vertical_range_m = f64::INFINITY;
+    let mut min_island_body_silhouette_radius_bands = u64::MAX;
     let mut min_impostor_vertical_range_m = f64::INFINITY;
     let mut min_impostor_horizontal_radius_bands = u64::MAX;
 
@@ -228,6 +234,17 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
                     obj_vertex_mismatch_count += u64::from(vertex_mismatch);
                     obj_face_mismatch_count += u64::from(face_mismatch);
                     obj_color_mismatch_count += u64::from(color_mismatch);
+                    if mesh_kind == "terrain" {
+                        min_terrain_silhouette_radius_bands =
+                            min_terrain_silhouette_radius_bands.min(obj.silhouette_radius_bands);
+                    }
+                    if mesh_kind == "cliff" || mesh_kind == "underside" {
+                        min_island_body_vertical_range_m =
+                            min_island_body_vertical_range_m.min(obj.vertical_range_m);
+                        min_island_body_silhouette_radius_bands =
+                            min_island_body_silhouette_radius_bands
+                                .min(obj.silhouette_radius_bands);
+                    }
                     if mesh_kind == "impostor" {
                         min_impostor_vertical_range_m =
                             min_impostor_vertical_range_m.min(obj.vertical_range_m);
@@ -244,6 +261,7 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
                         "colored_vertex_count": obj.colored_vertex_count,
                         "vertical_range_m": obj.vertical_range_m,
                         "horizontal_radius_bands": obj.horizontal_radius_bands,
+                        "silhouette_radius_bands": obj.silhouette_radius_bands,
                         "vertex_count_matches_manifest": !vertex_mismatch,
                         "triangle_count_matches_manifest": !face_mismatch,
                         "all_vertices_have_color": !color_mismatch,
@@ -399,6 +417,38 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         MIN_TERRAIN_EXPOSED_REGION_PROMILLE,
         "promille",
     ));
+    let min_terrain_silhouette_radius_bands = if min_terrain_silhouette_radius_bands == u64::MAX {
+        0
+    } else {
+        min_terrain_silhouette_radius_bands
+    };
+    if !min_island_body_vertical_range_m.is_finite() {
+        min_island_body_vertical_range_m = 0.0;
+    }
+    let min_island_body_silhouette_radius_bands =
+        if min_island_body_silhouette_radius_bands == u64::MAX {
+            0
+        } else {
+            min_island_body_silhouette_radius_bands
+        };
+    checks.push(check_at_least_u64(
+        "terrain_silhouette_radius_bands",
+        min_terrain_silhouette_radius_bands,
+        MIN_TERRAIN_SILHOUETTE_RADIUS_BANDS,
+        "bands",
+    ));
+    checks.push(check_at_least_f64(
+        "island_body_vertical_range",
+        min_island_body_vertical_range_m,
+        MIN_ISLAND_BODY_VERTICAL_RANGE_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "island_body_silhouette_radius_bands",
+        min_island_body_silhouette_radius_bands,
+        MIN_ISLAND_BODY_SILHOUETTE_RADIUS_BANDS,
+        "bands",
+    ));
     if !min_impostor_vertical_range_m.is_finite() {
         min_impostor_vertical_range_m = 0.0;
     }
@@ -442,6 +492,7 @@ struct ObjAudit {
     colored_vertex_count: u64,
     vertical_range_m: f64,
     horizontal_radius_bands: u64,
+    silhouette_radius_bands: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -483,6 +534,7 @@ fn audit_obj_text(text: &str) -> ObjAudit {
     }
     let vertical_range_m = vertical_position_range_m(&positions);
     let horizontal_radius_bands = horizontal_radius_band_count(&positions);
+    let silhouette_radius_bands = silhouette_radius_band_count(&positions);
 
     ObjAudit {
         vertex_count,
@@ -490,6 +542,7 @@ fn audit_obj_text(text: &str) -> ObjAudit {
         colored_vertex_count,
         vertical_range_m,
         horizontal_radius_bands,
+        silhouette_radius_bands,
     }
 }
 
@@ -533,6 +586,43 @@ fn horizontal_radius_band_count(positions: &[[f64; 3]]) -> u64 {
         .iter()
         .copied()
         .filter(|radius| *radius > max_radius * 0.08)
+        .map(|radius| ((radius / max_radius) * 24.0).round() as u64)
+        .collect::<HashSet<_>>()
+        .len() as u64
+}
+
+fn silhouette_radius_band_count(positions: &[[f64; 3]]) -> u64 {
+    const ANGULAR_BINS: usize = 32;
+    if positions.len() < 3 {
+        return 0;
+    }
+    let inv_count = 1.0 / positions.len() as f64;
+    let center_x = positions.iter().map(|position| position[0]).sum::<f64>() * inv_count;
+    let center_z = positions.iter().map(|position| position[2]).sum::<f64>() * inv_count;
+    let mut bins = [0.0_f64; ANGULAR_BINS];
+    for position in positions {
+        let x = position[0] - center_x;
+        let z = position[2] - center_z;
+        let radius = (x * x + z * z).sqrt();
+        if radius <= f64::EPSILON {
+            continue;
+        }
+        let mut angle = z.atan2(x);
+        if angle < 0.0 {
+            angle += std::f64::consts::TAU;
+        }
+        let bin = ((angle / std::f64::consts::TAU) * ANGULAR_BINS as f64).floor() as usize;
+        let bin = bin.min(ANGULAR_BINS - 1);
+        bins[bin] = bins[bin].max(radius);
+    }
+    let max_radius = bins.iter().copied().fold(0.0, f64::max);
+    if max_radius <= f64::EPSILON {
+        return 0;
+    }
+
+    bins.iter()
+        .copied()
+        .filter(|radius| *radius > max_radius * 0.5)
         .map(|radius| ((radius / max_radius) * 24.0).round() as u64)
         .collect::<HashSet<_>>()
         .len() as u64
@@ -700,6 +790,7 @@ mod tests {
         assert_eq!(audit.colored_vertex_count, 2);
         assert_eq!(audit.vertical_range_m, 1.0);
         assert_eq!(audit.horizontal_radius_bands, 2);
+        assert_eq!(audit.silhouette_radius_bands, 1);
     }
 
     #[test]
@@ -719,6 +810,10 @@ mod tests {
         assert!(
             audit.horizontal_radius_bands >= 3,
             "radius bands should reflect broad, shoulder, and center mass"
+        );
+        assert!(
+            audit.silhouette_radius_bands >= 2,
+            "silhouette bands should track outer radius variation"
         );
     }
 
@@ -780,6 +875,15 @@ mod tests {
         assert!(!audit_check_passed(
             &report,
             "impostor_horizontal_radius_bands"
+        ));
+        assert!(!audit_check_passed(
+            &report,
+            "terrain_silhouette_radius_bands"
+        ));
+        assert!(!audit_check_passed(&report, "island_body_vertical_range"));
+        assert!(!audit_check_passed(
+            &report,
+            "island_body_silhouette_radius_bands"
         ));
         assert!(
             report
