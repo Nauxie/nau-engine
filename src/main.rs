@@ -15,14 +15,15 @@ use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
+use bevy::scene::SceneInstanceReady;
 use bevy::window::{CompositeAlphaMode, CursorGrabMode, CursorOptions, PrimaryWindow};
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartVisibility, Side, advance_phase,
     part_pose, pose_blend, wing_airflow_strength,
 };
 use nau_engine::asset_pipeline::{
-    VISUAL_ASSET_SPECS, VisualAssetLoadState, VisualAssetPipelineMetrics, VisualAssetSpec,
-    visual_asset_pipeline_metrics_with_load_states,
+    VISUAL_ASSET_SPECS, VisualAssetKind, VisualAssetLoadState, VisualAssetPipelineMetrics,
+    VisualAssetSceneState, VisualAssetSpec, visual_asset_pipeline_metrics_with_runtime_states,
 };
 use nau_engine::camera::{
     CameraControlState, CameraControlTuning, CameraInput, CameraObstruction, FollowCamera,
@@ -462,16 +463,69 @@ struct VisualAssetRegistry {
     slots: Vec<VisualAssetSlot>,
 }
 
+impl VisualAssetRegistry {
+    fn scene_handle(&self, kind: VisualAssetKind) -> Option<Handle<Scene>> {
+        self.slots
+            .iter()
+            .find(|slot| slot.spec.kind == kind)
+            .and_then(|slot| slot.scene_handle.clone())
+    }
+
+    fn mark_scene_spawned(&mut self, kind: VisualAssetKind, entity: Entity) {
+        if let Some(slot) = self.slots.iter_mut().find(|slot| slot.spec.kind == kind) {
+            slot.scene_entity = Some(entity);
+        }
+    }
+
+    fn mark_scene_ready(&mut self, kind: VisualAssetKind) {
+        if let Some(slot) = self.slots.iter_mut().find(|slot| slot.spec.kind == kind) {
+            slot.scene_ready = true;
+        }
+    }
+
+    fn scene_ready(&self, kind: VisualAssetKind) -> bool {
+        self.slots
+            .iter()
+            .find(|slot| slot.spec.kind == kind)
+            .is_some_and(|slot| slot.scene_ready)
+    }
+
+    fn scene_state_for(&self, spec: &VisualAssetSpec) -> VisualAssetSceneState {
+        self.slots
+            .iter()
+            .find(|slot| slot.spec.kind == spec.kind)
+            .map_or(VisualAssetSceneState::NotSpawned, |slot| {
+                if slot.scene_ready {
+                    VisualAssetSceneState::Ready
+                } else if slot.scene_entity.is_some() {
+                    VisualAssetSceneState::Spawned
+                } else {
+                    VisualAssetSceneState::NotSpawned
+                }
+            })
+    }
+}
+
 #[derive(Debug)]
 struct VisualAssetSlot {
     spec: VisualAssetSpec,
     scene_handle: Option<Handle<Scene>>,
+    scene_entity: Option<Entity>,
+    scene_ready: bool,
 }
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
 struct VisualAssetDiagnostics {
     metrics: VisualAssetPipelineMetrics,
 }
+
+#[derive(Component, Clone, Copy, Debug)]
+struct AuthoredVisualScene {
+    kind: VisualAssetKind,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+struct GeneratedPlayerPlaceholder;
 
 #[derive(Component, Clone, Copy, Debug)]
 struct CameraObstacle(CameraObstruction);
@@ -838,6 +892,11 @@ fn remove_existing_dir(path: &Path) -> std::io::Result<()> {
 }
 
 type CameraFollowFilter = (With<Camera3d>, Without<Player>);
+type GeneratedPlayerPlaceholderFilter = (
+    With<GeneratedPlayerPlaceholder>,
+    Without<CharacterPart>,
+    Without<AuthoredVisualScene>,
+);
 
 fn setup(
     mut commands: Commands,
@@ -848,7 +907,11 @@ fn setup(
     mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
     asset_server: Res<AssetServer>,
 ) {
-    commands.insert_resource(prepare_visual_asset_registry(&asset_server));
+    let mut visual_asset_registry = prepare_visual_asset_registry(&asset_server);
+    let player_scene_handle = visual_asset_registry.scene_handle(VisualAssetKind::PlayerCharacter);
+    let glider_scene_handle = visual_asset_registry.scene_handle(VisualAssetKind::Glider);
+    let mut player_scene_entity = None;
+    let mut glider_scene_entity = None;
 
     let suit_material = textured_material(
         &mut images,
@@ -1209,6 +1272,34 @@ fn setup(
             Visibility::Inherited,
         ))
         .with_children(|parent| {
+            if let Some(scene_handle) = player_scene_handle.clone() {
+                let mut scene = parent.spawn((
+                    SceneRoot(scene_handle),
+                    Transform::IDENTITY,
+                    Visibility::Hidden,
+                    AuthoredVisualScene {
+                        kind: VisualAssetKind::PlayerCharacter,
+                    },
+                    Name::new("authored player character scene"),
+                ));
+                scene.observe(mark_authored_scene_ready);
+                player_scene_entity = Some(scene.id());
+            }
+
+            if let Some(scene_handle) = glider_scene_handle.clone() {
+                let mut scene = parent.spawn((
+                    SceneRoot(scene_handle),
+                    Transform::from_xyz(0.0, 1.35, -0.45),
+                    Visibility::Hidden,
+                    AuthoredVisualScene {
+                        kind: VisualAssetKind::Glider,
+                    },
+                    Name::new("authored glider scene"),
+                ));
+                scene.observe(mark_authored_scene_ready);
+                glider_scene_entity = Some(scene.id());
+            }
+
             parent.spawn((
                 Mesh3d(torso_mesh.clone()),
                 MeshMaterial3d(suit_material.clone()),
@@ -1308,8 +1399,18 @@ fn setup(
                 Mesh3d(meshes.add(Cuboid::new(0.18, 0.18, 0.38))),
                 MeshMaterial3d(accent_material),
                 Transform::from_xyz(0.0, 1.15, -0.28),
+                Visibility::Inherited,
+                GeneratedPlayerPlaceholder,
             ));
         });
+
+    if let Some(entity) = player_scene_entity {
+        visual_asset_registry.mark_scene_spawned(VisualAssetKind::PlayerCharacter, entity);
+    }
+    if let Some(entity) = glider_scene_entity {
+        visual_asset_registry.mark_scene_spawned(VisualAssetKind::Glider, entity);
+    }
+    commands.insert_resource(visual_asset_registry);
 
     let follow_camera = FollowCamera::default();
     let initial_camera_direction = Vec3::NEG_Z;
@@ -1380,6 +1481,8 @@ fn prepare_visual_asset_registry(asset_server: &AssetServer) -> VisualAssetRegis
             scene_handle: visual_asset_path_exists(spec.gltf_scene_path).then(|| {
                 asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf_scene_path))
             }),
+            scene_entity: None,
+            scene_ready: false,
         })
         .collect();
 
@@ -1388,6 +1491,16 @@ fn prepare_visual_asset_registry(asset_server: &AssetServer) -> VisualAssetRegis
 
 fn visual_asset_path_exists(asset_path: &str) -> bool {
     Path::new("assets").join(asset_path).is_file()
+}
+
+fn mark_authored_scene_ready(
+    scene_ready: On<SceneInstanceReady>,
+    authored_scenes: Query<&AuthoredVisualScene>,
+    mut registry: ResMut<VisualAssetRegistry>,
+) {
+    if let Ok(scene) = authored_scenes.get(scene_ready.entity) {
+        registry.mark_scene_ready(scene.kind);
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3539,8 +3652,14 @@ fn movement_facing(camera: Option<&Transform>, player_transform: &Transform) -> 
 fn animate_character(
     time: Res<Time>,
     eval: Option<Res<EvalRun>>,
+    visual_assets: Res<VisualAssetRegistry>,
     mut player: Query<(&Velocity, &FlightController, &mut AnimationState), With<Player>>,
-    mut parts: Query<(&CharacterPart, &mut Transform, &mut Visibility)>,
+    mut parts: Query<
+        (&CharacterPart, &mut Transform, &mut Visibility),
+        Without<AuthoredVisualScene>,
+    >,
+    mut authored_scenes: Query<(&AuthoredVisualScene, &mut Visibility), Without<CharacterPart>>,
+    mut generated_placeholders: Query<&mut Visibility, GeneratedPlayerPlaceholderFilter>,
 ) {
     let Ok((velocity, controller, mut animation)) = player.single_mut() else {
         return;
@@ -3549,22 +3668,57 @@ fn animate_character(
     let dt = eval_dt(&time, eval.as_deref());
     animation.phase = advance_phase(animation.phase, velocity.0.length(), dt);
     let blend = pose_blend(dt);
+    let authored_player_ready = visual_assets.scene_ready(VisualAssetKind::PlayerCharacter);
+    let authored_glider_ready = visual_assets.scene_ready(VisualAssetKind::Glider);
 
     for (part, mut transform, mut visibility) in &mut parts {
         let pose = part_pose(part, controller.mode, velocity.0, animation.phase);
         transform.translation = transform.translation.lerp(pose.translation, blend);
         transform.rotation = transform.rotation.slerp(pose.rotation, blend);
 
-        *visibility = match pose.visibility {
-            PartVisibility::Inherited => Visibility::Inherited,
-            PartVisibility::Hidden => Visibility::Hidden,
-            PartVisibility::Visible => Visibility::Visible,
+        let replaced_by_authored_scene = match part.role {
+            CharacterPartRole::Wing(_) => authored_glider_ready,
+            _ => authored_player_ready,
+        };
+
+        *visibility = if replaced_by_authored_scene {
+            Visibility::Hidden
+        } else {
+            match pose.visibility {
+                PartVisibility::Inherited => Visibility::Inherited,
+                PartVisibility::Hidden => Visibility::Hidden,
+                PartVisibility::Visible => Visibility::Visible,
+            }
+        };
+    }
+
+    for (scene, mut visibility) in &mut authored_scenes {
+        let visible = match scene.kind {
+            VisualAssetKind::PlayerCharacter => authored_player_ready,
+            VisualAssetKind::Glider => {
+                authored_glider_ready && controller.mode == FlightMode::Gliding
+            }
+            _ => false,
+        };
+        *visibility = if visible {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    for mut visibility in &mut generated_placeholders {
+        *visibility = if authored_player_ready {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
         };
     }
 }
 
 fn update_glider_airflow_trails(
     time: Res<Time>,
+    visual_assets: Res<VisualAssetRegistry>,
     player: Query<(&Velocity, &FlightController), With<Player>>,
     mut trails: Query<(&GliderAirflowTrail, &mut Transform, &mut Visibility)>,
 ) {
@@ -3573,7 +3727,7 @@ fn update_glider_airflow_trails(
     };
 
     let airflow = wing_airflow_strength(controller.mode, velocity.0);
-    let visible = airflow > 0.04;
+    let visible = airflow > 0.04 && !visual_assets.scene_ready(VisualAssetKind::Glider);
     let pulse = (time.elapsed_secs() * 9.0).sin() * 0.04 * airflow;
 
     for (trail, mut transform, mut visibility) in &mut trails {
@@ -3740,8 +3894,9 @@ fn update_visual_asset_diagnostics(
     registry: Res<VisualAssetRegistry>,
     mut diagnostics: ResMut<VisualAssetDiagnostics>,
 ) {
-    diagnostics.metrics =
-        visual_asset_pipeline_metrics_with_load_states(&VISUAL_ASSET_SPECS, |spec| {
+    diagnostics.metrics = visual_asset_pipeline_metrics_with_runtime_states(
+        &VISUAL_ASSET_SPECS,
+        |spec| {
             registry
                 .slots
                 .iter()
@@ -3749,7 +3904,9 @@ fn update_visual_asset_diagnostics(
                 .map_or(VisualAssetLoadState::Missing, |slot| {
                     visual_asset_load_state(&asset_server, slot)
                 })
-        });
+        },
+        |spec| registry.scene_state_for(spec),
+    );
 }
 
 fn visual_asset_load_state(
@@ -3839,7 +3996,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset scene spawned/ready {} / {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -3878,6 +4035,8 @@ fn update_debug_readout(
         asset_metrics.loading_scene_count,
         asset_metrics.loaded_scene_count,
         asset_metrics.failed_scene_count,
+        asset_metrics.spawned_scene_count,
+        asset_metrics.ready_scene_count,
         asset_metrics.always_slot_count,
         asset_metrics.stream_window_slot_count,
         asset_metrics.near_lod_slot_count,
@@ -4107,6 +4266,8 @@ fn collect_eval_metrics(
         asset_metrics.loading_scene_count,
         asset_metrics.loaded_scene_count,
         asset_metrics.failed_scene_count,
+        asset_metrics.spawned_scene_count,
+        asset_metrics.ready_scene_count,
         asset_metrics.always_slot_count,
         asset_metrics.stream_window_slot_count,
         asset_metrics.near_lod_slot_count,
