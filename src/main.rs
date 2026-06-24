@@ -76,6 +76,12 @@ const TREE_CANOPY_LONGITUDE_SEGMENTS: usize = 12;
 const TREE_TRUNK_SEGMENTS: usize = 8;
 const CLOUD_BANK_LOBES: usize = 7;
 const CLOUD_VEIL_LOBES: usize = 4;
+const AUTHORED_ASSET_PROBE_KINDS: &[VisualAssetKind] = &[
+    VisualAssetKind::IslandRock,
+    VisualAssetKind::RouteMarker,
+    VisualAssetKind::WeatherLayer,
+    VisualAssetKind::DistantImpostor,
+];
 #[cfg(test)]
 const ISLAND_TERRAIN_COLOR_BANDS: usize = 5;
 #[cfg(test)]
@@ -1602,8 +1608,10 @@ fn setup(
     let mut visual_asset_registry = prepare_visual_asset_registry(&asset_server);
     let player_scene_handle = visual_asset_registry.scene_handle(VisualAssetKind::PlayerCharacter);
     let glider_scene_handle = visual_asset_registry.scene_handle(VisualAssetKind::Glider);
+    let authored_probe_scene_handles = authored_asset_probe_scene_handles(&visual_asset_registry);
     let mut player_scene_entity = None;
     let mut glider_scene_entity = None;
+    let mut authored_probe_scene_entities = Vec::with_capacity(authored_probe_scene_handles.len());
 
     let suit_material = textured_material(
         &mut images,
@@ -1967,6 +1975,19 @@ fn setup(
     );
     commands.insert_resource(island_content_diagnostics);
 
+    for (index, (kind, label, scene_handle)) in authored_probe_scene_handles.into_iter().enumerate()
+    {
+        let mut scene = commands.spawn((
+            SceneRoot(scene_handle),
+            authored_asset_probe_transform(index),
+            Visibility::Hidden,
+            AuthoredVisualScene { kind },
+            Name::new(format!("authored {label} probe scene")),
+        ));
+        scene.observe(mark_authored_scene_ready);
+        authored_probe_scene_entities.push((kind, scene.id()));
+    }
+
     commands
         .spawn((
             Transform::from_translation(PLAYER_START),
@@ -2115,6 +2136,9 @@ fn setup(
     if let Some(entity) = glider_scene_entity {
         visual_asset_registry.mark_scene_spawned(VisualAssetKind::Glider, entity);
     }
+    for (kind, entity) in authored_probe_scene_entities {
+        visual_asset_registry.mark_scene_spawned(kind, entity);
+    }
     commands.insert_resource(visual_asset_registry);
 
     let follow_camera = FollowCamera::default();
@@ -2209,6 +2233,29 @@ fn prepare_visual_asset_registry(asset_server: &AssetServer) -> VisualAssetRegis
 
 fn visual_asset_path_exists(asset_path: &str) -> bool {
     Path::new("assets").join(asset_path).is_file()
+}
+
+fn authored_asset_probe_scene_handles(
+    registry: &VisualAssetRegistry,
+) -> Vec<(VisualAssetKind, &'static str, Handle<Scene>)> {
+    AUTHORED_ASSET_PROBE_KINDS
+        .iter()
+        .filter_map(|kind| {
+            registry
+                .slots
+                .iter()
+                .find(|slot| slot.spec.kind == *kind)
+                .and_then(|slot| {
+                    slot.scene_handle
+                        .clone()
+                        .map(|scene_handle| (*kind, slot.spec.label, scene_handle))
+                })
+        })
+        .collect()
+}
+
+fn authored_asset_probe_transform(index: usize) -> Transform {
+    Transform::from_xyz(-140.0 + index as f32 * 8.0, -80.0, 140.0)
 }
 
 #[allow(clippy::too_many_arguments)]
