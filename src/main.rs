@@ -28,8 +28,8 @@ use nau_engine::camera::{
 };
 use nau_engine::diagnostics::frame_ms;
 use nau_engine::environment::{
-    LiftField, WindField, WindFieldKind, active_lift_fields_at, apply_lift_fields,
-    visible_fields_at,
+    GAMEPLAY_LIFT_ROUTE, LiftField, LiftRouteNode, WindField, WindFieldKind, active_lift_fields_at,
+    apply_lift_fields, readable_lift_fields_at, visible_fields_at,
 };
 use nau_engine::eval::{
     EvalAccumulator, EvalArtifacts, EvalSample, EvalScenario, SCENARIO_NAMES, scenario_named,
@@ -118,6 +118,7 @@ fn main() -> AppExit {
             (
                 update_island_stream_visibility,
                 update_weather_drift,
+                update_updraft_guides,
                 update_debug_readout,
                 draw_debug_gizmos,
             )
@@ -182,6 +183,15 @@ struct WeatherDrift {
     bob: f32,
     speed: f32,
     phase: f32,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+struct UpdraftGuide {
+    center: Vec3,
+    radius: f32,
+    height_offset: f32,
+    phase: f32,
+    angular_speed: f32,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -767,6 +777,16 @@ fn setup(
         0.16,
     );
     let cloud_material = cloud_surface_material(&mut materials);
+    let updraft_column_material = updraft_column_material(&mut materials);
+    let updraft_marker_material = emissive_material(
+        &mut images,
+        &mut materials,
+        [62, 198, 244, 210],
+        [20, 118, 184, 210],
+        [178, 246, 255, 240],
+        83,
+        LinearRgba::rgb(0.5, 3.2, 5.8),
+    );
     let torso_mesh = meshes.add(Capsule3d::new(0.4, 1.0));
     let head_mesh = meshes.add(Sphere::new(0.3));
     let arm_mesh = meshes.add(Cuboid::new(0.2, 0.82, 0.2));
@@ -857,10 +877,6 @@ fn setup(
         Name::new("Visual wind ribbon"),
     ));
     commands.spawn((
-        WindField::updraft(Vec3::new(-28.0, 14.0, 24.0), Vec3::new(9.0, 14.0, 9.0), 8.0),
-        Name::new("Visual updraft column"),
-    ));
-    commands.spawn((
         WindField::crosswind(
             Vec3::new(34.0, 10.0, -8.0),
             Vec3::new(18.0, 8.0, 10.0),
@@ -869,32 +885,20 @@ fn setup(
         ),
         Name::new("Visual crosswind volume"),
     ));
-    commands.spawn((
-        WindField::updraft(
-            Vec3::new(24.0, 74.0, -430.0),
-            Vec3::new(18.0, 30.0, 18.0),
-            10.0,
-        ),
-        Name::new("Distant visual updraft column"),
-    ));
-    commands.spawn((
-        LiftField::updraft(
-            Vec3::new(38.0, 68.0, -112.0),
-            Vec3::new(20.0, 34.0, 22.0),
-            28.0,
-            20.0,
-        ),
-        Name::new("Gameplay updraft lift"),
-    ));
-    commands.spawn((
-        LiftField::updraft(
-            Vec3::new(24.0, 74.0, -430.0),
-            Vec3::new(26.0, 42.0, 26.0),
-            24.0,
-            22.0,
-        ),
-        Name::new("Distant gameplay updraft lift"),
-    ));
+    for lift in GAMEPLAY_LIFT_ROUTE {
+        commands.spawn((
+            lift.visual_field(),
+            Name::new(format!("{} visual", lift.name)),
+        ));
+        commands.spawn((lift.lift_field(), Name::new(lift.name)));
+        spawn_updraft_guide(
+            &mut commands,
+            &mut meshes,
+            updraft_column_material.clone(),
+            updraft_marker_material.clone(),
+            lift,
+        );
+    }
 
     spawn_weather_layers(&mut commands, &mut meshes, cloud_material, route.islands());
 
@@ -1127,6 +1131,21 @@ fn cloud_surface_material(materials: &mut Assets<StandardMaterial>) -> Handle<St
     })
 }
 
+fn updraft_column_material(materials: &mut Assets<StandardMaterial>) -> Handle<StandardMaterial> {
+    materials.add(StandardMaterial {
+        base_color: Color::srgba(0.18, 0.74, 1.0, 0.16),
+        emissive: LinearRgba::rgb(0.08, 0.65, 1.4),
+        emissive_exposure_weight: 0.25,
+        alpha_mode: AlphaMode::Blend,
+        cull_mode: None,
+        double_sided: true,
+        unlit: true,
+        perceptual_roughness: 0.32,
+        reflectance: 0.2,
+        ..default()
+    })
+}
+
 fn procedural_surface_texture(
     primary: [u8; 4],
     secondary: [u8; 4],
@@ -1200,6 +1219,49 @@ fn mix_rgba(source: [u8; 4], target: [u8; 4], target_weight: u16) -> [u8; 4] {
         ((source[2] as u16 * source_weight + target[2] as u16 * target_weight) / 255) as u8,
         ((source[3] as u16 * source_weight + target[3] as u16 * target_weight) / 255) as u8,
     ]
+}
+
+fn spawn_updraft_guide(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    column_material: Handle<StandardMaterial>,
+    marker_material: Handle<StandardMaterial>,
+    lift: LiftRouteNode,
+) {
+    let radius = lift.half_extents.x.min(lift.half_extents.z);
+    let height = lift.half_extents.y * 2.0;
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(radius, height))),
+        MeshMaterial3d(column_material),
+        Transform::from_translation(lift.center),
+        Name::new(format!("{} visible column", lift.name)),
+    ));
+
+    let marker_mesh = meshes.add(Sphere::new(0.72));
+    let ring_radius = radius * 0.82;
+    let ring_levels = [-0.78, -0.34, 0.1, 0.54, 0.9];
+    let markers_per_ring = 9;
+
+    for (level_index, level) in ring_levels.into_iter().enumerate() {
+        for marker_index in 0..markers_per_ring {
+            let phase = marker_index as f32 / markers_per_ring as f32 * std::f32::consts::TAU
+                + level_index as f32 * 0.46;
+            let guide = UpdraftGuide {
+                center: lift.center,
+                radius: ring_radius,
+                height_offset: level * lift.half_extents.y,
+                phase,
+                angular_speed: 0.35 + level_index as f32 * 0.04,
+            };
+            commands.spawn((
+                Mesh3d(marker_mesh.clone()),
+                MeshMaterial3d(marker_material.clone()),
+                Transform::from_translation(updraft_guide_position(&guide, 0.0)),
+                guide,
+                Name::new(format!("{} guide mote", lift.name)),
+            ));
+        }
+    }
 }
 
 fn spawn_weather_layers(
@@ -1731,6 +1793,26 @@ fn update_weather_drift(time: Res<Time>, mut clouds: Query<(&WeatherDrift, &mut 
     }
 }
 
+fn update_updraft_guides(time: Res<Time>, mut guides: Query<(&UpdraftGuide, &mut Transform)>) {
+    let elapsed = time.elapsed_secs();
+
+    for (guide, mut transform) in &mut guides {
+        transform.translation = updraft_guide_position(guide, elapsed);
+        transform.rotation = Quat::from_rotation_y(guide.phase + elapsed * guide.angular_speed);
+    }
+}
+
+fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
+    let angle = guide.phase + elapsed * guide.angular_speed;
+    let bob = (elapsed * 1.4 + guide.phase).sin() * 0.35;
+    guide.center
+        + Vec3::new(
+            angle.cos() * guide.radius,
+            guide.height_offset + bob,
+            angle.sin() * guide.radius,
+        )
+}
+
 fn toggle_debug_visuals(keyboard: Res<ButtonInput<KeyCode>>, mut visuals: ResMut<DebugVisuals>) {
     if keyboard.just_pressed(KeyCode::F1) {
         visuals.enabled = !visuals.enabled;
@@ -2170,6 +2252,11 @@ fn collect_eval_metrics(
         visible_fields_at(transform.translation, scene.wind_fields.iter().copied());
     let active_lift_fields =
         active_lift_fields_at(transform.translation, scene.lift_fields.iter().copied());
+    let readable_lift_fields = readable_lift_fields_at(
+        transform.translation,
+        scene.lift_fields.iter().copied(),
+        scene.wind_fields.iter().copied(),
+    );
     let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
     let lod_visuals = scene.stream_diagnostics.counts;
     let sample = EvalSample::new(
@@ -2193,6 +2280,7 @@ fn collect_eval_metrics(
         visible_wind_fields,
         scene.wind_fields.iter().count(),
         active_lift_fields,
+        readable_lift_fields,
         scene.lift_fields.iter().count(),
         scene.route.target_distance(transform.translation),
         scene
