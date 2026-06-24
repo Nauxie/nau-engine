@@ -69,18 +69,18 @@ Use this section for milestone handoffs, not routine worktree changes.
 
 ## Known Issues
 
-- The character is still primitive geometry, not a rigged character asset.
-- Limb posing now has grounded stride, airborne banking, glide posture, and speed-responsive wing flex, but it is still approximate non-skeletal animation.
+- The character now has a self-authored animated glTF fixture, but it is still a simple cuboid stand-in rather than a rigged production character.
+- Limb posing has grounded stride, airborne banking, glide posture, and speed-responsive wing flex for generated fallback geometry; the authored fixture now proves named animation clips and graph readiness but is still approximate non-skeletal animation.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep.
 - Crosswind stream fields are still debug gizmos; updrafts, glider wings, generated trees, clouds, and ponds now have cinematic primitive motion cues, but there are no particles, cloth simulation, or authored environment art assets yet.
 - Sky-island collision follows deterministic terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - Gameplay lift and power-ups are still first rough authored routes; there is no crosswind force, launch-source chain, inventory UI, or authored recovery-route design beyond two marked primitive branch islands.
-- There is no asynchronous asset streaming policy, authored water, authored vegetation, or complete environment asset pipeline yet. The declared glTF slots are measurable, self-authored glider, route-marker, rock, weather-layer, and distant-impostor fixtures now load/spawn/report ready as real `SceneRoot` assets across always, stream-window, weather, and far-LOD residency classes, the player scene can attach a named-clip `AnimationGraph`/`AnimationTransitions` pair when compatible clips exist, and primitives remain the fallback until authored scene instances report ready. Current stream-window terrain residency, detail LOD, procedural island bodies, procedural materials, ground cover, generated branched/tapered/lobed trees, wind-responsive ponds, stones, beacon, denser multi-lobed cloud layers, and landing markers are deterministic generated systems.
+- There is no asynchronous asset streaming policy, authored water, authored vegetation, or complete environment asset pipeline yet. The declared glTF slots are measurable, self-authored player, glider, route-marker, rock, weather-layer, and distant-impostor fixtures now load/spawn/report ready as real `SceneRoot` assets across always, stream-window, weather, and far-LOD residency classes, the player fixture attaches a named-clip `AnimationGraph`/`AnimationTransitions` pair, and primitives remain the fallback until authored scene instances report ready. Current stream-window terrain residency, detail LOD, procedural island bodies, procedural materials, ground cover, generated branched/tapered/lobed trees, wind-responsive ponds, stones, beacon, denser multi-lobed cloud layers, and landing markers are deterministic generated systems.
 - Physics is still custom movement math, not a real collision/rigid body integration.
 
 ## Next Tasks
 
-1. Replace the primitive character/environment and temporary fixture scenes with authored or compatible generated glTF assets that satisfy the declared scene and player animation clip readiness metrics.
+1. Replace the temporary player/environment fixture scenes with authored or compatible production-quality glTF assets that satisfy the declared scene and player animation clip readiness metrics.
 2. Add richer impostors on top of the resident island visual catalog.
 3. Add richer terrain-material identity, vegetation-shape, cloud-depth, and exact route-marker semantic checks to the screenshot audit.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
