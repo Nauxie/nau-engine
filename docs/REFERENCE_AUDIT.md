@@ -73,7 +73,7 @@ Patterns worth adopting:
 - Use the planet/cube-sphere displacement as inspiration for non-heightfield rock masses and underside silhouettes.
 - Keep deterministic tests around generator dimensions and noise bounds. The existing tests only assert coarse shape and value ranges, but that is still the right minimum for NAU's future island generator before adding visual gates.
 
-NAU follow-through from this audit now uses the same broad shape without adding `bevy_generative` as a dependency: deterministic mesh generation writes positions, indices, normals, uvs, vertex colors, and encoded `UV_1` material weights in one pass; island surfaces have denser radial topology; cliff/underside meshes carry measurable strata/color bands; and eval gates now track terrain surface count, mesh vertex floors, vertex-color bands, material-weight bands/channels, relief range, and cliff color-band floors.
+NAU follow-through from this audit now uses the same broad shape without adding `bevy_generative` as a dependency: deterministic mesh generation writes positions, indices, normals, uvs, vertex colors, and encoded `UV_1` material weights in one pass; island surfaces have denser radial topology; cliff/underside meshes carry measurable strata/color bands; eval gates track terrain surface count, mesh vertex floors, vertex-color bands, material-weight bands/channels, relief range, and cliff color-band floors; and `--export-terrain` emits OBJ/CSV/manifest artifacts for offline terrain inspection.
 
 Patterns to reject or replace:
 
@@ -94,7 +94,7 @@ Patterns to reject or replace:
 2. Add or strengthen an eval scenario for diagonal/lateral air steering and braking. Gate average/p95 body-heading error, lateral response, yaw overshoot, and movement-input camera non-coupling.
 3. Keep extending the `bevy_new_3d_rpg` asset/animation shape in stages: NAU now has declared glTF slots, a self-authored glider fixture, `SceneRoot` spawning, scene-instance readiness, named player clip declarations, `Gltf` lookup, `AnimationPlayer` discovery, and `AnimationGraph`/`AnimationTransitions` readiness metrics; the next asset branch should supply compatible character clips and then drive real state transitions.
 4. Adapt Foxtrot's asset preload/resource tracking and render infrastructure once real assets start replacing primitives.
-5. Continue the internal island mesh generator inspired by `bevy_generative`: NAU now has irregular island masks, rim/cliff/underside geometry, computed normals, deterministic vertex-color/strata signals, encoded terrain material-weight semantics, collision surface compatibility, and streaming counters; the next terrain branch should add export/offline inspection tools and richer material identity gates.
+5. Continue the internal island mesh generator inspired by `bevy_generative`: NAU now has irregular island masks, rim/cliff/underside geometry, computed normals, deterministic vertex-color/strata signals, encoded terrain material-weight semantics, collision surface compatibility, streaming counters, and offline OBJ/CSV/manifest export; the next terrain branch should add richer material identity gates.
 6. Add the next visual eval gates for screenshot-level terrain/material identity, vegetation/cloud depth/readability, glTF readiness, and asset residency.
 
 ## License Notes

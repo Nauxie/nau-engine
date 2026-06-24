@@ -27,6 +27,7 @@ The first executable is a simple 3D flight testbed:
 - live debug readout for frame time, speed, altitude, target distance, current route objective, camera pitch/distance/framing angle/motion/obstruction/yaw offset, velocity, aerial power-up visibility/collection/effect state, visual asset slot/load-state/scene-readiness/animation/LOD-residency metrics, visual wind-field count, lift-field count, sky-island count, terrain surface vertex/color/material-weight/relief/cliff-band metrics, procedural-vs-primitive island body counts, island body silhouette and generated tree/cloud mesh complexity, active chunk window, near/mid/far LOD island buckets, visible/hidden terrain, impostor, detail counts, environment-motion count/offset, resident/catalog/hidden island visual pressure, and stream spawn/despawn churn
 - visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
 - authored crosswind fields, a paired gameplay updraft route with aligned visual wind volumes, collectible aerial boost gates with glowing route-ring markers, cinematic lift haze/ribbon/mote cues, and marked recovery branch islands
+- background-safe terrain export for offline inspection, writing per-island terrain/cliff/underside OBJ meshes, terrain material-weight CSV sidecars, and a manifest of mesh/material floors
 - deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state/pose/airflow math
 - scripted eval runs for ground taxi control, mouse camera control, camera yaw/strafe/turn stability, air-control response, baseline traversal, long-glide visibility, updraft lift, branch recovery landing, and island launch-to-landing with traversal, camera, movement-heading/response, objective-progress, aerial power-up collection/effect, frame-time, content-scale, generated terrain mesh/color/material-weight/relief/cliff-band floors, procedural island body, primitive-body, silhouette-complexity, generated tree/cloud shape complexity, asset-slot/load-state/scene-instance readiness, streaming/LOD, spawn/despawn churn, resident pressure, weather-cloud, environment-motion, resident visual, entity-churn, and visible-detail summary metrics plus fixed camera checkpoint screenshots
 
@@ -59,9 +60,12 @@ cargo clippy --all-targets --all-features -- -D warnings
 ./tools/eval.sh branch_recovery_route target/eval/branch_recovery_route
 ./tools/eval.sh long_glide_visibility target/eval/long_glide_visibility
 ./tools/eval.sh island_launch_to_landing target/eval/island_launch_to_landing
+cargo run -- --export-terrain target/terrain_export
 ```
 
 `tools/eval.sh` runs metric-only evals by default and hides the native window during those runs. Use `NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh ...` when checkpoint PNG artifacts and the non-golden visual audit are needed; screenshot evals require `jq` for artifact extraction, disable debug gizmos, and use an opaque window surface so transparent clouds/updrafts cannot composite against other desktop windows. The audit checks image quality plus basic scene composition signals such as per-frame scene coverage, center detail, scene detail tile frequency, flat low-detail scene-tile dominance, player visibility, HUD-text balance, severe border clipping, sequence-level route-marker readability/component identity, route-marker hue telemetry, and sequence-level sky coverage across final and checkpoint screenshots. Set `NAU_EVAL_VISUAL_AUDIT=0` to collect screenshots without the audit.
+
+`cargo run -- --export-terrain target/terrain_export` does not open the native window. It writes `manifest.json`, per-island OBJ meshes, and `*_terrain_material_weights.csv` files so terrain shape, color variation, and material-weight coverage can be inspected outside the live app.
 
 ## Controls
 
