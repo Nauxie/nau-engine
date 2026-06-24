@@ -131,9 +131,9 @@ Current tests cover:
 - `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, and unreadable lift samples so active lift must overlap its paired visible updraft
 - `camera_mouse_control` eval tracks yaw/pitch offsets and obstruction adjustment without player movement
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
-- `camera_strafe_stability` eval tracks lateral movement without camera auto-orbit, including world-yaw drift
+- `camera_strafe_stability` eval tracks right/left lateral movement without camera auto-orbit, including view-yaw and world-yaw drift
 - `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking
-- `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, stronger backward braking, post-brake recovery, desired heading alignment, average/p95/max body-heading error, max body-yaw error step, body-yaw oscillation, follow-direction error distribution, world-yaw drift, and movement-input camera non-coupling
+- `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, stronger total/planar backward braking, post-brake recovery, desired heading alignment, average/p95/max body-heading error, max body-yaw error step, body-yaw oscillation, follow-direction error distribution, view-yaw/world-yaw drift, and movement-input camera non-coupling
 - `long_glide_visibility` eval tracks sustained archipelago traversal, aerial power-up collection/effect samples, and content-scale signals
 
 Future tests should cover:
