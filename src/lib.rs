@@ -3609,12 +3609,12 @@ pub mod eval {
     pub const MAX_RESIDENT_ISLAND_VISUAL_FRACTION: f32 = 0.70;
     const MIN_GENERATED_TREE_TRUNK_COUNT: usize = 12;
     const MIN_GENERATED_TREE_CANOPY_COUNT: usize = 12;
-    const MIN_TREE_TRUNK_MESH_VERTICES: usize = 24;
-    const MIN_TREE_CANOPY_MESH_VERTICES: usize = 200;
+    const MIN_TREE_TRUNK_MESH_VERTICES: usize = 60;
+    const MIN_TREE_CANOPY_MESH_VERTICES: usize = 300;
     const MIN_GENERATED_WEATHER_CLOUD_COUNT: usize = 12;
-    const MIN_WEATHER_CLOUD_LOBE_COUNT: usize = 4;
-    const MIN_MAX_WEATHER_CLOUD_LOBE_COUNT: usize = 7;
-    const MIN_WEATHER_CLOUD_MESH_VERTICES: usize = 160;
+    const MIN_WEATHER_CLOUD_LOBE_COUNT: usize = 6;
+    const MIN_MAX_WEATHER_CLOUD_LOBE_COUNT: usize = 10;
+    const MIN_WEATHER_CLOUD_MESH_VERTICES: usize = 270;
     const MIN_ISLAND_TERRAIN_SURFACE_COUNT: usize = 12;
     const MIN_ISLAND_TERRAIN_MESH_VERTICES: usize = 2305;
     const MIN_ISLAND_TERRAIN_COLOR_BANDS: usize = 5;
@@ -7916,7 +7916,7 @@ pub mod eval {
             )
             .with_content_metrics(12, 2305, 5, 0.8, 9, 12, 0, 96, 96.0, 833)
             .with_terrain_material_metrics(12, 3, 4, 64)
-            .with_generated_visual_shape_metrics(37, 37, 26, 226, 30, 4, 7, 180)
+            .with_generated_visual_shape_metrics(37, 37, 62, 316, 30, 6, 10, 270)
             .with_movement_metrics(
                 yaw_error_degrees,
                 desired_alignment_mps,
@@ -8134,7 +8134,7 @@ pub mod eval {
             let mut accumulator = EvalAccumulator::default();
             accumulator.observe(
                 content_metric_sample(scenario, 0, 12, 0, 96)
-                    .with_generated_visual_shape_metrics(12, 12, 26, 226, 12, 4, 7, 180),
+                    .with_generated_visual_shape_metrics(12, 12, 62, 316, 12, 6, 10, 270),
             );
             accumulator.observe(
                 content_metric_sample(scenario, 10, 12, 0, 96)
@@ -8459,7 +8459,7 @@ pub mod eval {
                 sample
                     .with_content_metrics(12, 2305, 5, 0.8, 9, 12, 0, 96, 96.0, 833)
                     .with_terrain_material_metrics(12, 3, 4, 64)
-                    .with_generated_visual_shape_metrics(37, 37, 26, 226, 30, 4, 7, 180),
+                    .with_generated_visual_shape_metrics(37, 37, 62, 316, 30, 6, 10, 270),
             );
         }
     }
