@@ -1,12 +1,12 @@
 # Project Status
 
-Last updated: 2026-06-23
+Last updated: 2026-06-24
 
 ## Current Milestone
 
 First sky-island traversal slice.
 
-The project has a Bevy sandbox with a primitive humanoid, playable ground movement, deployable glider wings, one-launch-per-airtime vertical burst, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, procedural materials, drifting cloud banks, authored visual wind/updraft fields, separate gameplay updraft lift fields, a 12-island floating route with generated terrain relief plus deterministic props, and scripted evals for ground taxi control, mouse camera control, camera turn stability, baseline traversal, updraft lift, long-glide visibility, and island launch-to-landing.
+The project has a Bevy sandbox with a primitive humanoid, playable ground movement, deployable glider wings, one-launch-per-airtime vertical burst, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, procedural materials, drifting cloud banks, authored visual wind/updraft fields, separate gameplay updraft lift fields, a 12-island floating route with generated terrain relief plus deterministic props, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, baseline traversal, updraft lift, long-glide visibility, and island launch-to-landing.
 
 ## Last Known Good
 
@@ -49,11 +49,13 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `ground_taxi_control` eval proves pre-launch camera-relative WASD moves the player across the launch island without leaving grounded mode.
 - `camera_mouse_control` eval proves scripted mouse X/Y deltas exercise yaw and both pitch directions without hiding camera regressions behind player movement.
 - `camera_yaw_stability` eval proves a small yaw impulse does not keep rotating after mouse input stops.
+- `camera_strafe_stability` eval proves `A`/`D` movement does not auto-orbit the camera.
 - `camera_turn_stability` eval proves rapid airborne turns and backward air-braking stay within camera step/rotation thresholds.
 - `updraft_route` eval proves a scripted route enters a gameplay lift field and gains altitude beyond the normal route ceiling.
+- `long_glide_visibility` eval proves sustained traversal across the larger archipelago while preserving content-scale and LOD signals.
 - `island_launch_to_landing` eval proves the scripted route reaches and lands on the target island.
 - Metric-only evals hide the native window by default; screenshot evals are explicit via `NAU_EVAL_SCREENSHOT=1`.
-- Screenshot evals run a non-golden visual audit for resolution, exposure, contrast, color variety, and edge density when launched through `tools/eval.sh`.
+- Screenshot evals run a non-golden visual audit for resolution, exposure, contrast, color variety, edge density, sky/scene balance, center-scene detail, and HUD-text dominance when launched through `tools/eval.sh`.
 - Eval summaries now include camera surface clearance, camera-to-player framing angle, camera step/rotation deltas, camera orbit alignment, obstruction adjustment/hits, camera yaw/pitch offsets, checkpoint screenshot paths, max scene entity count, weather cloud count, hidden/resident island visual counts, and stream visibility churn so camera/control/content/streaming regressions are visible in metrics.
 
 ## Known Issues
@@ -69,7 +71,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 
 ## Next Tasks
 
-1. Broaden screenshot audits toward semantic player, terrain, clipping, and route-readability checks.
+1. Extend screenshot audits toward explicit player visibility, severe clipping, and route-marker readability checks.
 2. Tune gameplay updraft placement, readability, and route recovery.
 3. Promote stream-window counters into actual terrain despawn and asset streaming.
 4. Replace the primitive character/environment with a glTF asset pipeline once the traversal/render targets stop moving.

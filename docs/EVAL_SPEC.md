@@ -129,14 +129,13 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - scripted launch, glide, and steering into the gameplay lift field
 - the route must register active lift samples
 - max altitude must exceed the normal route ceiling
-- baseline and island routes must not accidentally hit the lift field
 
 `long_glide_visibility` is the larger-archipelago traversal eval:
 
 - fixed spawn on the launch island
 - scripted launch, glide, and wide steering across the expanded island chain
 - the route must cover hundreds of meters without leaving camera thresholds
-- the distant gameplay updraft must keep altitude high enough for a sustained glide
+- the route must keep altitude high enough for a sustained glide across distant islands
 - sky-island, active chunk, LOD bucket, and entity-count thresholds must catch accidental content or scale-signal collapse
 
 `camera_mouse_control` is the camera-input regression test:
@@ -173,7 +172,7 @@ cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --ev
 - camera view yaw must stay near the starting heading so strafe velocity cannot auto-orbit the camera
 - max speed and grounded samples must prove the route was not a no-op
 
-The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable and isolated. The long-glide route guards the first larger-map slice before actual streaming, despawn, or impostors exist. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss. The yaw-stability route guards against persistent mouse yaw being fed back into the camera every frame. The strafe-stability route guards against `A`/`D` movement being treated as camera orbit input. The turn-stability route guards rapid airborne direction changes and backward air braking.
+The baseline route remains a fast smoke test. The island route is the stronger signal for traversal/content regressions. The ground taxi route guards the pre-launch controls that airborne evals can miss. The updraft route proves the first gameplay power-up remains measurable. The long-glide route guards the first larger-map slice before real despawn, asset streaming, or richer impostor work exists. The mouse-camera route guards the control surface that manual play will feel immediately but movement-only evals miss. The yaw-stability route guards against persistent mouse yaw being fed back into the camera every frame. The strafe-stability route guards against `A`/`D` movement being treated as camera orbit input. The turn-stability route guards rapid airborne direction changes and backward air braking.
 
 ## Artifacts
 
@@ -186,7 +185,7 @@ Each run writes to the eval output directory:
 - `visual_audit.json`: non-golden image audit for screenshot evals run through `tools/eval.sh` unless `NAU_EVAL_VISUAL_AUDIT=0` is set.
 
 The summary is the primary artifact for agents. Screenshots are for visual review and should not be treated as pixel-perfect golden images.
-`tools/eval.sh` checks that declared PNG artifacts exist, are large enough, and pass a lightweight visual audit for resolution, nonblack/nonwhite exposure, luma variance, color variety, and edge density. The audit catches gross render failures; it does not prove good composition or AAA-quality art direction.
+`tools/eval.sh` checks that declared PNG artifacts exist, are large enough, and pass a lightweight visual audit for resolution, nonblack/nonwhite exposure, luma variance, color variety, edge density, top-sky coverage, lower-scene coverage, center-scene coverage, center detail, and HUD-text dominance. The audit catches gross render and composition failures; it does not prove exact player visibility, route-marker readability, or AAA-quality art direction.
 
 ## Sample Fields
 
@@ -366,14 +365,14 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 
 - Metric-only evals hide the native Bevy window, but still instantiate the window/rendering stack.
 - Screenshot evals still need a visible native Bevy window.
-- Screenshot evals now run a lightweight image audit, but semantic composition, player visibility, terrain identity, and art quality still need human/agent inspection.
+- Screenshot evals now run a lightweight image and scene-composition audit, but exact player visibility, terrain identity, route-marker readability, and art quality still need human/agent inspection.
 - There is no simulation-only binary yet.
 - Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
 - Island collision follows deterministic authored terrain relief, but it is still a route-surface clamp rather than full rigid-body physics.
 - `active_chunk_count` and `active_island_count` drive terrain visibility, but they do not despawn entities or load assets yet.
 - LOD buckets drive visible island detail, inactive chunks swap full terrain for cheap impostors, and hidden/resident/churn counters now quantify how much work remains before real streaming.
-- The weather-cloud counter verifies that cloud-bank entities exist, and the screenshot audit catches gross visual failure, but neither proves atmosphere, fog, materials, and clouds look correct.
+- The weather-cloud counter verifies that cloud-bank entities exist, and the screenshot audit catches gross visual/composition failure, but neither proves atmosphere, fog, materials, and clouds look correct.
 - `entity_count` is still a coarse scene-scale proxy, not a streaming health metric, because inactive visuals are hidden rather than despawned.
 - Summary JSON is emitted by small local helpers rather than a JSON serialization crate to keep the harness dependency-free.
 
-These are acceptable for the current harness. The next meaningful upgrades are real chunk despawn counters, semantic visual checks for player/terrain/route readability, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
+These are acceptable for the current harness. The next meaningful upgrades are real chunk despawn counters, explicit visual checks for player and route-marker readability, and a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
