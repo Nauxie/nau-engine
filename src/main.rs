@@ -181,6 +181,7 @@ fn main() -> AppExit {
                 update_mouse_look_capture,
                 update_camera_control,
                 animate_character,
+                link_ready_authored_animations,
                 update_authored_player_animation,
                 update_glider_airflow_trails,
                 follow_camera,
@@ -634,20 +635,6 @@ impl VisualAssetRegistry {
             .and_then(|slot| slot.scene_handle.clone())
     }
 
-    fn gltf_handle(&self, kind: VisualAssetKind) -> Option<Handle<Gltf>> {
-        self.slots
-            .iter()
-            .find(|slot| slot.spec.kind == kind)
-            .and_then(|slot| slot.gltf_handle.clone())
-    }
-
-    fn spec(&self, kind: VisualAssetKind) -> Option<VisualAssetSpec> {
-        self.slots
-            .iter()
-            .find(|slot| slot.spec.kind == kind)
-            .map(|slot| slot.spec)
-    }
-
     fn mark_scene_spawned(&mut self, kind: VisualAssetKind, entity: Entity) {
         if let Some(slot) = self.slots.iter_mut().find(|slot| slot.spec.kind == kind) {
             slot.scene_entity = Some(entity);
@@ -692,6 +679,25 @@ impl VisualAssetRegistry {
         }
     }
 
+    fn pending_animation_links(&self) -> Vec<PendingAuthoredAnimationLink> {
+        self.slots
+            .iter()
+            .filter(|slot| {
+                slot.scene_ready
+                    && !slot.animation_graph_ready
+                    && !slot.spec.animation_clip_names.is_empty()
+            })
+            .filter_map(|slot| {
+                Some(PendingAuthoredAnimationLink {
+                    kind: slot.spec.kind,
+                    spec: slot.spec,
+                    scene_entity: slot.scene_entity?,
+                    gltf_handle: slot.gltf_handle.clone()?,
+                })
+            })
+            .collect()
+    }
+
     fn scene_state_for(&self, spec: &VisualAssetSpec) -> VisualAssetSceneState {
         self.slots
             .iter()
@@ -731,6 +737,31 @@ struct VisualAssetSlot {
     animation_player_entity: Option<Entity>,
     ready_animation_clip_count: usize,
     animation_graph_ready: bool,
+}
+
+#[derive(Clone)]
+struct PendingAuthoredAnimationLink {
+    kind: VisualAssetKind,
+    spec: VisualAssetSpec,
+    scene_entity: Entity,
+    gltf_handle: Handle<Gltf>,
+}
+
+#[derive(Debug)]
+struct NamedAnimationClipResolution {
+    clips: Vec<Handle<AnimationClip>>,
+    expected_clip_count: usize,
+    missing_clip_names: Vec<&'static str>,
+}
+
+impl NamedAnimationClipResolution {
+    fn ready_clip_count(&self) -> usize {
+        self.clips.len()
+    }
+
+    fn is_complete(&self) -> bool {
+        self.ready_clip_count() == self.expected_clip_count && self.missing_clip_names.is_empty()
+    }
 }
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
@@ -2304,10 +2335,20 @@ fn authored_asset_probe_transform(index: usize) -> Transform {
     Transform::from_xyz(-140.0 + index as f32 * 8.0, -80.0, 140.0)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn mark_authored_scene_ready(
     scene_ready: On<SceneInstanceReady>,
     authored_scenes: Query<&AuthoredVisualScene>,
+    mut registry: ResMut<VisualAssetRegistry>,
+) {
+    let Ok(scene) = authored_scenes.get(scene_ready.entity) else {
+        return;
+    };
+
+    registry.mark_scene_ready(scene.kind);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn link_ready_authored_animations(
     children: Query<&Children>,
     animation_player_entities: Query<Entity, With<AnimationPlayer>>,
     mut animation_players: Query<&mut AnimationPlayer>,
@@ -2316,52 +2357,58 @@ fn mark_authored_scene_ready(
     mut registry: ResMut<VisualAssetRegistry>,
     mut commands: Commands,
 ) {
-    let Ok(scene) = authored_scenes.get(scene_ready.entity) else {
-        return;
-    };
-    let kind = scene.kind;
-
-    registry.mark_scene_ready(kind);
-
-    let Some(spec) = registry.spec(kind) else {
-        return;
-    };
-    if spec.animation_clip_names.is_empty() {
-        return;
+    let pending_links = registry.pending_animation_links();
+    for pending in pending_links {
+        link_ready_authored_animation(
+            pending,
+            &children,
+            &animation_player_entities,
+            &mut animation_players,
+            &gltfs,
+            &mut animation_graphs,
+            &mut registry,
+            &mut commands,
+        );
     }
+}
 
-    let Some(animation_player_entity) = children
-        .iter_descendants(scene_ready.entity)
-        .find(|entity| animation_player_entities.get(*entity).is_ok())
+#[allow(clippy::too_many_arguments)]
+fn link_ready_authored_animation(
+    pending: PendingAuthoredAnimationLink,
+    children: &Query<&Children>,
+    animation_player_entities: &Query<Entity, With<AnimationPlayer>>,
+    animation_players: &mut Query<&mut AnimationPlayer>,
+    gltfs: &Assets<Gltf>,
+    animation_graphs: &mut Assets<AnimationGraph>,
+    registry: &mut VisualAssetRegistry,
+    commands: &mut Commands,
+) {
+    let Some(animation_player_entity) =
+        find_descendant_animation_player(pending.scene_entity, children, animation_player_entities)
     else {
         return;
     };
 
-    let Some(gltf_handle) = registry.gltf_handle(kind) else {
-        registry.mark_animation_player_linked(kind, animation_player_entity, 0);
+    let Some(gltf) = gltfs.get(&pending.gltf_handle) else {
         return;
     };
-    let Some(gltf) = gltfs.get(&gltf_handle) else {
-        registry.mark_animation_player_linked(kind, animation_player_entity, 0);
-        return;
-    };
+    let clip_resolution = resolve_named_animation_clips(pending.spec.animation_clip_names, gltf);
+    registry.mark_animation_player_linked(
+        pending.kind,
+        animation_player_entity,
+        clip_resolution.ready_clip_count(),
+    );
 
-    let clips = spec
-        .animation_clip_names
-        .iter()
-        .filter_map(|clip_name| gltf.named_animations.get(*clip_name).cloned())
-        .collect::<Vec<_>>();
-    registry.mark_animation_player_linked(kind, animation_player_entity, clips.len());
-    if clips.len() != spec.animation_clip_names.len() {
+    if !clip_resolution.is_complete() {
         return;
     }
 
     let Ok(mut animation_player) = animation_players.get_mut(animation_player_entity) else {
         return;
     };
-    let (animation_graph, animation_nodes) = AnimationGraph::from_clips(clips);
+    let (animation_graph, animation_nodes) = AnimationGraph::from_clips(clip_resolution.clips);
     let graph_handle = animation_graphs.add(animation_graph);
-    let player_animation = if kind == VisualAssetKind::PlayerCharacter {
+    let player_animation = if pending.kind == VisualAssetKind::PlayerCharacter {
         let Ok(nodes) = <[AnimationNodeIndex; 6]>::try_from(animation_nodes.as_slice()) else {
             return;
         };
@@ -2387,7 +2434,64 @@ fn mark_authored_scene_ready(
             .entity(animation_player_entity)
             .insert(player_animation);
     }
-    registry.mark_animation_graph_ready(kind, animation_player_entity, animation_nodes.len());
+    registry.mark_animation_graph_ready(
+        pending.kind,
+        animation_player_entity,
+        animation_nodes.len(),
+    );
+}
+
+fn find_descendant_animation_player(
+    scene_entity: Entity,
+    children: &Query<&Children>,
+    animation_player_entities: &Query<Entity, With<AnimationPlayer>>,
+) -> Option<Entity> {
+    children
+        .iter_descendants(scene_entity)
+        .find(|entity| animation_player_entities.get(*entity).is_ok())
+}
+
+fn resolve_named_animation_clips(
+    animation_clip_names: &'static [&'static str],
+    gltf: &Gltf,
+) -> NamedAnimationClipResolution {
+    let mut clips = Vec::with_capacity(animation_clip_names.len());
+    let mut missing_clip_names = Vec::new();
+    for clip_name in animation_clip_names {
+        if let Some(clip) = gltf.named_animations.get(*clip_name) {
+            clips.push(clip.clone());
+        } else {
+            missing_clip_names.push(*clip_name);
+        }
+    }
+
+    NamedAnimationClipResolution {
+        clips,
+        expected_clip_count: animation_clip_names.len(),
+        missing_clip_names,
+    }
+}
+
+#[cfg(test)]
+fn resolve_named_animation_clip_handles(
+    animation_clip_names: &'static [&'static str],
+    named_animations: &HashMap<String, Handle<AnimationClip>>,
+) -> NamedAnimationClipResolution {
+    let mut clips = Vec::with_capacity(animation_clip_names.len());
+    let mut missing_clip_names = Vec::new();
+    for clip_name in animation_clip_names {
+        if let Some(clip) = named_animations.get(*clip_name) {
+            clips.push(clip.clone());
+        } else {
+            missing_clip_names.push(*clip_name);
+        }
+    }
+
+    NamedAnimationClipResolution {
+        clips,
+        expected_clip_count: animation_clip_names.len(),
+        missing_clip_names,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -6397,6 +6501,23 @@ mod tests {
         assert_eq!(AuthoredPlayerClip::Glide.index(), 3);
         assert_eq!(AuthoredPlayerClip::AirBrake.index(), 4);
         assert_eq!(AuthoredPlayerClip::Land.index(), 5);
+    }
+
+    #[test]
+    fn named_animation_clip_resolution_reports_missing_clips() {
+        let mut named_animations = HashMap::new();
+        named_animations.insert("Idle_Loop".to_string(), Handle::<AnimationClip>::default());
+        named_animations.insert("Glide_Loop".to_string(), Handle::<AnimationClip>::default());
+
+        let resolution = resolve_named_animation_clip_handles(
+            &["Idle_Loop", "Jog_Fwd_Loop", "Glide_Loop"],
+            &named_animations,
+        );
+
+        assert_eq!(resolution.ready_clip_count(), 2);
+        assert_eq!(resolution.expected_clip_count, 3);
+        assert_eq!(resolution.missing_clip_names, vec!["Jog_Fwd_Loop"]);
+        assert!(!resolution.is_complete());
     }
 
     #[test]
