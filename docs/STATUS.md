@@ -10,14 +10,15 @@ The project has a Bevy sandbox with a primitive humanoid, playable ground moveme
 
 ## Last Known Good
 
-- Commit: `feca3ee`
-- Merged PR: `#28` - Add asset streaming and LOD counters
+- Commit: `ccbcca9`
+- Merged PR: `#29` - Add aerial boost gate route
 - Verification:
   - `cargo fmt --all --check`
   - `cargo check`
   - `cargo test`
   - `cargo clippy --all-targets --all-features -- -D warnings`
-  - metric-only eval suite across baseline, ground taxi, camera control/stability, updraft, long-glide, and landing scenarios
+  - metric-only eval suite across baseline, ground taxi, camera control/stability, updraft, branch recovery, long-glide, and landing scenarios
+  - screenshot eval for long-glide route with visual audit
 
 ## Active Work
 
