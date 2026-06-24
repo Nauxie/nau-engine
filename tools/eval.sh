@@ -8,8 +8,11 @@ min_png_bytes=16384
 screenshot_requested="${NAU_EVAL_SCREENSHOT:-0}"
 no_screenshot_requested="${NAU_EVAL_NO_SCREENSHOT:-0}"
 visual_audit_requested="${NAU_EVAL_VISUAL_AUDIT:-1}"
+asset_audit_requested="${NAU_EVAL_ASSET_AUDIT:-1}"
 visual_audit_path="${output_dir}/visual_audit.json"
+asset_audit_path="${output_dir}/asset_fixture_audit.json"
 visual_audit_status=0
+asset_audit_status=0
 
 file_size_bytes() {
   if stat -f%z "$1" >/dev/null 2>&1; then
@@ -23,7 +26,7 @@ if [[ "${no_screenshot_requested}" == "1" || "${screenshot_requested}" != "1" ]]
   extra_args+=(--eval-no-screenshot)
 fi
 
-rm -f "${visual_audit_path}"
+rm -f "${visual_audit_path}" "${asset_audit_path}"
 
 if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]] && ! command -v jq >/dev/null 2>&1; then
   echo "jq is required for screenshot artifact validation; install jq or run without NAU_EVAL_SCREENSHOT=1" >&2
@@ -47,6 +50,13 @@ fi
 if [[ ! -s "${samples}" ]]; then
   echo "missing eval samples: ${samples}" >&2
   exit 1
+fi
+
+if [[ "${asset_audit_requested}" != "0" ]]; then
+  set +e
+  cargo run --quiet --bin asset_fixture_audit > "${asset_audit_path}"
+  asset_audit_status=$?
+  set -e
 fi
 
 if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]; then
@@ -89,4 +99,13 @@ if (( visual_audit_status != 0 )); then
       "${visual_audit_path}" >&2 || true
   fi
   exit "${visual_audit_status}"
+fi
+
+if (( asset_audit_status != 0 )); then
+  echo "asset fixture audit failed: ${asset_audit_path}" >&2
+  if command -v jq >/dev/null 2>&1 && [[ -s "${asset_audit_path}" ]]; then
+    jq '{passed, checks, failed_fixtures: [.fixtures[] | select(.passed == false) | {kind, path, checks: [.checks[] | select(.passed == false)]}]}' \
+      "${asset_audit_path}" >&2 || true
+  fi
+  exit "${asset_audit_status}"
 fi
