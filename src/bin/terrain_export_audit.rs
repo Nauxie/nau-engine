@@ -13,6 +13,7 @@ const MIN_TERRAIN_MATERIAL_WEIGHT_BANDS: u64 = 24;
 const MIN_TERRAIN_MATERIAL_CHANNELS: u64 = 3;
 const MIN_TERRAIN_MATERIAL_REGIONS: u64 = 4;
 const MIN_TERRAIN_TEXTURE_DETAIL_BANDS: u64 = 44;
+const MIN_TERRAIN_TEXTURE_EDGE_PROMILLE: u64 = 240;
 const MIN_TERRAIN_BASE_REGION_PROMILLE: u64 = 180;
 const MIN_TERRAIN_TRANSITION_REGION_PROMILLE: u64 = 350;
 const MIN_TERRAIN_HIGHLAND_REGION_PROMILLE: u64 = 180;
@@ -185,6 +186,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         value_u64(minimums, "terrain_texture_detail_bands"),
         MIN_TERRAIN_TEXTURE_DETAIL_BANDS,
         "bands",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_texture_edge_promille",
+        value_u64(minimums, "terrain_texture_edge_promille"),
+        MIN_TERRAIN_TEXTURE_EDGE_PROMILLE,
+        "promille",
     ));
     checks.push(check_at_least_f64(
         "terrain_relief_range",
@@ -832,6 +839,7 @@ mod tests {
                 "terrain_material_channels": 3,
                 "terrain_material_regions": 4,
                 "terrain_texture_detail_bands": 44,
+                "terrain_texture_edge_promille": 120,
                 "terrain_relief_range_m": 0.8,
                 "cliff_color_bands": 9,
                 "impostor_mesh_vertices": 42,
@@ -869,6 +877,10 @@ mod tests {
                 .unwrap_or(true)
         );
         assert!(!audit_check_passed(&report, "mesh_count"));
+        assert!(!audit_check_passed(
+            &report,
+            "terrain_texture_edge_promille"
+        ));
         assert!(!audit_check_passed(&report, "impostor_mesh_vertices"));
         assert!(!audit_check_passed(&report, "impostor_color_bands"));
         assert!(!audit_check_passed(&report, "impostor_vertical_range"));
