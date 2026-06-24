@@ -1,0 +1,85 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "NAU Engine self-authored asset readiness fixture"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "NAU Route Marker Kit Fixture Scene",
+      "nodes": [0]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "NAU Route Marker Kit Fixture",
+      "mesh": 0
+    }
+  ],
+  "meshes": [
+    {
+      "name": "NAU Route Marker Kit Fixture Mesh",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0
+          },
+          "indices": 1,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "NAU Route Marker Kit Fixture Material",
+      "emissiveFactor": [0.8, 0.35, 0.65],
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [1.0, 0.38, 0.64, 1.0],
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.5
+      }
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "data:application/octet-stream;base64,AACAvwAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAABAAAABAAIAAAA=",
+      "byteLength": 44
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 36,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 36,
+      "byteLength": 6,
+      "target": 34963
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "byteOffset": 0,
+      "componentType": 5126,
+      "count": 3,
+      "type": "VEC3",
+      "min": [-1.0, 0.0, 0.0],
+      "max": [1.0, 0.0, 2.0]
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 0,
+      "componentType": 5123,
+      "count": 3,
+      "type": "SCALAR",
+      "min": [0],
+      "max": [2]
+    }
+  ]
+}
