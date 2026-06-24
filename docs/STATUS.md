@@ -10,15 +10,15 @@ The project has a Bevy sandbox with a primitive humanoid, playable ground moveme
 
 ## Last Known Good
 
-- Commit: `b24e532`
-- Merged PR: `#31` - Add organic island ground cover
+- Commit: `24027a1`
+- Merged PR: `#34` - Add cinematic updraft visuals
 - Verification:
   - `cargo fmt --all --check`
   - `cargo check`
   - `cargo test`
   - `cargo clippy --all-targets --all-features -- -D warnings`
-  - metric-only eval suite across baseline, ground taxi, camera control/stability, updraft, branch recovery, long-glide, and landing scenarios
-  - screenshot eval for long-glide route with visual audit and manual checkpoint inspection
+  - metric-only evals for updraft, branch recovery, and long-glide scenarios
+  - screenshot eval for updraft route with visual audit and manual checkpoint inspection
 
 ## Active Work
 
