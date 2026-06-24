@@ -78,6 +78,8 @@ const TREE_CANOPY_LONGITUDE_SEGMENTS: usize = 12;
 const TREE_TRUNK_SEGMENTS: usize = 8;
 const TREE_BRANCH_COUNT: usize = 3;
 const TREE_BRANCH_SEGMENTS: usize = 6;
+const ROCK_MESH_SEGMENTS: usize = 12;
+const ROCK_MESH_RINGS: usize = 6;
 const CLOUD_BANK_LOBES: usize = 10;
 const CLOUD_VEIL_LOBES: usize = 6;
 const AUTHORED_ASSET_PROBE_KINDS: &[VisualAssetKind] = &[
@@ -499,6 +501,8 @@ struct IslandContentDiagnostics {
     min_tree_trunk_mesh_vertices: usize,
     min_tree_canopy_mesh_vertices: usize,
     detail_biome_palette_mask: u32,
+    generated_rock_count: usize,
+    min_rock_mesh_vertices: usize,
     generated_weather_cloud_count: usize,
     min_weather_cloud_lobe_count: usize,
     max_weather_cloud_lobe_count: usize,
@@ -616,6 +620,15 @@ impl IslandContentDiagnostics {
 
     fn detail_biome_palette_count(self) -> usize {
         self.detail_biome_palette_mask.count_ones() as usize
+    }
+
+    fn record_generated_rock(&mut self, mesh_vertices: usize) {
+        if self.generated_rock_count == 0 {
+            self.min_rock_mesh_vertices = mesh_vertices;
+        } else {
+            self.min_rock_mesh_vertices = self.min_rock_mesh_vertices.min(mesh_vertices);
+        }
+        self.generated_rock_count += 1;
     }
 
     fn record_generated_weather_cloud(&mut self, lobe_count: usize, mesh_vertices: usize) {
@@ -2988,6 +3001,103 @@ fn mix_color(source: Color, target: Color, target_weight: f32) -> Color {
     source.mix(&target, target_weight.clamp(0.0, 1.0))
 }
 
+fn rock_scatter_mesh(radius: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::with_capacity(ROCK_MESH_RINGS * ROCK_MESH_SEGMENTS + 2);
+    let mut normals = Vec::with_capacity(ROCK_MESH_RINGS * ROCK_MESH_SEGMENTS + 2);
+    let mut uvs = Vec::with_capacity(ROCK_MESH_RINGS * ROCK_MESH_SEGMENTS + 2);
+    let mut indices =
+        Vec::with_capacity((ROCK_MESH_RINGS - 1) * ROCK_MESH_SEGMENTS * 6 + ROCK_MESH_SEGMENTS * 6);
+    let stretch = Vec2::new(
+        0.88 + random_unit(seed, 5, 17) * 0.34,
+        0.76 + random_unit(seed, 7, 23) * 0.28,
+    );
+    let ring_profiles = [
+        (-0.46, 0.72),
+        (-0.28, 1.04),
+        (-0.06, 1.16),
+        (0.18, 0.98),
+        (0.38, 0.72),
+        (0.54, 0.38),
+    ];
+
+    let bottom_center = positions.len() as u32;
+    positions.push([0.0, radius * -0.5, 0.0]);
+    normals.push(Vec3::NEG_Y.to_array());
+    uvs.push([0.5, 0.0]);
+
+    for (ring_index, (height_factor, ring_radius)) in ring_profiles.into_iter().enumerate() {
+        let phase_offset = random_unit(seed, ring_index as u32, 31) * 0.2;
+        for segment in 0..ROCK_MESH_SEGMENTS {
+            let phase = segment as f32 / ROCK_MESH_SEGMENTS as f32 * std::f32::consts::TAU;
+            let ridge = (phase * 3.0 + phase_offset).sin() * 0.09;
+            let chip = (random_unit(seed, segment as u32, ring_index as u32 + 53) - 0.5) * 0.24;
+            let radial = radius * ring_radius * (1.0 + ridge + chip);
+            let x = phase.cos() * radial * stretch.x;
+            let z = phase.sin() * radial * stretch.y;
+            let y = radius * height_factor;
+            let normal = Vec3::new(
+                phase.cos() / stretch.x.max(0.1),
+                0.28 + height_factor * 0.35,
+                phase.sin() / stretch.y.max(0.1),
+            )
+            .normalize();
+
+            positions.push([x, y, z]);
+            normals.push(normal.to_array());
+            uvs.push([
+                segment as f32 / ROCK_MESH_SEGMENTS as f32,
+                ring_index as f32 / (ROCK_MESH_RINGS - 1) as f32,
+            ]);
+        }
+    }
+
+    let top_center = positions.len() as u32;
+    let top_offset = Vec2::new(
+        (random_unit(seed, 97, 11) - 0.5) * radius * 0.16,
+        (random_unit(seed, 101, 13) - 0.5) * radius * 0.16,
+    );
+    positions.push([top_offset.x, radius * 0.68, top_offset.y]);
+    normals.push(Vec3::Y.to_array());
+    uvs.push([0.5, 1.0]);
+
+    let first_ring = 1_u32;
+    for segment in 0..ROCK_MESH_SEGMENTS {
+        let next = ((segment + 1) % ROCK_MESH_SEGMENTS) as u32;
+        indices.extend([
+            bottom_center,
+            first_ring + segment as u32,
+            first_ring + next,
+        ]);
+    }
+
+    for ring in 0..ROCK_MESH_RINGS - 1 {
+        let start = 1 + (ring * ROCK_MESH_SEGMENTS) as u32;
+        let next_start = 1 + ((ring + 1) * ROCK_MESH_SEGMENTS) as u32;
+        for segment in 0..ROCK_MESH_SEGMENTS {
+            let a = start + segment as u32;
+            let b = start + ((segment + 1) % ROCK_MESH_SEGMENTS) as u32;
+            let c = next_start + segment as u32;
+            let d = next_start + ((segment + 1) % ROCK_MESH_SEGMENTS) as u32;
+            indices.extend([a, c, b, b, c, d]);
+        }
+    }
+
+    let top_ring = 1 + ((ROCK_MESH_RINGS - 1) * ROCK_MESH_SEGMENTS) as u32;
+    for segment in 0..ROCK_MESH_SEGMENTS {
+        let next = ((segment + 1) % ROCK_MESH_SEGMENTS) as u32;
+        indices.extend([top_center, top_ring + next, top_ring + segment as u32]);
+    }
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
 fn tree_trunk_mesh(radius: f32, height: f32, seed: u32) -> Mesh {
     let trunk_vertices = TREE_TRUNK_SEGMENTS * 3 + 2;
     let branch_vertices = TREE_BRANCH_COUNT * TREE_BRANCH_SEGMENTS * 2;
@@ -4776,15 +4886,20 @@ fn queue_sky_island_details(
         let z = island.center.z + angle.sin() * island.half_extents.y * radius;
         let stone_scale = 0.45 + index as f32 * 0.08;
         let surface_y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z));
+        let rock_mesh = rock_scatter_mesh(
+            stone_scale,
+            9_000 + island_index as u32 * 131 + index as u32 * 19,
+        );
+        content_diagnostics.record_generated_rock(rock_mesh.count_vertices());
 
         queue_island_visual(
             entries,
             visual_index,
             island,
             IslandVisualLayer::Detail,
-            meshes.add(Sphere::new(stone_scale)),
+            meshes.add(rock_mesh),
             detail_materials.stone.clone(),
-            Transform::from_xyz(x, surface_y + stone_scale * 0.45, z),
+            Transform::from_xyz(x, surface_y + stone_scale * 0.5, z),
             None,
             "island stone scatter",
         );
@@ -5944,7 +6059,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated clouds {} lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -6022,6 +6137,8 @@ fn update_debug_readout(
         content_metrics.min_tree_trunk_mesh_vertices,
         content_metrics.min_tree_canopy_mesh_vertices,
         content_metrics.detail_biome_palette_count(),
+        content_metrics.generated_rock_count,
+        content_metrics.min_rock_mesh_vertices,
         content_metrics.generated_weather_cloud_count,
         content_metrics.min_weather_cloud_lobe_count,
         content_metrics.max_weather_cloud_lobe_count,
@@ -6287,6 +6404,8 @@ fn collect_eval_metrics(
         content_metrics.min_tree_trunk_mesh_vertices,
         content_metrics.min_tree_canopy_mesh_vertices,
         content_metrics.detail_biome_palette_count(),
+        content_metrics.generated_rock_count,
+        content_metrics.min_rock_mesh_vertices,
         content_metrics.generated_weather_cloud_count,
         content_metrics.min_weather_cloud_lobe_count,
         content_metrics.max_weather_cloud_lobe_count,
@@ -6907,6 +7026,52 @@ mod tests {
     }
 
     #[test]
+    fn rock_scatter_mesh_has_flattened_irregular_silhouette() {
+        let mesh = rock_scatter_mesh(0.7, 1234);
+        let positions = positions(&mesh);
+        let indices = u32_indices(&mesh);
+        let radial_lengths: Vec<f32> = positions[1..positions.len() - 1]
+            .iter()
+            .map(|position| Vec2::new(position[0], position[2]).length())
+            .collect();
+        let min_y = positions
+            .iter()
+            .map(|position| position[1])
+            .fold(f32::INFINITY, f32::min);
+        let max_y = positions
+            .iter()
+            .map(|position| position[1])
+            .fold(f32::NEG_INFINITY, f32::max);
+        let min_radius = radial_lengths.iter().copied().fold(f32::INFINITY, f32::min);
+        let max_radius = radial_lengths
+            .iter()
+            .copied()
+            .fold(f32::NEG_INFINITY, f32::max);
+        let top_cap_start = ROCK_MESH_SEGMENTS * 3 + (ROCK_MESH_RINGS - 1) * ROCK_MESH_SEGMENTS * 6;
+
+        assert_eq!(
+            mesh.count_vertices(),
+            ROCK_MESH_RINGS * ROCK_MESH_SEGMENTS + 2
+        );
+        assert!(
+            max_radius - min_radius > 0.5,
+            "rock scatter should have a jagged profile instead of one repeated radius"
+        );
+        assert!(
+            max_radius > (max_y - min_y) * 0.95,
+            "rock scatter should be squat and grounded rather than a sphere"
+        );
+        assert!(
+            triangle_normal_y(positions, &indices[0..3]) < 0.0,
+            "rock bottom cap should face downward"
+        );
+        assert!(
+            triangle_normal_y(positions, &indices[top_cap_start..top_cap_start + 3]) > 0.0,
+            "rock top cap should face upward"
+        );
+    }
+
+    #[test]
     fn terrain_mesh_uses_high_resolution_irregular_silhouette() {
         let island = test_island();
         let mesh = island_terrain_mesh(2, island);
@@ -7141,6 +7306,8 @@ mod tests {
         diagnostics.record_generated_tree_trunk(30);
         diagnostics.record_generated_tree_canopy(226);
         diagnostics.record_generated_tree_canopy(240);
+        diagnostics.record_generated_rock(74);
+        diagnostics.record_generated_rock(80);
         diagnostics.record_generated_weather_cloud(7, 315);
         diagnostics.record_generated_weather_cloud(4, 180);
 
@@ -7149,6 +7316,8 @@ mod tests {
         assert_eq!(diagnostics.min_tree_trunk_mesh_vertices, 26);
         assert_eq!(diagnostics.min_tree_canopy_mesh_vertices, 226);
         assert_eq!(diagnostics.detail_biome_palette_count(), 2);
+        assert_eq!(diagnostics.generated_rock_count, 2);
+        assert_eq!(diagnostics.min_rock_mesh_vertices, 74);
         assert_eq!(diagnostics.generated_weather_cloud_count, 2);
         assert_eq!(diagnostics.min_weather_cloud_lobe_count, 4);
         assert_eq!(diagnostics.max_weather_cloud_lobe_count, 7);
