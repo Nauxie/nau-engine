@@ -10,3 +10,4 @@ default-run = "nau-engine"
 [dependencies]
 bevy = "0.18.1"
 image = { version = "0.25", default-features = false, features = ["png"] }
+serde_json = "1.0.150"
