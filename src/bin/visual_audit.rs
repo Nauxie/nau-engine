@@ -38,6 +38,8 @@ const MIN_SEQUENCE_ROUTE_MARKER_COMPONENTS: usize = 2;
 const MIN_SEQUENCE_ROUTE_MARKER_HUE_FAMILIES: usize = 1;
 const MIN_ROUTE_MARKER_COMPONENT_PIXELS: usize = 3;
 const MIN_ROUTE_MARKER_HUE_FAMILY_PIXELS: usize = 8;
+const MAX_TRANSPARENT_PIXEL_FRACTION: f64 = 0.0;
+const MAX_FOREIGN_CANVAS_FRACTION: f64 = 0.08;
 const MAX_HUD_TEXT_FRACTION: f64 = 0.06;
 const MAX_SEVERE_CLIPPING_FRACTION: f64 = 0.82;
 const MAX_CLIPPING_BORDER_EDGE_DENSITY: f64 = 0.08;
@@ -70,15 +72,28 @@ fn main() {
 }
 
 fn audit_path(path: &Path) -> Result<ImageAudit, String> {
-    let image = ImageReader::open(path)
+    let decoded = ImageReader::open(path)
         .map_err(|error| error.to_string())?
         .decode()
-        .map_err(|error| error.to_string())?
-        .to_rgb8();
-    audit_image(path.to_string_lossy().into_owned(), image)
+        .map_err(|error| error.to_string())?;
+    let transparent_pixel_fraction = transparent_pixel_fraction(&decoded);
+    audit_image_with_alpha(
+        path.to_string_lossy().into_owned(),
+        decoded.to_rgb8(),
+        transparent_pixel_fraction,
+    )
 }
 
+#[cfg(test)]
 fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
+    audit_image_with_alpha(path, image, 0.0)
+}
+
+fn audit_image_with_alpha(
+    path: String,
+    image: RgbImage,
+    transparent_pixel_fraction: f64,
+) -> Result<ImageAudit, String> {
     let (width, height) = image.dimensions();
     let pixel_count = (width as usize).saturating_mul(height as usize);
     if pixel_count == 0 {
@@ -112,6 +127,8 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
     let mut inner_border_region_pixels = [0usize; BORDER_REGION_COUNT];
     let mut border_color_buckets =
         std::array::from_fn::<_, BORDER_REGION_COUNT, _>(|_| HashSet::<u32>::new());
+    let mut foreign_canvas_pixels = 0usize;
+    let mut foreign_canvas_region_pixels = 0usize;
     let mut hud_text_pixels = 0usize;
     let mut scene_mask = vec![false; pixel_count];
 
@@ -191,6 +208,11 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
             route_marker_region_pixels += 1;
         }
         if !hud_region {
+            foreign_canvas_region_pixels += 1;
+            if is_foreign_canvas_like(r, g, b, luma, sky_like) {
+                foreign_canvas_pixels += 1;
+            }
+
             let clipping_occluder = is_clipping_occluder_like(r, g, b, luma, sky_like, scene_like);
             for region in border_regions(x, y, width_usize, height_usize)
                 .into_iter()
@@ -256,6 +278,7 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
         border_color_buckets.map(|buckets| buckets.len()),
         border_edge_densities(&luma_values, width_usize, height_usize),
     );
+    let foreign_canvas_fraction = fraction(foreign_canvas_pixels, foreign_canvas_region_pixels);
     let hud_text_fraction = fraction(hud_text_pixels, pixel_count);
     let scene_detail =
         scene_detail_stats(&image, &luma_values, &scene_mask, width_usize, height_usize);
@@ -323,6 +346,18 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
             "ratio",
         ),
         Check::at_most(
+            "transparent_pixel_fraction",
+            transparent_pixel_fraction,
+            MAX_TRANSPARENT_PIXEL_FRACTION,
+            "ratio",
+        ),
+        Check::at_most(
+            "foreign_canvas_fraction",
+            foreign_canvas_fraction,
+            MAX_FOREIGN_CANVAS_FRACTION,
+            "ratio",
+        ),
+        Check::at_most(
             "hud_text_fraction",
             hud_text_fraction,
             MAX_HUD_TEXT_FRACTION,
@@ -355,10 +390,19 @@ fn audit_image(path: String, image: RgbImage) -> Result<ImageAudit, String> {
         route_marker_component_count,
         route_marker_hue_family_count,
         severe_clipping_fraction,
+        transparent_pixel_fraction,
+        foreign_canvas_fraction,
         hud_text_fraction,
         passed,
         checks,
     })
+}
+
+fn transparent_pixel_fraction(image: &image::DynamicImage) -> f64 {
+    let rgba = image.to_rgba8();
+    let pixel_count = rgba.width() as usize * rgba.height() as usize;
+    let transparent_pixels = rgba.pixels().filter(|pixel| pixel.0[3] < u8::MAX).count();
+    fraction(transparent_pixels, pixel_count)
 }
 
 fn fraction(value: usize, total: usize) -> f64 {
@@ -768,6 +812,12 @@ fn is_hud_text_like(r: f64, g: f64, b: f64) -> bool {
     max_channel >= 220.0 && max_channel - min_channel <= 24.0
 }
 
+fn is_foreign_canvas_like(r: f64, g: f64, b: f64, luma: f64, sky_like: bool) -> bool {
+    let max_channel = r.max(g).max(b);
+    let min_channel = r.min(g).min(b);
+    !sky_like && luma >= 210.0 && max_channel - min_channel <= 36.0
+}
+
 #[derive(Debug)]
 struct ImageAudit {
     path: String,
@@ -793,6 +843,8 @@ struct ImageAudit {
     route_marker_component_count: usize,
     route_marker_hue_family_count: usize,
     severe_clipping_fraction: f64,
+    transparent_pixel_fraction: f64,
+    foreign_canvas_fraction: f64,
     hud_text_fraction: f64,
     passed: bool,
     checks: Vec<Check>,
@@ -912,7 +964,7 @@ fn image_audit_json(audit: &ImageAudit) -> String {
         .collect::<Vec<_>>()
         .join(",\n      ");
     format!(
-        "{{\n      \"path\": {},\n      \"passed\": {},\n      \"width\": {},\n      \"height\": {},\n      \"mean_luma\": {},\n      \"luma_stddev\": {},\n      \"colorfulness\": {},\n      \"quantized_colors\": {},\n      \"edge_density\": {},\n      \"top_sky_fraction\": {},\n      \"lower_scene_fraction\": {},\n      \"center_scene_fraction\": {},\n      \"center_edge_density\": {},\n      \"scene_detail_tile_fraction\": {},\n      \"flat_scene_tile_fraction\": {},\n      \"scene_detail_tile_count\": {},\n      \"flat_scene_tile_count\": {},\n      \"scene_candidate_tile_count\": {},\n      \"player_focus_fraction\": {},\n      \"player_warm_focus_fraction\": {},\n      \"route_marker_fraction\": {},\n      \"route_marker_component_count\": {},\n      \"route_marker_hue_family_count\": {},\n      \"severe_clipping_fraction\": {},\n      \"hud_text_fraction\": {},\n      \"checks\": [\n      {}\n      ]\n    }}",
+        "{{\n      \"path\": {},\n      \"passed\": {},\n      \"width\": {},\n      \"height\": {},\n      \"mean_luma\": {},\n      \"luma_stddev\": {},\n      \"colorfulness\": {},\n      \"quantized_colors\": {},\n      \"edge_density\": {},\n      \"top_sky_fraction\": {},\n      \"lower_scene_fraction\": {},\n      \"center_scene_fraction\": {},\n      \"center_edge_density\": {},\n      \"scene_detail_tile_fraction\": {},\n      \"flat_scene_tile_fraction\": {},\n      \"scene_detail_tile_count\": {},\n      \"flat_scene_tile_count\": {},\n      \"scene_candidate_tile_count\": {},\n      \"player_focus_fraction\": {},\n      \"player_warm_focus_fraction\": {},\n      \"route_marker_fraction\": {},\n      \"route_marker_component_count\": {},\n      \"route_marker_hue_family_count\": {},\n      \"severe_clipping_fraction\": {},\n      \"transparent_pixel_fraction\": {},\n      \"foreign_canvas_fraction\": {},\n      \"hud_text_fraction\": {},\n      \"checks\": [\n      {}\n      ]\n    }}",
         json_string(&audit.path),
         audit.passed,
         audit.width,
@@ -937,6 +989,8 @@ fn image_audit_json(audit: &ImageAudit) -> String {
         audit.route_marker_component_count,
         audit.route_marker_hue_family_count,
         json_number(audit.severe_clipping_fraction),
+        json_number(audit.transparent_pixel_fraction),
+        json_number(audit.foreign_canvas_fraction),
         json_number(audit.hud_text_fraction),
         checks,
     )
@@ -1051,6 +1105,72 @@ mod tests {
                 .checks
                 .iter()
                 .any(|check| check.name == "edge_density" && !check.passed)
+        );
+    }
+
+    #[test]
+    fn audit_rejects_non_opaque_image() {
+        let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        for y in 0..MIN_HEIGHT {
+            for x in 0..MIN_WIDTH {
+                let checker = (x + y) % 2 == 0;
+                let (r, g, b) = if y < MIN_HEIGHT / 3 {
+                    (120 + (x % 48), 150 + (y % 48), 185 + ((x + y) % 48))
+                } else if checker {
+                    (36 + (x % 120), 90 + (y % 120), 45 + ((x + y) % 80))
+                } else {
+                    (100 + (x % 120), 70 + (y % 80), 42 + ((x + y) % 70))
+                };
+                image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+            }
+        }
+        paint_readability_signals(&mut image);
+
+        let audit = audit_image_with_alpha("transparent.png".to_string(), image, 0.01)
+            .expect("audit should load");
+
+        assert!(!audit.passed);
+        assert!(
+            audit
+                .checks
+                .iter()
+                .any(|check| check.name == "transparent_pixel_fraction" && !check.passed)
+        );
+    }
+
+    #[test]
+    fn audit_rejects_large_foreign_canvas_regions() {
+        let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        for y in 0..MIN_HEIGHT {
+            for x in 0..MIN_WIDTH {
+                let checker = (x + y) % 2 == 0;
+                let (r, g, b) = if y < MIN_HEIGHT / 3 {
+                    (120 + (x % 48), 150 + (y % 48), 185 + ((x + y) % 48))
+                } else if checker {
+                    (36 + (x % 120), 90 + (y % 120), 45 + ((x + y) % 80))
+                } else {
+                    (100 + (x % 120), 70 + (y % 80), 42 + ((x + y) % 70))
+                };
+                image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+            }
+        }
+        for y in 0..MIN_HEIGHT * 86 / 100 {
+            for x in MIN_WIDTH * 42 / 100..MIN_WIDTH {
+                image.put_pixel(x, y, Rgb([246, 242, 232]));
+            }
+        }
+        paint_readability_signals(&mut image);
+
+        let audit =
+            audit_image("foreign_canvas.png".to_string(), image).expect("audit should load");
+
+        assert!(!audit.passed);
+        assert!(audit.foreign_canvas_fraction > MAX_FOREIGN_CANVAS_FRACTION);
+        assert!(
+            audit
+                .checks
+                .iter()
+                .any(|check| check.name == "foreign_canvas_fraction" && !check.passed)
         );
     }
 
