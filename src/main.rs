@@ -32,8 +32,8 @@ use nau_engine::environment::{
     apply_lift_fields, readable_lift_fields_at, visible_fields_at,
 };
 use nau_engine::eval::{
-    EvalAccumulator, EvalArtifacts, EvalSample, EvalScenario, SCENARIO_NAMES, scenario_named,
-    scripted_camera_input, scripted_input,
+    EvalAccumulator, EvalArtifacts, EvalObjectiveProgress, EvalSample, EvalScenario,
+    SCENARIO_NAMES, scenario_named, scripted_camera_input, scripted_input,
 };
 use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
@@ -426,6 +426,7 @@ struct EvalScene<'w, 's> {
     camera: Query<'w, 's, &'static Transform, CameraFollowFilter>,
     camera_diagnostics: Res<'w, CameraDiagnostics>,
     stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
+    route_objectives: Res<'w, RouteObjectiveTracker>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
     weather_clouds: Query<'w, 's, Entity, With<WeatherDrift>>,
@@ -2838,6 +2839,13 @@ fn collect_eval_metrics(
         controller.mode,
         scenario_target,
     );
+    let objective = EvalObjectiveProgress::new(
+        scene.route_objectives.completed_count,
+        scene.route_objectives.total_count,
+        scene.route_objectives.current_label,
+        scene.route_objectives.current_distance_m,
+        scene.route_objectives.complete,
+    );
     let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
     let lod_visuals = scene.stream_diagnostics.counts;
     let sample = EvalSample::new(
@@ -2865,6 +2873,7 @@ fn collect_eval_metrics(
         scene.lift_fields.iter().count(),
         target_distance_m,
         on_landing_target,
+        objective,
         scene.route.islands().len(),
         streaming_lod.active_chunk_count,
         streaming_lod.active_island_count,
