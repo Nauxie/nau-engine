@@ -13,7 +13,8 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 
 ## Current Code Shape
 
-- `src/main.rs` owns Bevy app setup, scene spawning, input mapping, player movement systems, and route objective updates.
+- `src/main.rs` owns Bevy app setup, scene spawning, app system scheduling, and CLI action dispatch.
+- `src/player_runtime.rs` owns the player marker/resource types, keyboard flight input mapping, player movement ECS systems, route objective updates, generated/authored player visibility handoff, and fallback character animation.
 - `src/camera_runtime.rs` owns runtime camera resources, mouse-look capture, follow-camera ECS wiring, camera obstruction components, camera spawn/render-stack setup, and camera diagnostics.
 - `src/authored_assets.rs` owns runtime glTF visual asset registry state, authored scene readiness observers, player animation graph linking, authored player clip switching, visible world-fixture placement helpers, and visual asset diagnostics.
 - `src/content_diagnostics.rs` owns runtime content-quality metric accumulation for generated island terrain, island bodies, ground cover, trees, rocks, clouds, and biome detail palettes.
@@ -43,7 +44,7 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 
 ## Frame Flow
 
-1. Bevy keyboard input is read in `fly_player`; runtime mouse input is read in `update_camera_control`.
+1. Bevy keyboard input is read in `player_runtime::fly_player`; runtime mouse input is read in `update_camera_control`.
 2. Input is mapped into `movement::FlightInput`.
 3. Movement uses the camera's horizontal forward/right vectors when available.
 4. `movement::step_flight` produces the next position, velocity, and controller state.

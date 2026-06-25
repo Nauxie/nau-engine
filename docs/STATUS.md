@@ -113,6 +113,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `src/generated_content/detail_meshes.rs`
 - `src/generated_content/island_meshes.rs`
 - `src/island_visuals.rs`
+- `src/player_runtime.rs`
 - `src/power_up_runtime.rs`
 - `src/content_export.rs`
 - `src/content_export/terrain.rs`
