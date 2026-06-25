@@ -51,7 +51,7 @@ use nau_engine::movement::{
     face_flight_direction, lateral_response_speed, step_flight,
 };
 use nau_engine::world::{
-    LodBand, START_POSITION, SkyIsland, SkyRoute, StreamActivation,
+    LodBand, RouteObjectiveKind, START_POSITION, SkyIsland, SkyRoute, StreamActivation,
     TERRAIN_VISUAL_FOOTING_OFFSET_M, is_recovery_branch_island,
 };
 use std::{
@@ -1083,6 +1083,8 @@ struct EvalScene<'w, 's> {
         With<Player>,
     >,
     camera: Query<'w, 's, &'static Transform, CameraFollowFilter>,
+    camera_projection:
+        Query<'w, 's, (&'static Camera, &'static GlobalTransform), CameraFollowFilter>,
     camera_diagnostics: Res<'w, CameraDiagnostics>,
     stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
     content_diagnostics: Res<'w, IslandContentDiagnostics>,
@@ -1154,8 +1156,11 @@ struct EvalMovementBasis {
 #[derive(Debug)]
 struct EvalCheckpointCapture {
     frame: u32,
+    name: &'static str,
     path: PathBuf,
+    marker_metadata_path: PathBuf,
     captured: bool,
+    marker_metadata_written: bool,
 }
 
 impl EvalRun {
@@ -1183,9 +1188,15 @@ impl EvalRun {
                 .iter()
                 .map(|checkpoint| EvalCheckpointCapture {
                     frame: checkpoint.frame,
+                    name: checkpoint.name,
                     path: checkpoint_dir
                         .join(format!("{:04}_{}.png", checkpoint.frame, checkpoint.name)),
+                    marker_metadata_path: checkpoint_dir.join(format!(
+                        "{:04}_{}.markers.json",
+                        checkpoint.frame, checkpoint.name
+                    )),
                     captured: false,
+                    marker_metadata_written: false,
                 })
                 .collect();
         }
@@ -1222,6 +1233,11 @@ impl EvalRun {
                 .checkpoint_captures
                 .iter()
                 .map(|checkpoint| path_string(&checkpoint.path))
+                .collect(),
+            checkpoint_marker_metadata: self
+                .checkpoint_captures
+                .iter()
+                .map(|checkpoint| path_string(&checkpoint.marker_metadata_path))
                 .collect(),
         };
         let summary = self.accumulator.summary(self.scenario, artifacts);
@@ -7726,6 +7742,7 @@ fn collect_eval_metrics(
 fn finish_eval_frame(
     mut commands: Commands,
     mut run: ResMut<EvalRun>,
+    scene: EvalScene,
     mut app_exit: MessageWriter<AppExit>,
 ) {
     if let Some(error) = run.io_error.clone() {
@@ -7765,7 +7782,12 @@ fn finish_eval_frame(
         return;
     }
 
-    capture_due_checkpoint_screenshots(&mut commands, &mut run);
+    if let Err(error) = capture_due_checkpoint_screenshots(&mut commands, &mut run, &scene) {
+        run.io_error = Some(format!(
+            "failed to write checkpoint marker metadata: {error}"
+        ));
+        return;
+    }
 
     if run.frame < run.scenario.frame_count {
         run.frame += 1;
@@ -7815,13 +7837,27 @@ fn screenshot_file_ready(path: &Path) -> bool {
         .is_some_and(|image| image.width() > 0 && image.height() > 0)
 }
 
-fn capture_due_checkpoint_screenshots(commands: &mut Commands, run: &mut EvalRun) {
+fn capture_due_checkpoint_screenshots(
+    commands: &mut Commands,
+    run: &mut EvalRun,
+    scene: &EvalScene,
+) -> std::io::Result<()> {
     let frame = run.frame;
+    let scenario = run.scenario;
     for checkpoint in run
         .checkpoint_captures
         .iter_mut()
         .filter(|checkpoint| !checkpoint.captured && checkpoint.frame == frame)
     {
+        if !checkpoint.marker_metadata_written {
+            write_checkpoint_marker_metadata(
+                &checkpoint.marker_metadata_path,
+                scenario,
+                checkpoint,
+                scene,
+            )?;
+            checkpoint.marker_metadata_written = true;
+        }
         let screenshot_path = checkpoint.path.clone();
         checkpoint.captured = true;
         commands.spawn(Screenshot::primary_window()).observe(
@@ -7830,6 +7866,208 @@ fn capture_due_checkpoint_screenshots(commands: &mut Commands, run: &mut EvalRun
             },
         );
     }
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SemanticRouteMarker {
+    kind: &'static str,
+    label: &'static str,
+    world_position: Vec3,
+    current_objective: bool,
+}
+
+fn write_checkpoint_marker_metadata(
+    path: &Path,
+    scenario: EvalScenario,
+    checkpoint: &EvalCheckpointCapture,
+    scene: &EvalScene,
+) -> std::io::Result<()> {
+    let markers = semantic_route_markers(scene);
+    let expected_objective_count = scene
+        .route
+        .route_objectives(scenario.target_island_name)
+        .len();
+    let (viewport_size, marker_json, visible_count, current_objective_visible) =
+        match scene.camera_projection.single() {
+            Ok((camera, camera_transform)) => {
+                checkpoint_marker_projection_json(camera, camera_transform, &markers)
+            }
+            Err(_) => (None, Vec::new(), 0, false),
+        };
+    let viewport_json = viewport_size
+        .map(|size| {
+            format!(
+                "{{\"width\": {}, \"height\": {}}}",
+                terrain_export_json_number(size.x),
+                terrain_export_json_number(size.y)
+            )
+        })
+        .unwrap_or_else(|| "null".to_string());
+    let passed =
+        markers.len() >= expected_objective_count && visible_count > 0 && viewport_size.is_some();
+    let target_island = scenario
+        .target_island_name
+        .map(terrain_export_json_string)
+        .unwrap_or_else(|| "null".to_string());
+    let json = format!(
+        "{{\n  \"passed\": {},\n  \"scenario\": {},\n  \"target_island\": {},\n  \"frame\": {},\n  \"checkpoint\": {},\n  \"screenshot\": {},\n  \"viewport\": {},\n  \"semantic_marker_count\": {},\n  \"expected_objective_marker_count\": {},\n  \"visible_semantic_marker_count\": {},\n  \"current_objective_visible\": {},\n  \"markers\": [\n{}\n  ]\n}}\n",
+        passed,
+        terrain_export_json_string(scenario.name),
+        target_island,
+        checkpoint.frame,
+        terrain_export_json_string(checkpoint.name),
+        terrain_export_json_string(&path_string(&checkpoint.path)),
+        viewport_json,
+        markers.len(),
+        expected_objective_count,
+        visible_count,
+        current_objective_visible,
+        marker_json
+            .into_iter()
+            .map(|entry| format!("    {entry}"))
+            .collect::<Vec<_>>()
+            .join(",\n"),
+    );
+
+    fs::write(path, json)
+}
+
+fn semantic_route_markers(scene: &EvalScene) -> Vec<SemanticRouteMarker> {
+    let mut markers = Vec::new();
+    let current_label =
+        (!scene.route_objectives.complete).then_some(scene.route_objectives.current_label);
+
+    for objective in scene
+        .route
+        .route_objectives(scene.route_objectives.target_island_name)
+    {
+        let kind = match objective.kind {
+            RouteObjectiveKind::FlyThrough => "objective_updraft",
+            RouteObjectiveKind::Land => "objective_landing",
+        };
+        markers.push(SemanticRouteMarker {
+            kind,
+            label: objective.label,
+            world_position: objective.position,
+            current_objective: current_label == Some(objective.label),
+        });
+    }
+
+    for (island_index, island) in scene.route.islands().iter().copied().enumerate() {
+        if island.is_target {
+            let ring_size = 8.0;
+            for offset in [
+                Vec3::new(0.0, 0.05, ring_size * 0.5),
+                Vec3::new(0.0, 0.05, -ring_size * 0.5),
+                Vec3::new(ring_size * 0.5, 0.05, 0.0),
+                Vec3::new(-ring_size * 0.5, 0.05, 0.0),
+            ] {
+                let surface_y =
+                    island.mesh_top_y_at(island.center + Vec3::new(offset.x, 0.0, offset.z));
+                markers.push(SemanticRouteMarker {
+                    kind: "landing_marker",
+                    label: island.name,
+                    world_position: Vec3::new(
+                        island.center.x + offset.x,
+                        surface_y + offset.y,
+                        island.center.z + offset.z,
+                    ),
+                    current_objective: current_label == Some(island.name),
+                });
+            }
+        } else if island.name == "launch mesa" {
+            markers.push(SemanticRouteMarker {
+                kind: "launch_beacon",
+                label: island.name,
+                world_position: island_visual_surface_position(island, Vec2::new(-0.42, 0.38))
+                    + Vec3::Y * 1.6,
+                current_objective: false,
+            });
+        } else {
+            let beacon_height = 3.8 + (island_index % 3) as f32 * 0.7;
+            markers.push(SemanticRouteMarker {
+                kind: "route_cairn",
+                label: island.name,
+                world_position: island_visual_surface_position(island, Vec2::new(-0.18, 0.22))
+                    + Vec3::Y * (beacon_height * 0.5),
+                current_objective: false,
+            });
+        }
+    }
+
+    for power_up in AERIAL_POWER_UP_ROUTE {
+        if scene.power_ups.is_collected(power_up) {
+            continue;
+        }
+        markers.push(SemanticRouteMarker {
+            kind: "aerial_power_up",
+            label: power_up.name,
+            world_position: power_up.center,
+            current_objective: false,
+        });
+    }
+
+    markers
+}
+
+fn checkpoint_marker_projection_json(
+    camera: &Camera,
+    camera_transform: &GlobalTransform,
+    markers: &[SemanticRouteMarker],
+) -> (Option<Vec2>, Vec<String>, usize, bool) {
+    let viewport_size = camera.logical_viewport_size();
+    let mut visible_count = 0usize;
+    let mut current_objective_visible = false;
+    let entries = markers
+        .iter()
+        .map(|marker| {
+            let projected = camera
+                .world_to_viewport_with_depth(camera_transform, marker.world_position)
+                .ok();
+            let in_viewport = projected
+                .zip(viewport_size)
+                .is_some_and(|(screen, viewport)| {
+                    screen.x >= 0.0
+                        && screen.y >= 0.0
+                        && screen.x <= viewport.x
+                        && screen.y <= viewport.y
+                        && screen.z.is_finite()
+                });
+            if in_viewport {
+                visible_count += 1;
+                current_objective_visible |= marker.current_objective;
+            }
+
+            let screen_json = projected
+                .map(|screen| {
+                    format!(
+                        "{{\"x\": {}, \"y\": {}, \"depth_m\": {}}}",
+                        terrain_export_json_number(screen.x),
+                        terrain_export_json_number(screen.y),
+                        terrain_export_json_number(screen.z)
+                    )
+                })
+                .unwrap_or_else(|| "null".to_string());
+
+            format!(
+                "{{\"kind\": {}, \"label\": {}, \"current_objective\": {}, \"world\": {}, \"screen\": {}, \"in_viewport\": {}}}",
+                terrain_export_json_string(marker.kind),
+                terrain_export_json_string(marker.label),
+                marker.current_objective,
+                terrain_export_json_vec3(marker.world_position),
+                screen_json,
+                in_viewport
+            )
+        })
+        .collect();
+
+    (
+        viewport_size,
+        entries,
+        visible_count,
+        current_objective_visible,
+    )
 }
 
 fn draw_debug_gizmos(
