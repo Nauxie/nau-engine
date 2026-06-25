@@ -7948,6 +7948,31 @@ struct SemanticRouteMarker {
     current_objective: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SemanticMarkerVisibility {
+    Visible,
+    Occluded,
+    Offscreen,
+    BehindCamera,
+}
+
+impl SemanticMarkerVisibility {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Visible => "visible",
+            Self::Occluded => "occluded",
+            Self::Offscreen => "offscreen",
+            Self::BehindCamera => "behind_camera",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SemanticMarkerOcclusion {
+    island_name: &'static str,
+    distance_m: f32,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct SemanticSceneSample {
     kind: &'static str,
@@ -7972,27 +7997,42 @@ fn write_checkpoint_marker_metadata(
         viewport_size,
         marker_json,
         visible_count,
+        in_viewport_marker_count,
+        occluded_marker_count,
         current_objective_visible,
         scene_sample_json,
         visible_scene_sample_count,
         visible_scene_material_count,
     ) = match scene.camera_projection.single() {
         Ok((camera, camera_transform)) => {
-            let (viewport_size, marker_json, visible_count, current_objective_visible) =
-                checkpoint_marker_projection_json(camera, camera_transform, &markers);
+            let (
+                viewport_size,
+                marker_json,
+                visible_count,
+                in_viewport_marker_count,
+                occluded_marker_count,
+                current_objective_visible,
+            ) = checkpoint_marker_projection_json(
+                camera,
+                camera_transform,
+                &markers,
+                scene.route.islands(),
+            );
             let (scene_sample_json, visible_scene_sample_count, visible_scene_material_count) =
                 checkpoint_scene_sample_projection_json(camera, camera_transform, &scene_samples);
             (
                 viewport_size,
                 marker_json,
                 visible_count,
+                in_viewport_marker_count,
+                occluded_marker_count,
                 current_objective_visible,
                 scene_sample_json,
                 visible_scene_sample_count,
                 visible_scene_material_count,
             )
         }
-        Err(_) => (None, Vec::new(), 0, false, Vec::new(), 0, 0),
+        Err(_) => (None, Vec::new(), 0, 0, 0, false, Vec::new(), 0, 0),
     };
     let viewport_json = viewport_size
         .map(|size| {
@@ -8013,7 +8053,7 @@ fn write_checkpoint_marker_metadata(
         .map(terrain_export_json_string)
         .unwrap_or_else(|| "null".to_string());
     let json = format!(
-        "{{\n  \"passed\": {},\n  \"scenario\": {},\n  \"target_island\": {},\n  \"frame\": {},\n  \"checkpoint\": {},\n  \"screenshot\": {},\n  \"viewport\": {},\n  \"semantic_marker_count\": {},\n  \"expected_objective_marker_count\": {},\n  \"visible_semantic_marker_count\": {},\n  \"current_objective_visible\": {},\n  \"semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_material_count\": {},\n  \"markers\": [\n{}\n  ],\n  \"scene_samples\": [\n{}\n  ]\n}}\n",
+        "{{\n  \"passed\": {},\n  \"scenario\": {},\n  \"target_island\": {},\n  \"frame\": {},\n  \"checkpoint\": {},\n  \"screenshot\": {},\n  \"viewport\": {},\n  \"semantic_marker_count\": {},\n  \"expected_objective_marker_count\": {},\n  \"in_viewport_semantic_marker_count\": {},\n  \"occluded_semantic_marker_count\": {},\n  \"visible_semantic_marker_count\": {},\n  \"current_objective_visible\": {},\n  \"semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_material_count\": {},\n  \"markers\": [\n{}\n  ],\n  \"scene_samples\": [\n{}\n  ]\n}}\n",
         passed,
         terrain_export_json_string(scenario.name),
         target_island,
@@ -8023,6 +8063,8 @@ fn write_checkpoint_marker_metadata(
         viewport_json,
         markers.len(),
         expected_objective_count,
+        in_viewport_marker_count,
+        occluded_marker_count,
         visible_count,
         current_objective_visible,
         scene_samples.len(),
@@ -8201,9 +8243,13 @@ fn checkpoint_marker_projection_json(
     camera: &Camera,
     camera_transform: &GlobalTransform,
     markers: &[SemanticRouteMarker],
-) -> (Option<Vec2>, Vec<String>, usize, bool) {
+    islands: &[SkyIsland],
+) -> (Option<Vec2>, Vec<String>, usize, usize, usize, bool) {
     let viewport_size = camera.logical_viewport_size();
+    let camera_position = camera_transform.translation();
     let mut visible_count = 0usize;
+    let mut in_viewport_count = 0usize;
+    let mut occluded_count = 0usize;
     let mut current_objective_visible = false;
     let entries = markers
         .iter()
@@ -8219,8 +8265,30 @@ fn checkpoint_marker_projection_json(
                         && screen.x <= viewport.x
                         && screen.y <= viewport.y
                         && screen.z.is_finite()
+                        && screen.z > 0.0
                 });
+            let behind_camera = projected.is_some_and(|screen| {
+                screen.z.is_finite() && screen.z <= 0.0
+            });
+            let occlusion = in_viewport
+                .then(|| marker_occlusion_between(camera_position, marker.world_position, islands))
+                .flatten();
+            let visibility = if behind_camera {
+                SemanticMarkerVisibility::BehindCamera
+            } else if !in_viewport {
+                SemanticMarkerVisibility::Offscreen
+            } else if occlusion.is_some() {
+                SemanticMarkerVisibility::Occluded
+            } else {
+                SemanticMarkerVisibility::Visible
+            };
             if in_viewport {
+                in_viewport_count += 1;
+            }
+            if visibility == SemanticMarkerVisibility::Occluded {
+                occluded_count += 1;
+            }
+            if visibility == SemanticMarkerVisibility::Visible {
                 visible_count += 1;
                 current_objective_visible |= marker.current_objective;
             }
@@ -8235,15 +8303,28 @@ fn checkpoint_marker_projection_json(
                     )
                 })
                 .unwrap_or_else(|| "null".to_string());
+            let occluder_json = occlusion
+                .map(|occlusion| {
+                    format!(
+                        "{{\"kind\": \"sky_island\", \"label\": {}, \"distance_m\": {}}}",
+                        terrain_export_json_string(occlusion.island_name),
+                        terrain_export_json_number(occlusion.distance_m)
+                    )
+                })
+                .unwrap_or_else(|| "null".to_string());
+            let camera_distance_m = marker.world_position.distance(camera_position);
 
             format!(
-                "{{\"kind\": {}, \"label\": {}, \"current_objective\": {}, \"world\": {}, \"screen\": {}, \"in_viewport\": {}}}",
+                "{{\"kind\": {}, \"label\": {}, \"current_objective\": {}, \"world\": {}, \"screen\": {}, \"in_viewport\": {}, \"visibility\": {}, \"occluder\": {}, \"camera_distance_m\": {}}}",
                 terrain_export_json_string(marker.kind),
                 terrain_export_json_string(marker.label),
                 marker.current_objective,
                 terrain_export_json_vec3(marker.world_position),
                 screen_json,
-                in_viewport
+                in_viewport,
+                terrain_export_json_string(visibility.label()),
+                occluder_json,
+                terrain_export_json_number(camera_distance_m)
             )
         })
         .collect();
@@ -8252,8 +8333,78 @@ fn checkpoint_marker_projection_json(
         viewport_size,
         entries,
         visible_count,
+        in_viewport_count,
+        occluded_count,
         current_objective_visible,
     )
+}
+
+fn marker_occlusion_between(
+    camera_position: Vec3,
+    marker_position: Vec3,
+    islands: &[SkyIsland],
+) -> Option<SemanticMarkerOcclusion> {
+    let mut nearest = None;
+    for island in islands {
+        let Some(distance_m) =
+            island_segment_occlusion_distance(camera_position, marker_position, *island)
+        else {
+            continue;
+        };
+        if nearest
+            .as_ref()
+            .is_none_or(|occlusion: &SemanticMarkerOcclusion| distance_m < occlusion.distance_m)
+        {
+            nearest = Some(SemanticMarkerOcclusion {
+                island_name: island.name,
+                distance_m,
+            });
+        }
+    }
+    nearest
+}
+
+fn island_segment_occlusion_distance(
+    camera_position: Vec3,
+    marker_position: Vec3,
+    island: SkyIsland,
+) -> Option<f32> {
+    let segment = marker_position - camera_position;
+    let length = segment.length();
+    if length <= 0.01 {
+        return None;
+    }
+    let direction = segment / length;
+    let max_distance = length - 2.0;
+    if max_distance <= 1.0 {
+        return None;
+    }
+    let steps = ((length / 6.0).ceil() as usize).clamp(12, 96);
+
+    for step in 1..steps {
+        let distance_m = length * step as f32 / steps as f32;
+        if distance_m >= max_distance {
+            break;
+        }
+        let point = camera_position + direction * distance_m;
+        if island_blocks_marker_ray(island, point) {
+            return Some(distance_m);
+        }
+    }
+
+    None
+}
+
+fn island_blocks_marker_ray(island: SkyIsland, point: Vec3) -> bool {
+    let dx = (point.x - island.center.x) / island.half_extents.x.max(0.001);
+    let dz = (point.z - island.center.z) / island.half_extents.y.max(0.001);
+    if dx * dx + dz * dz > 1.10 {
+        return false;
+    }
+
+    let top_y = island.mesh_top_y_at(point) + 0.9;
+    let bottom_y = island.center.y - island.thickness * 1.15;
+    point.y >= bottom_y && point.y <= top_y
 }
 
 fn checkpoint_scene_sample_projection_json(
@@ -8511,6 +8662,47 @@ mod tests {
             (position[2] - island.center.z) / island.half_extents.y,
         )
         .length()
+    }
+
+    #[test]
+    fn marker_occlusion_detects_island_between_camera_and_marker() {
+        let island = SkyIsland::new(
+            "blocking island",
+            Vec3::new(0.0, 40.0, -40.0),
+            Vec2::new(22.0, 16.0),
+            14.0,
+            false,
+        );
+        let occlusion = marker_occlusion_between(
+            Vec3::new(0.0, 40.0, 0.0),
+            Vec3::new(0.0, 40.0, -96.0),
+            &[island],
+        )
+        .expect("island should block the marker ray");
+
+        assert_eq!(occlusion.island_name, "blocking island");
+        assert!(occlusion.distance_m > 20.0);
+        assert!(occlusion.distance_m < 70.0);
+    }
+
+    #[test]
+    fn marker_occlusion_ignores_clear_high_ray() {
+        let island = SkyIsland::new(
+            "low island",
+            Vec3::new(0.0, 40.0, -40.0),
+            Vec2::new(22.0, 16.0),
+            14.0,
+            false,
+        );
+
+        assert!(
+            marker_occlusion_between(
+                Vec3::new(0.0, 72.0, 0.0),
+                Vec3::new(0.0, 72.0, -96.0),
+                &[island],
+            )
+            .is_none()
+        );
     }
 
     #[test]
