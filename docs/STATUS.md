@@ -6,7 +6,7 @@ Last updated: 2026-06-24
 
 First sky-island traversal slice.
 
-The project has a Bevy sandbox with a primitive humanoid, playable ground movement, camera-relative planar air control, deployable glider wings, one-launch-per-airtime vertical burst, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, multi-lobed drifting cloud banks with wisp-card detail and layered high-cirrus clusters, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes and cinematic lift ribbons, marked recovery branch islands, a 12-island floating route with higher-resolution vertex-colored terrain relief, world-space tiled terrain UVs, quantized terrain material-region identity, sharper terrain-specific procedural PBR textures with smoothed broad material noise, irregular procedural rims, stratified generated cliff/underside body meshes, layered color-banded distant island impostors, batched ground-cover/detail props, deterministic tapered/multi-lobed/detail-card near-LOD trees and wind-responsive ponds, complete declared glTF fixture coverage across asset residency classes, Bevy-native glTF scene/animation readiness hooks, repo-native asset fixture audits, background-safe terrain export/audit artifacts, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, air-control response, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
+The project has a Bevy sandbox with a faceted self-authored animated player fixture, playable ground movement, camera-relative planar air control, deployable glider wings, one-launch-per-airtime vertical burst, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, multi-lobed drifting cloud banks with wisp-card detail and layered high-cirrus clusters, authored crosswind fields, paired gameplay updrafts with aligned visual wind volumes and cinematic lift ribbons, marked recovery branch islands, a 12-island floating route with higher-resolution vertex-colored terrain relief, world-space tiled terrain UVs, quantized terrain material-region identity, sharper terrain-specific procedural PBR textures with smoothed broad material noise, irregular procedural rims, stratified generated cliff/underside body meshes, layered color-banded distant island impostors, batched ground-cover/detail props, deterministic tapered/multi-lobed/detail-card near-LOD trees and wind-responsive ponds, complete declared glTF fixture coverage across asset residency classes, Bevy-native glTF scene/animation readiness hooks, repo-native asset fixture audits, background-safe terrain export/audit artifacts, and scripted evals for ground taxi control, mouse camera control, yaw/strafe/turn camera stability, air-control response, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
 
 ## Last Known Good
 
@@ -71,7 +71,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 
 ## Known Issues
 
-- The character now has a self-authored animated glTF fixture, but it is still a simple cuboid stand-in rather than a rigged production character.
+- The character now has a self-authored animated glTF fixture with faceted body meshes, gear accents, boots, shoulder guards, scarf pieces, and named clip coverage, but it is still not a rigged production character.
 - Limb posing has grounded stride, airborne banking, glide posture, and speed-responsive wing flex for generated fallback geometry; the authored fixture now proves retryable named-clip validation, graph readiness, and runtime clip transitions, but it is still approximate non-skeletal animation.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep.
 - Crosswind stream fields are still debug gizmos; updrafts, generated trees, clouds, and ponds now have cinematic generated motion/mesh cues, and the visible glider has a multi-part authored glTF fixture, but there are no particles, cloth simulation, or production environment art assets yet.
@@ -82,7 +82,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 
 ## Next Tasks
 
-1. Replace the temporary player/environment fixture scenes with authored or compatible production-quality glTF assets that satisfy the declared scene and player animation clip readiness metrics.
+1. Replace the temporary environment fixture scenes and faceted player fixture with authored or compatible production-quality glTF assets that satisfy the declared scene and player animation clip readiness metrics.
 2. Add fuller route-marker occlusion/visibility classification on top of the current projection and projected-pixel sidecars.
 3. Refine screenshot terrain/material, vegetation/cloud, and distant-impostor gates from image-family identity into exact world-semantic checks using the checkpoint projection metadata pattern.
 4. Add a simulation-only eval binary if native-window metric runs become a scaling bottleneck.
