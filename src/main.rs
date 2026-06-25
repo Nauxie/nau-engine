@@ -93,7 +93,7 @@ const GROUND_COVER_BLADES_PER_PATCH: usize = 5;
 const DETAIL_CARD_VERTICES: usize = 8;
 const VERTICES_PER_GROUND_BLADE: usize = 5;
 const INDICES_PER_GROUND_BLADE: usize = 9;
-const AUTHORED_ASSET_PROBE_KINDS: &[VisualAssetKind] = &[
+const AUTHORED_WORLD_FIXTURE_KINDS: &[VisualAssetKind] = &[
     VisualAssetKind::IslandTerrain,
     VisualAssetKind::IslandFoliage,
     VisualAssetKind::IslandRock,
@@ -899,10 +899,24 @@ impl NamedAnimationClipResolution {
 #[derive(Resource, Clone, Copy, Debug, Default)]
 struct VisualAssetDiagnostics {
     metrics: VisualAssetPipelineMetrics,
+    visible_world_fixture_count: usize,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
 struct AuthoredVisualScene {
+    kind: VisualAssetKind,
+    role: AuthoredVisualSceneRole,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AuthoredVisualSceneRole {
+    PlayerRuntime,
+    GliderRuntime,
+    WorldFixture,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+struct VisibleAuthoredWorldFixture {
     kind: VisualAssetKind,
 }
 
@@ -2762,10 +2776,12 @@ fn setup(
     let mut visual_asset_registry = prepare_visual_asset_registry(&asset_server);
     let player_scene_handle = visual_asset_registry.scene_handle(VisualAssetKind::PlayerCharacter);
     let glider_scene_handle = visual_asset_registry.scene_handle(VisualAssetKind::Glider);
-    let authored_probe_scene_handles = authored_asset_probe_scene_handles(&visual_asset_registry);
+    let authored_world_fixture_scene_handles =
+        authored_world_fixture_scene_handles(&visual_asset_registry);
     let mut player_scene_entity = None;
     let mut glider_scene_entity = None;
-    let mut authored_probe_scene_entities = Vec::with_capacity(authored_probe_scene_handles.len());
+    let mut authored_world_fixture_scene_entities =
+        Vec::with_capacity(authored_world_fixture_scene_handles.len());
 
     let suit_material = textured_material(
         &mut images,
@@ -3098,17 +3114,20 @@ fn setup(
     );
     commands.insert_resource(island_content_diagnostics);
 
-    for (index, (kind, label, scene_handle)) in authored_probe_scene_handles.into_iter().enumerate()
-    {
+    for (kind, label, scene_handle) in authored_world_fixture_scene_handles {
         let mut scene = commands.spawn((
             SceneRoot(scene_handle),
-            authored_asset_probe_transform(index),
-            Visibility::Hidden,
-            AuthoredVisualScene { kind },
-            Name::new(format!("authored {label} probe scene")),
+            authored_world_fixture_transform(kind, &route),
+            Visibility::Inherited,
+            AuthoredVisualScene {
+                kind,
+                role: AuthoredVisualSceneRole::WorldFixture,
+            },
+            VisibleAuthoredWorldFixture { kind },
+            Name::new(format!("visible authored {label} fixture scene")),
         ));
         scene.observe(mark_authored_scene_ready);
-        authored_probe_scene_entities.push((kind, scene.id()));
+        authored_world_fixture_scene_entities.push((kind, scene.id()));
     }
 
     commands
@@ -3128,6 +3147,7 @@ fn setup(
                     Visibility::Hidden,
                     AuthoredVisualScene {
                         kind: VisualAssetKind::PlayerCharacter,
+                        role: AuthoredVisualSceneRole::PlayerRuntime,
                     },
                     Name::new("authored player character scene"),
                 ));
@@ -3142,6 +3162,7 @@ fn setup(
                     Visibility::Hidden,
                     AuthoredVisualScene {
                         kind: VisualAssetKind::Glider,
+                        role: AuthoredVisualSceneRole::GliderRuntime,
                     },
                     Name::new("authored glider scene"),
                 ));
@@ -3259,7 +3280,7 @@ fn setup(
     if let Some(entity) = glider_scene_entity {
         visual_asset_registry.mark_scene_spawned(VisualAssetKind::Glider, entity);
     }
-    for (kind, entity) in authored_probe_scene_entities {
+    for (kind, entity) in authored_world_fixture_scene_entities {
         visual_asset_registry.mark_scene_spawned(kind, entity);
     }
     commands.insert_resource(visual_asset_registry);
@@ -3358,10 +3379,10 @@ fn visual_asset_path_exists(asset_path: &str) -> bool {
     Path::new("assets").join(asset_path).is_file()
 }
 
-fn authored_asset_probe_scene_handles(
+fn authored_world_fixture_scene_handles(
     registry: &VisualAssetRegistry,
 ) -> Vec<(VisualAssetKind, &'static str, Handle<Scene>)> {
-    AUTHORED_ASSET_PROBE_KINDS
+    AUTHORED_WORLD_FIXTURE_KINDS
         .iter()
         .filter_map(|kind| {
             registry
@@ -3377,8 +3398,46 @@ fn authored_asset_probe_scene_handles(
         .collect()
 }
 
-fn authored_asset_probe_transform(index: usize) -> Transform {
-    Transform::from_xyz(-140.0 + index as f32 * 8.0, -80.0, 140.0)
+fn authored_world_fixture_transform(kind: VisualAssetKind, route: &SkyRoute) -> Transform {
+    let Some((island, normalized_offset, surface_offset_y, scale, yaw_radians)) =
+        authored_world_fixture_layout(kind, route.islands())
+    else {
+        return Transform::from_xyz(-140.0, -80.0, 140.0);
+    };
+    let surface = island_visual_surface_position(island, normalized_offset);
+
+    Transform {
+        translation: surface + Vec3::Y * surface_offset_y,
+        rotation: Quat::from_rotation_y(yaw_radians),
+        scale: Vec3::splat(scale),
+    }
+}
+
+fn authored_world_fixture_layout(
+    kind: VisualAssetKind,
+    islands: &[SkyIsland],
+) -> Option<(SkyIsland, Vec2, f32, f32, f32)> {
+    let (island_index, normalized_offset, surface_offset_y, scale, yaw_radians) = match kind {
+        VisualAssetKind::IslandTerrain => (0, Vec2::new(0.34, -0.34), 0.08, 0.82, 0.35),
+        VisualAssetKind::IslandFoliage => (0, Vec2::new(-0.42, -0.2), 0.02, 2.2, -0.2),
+        VisualAssetKind::IslandRock => (1, Vec2::new(0.3, -0.26), 0.08, 1.8, 0.75),
+        VisualAssetKind::IslandWater => (5, Vec2::new(-0.18, 0.24), 0.04, 1.35, -0.45),
+        VisualAssetKind::RouteMarker => (3, Vec2::new(-0.08, 0.2), 1.58, 1.4, 0.2),
+        VisualAssetKind::WeatherLayer => (4, Vec2::new(0.18, -0.18), 8.2, 4.5, -0.75),
+        VisualAssetKind::DistantImpostor => (6, Vec2::new(0.0, 0.0), 4.0, 4.3, 0.55),
+        VisualAssetKind::PlayerCharacter | VisualAssetKind::Glider => return None,
+    };
+    let island = islands
+        .get(island_index.min(islands.len().saturating_sub(1)))
+        .copied()?;
+
+    Some((
+        island,
+        normalized_offset,
+        surface_offset_y,
+        scale,
+        yaw_radians,
+    ))
 }
 
 fn mark_authored_scene_ready(
@@ -6970,12 +7029,12 @@ fn animate_character(
     }
 
     for (scene, mut visibility) in &mut authored_scenes {
-        let visible = match scene.kind {
-            VisualAssetKind::PlayerCharacter => authored_player_ready,
-            VisualAssetKind::Glider => {
+        let visible = match scene.role {
+            AuthoredVisualSceneRole::PlayerRuntime => authored_player_ready,
+            AuthoredVisualSceneRole::GliderRuntime => {
                 authored_glider_ready && controller.mode == FlightMode::Gliding
             }
-            _ => false,
+            AuthoredVisualSceneRole::WorldFixture => visual_assets.scene_ready(scene.kind),
         };
         *visibility = if visible {
             Visibility::Inherited
@@ -7223,8 +7282,17 @@ fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
 fn update_visual_asset_diagnostics(
     asset_server: Res<AssetServer>,
     registry: Res<VisualAssetRegistry>,
+    visible_world_fixtures: Query<(&VisibleAuthoredWorldFixture, &Visibility)>,
     mut diagnostics: ResMut<VisualAssetDiagnostics>,
 ) {
+    let mut visible_fixture_kinds = HashSet::new();
+    for (fixture, visibility) in &visible_world_fixtures {
+        if *visibility == Visibility::Hidden {
+            continue;
+        }
+        visible_fixture_kinds.insert(fixture.kind);
+    }
+
     diagnostics.metrics = visual_asset_pipeline_metrics_with_preload_states(
         &VISUAL_ASSET_SPECS,
         |spec| {
@@ -7248,6 +7316,7 @@ fn update_visual_asset_diagnostics(
         |spec| registry.scene_state_for(spec),
         |spec| registry.animation_state_for(spec),
     );
+    diagnostics.visible_world_fixture_count = visible_fixture_kinds.len();
 }
 
 fn visual_asset_load_state(
@@ -7350,7 +7419,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices min/max {} / {}\nground cover patches {} blades {} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nauthored world fixtures {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices min/max {} / {}\nground cover patches {} blades {} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -7395,6 +7464,7 @@ fn update_debug_readout(
         asset_metrics.streaming_preload_ready_slot_count,
         asset_metrics.spawned_scene_count,
         asset_metrics.ready_scene_count,
+        scene.asset_diagnostics.visible_world_fixture_count,
         asset_metrics.ready_animation_clip_count,
         asset_metrics.declared_animation_clip_count,
         asset_metrics.animation_player_count,
@@ -7681,6 +7751,7 @@ fn collect_eval_metrics(
         scene.power_ups.active_effects(),
         scene.power_ups.total_activations,
     )
+    .with_visible_authored_world_fixture_count(scene.asset_diagnostics.visible_world_fixture_count)
     .with_camera_follow_metrics(scene.camera_diagnostics.follow_direction_error_degrees)
     .with_camera_world_yaw_metrics(camera_world_yaw)
     .with_visual_foot_gap(visual_foot_gap_m)
