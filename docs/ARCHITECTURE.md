@@ -13,11 +13,12 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 
 ## Current Code Shape
 
-- `src/main.rs` owns Bevy app setup, scene spawning, island stream-window visibility, island detail LOD, wind-responsive environment visual components, procedural weather setup, Bevy render-stack wiring, input mapping, ECS queries, and HUD sampling.
+- `src/main.rs` owns Bevy app setup, scene spawning, island stream-window visibility, island detail LOD, Bevy render-stack wiring, input mapping, ECS queries, and HUD sampling.
 - `src/authored_assets.rs` owns runtime glTF visual asset registry state, authored scene readiness observers, player animation graph linking, authored player clip switching, visible world-fixture placement helpers, and visual asset diagnostics.
 - `src/content_diagnostics.rs` owns runtime content-quality metric accumulation for generated island terrain, island bodies, ground cover, trees, rocks, clouds, and biome detail palettes.
 - `src/content_export.rs` owns background-safe terrain and visual-content export reports, OBJ/CSV/manifest writing, export mesh inspection helpers, and export output cleanup.
 - `src/debug_visuals.rs` owns F1 debug-visual toggling and Bevy gizmo drawing for player vectors, camera links, visual wind fields, and gameplay lift fields.
+- `src/environment_visuals.rs` owns cinematic weather/light/fog animation, drifting cloud layers, updraft haze/ribbon/guide motion, wind-responsive prop motion, and fallback glider airflow trails.
 - `src/eval_runtime.rs` owns CLI action parsing, eval run artifact paths, eval sample/summary file writing, and temporary output cleanup helpers.
 - `src/lib.rs` declares the reusable module surface.
 - `src/generated_content.rs` owns procedural PBR material/texture helpers, generated terrain/cliff/underside/impostor meshes, generated vegetation/rock/cloud meshes, island biome palettes, and mesh/texture inspection helpers shared by runtime spawning and export audits.
