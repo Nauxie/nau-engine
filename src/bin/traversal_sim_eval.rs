@@ -14,7 +14,10 @@ use nau_engine::{
         AERIAL_POWER_UP_ROUTE, GAMEPLAY_LIFT_ROUTE, LiftField, WindField, active_lift_fields_at,
         apply_aerial_power_up, apply_lift_fields, readable_lift_fields_at, visible_fields_at,
     },
-    eval::{EvalScenario, SCENARIO_NAMES, scenario_named, scripted_camera_input, scripted_input},
+    eval::{
+        AIR_CONTROL_RESPONSE, CAMERA_STRAFE_STABILITY, EvalScenario, SCENARIO_NAMES,
+        scenario_named, scripted_camera_input, scripted_input,
+    },
     movement::{
         Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning,
         body_yaw_error_degrees, desired_heading_alignment_speed, desired_planar_movement_direction,
@@ -45,6 +48,10 @@ const AIR_CONTROL_MAX_P95_BODY_HEADING_ERROR_DEGREES: f32 = 22.0;
 const AIR_CONTROL_MAX_BODY_HEADING_ERROR_DEGREES: f32 = 36.0;
 const AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES: f32 = 36.0;
 const AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS: f32 = 4.0;
+const AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES: f32 = 0.01;
+const AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 2.0;
+const AIR_CONTROL_MAX_CAMERA_VIEW_YAW_DRIFT_DEGREES: f32 = 2.0;
+const AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS: f32 = 0.20;
 const AIR_CONTROL_MIN_AIR_BRAKE_SPEED_DROP_MPS: f32 = 12.0;
 const AIR_CONTROL_MIN_AIR_BRAKE_PLANAR_SPEED_DROP_MPS: f32 = 12.0;
 const AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS: f32 = 14.0;
@@ -874,8 +881,12 @@ struct SimMetrics {
     first_backward_lateral_response_time_secs: Option<f32>,
     max_backward_right_lateral_response_mps: f32,
     max_backward_right_rear_response_mps: f32,
+    first_backward_right_lateral_input_time_secs: Option<f32>,
+    first_backward_right_lateral_response_time_secs: Option<f32>,
     max_backward_left_lateral_response_mps: f32,
     max_backward_left_rear_response_mps: f32,
+    first_backward_left_lateral_input_time_secs: Option<f32>,
+    first_backward_left_lateral_response_time_secs: Option<f32>,
     backward_air_control_start_speed_mps: Option<f32>,
     min_backward_air_control_speed_mps: Option<f32>,
     backward_air_control_start_planar_speed_mps: Option<f32>,
@@ -960,8 +971,12 @@ impl SimMetrics {
             first_backward_lateral_response_time_secs: None,
             max_backward_right_lateral_response_mps: 0.0,
             max_backward_right_rear_response_mps: 0.0,
+            first_backward_right_lateral_input_time_secs: None,
+            first_backward_right_lateral_response_time_secs: None,
             max_backward_left_lateral_response_mps: 0.0,
             max_backward_left_rear_response_mps: 0.0,
+            first_backward_left_lateral_input_time_secs: None,
+            first_backward_left_lateral_response_time_secs: None,
             backward_air_control_start_speed_mps: None,
             min_backward_air_control_speed_mps: None,
             backward_air_control_start_planar_speed_mps: None,
@@ -1145,7 +1160,7 @@ impl SimMetrics {
             _ => {}
         }
 
-        if scenario.name == "camera_strafe_stability" {
+        if scenario.name == CAMERA_STRAFE_STABILITY {
             self.max_camera_obstruction_adjustment_m = 0.0;
         }
     }
@@ -1182,12 +1197,23 @@ impl SimMetrics {
                     self.first_right_lateral_response_time_secs = Some(sample.time_secs);
                 }
                 if sample.movement_input_forward_axis < 0.0 {
+                    if self.first_backward_right_lateral_input_time_secs.is_none() {
+                        self.first_backward_right_lateral_input_time_secs = Some(sample.time_secs);
+                    }
                     self.max_backward_right_lateral_response_mps = self
                         .max_backward_right_lateral_response_mps
                         .max(sample.lateral_response_mps);
                     if let Some(rear_response) = backward_diagonal_rear_response_mps(sample) {
                         self.max_backward_right_rear_response_mps =
                             self.max_backward_right_rear_response_mps.max(rear_response);
+                    }
+                    if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+                        && self
+                            .first_backward_right_lateral_response_time_secs
+                            .is_none()
+                    {
+                        self.first_backward_right_lateral_response_time_secs =
+                            Some(sample.time_secs);
                     }
                 }
             }
@@ -1204,12 +1230,23 @@ impl SimMetrics {
                     self.first_left_lateral_response_time_secs = Some(sample.time_secs);
                 }
                 if sample.movement_input_forward_axis < 0.0 {
+                    if self.first_backward_left_lateral_input_time_secs.is_none() {
+                        self.first_backward_left_lateral_input_time_secs = Some(sample.time_secs);
+                    }
                     self.max_backward_left_lateral_response_mps = self
                         .max_backward_left_lateral_response_mps
                         .max(sample.lateral_response_mps);
                     if let Some(rear_response) = backward_diagonal_rear_response_mps(sample) {
                         self.max_backward_left_rear_response_mps =
                             self.max_backward_left_rear_response_mps.max(rear_response);
+                    }
+                    if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+                        && self
+                            .first_backward_left_lateral_response_time_secs
+                            .is_none()
+                    {
+                        self.first_backward_left_lateral_response_time_secs =
+                            Some(sample.time_secs);
                     }
                 }
             }
@@ -1447,7 +1484,7 @@ impl SimMetrics {
             ),
         ];
 
-        if scenario.name == "camera_strafe_stability" {
+        if scenario.name == CAMERA_STRAFE_STABILITY {
             checks.extend([
                 SimCheck::at_most(
                     "camera_strafe_view_yaw_drift",
@@ -1476,13 +1513,74 @@ impl SimMetrics {
             ]);
         }
 
-        if scenario.name == "air_control_response" {
+        if scenario.name == AIR_CONTROL_RESPONSE {
+            let lateral_response_latency_secs = response_latency_secs(
+                self.first_lateral_input_time_secs,
+                self.first_lateral_response_time_secs,
+            );
+            let right_lateral_response_latency_secs = response_latency_secs(
+                self.first_right_lateral_input_time_secs,
+                self.first_right_lateral_response_time_secs,
+            );
+            let left_lateral_response_latency_secs = response_latency_secs(
+                self.first_left_lateral_input_time_secs,
+                self.first_left_lateral_response_time_secs,
+            );
+            let backward_lateral_response_latency_secs = response_latency_secs(
+                self.first_backward_lateral_input_time_secs,
+                self.first_backward_lateral_response_time_secs,
+            );
+            let backward_right_lateral_response_latency_secs = response_latency_secs(
+                self.first_backward_right_lateral_input_time_secs,
+                self.first_backward_right_lateral_response_time_secs,
+            );
+            let backward_left_lateral_response_latency_secs = response_latency_secs(
+                self.first_backward_left_lateral_input_time_secs,
+                self.first_backward_left_lateral_response_time_secs,
+            );
+
             checks.extend([
+                SimCheck::at_most(
+                    "air_control_lateral_response_latency",
+                    lateral_response_latency_secs,
+                    AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
+                    "s",
+                ),
                 SimCheck::at_least(
                     "air_control_lateral_response",
                     self.max_lateral_response_mps,
                     AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS,
                     "mps",
+                ),
+                SimCheck::at_most(
+                    "air_control_right_lateral_response_latency",
+                    right_lateral_response_latency_secs,
+                    AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
+                    "s",
+                ),
+                SimCheck::at_least(
+                    "air_control_right_lateral_response",
+                    self.max_right_lateral_response_mps,
+                    AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS,
+                    "mps",
+                ),
+                SimCheck::at_most(
+                    "air_control_left_lateral_response_latency",
+                    left_lateral_response_latency_secs,
+                    AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
+                    "s",
+                ),
+                SimCheck::at_least(
+                    "air_control_left_lateral_response",
+                    self.max_left_lateral_response_mps,
+                    AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS,
+                    "mps",
+                ),
+                SimCheck::at_most(
+                    "air_control_backward_lateral_response_latency",
+                    backward_lateral_response_latency_secs,
+                    AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
+                    "s",
                 ),
                 SimCheck::at_least(
                     "air_control_backward_lateral_response",
@@ -1490,10 +1588,34 @@ impl SimMetrics {
                     AIR_CONTROL_MIN_BACKWARD_LATERAL_RESPONSE_MPS,
                     "mps",
                 ),
+                SimCheck::at_most(
+                    "air_control_backward_right_lateral_response_latency",
+                    backward_right_lateral_response_latency_secs,
+                    AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
+                    "s",
+                ),
+                SimCheck::at_least(
+                    "air_control_backward_right_lateral_response",
+                    self.max_backward_right_lateral_response_mps,
+                    AIR_CONTROL_MIN_BACKWARD_LATERAL_RESPONSE_MPS,
+                    "mps",
+                ),
                 SimCheck::at_least(
                     "air_control_backward_right_rear_response",
                     self.max_backward_right_rear_response_mps,
                     AIR_CONTROL_MIN_BACKWARD_DIAGONAL_REAR_RESPONSE_MPS,
+                    "mps",
+                ),
+                SimCheck::at_most(
+                    "air_control_backward_left_lateral_response_latency",
+                    backward_left_lateral_response_latency_secs,
+                    AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
+                    "s",
+                ),
+                SimCheck::at_least(
+                    "air_control_backward_left_lateral_response",
+                    self.max_backward_left_lateral_response_mps,
+                    AIR_CONTROL_MIN_BACKWARD_LATERAL_RESPONSE_MPS,
                     "mps",
                 ),
                 SimCheck::at_least(
@@ -1537,6 +1659,30 @@ impl SimMetrics {
                     self.body_yaw_oscillation_count as f32,
                     AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS,
                     "oscillations",
+                ),
+                SimCheck::at_most(
+                    "air_control_camera_orbit_yaw_offset",
+                    self.max_abs_camera_yaw_offset_degrees,
+                    AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES,
+                    "deg",
+                ),
+                SimCheck::at_most(
+                    "air_control_camera_rotation_delta",
+                    self.max_camera_rotation_delta_degrees,
+                    AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES,
+                    "deg",
+                ),
+                SimCheck::at_most(
+                    "air_control_camera_view_yaw_drift",
+                    self.max_camera_view_yaw_drift_degrees,
+                    AIR_CONTROL_MAX_CAMERA_VIEW_YAW_DRIFT_DEGREES,
+                    "deg",
+                ),
+                SimCheck::at_most(
+                    "air_control_camera_world_yaw_drift",
+                    self.max_camera_world_yaw_drift_degrees,
+                    MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES,
+                    "deg",
                 ),
                 SimCheck::at_least(
                     "air_control_air_brake_speed_drop",
@@ -1610,8 +1756,10 @@ impl SimMetrics {
             "max_backward_lateral_response_mps": round4(self.max_backward_lateral_response_mps),
             "backward_lateral_response_latency_secs": round4(response_latency_secs(self.first_backward_lateral_input_time_secs, self.first_backward_lateral_response_time_secs)),
             "max_backward_right_lateral_response_mps": round4(self.max_backward_right_lateral_response_mps),
+            "backward_right_lateral_response_latency_secs": round4(response_latency_secs(self.first_backward_right_lateral_input_time_secs, self.first_backward_right_lateral_response_time_secs)),
             "max_backward_right_rear_response_mps": round4(self.max_backward_right_rear_response_mps),
             "max_backward_left_lateral_response_mps": round4(self.max_backward_left_lateral_response_mps),
+            "backward_left_lateral_response_latency_secs": round4(response_latency_secs(self.first_backward_left_lateral_input_time_secs, self.first_backward_left_lateral_response_time_secs)),
             "max_backward_left_rear_response_mps": round4(self.max_backward_left_rear_response_mps),
             "max_air_brake_speed_drop_mps": round4(self.max_air_brake_speed_drop_mps),
             "max_air_brake_planar_speed_drop_mps": round4(self.max_air_brake_planar_speed_drop_mps),
@@ -1835,12 +1983,45 @@ mod tests {
 
     #[test]
     fn air_control_simulation_measures_backward_diagonal_response() {
-        let scenario = scenario_named("air_control_response").expect("scenario");
+        let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
         let result = run_simulation(scenario);
 
         assert!(result.passed);
         assert!(result.metrics.max_backward_right_rear_response_mps >= 10.0);
         assert!(result.metrics.max_backward_left_rear_response_mps >= 10.0);
         assert!(result.metrics.max_air_brake_planar_speed_drop_mps >= 12.0);
+    }
+
+    #[test]
+    fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
+        let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+        let result = run_simulation(scenario);
+
+        assert!(result.passed);
+        for name in [
+            "air_control_right_lateral_response_latency",
+            "air_control_right_lateral_response",
+            "air_control_left_lateral_response_latency",
+            "air_control_left_lateral_response",
+            "air_control_backward_right_lateral_response_latency",
+            "air_control_backward_right_lateral_response",
+            "air_control_backward_left_lateral_response_latency",
+            "air_control_backward_left_lateral_response",
+            "air_control_camera_orbit_yaw_offset",
+            "air_control_camera_rotation_delta",
+            "air_control_camera_view_yaw_drift",
+            "air_control_camera_world_yaw_drift",
+        ] {
+            let check = result
+                .checks
+                .iter()
+                .find(|check| check.name == name)
+                .unwrap_or_else(|| panic!("missing sim check {name}"));
+            assert!(check.passed, "expected {name} to pass: {check:?}");
+        }
+
+        let summary = result.to_summary_json();
+        assert!(summary.contains("\"backward_right_lateral_response_latency_secs\""));
+        assert!(summary.contains("\"backward_left_lateral_response_latency_secs\""));
     }
 }
