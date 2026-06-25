@@ -48,6 +48,7 @@ struct SceneSampleAudit {
     label: String,
     expected_material: String,
     in_viewport: bool,
+    visibility: String,
     screen_x: Option<f64>,
     screen_y: Option<f64>,
     semantic_pixel_hits: usize,
@@ -59,6 +60,8 @@ struct CheckpointAudit {
     metadata_path: String,
     screenshot_path: String,
     checkpoint: String,
+    in_viewport_scene_sample_count: usize,
+    occluded_scene_sample_count: usize,
     visible_scene_sample_count: usize,
     scene_sample_pixel_hit_count: usize,
     visible_scene_material_count: usize,
@@ -123,7 +126,12 @@ fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, String> {
         .iter()
         .map(|sample| audit_scene_sample(sample, &image, scale))
         .collect::<Result<Vec<_>, _>>()?;
-    let visible_scene_sample_count = samples.iter().filter(|sample| sample.in_viewport).count();
+    let in_viewport_scene_sample_count = samples.iter().filter(|sample| sample.in_viewport).count();
+    let occluded_scene_sample_count = samples
+        .iter()
+        .filter(|sample| sample.visibility == "occluded")
+        .count();
+    let visible_scene_sample_count = samples.iter().filter(|sample| sample.is_visible()).count();
     let scene_sample_pixel_hit_count = samples.iter().filter(|sample| sample.passed).count();
     let materials = material_audits(&samples);
     let visible_scene_material_count = materials.len();
@@ -143,6 +151,8 @@ fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, String> {
         metadata_path: path.to_string_lossy().into_owned(),
         screenshot_path: screenshot_path.to_string_lossy().into_owned(),
         checkpoint,
+        in_viewport_scene_sample_count,
+        occluded_scene_sample_count,
         visible_scene_sample_count,
         scene_sample_pixel_hit_count,
         visible_scene_material_count,
@@ -226,6 +236,11 @@ fn audit_scene_sample(
         .get("in_viewport")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let visibility = sample
+        .get("visibility")
+        .and_then(Value::as_str)
+        .unwrap_or(if in_viewport { "visible" } else { "offscreen" })
+        .to_string();
     let screen = sample.get("screen");
     let screen_x = screen
         .and_then(|screen| screen.get("x"))
@@ -233,7 +248,8 @@ fn audit_scene_sample(
     let screen_y = screen
         .and_then(|screen| screen.get("y"))
         .and_then(Value::as_f64);
-    let semantic_pixel_hits = match (in_viewport, screen_x, screen_y) {
+    let visible = in_viewport && visibility == "visible";
+    let semantic_pixel_hits = match (visible, screen_x, screen_y) {
         (true, Some(x), Some(y)) => {
             sample_pixel_hits(image, x, y, &expected_material, screenshot_scale)
         }
@@ -245,11 +261,18 @@ fn audit_scene_sample(
         label,
         expected_material,
         in_viewport,
+        visibility,
         screen_x,
         screen_y,
         semantic_pixel_hits,
-        passed: in_viewport && semantic_pixel_hits >= MIN_SAMPLE_PIXEL_HITS,
+        passed: visible && semantic_pixel_hits >= MIN_SAMPLE_PIXEL_HITS,
     })
+}
+
+impl SceneSampleAudit {
+    fn is_visible(&self) -> bool {
+        self.in_viewport && self.visibility == "visible"
+    }
 }
 
 fn material_audits(samples: &[SceneSampleAudit]) -> Vec<MaterialAudit> {
@@ -259,7 +282,7 @@ fn material_audits(samples: &[SceneSampleAudit]) -> Vec<MaterialAudit> {
             let visible_sample_count = samples
                 .iter()
                 .filter(|sample| {
-                    sample.in_viewport && sample.expected_material == *expected_material
+                    sample.is_visible() && sample.expected_material == *expected_material
                 })
                 .count();
             if visible_sample_count == 0 {
@@ -434,6 +457,7 @@ fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
         .min()
         .unwrap_or(0);
     let material_counts = material_hit_counts(checkpoints);
+    let visible_material_counts = material_visible_counts(checkpoints);
     let mut checks = vec![Check::at_least(
         "checkpoint_scene_pixel_hits",
         passed_checkpoint_count as f64,
@@ -456,6 +480,12 @@ fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
 
     for material in EXPECTED_MATERIALS {
         checks.push(Check::at_least(
+            format!("{material}_visible_scene_samples"),
+            *visible_material_counts.get(material).unwrap_or(&0) as f64,
+            1.0,
+            "samples",
+        ));
+        checks.push(Check::at_least(
             format!("{material}_scene_sample_pixel_hits"),
             *material_counts.get(material).unwrap_or(&0) as f64,
             1.0,
@@ -464,6 +494,23 @@ fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
     }
 
     checks
+}
+
+fn material_visible_counts(checkpoints: &[CheckpointAudit]) -> BTreeMap<&str, usize> {
+    let mut unique_visible = HashSet::new();
+    for checkpoint in checkpoints {
+        for sample in &checkpoint.samples {
+            if sample.is_visible() {
+                unique_visible.insert((sample.expected_material.as_str(), sample.label.as_str()));
+            }
+        }
+    }
+
+    let mut counts = BTreeMap::new();
+    for (material, _) in unique_visible {
+        *counts.entry(material).or_default() += 1;
+    }
+    counts
 }
 
 fn material_hit_counts(checkpoints: &[CheckpointAudit]) -> BTreeMap<&str, usize> {
@@ -518,11 +565,13 @@ fn checkpoint_json(checkpoint: &CheckpointAudit) -> String {
         .collect::<Vec<_>>()
         .join(",\n");
     format!(
-        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"checkpoint\": {},\n      \"passed\": {},\n      \"visible_scene_sample_count\": {},\n      \"scene_sample_pixel_hit_count\": {},\n      \"visible_scene_material_count\": {},\n      \"scene_material_pixel_hit_count\": {},\n      \"materials\": [\n{}\n      ],\n      \"samples\": [\n{}\n      ]\n    }}",
+        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"checkpoint\": {},\n      \"passed\": {},\n      \"in_viewport_scene_sample_count\": {},\n      \"occluded_scene_sample_count\": {},\n      \"visible_scene_sample_count\": {},\n      \"scene_sample_pixel_hit_count\": {},\n      \"visible_scene_material_count\": {},\n      \"scene_material_pixel_hit_count\": {},\n      \"materials\": [\n{}\n      ],\n      \"samples\": [\n{}\n      ]\n    }}",
         json_string(&checkpoint.metadata_path),
         json_string(&checkpoint.screenshot_path),
         json_string(&checkpoint.checkpoint),
         checkpoint.passed,
+        checkpoint.in_viewport_scene_sample_count,
+        checkpoint.occluded_scene_sample_count,
         checkpoint.visible_scene_sample_count,
         checkpoint.scene_sample_pixel_hit_count,
         checkpoint.visible_scene_material_count,
@@ -550,11 +599,12 @@ fn sample_json(sample: &SceneSampleAudit) -> String {
         _ => "null".to_string(),
     };
     format!(
-        "        {{\"kind\": {}, \"label\": {}, \"expected_material\": {}, \"in_viewport\": {}, \"screen\": {}, \"semantic_pixel_hits\": {}, \"passed\": {}}}",
+        "        {{\"kind\": {}, \"label\": {}, \"expected_material\": {}, \"in_viewport\": {}, \"visibility\": {}, \"screen\": {}, \"semantic_pixel_hits\": {}, \"passed\": {}}}",
         json_string(&sample.kind),
         json_string(&sample.label),
         json_string(&sample.expected_material),
         sample.in_viewport,
+        json_string(&sample.visibility),
         screen,
         sample.semantic_pixel_hits,
         sample.passed
@@ -654,6 +704,85 @@ mod tests {
 
         assert!(audit.in_viewport);
         assert!(!audit.passed);
+    }
+
+    #[test]
+    fn occluded_projected_scene_samples_do_not_count_as_hits() {
+        let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
+        image.put_pixel(32, 32, Rgb([104, 82, 48]));
+        image.put_pixel(33, 32, Rgb([92, 74, 46]));
+        image.put_pixel(34, 32, Rgb([74, 68, 62]));
+        let occluded_sample = serde_json::json!({
+            "kind": "terrain_surface",
+            "label": "blocked terrain",
+            "expected_material": "terrain",
+            "in_viewport": true,
+            "visibility": "occluded",
+            "screen": {"x": 32.0, "y": 32.0}
+        });
+
+        let audit =
+            audit_scene_sample(&occluded_sample, &image, (1.0, 1.0)).expect("sample should parse");
+
+        assert!(audit.in_viewport);
+        assert!(!audit.is_visible());
+        assert_eq!(audit.semantic_pixel_hits, 0);
+        assert!(!audit.passed);
+    }
+
+    #[test]
+    fn report_checks_require_visible_material_samples_before_pixel_hits() {
+        let visible_terrain = SceneSampleAudit {
+            kind: "terrain_surface".to_string(),
+            label: "foreground".to_string(),
+            expected_material: "terrain".to_string(),
+            in_viewport: true,
+            visibility: "visible".to_string(),
+            screen_x: Some(12.0),
+            screen_y: Some(12.0),
+            semantic_pixel_hits: MIN_SAMPLE_PIXEL_HITS,
+            passed: true,
+        };
+        let occluded_cloud = SceneSampleAudit {
+            kind: "weather_cloud".to_string(),
+            label: "blocked cloud".to_string(),
+            expected_material: "cloud".to_string(),
+            in_viewport: true,
+            visibility: "occluded".to_string(),
+            screen_x: Some(24.0),
+            screen_y: Some(24.0),
+            semantic_pixel_hits: MIN_SAMPLE_PIXEL_HITS,
+            passed: false,
+        };
+        let checkpoint = CheckpointAudit {
+            metadata_path: "checkpoint.markers.json".to_string(),
+            screenshot_path: "checkpoint.png".to_string(),
+            checkpoint: "test".to_string(),
+            in_viewport_scene_sample_count: 2,
+            occluded_scene_sample_count: 1,
+            visible_scene_sample_count: 1,
+            scene_sample_pixel_hit_count: 1,
+            visible_scene_material_count: 1,
+            scene_material_pixel_hit_count: 1,
+            passed: false,
+            samples: vec![visible_terrain, occluded_cloud],
+            materials: Vec::new(),
+        };
+
+        let checks = report_checks(&[checkpoint]);
+        let cloud_visible = checks
+            .iter()
+            .find(|check| check.name == "cloud_visible_scene_samples")
+            .expect("cloud visible check");
+        let cloud_hits = checks
+            .iter()
+            .find(|check| check.name == "cloud_scene_sample_pixel_hits")
+            .expect("cloud hit check");
+
+        assert!(!cloud_visible.passed);
+        assert_eq!(cloud_visible.value, 0.0);
+        assert!(!cloud_hits.passed);
+        assert_eq!(cloud_hits.value, 0.0);
     }
 
     #[test]
