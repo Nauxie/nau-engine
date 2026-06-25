@@ -6,7 +6,8 @@ use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::debug_visuals::DebugVisuals;
 use crate::environment_visuals::{WindResponsiveVisual, wind_responsive_visual_metrics};
 use crate::island_visuals::IslandStreamDiagnostics;
-use crate::{Player, PowerUpCollectionState, RouteObjectiveTracker};
+use crate::power_up_runtime::PowerUpCollectionState;
+use crate::{Player, RouteObjectiveTracker};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use nau_engine::camera::{
