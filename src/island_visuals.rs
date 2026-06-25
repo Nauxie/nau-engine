@@ -1,4 +1,5 @@
 use crate::Player;
+use crate::camera_runtime::CameraObstacle;
 use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::environment_visuals::{WindResponsiveVisual, WindVisualMotion, wind_visual_motion};
 use crate::generated_content::{
@@ -95,9 +96,6 @@ pub(crate) struct IslandStreamDiagnostics {
     pub(crate) total_despawned_visuals: usize,
     initialized: bool,
 }
-
-#[derive(Component, Clone, Copy, Debug)]
-pub(crate) struct CameraObstacle(pub(crate) CameraObstruction);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct IslandVisualKey {
