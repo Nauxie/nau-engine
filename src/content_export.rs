@@ -1,5 +1,5 @@
 use crate::eval_runtime::{path_string, remove_existing_dir};
-use crate::{
+use crate::generated_content::{
     CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, CLOUD_WISP_CARDS_PER_LOBE, GROUND_COVER_PATCHES,
     TERRAIN_BIOME_PALETTE_COUNT, TERRAIN_TEXTURE_SIZE, TREE_CANOPY_CARD_COUNT, TREE_TRUNK_SEGMENTS,
     VERTICES_PER_GROUND_BLADE, biome_detail_color_set, cloud_cluster_mesh, island_cliff_mesh,
