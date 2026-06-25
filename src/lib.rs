@@ -7481,8 +7481,14 @@ pub mod eval {
         let left = (3.1..=4.2).contains(&t);
         let right = (5.1..=5.35).contains(&t);
 
+        let forward = if scenario.name == ISLAND_LAUNCH_TO_LANDING {
+            (0.05..=7.05).contains(&t)
+        } else {
+            t >= 0.05
+        };
+
         FlightInput {
-            forward: t >= 0.05,
+            forward,
             left,
             right,
             glide: t >= 0.45 && !dive,
@@ -8386,6 +8392,16 @@ pub mod eval {
             assert!(scripted_input(scenario, 180).glide);
             assert!(!scripted_input(scenario, 180).dive);
             assert_eq!(scenario.thresholds.min_completed_objective_count, 1);
+        }
+
+        #[test]
+        fn island_launch_script_releases_forward_after_touchdown() {
+            let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("island route exists");
+
+            assert!(scripted_input(scenario, 360).forward);
+            assert!(scripted_input(scenario, 423).forward);
+            assert!(!scripted_input(scenario, 430).forward);
+            assert!(scenario.thresholds.require_target_landing);
         }
 
         #[test]
