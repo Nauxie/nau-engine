@@ -30,7 +30,11 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/eval_app_runtime.rs` owns eval ECS query surface, frame-time and metric sampling, eval frame finalization, screenshot capture, checkpoint marker metadata, semantic scene samples, and marker occlusion projection helpers.
 - `src/eval_runtime.rs` owns CLI action parsing, eval run artifact paths, eval sample/summary file writing, and temporary output cleanup helpers.
 - `src/bin/traversal_sim_eval.rs` owns the background-safe traversal simulation CLI, scripted flight stepping, sample capture, and artifact writing.
-- `src/bin/traversal_sim_eval/metrics.rs` owns simulation-only metric accumulation, pass/fail check assembly, summary serialization, and response-latency helpers.
+- `src/bin/traversal_sim_eval/metrics.rs` owns simulation-only metric state and constructor defaults.
+- `src/bin/traversal_sim_eval/metrics/observe.rs` owns per-sample simulation metric accumulation.
+- `src/bin/traversal_sim_eval/metrics/checks.rs` owns simulation-only pass/fail check assembly.
+- `src/bin/traversal_sim_eval/metrics/report.rs` owns simulation-only summary serialization and result packaging.
+- `src/bin/traversal_sim_eval/metrics/util.rs` owns shared simulation-metric response, percentile, distance, and rear-diagonal helpers.
 - `src/bin/traversal_sim_eval/tests.rs` owns unit coverage for simulation-only route, camera, air-control, and body-roll regression checks.
 - `src/bin/visual_audit.rs` owns the non-golden screenshot visual-audit CLI wiring used by screenshot eval runs.
 - `src/bin/visual_audit/analysis.rs` owns per-image audit sampling and check construction.
