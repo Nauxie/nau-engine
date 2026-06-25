@@ -1,0 +1,637 @@
+use super::*;
+
+#[test]
+fn accumulator_summarizes_frame_time_percentiles() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut accumulator = EvalAccumulator::default();
+    for frame_time_ms in [8.0, 16.0, 33.0, 50.0] {
+        accumulator.observe_frame_time_ms(frame_time_ms);
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.avg_frame_time_ms, 26.75);
+    assert_eq!(summary.metrics.p95_frame_time_ms, 50.0);
+    assert_eq!(summary.metrics.p99_frame_time_ms, 50.0);
+    assert_eq!(summary.metrics.max_frame_time_ms, 50.0);
+}
+
+#[test]
+fn accumulator_requires_both_air_control_lateral_phases() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, 0.0, -18.0),
+        Vec2::new(0.0, 1.0),
+        0.0,
+        18.0,
+        8.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        90,
+        Vec3::new(20.0, -2.0, -18.0),
+        Vec2::new(1.0, 0.0),
+        20.0,
+        18.0,
+        4.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        210,
+        Vec3::new(14.0, -2.0, -18.0),
+        Vec2::new(-1.0, 0.0),
+        2.0,
+        18.0,
+        4.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        270,
+        Vec3::new(12.0, -2.0, 8.0),
+        Vec2::new(1.0, -1.0),
+        12.0,
+        18.0,
+        4.0,
+    ));
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let right_check = summary
+        .checks
+        .iter()
+        .find(|check| check.name == "air_control_right_lateral_response")
+        .expect("right response check exists");
+    let left_check = summary
+        .checks
+        .iter()
+        .find(|check| check.name == "air_control_left_lateral_response")
+        .expect("left response check exists");
+
+    assert!(right_check.passed);
+    assert!(!left_check.passed);
+    assert_eq!(summary.metrics.max_right_lateral_response_mps, 20.0);
+    assert_eq!(summary.metrics.max_left_lateral_response_mps, 2.0);
+}
+
+#[test]
+fn accumulator_requires_backward_diagonal_air_control_response() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, 0.0, -18.0),
+        Vec2::new(0.0, 1.0),
+        0.0,
+        18.0,
+        8.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        90,
+        Vec3::new(20.0, -2.0, -18.0),
+        Vec2::new(1.0, 0.0),
+        20.0,
+        18.0,
+        4.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        210,
+        Vec3::new(-20.0, -2.0, -18.0),
+        Vec2::new(-1.0, 0.0),
+        20.0,
+        18.0,
+        4.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        270,
+        Vec3::new(2.0, -2.0, 8.0),
+        Vec2::new(1.0, -1.0),
+        2.0,
+        18.0,
+        4.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        320,
+        Vec3::new(-2.0, -2.0, 8.0),
+        Vec2::new(-1.0, -1.0),
+        2.0,
+        18.0,
+        4.0,
+    ));
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let aggregate_check = named_check(&summary, "air_control_backward_lateral_response");
+    let backward_right_check = named_check(&summary, "air_control_backward_right_lateral_response");
+    let backward_left_check = named_check(&summary, "air_control_backward_left_lateral_response");
+
+    assert_eq!(summary.metrics.max_backward_lateral_response_mps, 2.0);
+    assert_eq!(summary.metrics.max_backward_right_lateral_response_mps, 2.0);
+    assert_eq!(summary.metrics.max_backward_left_lateral_response_mps, 2.0);
+    assert!(!aggregate_check.passed);
+    assert!(!backward_right_check.passed);
+    assert!(!backward_left_check.passed);
+}
+
+#[test]
+fn accumulator_requires_backward_diagonal_rear_component() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let lateral_only_diagonal_alignment = 12.0 / std::f32::consts::SQRT_2;
+
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, 0.0, -18.0),
+        Vec2::new(0.0, 1.0),
+        0.0,
+        20.0,
+        8.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        90,
+        Vec3::new(20.0, -2.0, -18.0),
+        Vec2::new(1.0, 0.0),
+        20.0,
+        20.0,
+        4.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        210,
+        Vec3::new(-20.0, -2.0, -18.0),
+        Vec2::new(-1.0, 0.0),
+        20.0,
+        20.0,
+        4.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        270,
+        Vec3::new(12.0, -2.0, 0.0),
+        Vec2::new(1.0, -1.0),
+        12.0,
+        lateral_only_diagonal_alignment,
+        4.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        320,
+        Vec3::new(-12.0, -2.0, 0.0),
+        Vec2::new(-1.0, -1.0),
+        12.0,
+        lateral_only_diagonal_alignment,
+        4.0,
+    ));
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let backward_right_lateral_check =
+        named_check(&summary, "air_control_backward_right_lateral_response");
+    let backward_left_lateral_check =
+        named_check(&summary, "air_control_backward_left_lateral_response");
+    let backward_right_rear_check =
+        named_check(&summary, "air_control_backward_right_rear_response");
+    let backward_left_rear_check = named_check(&summary, "air_control_backward_left_rear_response");
+
+    assert!(backward_right_lateral_check.passed);
+    assert!(backward_left_lateral_check.passed);
+    assert!(!backward_right_rear_check.passed);
+    assert!(!backward_left_rear_check.passed);
+    assert!(summary.metrics.max_backward_right_rear_response_mps.abs() < 0.001);
+    assert!(summary.metrics.max_backward_left_rear_response_mps.abs() < 0.001);
+    let summary_json = summary.to_json();
+    assert!(summary_json.contains("\"max_backward_right_rear_response_mps\""));
+    assert!(summary_json.contains("\"max_backward_left_rear_response_mps\""));
+}
+
+#[test]
+fn accumulator_gates_air_control_camera_follow_lag() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for (frame, movement_axis) in [
+        (0, Vec2::new(0.0, 1.0)),
+        (90, Vec2::new(1.0, 0.0)),
+        (210, Vec2::new(-1.0, 0.0)),
+    ] {
+        accumulator.observe(
+            air_control_metric_sample(
+                scenario,
+                frame,
+                Vec3::new(20.0, -2.0, -18.0),
+                movement_axis,
+                20.0,
+                18.0,
+                4.0,
+            )
+            .with_camera_follow_metrics(72.0),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let check = named_check(&summary, "air_control_avg_camera_follow_direction_error");
+
+    assert_eq!(
+        summary.metrics.avg_camera_follow_direction_error_degrees,
+        72.0
+    );
+    assert_eq!(
+        summary.metrics.max_camera_follow_direction_error_degrees,
+        72.0
+    );
+    assert_eq!(check.value, 72.0);
+    assert!(!check.passed);
+}
+
+#[test]
+fn accumulator_gates_air_control_follow_error_spikes() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..20 {
+        accumulator.observe(
+            air_control_metric_sample(
+                scenario,
+                frame,
+                Vec3::new(16.0, -2.0, -18.0),
+                Vec2::new(0.0, 1.0),
+                0.0,
+                18.0,
+                4.0,
+            )
+            .with_camera_follow_metrics(0.0),
+        );
+    }
+    for frame in [90, 210] {
+        accumulator.observe(
+            air_control_metric_sample(
+                scenario,
+                frame,
+                Vec3::new(20.0, -2.0, -18.0),
+                Vec2::new(1.0, 0.0),
+                20.0,
+                18.0,
+                4.0,
+            )
+            .with_camera_follow_metrics(90.0),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let avg_check = named_check(&summary, "air_control_avg_camera_follow_direction_error");
+    let p95_check = named_check(&summary, "air_control_p95_camera_follow_direction_error");
+
+    assert!(avg_check.passed);
+    assert_eq!(
+        summary.metrics.p95_camera_follow_direction_error_degrees,
+        90.0
+    );
+    assert_eq!(p95_check.value, 90.0);
+    assert!(!p95_check.passed);
+}
+
+#[test]
+fn accumulator_gates_air_control_body_heading_spikes() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..20 {
+        accumulator.observe(air_control_metric_sample(
+            scenario,
+            frame,
+            Vec3::new(16.0, -2.0, -18.0),
+            Vec2::new(0.0, 1.0),
+            0.0,
+            18.0,
+            3.0,
+        ));
+    }
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        90,
+        Vec3::new(20.0, -2.0, -18.0),
+        Vec2::new(1.0, 0.0),
+        20.0,
+        18.0,
+        90.0,
+    ));
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let avg_check = named_check(&summary, "air_control_avg_body_heading_error");
+    let p95_check = named_check(&summary, "air_control_p95_body_heading_error");
+    let max_check = named_check(&summary, "air_control_max_body_heading_error");
+    let step_check = named_check(&summary, "air_control_max_body_yaw_error_step");
+
+    assert!(avg_check.passed);
+    assert!(p95_check.passed);
+    assert_eq!(summary.metrics.max_desired_body_heading_error_degrees, 90.0);
+    assert_eq!(max_check.value, 90.0);
+    assert!(!max_check.passed);
+    assert!(
+        summary.metrics.max_body_yaw_error_step_degrees
+            > AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES
+    );
+    assert_eq!(
+        step_check.value,
+        summary.metrics.max_body_yaw_error_step_degrees
+    );
+    assert!(!step_check.passed);
+}
+
+#[test]
+fn accumulator_gates_movement_only_camera_world_yaw_drift() {
+    let scenario = scenario_named(CAMERA_STRAFE_STABILITY).expect("strafe route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator
+        .observe(content_metric_sample(scenario, 0, 12, 0, 64).with_camera_world_yaw_metrics(0.0));
+    accumulator.observe(
+        content_metric_sample(scenario, 60, 12, 0, 64).with_camera_world_yaw_metrics(20.0),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let check = named_check(&summary, "camera_strafe_world_yaw_drift");
+
+    assert_eq!(summary.metrics.max_camera_world_yaw_drift_degrees, 20.0);
+    assert_eq!(check.value, 20.0);
+    assert!(!check.passed);
+}
+
+#[test]
+fn accumulator_resets_body_roll_step_across_grounded_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        30,
+        Vec3::new(14.0, -2.0, -18.0),
+        Vec2::new(1.0, 0.0),
+        16.0,
+        18.0,
+        4.0,
+    ));
+    let mut grounded = air_control_metric_sample(
+        scenario,
+        60,
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec2::ZERO,
+        0.0,
+        f32::NAN,
+        f32::NAN,
+    );
+    grounded.mode = FlightMode::Grounded.label();
+    grounded.body_roll_degrees = 0.0;
+    accumulator.observe(grounded);
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        90,
+        Vec3::new(-14.0, -2.0, -18.0),
+        Vec2::new(-1.0, 0.0),
+        16.0,
+        18.0,
+        -4.0,
+    ));
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.max_body_roll_step_degrees, 0.0);
+    assert!(named_check(&summary, "air_control_max_body_roll_step").passed);
+}
+
+#[test]
+fn accumulator_gates_movement_only_camera_view_yaw_drift() {
+    let scenario = scenario_named(CAMERA_STRAFE_STABILITY).expect("strafe route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator
+        .observe(content_metric_sample(scenario, 0, 12, 0, 64).with_camera_view_yaw_metrics(0.0));
+    accumulator
+        .observe(content_metric_sample(scenario, 60, 12, 0, 64).with_camera_view_yaw_metrics(12.0));
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let check = named_check(&summary, "camera_strafe_view_yaw_drift");
+
+    assert_eq!(summary.metrics.max_camera_view_yaw_drift_degrees, 12.0);
+    assert_eq!(check.value, 12.0);
+    assert!(!check.passed);
+}
+
+#[test]
+fn accumulator_gates_ground_strafe_directional_response() {
+    let scenario = scenario_named(CAMERA_STRAFE_STABILITY).expect("strafe route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(
+        content_metric_sample(scenario, 0, 12, 0, 64).with_movement_metrics(EvalMovementMetrics {
+            desired_body_yaw_error_degrees: f32::NAN,
+            body_roll_degrees: 0.0,
+            desired_heading_alignment_mps: f32::NAN,
+            lateral_response_mps: 9.0,
+            lateral_input_active: false,
+            movement_axis: Vec2::new(1.0, 0.0),
+        }),
+    );
+    accumulator.observe(
+        content_metric_sample(scenario, 60, 12, 0, 64).with_movement_metrics(EvalMovementMetrics {
+            desired_body_yaw_error_degrees: f32::NAN,
+            body_roll_degrees: 0.0,
+            desired_heading_alignment_mps: f32::NAN,
+            lateral_response_mps: 3.0,
+            lateral_input_active: false,
+            movement_axis: Vec2::new(-1.0, 0.0),
+        }),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let right_check = named_check(&summary, "camera_strafe_right_lateral_response");
+    let left_check = named_check(&summary, "camera_strafe_left_lateral_response");
+
+    assert!(right_check.passed);
+    assert_eq!(summary.metrics.max_right_lateral_response_mps, 9.0);
+    assert_eq!(summary.metrics.max_left_lateral_response_mps, 3.0);
+    assert!(!left_check.passed);
+}
+
+#[test]
+fn accumulator_gates_planar_air_brake_drop() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        240,
+        Vec3::new(10.0, -52.0, 0.0),
+        Vec2::new(0.0, -1.0),
+        0.0,
+        0.0,
+        f32::NAN,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        245,
+        Vec3::new(10.0, -8.0, 0.0),
+        Vec2::new(0.0, -1.0),
+        0.0,
+        0.0,
+        f32::NAN,
+    ));
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let total_speed_check = named_check(&summary, "air_control_air_brake_speed_drop");
+    let planar_speed_check = named_check(&summary, "air_control_air_brake_planar_speed_drop");
+
+    assert!(summary.metrics.max_air_brake_speed_drop_mps > 40.0);
+    assert!(total_speed_check.passed);
+    assert_eq!(summary.metrics.max_air_brake_planar_speed_drop_mps, 0.0);
+    assert_eq!(planar_speed_check.value, 0.0);
+    assert!(!planar_speed_check.passed);
+    assert!(
+        summary
+            .to_json()
+            .contains("\"max_air_brake_planar_speed_drop_mps\"")
+    );
+}
+
+#[test]
+fn accumulator_gates_grounded_visual_foot_gap() {
+    let scenario = scenario_named(GROUND_TAXI_CONTROL).expect("ground taxi route exists");
+    let mut sample = content_metric_sample(scenario, 0, 12, 0, 96);
+    sample.mode = FlightMode::Grounded.label();
+    sample.visual_foot_gap_m = 0.18;
+
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let check = named_check(&summary, "grounded_visual_foot_gap");
+
+    assert_eq!(summary.metrics.max_grounded_visual_foot_gap_m, 0.18);
+    assert_eq!(check.value, 0.18);
+    assert!(!check.passed);
+}
