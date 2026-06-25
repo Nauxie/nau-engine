@@ -149,7 +149,7 @@ fi
 if (( semantic_scene_audit_status != 0 )); then
   echo "semantic scene audit failed: ${semantic_scene_audit_path}" >&2
   if command -v jq >/dev/null 2>&1 && [[ -s "${semantic_scene_audit_path}" ]]; then
-    jq '{passed, checks, failed_checkpoints: [.checkpoints[] | select(.passed == false) | {checkpoint, metadata_path, screenshot_path, visible_scene_sample_count, scene_sample_pixel_hit_count, samples: [.samples[] | select(.in_viewport == true) | {kind, label, expected_material, screen, semantic_pixel_hits, passed}]}]}' \
+    jq '{passed, checks, failed_checkpoints: [.checkpoints[] | select(.passed == false) | {checkpoint, metadata_path, screenshot_path, visible_scene_sample_count, scene_sample_pixel_hit_count, visible_scene_material_count, scene_material_pixel_hit_count, materials, samples: [.samples[] | select(.in_viewport == true and .passed == false) | {kind, label, expected_material, screen, semantic_pixel_hits, passed}]}]}' \
       "${semantic_scene_audit_path}" >&2 || true
   fi
   exit "${semantic_scene_audit_status}"
