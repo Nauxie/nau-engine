@@ -47,7 +47,8 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/world.rs` owns collision-aware route surfaces, sky-island definitions, deterministic island relief, landing target queries, active chunk counters, stream-window classification, and near/mid/far LOD band classification.
 - `src/diagnostics.rs` owns pure helpers for frame-time and runtime metric formatting inputs.
 - `src/eval.rs` owns the eval module surface and shared eval JSON helpers.
-- `src/eval/accumulator.rs` owns metric accumulation and gate assembly for movement, camera, content, streaming, assets, and screenshots.
+- `src/eval/accumulator.rs` owns per-sample metric accumulation for movement, camera, content, streaming, assets, and screenshots.
+- `src/eval/accumulator/summary_report.rs` owns accumulator summary construction, frame-time percentiles, response-latency helpers, and pass/fail gate assembly.
 - `src/eval/sample.rs` owns eval frame sample structures, movement sample metrics, objective progress serialization, and NDJSON sample serialization.
 - `src/eval/scenarios.rs` owns scripted traversal scenario definitions, scenario aliases, checkpoints, and scripted movement/camera input timelines.
 - `src/eval/summary.rs` owns eval artifact, metrics-summary, check-result, and summary JSON serialization types.
