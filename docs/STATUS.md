@@ -115,6 +115,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `src/island_visuals.rs`
 - `src/player_runtime.rs`
 - `src/power_up_runtime.rs`
+- `src/scene_setup_runtime.rs`
 - `src/content_export.rs`
 - `src/content_export/terrain.rs`
 - `src/content_export/visual.rs`
