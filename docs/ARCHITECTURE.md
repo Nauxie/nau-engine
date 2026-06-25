@@ -24,7 +24,8 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/eval_app_runtime.rs` owns eval ECS query surface, frame-time and metric sampling, eval frame finalization, screenshot capture, checkpoint marker metadata, semantic scene samples, and marker occlusion projection helpers.
 - `src/eval_runtime.rs` owns CLI action parsing, eval run artifact paths, eval sample/summary file writing, and temporary output cleanup helpers.
 - `src/lib.rs` declares the reusable module surface.
-- `src/generated_content.rs` owns procedural PBR material/texture helpers, generated terrain/cliff/underside/impostor meshes, island biome palettes, and mesh/texture inspection helpers shared by runtime spawning and export audits.
+- `src/generated_content.rs` owns procedural PBR material/texture helpers and shared generated-content re-exports.
+- `src/generated_content/island_meshes.rs` owns generated terrain/cliff/underside/impostor meshes, island biome palettes, ground-cover meshes, and mesh inspection helpers shared by runtime spawning and export audits.
 - `src/generated_content/detail_meshes.rs` owns reusable generated rock, tree, cloud, updraft ribbon, and glider airflow trail mesh builders.
 - `src/island_visuals.rs` owns island visual catalog entries, LOD residency decisions, route/detail/beacon queueing, and stream-window spawn/despawn diagnostics.
 - `src/power_up_runtime.rs` owns aerial power-up collection state, visual guide spawning/animation, and one-time boost application.
