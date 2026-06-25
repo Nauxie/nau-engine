@@ -1,6 +1,6 @@
 # Reference Audit
 
-Last updated: 2026-06-24
+Last updated: 2026-06-25
 
 This document records local code audits for external Bevy references used to steer NAU work. These repositories are references only; do not copy assets or large code blocks into NAU without a separate license/provenance check.
 
@@ -10,7 +10,7 @@ This document records local code audits for external Bevy references used to ste
 - `olekspickle/bevy_new_3d_rpg` at `54d1dbb`
 - `manankarnik/bevy_generative` at `74a17cc`
 
-The current local audit used refreshed clones under `target/reference_repos` so source, manifests, documentation, shader/material examples, and license text were available for direct inspection. Earlier sparse-clone notes remain useful, but this pass treated the repositories as codebases to audit rather than search results.
+The current local audit used refreshed full clones under `/tmp/nau-engine-reference-repos` so source, manifests, documentation, shader/material examples, glTF/particle asset declarations, and license text were available for direct inspection. Earlier sparse-clone notes remain useful, but this pass treated the repositories as codebases to audit rather than search results.
 
 ## Foxtrot
 
@@ -47,6 +47,7 @@ Patterns worth adopting:
 - Compute movement direction from the camera transform on the horizontal plane. Its `Transform::movement_direction(Vec2)` projects camera forward to X/Z, derives a flat right vector, combines stick/WASD input, and normalizes the result.
 - Rotate the visible character toward desired planar movement, not toward the camera. Its player control code slerps the model toward `atan2(input_dir.x, input_dir.z)`, which directly addresses Nau's lateral/diagonal air-control problem.
 - Keep camera rotation input separate from movement input. Movement reads an enhanced-input `Movement` action while camera yaw/pitch reads `RotateCamera`; this matches NAU's invariant that `A`/`D` must not orbit the camera.
+- Treat lateral air control as a desired-heading problem first, then a velocity problem. For NAU, the next movement PR should keep the current evaluated camera controller, derive a flat camera-relative desired direction from WASD/left stick, steer planar velocity toward that vector with acceleration curves, and slerp/bank Nau's body toward that same vector without writing to camera yaw.
 - Use named glTF animations and `AnimationGraph::from_clips`. The template loads named clips such as idle, jog, sprint, jump, land, crouch, and roll, recursively discovers nested `AnimationPlayer`s after `SceneInstanceReady`, builds an animation graph, and transitions with `AnimationTransitions`; NAU should keep checked clip lookup plus diagnostics instead of copying hard-coded clip order or indexing `named_animations` with panicking lookups.
 - Keep player/world assets as preloaded resources and spawn them through Bevy scene roots. Its model resources load `models/player.glb` and `models/scene.gltf` before gameplay spawn, which is a useful shape for NAU's character/glider/island/detail assets and should pair with NAU's existing asset-slot readiness metrics.
 - Keep traversal and camera tuning data-driven once constants become hard to compare in review. The template's RON config-as-asset pattern is a good fit for future flight/camera/render constants, but NAU should only move constants out of Rust after the corresponding eval gates are stable enough to protect changes.
@@ -97,12 +98,13 @@ Patterns to reject or replace:
 ## NAU Implementation Order
 
 1. Keep flight/camera tuning under the current evaluated movement stack. NAU already has camera-relative planar air control, lateral/braking evals, body-heading metrics, and movement-input camera non-coupling gates; future flight work should tighten those metrics rather than replace the controller wholesale.
-2. Keep the small Bevy-native asset preload/resource layer narrow. NAU now tracks recursive dependency readiness for declared scene handles by residency class; the next asset work should build on those metrics rather than introducing a broad loading-screen rewrite.
-3. Keep glTF animation-player linking retryable and scene-ready driven. NAU now separates `SceneInstanceReady` lifecycle marking from nested `AnimationPlayer` discovery, named-clip validation, and `AnimationGraph`/`AnimationTransitions` attachment; future asset work should preserve the named-clip contract and avoid hard-coded animation indices.
-4. Extend the `bevy_new_3d_rpg` asset/animation shape in stages: NAU now has declared glTF slots, self-authored player/glider/world fixture scenes, `SceneRoot` spawning, scene-instance readiness, named player clip declarations, `Gltf` lookup, retryable `AnimationPlayer` discovery, and `AnimationGraph`/`AnimationTransitions` readiness metrics; the next asset branch should move from fixtures toward compatible production-quality character/world assets before driving real state transitions.
-5. Adapt Foxtrot's render infrastructure only after real assets expose a measurable need for better texture samplers, HDR/TAA/bloom defaults, or shader warmup.
-6. Continue the internal island mesh generator inspired by `bevy_generative`: NAU now has irregular island masks, rim/cliff/underside geometry, layered far-LOD island impostors, computed normals, tiled terrain UVs, deterministic vertex-color/strata signals, encoded terrain material-weight semantics, derived material-region gates, terrain texture-detail and texture-edge gates, terrain/body/impostor shape gates, collision surface compatibility, streaming counters, and audited offline OBJ/CSV/manifest export including impostor artifacts; the next terrain branch should move from material readability toward richer biome identity, vegetation density, and screenshot-level terrain/material/impostor semantic checks.
-7. Add the next visual eval gates for screenshot-level terrain/material identity, vegetation/cloud depth/readability, distant-impostor readability, glTF readiness, and asset residency.
+2. Next movement branch: add or tighten a dedicated diagonal/lateral airborne steering route that proves desired heading, body heading, planar velocity, braking, and camera yaw remain decoupled under mixed WASD input. The reference target is `bevy_new_3d_rpg`'s flat camera-relative movement helper, adapted to NAU's flight physics rather than copied as a ground controller.
+3. Keep the small Bevy-native asset preload/resource layer narrow. NAU now tracks recursive dependency readiness for declared scene handles by residency class; the next asset work should build on those metrics rather than introducing a broad loading-screen rewrite.
+4. Keep glTF animation-player linking retryable and scene-ready driven. NAU now separates `SceneInstanceReady` lifecycle marking from nested `AnimationPlayer` discovery, named-clip validation, and `AnimationGraph`/`AnimationTransitions` attachment; future asset work should preserve the named-clip contract and avoid hard-coded animation indices.
+5. Extend the `bevy_new_3d_rpg` asset/animation shape in stages: NAU now has declared glTF slots, self-authored player/glider/world fixture scenes, `SceneRoot` spawning, scene-instance readiness, named player clip declarations, `Gltf` lookup, retryable `AnimationPlayer` discovery, and `AnimationGraph`/`AnimationTransitions` readiness metrics; the next asset branch should move from fixtures toward compatible production-quality character/world assets before driving real state transitions.
+6. Adapt Foxtrot's render infrastructure only after real assets expose a measurable need for better texture samplers, HDR/TAA/bloom defaults, or shader warmup.
+7. Continue the internal island mesh generator inspired by `bevy_generative`: NAU now has irregular island masks, rim/cliff/underside geometry, layered far-LOD island impostors, computed normals, tiled terrain UVs, deterministic vertex-color/strata signals, encoded terrain material-weight semantics, derived material-region gates, terrain texture-detail and texture-edge gates, terrain/body/impostor shape gates, collision surface compatibility, streaming counters, and audited offline OBJ/CSV/manifest export including impostor artifacts; the next terrain branch should move from material readability toward richer biome identity, vegetation density, and screenshot-level terrain/material/impostor semantic checks.
+8. Add the next visual eval gates for screenshot-level terrain/material identity, vegetation/cloud depth/readability, distant-impostor readability, glTF readiness, and asset residency.
 
 ## License Notes
 
