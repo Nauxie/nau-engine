@@ -13,7 +13,8 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 
 ## Current Code Shape
 
-- `src/main.rs` owns Bevy app setup, scene spawning, Bevy render-stack wiring, input mapping, ECS queries, and HUD sampling.
+- `src/main.rs` owns Bevy app setup, scene spawning, input mapping, ECS queries, and HUD/eval sampling.
+- `src/camera_runtime.rs` owns runtime camera resources, mouse-look capture, follow-camera ECS wiring, camera obstruction components, camera spawn/render-stack setup, and camera diagnostics.
 - `src/authored_assets.rs` owns runtime glTF visual asset registry state, authored scene readiness observers, player animation graph linking, authored player clip switching, visible world-fixture placement helpers, and visual asset diagnostics.
 - `src/content_diagnostics.rs` owns runtime content-quality metric accumulation for generated island terrain, island bodies, ground cover, trees, rocks, clouds, and biome detail palettes.
 - `src/content_export.rs` owns background-safe terrain and visual-content export reports, OBJ/CSV/manifest writing, export mesh inspection helpers, and export output cleanup.
@@ -22,7 +23,7 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/eval_runtime.rs` owns CLI action parsing, eval run artifact paths, eval sample/summary file writing, and temporary output cleanup helpers.
 - `src/lib.rs` declares the reusable module surface.
 - `src/generated_content.rs` owns procedural PBR material/texture helpers, generated terrain/cliff/underside/impostor meshes, generated vegetation/rock/cloud meshes, island biome palettes, and mesh/texture inspection helpers shared by runtime spawning and export audits.
-- `src/island_visuals.rs` owns island visual catalog entries, LOD residency decisions, camera obstacle components, route/detail/beacon queueing, and stream-window spawn/despawn diagnostics.
+- `src/island_visuals.rs` owns island visual catalog entries, LOD residency decisions, route/detail/beacon queueing, and stream-window spawn/despawn diagnostics.
 - `src/asset_pipeline.rs` owns the declared glTF visual asset inventory, expected player animation clip names, residency classes, deterministic load-admission policy, file/load-state readiness metrics, recursive dependency preload metrics, scene-instance readiness metrics, visible authored world-fixture metrics, and animation graph/player readiness metrics while generated primitives remain the fallback.
 - `src/movement.rs` owns flight state, input state, tuning, launch/glide/dive integration, floor clamp, velocity limits, and facing smoothing.
 - `src/environment.rs` owns finite visual wind/updraft field definitions, gameplay `LiftField` updraft volumes, collectible aerial power-up route definitions, lift/boost application, deterministic stream placement, and testable wind-sway visual motion math.

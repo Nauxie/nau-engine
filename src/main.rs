@@ -1,4 +1,5 @@
 mod authored_assets;
+mod camera_runtime;
 mod content_diagnostics;
 mod content_export;
 mod debug_visuals;
@@ -7,20 +8,13 @@ mod eval_runtime;
 mod generated_content;
 mod island_visuals;
 use authored_assets::*;
-use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
-use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::system::SystemParam;
-use bevy::input::mouse::MouseMotion;
-use bevy::light::{
-    AtmosphereEnvironmentMapLight, CascadeShadowConfigBuilder, DirectionalLightShadowMap,
-    VolumetricFog, VolumetricLight,
-};
-use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
-use bevy::post_process::bloom::Bloom;
+use bevy::light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, VolumetricLight};
+use bevy::pbr::ScatteringMedium;
 use bevy::prelude::*;
-use bevy::render::render_resource::BlendState;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
-use bevy::window::{CompositeAlphaMode, CursorGrabMode, CursorOptions, PrimaryWindow};
+use bevy::window::CompositeAlphaMode;
+use camera_runtime::*;
 use content_diagnostics::*;
 #[cfg(test)]
 use content_export::mesh_uv0;
@@ -43,12 +37,9 @@ use nau_engine::animation::{
 };
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::{
-    CameraControlState, CameraControlTuning, CameraInput, CameraObstruction, FollowCamera,
-    FollowCameraState, apply_camera_input, avoid_camera_obstructions, camera_distance,
-    camera_orbit_alignment_degrees, camera_pitch_degrees, camera_surface_clearance,
-    camera_target_angle_degrees, camera_view_yaw_degrees, lift_camera_above_floor,
-    movement_input_stable_follow_direction, step_camera_with_direction,
-    update_follow_direction_state,
+    CameraControlState, CameraControlTuning, CameraObstruction, camera_distance,
+    camera_pitch_degrees, camera_surface_clearance, camera_target_angle_degrees,
+    camera_view_yaw_degrees,
 };
 use nau_engine::diagnostics::frame_ms;
 use nau_engine::environment::{
@@ -59,8 +50,7 @@ use nau_engine::environment::{
 #[cfg(test)]
 use nau_engine::eval::scenario_named;
 use nau_engine::eval::{
-    EvalMovementMetrics, EvalObjectiveProgress, EvalSample, EvalScenario, scripted_camera_input,
-    scripted_input,
+    EvalMovementMetrics, EvalObjectiveProgress, EvalSample, EvalScenario, scripted_input,
 };
 use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
@@ -80,9 +70,6 @@ const PLAYER_START: Vec3 = START_POSITION;
 const WORLD_RADIUS: f32 = 920.0;
 const EVAL_SCREENSHOT_TIMEOUT_FRAMES: u32 = 180;
 const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
-const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
-const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
-const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
 const ATTACHED_PLAYER_VISUAL_OFFSET_Y: f32 = -TERRAIN_VISUAL_FOOTING_OFFSET_M;
 const INITIAL_SKY_CLEAR_COLOR: Color = Color::srgb(0.50, 0.68, 0.92);
 fn main() -> AppExit {
@@ -342,22 +329,6 @@ struct AerialPowerUpVisual {
     angular_speed: f32,
 }
 
-#[derive(Resource, Clone, Copy, Debug, Default)]
-struct CameraDiagnostics {
-    step_distance_m: f32,
-    rotation_delta_degrees: f32,
-    orbit_alignment_degrees: f32,
-    follow_direction: Vec3,
-    follow_direction_error_degrees: f32,
-    obstruction_adjustment_m: f32,
-    obstruction_hits: usize,
-}
-
-#[derive(Resource, Clone, Copy, Debug, Default)]
-struct MouseLookState {
-    captured: bool,
-}
-
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 enum GameSet {
     Movement,
@@ -371,25 +342,6 @@ struct MovementWorld<'w, 's> {
     route: Res<'w, SkyRoute>,
     lift_fields: Query<'w, 's, &'static LiftField>,
     power_ups: ResMut<'w, PowerUpCollectionState>,
-}
-
-#[derive(SystemParam)]
-struct CameraScene<'w, 's> {
-    route: Res<'w, SkyRoute>,
-    camera_control: Res<'w, CameraControlState>,
-    camera_diagnostics: ResMut<'w, CameraDiagnostics>,
-    player: Query<'w, 's, (&'static Transform, &'static Velocity), With<Player>>,
-    camera: Query<
-        'w,
-        's,
-        (
-            &'static mut Transform,
-            &'static FollowCamera,
-            &'static mut FollowCameraState,
-        ),
-        CameraFollowFilter,
-    >,
-    obstacles: Query<'w, 's, &'static CameraObstacle>,
 }
 
 #[derive(SystemParam)]
@@ -461,7 +413,6 @@ struct PlayerStepContext<'a> {
     power_ups: &'a mut PowerUpCollectionState,
 }
 
-type CameraFollowFilter = (With<Camera3d>, Without<Player>);
 type GeneratedPlayerPlaceholderFilter = (
     With<GeneratedPlayerPlaceholder>,
     Without<CharacterPart>,
@@ -990,56 +941,13 @@ fn setup(
     }
     commands.insert_resource(visual_asset_registry);
 
-    let follow_camera = FollowCamera::default();
-    let initial_camera_direction = Vec3::NEG_Z;
-    commands.spawn((
-        Camera3d::default(),
-        Camera {
-            clear_color: ClearColorConfig::Custom(INITIAL_SKY_CLEAR_COLOR),
-            output_mode: CameraOutputMode::Write {
-                blend_state: Some(BlendState::REPLACE),
-                clear_color: ClearColorConfig::Custom(INITIAL_SKY_CLEAR_COLOR),
-            },
-            ..default()
-        },
-        Atmosphere::earthlike(scattering_mediums.add(ScatteringMedium::default())),
-        AtmosphereSettings {
-            scene_units_to_m: 18.0,
-            aerial_view_lut_max_distance: 26_000.0,
-            ..default()
-        },
-        Exposure { ev100: 12.6 },
-        Tonemapping::AcesFitted,
-        Bloom::NATURAL,
-        AtmosphereEnvironmentMapLight::default(),
-        VolumetricFog {
-            ambient_color: Color::srgb(0.66, 0.72, 0.84),
-            ambient_intensity: 0.035,
-            jitter: 0.35,
-            step_count: 48,
-        },
-        DistanceFog {
-            color: Color::srgba(0.56, 0.70, 0.88, 0.48),
-            directional_light_color: Color::srgba(1.0, 0.84, 0.55, 0.45),
-            directional_light_exponent: 18.0,
-            falloff: FogFalloff::Linear {
-                start: 260.0,
-                end: WORLD_RADIUS,
-            },
-        },
-        Transform::from_translation(
-            PLAYER_START - initial_camera_direction * follow_camera.distance
-                + Vec3::Y * follow_camera.height,
-        )
-        .looking_at(
-            PLAYER_START
-                + Vec3::Y * follow_camera.look_height
-                + initial_camera_direction * follow_camera.look_ahead,
-            Vec3::Y,
-        ),
-        follow_camera,
-        FollowCameraState::default(),
-    ));
+    spawn_follow_camera(
+        &mut commands,
+        &mut scattering_mediums,
+        PLAYER_START,
+        WORLD_RADIUS,
+        INITIAL_SKY_CLEAR_COLOR,
+    );
 
     commands.spawn((
         Text::new(""),
@@ -1208,7 +1116,7 @@ fn fly_player(
     );
 }
 
-fn keyboard_flight_input(keyboard: &ButtonInput<KeyCode>) -> FlightInput {
+pub(crate) fn keyboard_flight_input(keyboard: &ButtonInput<KeyCode>) -> FlightInput {
     FlightInput {
         forward: keyboard.pressed(KeyCode::KeyW),
         backward: keyboard.pressed(KeyCode::KeyS),
@@ -1420,154 +1328,6 @@ fn character_pose_velocity(world_velocity: Vec3, player_rotation: Quat) -> Vec3 
         world_velocity.y,
         -world_velocity.dot(forward),
     )
-}
-
-fn update_mouse_look_capture(
-    eval: Option<Res<EvalRun>>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mouse_buttons: Res<ButtonInput<MouseButton>>,
-    mut mouse_look: ResMut<MouseLookState>,
-    mut window: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
-) {
-    if eval.is_some() {
-        return;
-    }
-
-    if mouse_buttons.just_pressed(MouseButton::Left) {
-        mouse_look.captured = true;
-    }
-    if keyboard.just_pressed(KeyCode::Escape) {
-        mouse_look.captured = false;
-    }
-
-    let Ok((window, mut cursor)) = window.single_mut() else {
-        return;
-    };
-    if !window.focused {
-        mouse_look.captured = false;
-    }
-
-    let grab_mode = if mouse_look.captured {
-        CursorGrabMode::Locked
-    } else {
-        CursorGrabMode::None
-    };
-    if cursor.grab_mode != grab_mode {
-        cursor.grab_mode = grab_mode;
-    }
-
-    let visible = !mouse_look.captured;
-    if cursor.visible != visible {
-        cursor.visible = visible;
-    }
-}
-
-fn update_camera_control(
-    time: Res<Time>,
-    eval: Option<Res<EvalRun>>,
-    tuning: Res<CameraControlTuning>,
-    mouse_buttons: Res<ButtonInput<MouseButton>>,
-    mouse_look: Res<MouseLookState>,
-    mut state: ResMut<CameraControlState>,
-    mut mouse_motion: MessageReader<MouseMotion>,
-) {
-    let input = if let Some(run) = eval.as_deref() {
-        scripted_camera_input(run.scenario, run.frame)
-    } else {
-        let mouse_delta = mouse_motion
-            .read()
-            .fold(Vec2::ZERO, |delta, motion| delta + motion.delta);
-
-        CameraInput {
-            mouse_delta: if mouse_look.captured || mouse_buttons.pressed(MouseButton::Right) {
-                mouse_delta
-            } else {
-                Vec2::ZERO
-            },
-        }
-    };
-
-    if input.mouse_delta.length_squared() <= 0.0 || time.delta_secs() <= 0.0 {
-        return;
-    }
-
-    state.orbit = apply_camera_input(state.orbit, input, &tuning);
-}
-
-fn follow_camera(
-    time: Res<Time>,
-    eval: Option<Res<EvalRun>>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut scene: CameraScene,
-) {
-    let Ok((player_transform, player_velocity)) = scene.player.single() else {
-        return;
-    };
-    let Ok((mut camera_transform, follow, mut follow_state)) = scene.camera.single_mut() else {
-        return;
-    };
-    let previous_camera_position = camera_transform.translation;
-    let previous_camera_rotation = camera_transform.rotation;
-
-    let dt = eval_dt(&time, eval.as_deref());
-    let movement_input = eval.as_deref().map_or_else(
-        || keyboard_flight_input(&keyboard),
-        |run| scripted_input(run.scenario, run.frame),
-    );
-    let desired_follow_direction = movement_input_stable_follow_direction(
-        player_velocity.0,
-        *player_transform.forward(),
-        follow_state.direction,
-        movement_input.planar_axis(),
-    );
-    let follow_direction =
-        update_follow_direction_state(&mut follow_state, desired_follow_direction, follow, dt);
-    let frame = step_camera_with_direction(
-        camera_transform.translation,
-        camera_transform.rotation,
-        player_transform.translation,
-        follow_direction,
-        follow,
-        scene.camera_control.orbit,
-        dt,
-    );
-    let orbit_alignment_degrees = camera_orbit_alignment_degrees(
-        frame.position,
-        frame.look_target,
-        follow_direction,
-        scene.camera_control.orbit,
-    );
-    let camera_floor_y = scene.route.ground_at(frame.position).floor_y;
-    let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
-    let obstruction_resolution = avoid_camera_obstructions(
-        frame,
-        scene.obstacles.iter().map(|obstacle| obstacle.0),
-        CAMERA_OBSTRUCTION_CLEARANCE,
-    );
-    let camera_floor_y = scene
-        .route
-        .ground_at(obstruction_resolution.frame.position)
-        .floor_y;
-    let frame = lift_camera_above_floor(
-        obstruction_resolution.frame,
-        camera_floor_y,
-        CAMERA_MIN_SURFACE_CLEARANCE,
-    );
-
-    scene.camera_diagnostics.step_distance_m = previous_camera_position.distance(frame.position);
-    scene.camera_diagnostics.rotation_delta_degrees = previous_camera_rotation
-        .angle_between(frame.rotation)
-        .to_degrees();
-    scene.camera_diagnostics.orbit_alignment_degrees = orbit_alignment_degrees;
-    scene.camera_diagnostics.follow_direction = follow_direction;
-    scene.camera_diagnostics.follow_direction_error_degrees = follow_direction
-        .angle_between(desired_follow_direction)
-        .to_degrees();
-    scene.camera_diagnostics.obstruction_adjustment_m = obstruction_resolution.adjusted_distance_m;
-    scene.camera_diagnostics.obstruction_hits = obstruction_resolution.hit_count;
-
-    camera_transform.translation = frame.position;
-    camera_transform.rotation = frame.rotation;
 }
 
 fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
