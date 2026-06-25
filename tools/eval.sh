@@ -132,7 +132,7 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
     fi
     if ! jq -e '.passed == true' "${artifact}" >/dev/null; then
       echo "checkpoint marker semantic audit failed: ${artifact}" >&2
-      jq '{passed, frame, checkpoint, semantic_marker_count, expected_objective_marker_count, in_viewport_semantic_marker_count, occluded_semantic_marker_count, visible_semantic_marker_count, current_objective_visible, semantic_scene_sample_count, visible_semantic_scene_sample_count, visible_semantic_scene_material_count, markers: [.markers[] | {kind, label, current_objective, in_viewport, visibility, occluder, screen}], scene_samples: [.scene_samples[]? | {kind, label, expected_material, in_viewport, screen}]}' \
+      jq '{passed, frame, checkpoint, semantic_marker_count, expected_objective_marker_count, in_viewport_semantic_marker_count, occluded_semantic_marker_count, visible_semantic_marker_count, current_objective_visible, semantic_scene_sample_count, in_viewport_semantic_scene_sample_count, occluded_semantic_scene_sample_count, visible_semantic_scene_sample_count, visible_semantic_scene_material_count, markers: [.markers[] | {kind, label, current_objective, in_viewport, visibility, occluder, screen}], scene_samples: [.scene_samples[]? | {kind, label, expected_material, in_viewport, visibility, occluder, screen}]}' \
         "${artifact}" >&2 || true
       exit 1
     fi
@@ -189,7 +189,7 @@ fi
 if (( semantic_scene_audit_status != 0 )); then
   echo "semantic scene audit failed: ${semantic_scene_audit_path}" >&2
   if command -v jq >/dev/null 2>&1 && [[ -s "${semantic_scene_audit_path}" ]]; then
-    jq '{passed, checks, failed_checkpoints: [.checkpoints[] | select(.passed == false) | {checkpoint, metadata_path, screenshot_path, visible_scene_sample_count, scene_sample_pixel_hit_count, visible_scene_material_count, scene_material_pixel_hit_count, materials, samples: [.samples[] | select(.in_viewport == true and .passed == false) | {kind, label, expected_material, screen, semantic_pixel_hits, passed}]}]}' \
+    jq '{passed, checks, failed_checkpoints: [.checkpoints[] | select(.passed == false) | {checkpoint, metadata_path, screenshot_path, in_viewport_scene_sample_count, occluded_scene_sample_count, visible_scene_sample_count, scene_sample_pixel_hit_count, visible_scene_material_count, scene_material_pixel_hit_count, materials, samples: [.samples[] | select(.in_viewport == true and .passed == false) | {kind, label, expected_material, visibility, screen, semantic_pixel_hits, passed}]}]}' \
       "${semantic_scene_audit_path}" >&2 || true
   fi
   exit "${semantic_scene_audit_status}"
