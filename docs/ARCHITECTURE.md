@@ -13,7 +13,7 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 
 ## Current Code Shape
 
-- `src/main.rs` owns Bevy app setup, scene spawning, input mapping, ECS queries, and HUD/eval sampling.
+- `src/main.rs` owns Bevy app setup, scene spawning, input mapping, player movement systems, route objective updates, and eval metric sampling.
 - `src/camera_runtime.rs` owns runtime camera resources, mouse-look capture, follow-camera ECS wiring, camera obstruction components, camera spawn/render-stack setup, and camera diagnostics.
 - `src/authored_assets.rs` owns runtime glTF visual asset registry state, authored scene readiness observers, player animation graph linking, authored player clip switching, visible world-fixture placement helpers, and visual asset diagnostics.
 - `src/content_diagnostics.rs` owns runtime content-quality metric accumulation for generated island terrain, island bodies, ground cover, trees, rocks, clouds, and biome detail palettes.
@@ -21,6 +21,7 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/debug_readout_runtime.rs` owns the live HUD/debug readout component, query surface, and diagnostic text formatting.
 - `src/debug_visuals.rs` owns F1 debug-visual toggling and Bevy gizmo drawing for player vectors, camera links, visual wind fields, and gameplay lift fields.
 - `src/environment_visuals.rs` owns cinematic weather/light/fog animation, drifting cloud layers, updraft haze/ribbon/guide motion, wind-responsive prop motion, and fallback glider airflow trails.
+- `src/eval_app_runtime.rs` owns eval ECS query surface, eval frame finalization, screenshot capture, checkpoint marker metadata, semantic scene samples, and marker occlusion projection helpers.
 - `src/eval_runtime.rs` owns CLI action parsing, eval run artifact paths, eval sample/summary file writing, and temporary output cleanup helpers.
 - `src/lib.rs` declares the reusable module surface.
 - `src/generated_content.rs` owns procedural PBR material/texture helpers, generated terrain/cliff/underside/impostor meshes, generated vegetation/rock/cloud meshes, island biome palettes, and mesh/texture inspection helpers shared by runtime spawning and export audits.
