@@ -11,6 +11,8 @@ const SAMPLE_SEARCH_RADIUS_PX: i32 = 20;
 const MIN_SAMPLE_PIXEL_HITS: usize = 3;
 const MIN_VISIBLE_SAMPLES_PER_CHECKPOINT: usize = 2;
 const MIN_PASSED_SAMPLES_PER_CHECKPOINT: usize = 1;
+const MIN_VISIBLE_MATERIALS_PER_CHECKPOINT: usize = 3;
+const MIN_MATERIAL_SAMPLE_HIT_RATIO: f64 = 0.45;
 const EXPECTED_MATERIALS: [&str; 4] = ["terrain", "foliage", "cloud", "distant_island"];
 
 fn main() {
@@ -59,8 +61,21 @@ struct CheckpointAudit {
     checkpoint: String,
     visible_scene_sample_count: usize,
     scene_sample_pixel_hit_count: usize,
+    visible_scene_material_count: usize,
+    scene_material_pixel_hit_count: usize,
     passed: bool,
     samples: Vec<SceneSampleAudit>,
+    materials: Vec<MaterialAudit>,
+}
+
+#[derive(Clone, Debug)]
+struct MaterialAudit {
+    expected_material: String,
+    visible_sample_count: usize,
+    sample_pixel_hit_count: usize,
+    min_sample_pixel_hit_count: usize,
+    hit_ratio: f64,
+    passed: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -110,8 +125,14 @@ fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, String> {
         .collect::<Result<Vec<_>, _>>()?;
     let visible_scene_sample_count = samples.iter().filter(|sample| sample.in_viewport).count();
     let scene_sample_pixel_hit_count = samples.iter().filter(|sample| sample.passed).count();
+    let materials = material_audits(&samples);
+    let visible_scene_material_count = materials.len();
+    let scene_material_pixel_hit_count =
+        materials.iter().filter(|material| material.passed).count();
     let passed = visible_scene_sample_count >= MIN_VISIBLE_SAMPLES_PER_CHECKPOINT
-        && scene_sample_pixel_hit_count >= MIN_PASSED_SAMPLES_PER_CHECKPOINT;
+        && scene_sample_pixel_hit_count >= MIN_PASSED_SAMPLES_PER_CHECKPOINT
+        && visible_scene_material_count >= MIN_VISIBLE_MATERIALS_PER_CHECKPOINT
+        && scene_material_pixel_hit_count >= visible_scene_material_count;
     let checkpoint = parsed
         .get("checkpoint")
         .and_then(Value::as_str)
@@ -124,8 +145,11 @@ fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, String> {
         checkpoint,
         visible_scene_sample_count,
         scene_sample_pixel_hit_count,
+        visible_scene_material_count,
+        scene_material_pixel_hit_count,
         passed,
         samples,
+        materials,
     })
 }
 
@@ -226,6 +250,49 @@ fn audit_scene_sample(
         semantic_pixel_hits,
         passed: in_viewport && semantic_pixel_hits >= MIN_SAMPLE_PIXEL_HITS,
     })
+}
+
+fn material_audits(samples: &[SceneSampleAudit]) -> Vec<MaterialAudit> {
+    EXPECTED_MATERIALS
+        .iter()
+        .filter_map(|expected_material| {
+            let visible_sample_count = samples
+                .iter()
+                .filter(|sample| {
+                    sample.in_viewport && sample.expected_material == *expected_material
+                })
+                .count();
+            if visible_sample_count == 0 {
+                return None;
+            }
+            let sample_pixel_hit_count = samples
+                .iter()
+                .filter(|sample| sample.passed && sample.expected_material == *expected_material)
+                .count();
+            let min_sample_pixel_hit_count =
+                min_material_sample_pixel_hit_count(visible_sample_count);
+            let hit_ratio = sample_pixel_hit_count as f64 / visible_sample_count as f64;
+
+            Some(MaterialAudit {
+                expected_material: (*expected_material).to_string(),
+                visible_sample_count,
+                sample_pixel_hit_count,
+                min_sample_pixel_hit_count,
+                hit_ratio,
+                passed: sample_pixel_hit_count >= min_sample_pixel_hit_count,
+            })
+        })
+        .collect()
+}
+
+fn min_material_sample_pixel_hit_count(visible_sample_count: usize) -> usize {
+    if visible_sample_count == 0 {
+        0
+    } else {
+        (visible_sample_count as f64 * MIN_MATERIAL_SAMPLE_HIT_RATIO)
+            .ceil()
+            .max(1.0) as usize
+    }
 }
 
 fn sample_pixel_hits(
@@ -353,6 +420,19 @@ fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
         .iter()
         .filter(|checkpoint| checkpoint.passed)
         .count();
+    let material_family_checkpoint_count = checkpoints
+        .iter()
+        .filter(|checkpoint| {
+            checkpoint.visible_scene_material_count >= MIN_VISIBLE_MATERIALS_PER_CHECKPOINT
+                && checkpoint.scene_material_pixel_hit_count
+                    >= checkpoint.visible_scene_material_count
+        })
+        .count();
+    let min_visible_material_count = checkpoints
+        .iter()
+        .map(|checkpoint| checkpoint.visible_scene_material_count)
+        .min()
+        .unwrap_or(0);
     let material_counts = material_hit_counts(checkpoints);
     let mut checks = vec![Check::at_least(
         "checkpoint_scene_pixel_hits",
@@ -360,6 +440,19 @@ fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
         checkpoints.len() as f64,
         "checkpoints",
     )];
+
+    checks.push(Check::at_least(
+        "checkpoint_scene_material_family_hits",
+        material_family_checkpoint_count as f64,
+        checkpoints.len() as f64,
+        "checkpoints",
+    ));
+    checks.push(Check::at_least(
+        "min_visible_scene_material_count",
+        min_visible_material_count as f64,
+        MIN_VISIBLE_MATERIALS_PER_CHECKPOINT as f64,
+        "materials",
+    ));
 
     for material in EXPECTED_MATERIALS {
         checks.push(Check::at_least(
@@ -418,15 +511,36 @@ fn checkpoint_json(checkpoint: &CheckpointAudit) -> String {
         .map(sample_json)
         .collect::<Vec<_>>()
         .join(",\n");
+    let materials_json = checkpoint
+        .materials
+        .iter()
+        .map(material_json)
+        .collect::<Vec<_>>()
+        .join(",\n");
     format!(
-        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"checkpoint\": {},\n      \"passed\": {},\n      \"visible_scene_sample_count\": {},\n      \"scene_sample_pixel_hit_count\": {},\n      \"samples\": [\n{}\n      ]\n    }}",
+        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"checkpoint\": {},\n      \"passed\": {},\n      \"visible_scene_sample_count\": {},\n      \"scene_sample_pixel_hit_count\": {},\n      \"visible_scene_material_count\": {},\n      \"scene_material_pixel_hit_count\": {},\n      \"materials\": [\n{}\n      ],\n      \"samples\": [\n{}\n      ]\n    }}",
         json_string(&checkpoint.metadata_path),
         json_string(&checkpoint.screenshot_path),
         json_string(&checkpoint.checkpoint),
         checkpoint.passed,
         checkpoint.visible_scene_sample_count,
         checkpoint.scene_sample_pixel_hit_count,
+        checkpoint.visible_scene_material_count,
+        checkpoint.scene_material_pixel_hit_count,
+        materials_json,
         samples_json
+    )
+}
+
+fn material_json(material: &MaterialAudit) -> String {
+    format!(
+        "        {{\"expected_material\": {}, \"visible_sample_count\": {}, \"sample_pixel_hit_count\": {}, \"min_sample_pixel_hit_count\": {}, \"hit_ratio\": {}, \"passed\": {}}}",
+        json_string(&material.expected_material),
+        material.visible_sample_count,
+        material.sample_pixel_hit_count,
+        material.min_sample_pixel_hit_count,
+        json_number(material.hit_ratio),
+        material.passed
     )
 }
 
@@ -552,6 +666,12 @@ mod tests {
         image.put_pixel(40, 30, Rgb([104, 82, 48]));
         image.put_pixel(41, 30, Rgb([92, 74, 46]));
         image.put_pixel(42, 30, Rgb([74, 68, 62]));
+        image.put_pixel(140, 110, Rgb([44, 126, 32]));
+        image.put_pixel(141, 110, Rgb([48, 132, 36]));
+        image.put_pixel(142, 110, Rgb([52, 138, 34]));
+        image.put_pixel(120, 86, Rgb([158, 166, 174]));
+        image.put_pixel(121, 86, Rgb([166, 174, 184]));
+        image.put_pixel(122, 86, Rgb([148, 158, 168]));
         image.save(&screenshot_path).expect("screenshot");
         fs::write(
             &metadata_path,
@@ -562,8 +682,53 @@ mod tests {
         let audit = audit_checkpoint_path(&metadata_path).expect("audit");
 
         assert!(audit.passed);
-        assert_eq!(audit.visible_scene_sample_count, 2);
-        assert_eq!(audit.scene_sample_pixel_hit_count, 1);
+        assert_eq!(audit.visible_scene_sample_count, 3);
+        assert_eq!(audit.scene_sample_pixel_hit_count, 3);
+        assert_eq!(audit.visible_scene_material_count, 3);
+        assert_eq!(audit.scene_material_pixel_hit_count, 3);
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn checkpoint_requires_each_visible_material_family_to_hit() {
+        let temp_dir = unique_temp_dir("semantic_scene_materials");
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let screenshot_path = temp_dir.join("checkpoint.png");
+        let metadata_path = temp_dir.join("checkpoint.markers.json");
+        let mut image = RgbImage::from_pixel(80, 60, Rgb([130, 170, 220]));
+        image.put_pixel(20, 15, Rgb([104, 82, 48]));
+        image.put_pixel(21, 15, Rgb([92, 74, 46]));
+        image.put_pixel(22, 15, Rgb([74, 68, 62]));
+        image.save(&screenshot_path).expect("screenshot");
+        fs::write(
+            &metadata_path,
+            semantic_metadata_json(&screenshot_path, 20.0, 15.0, 80.0, 60.0),
+        )
+        .expect("metadata");
+
+        let audit = audit_checkpoint_path(&metadata_path).expect("audit");
+
+        assert!(!audit.passed);
+        assert_eq!(audit.visible_scene_material_count, 3);
+        assert_eq!(audit.scene_material_pixel_hit_count, 1);
+        assert!(
+            audit
+                .materials
+                .iter()
+                .any(|material| material.expected_material == "terrain" && material.passed)
+        );
+        assert!(
+            audit
+                .materials
+                .iter()
+                .any(|material| material.expected_material == "foliage" && !material.passed)
+        );
+        assert!(
+            audit
+                .materials
+                .iter()
+                .any(|material| material.expected_material == "cloud" && !material.passed)
+        );
         let _ = fs::remove_dir_all(temp_dir);
     }
 
@@ -583,7 +748,7 @@ mod tests {
         viewport_height: f64,
     ) -> String {
         format!(
-            "{{\"passed\": true, \"checkpoint\": \"test\", \"screenshot\": {}, \"viewport\": {{\"width\": {}, \"height\": {}}}, \"scene_samples\": [{{\"kind\": \"terrain_surface\", \"label\": \"terrain\", \"expected_material\": \"terrain\", \"in_viewport\": true, \"screen\": {{\"x\": {}, \"y\": {}}}}}, {{\"kind\": \"tree_canopy\", \"label\": \"foliage\", \"expected_material\": \"foliage\", \"in_viewport\": true, \"screen\": {{\"x\": 70.0000, \"y\": 55.0000}}}}]}}",
+            "{{\"passed\": true, \"checkpoint\": \"test\", \"screenshot\": {}, \"viewport\": {{\"width\": {}, \"height\": {}}}, \"scene_samples\": [{{\"kind\": \"terrain_surface\", \"label\": \"terrain\", \"expected_material\": \"terrain\", \"in_viewport\": true, \"screen\": {{\"x\": {}, \"y\": {}}}}}, {{\"kind\": \"tree_canopy\", \"label\": \"foliage\", \"expected_material\": \"foliage\", \"in_viewport\": true, \"screen\": {{\"x\": 70.0000, \"y\": 55.0000}}}}, {{\"kind\": \"weather_cloud\", \"label\": \"cloud\", \"expected_material\": \"cloud\", \"in_viewport\": true, \"screen\": {{\"x\": 60.0000, \"y\": 43.0000}}}}]}}",
             json_string(&screenshot_path.to_string_lossy()),
             json_number(viewport_width),
             json_number(viewport_height),
