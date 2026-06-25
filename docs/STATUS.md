@@ -94,6 +94,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `docs/MECHANICS/flight.md`
 - `docs/ROADMAP.md`
 - `src/lib.rs`
+- `src/asset_pipeline.rs`
 - `src/movement.rs`
 - `src/environment.rs`
 - `src/camera.rs`
