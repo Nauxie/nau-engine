@@ -6874,6 +6874,7 @@ pub mod eval {
         pub samples_ndjson: String,
         pub screenshot_png: Option<String>,
         pub checkpoint_screenshots: Vec<String>,
+        pub checkpoint_marker_metadata: Vec<String>,
     }
 
     impl EvalArtifacts {
@@ -6884,13 +6885,15 @@ pub mod eval {
                 .map(json_string)
                 .unwrap_or_else(|| "null".to_string());
             let checkpoint_screenshots = json_string_array(&self.checkpoint_screenshots);
+            let checkpoint_marker_metadata = json_string_array(&self.checkpoint_marker_metadata);
 
             format!(
-                "{{\n{indent}  \"summary_json\": {},\n{indent}  \"samples_ndjson\": {},\n{indent}  \"screenshot_png\": {},\n{indent}  \"checkpoint_screenshots\": {}\n{indent}}}",
+                "{{\n{indent}  \"summary_json\": {},\n{indent}  \"samples_ndjson\": {},\n{indent}  \"screenshot_png\": {},\n{indent}  \"checkpoint_screenshots\": {},\n{indent}  \"checkpoint_marker_metadata\": {}\n{indent}}}",
                 json_string(&self.summary_json),
                 json_string(&self.samples_ndjson),
                 screenshot,
                 checkpoint_screenshots,
+                checkpoint_marker_metadata,
             )
         }
     }
@@ -8491,6 +8494,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
 
@@ -8549,6 +8553,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let right_check = summary
@@ -8626,6 +8631,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let aggregate_check = named_check(&summary, "air_control_backward_lateral_response");
@@ -8701,6 +8707,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let backward_right_lateral_check =
@@ -8754,6 +8761,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let check = named_check(&summary, "air_control_avg_camera_follow_direction_error");
@@ -8811,6 +8819,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let avg_check = named_check(&summary, "air_control_avg_camera_follow_direction_error");
@@ -8858,6 +8867,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let avg_check = named_check(&summary, "air_control_avg_body_heading_error");
@@ -8900,6 +8910,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let check = named_check(&summary, "camera_strafe_world_yaw_drift");
@@ -8928,6 +8939,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let check = named_check(&summary, "camera_strafe_view_yaw_drift");
@@ -8970,6 +8982,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let right_check = named_check(&summary, "camera_strafe_right_lateral_response");
@@ -9012,6 +9025,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let total_speed_check = named_check(&summary, "air_control_air_brake_speed_drop");
@@ -9047,6 +9061,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let check = named_check(&summary, "grounded_visual_foot_gap");
@@ -9237,6 +9252,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
 
@@ -9275,6 +9291,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let procedural_check = named_check(&summary, "procedural_island_body_count");
@@ -9301,6 +9318,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let primitive_check = named_check(&summary, "primitive_island_body_count");
@@ -9331,6 +9349,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let mesh_check = named_check(&summary, "island_impostor_mesh_vertices");
@@ -9365,6 +9384,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let terrain_count_check = named_check(&summary, "island_terrain_surface_count");
@@ -9410,6 +9430,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let summary_json = summary.to_json();
@@ -9458,6 +9479,7 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: Vec::new(),
+                    checkpoint_marker_metadata: Vec::new(),
                 },
             );
             let tree_count_check = named_check(&summary, "generated_tree_trunk_count");
@@ -9786,6 +9808,9 @@ pub mod eval {
                     samples_ndjson: "samples.ndjson".to_string(),
                     screenshot_png: None,
                     checkpoint_screenshots: vec!["checkpoints/glide_midroute.png".to_string()],
+                    checkpoint_marker_metadata: vec![
+                        "checkpoints/glide_midroute.markers.json".to_string(),
+                    ],
                 },
             );
 
@@ -9799,6 +9824,9 @@ pub mod eval {
                     .to_json()
                     .contains("\"checkpoint_screenshots\": [\"checkpoints/glide_midroute.png\"]")
             );
+            assert!(summary.to_json().contains(
+                "\"checkpoint_marker_metadata\": [\"checkpoints/glide_midroute.markers.json\"]"
+            ));
         }
 
         fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample) {
