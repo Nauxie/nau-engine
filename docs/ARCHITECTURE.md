@@ -14,8 +14,8 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 ## Current Code Shape
 
 - `src/main.rs` owns Bevy app setup, scene spawning, high-resolution vertex-colored generated island surface meshes, island stream-window visibility, island detail LOD, wind-responsive environment visual components, procedural material/weather setup, Bevy render-stack wiring, input mapping, ECS queries, and HUD sampling.
-- `src/lib.rs` owns reusable and testable logic.
-- `movement` owns flight state, input state, tuning, launch/glide/dive integration, floor clamp, velocity limits, and facing smoothing.
+- `src/lib.rs` declares the reusable module surface and still owns the modules that have not yet been moved into dedicated files.
+- `src/movement.rs` owns flight state, input state, tuning, launch/glide/dive integration, floor clamp, velocity limits, and facing smoothing.
 - `environment` owns finite visual wind/updraft field definitions, gameplay `LiftField` updraft volumes, collectible aerial power-up route definitions, lift/boost application, deterministic stream placement, and testable wind-sway visual motion math.
 - `world` owns collision-aware route surfaces, sky-island definitions, deterministic island relief, landing target queries, active chunk counters, stream-window classification, and near/mid/far LOD band classification.
 - `camera` owns camera follow math, orbit yaw/pitch control math, movement-stable horizontal follow direction, obstruction avoidance, and ground-clearance helpers.
