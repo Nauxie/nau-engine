@@ -82,55 +82,41 @@ function componentCount(type) {
 
 const gltfBuffer = new GltfBuffer();
 
-const faceData = [
-  [[0, 0, 1], [[-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5]]],
-  [[0, 0, -1], [[0.5, -0.5, -0.5], [-0.5, -0.5, -0.5], [-0.5, 0.5, -0.5], [0.5, 0.5, -0.5]]],
-  [[1, 0, 0], [[0.5, -0.5, 0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [0.5, 0.5, 0.5]]],
-  [[-1, 0, 0], [[-0.5, -0.5, -0.5], [-0.5, -0.5, 0.5], [-0.5, 0.5, 0.5], [-0.5, 0.5, -0.5]]],
-  [[0, 1, 0], [[-0.5, 0.5, 0.5], [0.5, 0.5, 0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5]]],
-  [[0, -1, 0], [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, -0.5, 0.5], [-0.5, -0.5, 0.5]]],
-];
+const meshes = [];
 
-const positions = [];
-const normals = [];
-const uvs = [];
-const indices = [];
-for (const [normal, verts] of faceData) {
-  const start = positions.length / 3;
-  const faceUvs = [[0, 0], [1, 0], [1, 1], [0, 1]];
-  for (const vertex of verts) {
-    positions.push(...vertex);
-    normals.push(...normal);
+function normalize(value) {
+  const length = Math.hypot(value[0], value[1], value[2]);
+  if (length <= 1e-6) {
+    return [0, 1, 0];
   }
-  for (const uv of faceUvs) {
-    uvs.push(...uv);
-  }
-  indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
+  return [value[0] / length, value[1] / length, value[2] / length];
 }
 
-const positionAccessor = gltfBuffer.addFloatAccessor(
-  positions,
-  "VEC3",
-  [-0.5, -0.5, -0.5],
-  [0.5, 0.5, 0.5],
-);
-const normalAccessor = gltfBuffer.addFloatAccessor(
-  normals,
-  "VEC3",
-  [-1.0, -1.0, -1.0],
-  [1.0, 1.0, 1.0],
-);
-const uvAccessor = gltfBuffer.addFloatAccessor(uvs, "VEC2", [0.0, 0.0], [1.0, 1.0]);
-const indexAccessor = gltfBuffer.addIndexAccessor(indices);
+function flatten(values) {
+  return values.flatMap((value) => value);
+}
 
-const meshes = [
-  cuboidMesh("Nau Suit Cuboid", 0),
-  cuboidMesh("Nau Skin Cuboid", 1),
-  cuboidMesh("Nau Accent Cuboid", 2),
-];
-
-function cuboidMesh(name, material) {
-  return {
+function addMesh(name, data, material) {
+  const positionAccessor = gltfBuffer.addFloatAccessor(
+    flatten(data.positions),
+    "VEC3",
+    minByComponent(data.positions),
+    maxByComponent(data.positions),
+  );
+  const normalAccessor = gltfBuffer.addFloatAccessor(
+    flatten(data.normals),
+    "VEC3",
+    [-1.0, -1.0, -1.0],
+    [1.0, 1.0, 1.0],
+  );
+  const uvAccessor = gltfBuffer.addFloatAccessor(
+    flatten(data.uvs),
+    "VEC2",
+    minByComponent(data.uvs),
+    maxByComponent(data.uvs),
+  );
+  const indexAccessor = gltfBuffer.addIndexAccessor(data.indices);
+  meshes.push({
     name,
     primitives: [
       {
@@ -144,19 +130,151 @@ function cuboidMesh(name, material) {
         mode: 4,
       },
     ],
+  });
+}
+
+function taperedCylinderMesh(bottomRadius, topRadius, segments = 14) {
+  const positions = [];
+  const normals = [];
+  const uvs = [];
+  for (let ring = 0; ring < 2; ring += 1) {
+    const y = ring === 0 ? -0.5 : 0.5;
+    const radius = ring === 0 ? bottomRadius : topRadius;
+    for (let index = 0; index < segments; index += 1) {
+      const theta = (Math.PI * 2 * index) / segments;
+      const x = Math.cos(theta);
+      const z = Math.sin(theta);
+      positions.push([x * radius[0], y, z * radius[1]]);
+      normals.push(normalize([x / radius[0], (bottomRadius[0] - topRadius[0]) * 0.45, z / radius[1]]));
+      uvs.push([index / segments, ring]);
+    }
+  }
+
+  const bottomCenter = positions.length;
+  positions.push([0, -0.5, 0]);
+  normals.push([0, -1, 0]);
+  uvs.push([0.5, 0.5]);
+  const topCenter = positions.length;
+  positions.push([0, 0.5, 0]);
+  normals.push([0, 1, 0]);
+  uvs.push([0.5, 0.5]);
+
+  const indices = [];
+  for (let index = 0; index < segments; index += 1) {
+    const next = (index + 1) % segments;
+    const bottom = index;
+    const bottomNext = next;
+    const top = segments + index;
+    const topNext = segments + next;
+    indices.push(bottom, bottomNext, topNext, bottom, topNext, top);
+    indices.push(bottomCenter, bottom, bottomNext);
+    indices.push(topCenter, topNext, top);
+  }
+
+  return { positions, normals, uvs, indices };
+}
+
+function ellipsoidMesh(radius, segments = 14, rings = 8) {
+  const positions = [];
+  const normals = [];
+  const uvs = [];
+  for (let ring = 0; ring <= rings; ring += 1) {
+    const v = ring / rings;
+    const phi = -Math.PI / 2 + Math.PI * v;
+    const y = Math.sin(phi);
+    const flat = Math.cos(phi);
+    for (let index = 0; index <= segments; index += 1) {
+      const u = index / segments;
+      const theta = Math.PI * 2 * u;
+      const x = Math.cos(theta) * flat;
+      const z = Math.sin(theta) * flat;
+      positions.push([x * radius[0], y * radius[1], z * radius[2]]);
+      normals.push(normalize([x / radius[0], y / radius[1], z / radius[2]]));
+      uvs.push([u, v]);
+    }
+  }
+
+  const indices = [];
+  const stride = segments + 1;
+  for (let ring = 0; ring < rings; ring += 1) {
+    for (let index = 0; index < segments; index += 1) {
+      const a = ring * stride + index;
+      const b = a + 1;
+      const c = a + stride;
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  return { positions, normals, uvs, indices };
+}
+
+function panelMesh(widthTop, widthBottom, height, depthOffset = 0.0) {
+  const positions = [
+    [-widthBottom * 0.5, -height * 0.5, depthOffset],
+    [widthBottom * 0.5, -height * 0.5, depthOffset],
+    [widthTop * 0.5, height * 0.5, depthOffset],
+    [-widthTop * 0.5, height * 0.5, depthOffset],
+  ];
+  return {
+    positions,
+    normals: positions.map(() => [0, 0, -1]),
+    uvs: [[0, 0], [1, 0], [1, 1], [0, 1]],
+    indices: [0, 1, 2, 0, 2, 3],
   };
 }
 
+function crystalMesh() {
+  const positions = [
+    [0, 0.55, 0],
+    [0.34, 0, 0],
+    [0, 0, -0.18],
+    [-0.34, 0, 0],
+    [0, 0, 0.18],
+    [0, -0.55, 0],
+  ];
+  return {
+    positions,
+    normals: positions.map(normalize),
+    uvs: [[0.5, 1], [1, 0.5], [0.5, 0.5], [0, 0.5], [0.5, 0.5], [0.5, 0]],
+    indices: [0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1, 5, 2, 1, 5, 3, 2, 5, 4, 3, 5, 1, 4],
+  };
+}
+
+addMesh("Nau Suit Tapered Hips", taperedCylinderMesh([0.34, 0.23], [0.28, 0.18]), 0);
+addMesh("Nau Suit Armored Torso", taperedCylinderMesh([0.42, 0.24], [0.32, 0.19]), 0);
+addMesh("Nau Accent Split Tunic Panel", panelMesh(0.36, 0.56, 0.62, -0.035), 4);
+addMesh("Nau Skin Rounded Head", ellipsoidMesh([0.27, 0.31, 0.24]), 1);
+addMesh("Nau Accent Helmet Crest", taperedCylinderMesh([0.20, 0.12], [0.10, 0.06], 10), 5);
+addMesh("Nau Suit Upper Arm", taperedCylinderMesh([0.12, 0.11], [0.10, 0.09], 10), 0);
+addMesh("Nau Leather Forearm Wrap", taperedCylinderMesh([0.10, 0.09], [0.085, 0.075], 10), 3);
+addMesh("Nau Suit Thigh Guard", taperedCylinderMesh([0.14, 0.13], [0.11, 0.11], 10), 0);
+addMesh("Nau Leather Boot", taperedCylinderMesh([0.14, 0.18], [0.11, 0.13], 10), 3);
+addMesh("Nau Chest Focus Crystal", crystalMesh(), 2);
+addMesh("Nau Accent Shoulder Guard", ellipsoidMesh([0.20, 0.08, 0.13], 10, 5), 4);
+addMesh("Nau Accent Scarf Trail", panelMesh(0.16, 0.34, 0.84, 0.025), 4);
+
 const nodes = [
-  { name: "Nau Self Authored Animated Player Root", children: [1, 2, 3, 4, 5, 6, 7, 8] },
-  { name: "Nau Hips", mesh: 0, translation: [0, 0.52, 0], scale: [0.34, 0.42, 0.22] },
-  { name: "Nau Torso", mesh: 0, translation: [0, 1.08, 0], scale: [0.45, 0.58, 0.24] },
-  { name: "Nau Head", mesh: 1, translation: [0, 1.68, 0], scale: [0.28, 0.3, 0.26] },
-  { name: "Nau Left Arm", mesh: 0, translation: [-0.56, 1.12, 0], scale: [0.13, 0.42, 0.13] },
-  { name: "Nau Right Arm", mesh: 0, translation: [0.56, 1.12, 0], scale: [0.13, 0.42, 0.13] },
-  { name: "Nau Left Leg", mesh: 0, translation: [-0.18, 0.25, 0], scale: [0.14, 0.5, 0.15] },
-  { name: "Nau Right Leg", mesh: 0, translation: [0.18, 0.25, 0], scale: [0.14, 0.5, 0.15] },
-  { name: "Nau Chest Focus", mesh: 2, translation: [0, 1.15, -0.26], scale: [0.11, 0.11, 0.05] },
+  { name: "Nau Self Authored Animated Player Root", children: [1, 2, 3, 4, 5, 6, 7, 8, 13, 14, 18] },
+  { name: "Nau Hips", mesh: 0, translation: [0, 0.54, 0], scale: [1.0, 0.76, 1.0] },
+  { name: "Nau Torso", mesh: 1, translation: [0, 1.08, 0], scale: [1.0, 0.94, 1.0], children: [15, 16, 19] },
+  { name: "Nau Head", mesh: 3, translation: [0, 1.68, 0], children: [17] },
+  { name: "Nau Left Arm", mesh: 5, translation: [-0.48, 1.18, 0.01], scale: [1.0, 0.62, 1.0], children: [9] },
+  { name: "Nau Right Arm", mesh: 5, translation: [0.48, 1.18, 0.01], scale: [1.0, 0.62, 1.0], children: [10] },
+  { name: "Nau Left Leg", mesh: 7, translation: [-0.17, 0.30, 0.01], scale: [1.0, 0.68, 1.0], children: [11] },
+  { name: "Nau Right Leg", mesh: 7, translation: [0.17, 0.30, 0.01], scale: [1.0, 0.68, 1.0], children: [12] },
+  { name: "Nau Chest Focus", mesh: 9, translation: [0, 1.15, -0.24], scale: [0.35, 0.24, 0.6] },
+  { name: "Nau Left Forearm", mesh: 6, translation: [0, -0.44, 0.02], scale: [1.0, 0.52, 1.0] },
+  { name: "Nau Right Forearm", mesh: 6, translation: [0, -0.44, 0.02], scale: [1.0, 0.52, 1.0] },
+  { name: "Nau Left Boot", mesh: 8, translation: [0, -0.46, -0.01], scale: [1.0, 0.36, 1.0] },
+  { name: "Nau Right Boot", mesh: 8, translation: [0, -0.46, -0.01], scale: [1.0, 0.36, 1.0] },
+  { name: "Nau Front Accent Tunic", mesh: 2, translation: [0, 0.78, -0.24], scale: [1.0, 1.0, 1.0] },
+  { name: "Nau Rear Accent Tunic", mesh: 2, translation: [0, 0.78, 0.21], rotation: [0, 1, 0, 0], scale: [0.82, 0.9, 1.0] },
+  { name: "Nau Left Shoulder Accent", mesh: 10, translation: [-0.35, 0.22, -0.01], rotation: rotZ(-0.24) },
+  { name: "Nau Right Shoulder Accent", mesh: 10, translation: [0.35, 0.22, -0.01], rotation: rotZ(0.24) },
+  { name: "Nau Helmet Accent Crest", mesh: 4, translation: [0, 0.20, -0.02], rotation: rotX(0.16), scale: [1.0, 0.32, 1.0] },
+  { name: "Nau Wind Scarf Accent", mesh: 11, translation: [0.24, 1.18, 0.26], rotation: rotX(-0.55), scale: [1.0, 1.0, 1.0] },
+  { name: "Nau Back Scarf Anchor Accent", mesh: 11, translation: [0, 0.0, 0.25], rotation: rotX(-1.24), scale: [0.74, 0.42, 1.0] },
 ];
 
 function quat(axis, radians) {
@@ -171,10 +289,6 @@ function rotX(radians) {
 
 function rotZ(radians) {
   return quat([0, 0, 1], radians);
-}
-
-function identityRotations(count) {
-  return Array.from({ length: count }, () => [0, 0, 0, 1]);
 }
 
 function animation(name, tracks) {
@@ -290,6 +404,31 @@ const gltf = {
         baseColorFactor: [1.0, 0.62, 0.18, 1.0],
         metallicFactor: 0.0,
         roughnessFactor: 0.38,
+      },
+    },
+    {
+      name: "Nau Leather Boot And Wrap Material",
+      pbrMetallicRoughness: {
+        baseColorFactor: [0.18, 0.11, 0.08, 1.0],
+        metallicFactor: 0.0,
+        roughnessFactor: 0.82,
+      },
+    },
+    {
+      name: "Nau Teal Accent Cloth Material",
+      doubleSided: true,
+      pbrMetallicRoughness: {
+        baseColorFactor: [0.10, 0.48, 0.54, 1.0],
+        metallicFactor: 0.0,
+        roughnessFactor: 0.70,
+      },
+    },
+    {
+      name: "Nau Dark Helmet Crest Material",
+      pbrMetallicRoughness: {
+        baseColorFactor: [0.05, 0.07, 0.09, 1.0],
+        metallicFactor: 0.0,
+        roughnessFactor: 0.48,
       },
     },
   ],
