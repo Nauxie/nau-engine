@@ -20,8 +20,8 @@ use nau_engine::{
     },
     movement::{
         Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning,
-        body_yaw_error_degrees, desired_heading_alignment_speed, desired_planar_movement_direction,
-        face_flight_direction, lateral_response_speed,
+        body_roll_degrees, body_yaw_error_degrees, desired_heading_alignment_speed,
+        desired_planar_movement_direction, face_flight_direction, lateral_response_speed,
     },
     world::{START_POSITION, SkyRoute},
 };
@@ -48,6 +48,8 @@ const AIR_CONTROL_MAX_P95_BODY_HEADING_ERROR_DEGREES: f32 = 22.0;
 const AIR_CONTROL_MAX_BODY_HEADING_ERROR_DEGREES: f32 = 36.0;
 const AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES: f32 = 36.0;
 const AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS: f32 = 4.0;
+const AIR_CONTROL_MIN_BODY_BANK_RESPONSE_DEGREES: f32 = 8.0;
+const AIR_CONTROL_MAX_BODY_ROLL_STEP_DEGREES: f32 = 12.0;
 const AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES: f32 = 0.01;
 const AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 2.0;
 const AIR_CONTROL_MAX_CAMERA_VIEW_YAW_DRIFT_DEGREES: f32 = 2.0;
@@ -243,7 +245,7 @@ fn run_simulation(scenario: EvalScenario) -> SimResult {
             state.velocity,
             input,
             facing,
-            state.controller.mode,
+            state.controller,
             &frame_tuning,
             scenario.fixed_dt,
         );
@@ -633,6 +635,7 @@ struct SimSample {
     mode: &'static str,
     desired_body_yaw_error_degrees: f32,
     desired_body_heading_error_degrees: f32,
+    body_roll_degrees: f32,
     desired_heading_alignment_mps: f32,
     lateral_response_mps: f32,
     lateral_input_active: bool,
@@ -722,6 +725,7 @@ impl SimSample {
             mode: state.controller.mode.label(),
             desired_body_yaw_error_degrees,
             desired_body_heading_error_degrees: desired_body_yaw_error_degrees.abs(),
+            body_roll_degrees: body_roll_degrees(player_rotation),
             desired_heading_alignment_mps,
             lateral_response_mps,
             lateral_input_active,
@@ -783,6 +787,7 @@ impl SimSample {
             "mode": self.mode,
             "desired_body_yaw_error_degrees": finite_json(self.desired_body_yaw_error_degrees),
             "desired_body_heading_error_degrees": finite_json(self.desired_body_heading_error_degrees),
+            "body_roll_degrees": round4(self.body_roll_degrees),
             "desired_heading_alignment_mps": finite_json(self.desired_heading_alignment_mps),
             "lateral_response_mps": round4(self.lateral_response_mps),
             "lateral_input_active": self.lateral_input_active,
@@ -866,6 +871,10 @@ struct SimMetrics {
     max_body_yaw_error_step_degrees: f32,
     previous_body_yaw_error_sign: Option<f32>,
     body_yaw_oscillation_count: u32,
+    previous_body_roll_degrees: Option<f32>,
+    max_body_roll_step_degrees: f32,
+    max_right_body_bank_degrees: f32,
+    max_left_body_bank_degrees: f32,
     max_desired_heading_alignment_mps: f32,
     max_lateral_response_mps: f32,
     first_lateral_input_time_secs: Option<f32>,
@@ -956,6 +965,10 @@ impl SimMetrics {
             max_body_yaw_error_step_degrees: 0.0,
             previous_body_yaw_error_sign: None,
             body_yaw_oscillation_count: 0,
+            previous_body_roll_degrees: None,
+            max_body_roll_step_degrees: 0.0,
+            max_right_body_bank_degrees: 0.0,
+            max_left_body_bank_degrees: 0.0,
             max_desired_heading_alignment_mps: 0.0,
             max_lateral_response_mps: 0.0,
             first_lateral_input_time_secs: None,
@@ -1096,6 +1109,30 @@ impl SimMetrics {
                     self.body_yaw_oscillation_count += 1;
                 }
                 self.previous_body_yaw_error_sign = Some(sign);
+            }
+        }
+        if !sample.body_roll_degrees.is_finite() || sample.mode == "grounded" {
+            self.previous_body_roll_degrees = None;
+        } else {
+            if let Some(previous) = self.previous_body_roll_degrees {
+                self.max_body_roll_step_degrees = self
+                    .max_body_roll_step_degrees
+                    .max((sample.body_roll_degrees - previous).abs());
+            }
+            self.previous_body_roll_degrees = Some(sample.body_roll_degrees);
+
+            match sample.movement_input_lateral_axis.signum() {
+                sign if sign > 0.0 => {
+                    self.max_right_body_bank_degrees = self
+                        .max_right_body_bank_degrees
+                        .max((-sample.body_roll_degrees).max(0.0));
+                }
+                sign if sign < 0.0 => {
+                    self.max_left_body_bank_degrees = self
+                        .max_left_body_bank_degrees
+                        .max(sample.body_roll_degrees.max(0.0));
+                }
+                _ => {}
             }
         }
         if sample.desired_heading_alignment_mps.is_finite() {
@@ -1655,10 +1692,28 @@ impl SimMetrics {
                     "deg",
                 ),
                 SimCheck::at_most(
-                    "air_control_body_yaw_oscillations",
+                    "air_control_body_yaw_oscillation_count",
                     self.body_yaw_oscillation_count as f32,
                     AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS,
                     "oscillations",
+                ),
+                SimCheck::at_least(
+                    "air_control_right_body_bank_response",
+                    self.max_right_body_bank_degrees,
+                    AIR_CONTROL_MIN_BODY_BANK_RESPONSE_DEGREES,
+                    "deg",
+                ),
+                SimCheck::at_least(
+                    "air_control_left_body_bank_response",
+                    self.max_left_body_bank_degrees,
+                    AIR_CONTROL_MIN_BODY_BANK_RESPONSE_DEGREES,
+                    "deg",
+                ),
+                SimCheck::at_most(
+                    "air_control_max_body_roll_step",
+                    self.max_body_roll_step_degrees,
+                    AIR_CONTROL_MAX_BODY_ROLL_STEP_DEGREES,
+                    "deg",
                 ),
                 SimCheck::at_most(
                     "air_control_camera_orbit_yaw_offset",
@@ -1746,6 +1801,9 @@ impl SimMetrics {
             "max_desired_body_heading_error_degrees": round4(self.max_desired_body_heading_error_degrees),
             "max_body_yaw_error_step_degrees": round4(self.max_body_yaw_error_step_degrees),
             "body_yaw_oscillation_count": self.body_yaw_oscillation_count,
+            "max_body_roll_step_degrees": round4(self.max_body_roll_step_degrees),
+            "max_right_body_bank_degrees": round4(self.max_right_body_bank_degrees),
+            "max_left_body_bank_degrees": round4(self.max_left_body_bank_degrees),
             "max_desired_heading_alignment_mps": round4(self.max_desired_heading_alignment_mps),
             "max_lateral_response_mps": round4(self.max_lateral_response_mps),
             "lateral_response_latency_secs": round4(response_latency_secs(self.first_lateral_input_time_secs, self.first_lateral_response_time_secs)),
@@ -2023,5 +2081,85 @@ mod tests {
         let summary = result.to_summary_json();
         assert!(summary.contains("\"backward_right_lateral_response_latency_secs\""));
         assert!(summary.contains("\"backward_left_lateral_response_latency_secs\""));
+    }
+
+    #[test]
+    fn sim_metrics_reset_body_roll_step_across_grounded_samples() {
+        let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+        let route = SkyRoute::default();
+        let mut metrics = SimMetrics::new(&route);
+
+        for sample in [
+            sim_roll_sample(&route, scenario, 30, FlightMode::Gliding, -12.0, 1.0),
+            sim_roll_sample(&route, scenario, 60, FlightMode::Grounded, 0.0, 0.0),
+            sim_roll_sample(&route, scenario, 90, FlightMode::Gliding, 12.0, -1.0),
+        ] {
+            metrics.observe(&sample, scenario);
+        }
+
+        assert_eq!(metrics.max_body_roll_step_degrees, 0.0);
+        assert_eq!(metrics.max_right_body_bank_degrees, 12.0);
+        assert_eq!(metrics.max_left_body_bank_degrees, 12.0);
+    }
+
+    fn sim_roll_sample(
+        route: &SkyRoute,
+        scenario: EvalScenario,
+        frame: u32,
+        mode: FlightMode,
+        roll_degrees: f32,
+        lateral_axis: f32,
+    ) -> SimSample {
+        let input = FlightInput {
+            left: lateral_axis < 0.0,
+            right: lateral_axis > 0.0,
+            glide: mode == FlightMode::Gliding,
+            ..Default::default()
+        };
+        let controller = FlightController {
+            mode,
+            ..Default::default()
+        };
+        let state = FlightState::new(
+            START_POSITION + Vec3::Y * 8.0,
+            Vec3::new(lateral_axis * 14.0, -2.0, -18.0),
+            controller,
+        );
+        let player_rotation = Transform::from_translation(Vec3::ZERO)
+            .looking_to(Vec3::Z, Vec3::Y)
+            .rotation
+            * Quat::from_rotation_z(roll_degrees.to_radians());
+        let camera = CameraDiagnosticsSample {
+            distance_m: 14.0,
+            surface_clearance_m: 5.0,
+            player_angle_degrees: 0.0,
+            pitch_degrees: -18.0,
+            step_distance_m: 0.0,
+            rotation_delta_degrees: 0.0,
+            orbit_alignment_degrees: 0.0,
+            follow_direction_error_degrees: 0.0,
+            view_yaw_degrees: 0.0,
+            world_yaw_degrees: 0.0,
+            obstruction_adjustment_m: 0.0,
+            obstruction_hits: 0,
+        };
+        let objective = ObjectiveState::for_route(route, scenario.target_island_name);
+        let power_ups = SimPowerUps::default();
+
+        SimSample::new(
+            scenario,
+            frame,
+            state,
+            player_rotation,
+            nau_engine::camera::CameraOrbit::default(),
+            camera,
+            input,
+            Facing::new(Vec3::Z, Vec3::X),
+            route,
+            &[],
+            &[],
+            &objective,
+            &power_ups,
+        )
     }
 }

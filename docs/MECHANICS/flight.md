@@ -133,7 +133,7 @@ Current tests cover:
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
 - `camera_strafe_stability` eval tracks right/left lateral movement without camera auto-orbit, including view-yaw and world-yaw drift
 - `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking
-- `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, stronger total/planar backward braking, post-brake recovery, desired heading alignment, average/p95/max body-heading error, max body-yaw error step, body-yaw oscillation, follow-direction error distribution, view-yaw/world-yaw drift, and movement-input camera non-coupling
+- `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, stronger total/planar backward braking, post-brake recovery, desired heading alignment, average/p95/max body-heading error, max body-yaw error step, body-yaw oscillation, left/right body-bank response, body-roll step smoothness, follow-direction error distribution, view-yaw/world-yaw drift, and movement-input camera non-coupling
 - `long_glide_visibility` eval tracks sustained archipelago traversal, aerial power-up collection/effect samples, and content-scale signals
 
 Future tests should cover:
@@ -141,7 +141,7 @@ Future tests should cover:
 - launch source triggers
 - power-up reset rules once explicit flight/session state exists
 - explicit player and route-marker classification beyond the current scene-composition visual audit
-- turn/bank behavior
+- authored animation transitions for bank, brake, recovery, and landing states
 - debug visualization toggles
 - crosswind gameplay force rules if visual wind becomes a movement force
 - lift-field stacking and route-authoring rules
