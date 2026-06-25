@@ -70,13 +70,14 @@ fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, String> {
         .decode()
         .map_err(|error| error.to_string())?
         .to_rgb8();
+    let scale = screenshot_scale(&parsed, &image);
 
     let markers = parsed
         .get("markers")
         .and_then(Value::as_array)
         .ok_or_else(|| "missing markers array".to_string())?
         .iter()
-        .map(|marker| audit_marker(marker, &image))
+        .map(|marker| audit_marker(marker, &image, scale))
         .collect::<Result<Vec<_>, _>>()?;
     let visible_marker_count = markers.iter().filter(|marker| marker.in_viewport).count();
     let marker_pixel_hit_count = markers.iter().filter(|marker| marker.passed).count();
@@ -124,7 +125,34 @@ fn resolve_screenshot_path(metadata_path: &Path, screenshot_path: &str) -> PathB
     direct_path
 }
 
-fn audit_marker(marker: &Value, image: &RgbImage) -> Result<MarkerAudit, String> {
+fn screenshot_scale(metadata: &Value, image: &RgbImage) -> (f64, f64) {
+    let viewport = metadata.get("viewport");
+    let Some(viewport_width) = viewport
+        .and_then(|viewport| viewport.get("width"))
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value > 0.0)
+    else {
+        return (1.0, 1.0);
+    };
+    let Some(viewport_height) = viewport
+        .and_then(|viewport| viewport.get("height"))
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value > 0.0)
+    else {
+        return (1.0, 1.0);
+    };
+
+    (
+        image.width() as f64 / viewport_width,
+        image.height() as f64 / viewport_height,
+    )
+}
+
+fn audit_marker(
+    marker: &Value,
+    image: &RgbImage,
+    screenshot_scale: (f64, f64),
+) -> Result<MarkerAudit, String> {
     let kind = marker
         .get("kind")
         .and_then(Value::as_str)
@@ -151,7 +179,7 @@ fn audit_marker(marker: &Value, image: &RgbImage) -> Result<MarkerAudit, String>
         .and_then(|screen| screen.get("y"))
         .and_then(Value::as_f64);
     let marker_pixel_hits = match (in_viewport, screen_x, screen_y) {
-        (true, Some(x), Some(y)) => marker_pixel_hits(image, x, y),
+        (true, Some(x), Some(y)) => marker_pixel_hits(image, x, y, screenshot_scale),
         _ => 0,
     };
 
@@ -167,23 +195,28 @@ fn audit_marker(marker: &Value, image: &RgbImage) -> Result<MarkerAudit, String>
     })
 }
 
-fn marker_pixel_hits(image: &RgbImage, screen_x: f64, screen_y: f64) -> usize {
+fn marker_pixel_hits(
+    image: &RgbImage,
+    screen_x: f64,
+    screen_y: f64,
+    screenshot_scale: (f64, f64),
+) -> usize {
     if !screen_x.is_finite() || !screen_y.is_finite() {
         return 0;
     }
 
     let width = image.width() as i32;
     let height = image.height() as i32;
-    let center_x = screen_x.round() as i32;
-    let center_y = screen_y.round() as i32;
+    let scale_x = screenshot_scale.0.max(0.1);
+    let scale_y = screenshot_scale.1.max(0.1);
+    let center_x = (screen_x * scale_x).round() as i32;
+    let center_y = (screen_y * scale_y).round() as i32;
+    let radius_x = (MARKER_SEARCH_RADIUS_PX as f64 * scale_x).ceil() as i32;
+    let radius_y = (MARKER_SEARCH_RADIUS_PX as f64 * scale_y).ceil() as i32;
     let mut hits = 0usize;
 
-    for y in (center_y - MARKER_SEARCH_RADIUS_PX).max(0)
-        ..=(center_y + MARKER_SEARCH_RADIUS_PX).min(height.saturating_sub(1))
-    {
-        for x in (center_x - MARKER_SEARCH_RADIUS_PX).max(0)
-            ..=(center_x + MARKER_SEARCH_RADIUS_PX).min(width.saturating_sub(1))
-        {
+    for y in (center_y - radius_y).max(0)..=(center_y + radius_y).min(height.saturating_sub(1)) {
+        for x in (center_x - radius_x).max(0)..=(center_x + radius_x).min(width.saturating_sub(1)) {
             let [r, g, b] = image.get_pixel(x as u32, y as u32).0;
             if is_route_marker_like(r as f64, g as f64, b as f64) {
                 hits += 1;
@@ -342,6 +375,29 @@ mod tests {
         let _ = fs::remove_dir_all(temp_dir);
     }
 
+    #[test]
+    fn marker_projection_audit_scales_logical_viewport_to_retina_screenshot() {
+        let temp_dir = unique_temp_dir("marker_projection_retina");
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let screenshot_path = temp_dir.join("checkpoint.png");
+        let metadata_path = temp_dir.join("checkpoint.markers.json");
+        let mut image = RgbImage::from_pixel(160, 120, Rgb([72, 118, 172]));
+        image.put_pixel(80, 60, Rgb([246, 58, 142]));
+        image.put_pixel(81, 60, Rgb([246, 58, 142]));
+        image.save(&screenshot_path).expect("screenshot");
+        fs::write(
+            &metadata_path,
+            marker_metadata_json_with_viewport(&screenshot_path, 40.0, 30.0, 80.0, 60.0),
+        )
+        .expect("metadata");
+
+        let audit = audit_checkpoint_path(&metadata_path).expect("audit");
+
+        assert!(audit.passed);
+        assert_eq!(audit.marker_pixel_hit_count, 1);
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
     fn unique_temp_dir(name: &str) -> PathBuf {
         env::temp_dir().join(format!(
             "nau_{name}_{}_{}",
@@ -351,9 +407,29 @@ mod tests {
     }
 
     fn marker_metadata_json(screenshot_path: &Path, x: f64, y: f64) -> String {
+        marker_metadata_json_with_viewport(screenshot_path, x, y, 0.0, 0.0)
+    }
+
+    fn marker_metadata_json_with_viewport(
+        screenshot_path: &Path,
+        x: f64,
+        y: f64,
+        viewport_width: f64,
+        viewport_height: f64,
+    ) -> String {
+        let viewport_json = if viewport_width > 0.0 && viewport_height > 0.0 {
+            format!(
+                ", \"viewport\": {{\"width\": {}, \"height\": {}}}",
+                json_number(viewport_width),
+                json_number(viewport_height)
+            )
+        } else {
+            String::new()
+        };
         format!(
-            "{{\"passed\": true, \"checkpoint\": \"test\", \"screenshot\": {}, \"markers\": [{{\"kind\": \"route_cairn\", \"label\": \"test\", \"current_objective\": false, \"in_viewport\": true, \"screen\": {{\"x\": {}, \"y\": {}}}}}]}}",
+            "{{\"passed\": true, \"checkpoint\": \"test\", \"screenshot\": {}{}, \"markers\": [{{\"kind\": \"route_cairn\", \"label\": \"test\", \"current_objective\": false, \"in_viewport\": true, \"screen\": {{\"x\": {}, \"y\": {}}}}}]}}",
             json_string(&screenshot_path.to_string_lossy()),
+            viewport_json,
             json_number(x),
             json_number(y)
         )
