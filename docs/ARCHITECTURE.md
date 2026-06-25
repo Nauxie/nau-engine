@@ -41,7 +41,8 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/camera.rs` owns camera follow math, orbit yaw/pitch control math, movement-stable horizontal follow direction, obstruction avoidance, and ground-clearance helpers.
 - `src/world.rs` owns collision-aware route surfaces, sky-island definitions, deterministic island relief, landing target queries, active chunk counters, stream-window classification, and near/mid/far LOD band classification.
 - `src/diagnostics.rs` owns pure helpers for frame-time and runtime metric formatting inputs.
-- `src/eval.rs` owns scripted traversal scenarios, eval sample structures, metric accumulation, JSON summaries, and gate thresholds for movement, camera, content, streaming, assets, and screenshots.
+- `src/eval.rs` owns eval sample structures, metric accumulation, JSON summaries, and gate thresholds for movement, camera, content, streaming, assets, and screenshots.
+- `src/eval/scenarios.rs` owns scripted traversal scenario definitions, scenario aliases, checkpoints, and scripted movement/camera input timelines.
 - `src/animation.rs` owns primitive character part pose math, wing visibility/airflow state, and animation phase progression.
 
 ## Frame Flow
