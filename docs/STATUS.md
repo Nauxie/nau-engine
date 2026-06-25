@@ -102,6 +102,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `src/diagnostics.rs`
 - `src/eval.rs`
 - `src/animation.rs`
+- `src/content_export.rs`
 - `src/eval_runtime.rs`
 - `src/main.rs`
 
