@@ -94,6 +94,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `docs/MECHANICS/flight.md`
 - `docs/ROADMAP.md`
 - `src/lib.rs`
+- `src/movement.rs`
 - `src/main.rs`
 
 ## Status Discipline
