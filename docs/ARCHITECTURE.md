@@ -45,6 +45,7 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/eval/sample.rs` owns eval frame sample structures, movement sample metrics, objective progress serialization, and NDJSON sample serialization.
 - `src/eval/scenarios.rs` owns scripted traversal scenario definitions, scenario aliases, checkpoints, and scripted movement/camera input timelines.
 - `src/eval/summary.rs` owns eval artifact, metrics-summary, check-result, and summary JSON serialization types.
+- `src/eval/tests.rs` owns unit coverage for scripted eval scenarios, accumulators, thresholds, summary JSON, and current content-shape gates.
 - `src/eval/thresholds.rs` owns shared eval gate constants and the `EvalThresholds` scenario threshold contract.
 - `src/animation.rs` owns primitive character part pose math, wing visibility/airflow state, and animation phase progression.
 
