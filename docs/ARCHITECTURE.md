@@ -14,15 +14,15 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 ## Current Code Shape
 
 - `src/main.rs` owns Bevy app setup, scene spawning, high-resolution vertex-colored generated island surface meshes, island stream-window visibility, island detail LOD, wind-responsive environment visual components, procedural material/weather setup, Bevy render-stack wiring, input mapping, ECS queries, and HUD sampling.
-- `src/lib.rs` declares the reusable module surface and still owns the modules that have not yet been moved into dedicated files.
+- `src/lib.rs` declares the reusable module surface.
 - `src/asset_pipeline.rs` owns the declared glTF visual asset inventory, expected player animation clip names, residency classes, deterministic load-admission policy, file/load-state readiness metrics, recursive dependency preload metrics, scene-instance readiness metrics, visible authored world-fixture metrics, and animation graph/player readiness metrics while generated primitives remain the fallback.
 - `src/movement.rs` owns flight state, input state, tuning, launch/glide/dive integration, floor clamp, velocity limits, and facing smoothing.
 - `src/environment.rs` owns finite visual wind/updraft field definitions, gameplay `LiftField` updraft volumes, collectible aerial power-up route definitions, lift/boost application, deterministic stream placement, and testable wind-sway visual motion math.
 - `src/camera.rs` owns camera follow math, orbit yaw/pitch control math, movement-stable horizontal follow direction, obstruction avoidance, and ground-clearance helpers.
 - `src/world.rs` owns collision-aware route surfaces, sky-island definitions, deterministic island relief, landing target queries, active chunk counters, stream-window classification, and near/mid/far LOD band classification.
+- `src/diagnostics.rs` owns pure helpers for frame-time and runtime metric formatting inputs.
 - `src/eval.rs` owns scripted traversal scenarios, eval sample structures, metric accumulation, JSON summaries, and gate thresholds for movement, camera, content, streaming, assets, and screenshots.
 - `src/animation.rs` owns primitive character part pose math, wing visibility/airflow state, and animation phase progression.
-- `diagnostics` owns pure helpers for frame-time and runtime metric formatting inputs.
 
 ## Frame Flow
 
