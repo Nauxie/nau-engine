@@ -14,6 +14,7 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 ## Current Code Shape
 
 - `src/main.rs` owns Bevy app setup, scene spawning, high-resolution vertex-colored generated island surface meshes, island stream-window visibility, island detail LOD, wind-responsive environment visual components, procedural material/weather setup, Bevy render-stack wiring, input mapping, ECS queries, and HUD sampling.
+- `src/eval_runtime.rs` owns CLI action parsing, eval run artifact paths, eval sample/summary file writing, and temporary output cleanup helpers.
 - `src/lib.rs` declares the reusable module surface.
 - `src/asset_pipeline.rs` owns the declared glTF visual asset inventory, expected player animation clip names, residency classes, deterministic load-admission policy, file/load-state readiness metrics, recursive dependency preload metrics, scene-instance readiness metrics, visible authored world-fixture metrics, and animation graph/player readiness metrics while generated primitives remain the fallback.
 - `src/movement.rs` owns flight state, input state, tuning, launch/glide/dive integration, floor clamp, velocity limits, and facing smoothing.
