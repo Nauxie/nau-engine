@@ -588,18 +588,36 @@ pub(super) fn build_checks(
             thresholds.min_abs_camera_yaw_degrees,
             "deg",
         ),
-        EvalCheck::at_most(
-            "min_camera_pitch_offset",
-            acc.min_camera_pitch_offset_degrees,
-            thresholds.min_camera_pitch_offset_degrees,
-            "deg",
-        ),
-        EvalCheck::at_least(
-            "max_camera_pitch_offset",
-            acc.max_camera_pitch_offset_degrees,
-            thresholds.max_camera_pitch_offset_degrees,
-            "deg",
-        ),
+        if thresholds.min_camera_pitch_offset_degrees < 0.0 {
+            EvalCheck::at_most(
+                "min_camera_pitch_offset",
+                acc.min_camera_pitch_offset_degrees,
+                thresholds.min_camera_pitch_offset_degrees,
+                "deg",
+            )
+        } else {
+            EvalCheck::at_least(
+                "min_camera_pitch_offset",
+                acc.min_camera_pitch_offset_degrees,
+                thresholds.min_camera_pitch_offset_degrees,
+                "deg",
+            )
+        },
+        if thresholds.max_camera_pitch_offset_degrees > 0.0 {
+            EvalCheck::at_least(
+                "max_camera_pitch_offset",
+                acc.max_camera_pitch_offset_degrees,
+                thresholds.max_camera_pitch_offset_degrees,
+                "deg",
+            )
+        } else {
+            EvalCheck::at_most(
+                "max_camera_pitch_offset",
+                acc.max_camera_pitch_offset_degrees,
+                thresholds.max_camera_pitch_offset_degrees,
+                "deg",
+            )
+        },
     ];
     if thresholds.min_lifted_samples > 0 {
         checks.push(EvalCheck::at_least(

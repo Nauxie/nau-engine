@@ -195,18 +195,36 @@ impl SimMetrics {
                 thresholds.min_abs_camera_yaw_degrees,
                 "deg",
             ),
-            SimCheck::at_least(
-                "camera_pitch_input_min",
-                self.min_camera_pitch_offset_degrees,
-                thresholds.min_camera_pitch_offset_degrees,
-                "deg",
-            ),
-            SimCheck::at_most(
-                "camera_pitch_input_max",
-                self.max_camera_pitch_offset_degrees,
-                thresholds.max_camera_pitch_offset_degrees,
-                "deg",
-            ),
+            if thresholds.min_camera_pitch_offset_degrees < 0.0 {
+                SimCheck::at_most(
+                    "camera_pitch_input_min",
+                    self.min_camera_pitch_offset_degrees,
+                    thresholds.min_camera_pitch_offset_degrees,
+                    "deg",
+                )
+            } else {
+                SimCheck::at_least(
+                    "camera_pitch_input_min",
+                    self.min_camera_pitch_offset_degrees,
+                    thresholds.min_camera_pitch_offset_degrees,
+                    "deg",
+                )
+            },
+            if thresholds.max_camera_pitch_offset_degrees > 0.0 {
+                SimCheck::at_least(
+                    "camera_pitch_input_max",
+                    self.max_camera_pitch_offset_degrees,
+                    thresholds.max_camera_pitch_offset_degrees,
+                    "deg",
+                )
+            } else {
+                SimCheck::at_most(
+                    "camera_pitch_input_max",
+                    self.max_camera_pitch_offset_degrees,
+                    thresholds.max_camera_pitch_offset_degrees,
+                    "deg",
+                )
+            },
             SimCheck::at_least(
                 "objective_total_count",
                 self.objective_total_count as f32,
