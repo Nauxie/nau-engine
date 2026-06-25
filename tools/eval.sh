@@ -10,8 +10,10 @@ no_screenshot_requested="${NAU_EVAL_NO_SCREENSHOT:-0}"
 visual_audit_requested="${NAU_EVAL_VISUAL_AUDIT:-1}"
 asset_audit_requested="${NAU_EVAL_ASSET_AUDIT:-1}"
 visual_audit_path="${output_dir}/visual_audit.json"
+marker_projection_audit_path="${output_dir}/marker_projection_audit.json"
 asset_audit_path="${output_dir}/asset_fixture_audit.json"
 visual_audit_status=0
+marker_projection_audit_status=0
 asset_audit_status=0
 
 file_size_bytes() {
@@ -26,7 +28,7 @@ if [[ "${no_screenshot_requested}" == "1" || "${screenshot_requested}" != "1" ]]
   extra_args+=(--eval-no-screenshot)
 fi
 
-rm -f "${visual_audit_path}" "${asset_audit_path}"
+rm -f "${visual_audit_path}" "${marker_projection_audit_path}" "${asset_audit_path}"
 
 if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]] && ! command -v jq >/dev/null 2>&1; then
   echo "jq is required for screenshot artifact validation; install jq or run without NAU_EVAL_SCREENSHOT=1" >&2
@@ -61,6 +63,7 @@ fi
 
 if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]; then
   screenshot_artifacts=()
+  marker_metadata_artifacts=()
   while IFS= read -r artifact; do
     if [[ -z "${artifact}" || "${artifact}" == "null" ]]; then
       continue
@@ -91,7 +94,16 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
         "${artifact}" >&2 || true
       exit 1
     fi
+    marker_metadata_artifacts+=("${artifact}")
   done < <(jq -r '.artifacts.checkpoint_marker_metadata[]?' "${summary}")
+
+  if [[ "${#marker_metadata_artifacts[@]}" -gt 0 ]]; then
+    set +e
+    cargo run --quiet --bin marker_projection_audit -- "${marker_metadata_artifacts[@]}" \
+      > "${marker_projection_audit_path}"
+    marker_projection_audit_status=$?
+    set -e
+  fi
 
   if [[ "${visual_audit_requested}" != "0" && "${#screenshot_artifacts[@]}" -gt 0 ]]; then
     set +e
@@ -115,6 +127,15 @@ if (( visual_audit_status != 0 )); then
       "${visual_audit_path}" >&2 || true
   fi
   exit "${visual_audit_status}"
+fi
+
+if (( marker_projection_audit_status != 0 )); then
+  echo "marker projection audit failed: ${marker_projection_audit_path}" >&2
+  if command -v jq >/dev/null 2>&1 && [[ -s "${marker_projection_audit_path}" ]]; then
+    jq '{passed, checks, failed_checkpoints: [.checkpoints[] | select(.passed == false) | {checkpoint, metadata_path, screenshot_path, visible_marker_count, marker_pixel_hit_count, markers: [.markers[] | select(.in_viewport == true) | {kind, label, screen, marker_pixel_hits, passed}]}]}' \
+      "${marker_projection_audit_path}" >&2 || true
+  fi
+  exit "${marker_projection_audit_status}"
 fi
 
 if (( asset_audit_status != 0 )); then
