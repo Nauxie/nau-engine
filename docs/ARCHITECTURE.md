@@ -58,7 +58,14 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/movement/math.rs` owns shared movement vector helpers and smoothing math.
 - `src/movement/tests.rs` and `src/movement/tests/` own movement fixtures plus integration, orientation, and math unit coverage.
 - `src/environment.rs` owns finite visual wind/updraft field definitions, gameplay `LiftField` updraft volumes, collectible aerial power-up route definitions, lift/boost application, deterministic stream placement, and testable wind-sway visual motion math.
-- `src/camera.rs` owns camera follow math, orbit yaw/pitch control math, movement-stable horizontal follow direction, obstruction avoidance, and ground-clearance helpers.
+- `src/camera.rs` owns the public camera module facade and stable re-exports used by runtime and eval code.
+- `src/camera/types.rs` owns deterministic camera data types: follow tuning/state, mouse-control state/input, orbit offsets, frames, and obstruction reports.
+- `src/camera/follow.rs` owns camera follow placement, orbit application, movement-stable follow direction, and follow-direction smoothing.
+- `src/camera/input.rs` owns mouse-delta to orbit yaw/pitch control math.
+- `src/camera/metrics.rs` owns camera distance, clearance, target-angle, orbit-alignment, view-yaw, and pitch telemetry helpers.
+- `src/camera/obstruction.rs` owns floor lifting, obstruction avoidance, and AABB segment-intersection helpers.
+- `src/camera/math.rs` owns shared camera vector and angle helpers.
+- `src/camera/tests.rs` and `src/camera/tests/` own camera follow, input, metric, and obstruction unit coverage.
 - `src/world.rs` owns collision-aware route surfaces, sky-island definitions, deterministic island relief, landing target queries, active chunk counters, stream-window classification, and near/mid/far LOD band classification.
 - `src/diagnostics.rs` owns pure helpers for frame-time and runtime metric formatting inputs.
 - `src/eval.rs` owns the eval module surface and shared eval JSON helpers.

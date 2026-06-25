@@ -1,5 +1,5 @@
 use super::*;
-use nau_engine::eval::AIR_CONTROL_RESPONSE;
+use nau_engine::eval::{AIR_CONTROL_RESPONSE, CAMERA_MOUSE_CONTROL};
 
 #[test]
 fn baseline_simulation_writes_windowless_artifacts() {
@@ -25,6 +25,17 @@ fn camera_yaw_simulation_exercises_scripted_mouse_without_motion() {
     assert!(result.metrics.max_abs_camera_yaw_offset_degrees >= 8.0);
     assert_eq!(result.metrics.grounded_samples, result.metrics.sample_count);
     assert_eq!(result.metrics.horizontal_distance_m, 0.0);
+}
+
+#[test]
+fn camera_mouse_simulation_exercises_yaw_and_pitch_axes() {
+    let scenario = scenario_named(CAMERA_MOUSE_CONTROL).expect("scenario");
+    let result = run_simulation(scenario);
+
+    assert!(result.passed);
+    assert!(result.metrics.max_abs_camera_yaw_offset_degrees >= 25.0);
+    assert!(result.metrics.min_camera_pitch_offset_degrees <= -10.0);
+    assert!(result.metrics.max_camera_pitch_offset_degrees >= 10.0);
 }
 
 #[test]
