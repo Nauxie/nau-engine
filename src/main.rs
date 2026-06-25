@@ -43,13 +43,13 @@ use nau_engine::environment::{
     readable_lift_fields_at, visible_fields_at, wind_sway_motion,
 };
 use nau_engine::eval::{
-    EvalAccumulator, EvalArtifacts, EvalObjectiveProgress, EvalSample, EvalScenario,
-    SCENARIO_NAMES, scenario_named, scripted_camera_input, scripted_input,
+    EvalAccumulator, EvalArtifacts, EvalMovementMetrics, EvalObjectiveProgress, EvalSample,
+    EvalScenario, SCENARIO_NAMES, scenario_named, scripted_camera_input, scripted_input,
 };
 use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
-    body_yaw_error_degrees, desired_heading_alignment_speed, desired_planar_movement_direction,
-    face_flight_direction, lateral_response_speed, step_flight,
+    body_forward, body_roll_degrees, body_yaw_error_degrees, desired_heading_alignment_speed,
+    desired_planar_movement_direction, face_flight_direction, lateral_response_speed, step_flight,
 };
 use nau_engine::world::{
     LodBand, RouteObjectiveKind, START_POSITION, SkyIsland, SkyRoute, StreamActivation,
@@ -2765,6 +2765,7 @@ type GeneratedPlayerPlaceholderFilter = (
     Without<CharacterPart>,
     Without<AuthoredVisualScene>,
 );
+type GeneratedCharacterPartAnimationFilter = (Without<AuthoredVisualScene>, Without<Player>);
 
 fn setup(
     mut commands: Commands,
@@ -6969,7 +6970,7 @@ fn step_player(
         player.velocity.0,
         input,
         facing,
-        player.controller.mode,
+        *player.controller,
         &tuning,
         dt,
     );
@@ -6999,26 +7000,35 @@ fn animate_character(
     time: Res<Time>,
     eval: Option<Res<EvalRun>>,
     visual_assets: Res<VisualAssetRegistry>,
-    mut player: Query<(&Velocity, &FlightController, &mut AnimationState), With<Player>>,
+    mut player: Query<
+        (
+            &Transform,
+            &Velocity,
+            &FlightController,
+            &mut AnimationState,
+        ),
+        With<Player>,
+    >,
     mut parts: Query<
         (&CharacterPart, &mut Transform, &mut Visibility),
-        Without<AuthoredVisualScene>,
+        GeneratedCharacterPartAnimationFilter,
     >,
     mut authored_scenes: Query<(&AuthoredVisualScene, &mut Visibility), Without<CharacterPart>>,
     mut generated_placeholders: Query<&mut Visibility, GeneratedPlayerPlaceholderFilter>,
 ) {
-    let Ok((velocity, controller, mut animation)) = player.single_mut() else {
+    let Ok((transform, velocity, controller, mut animation)) = player.single_mut() else {
         return;
     };
 
     let dt = eval_dt(&time, eval.as_deref());
     animation.phase = advance_phase(animation.phase, velocity.0.length(), dt);
+    let pose_velocity = character_pose_velocity(velocity.0, transform.rotation);
     let blend = pose_blend(dt);
     let authored_player_ready = visual_assets.scene_ready(VisualAssetKind::PlayerCharacter);
     let authored_glider_ready = visual_assets.scene_ready(VisualAssetKind::Glider);
 
     for (part, mut transform, mut visibility) in &mut parts {
-        let pose = part_pose(part, controller.mode, velocity.0, animation.phase);
+        let pose = part_pose(part, controller.mode, pose_velocity, animation.phase);
         transform.translation = transform.translation.lerp(pose.translation, blend);
         transform.rotation = transform.rotation.slerp(pose.rotation, blend);
 
@@ -7060,6 +7070,16 @@ fn animate_character(
             Visibility::Inherited
         };
     }
+}
+
+fn character_pose_velocity(world_velocity: Vec3, player_rotation: Quat) -> Vec3 {
+    let forward = body_forward(player_rotation);
+    let right = forward.cross(Vec3::Y).normalize_or_zero();
+    Vec3::new(
+        world_velocity.dot(right),
+        world_velocity.y,
+        -world_velocity.dot(forward),
+    )
 }
 
 fn authored_player_clip_for_state(mode: FlightMode, speed_mps: f32) -> AuthoredPlayerClip {
@@ -7427,9 +7447,10 @@ fn update_debug_readout(
     };
     let (environment_motion_visuals, max_environment_motion_offset_m) =
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
+    let body_roll = body_roll_degrees(transform.rotation);
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/deferred/failed {} / {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nauthored world fixtures {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices min/max {} / {}\nground cover patches {} blades {} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nbody bank/roll {:>5.1} / {:>5.1} deg\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/deferred/failed {} / {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nauthored world fixtures {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices min/max {} / {}\nground cover patches {} blades {} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -7455,6 +7476,8 @@ fn update_debug_readout(
         velocity.0.x,
         velocity.0.y,
         velocity.0.z,
+        controller.bank_degrees,
+        body_roll,
         scene.power_ups.visible_count(),
         scene.power_ups.collected_count(),
         scene.power_ups.active_effects(),
@@ -7808,14 +7831,14 @@ fn collect_eval_metrics(
         content_metrics.max_weather_cloud_lobe_count,
         content_metrics.min_weather_cloud_mesh_vertices,
     )
-    .with_movement_metrics(
+    .with_movement_metrics(EvalMovementMetrics {
         desired_body_yaw_error_degrees,
+        body_roll_degrees: body_roll_degrees(transform.rotation),
         desired_heading_alignment_mps,
         lateral_response_mps,
         lateral_input_active,
-        movement_axis.x,
-        movement_axis.y,
-    );
+        movement_axis,
+    });
 
     if let Err(error) = run.record_sample(sample) {
         run.io_error = Some(format!("failed to write eval sample: {error}"));
@@ -8729,6 +8752,17 @@ mod tests {
         let b = Vec3::from_array(positions[indices[1] as usize]);
         let c = Vec3::from_array(positions[indices[2] as usize]);
         (b - a).cross(c - a).y
+    }
+
+    #[test]
+    fn character_pose_velocity_uses_body_local_lateral_axis() {
+        let rotation = Transform::from_translation(Vec3::ZERO)
+            .looking_to(Vec3::X, Vec3::Y)
+            .rotation;
+        let pose_velocity = character_pose_velocity(Vec3::NEG_Z * 14.0, rotation);
+
+        assert!(pose_velocity.x < -13.9);
+        assert!(pose_velocity.z.abs() < 0.001);
     }
 
     fn normalized_radius(island: SkyIsland, position: [f32; 3]) -> f32 {
