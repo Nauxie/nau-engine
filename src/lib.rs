@@ -676,10 +676,10 @@ pub mod movement {
                 backward_accel: 10.0,
                 lateral_accel: 16.0,
                 glide_forward_accel: 12.0,
-                glide_lateral_accel: 11.0,
-                glide_brake_drag: 0.36,
+                glide_lateral_accel: 16.0,
+                glide_brake_drag: 0.30,
                 air_brake_accel: 46.0,
-                glide_brake_accel: 48.0,
+                glide_brake_accel: 66.0,
                 max_backward_speed: 12.0,
                 dive_accel: 32.0,
                 gravity: 18.0,
@@ -693,13 +693,13 @@ pub mod movement {
                 max_horizontal_speed: 58.0,
                 max_fall_speed: 70.0,
                 air_steer_accel: 54.0,
-                glide_steer_accel: 36.0,
+                glide_steer_accel: 44.0,
                 air_counter_steer_accel: 120.0,
-                glide_counter_steer_accel: 150.0,
+                glide_counter_steer_accel: 340.0,
                 air_steer_min_speed: 16.0,
                 max_bank_degrees: 20.0,
-                turn_rate: 11.0,
-                input_turn_rate_boost: 7.5,
+                turn_rate: 12.5,
+                input_turn_rate_boost: 8.5,
                 floor_y: 1.2,
             }
         }
@@ -3935,15 +3935,15 @@ pub mod eval {
     const MIN_ISLAND_IMPOSTOR_COLOR_BANDS: usize = 18;
     const MIN_ISLAND_BODY_MESH_VERTICES: usize = 1600;
     const AIR_CONTROL_RESPONSE_THRESHOLD_MPS: f32 = 4.0;
-    const AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS: f32 = 0.30;
+    const AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS: f32 = 0.20;
     const AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS: f32 = 18.0;
     const AIR_CONTROL_MIN_BACKWARD_LATERAL_RESPONSE_MPS: f32 = 10.0;
-    const AIR_CONTROL_MIN_BACKWARD_DIAGONAL_REAR_RESPONSE_MPS: f32 = 8.0;
+    const AIR_CONTROL_MIN_BACKWARD_DIAGONAL_REAR_RESPONSE_MPS: f32 = 10.0;
     const AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS: f32 = 20.0;
     const AIR_CONTROL_MAX_AVG_BODY_HEADING_ERROR_DEGREES: f32 = 8.0;
-    const AIR_CONTROL_MAX_P95_BODY_HEADING_ERROR_DEGREES: f32 = 30.0;
-    const AIR_CONTROL_MAX_BODY_HEADING_ERROR_DEGREES: f32 = 45.0;
-    const AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES: f32 = 45.0;
+    const AIR_CONTROL_MAX_P95_BODY_HEADING_ERROR_DEGREES: f32 = 22.0;
+    const AIR_CONTROL_MAX_BODY_HEADING_ERROR_DEGREES: f32 = 36.0;
+    const AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES: f32 = 36.0;
     const AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS: f32 = 4.0;
     const AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES: f32 = 0.01;
     const AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 2.0;
@@ -3954,9 +3954,9 @@ pub mod eval {
     const CAMERA_STRAFE_MAX_VIEW_YAW_DRIFT_DEGREES: f32 = 2.0;
     const MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES: f32 = 2.0;
     const MAX_GROUNDED_VISUAL_FOOT_GAP_M: f32 = 0.05;
-    const AIR_CONTROL_MIN_AIR_BRAKE_SPEED_DROP_MPS: f32 = 10.0;
-    const AIR_CONTROL_MIN_AIR_BRAKE_PLANAR_SPEED_DROP_MPS: f32 = 10.0;
-    const AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS: f32 = 12.0;
+    const AIR_CONTROL_MIN_AIR_BRAKE_SPEED_DROP_MPS: f32 = 12.0;
+    const AIR_CONTROL_MIN_AIR_BRAKE_PLANAR_SPEED_DROP_MPS: f32 = 12.0;
+    const AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS: f32 = 14.0;
     const AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES: f32 = 8.0;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -7415,12 +7415,12 @@ pub mod eval {
             };
         }
         if scenario.name == BRANCH_RECOVERY_ROUTE {
-            let dive = (8.7..=10.45).contains(&t);
+            let dive = (8.45..=10.9).contains(&t);
             return FlightInput {
-                forward: (0.05..=12.25).contains(&t),
-                backward: (10.35..=10.55).contains(&t),
+                forward: (0.05..=10.25).contains(&t),
+                backward: (10.35..=11.35).contains(&t),
                 right: (1.2..=2.2).contains(&t) || (9.1..=10.0).contains(&t),
-                left: (4.7..=5.0).contains(&t) || (10.45..=11.65).contains(&t),
+                left: (4.7..=5.0).contains(&t) || (10.45..=10.75).contains(&t),
                 glide: t >= 0.45 && !dive,
                 dive,
                 launch: frame == 1,
