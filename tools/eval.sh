@@ -77,6 +77,22 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
     screenshot_artifacts+=("${artifact}")
   done < <(jq -r '.artifacts.screenshot_png, (.artifacts.checkpoint_screenshots[]?)' "${summary}")
 
+  while IFS= read -r artifact; do
+    if [[ -z "${artifact}" || "${artifact}" == "null" ]]; then
+      continue
+    fi
+    if [[ ! -s "${artifact}" ]]; then
+      echo "missing checkpoint marker metadata: ${artifact}" >&2
+      exit 1
+    fi
+    if ! jq -e '.passed == true' "${artifact}" >/dev/null; then
+      echo "checkpoint marker semantic audit failed: ${artifact}" >&2
+      jq '{passed, frame, checkpoint, semantic_marker_count, expected_objective_marker_count, visible_semantic_marker_count, current_objective_visible, markers: [.markers[] | {kind, label, current_objective, in_viewport, screen}]}' \
+        "${artifact}" >&2 || true
+      exit 1
+    fi
+  done < <(jq -r '.artifacts.checkpoint_marker_metadata[]?' "${summary}")
+
   if [[ "${visual_audit_requested}" != "0" && "${#screenshot_artifacts[@]}" -gt 0 ]]; then
     set +e
     cargo run --quiet --bin visual_audit -- "${screenshot_artifacts[@]}" \
