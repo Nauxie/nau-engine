@@ -253,19 +253,25 @@ addMesh("Nau Leather Boot", taperedCylinderMesh([0.14, 0.18], [0.11, 0.13], 10),
 addMesh("Nau Chest Focus Crystal", crystalMesh(), 2);
 addMesh("Nau Accent Shoulder Guard", ellipsoidMesh([0.20, 0.08, 0.13], 10, 5), 4);
 addMesh("Nau Accent Scarf Trail", panelMesh(0.16, 0.34, 0.84, 0.025), 4);
+addMesh("Nau Face Mask Panel", panelMesh(0.20, 0.28, 0.15, -0.02), 5);
+addMesh("Nau Amber Eye Lens", ellipsoidMesh([0.048, 0.026, 0.018], 8, 4), 6);
+addMesh("Nau Belt Sash Band", taperedCylinderMesh([0.43, 0.25], [0.42, 0.24], 16), 7);
+addMesh("Nau Belt Buckle Plate", crystalMesh(), 7);
+addMesh("Nau Leather Gauntlet Cuff", taperedCylinderMesh([0.11, 0.095], [0.105, 0.09], 12), 3);
+addMesh("Nau Accent Knee Guard", ellipsoidMesh([0.12, 0.055, 0.085], 10, 5), 4);
 
 const nodes = [
   { name: "Nau Self Authored Animated Player Root", children: [1, 2, 3, 4, 5, 6, 7, 8, 13, 14, 18] },
-  { name: "Nau Hips", mesh: 0, translation: [0, 0.54, 0], scale: [1.0, 0.76, 1.0] },
+  { name: "Nau Hips", mesh: 0, translation: [0, 0.54, 0], scale: [1.0, 0.76, 1.0], children: [23, 24] },
   { name: "Nau Torso", mesh: 1, translation: [0, 1.08, 0], scale: [1.0, 0.94, 1.0], children: [15, 16, 19] },
-  { name: "Nau Head", mesh: 3, translation: [0, 1.68, 0], children: [17] },
+  { name: "Nau Head", mesh: 3, translation: [0, 1.68, 0], children: [17, 20, 21, 22] },
   { name: "Nau Left Arm", mesh: 5, translation: [-0.48, 1.18, 0.01], scale: [1.0, 0.62, 1.0], children: [9] },
   { name: "Nau Right Arm", mesh: 5, translation: [0.48, 1.18, 0.01], scale: [1.0, 0.62, 1.0], children: [10] },
-  { name: "Nau Left Leg", mesh: 7, translation: [-0.17, 0.30, 0.01], scale: [1.0, 0.68, 1.0], children: [11] },
-  { name: "Nau Right Leg", mesh: 7, translation: [0.17, 0.30, 0.01], scale: [1.0, 0.68, 1.0], children: [12] },
+  { name: "Nau Left Leg", mesh: 7, translation: [-0.17, 0.30, 0.01], scale: [1.0, 0.68, 1.0], children: [11, 27] },
+  { name: "Nau Right Leg", mesh: 7, translation: [0.17, 0.30, 0.01], scale: [1.0, 0.68, 1.0], children: [12, 28] },
   { name: "Nau Chest Focus", mesh: 9, translation: [0, 1.15, -0.24], scale: [0.35, 0.24, 0.6] },
-  { name: "Nau Left Forearm", mesh: 6, translation: [0, -0.44, 0.02], scale: [1.0, 0.52, 1.0] },
-  { name: "Nau Right Forearm", mesh: 6, translation: [0, -0.44, 0.02], scale: [1.0, 0.52, 1.0] },
+  { name: "Nau Left Forearm", mesh: 6, translation: [0, -0.44, 0.02], scale: [1.0, 0.52, 1.0], children: [25] },
+  { name: "Nau Right Forearm", mesh: 6, translation: [0, -0.44, 0.02], scale: [1.0, 0.52, 1.0], children: [26] },
   { name: "Nau Left Boot", mesh: 8, translation: [0, -0.46, -0.01], scale: [1.0, 0.36, 1.0] },
   { name: "Nau Right Boot", mesh: 8, translation: [0, -0.46, -0.01], scale: [1.0, 0.36, 1.0] },
   { name: "Nau Front Accent Tunic", mesh: 2, translation: [0, 0.78, -0.24], scale: [1.0, 1.0, 1.0] },
@@ -275,6 +281,15 @@ const nodes = [
   { name: "Nau Helmet Accent Crest", mesh: 4, translation: [0, 0.20, -0.02], rotation: rotX(0.16), scale: [1.0, 0.32, 1.0] },
   { name: "Nau Wind Scarf Accent", mesh: 11, translation: [0.24, 1.18, 0.26], rotation: rotX(-0.55), scale: [1.0, 1.0, 1.0] },
   { name: "Nau Back Scarf Anchor Accent", mesh: 11, translation: [0, 0.0, 0.25], rotation: rotX(-1.24), scale: [0.74, 0.42, 1.0] },
+  { name: "Nau Face Mask Panel", mesh: 12, translation: [0, -0.02, -0.245], scale: [1.0, 0.72, 1.0] },
+  { name: "Nau Left Amber Eye Lens", mesh: 13, translation: [-0.075, 0.035, -0.255], scale: [1.0, 1.0, 1.0] },
+  { name: "Nau Right Amber Eye Lens", mesh: 13, translation: [0.075, 0.035, -0.255], scale: [1.0, 1.0, 1.0] },
+  { name: "Nau Belt Sash Band", mesh: 14, translation: [0, 0.28, -0.005], scale: [1.0, 0.12, 1.0] },
+  { name: "Nau Belt Buckle Plate", mesh: 15, translation: [0, 0.28, -0.245], rotation: rotX(1.5708), scale: [0.20, 0.12, 0.11] },
+  { name: "Nau Left Leather Gauntlet Cuff", mesh: 16, translation: [0, -0.13, 0.01], scale: [1.0, 0.20, 1.0] },
+  { name: "Nau Right Leather Gauntlet Cuff", mesh: 16, translation: [0, -0.13, 0.01], scale: [1.0, 0.20, 1.0] },
+  { name: "Nau Left Accent Knee Guard", mesh: 17, translation: [0, -0.19, -0.10], rotation: rotX(0.08), scale: [1.0, 1.0, 1.0] },
+  { name: "Nau Right Accent Knee Guard", mesh: 17, translation: [0, -0.19, -0.10], rotation: rotX(0.08), scale: [1.0, 1.0, 1.0] },
 ];
 
 function quat(axis, radians) {
@@ -429,6 +444,23 @@ const gltf = {
         baseColorFactor: [0.05, 0.07, 0.09, 1.0],
         metallicFactor: 0.0,
         roughnessFactor: 0.48,
+      },
+    },
+    {
+      name: "Nau Amber Eye Lens Material",
+      emissiveFactor: [0.80, 0.34, 0.08],
+      pbrMetallicRoughness: {
+        baseColorFactor: [0.95, 0.42, 0.12, 1.0],
+        metallicFactor: 0.0,
+        roughnessFactor: 0.30,
+      },
+    },
+    {
+      name: "Nau Weathered Brass Belt Material",
+      pbrMetallicRoughness: {
+        baseColorFactor: [0.72, 0.48, 0.18, 1.0],
+        metallicFactor: 0.15,
+        roughnessFactor: 0.52,
       },
     },
   ],

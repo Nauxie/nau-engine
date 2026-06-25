@@ -18,7 +18,8 @@ struct Requirement {
 }
 
 const PLAYER_NAME_FRAGMENTS: &[&str] = &[
-    "suit", "skin", "accent", "helmet", "shoulder", "scarf", "boot",
+    "suit", "skin", "accent", "helmet", "shoulder", "scarf", "boot", "face", "eye", "belt",
+    "gauntlet", "knee",
 ];
 const GLIDER_NAME_FRAGMENTS: &[&str] = &["cloth panel", "spar", "rib", "tether", "grip"];
 const TERRAIN_NAME_FRAGMENTS: &[&str] = &["relief", "cliff", "underside", "landing", "terrace"];
@@ -39,11 +40,11 @@ const IMPOSTOR_NAME_FRAGMENTS: &[&str] = &["terrain", "underside", "rim", "tree 
 const REQUIREMENTS: &[Requirement] = &[
     Requirement {
         kind: VisualAssetKind::PlayerCharacter,
-        min_nodes: 18,
-        min_meshes: 10,
-        min_materials: 6,
-        min_vertices: 320,
-        min_triangles: 550,
+        min_nodes: 28,
+        min_meshes: 18,
+        min_materials: 8,
+        min_vertices: 560,
+        min_triangles: 930,
         required_name_fragments: PLAYER_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: true,
