@@ -17,8 +17,8 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/lib.rs` declares the reusable module surface and still owns the modules that have not yet been moved into dedicated files.
 - `src/movement.rs` owns flight state, input state, tuning, launch/glide/dive integration, floor clamp, velocity limits, and facing smoothing.
 - `src/camera.rs` owns camera follow math, orbit yaw/pitch control math, movement-stable horizontal follow direction, obstruction avoidance, and ground-clearance helpers.
+- `src/world.rs` owns collision-aware route surfaces, sky-island definitions, deterministic island relief, landing target queries, active chunk counters, stream-window classification, and near/mid/far LOD band classification.
 - `environment` owns finite visual wind/updraft field definitions, gameplay `LiftField` updraft volumes, collectible aerial power-up route definitions, lift/boost application, deterministic stream placement, and testable wind-sway visual motion math.
-- `world` owns collision-aware route surfaces, sky-island definitions, deterministic island relief, landing target queries, active chunk counters, stream-window classification, and near/mid/far LOD band classification.
 - `diagnostics` owns pure helpers for frame-time and runtime metric formatting inputs.
 - `animation` owns primitive character part pose math, wing visibility/airflow state, and animation phase progression.
 - `asset_pipeline` owns the declared glTF visual asset inventory, expected player animation clip names, residency classes, deterministic load-admission policy, file/load-state readiness metrics, recursive dependency preload metrics, scene-instance readiness metrics, visible authored world-fixture metrics, and animation graph/player readiness metrics while generated primitives remain the fallback.
