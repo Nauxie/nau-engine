@@ -32,7 +32,13 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/bin/traversal_sim_eval.rs` owns the background-safe traversal simulation CLI, scripted flight stepping, sample capture, and artifact writing.
 - `src/bin/traversal_sim_eval/metrics.rs` owns simulation-only metric accumulation, pass/fail check assembly, summary serialization, and response-latency helpers.
 - `src/bin/traversal_sim_eval/tests.rs` owns unit coverage for simulation-only route, camera, air-control, and body-roll regression checks.
-- `src/bin/visual_audit.rs` owns non-golden screenshot visual-audit image/report checks used by screenshot eval runs.
+- `src/bin/visual_audit.rs` owns the non-golden screenshot visual-audit CLI wiring used by screenshot eval runs.
+- `src/bin/visual_audit/analysis.rs` owns per-image audit sampling and check construction.
+- `src/bin/visual_audit/image_metrics.rs` owns reusable image statistics, detail-tile scans, border-clipping math, and component counting.
+- `src/bin/visual_audit/pixel_rules.rs` owns pixel/region classification rules for sky, scene, player, route-marker, distant-scene, cloud-layer, HUD, and clipping signals.
+- `src/bin/visual_audit/report.rs` owns sequence-level visual-audit checks and JSON report serialization.
+- `src/bin/visual_audit/thresholds.rs` owns visual-audit thresholds.
+- `src/bin/visual_audit/types.rs` owns visual-audit report structs.
 - `src/bin/visual_audit/tests.rs` owns unit coverage for synthetic visual-audit image and sequence regressions.
 - `src/lib.rs` declares the reusable module surface.
 - `src/generated_content.rs` owns procedural PBR material/texture helpers and shared generated-content re-exports.
