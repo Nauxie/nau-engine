@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-06-24
+Last updated: 2026-06-25
 
 ## Current Milestone
 
@@ -103,6 +103,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `src/diagnostics.rs`
 - `src/eval.rs`
 - `src/eval/scenarios.rs`
+- `src/eval/thresholds.rs`
 - `src/animation.rs`
 - `src/camera_runtime.rs`
 - `src/authored_assets.rs`

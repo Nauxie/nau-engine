@@ -8,7 +8,7 @@ use crate::{
 };
 use bevy::prelude::*;
 
-use super::{
+use super::thresholds::{
     EvalThresholds, MIN_ISLAND_CLIFF_COLOR_BANDS, MIN_ISLAND_TERRAIN_COLOR_BANDS,
     MIN_ISLAND_TERRAIN_MESH_VERTICES, MIN_ISLAND_TERRAIN_RELIEF_RANGE_M,
     MIN_ISLAND_TERRAIN_SURFACE_COUNT,
