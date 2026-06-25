@@ -1,0 +1,322 @@
+use bevy::prelude::Vec2;
+use nau_engine::eval::{CAMERA_STRAFE_STABILITY, EvalScenario};
+
+use super::super::{
+    AIR_CONTROL_RESPONSE_THRESHOLD_MPS, AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES, SimSample,
+};
+use super::{
+    SimMetrics,
+    util::{backward_diagonal_rear_response_mps, horizontal_distance},
+};
+
+impl SimMetrics {
+    pub(crate) fn observe(&mut self, sample: &SimSample, scenario: EvalScenario) {
+        self.sample_count += 1;
+        self.final_position = sample.position;
+        self.horizontal_distance_m = self
+            .horizontal_distance_m
+            .max(horizontal_distance(self.start_position, sample.position));
+        self.max_altitude_m = self.max_altitude_m.max(sample.altitude_m);
+        self.min_altitude_m = self.min_altitude_m.min(sample.altitude_m);
+        self.max_speed_mps = self.max_speed_mps.max(sample.speed_mps);
+        self.max_camera_distance_m = self.max_camera_distance_m.max(sample.camera_distance_m);
+        self.min_camera_surface_clearance_m = self
+            .min_camera_surface_clearance_m
+            .min(sample.camera_surface_clearance_m);
+        self.max_camera_player_angle_degrees = self
+            .max_camera_player_angle_degrees
+            .max(sample.camera_player_angle_degrees);
+        self.max_camera_step_distance_m = self
+            .max_camera_step_distance_m
+            .max(sample.camera_step_distance_m);
+        self.max_camera_rotation_delta_degrees = self
+            .max_camera_rotation_delta_degrees
+            .max(sample.camera_rotation_delta_degrees);
+        self.max_camera_orbit_alignment_degrees = self
+            .max_camera_orbit_alignment_degrees
+            .max(sample.camera_orbit_alignment_degrees);
+        self.max_abs_camera_view_yaw_degrees = self
+            .max_abs_camera_view_yaw_degrees
+            .max(sample.camera_view_yaw_degrees.abs());
+        let first_view_yaw = self
+            .first_camera_view_yaw_degrees
+            .get_or_insert(sample.camera_view_yaw_degrees);
+        self.max_camera_view_yaw_drift_degrees = self
+            .max_camera_view_yaw_drift_degrees
+            .max((sample.camera_view_yaw_degrees - *first_view_yaw).abs());
+        let first_world_yaw = self
+            .first_camera_world_yaw_degrees
+            .get_or_insert(sample.camera_world_yaw_degrees);
+        self.max_camera_world_yaw_drift_degrees = self
+            .max_camera_world_yaw_drift_degrees
+            .max((sample.camera_world_yaw_degrees - *first_world_yaw).abs());
+        self.max_camera_obstruction_adjustment_m = self
+            .max_camera_obstruction_adjustment_m
+            .max(sample.camera_obstruction_adjustment_m);
+        self.max_camera_obstruction_hits = self
+            .max_camera_obstruction_hits
+            .max(sample.camera_obstruction_hits);
+        self.max_abs_camera_yaw_offset_degrees = self
+            .max_abs_camera_yaw_offset_degrees
+            .max(sample.camera_yaw_offset_degrees.abs());
+        self.min_camera_pitch_offset_degrees = self
+            .min_camera_pitch_offset_degrees
+            .min(sample.camera_pitch_offset_degrees);
+        self.max_camera_pitch_offset_degrees = self
+            .max_camera_pitch_offset_degrees
+            .max(sample.camera_pitch_offset_degrees);
+
+        if sample.desired_body_yaw_error_degrees.is_finite() {
+            self.desired_body_heading_error_sum_degrees +=
+                sample.desired_body_heading_error_degrees;
+            self.desired_body_heading_samples += 1;
+            self.desired_body_heading_error_values_degrees
+                .push(sample.desired_body_heading_error_degrees);
+            self.max_desired_body_heading_error_degrees = self
+                .max_desired_body_heading_error_degrees
+                .max(sample.desired_body_heading_error_degrees);
+            if let Some(previous) = self.previous_desired_body_yaw_error_degrees {
+                self.max_body_yaw_error_step_degrees = self
+                    .max_body_yaw_error_step_degrees
+                    .max((sample.desired_body_yaw_error_degrees - previous).abs());
+            }
+            self.previous_desired_body_yaw_error_degrees =
+                Some(sample.desired_body_yaw_error_degrees);
+            if sample.desired_body_yaw_error_degrees.abs()
+                >= AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES
+            {
+                let sign = sample.desired_body_yaw_error_degrees.signum();
+                if self
+                    .previous_body_yaw_error_sign
+                    .is_some_and(|previous| previous != sign)
+                {
+                    self.body_yaw_oscillation_count += 1;
+                }
+                self.previous_body_yaw_error_sign = Some(sign);
+            }
+        }
+        if !sample.body_roll_degrees.is_finite() || sample.mode == "grounded" {
+            self.previous_body_roll_degrees = None;
+        } else {
+            if let Some(previous) = self.previous_body_roll_degrees {
+                self.max_body_roll_step_degrees = self
+                    .max_body_roll_step_degrees
+                    .max((sample.body_roll_degrees - previous).abs());
+            }
+            self.previous_body_roll_degrees = Some(sample.body_roll_degrees);
+
+            match sample.movement_input_lateral_axis.signum() {
+                sign if sign > 0.0 => {
+                    self.max_right_body_bank_degrees = self
+                        .max_right_body_bank_degrees
+                        .max((-sample.body_roll_degrees).max(0.0));
+                }
+                sign if sign < 0.0 => {
+                    self.max_left_body_bank_degrees = self
+                        .max_left_body_bank_degrees
+                        .max(sample.body_roll_degrees.max(0.0));
+                }
+                _ => {}
+            }
+        }
+        if sample.desired_heading_alignment_mps.is_finite() {
+            self.max_desired_heading_alignment_mps = self
+                .max_desired_heading_alignment_mps
+                .max(sample.desired_heading_alignment_mps);
+            if sample.movement_input_forward_axis > 0.0 {
+                self.max_post_brake_forward_alignment_mps = self
+                    .max_post_brake_forward_alignment_mps
+                    .max(sample.desired_heading_alignment_mps);
+            }
+        }
+        self.observe_lateral_response(sample);
+        self.observe_backward_air_control(sample);
+
+        self.min_target_distance_m = self.min_target_distance_m.min(sample.target_distance_m);
+        self.final_target_distance_m = sample.target_distance_m;
+        self.objective_total_count = sample.objective.total_count;
+        self.max_completed_objective_count = self
+            .max_completed_objective_count
+            .max(sample.objective.completed_count);
+        self.final_objective_completed_count = sample.objective.completed_count;
+        self.min_objective_distance_m = self
+            .min_objective_distance_m
+            .min(sample.objective.current_distance_m);
+        self.final_objective_distance_m = sample.objective.current_distance_m;
+        if sample.objective.complete {
+            self.objective_complete_samples += 1;
+        }
+        if sample.on_landing_target {
+            self.target_landing_samples += 1;
+        }
+        self.max_sky_island_count = self.max_sky_island_count.max(sample.sky_island_count);
+        self.max_active_chunk_count = self.max_active_chunk_count.max(sample.active_chunk_count);
+        self.max_active_island_count = self.max_active_island_count.max(sample.active_island_count);
+        self.max_near_lod_islands = self.max_near_lod_islands.max(sample.near_lod_islands);
+        self.max_mid_lod_islands = self.max_mid_lod_islands.max(sample.mid_lod_islands);
+        self.max_far_lod_islands = self.max_far_lod_islands.max(sample.far_lod_islands);
+        self.max_power_up_count = self.max_power_up_count.max(sample.power_up_count);
+        self.min_visible_power_up_count = self
+            .min_visible_power_up_count
+            .min(sample.visible_power_up_count);
+        self.max_collected_power_up_count = self
+            .max_collected_power_up_count
+            .max(sample.collected_power_up_count);
+        if sample.active_power_up_effects > 0 {
+            self.power_up_effect_samples += 1;
+        }
+        self.total_power_up_activations = sample.total_power_up_activations;
+        if sample.active_lift_fields > 0 {
+            self.lifted_samples += 1;
+            if sample.readable_lift_fields > 0 {
+                self.readable_lift_samples += 1;
+            } else {
+                self.unreadable_lift_samples += 1;
+            }
+        }
+        match sample.mode {
+            "gliding" => self.gliding_samples += 1,
+            "launching" => self.launching_samples += 1,
+            "grounded" => self.grounded_samples += 1,
+            _ => {}
+        }
+
+        if scenario.name == CAMERA_STRAFE_STABILITY {
+            self.max_camera_obstruction_adjustment_m = 0.0;
+        }
+    }
+
+    fn observe_lateral_response(&mut self, sample: &SimSample) {
+        let lateral_axis_active =
+            sample.lateral_input_active || sample.movement_input_lateral_axis.abs() > f32::EPSILON;
+        if !lateral_axis_active {
+            return;
+        }
+        if self.first_lateral_input_time_secs.is_none() {
+            self.first_lateral_input_time_secs = Some(sample.time_secs);
+        }
+        self.max_lateral_response_mps = self
+            .max_lateral_response_mps
+            .max(sample.lateral_response_mps);
+        if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+            && self.first_lateral_response_time_secs.is_none()
+        {
+            self.first_lateral_response_time_secs = Some(sample.time_secs);
+        }
+
+        match sample.movement_input_lateral_axis.signum() {
+            sign if sign > 0.0 => {
+                if self.first_right_lateral_input_time_secs.is_none() {
+                    self.first_right_lateral_input_time_secs = Some(sample.time_secs);
+                }
+                self.max_right_lateral_response_mps = self
+                    .max_right_lateral_response_mps
+                    .max(sample.lateral_response_mps);
+                if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+                    && self.first_right_lateral_response_time_secs.is_none()
+                {
+                    self.first_right_lateral_response_time_secs = Some(sample.time_secs);
+                }
+                if sample.movement_input_forward_axis < 0.0 {
+                    if self.first_backward_right_lateral_input_time_secs.is_none() {
+                        self.first_backward_right_lateral_input_time_secs = Some(sample.time_secs);
+                    }
+                    self.max_backward_right_lateral_response_mps = self
+                        .max_backward_right_lateral_response_mps
+                        .max(sample.lateral_response_mps);
+                    if let Some(rear_response) = backward_diagonal_rear_response_mps(sample) {
+                        self.max_backward_right_rear_response_mps =
+                            self.max_backward_right_rear_response_mps.max(rear_response);
+                    }
+                    if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+                        && self
+                            .first_backward_right_lateral_response_time_secs
+                            .is_none()
+                    {
+                        self.first_backward_right_lateral_response_time_secs =
+                            Some(sample.time_secs);
+                    }
+                }
+            }
+            sign if sign < 0.0 => {
+                if self.first_left_lateral_input_time_secs.is_none() {
+                    self.first_left_lateral_input_time_secs = Some(sample.time_secs);
+                }
+                self.max_left_lateral_response_mps = self
+                    .max_left_lateral_response_mps
+                    .max(sample.lateral_response_mps);
+                if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+                    && self.first_left_lateral_response_time_secs.is_none()
+                {
+                    self.first_left_lateral_response_time_secs = Some(sample.time_secs);
+                }
+                if sample.movement_input_forward_axis < 0.0 {
+                    if self.first_backward_left_lateral_input_time_secs.is_none() {
+                        self.first_backward_left_lateral_input_time_secs = Some(sample.time_secs);
+                    }
+                    self.max_backward_left_lateral_response_mps = self
+                        .max_backward_left_lateral_response_mps
+                        .max(sample.lateral_response_mps);
+                    if let Some(rear_response) = backward_diagonal_rear_response_mps(sample) {
+                        self.max_backward_left_rear_response_mps =
+                            self.max_backward_left_rear_response_mps.max(rear_response);
+                    }
+                    if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+                        && self
+                            .first_backward_left_lateral_response_time_secs
+                            .is_none()
+                    {
+                        self.first_backward_left_lateral_response_time_secs =
+                            Some(sample.time_secs);
+                    }
+                }
+            }
+            _ => {}
+        }
+        if sample.movement_input_forward_axis < 0.0 {
+            if self.first_backward_lateral_input_time_secs.is_none() {
+                self.first_backward_lateral_input_time_secs = Some(sample.time_secs);
+            }
+            self.max_backward_lateral_response_mps = self
+                .max_backward_lateral_response_mps
+                .max(sample.lateral_response_mps);
+            if sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+                && self.first_backward_lateral_response_time_secs.is_none()
+            {
+                self.first_backward_lateral_response_time_secs = Some(sample.time_secs);
+            }
+        }
+    }
+
+    fn observe_backward_air_control(&mut self, sample: &SimSample) {
+        if sample.movement_input_forward_axis >= 0.0 || sample.mode == "grounded" {
+            return;
+        }
+
+        let planar_speed = Vec2::new(sample.velocity.x, sample.velocity.z).length();
+        self.backward_air_control_start_speed_mps
+            .get_or_insert(sample.speed_mps);
+        self.backward_air_control_start_planar_speed_mps
+            .get_or_insert(planar_speed);
+        self.min_backward_air_control_speed_mps = Some(
+            self.min_backward_air_control_speed_mps
+                .map_or(sample.speed_mps, |speed| speed.min(sample.speed_mps)),
+        );
+        self.min_backward_air_control_planar_speed_mps = Some(
+            self.min_backward_air_control_planar_speed_mps
+                .map_or(planar_speed, |speed| speed.min(planar_speed)),
+        );
+        if let (Some(start), Some(minimum)) = (
+            self.backward_air_control_start_speed_mps,
+            self.min_backward_air_control_speed_mps,
+        ) {
+            self.max_air_brake_speed_drop_mps = (start - minimum).max(0.0);
+        }
+        if let (Some(start), Some(minimum)) = (
+            self.backward_air_control_start_planar_speed_mps,
+            self.min_backward_air_control_planar_speed_mps,
+        ) {
+            self.max_air_brake_planar_speed_drop_mps = (start - minimum).max(0.0);
+        }
+    }
+}
