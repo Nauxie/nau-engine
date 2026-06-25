@@ -29,6 +29,8 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/environment_visuals.rs` owns cinematic weather/light/fog animation, drifting cloud layers, updraft haze/ribbon/guide motion, wind-responsive prop motion, and fallback glider airflow trails.
 - `src/eval_app_runtime.rs` owns eval ECS query surface, frame-time and metric sampling, eval frame finalization, screenshot capture, checkpoint marker metadata, semantic scene samples, and marker occlusion projection helpers.
 - `src/eval_runtime.rs` owns CLI action parsing, eval run artifact paths, eval sample/summary file writing, and temporary output cleanup helpers.
+- `src/bin/visual_audit.rs` owns non-golden screenshot visual-audit image/report checks used by screenshot eval runs.
+- `src/bin/visual_audit/tests.rs` owns unit coverage for synthetic visual-audit image and sequence regressions.
 - `src/lib.rs` declares the reusable module surface.
 - `src/generated_content.rs` owns procedural PBR material/texture helpers and shared generated-content re-exports.
 - `src/generated_content/island_meshes.rs` owns generated terrain/cliff/underside/impostor meshes, island biome palettes, ground-cover meshes, and mesh inspection helpers shared by runtime spawning and export audits.
