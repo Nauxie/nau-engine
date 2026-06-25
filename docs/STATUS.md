@@ -52,7 +52,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - Crosswind fields remain visual-only; gameplay updrafts are authored as paired visual wind volumes plus bounded `LiftField`s, with faint lift haze, animated spiral airflow ribbons, and small motes in the normal scene.
 - Three authored aerial boost gates are visible as glowing route rings, apply capped forward/upward boosts while airborne, disappear after collection, and report visible/collected/active-effect counters in HUD/eval metrics.
 - `sunlit terrace` and `western refuge` are marked as recovery branch islands with visible mast/ring beacons.
-- Diagnostics still live in `src/lib.rs`; movement, environment, camera, route-surface/world math, eval metrics, and richer pose math are split into dedicated modules.
+- Reusable logic now lives in dedicated modules for asset readiness, movement, environment, camera, route-surface/world math, diagnostics, eval metrics, and richer pose math.
 - `ground_taxi_control` eval proves pre-launch camera-relative WASD moves the player across the launch island without leaving grounded mode.
 - `camera_mouse_control` eval proves scripted mouse X/Y deltas exercise yaw and both pitch directions without hiding camera regressions behind player movement.
 - `camera_yaw_stability` eval proves a small yaw impulse does not keep rotating after mouse input stops.
@@ -99,6 +99,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `src/environment.rs`
 - `src/camera.rs`
 - `src/world.rs`
+- `src/diagnostics.rs`
 - `src/eval.rs`
 - `src/animation.rs`
 - `src/main.rs`
