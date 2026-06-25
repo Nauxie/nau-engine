@@ -110,6 +110,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `src/environment_visuals.rs`
 - `src/generated_content.rs`
 - `src/island_visuals.rs`
+- `src/power_up_runtime.rs`
 - `src/content_export.rs`
 - `src/eval_runtime.rs`
 - `src/main.rs`

@@ -25,6 +25,7 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/lib.rs` declares the reusable module surface.
 - `src/generated_content.rs` owns procedural PBR material/texture helpers, generated terrain/cliff/underside/impostor meshes, generated vegetation/rock/cloud meshes, island biome palettes, and mesh/texture inspection helpers shared by runtime spawning and export audits.
 - `src/island_visuals.rs` owns island visual catalog entries, LOD residency decisions, route/detail/beacon queueing, and stream-window spawn/despawn diagnostics.
+- `src/power_up_runtime.rs` owns aerial power-up collection state, visual guide spawning/animation, and one-time boost application.
 - `src/asset_pipeline.rs` owns the declared glTF visual asset inventory, expected player animation clip names, residency classes, deterministic load-admission policy, file/load-state readiness metrics, recursive dependency preload metrics, scene-instance readiness metrics, visible authored world-fixture metrics, and animation graph/player readiness metrics while generated primitives remain the fallback.
 - `src/movement.rs` owns flight state, input state, tuning, launch/glide/dive integration, floor clamp, velocity limits, and facing smoothing.
 - `src/environment.rs` owns finite visual wind/updraft field definitions, gameplay `LiftField` updraft volumes, collectible aerial power-up route definitions, lift/boost application, deterministic stream placement, and testable wind-sway visual motion math.
