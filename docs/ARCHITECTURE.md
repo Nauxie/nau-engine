@@ -56,7 +56,11 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/generated_content/island_meshes/metrics.rs` owns generated island mesh inspection helpers used by tests and content diagnostics.
 - `src/generated_content/island_meshes/normals.rs` owns smooth normal reconstruction for generated island meshes.
 - `src/generated_content/detail_meshes.rs` owns reusable generated rock, tree, cloud, updraft ribbon, and glider airflow trail mesh builders.
-- `src/island_visuals.rs` owns island visual catalog entries, LOD residency decisions, route/detail/beacon queueing, and stream-window spawn/despawn diagnostics.
+- `src/island_visuals.rs` owns the island-visual runtime facade and stable re-exports used by app setup and eval diagnostics.
+- `src/island_visuals/types.rs` owns island visual catalog entries, stream state, LOD count metrics, and stream diagnostics.
+- `src/island_visuals/queue.rs` owns terrain/body/impostor/ridge/beacon catalog construction for each sky island.
+- `src/island_visuals/details.rs` owns generated ground cover, trees, stones, ponds, route cairns, launch/target decorations, and wind-responsive detail placement.
+- `src/island_visuals/streaming.rs` owns island visual residency decisions, initial spawning, stream-window spawn/despawn, and stream diagnostics updates.
 - `src/power_up_runtime.rs` owns aerial power-up collection state, visual guide spawning/animation, and one-time boost application.
 - `src/asset_pipeline.rs` owns the declared glTF visual asset inventory, expected player animation clip names, residency classes, deterministic load-admission policy, file/load-state readiness metrics, recursive dependency preload metrics, scene-instance readiness metrics, visible authored world-fixture metrics, and animation graph/player readiness metrics while generated primitives remain the fallback.
 - `src/movement.rs` owns the public movement module facade and stable re-exports used by runtime and eval code.
