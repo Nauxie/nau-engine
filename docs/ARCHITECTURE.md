@@ -14,6 +14,7 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 ## Current Code Shape
 
 - `src/main.rs` owns Bevy app resource/plugin setup, app system scheduling, and CLI action dispatch.
+- `src/app_tests.rs` owns binary-level app integration tests for CLI parsing, eval window setup, exported content artifacts, generated content mesh quality, and app-visible helper behavior.
 - `src/scene_setup_runtime.rs` owns startup scene construction: lights, ground plane, island catalog seeding, authored fixture scene spawning, player child visuals, follow camera spawn, and HUD root spawn.
 - `src/player_runtime.rs` owns the player marker/resource types, keyboard flight input mapping, player movement ECS systems, route objective updates, generated/authored player visibility handoff, and fallback character animation.
 - `src/camera_runtime.rs` owns runtime camera resources, mouse-look capture, follow-camera ECS wiring, camera obstruction components, camera spawn/render-stack setup, and camera diagnostics.
