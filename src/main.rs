@@ -23,9 +23,10 @@ use nau_engine::animation::{
     part_pose, pose_blend, wing_airflow_strength,
 };
 use nau_engine::asset_pipeline::{
-    VISUAL_ASSET_SPECS, VisualAssetAnimationState, VisualAssetKind, VisualAssetLoadState,
-    VisualAssetPipelineMetrics, VisualAssetPreloadState, VisualAssetSceneState, VisualAssetSpec,
-    visual_asset_pipeline_metrics_with_preload_states,
+    DEFAULT_VISUAL_ASSET_LOAD_POLICY, VISUAL_ASSET_SPECS, VisualAssetAnimationState,
+    VisualAssetKind, VisualAssetLoadAdmission, VisualAssetLoadState, VisualAssetPipelineMetrics,
+    VisualAssetPreloadState, VisualAssetSceneState, VisualAssetSpec,
+    visual_asset_load_admission_plan, visual_asset_pipeline_metrics_with_preload_states,
 };
 use nau_engine::camera::{
     CameraControlState, CameraControlTuning, CameraInput, CameraObstruction, FollowCamera,
@@ -862,6 +863,7 @@ impl VisualAssetRegistry {
 #[derive(Debug)]
 struct VisualAssetSlot {
     spec: VisualAssetSpec,
+    load_admission: VisualAssetLoadAdmission,
     gltf_handle: Option<Handle<Gltf>>,
     scene_handle: Option<Handle<Scene>>,
     scene_entity: Option<Entity>,
@@ -3354,14 +3356,22 @@ fn setup(
 }
 
 fn prepare_visual_asset_registry(asset_server: &AssetServer) -> VisualAssetRegistry {
+    let admissions = visual_asset_load_admission_plan(
+        &VISUAL_ASSET_SPECS,
+        |spec| visual_asset_path_exists(spec.gltf_scene_path),
+        DEFAULT_VISUAL_ASSET_LOAD_POLICY,
+    );
     let slots = VISUAL_ASSET_SPECS
         .iter()
         .copied()
-        .map(|spec| VisualAssetSlot {
+        .zip(admissions)
+        .map(|(spec, load_admission)| VisualAssetSlot {
             spec,
-            gltf_handle: visual_asset_path_exists(spec.gltf_scene_path)
+            load_admission,
+            gltf_handle: load_admission
+                .is_admitted()
                 .then(|| asset_server.load(spec.gltf_scene_path)),
-            scene_handle: visual_asset_path_exists(spec.gltf_scene_path).then(|| {
+            scene_handle: load_admission.is_admitted().then(|| {
                 asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf_scene_path))
             }),
             scene_entity: None,
@@ -7324,7 +7334,7 @@ fn visual_asset_load_state(
     slot: &VisualAssetSlot,
 ) -> VisualAssetLoadState {
     let Some(scene_handle) = &slot.scene_handle else {
-        return VisualAssetLoadState::Missing;
+        return slot.load_admission.load_state();
     };
 
     match asset_server.load_state(scene_handle) {
@@ -7419,7 +7429,7 @@ fn update_debug_readout(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/failed {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nauthored world fixtures {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices min/max {} / {}\nground cover patches {} blades {} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/deferred/failed {} / {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nauthored world fixtures {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices min/max {} / {}\nground cover patches {} blades {} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -7457,6 +7467,7 @@ fn update_debug_readout(
         asset_metrics.queued_scene_count,
         asset_metrics.loading_scene_count,
         asset_metrics.loaded_scene_count,
+        asset_metrics.deferred_scene_count,
         asset_metrics.failed_scene_count,
         asset_metrics.dependency_loaded_scene_count,
         asset_metrics.preload_ready_scene_count,
@@ -7752,6 +7763,7 @@ fn collect_eval_metrics(
         scene.power_ups.total_activations,
     )
     .with_visible_authored_world_fixture_count(scene.asset_diagnostics.visible_world_fixture_count)
+    .with_deferred_visual_asset_scene_count(asset_metrics.deferred_scene_count)
     .with_camera_follow_metrics(scene.camera_diagnostics.follow_direction_error_degrees)
     .with_camera_world_yaw_metrics(camera_world_yaw)
     .with_visual_foot_gap(visual_foot_gap_m)

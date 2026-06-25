@@ -42,6 +42,7 @@ pub mod asset_pipeline {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub enum VisualAssetLoadState {
         Missing,
+        Deferred,
         Queued,
         Loading,
         Loaded,
@@ -59,6 +60,33 @@ pub mod asset_pipeline {
 
         pub fn is_available(self) -> bool {
             matches!(self, Self::Queued | Self::Loading | Self::Loaded)
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct VisualAssetLoadPolicy {
+        pub max_admitted_scene_count: usize,
+        pub max_streaming_admitted_scene_count: usize,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub enum VisualAssetLoadAdmission {
+        Missing,
+        Deferred,
+        Admitted,
+    }
+
+    impl VisualAssetLoadAdmission {
+        pub fn is_admitted(self) -> bool {
+            matches!(self, Self::Admitted)
+        }
+
+        pub fn load_state(self) -> VisualAssetLoadState {
+            match self {
+                Self::Missing => VisualAssetLoadState::Missing,
+                Self::Deferred => VisualAssetLoadState::Deferred,
+                Self::Admitted => VisualAssetLoadState::Queued,
+            }
         }
     }
 
@@ -104,6 +132,7 @@ pub mod asset_pipeline {
         pub placeholder_slot_count: usize,
         pub streaming_slot_count: usize,
         pub missing_slot_count: usize,
+        pub deferred_scene_count: usize,
         pub queued_scene_count: usize,
         pub loading_scene_count: usize,
         pub loaded_scene_count: usize,
@@ -223,6 +252,62 @@ pub mod asset_pipeline {
     pub const MIN_READY_VISUAL_ANIMATION_CLIP_COUNT: usize = DECLARED_VISUAL_ANIMATION_CLIP_COUNT;
     pub const MIN_VISUAL_ANIMATION_PLAYER_COUNT: usize = 1;
     pub const MIN_VISUAL_ANIMATION_GRAPH_COUNT: usize = 1;
+    pub const MAX_DEFERRED_VISUAL_ASSET_SCENE_COUNT: usize = 0;
+    pub const DEFAULT_VISUAL_ASSET_LOAD_POLICY: VisualAssetLoadPolicy = VisualAssetLoadPolicy {
+        max_admitted_scene_count: VISUAL_ASSET_SLOT_COUNT,
+        max_streaming_admitted_scene_count: STREAMING_VISUAL_ASSET_SLOT_COUNT,
+    };
+
+    pub fn visual_asset_load_admission_plan(
+        specs: &[VisualAssetSpec],
+        mut asset_exists: impl FnMut(&VisualAssetSpec) -> bool,
+        policy: VisualAssetLoadPolicy,
+    ) -> Vec<VisualAssetLoadAdmission> {
+        let mut admissions = vec![VisualAssetLoadAdmission::Missing; specs.len()];
+        let mut admitted_always_count = 0;
+        let mut streaming_candidates = Vec::new();
+
+        for (index, spec) in specs.iter().enumerate() {
+            if !asset_exists(spec) {
+                continue;
+            }
+
+            if spec.residency == VisualAssetResidency::Always {
+                admissions[index] = VisualAssetLoadAdmission::Admitted;
+                admitted_always_count += 1;
+            } else {
+                streaming_candidates.push((index, visual_asset_load_priority(*spec)));
+            }
+        }
+
+        let remaining_total_budget = policy
+            .max_admitted_scene_count
+            .saturating_sub(admitted_always_count);
+        let streaming_budget = policy
+            .max_streaming_admitted_scene_count
+            .min(remaining_total_budget);
+
+        streaming_candidates.sort_by_key(|(index, priority)| (*priority, *index));
+        for (rank, (index, _)) in streaming_candidates.into_iter().enumerate() {
+            admissions[index] = if rank < streaming_budget {
+                VisualAssetLoadAdmission::Admitted
+            } else {
+                VisualAssetLoadAdmission::Deferred
+            };
+        }
+
+        admissions
+    }
+
+    fn visual_asset_load_priority(spec: VisualAssetSpec) -> u8 {
+        match spec.residency {
+            VisualAssetResidency::Always => 0,
+            VisualAssetResidency::StreamWindow => 1,
+            VisualAssetResidency::NearLod => 2,
+            VisualAssetResidency::Weather => 3,
+            VisualAssetResidency::FarLod => 4,
+        }
+    }
 
     pub fn visual_asset_pipeline_metrics(
         specs: &[VisualAssetSpec],
@@ -334,6 +419,10 @@ pub mod asset_pipeline {
                     metrics.placeholder_slot_count += 1;
                     metrics.missing_slot_count += 1;
                 }
+                VisualAssetLoadState::Deferred => {
+                    metrics.placeholder_slot_count += 1;
+                    metrics.deferred_scene_count += 1;
+                }
                 VisualAssetLoadState::Queued => {
                     metrics.queued_scene_count += 1;
                 }
@@ -370,8 +459,9 @@ pub mod asset_pipeline {
     mod tests {
         use crate::asset_pipeline::{
             ALWAYS_VISUAL_ASSET_SLOT_COUNT, DECLARED_VISUAL_ANIMATION_CLIP_COUNT,
-            FAR_LOD_VISUAL_ASSET_SLOT_COUNT, NEAR_LOD_VISUAL_ASSET_SLOT_COUNT,
-            STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT, WEATHER_VISUAL_ASSET_SLOT_COUNT,
+            DEFAULT_VISUAL_ASSET_LOAD_POLICY, FAR_LOD_VISUAL_ASSET_SLOT_COUNT,
+            NEAR_LOD_VISUAL_ASSET_SLOT_COUNT, STREAM_WINDOW_VISUAL_ASSET_SLOT_COUNT,
+            WEATHER_VISUAL_ASSET_SLOT_COUNT,
         };
 
         use super::*;
@@ -473,12 +563,109 @@ pub mod asset_pipeline {
         }
 
         #[test]
+        fn default_asset_load_policy_admits_current_manifest() {
+            let admissions = visual_asset_load_admission_plan(
+                &VISUAL_ASSET_SPECS,
+                |_| true,
+                DEFAULT_VISUAL_ASSET_LOAD_POLICY,
+            );
+
+            assert_eq!(admissions.len(), VISUAL_ASSET_SPECS.len());
+            assert!(admissions.iter().all(|admission| admission.is_admitted()));
+            assert_eq!(
+                admissions
+                    .iter()
+                    .filter(|admission| admission.load_state() == VisualAssetLoadState::Deferred)
+                    .count(),
+                0
+            );
+        }
+
+        #[test]
+        fn asset_load_policy_defers_lower_priority_streamed_assets() {
+            let specs = [
+                VisualAssetSpec {
+                    kind: VisualAssetKind::PlayerCharacter,
+                    label: "always player",
+                    gltf_scene_path: "player.gltf",
+                    animation_clip_names: &[],
+                    residency: VisualAssetResidency::Always,
+                },
+                VisualAssetSpec {
+                    kind: VisualAssetKind::Glider,
+                    label: "always glider",
+                    gltf_scene_path: "glider.gltf",
+                    animation_clip_names: &[],
+                    residency: VisualAssetResidency::Always,
+                },
+                VisualAssetSpec {
+                    kind: VisualAssetKind::IslandTerrain,
+                    label: "stream terrain",
+                    gltf_scene_path: "terrain.gltf",
+                    animation_clip_names: &[],
+                    residency: VisualAssetResidency::StreamWindow,
+                },
+                VisualAssetSpec {
+                    kind: VisualAssetKind::IslandRock,
+                    label: "stream rock",
+                    gltf_scene_path: "rock.gltf",
+                    animation_clip_names: &[],
+                    residency: VisualAssetResidency::StreamWindow,
+                },
+                VisualAssetSpec {
+                    kind: VisualAssetKind::IslandFoliage,
+                    label: "near foliage",
+                    gltf_scene_path: "foliage.gltf",
+                    animation_clip_names: &[],
+                    residency: VisualAssetResidency::NearLod,
+                },
+                VisualAssetSpec {
+                    kind: VisualAssetKind::WeatherLayer,
+                    label: "weather",
+                    gltf_scene_path: "weather.gltf",
+                    animation_clip_names: &[],
+                    residency: VisualAssetResidency::Weather,
+                },
+                VisualAssetSpec {
+                    kind: VisualAssetKind::DistantImpostor,
+                    label: "far impostor",
+                    gltf_scene_path: "far.gltf",
+                    animation_clip_names: &[],
+                    residency: VisualAssetResidency::FarLod,
+                },
+            ];
+
+            let admissions = visual_asset_load_admission_plan(
+                &specs,
+                |_| true,
+                VisualAssetLoadPolicy {
+                    max_admitted_scene_count: 4,
+                    max_streaming_admitted_scene_count: 2,
+                },
+            );
+
+            assert_eq!(
+                admissions,
+                vec![
+                    VisualAssetLoadAdmission::Admitted,
+                    VisualAssetLoadAdmission::Admitted,
+                    VisualAssetLoadAdmission::Admitted,
+                    VisualAssetLoadAdmission::Admitted,
+                    VisualAssetLoadAdmission::Deferred,
+                    VisualAssetLoadAdmission::Deferred,
+                    VisualAssetLoadAdmission::Deferred,
+                ]
+            );
+        }
+
+        #[test]
         fn asset_metrics_track_bevy_load_state_buckets() {
             let metrics =
                 visual_asset_pipeline_metrics_with_load_states(&VISUAL_ASSET_SPECS, |spec| {
                     match spec.kind {
                         VisualAssetKind::PlayerCharacter => VisualAssetLoadState::Loading,
                         VisualAssetKind::Glider => VisualAssetLoadState::Loaded,
+                        VisualAssetKind::IslandRock => VisualAssetLoadState::Deferred,
                         VisualAssetKind::DistantImpostor => VisualAssetLoadState::Failed,
                         _ => VisualAssetLoadState::Missing,
                     }
@@ -491,6 +678,7 @@ pub mod asset_pipeline {
             assert_eq!(metrics.loaded_scene_count, 1);
             assert_eq!(metrics.dependency_loaded_scene_count, 1);
             assert_eq!(metrics.preload_ready_scene_count, 1);
+            assert_eq!(metrics.deferred_scene_count, 1);
             assert_eq!(metrics.failed_scene_count, 1);
         }
 
@@ -3867,7 +4055,8 @@ pub mod eval {
     use crate::{
         asset_pipeline::{
             DECLARED_VISUAL_ANIMATION_CLIP_COUNT, GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
-            MAX_MISSING_VISUAL_ASSET_SLOT_COUNT, MIN_ALWAYS_PRELOAD_READY_VISUAL_ASSET_SLOT_COUNT,
+            MAX_DEFERRED_VISUAL_ASSET_SCENE_COUNT, MAX_MISSING_VISUAL_ASSET_SLOT_COUNT,
+            MIN_ALWAYS_PRELOAD_READY_VISUAL_ASSET_SLOT_COUNT,
             MIN_DEPENDENCY_LOADED_VISUAL_ASSET_SCENE_COUNT, MIN_LOADED_VISUAL_ASSET_SCENE_COUNT,
             MIN_PRELOAD_READY_VISUAL_ASSET_SCENE_COUNT, MIN_READY_VISUAL_ANIMATION_CLIP_COUNT,
             MIN_READY_VISUAL_ASSET_SCENE_COUNT, MIN_READY_VISUAL_ASSET_SLOT_COUNT,
@@ -4421,6 +4610,7 @@ pub mod eval {
         pub placeholder_visual_asset_slot_count: usize,
         pub streaming_visual_asset_slot_count: usize,
         pub missing_visual_asset_slot_count: usize,
+        pub deferred_visual_asset_scene_count: usize,
         pub queued_visual_asset_scene_count: usize,
         pub loading_visual_asset_scene_count: usize,
         pub loaded_visual_asset_scene_count: usize,
@@ -4644,6 +4834,7 @@ pub mod eval {
                 placeholder_visual_asset_slot_count,
                 streaming_visual_asset_slot_count,
                 missing_visual_asset_slot_count,
+                deferred_visual_asset_scene_count: 0,
                 queued_visual_asset_scene_count,
                 loading_visual_asset_scene_count,
                 loaded_visual_asset_scene_count,
@@ -4829,6 +5020,14 @@ pub mod eval {
             self
         }
 
+        pub fn with_deferred_visual_asset_scene_count(
+            mut self,
+            deferred_visual_asset_scene_count: usize,
+        ) -> Self {
+            self.deferred_visual_asset_scene_count = deferred_visual_asset_scene_count;
+            self
+        }
+
         pub fn to_json(&self) -> String {
             let json = format!(
                 "{{\"frame\":{},\"time_secs\":{},\"position\":{},\"velocity\":{},\"speed_mps\":{},\"altitude_m\":{},\"mode\":{},\"desired_body_yaw_error_degrees\":{},\"desired_body_heading_error_degrees\":{},\"desired_heading_alignment_mps\":{},\"lateral_response_mps\":{},\"lateral_input_active\":{},\"movement_input_lateral_axis\":{},\"movement_input_forward_axis\":{},\"camera_distance_m\":{},\"camera_surface_clearance_m\":{},\"camera_player_angle_degrees\":{},\"camera_pitch_degrees\":{},\"camera_yaw_offset_degrees\":{},\"camera_pitch_offset_degrees\":{},\"camera_step_distance_m\":{},\"camera_rotation_delta_degrees\":{},\"camera_orbit_alignment_degrees\":{},\"camera_follow_direction_error_degrees\":{},\"camera_view_yaw_degrees\":{},\"camera_world_yaw_degrees\":{},\"camera_obstruction_adjustment_m\":{},\"camera_obstruction_hits\":{},\"visible_wind_fields\":{},\"wind_field_count\":{},\"active_lift_fields\":{},\"readable_lift_fields\":{},\"lift_field_count\":{},\"target_distance_m\":{},\"on_landing_target\":{},\"objective\":{},\"sky_island_count\":{},\"active_chunk_count\":{},\"active_island_count\":{},\"near_lod_islands\":{},\"mid_lod_islands\":{},\"far_lod_islands\":{},\"visible_island_terrain_count\":{},\"hidden_island_terrain_count\":{},\"visible_island_impostor_count\":{},\"hidden_island_impostor_count\":{},\"visible_island_detail_count\":{},\"hidden_island_detail_count\":{},\"visible_route_beacon_count\":{},\"weather_cloud_count\":{},\"environment_motion_visual_count\":{},\"max_environment_motion_offset_m\":{},\"island_terrain_surface_count\":{},\"min_island_terrain_mesh_vertices\":{},\"min_island_terrain_color_bands\":{},\"min_island_terrain_material_weight_bands\":{},\"min_island_terrain_material_channels\":{},\"min_island_terrain_material_regions\":{},\"min_island_terrain_texture_detail_bands\":{},\"min_island_terrain_relief_range_m\":{},\"min_island_cliff_color_bands\":{},\"procedural_island_body_count\":{},\"primitive_island_body_count\":{},\"min_island_body_silhouette_segments\":{},\"avg_island_body_silhouette_segments\":{},\"max_island_body_mesh_vertices\":{},\"generated_ground_cover_patch_count\":{},\"min_ground_cover_blade_count\":{},\"min_ground_cover_mesh_vertices\":{},\"generated_tree_trunk_count\":{},\"generated_tree_canopy_count\":{},\"min_tree_trunk_mesh_vertices\":{},\"min_tree_canopy_mesh_vertices\":{},\"detail_biome_palette_count\":{},\"generated_rock_count\":{},\"min_rock_mesh_vertices\":{},\"generated_weather_cloud_count\":{},\"generated_weather_cloud_bank_count\":{},\"min_weather_cloud_bank_depth_m\":{},\"min_weather_cloud_lobe_count\":{},\"max_weather_cloud_lobe_count\":{},\"min_weather_cloud_mesh_vertices\":{},\"resident_island_visual_count\":{},\"stream_visibility_changes_this_frame\":{},\"max_stream_visibility_changes_per_frame\":{},\"total_stream_visibility_changes\":{},\"catalog_island_visual_count\":{},\"hidden_island_visual_count\":{},\"resident_island_visual_fraction\":{},\"stream_spawned_visuals_this_frame\":{},\"stream_despawned_visuals_this_frame\":{},\"max_stream_spawned_visuals_per_frame\":{},\"max_stream_despawned_visuals_per_frame\":{},\"total_stream_spawned_visuals\":{},\"total_stream_despawned_visuals\":{},\"entity_count\":{},\"visual_asset_slot_count\":{},\"gltf_scene_asset_slot_count\":{},\"ready_visual_asset_slot_count\":{},\"placeholder_visual_asset_slot_count\":{},\"streaming_visual_asset_slot_count\":{},\"missing_visual_asset_slot_count\":{},\"queued_visual_asset_scene_count\":{},\"loading_visual_asset_scene_count\":{},\"loaded_visual_asset_scene_count\":{},\"dependency_loaded_visual_asset_scene_count\":{},\"preload_ready_visual_asset_scene_count\":{},\"failed_visual_asset_scene_count\":{},\"spawned_visual_asset_scene_count\":{},\"ready_visual_asset_scene_count\":{},\"visible_authored_world_fixture_count\":{},\"always_visual_asset_slot_count\":{},\"stream_window_visual_asset_slot_count\":{},\"near_lod_visual_asset_slot_count\":{},\"far_lod_visual_asset_slot_count\":{},\"weather_visual_asset_slot_count\":{},\"always_preload_ready_visual_asset_slot_count\":{},\"streaming_preload_ready_visual_asset_slot_count\":{},\"declared_animation_clip_count\":{},\"ready_animation_clip_count\":{},\"animation_player_count\":{},\"animation_graph_count\":{},\"power_up_count\":{},\"visible_power_up_count\":{},\"collected_power_up_count\":{},\"active_power_up_effects\":{},\"total_power_up_activations\":{},\"visual_foot_gap_m\":{}}}",
@@ -4974,7 +5173,13 @@ pub mod eval {
                 "\"min_island_body_mesh_vertices\":{},{}",
                 self.min_island_body_mesh_vertices, body_mesh_key
             );
-            json.replacen(body_mesh_key, &body_mesh_metrics, 1)
+            let json = json.replacen(body_mesh_key, &body_mesh_metrics, 1);
+            let deferred_asset_key = "\"queued_visual_asset_scene_count\"";
+            let deferred_asset_metrics = format!(
+                "\"deferred_visual_asset_scene_count\":{},{}",
+                self.deferred_visual_asset_scene_count, deferred_asset_key
+            );
+            json.replacen(deferred_asset_key, &deferred_asset_metrics, 1)
         }
     }
 
@@ -5120,6 +5325,7 @@ pub mod eval {
         max_placeholder_visual_asset_slot_count: usize,
         max_streaming_visual_asset_slot_count: usize,
         max_missing_visual_asset_slot_count: usize,
+        max_deferred_visual_asset_scene_count: usize,
         max_queued_visual_asset_scene_count: usize,
         max_loading_visual_asset_scene_count: usize,
         max_loaded_visual_asset_scene_count: usize,
@@ -5722,6 +5928,9 @@ pub mod eval {
             self.max_missing_visual_asset_slot_count = self
                 .max_missing_visual_asset_slot_count
                 .max(sample.missing_visual_asset_slot_count);
+            self.max_deferred_visual_asset_scene_count = self
+                .max_deferred_visual_asset_scene_count
+                .max(sample.deferred_visual_asset_scene_count);
             self.max_queued_visual_asset_scene_count = self
                 .max_queued_visual_asset_scene_count
                 .max(sample.queued_visual_asset_scene_count);
@@ -6295,6 +6504,12 @@ pub mod eval {
                     MAX_MISSING_VISUAL_ASSET_SLOT_COUNT as f32,
                     "assets",
                 ),
+                EvalCheck::at_most(
+                    "deferred_visual_asset_scene_count",
+                    self.max_deferred_visual_asset_scene_count as f32,
+                    MAX_DEFERRED_VISUAL_ASSET_SCENE_COUNT as f32,
+                    "assets",
+                ),
                 EvalCheck::at_least(
                     "streaming_visual_asset_slot_count",
                     self.max_streaming_visual_asset_slot_count as f32,
@@ -6846,6 +7061,8 @@ pub mod eval {
                     max_streaming_visual_asset_slot_count: self
                         .max_streaming_visual_asset_slot_count,
                     max_missing_visual_asset_slot_count: self.max_missing_visual_asset_slot_count,
+                    max_deferred_visual_asset_scene_count: self
+                        .max_deferred_visual_asset_scene_count,
                     max_queued_visual_asset_scene_count: self.max_queued_visual_asset_scene_count,
                     max_loading_visual_asset_scene_count: self.max_loading_visual_asset_scene_count,
                     max_loaded_visual_asset_scene_count: self.max_loaded_visual_asset_scene_count,
@@ -7053,6 +7270,7 @@ pub mod eval {
         pub max_placeholder_visual_asset_slot_count: usize,
         pub max_streaming_visual_asset_slot_count: usize,
         pub max_missing_visual_asset_slot_count: usize,
+        pub max_deferred_visual_asset_scene_count: usize,
         pub max_queued_visual_asset_scene_count: usize,
         pub max_loading_visual_asset_scene_count: usize,
         pub max_loaded_visual_asset_scene_count: usize,
@@ -7275,7 +7493,13 @@ pub mod eval {
                 "{indent}  \"min_island_body_mesh_vertices\": {},\n{}",
                 self.min_island_body_mesh_vertices, body_mesh_key
             );
-            json.replacen(&body_mesh_key, &body_mesh_metrics, 1)
+            let json = json.replacen(&body_mesh_key, &body_mesh_metrics, 1);
+            let deferred_asset_key = format!("{indent}  \"max_queued_visual_asset_scene_count\"");
+            let deferred_asset_metrics = format!(
+                "{indent}  \"max_deferred_visual_asset_scene_count\": {},\n{}",
+                self.max_deferred_visual_asset_scene_count, deferred_asset_key
+            );
+            json.replacen(&deferred_asset_key, &deferred_asset_metrics, 1)
         }
     }
 
@@ -9274,6 +9498,7 @@ pub mod eval {
             sample.ready_visual_asset_slot_count = 0;
             sample.placeholder_visual_asset_slot_count = VISUAL_ASSET_SLOT_COUNT;
             sample.missing_visual_asset_slot_count = VISUAL_ASSET_SLOT_COUNT;
+            sample.deferred_visual_asset_scene_count = 1;
             sample.queued_visual_asset_scene_count = 0;
             sample.loaded_visual_asset_scene_count = 0;
             sample.dependency_loaded_visual_asset_scene_count = 0;
@@ -9303,6 +9528,7 @@ pub mod eval {
             for check_name in [
                 "ready_visual_asset_slot_count",
                 "missing_visual_asset_slot_count",
+                "deferred_visual_asset_scene_count",
                 "loaded_visual_asset_scene_count",
                 "dependency_loaded_visual_asset_scene_count",
                 "preload_ready_visual_asset_scene_count",
