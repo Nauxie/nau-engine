@@ -105,6 +105,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `src/authored_assets.rs`
 - `src/content_diagnostics.rs`
 - `src/debug_visuals.rs`
+- `src/environment_visuals.rs`
 - `src/generated_content.rs`
 - `src/content_export.rs`
 - `src/eval_runtime.rs`
