@@ -99,6 +99,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `src/environment.rs`
 - `src/camera.rs`
 - `src/world.rs`
+- `src/animation.rs`
 - `src/main.rs`
 
 ## Status Discipline

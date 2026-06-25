@@ -20,8 +20,8 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/environment.rs` owns finite visual wind/updraft field definitions, gameplay `LiftField` updraft volumes, collectible aerial power-up route definitions, lift/boost application, deterministic stream placement, and testable wind-sway visual motion math.
 - `src/camera.rs` owns camera follow math, orbit yaw/pitch control math, movement-stable horizontal follow direction, obstruction avoidance, and ground-clearance helpers.
 - `src/world.rs` owns collision-aware route surfaces, sky-island definitions, deterministic island relief, landing target queries, active chunk counters, stream-window classification, and near/mid/far LOD band classification.
+- `src/animation.rs` owns primitive character part pose math, wing visibility/airflow state, and animation phase progression.
 - `diagnostics` owns pure helpers for frame-time and runtime metric formatting inputs.
-- `animation` owns primitive character part pose math, wing visibility/airflow state, and animation phase progression.
 
 ## Frame Flow
 
