@@ -1093,7 +1093,7 @@ struct EvalScene<'w, 's> {
     power_ups: Res<'w, PowerUpCollectionState>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
-    weather_clouds: Query<'w, 's, Entity, With<WeatherDrift>>,
+    weather_clouds: Query<'w, 's, &'static Transform, With<WeatherDrift>>,
     wind_responsive_visuals: Query<'w, 's, (&'static WindResponsiveVisual, &'static Transform)>,
     all_entities: Query<'w, 's, Entity>,
 }
@@ -7877,6 +7877,14 @@ struct SemanticRouteMarker {
     current_objective: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct SemanticSceneSample {
+    kind: &'static str,
+    label: &'static str,
+    expected_material: &'static str,
+    world_position: Vec3,
+}
+
 fn write_checkpoint_marker_metadata(
     path: &Path,
     scenario: EvalScenario,
@@ -7884,17 +7892,37 @@ fn write_checkpoint_marker_metadata(
     scene: &EvalScene,
 ) -> std::io::Result<()> {
     let markers = semantic_route_markers(scene);
+    let scene_samples = semantic_scene_samples(scene);
     let expected_objective_count = scene
         .route
         .route_objectives(scenario.target_island_name)
         .len();
-    let (viewport_size, marker_json, visible_count, current_objective_visible) =
-        match scene.camera_projection.single() {
-            Ok((camera, camera_transform)) => {
-                checkpoint_marker_projection_json(camera, camera_transform, &markers)
-            }
-            Err(_) => (None, Vec::new(), 0, false),
-        };
+    let (
+        viewport_size,
+        marker_json,
+        visible_count,
+        current_objective_visible,
+        scene_sample_json,
+        visible_scene_sample_count,
+        visible_scene_material_count,
+    ) = match scene.camera_projection.single() {
+        Ok((camera, camera_transform)) => {
+            let (viewport_size, marker_json, visible_count, current_objective_visible) =
+                checkpoint_marker_projection_json(camera, camera_transform, &markers);
+            let (scene_sample_json, visible_scene_sample_count, visible_scene_material_count) =
+                checkpoint_scene_sample_projection_json(camera, camera_transform, &scene_samples);
+            (
+                viewport_size,
+                marker_json,
+                visible_count,
+                current_objective_visible,
+                scene_sample_json,
+                visible_scene_sample_count,
+                visible_scene_material_count,
+            )
+        }
+        Err(_) => (None, Vec::new(), 0, false, Vec::new(), 0, 0),
+    };
     let viewport_json = viewport_size
         .map(|size| {
             format!(
@@ -7904,14 +7932,17 @@ fn write_checkpoint_marker_metadata(
             )
         })
         .unwrap_or_else(|| "null".to_string());
-    let passed =
-        markers.len() >= expected_objective_count && visible_count > 0 && viewport_size.is_some();
+    let passed = markers.len() >= expected_objective_count
+        && visible_count > 0
+        && scene_samples.len() >= 4
+        && visible_scene_sample_count > 0
+        && viewport_size.is_some();
     let target_island = scenario
         .target_island_name
         .map(terrain_export_json_string)
         .unwrap_or_else(|| "null".to_string());
     let json = format!(
-        "{{\n  \"passed\": {},\n  \"scenario\": {},\n  \"target_island\": {},\n  \"frame\": {},\n  \"checkpoint\": {},\n  \"screenshot\": {},\n  \"viewport\": {},\n  \"semantic_marker_count\": {},\n  \"expected_objective_marker_count\": {},\n  \"visible_semantic_marker_count\": {},\n  \"current_objective_visible\": {},\n  \"markers\": [\n{}\n  ]\n}}\n",
+        "{{\n  \"passed\": {},\n  \"scenario\": {},\n  \"target_island\": {},\n  \"frame\": {},\n  \"checkpoint\": {},\n  \"screenshot\": {},\n  \"viewport\": {},\n  \"semantic_marker_count\": {},\n  \"expected_objective_marker_count\": {},\n  \"visible_semantic_marker_count\": {},\n  \"current_objective_visible\": {},\n  \"semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_material_count\": {},\n  \"markers\": [\n{}\n  ],\n  \"scene_samples\": [\n{}\n  ]\n}}\n",
         passed,
         terrain_export_json_string(scenario.name),
         target_island,
@@ -7923,7 +7954,15 @@ fn write_checkpoint_marker_metadata(
         expected_objective_count,
         visible_count,
         current_objective_visible,
+        scene_samples.len(),
+        visible_scene_sample_count,
+        visible_scene_material_count,
         marker_json
+            .into_iter()
+            .map(|entry| format!("    {entry}"))
+            .collect::<Vec<_>>()
+            .join(",\n"),
+        scene_sample_json
             .into_iter()
             .map(|entry| format!("    {entry}"))
             .collect::<Vec<_>>()
@@ -8011,6 +8050,82 @@ fn semantic_route_markers(scene: &EvalScene) -> Vec<SemanticRouteMarker> {
     markers
 }
 
+fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSample> {
+    let mut samples = Vec::new();
+
+    for (island_index, island) in scene.route.islands().iter().copied().enumerate() {
+        samples.push(SemanticSceneSample {
+            kind: "terrain_surface",
+            label: island.name,
+            expected_material: "terrain",
+            world_position: island_visual_surface_position(island, Vec2::new(0.16, -0.14))
+                + Vec3::Y * 0.08,
+        });
+        samples.push(SemanticSceneSample {
+            kind: "distant_island",
+            label: island.name,
+            expected_material: "distant_island",
+            world_position: island_visual_surface_position(island, Vec2::new(0.0, 0.0))
+                + Vec3::Y * 1.2,
+        });
+
+        for (sample_index, canopy_position) in tree_canopy_sample_positions(island_index, island)
+            .into_iter()
+            .enumerate()
+        {
+            if sample_index == 1 && island.is_target {
+                continue;
+            }
+            samples.push(SemanticSceneSample {
+                kind: "tree_canopy",
+                label: island.name,
+                expected_material: "foliage",
+                world_position: canopy_position,
+            });
+        }
+    }
+
+    for cloud_transform in scene.weather_clouds.iter().take(18) {
+        samples.push(SemanticSceneSample {
+            kind: "weather_cloud",
+            label: "weather cloud",
+            expected_material: "cloud",
+            world_position: cloud_transform.translation,
+        });
+    }
+
+    samples
+}
+
+fn tree_canopy_sample_positions(island_index: usize, island: SkyIsland) -> Vec<Vec3> {
+    if island.name == "launch mesa" {
+        let launch_tree_height = 4.4;
+        let launch_tree_surface_y =
+            island.mesh_top_y_at(Vec3::new(island.center.x, island.center.y, 8.0));
+        return vec![Vec3::new(
+            island.center.x,
+            launch_tree_surface_y + launch_tree_height + 0.85,
+            8.0,
+        )];
+    }
+
+    let detail_phase = island_index as f32 * 0.77;
+    [
+        Vec2::new(-0.42, -0.24),
+        Vec2::new(0.34, -0.36),
+        Vec2::new(0.24, 0.32),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, offset)| {
+        let sway = (detail_phase + index as f32).sin() * 0.08;
+        let surface = island_visual_surface_position(island, Vec2::new(offset.x + sway, offset.y));
+        let trunk_height = 2.1 + index as f32 * 0.25;
+        surface + Vec3::Y * (trunk_height + 0.72)
+    })
+    .collect()
+}
+
 fn checkpoint_marker_projection_json(
     camera: &Camera,
     camera_transform: &GlobalTransform,
@@ -8068,6 +8183,60 @@ fn checkpoint_marker_projection_json(
         visible_count,
         current_objective_visible,
     )
+}
+
+fn checkpoint_scene_sample_projection_json(
+    camera: &Camera,
+    camera_transform: &GlobalTransform,
+    samples: &[SemanticSceneSample],
+) -> (Vec<String>, usize, usize) {
+    let viewport_size = camera.logical_viewport_size();
+    let mut visible_count = 0usize;
+    let mut visible_materials = HashSet::new();
+    let entries = samples
+        .iter()
+        .map(|sample| {
+            let projected = camera
+                .world_to_viewport_with_depth(camera_transform, sample.world_position)
+                .ok();
+            let in_viewport = projected
+                .zip(viewport_size)
+                .is_some_and(|(screen, viewport)| {
+                    screen.x >= 0.0
+                        && screen.y >= 0.0
+                        && screen.x <= viewport.x
+                        && screen.y <= viewport.y
+                        && screen.z.is_finite()
+                });
+            if in_viewport {
+                visible_count += 1;
+                visible_materials.insert(sample.expected_material);
+            }
+
+            let screen_json = projected
+                .map(|screen| {
+                    format!(
+                        "{{\"x\": {}, \"y\": {}, \"depth_m\": {}}}",
+                        terrain_export_json_number(screen.x),
+                        terrain_export_json_number(screen.y),
+                        terrain_export_json_number(screen.z)
+                    )
+                })
+                .unwrap_or_else(|| "null".to_string());
+
+            format!(
+                "{{\"kind\": {}, \"label\": {}, \"expected_material\": {}, \"world\": {}, \"screen\": {}, \"in_viewport\": {}}}",
+                terrain_export_json_string(sample.kind),
+                terrain_export_json_string(sample.label),
+                terrain_export_json_string(sample.expected_material),
+                terrain_export_json_vec3(sample.world_position),
+                screen_json,
+                in_viewport
+            )
+        })
+        .collect();
+
+    (entries, visible_count, visible_materials.len())
 }
 
 fn draw_debug_gizmos(
