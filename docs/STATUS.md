@@ -105,6 +105,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `src/eval/sample.rs`
 - `src/eval/scenarios.rs`
 - `src/eval/summary.rs`
+- `src/eval/tests.rs`
 - `src/eval/thresholds.rs`
 - `src/animation.rs`
 - `src/camera_runtime.rs`
