@@ -8001,6 +8001,8 @@ fn write_checkpoint_marker_metadata(
         occluded_marker_count,
         current_objective_visible,
         scene_sample_json,
+        in_viewport_scene_sample_count,
+        occluded_scene_sample_count,
         visible_scene_sample_count,
         visible_scene_material_count,
     ) = match scene.camera_projection.single() {
@@ -8018,8 +8020,18 @@ fn write_checkpoint_marker_metadata(
                 &markers,
                 scene.route.islands(),
             );
-            let (scene_sample_json, visible_scene_sample_count, visible_scene_material_count) =
-                checkpoint_scene_sample_projection_json(camera, camera_transform, &scene_samples);
+            let (
+                scene_sample_json,
+                visible_scene_sample_count,
+                in_viewport_scene_sample_count,
+                occluded_scene_sample_count,
+                visible_scene_material_count,
+            ) = checkpoint_scene_sample_projection_json(
+                camera,
+                camera_transform,
+                &scene_samples,
+                scene.route.islands(),
+            );
             (
                 viewport_size,
                 marker_json,
@@ -8028,11 +8040,13 @@ fn write_checkpoint_marker_metadata(
                 occluded_marker_count,
                 current_objective_visible,
                 scene_sample_json,
+                in_viewport_scene_sample_count,
+                occluded_scene_sample_count,
                 visible_scene_sample_count,
                 visible_scene_material_count,
             )
         }
-        Err(_) => (None, Vec::new(), 0, 0, 0, false, Vec::new(), 0, 0),
+        Err(_) => (None, Vec::new(), 0, 0, 0, false, Vec::new(), 0, 0, 0, 0),
     };
     let viewport_json = viewport_size
         .map(|size| {
@@ -8053,7 +8067,7 @@ fn write_checkpoint_marker_metadata(
         .map(terrain_export_json_string)
         .unwrap_or_else(|| "null".to_string());
     let json = format!(
-        "{{\n  \"passed\": {},\n  \"scenario\": {},\n  \"target_island\": {},\n  \"frame\": {},\n  \"checkpoint\": {},\n  \"screenshot\": {},\n  \"viewport\": {},\n  \"semantic_marker_count\": {},\n  \"expected_objective_marker_count\": {},\n  \"in_viewport_semantic_marker_count\": {},\n  \"occluded_semantic_marker_count\": {},\n  \"visible_semantic_marker_count\": {},\n  \"current_objective_visible\": {},\n  \"semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_material_count\": {},\n  \"markers\": [\n{}\n  ],\n  \"scene_samples\": [\n{}\n  ]\n}}\n",
+        "{{\n  \"passed\": {},\n  \"scenario\": {},\n  \"target_island\": {},\n  \"frame\": {},\n  \"checkpoint\": {},\n  \"screenshot\": {},\n  \"viewport\": {},\n  \"semantic_marker_count\": {},\n  \"expected_objective_marker_count\": {},\n  \"in_viewport_semantic_marker_count\": {},\n  \"occluded_semantic_marker_count\": {},\n  \"visible_semantic_marker_count\": {},\n  \"current_objective_visible\": {},\n  \"semantic_scene_sample_count\": {},\n  \"in_viewport_semantic_scene_sample_count\": {},\n  \"occluded_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_material_count\": {},\n  \"markers\": [\n{}\n  ],\n  \"scene_samples\": [\n{}\n  ]\n}}\n",
         passed,
         terrain_export_json_string(scenario.name),
         target_island,
@@ -8068,6 +8082,8 @@ fn write_checkpoint_marker_metadata(
         visible_count,
         current_objective_visible,
         scene_samples.len(),
+        in_viewport_scene_sample_count,
+        occluded_scene_sample_count,
         visible_scene_sample_count,
         visible_scene_material_count,
         marker_json
@@ -8411,9 +8427,13 @@ fn checkpoint_scene_sample_projection_json(
     camera: &Camera,
     camera_transform: &GlobalTransform,
     samples: &[SemanticSceneSample],
-) -> (Vec<String>, usize, usize) {
+    scene_islands: &[SkyIsland],
+) -> (Vec<String>, usize, usize, usize, usize) {
     let viewport_size = camera.logical_viewport_size();
+    let camera_position = camera_transform.translation();
     let mut visible_count = 0usize;
+    let mut in_viewport_count = 0usize;
+    let mut occluded_count = 0usize;
     let mut visible_materials = HashSet::new();
     let entries = samples
         .iter()
@@ -8429,8 +8449,32 @@ fn checkpoint_scene_sample_projection_json(
                         && screen.x <= viewport.x
                         && screen.y <= viewport.y
                         && screen.z.is_finite()
+                        && screen.z > 0.0
                 });
+            let behind_camera = projected.is_some_and(|screen| {
+                screen.z.is_finite() && screen.z <= 0.0
+            });
+            let occlusion = in_viewport
+                .then(|| {
+                    marker_occlusion_between(camera_position, sample.world_position, scene_islands)
+                })
+                .flatten();
+            let visibility = if behind_camera {
+                SemanticMarkerVisibility::BehindCamera
+            } else if !in_viewport {
+                SemanticMarkerVisibility::Offscreen
+            } else if occlusion.is_some() {
+                SemanticMarkerVisibility::Occluded
+            } else {
+                SemanticMarkerVisibility::Visible
+            };
             if in_viewport {
+                in_viewport_count += 1;
+            }
+            if visibility == SemanticMarkerVisibility::Occluded {
+                occluded_count += 1;
+            }
+            if visibility == SemanticMarkerVisibility::Visible {
                 visible_count += 1;
                 visible_materials.insert(sample.expected_material);
             }
@@ -8445,20 +8489,39 @@ fn checkpoint_scene_sample_projection_json(
                     )
                 })
                 .unwrap_or_else(|| "null".to_string());
+            let occluder_json = occlusion
+                .map(|occlusion| {
+                    format!(
+                        "{{\"kind\": \"sky_island\", \"label\": {}, \"distance_m\": {}}}",
+                        terrain_export_json_string(occlusion.island_name),
+                        terrain_export_json_number(occlusion.distance_m)
+                    )
+                })
+                .unwrap_or_else(|| "null".to_string());
+            let camera_distance_m = sample.world_position.distance(camera_position);
 
             format!(
-                "{{\"kind\": {}, \"label\": {}, \"expected_material\": {}, \"world\": {}, \"screen\": {}, \"in_viewport\": {}}}",
+                "{{\"kind\": {}, \"label\": {}, \"expected_material\": {}, \"world\": {}, \"screen\": {}, \"in_viewport\": {}, \"visibility\": {}, \"occluder\": {}, \"camera_distance_m\": {}}}",
                 terrain_export_json_string(sample.kind),
                 terrain_export_json_string(sample.label),
                 terrain_export_json_string(sample.expected_material),
                 terrain_export_json_vec3(sample.world_position),
                 screen_json,
-                in_viewport
+                in_viewport,
+                terrain_export_json_string(visibility.label()),
+                occluder_json,
+                terrain_export_json_number(camera_distance_m)
             )
         })
         .collect();
 
-    (entries, visible_count, visible_materials.len())
+    (
+        entries,
+        visible_count,
+        in_viewport_count,
+        occluded_count,
+        visible_materials.len(),
+    )
 }
 
 fn draw_debug_gizmos(
