@@ -1,0 +1,360 @@
+use bevy::prelude::*;
+
+use super::super::{
+    Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, GROUND_EPSILON,
+    math::horizontal, step_flight,
+};
+use super::default_state;
+
+#[test]
+fn launch_only_fires_from_ground() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let input = FlightInput {
+        launch: true,
+        ..default()
+    };
+
+    let launched = step_flight(default_state(), input, facing, &tuning, 1.0 / 60.0);
+    assert_eq!(launched.controller.mode, FlightMode::Launching);
+    assert!(!launched.controller.launch_available);
+    assert!(launched.velocity.y > 35.0);
+
+    let relaunched = step_flight(launched, input, facing, &tuning, 1.0 / 60.0);
+    assert!(relaunched.velocity.y < tuning.launch_speed);
+}
+
+#[test]
+fn grounded_forward_input_moves_at_walkable_speed() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::NEG_Z, Vec3::X);
+    let input = FlightInput {
+        forward: true,
+        ..default()
+    };
+    let mut state = default_state();
+
+    for _ in 0..60 {
+        state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+    }
+
+    assert_eq!(state.controller.mode, FlightMode::Grounded);
+    assert!((state.position.y - tuning.floor_y).abs() <= GROUND_EPSILON);
+    assert!(state.position.z < -5.0);
+    assert!(state.velocity.length() >= 7.0);
+}
+
+#[test]
+fn grounded_friction_stops_released_input() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::NEG_Z, Vec3::X);
+    let mut state = FlightState::new(
+        Vec3::new(0.0, tuning.floor_y, 0.0),
+        Vec3::new(0.0, 0.0, -tuning.ground_max_horizontal_speed),
+        FlightController::default(),
+    );
+
+    for _ in 0..90 {
+        state = step_flight(state, FlightInput::default(), facing, &tuning, 1.0 / 60.0);
+    }
+
+    assert_eq!(state.controller.mode, FlightMode::Grounded);
+    assert!(Vec2::new(state.velocity.x, state.velocity.z).length() < 0.5);
+}
+
+#[test]
+fn glide_does_not_create_altitude() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let mut state = FlightState::new(
+        Vec3::new(0.0, 40.0, 0.0),
+        Vec3::new(0.0, 0.0, 28.0),
+        FlightController {
+            mode: FlightMode::Airborne,
+            launch_available: false,
+            ..default()
+        },
+    );
+    let start_y = state.position.y;
+    let input = FlightInput {
+        forward: true,
+        glide: true,
+        ..default()
+    };
+
+    for _ in 0..600 {
+        state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+    }
+
+    assert!(state.position.y < start_y);
+    assert!(state.velocity.y <= 0.0);
+}
+
+#[test]
+fn glide_clamps_fall_speed() {
+    let tuning = FlightTuning::default();
+    let state = FlightState::new(
+        Vec3::new(0.0, 40.0, 0.0),
+        Vec3::new(0.0, -40.0, 20.0),
+        FlightController {
+            mode: FlightMode::Airborne,
+            launch_available: false,
+            ..default()
+        },
+    );
+
+    let next = step_flight(
+        state,
+        FlightInput {
+            glide: true,
+            ..default()
+        },
+        Facing::new(Vec3::Z, Vec3::X),
+        &tuning,
+        1.0 / 60.0,
+    );
+
+    assert!(next.velocity.y >= -tuning.glide_max_fall_speed);
+}
+
+#[test]
+fn airborne_backward_input_brakes_forward_motion() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let mut state = FlightState::new(
+        Vec3::new(0.0, 30.0, 0.0),
+        Vec3::new(0.0, 8.0, 34.0),
+        FlightController {
+            mode: FlightMode::Airborne,
+            launch_available: false,
+            ..default()
+        },
+    );
+    let input = FlightInput {
+        backward: true,
+        ..default()
+    };
+
+    for _ in 0..60 {
+        state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+    }
+
+    let forward_speed = horizontal(state.velocity).dot(facing.forward);
+    assert!(
+        forward_speed < 3.0,
+        "expected backward input to brake strongly, got {forward_speed}"
+    );
+    assert!(forward_speed >= -tuning.max_backward_speed - 0.5);
+}
+
+#[test]
+fn gliding_backward_input_slows_without_runaway_reverse() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let mut state = FlightState::new(
+        Vec3::new(0.0, 45.0, 0.0),
+        Vec3::new(0.0, -2.0, 34.0),
+        FlightController {
+            mode: FlightMode::Gliding,
+            launch_available: false,
+            ..default()
+        },
+    );
+    let input = FlightInput {
+        backward: true,
+        glide: true,
+        ..default()
+    };
+
+    for _ in 0..60 {
+        state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+    }
+
+    let forward_speed = horizontal(state.velocity).dot(facing.forward);
+    assert!(
+        forward_speed < 5.0,
+        "expected glide brake to bleed speed, got {forward_speed}"
+    );
+    assert!(forward_speed >= -tuning.max_backward_speed - 0.5);
+}
+
+#[test]
+fn gliding_backward_input_brakes_sideways_momentum() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let mut state = FlightState::new(
+        Vec3::new(0.0, 45.0, 0.0),
+        Vec3::new(26.0, -2.0, 4.0),
+        FlightController {
+            mode: FlightMode::Gliding,
+            launch_available: false,
+            ..default()
+        },
+    );
+    let input = FlightInput {
+        backward: true,
+        glide: true,
+        ..default()
+    };
+
+    for _ in 0..30 {
+        state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+    }
+
+    let side_speed = horizontal(state.velocity).dot(facing.right);
+    let horizontal_speed = horizontal(state.velocity).length();
+    assert!(
+        side_speed.abs() < 5.0,
+        "expected air brake to bleed sideways drift, got {side_speed}"
+    );
+    assert!(
+        horizontal_speed < 12.0,
+        "expected air brake to shed planar speed, got {horizontal_speed}"
+    );
+}
+
+#[test]
+fn backward_diagonal_glide_input_steers_toward_rear_quadrant() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let mut state = FlightState::new(
+        Vec3::new(0.0, 45.0, 0.0),
+        Vec3::new(18.0, -2.0, 26.0),
+        FlightController {
+            mode: FlightMode::Gliding,
+            launch_available: false,
+            ..default()
+        },
+    );
+    let input = FlightInput {
+        backward: true,
+        left: true,
+        glide: true,
+        ..default()
+    };
+
+    for _ in 0..45 {
+        state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+    }
+
+    let left_speed = horizontal(state.velocity).dot(-facing.right);
+    let forward_speed = horizontal(state.velocity).dot(facing.forward);
+    assert!(
+        left_speed > 10.0,
+        "expected back-left input to build leftward control, got {left_speed}"
+    );
+    assert!(
+        forward_speed < 6.0,
+        "expected back-left input to brake forward drift, got {forward_speed}"
+    );
+}
+
+#[test]
+fn lateral_air_input_steers_velocity_toward_desired_plane() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let mut state = FlightState::new(
+        Vec3::new(0.0, 45.0, 0.0),
+        Vec3::new(0.0, -2.0, 34.0),
+        FlightController {
+            mode: FlightMode::Gliding,
+            launch_available: false,
+            ..default()
+        },
+    );
+    let input = FlightInput {
+        right: true,
+        glide: true,
+        ..default()
+    };
+
+    for _ in 0..60 {
+        state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+    }
+
+    let side_speed = horizontal(state.velocity).dot(facing.right);
+    let forward_speed = horizontal(state.velocity).dot(facing.forward);
+    assert!(
+        side_speed > 14.0,
+        "expected right input to build meaningful planar side speed, got {side_speed}"
+    );
+    assert!(
+        forward_speed < 28.0,
+        "expected steering to rotate velocity away from pure forward drift, got {forward_speed}"
+    );
+}
+
+#[test]
+fn lateral_air_input_reverses_side_velocity_before_it_feels_stuck() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let mut state = FlightState::new(
+        Vec3::new(0.0, 45.0, 0.0),
+        Vec3::new(26.0, -2.0, 18.0),
+        FlightController {
+            mode: FlightMode::Gliding,
+            launch_available: false,
+            ..default()
+        },
+    );
+    let input = FlightInput {
+        left: true,
+        glide: true,
+        ..default()
+    };
+
+    for _ in 0..15 {
+        state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+    }
+
+    let left_response = horizontal(state.velocity).dot(-facing.right);
+    assert!(
+        left_response > 4.0,
+        "expected left reversal to recover promptly, got {left_response}"
+    );
+}
+
+#[test]
+fn lateral_air_bank_smooths_toward_input() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let input = FlightInput {
+        right: true,
+        glide: true,
+        ..default()
+    };
+    let state = FlightState::new(
+        Vec3::new(0.0, 20.0, 0.0),
+        Vec3::new(0.0, -2.0, 24.0),
+        FlightController::default(),
+    );
+
+    let first = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+    let second = step_flight(first, input, facing, &tuning, 1.0 / 60.0);
+
+    assert!(first.controller.bank_degrees < -1.0);
+    assert!(first.controller.bank_degrees > -5.0);
+    assert!(second.controller.bank_degrees < first.controller.bank_degrees);
+}
+
+#[test]
+fn floor_collision_clears_downward_velocity() {
+    let tuning = FlightTuning::default();
+    let state = FlightState::new(
+        Vec3::new(0.0, tuning.floor_y + 0.01, 0.0),
+        Vec3::new(0.0, -20.0, 0.0),
+        FlightController::default(),
+    );
+
+    let next = step_flight(
+        state,
+        FlightInput::default(),
+        Facing::new(Vec3::Z, Vec3::X),
+        &tuning,
+        0.2,
+    );
+
+    assert_eq!(next.position.y, tuning.floor_y);
+    assert!(next.velocity.y >= 0.0);
+    assert_eq!(next.controller.mode, FlightMode::Grounded);
+}
