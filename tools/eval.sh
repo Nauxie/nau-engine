@@ -92,7 +92,7 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
     fi
     if ! jq -e '.passed == true' "${artifact}" >/dev/null; then
       echo "checkpoint marker semantic audit failed: ${artifact}" >&2
-      jq '{passed, frame, checkpoint, semantic_marker_count, expected_objective_marker_count, visible_semantic_marker_count, current_objective_visible, semantic_scene_sample_count, visible_semantic_scene_sample_count, visible_semantic_scene_material_count, markers: [.markers[] | {kind, label, current_objective, in_viewport, screen}], scene_samples: [.scene_samples[]? | {kind, label, expected_material, in_viewport, screen}]}' \
+      jq '{passed, frame, checkpoint, semantic_marker_count, expected_objective_marker_count, in_viewport_semantic_marker_count, occluded_semantic_marker_count, visible_semantic_marker_count, current_objective_visible, semantic_scene_sample_count, visible_semantic_scene_sample_count, visible_semantic_scene_material_count, markers: [.markers[] | {kind, label, current_objective, in_viewport, visibility, occluder, screen}], scene_samples: [.scene_samples[]? | {kind, label, expected_material, in_viewport, screen}]}' \
         "${artifact}" >&2 || true
       exit 1
     fi
@@ -140,7 +140,7 @@ fi
 if (( marker_projection_audit_status != 0 )); then
   echo "marker projection audit failed: ${marker_projection_audit_path}" >&2
   if command -v jq >/dev/null 2>&1 && [[ -s "${marker_projection_audit_path}" ]]; then
-    jq '{passed, checks, failed_checkpoints: [.checkpoints[] | select(.passed == false) | {checkpoint, metadata_path, screenshot_path, visible_marker_count, marker_pixel_hit_count, markers: [.markers[] | select(.in_viewport == true) | {kind, label, screen, marker_pixel_hits, passed}]}]}' \
+    jq '{passed, checks, failed_checkpoints: [.checkpoints[] | select(.passed == false) | {checkpoint, metadata_path, screenshot_path, in_viewport_marker_count, occluded_marker_count, visible_marker_count, marker_pixel_hit_count, markers: [.markers[] | select(.in_viewport == true) | {kind, label, visibility, screen, marker_pixel_hits, passed}]}]}' \
       "${marker_projection_audit_path}" >&2 || true
   fi
   exit "${marker_projection_audit_status}"
