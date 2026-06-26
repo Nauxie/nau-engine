@@ -131,6 +131,7 @@ impl SimMetrics {
             }
         }
         self.observe_lateral_response(sample);
+        self.observe_body_travel_heading_alignment(sample);
         self.observe_backward_air_control(sample);
         self.max_pose_torso_pitch_degrees = self
             .max_pose_torso_pitch_degrees
@@ -409,6 +410,39 @@ impl SimMetrics {
         }
     }
 
+    fn observe_body_travel_heading_alignment(&mut self, sample: &SimSample) {
+        if !body_travel_heading_alignment_sample(sample) {
+            return;
+        }
+
+        let Some(lateral_response_time) = lateral_response_time_for_sample(self, sample) else {
+            return;
+        };
+        if sample.time_secs < lateral_response_time {
+            return;
+        }
+
+        self.lateral_body_travel_heading_error_values_degrees
+            .push(sample.body_travel_heading_error_degrees);
+        self.max_lateral_body_travel_heading_error_degrees = self
+            .max_lateral_body_travel_heading_error_degrees
+            .max(sample.body_travel_heading_error_degrees);
+
+        if sample.movement_input_forward_axis >= 0.0 {
+            return;
+        }
+
+        if backward_diagonal_response_time_for_sample(self, sample)
+            .is_some_and(|time_secs| sample.time_secs >= time_secs)
+        {
+            self.backward_diagonal_body_travel_heading_error_values_degrees
+                .push(sample.body_travel_heading_error_degrees);
+            self.max_backward_diagonal_body_travel_heading_error_degrees = self
+                .max_backward_diagonal_body_travel_heading_error_degrees
+                .max(sample.body_travel_heading_error_degrees);
+        }
+    }
+
     fn observe_backward_air_control(&mut self, sample: &SimSample) {
         if sample.movement_input_forward_axis >= 0.0 || sample.mode == "grounded" {
             return;
@@ -447,4 +481,30 @@ fn key_pose_intent_label(label: &str) -> bool {
         label,
         "gliding" | "diving" | "air_brake" | "landing_anticipation" | "landing_recovery"
     )
+}
+
+fn body_travel_heading_alignment_sample(sample: &SimSample) -> bool {
+    matches!(sample.mode, "airborne" | "gliding")
+        && sample.lateral_input_active
+        && sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+        && sample.body_travel_heading_error_degrees.is_finite()
+}
+
+fn lateral_response_time_for_sample(metrics: &SimMetrics, sample: &SimSample) -> Option<f32> {
+    match sample.movement_input_lateral_axis.signum() {
+        sign if sign > 0.0 => metrics.first_right_lateral_response_time_secs,
+        sign if sign < 0.0 => metrics.first_left_lateral_response_time_secs,
+        _ => metrics.first_lateral_response_time_secs,
+    }
+}
+
+fn backward_diagonal_response_time_for_sample(
+    metrics: &SimMetrics,
+    sample: &SimSample,
+) -> Option<f32> {
+    match sample.movement_input_lateral_axis.signum() {
+        sign if sign > 0.0 => metrics.first_backward_right_lateral_response_time_secs,
+        sign if sign < 0.0 => metrics.first_backward_left_lateral_response_time_secs,
+        _ => metrics.first_backward_lateral_response_time_secs,
+    }
 }

@@ -158,6 +158,7 @@ fn air_control_metric_sample(
     )
     .with_movement_metrics(EvalMovementMetrics {
         desired_body_yaw_error_degrees: yaw_error_degrees,
+        body_travel_heading_error_degrees: yaw_error_degrees.abs(),
         body_roll_degrees: -movement_axis.x.signum() * 12.0,
         desired_heading_alignment_mps: desired_alignment_mps,
         lateral_response_mps,

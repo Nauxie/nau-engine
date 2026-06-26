@@ -340,6 +340,10 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_unreadable_key_pose_samples",
         "air_control_pose_air_brake_samples",
         "air_control_pose_diving_samples",
+        "air_control_p95_lateral_body_travel_heading_error",
+        "air_control_max_lateral_body_travel_heading_error",
+        "air_control_p95_backward_diagonal_body_travel_heading_error",
+        "air_control_max_backward_diagonal_body_travel_heading_error",
     ] {
         let check = result
             .checks
@@ -354,6 +358,10 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
     assert!(summary.contains("\"backward_left_lateral_response_latency_secs\""));
     assert!(summary.contains("\"max_right_pose_lateral_lean_degrees\""));
     assert!(summary.contains("\"max_left_pose_lateral_lean_degrees\""));
+    assert!(summary.contains("\"p95_lateral_body_travel_heading_error_degrees\""));
+    assert!(summary.contains("\"max_lateral_body_travel_heading_error_degrees\""));
+    assert!(summary.contains("\"p95_backward_diagonal_body_travel_heading_error_degrees\""));
+    assert!(summary.contains("\"max_backward_diagonal_body_travel_heading_error_degrees\""));
 }
 
 #[test]
@@ -411,6 +419,58 @@ fn sim_sample_measures_pure_backward_body_heading_intent() {
 
     assert!(sample.desired_body_heading_error_degrees > 170.0);
     assert!(sample.desired_heading_alignment_mps < -20.0);
+}
+
+#[test]
+fn sim_metrics_fail_lateral_body_travel_heading_misalignment() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    let sample = sim_roll_sample(&route, scenario, 60, FlightMode::Gliding, 0.0, 1.0);
+
+    metrics.observe(&sample, scenario);
+
+    assert_eq!(
+        metrics
+            .lateral_body_travel_heading_error_values_degrees
+            .len(),
+        1
+    );
+    let checks = metrics.checks(scenario);
+    let check = checks
+        .iter()
+        .find(|check| check.name == "air_control_max_lateral_body_travel_heading_error")
+        .expect("lateral body/travel heading check");
+    assert!(!check.passed, "expected wrong body/travel heading to fail");
+    assert!(check.value > check.threshold);
+}
+
+#[test]
+fn sim_metrics_fail_backward_diagonal_body_travel_heading_misalignment() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    let mut sample = sim_roll_sample(&route, scenario, 240, FlightMode::Gliding, 0.0, 1.0);
+    sample.movement_input_forward_axis = -1.0;
+
+    metrics.observe(&sample, scenario);
+
+    assert_eq!(
+        metrics
+            .backward_diagonal_body_travel_heading_error_values_degrees
+            .len(),
+        1
+    );
+    let checks = metrics.checks(scenario);
+    let check = checks
+        .iter()
+        .find(|check| check.name == "air_control_max_backward_diagonal_body_travel_heading_error")
+        .expect("backward diagonal body/travel heading check");
+    assert!(
+        !check.passed,
+        "expected wrong backward diagonal body/travel heading to fail"
+    );
+    assert!(check.value > check.threshold);
 }
 
 #[test]

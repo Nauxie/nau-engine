@@ -410,6 +410,104 @@ fn accumulator_gates_air_control_body_heading_spikes() {
 }
 
 #[test]
+fn accumulator_gates_air_control_body_travel_heading_misalignment() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            90,
+            Vec3::new(20.0, -2.0, -18.0),
+            Vec2::new(1.0, 0.0),
+            20.0,
+            18.0,
+            3.0,
+        )
+        .with_body_travel_heading_error_degrees(90.0),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let p95_check = named_check(
+        &summary,
+        "air_control_p95_lateral_body_travel_heading_error",
+    );
+    let max_check = named_check(
+        &summary,
+        "air_control_max_lateral_body_travel_heading_error",
+    );
+
+    assert_eq!(
+        summary
+            .metrics
+            .max_lateral_body_travel_heading_error_degrees,
+        90.0
+    );
+    assert_eq!(p95_check.value, 90.0);
+    assert_eq!(max_check.value, 90.0);
+    assert!(!p95_check.passed);
+    assert!(!max_check.passed);
+}
+
+#[test]
+fn accumulator_gates_air_control_backward_diagonal_body_travel_heading_misalignment() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            250,
+            Vec3::new(12.0, -2.0, 14.0),
+            Vec2::new(1.0, -1.0),
+            12.0,
+            18.0,
+            3.0,
+        )
+        .with_body_travel_heading_error_degrees(70.0),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let p95_check = named_check(
+        &summary,
+        "air_control_p95_backward_diagonal_body_travel_heading_error",
+    );
+    let max_check = named_check(
+        &summary,
+        "air_control_max_backward_diagonal_body_travel_heading_error",
+    );
+
+    assert_eq!(
+        summary
+            .metrics
+            .max_backward_diagonal_body_travel_heading_error_degrees,
+        70.0
+    );
+    assert_eq!(p95_check.value, 70.0);
+    assert_eq!(max_check.value, 70.0);
+    assert!(!p95_check.passed);
+    assert!(!max_check.passed);
+}
+
+#[test]
 fn accumulator_gates_movement_only_camera_world_yaw_drift() {
     let scenario = scenario_named(CAMERA_STRAFE_STABILITY).expect("strafe route exists");
     let mut accumulator = EvalAccumulator::default();
@@ -523,6 +621,7 @@ fn accumulator_gates_ground_strafe_directional_response() {
     accumulator.observe(
         content_metric_sample(scenario, 0, 12, 0, 64).with_movement_metrics(EvalMovementMetrics {
             desired_body_yaw_error_degrees: f32::NAN,
+            body_travel_heading_error_degrees: f32::NAN,
             body_roll_degrees: 0.0,
             desired_heading_alignment_mps: f32::NAN,
             lateral_response_mps: 9.0,
@@ -533,6 +632,7 @@ fn accumulator_gates_ground_strafe_directional_response() {
     accumulator.observe(
         content_metric_sample(scenario, 60, 12, 0, 64).with_movement_metrics(EvalMovementMetrics {
             desired_body_yaw_error_degrees: f32::NAN,
+            body_travel_heading_error_degrees: f32::NAN,
             body_roll_degrees: 0.0,
             desired_heading_alignment_mps: f32::NAN,
             lateral_response_mps: 3.0,

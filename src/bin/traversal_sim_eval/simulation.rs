@@ -11,8 +11,8 @@ use nau_engine::{
         CameraControlState, CameraControlTuning, CameraObstruction, FollowCamera,
         FollowCameraState, apply_camera_input, avoid_camera_obstructions,
         camera_orbit_alignment_degrees, lift_camera_above_floor,
-        movement_input_stable_follow_direction, step_camera_with_direction,
-        update_follow_direction_state,
+        movement_facing_from_follow_direction, movement_input_stable_follow_direction,
+        step_camera_with_direction, update_follow_direction_state,
     },
     environment::{
         AERIAL_POWER_UP_ROUTE, GAMEPLAY_LIFT_ROUTE, LiftField, WindField, WindForceApplication,
@@ -60,7 +60,9 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     for frame in 0..=scenario.frame_count {
         let input = scripted_input(scenario, frame);
         power_ups.begin_frame(scenario.fixed_dt);
-        let facing = Facing::new(*camera_transform.forward(), *camera_transform.right());
+        let (movement_forward, movement_right) =
+            movement_facing_from_follow_direction(follow_state.direction, camera_control.orbit);
+        let facing = Facing::new(movement_forward, movement_right);
         let movement_facing = facing;
         let was_grounded =
             route.is_grounded_at(state.position) && state.controller.mode == FlightMode::Grounded;

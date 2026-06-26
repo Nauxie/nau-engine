@@ -36,6 +36,14 @@ pub(super) fn build_metrics_summary(
         avg_desired_body_heading_error_degrees: derived.avg_desired_body_heading_error_degrees,
         p95_desired_body_heading_error_degrees: derived.p95_desired_body_heading_error_degrees,
         max_desired_body_heading_error_degrees: acc.max_desired_body_heading_error_degrees,
+        p95_lateral_body_travel_heading_error_degrees: derived
+            .p95_lateral_body_travel_heading_error_degrees,
+        max_lateral_body_travel_heading_error_degrees: acc
+            .max_lateral_body_travel_heading_error_degrees,
+        p95_backward_diagonal_body_travel_heading_error_degrees: derived
+            .p95_backward_diagonal_body_travel_heading_error_degrees,
+        max_backward_diagonal_body_travel_heading_error_degrees: acc
+            .max_backward_diagonal_body_travel_heading_error_degrees,
         max_body_yaw_error_step_degrees: acc.max_body_yaw_error_step_degrees,
         body_yaw_oscillation_count: acc.body_yaw_oscillation_count,
         max_body_roll_step_degrees: acc.max_body_roll_step_degrees,

@@ -1,5 +1,5 @@
 use super::{
-    CAMERA_PLAYER_FOCUS_HEIGHT, GROUND_VISUAL_FOOT_GAP_M,
+    BODY_TRAVEL_HEADING_MIN_PLANAR_SPEED_MPS, CAMERA_PLAYER_FOCUS_HEIGHT, GROUND_VISUAL_FOOT_GAP_M,
     state::{ObjectiveState, SimPowerUps},
 };
 use bevy::prelude::{Quat, Transform, Vec3};
@@ -106,6 +106,7 @@ pub(crate) struct SimSample {
     pub(crate) key_pose_readability_score: f32,
     pub(crate) desired_body_yaw_error_degrees: f32,
     pub(crate) desired_body_heading_error_degrees: f32,
+    pub(crate) body_travel_heading_error_degrees: f32,
     pub(crate) body_roll_degrees: f32,
     pub(crate) desired_heading_alignment_mps: f32,
     pub(crate) lateral_response_mps: f32,
@@ -188,6 +189,12 @@ impl SimSample {
         let lateral_axis_active = input.has_lateral_axis();
         let lateral_input_active =
             lateral_axis_active && state.controller.mode != FlightMode::Grounded;
+        let body_travel_heading_error_degrees = body_travel_heading_error_degrees(
+            player_rotation,
+            state.velocity,
+            state.controller.mode,
+            lateral_input_active,
+        );
         let lateral_response_mps = if lateral_axis_active {
             lateral_response_speed(state.velocity, input, facing)
         } else {
@@ -231,6 +238,7 @@ impl SimSample {
             key_pose_readability_score: pose_readability.key_pose_readability_score,
             desired_body_yaw_error_degrees,
             desired_body_heading_error_degrees: desired_body_yaw_error_degrees.abs(),
+            body_travel_heading_error_degrees,
             body_roll_degrees: body_roll_degrees(player_rotation),
             desired_heading_alignment_mps,
             lateral_response_mps,
@@ -313,6 +321,7 @@ impl SimSample {
             "key_pose_readability_score": round4(self.key_pose_readability_score),
             "desired_body_yaw_error_degrees": finite_json(self.desired_body_yaw_error_degrees),
             "desired_body_heading_error_degrees": finite_json(self.desired_body_heading_error_degrees),
+            "body_travel_heading_error_degrees": finite_json(self.body_travel_heading_error_degrees),
             "body_roll_degrees": round4(self.body_roll_degrees),
             "desired_heading_alignment_mps": finite_json(self.desired_heading_alignment_mps),
             "lateral_response_mps": round4(self.lateral_response_mps),
@@ -377,6 +386,24 @@ impl SimSample {
 
 pub(crate) fn vec3_json(value: Vec3) -> Value {
     json!([round4(value.x), round4(value.y), round4(value.z)])
+}
+
+fn body_travel_heading_error_degrees(
+    player_rotation: Quat,
+    velocity: Vec3,
+    mode: FlightMode,
+    lateral_input_active: bool,
+) -> f32 {
+    if !lateral_input_active || !matches!(mode, FlightMode::Airborne | FlightMode::Gliding) {
+        return f32::NAN;
+    }
+
+    let horizontal_velocity = Vec3::new(velocity.x, 0.0, velocity.z);
+    if horizontal_velocity.length() < BODY_TRAVEL_HEADING_MIN_PLANAR_SPEED_MPS {
+        return f32::NAN;
+    }
+
+    body_yaw_error_degrees(player_rotation, horizontal_velocity).abs()
 }
 
 fn finite_json(value: f32) -> Value {

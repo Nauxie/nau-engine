@@ -38,6 +38,7 @@ impl EvalObjectiveProgress {
 #[derive(Clone, Debug)]
 pub struct EvalMovementMetrics {
     pub desired_body_yaw_error_degrees: f32,
+    pub body_travel_heading_error_degrees: f32,
     pub body_roll_degrees: f32,
     pub desired_heading_alignment_mps: f32,
     pub lateral_response_mps: f32,
@@ -77,6 +78,7 @@ pub struct EvalSample {
     pub key_pose_readability_score: f32,
     pub desired_body_yaw_error_degrees: f32,
     pub desired_body_heading_error_degrees: f32,
+    pub body_travel_heading_error_degrees: f32,
     pub body_roll_degrees: f32,
     pub desired_heading_alignment_mps: f32,
     pub lateral_response_mps: f32,

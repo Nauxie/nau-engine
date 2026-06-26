@@ -5,7 +5,7 @@ use crate::authored_assets::{
     AuthoredPlayerPoseNode, AuthoredVisualScene, AuthoredVisualSceneRole,
     GeneratedPlayerPlaceholder, VisualAssetRegistry,
 };
-use crate::camera_runtime::CameraFollowFilter;
+use crate::camera_runtime::{CameraDiagnostics, CameraFollowFilter};
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
 use crate::power_up_runtime::{PowerUpCollectionState, collect_aerial_power_ups};
 use crate::world_collision_runtime::{
@@ -16,6 +16,9 @@ use nau_engine::animation::{
     advance_phase, body_local_pose_velocity, part_pose_with_context, pose_blend,
 };
 use nau_engine::asset_pipeline::VisualAssetKind;
+use nau_engine::camera::{
+    CameraControlState, movement_facing_from_follow_direction as camera_movement_facing,
+};
 use nau_engine::environment::{
     LiftField, WindField, WindForceApplication, apply_lift_fields, apply_wind_fields,
 };
@@ -101,6 +104,24 @@ pub(crate) struct MovementWorld<'w, 's> {
     wind_diagnostics: ResMut<'w, WindForceDiagnostics>,
 }
 
+#[derive(SystemParam)]
+pub(crate) struct MovementCamera<'w, 's> {
+    control: Res<'w, CameraControlState>,
+    diagnostics: Res<'w, CameraDiagnostics>,
+    camera: Query<'w, 's, &'static Transform, CameraFollowFilter>,
+}
+
+impl MovementCamera<'_, '_> {
+    fn facing(&self, player_transform: &Transform) -> Facing {
+        stable_movement_facing(
+            self.diagnostics.follow_direction,
+            &self.control,
+            self.camera.single().ok(),
+            player_transform,
+        )
+    }
+}
+
 struct PlayerKinematics<'a> {
     transform: &'a mut Transform,
     velocity: &'a mut Velocity,
@@ -172,8 +193,8 @@ pub(crate) fn fly_player(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     tuning: Res<FlightTuning>,
+    camera: MovementCamera,
     mut world: MovementWorld,
-    camera: Query<&Transform, CameraFollowFilter>,
     mut player: Query<
         (
             &mut Transform,
@@ -188,7 +209,7 @@ pub(crate) fn fly_player(
     else {
         return;
     };
-    let facing = movement_facing(camera.single().ok(), &transform);
+    let facing = camera.facing(&transform);
     let dt = time.delta_secs();
     let elapsed_secs = time.elapsed_secs();
     let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
@@ -247,8 +268,8 @@ pub(crate) fn keyboard_flight_input(keyboard: &ButtonInput<KeyCode>) -> FlightIn
 pub(crate) fn eval_fly_player(
     run: Res<EvalRun>,
     tuning: Res<FlightTuning>,
+    camera: MovementCamera,
     mut world: MovementWorld,
-    camera: Query<&Transform, CameraFollowFilter>,
     mut movement_basis: ResMut<EvalMovementBasis>,
     mut player: Query<
         (
@@ -268,7 +289,7 @@ pub(crate) fn eval_fly_player(
     else {
         return;
     };
-    let facing = movement_facing(camera.single().ok(), &transform);
+    let facing = camera.facing(&transform);
     *movement_basis = EvalMovementBasis {
         frame: run.frame,
         facing: Some(facing),
@@ -417,6 +438,20 @@ pub(crate) fn movement_facing(camera: Option<&Transform>, player_transform: &Tra
         || Facing::new(*player_transform.forward(), *player_transform.right()),
         |camera_transform| Facing::new(*camera_transform.forward(), *camera_transform.right()),
     )
+}
+
+fn stable_movement_facing(
+    follow_direction: Vec3,
+    camera_control: &CameraControlState,
+    camera: Option<&Transform>,
+    player_transform: &Transform,
+) -> Facing {
+    if follow_direction.length_squared() > 0.0001 {
+        let (forward, right) = camera_movement_facing(follow_direction, camera_control.orbit);
+        Facing::new(forward, right)
+    } else {
+        movement_facing(camera, player_transform)
+    }
 }
 
 pub(crate) fn animate_character(

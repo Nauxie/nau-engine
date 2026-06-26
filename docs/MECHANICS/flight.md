@@ -42,7 +42,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Launch gives vertical velocity and a small forward bonus.
 - Gliding reduces gravity and clamps fall speed.
 - Gliding does not create altitude on its own.
-- Airborne and gliding `W`/`A`/`S`/`D` input gives Nau a camera-relative body-facing intent; `W`/`A`/`D` also steer planar velocity, while pure `S` stays an air-brake/reverse-speed-limited control.
+- Airborne and gliding `W`/`A`/`S`/`D` input uses the stable camera follow direction plus explicit mouse orbit as the camera-relative movement basis. `W`/`A`/`D` and rear diagonals steer planar velocity with input-aligned acceleration, while pure `S` stays an air-brake/reverse-speed-limited control.
 - Airborne `S` input brakes forward motion first, then allows limited backward drift instead of unrestricted reverse flight.
 - Visual `WindField` volumes are finite axis-aligned boxes for readable wind/updraft streams, gust/swirl diagnostics, and bounded horizontal airborne wind response.
 - Crosswind `WindField`s push airborne horizontal velocity toward their dynamic flow; updraft `WindField`s add only lateral swirl current.
@@ -138,7 +138,7 @@ Current tests cover:
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
 - `camera_strafe_stability` eval tracks right/left lateral movement without camera auto-orbit, including view-yaw and world-yaw drift
 - `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking
-- `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, stronger total/planar backward braking, pure-backward and diagonal body-heading intent, readable dive/air-brake key-pose coverage, torso pitch, arm spread, leg tuck, unsigned and signed lateral lean, wing-airflow strength, zero key-pose samples below the readability floor, post-brake recovery, desired heading alignment, average/p95/max body-heading error, max body-yaw error step, body-yaw oscillation, left/right body-bank response, body-roll step smoothness, follow-direction error distribution, view-yaw/world-yaw drift, and movement-input camera non-coupling
+- `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, stronger total/planar backward braking, pure-backward and diagonal body-heading intent, readable dive/air-brake key-pose coverage, torso pitch, arm spread, leg tuck, unsigned and signed lateral lean, wing-airflow strength, zero key-pose samples below the readability floor, post-brake recovery, desired heading alignment, average/p95/max body-heading error, lateral and backward-diagonal body/travel heading error, max body-yaw error step, body-yaw oscillation, left/right body-bank response, body-roll step smoothness, follow-direction error distribution, view-yaw/world-yaw drift, and movement-input camera non-coupling
 - `long_glide_visibility` eval tracks sustained archipelago traversal, aerial power-up collection/effect samples, and content-scale signals
 - app evals track `world_collision_proxy_count`, `world_collision_resolved_samples`, `world_collision_contact_samples`, and `max_world_collision_push_m`, with a proxy-count gate so collidable asset props cannot silently disappear and a `world_collision_contact` route that must sustain meaningful launch-mesa obstacle contact
 - landing-required evals track landing anticipation, landing flare, post-contact landing recovery, landing crouch depth, and zero unreadable key-pose samples across both key landing poses
