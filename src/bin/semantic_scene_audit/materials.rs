@@ -5,7 +5,15 @@ use crate::{
 use image::RgbImage;
 
 pub(crate) fn material_audits(samples: &[SceneSampleAudit]) -> Vec<MaterialAudit> {
-    EXPECTED_MATERIALS
+    let mut expected_materials = EXPECTED_MATERIALS.to_vec();
+    if samples
+        .iter()
+        .any(|sample| sample.is_visible() && sample.expected_material == "wind")
+    {
+        expected_materials.push("wind");
+    }
+
+    expected_materials
         .iter()
         .filter_map(|expected_material| {
             let visible_sample_count = samples
@@ -22,7 +30,7 @@ pub(crate) fn material_audits(samples: &[SceneSampleAudit]) -> Vec<MaterialAudit
                 .filter(|sample| sample.passed && sample.expected_material == *expected_material)
                 .count();
             let min_sample_pixel_hit_count =
-                min_material_sample_pixel_hit_count(visible_sample_count);
+                min_material_sample_pixel_hit_count_for(expected_material, visible_sample_count);
             let hit_ratio = sample_pixel_hit_count as f64 / visible_sample_count as f64;
 
             Some(MaterialAudit {
@@ -35,6 +43,17 @@ pub(crate) fn material_audits(samples: &[SceneSampleAudit]) -> Vec<MaterialAudit
             })
         })
         .collect()
+}
+
+fn min_material_sample_pixel_hit_count_for(
+    expected_material: &str,
+    visible_sample_count: usize,
+) -> usize {
+    if expected_material == "wind" {
+        return visible_sample_count.min(1);
+    }
+
+    min_material_sample_pixel_hit_count(visible_sample_count)
 }
 
 pub(crate) fn min_material_sample_pixel_hit_count(visible_sample_count: usize) -> usize {
@@ -88,6 +107,7 @@ pub(crate) fn material_matches(expected_material: &str, r: f64, g: f64, b: f64) 
         "foliage" => is_foliage_like(r, g, b, luma, sky_like),
         "cloud" => is_cloud_like(r, g, b, luma, sky_like),
         "distant_island" => is_distant_scene_like(r, g, b, luma, sky_like),
+        "wind" => is_wind_like(r, g, b, luma),
         _ => false,
     }
 }
@@ -165,4 +185,21 @@ pub(crate) fn is_distant_scene_like(r: f64, g: f64, b: f64, luma: f64, sky_like:
         && (is_foliage_like(r, g, b, luma, sky_like)
             || is_earth_like(r, g, b)
             || is_rock_or_shadow_like(r, g, b, luma))
+}
+
+pub(crate) fn is_wind_like(r: f64, g: f64, b: f64, luma: f64) -> bool {
+    if !(55.0..=245.0).contains(&luma) {
+        return false;
+    }
+
+    let max_channel = r.max(g).max(b);
+    let min_channel = r.min(g).min(b);
+    let saturation = max_channel - min_channel;
+    g >= 100.0
+        && b >= 145.0
+        && r <= 190.0
+        && g >= r + 55.0
+        && b >= r + 70.0
+        && b + 18.0 >= g
+        && saturation >= 70.0
 }
