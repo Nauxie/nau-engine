@@ -64,7 +64,8 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/generated_content/island_meshes/ground_cover.rs` owns generated ground-cover blade meshes.
 - `src/generated_content/island_meshes/metrics.rs` owns generated island mesh inspection helpers used by tests and content diagnostics.
 - `src/generated_content/island_meshes/normals.rs` owns smooth normal reconstruction for generated island meshes.
-- `src/generated_content/detail_meshes.rs` owns reusable generated rock, tree, cloud-lobe/filament, updraft ribbon, and glider airflow trail mesh builders.
+- `src/generated_content/detail_meshes.rs` owns the generated detail-mesh facade and stable re-exports for rocks, trees, clouds, updraft ribbons, and glider airflow trails.
+- `src/generated_content/detail_meshes/` owns the focused generated detail mesh domains: rock scatter, tree trunk/canopy/detail cards, cloud lobes/wisps/filaments, visual effect ribbons, and shared card/lobe mesh helpers.
 - `src/island_visuals.rs` owns the island-visual runtime facade and stable re-exports used by app setup and eval diagnostics.
 - `src/island_visuals/types.rs` owns island visual catalog entries, stream state, LOD count metrics, and stream diagnostics.
 - `src/island_visuals/queue.rs` owns terrain/body/impostor/ridge/beacon catalog construction for each sky island.
