@@ -27,6 +27,16 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"mode\": \"simulation_only\""));
     assert!(summary.contains("\"native_window_created\": false"));
     assert!(summary.contains("\"screenshot_png\": null"));
+    assert!(summary.contains("\"pose_gliding_samples\""));
+    assert!(
+        result
+            .samples
+            .last()
+            .unwrap()
+            .to_json()
+            .get("pose_intent")
+            .is_some()
+    );
 }
 
 #[test]
@@ -41,6 +51,13 @@ fn island_landing_simulation_reaches_target_surface() {
     assert!(
         result.metrics.target_landing_samples >= scenario.thresholds.min_target_landing_samples
     );
+    assert!(result.metrics.pose_landing_anticipation_samples > 0);
+    let check = result
+        .checks
+        .iter()
+        .find(|check| check.name == "pose_landing_anticipation_samples")
+        .expect("landing pose intent check");
+    assert!(check.passed, "expected landing pose intent check to pass");
     assert!(result.metrics.grounded_samples >= scenario.thresholds.min_grounded_samples);
 }
 
@@ -124,6 +141,8 @@ fn air_control_simulation_measures_backward_diagonal_response() {
     assert!(result.metrics.max_backward_right_rear_response_mps >= 10.0);
     assert!(result.metrics.max_backward_left_rear_response_mps >= 10.0);
     assert!(result.metrics.max_air_brake_planar_speed_drop_mps >= 12.0);
+    assert!(result.metrics.pose_air_brake_samples > 0);
+    assert!(result.metrics.pose_diving_samples > 0);
 }
 
 #[test]
@@ -145,6 +164,8 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_camera_rotation_delta",
         "air_control_camera_view_yaw_drift",
         "air_control_camera_world_yaw_drift",
+        "air_control_pose_air_brake_samples",
+        "air_control_pose_diving_samples",
     ] {
         let check = result
             .checks

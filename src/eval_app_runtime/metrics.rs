@@ -37,7 +37,7 @@ pub(crate) fn collect_eval_metrics(
         return;
     }
 
-    let Ok((transform, velocity, controller)) = scene.player.single() else {
+    let Ok((transform, velocity, controller, animation)) = scene.player.single() else {
         return;
     };
     let (
@@ -108,6 +108,7 @@ pub(crate) fn collect_eval_metrics(
     let (environment_motion_visuals, max_environment_motion_offset_m) =
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
     let movement_input = scripted_input(run.scenario, run.frame);
+    let pose_intent_label = animation.pose_intent.label();
     let movement_axis = movement_input.planar_axis();
     let movement_facing = if movement_basis.frame == run.frame {
         movement_basis
@@ -141,6 +142,7 @@ pub(crate) fn collect_eval_metrics(
         transform.translation,
         velocity.0,
         controller.mode,
+        pose_intent_label,
         camera_distance_m,
         camera_surface_clearance_m,
         camera_player_angle_degrees,

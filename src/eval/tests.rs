@@ -31,12 +31,20 @@ fn air_control_metric_sample(
     yaw_error_degrees: f32,
 ) -> EvalSample {
     let objective = EvalObjectiveProgress::new(0, 2, "near route updraft", 120.0, false);
+    let pose_intent_label = if movement_axis.y < 0.0 {
+        "air_brake"
+    } else if velocity.y < -14.0 {
+        "diving"
+    } else {
+        "gliding"
+    };
     EvalSample::new(
         frame,
         scenario.fixed_dt,
         Vec3::new(frame as f32 * 0.5, 42.0, -(frame as f32) * 0.25),
         velocity,
         FlightMode::Gliding,
+        pose_intent_label,
         14.0,
         3.0,
         4.0,

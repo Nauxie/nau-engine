@@ -4,6 +4,7 @@ use super::{
 };
 use bevy::prelude::{Quat, Transform, Vec3};
 use nau_engine::{
+    animation::PlayerPoseContext,
     camera::{
         CameraOrbit, camera_distance, camera_pitch_degrees, camera_surface_clearance,
         camera_target_angle_degrees, camera_view_yaw_degrees,
@@ -94,6 +95,7 @@ pub(crate) struct SimSample {
     pub(crate) speed_mps: f32,
     pub(crate) altitude_m: f32,
     pub(crate) mode: &'static str,
+    pub(crate) pose_intent_label: &'static str,
     pub(crate) desired_body_yaw_error_degrees: f32,
     pub(crate) desired_body_heading_error_degrees: f32,
     pub(crate) body_roll_degrees: f32,
@@ -174,6 +176,16 @@ impl SimSample {
         } else {
             0.0
         };
+        let height_above_route_ground_m =
+            (state.position.y - route.ground_at(state.position).floor_y).max(0.0);
+        let pose_intent_label = PlayerPoseContext::new(
+            state.controller.mode,
+            state.velocity,
+            input,
+            height_above_route_ground_m,
+        )
+        .intent()
+        .label();
         let streaming_lod = route.streaming_lod_stats(state.position);
 
         Self {
@@ -184,6 +196,7 @@ impl SimSample {
             speed_mps: state.velocity.length(),
             altitude_m: state.position.y,
             mode: state.controller.mode.label(),
+            pose_intent_label,
             desired_body_yaw_error_degrees,
             desired_body_heading_error_degrees: desired_body_yaw_error_degrees.abs(),
             body_roll_degrees: body_roll_degrees(player_rotation),
@@ -246,6 +259,7 @@ impl SimSample {
             "speed_mps": round4(self.speed_mps),
             "altitude_m": round4(self.altitude_m),
             "mode": self.mode,
+            "pose_intent": self.pose_intent_label,
             "desired_body_yaw_error_degrees": finite_json(self.desired_body_yaw_error_degrees),
             "desired_body_heading_error_degrees": finite_json(self.desired_body_heading_error_degrees),
             "body_roll_degrees": round4(self.body_roll_degrees),

@@ -610,6 +610,93 @@ fn accumulator_gates_planar_air_brake_drop() {
 }
 
 #[test]
+fn accumulator_summarizes_pose_intent_samples() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, -2.0, -18.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        1,
+        Vec3::new(0.0, -18.0, -26.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        2,
+        Vec3::new(0.0, -4.0, -18.0),
+        Vec2::new(0.0, -1.0),
+        0.0,
+        18.0,
+        0.0,
+    ));
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let summary_json = summary.to_json();
+
+    assert_eq!(summary.metrics.pose_gliding_samples, 1);
+    assert_eq!(summary.metrics.pose_diving_samples, 1);
+    assert_eq!(summary.metrics.pose_air_brake_samples, 1);
+    assert!(summary_json.contains("\"pose_air_brake_samples\": 1"));
+}
+
+#[test]
+fn accumulator_gates_air_control_pose_readability() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in [0, 30, 60, 90] {
+        accumulator.observe(air_control_metric_sample(
+            scenario,
+            frame,
+            Vec3::new(16.0, -2.0, -18.0),
+            Vec2::new(1.0, 0.0),
+            16.0,
+            18.0,
+            4.0,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let air_brake_check = named_check(&summary, "air_control_pose_air_brake_samples");
+    let dive_check = named_check(&summary, "air_control_pose_diving_samples");
+
+    assert_eq!(air_brake_check.value, 0.0);
+    assert_eq!(dive_check.value, 0.0);
+    assert!(!air_brake_check.passed);
+    assert!(!dive_check.passed);
+}
+
+#[test]
 fn accumulator_gates_grounded_visual_foot_gap() {
     let scenario = scenario_named(GROUND_TAXI_CONTROL).expect("ground taxi route exists");
     let mut sample = content_metric_sample(scenario, 0, 12, 0, 96);

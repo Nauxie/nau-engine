@@ -60,6 +60,15 @@ impl SimMetrics {
         let mut checks = Vec::new();
         core::append_checks(&mut checks, self, scenario);
 
+        if scenario.thresholds.require_target_landing {
+            checks.push(SimCheck::at_least(
+                "pose_landing_anticipation_samples",
+                self.pose_landing_anticipation_samples as f32,
+                1.0,
+                "samples",
+            ));
+        }
+
         if scenario.name == CAMERA_STRAFE_STABILITY {
             camera_strafe::append_checks(&mut checks, self);
         }

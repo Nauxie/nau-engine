@@ -39,6 +39,12 @@ pub(super) fn append_scenario_checks(
             thresholds.min_target_landing_samples as f32,
             "samples",
         ));
+        checks.push(EvalCheck::at_least(
+            "pose_landing_anticipation_samples",
+            acc.pose_landing_anticipation_samples as f32,
+            1.0,
+            "samples",
+        ));
     }
     if scenario.name == AIR_CONTROL_RESPONSE {
         append_air_control_checks(checks, acc, derived);
@@ -149,6 +155,18 @@ fn append_air_control_checks(
             acc.max_air_brake_planar_speed_drop_mps,
             AIR_CONTROL_MIN_AIR_BRAKE_PLANAR_SPEED_DROP_MPS,
             "m/s",
+        ),
+        EvalCheck::at_least(
+            "air_control_pose_air_brake_samples",
+            acc.pose_air_brake_samples as f32,
+            4.0,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_pose_diving_samples",
+            acc.pose_diving_samples as f32,
+            1.0,
+            "samples",
         ),
         EvalCheck::at_least(
             "air_control_post_brake_forward_alignment",

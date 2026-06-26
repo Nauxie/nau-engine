@@ -5,6 +5,7 @@ pub const PLAYER_ANIMATION_CLIP_NAMES: &[&str] = &[
     "Jog_Fwd_Loop",
     "Launch_Start",
     "Glide_Loop",
+    "Dive_Loop",
     "Air_Brake",
     "Land",
 ];

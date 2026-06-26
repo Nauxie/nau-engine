@@ -6,8 +6,11 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::Player;
+use nau_engine::animation::{AnimationState, PlayerPoseIntent};
 use nau_engine::asset_pipeline::VisualAssetKind;
-use nau_engine::movement::{FlightController, FlightMode, Velocity};
+#[cfg(test)]
+use nau_engine::movement::FlightMode;
+use nau_engine::movement::Velocity;
 
 use super::types::{PendingAuthoredAnimationLink, VisualAssetRegistry};
 
@@ -34,6 +37,7 @@ pub(crate) enum AuthoredPlayerClip {
     Jog,
     Launch,
     Glide,
+    Dive,
     AirBrake,
     Land,
 }
@@ -45,20 +49,21 @@ impl AuthoredPlayerClip {
             Self::Jog => 1,
             Self::Launch => 2,
             Self::Glide => 3,
-            Self::AirBrake => 4,
-            Self::Land => 5,
+            Self::Dive => 4,
+            Self::AirBrake => 5,
+            Self::Land => 6,
         }
     }
 }
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct AuthoredPlayerAnimation {
-    pub(crate) nodes: [AnimationNodeIndex; 6],
+    pub(crate) nodes: [AnimationNodeIndex; 7],
     pub(crate) current: AuthoredPlayerClip,
 }
 
 impl AuthoredPlayerAnimation {
-    pub(crate) fn new(nodes: [AnimationNodeIndex; 6], current: AuthoredPlayerClip) -> Self {
+    pub(crate) fn new(nodes: [AnimationNodeIndex; 7], current: AuthoredPlayerClip) -> Self {
         Self { nodes, current }
     }
 
@@ -129,7 +134,7 @@ fn link_ready_authored_animation(
     let (animation_graph, animation_nodes) = AnimationGraph::from_clips(clip_resolution.clips);
     let graph_handle = animation_graphs.add(animation_graph);
     let player_animation = if pending.kind == VisualAssetKind::PlayerCharacter {
-        let Ok(nodes) = <[AnimationNodeIndex; 6]>::try_from(animation_nodes.as_slice()) else {
+        let Ok(nodes) = <[AnimationNodeIndex; 7]>::try_from(animation_nodes.as_slice()) else {
             return;
         };
         Some(AuthoredPlayerAnimation::new(
@@ -214,6 +219,7 @@ pub(crate) fn resolve_named_animation_clip_handles(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn authored_player_clip_for_state(
     mode: FlightMode,
     speed_mps: f32,
@@ -228,18 +234,35 @@ pub(crate) fn authored_player_clip_for_state(
     }
 }
 
+pub(crate) fn authored_player_clip_for_pose_intent(
+    intent: PlayerPoseIntent,
+    speed_mps: f32,
+) -> AuthoredPlayerClip {
+    match intent {
+        PlayerPoseIntent::GroundedIdle => AuthoredPlayerClip::Idle,
+        PlayerPoseIntent::GroundedStride => AuthoredPlayerClip::Jog,
+        PlayerPoseIntent::Launching => AuthoredPlayerClip::Launch,
+        PlayerPoseIntent::Gliding => AuthoredPlayerClip::Glide,
+        PlayerPoseIntent::Diving => AuthoredPlayerClip::Dive,
+        PlayerPoseIntent::AirBrake => AuthoredPlayerClip::AirBrake,
+        PlayerPoseIntent::LandingAnticipation => AuthoredPlayerClip::Land,
+        PlayerPoseIntent::Falling if speed_mps < 8.0 => AuthoredPlayerClip::Land,
+        PlayerPoseIntent::Falling => AuthoredPlayerClip::AirBrake,
+    }
+}
+
 pub(crate) fn update_authored_player_animation(
-    player: Query<(&Velocity, &FlightController), With<Player>>,
+    player: Query<(&Velocity, &AnimationState), With<Player>>,
     mut authored_players: Query<(
         &mut AnimationPlayer,
         &mut AnimationTransitions,
         &mut AuthoredPlayerAnimation,
     )>,
 ) {
-    let Ok((velocity, controller)) = player.single() else {
+    let Ok((velocity, animation)) = player.single() else {
         return;
     };
-    let desired = authored_player_clip_for_state(controller.mode, velocity.0.length());
+    let desired = authored_player_clip_for_pose_intent(animation.pose_intent, velocity.0.length());
 
     for (mut animation_player, mut transitions, mut authored_animation) in &mut authored_players {
         let desired_node = authored_animation.node(desired);

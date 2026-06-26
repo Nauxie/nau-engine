@@ -180,6 +180,13 @@ impl SimMetrics {
             "grounded" => self.grounded_samples += 1,
             _ => {}
         }
+        match sample.pose_intent_label {
+            "gliding" => self.pose_gliding_samples += 1,
+            "diving" => self.pose_diving_samples += 1,
+            "air_brake" => self.pose_air_brake_samples += 1,
+            "landing_anticipation" => self.pose_landing_anticipation_samples += 1,
+            _ => {}
+        }
 
         if scenario.name == CAMERA_STRAFE_STABILITY {
             self.max_camera_obstruction_adjustment_m = 0.0;
