@@ -162,6 +162,51 @@ fn paint_flat_distant_scene_signals(image: &mut RgbImage) {
             image.put_pixel(x, y, Rgb([132, 92, 52]));
         }
     }
+    for y in height * 24 / 100..height * 33 / 100 {
+        for x in width * 58 / 100..width * 70 / 100 {
+            image.put_pixel(x, y, Rgb([132, 92, 52]));
+        }
+    }
+}
+
+fn paint_collapsed_distant_scene_signals(image: &mut RgbImage) {
+    let width = image.width();
+    let height = image.height();
+    let first_x = width * 45 / 100;
+    let second_x = width * 51 / 100;
+    let third_x = width * 57 / 100;
+
+    for start_x in [first_x, second_x, third_x] {
+        for y in height * 23 / 100..height * 28 / 100 {
+            for x in start_x..start_x + width * 4 / 100 {
+                let variant = ((x / 2 + y) % 16) as u8;
+                image.put_pixel(
+                    x,
+                    y,
+                    Rgb([50 + variant * 12, 42 + variant * 10, 20 + variant * 7]),
+                );
+            }
+        }
+    }
+}
+
+fn paint_clustered_foliage_scene_signals(image: &mut RgbImage) {
+    let width = image.width();
+    let height = image.height();
+
+    for y in height * 62 / 100..height * 85 / 100 {
+        for x in width * 8 / 100..width * 29 / 100 {
+            image.put_pixel(
+                x,
+                y,
+                Rgb([
+                    34 + (x % 26) as u8,
+                    112 + (y % 44) as u8,
+                    24 + ((x + y) % 18) as u8,
+                ]),
+            );
+        }
+    }
 }
 
 fn paint_cloud_layer_signals(image: &mut RgbImage) {
@@ -196,6 +241,29 @@ fn paint_cloud_layer_signals(image: &mut RgbImage) {
                         148 + (x % 20) as u8,
                         158 + (y % 18) as u8,
                         168 + ((x + y) % 20) as u8,
+                    ]),
+                );
+            }
+        }
+    }
+}
+
+fn paint_collapsed_cloud_layer_signals(image: &mut RgbImage) {
+    let width = image.width();
+    let height = image.height();
+    let first_x = width * 43 / 100;
+    let second_x = width * 57 / 100;
+
+    for (start_x, width_percent) in [(first_x, 10), (second_x, 9)] {
+        for y in height * 4 / 100..height * 55 / 100 {
+            for x in start_x..start_x + width * width_percent / 100 {
+                image.put_pixel(
+                    x,
+                    y,
+                    Rgb([
+                        150 + (x % 18) as u8,
+                        160 + (y % 18) as u8,
+                        170 + ((x + y) % 18) as u8,
                     ]),
                 );
             }
@@ -517,6 +585,34 @@ fn report_rejects_flat_distant_scene_identity() {
 }
 
 #[test]
+fn report_rejects_collapsed_distant_scene_span() {
+    let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    paint_high_sky_textured_scene(&mut image);
+    paint_player_and_route_markers(&mut image);
+    paint_collapsed_distant_scene_signals(&mut image);
+    paint_cloud_layer_signals(&mut image);
+
+    let audit =
+        audit_image("collapsed_distant_scene.png".to_string(), image).expect("audit should load");
+    let checks = report_checks(std::slice::from_ref(&audit));
+
+    assert!(audit.passed, "{audit:?}");
+    assert!(audit.distant_scene_component_count >= MIN_SEQUENCE_DISTANT_SCENE_COMPONENTS);
+    assert!(
+        audit.distant_scene_horizontal_span_fraction
+            < MIN_SEQUENCE_DISTANT_SCENE_HORIZONTAL_SPAN_FRACTION
+            || audit.distant_scene_vertical_span_fraction
+                < MIN_SEQUENCE_DISTANT_SCENE_VERTICAL_SPAN_FRACTION
+    );
+    assert!(!report_passed(std::slice::from_ref(&audit), &checks));
+    assert!(checks.iter().any(|check| {
+        (check.name == "max_distant_scene_horizontal_span_fraction"
+            || check.name == "max_distant_scene_vertical_span_fraction")
+            && !check.passed
+    }));
+}
+
+#[test]
 fn report_rejects_single_family_scene_materials() {
     let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
     paint_high_sky_foliage_scene(&mut image);
@@ -566,6 +662,28 @@ fn report_rejects_sequence_without_foliage_readability() {
 }
 
 #[test]
+fn report_rejects_clustered_foliage_without_tile_spread() {
+    let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    paint_high_sky_non_foliage_scene(&mut image);
+    paint_player_and_route_markers(&mut image);
+    paint_distant_scene_signals(&mut image);
+    paint_clustered_foliage_scene_signals(&mut image);
+    paint_cloud_layer_signals(&mut image);
+
+    let audit = audit_image("clustered_foliage.png".to_string(), image).expect("audit should load");
+    let checks = report_checks(std::slice::from_ref(&audit));
+
+    assert!(audit.passed, "{audit:?}");
+    assert!(audit.foliage_scene_tile_count < MIN_SEQUENCE_FOLIAGE_SCENE_TILES);
+    assert!(!report_passed(std::slice::from_ref(&audit), &checks));
+    assert!(
+        checks
+            .iter()
+            .any(|check| check.name == "max_foliage_scene_tile_count" && !check.passed)
+    );
+}
+
+#[test]
 fn report_rejects_sequence_without_cloud_layer_components() {
     let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
     paint_high_sky_textured_scene(&mut image);
@@ -585,6 +703,34 @@ fn report_rejects_sequence_without_cloud_layer_components() {
     assert!(checks.iter().any(|check| {
         (check.name == "max_cloud_layer_fraction"
             || check.name == "max_cloud_layer_component_count")
+            && !check.passed
+    }));
+}
+
+#[test]
+fn report_rejects_collapsed_cloud_layer_span() {
+    let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    paint_high_sky_textured_scene(&mut image);
+    paint_player_and_route_markers(&mut image);
+    paint_collapsed_cloud_layer_signals(&mut image);
+
+    let audit =
+        audit_image("collapsed_cloud_layer.png".to_string(), image).expect("audit should load");
+    let checks = report_checks(std::slice::from_ref(&audit));
+
+    assert!(audit.passed, "{audit:?}");
+    assert!(audit.cloud_layer_fraction >= MIN_SEQUENCE_CLOUD_LAYER_FRACTION);
+    assert!(audit.cloud_layer_component_count >= MIN_SEQUENCE_CLOUD_LAYER_COMPONENTS);
+    assert!(
+        audit.cloud_layer_horizontal_span_fraction
+            < MIN_SEQUENCE_CLOUD_LAYER_HORIZONTAL_SPAN_FRACTION
+            || audit.cloud_layer_vertical_span_fraction
+                < MIN_SEQUENCE_CLOUD_LAYER_VERTICAL_SPAN_FRACTION
+    );
+    assert!(!report_passed(std::slice::from_ref(&audit), &checks));
+    assert!(checks.iter().any(|check| {
+        (check.name == "max_cloud_layer_horizontal_span_fraction"
+            || check.name == "max_cloud_layer_vertical_span_fraction")
             && !check.passed
     }));
 }
