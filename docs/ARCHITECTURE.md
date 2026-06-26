@@ -96,7 +96,15 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/world.rs` owns collision-aware route surfaces, sky-island definitions, deterministic island relief, landing target queries, active chunk counters, stream-window classification, and near/mid/far LOD band classification.
 - `src/diagnostics.rs` owns pure helpers for frame-time and runtime metric formatting inputs.
 - `src/eval.rs` owns the eval module surface and shared eval JSON helpers.
-- `src/eval/accumulator.rs` owns per-sample metric accumulation for movement, camera, content, streaming, assets, and screenshots.
+- `src/eval/accumulator.rs` owns accumulator state and module wiring for eval metric accumulation.
+- `src/eval/accumulator/observe.rs` owns per-frame accumulator entry points and routes samples into focused observer groups.
+- `src/eval/accumulator/initial_sample.rs` owns first-sample baseline initialization for min/max metrics.
+- `src/eval/accumulator/camera.rs` owns camera framing, follow-error, yaw-drift, obstruction, and pitch/yaw input accumulation.
+- `src/eval/accumulator/movement.rs` owns movement, body-heading, body-roll, lateral-response, air-brake, and mode-count accumulation.
+- `src/eval/accumulator/world.rs` owns world-scale, LOD, visibility, environment-motion, stream-churn, and entity-count accumulation.
+- `src/eval/accumulator/content.rs` owns terrain/body/detail/weather content-quality accumulation.
+- `src/eval/accumulator/objectives.rs` owns route objective, power-up, landing-target, and lift-readability accumulation.
+- `src/eval/accumulator/assets.rs` owns visual asset, scene-instance, preload, authored-fixture, and animation-readiness accumulation.
 - `src/eval/accumulator/summary_report.rs` owns accumulator summary orchestration.
 - `src/eval/accumulator/summary_report/derived.rs` owns frame-time percentiles, response-latency helpers, and derived summary values.
 - `src/eval/accumulator/summary_report/checks.rs` owns pass/fail gate orchestration for baseline traversal, streaming, and camera checks.

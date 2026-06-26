@@ -1,0 +1,88 @@
+use super::{EvalAccumulator, EvalSample};
+
+pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
+    accumulator.max_visible_wind_fields = accumulator
+        .max_visible_wind_fields
+        .max(sample.visible_wind_fields);
+    accumulator.max_active_lift_fields = accumulator
+        .max_active_lift_fields
+        .max(sample.active_lift_fields);
+    accumulator.max_readable_lift_fields = accumulator
+        .max_readable_lift_fields
+        .max(sample.readable_lift_fields);
+    accumulator.max_sky_island_count = accumulator
+        .max_sky_island_count
+        .max(sample.sky_island_count);
+    accumulator.max_active_chunk_count = accumulator
+        .max_active_chunk_count
+        .max(sample.active_chunk_count);
+    accumulator.max_active_island_count = accumulator
+        .max_active_island_count
+        .max(sample.active_island_count);
+    accumulator.max_near_lod_islands = accumulator
+        .max_near_lod_islands
+        .max(sample.near_lod_islands);
+    accumulator.max_mid_lod_islands = accumulator.max_mid_lod_islands.max(sample.mid_lod_islands);
+    accumulator.max_far_lod_islands = accumulator.max_far_lod_islands.max(sample.far_lod_islands);
+    accumulator.max_visible_island_terrain_count = accumulator
+        .max_visible_island_terrain_count
+        .max(sample.visible_island_terrain_count);
+    accumulator.max_hidden_island_terrain_count = accumulator
+        .max_hidden_island_terrain_count
+        .max(sample.hidden_island_terrain_count);
+    accumulator.max_visible_island_impostor_count = accumulator
+        .max_visible_island_impostor_count
+        .max(sample.visible_island_impostor_count);
+    accumulator.max_hidden_island_impostor_count = accumulator
+        .max_hidden_island_impostor_count
+        .max(sample.hidden_island_impostor_count);
+    accumulator.max_visible_island_detail_count = accumulator
+        .max_visible_island_detail_count
+        .max(sample.visible_island_detail_count);
+    accumulator.max_hidden_island_detail_count = accumulator
+        .max_hidden_island_detail_count
+        .max(sample.hidden_island_detail_count);
+    accumulator.max_visible_route_beacon_count = accumulator
+        .max_visible_route_beacon_count
+        .max(sample.visible_route_beacon_count);
+    accumulator.max_weather_cloud_count = accumulator
+        .max_weather_cloud_count
+        .max(sample.weather_cloud_count);
+    accumulator.max_environment_motion_visual_count = accumulator
+        .max_environment_motion_visual_count
+        .max(sample.environment_motion_visual_count);
+    accumulator.max_environment_motion_offset_m = accumulator
+        .max_environment_motion_offset_m
+        .max(sample.max_environment_motion_offset_m);
+    accumulator.max_resident_island_visual_count = accumulator
+        .max_resident_island_visual_count
+        .max(sample.resident_island_visual_count);
+    accumulator.max_stream_visibility_changes_per_frame = accumulator
+        .max_stream_visibility_changes_per_frame
+        .max(sample.max_stream_visibility_changes_per_frame);
+    accumulator.total_stream_visibility_changes = accumulator
+        .total_stream_visibility_changes
+        .max(sample.total_stream_visibility_changes);
+    accumulator.max_catalog_island_visual_count = accumulator
+        .max_catalog_island_visual_count
+        .max(sample.catalog_island_visual_count);
+    accumulator.max_hidden_island_visual_count = accumulator
+        .max_hidden_island_visual_count
+        .max(sample.hidden_island_visual_count);
+    accumulator.max_resident_island_visual_fraction = accumulator
+        .max_resident_island_visual_fraction
+        .max(sample.resident_island_visual_fraction);
+    accumulator.max_stream_spawned_visuals_per_frame = accumulator
+        .max_stream_spawned_visuals_per_frame
+        .max(sample.max_stream_spawned_visuals_per_frame);
+    accumulator.max_stream_despawned_visuals_per_frame = accumulator
+        .max_stream_despawned_visuals_per_frame
+        .max(sample.max_stream_despawned_visuals_per_frame);
+    accumulator.total_stream_spawned_visuals = accumulator
+        .total_stream_spawned_visuals
+        .max(sample.total_stream_spawned_visuals);
+    accumulator.total_stream_despawned_visuals = accumulator
+        .total_stream_despawned_visuals
+        .max(sample.total_stream_despawned_visuals);
+    accumulator.max_entity_count = accumulator.max_entity_count.max(sample.entity_count);
+}
