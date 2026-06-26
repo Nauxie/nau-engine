@@ -1,3 +1,6 @@
+use crate::environment_visuals::{
+    crosswind_ribbon_scene_sample_positions, updraft_ribbon_scene_sample_positions,
+};
 use crate::eval_app_runtime::scene::EvalScene;
 use crate::generated_content::{TERRAIN_BIOME_PALETTE_COUNT, island_visual_surface_position};
 use bevy::prelude::*;
@@ -11,6 +14,17 @@ pub(super) struct SemanticSceneSample {
     pub(super) material_variant: &'static str,
     pub(super) world_position: Vec3,
 }
+
+const UPDRAFT_RIBBON_SAMPLE_LABELS: [&str; 3] = [
+    "updraft wind ribbon lower",
+    "updraft wind ribbon middle",
+    "updraft wind ribbon upper",
+];
+const CROSSWIND_RIBBON_SAMPLE_LABELS: [&str; 3] = [
+    "crosswind wind ribbon leading",
+    "crosswind wind ribbon center",
+    "crosswind wind ribbon trailing",
+];
 
 pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSample> {
     let mut samples = Vec::new();
@@ -58,6 +72,53 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
             material_variant: "cloud",
             world_position: cloud_transform.translation,
         });
+    }
+
+    for (_, transform) in scene.updraft_guides.iter().step_by(7).take(14) {
+        samples.push(SemanticSceneSample {
+            kind: "updraft_wind_visual",
+            label: "updraft wind mote",
+            expected_material: "wind",
+            material_variant: "wind_updraft",
+            world_position: transform.translation,
+        });
+    }
+    for (ribbon, transform) in scene.updraft_ribbons.iter().take(6) {
+        for (label, world_position) in UPDRAFT_RIBBON_SAMPLE_LABELS
+            .into_iter()
+            .zip(updraft_ribbon_scene_sample_positions(ribbon, transform))
+        {
+            samples.push(SemanticSceneSample {
+                kind: "updraft_wind_visual",
+                label,
+                expected_material: "wind",
+                material_variant: "wind_updraft",
+                world_position,
+            });
+        }
+    }
+    for (_, transform) in scene.crosswind_guides.iter().step_by(8).take(12) {
+        samples.push(SemanticSceneSample {
+            kind: "crosswind_wind_visual",
+            label: "crosswind wind mote",
+            expected_material: "wind",
+            material_variant: "wind_crosswind",
+            world_position: transform.translation,
+        });
+    }
+    for (ribbon, transform) in scene.crosswind_ribbons.iter().take(8) {
+        for (label, world_position) in CROSSWIND_RIBBON_SAMPLE_LABELS
+            .into_iter()
+            .zip(crosswind_ribbon_scene_sample_positions(ribbon, transform))
+        {
+            samples.push(SemanticSceneSample {
+                kind: "crosswind_wind_visual",
+                label,
+                expected_material: "wind",
+                material_variant: "wind_crosswind",
+                world_position,
+            });
+        }
     }
 
     samples

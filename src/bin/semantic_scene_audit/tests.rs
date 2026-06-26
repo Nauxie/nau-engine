@@ -1,6 +1,6 @@
 use crate::{
     checkpoint::{audit_checkpoint_path, audit_scene_sample, terrain_material_variant_for_label},
-    materials::sample_pixel_hits,
+    materials::{material_matches, sample_pixel_hits},
     report::{json_number, json_string, report_checks},
     thresholds::{
         MIN_PASSED_TERRAIN_MATERIAL_VARIANTS, MIN_SAMPLE_PIXEL_HITS,
@@ -46,6 +46,26 @@ fn sample_pixel_hits_classifies_expected_scene_materials() {
         sample_pixel_hits(&image, 17.0, 16.0, "distant_island", (1.0, 1.0))
             >= MIN_SAMPLE_PIXEL_HITS
     );
+}
+
+#[test]
+fn sample_pixel_hits_classifies_wind_pixels() {
+    let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
+    image.put_pixel(32, 32, Rgb([62, 198, 244]));
+    image.put_pixel(33, 32, Rgb([112, 235, 255]));
+    image.put_pixel(34, 32, Rgb([20, 118, 184]));
+
+    assert!(sample_pixel_hits(&image, 33.0, 32.0, "wind", (1.0, 1.0)) >= MIN_SAMPLE_PIXEL_HITS);
+}
+
+#[test]
+fn wind_classifier_rejects_sky_and_cloud_colors() {
+    assert!(!material_matches("wind", 130.0, 170.0, 220.0));
+    assert!(!material_matches("wind", 158.0, 166.0, 174.0));
+    assert!(!material_matches("wind", 219.0, 232.0, 245.0));
+
+    let image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
+    assert_eq!(sample_pixel_hits(&image, 32.0, 32.0, "wind", (1.0, 1.0)), 0);
 }
 
 #[test]
@@ -202,6 +222,116 @@ fn report_checks_require_visible_material_samples_before_pixel_hits() {
     assert_eq!(canopy_visible.value, 0.0);
     assert!(!canopy_hits.passed);
     assert_eq!(canopy_hits.value, 0.0);
+    assert!(!checks.iter().any(|check| check.name.starts_with("wind_")));
+}
+
+#[test]
+fn visible_wind_samples_fail_report_and_checkpoint_coverage_without_wind_pixels() {
+    let temp_dir = unique_temp_dir("semantic_scene_wind");
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let screenshot_path = temp_dir.join("checkpoint.png");
+    let metadata_path = temp_dir.join("checkpoint.markers.json");
+    let mut image = RgbImage::from_pixel(100, 80, Rgb([130, 170, 220]));
+    image.put_pixel(20, 15, Rgb([104, 82, 48]));
+    image.put_pixel(21, 15, Rgb([92, 74, 46]));
+    image.put_pixel(22, 15, Rgb([74, 68, 62]));
+    image.put_pixel(50, 20, Rgb([44, 126, 32]));
+    image.put_pixel(51, 20, Rgb([48, 132, 36]));
+    image.put_pixel(52, 20, Rgb([52, 138, 34]));
+    image.put_pixel(80, 20, Rgb([158, 166, 174]));
+    image.put_pixel(81, 20, Rgb([166, 174, 184]));
+    image.put_pixel(82, 20, Rgb([148, 158, 168]));
+    image.save(&screenshot_path).expect("screenshot");
+    fs::write(
+        &metadata_path,
+        format!(
+            "{{\"passed\": true, \"checkpoint\": \"test\", \"screenshot\": {}, \"viewport\": {{\"width\": 100, \"height\": 80}}, \"scene_samples\": [\
+             {{\"kind\": \"terrain_surface\", \"label\": \"terrain\", \"expected_material\": \"terrain\", \"in_viewport\": true, \"screen\": {{\"x\": 20, \"y\": 15}}}},\
+             {{\"kind\": \"tree_canopy\", \"label\": \"foliage\", \"expected_material\": \"foliage\", \"in_viewport\": true, \"screen\": {{\"x\": 50, \"y\": 20}}}},\
+             {{\"kind\": \"weather_cloud\", \"label\": \"cloud\", \"expected_material\": \"cloud\", \"in_viewport\": true, \"screen\": {{\"x\": 80, \"y\": 20}}}},\
+             {{\"kind\": \"updraft_wind_visual\", \"label\": \"updraft wind mote\", \"expected_material\": \"wind\", \"material_variant\": \"wind_updraft\", \"in_viewport\": true, \"screen\": {{\"x\": 10, \"y\": 70}}}}]}}",
+            json_string(&screenshot_path.to_string_lossy())
+        ),
+    )
+    .expect("metadata");
+
+    let audit = audit_checkpoint_path(&metadata_path).expect("audit");
+    let checks = report_checks(std::slice::from_ref(&audit));
+    let wind_hits = checks
+        .iter()
+        .find(|check| check.name == "wind_scene_sample_pixel_hits")
+        .expect("wind hit check");
+    let wind_coverage = checks
+        .iter()
+        .find(|check| check.name == "wind_scene_sample_pixel_coverage")
+        .expect("wind coverage check");
+    let wind_kind_hits = checks
+        .iter()
+        .find(|check| check.name == "wind_scene_sample_kind_pixel_hits")
+        .expect("wind kind hit check");
+
+    assert!(!audit.passed);
+    assert_eq!(audit.visible_scene_material_count, 4);
+    assert_eq!(audit.scene_material_pixel_hit_count, 3);
+    assert!(!wind_hits.passed);
+    assert_eq!(wind_hits.value, 0.0);
+    assert_eq!(wind_hits.threshold, 1.0);
+    assert!(!wind_coverage.passed);
+    assert_eq!(wind_coverage.value, 0.0);
+    assert!(!wind_kind_hits.passed);
+    assert_eq!(wind_kind_hits.value, 0.0);
+    let _ = fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn sparse_translucent_wind_sample_hit_satisfies_checkpoint_material_audit() {
+    let temp_dir = unique_temp_dir("semantic_scene_sparse_wind");
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let screenshot_path = temp_dir.join("checkpoint.png");
+    let metadata_path = temp_dir.join("checkpoint.markers.json");
+    let mut image = RgbImage::from_pixel(100, 80, Rgb([130, 170, 220]));
+    image.put_pixel(20, 15, Rgb([104, 82, 48]));
+    image.put_pixel(21, 15, Rgb([92, 74, 46]));
+    image.put_pixel(22, 15, Rgb([74, 68, 62]));
+    image.put_pixel(50, 20, Rgb([44, 126, 32]));
+    image.put_pixel(51, 20, Rgb([48, 132, 36]));
+    image.put_pixel(52, 20, Rgb([52, 138, 34]));
+    image.put_pixel(80, 20, Rgb([158, 166, 174]));
+    image.put_pixel(81, 20, Rgb([166, 174, 184]));
+    image.put_pixel(82, 20, Rgb([148, 158, 168]));
+    image.put_pixel(10, 70, Rgb([68, 174, 208]));
+    image.put_pixel(11, 70, Rgb([70, 176, 210]));
+    image.put_pixel(12, 70, Rgb([72, 178, 212]));
+    image.save(&screenshot_path).expect("screenshot");
+    fs::write(
+        &metadata_path,
+        format!(
+            "{{\"passed\": true, \"checkpoint\": \"test\", \"screenshot\": {}, \"viewport\": {{\"width\": 100, \"height\": 80}}, \"scene_samples\": [\
+             {{\"kind\": \"terrain_surface\", \"label\": \"terrain\", \"expected_material\": \"terrain\", \"in_viewport\": true, \"screen\": {{\"x\": 20, \"y\": 15}}}},\
+             {{\"kind\": \"tree_canopy\", \"label\": \"foliage\", \"expected_material\": \"foliage\", \"in_viewport\": true, \"screen\": {{\"x\": 50, \"y\": 20}}}},\
+             {{\"kind\": \"weather_cloud\", \"label\": \"cloud\", \"expected_material\": \"cloud\", \"in_viewport\": true, \"screen\": {{\"x\": 80, \"y\": 20}}}},\
+             {{\"kind\": \"updraft_wind_visual\", \"label\": \"updraft wind ribbon upper\", \"expected_material\": \"wind\", \"material_variant\": \"wind_updraft\", \"in_viewport\": true, \"screen\": {{\"x\": 10, \"y\": 70}}}},\
+             {{\"kind\": \"updraft_wind_visual\", \"label\": \"updraft wind ribbon middle\", \"expected_material\": \"wind\", \"material_variant\": \"wind_updraft\", \"in_viewport\": true, \"screen\": {{\"x\": 50, \"y\": 70}}}},\
+             {{\"kind\": \"updraft_wind_visual\", \"label\": \"updraft wind ribbon lower\", \"expected_material\": \"wind\", \"material_variant\": \"wind_updraft\", \"in_viewport\": true, \"screen\": {{\"x\": 70, \"y\": 70}}}},\
+             {{\"kind\": \"updraft_wind_visual\", \"label\": \"updraft wind mote\", \"expected_material\": \"wind\", \"material_variant\": \"wind_updraft\", \"in_viewport\": true, \"screen\": {{\"x\": 90, \"y\": 70}}}}]}}",
+            json_string(&screenshot_path.to_string_lossy())
+        ),
+    )
+    .expect("metadata");
+
+    let audit = audit_checkpoint_path(&metadata_path).expect("audit");
+    let wind_material = audit
+        .materials
+        .iter()
+        .find(|material| material.expected_material == "wind")
+        .expect("wind material audit");
+
+    assert!(audit.passed);
+    assert_eq!(wind_material.visible_sample_count, 4);
+    assert_eq!(wind_material.sample_pixel_hit_count, 1);
+    assert_eq!(wind_material.min_sample_pixel_hit_count, 1);
+    assert!(wind_material.passed);
+    let _ = fs::remove_dir_all(temp_dir);
 }
 
 #[test]
