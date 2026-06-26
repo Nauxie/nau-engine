@@ -64,6 +64,9 @@ pub(super) fn audit_image_with_alpha(
     let mut distant_scene_mask = vec![false; pixel_count];
     let mut scene_material_family_pixels = [0usize; SCENE_MATERIAL_FAMILY_COUNT];
     let mut scene_material_pixels = 0usize;
+    let mut terrain_scene_pixels = 0usize;
+    let mut terrain_scene_color_buckets = HashSet::new();
+    let mut terrain_scene_mask = vec![false; pixel_count];
     let mut foliage_scene_pixels = 0usize;
     let mut foliage_scene_mask = vec![false; pixel_count];
     let mut cloud_layer_pixels = 0usize;
@@ -180,6 +183,11 @@ pub(super) fn audit_image_with_alpha(
         if material_region && let Some(family) = scene_material_family(r, g, b, luma, sky_like) {
             scene_material_pixels += 1;
             scene_material_family_pixels[family] += 1;
+            if family == 2 || family == 3 {
+                terrain_scene_pixels += 1;
+                terrain_scene_color_buckets.insert(key);
+                terrain_scene_mask[index] = true;
+            }
             if family == 1 {
                 foliage_scene_pixels += 1;
                 foliage_scene_mask[index] = true;
@@ -268,6 +276,16 @@ pub(super) fn audit_image_with_alpha(
         .into_iter()
         .filter(|pixels| *pixels >= MIN_SCENE_MATERIAL_FAMILY_PIXELS)
         .count();
+    let terrain_scene_fraction = fraction(terrain_scene_pixels, scene_material_pixels);
+    let terrain_scene_tile_count = mask_tile_count(
+        &terrain_scene_mask,
+        width_usize,
+        height_usize,
+        DETAIL_TILE_COLUMNS,
+        DETAIL_TILE_ROWS,
+        MIN_TERRAIN_SCENE_TILE_PIXELS,
+    );
+    let terrain_scene_color_bucket_count = terrain_scene_color_buckets.len();
     let foliage_scene_fraction = fraction(foliage_scene_pixels, scene_material_pixels);
     let foliage_scene_tile_count = mask_tile_count(
         &foliage_scene_mask,
@@ -420,6 +438,9 @@ pub(super) fn audit_image_with_alpha(
         distant_scene_horizontal_span_fraction,
         distant_scene_vertical_span_fraction,
         scene_material_family_count,
+        terrain_scene_fraction,
+        terrain_scene_tile_count,
+        terrain_scene_color_bucket_count,
         foliage_scene_fraction,
         foliage_scene_tile_count,
         cloud_layer_fraction,
