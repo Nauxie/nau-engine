@@ -398,7 +398,7 @@ The environment-motion fields report how many resident near-LOD visuals are wind
 The island-terrain fields report generated terrain surface count, minimum terrain mesh vertex count, minimum vertex-color band count, minimum encoded material-weight band count, minimum material channel count, minimum derived material-region count, minimum terrain texture-detail band count, minimum sampled terrain relief range, and minimum cliff/underside color-band count. The material weights are currently encoded into `UV_1` as lush/highland and exposed-edge blend channels; material regions quantize those channels into stable base, transition, lush, and exposed-edge identities; texture-detail bands count coarse color bins in the terrain-specific procedural albedo maps, which are tiled across world-space terrain UVs instead of stretched once across an island, so future PBR material blending or glTF export has a measurable substrate. The headless terrain export adds a texture-edge promille floor over the same procedural albedo set so smeared low-frequency terrain fills fail offline even before screenshot review. These are structural signals for denser terrain and stratified rock detail; they do not replace screenshot or human review for final material quality.
 The island-impostor fields report the minimum generated far-LOD impostor mesh vertex count and vertex-color band count. They are structural gates for distant island silhouettes and layered terrain/cliff/underside color variation, not final far-field art quality.
 The island-body fields report whether the catalogued route island bodies are generated procedural meshes or registered primitive/fallback body placeholders, plus the minimum silhouette segment count and minimum/maximum body mesh vertex count signals. They are a structural signal for replacing cylinder-like islands; they do not prove final terrain art quality or texture fidelity.
-Current substrate gates require at least 32 terrain color bands, 24 terrain material-weight bands, 44 terrain texture-detail bands, 240 terrain texture-edge promille in export audit, 140 island-impostor mesh vertices, 18 island-impostor color bands, 1600 island-body mesh vertices, 30 generated trunks/canopies, 400 canopy mesh vertices, 55 generated rocks, 24 generated weather clouds, 900 weather-cloud mesh vertices, and 14 weather-cloud filament ribbons.
+Current substrate gates require at least 32 terrain color bands, 24 terrain material-weight bands, 44 terrain texture-detail bands, 240 terrain texture-edge promille in export audit, 140 island-impostor mesh vertices, 18 island-impostor color bands, 1600 island-body mesh vertices, 30 generated trunks/canopies, 400 canopy mesh vertices, 55 generated rocks, 27 generated landmarks, 10 route cairns, 1 launch beacon, 4 landing-garden markers, 12 pond surfaces, 39 landmark mesh vertices, 24 generated weather clouds, 900 weather-cloud mesh vertices, and 14 weather-cloud filament ribbons.
 
 ## Summary Metrics
 
@@ -471,6 +471,8 @@ The summary aggregates:
 - max island body mesh vertex count
 - min generated tree trunk/canopy counts
 - min generated tree trunk/canopy mesh vertex counts
+- min generated landmark total and route-cairn/launch-beacon/landing-garden/pond-surface counts
+- min landmark mesh vertex count
 - min generated weather cloud count
 - min/max weather cloud lobe counts
 - min weather cloud mesh vertex count
