@@ -1,6 +1,7 @@
 use super::scene::EvalScene;
 use crate::authored_assets::{
-    AuthoredPlayerAnimation, AuthoredPlayerPoseNode, authored_player_clip_for_pose_intent,
+    AuthoredAnimationDiagnostics, AuthoredPlayerAnimation, AuthoredPlayerPoseNode,
+    authored_player_clip_for_pose_intent,
 };
 use crate::camera_runtime::CAMERA_PLAYER_FOCUS_HEIGHT;
 use crate::environment_visuals::{wind_guide_visual_metrics, wind_responsive_visual_metrics};
@@ -243,6 +244,7 @@ pub(crate) fn collect_eval_metrics(
     camera_control: Res<CameraControlState>,
     movement_basis: Res<EvalMovementBasis>,
     mut pose_temporal_state: ResMut<VisiblePoseTemporalState>,
+    authored_animation_diagnostics: Option<Res<AuthoredAnimationDiagnostics>>,
     scene: EvalScene,
 ) {
     if run.finalized {
@@ -321,6 +323,8 @@ pub(crate) fn collect_eval_metrics(
     let streaming_lod = scene.route.streaming_lod_stats(transform.translation);
     let lod_visuals = scene.stream_diagnostics.counts;
     let asset_metrics = scene.asset_diagnostics.metrics;
+    let authored_animation_metrics =
+        authored_animation_sample_metrics(authored_animation_diagnostics.as_deref());
     let content_metrics = *scene.content_diagnostics;
     let (environment_motion_visuals, max_environment_motion_offset_m) =
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
@@ -518,6 +522,12 @@ pub(crate) fn collect_eval_metrics(
     )
     .with_visible_authored_world_fixture_count(scene.asset_diagnostics.visible_world_fixture_count)
     .with_deferred_visual_asset_scene_count(asset_metrics.deferred_scene_count)
+    .with_authored_animation_metrics(
+        authored_animation_metrics.current_clip_label,
+        authored_animation_metrics.desired_clip_label,
+        authored_animation_metrics.player_count,
+        authored_animation_metrics.transition_duration_ms,
+    )
     .with_camera_follow_metrics(scene.camera_diagnostics.follow_direction_error_degrees)
     .with_camera_world_yaw_metrics(camera_world_yaw)
     .with_visual_foot_gap(visual_foot_gap_m)
@@ -621,6 +631,26 @@ pub(crate) fn collect_eval_metrics(
 
     if let Err(error) = run.record_sample(sample) {
         run.io_error = Some(format!("failed to write eval sample: {error}"));
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AuthoredAnimationSampleMetrics {
+    current_clip_label: &'static str,
+    desired_clip_label: &'static str,
+    player_count: usize,
+    transition_duration_ms: u64,
+}
+
+fn authored_animation_sample_metrics(
+    diagnostics: Option<&AuthoredAnimationDiagnostics>,
+) -> AuthoredAnimationSampleMetrics {
+    let diagnostics = diagnostics.copied().unwrap_or_default();
+    AuthoredAnimationSampleMetrics {
+        current_clip_label: diagnostics.current_label(),
+        desired_clip_label: diagnostics.desired_label(),
+        player_count: diagnostics.player_count,
+        transition_duration_ms: diagnostics.transition_duration_ms,
     }
 }
 
@@ -844,7 +874,37 @@ fn key_pose_intent(intent: PlayerPoseIntent) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::authored_assets::AuthoredPlayerClip;
     use nau_engine::movement::{FlightInput, FlightMode};
+
+    #[test]
+    fn authored_animation_sample_metrics_use_available_diagnostics() {
+        let metrics = authored_animation_sample_metrics(Some(&AuthoredAnimationDiagnostics {
+            player_count: 2,
+            current_clip: Some(AuthoredPlayerClip::Dive),
+            desired_clip: Some(AuthoredPlayerClip::Glide),
+            transition_duration_ms: 140,
+        }));
+
+        assert_eq!(
+            metrics,
+            AuthoredAnimationSampleMetrics {
+                current_clip_label: "dive",
+                desired_clip_label: "glide",
+                player_count: 2,
+                transition_duration_ms: 140,
+            }
+        );
+        assert_eq!(
+            authored_animation_sample_metrics(None),
+            AuthoredAnimationSampleMetrics {
+                current_clip_label: "none",
+                desired_clip_label: "none",
+                player_count: 0,
+                transition_duration_ms: 0,
+            }
+        );
+    }
 
     #[test]
     fn visible_generated_pose_metrics_use_rendered_part_transforms() {

@@ -57,6 +57,36 @@ impl AuthoredPlayerClip {
             Self::Land => 6,
         }
     }
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Jog => "jog",
+            Self::Launch => "launch",
+            Self::Glide => "glide",
+            Self::Dive => "dive",
+            Self::AirBrake => "air_brake",
+            Self::Land => "land",
+        }
+    }
+}
+
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub(crate) struct AuthoredAnimationDiagnostics {
+    pub(crate) player_count: usize,
+    pub(crate) current_clip: Option<AuthoredPlayerClip>,
+    pub(crate) desired_clip: Option<AuthoredPlayerClip>,
+    pub(crate) transition_duration_ms: u64,
+}
+
+impl AuthoredAnimationDiagnostics {
+    pub(crate) fn current_label(self) -> &'static str {
+        self.current_clip.map_or("none", AuthoredPlayerClip::label)
+    }
+
+    pub(crate) fn desired_label(self) -> &'static str {
+        self.desired_clip.map_or("none", AuthoredPlayerClip::label)
+    }
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -348,29 +378,50 @@ pub(crate) fn update_authored_player_animation(
         &mut AnimationTransitions,
         &mut AuthoredPlayerAnimation,
     )>,
+    mut diagnostics: ResMut<AuthoredAnimationDiagnostics>,
 ) {
     let Ok((velocity, animation)) = player.single() else {
+        *diagnostics = AuthoredAnimationDiagnostics::default();
         return;
     };
     let desired = authored_player_clip_for_pose_intent(animation.pose_intent, velocity.0.length());
+    let mut next_diagnostics = AuthoredAnimationDiagnostics {
+        desired_clip: Some(desired),
+        ..default()
+    };
 
     for (mut animation_player, mut transitions, mut authored_animation) in &mut authored_players {
+        next_diagnostics.player_count += 1;
         let desired_node = authored_animation.node(desired);
         if authored_animation.current == desired
             && animation_player.is_playing_animation(desired_node)
         {
+            next_diagnostics.current_clip = Some(authored_animation.current);
             continue;
         }
 
-        let transition_duration = if authored_animation.current == desired {
-            Duration::ZERO
-        } else {
-            Duration::from_millis(140)
-        };
+        let transition_duration =
+            authored_player_transition_duration(authored_animation.current, desired);
+        next_diagnostics.transition_duration_ms = next_diagnostics
+            .transition_duration_ms
+            .max(transition_duration.as_millis() as u64);
         transitions
             .play(&mut animation_player, desired_node, transition_duration)
             .repeat();
         authored_animation.current = desired;
+        next_diagnostics.current_clip = Some(authored_animation.current);
+    }
+    *diagnostics = next_diagnostics;
+}
+
+fn authored_player_transition_duration(
+    current: AuthoredPlayerClip,
+    desired: AuthoredPlayerClip,
+) -> Duration {
+    if current == desired {
+        Duration::ZERO
+    } else {
+        Duration::from_millis(140)
     }
 }
 
@@ -391,5 +442,39 @@ mod tests {
         assert_eq!(left_arm.part.base_translation, Vec3::new(-0.48, 1.18, 0.01));
         assert_eq!(right_leg.part.role, CharacterPartRole::Leg(Side::Right));
         assert!(authored_player_pose_node_for_name("Nau Belt Buckle Plate").is_none());
+    }
+
+    #[test]
+    fn authored_player_clip_labels_match_debug_contract() {
+        assert_eq!(AuthoredPlayerClip::Idle.label(), "idle");
+        assert_eq!(AuthoredPlayerClip::AirBrake.label(), "air_brake");
+
+        let diagnostics = AuthoredAnimationDiagnostics {
+            player_count: 1,
+            current_clip: Some(AuthoredPlayerClip::Dive),
+            desired_clip: Some(AuthoredPlayerClip::Glide),
+            transition_duration_ms: 140,
+        };
+
+        assert_eq!(diagnostics.current_label(), "dive");
+        assert_eq!(diagnostics.desired_label(), "glide");
+    }
+
+    #[test]
+    fn authored_player_transition_duration_is_zero_for_same_clip() {
+        assert_eq!(
+            authored_player_transition_duration(
+                AuthoredPlayerClip::Glide,
+                AuthoredPlayerClip::Glide
+            ),
+            Duration::ZERO
+        );
+        assert_eq!(
+            authored_player_transition_duration(
+                AuthoredPlayerClip::Glide,
+                AuthoredPlayerClip::Dive
+            ),
+            Duration::from_millis(140)
+        );
     }
 }

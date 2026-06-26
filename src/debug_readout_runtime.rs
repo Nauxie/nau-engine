@@ -1,4 +1,4 @@
-use crate::authored_assets::VisualAssetDiagnostics;
+use crate::authored_assets::{AuthoredAnimationDiagnostics, VisualAssetDiagnostics};
 use crate::camera_runtime::{
     CAMERA_PLAYER_FOCUS_HEIGHT, CameraDiagnostics, CameraFollowFilter, MouseLookState,
 };
@@ -42,6 +42,7 @@ pub(crate) struct DebugScene<'w, 's> {
     stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
     content_diagnostics: Res<'w, IslandContentDiagnostics>,
     asset_diagnostics: Res<'w, VisualAssetDiagnostics>,
+    authored_animation_diagnostics: Res<'w, AuthoredAnimationDiagnostics>,
     route_objectives: Res<'w, RouteObjectiveTracker>,
     power_ups: Res<'w, PowerUpCollectionState>,
     collision_diagnostics: Res<'w, WorldCollisionDiagnostics>,
@@ -111,7 +112,7 @@ pub(crate) fn update_debug_readout(
     let body_roll = body_roll_degrees(transform.rotation);
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nbody bank/roll {:>5.1} / {:>5.1} deg\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/deferred/failed {} / {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nauthored world fixtures {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nworld collisions proxies/resolved/push {} / {} / {:>4.2} m\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices min/max {} / {}\nground cover patches {} blades {} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated landmarks {} cairn/launch/landing/pond {} / {} / {} / {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {} filaments {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nbody bank/roll {:>5.1} / {:>5.1} deg\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/deferred/failed {} / {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nauthored world fixtures {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nauthored anim current/desired {} / {} players {} transition {} ms\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nworld collisions proxies/resolved/push {} / {} / {:>4.2} m\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices min/max {} / {}\nground cover patches {} blades {} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated landmarks {} cairn/launch/landing/pond {} / {} / {} / {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {} filaments {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -164,6 +165,10 @@ pub(crate) fn update_debug_readout(
         asset_metrics.declared_animation_clip_count,
         asset_metrics.animation_player_count,
         asset_metrics.animation_graph_count,
+        scene.authored_animation_diagnostics.current_label(),
+        scene.authored_animation_diagnostics.desired_label(),
+        scene.authored_animation_diagnostics.player_count,
+        scene.authored_animation_diagnostics.transition_duration_ms,
         asset_metrics.always_slot_count,
         asset_metrics.stream_window_slot_count,
         asset_metrics.near_lod_slot_count,

@@ -127,6 +127,7 @@ fn main() -> AppExit {
         .insert_resource(CameraDiagnostics::default())
         .insert_resource(CinematicWeather::new(WORLD_RADIUS))
         .insert_resource(VisualAssetDiagnostics::default())
+        .insert_resource(AuthoredAnimationDiagnostics::default())
         .insert_resource(IslandStreamDiagnostics::default())
         .insert_resource(RouteObjectiveTracker::default())
         .insert_resource(PowerUpCollectionState::default())
