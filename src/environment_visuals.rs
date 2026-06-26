@@ -15,11 +15,11 @@ use nau_engine::environment::{LiftRouteNode, WindField, wind_sway_motion};
 use nau_engine::movement::{FlightController, Velocity};
 use nau_engine::world::SkyIsland;
 
-const UPDRAFT_RIBBONS_PER_FIELD: usize = 3;
-const UPDRAFT_GUIDE_RING_LEVELS: [f32; 5] = [-0.78, -0.34, 0.1, 0.54, 0.9];
-const UPDRAFT_GUIDES_PER_RING: usize = 7;
-const CROSSWIND_RIBBONS_PER_FIELD: usize = 4;
-const CROSSWIND_GUIDES_PER_FIELD: usize = 36;
+const UPDRAFT_RIBBONS_PER_FIELD: usize = 4;
+const UPDRAFT_GUIDE_RING_LEVELS: [f32; 7] = [-0.86, -0.56, -0.24, 0.08, 0.4, 0.72, 0.94];
+const UPDRAFT_GUIDES_PER_RING: usize = 9;
+const CROSSWIND_RIBBONS_PER_FIELD: usize = 5;
+const CROSSWIND_GUIDES_PER_FIELD: usize = 48;
 
 #[derive(Component)]
 pub(crate) struct CinematicSun;
@@ -752,7 +752,7 @@ fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
     let field = guide.field;
     let height_span = (field.half_extents.y * 1.84).max(1.0);
     let base_progress = (guide.height_offset / height_span + 0.5).clamp(0.0, 1.0);
-    let rise_speed = field.visual_speed.max(1.0) / height_span * 0.42;
+    let rise_speed = field.visual_speed.max(1.0) / height_span * 0.52;
     let progress = (base_progress + guide.phase * 0.037 + elapsed * rise_speed).fract();
     let height_offset = (progress - 0.5) * height_span;
     let flow_probe = guide.center + Vec3::Y * height_offset;
@@ -761,7 +761,7 @@ fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
     let gust = flow.map_or(1.0, |sample| sample.gust_strength);
     let angle = guide.phase
         + elapsed * guide.angular_speed * (0.75 + gust * 0.55)
-        + progress * std::f32::consts::TAU * 0.65;
+        + progress * std::f32::consts::TAU * 0.82;
     let radius = guide.radius
         * (0.82 + variation * 0.32 + (elapsed * 0.9 + guide.phase).sin() * 0.05).clamp(0.72, 1.18);
     let base = guide.center
@@ -771,7 +771,7 @@ fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
             angle.sin() * radius,
         );
     let flow_offset = flow.map_or(Vec3::ZERO, |sample| {
-        Vec3::new(sample.vector.x, 0.0, sample.vector.z) * 0.075 + Vec3::Y * sample.variation * 0.32
+        Vec3::new(sample.vector.x, 0.0, sample.vector.z) * 0.095 + Vec3::Y * sample.variation * 0.42
     });
 
     base + flow_offset

@@ -246,8 +246,8 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_weather_cloud_bank_depth_m\": 6.2000"));
     assert!(summary_json.contains("\"min_weather_cloud_mesh_vertices\": 1458"));
     assert!(summary_json.contains("\"min_weather_cloud_filament_ribbon_detail_count\": 27"));
-    assert!(summary_json.contains("\"max_updraft_guide_visual_count\": 70"));
-    assert!(summary_json.contains("\"max_crosswind_guide_visual_count\": 72"));
+    assert!(summary_json.contains("\"max_updraft_guide_visual_count\": 126"));
+    assert!(summary_json.contains("\"max_crosswind_guide_visual_count\": 96"));
     assert!(summary_json.contains("\"max_updraft_visual_rise_m\": 0.2000"));
     assert!(summary_json.contains("\"max_crosswind_visual_motion_m\": 0.3000"));
     assert!(summary_json.contains("\"max_crosswind_guide_flow_displacement_m\": 0.3000"));
@@ -404,10 +404,10 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
     let sample_json = content_metric_sample(scenario, 0, 12, 0, 96).to_json();
 
-    assert!(sample_json.contains("\"updraft_guide_visual_count\":70"));
-    assert!(sample_json.contains("\"updraft_ribbon_visual_count\":6"));
-    assert!(sample_json.contains("\"crosswind_guide_visual_count\":72"));
-    assert!(sample_json.contains("\"crosswind_ribbon_visual_count\":8"));
+    assert!(sample_json.contains("\"updraft_guide_visual_count\":126"));
+    assert!(sample_json.contains("\"updraft_ribbon_visual_count\":8"));
+    assert!(sample_json.contains("\"crosswind_guide_visual_count\":96"));
+    assert!(sample_json.contains("\"crosswind_ribbon_visual_count\":10"));
     assert!(sample_json.contains("\"max_updraft_visual_motion_m\":0.2000"));
     assert!(sample_json.contains("\"max_updraft_visual_rise_m\":0.2000"));
     assert!(sample_json.contains("\"max_crosswind_visual_motion_m\":0.3000"));
