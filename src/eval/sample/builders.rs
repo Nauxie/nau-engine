@@ -175,6 +175,12 @@ impl EvalSample {
             detail_biome_palette_count: 0,
             generated_rock_count: 0,
             min_rock_mesh_vertices: 0,
+            generated_landmark_count: 0,
+            generated_route_cairn_count: 0,
+            generated_launch_beacon_count: 0,
+            generated_landing_garden_marker_count: 0,
+            generated_pond_surface_count: 0,
+            min_landmark_mesh_vertices: 0,
             generated_weather_cloud_count: 0,
             generated_weather_cloud_bank_count: 0,
             min_weather_cloud_bank_depth_m: 0.0,
@@ -346,6 +352,12 @@ impl EvalSample {
         detail_biome_palette_count: usize,
         generated_rock_count: usize,
         min_rock_mesh_vertices: usize,
+        generated_landmark_count: usize,
+        generated_route_cairn_count: usize,
+        generated_launch_beacon_count: usize,
+        generated_landing_garden_marker_count: usize,
+        generated_pond_surface_count: usize,
+        min_landmark_mesh_vertices: usize,
         generated_weather_cloud_count: usize,
         generated_weather_cloud_bank_count: usize,
         min_weather_cloud_bank_depth_m: f32,
@@ -364,6 +376,12 @@ impl EvalSample {
         self.detail_biome_palette_count = detail_biome_palette_count;
         self.generated_rock_count = generated_rock_count;
         self.min_rock_mesh_vertices = min_rock_mesh_vertices;
+        self.generated_landmark_count = generated_landmark_count;
+        self.generated_route_cairn_count = generated_route_cairn_count;
+        self.generated_launch_beacon_count = generated_launch_beacon_count;
+        self.generated_landing_garden_marker_count = generated_landing_garden_marker_count;
+        self.generated_pond_surface_count = generated_pond_surface_count;
+        self.min_landmark_mesh_vertices = min_landmark_mesh_vertices;
         self.generated_weather_cloud_count = generated_weather_cloud_count;
         self.generated_weather_cloud_bank_count = generated_weather_cloud_bank_count;
         self.min_weather_cloud_bank_depth_m = min_weather_cloud_bank_depth_m;

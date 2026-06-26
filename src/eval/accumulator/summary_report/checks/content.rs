@@ -161,6 +161,42 @@ pub(super) fn append_content_checks(
             "vertices",
         ),
         EvalCheck::at_least(
+            "generated_landmark_count",
+            acc.min_generated_landmark_count as f32,
+            MIN_GENERATED_LANDMARK_COUNT as f32,
+            "meshes",
+        ),
+        EvalCheck::at_least(
+            "generated_route_cairn_count",
+            acc.min_generated_route_cairn_count as f32,
+            MIN_GENERATED_ROUTE_CAIRN_COUNT as f32,
+            "meshes",
+        ),
+        EvalCheck::at_least(
+            "generated_launch_beacon_count",
+            acc.min_generated_launch_beacon_count as f32,
+            MIN_GENERATED_LAUNCH_BEACON_COUNT as f32,
+            "meshes",
+        ),
+        EvalCheck::at_least(
+            "generated_landing_garden_marker_count",
+            acc.min_generated_landing_garden_marker_count as f32,
+            MIN_GENERATED_LANDING_GARDEN_MARKER_COUNT as f32,
+            "meshes",
+        ),
+        EvalCheck::at_least(
+            "generated_pond_surface_count",
+            acc.min_generated_pond_surface_count as f32,
+            MIN_GENERATED_POND_SURFACE_COUNT as f32,
+            "meshes",
+        ),
+        EvalCheck::at_least(
+            "landmark_mesh_vertices",
+            acc.min_landmark_mesh_vertices as f32,
+            MIN_LANDMARK_MESH_VERTICES as f32,
+            "vertices",
+        ),
+        EvalCheck::at_least(
             "generated_weather_cloud_count",
             acc.min_generated_weather_cloud_count as f32,
             MIN_GENERATED_WEATHER_CLOUD_COUNT as f32,

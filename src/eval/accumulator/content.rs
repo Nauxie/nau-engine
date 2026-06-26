@@ -82,6 +82,24 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.min_rock_mesh_vertices = accumulator
         .min_rock_mesh_vertices
         .min(sample.min_rock_mesh_vertices);
+    accumulator.min_generated_landmark_count = accumulator
+        .min_generated_landmark_count
+        .min(sample.generated_landmark_count);
+    accumulator.min_generated_route_cairn_count = accumulator
+        .min_generated_route_cairn_count
+        .min(sample.generated_route_cairn_count);
+    accumulator.min_generated_launch_beacon_count = accumulator
+        .min_generated_launch_beacon_count
+        .min(sample.generated_launch_beacon_count);
+    accumulator.min_generated_landing_garden_marker_count = accumulator
+        .min_generated_landing_garden_marker_count
+        .min(sample.generated_landing_garden_marker_count);
+    accumulator.min_generated_pond_surface_count = accumulator
+        .min_generated_pond_surface_count
+        .min(sample.generated_pond_surface_count);
+    accumulator.min_landmark_mesh_vertices = accumulator
+        .min_landmark_mesh_vertices
+        .min(sample.min_landmark_mesh_vertices);
     accumulator.min_generated_weather_cloud_count = accumulator
         .min_generated_weather_cloud_count
         .min(sample.generated_weather_cloud_count);
