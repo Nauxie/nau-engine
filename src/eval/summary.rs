@@ -103,6 +103,17 @@ pub struct EvalMetricsSummary {
     pub max_wind_flow_speed_mps: f32,
     pub max_wind_flow_variation: f32,
     pub max_wind_flow_variation_range: f32,
+    pub wind_force_samples: u32,
+    pub crosswind_force_samples: u32,
+    pub updraft_swirl_force_samples: u32,
+    pub max_active_wind_force_fields: usize,
+    pub max_crosswind_force_fields: usize,
+    pub max_updraft_swirl_force_fields: usize,
+    pub max_wind_force_delta_mps: f32,
+    pub max_crosswind_force_delta_mps: f32,
+    pub max_updraft_swirl_force_delta_mps: f32,
+    pub max_wind_force_flow_speed_mps: f32,
+    pub max_wind_force_variation: f32,
     pub max_active_lift_fields: usize,
     pub max_readable_lift_fields: usize,
     pub max_sky_island_count: usize,
@@ -417,6 +428,23 @@ impl EvalMetricsSummary {
             self.launching_samples,
             self.grounded_samples,
         );
+        let max_active_lift_fields_key = format!("{indent}  \"max_active_lift_fields\"");
+        let wind_force_metrics = format!(
+            "{indent}  \"wind_force_samples\": {},\n{indent}  \"crosswind_force_samples\": {},\n{indent}  \"updraft_swirl_force_samples\": {},\n{indent}  \"max_active_wind_force_fields\": {},\n{indent}  \"max_crosswind_force_fields\": {},\n{indent}  \"max_updraft_swirl_force_fields\": {},\n{indent}  \"max_wind_force_delta_mps\": {},\n{indent}  \"max_crosswind_force_delta_mps\": {},\n{indent}  \"max_updraft_swirl_force_delta_mps\": {},\n{indent}  \"max_wind_force_flow_speed_mps\": {},\n{indent}  \"max_wind_force_variation\": {},\n{}",
+            self.wind_force_samples,
+            self.crosswind_force_samples,
+            self.updraft_swirl_force_samples,
+            self.max_active_wind_force_fields,
+            self.max_crosswind_force_fields,
+            self.max_updraft_swirl_force_fields,
+            json_number(self.max_wind_force_delta_mps),
+            json_number(self.max_crosswind_force_delta_mps),
+            json_number(self.max_updraft_swirl_force_delta_mps),
+            json_number(self.max_wind_force_flow_speed_mps),
+            json_number(self.max_wind_force_variation),
+            max_active_lift_fields_key
+        );
+        let json = json.replacen(&max_active_lift_fields_key, &wind_force_metrics, 1);
         let air_brake_key = format!("{indent}  \"max_air_brake_speed_drop_mps\"");
         let rear_response_metrics = format!(
             "{indent}  \"max_backward_right_rear_response_mps\": {},\n{indent}  \"max_backward_left_rear_response_mps\": {},\n{}",

@@ -197,7 +197,7 @@ pub(crate) fn spawn_crosswind_guide(
 ) {
     let ribbon_length = (field.half_extents.x * 1.28).max(3.0);
     let ribbon_mesh = meshes.add(Cuboid::new(ribbon_length, 0.09, 0.18));
-    let marker_mesh = meshes.add(Sphere::new(0.22));
+    let marker_mesh = meshes.add(Cuboid::new(0.74, 0.07, 0.14));
     let base_rotation = rotation_from_x_to_direction(field.direction);
 
     for ribbon_index in 0..CROSSWIND_RIBBONS_PER_FIELD {
@@ -230,10 +230,15 @@ pub(crate) fn spawn_crosswind_guide(
             stream_count: CROSSWIND_GUIDES_PER_FIELD,
             phase,
         };
+        let translation = crosswind_guide_position(&guide, 0.0);
         commands.spawn((
             Mesh3d(marker_mesh.clone()),
             MeshMaterial3d(marker_material.clone()),
-            Transform::from_translation(crosswind_guide_position(&guide, 0.0)),
+            Transform {
+                translation,
+                rotation: base_rotation * Quat::from_rotation_x(phase * std::f32::consts::TAU),
+                scale: crosswind_guide_scale(&guide, translation, 0.0),
+            },
             guide,
             Name::new(format!("{label} crosswind guide mote")),
         ));
@@ -528,9 +533,11 @@ pub(crate) fn update_crosswind_guides(
     let elapsed = time.elapsed_secs();
 
     for (guide, mut transform) in &mut guides {
-        transform.translation = crosswind_guide_position(guide, elapsed);
-        transform.rotation =
-            rotation_from_x_to_direction(guide.field.direction) * Quat::from_rotation_x(elapsed);
+        let translation = crosswind_guide_position(guide, elapsed);
+        transform.translation = translation;
+        transform.rotation = rotation_from_x_to_direction(guide.field.direction)
+            * Quat::from_rotation_x(elapsed * 1.8 + guide.phase * std::f32::consts::TAU);
+        transform.scale = crosswind_guide_scale(guide, translation, elapsed);
     }
 }
 
@@ -555,11 +562,10 @@ pub(crate) fn update_crosswind_ribbons(
         transform.rotation = ribbon.base_rotation
             * Quat::from_rotation_x(ribbon.phase * std::f32::consts::TAU)
             * Quat::from_rotation_z(wave * 0.08);
-        transform.scale = Vec3::new(
-            1.0 + flow.variation * 0.08,
-            1.0 + flow.variation * 0.18,
-            1.0 + flow.variation * 0.18,
-        );
+        let length_pulse =
+            (0.86 + flow.gust_strength * 0.22 + flow.variation * 0.1).clamp(0.96, 1.24);
+        let width_pulse = (0.82 + flow.variation * 0.34).clamp(0.86, 1.08);
+        transform.scale = Vec3::new(length_pulse, width_pulse, width_pulse);
     }
 }
 
@@ -646,14 +652,27 @@ pub(crate) fn wind_guide_visual_metrics<'a>(
 }
 
 fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
-    let angle = guide.phase + elapsed * guide.angular_speed;
+    let field = guide.field;
+    let height_span = (field.half_extents.y * 1.84).max(1.0);
+    let base_progress = (guide.height_offset / height_span + 0.5).clamp(0.0, 1.0);
+    let rise_speed = field.visual_speed.max(1.0) / height_span * 0.42;
+    let progress = (base_progress + guide.phase * 0.037 + elapsed * rise_speed).fract();
+    let height_offset = (progress - 0.5) * height_span;
+    let flow_probe = guide.center + Vec3::Y * height_offset;
+    let flow = guide.field.flow_at(flow_probe, elapsed);
+    let variation = flow.map_or(0.0, |sample| sample.variation);
+    let gust = flow.map_or(1.0, |sample| sample.gust_strength);
+    let angle = guide.phase
+        + elapsed * guide.angular_speed * (0.75 + gust * 0.55)
+        + progress * std::f32::consts::TAU * 0.65;
+    let radius = guide.radius
+        * (0.82 + variation * 0.32 + (elapsed * 0.9 + guide.phase).sin() * 0.05).clamp(0.72, 1.18);
     let base = guide.center
         + Vec3::new(
-            angle.cos() * guide.radius,
-            guide.height_offset + (elapsed * 1.4 + guide.phase).sin() * 0.35,
-            angle.sin() * guide.radius,
+            angle.cos() * radius,
+            height_offset + (elapsed * 1.4 + guide.phase).sin() * 0.18,
+            angle.sin() * radius,
         );
-    let flow = guide.field.flow_at(base, elapsed);
     let flow_offset = flow.map_or(Vec3::ZERO, |sample| {
         Vec3::new(sample.vector.x, 0.0, sample.vector.z) * 0.075 + Vec3::Y * sample.variation * 0.32
     });
@@ -677,10 +696,70 @@ fn crosswind_guide_position(guide: &CrosswindGuide, elapsed: f32) -> Vec3 {
         + Vec3::Y * ((elapsed * 1.7 + phase).cos() * 0.16)
 }
 
+fn crosswind_guide_scale(guide: &CrosswindGuide, position: Vec3, elapsed: f32) -> Vec3 {
+    let flow = guide
+        .field
+        .flow_at(position, elapsed)
+        .unwrap_or_else(|| guide.field.flow_at(guide.field.center, elapsed).unwrap());
+    let length_pulse = (0.8 + flow.gust_strength * 0.34 + flow.variation * 0.22).clamp(0.98, 1.36);
+    let width_pulse = (0.72 + flow.variation * 0.36).clamp(0.78, 1.04);
+
+    Vec3::new(length_pulse, width_pulse, width_pulse)
+}
+
 fn rotation_from_x_to_direction(direction: Vec3) -> Quat {
     Quat::from_rotation_arc(Vec3::X, direction.normalize_or_zero())
 }
 
 fn wind_lateral_axis(direction: Vec3) -> Vec3 {
     Vec3::new(-direction.z, 0.0, direction.x).normalize_or_zero()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_updraft_guide() -> UpdraftGuide {
+        UpdraftGuide {
+            field: WindField::updraft(Vec3::ZERO, Vec3::new(8.0, 16.0, 8.0), 12.0),
+            center: Vec3::ZERO,
+            radius: 4.0,
+            height_offset: -10.0,
+            phase: 0.31,
+            angular_speed: 0.34,
+        }
+    }
+
+    #[test]
+    fn updraft_guide_positions_rise_through_field() {
+        let guide = test_updraft_guide();
+        let start = updraft_guide_position(&guide, 0.0);
+        let later = updraft_guide_position(&guide, 2.0);
+
+        assert!(guide.field.contains(start));
+        assert!(guide.field.contains(later));
+        assert!(
+            later.y > start.y + 3.0,
+            "expected updraft mote to ride upward flow, start={start:?}, later={later:?}"
+        );
+        assert!(
+            Vec2::new(later.x - start.x, later.z - start.z).length() > 1.0,
+            "expected rising mote to swirl laterally, start={start:?}, later={later:?}"
+        );
+    }
+
+    #[test]
+    fn wind_guide_metrics_capture_updraft_streamline_motion() {
+        let guide = test_updraft_guide();
+        let transform = Transform::from_translation(updraft_guide_position(&guide, 2.0));
+        let metrics = wind_guide_visual_metrics(
+            [(&guide, &transform)].into_iter(),
+            std::iter::empty::<(&UpdraftRibbon, &Transform)>(),
+            std::iter::empty::<(&CrosswindGuide, &Transform)>(),
+            std::iter::empty::<(&CrosswindRibbon, &Transform)>(),
+        );
+
+        assert_eq!(metrics.updraft_guide_count, 1);
+        assert!(metrics.max_updraft_visual_motion_m > 3.0);
+    }
 }

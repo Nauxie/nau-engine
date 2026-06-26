@@ -146,6 +146,16 @@ fn air_control_metric_sample(
         MIN_UPDRAFT_VISUAL_MOTION_M,
         MIN_CROSSWIND_VISUAL_MOTION_M,
     )
+    .with_wind_force_metrics(
+        1,
+        1,
+        1,
+        MIN_WIND_FORCE_DELTA_MPS,
+        MIN_CROSSWIND_FORCE_DELTA_MPS,
+        MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+        MIN_WIND_FORCE_FLOW_SPEED_MPS,
+        MIN_WIND_FORCE_VARIATION,
+    )
     .with_movement_metrics(EvalMovementMetrics {
         desired_body_yaw_error_degrees: yaw_error_degrees,
         body_roll_degrees: -movement_axis.x.signum() * 12.0,

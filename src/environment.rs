@@ -172,6 +172,119 @@ pub fn wind_flow_metrics_at(
         })
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct WindForceApplication {
+    pub velocity: Vec3,
+    pub active_fields: usize,
+    pub crosswind_fields: usize,
+    pub updraft_swirl_fields: usize,
+    pub applied_delta: Vec3,
+    pub crosswind_delta: Vec3,
+    pub updraft_swirl_delta: Vec3,
+    pub max_flow_speed_mps: f32,
+    pub max_variation: f32,
+}
+
+impl WindForceApplication {
+    pub fn applied_delta_mps(self) -> f32 {
+        self.applied_delta.length()
+    }
+
+    pub fn crosswind_delta_mps(self) -> f32 {
+        self.crosswind_delta.length()
+    }
+
+    pub fn updraft_swirl_delta_mps(self) -> f32 {
+        self.updraft_swirl_delta.length()
+    }
+
+    pub fn for_airborne_diagnostics(self, airborne: bool) -> Self {
+        if airborne {
+            self
+        } else {
+            Self {
+                velocity: self.velocity,
+                ..default()
+            }
+        }
+    }
+}
+
+pub fn apply_wind_fields(
+    position: Vec3,
+    velocity: Vec3,
+    fields: impl IntoIterator<Item = WindField>,
+    elapsed_secs: f32,
+    dt: f32,
+    enabled: bool,
+) -> WindForceApplication {
+    let mut application = WindForceApplication {
+        velocity,
+        ..default()
+    };
+
+    if !enabled || dt <= 0.0 {
+        return application;
+    }
+
+    for field in fields {
+        let Some(flow) = field.flow_at(position, elapsed_secs) else {
+            continue;
+        };
+        let horizontal_flow = Vec3::new(flow.vector.x, 0.0, flow.vector.z);
+        let horizontal_speed = horizontal_flow.length();
+        if horizontal_speed <= DIRECTION_EPSILON {
+            continue;
+        }
+
+        let axis = horizontal_flow / horizontal_speed;
+        let current_axis_speed =
+            Vec3::new(application.velocity.x, 0.0, application.velocity.z).dot(axis);
+        let response_rate = wind_force_response_rate(field.kind);
+        let max_step_delta = wind_force_max_step_delta(field.kind, dt);
+        let delta_speed = ((horizontal_speed - current_axis_speed) * response_rate * dt)
+            .clamp(-max_step_delta, max_step_delta);
+        if delta_speed.abs() <= DIRECTION_EPSILON {
+            continue;
+        }
+
+        let delta = axis * delta_speed;
+        application.velocity += delta;
+        application.applied_delta += delta;
+        application.active_fields += 1;
+        application.max_flow_speed_mps = application.max_flow_speed_mps.max(horizontal_speed);
+        application.max_variation = application.max_variation.max(flow.variation);
+
+        match field.kind {
+            WindFieldKind::Crosswind => {
+                application.crosswind_fields += 1;
+                application.crosswind_delta += delta;
+            }
+            WindFieldKind::Updraft => {
+                application.updraft_swirl_fields += 1;
+                application.updraft_swirl_delta += delta;
+            }
+        }
+    }
+
+    application
+}
+
+fn wind_force_response_rate(kind: WindFieldKind) -> f32 {
+    match kind {
+        WindFieldKind::Crosswind => 0.48,
+        WindFieldKind::Updraft => 0.24,
+    }
+}
+
+fn wind_force_max_step_delta(kind: WindFieldKind, dt: f32) -> f32 {
+    let max_accel = match kind {
+        WindFieldKind::Crosswind => 6.0,
+        WindFieldKind::Updraft => 2.0,
+    };
+    max_accel * dt.max(0.0)
+}
+
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct LiftField {
     pub center: Vec3,
@@ -252,16 +365,16 @@ pub const VISUAL_CROSSWIND_FIELD_COUNT: usize = 2;
 pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
     [
         WindField::crosswind(
-            Vec3::new(0.0, 5.0, 20.0),
-            Vec3::new(20.0, 4.0, 8.0),
+            Vec3::new(20.0, 52.0, -68.0),
+            Vec3::new(38.0, 24.0, 18.0),
             Vec3::X,
             10.0,
         ),
         WindField::crosswind(
-            Vec3::new(34.0, 10.0, -8.0),
-            Vec3::new(18.0, 8.0, 10.0),
+            Vec3::new(30.0, 78.0, -214.0),
+            Vec3::new(42.0, 26.0, 20.0),
             Vec3::new(-1.0, 0.0, 0.35),
-            7.0,
+            8.5,
         ),
     ]
 }
@@ -484,7 +597,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn crosswind_is_visual_only_and_horizontal() {
+    fn crosswind_normalizes_to_horizontal_flow() {
         let field = WindField::crosswind(
             Vec3::ZERO,
             Vec3::new(4.0, 2.0, 4.0),
@@ -620,6 +733,62 @@ mod tests {
         assert!(inside.max_speed_mps > 8.0);
         assert!(inside.max_variation > 0.15);
         assert_eq!(outside.active_fields, 0);
+    }
+
+    #[test]
+    fn wind_force_pushes_toward_visible_crosswind_flow() {
+        let field = WindField::crosswind(Vec3::ZERO, Vec3::splat(12.0), Vec3::X, 10.0);
+        let application = apply_wind_fields(Vec3::ZERO, Vec3::ZERO, [field], 0.5, 0.5, true);
+
+        assert_eq!(application.active_fields, 1);
+        assert_eq!(application.crosswind_fields, 1);
+        assert!(application.crosswind_delta.x > 0.0);
+        assert!(application.crosswind_delta_mps() <= 6.0);
+        assert_eq!(application.velocity, application.applied_delta);
+        assert!(application.max_flow_speed_mps > 6.0);
+        assert!(application.max_variation > 0.15);
+    }
+
+    #[test]
+    fn wind_force_samples_updraft_swirl_without_vertical_lift() {
+        let field = WindField::updraft(Vec3::ZERO, Vec3::new(8.0, 16.0, 8.0), 12.0);
+        let application = apply_wind_fields(
+            Vec3::new(3.0, 0.0, 2.0),
+            Vec3::ZERO,
+            [field],
+            0.7,
+            0.5,
+            true,
+        );
+
+        assert_eq!(application.active_fields, 1);
+        assert_eq!(application.updraft_swirl_fields, 1);
+        assert!(application.updraft_swirl_delta.xz().length() > 0.0);
+        assert_eq!(application.updraft_swirl_delta.y, 0.0);
+        assert_eq!(application.velocity.y, 0.0);
+    }
+
+    #[test]
+    fn wind_force_is_disabled_on_ground() {
+        let field = WindField::crosswind(Vec3::ZERO, Vec3::splat(12.0), Vec3::X, 10.0);
+        let velocity = Vec3::new(1.0, 0.0, 0.0);
+        let application = apply_wind_fields(Vec3::ZERO, velocity, [field], 0.5, 0.5, false);
+
+        assert_eq!(application.velocity, velocity);
+        assert_eq!(application.active_fields, 0);
+        assert_eq!(application.applied_delta, Vec3::ZERO);
+    }
+
+    #[test]
+    fn wind_force_diagnostics_clear_for_final_grounded_samples() {
+        let field = WindField::crosswind(Vec3::ZERO, Vec3::splat(12.0), Vec3::X, 10.0);
+        let application = apply_wind_fields(Vec3::ZERO, Vec3::ZERO, [field], 0.5, 0.5, true)
+            .for_airborne_diagnostics(false);
+
+        assert_eq!(application.active_fields, 0);
+        assert_eq!(application.crosswind_fields, 0);
+        assert_eq!(application.applied_delta, Vec3::ZERO);
+        assert!(application.velocity.x > 0.0);
     }
 
     #[test]

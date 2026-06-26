@@ -171,6 +171,20 @@ impl EvalSample {
             self.total_power_up_activations,
             json_number(self.visual_foot_gap_m),
         );
+        let wind_force_key = "\"active_lift_fields\"";
+        let wind_force_metrics = format!(
+            "\"active_wind_force_fields\":{},\"crosswind_force_fields\":{},\"updraft_swirl_force_fields\":{},\"max_wind_force_delta_mps\":{},\"max_crosswind_force_delta_mps\":{},\"max_updraft_swirl_force_delta_mps\":{},\"max_wind_force_flow_speed_mps\":{},\"max_wind_force_variation\":{},{}",
+            self.active_wind_force_fields,
+            self.crosswind_force_fields,
+            self.updraft_swirl_force_fields,
+            json_number(self.max_wind_force_delta_mps),
+            json_number(self.max_crosswind_force_delta_mps),
+            json_number(self.max_updraft_swirl_force_delta_mps),
+            json_number(self.max_wind_force_flow_speed_mps),
+            json_number(self.max_wind_force_variation),
+            wind_force_key
+        );
+        let json = json.replacen(wind_force_key, &wind_force_metrics, 1);
         let wind_visual_key = "\"world_collision_proxy_count\"";
         let wind_visual_metrics = format!(
             "\"updraft_guide_visual_count\":{},\"updraft_ribbon_visual_count\":{},\"crosswind_guide_visual_count\":{},\"crosswind_ribbon_visual_count\":{},\"max_updraft_visual_motion_m\":{},\"max_crosswind_visual_motion_m\":{},{}",

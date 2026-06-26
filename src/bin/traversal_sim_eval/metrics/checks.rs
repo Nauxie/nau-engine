@@ -6,8 +6,12 @@ mod camera_strafe;
 mod core;
 
 use nau_engine::eval::{
-    AIR_CONTROL_RESPONSE, CAMERA_STRAFE_STABILITY, EvalScenario, MIN_DYNAMIC_WIND_FLOW_SPEED_MPS,
+    AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
+    EvalScenario, LONG_GLIDE_VISIBILITY, MIN_CROSSWIND_FORCE_DELTA_MPS,
+    MIN_CROSSWIND_FORCE_SAMPLE_COUNT, MIN_DYNAMIC_WIND_FLOW_SPEED_MPS,
     MIN_DYNAMIC_WIND_FLOW_VARIATION, MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE,
+    MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_SPEED_MPS,
+    MIN_WIND_FORCE_SAMPLE_COUNT, MIN_WIND_FORCE_VARIATION, UPDRAFT_ROUTE,
 };
 use serde_json::{Value, json};
 
@@ -118,6 +122,81 @@ impl SimMetrics {
             ));
         }
 
+        if wind_force_scenario(scenario) {
+            checks.push(SimCheck::at_least(
+                "wind_force_samples",
+                self.wind_force_samples as f32,
+                MIN_WIND_FORCE_SAMPLE_COUNT as f32,
+                "samples",
+            ));
+            checks.push(SimCheck::at_least(
+                "active_wind_force_fields",
+                self.max_active_wind_force_fields as f32,
+                1.0,
+                "fields",
+            ));
+            checks.push(SimCheck::at_least(
+                "wind_force_delta",
+                self.max_wind_force_delta_mps,
+                MIN_WIND_FORCE_DELTA_MPS,
+                "m/s",
+            ));
+            checks.push(SimCheck::at_least(
+                "wind_force_flow_speed",
+                self.max_wind_force_flow_speed_mps,
+                MIN_WIND_FORCE_FLOW_SPEED_MPS,
+                "m/s",
+            ));
+            checks.push(SimCheck::at_least(
+                "wind_force_variation",
+                self.max_wind_force_variation,
+                MIN_WIND_FORCE_VARIATION,
+                "ratio",
+            ));
+        }
+
+        if crosswind_force_scenario(scenario) {
+            checks.push(SimCheck::at_least(
+                "crosswind_force_samples",
+                self.crosswind_force_samples as f32,
+                MIN_CROSSWIND_FORCE_SAMPLE_COUNT as f32,
+                "samples",
+            ));
+            checks.push(SimCheck::at_least(
+                "crosswind_force_fields",
+                self.max_crosswind_force_fields as f32,
+                1.0,
+                "fields",
+            ));
+            checks.push(SimCheck::at_least(
+                "crosswind_force_delta",
+                self.max_crosswind_force_delta_mps,
+                MIN_CROSSWIND_FORCE_DELTA_MPS,
+                "m/s",
+            ));
+        }
+
+        if scenario.thresholds.min_lifted_samples > 0 {
+            checks.push(SimCheck::at_least(
+                "updraft_swirl_force_samples",
+                self.updraft_swirl_force_samples as f32,
+                scenario.thresholds.min_lifted_samples as f32,
+                "samples",
+            ));
+            checks.push(SimCheck::at_least(
+                "updraft_swirl_force_fields",
+                self.max_updraft_swirl_force_fields as f32,
+                1.0,
+                "fields",
+            ));
+            checks.push(SimCheck::at_least(
+                "updraft_swirl_force_delta",
+                self.max_updraft_swirl_force_delta_mps,
+                MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+                "m/s",
+            ));
+        }
+
         if scenario.name == CAMERA_STRAFE_STABILITY {
             camera_strafe::append_checks(&mut checks, self);
         }
@@ -128,4 +207,15 @@ impl SimMetrics {
 
         checks
     }
+}
+
+fn wind_force_scenario(scenario: EvalScenario) -> bool {
+    matches!(
+        scenario.name,
+        BASELINE_ROUTE | UPDRAFT_ROUTE | BRANCH_RECOVERY_ROUTE | LONG_GLIDE_VISIBILITY
+    )
+}
+
+fn crosswind_force_scenario(scenario: EvalScenario) -> bool {
+    matches!(scenario.name, BASELINE_ROUTE | BRANCH_RECOVERY_ROUTE)
 }

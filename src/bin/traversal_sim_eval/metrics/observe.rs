@@ -178,6 +178,39 @@ impl SimMetrics {
         self.max_wind_flow_variation = self
             .max_wind_flow_variation
             .max(sample.max_wind_flow_variation);
+        if sample.active_wind_force_fields > 0 {
+            self.wind_force_samples += 1;
+        }
+        if sample.crosswind_force_fields > 0 {
+            self.crosswind_force_samples += 1;
+        }
+        if sample.updraft_swirl_force_fields > 0 {
+            self.updraft_swirl_force_samples += 1;
+        }
+        self.max_active_wind_force_fields = self
+            .max_active_wind_force_fields
+            .max(sample.active_wind_force_fields);
+        self.max_crosswind_force_fields = self
+            .max_crosswind_force_fields
+            .max(sample.crosswind_force_fields);
+        self.max_updraft_swirl_force_fields = self
+            .max_updraft_swirl_force_fields
+            .max(sample.updraft_swirl_force_fields);
+        self.max_wind_force_delta_mps = self
+            .max_wind_force_delta_mps
+            .max(sample.max_wind_force_delta_mps);
+        self.max_crosswind_force_delta_mps = self
+            .max_crosswind_force_delta_mps
+            .max(sample.max_crosswind_force_delta_mps);
+        self.max_updraft_swirl_force_delta_mps = self
+            .max_updraft_swirl_force_delta_mps
+            .max(sample.max_updraft_swirl_force_delta_mps);
+        self.max_wind_force_flow_speed_mps = self
+            .max_wind_force_flow_speed_mps
+            .max(sample.max_wind_force_flow_speed_mps);
+        self.max_wind_force_variation = self
+            .max_wind_force_variation
+            .max(sample.max_wind_force_variation);
         self.max_active_chunk_count = self.max_active_chunk_count.max(sample.active_chunk_count);
         self.max_active_island_count = self.max_active_island_count.max(sample.active_island_count);
         self.max_near_lod_islands = self.max_near_lod_islands.max(sample.near_lod_islands);

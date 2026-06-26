@@ -73,7 +73,7 @@ Work:
 Exit criteria:
 
 - Player movement queries real collision geometry.
-- Wind/updraft fields become traversal forces only after a deliberate gameplay design pass.
+- Wind current and vertical lift stay readable, bounded, and separated between visual `WindField` horizontal response and `LiftField` climb.
 - Physics debug visualization can be toggled on.
 
 ## Horizon 4: Island Slice
@@ -120,7 +120,7 @@ Goal: support wind, weather, atmosphere, water, vegetation, and effects as syste
 Work:
 
 - Visual wind on grass, cloth/glider, particles, clouds, and water.
-- Gameplay wind fields integrated with traversal.
+- Gameplay wind fields integrated with traversal. Initial bounded horizontal airborne response complete.
 - Atmospheric fog and distance haze.
 - Volumetric or layered cloud experiments.
 - Water shader and shoreline treatment.
@@ -128,6 +128,6 @@ Work:
 
 Exit criteria:
 
-- Wind is both visible and mechanically meaningful.
-- The player can read wind/updraft opportunities from the environment.
+- Wind is both visible and mechanically meaningful. Initial crosswind push and updraft swirl current complete.
+- The player can read wind/updraft opportunities from the environment while vertical climb remains explicit `LiftField` support.
 - Environment fidelity does not hide traversal readability.

@@ -6,6 +6,7 @@ use super::{
 };
 use bevy::prelude::{Quat, Transform, Vec3};
 use nau_engine::{
+    environment::WindForceApplication,
     eval::{
         AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario,
         ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, UPDRAFT_ROUTE, scenario_named,
@@ -56,6 +57,39 @@ fn baseline_simulation_writes_windowless_artifacts() {
             .get("max_wind_flow_variation")
             .is_some()
     );
+    let last_sample_json = result.samples.last().unwrap().to_json();
+    for key in [
+        "active_wind_force_fields",
+        "crosswind_force_fields",
+        "updraft_swirl_force_fields",
+        "max_wind_force_delta_mps",
+        "max_crosswind_force_delta_mps",
+        "max_updraft_swirl_force_delta_mps",
+        "max_wind_force_flow_speed_mps",
+        "max_wind_force_variation",
+    ] {
+        assert!(
+            last_sample_json.get(key).is_some(),
+            "{key} should be serialized"
+        );
+    }
+    for check_name in [
+        "wind_force_samples",
+        "active_wind_force_fields",
+        "wind_force_delta",
+        "wind_force_flow_speed",
+        "wind_force_variation",
+        "crosswind_force_samples",
+        "crosswind_force_fields",
+        "crosswind_force_delta",
+    ] {
+        let check = result
+            .checks
+            .iter()
+            .find(|check| check.name == check_name)
+            .expect("wind-force check");
+        assert!(check.passed, "{check_name} should pass");
+    }
 }
 
 #[test]
@@ -151,6 +185,14 @@ fn updraft_simulation_uses_readable_lift() {
         "max_wind_flow_speed",
         "max_wind_flow_variation",
         "max_wind_flow_variation_range",
+        "wind_force_samples",
+        "active_wind_force_fields",
+        "wind_force_delta",
+        "wind_force_flow_speed",
+        "wind_force_variation",
+        "updraft_swirl_force_samples",
+        "updraft_swirl_force_fields",
+        "updraft_swirl_force_delta",
     ] {
         let check = result
             .checks
@@ -323,6 +365,7 @@ fn sim_sample_measures_pure_backward_body_heading_intent() {
         &route,
         &[],
         &[],
+        WindForceApplication::default(),
         &objective,
         &SimPowerUps::default(),
     );
@@ -407,6 +450,7 @@ fn sim_roll_sample(
         route,
         &[],
         &[],
+        WindForceApplication::default(),
         &objective,
         &power_ups,
     )

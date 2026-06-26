@@ -10,7 +10,7 @@ use crate::environment_visuals::{
 use crate::island_visuals::IslandStreamDiagnostics;
 use crate::power_up_runtime::PowerUpCollectionState;
 use crate::world_collision_runtime::WorldCollisionDiagnostics;
-use crate::{Player, RouteObjectiveTracker};
+use crate::{Player, RouteObjectiveTracker, WindForceDiagnostics};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use nau_engine::animation::{AnimationState, CharacterPart};
@@ -42,6 +42,7 @@ pub(crate) struct EvalScene<'w, 's> {
     pub(crate) route_objectives: Res<'w, RouteObjectiveTracker>,
     pub(crate) power_ups: Res<'w, PowerUpCollectionState>,
     pub(crate) collision_diagnostics: Res<'w, WorldCollisionDiagnostics>,
+    pub(crate) wind_force_diagnostics: Res<'w, WindForceDiagnostics>,
     pub(crate) generated_character_parts: Query<
         'w,
         's,
