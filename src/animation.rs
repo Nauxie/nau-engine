@@ -266,6 +266,14 @@ fn side_cycle(phase: f32, side: Side) -> f32 {
     (phase + offset).sin()
 }
 
+fn breath_cycle(phase: f32) -> f32 {
+    (phase * 0.42).sin()
+}
+
+fn airflow_micro_cycle(phase: f32, side: Side) -> f32 {
+    (phase * 1.7 + side.sign() * 0.55).sin()
+}
+
 fn airborne_pose_intent(intent: PlayerPoseIntent) -> bool {
     matches!(
         intent,
@@ -511,25 +519,32 @@ pub fn part_pose_with_context(
     let mut visibility = PartVisibility::Inherited;
     let landing_strength = landing_anticipation_strength(context, intent);
     let recovery_strength = landing_recovery_strength(context, intent);
+    let breath = breath_cycle(phase);
 
     match part.role {
         CharacterPartRole::Torso => {
             let pitch = match intent {
-                PlayerPoseIntent::GroundedIdle => 0.015 + cycle * 0.01,
+                PlayerPoseIntent::GroundedIdle => 0.018 + breath * 0.018,
                 PlayerPoseIntent::GroundedStride => -0.04 * gait_weight,
                 PlayerPoseIntent::Falling => -0.12 + vertical_pitch,
                 PlayerPoseIntent::Gliding => -0.30 + vertical_pitch * 0.5,
                 PlayerPoseIntent::AirTurn => -0.34 + vertical_pitch * 0.45,
                 PlayerPoseIntent::Diving => -1.04 + vertical_pitch * 0.18,
                 PlayerPoseIntent::AirBrake => 0.08 + vertical_pitch * 0.35,
-                PlayerPoseIntent::LandingAnticipation => 0.46 + landing_strength * 0.22,
+                PlayerPoseIntent::LandingAnticipation => 0.52 + landing_strength * 0.26,
                 PlayerPoseIntent::LandingRecovery => 0.20 + recovery_strength * 0.16,
                 PlayerPoseIntent::Launching => 0.1,
             };
-            translation.y += cycle.abs() * (0.014 + gait_weight * 0.018);
+            translation.y += match intent {
+                PlayerPoseIntent::GroundedIdle => 0.018 + breath * 0.012,
+                PlayerPoseIntent::Gliding | PlayerPoseIntent::AirTurn => {
+                    cycle.abs() * (0.010 + gait_weight * 0.010) + breath * 0.004
+                }
+                _ => cycle.abs() * (0.014 + gait_weight * 0.018),
+            };
             if intent == PlayerPoseIntent::LandingAnticipation {
-                translation.y += 0.10 + landing_strength * 0.07;
-                translation.z += 0.13 + landing_strength * 0.10;
+                translation.y += 0.12 + landing_strength * 0.08;
+                translation.z += 0.16 + landing_strength * 0.12;
             } else if intent == PlayerPoseIntent::LandingRecovery {
                 translation.y -= 0.06 + recovery_strength * 0.05;
                 translation.z += 0.04 + recovery_strength * 0.06;
@@ -546,8 +561,9 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::AirTurn => -0.10,
                 PlayerPoseIntent::Diving => 0.18,
                 PlayerPoseIntent::AirBrake => -0.14,
-                PlayerPoseIntent::LandingAnticipation => -0.34,
+                PlayerPoseIntent::LandingAnticipation => -0.38,
                 PlayerPoseIntent::LandingRecovery => -0.12,
+                PlayerPoseIntent::GroundedIdle => -0.05 + breath * 0.018,
                 _ => -0.05,
             };
             rotation *= Quat::from_rotation_x(pitch)
@@ -559,45 +575,53 @@ pub fn part_pose_with_context(
             let same_side_turn = (sign * turn_weight).max(0.0);
             let opposite_side_turn = (-sign * turn_weight).max(0.0);
             let gait = -side_cycle(phase, side);
+            let airflow = airflow_micro_cycle(phase, side);
             let spread = match intent {
                 PlayerPoseIntent::GroundedIdle => 0.08,
                 PlayerPoseIntent::GroundedStride => 0.08 + gait.abs() * 0.06 * gait_weight,
                 PlayerPoseIntent::Falling => 0.65,
-                PlayerPoseIntent::Gliding => 1.08,
-                PlayerPoseIntent::AirTurn => 1.18,
-                PlayerPoseIntent::Diving => 1.50,
-                PlayerPoseIntent::AirBrake => 1.50,
-                PlayerPoseIntent::LandingAnticipation => 0.92 + landing_strength * 0.20,
+                PlayerPoseIntent::Gliding => 1.08 + airflow * 0.035,
+                PlayerPoseIntent::AirTurn => 1.18 + airflow * 0.040,
+                PlayerPoseIntent::Diving => 1.55 + airflow * 0.025,
+                PlayerPoseIntent::AirBrake => 1.565,
+                PlayerPoseIntent::LandingAnticipation => 1.00 + landing_strength * 0.24,
                 PlayerPoseIntent::LandingRecovery => 0.62 + recovery_strength * 0.22,
                 PlayerPoseIntent::Launching => 0.28,
             };
             let sweep = match intent {
                 PlayerPoseIntent::GroundedIdle => cycle * 0.025,
                 PlayerPoseIntent::GroundedStride => gait * 0.48 * gait_weight,
-                PlayerPoseIntent::Gliding => -0.58,
+                PlayerPoseIntent::Gliding => -0.58 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => -0.46 + turn_weight.abs() * 0.10,
-                PlayerPoseIntent::Diving => 0.10,
+                PlayerPoseIntent::Diving => 0.02 + airflow * 0.018,
                 PlayerPoseIntent::AirBrake => 0.42,
-                PlayerPoseIntent::LandingAnticipation => 1.08 + landing_strength * 0.28,
+                PlayerPoseIntent::LandingAnticipation => 1.16 + landing_strength * 0.30,
                 PlayerPoseIntent::LandingRecovery => 0.36 + recovery_strength * 0.24,
                 PlayerPoseIntent::Launching => 0.22,
                 PlayerPoseIntent::Falling => -0.2,
             };
             translation.z += gait * 0.08 * gait_weight;
             translation.y += match context.mode {
-                _ if intent == PlayerPoseIntent::Diving => 0.12,
-                _ if intent == PlayerPoseIntent::AirBrake => 0.08,
-                _ if intent == PlayerPoseIntent::LandingAnticipation => -0.12,
+                _ if intent == PlayerPoseIntent::Diving => 0.16,
+                _ if intent == PlayerPoseIntent::AirBrake => 0.10,
+                _ if intent == PlayerPoseIntent::LandingAnticipation => -0.14,
                 _ if intent == PlayerPoseIntent::LandingRecovery => -0.04,
                 FlightMode::Gliding => 0.04,
                 FlightMode::Airborne => -0.02,
                 _ => 0.0,
             };
             if airborne_pose {
+                let airflow_z = if intent == PlayerPoseIntent::AirTurn {
+                    airflow * 0.004
+                } else {
+                    airflow * 0.018
+                };
                 translation.x += sign * turn_reach * 0.045;
-                translation.y += sign * turn_weight * 0.045 + same_side_turn * 0.035;
-                translation.z +=
-                    turn_weight.abs() * 0.025 - same_side_turn * 0.05 + opposite_side_turn * 0.025;
+                translation.y +=
+                    sign * turn_weight * 0.045 + same_side_turn * 0.035 + airflow * 0.012;
+                translation.z += turn_weight.abs() * 0.025 - same_side_turn * 0.05
+                    + opposite_side_turn * 0.025
+                    + airflow_z;
             }
             rotation *= Quat::from_rotation_z(sign * spread)
                 * Quat::from_rotation_x(sweep - same_side_turn * 0.16 + opposite_side_turn * 0.06)
@@ -608,26 +632,27 @@ pub fn part_pose_with_context(
             let same_side_turn = (sign * turn_weight).max(0.0);
             let opposite_side_turn = (-sign * turn_weight).max(0.0);
             let gait = side_cycle(phase, side);
+            let airflow = airflow_micro_cycle(phase + 0.9, side);
             let spread = match intent {
                 PlayerPoseIntent::GroundedIdle => 0.04,
                 PlayerPoseIntent::GroundedStride => 0.04 + gait.abs() * 0.05 * gait_weight,
                 PlayerPoseIntent::Falling => 0.14,
-                PlayerPoseIntent::Gliding => 0.2,
-                PlayerPoseIntent::AirTurn => 0.24,
-                PlayerPoseIntent::Diving => 0.12,
+                PlayerPoseIntent::Gliding => 0.20 + airflow.abs() * 0.025,
+                PlayerPoseIntent::AirTurn => 0.24 + airflow.abs() * 0.030,
+                PlayerPoseIntent::Diving => 0.12 + airflow.abs() * 0.020,
                 PlayerPoseIntent::AirBrake => 0.34,
-                PlayerPoseIntent::LandingAnticipation => 0.46 + landing_strength * 0.16,
+                PlayerPoseIntent::LandingAnticipation => 0.52 + landing_strength * 0.18,
                 PlayerPoseIntent::LandingRecovery => 0.30 + recovery_strength * 0.12,
                 PlayerPoseIntent::Launching => 0.02,
             };
             let trail = match intent {
                 PlayerPoseIntent::GroundedIdle => 0.02,
                 PlayerPoseIntent::GroundedStride => gait * 0.52 * gait_weight,
-                PlayerPoseIntent::Gliding => 0.46 + cycle * 0.04,
-                PlayerPoseIntent::AirTurn => 0.50 + cycle * 0.04,
-                PlayerPoseIntent::Diving => 0.98 + cycle * 0.02,
+                PlayerPoseIntent::Gliding => 0.50 + cycle * 0.04 + airflow * 0.025,
+                PlayerPoseIntent::AirTurn => 0.54 + cycle * 0.04 + airflow * 0.025,
+                PlayerPoseIntent::Diving => 1.08 + cycle * 0.02 + airflow * 0.018,
                 PlayerPoseIntent::AirBrake => -0.34,
-                PlayerPoseIntent::LandingAnticipation => -0.98 - landing_strength * 0.32,
+                PlayerPoseIntent::LandingAnticipation => -1.08 - landing_strength * 0.36,
                 PlayerPoseIntent::LandingRecovery => -0.42 - recovery_strength * 0.28,
                 PlayerPoseIntent::Falling => 0.22 + vertical_pitch,
                 PlayerPoseIntent::Launching => -0.12,
@@ -635,8 +660,8 @@ pub fn part_pose_with_context(
             translation.z += gait * 0.18 * gait_weight;
             translation.y += gait.max(0.0) * 0.045 * gait_weight;
             if intent == PlayerPoseIntent::LandingAnticipation {
-                translation.z += 0.18 + landing_strength * 0.14;
-                translation.y += 0.07 + landing_strength * 0.06;
+                translation.z += 0.22 + landing_strength * 0.16;
+                translation.y += 0.08 + landing_strength * 0.07;
             } else if intent == PlayerPoseIntent::LandingRecovery {
                 translation.z += 0.09 + recovery_strength * 0.11;
                 translation.y += 0.035 + recovery_strength * 0.055;
@@ -661,13 +686,14 @@ pub fn part_pose_with_context(
             let bank =
                 (context.velocity.x * 0.008 + pose_turn_weight(context) * 0.18).clamp(-0.26, 0.26);
             let airflow = wing_airflow_strength(context.mode, context.velocity);
-            let flutter = (phase * 2.4).sin() * (0.018 + airflow * 0.038);
+            let flutter = ((phase * 2.4) + sign * 0.6).sin() * (0.018 + airflow * 0.038)
+                + breath * airflow * 0.010;
             let air_brake_cup = if intent == PlayerPoseIntent::AirBrake {
                 0.16
             } else {
                 0.0
             };
-            translation.y += flutter * 0.5 + airflow * 0.045 + air_brake_cup * 0.2;
+            translation.y += flutter * 0.5 + airflow * 0.050 + air_brake_cup * 0.2;
             translation.z += airflow * 0.06 - air_brake_cup * 0.12;
             rotation *= Quat::from_rotation_z(sign * (bank + airflow * 0.05 + air_brake_cup))
                 * Quat::from_rotation_y(sign * (airflow * 0.08 + air_brake_cup * 0.25))
@@ -742,6 +768,56 @@ mod tests {
 
         assert!(fast.translation.y > slow.translation.y + 0.035);
         assert!(fast.translation.z > slow.translation.z);
+    }
+
+    #[test]
+    fn grounded_idle_pose_breathes_without_stride_input() {
+        let torso = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+        let head = CharacterPart::new(CharacterPartRole::Head, Vec3::ZERO, Quat::IDENTITY);
+        let context = PlayerPoseContext::new(
+            FlightMode::Grounded,
+            Vec3::ZERO,
+            FlightInput::default(),
+            0.0,
+        );
+
+        let neutral_torso = part_pose_with_context(&torso, context, 0.0);
+        let inhale_torso = part_pose_with_context(&torso, context, std::f32::consts::PI);
+        let neutral_head = part_pose_with_context(&head, context, 0.0);
+        let inhale_head = part_pose_with_context(&head, context, std::f32::consts::PI);
+
+        assert!(inhale_torso.translation.y > neutral_torso.translation.y + 0.010);
+        assert!(inhale_torso.rotation.angle_between(neutral_torso.rotation) > 0.01);
+        assert!(inhale_head.rotation.angle_between(neutral_head.rotation) > 0.01);
+    }
+
+    #[test]
+    fn gliding_pose_has_subtle_limb_airflow_motion() {
+        let left_arm = CharacterPart::new(
+            CharacterPartRole::Arm(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let left_leg = CharacterPart::new(
+            CharacterPartRole::Leg(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -6.0, -40.0),
+            FlightInput::default(),
+            40.0,
+        );
+
+        let arm_a = part_pose_with_context(&left_arm, context, 0.0);
+        let arm_b = part_pose_with_context(&left_arm, context, 1.0);
+        let leg_a = part_pose_with_context(&left_leg, context, 0.0);
+        let leg_b = part_pose_with_context(&left_leg, context, 1.0);
+
+        assert!(arm_a.rotation.angle_between(arm_b.rotation) > 0.02);
+        assert!((arm_a.translation.z - arm_b.translation.z).abs() > 0.02);
+        assert!(leg_a.rotation.angle_between(leg_b.rotation) > 0.02);
     }
 
     #[test]
