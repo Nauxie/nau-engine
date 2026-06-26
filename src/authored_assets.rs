@@ -5,9 +5,9 @@ mod registry;
 mod types;
 
 pub(crate) use animation::{
-    AuthoredPlayerAnimation, AuthoredPlayerPoseNode, authored_player_clip_for_pose_intent,
-    link_ready_authored_animations, tag_authored_player_pose_nodes,
-    update_authored_player_animation,
+    AuthoredAnimationDiagnostics, AuthoredPlayerAnimation, AuthoredPlayerPoseNode,
+    authored_player_clip_for_pose_intent, link_ready_authored_animations,
+    tag_authored_player_pose_nodes, update_authored_player_animation,
 };
 #[cfg(test)]
 pub(crate) use animation::{

@@ -275,6 +275,10 @@ impl EvalSample {
             ready_animation_clip_count,
             animation_player_count,
             animation_graph_count,
+            authored_player_current_clip_label: "none",
+            authored_player_desired_clip_label: "none",
+            authored_player_count: 0,
+            authored_transition_duration_ms: 0,
             power_up_count,
             visible_power_up_count,
             collected_power_up_count,
@@ -334,6 +338,20 @@ impl EvalSample {
 
     pub fn with_key_pose_transition_grace(mut self, used_transition_grace: bool) -> Self {
         self.key_pose_transition_grace = used_transition_grace;
+        self
+    }
+
+    pub fn with_authored_animation_metrics(
+        mut self,
+        current_clip_label: &'static str,
+        desired_clip_label: &'static str,
+        player_count: usize,
+        transition_duration_ms: u64,
+    ) -> Self {
+        self.authored_player_current_clip_label = current_clip_label;
+        self.authored_player_desired_clip_label = desired_clip_label;
+        self.authored_player_count = player_count;
+        self.authored_transition_duration_ms = transition_duration_ms;
         self
     }
 
