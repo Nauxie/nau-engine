@@ -47,6 +47,17 @@ fn normalized_radius(island: SkyIsland, position: [f32; 3]) -> f32 {
     .length()
 }
 
+fn radial_range(positions: &[[f32; 3]]) -> f32 {
+    let mut min_radius = f32::INFINITY;
+    let mut max_radius = f32::NEG_INFINITY;
+    for position in positions {
+        let radius = Vec2::new(position[0], position[2]).length();
+        min_radius = min_radius.min(radius);
+        max_radius = max_radius.max(radius);
+    }
+    max_radius - min_radius
+}
+
 #[test]
 fn marker_occlusion_detects_island_between_camera_and_marker() {
     let island = SkyIsland::new(
@@ -338,6 +349,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     let launch_ground_cover = output_dir.join("visuals/00_launch_mesa_ground_cover.obj");
     let launch_tree_trunk = output_dir.join("visuals/00_launch_mesa_launch_tree_trunk.obj");
     let launch_cloud = output_dir.join("visuals/00_launch_mesa_bank_0.obj");
+    let launch_beacon = output_dir.join("visuals/00_launch_mesa_launch_beacon.obj");
+    let midpoint_cairn = output_dir.join("visuals/01_midpoint_shelf_route_cairn.obj");
+    let launch_pond = output_dir.join("visuals/00_launch_mesa_pond_surface.obj");
+    let landing_marker = output_dir.join("visuals/02_landing_garden_landing_garden_marker_0.obj");
 
     assert_eq!(
         report.ground_cover_count,
@@ -359,9 +374,20 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         SkyRoute::default().islands().len()
     );
     assert_eq!(report.weather_cloud_veil_count, 18);
+    assert_eq!(report.landmark_count, 27);
+    assert_eq!(report.route_cairn_count, 10);
+    assert_eq!(report.launch_beacon_count, 1);
+    assert_eq!(report.landing_garden_marker_count, 4);
+    assert_eq!(
+        report.pond_surface_count,
+        SkyRoute::default().islands().len()
+    );
     assert_eq!(
         report.mesh_count,
-        report.ground_cover_count + report.tree_trunk_count * 2 + report.weather_cloud_count
+        report.ground_cover_count
+            + report.tree_trunk_count * 2
+            + report.weather_cloud_count
+            + report.landmark_count
     );
     assert!(report.total_vertex_count > 70_000);
     assert!(report.total_triangle_count > 75_000);
@@ -387,6 +413,14 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_weather_cloud_bank_depth_m >= 4.0);
     assert!(report.min_weather_cloud_bank_lobe_count >= 10);
     assert!(report.min_weather_cloud_scaled_depth_span_m >= 12.0);
+    assert!(report.min_route_cairn_mesh_vertices >= 240);
+    assert!(report.min_route_cairn_vertical_span_m >= 3.0);
+    assert!(report.min_launch_beacon_mesh_vertices >= 300);
+    assert!(report.min_launch_beacon_vertical_span_m >= 2.8);
+    assert!(report.min_landing_garden_marker_mesh_vertices >= 39);
+    assert!(report.min_landing_garden_marker_vertical_span_m >= 0.12);
+    assert!(report.min_pond_surface_mesh_vertices >= 65);
+    assert!(report.min_pond_surface_vertical_span_m >= 0.015);
     assert_eq!(
         report.terrain_biome_palette_count,
         TERRAIN_BIOME_PALETTE_COUNT
@@ -396,6 +430,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(launch_ground_cover.exists());
     assert!(launch_tree_trunk.exists());
     assert!(launch_cloud.exists());
+    assert!(launch_beacon.exists());
+    assert!(midpoint_cairn.exists());
+    assert!(launch_pond.exists());
+    assert!(landing_marker.exists());
     assert!(manifest.contains("\"schema\": \"nau_visual_content_export.v1\""));
     assert!(manifest.contains("\"ground_cover_blade_height_range_m\""));
     assert!(manifest.contains("\"tree_branch_reach_ratio\""));
@@ -407,6 +445,15 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"weather_cloud_scaled_depth_span_m\""));
     assert!(manifest.contains("\"weather_cloud_wisp_card_count\""));
     assert!(manifest.contains("\"weather_cloud_filament_ribbon_detail_count\""));
+    assert!(manifest.contains("\"landmark_count\": 27"));
+    assert!(manifest.contains("\"route_cairn_count\": 10"));
+    assert!(manifest.contains("\"launch_beacon_count\": 1"));
+    assert!(manifest.contains("\"landing_garden_marker_count\": 4"));
+    assert!(manifest.contains("\"pond_surface_count\": 12"));
+    assert!(manifest.contains("\"route_cairn_vertical_span_m\""));
+    assert!(manifest.contains("\"launch_beacon_vertical_span_m\""));
+    assert!(manifest.contains("\"landing_garden_marker_vertical_span_m\""));
+    assert!(manifest.contains("\"pond_surface_vertical_span_m\""));
     assert!(manifest.contains("\"terrain_biome_palette_count\": 5"));
 
     remove_existing_dir(&output_dir).expect("visual content export test dir should be removable");
@@ -637,6 +684,81 @@ fn rock_scatter_mesh_has_flattened_irregular_silhouette() {
     assert!(
         triangle_normal_y(positions, &indices[top_cap_start..top_cap_start + 3]) > 0.0,
         "rock top cap should face upward"
+    );
+}
+
+#[test]
+fn landmark_meshes_replace_basic_cylinders_and_boxes() {
+    let cairn = route_cairn_mesh(0.44, 4.2, 12_345);
+    let cairn_positions = positions(&cairn);
+    let cairn_y_range = mesh_y_range(&cairn);
+    let cairn_radius_range = radial_range(cairn_positions);
+
+    assert!(
+        cairn.count_vertices() > ROUTE_CAIRN_STONE_COUNT * 40,
+        "route cairns should be stacked stone meshes, not one cylinder"
+    );
+    assert!(cairn_y_range > 3.0);
+    assert!(
+        cairn_radius_range > 0.18,
+        "route cairn stones should vary their silhouette radius"
+    );
+
+    let launch_beacon = launch_beacon_mesh(0.78, 3.2, 14_321);
+    let launch_positions = positions(&launch_beacon);
+    assert!(
+        launch_beacon.count_vertices() > cairn.count_vertices() + LAUNCH_BEACON_CRYSTAL_COUNT * 10,
+        "launch beacon should add shard geometry on top of its stone base"
+    );
+    assert!(
+        mesh_y_range(&launch_beacon) > 2.8,
+        "launch beacon should read as a vertical landmark"
+    );
+    assert!(
+        launch_positions
+            .iter()
+            .map(|position| position[1])
+            .fold(f32::NEG_INFINITY, f32::max)
+            > 2.0
+    );
+
+    let marker = landing_garden_marker_mesh(8.0, 0.62, 13_579);
+    let marker_positions = positions(&marker);
+    let marker_indices = u32_indices(&marker);
+    let min_x = marker_positions
+        .iter()
+        .map(|position| position[0])
+        .fold(f32::INFINITY, f32::min);
+    let max_x = marker_positions
+        .iter()
+        .map(|position| position[0])
+        .fold(f32::NEG_INFINITY, f32::max);
+
+    assert_eq!(
+        marker.count_vertices(),
+        (LANDING_GARDEN_MARKER_SEGMENTS + 1) * 3
+    );
+    assert_eq!(marker_indices.len(), LANDING_GARDEN_MARKER_SEGMENTS * 12);
+    assert!(max_x - min_x > 7.8);
+    assert!(
+        mesh_y_range(&marker) > 0.12,
+        "landing garden markers should be low organic mounds, not flat boxes"
+    );
+
+    let pond = pond_surface_mesh(3.2, 1.4, 11_789);
+    let pond_positions = positions(&pond);
+    let pond_indices = u32_indices(&pond);
+    let pond_radius_range = radial_range(pond_positions);
+
+    assert_eq!(pond.count_vertices(), 1 + POND_SURFACE_SEGMENTS * 2);
+    assert_eq!(pond_indices.len(), POND_SURFACE_SEGMENTS * 9);
+    assert!(
+        pond_radius_range > 2.1,
+        "pond perimeter should be an irregular surface mesh, not a scaled cylinder"
+    );
+    assert!(
+        mesh_y_range(&pond) > 0.015,
+        "pond surface should carry subtle ripple variation"
     );
 }
 
