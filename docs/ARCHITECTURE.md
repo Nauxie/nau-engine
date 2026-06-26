@@ -59,7 +59,9 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/bin/semantic_scene_audit/main.rs` owns semantic scene audit CLI wiring for screenshot marker sidecars.
 - `src/bin/semantic_scene_audit/` owns checkpoint loading, semantic material pixel classification, report JSON/check assembly, thresholds, shared audit types, and unit coverage.
 - `src/lib.rs` declares the reusable module surface.
-- `src/generated_content.rs` owns procedural PBR material/texture helpers and shared generated-content re-exports.
+- `src/generated_content.rs` owns the generated-content facade and stable mesh/material/texture re-exports.
+- `src/generated_content/materials.rs` owns procedural PBR material construction for terrain, player, clouds, water, updrafts, and generated detail assets.
+- `src/generated_content/textures.rs` owns deterministic procedural texture, material-map, occlusion/depth-map, color-mix, and noise helpers.
 - `src/generated_content/island_meshes.rs` owns the generated-island mesh facade and stable re-exports shared by runtime spawning, app tests, and export audits.
 - `src/generated_content/island_meshes/constants.rs` owns island mesh topology, biome-count, ground-cover-density, and test gate constants.
 - `src/generated_content/island_meshes/shape.rs` owns deterministic island silhouette and surface-position helpers.
