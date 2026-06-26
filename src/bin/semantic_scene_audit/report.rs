@@ -1,10 +1,11 @@
 use crate::{
+    materials::min_material_sample_pixel_hit_count,
     thresholds::{
         EXPECTED_MATERIALS, EXPECTED_SCENE_SAMPLE_KINDS, EXPECTED_TERRAIN_MATERIAL_VARIANTS,
         MIN_PASSED_TERRAIN_MATERIAL_VARIANTS, MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE,
         MIN_VISIBLE_MATERIALS_PER_CHECKPOINT, MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT,
-        MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS, expected_material_pixel_coverage_floor,
-        expected_scene_kind_pixel_coverage_floor,
+        MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS, MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE,
+        expected_material_pixel_coverage_floor, expected_scene_kind_pixel_coverage_floor,
     },
     types::{Check, CheckpointAudit, MaterialAudit, SceneSampleAudit},
 };
@@ -126,6 +127,35 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
             *material_pixel_coverage.get(material).unwrap_or(&0) as f64,
             expected_material_pixel_coverage_floor(material) as f64,
             "pixels",
+        ));
+    }
+
+    let visible_wind_samples = *visible_material_counts.get("wind").unwrap_or(&0);
+    if visible_wind_samples > 0 {
+        let min_wind_pixel_hits = min_material_sample_pixel_hit_count(visible_wind_samples);
+        checks.push(Check::at_least(
+            "wind_visible_scene_samples",
+            visible_wind_samples as f64,
+            1.0,
+            "samples",
+        ));
+        checks.push(Check::at_least(
+            "wind_scene_sample_pixel_hits",
+            *material_counts.get("wind").unwrap_or(&0) as f64,
+            min_wind_pixel_hits as f64,
+            "samples",
+        ));
+        checks.push(Check::at_least(
+            "wind_scene_sample_pixel_coverage",
+            *material_pixel_coverage.get("wind").unwrap_or(&0) as f64,
+            (min_wind_pixel_hits * MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE) as f64,
+            "pixels",
+        ));
+        checks.push(Check::at_least(
+            "wind_scene_sample_kind_pixel_hits",
+            wind_sample_kind_hit_count(checkpoints) as f64,
+            1.0,
+            "sample_kinds",
         ));
     }
 
@@ -270,6 +300,19 @@ pub(crate) fn sample_kind_pixel_coverage_counts(
         }
     }
     counts
+}
+
+pub(crate) fn wind_sample_kind_hit_count(checkpoints: &[CheckpointAudit]) -> usize {
+    let mut unique_hits = HashSet::new();
+    for checkpoint in checkpoints {
+        for sample in &checkpoint.samples {
+            if sample.passed && sample.expected_material == "wind" {
+                unique_hits.insert(sample.kind.as_str());
+            }
+        }
+    }
+
+    unique_hits.len()
 }
 
 pub(crate) fn terrain_material_variant_visible_counts(
