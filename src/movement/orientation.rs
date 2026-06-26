@@ -96,6 +96,21 @@ pub fn desired_heading_alignment_speed(velocity: Vec3, desired_direction: Vec3) 
     horizontal(velocity).dot(horizontal_or(desired_direction, Vec3::Z))
 }
 
+pub fn desired_planar_travel_heading_error_degrees(
+    velocity: Vec3,
+    desired_direction: Vec3,
+    min_planar_speed_mps: f32,
+) -> f32 {
+    let horizontal_velocity = horizontal(velocity);
+    if horizontal_velocity.length() < min_planar_speed_mps.max(0.0) {
+        return f32::NAN;
+    }
+
+    let travel = horizontal_velocity.normalize();
+    let desired = horizontal_or(desired_direction, Vec3::Z);
+    travel.dot(desired).clamp(-1.0, 1.0).acos().to_degrees()
+}
+
 pub fn lateral_response_speed(velocity: Vec3, input: FlightInput, facing: Facing) -> f32 {
     let lateral = input.planar_axis().x;
     if lateral.abs() <= f32::EPSILON {

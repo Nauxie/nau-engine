@@ -492,6 +492,204 @@ fn accumulator_gates_air_control_body_travel_heading_misalignment() {
 }
 
 #[test]
+fn accumulator_gates_air_control_desired_travel_heading_misalignment() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..8 {
+        accumulator.observe(
+            air_control_metric_sample(
+                scenario,
+                90 + frame,
+                Vec3::new(20.0, -2.0, -18.0),
+                Vec2::new(1.0, 0.0),
+                20.0,
+                18.0,
+                3.0,
+            )
+            .with_desired_travel_heading_error_degrees(80.0),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let sample_count_check = named_check(&summary, "air_control_desired_travel_heading_samples");
+    let p95_check = named_check(&summary, "air_control_p95_desired_travel_heading_error");
+    let max_check = named_check(&summary, "air_control_max_desired_travel_heading_error");
+
+    assert_eq!(summary.metrics.desired_travel_heading_sample_count, 8);
+    assert_eq!(
+        summary.metrics.p95_desired_travel_heading_error_degrees,
+        80.0
+    );
+    assert_eq!(
+        summary.metrics.max_desired_travel_heading_error_degrees,
+        80.0
+    );
+    assert!(sample_count_check.passed);
+    assert_eq!(p95_check.value, 80.0);
+    assert_eq!(max_check.value, 80.0);
+    assert!(!p95_check.passed);
+    assert!(!max_check.passed);
+
+    let summary_json: serde_json::Value =
+        serde_json::from_str(&summary.to_json()).expect("summary json parses");
+    assert_eq!(
+        summary_json["metrics"]["desired_travel_heading_sample_count"],
+        8
+    );
+    assert_eq!(
+        summary_json["metrics"]["p95_desired_travel_heading_error_degrees"],
+        80.0
+    );
+    assert_eq!(
+        summary_json["metrics"]["max_desired_travel_heading_error_degrees"],
+        80.0
+    );
+    assert_eq!(
+        summary_json["final_sample"]["desired_travel_heading_error_degrees"],
+        80.0
+    );
+}
+
+#[test]
+fn accumulator_gates_missing_air_control_desired_travel_heading_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..4 {
+        accumulator.observe(
+            air_control_metric_sample(
+                scenario,
+                90 + frame,
+                Vec3::new(20.0, -2.0, -18.0),
+                Vec2::new(1.0, 0.0),
+                20.0,
+                18.0,
+                3.0,
+            )
+            .with_desired_travel_heading_error_degrees(f32::NAN),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let sample_count_check = named_check(&summary, "air_control_desired_travel_heading_samples");
+
+    assert_eq!(summary.metrics.desired_travel_heading_sample_count, 0);
+    assert_eq!(sample_count_check.value, 0.0);
+    assert!(!sample_count_check.passed);
+}
+
+#[test]
+fn accumulator_gates_missing_directional_air_control_desired_travel_heading_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in [90, 120, 150, 180] {
+        accumulator.observe(air_control_metric_sample(
+            scenario,
+            frame,
+            Vec3::new(20.0, -2.0, -18.0),
+            Vec2::new(1.0, 0.0),
+            20.0,
+            18.0,
+            3.0,
+        ));
+    }
+    for frame in [240, 270, 300, 330] {
+        accumulator.observe(air_control_metric_sample(
+            scenario,
+            frame,
+            Vec3::new(12.0, -2.0, 14.0),
+            Vec2::new(1.0, -1.0),
+            12.0,
+            18.0,
+            3.0,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.desired_travel_heading_sample_count, 8);
+    assert_eq!(summary.metrics.right_desired_travel_heading_sample_count, 8);
+    assert_eq!(summary.metrics.left_desired_travel_heading_sample_count, 0);
+    assert_eq!(
+        summary
+            .metrics
+            .backward_right_desired_travel_heading_sample_count,
+        4
+    );
+    assert_eq!(
+        summary
+            .metrics
+            .backward_left_desired_travel_heading_sample_count,
+        0
+    );
+    assert!(named_check(&summary, "air_control_desired_travel_heading_samples").passed);
+    assert!(named_check(&summary, "air_control_right_desired_travel_heading_samples").passed);
+    assert!(!named_check(&summary, "air_control_left_desired_travel_heading_samples").passed);
+    assert!(
+        named_check(
+            &summary,
+            "air_control_backward_right_desired_travel_heading_samples"
+        )
+        .passed
+    );
+    assert!(
+        !named_check(
+            &summary,
+            "air_control_backward_left_desired_travel_heading_samples"
+        )
+        .passed
+    );
+
+    let summary_json: serde_json::Value =
+        serde_json::from_str(&summary.to_json()).expect("summary json parses");
+    assert_eq!(
+        summary_json["metrics"]["right_desired_travel_heading_sample_count"],
+        8
+    );
+    assert_eq!(
+        summary_json["metrics"]["left_desired_travel_heading_sample_count"],
+        0
+    );
+    assert_eq!(
+        summary_json["metrics"]["backward_right_desired_travel_heading_sample_count"],
+        4
+    );
+    assert_eq!(
+        summary_json["metrics"]["backward_left_desired_travel_heading_sample_count"],
+        0
+    );
+}
+
+#[test]
 fn accumulator_gates_missing_air_control_body_travel_heading_samples() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
     let mut accumulator = EvalAccumulator::default();
@@ -793,6 +991,7 @@ fn accumulator_gates_ground_strafe_directional_response() {
             body_travel_heading_error_degrees: f32::NAN,
             body_roll_degrees: 0.0,
             desired_heading_alignment_mps: f32::NAN,
+            desired_travel_heading_error_degrees: f32::NAN,
             lateral_response_mps: 9.0,
             lateral_input_active: false,
             movement_axis: Vec2::new(1.0, 0.0),
@@ -804,6 +1003,7 @@ fn accumulator_gates_ground_strafe_directional_response() {
             body_travel_heading_error_degrees: f32::NAN,
             body_roll_degrees: 0.0,
             desired_heading_alignment_mps: f32::NAN,
+            desired_travel_heading_error_degrees: f32::NAN,
             lateral_response_mps: 3.0,
             lateral_input_active: false,
             movement_axis: Vec2::new(-1.0, 0.0),
@@ -922,6 +1122,15 @@ fn accumulator_summarizes_pose_intent_samples() {
         18.0,
         0.0,
     ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        6,
+        Vec3::new(16.0, -2.0, -18.0),
+        Vec2::new(1.0, 0.0),
+        16.0,
+        18.0,
+        0.0,
+    ));
     let mut landing_anticipation_sample = air_control_metric_sample(
         scenario,
         3,
@@ -989,6 +1198,9 @@ fn accumulator_summarizes_pose_intent_samples() {
     let summary_json = summary.to_json();
 
     assert_eq!(summary.metrics.pose_gliding_samples, 1);
+    assert_eq!(summary.metrics.pose_air_turn_samples, 1);
+    assert_eq!(summary.metrics.right_pose_air_turn_samples, 1);
+    assert_eq!(summary.metrics.left_pose_air_turn_samples, 0);
     assert_eq!(summary.metrics.pose_diving_samples, 1);
     assert_eq!(summary.metrics.pose_air_brake_samples, 1);
     assert_eq!(summary.metrics.pose_landing_anticipation_samples, 1);
@@ -997,6 +1209,9 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert_eq!(summary.metrics.max_pose_landing_flare_degrees, 37.0);
     assert_eq!(summary.metrics.unreadable_key_pose_samples, 1);
     assert!(summary_json.contains("\"max_pose_landing_flare_degrees\": 37"));
+    assert!(summary_json.contains("\"pose_air_turn_samples\": 1"));
+    assert!(summary_json.contains("\"right_pose_air_turn_samples\": 1"));
+    assert!(summary_json.contains("\"left_pose_air_turn_samples\": 0"));
     assert!(summary_json.contains("\"pose_air_brake_samples\": 1"));
     assert!(summary_json.contains("\"pose_landing_anticipation_samples\": 1"));
     assert!(summary_json.contains("\"pose_landing_recovery_samples\": 1"));
@@ -1292,8 +1507,11 @@ fn accumulator_gates_air_control_pose_readability() {
         },
     );
     let air_brake_check = named_check(&summary, "air_control_pose_air_brake_samples");
+    let air_turn_check = named_check(&summary, "air_control_pose_air_turn_samples");
     let dive_check = named_check(&summary, "air_control_pose_diving_samples");
 
+    assert_eq!(air_turn_check.value, 4.0);
+    assert!(air_turn_check.passed);
     assert_eq!(air_brake_check.value, 0.0);
     assert_eq!(dive_check.value, 0.0);
     assert!(!air_brake_check.passed);
@@ -1311,6 +1529,170 @@ fn accumulator_gates_air_control_pose_readability() {
         assert_eq!(check.value, 0.0);
         assert!(!check.passed, "expected {name} to fail");
     }
+}
+
+#[test]
+fn accumulator_gates_missing_air_control_turn_pose_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in [0, 30, 60, 90] {
+        accumulator.observe(air_control_metric_sample(
+            scenario,
+            frame,
+            Vec3::new(0.0, -2.0, -18.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let air_turn_check = named_check(&summary, "air_control_pose_air_turn_samples");
+
+    assert_eq!(summary.metrics.pose_air_turn_samples, 0);
+    assert_eq!(air_turn_check.value, 0.0);
+    assert!(!air_turn_check.passed);
+}
+
+#[test]
+fn accumulator_gates_missing_directional_air_control_turn_pose_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in [0, 30, 60, 90] {
+        accumulator.observe(air_control_metric_sample(
+            scenario,
+            frame,
+            Vec3::new(16.0, -2.0, -18.0),
+            Vec2::new(1.0, 0.0),
+            16.0,
+            18.0,
+            4.0,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let air_turn_check = named_check(&summary, "air_control_pose_air_turn_samples");
+    let right_air_turn_check = named_check(&summary, "air_control_right_pose_air_turn_samples");
+    let left_air_turn_check = named_check(&summary, "air_control_left_pose_air_turn_samples");
+
+    assert_eq!(summary.metrics.pose_air_turn_samples, 4);
+    assert_eq!(summary.metrics.right_pose_air_turn_samples, 4);
+    assert_eq!(summary.metrics.left_pose_air_turn_samples, 0);
+    assert_eq!(air_turn_check.value, 4.0);
+    assert_eq!(right_air_turn_check.value, 4.0);
+    assert_eq!(left_air_turn_check.value, 0.0);
+    assert!(air_turn_check.passed);
+    assert!(right_air_turn_check.passed);
+    assert!(!left_air_turn_check.passed);
+}
+
+#[test]
+fn accumulator_counts_bidirectional_air_control_turn_pose_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for (frame, input, velocity) in [
+        (0, Vec2::new(1.0, 0.0), Vec3::new(16.0, -2.0, -18.0)),
+        (30, Vec2::new(1.0, 0.0), Vec3::new(16.0, -2.0, -18.0)),
+        (60, Vec2::new(-1.0, 0.0), Vec3::new(-16.0, -2.0, -18.0)),
+        (90, Vec2::new(-1.0, 0.0), Vec3::new(-16.0, -2.0, -18.0)),
+    ] {
+        accumulator.observe(air_control_metric_sample(
+            scenario, frame, velocity, input, 16.0, 18.0, 4.0,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let summary_json: serde_json::Value =
+        serde_json::from_str(&summary.to_json()).expect("summary json parses");
+
+    assert_eq!(summary.metrics.pose_air_turn_samples, 4);
+    assert_eq!(summary.metrics.right_pose_air_turn_samples, 2);
+    assert_eq!(summary.metrics.left_pose_air_turn_samples, 2);
+    assert!(named_check(&summary, "air_control_pose_air_turn_samples").passed);
+    assert!(named_check(&summary, "air_control_right_pose_air_turn_samples").passed);
+    assert!(named_check(&summary, "air_control_left_pose_air_turn_samples").passed);
+    assert_eq!(summary_json["metrics"]["pose_air_turn_samples"], 4);
+    assert_eq!(summary_json["metrics"]["right_pose_air_turn_samples"], 2);
+    assert_eq!(summary_json["metrics"]["left_pose_air_turn_samples"], 2);
+}
+
+#[test]
+fn accumulator_rejects_unreadable_air_control_turn_pose_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            90,
+            Vec3::new(16.0, -2.0, -18.0),
+            Vec2::new(1.0, 0.0),
+            16.0,
+            18.0,
+            4.0,
+        )
+        .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+            torso_pitch_degrees: 4.0,
+            arm_spread_degrees: 12.0,
+            leg_tuck_degrees: 2.0,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            landing_crouch_m: 0.0,
+            wing_airflow_strength: 0.0,
+            key_pose_readability_score: 0.25,
+        }),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let air_turn_check = named_check(&summary, "air_control_pose_air_turn_samples");
+    let unreadable_check = named_check(&summary, "air_control_unreadable_key_pose_samples");
+
+    assert_eq!(summary.metrics.pose_air_turn_samples, 0);
+    assert_eq!(summary.metrics.unreadable_key_pose_samples, 1);
+    assert_eq!(air_turn_check.value, 0.0);
+    assert_eq!(unreadable_check.value, 1.0);
+    assert!(!air_turn_check.passed);
+    assert!(!unreadable_check.passed);
 }
 
 #[test]

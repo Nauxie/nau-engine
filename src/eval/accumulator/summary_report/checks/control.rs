@@ -309,6 +309,24 @@ fn append_air_control_checks(
             "m/s",
         ),
         EvalCheck::at_least(
+            "air_control_pose_air_turn_samples",
+            acc.pose_air_turn_samples as f32,
+            AIR_CONTROL_MIN_POSE_AIR_TURN_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_right_pose_air_turn_samples",
+            acc.right_pose_air_turn_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_POSE_AIR_TURN_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_left_pose_air_turn_samples",
+            acc.left_pose_air_turn_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_POSE_AIR_TURN_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
             "air_control_pose_air_brake_samples",
             acc.pose_air_brake_samples as f32,
             4.0,
@@ -475,6 +493,48 @@ fn append_air_control_checks(
             "air_control_max_backward_diagonal_body_travel_heading_error",
             acc.max_backward_diagonal_body_travel_heading_error_degrees,
             AIR_CONTROL_MAX_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "air_control_desired_travel_heading_samples",
+            acc.desired_travel_heading_error_values_degrees.len() as f32,
+            AIR_CONTROL_MIN_DESIRED_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_right_desired_travel_heading_samples",
+            acc.right_desired_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_DESIRED_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_left_desired_travel_heading_samples",
+            acc.left_desired_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_DESIRED_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_backward_right_desired_travel_heading_samples",
+            acc.backward_right_desired_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_DESIRED_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_backward_left_desired_travel_heading_samples",
+            acc.backward_left_desired_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_DESIRED_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "air_control_p95_desired_travel_heading_error",
+            derived.p95_desired_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_P95_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "air_control_max_desired_travel_heading_error",
+            acc.max_desired_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
             "deg",
         ),
         EvalCheck::at_most(

@@ -6,17 +6,20 @@ use crate::{
     AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES, AIR_CONTROL_MAX_BODY_YAW_OSCILLATIONS,
     AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES, AIR_CONTROL_MAX_CAMERA_VIEW_YAW_DRIFT_DEGREES,
     AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES,
+    AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MAX_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
     AIR_CONTROL_MAX_P95_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MAX_P95_BODY_HEADING_ERROR_DEGREES,
+    AIR_CONTROL_MAX_P95_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MAX_P95_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MIN_AIR_BRAKE_PLANAR_SPEED_DROP_MPS, AIR_CONTROL_MIN_AIR_BRAKE_SPEED_DROP_MPS,
     AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES,
     AIR_CONTROL_MIN_BACKWARD_DIAGONAL_REAR_RESPONSE_MPS,
     AIR_CONTROL_MIN_BACKWARD_LATERAL_RESPONSE_MPS, AIR_CONTROL_MIN_BODY_BANK_RESPONSE_DEGREES,
-    AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS, AIR_CONTROL_MIN_LATERAL_BODY_TRAVEL_HEADING_SAMPLES,
-    AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS, AIR_CONTROL_MIN_POSE_ARM_SPREAD_DEGREES,
+    AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS, AIR_CONTROL_MIN_DESIRED_TRAVEL_HEADING_SAMPLES,
+    AIR_CONTROL_MIN_LATERAL_BODY_TRAVEL_HEADING_SAMPLES, AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS,
+    AIR_CONTROL_MIN_POSE_AIR_TURN_SAMPLES, AIR_CONTROL_MIN_POSE_ARM_SPREAD_DEGREES,
     AIR_CONTROL_MIN_POSE_LATERAL_LEAN_DEGREES, AIR_CONTROL_MIN_POSE_LEG_TUCK_DEGREES,
     AIR_CONTROL_MIN_POSE_TORSO_PITCH_DEGREES, AIR_CONTROL_MIN_POSE_WING_AIRFLOW_STRENGTH,
     AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS, AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
@@ -26,6 +29,8 @@ use crate::{
 use crate::metrics::util::{
     avg_body_heading_error_degrees, p95_body_heading_error_degrees, response_latency_secs,
 };
+
+const AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES: f32 = 1.0;
 
 pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
     let lateral_response_latency_secs = response_latency_secs(
@@ -256,6 +261,48 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             AIR_CONTROL_MAX_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
             "deg",
         ),
+        SimCheck::at_least(
+            "air_control_desired_travel_heading_samples",
+            metrics.desired_travel_heading_error_values_degrees.len() as f32,
+            AIR_CONTROL_MIN_DESIRED_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_right_desired_travel_heading_samples",
+            metrics.right_desired_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_left_desired_travel_heading_samples",
+            metrics.left_desired_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_backward_right_desired_travel_heading_samples",
+            metrics.backward_right_desired_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_backward_left_desired_travel_heading_samples",
+            metrics.backward_left_desired_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_most(
+            "air_control_p95_desired_travel_heading_error",
+            metrics.p95_desired_travel_heading_error_degrees(),
+            AIR_CONTROL_MAX_P95_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_most(
+            "air_control_max_desired_travel_heading_error",
+            metrics.max_desired_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
         SimCheck::at_most(
             "air_control_camera_orbit_yaw_offset",
             metrics.max_abs_camera_yaw_offset_degrees,
@@ -344,6 +391,24 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             "air_control_unreadable_key_pose_samples",
             metrics.unreadable_key_pose_samples as f32,
             0.0,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_pose_air_turn_samples",
+            metrics.pose_air_turn_samples as f32,
+            AIR_CONTROL_MIN_POSE_AIR_TURN_SAMPLES as f32,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_right_pose_air_turn_samples",
+            metrics.right_pose_air_turn_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_left_pose_air_turn_samples",
+            metrics.left_pose_air_turn_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES,
             "samples",
         ),
         SimCheck::at_least(

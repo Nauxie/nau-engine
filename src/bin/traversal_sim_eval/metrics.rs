@@ -60,6 +60,12 @@ pub(crate) struct SimMetrics {
     pub(crate) backward_right_diagonal_body_travel_heading_samples: u32,
     pub(crate) backward_left_diagonal_body_travel_heading_samples: u32,
     pub(crate) max_backward_diagonal_body_travel_heading_error_degrees: f32,
+    pub(crate) desired_travel_heading_error_values_degrees: Vec<f32>,
+    pub(crate) right_desired_travel_heading_samples: u32,
+    pub(crate) left_desired_travel_heading_samples: u32,
+    pub(crate) backward_right_desired_travel_heading_samples: u32,
+    pub(crate) backward_left_desired_travel_heading_samples: u32,
+    pub(crate) max_desired_travel_heading_error_degrees: f32,
     pub(crate) max_desired_heading_alignment_mps: f32,
     pub(crate) max_lateral_response_mps: f32,
     pub(crate) first_lateral_input_time_secs: Option<f32>,
@@ -138,6 +144,9 @@ pub(crate) struct SimMetrics {
     pub(crate) max_key_pose_readability_score: f32,
     pub(crate) unreadable_key_pose_samples: u32,
     pub(crate) pose_gliding_samples: u32,
+    pub(crate) pose_air_turn_samples: u32,
+    pub(crate) right_pose_air_turn_samples: u32,
+    pub(crate) left_pose_air_turn_samples: u32,
     pub(crate) pose_diving_samples: u32,
     pub(crate) pose_air_brake_samples: u32,
     pub(crate) pose_landing_anticipation_samples: u32,
@@ -197,6 +206,12 @@ impl SimMetrics {
             backward_right_diagonal_body_travel_heading_samples: 0,
             backward_left_diagonal_body_travel_heading_samples: 0,
             max_backward_diagonal_body_travel_heading_error_degrees: 0.0,
+            desired_travel_heading_error_values_degrees: Vec::new(),
+            right_desired_travel_heading_samples: 0,
+            left_desired_travel_heading_samples: 0,
+            backward_right_desired_travel_heading_samples: 0,
+            backward_left_desired_travel_heading_samples: 0,
+            max_desired_travel_heading_error_degrees: 0.0,
             max_desired_heading_alignment_mps: 0.0,
             max_lateral_response_mps: 0.0,
             first_lateral_input_time_secs: None,
@@ -275,6 +290,9 @@ impl SimMetrics {
             max_key_pose_readability_score: 0.0,
             unreadable_key_pose_samples: 0,
             pose_gliding_samples: 0,
+            pose_air_turn_samples: 0,
+            right_pose_air_turn_samples: 0,
+            left_pose_air_turn_samples: 0,
             pose_diving_samples: 0,
             pose_air_brake_samples: 0,
             pose_landing_anticipation_samples: 0,
@@ -298,5 +316,9 @@ impl SimMetrics {
             &self.backward_diagonal_body_travel_heading_error_values_degrees,
             0.95,
         )
+    }
+
+    pub(crate) fn p95_desired_travel_heading_error_degrees(&self) -> f32 {
+        util::percentile(&self.desired_travel_heading_error_values_degrees, 0.95)
     }
 }

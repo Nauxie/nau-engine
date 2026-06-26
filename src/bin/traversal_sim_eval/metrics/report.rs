@@ -48,6 +48,13 @@ impl SimMetrics {
             "backward_left_diagonal_body_travel_heading_sample_count": self.backward_left_diagonal_body_travel_heading_samples,
             "p95_backward_diagonal_body_travel_heading_error_degrees": round4(self.p95_backward_diagonal_body_travel_heading_error_degrees()),
             "max_backward_diagonal_body_travel_heading_error_degrees": round4(self.max_backward_diagonal_body_travel_heading_error_degrees),
+            "desired_travel_heading_sample_count": self.desired_travel_heading_error_values_degrees.len(),
+            "right_desired_travel_heading_sample_count": self.right_desired_travel_heading_samples,
+            "left_desired_travel_heading_sample_count": self.left_desired_travel_heading_samples,
+            "backward_right_desired_travel_heading_sample_count": self.backward_right_desired_travel_heading_samples,
+            "backward_left_desired_travel_heading_sample_count": self.backward_left_desired_travel_heading_samples,
+            "p95_desired_travel_heading_error_degrees": round4(self.p95_desired_travel_heading_error_degrees()),
+            "max_desired_travel_heading_error_degrees": round4(self.max_desired_travel_heading_error_degrees),
             "max_desired_heading_alignment_mps": round4(self.max_desired_heading_alignment_mps),
             "max_lateral_response_mps": round4(self.max_lateral_response_mps),
             "lateral_response_latency_secs": round4(response_latency_secs(self.first_lateral_input_time_secs, self.first_lateral_response_time_secs)),
@@ -114,6 +121,9 @@ impl SimMetrics {
             "max_key_pose_readability_score": round4(self.max_key_pose_readability_score),
             "unreadable_key_pose_samples": self.unreadable_key_pose_samples,
             "pose_gliding_samples": self.pose_gliding_samples,
+            "pose_air_turn_samples": self.pose_air_turn_samples,
+            "right_pose_air_turn_samples": self.right_pose_air_turn_samples,
+            "left_pose_air_turn_samples": self.left_pose_air_turn_samples,
             "pose_diving_samples": self.pose_diving_samples,
             "pose_air_brake_samples": self.pose_air_brake_samples,
             "pose_landing_anticipation_samples": self.pose_landing_anticipation_samples,
@@ -146,7 +156,7 @@ pub(crate) struct SimResult {
 impl SimResult {
     pub(crate) fn to_summary_json(&self) -> String {
         serde_json::to_string_pretty(&json!({
-            "schema": "nau_traversal_sim_eval.v1",
+            "schema": "nau_traversal_sim_eval.v2",
             "scenario": self.scenario.name,
             "target_island": self.scenario.target_island_name,
             "passed": self.passed,

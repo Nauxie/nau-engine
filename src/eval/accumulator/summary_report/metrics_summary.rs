@@ -57,6 +57,16 @@ pub(super) fn build_metrics_summary(
             .p95_backward_diagonal_body_travel_heading_error_degrees,
         max_backward_diagonal_body_travel_heading_error_degrees: acc
             .max_backward_diagonal_body_travel_heading_error_degrees,
+        desired_travel_heading_sample_count: acc.desired_travel_heading_error_values_degrees.len()
+            as u32,
+        right_desired_travel_heading_sample_count: acc.right_desired_travel_heading_samples,
+        left_desired_travel_heading_sample_count: acc.left_desired_travel_heading_samples,
+        backward_right_desired_travel_heading_sample_count: acc
+            .backward_right_desired_travel_heading_samples,
+        backward_left_desired_travel_heading_sample_count: acc
+            .backward_left_desired_travel_heading_samples,
+        p95_desired_travel_heading_error_degrees: derived.p95_desired_travel_heading_error_degrees,
+        max_desired_travel_heading_error_degrees: acc.max_desired_travel_heading_error_degrees,
         max_body_yaw_error_step_degrees: acc.max_body_yaw_error_step_degrees,
         body_yaw_oscillation_count: acc.body_yaw_oscillation_count,
         max_body_roll_step_degrees: acc.max_body_roll_step_degrees,
@@ -257,6 +267,9 @@ pub(super) fn build_metrics_summary(
         unreadable_lift_samples: acc.unreadable_lift_samples,
         dynamic_readable_lift_samples: acc.dynamic_readable_lift_samples,
         pose_gliding_samples: acc.pose_gliding_samples,
+        pose_air_turn_samples: acc.pose_air_turn_samples,
+        right_pose_air_turn_samples: acc.right_pose_air_turn_samples,
+        left_pose_air_turn_samples: acc.left_pose_air_turn_samples,
         pose_diving_samples: acc.pose_diving_samples,
         pose_air_brake_samples: acc.pose_air_brake_samples,
         pose_landing_anticipation_samples: acc.pose_landing_anticipation_samples,

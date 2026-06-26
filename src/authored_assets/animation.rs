@@ -331,6 +331,7 @@ pub(crate) fn authored_player_clip_for_pose_intent(
         PlayerPoseIntent::GroundedStride => AuthoredPlayerClip::Jog,
         PlayerPoseIntent::Launching => AuthoredPlayerClip::Launch,
         PlayerPoseIntent::Gliding => AuthoredPlayerClip::Glide,
+        PlayerPoseIntent::AirTurn => AuthoredPlayerClip::Glide,
         PlayerPoseIntent::Diving => AuthoredPlayerClip::Dive,
         PlayerPoseIntent::AirBrake => AuthoredPlayerClip::AirBrake,
         PlayerPoseIntent::LandingAnticipation => AuthoredPlayerClip::Land,

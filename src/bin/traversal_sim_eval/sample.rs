@@ -16,7 +16,8 @@ use nau_engine::{
     eval::EvalScenario,
     movement::{
         Facing, FlightInput, FlightMode, FlightState, body_roll_degrees, body_yaw_error_degrees,
-        desired_heading_alignment_speed, desired_planar_movement_direction, lateral_response_speed,
+        desired_heading_alignment_speed, desired_planar_movement_direction,
+        desired_planar_travel_heading_error_degrees, lateral_response_speed,
     },
     world::SkyRoute,
 };
@@ -109,6 +110,7 @@ pub(crate) struct SimSample {
     pub(crate) body_travel_heading_error_degrees: f32,
     pub(crate) body_roll_degrees: f32,
     pub(crate) desired_heading_alignment_mps: f32,
+    pub(crate) desired_travel_heading_error_degrees: f32,
     pub(crate) lateral_response_mps: f32,
     pub(crate) lateral_input_active: bool,
     pub(crate) movement_input_lateral_axis: f32,
@@ -186,6 +188,15 @@ impl SimSample {
         let desired_heading_alignment_mps = desired_movement_direction
             .map(|direction| desired_heading_alignment_speed(state.velocity, direction))
             .unwrap_or(f32::NAN);
+        let desired_travel_heading_error_degrees = desired_movement_direction
+            .map(|direction| {
+                desired_planar_travel_heading_error_degrees(
+                    state.velocity,
+                    direction,
+                    BODY_TRAVEL_HEADING_MIN_PLANAR_SPEED_MPS,
+                )
+            })
+            .unwrap_or(f32::NAN);
         let lateral_axis_active = input.has_lateral_axis();
         let lateral_input_active =
             lateral_axis_active && state.controller.mode != FlightMode::Grounded;
@@ -241,6 +252,7 @@ impl SimSample {
             body_travel_heading_error_degrees,
             body_roll_degrees: body_roll_degrees(player_rotation),
             desired_heading_alignment_mps,
+            desired_travel_heading_error_degrees,
             lateral_response_mps,
             lateral_input_active,
             movement_input_lateral_axis: movement_axis.x,
@@ -324,6 +336,7 @@ impl SimSample {
             "body_travel_heading_error_degrees": finite_json(self.body_travel_heading_error_degrees),
             "body_roll_degrees": round4(self.body_roll_degrees),
             "desired_heading_alignment_mps": finite_json(self.desired_heading_alignment_mps),
+            "desired_travel_heading_error_degrees": finite_json(self.desired_travel_heading_error_degrees),
             "lateral_response_mps": round4(self.lateral_response_mps),
             "lateral_input_active": self.lateral_input_active,
             "movement_input_lateral_axis": round4(self.movement_input_lateral_axis),

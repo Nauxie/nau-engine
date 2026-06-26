@@ -29,6 +29,7 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"native_window_created\": false"));
     assert!(summary.contains("\"screenshot_png\": null"));
     assert!(summary.contains("\"pose_gliding_samples\""));
+    assert!(summary.contains("\"pose_air_turn_samples\""));
     assert!(summary.contains("\"pose_landing_recovery_samples\""));
     assert!(summary.contains("\"max_pose_landing_flare_degrees\""));
     assert!(
@@ -307,6 +308,7 @@ fn air_control_simulation_measures_backward_diagonal_response() {
     assert!(result.metrics.max_backward_right_rear_response_mps >= 10.0);
     assert!(result.metrics.max_backward_left_rear_response_mps >= 10.0);
     assert!(result.metrics.max_air_brake_planar_speed_drop_mps >= 12.0);
+    assert!(result.metrics.pose_air_turn_samples > 0);
     assert!(result.metrics.pose_air_brake_samples > 0);
     assert!(result.metrics.pose_diving_samples > 0);
 }
@@ -338,6 +340,9 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_left_pose_lateral_lean",
         "air_control_pose_wing_airflow",
         "air_control_unreadable_key_pose_samples",
+        "air_control_pose_air_turn_samples",
+        "air_control_right_pose_air_turn_samples",
+        "air_control_left_pose_air_turn_samples",
         "air_control_pose_air_brake_samples",
         "air_control_pose_diving_samples",
         "air_control_lateral_body_travel_heading_samples",
@@ -350,6 +355,13 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_backward_left_diagonal_body_travel_heading_samples",
         "air_control_p95_backward_diagonal_body_travel_heading_error",
         "air_control_max_backward_diagonal_body_travel_heading_error",
+        "air_control_desired_travel_heading_samples",
+        "air_control_right_desired_travel_heading_samples",
+        "air_control_left_desired_travel_heading_samples",
+        "air_control_backward_right_desired_travel_heading_samples",
+        "air_control_backward_left_desired_travel_heading_samples",
+        "air_control_p95_desired_travel_heading_error",
+        "air_control_max_desired_travel_heading_error",
     ] {
         let check = result
             .checks
@@ -364,6 +376,9 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
     assert!(summary.contains("\"backward_left_lateral_response_latency_secs\""));
     assert!(summary.contains("\"max_right_pose_lateral_lean_degrees\""));
     assert!(summary.contains("\"max_left_pose_lateral_lean_degrees\""));
+    assert!(summary.contains("\"pose_air_turn_samples\""));
+    assert!(summary.contains("\"right_pose_air_turn_samples\""));
+    assert!(summary.contains("\"left_pose_air_turn_samples\""));
     assert!(summary.contains("\"lateral_body_travel_heading_sample_count\""));
     assert!(summary.contains("\"right_lateral_body_travel_heading_sample_count\""));
     assert!(summary.contains("\"left_lateral_body_travel_heading_sample_count\""));
@@ -374,6 +389,56 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
     assert!(summary.contains("\"backward_left_diagonal_body_travel_heading_sample_count\""));
     assert!(summary.contains("\"p95_backward_diagonal_body_travel_heading_error_degrees\""));
     assert!(summary.contains("\"max_backward_diagonal_body_travel_heading_error_degrees\""));
+    assert!(summary.contains("\"desired_travel_heading_sample_count\""));
+    assert!(summary.contains("\"right_desired_travel_heading_sample_count\""));
+    assert!(summary.contains("\"left_desired_travel_heading_sample_count\""));
+    assert!(summary.contains("\"backward_right_desired_travel_heading_sample_count\""));
+    assert!(summary.contains("\"backward_left_desired_travel_heading_sample_count\""));
+    assert!(summary.contains("\"p95_desired_travel_heading_error_degrees\""));
+    assert!(summary.contains("\"max_desired_travel_heading_error_degrees\""));
+
+    let summary_json: serde_json::Value =
+        serde_json::from_str(&summary).expect("sim summary json parses");
+    assert!(
+        summary_json["metrics"]["desired_travel_heading_sample_count"]
+            .as_u64()
+            .expect("desired travel sample count is numeric")
+            >= 8
+    );
+    for key in [
+        "right_desired_travel_heading_sample_count",
+        "left_desired_travel_heading_sample_count",
+        "backward_right_desired_travel_heading_sample_count",
+        "backward_left_desired_travel_heading_sample_count",
+        "right_pose_air_turn_samples",
+        "left_pose_air_turn_samples",
+    ] {
+        assert!(
+            summary_json["metrics"][key]
+                .as_u64()
+                .unwrap_or_else(|| panic!("{key} is numeric"))
+                > 0,
+            "{key} should have coverage"
+        );
+    }
+    assert!(
+        summary_json["metrics"]["p95_desired_travel_heading_error_degrees"]
+            .as_f64()
+            .expect("p95 desired travel heading error is numeric")
+            <= 45.0
+    );
+    assert!(
+        summary_json["metrics"]["max_desired_travel_heading_error_degrees"]
+            .as_f64()
+            .expect("max desired travel heading error is numeric")
+            <= 65.0
+    );
+    assert!(
+        summary_json["final_sample"]
+            .as_object()
+            .expect("final sample is an object")
+            .contains_key("desired_travel_heading_error_degrees")
+    );
 }
 
 #[test]
@@ -523,6 +588,43 @@ fn sim_metrics_fail_one_sided_body_travel_heading_samples() {
 }
 
 #[test]
+fn sim_metrics_fail_one_sided_desired_travel_heading_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    for frame in [60, 90, 120, 150] {
+        let sample = sim_roll_sample(&route, scenario, frame, FlightMode::Gliding, 0.0, 1.0);
+        metrics.observe(&sample, scenario);
+    }
+    for frame in [240, 270, 300, 330] {
+        let mut sample = sim_roll_sample(&route, scenario, frame, FlightMode::Gliding, 0.0, 1.0);
+        sample.movement_input_forward_axis = -1.0;
+        metrics.observe(&sample, scenario);
+    }
+
+    assert_eq!(metrics.desired_travel_heading_error_values_degrees.len(), 8);
+    assert_eq!(metrics.right_desired_travel_heading_samples, 8);
+    assert_eq!(metrics.backward_right_desired_travel_heading_samples, 4);
+
+    let checks = metrics.checks(scenario);
+    for check_name in [
+        "air_control_left_desired_travel_heading_samples",
+        "air_control_backward_left_desired_travel_heading_samples",
+    ] {
+        let check = checks
+            .iter()
+            .find(|check| check.name == check_name)
+            .expect("directional desired/travel sample-count check");
+        assert!(
+            !check.passed,
+            "{check_name} should fail without matching-direction samples"
+        );
+        assert_eq!(check.value, 0.0);
+    }
+}
+
+#[test]
 fn sim_metrics_fail_backward_diagonal_body_travel_heading_misalignment() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
     let route = SkyRoute::default();
@@ -593,6 +695,52 @@ fn sim_metrics_track_signed_pose_lateral_lean_by_lateral_input_direction() {
 
     assert_eq!(metrics.max_right_pose_lateral_lean_degrees, 9.0);
     assert_eq!(metrics.max_left_pose_lateral_lean_degrees, 11.0);
+    assert_eq!(metrics.pose_air_turn_samples, 4);
+    assert_eq!(metrics.right_pose_air_turn_samples, 2);
+    assert_eq!(metrics.left_pose_air_turn_samples, 2);
+}
+
+#[test]
+fn sim_metrics_fail_one_sided_air_turn_pose_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    for frame in [30, 60, 90, 120] {
+        let sample = sim_roll_sample(&route, scenario, frame, FlightMode::Gliding, 0.0, 1.0);
+        metrics.observe(&sample, scenario);
+    }
+
+    assert_eq!(metrics.pose_air_turn_samples, 4);
+    assert_eq!(metrics.right_pose_air_turn_samples, 4);
+    assert_eq!(metrics.left_pose_air_turn_samples, 0);
+
+    let checks = metrics.checks(scenario);
+    let aggregate = checks
+        .iter()
+        .find(|check| check.name == "air_control_pose_air_turn_samples")
+        .expect("aggregate air-turn pose check");
+    assert!(aggregate.passed);
+    let left = checks
+        .iter()
+        .find(|check| check.name == "air_control_left_pose_air_turn_samples")
+        .expect("left air-turn pose check");
+    assert!(!left.passed, "left air-turn coverage should fail");
+    assert_eq!(left.value, 0.0);
+}
+
+#[test]
+fn sim_metrics_reject_unreadable_air_turn_pose_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    let mut sample = sim_roll_sample(&route, scenario, 30, FlightMode::Gliding, 0.0, 1.0);
+    sample.key_pose_readability_score = 0.25;
+
+    metrics.observe(&sample, scenario);
+
+    assert_eq!(metrics.pose_air_turn_samples, 0);
+    assert_eq!(metrics.unreadable_key_pose_samples, 1);
 }
 
 fn sim_roll_sample(

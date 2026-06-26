@@ -28,7 +28,8 @@ use nau_engine::eval::{
 };
 use nau_engine::movement::{
     FlightMode, body_roll_degrees, body_yaw_error_degrees, desired_heading_alignment_speed,
-    desired_planar_movement_direction, lateral_response_speed,
+    desired_planar_movement_direction, desired_planar_travel_heading_error_degrees,
+    lateral_response_speed,
 };
 
 pub(super) const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
@@ -402,6 +403,15 @@ pub(crate) fn collect_eval_metrics(
     let desired_heading_alignment_mps = desired_movement_direction
         .map(|direction| desired_heading_alignment_speed(velocity.0, direction))
         .unwrap_or(f32::NAN);
+    let desired_travel_heading_error_degrees = desired_movement_direction
+        .map(|direction| {
+            desired_planar_travel_heading_error_degrees(
+                velocity.0,
+                direction,
+                BODY_TRAVEL_HEADING_MIN_PLANAR_SPEED_MPS,
+            )
+        })
+        .unwrap_or(f32::NAN);
     let lateral_axis_active = movement_input.has_lateral_axis();
     let lateral_input_active = lateral_axis_active && controller.mode != FlightMode::Grounded;
     let body_travel_heading_error_degrees = body_travel_heading_error_degrees(
@@ -603,6 +613,7 @@ pub(crate) fn collect_eval_metrics(
         body_travel_heading_error_degrees,
         body_roll_degrees: body_roll_degrees(transform.rotation),
         desired_heading_alignment_mps,
+        desired_travel_heading_error_degrees,
         lateral_response_mps,
         lateral_input_active,
         movement_axis,
@@ -822,6 +833,7 @@ fn key_pose_intent(intent: PlayerPoseIntent) -> bool {
     matches!(
         intent,
         PlayerPoseIntent::Gliding
+            | PlayerPoseIntent::AirTurn
             | PlayerPoseIntent::Diving
             | PlayerPoseIntent::AirBrake
             | PlayerPoseIntent::LandingAnticipation
@@ -1122,6 +1134,27 @@ mod tests {
     }
 
     #[test]
+    fn missing_visible_authored_nodes_fail_air_turn_readability() {
+        let context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(24.0, -2.0, -30.0),
+            FlightInput {
+                right: true,
+                ..default()
+            },
+            30.0,
+        );
+        assert_eq!(context.intent(), PlayerPoseIntent::AirTurn);
+
+        let metrics = pose_readability_metrics(context, 0.0);
+        assert!(metrics.key_pose_readability_score > 0.9);
+
+        let missing = missing_visible_authored_pose_metrics(metrics, context.intent());
+
+        assert_eq!(missing.key_pose_readability_score, 0.0);
+    }
+
+    #[test]
     fn transition_aware_pose_readability_accepts_previous_key_pose_shape() {
         let raw = PoseReadabilityMetrics {
             torso_pitch_degrees: 5.0,
@@ -1369,6 +1402,23 @@ mod tests {
         assert_eq!(changed.visible_pose_part_count, 5);
         assert!(changed.max_pose_part_rotation_delta_degrees.is_nan());
         assert!(changed.max_pose_part_translation_delta_m.is_nan());
+    }
+
+    #[test]
+    fn visible_pose_temporal_state_tracks_air_turn_as_key_pose() {
+        let mut state = VisiblePoseTemporalState::default();
+        let first = visible_pose_part_set(Quat::IDENTITY, Vec3::ZERO);
+        let second =
+            visible_pose_part_set(Quat::from_rotation_z(std::f32::consts::PI), Vec3::Y * 0.7);
+
+        state.observe_frame(0, PlayerPoseIntent::AirTurn, first);
+        state.take_sample_metrics();
+        state.observe_frame(5, PlayerPoseIntent::AirTurn, second);
+        let changed = state.take_sample_metrics();
+
+        assert_eq!(changed.visible_pose_part_count, 5);
+        assert!(changed.max_pose_part_rotation_delta_degrees > 170.0);
+        assert!(changed.max_pose_part_translation_delta_m > 0.69);
     }
 
     #[test]
