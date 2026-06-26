@@ -209,6 +209,17 @@ fn paint_clustered_foliage_scene_signals(image: &mut RgbImage) {
     }
 }
 
+fn paint_flat_terrain_scene_patch(image: &mut RgbImage) {
+    let width = image.width();
+    let height = image.height();
+
+    for y in height * 56 / 100..height * 86 / 100 {
+        for x in width * 70 / 100..width * 96 / 100 {
+            image.put_pixel(x, y, Rgb([132, 92, 52]));
+        }
+    }
+}
+
 fn paint_cloud_layer_signals(image: &mut RgbImage) {
     let width = image.width();
     let height = image.height();
@@ -631,6 +642,51 @@ fn report_rejects_single_family_scene_materials() {
         checks
             .iter()
             .any(|check| check.name == "max_scene_material_family_count" && !check.passed)
+    );
+}
+
+#[test]
+fn report_rejects_sequence_without_terrain_material_coverage() {
+    let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    paint_high_sky_foliage_scene(&mut image);
+    paint_player_and_route_markers(&mut image);
+    paint_foliage_distant_scene_signals(&mut image);
+    paint_cloud_layer_signals(&mut image);
+
+    let audit = audit_image("missing_terrain.png".to_string(), image).expect("audit should load");
+    let checks = report_checks(std::slice::from_ref(&audit));
+
+    assert!(audit.passed, "{audit:?}");
+    assert!(audit.terrain_scene_fraction < MIN_SEQUENCE_TERRAIN_SCENE_FRACTION);
+    assert!(!report_passed(std::slice::from_ref(&audit), &checks));
+    assert!(
+        checks
+            .iter()
+            .any(|check| check.name == "max_terrain_scene_fraction" && !check.passed)
+    );
+}
+
+#[test]
+fn report_rejects_flat_terrain_material_identity() {
+    let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    paint_high_sky_foliage_scene(&mut image);
+    paint_player_and_route_markers(&mut image);
+    paint_flat_terrain_scene_patch(&mut image);
+    paint_distant_scene_signals(&mut image);
+    paint_cloud_layer_signals(&mut image);
+
+    let audit = audit_image("flat_terrain.png".to_string(), image).expect("audit should load");
+    let checks = report_checks(std::slice::from_ref(&audit));
+
+    assert!(audit.passed, "{audit:?}");
+    assert!(audit.terrain_scene_fraction >= MIN_SEQUENCE_TERRAIN_SCENE_FRACTION);
+    assert!(audit.terrain_scene_tile_count >= MIN_SEQUENCE_TERRAIN_SCENE_TILES);
+    assert!(audit.terrain_scene_color_bucket_count < MIN_SEQUENCE_TERRAIN_SCENE_COLOR_BUCKETS);
+    assert!(!report_passed(std::slice::from_ref(&audit), &checks));
+    assert!(
+        checks
+            .iter()
+            .any(|check| check.name == "max_terrain_scene_color_bucket_count" && !check.passed)
     );
 }
 
