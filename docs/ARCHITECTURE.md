@@ -18,7 +18,12 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/scene_setup_runtime.rs` owns startup scene construction: lights, ground plane, island catalog seeding, authored fixture scene spawning, player child visuals, follow camera spawn, and HUD root spawn.
 - `src/player_runtime.rs` owns the player marker/resource types, keyboard flight input mapping, player movement ECS systems, route objective updates, generated/authored player visibility handoff, and fallback character animation.
 - `src/camera_runtime.rs` owns runtime camera resources, mouse-look capture, follow-camera ECS wiring, camera obstruction components, camera spawn/render-stack setup, and camera diagnostics.
-- `src/authored_assets.rs` owns runtime glTF visual asset registry state, authored scene readiness observers, player animation graph linking, authored player clip switching, visible world-fixture placement helpers, and visual asset diagnostics.
+- `src/authored_assets.rs` owns the authored-asset runtime facade and stable re-exports.
+- `src/authored_assets/types.rs` owns authored visual asset registry, slot, diagnostic resource, scene marker, fixture marker, and generated-placeholder types.
+- `src/authored_assets/registry.rs` owns visual asset load admission, Bevy glTF/scene handle registration, scene readiness state, and animation-readiness state.
+- `src/authored_assets/fixtures.rs` owns visible authored world-fixture handle lookup, sky-island placement transforms, and scene-ready observer wiring.
+- `src/authored_assets/animation.rs` owns named glTF animation clip resolution, animation graph linking, authored player clip selection, and animation playback transitions.
+- `src/authored_assets/diagnostics.rs` owns runtime visual asset diagnostics, load-state buckets, dependency preload readiness, scene-instance readiness, and visible fixture counts.
 - `src/content_diagnostics.rs` owns runtime content-quality metric accumulation for generated island terrain, island bodies, ground cover, trees, rocks, clouds, and biome detail palettes.
 - `src/content_export.rs` owns the background-safe export module surface and shared re-exports.
 - `src/content_export/terrain.rs` owns terrain export reports, terrain OBJ/material-weight CSV writing, and terrain manifest metric aggregation.
