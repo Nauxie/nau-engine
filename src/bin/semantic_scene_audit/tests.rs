@@ -270,8 +270,10 @@ fn visible_wind_samples_fail_report_and_checkpoint_coverage_without_wind_pixels(
         .find(|check| check.name == "wind_scene_sample_kind_pixel_hits")
         .expect("wind kind hit check");
 
-    assert!(!audit.passed);
-    assert_eq!(audit.visible_scene_material_count, 4);
+    assert!(audit.passed);
+    assert_eq!(audit.visible_scene_sample_kind_count, 3);
+    assert_eq!(audit.scene_sample_kind_pixel_hit_count, 3);
+    assert_eq!(audit.visible_scene_material_count, 3);
     assert_eq!(audit.scene_material_pixel_hit_count, 3);
     assert!(!wind_hits.passed);
     assert_eq!(wind_hits.value, 0.0);
