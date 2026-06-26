@@ -405,6 +405,8 @@ function terrainFixture() {
     pbrMaterial("mineral edge highlights", [0.62, 0.57, 0.47, 1.0], 0.78),
     pbrMaterial("landing path soil", [0.28, 0.22, 0.16, 1.0], 0.93),
     pbrMaterial("terrace scree contour", [0.46, 0.39, 0.29, 1.0], 0.91),
+    pbrMaterial("erosion gully shadow soil", [0.13, 0.11, 0.08, 1.0], 0.96),
+    pbrMaterial("embedded path stone caps", [0.52, 0.47, 0.37, 1.0], 0.84),
   ];
   const meshes = [
     terrainPatch(
@@ -419,22 +421,35 @@ function terrainFixture() {
     ),
     irregularRingMesh("authored cliff skirt", 2.95, 2.25, -0.1, -1.35, 32, 1),
     irregularRingMesh("authored underside rock mass", 2.1, 1.52, -1.16, -2.05, 28, 2),
-    terrainPatch(
-      1.8,
-      0.55,
-      3,
-      (u, v) => 0.18 + 0.02 * Math.sin(u * Math.PI * 2.0) + 0.01 * v,
-      3,
-    ),
+    {
+      ...terrainPatch(
+        1.8,
+        0.55,
+        3,
+        (u, v) => 0.18 + 0.02 * Math.sin(u * Math.PI * 2.0) + 0.01 * v,
+        3,
+      ),
+      name: "readable landing soil strip",
+    },
     irregularRingMesh("terrace contour ledge", 2.38, 1.78, 0.08, -0.06, 30, 4),
+    prismBetween("forked erosion gully north", [-1.9, 0.16, -0.72], [-0.35, 0.13, -0.22], 0.055, 5),
+    prismBetween("forked erosion gully south", [-1.74, 0.14, 0.34], [-0.18, 0.12, 0.04], 0.048, 5),
+    prismBetween("curved landing path stone spine", [-0.74, 0.22, -0.43], [1.12, 0.2, -0.06], 0.075, 6),
+    ellipsoidMesh("embedded path stone cap a", [-0.42, 0.25, -0.32], [0.2, 0.035, 0.12], 3, 8, 6),
+    ellipsoidMesh("embedded path stone cap b", [0.4, 0.24, -0.18], [0.18, 0.035, 0.1], 3, 8, 6),
   ];
   const nodes = [
-    { name: "Self Authored Island Terrain Kit", children: [1, 2, 3, 4, 5] },
-    { name: "terrain relief surface", mesh: 0 },
-    { name: "cliff skirt", mesh: 1 },
-    { name: "underside rock mass", mesh: 2 },
-    { name: "readable landing soil strip", mesh: 3, translation: [0.55, 0.04, -0.25] },
-    { name: "terrace contour ledge", mesh: 4 },
+    { name: "Self Authored Island Terrain Kit", children: meshes.map((_, index) => index + 1) },
+    ...meshes.map((mesh, index) => {
+      const node = { name: mesh.name, mesh: index };
+      if (mesh.name === "Authored terrain relief surface") {
+        node.name = "terrain relief surface";
+      }
+      if (mesh.name === "readable landing soil strip") {
+        node.translation = [0.55, 0.04, -0.25];
+      }
+      return node;
+    }),
   ];
   writeFixture({
     path: join("assets", "models", "world", "island_terrain.gltf"),
@@ -457,9 +472,12 @@ function foliageFixture() {
     pbrMaterial("grass blade cluster", [0.22, 0.58, 0.18, 1.0], 0.96),
     pbrMaterial("leaf edge detail cards", [0.28, 0.62, 0.21, 1.0], 0.92),
     pbrMaterial("wildflower herb accent", [0.72, 0.67, 0.28, 1.0], 0.88),
+    pbrMaterial("fern underside shade", [0.1, 0.24, 0.1, 1.0], 0.96),
   ];
   const meshes = [
     prismBetween("tapered main trunk", [0, 0, 0], [0.08, 1.45, 0.03], 0.07, 0),
+    prismBetween("root flare north", [0.0, 0.1, 0.0], [0.42, 0.0, 0.18], 0.035, 0),
+    prismBetween("root flare south", [0.0, 0.08, 0.0], [-0.34, 0.0, -0.28], 0.032, 0),
     prismBetween("left branch", [0.02, 0.9, 0.0], [-0.62, 1.25, -0.12], 0.04, 0),
     prismBetween("right branch", [0.05, 1.05, 0.02], [0.72, 1.38, 0.16], 0.035, 0),
     ellipsoidMesh("overlapping canopy core", [0.0, 1.62, 0.0], [0.58, 0.38, 0.46], 6, 10, 1),
@@ -472,6 +490,9 @@ function foliageFixture() {
     leafPlane("grass fan east", [0.62, 0.08, -0.35], 0.08, 0.36, 1.2, 3),
     leafPlane("grass fan west", [-0.34, 0.07, -0.48], 0.07, 0.32, -0.9, 3),
     leafPlane("wildflower herb fan", [0.18, 0.12, 0.58], 0.08, 0.3, -0.2, 5),
+    leafPlane("fern frond low shade a", [-0.72, 0.12, 0.16], 0.11, 0.42, -1.15, 6),
+    leafPlane("fern frond low shade b", [0.7, 0.12, 0.28], 0.1, 0.38, 0.86, 6),
+    leafPlane("hanging moss silhouette", [-0.18, 1.28, -0.46], 0.075, 0.58, 0.05, 6),
   ];
   const nodes = [
     { name: "Self Authored Foliage Kit", children: meshes.map((_, index) => index + 1) },
@@ -506,6 +527,11 @@ function waterFixture() {
       alphaMode: "BLEND",
       doubleSided: true,
     }),
+    pbrMaterial("floating lily pad", [0.12, 0.34, 0.16, 1.0], 0.82),
+    pbrMaterial("thin specular ripple streak", [0.9, 0.98, 1.0, 0.42], 0.24, 0.0, {
+      alphaMode: "BLEND",
+      doubleSided: true,
+    }),
   ];
   const meshes = [
     discMesh("deep pond depth tint", 1.18, 0.58, 0.018, 32, 4),
@@ -516,6 +542,9 @@ function waterFixture() {
     discMesh("small wind ripple glint", 0.52, 0.18, 0.065, 18, 1),
     leafPlane("reed cluster left", [-1.25, 0.22, 0.38], 0.045, 0.58, -0.16, 3),
     leafPlane("reed cluster right", [1.13, 0.18, -0.24], 0.04, 0.46, 0.42, 3),
+    discMesh("floating lily pad cluster", 0.24, 0.14, 0.074, 16, 5),
+    leafPlane("thin specular ripple streak east", [0.64, 0.082, 0.18], 0.34, 0.035, 0.18, 6),
+    leafPlane("thin specular ripple streak west", [-0.46, 0.083, -0.12], 0.28, 0.03, -0.36, 6),
   ];
   const nodes = [
     { name: "Self Authored Water Kit", children: meshes.map((_, index) => index + 1) },
@@ -567,6 +596,7 @@ function rocksFixture() {
     pbrMaterial("lichen highlight", [0.38, 0.48, 0.26, 1.0], 0.95),
     pbrMaterial("dark fracture seam", [0.08, 0.075, 0.07, 1.0], 0.96),
     pbrMaterial("quartz fleck highlight", [0.72, 0.68, 0.58, 1.0], 0.72),
+    pbrMaterial("rust mineral seam", [0.55, 0.28, 0.16, 1.0], 0.9),
   ];
   const meshes = [
     ellipsoidMesh("large fractured boulder", [0, 0.42, 0], [0.76, 0.46, 0.58], 6, 12, 0),
@@ -575,6 +605,9 @@ function rocksFixture() {
     irregularRingMesh("lichen strata band", 0.84, 0.62, 0.54, 0.46, 24, 2),
     prismBetween("dark fracture seam", [-0.18, 0.78, -0.58], [0.2, 0.24, -0.42], 0.018, 3),
     ellipsoidMesh("quartz fleck chip", [0.42, 0.48, -0.58], [0.08, 0.035, 0.06], 3, 6, 4),
+    prismBetween("rust mineral seam", [-0.58, 0.5, 0.2], [-0.18, 0.18, 0.42], 0.02, 5),
+    ellipsoidMesh("angular shale chip cluster", [-0.18, 0.12, 0.56], [0.18, 0.06, 0.12], 3, 7, 1),
+    ellipsoidMesh("small fractured foreground stone", [0.1, 0.1, -0.72], [0.22, 0.11, 0.16], 3, 8, 0),
   ];
   const nodes = [
     { name: "Self Authored Rock Kit", children: meshes.map((_, index) => index + 1) },
@@ -607,6 +640,9 @@ function routeMarkerFixture() {
       alphaMode: "BLEND",
       doubleSided: true,
     }),
+    pbrMaterial("painted landing glyph", [0.95, 0.77, 0.32, 1.0], 0.7, 0.0, {
+      emissiveFactor: [0.35, 0.16, 0.02],
+    }),
   ];
   const meshes = [
     verticalRingMesh("route gate ring", 0.72, 0.58, 0.035, 32, 0),
@@ -616,6 +652,9 @@ function routeMarkerFixture() {
     ellipsoidMesh("objective shard", [0.0, 0.03, -0.02], [0.12, 0.34, 0.08], 5, 8, 2),
     ellipsoidMesh("stacked cairn base", [0.0, -0.92, 0.0], [0.48, 0.18, 0.34], 4, 10, 3),
     leafPlane("weathered route pennant cloth", [0.78, 0.35, 0.02], 0.08, 0.34, -0.2, 4),
+    verticalRingMesh("painted landing glyph halo", 0.32, 0.25, 0.012, 22, 5),
+    leafPlane("small wind torn pennant tail", [0.9, 0.16, 0.02], 0.055, 0.24, -0.38, 4),
+    ellipsoidMesh("offset cairn pebble marker", [-0.32, -0.72, 0.08], [0.18, 0.09, 0.14], 3, 8, 3),
   ];
   const nodes = [
     { name: "Self Authored Route Marker Kit", children: meshes.map((_, index) => index + 1) },
@@ -652,6 +691,10 @@ function weatherLayerFixture() {
       alphaMode: "BLEND",
       doubleSided: true,
     }),
+    pbrMaterial("blue depth haze pocket", [0.54, 0.66, 0.78, 0.4], 0.68, 0.0, {
+      alphaMode: "BLEND",
+      doubleSided: true,
+    }),
   ];
   const meshes = [
     ellipsoidMesh("cloud bank lobe center", [0, 0, 0], [1.2, 0.34, 0.62], 5, 12, 0),
@@ -664,6 +707,9 @@ function weatherLayerFixture() {
     leafPlane("feathered cloud edge wisp north", [-1.05, 0.04, 0.46], 0.62, 0.12, 0.72, 3),
     leafPlane("feathered cloud edge wisp south", [1.12, 0.02, -0.5], 0.58, 0.1, -0.64, 3),
     leafPlane("thin trailing cloud wisp", [0.18, -0.03, 0.72], 0.86, 0.09, 0.12, 3),
+    ellipsoidMesh("blue depth haze pocket rear", [-0.32, -0.08, 0.54], [0.5, 0.12, 0.28], 4, 9, 4),
+    leafPlane("feathered cloud edge wisp high", [-0.74, 0.3, -0.38], 0.66, 0.1, 0.42, 3),
+    leafPlane("filament trailing curl", [0.84, 0.12, 0.62], 0.5, 0.08, -0.18, 3),
   ];
   const nodes = [
     { name: "Self Authored Weather Layer Kit", children: meshes.map((_, index) => index + 1) },
@@ -691,6 +737,10 @@ function impostorFixture() {
       doubleSided: true,
     }),
     pbrMaterial("distant tree silhouettes", [0.05, 0.16, 0.08, 1.0], 0.92),
+    pbrMaterial("far waterfall veil", [0.7, 0.86, 0.92, 0.48], 0.46, 0.0, {
+      alphaMode: "BLEND",
+      doubleSided: true,
+    }),
   ];
   const meshes = [
     terrainPatch(
@@ -705,6 +755,9 @@ function impostorFixture() {
     irregularRingMesh("hazy far rim", 1.92, 0.9, 0.02, -0.08, 24, 2),
     leafPlane("distant tree silhouette cluster", [-0.74, 0.12, -0.18], 0.18, 0.46, 0.16, 3),
     leafPlane("distant ridge silhouette cluster", [0.66, 0.1, 0.12], 0.15, 0.38, -0.08, 3),
+    leafPlane("far waterfall veil strip", [0.28, -0.26, -0.16], 0.08, 0.62, 0.03, 4),
+    leafPlane("tiny distant tree silhouette line", [0.1, 0.18, 0.36], 0.42, 0.16, -0.08, 3),
+    irregularRingMesh("broken far cliff shelf", 1.18, 0.5, -0.44, -0.58, 18, 1),
   ];
   const nodes = [
     { name: "Self Authored Island Impostor Kit", children: meshes.map((_, index) => index + 1) },

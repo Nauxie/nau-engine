@@ -26,7 +26,15 @@ const PLAYER_NAME_FRAGMENTS: &[&str] = &[
     "gauntlet", "knee",
 ];
 const GLIDER_NAME_FRAGMENTS: &[&str] = &["cloth panel", "spar", "rib", "tether", "grip"];
-const TERRAIN_NAME_FRAGMENTS: &[&str] = &["relief", "cliff", "underside", "landing", "terrace"];
+const TERRAIN_NAME_FRAGMENTS: &[&str] = &[
+    "relief",
+    "cliff",
+    "underside",
+    "landing",
+    "terrace",
+    "erosion",
+    "path",
+];
 const FOLIAGE_NAME_FRAGMENTS: &[&str] = &[
     "trunk",
     "branch",
@@ -34,12 +42,35 @@ const FOLIAGE_NAME_FRAGMENTS: &[&str] = &[
     "grass",
     "detail card",
     "wildflower",
+    "root",
+    "fern",
+    "moss",
 ];
-const ROCK_NAME_FRAGMENTS: &[&str] = &["boulder", "stone", "strata", "fracture", "quartz"];
-const WATER_NAME_FRAGMENTS: &[&str] = &["pond", "rim", "ripple", "reed", "depth", "glint"];
-const ROUTE_MARKER_NAME_FRAGMENTS: &[&str] = &["gate", "mast", "shard", "cairn", "pennant"];
-const WEATHER_NAME_FRAGMENTS: &[&str] = &["cloud bank", "shadow belly", "cirrus", "wisp"];
-const IMPOSTOR_NAME_FRAGMENTS: &[&str] = &["terrain", "underside", "rim", "tree silhouette"];
+const ROCK_NAME_FRAGMENTS: &[&str] = &[
+    "boulder", "stone", "strata", "fracture", "quartz", "rust", "shale",
+];
+const WATER_NAME_FRAGMENTS: &[&str] = &[
+    "pond", "rim", "ripple", "reed", "depth", "glint", "lily", "specular",
+];
+const ROUTE_MARKER_NAME_FRAGMENTS: &[&str] = &[
+    "gate", "mast", "shard", "cairn", "pennant", "glyph", "pebble",
+];
+const WEATHER_NAME_FRAGMENTS: &[&str] = &[
+    "cloud bank",
+    "shadow belly",
+    "cirrus",
+    "wisp",
+    "haze",
+    "filament",
+];
+const IMPOSTOR_NAME_FRAGMENTS: &[&str] = &[
+    "terrain",
+    "underside",
+    "rim",
+    "tree silhouette",
+    "waterfall",
+    "broken",
+];
 
 const REQUIREMENTS: &[Requirement] = &[
     Requirement {
@@ -66,77 +97,77 @@ const REQUIREMENTS: &[Requirement] = &[
     },
     Requirement {
         kind: VisualAssetKind::IslandTerrain,
-        min_nodes: 6,
-        min_meshes: 5,
-        min_materials: 5,
-        min_vertices: 300,
-        min_triangles: 380,
+        min_nodes: 11,
+        min_meshes: 10,
+        min_materials: 7,
+        min_vertices: 400,
+        min_triangles: 520,
         required_name_fragments: TERRAIN_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: false,
     },
     Requirement {
         kind: VisualAssetKind::IslandFoliage,
-        min_nodes: 13,
-        min_meshes: 12,
-        min_materials: 6,
-        min_vertices: 250,
-        min_triangles: 360,
+        min_nodes: 18,
+        min_meshes: 17,
+        min_materials: 7,
+        min_vertices: 280,
+        min_triangles: 390,
         required_name_fragments: FOLIAGE_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: false,
     },
     Requirement {
         kind: VisualAssetKind::IslandRock,
-        min_nodes: 7,
-        min_meshes: 6,
-        min_materials: 5,
-        min_vertices: 300,
-        min_triangles: 430,
+        min_nodes: 9,
+        min_meshes: 9,
+        min_materials: 6,
+        min_vertices: 370,
+        min_triangles: 530,
         required_name_fragments: ROCK_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: false,
     },
     Requirement {
         kind: VisualAssetKind::IslandWater,
-        min_nodes: 9,
-        min_meshes: 8,
-        min_materials: 5,
-        min_vertices: 210,
-        min_triangles: 200,
+        min_nodes: 11,
+        min_meshes: 10,
+        min_materials: 7,
+        min_vertices: 230,
+        min_triangles: 220,
         required_name_fragments: WATER_NAME_FRAGMENTS,
         require_blend_material: true,
         require_player_clips: false,
     },
     Requirement {
         kind: VisualAssetKind::RouteMarker,
-        min_nodes: 8,
-        min_meshes: 7,
-        min_materials: 5,
-        min_vertices: 360,
-        min_triangles: 650,
+        min_nodes: 10,
+        min_meshes: 10,
+        min_materials: 6,
+        min_vertices: 480,
+        min_triangles: 870,
         required_name_fragments: ROUTE_MARKER_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: false,
     },
     Requirement {
         kind: VisualAssetKind::WeatherLayer,
-        min_nodes: 10,
-        min_meshes: 10,
-        min_materials: 4,
-        min_vertices: 330,
-        min_triangles: 480,
+        min_nodes: 13,
+        min_meshes: 13,
+        min_materials: 5,
+        min_vertices: 390,
+        min_triangles: 560,
         required_name_fragments: WEATHER_NAME_FRAGMENTS,
         require_blend_material: true,
         require_player_clips: false,
     },
     Requirement {
         kind: VisualAssetKind::DistantImpostor,
-        min_nodes: 6,
-        min_meshes: 6,
-        min_materials: 4,
-        min_vertices: 180,
-        min_triangles: 190,
+        min_nodes: 9,
+        min_meshes: 9,
+        min_materials: 5,
+        min_vertices: 220,
+        min_triangles: 230,
         required_name_fragments: IMPOSTOR_NAME_FRAGMENTS,
         require_blend_material: true,
         require_player_clips: false,
