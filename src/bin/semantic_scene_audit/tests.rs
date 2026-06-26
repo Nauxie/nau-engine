@@ -150,6 +150,57 @@ fn report_checks_require_visible_material_samples_before_pixel_hits() {
 }
 
 #[test]
+fn report_checks_require_scene_pixel_coverage_not_just_hit_counts() {
+    let thin_terrain = SceneSampleAudit {
+        kind: "terrain_surface".to_string(),
+        label: "foreground".to_string(),
+        expected_material: "terrain".to_string(),
+        in_viewport: true,
+        visibility: "visible".to_string(),
+        screen_x: Some(12.0),
+        screen_y: Some(12.0),
+        semantic_pixel_hits: MIN_SAMPLE_PIXEL_HITS,
+        passed: true,
+    };
+    let checkpoint = CheckpointAudit {
+        metadata_path: "checkpoint.markers.json".to_string(),
+        screenshot_path: "checkpoint.png".to_string(),
+        checkpoint: "test".to_string(),
+        in_viewport_scene_sample_count: 1,
+        occluded_scene_sample_count: 0,
+        visible_scene_sample_count: 1,
+        scene_sample_pixel_hit_count: 1,
+        visible_scene_material_count: 1,
+        scene_material_pixel_hit_count: 1,
+        visible_scene_sample_kind_count: 1,
+        scene_sample_kind_pixel_hit_count: 1,
+        passed: false,
+        samples: vec![thin_terrain],
+        materials: Vec::new(),
+    };
+
+    let checks = report_checks(&[checkpoint]);
+    let terrain_hits = checks
+        .iter()
+        .find(|check| check.name == "terrain_scene_sample_pixel_hits")
+        .expect("terrain hit check");
+    let terrain_coverage = checks
+        .iter()
+        .find(|check| check.name == "terrain_scene_sample_pixel_coverage")
+        .expect("terrain coverage check");
+    let kind_coverage = checks
+        .iter()
+        .find(|check| check.name == "scene_kind_terrain_surface_pixel_coverage")
+        .expect("terrain kind coverage check");
+
+    assert!(terrain_hits.passed);
+    assert!(!terrain_coverage.passed);
+    assert_eq!(terrain_coverage.value, MIN_SAMPLE_PIXEL_HITS as f64);
+    assert!(!kind_coverage.passed);
+    assert_eq!(kind_coverage.value, MIN_SAMPLE_PIXEL_HITS as f64);
+}
+
+#[test]
 fn semantic_scene_audit_scales_logical_viewport_to_retina_screenshot() {
     let temp_dir = unique_temp_dir("semantic_scene_retina");
     fs::create_dir_all(&temp_dir).expect("temp dir");
