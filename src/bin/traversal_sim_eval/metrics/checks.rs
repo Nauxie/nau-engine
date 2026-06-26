@@ -10,6 +10,10 @@ use serde_json::{Value, json};
 
 use super::{super::round4, SimMetrics};
 
+const MIN_DYNAMIC_WIND_FLOW_SPEED_MPS: f32 = 8.0;
+const MIN_DYNAMIC_WIND_FLOW_VARIATION: f32 = 0.12;
+const MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE: f32 = 0.03;
+
 #[derive(Clone, Debug)]
 pub(crate) struct SimCheck {
     pub(crate) name: &'static str,
@@ -66,6 +70,33 @@ impl SimMetrics {
                 self.pose_landing_anticipation_samples as f32,
                 1.0,
                 "samples",
+            ));
+        }
+
+        if scenario.thresholds.min_lifted_samples > 0 {
+            checks.push(SimCheck::at_least(
+                "dynamic_readable_lift_samples",
+                self.dynamic_readable_lift_samples as f32,
+                scenario.thresholds.min_lifted_samples as f32,
+                "samples",
+            ));
+            checks.push(SimCheck::at_least(
+                "max_wind_flow_speed",
+                self.max_wind_flow_speed_mps,
+                MIN_DYNAMIC_WIND_FLOW_SPEED_MPS,
+                "mps",
+            ));
+            checks.push(SimCheck::at_least(
+                "max_wind_flow_variation",
+                self.max_wind_flow_variation,
+                MIN_DYNAMIC_WIND_FLOW_VARIATION,
+                "ratio",
+            ));
+            checks.push(SimCheck::at_least(
+                "max_wind_flow_variation_range",
+                self.max_wind_flow_variation_range,
+                MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE,
+                "ratio",
             ));
         }
 

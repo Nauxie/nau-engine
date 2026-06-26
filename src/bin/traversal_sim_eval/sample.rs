@@ -11,7 +11,7 @@ use nau_engine::{
     },
     environment::{
         AERIAL_POWER_UP_ROUTE, LiftField, WindField, active_lift_fields_at,
-        readable_lift_fields_at, visible_fields_at,
+        readable_lift_fields_at, visible_fields_at, wind_flow_metrics_at,
     },
     eval::EvalScenario,
     movement::{
@@ -120,6 +120,9 @@ pub(crate) struct SimSample {
     pub(crate) camera_obstruction_hits: usize,
     pub(crate) visible_wind_fields: usize,
     pub(crate) wind_field_count: usize,
+    pub(crate) dynamic_wind_flow_fields: usize,
+    pub(crate) max_wind_flow_speed_mps: f32,
+    pub(crate) max_wind_flow_variation: f32,
     pub(crate) active_lift_fields: usize,
     pub(crate) readable_lift_fields: usize,
     pub(crate) lift_field_count: usize,
@@ -187,10 +190,13 @@ impl SimSample {
         .intent()
         .label();
         let streaming_lod = route.streaming_lod_stats(state.position);
+        let time_secs = frame as f32 * scenario.fixed_dt;
+        let wind_flow =
+            wind_flow_metrics_at(state.position, time_secs, visual_fields.iter().copied());
 
         Self {
             frame,
-            time_secs: frame as f32 * scenario.fixed_dt,
+            time_secs,
             position: state.position,
             velocity: state.velocity,
             speed_mps: state.velocity.length(),
@@ -221,6 +227,9 @@ impl SimSample {
             camera_obstruction_hits: camera.obstruction_hits,
             visible_wind_fields: visible_fields_at(state.position, visual_fields.iter().copied()),
             wind_field_count: visual_fields.len(),
+            dynamic_wind_flow_fields: wind_flow.active_fields,
+            max_wind_flow_speed_mps: wind_flow.max_speed_mps,
+            max_wind_flow_variation: wind_flow.max_variation,
             active_lift_fields: active_lift_fields_at(state.position, lift_fields.iter().copied()),
             readable_lift_fields: readable_lift_fields_at(
                 state.position,
@@ -284,6 +293,9 @@ impl SimSample {
             "camera_obstruction_hits": self.camera_obstruction_hits,
             "visible_wind_fields": self.visible_wind_fields,
             "wind_field_count": self.wind_field_count,
+            "dynamic_wind_flow_fields": self.dynamic_wind_flow_fields,
+            "max_wind_flow_speed_mps": round4(self.max_wind_flow_speed_mps),
+            "max_wind_flow_variation": round4(self.max_wind_flow_variation),
             "active_lift_fields": self.active_lift_fields,
             "readable_lift_fields": self.readable_lift_fields,
             "lift_field_count": self.lift_field_count,

@@ -57,6 +57,48 @@ impl WindField {
         self.direction * self.visual_speed
     }
 
+    pub fn flow_at(self, position: Vec3, elapsed_secs: f32) -> Option<WindFlowSample> {
+        if !self.contains(position) {
+            return None;
+        }
+
+        let local = field_local_position(position, self.center, self.half_extents);
+        let time = elapsed_secs.max(0.0);
+        let phase = local.dot(Vec3::new(1.7, 0.83, -1.19));
+        let primary_wave = (time * 0.74 + phase).sin();
+        let secondary_wave = (time * 1.37 + phase * 1.9).cos();
+        let variation =
+            (0.18 + primary_wave.abs() * 0.24 + secondary_wave.abs() * 0.10).clamp(0.0, 1.0);
+        let gust_strength = (0.78 + primary_wave * 0.16 + secondary_wave * 0.08).clamp(0.45, 1.25);
+        let edge_falloff = (1.0 - local.abs().max_element() * 0.22).clamp(0.48, 1.0);
+        let speed = self.visual_speed * gust_strength * edge_falloff;
+        let vector = match self.kind {
+            WindFieldKind::Crosswind => {
+                let lateral =
+                    Vec3::new(-self.direction.z, 0.0, self.direction.x).normalize_or_zero();
+                self.direction * speed + lateral * (speed * 0.08 * secondary_wave)
+            }
+            WindFieldKind::Updraft => {
+                let radial = Vec3::new(local.x, 0.0, local.z);
+                let tangent = if radial.length_squared() > DIRECTION_EPSILON {
+                    Vec3::new(-radial.z, 0.0, radial.x).normalize()
+                } else {
+                    Vec3::X
+                };
+                let swirl = tangent * (speed * (0.16 + variation * 0.12));
+                let breath = radial.normalize_or_zero() * (speed * 0.04 * secondary_wave);
+                Vec3::Y * speed + swirl + breath
+            }
+        };
+
+        Some(WindFlowSample {
+            vector,
+            speed_mps: vector.length(),
+            gust_strength,
+            variation,
+        })
+    }
+
     pub fn stream_origin(self, index: usize, stream_count: usize) -> Vec3 {
         let stream_count = stream_count.max(1);
         let columns = (stream_count as f32).sqrt().ceil() as usize;
@@ -79,6 +121,37 @@ impl WindField {
             }
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WindFlowSample {
+    pub vector: Vec3,
+    pub speed_mps: f32,
+    pub gust_strength: f32,
+    pub variation: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct WindFlowMetrics {
+    pub active_fields: usize,
+    pub max_speed_mps: f32,
+    pub max_variation: f32,
+}
+
+pub fn wind_flow_metrics_at(
+    position: Vec3,
+    elapsed_secs: f32,
+    fields: impl IntoIterator<Item = WindField>,
+) -> WindFlowMetrics {
+    fields
+        .into_iter()
+        .filter_map(|field| field.flow_at(position, elapsed_secs))
+        .fold(WindFlowMetrics::default(), |mut metrics, sample| {
+            metrics.active_fields += 1;
+            metrics.max_speed_mps = metrics.max_speed_mps.max(sample.speed_mps);
+            metrics.max_variation = metrics.max_variation.max(sample.variation);
+            metrics
+        })
 }
 
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
@@ -284,6 +357,11 @@ fn horizontal_or(v: Vec3, fallback: Vec3) -> Vec3 {
     }
 }
 
+fn field_local_position(position: Vec3, center: Vec3, half_extents: Vec3) -> Vec3 {
+    let safe_extents = half_extents.max(Vec3::splat(0.1));
+    (position - center) / safe_extents
+}
+
 pub fn visible_fields_at(position: Vec3, fields: impl IntoIterator<Item = WindField>) -> usize {
     fields
         .into_iter()
@@ -414,6 +492,42 @@ mod tests {
         assert_eq!(visible_fields_at(Vec3::ZERO, [near, far]), 1);
         assert_eq!(visible_fields_at(Vec3::new(20.0, 0.0, 0.0), [near, far]), 1);
         assert_eq!(visible_fields_at(Vec3::new(10.0, 0.0, 0.0), [near, far]), 0);
+    }
+
+    #[test]
+    fn crosswind_dynamic_flow_stays_horizontal_and_varies() {
+        let field = WindField::crosswind(Vec3::ZERO, Vec3::splat(8.0), Vec3::X, 10.0);
+        let early = field.flow_at(Vec3::new(1.0, 0.0, 2.0), 0.0).unwrap();
+        let later = field.flow_at(Vec3::new(1.0, 0.0, 2.0), 1.25).unwrap();
+
+        assert!(early.vector.y.abs() < 0.001);
+        assert!(early.speed_mps > 6.0);
+        assert!(early.variation > 0.15);
+        assert!(early.vector.distance(later.vector) > 0.1);
+    }
+
+    #[test]
+    fn updraft_dynamic_flow_keeps_upward_bias_and_swirl() {
+        let field = WindField::updraft(Vec3::ZERO, Vec3::new(8.0, 16.0, 8.0), 12.0);
+        let flow = field.flow_at(Vec3::new(3.0, 0.0, 2.0), 0.7).unwrap();
+
+        assert!(flow.vector.y > 7.0);
+        assert!(flow.vector.xz().length() > 0.8);
+        assert!(flow.variation > 0.15);
+    }
+
+    #[test]
+    fn wind_flow_metrics_require_contained_dynamic_fields() {
+        let near = WindField::updraft(Vec3::ZERO, Vec3::new(8.0, 16.0, 8.0), 12.0);
+        let far = WindField::crosswind(Vec3::new(40.0, 0.0, 0.0), Vec3::splat(6.0), Vec3::X, 8.0);
+
+        let inside = wind_flow_metrics_at(Vec3::new(2.0, 0.0, 1.0), 0.5, [near, far]);
+        let outside = wind_flow_metrics_at(Vec3::new(20.0, 0.0, 0.0), 0.5, [near, far]);
+
+        assert_eq!(inside.active_fields, 1);
+        assert!(inside.max_speed_mps > 8.0);
+        assert!(inside.max_variation > 0.15);
+        assert_eq!(outside.active_fields, 0);
     }
 
     #[test]

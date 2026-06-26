@@ -697,6 +697,128 @@ fn accumulator_gates_air_control_pose_readability() {
 }
 
 #[test]
+fn accumulator_gates_dynamic_wind_flow_for_lift_routes() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..scenario.thresholds.min_lifted_samples {
+        let mut sample = air_control_metric_sample(
+            scenario,
+            frame,
+            Vec3::new(0.0, 8.0, -18.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        );
+        sample.active_lift_fields = 1;
+        sample.readable_lift_fields = 1;
+        sample.dynamic_wind_flow_fields = 1;
+        sample.max_wind_flow_speed_mps = 10.0;
+        sample.max_wind_flow_variation = 0.16 + frame as f32 * 0.02;
+        accumulator.observe(sample);
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(
+        summary.metrics.dynamic_readable_lift_samples,
+        scenario.thresholds.min_lifted_samples
+    );
+    assert!(named_check(&summary, "dynamic_readable_lift_samples").passed);
+    assert!(named_check(&summary, "max_wind_flow_speed").passed);
+    assert!(named_check(&summary, "max_wind_flow_variation").passed);
+    assert!(named_check(&summary, "max_wind_flow_variation_range").passed);
+}
+
+#[test]
+fn accumulator_rejects_nonvarying_lift_visual_flow() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..scenario.thresholds.min_lifted_samples {
+        let mut sample = air_control_metric_sample(
+            scenario,
+            frame,
+            Vec3::new(0.0, 8.0, -18.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        );
+        sample.active_lift_fields = 1;
+        sample.readable_lift_fields = 1;
+        sample.dynamic_wind_flow_fields = 1;
+        sample.max_wind_flow_speed_mps = 10.0;
+        sample.max_wind_flow_variation = 0.2;
+        accumulator.observe(sample);
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert!(named_check(&summary, "dynamic_readable_lift_samples").passed);
+    assert!(named_check(&summary, "max_wind_flow_speed").passed);
+    assert!(named_check(&summary, "max_wind_flow_variation").passed);
+    assert!(!named_check(&summary, "max_wind_flow_variation_range").passed);
+}
+
+#[test]
+fn accumulator_rejects_static_lift_visual_flow() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..scenario.thresholds.min_lifted_samples {
+        let mut sample = air_control_metric_sample(
+            scenario,
+            frame,
+            Vec3::new(0.0, 8.0, -18.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        );
+        sample.active_lift_fields = 1;
+        sample.readable_lift_fields = 1;
+        accumulator.observe(sample);
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.dynamic_readable_lift_samples, 0);
+    assert!(!named_check(&summary, "dynamic_readable_lift_samples").passed);
+    assert!(!named_check(&summary, "max_wind_flow_speed").passed);
+    assert!(!named_check(&summary, "max_wind_flow_variation").passed);
+    assert!(!named_check(&summary, "max_wind_flow_variation_range").passed);
+}
+
+#[test]
 fn accumulator_gates_grounded_visual_foot_gap() {
     let scenario = scenario_named(GROUND_TAXI_CONTROL).expect("ground taxi route exists");
     let mut sample = content_metric_sample(scenario, 0, 12, 0, 96);

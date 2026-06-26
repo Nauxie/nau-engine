@@ -11,6 +11,7 @@ use nau_engine::camera::{
 use nau_engine::diagnostics::frame_ms;
 use nau_engine::environment::{
     AERIAL_POWER_UP_ROUTE, active_lift_fields_at, readable_lift_fields_at, visible_fields_at,
+    wind_flow_metrics_at,
 };
 use nau_engine::eval::{EvalMovementMetrics, EvalObjectiveProgress, EvalSample, scripted_input};
 use nau_engine::movement::{
@@ -72,6 +73,11 @@ pub(crate) fn collect_eval_metrics(
         .unwrap_or_default();
     let visible_wind_fields =
         visible_fields_at(transform.translation, scene.wind_fields.iter().copied());
+    let wind_flow = wind_flow_metrics_at(
+        transform.translation,
+        run.frame as f32 * run.scenario.fixed_dt,
+        scene.wind_fields.iter().copied(),
+    );
     let active_lift_fields =
         active_lift_fields_at(transform.translation, scene.lift_fields.iter().copied());
     let readable_lift_fields = readable_lift_fields_at(
@@ -157,6 +163,9 @@ pub(crate) fn collect_eval_metrics(
         scene.camera_diagnostics.obstruction_hits,
         visible_wind_fields,
         scene.wind_fields.iter().count(),
+        wind_flow.active_fields,
+        wind_flow.max_speed_mps,
+        wind_flow.max_variation,
         active_lift_fields,
         readable_lift_fields,
         scene.lift_fields.iter().count(),

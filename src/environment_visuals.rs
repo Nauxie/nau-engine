@@ -11,7 +11,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::BlendState;
 use nau_engine::animation::{Side, wing_airflow_strength};
 use nau_engine::asset_pipeline::VisualAssetKind;
-use nau_engine::environment::{LiftRouteNode, wind_sway_motion};
+use nau_engine::environment::{LiftRouteNode, WindField, wind_sway_motion};
 use nau_engine::movement::{FlightController, Velocity};
 use nau_engine::world::SkyIsland;
 
@@ -73,6 +73,7 @@ pub(crate) struct GliderAirflowTrail {
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct UpdraftGuide {
+    field: WindField,
     center: Vec3,
     radius: f32,
     height_offset: f32,
@@ -82,7 +83,9 @@ pub(crate) struct UpdraftGuide {
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct UpdraftRibbon {
+    field: WindField,
     spin_speed: f32,
+    base_translation: Vec3,
     base_rotation: Quat,
 }
 
@@ -94,6 +97,7 @@ pub(crate) fn spawn_updraft_guide(
     marker_material: Handle<StandardMaterial>,
     lift: LiftRouteNode,
 ) {
+    let field = lift.visual_field();
     let radius = lift.half_extents.x.min(lift.half_extents.z);
     let height = lift.half_extents.y * 2.0;
     commands.spawn((
@@ -115,7 +119,9 @@ pub(crate) fn spawn_updraft_guide(
                 ..default()
             },
             UpdraftRibbon {
+                field,
                 spin_speed: 0.035 + ribbon_index as f32 * 0.012,
+                base_translation: lift.center,
                 base_rotation,
             },
             Name::new(format!("{} spiral airflow ribbon", lift.name)),
@@ -132,6 +138,7 @@ pub(crate) fn spawn_updraft_guide(
             let phase = marker_index as f32 / markers_per_ring as f32 * std::f32::consts::TAU
                 + level_index as f32 * 0.46;
             let guide = UpdraftGuide {
+                field,
                 center: lift.center,
                 radius: ring_radius,
                 height_offset: level * lift.half_extents.y,
@@ -417,8 +424,16 @@ pub(crate) fn update_updraft_ribbons(
     let elapsed = time.elapsed_secs();
 
     for (ribbon, mut transform) in &mut ribbons {
+        let flow = ribbon
+            .field
+            .flow_at(ribbon.base_translation, elapsed)
+            .unwrap_or_else(|| ribbon.field.flow_at(ribbon.field.center, elapsed).unwrap());
+        let flow_pulse = 0.75 + flow.gust_strength * 0.35;
+        let horizontal_drift = Vec3::new(flow.vector.x, 0.0, flow.vector.z) * 0.045;
+        transform.translation = ribbon.base_translation + horizontal_drift;
         transform.rotation =
-            ribbon.base_rotation * Quat::from_rotation_y(elapsed * ribbon.spin_speed);
+            ribbon.base_rotation * Quat::from_rotation_y(elapsed * ribbon.spin_speed * flow_pulse);
+        transform.scale = Vec3::splat(1.0 + flow.variation * 0.035);
     }
 }
 
@@ -466,10 +481,16 @@ pub(crate) fn wind_responsive_visual_metrics<'a>(
 
 fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
     let angle = guide.phase + elapsed * guide.angular_speed;
-    guide.center
+    let base = guide.center
         + Vec3::new(
             angle.cos() * guide.radius,
             guide.height_offset + (elapsed * 1.4 + guide.phase).sin() * 0.35,
             angle.sin() * guide.radius,
-        )
+        );
+    let flow = guide.field.flow_at(base, elapsed);
+    let flow_offset = flow.map_or(Vec3::ZERO, |sample| {
+        Vec3::new(sample.vector.x, 0.0, sample.vector.z) * 0.075 + Vec3::Y * sample.variation * 0.32
+    });
+
+    base + flow_offset
 }
