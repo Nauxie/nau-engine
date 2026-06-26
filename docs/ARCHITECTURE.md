@@ -34,10 +34,15 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/eval_app_runtime/finish.rs` owns eval frame finalization, summary write, app exit, final screenshot capture, and screenshot readiness waiting.
 - `src/eval_app_runtime/semantics/mod.rs` and `src/eval_app_runtime/semantics/` own checkpoint screenshot sidecar writes, semantic route markers, semantic scene samples, viewport projection JSON, and marker/scene occlusion helpers.
 - `src/eval_runtime.rs` owns CLI action parsing, eval run artifact paths, eval sample/summary file writing, and temporary output cleanup helpers.
-- `src/bin/traversal_sim_eval.rs` owns the background-safe traversal simulation CLI, scripted flight stepping, sample capture, and artifact writing.
+- `src/bin/traversal_sim_eval.rs` owns the background-safe traversal simulation binary wiring and shared thresholds.
+- `src/bin/traversal_sim_eval/cli.rs` owns simulation CLI parsing, artifact cleanup, NDJSON sample writes, and summary artifact writes.
+- `src/bin/traversal_sim_eval/simulation.rs` owns scripted flight stepping, camera stepping, lift/wind field lookup, power-up collection, and sample capture.
+- `src/bin/traversal_sim_eval/sample.rs` owns simulation sample/camera diagnostic structures and JSON serialization.
+- `src/bin/traversal_sim_eval/state.rs` owns simulation-only objective and power-up state.
 - `src/bin/traversal_sim_eval/metrics.rs` owns simulation-only metric state and constructor defaults.
 - `src/bin/traversal_sim_eval/metrics/observe.rs` owns per-sample simulation metric accumulation.
 - `src/bin/traversal_sim_eval/metrics/checks.rs` owns simulation-only pass/fail check assembly.
+- `src/bin/traversal_sim_eval/metrics/checks/` owns focused simulation check groups for core route/camera gates, camera-strafe gates, and air-control gates.
 - `src/bin/traversal_sim_eval/metrics/report.rs` owns simulation-only summary serialization and result packaging.
 - `src/bin/traversal_sim_eval/metrics/util.rs` owns shared simulation-metric response, percentile, distance, and rear-diagonal helpers.
 - `src/bin/traversal_sim_eval/tests.rs` owns unit coverage for simulation-only route, camera, air-control, and body-roll regression checks.

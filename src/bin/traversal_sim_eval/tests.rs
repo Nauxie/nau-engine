@@ -1,5 +1,15 @@
-use super::*;
-use nau_engine::eval::{AIR_CONTROL_RESPONSE, CAMERA_MOUSE_CONTROL};
+use super::{
+    metrics::SimMetrics,
+    sample::{CameraDiagnosticsSample, SimSample},
+    simulation::run_simulation,
+    state::{ObjectiveState, SimPowerUps},
+};
+use bevy::prelude::{Quat, Transform, Vec3};
+use nau_engine::{
+    eval::{AIR_CONTROL_RESPONSE, CAMERA_MOUSE_CONTROL, EvalScenario, scenario_named},
+    movement::{Facing, FlightController, FlightInput, FlightMode, FlightState},
+    world::{START_POSITION, SkyRoute},
+};
 
 #[test]
 fn baseline_simulation_writes_windowless_artifacts() {
