@@ -69,6 +69,18 @@ pub(super) fn append_scenario_checks(
             1.0,
             "samples",
         ));
+        checks.push(EvalCheck::at_least(
+            "pose_landing_crouch",
+            acc.max_pose_landing_crouch_m,
+            LANDING_MIN_POSE_CROUCH_M,
+            "m",
+        ));
+        checks.push(EvalCheck::at_most(
+            "unreadable_key_pose_samples",
+            acc.unreadable_key_pose_samples as f32,
+            0.0,
+            "samples",
+        ));
     }
     if scenario.name == AIR_CONTROL_RESPONSE {
         append_air_control_checks(checks, acc, derived);
@@ -190,6 +202,42 @@ fn append_air_control_checks(
             "air_control_pose_diving_samples",
             acc.pose_diving_samples as f32,
             1.0,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_pose_torso_pitch",
+            acc.max_pose_torso_pitch_degrees,
+            AIR_CONTROL_MIN_POSE_TORSO_PITCH_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "air_control_pose_arm_spread",
+            acc.max_pose_arm_spread_degrees,
+            AIR_CONTROL_MIN_POSE_ARM_SPREAD_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "air_control_pose_leg_tuck",
+            acc.max_pose_leg_tuck_degrees,
+            AIR_CONTROL_MIN_POSE_LEG_TUCK_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "air_control_pose_lateral_lean",
+            acc.max_pose_lateral_lean_degrees,
+            AIR_CONTROL_MIN_POSE_LATERAL_LEAN_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "air_control_pose_wing_airflow",
+            acc.max_pose_wing_airflow_strength,
+            AIR_CONTROL_MIN_POSE_WING_AIRFLOW_STRENGTH,
+            "ratio",
+        ),
+        EvalCheck::at_most(
+            "air_control_unreadable_key_pose_samples",
+            acc.unreadable_key_pose_samples as f32,
+            0.0,
             "samples",
         ),
         EvalCheck::at_least(

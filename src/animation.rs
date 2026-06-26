@@ -1,4 +1,4 @@
-use crate::movement::{FlightInput, FlightMode, smoothing_factor};
+use crate::movement::{FlightInput, FlightMode, body_forward, smoothing_factor};
 use bevy::prelude::*;
 use std::f32::consts::TAU;
 
@@ -76,6 +76,30 @@ pub struct PartPose {
     pub visibility: PartVisibility,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PoseReadabilityMetrics {
+    pub torso_pitch_degrees: f32,
+    pub arm_spread_degrees: f32,
+    pub leg_tuck_degrees: f32,
+    pub lateral_lean_degrees: f32,
+    pub landing_crouch_m: f32,
+    pub wing_airflow_strength: f32,
+    pub key_pose_readability_score: f32,
+}
+
+pub const MIN_KEY_POSE_READABILITY_SCORE: f32 = 0.9;
+
+#[derive(Clone, Copy, Debug)]
+pub struct PoseReadabilityPartTransforms {
+    pub torso_rotation: Quat,
+    pub left_arm_rotation: Quat,
+    pub right_arm_rotation: Quat,
+    pub left_leg_rotation: Quat,
+    pub right_leg_rotation: Quat,
+    pub left_leg_translation: Vec3,
+    pub right_leg_translation: Vec3,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PlayerPoseIntent {
     #[default]
@@ -151,6 +175,16 @@ pub fn wing_airflow_strength(mode: FlightMode, velocity: Vec3) -> f32 {
     (speed_pressure + sink_pressure).clamp(0.0, 1.0)
 }
 
+pub fn body_local_pose_velocity(world_velocity: Vec3, player_rotation: Quat) -> Vec3 {
+    let forward = body_forward(player_rotation);
+    let right = forward.cross(Vec3::Y).normalize_or_zero();
+    Vec3::new(
+        world_velocity.dot(right),
+        world_velocity.y,
+        -world_velocity.dot(forward),
+    )
+}
+
 pub fn player_pose_intent(context: PlayerPoseContext) -> PlayerPoseIntent {
     let horizontal_speed = Vec2::new(context.velocity.x, context.velocity.z).length();
     let near_landing = context.mode != FlightMode::Grounded
@@ -187,6 +221,175 @@ fn side_cycle(phase: f32, side: Side) -> f32 {
     (phase + offset).sin()
 }
 
+fn airborne_pose_intent(intent: PlayerPoseIntent) -> bool {
+    matches!(
+        intent,
+        PlayerPoseIntent::Falling
+            | PlayerPoseIntent::Gliding
+            | PlayerPoseIntent::Diving
+            | PlayerPoseIntent::AirBrake
+            | PlayerPoseIntent::LandingAnticipation
+    )
+}
+
+fn pose_turn_weight(context: PlayerPoseContext) -> f32 {
+    let intent = context.intent();
+    let divisor = if airborne_pose_intent(intent) {
+        18.0
+    } else {
+        12.0
+    };
+    (context.velocity.x / divisor).clamp(-1.0, 1.0)
+}
+
+fn pose_lateral_lean_radians(context: PlayerPoseContext) -> f32 {
+    let intent = context.intent();
+    let max_lean = if airborne_pose_intent(intent) {
+        0.22
+    } else {
+        0.08
+    };
+    -pose_turn_weight(context) * max_lean
+}
+
+fn landing_anticipation_strength(context: PlayerPoseContext, intent: PlayerPoseIntent) -> f32 {
+    if intent != PlayerPoseIntent::LandingAnticipation {
+        return 0.0;
+    }
+
+    let ground_proximity = ((6.0 - context.height_above_ground_m) / 6.0).clamp(0.0, 1.0);
+    let sink_rate = ((-context.velocity.y - 1.2) / 6.0).clamp(0.0, 1.0);
+    (0.65 + ground_proximity.max(sink_rate) * 0.35).clamp(0.0, 1.0)
+}
+
+pub fn key_pose_readability_score(
+    intent: PlayerPoseIntent,
+    torso_pitch_degrees: f32,
+    arm_spread_degrees: f32,
+    leg_tuck_degrees: f32,
+    landing_crouch_m: f32,
+) -> f32 {
+    match intent {
+        PlayerPoseIntent::Diving => {
+            readable_pair_score(torso_pitch_degrees, 54.0, arm_spread_degrees, 155.0)
+        }
+        PlayerPoseIntent::AirBrake => {
+            readable_pair_score(torso_pitch_degrees, 4.0, arm_spread_degrees, 160.0)
+        }
+        PlayerPoseIntent::LandingAnticipation => {
+            readable_pair_score(leg_tuck_degrees, 48.0, landing_crouch_m, 0.07)
+        }
+        PlayerPoseIntent::Gliding => {
+            readable_pair_score(torso_pitch_degrees, 16.0, arm_spread_degrees, 120.0)
+        }
+        _ => 1.0,
+    }
+}
+
+fn torso_lateral_lean_degrees(rotation: Quat) -> f32 {
+    let local_up = rotation * Vec3::Y;
+    local_up.x.atan2(local_up.y).abs().to_degrees()
+}
+
+pub fn pose_readability_metrics_from_part_transforms(
+    context: PlayerPoseContext,
+    parts: PoseReadabilityPartTransforms,
+) -> PoseReadabilityMetrics {
+    let landing_crouch_m = if context.intent() == PlayerPoseIntent::LandingAnticipation {
+        let average_leg_lift =
+            ((parts.left_leg_translation.y + parts.right_leg_translation.y) * 0.5).max(0.0);
+        let average_forward_tuck =
+            ((parts.left_leg_translation.z + parts.right_leg_translation.z) * 0.5).max(0.0);
+        average_leg_lift + average_forward_tuck * 0.08
+    } else {
+        0.0
+    };
+
+    let torso_pitch_degrees = parts
+        .torso_rotation
+        .angle_between(Quat::IDENTITY)
+        .to_degrees();
+    let arm_spread_degrees = parts
+        .left_arm_rotation
+        .angle_between(parts.right_arm_rotation)
+        .to_degrees();
+    let leg_tuck_degrees = (parts
+        .left_leg_rotation
+        .angle_between(Quat::IDENTITY)
+        .to_degrees()
+        + parts
+            .right_leg_rotation
+            .angle_between(Quat::IDENTITY)
+            .to_degrees())
+        * 0.5;
+
+    PoseReadabilityMetrics {
+        torso_pitch_degrees,
+        arm_spread_degrees,
+        leg_tuck_degrees,
+        lateral_lean_degrees: torso_lateral_lean_degrees(parts.torso_rotation),
+        landing_crouch_m,
+        wing_airflow_strength: wing_airflow_strength(context.mode, context.velocity),
+        key_pose_readability_score: key_pose_readability_score(
+            context.intent(),
+            torso_pitch_degrees,
+            arm_spread_degrees,
+            leg_tuck_degrees,
+            landing_crouch_m,
+        ),
+    }
+}
+
+fn readable_pair_score(first: f32, first_target: f32, second: f32, second_target: f32) -> f32 {
+    (first / first_target)
+        .min(second / second_target)
+        .clamp(0.0, 1.0)
+}
+
+pub fn pose_readability_metrics(context: PlayerPoseContext, phase: f32) -> PoseReadabilityMetrics {
+    let torso = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+    let left_arm = CharacterPart::new(
+        CharacterPartRole::Arm(Side::Left),
+        Vec3::ZERO,
+        Quat::IDENTITY,
+    );
+    let right_arm = CharacterPart::new(
+        CharacterPartRole::Arm(Side::Right),
+        Vec3::ZERO,
+        Quat::IDENTITY,
+    );
+    let left_leg = CharacterPart::new(
+        CharacterPartRole::Leg(Side::Left),
+        Vec3::ZERO,
+        Quat::IDENTITY,
+    );
+    let right_leg = CharacterPart::new(
+        CharacterPartRole::Leg(Side::Right),
+        Vec3::ZERO,
+        Quat::IDENTITY,
+    );
+
+    let torso_pose = part_pose_with_context(&torso, context, phase);
+    let left_arm_pose = part_pose_with_context(&left_arm, context, phase);
+    let right_arm_pose = part_pose_with_context(&right_arm, context, phase);
+    let left_leg_pose = part_pose_with_context(&left_leg, context, phase);
+    let right_leg_pose = part_pose_with_context(&right_leg, context, phase);
+    let mut metrics = pose_readability_metrics_from_part_transforms(
+        context,
+        PoseReadabilityPartTransforms {
+            torso_rotation: torso_pose.rotation,
+            left_arm_rotation: left_arm_pose.rotation,
+            right_arm_rotation: right_arm_pose.rotation,
+            left_leg_rotation: left_leg_pose.rotation,
+            right_leg_rotation: right_leg_pose.rotation,
+            left_leg_translation: left_leg_pose.translation,
+            right_leg_translation: right_leg_pose.translation,
+        },
+    );
+    metrics.lateral_lean_degrees = pose_lateral_lean_radians(context).abs().to_degrees();
+    metrics
+}
+
 pub fn part_pose(part: &CharacterPart, mode: FlightMode, velocity: Vec3, phase: f32) -> PartPose {
     part_pose_with_context(
         part,
@@ -204,11 +407,14 @@ pub fn part_pose_with_context(
     let intent = context.intent();
     let horizontal_speed = Vec2::new(context.velocity.x, context.velocity.z).length();
     let gait_weight = (horizontal_speed / 16.0).clamp(0.0, 1.0);
-    let roll = (-context.velocity.x * 0.006).clamp(-0.14, 0.14);
+    let turn_weight = pose_turn_weight(context);
+    let airborne_pose = airborne_pose_intent(intent);
+    let roll = pose_lateral_lean_radians(context);
     let vertical_pitch = (-context.velocity.y * 0.004).clamp(-0.1, 0.1);
     let mut translation = part.base_translation;
     let mut rotation = part.base_rotation;
     let mut visibility = PartVisibility::Inherited;
+    let landing_strength = landing_anticipation_strength(context, intent);
 
     match part.role {
         CharacterPartRole::Torso => {
@@ -217,22 +423,22 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedStride => -0.04 * gait_weight,
                 PlayerPoseIntent::Falling => -0.12 + vertical_pitch,
                 PlayerPoseIntent::Gliding => -0.30 + vertical_pitch * 0.5,
-                PlayerPoseIntent::Diving => -0.92 + vertical_pitch * 0.25,
+                PlayerPoseIntent::Diving => -1.04 + vertical_pitch * 0.18,
                 PlayerPoseIntent::AirBrake => 0.08 + vertical_pitch * 0.35,
-                PlayerPoseIntent::LandingAnticipation => 0.42,
+                PlayerPoseIntent::LandingAnticipation => 0.34 + landing_strength * 0.18,
                 PlayerPoseIntent::Launching => 0.1,
             };
             translation.y += cycle.abs() * (0.014 + gait_weight * 0.018);
             if intent == PlayerPoseIntent::LandingAnticipation {
-                translation.y += 0.08;
-                translation.z += 0.08;
+                translation.y += 0.08 + landing_strength * 0.05;
+                translation.z += 0.08 + landing_strength * 0.07;
             }
             rotation *= Quat::from_rotation_x(pitch) * Quat::from_rotation_z(roll);
         }
         CharacterPartRole::Head => {
             translation.y += cycle.abs() * (0.01 + gait_weight * 0.006);
             let pitch = match intent {
-                PlayerPoseIntent::Diving => 0.24,
+                PlayerPoseIntent::Diving => 0.18,
                 PlayerPoseIntent::AirBrake => -0.14,
                 PlayerPoseIntent::LandingAnticipation => -0.22,
                 _ => -0.05,
@@ -247,18 +453,18 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedStride => 0.08 + gait.abs() * 0.06 * gait_weight,
                 PlayerPoseIntent::Falling => 0.65,
                 PlayerPoseIntent::Gliding => 1.08,
-                PlayerPoseIntent::Diving => 1.34,
-                PlayerPoseIntent::AirBrake => 1.46,
-                PlayerPoseIntent::LandingAnticipation => 0.78,
+                PlayerPoseIntent::Diving => 1.50,
+                PlayerPoseIntent::AirBrake => 1.50,
+                PlayerPoseIntent::LandingAnticipation => 0.78 + landing_strength * 0.12,
                 PlayerPoseIntent::Launching => 0.28,
             };
             let sweep = match intent {
                 PlayerPoseIntent::GroundedIdle => cycle * 0.025,
                 PlayerPoseIntent::GroundedStride => gait * 0.48 * gait_weight,
                 PlayerPoseIntent::Gliding => -0.58,
-                PlayerPoseIntent::Diving => -0.08,
+                PlayerPoseIntent::Diving => 0.10,
                 PlayerPoseIntent::AirBrake => 0.42,
-                PlayerPoseIntent::LandingAnticipation => 0.86,
+                PlayerPoseIntent::LandingAnticipation => 0.86 + landing_strength * 0.18,
                 PlayerPoseIntent::Launching => 0.22,
                 PlayerPoseIntent::Falling => -0.2,
             };
@@ -271,7 +477,13 @@ pub fn part_pose_with_context(
                 FlightMode::Airborne => -0.02,
                 _ => 0.0,
             };
-            rotation *= Quat::from_rotation_z(sign * spread) * Quat::from_rotation_x(sweep);
+            if airborne_pose {
+                translation.y += sign * turn_weight * 0.045;
+                translation.z += turn_weight.abs() * 0.025;
+            }
+            rotation *= Quat::from_rotation_z(sign * spread)
+                * Quat::from_rotation_x(sweep)
+                * Quat::from_rotation_y(sign * turn_weight * 0.12);
         }
         CharacterPartRole::Leg(side) => {
             let sign = side.sign();
@@ -283,26 +495,32 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => 0.2,
                 PlayerPoseIntent::Diving => 0.12,
                 PlayerPoseIntent::AirBrake => 0.34,
-                PlayerPoseIntent::LandingAnticipation => 0.38,
+                PlayerPoseIntent::LandingAnticipation => 0.38 + landing_strength * 0.1,
                 PlayerPoseIntent::Launching => 0.02,
             };
             let trail = match intent {
                 PlayerPoseIntent::GroundedIdle => 0.02,
                 PlayerPoseIntent::GroundedStride => gait * 0.52 * gait_weight,
                 PlayerPoseIntent::Gliding => 0.46 + cycle * 0.04,
-                PlayerPoseIntent::Diving => 0.86 + cycle * 0.02,
+                PlayerPoseIntent::Diving => 0.98 + cycle * 0.02,
                 PlayerPoseIntent::AirBrake => -0.34,
-                PlayerPoseIntent::LandingAnticipation => -0.82,
+                PlayerPoseIntent::LandingAnticipation => -0.78 - landing_strength * 0.24,
                 PlayerPoseIntent::Falling => 0.22 + vertical_pitch,
                 PlayerPoseIntent::Launching => -0.12,
             };
             translation.z += gait * 0.18 * gait_weight;
             translation.y += gait.max(0.0) * 0.045 * gait_weight;
             if intent == PlayerPoseIntent::LandingAnticipation {
-                translation.z += 0.14;
-                translation.y += 0.05;
+                translation.z += 0.14 + landing_strength * 0.1;
+                translation.y += 0.05 + landing_strength * 0.04;
             }
-            rotation *= Quat::from_rotation_z(sign * spread) * Quat::from_rotation_x(trail);
+            if airborne_pose {
+                translation.x += sign * turn_weight * 0.035;
+                translation.y += turn_weight.abs() * 0.018;
+            }
+            rotation *= Quat::from_rotation_z(sign * spread)
+                * Quat::from_rotation_x(trail)
+                * Quat::from_rotation_y(sign * turn_weight * 0.08);
         }
         CharacterPartRole::Wing(side) => {
             visibility = if context.mode == FlightMode::Gliding {
@@ -547,5 +765,131 @@ mod tests {
         assert!(landing.translation.z > falling.translation.z + 0.1);
         assert!(landing.translation.y > falling.translation.y + 0.04);
         assert!(landing.rotation.angle_between(falling.rotation) > 1.0);
+    }
+
+    #[test]
+    fn body_local_pose_velocity_uses_player_facing_axes() {
+        let rotation = Transform::from_translation(Vec3::ZERO)
+            .looking_to(Vec3::X, Vec3::Y)
+            .rotation;
+        let pose_velocity = body_local_pose_velocity(Vec3::NEG_Z * 14.0, rotation);
+
+        assert!(pose_velocity.x < -13.9);
+        assert!(pose_velocity.z.abs() < 0.001);
+    }
+
+    #[test]
+    fn airborne_turn_pose_exposes_readable_lateral_lean() {
+        let context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(24.0, -2.0, -32.0),
+            FlightInput {
+                right: true,
+                ..default()
+            },
+            40.0,
+        );
+        let metrics = pose_readability_metrics(context, 0.0);
+
+        assert!(metrics.lateral_lean_degrees > 11.0);
+        assert!(metrics.arm_spread_degrees > 100.0);
+        assert!(metrics.wing_airflow_strength > 0.25);
+    }
+
+    #[test]
+    fn pose_readability_metrics_distinguish_dive_air_brake_and_landing() {
+        let dive = pose_readability_metrics(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -18.0, -42.0),
+                FlightInput {
+                    dive: true,
+                    ..default()
+                },
+                40.0,
+            ),
+            0.0,
+        );
+        let air_brake = pose_readability_metrics(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -2.0, -32.0),
+                FlightInput {
+                    backward: true,
+                    ..default()
+                },
+                40.0,
+            ),
+            0.0,
+        );
+        let landing = pose_readability_metrics(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -4.0, -18.0),
+                FlightInput::default(),
+                4.0,
+            ),
+            0.0,
+        );
+
+        assert!(dive.torso_pitch_degrees > 50.0);
+        assert!(air_brake.arm_spread_degrees > dive.arm_spread_degrees);
+        assert!(landing.landing_crouch_m > 0.05);
+        assert!(dive.key_pose_readability_score >= 0.98);
+        assert!(air_brake.key_pose_readability_score >= 0.98);
+        assert!(landing.key_pose_readability_score >= 0.98);
+    }
+
+    #[test]
+    fn pose_readability_can_be_measured_from_rendered_part_transforms() {
+        let context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(20.0, -3.0, -34.0),
+            FlightInput {
+                right: true,
+                ..default()
+            },
+            30.0,
+        );
+        let torso = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+        let left_arm = CharacterPart::new(
+            CharacterPartRole::Arm(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let right_arm = CharacterPart::new(
+            CharacterPartRole::Arm(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let left_leg = CharacterPart::new(
+            CharacterPartRole::Leg(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let right_leg = CharacterPart::new(
+            CharacterPartRole::Leg(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let left_leg_pose = part_pose_with_context(&left_leg, context, 0.0);
+        let right_leg_pose = part_pose_with_context(&right_leg, context, 0.0);
+
+        let metrics = pose_readability_metrics_from_part_transforms(
+            context,
+            PoseReadabilityPartTransforms {
+                torso_rotation: part_pose_with_context(&torso, context, 0.0).rotation,
+                left_arm_rotation: part_pose_with_context(&left_arm, context, 0.0).rotation,
+                right_arm_rotation: part_pose_with_context(&right_arm, context, 0.0).rotation,
+                left_leg_rotation: left_leg_pose.rotation,
+                right_leg_rotation: right_leg_pose.rotation,
+                left_leg_translation: left_leg_pose.translation,
+                right_leg_translation: right_leg_pose.translation,
+            },
+        );
+
+        assert!(metrics.lateral_lean_degrees > 8.0);
+        assert!(metrics.arm_spread_degrees > 100.0);
+        assert!(metrics.key_pose_readability_score >= 0.9);
     }
 }

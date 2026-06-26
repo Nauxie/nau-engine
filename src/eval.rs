@@ -6,7 +6,9 @@ mod scenarios;
 mod summary;
 mod thresholds;
 pub use accumulator::EvalAccumulator;
-pub use sample::{EvalMovementMetrics, EvalObjectiveProgress, EvalSample};
+pub use sample::{
+    EvalMovementMetrics, EvalObjectiveProgress, EvalPoseReadabilityMetrics, EvalSample,
+};
 pub use scenarios::{
     AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL,
     CAMERA_STRAFE_STABILITY, CAMERA_TURN_STABILITY, CAMERA_YAW_STABILITY, EvalCheckpoint,

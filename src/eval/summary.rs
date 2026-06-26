@@ -82,6 +82,15 @@ pub struct EvalMetricsSummary {
     pub max_air_brake_speed_drop_mps: f32,
     pub max_air_brake_planar_speed_drop_mps: f32,
     pub max_post_brake_forward_alignment_mps: f32,
+    pub max_pose_torso_pitch_degrees: f32,
+    pub max_pose_arm_spread_degrees: f32,
+    pub max_pose_leg_tuck_degrees: f32,
+    pub max_pose_lateral_lean_degrees: f32,
+    pub max_pose_landing_crouch_m: f32,
+    pub max_pose_wing_airflow_strength: f32,
+    pub min_key_pose_readability_score: f32,
+    pub max_key_pose_readability_score: f32,
+    pub unreadable_key_pose_samples: u32,
     pub min_target_distance_m: f32,
     pub final_target_distance_m: f32,
     pub min_camera_pitch_degrees: f32,
@@ -412,6 +421,21 @@ impl EvalMetricsSummary {
             post_brake_key
         );
         let json = json.replacen(&post_brake_key, &planar_brake_metrics, 1);
+        let min_target_distance_key = format!("{indent}  \"min_target_distance_m\"");
+        let pose_readability_metrics = format!(
+            "{indent}  \"max_pose_torso_pitch_degrees\": {},\n{indent}  \"max_pose_arm_spread_degrees\": {},\n{indent}  \"max_pose_leg_tuck_degrees\": {},\n{indent}  \"max_pose_lateral_lean_degrees\": {},\n{indent}  \"max_pose_landing_crouch_m\": {},\n{indent}  \"max_pose_wing_airflow_strength\": {},\n{indent}  \"min_key_pose_readability_score\": {},\n{indent}  \"max_key_pose_readability_score\": {},\n{indent}  \"unreadable_key_pose_samples\": {},\n{}",
+            json_number(self.max_pose_torso_pitch_degrees),
+            json_number(self.max_pose_arm_spread_degrees),
+            json_number(self.max_pose_leg_tuck_degrees),
+            json_number(self.max_pose_lateral_lean_degrees),
+            json_number(self.max_pose_landing_crouch_m),
+            json_number(self.max_pose_wing_airflow_strength),
+            json_number(self.min_key_pose_readability_score),
+            json_number(self.max_key_pose_readability_score),
+            self.unreadable_key_pose_samples,
+            min_target_distance_key
+        );
+        let json = json.replacen(&min_target_distance_key, &pose_readability_metrics, 1);
         let terrain_surface_key = format!("{indent}  \"min_island_terrain_surface_count\"");
         let collision_metrics = format!(
             "{indent}  \"max_world_collision_proxy_count\": {},\n{indent}  \"world_collision_resolved_samples\": {},\n{indent}  \"max_world_collision_push_m\": {},\n{}",

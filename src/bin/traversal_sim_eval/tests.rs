@@ -43,6 +43,15 @@ fn baseline_simulation_writes_windowless_artifacts() {
             .last()
             .unwrap()
             .to_json()
+            .get("key_pose_readability_score")
+            .is_some()
+    );
+    assert!(
+        result
+            .samples
+            .last()
+            .unwrap()
+            .to_json()
             .get("max_wind_flow_variation")
             .is_some()
     );
@@ -190,6 +199,12 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_camera_rotation_delta",
         "air_control_camera_view_yaw_drift",
         "air_control_camera_world_yaw_drift",
+        "air_control_pose_torso_pitch",
+        "air_control_pose_arm_spread",
+        "air_control_pose_leg_tuck",
+        "air_control_pose_lateral_lean",
+        "air_control_pose_wing_airflow",
+        "air_control_unreadable_key_pose_samples",
         "air_control_pose_air_brake_samples",
         "air_control_pose_diving_samples",
     ] {
@@ -274,6 +289,7 @@ fn sim_roll_sample(
         frame,
         state,
         player_rotation,
+        0.0,
         nau_engine::camera::CameraOrbit::default(),
         camera,
         input,

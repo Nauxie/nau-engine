@@ -3,7 +3,9 @@ use bevy::prelude::*;
 use crate::movement::FlightMode;
 
 use super::super::vec3_array;
-use super::types::{EvalMovementMetrics, EvalObjectiveProgress, EvalSample};
+use super::types::{
+    EvalMovementMetrics, EvalObjectiveProgress, EvalPoseReadabilityMetrics, EvalSample,
+};
 
 impl EvalSample {
     #[allow(clippy::too_many_arguments)]
@@ -107,6 +109,13 @@ impl EvalSample {
             altitude_m: position.y,
             mode: mode.label(),
             pose_intent_label,
+            pose_torso_pitch_degrees: 0.0,
+            pose_arm_spread_degrees: 0.0,
+            pose_leg_tuck_degrees: 0.0,
+            pose_lateral_lean_degrees: 0.0,
+            pose_landing_crouch_m: 0.0,
+            pose_wing_airflow_strength: 0.0,
+            key_pose_readability_score: 1.0,
             desired_body_yaw_error_degrees: f32::NAN,
             desired_body_heading_error_degrees: f32::NAN,
             body_roll_degrees: 0.0,
@@ -258,6 +267,17 @@ impl EvalSample {
         self.lateral_input_active = metrics.lateral_input_active;
         self.movement_input_lateral_axis = metrics.movement_axis.x;
         self.movement_input_forward_axis = metrics.movement_axis.y;
+        self
+    }
+
+    pub fn with_pose_readability_metrics(mut self, metrics: EvalPoseReadabilityMetrics) -> Self {
+        self.pose_torso_pitch_degrees = metrics.torso_pitch_degrees.max(0.0);
+        self.pose_arm_spread_degrees = metrics.arm_spread_degrees.max(0.0);
+        self.pose_leg_tuck_degrees = metrics.leg_tuck_degrees.max(0.0);
+        self.pose_lateral_lean_degrees = metrics.lateral_lean_degrees.max(0.0);
+        self.pose_landing_crouch_m = metrics.landing_crouch_m.max(0.0);
+        self.pose_wing_airflow_strength = metrics.wing_airflow_strength.clamp(0.0, 1.0);
+        self.key_pose_readability_score = metrics.key_pose_readability_score.clamp(0.0, 1.0);
         self
     }
 

@@ -1,9 +1,15 @@
 use super::scene::EvalScene;
+use crate::authored_assets::{AuthoredPlayerAnimation, authored_player_clip_for_pose_intent};
 use crate::camera_runtime::CAMERA_PLAYER_FOCUS_HEIGHT;
 use crate::environment_visuals::wind_responsive_visual_metrics;
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
 use crate::{grounded_visual_foot_gap_m, movement_facing};
 use bevy::prelude::*;
+use nau_engine::animation::{
+    CharacterPart, CharacterPartRole, PlayerPoseContext, PlayerPoseIntent, PoseReadabilityMetrics,
+    PoseReadabilityPartTransforms, Side, body_local_pose_velocity, pose_readability_metrics,
+    pose_readability_metrics_from_part_transforms,
+};
 use nau_engine::camera::{
     CameraControlState, camera_distance, camera_pitch_degrees, camera_surface_clearance,
     camera_target_angle_degrees, camera_view_yaw_degrees,
@@ -13,7 +19,10 @@ use nau_engine::environment::{
     AERIAL_POWER_UP_ROUTE, active_lift_fields_at, readable_lift_fields_at, visible_fields_at,
     wind_flow_metrics_at,
 };
-use nau_engine::eval::{EvalMovementMetrics, EvalObjectiveProgress, EvalSample, scripted_input};
+use nau_engine::eval::{
+    EvalMovementMetrics, EvalObjectiveProgress, EvalPoseReadabilityMetrics, EvalSample,
+    scripted_input,
+};
 use nau_engine::movement::{
     FlightMode, body_roll_degrees, body_yaw_error_degrees, desired_heading_alignment_speed,
     desired_planar_movement_direction, lateral_response_speed,
@@ -115,6 +124,25 @@ pub(crate) fn collect_eval_metrics(
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
     let movement_input = scripted_input(run.scenario, run.frame);
     let pose_intent_label = animation.pose_intent.label();
+    let pose_context = PlayerPoseContext::new(
+        controller.mode,
+        body_local_pose_velocity(velocity.0, transform.rotation),
+        movement_input,
+        animation.height_above_ground_m,
+    );
+    let pose_readability = pose_readability_metrics(pose_context, animation.phase);
+    let pose_readability = visible_generated_pose_readability_metrics(
+        scene.generated_character_parts.iter(),
+        pose_context,
+    )
+    .unwrap_or_else(|| {
+        authored_pose_readability_metrics(
+            scene.authored_player_animations.iter(),
+            pose_readability,
+            pose_context.intent(),
+            velocity.0.length(),
+        )
+    });
     let movement_axis = movement_input.planar_axis();
     let movement_facing = if movement_basis.frame == run.frame {
         movement_basis
@@ -243,6 +271,15 @@ pub(crate) fn collect_eval_metrics(
         scene.collision_diagnostics.resolved_count,
         scene.collision_diagnostics.max_push_m,
     )
+    .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: pose_readability.torso_pitch_degrees,
+        arm_spread_degrees: pose_readability.arm_spread_degrees,
+        leg_tuck_degrees: pose_readability.leg_tuck_degrees,
+        lateral_lean_degrees: pose_readability.lateral_lean_degrees,
+        landing_crouch_m: pose_readability.landing_crouch_m,
+        wing_airflow_strength: pose_readability.wing_airflow_strength,
+        key_pose_readability_score: pose_readability.key_pose_readability_score,
+    })
     .with_content_metrics(
         content_metrics.island_terrain_surface_count,
         content_metrics.min_island_terrain_mesh_vertices,
@@ -302,5 +339,258 @@ pub(crate) fn collect_eval_metrics(
 
     if let Err(error) = run.record_sample(sample) {
         run.io_error = Some(format!("failed to write eval sample: {error}"));
+    }
+}
+
+fn visible_generated_pose_readability_metrics<'a>(
+    parts: impl Iterator<Item = (&'a CharacterPart, &'a Transform, &'a Visibility)>,
+    context: PlayerPoseContext,
+) -> Option<PoseReadabilityMetrics> {
+    let mut torso_rotation = None;
+    let mut left_arm_rotation = None;
+    let mut right_arm_rotation = None;
+    let mut left_leg_rotation = None;
+    let mut right_leg_rotation = None;
+    let mut left_leg_translation = None;
+    let mut right_leg_translation = None;
+
+    for (part, transform, visibility) in parts {
+        if matches!(*visibility, Visibility::Hidden) {
+            continue;
+        }
+
+        match part.role {
+            CharacterPartRole::Torso => torso_rotation = Some(transform.rotation),
+            CharacterPartRole::Arm(Side::Left) => left_arm_rotation = Some(transform.rotation),
+            CharacterPartRole::Arm(Side::Right) => right_arm_rotation = Some(transform.rotation),
+            CharacterPartRole::Leg(Side::Left) => {
+                left_leg_rotation = Some(transform.rotation);
+                left_leg_translation = Some(transform.translation - part.base_translation);
+            }
+            CharacterPartRole::Leg(Side::Right) => {
+                right_leg_rotation = Some(transform.rotation);
+                right_leg_translation = Some(transform.translation - part.base_translation);
+            }
+            CharacterPartRole::Head | CharacterPartRole::Wing(_) => {}
+        }
+    }
+
+    Some(pose_readability_metrics_from_part_transforms(
+        context,
+        PoseReadabilityPartTransforms {
+            torso_rotation: torso_rotation?,
+            left_arm_rotation: left_arm_rotation?,
+            right_arm_rotation: right_arm_rotation?,
+            left_leg_rotation: left_leg_rotation?,
+            right_leg_rotation: right_leg_rotation?,
+            left_leg_translation: left_leg_translation?,
+            right_leg_translation: right_leg_translation?,
+        },
+    ))
+}
+
+fn authored_pose_readability_metrics<'a>(
+    mut authored_players: impl Iterator<Item = &'a AuthoredPlayerAnimation>,
+    mut metrics: PoseReadabilityMetrics,
+    intent: PlayerPoseIntent,
+    speed_mps: f32,
+) -> PoseReadabilityMetrics {
+    if !key_pose_intent(intent) {
+        return metrics;
+    }
+
+    let desired_clip = authored_player_clip_for_pose_intent(intent, speed_mps);
+    let Some(first_authored_player) = authored_players.next() else {
+        metrics.key_pose_readability_score = 0.0;
+        return metrics;
+    };
+    let current_clip_matches = first_authored_player.current == desired_clip
+        && authored_players.all(|authored_player| authored_player.current == desired_clip);
+
+    if !current_clip_matches {
+        metrics.key_pose_readability_score = 0.0;
+    }
+    metrics
+}
+
+fn key_pose_intent(intent: PlayerPoseIntent) -> bool {
+    matches!(
+        intent,
+        PlayerPoseIntent::Gliding
+            | PlayerPoseIntent::Diving
+            | PlayerPoseIntent::AirBrake
+            | PlayerPoseIntent::LandingAnticipation
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nau_engine::movement::{FlightInput, FlightMode};
+
+    #[test]
+    fn visible_generated_pose_metrics_use_rendered_part_transforms() {
+        let context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(24.0, -2.0, -30.0),
+            FlightInput {
+                right: true,
+                ..default()
+            },
+            30.0,
+        );
+        let parts = [
+            (
+                CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY),
+                Transform::from_rotation(Quat::from_rotation_z(-0.20)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Arm(Side::Left),
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                ),
+                Transform::from_rotation(Quat::from_rotation_z(-1.0)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Arm(Side::Right),
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                ),
+                Transform::from_rotation(Quat::from_rotation_z(1.0)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Leg(Side::Left),
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                ),
+                Transform::from_rotation(Quat::from_rotation_x(0.65)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Leg(Side::Right),
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                ),
+                Transform::from_rotation(Quat::from_rotation_x(0.65)),
+                Visibility::Inherited,
+            ),
+        ];
+
+        let metrics = visible_generated_pose_readability_metrics(
+            parts
+                .iter()
+                .map(|(part, transform, visibility)| (part, transform, visibility)),
+            context,
+        )
+        .expect("visible generated pose metrics");
+
+        assert!(metrics.lateral_lean_degrees > 8.0);
+        assert!(metrics.arm_spread_degrees > 100.0);
+    }
+
+    #[test]
+    fn hidden_generated_parts_do_not_satisfy_visible_pose_metrics() {
+        let context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -2.0, -30.0),
+            FlightInput::default(),
+            30.0,
+        );
+        let parts = [(
+            CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY),
+            Transform::default(),
+            Visibility::Hidden,
+        )];
+
+        assert!(
+            visible_generated_pose_readability_metrics(
+                parts
+                    .iter()
+                    .map(|(part, transform, visibility)| (part, transform, visibility)),
+                context,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn generated_landing_crouch_uses_pose_delta_not_leg_base_height() {
+        let context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -4.0, -18.0),
+            FlightInput::default(),
+            4.0,
+        );
+        let left_leg_base = Vec3::new(-0.22, 0.28, 0.0);
+        let right_leg_base = Vec3::new(0.22, 0.28, 0.0);
+        let parts = [
+            (
+                CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY),
+                Transform::from_rotation(Quat::from_rotation_x(0.52)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Arm(Side::Left),
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                ),
+                Transform::from_rotation(Quat::from_rotation_z(-0.9)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Arm(Side::Right),
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                ),
+                Transform::from_rotation(Quat::from_rotation_z(0.9)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Leg(Side::Left),
+                    left_leg_base,
+                    Quat::IDENTITY,
+                ),
+                Transform {
+                    translation: left_leg_base,
+                    rotation: Quat::from_rotation_x(-1.1),
+                    ..default()
+                },
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Leg(Side::Right),
+                    right_leg_base,
+                    Quat::IDENTITY,
+                ),
+                Transform {
+                    translation: right_leg_base,
+                    rotation: Quat::from_rotation_x(-1.1),
+                    ..default()
+                },
+                Visibility::Inherited,
+            ),
+        ];
+
+        let metrics = visible_generated_pose_readability_metrics(
+            parts
+                .iter()
+                .map(|(part, transform, visibility)| (part, transform, visibility)),
+            context,
+        )
+        .expect("visible generated pose metrics");
+
+        assert_eq!(metrics.landing_crouch_m, 0.0);
+        assert!(metrics.key_pose_readability_score < 0.1);
     }
 }

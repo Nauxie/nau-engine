@@ -1,4 +1,5 @@
 use bevy::prelude::Vec2;
+use nau_engine::animation::MIN_KEY_POSE_READABILITY_SCORE;
 use nau_engine::eval::{CAMERA_STRAFE_STABILITY, EvalScenario};
 
 use super::super::{
@@ -131,6 +132,24 @@ impl SimMetrics {
         }
         self.observe_lateral_response(sample);
         self.observe_backward_air_control(sample);
+        self.max_pose_torso_pitch_degrees = self
+            .max_pose_torso_pitch_degrees
+            .max(sample.pose_torso_pitch_degrees);
+        self.max_pose_arm_spread_degrees = self
+            .max_pose_arm_spread_degrees
+            .max(sample.pose_arm_spread_degrees);
+        self.max_pose_leg_tuck_degrees = self
+            .max_pose_leg_tuck_degrees
+            .max(sample.pose_leg_tuck_degrees);
+        self.max_pose_lateral_lean_degrees = self
+            .max_pose_lateral_lean_degrees
+            .max(sample.pose_lateral_lean_degrees);
+        self.max_pose_landing_crouch_m = self
+            .max_pose_landing_crouch_m
+            .max(sample.pose_landing_crouch_m);
+        self.max_pose_wing_airflow_strength = self
+            .max_pose_wing_airflow_strength
+            .max(sample.pose_wing_airflow_strength);
 
         self.min_target_distance_m = self.min_target_distance_m.min(sample.target_distance_m);
         self.final_target_distance_m = sample.target_distance_m;
@@ -204,16 +223,39 @@ impl SimMetrics {
             "grounded" => self.grounded_samples += 1,
             _ => {}
         }
+        self.observe_pose_intent_counts(sample);
+
+        if scenario.name == CAMERA_STRAFE_STABILITY {
+            self.max_camera_obstruction_adjustment_m = 0.0;
+        }
+    }
+
+    fn observe_pose_intent_counts(&mut self, sample: &SimSample) {
+        if !key_pose_intent_label(sample.pose_intent_label) {
+            return;
+        }
+
+        self.max_key_pose_readability_score = self
+            .max_key_pose_readability_score
+            .max(sample.key_pose_readability_score);
+        let min_score = self
+            .min_key_pose_readability_score
+            .map_or(sample.key_pose_readability_score, |current| {
+                current.min(sample.key_pose_readability_score)
+            });
+        self.min_key_pose_readability_score = Some(min_score);
+
+        if sample.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE {
+            self.unreadable_key_pose_samples += 1;
+            return;
+        }
+
         match sample.pose_intent_label {
             "gliding" => self.pose_gliding_samples += 1,
             "diving" => self.pose_diving_samples += 1,
             "air_brake" => self.pose_air_brake_samples += 1,
             "landing_anticipation" => self.pose_landing_anticipation_samples += 1,
             _ => {}
-        }
-
-        if scenario.name == CAMERA_STRAFE_STABILITY {
-            self.max_camera_obstruction_adjustment_m = 0.0;
         }
     }
 
@@ -350,4 +392,11 @@ impl SimMetrics {
             self.max_air_brake_planar_speed_drop_mps = (start - minimum).max(0.0);
         }
     }
+}
+
+fn key_pose_intent_label(label: &str) -> bool {
+    matches!(
+        label,
+        "gliding" | "diving" | "air_brake" | "landing_anticipation"
+    )
 }

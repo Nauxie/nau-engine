@@ -694,6 +694,63 @@ fn accumulator_gates_air_control_pose_readability() {
     assert_eq!(dive_check.value, 0.0);
     assert!(!air_brake_check.passed);
     assert!(!dive_check.passed);
+    for name in [
+        "air_control_pose_torso_pitch",
+        "air_control_pose_arm_spread",
+        "air_control_pose_leg_tuck",
+        "air_control_pose_lateral_lean",
+        "air_control_pose_wing_airflow",
+    ] {
+        let check = named_check(&summary, name);
+        assert_eq!(check.value, 0.0);
+        assert!(!check.passed, "expected {name} to fail");
+    }
+}
+
+#[test]
+fn accumulator_rejects_unreadable_key_pose_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            120,
+            Vec3::new(0.0, -18.0, -26.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        )
+        .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+            torso_pitch_degrees: 8.0,
+            arm_spread_degrees: 18.0,
+            leg_tuck_degrees: 4.0,
+            lateral_lean_degrees: 0.0,
+            landing_crouch_m: 0.0,
+            wing_airflow_strength: 0.0,
+            key_pose_readability_score: 0.25,
+        }),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let dive_check = named_check(&summary, "air_control_pose_diving_samples");
+    let unreadable_check = named_check(&summary, "air_control_unreadable_key_pose_samples");
+
+    assert_eq!(summary.metrics.pose_diving_samples, 0);
+    assert_eq!(summary.metrics.unreadable_key_pose_samples, 1);
+    assert_eq!(dive_check.value, 0.0);
+    assert_eq!(unreadable_check.value, 1.0);
+    assert!(!dive_check.passed);
+    assert!(!unreadable_check.passed);
 }
 
 #[test]

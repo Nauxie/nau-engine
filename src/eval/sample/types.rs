@@ -46,6 +46,17 @@ pub struct EvalMovementMetrics {
 }
 
 #[derive(Clone, Debug)]
+pub struct EvalPoseReadabilityMetrics {
+    pub torso_pitch_degrees: f32,
+    pub arm_spread_degrees: f32,
+    pub leg_tuck_degrees: f32,
+    pub lateral_lean_degrees: f32,
+    pub landing_crouch_m: f32,
+    pub wing_airflow_strength: f32,
+    pub key_pose_readability_score: f32,
+}
+
+#[derive(Clone, Debug)]
 pub struct EvalSample {
     pub frame: u32,
     pub time_secs: f32,
@@ -55,6 +66,13 @@ pub struct EvalSample {
     pub altitude_m: f32,
     pub mode: &'static str,
     pub pose_intent_label: &'static str,
+    pub pose_torso_pitch_degrees: f32,
+    pub pose_arm_spread_degrees: f32,
+    pub pose_leg_tuck_degrees: f32,
+    pub pose_lateral_lean_degrees: f32,
+    pub pose_landing_crouch_m: f32,
+    pub pose_wing_airflow_strength: f32,
+    pub key_pose_readability_score: f32,
     pub desired_body_yaw_error_degrees: f32,
     pub desired_body_heading_error_degrees: f32,
     pub body_roll_degrees: f32,

@@ -9,7 +9,10 @@ use crate::{
     AIR_CONTROL_MIN_BACKWARD_DIAGONAL_REAR_RESPONSE_MPS,
     AIR_CONTROL_MIN_BACKWARD_LATERAL_RESPONSE_MPS, AIR_CONTROL_MIN_BODY_BANK_RESPONSE_DEGREES,
     AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS, AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS,
-    AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS, MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES,
+    AIR_CONTROL_MIN_POSE_ARM_SPREAD_DEGREES, AIR_CONTROL_MIN_POSE_LATERAL_LEAN_DEGREES,
+    AIR_CONTROL_MIN_POSE_LEG_TUCK_DEGREES, AIR_CONTROL_MIN_POSE_TORSO_PITCH_DEGREES,
+    AIR_CONTROL_MIN_POSE_WING_AIRFLOW_STRENGTH, AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS,
+    MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES,
 };
 
 use crate::metrics::util::{
@@ -224,9 +227,45 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             "mps",
         ),
         SimCheck::at_least(
+            "air_control_pose_torso_pitch",
+            metrics.max_pose_torso_pitch_degrees,
+            AIR_CONTROL_MIN_POSE_TORSO_PITCH_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "air_control_pose_arm_spread",
+            metrics.max_pose_arm_spread_degrees,
+            AIR_CONTROL_MIN_POSE_ARM_SPREAD_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "air_control_pose_leg_tuck",
+            metrics.max_pose_leg_tuck_degrees,
+            AIR_CONTROL_MIN_POSE_LEG_TUCK_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "air_control_pose_lateral_lean",
+            metrics.max_pose_lateral_lean_degrees,
+            AIR_CONTROL_MIN_POSE_LATERAL_LEAN_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "air_control_pose_wing_airflow",
+            metrics.max_pose_wing_airflow_strength,
+            AIR_CONTROL_MIN_POSE_WING_AIRFLOW_STRENGTH,
+            "ratio",
+        ),
+        SimCheck::at_most(
+            "air_control_unreadable_key_pose_samples",
+            metrics.unreadable_key_pose_samples as f32,
+            0.0,
+            "samples",
+        ),
+        SimCheck::at_least(
             "air_control_pose_air_brake_samples",
             metrics.pose_air_brake_samples as f32,
-            1.0,
+            4.0,
             "samples",
         ),
         SimCheck::at_least(
