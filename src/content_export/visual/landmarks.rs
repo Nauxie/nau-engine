@@ -1,0 +1,100 @@
+use super::{metrics::visual_content_mesh_summary, types::VisualLandmarkSummary};
+use crate::{
+    content_export::shared::{terrain_export_slug, write_mesh_obj},
+    generated_content::{
+        landing_garden_marker_mesh, launch_beacon_mesh, pond_surface_mesh, route_cairn_mesh,
+    },
+};
+use bevy::prelude::*;
+use nau_engine::world::SkyIsland;
+use std::path::{Path, PathBuf};
+
+pub(super) fn visual_content_landmark_summaries(
+    output_dir: &Path,
+    island_index: usize,
+    island: SkyIsland,
+    island_slug: &str,
+) -> std::io::Result<Vec<VisualLandmarkSummary>> {
+    let mut landmarks = Vec::new();
+
+    let pond_mesh = pond_surface_mesh(
+        island.half_extents.x * 0.12,
+        island.half_extents.y * 0.08,
+        11_000 + island_index as u32 * 149,
+    );
+    landmarks.push(write_visual_landmark_summary(
+        output_dir,
+        island.name,
+        "pond_surface",
+        "pond surface",
+        island_index,
+        island_slug,
+        &pond_mesh,
+    )?);
+
+    if !island.is_target && island.name != "launch mesa" {
+        let beacon_height = 3.8 + (island_index % 3) as f32 * 0.7;
+        let cairn_mesh = route_cairn_mesh(0.44, beacon_height, 12_000 + island_index as u32 * 157);
+        landmarks.push(write_visual_landmark_summary(
+            output_dir,
+            island.name,
+            "route_cairn",
+            "route cairn",
+            island_index,
+            island_slug,
+            &cairn_mesh,
+        )?);
+    } else if island.name == "launch mesa" {
+        let beacon_mesh = launch_beacon_mesh(0.78, 3.2, 14_000 + island_index as u32 * 173);
+        landmarks.push(write_visual_landmark_summary(
+            output_dir,
+            island.name,
+            "launch_beacon",
+            "launch beacon",
+            island_index,
+            island_slug,
+            &beacon_mesh,
+        )?);
+    } else if island.is_target {
+        for marker_index in 0..4 {
+            let marker_mesh = landing_garden_marker_mesh(
+                8.0,
+                0.62,
+                13_000 + island_index as u32 * 163 + marker_index as u32 * 17,
+            );
+            landmarks.push(write_visual_landmark_summary(
+                output_dir,
+                island.name,
+                "landing_garden_marker",
+                &format!("landing garden marker {marker_index}"),
+                island_index,
+                island_slug,
+                &marker_mesh,
+            )?);
+        }
+    }
+
+    Ok(landmarks)
+}
+
+fn write_visual_landmark_summary(
+    output_dir: &Path,
+    island_name: &'static str,
+    kind: &'static str,
+    label: &str,
+    island_index: usize,
+    island_slug: &str,
+    mesh: &Mesh,
+) -> std::io::Result<VisualLandmarkSummary> {
+    let label_slug = terrain_export_slug(label);
+    let obj_path =
+        PathBuf::from("visuals").join(format!("{island_index:02}_{island_slug}_{label_slug}.obj"));
+    write_mesh_obj(&output_dir.join(&obj_path), mesh, label)?;
+
+    Ok(VisualLandmarkSummary {
+        island_name,
+        kind,
+        label: label.to_string(),
+        mesh: visual_content_mesh_summary(obj_path, mesh),
+    })
+}

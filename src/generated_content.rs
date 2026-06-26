@@ -7,13 +7,15 @@ pub(crate) use detail_meshes::{
     CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, CLOUD_WISP_CARDS_PER_LOBE, TREE_BRANCH_COUNT,
     TREE_CANOPY_CARD_COUNT, TREE_ROOT_FLARE_COUNT, TREE_TRUNK_RING_COUNT, TREE_TRUNK_SEGMENTS,
     cloud_cluster_mesh, cloud_filament_ribbon_detail_count, glider_airflow_trail_mesh,
-    rock_scatter_mesh, tree_canopy_mesh, tree_trunk_mesh, updraft_ribbon_mesh,
+    landing_garden_marker_mesh, launch_beacon_mesh, pond_surface_mesh, rock_scatter_mesh,
+    route_cairn_mesh, tree_canopy_mesh, tree_trunk_mesh, updraft_ribbon_mesh,
 };
 #[cfg(test)]
 pub(crate) use detail_meshes::{
     CLOUD_FILAMENT_RIBBON_VERTICES, CLOUD_FILAMENT_RIBBONS_PER_LOBE, DETAIL_CARD_VERTICES,
-    ROCK_MESH_RINGS, ROCK_MESH_SEGMENTS, TREE_BRANCH_SEGMENTS, TREE_CANOPY_LATITUDE_SEGMENTS,
-    TREE_CANOPY_LONGITUDE_SEGMENTS, TREE_ROOT_FLARE_SEGMENTS,
+    LANDING_GARDEN_MARKER_SEGMENTS, LAUNCH_BEACON_CRYSTAL_COUNT, POND_SURFACE_SEGMENTS,
+    ROCK_MESH_RINGS, ROCK_MESH_SEGMENTS, ROUTE_CAIRN_STONE_COUNT, TREE_BRANCH_SEGMENTS,
+    TREE_CANOPY_LATITUDE_SEGMENTS, TREE_CANOPY_LONGITUDE_SEGMENTS, TREE_ROOT_FLARE_SEGMENTS,
 };
 pub(crate) use island_meshes::{
     GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES, ISLAND_BODY_SEGMENTS,

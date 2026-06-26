@@ -1,5 +1,6 @@
 use super::{
     clouds::visual_content_cloud_summaries,
+    landmarks::visual_content_landmark_summaries,
     metrics::{finite_range_f32, finite_ratio, min_finite_f32, visual_content_mesh_summary},
     palette::visual_content_palette_summary,
     types::{VisualContentExportReport, VisualGroundCoverSummary, VisualTreeSummary},
@@ -35,6 +36,7 @@ pub(crate) fn export_visual_content_inspection(
     let mut ground_cover = Vec::with_capacity(route.islands().len());
     let mut trees = Vec::new();
     let mut clouds = Vec::new();
+    let mut landmarks = Vec::new();
 
     for (island_index, island) in route.islands().iter().copied().enumerate() {
         let island_slug = terrain_export_slug(island.name);
@@ -98,6 +100,12 @@ pub(crate) fn export_visual_content_inspection(
             island,
             &island_slug,
         )?);
+        landmarks.extend(visual_content_landmark_summaries(
+            output_dir,
+            island_index,
+            island,
+            &island_slug,
+        )?);
     }
 
     let palettes = (0..TERRAIN_BIOME_PALETTE_COUNT)
@@ -119,7 +127,7 @@ pub(crate) fn export_visual_content_inspection(
         .collect::<HashSet<_>>()
         .len();
 
-    let mesh_count = ground_cover.len() + trees.len() * 2 + clouds.len();
+    let mesh_count = ground_cover.len() + trees.len() * 2 + clouds.len() + landmarks.len();
     let total_vertex_count = ground_cover
         .iter()
         .map(|summary| summary.mesh.vertex_count)
@@ -129,6 +137,7 @@ pub(crate) fn export_visual_content_inspection(
                 .flat_map(|summary| [summary.trunk.vertex_count, summary.canopy.vertex_count]),
         )
         .chain(clouds.iter().map(|summary| summary.mesh.vertex_count))
+        .chain(landmarks.iter().map(|summary| summary.mesh.vertex_count))
         .sum();
     let total_triangle_count = ground_cover
         .iter()
@@ -139,6 +148,7 @@ pub(crate) fn export_visual_content_inspection(
                 .flat_map(|summary| [summary.trunk.triangle_count, summary.canopy.triangle_count]),
         )
         .chain(clouds.iter().map(|summary| summary.mesh.triangle_count))
+        .chain(landmarks.iter().map(|summary| summary.mesh.triangle_count))
         .sum();
 
     let manifest_path = output_dir.join("manifest.json");
@@ -157,6 +167,23 @@ pub(crate) fn export_visual_content_inspection(
         weather_cloud_veil_count: clouds
             .iter()
             .filter(|summary| summary.kind == "veil")
+            .count(),
+        landmark_count: landmarks.len(),
+        route_cairn_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "route_cairn")
+            .count(),
+        launch_beacon_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "launch_beacon")
+            .count(),
+        landing_garden_marker_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "landing_garden_marker")
+            .count(),
+        pond_surface_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "pond_surface")
             .count(),
         min_ground_cover_mesh_vertices: ground_cover
             .iter()
@@ -260,15 +287,51 @@ pub(crate) fn export_visual_content_inspection(
         min_weather_cloud_scaled_depth_span_m: min_finite_f32(
             clouds.iter().map(|summary| summary.scaled_depth_span_m),
         ),
+        min_route_cairn_mesh_vertices: min_landmark_vertices(&landmarks, "route_cairn"),
+        min_route_cairn_vertical_span_m: min_landmark_vertical_span(&landmarks, "route_cairn"),
+        min_launch_beacon_mesh_vertices: min_landmark_vertices(&landmarks, "launch_beacon"),
+        min_launch_beacon_vertical_span_m: min_landmark_vertical_span(&landmarks, "launch_beacon"),
+        min_landing_garden_marker_mesh_vertices: min_landmark_vertices(
+            &landmarks,
+            "landing_garden_marker",
+        ),
+        min_landing_garden_marker_vertical_span_m: min_landmark_vertical_span(
+            &landmarks,
+            "landing_garden_marker",
+        ),
+        min_pond_surface_mesh_vertices: min_landmark_vertices(&landmarks, "pond_surface"),
+        min_pond_surface_vertical_span_m: min_landmark_vertical_span(&landmarks, "pond_surface"),
         terrain_biome_palette_count,
         foliage_palette_count,
         stone_palette_count,
         ground_cover,
         trees,
         clouds,
+        landmarks,
         palettes,
     };
 
     fs::write(&report.manifest_path, report.to_json())?;
     Ok(report)
+}
+
+fn min_landmark_vertices(landmarks: &[super::types::VisualLandmarkSummary], kind: &str) -> usize {
+    landmarks
+        .iter()
+        .filter(|summary| summary.kind == kind)
+        .map(|summary| summary.mesh.vertex_count)
+        .min()
+        .unwrap_or(0)
+}
+
+fn min_landmark_vertical_span(
+    landmarks: &[super::types::VisualLandmarkSummary],
+    kind: &str,
+) -> f32 {
+    min_finite_f32(
+        landmarks
+            .iter()
+            .filter(|summary| summary.kind == kind)
+            .map(|summary| summary.mesh.vertical_span_m),
+    )
 }

@@ -1,5 +1,6 @@
 mod clouds;
 mod export;
+mod landmarks;
 mod metrics;
 mod palette;
 mod types;

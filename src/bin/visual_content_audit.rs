@@ -35,6 +35,19 @@ const MIN_WEATHER_CLOUD_BANK_LOBE_COUNT: u64 = 10;
 const MIN_WEATHER_CLOUD_SCALED_DEPTH_SPAN_M: f64 = 12.0;
 const MIN_TREE_TRUNK_HEIGHT_RANGE_M: f64 = 1.5;
 const MIN_TREE_CANOPY_RADIUS_RANGE_M: f64 = 0.35;
+const MIN_LANDMARK_COUNT: u64 = 27;
+const MIN_ROUTE_CAIRN_COUNT: u64 = 10;
+const MIN_LAUNCH_BEACON_COUNT: u64 = 1;
+const MIN_LANDING_GARDEN_MARKER_COUNT: u64 = 4;
+const MIN_POND_SURFACE_COUNT: u64 = 12;
+const MIN_ROUTE_CAIRN_MESH_VERTICES: u64 = 240;
+const MIN_ROUTE_CAIRN_VERTICAL_SPAN_M: f64 = 3.0;
+const MIN_LAUNCH_BEACON_MESH_VERTICES: u64 = 300;
+const MIN_LAUNCH_BEACON_VERTICAL_SPAN_M: f64 = 2.8;
+const MIN_LANDING_GARDEN_MARKER_MESH_VERTICES: u64 = 39;
+const MIN_LANDING_GARDEN_MARKER_VERTICAL_SPAN_M: f64 = 0.12;
+const MIN_POND_SURFACE_MESH_VERTICES: u64 = 65;
+const MIN_POND_SURFACE_VERTICAL_SPAN_M: f64 = 0.015;
 const MIN_TERRAIN_BIOME_PALETTE_COUNT: u64 = 5;
 const MIN_FOLIAGE_PALETTE_COUNT: u64 = 5;
 const MIN_STONE_PALETTE_COUNT: u64 = 4;
@@ -160,6 +173,36 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "weather_cloud_veil_count",
         value_u64(counts, "weather_cloud_veil_count"),
         MIN_WEATHER_CLOUD_VEIL_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "landmark_count",
+        value_u64(counts, "landmark_count"),
+        MIN_LANDMARK_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "route_cairn_count",
+        value_u64(counts, "route_cairn_count"),
+        MIN_ROUTE_CAIRN_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "launch_beacon_count",
+        value_u64(counts, "launch_beacon_count"),
+        MIN_LAUNCH_BEACON_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "landing_garden_marker_count",
+        value_u64(counts, "landing_garden_marker_count"),
+        MIN_LANDING_GARDEN_MARKER_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "pond_surface_count",
+        value_u64(counts, "pond_surface_count"),
+        MIN_POND_SURFACE_COUNT,
         "meshes",
     ));
     checks.push(check_at_least_u64(
@@ -295,6 +338,54 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "m",
     ));
     checks.push(check_at_least_u64(
+        "route_cairn_mesh_vertices",
+        value_u64(minimums, "route_cairn_mesh_vertices"),
+        MIN_ROUTE_CAIRN_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_f64(
+        "route_cairn_vertical_span",
+        value_f64(minimums, "route_cairn_vertical_span_m"),
+        MIN_ROUTE_CAIRN_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "launch_beacon_mesh_vertices",
+        value_u64(minimums, "launch_beacon_mesh_vertices"),
+        MIN_LAUNCH_BEACON_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_f64(
+        "launch_beacon_vertical_span",
+        value_f64(minimums, "launch_beacon_vertical_span_m"),
+        MIN_LAUNCH_BEACON_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "landing_garden_marker_mesh_vertices",
+        value_u64(minimums, "landing_garden_marker_mesh_vertices"),
+        MIN_LANDING_GARDEN_MARKER_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_f64(
+        "landing_garden_marker_vertical_span",
+        value_f64(minimums, "landing_garden_marker_vertical_span_m"),
+        MIN_LANDING_GARDEN_MARKER_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "pond_surface_mesh_vertices",
+        value_u64(minimums, "pond_surface_mesh_vertices"),
+        MIN_POND_SURFACE_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_f64(
+        "pond_surface_vertical_span",
+        value_f64(minimums, "pond_surface_vertical_span_m"),
+        MIN_POND_SURFACE_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
         "terrain_biome_palette_count",
         value_u64(minimums, "terrain_biome_palette_count"),
         MIN_TERRAIN_BIOME_PALETTE_COUNT,
@@ -328,6 +419,13 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
     );
     audit_mesh_array(
         manifest.get("clouds").and_then(Value::as_array),
+        "mesh",
+        root_dir,
+        &mut artifact_counters,
+        &mut artifacts,
+    );
+    audit_mesh_array(
+        manifest.get("landmarks").and_then(Value::as_array),
         "mesh",
         root_dir,
         &mut artifact_counters,
@@ -585,7 +683,12 @@ mod tests {
                 "tree_canopy_count": 1,
                 "weather_cloud_count": 1,
                 "weather_cloud_bank_count": 0,
-                "weather_cloud_veil_count": 0
+                "weather_cloud_veil_count": 0,
+                "landmark_count": 1,
+                "route_cairn_count": 0,
+                "launch_beacon_count": 0,
+                "landing_garden_marker_count": 0,
+                "pond_surface_count": 0
             },
             "minimums": {
                 "ground_cover_mesh_vertices": 10,
@@ -610,13 +713,22 @@ mod tests {
                 "weather_cloud_bank_depth_m": 0.2,
                 "weather_cloud_bank_lobe_count": 0,
                 "weather_cloud_scaled_depth_span_m": 0.5,
+                "route_cairn_mesh_vertices": 10,
+                "route_cairn_vertical_span_m": 0.2,
+                "launch_beacon_mesh_vertices": 10,
+                "launch_beacon_vertical_span_m": 0.3,
+                "landing_garden_marker_mesh_vertices": 6,
+                "landing_garden_marker_vertical_span_m": 0.01,
+                "pond_surface_mesh_vertices": 6,
+                "pond_surface_vertical_span_m": 0.0,
                 "terrain_biome_palette_count": 1,
                 "foliage_palette_count": 1,
                 "stone_palette_count": 1
             },
             "ground_cover": [],
             "trees": [],
-            "clouds": []
+            "clouds": [],
+            "landmarks": []
         });
 
         let report = audit_manifest(&manifest, Path::new("."), "manifest.json");
@@ -658,6 +770,28 @@ mod tests {
             check_named(checks, "weather_cloud_scaled_depth_span")
                 .is_some_and(|check| { !check.get("passed").and_then(Value::as_bool).unwrap() })
         );
+        for name in [
+            "landmark_count",
+            "route_cairn_count",
+            "launch_beacon_count",
+            "landing_garden_marker_count",
+            "pond_surface_count",
+            "route_cairn_mesh_vertices",
+            "route_cairn_vertical_span",
+            "launch_beacon_mesh_vertices",
+            "launch_beacon_vertical_span",
+            "landing_garden_marker_mesh_vertices",
+            "landing_garden_marker_vertical_span",
+            "pond_surface_mesh_vertices",
+            "pond_surface_vertical_span",
+        ] {
+            assert!(
+                check_named(checks, name).is_some_and(|check| {
+                    !check.get("passed").and_then(Value::as_bool).unwrap()
+                }),
+                "{name} should fail for primitive landmark regressions"
+            );
+        }
     }
 
     #[test]

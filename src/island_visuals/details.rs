@@ -1,11 +1,12 @@
 use super::queue::{queue_island_visual, queue_wind_island_visual};
 use super::types::{IslandVisualEntry, IslandVisualLayer};
 use crate::camera_runtime::CameraObstacle;
-use crate::content_diagnostics::IslandContentDiagnostics;
+use crate::content_diagnostics::{GeneratedLandmarkKind, IslandContentDiagnostics};
 use crate::environment_visuals::wind_visual_motion;
 use crate::generated_content::{
     GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES, IslandDetailMaterials,
-    island_ground_cover_mesh, island_visual_surface_position, rock_scatter_mesh, tree_canopy_mesh,
+    island_ground_cover_mesh, island_visual_surface_position, landing_garden_marker_mesh,
+    launch_beacon_mesh, pond_surface_mesh, rock_scatter_mesh, route_cairn_mesh, tree_canopy_mesh,
     tree_trunk_mesh,
 };
 use bevy::prelude::*;
@@ -136,22 +137,25 @@ pub(super) fn queue_sky_island_details(
         Vec2::new(0.18, 0.28)
     };
     let pond_surface = island_visual_surface_position(island, pond_offset);
+    let pond_radius_x = island.half_extents.x * 0.12;
+    let pond_radius_z = island.half_extents.y * 0.08;
+    let pond_mesh = pond_surface_mesh(
+        pond_radius_x,
+        pond_radius_z,
+        11_000 + island_index as u32 * 149,
+    );
+    content_diagnostics.record_generated_landmark(
+        GeneratedLandmarkKind::PondSurface,
+        pond_mesh.count_vertices(),
+    );
     queue_wind_island_visual(
         entries,
         visual_index,
         island,
         IslandVisualLayer::Detail,
-        meshes.add(Cylinder::new(1.0, 0.08)),
+        meshes.add(pond_mesh),
         water_material,
-        Transform {
-            translation: pond_surface + Vec3::Y * 0.04,
-            scale: Vec3::new(
-                island.half_extents.x * 0.12,
-                1.0,
-                island.half_extents.y * 0.08,
-            ),
-            ..default()
-        },
+        Transform::from_translation(pond_surface + Vec3::Y * 0.055),
         None,
         wind_visual_motion(island_index, 3.4, 0.035, 0.018, 1.1),
         "island pond",
@@ -161,12 +165,17 @@ pub(super) fn queue_sky_island_details(
         let beacon_height = 3.8 + (island_index % 3) as f32 * 0.7;
         let beacon_surface = island_visual_surface_position(island, Vec2::new(-0.18, 0.22));
         let beacon_center = beacon_surface + Vec3::Y * (beacon_height * 0.5);
+        let cairn_mesh = route_cairn_mesh(0.44, beacon_height, 12_000 + island_index as u32 * 157);
+        content_diagnostics.record_generated_landmark(
+            GeneratedLandmarkKind::RouteCairn,
+            cairn_mesh.count_vertices(),
+        );
         queue_island_visual(
             entries,
             visual_index,
             island,
             IslandVisualLayer::Beacon,
-            meshes.add(Cylinder::new(0.34, beacon_height)),
+            meshes.add(cairn_mesh),
             flower_material.clone(),
             Transform::from_translation(beacon_center),
             None,
@@ -176,56 +185,72 @@ pub(super) fn queue_sky_island_details(
 
     if island.is_target {
         let ring_size = 8.0;
-        for (offset, scale) in [
+        for (index, (offset, rotation_y)) in [
+            (Vec3::new(0.0, 0.06, ring_size * 0.5), 0.0),
+            (Vec3::new(0.0, 0.06, -ring_size * 0.5), 0.0),
             (
-                Vec3::new(0.0, 0.05, ring_size * 0.5),
-                Vec3::new(ring_size, 0.1, 0.35),
+                Vec3::new(ring_size * 0.5, 0.06, 0.0),
+                std::f32::consts::FRAC_PI_2,
             ),
             (
-                Vec3::new(0.0, 0.05, -ring_size * 0.5),
-                Vec3::new(ring_size, 0.1, 0.35),
+                Vec3::new(-ring_size * 0.5, 0.06, 0.0),
+                std::f32::consts::FRAC_PI_2,
             ),
-            (
-                Vec3::new(ring_size * 0.5, 0.05, 0.0),
-                Vec3::new(0.35, 0.1, ring_size),
-            ),
-            (
-                Vec3::new(-ring_size * 0.5, 0.05, 0.0),
-                Vec3::new(0.35, 0.1, ring_size),
-            ),
-        ] {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let surface_y =
                 island.mesh_top_y_at(island.center + Vec3::new(offset.x, 0.0, offset.z));
+            let marker_mesh = landing_garden_marker_mesh(
+                ring_size,
+                0.62,
+                13_000 + island_index as u32 * 163 + index as u32 * 17,
+            );
+            content_diagnostics.record_generated_landmark(
+                GeneratedLandmarkKind::LandingGardenMarker,
+                marker_mesh.count_vertices(),
+            );
             queue_island_visual(
                 entries,
                 visual_index,
                 island,
                 IslandVisualLayer::Beacon,
-                meshes.add(Cuboid::new(scale.x, scale.y, scale.z)),
+                meshes.add(marker_mesh),
                 flower_material.clone(),
-                Transform::from_xyz(
-                    island.center.x + offset.x,
-                    surface_y + offset.y,
-                    island.center.z + offset.z,
-                ),
+                Transform {
+                    translation: Vec3::new(
+                        island.center.x + offset.x,
+                        surface_y + offset.y,
+                        island.center.z + offset.z,
+                    ),
+                    rotation: Quat::from_rotation_y(rotation_y),
+                    ..default()
+                },
                 None,
                 "landing garden ring",
             );
         }
     } else if island.name == "launch mesa" {
         let beacon_surface = island_visual_surface_position(island, Vec2::new(-0.42, 0.38));
-        let beacon_center = beacon_surface + Vec3::Y * 1.6;
+        let beacon_center = beacon_surface + Vec3::Y * 0.82;
+        let beacon_obstacle_center = beacon_surface + Vec3::Y * 1.65;
+        let beacon_mesh = launch_beacon_mesh(0.78, 3.2, 14_000 + island_index as u32 * 173);
+        content_diagnostics.record_generated_landmark(
+            GeneratedLandmarkKind::LaunchBeacon,
+            beacon_mesh.count_vertices(),
+        );
         queue_island_visual(
             entries,
             visual_index,
             island,
             IslandVisualLayer::Beacon,
-            meshes.add(Cylinder::new(0.7, 3.2)),
+            meshes.add(beacon_mesh),
             flower_material,
             Transform::from_translation(beacon_center),
             Some(CameraObstacle(CameraObstruction::new(
-                beacon_center,
-                Vec3::new(0.7, 1.6, 0.7),
+                beacon_obstacle_center,
+                Vec3::new(0.8, 1.65, 0.8),
             ))),
             "launch beacon",
         );

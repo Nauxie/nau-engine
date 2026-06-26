@@ -19,6 +19,11 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) weather_cloud_count: usize,
     pub(crate) weather_cloud_bank_count: usize,
     pub(crate) weather_cloud_veil_count: usize,
+    pub(crate) landmark_count: usize,
+    pub(crate) route_cairn_count: usize,
+    pub(crate) launch_beacon_count: usize,
+    pub(crate) landing_garden_marker_count: usize,
+    pub(crate) pond_surface_count: usize,
     pub(crate) min_ground_cover_mesh_vertices: usize,
     pub(crate) min_ground_cover_blade_count: usize,
     pub(crate) min_ground_cover_blade_height_range_m: f32,
@@ -41,12 +46,21 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) min_weather_cloud_bank_depth_m: f32,
     pub(crate) min_weather_cloud_bank_lobe_count: usize,
     pub(crate) min_weather_cloud_scaled_depth_span_m: f32,
+    pub(crate) min_route_cairn_mesh_vertices: usize,
+    pub(crate) min_route_cairn_vertical_span_m: f32,
+    pub(crate) min_launch_beacon_mesh_vertices: usize,
+    pub(crate) min_launch_beacon_vertical_span_m: f32,
+    pub(crate) min_landing_garden_marker_mesh_vertices: usize,
+    pub(crate) min_landing_garden_marker_vertical_span_m: f32,
+    pub(crate) min_pond_surface_mesh_vertices: usize,
+    pub(crate) min_pond_surface_vertical_span_m: f32,
     pub(crate) terrain_biome_palette_count: usize,
     pub(crate) foliage_palette_count: usize,
     pub(crate) stone_palette_count: usize,
     pub(crate) ground_cover: Vec<VisualGroundCoverSummary>,
     pub(crate) trees: Vec<VisualTreeSummary>,
     pub(crate) clouds: Vec<VisualCloudSummary>,
+    pub(crate) landmarks: Vec<VisualLandmarkSummary>,
     pub(crate) palettes: Vec<VisualPaletteSummary>,
 }
 
@@ -113,6 +127,14 @@ pub(crate) struct VisualCloudSummary {
 }
 
 #[derive(Debug)]
+pub(crate) struct VisualLandmarkSummary {
+    pub(crate) island_name: &'static str,
+    pub(crate) kind: &'static str,
+    pub(crate) label: String,
+    pub(crate) mesh: VisualMeshSummary,
+}
+
+#[derive(Debug)]
 pub(crate) struct VisualPaletteSummary {
     pub(crate) index: usize,
     pub(crate) terrain_key: [u8; 3],
@@ -140,6 +162,12 @@ impl VisualContentExportReport {
             .map(|summary| summary.to_json("    "))
             .collect::<Vec<_>>()
             .join(",\n");
+        let landmarks = self
+            .landmarks
+            .iter()
+            .map(|summary| summary.to_json("    "))
+            .collect::<Vec<_>>()
+            .join(",\n");
         let palettes = self
             .palettes
             .iter()
@@ -162,7 +190,12 @@ impl VisualContentExportReport {
                 "    \"tree_canopy_count\": {},\n",
                 "    \"weather_cloud_count\": {},\n",
                 "    \"weather_cloud_bank_count\": {},\n",
-                "    \"weather_cloud_veil_count\": {}\n",
+                "    \"weather_cloud_veil_count\": {},\n",
+                "    \"landmark_count\": {},\n",
+                "    \"route_cairn_count\": {},\n",
+                "    \"launch_beacon_count\": {},\n",
+                "    \"landing_garden_marker_count\": {},\n",
+                "    \"pond_surface_count\": {}\n",
                 "  }},\n",
                 "  \"minimums\": {{\n",
                 "    \"ground_cover_mesh_vertices\": {},\n",
@@ -187,6 +220,14 @@ impl VisualContentExportReport {
                 "    \"weather_cloud_bank_depth_m\": {},\n",
                 "    \"weather_cloud_bank_lobe_count\": {},\n",
                 "    \"weather_cloud_scaled_depth_span_m\": {},\n",
+                "    \"route_cairn_mesh_vertices\": {},\n",
+                "    \"route_cairn_vertical_span_m\": {},\n",
+                "    \"launch_beacon_mesh_vertices\": {},\n",
+                "    \"launch_beacon_vertical_span_m\": {},\n",
+                "    \"landing_garden_marker_mesh_vertices\": {},\n",
+                "    \"landing_garden_marker_vertical_span_m\": {},\n",
+                "    \"pond_surface_mesh_vertices\": {},\n",
+                "    \"pond_surface_vertical_span_m\": {},\n",
                 "    \"terrain_biome_palette_count\": {},\n",
                 "    \"foliage_palette_count\": {},\n",
                 "    \"stone_palette_count\": {}\n",
@@ -198,6 +239,9 @@ impl VisualContentExportReport {
                 "{}\n",
                 "  ],\n",
                 "  \"clouds\": [\n",
+                "{}\n",
+                "  ],\n",
+                "  \"landmarks\": [\n",
                 "{}\n",
                 "  ],\n",
                 "  \"palettes\": [\n",
@@ -216,6 +260,11 @@ impl VisualContentExportReport {
             self.weather_cloud_count,
             self.weather_cloud_bank_count,
             self.weather_cloud_veil_count,
+            self.landmark_count,
+            self.route_cairn_count,
+            self.launch_beacon_count,
+            self.landing_garden_marker_count,
+            self.pond_surface_count,
             self.min_ground_cover_mesh_vertices,
             self.min_ground_cover_blade_count,
             terrain_export_json_number(self.min_ground_cover_blade_height_range_m),
@@ -238,12 +287,21 @@ impl VisualContentExportReport {
             terrain_export_json_number(self.min_weather_cloud_bank_depth_m),
             self.min_weather_cloud_bank_lobe_count,
             terrain_export_json_number(self.min_weather_cloud_scaled_depth_span_m),
+            self.min_route_cairn_mesh_vertices,
+            terrain_export_json_number(self.min_route_cairn_vertical_span_m),
+            self.min_launch_beacon_mesh_vertices,
+            terrain_export_json_number(self.min_launch_beacon_vertical_span_m),
+            self.min_landing_garden_marker_mesh_vertices,
+            terrain_export_json_number(self.min_landing_garden_marker_vertical_span_m),
+            self.min_pond_surface_mesh_vertices,
+            terrain_export_json_number(self.min_pond_surface_vertical_span_m),
             self.terrain_biome_palette_count,
             self.foliage_palette_count,
             self.stone_palette_count,
             ground_cover,
             trees,
             clouds,
+            landmarks,
             palettes
         )
     }
@@ -353,6 +411,23 @@ impl VisualCloudSummary {
             terrain_export_json_number(self.scaled_horizontal_span_m),
             terrain_export_json_number(self.scaled_vertical_depth_m),
             terrain_export_json_number(self.scaled_depth_span_m)
+        )
+    }
+}
+
+impl VisualLandmarkSummary {
+    fn to_json(&self, indent: &str) -> String {
+        format!(
+            "{indent}{{\n\
+             {indent}  \"island\": {},\n\
+             {indent}  \"kind\": {},\n\
+             {indent}  \"label\": {},\n\
+             {indent}  \"mesh\": {}\n\
+             {indent}}}",
+            terrain_export_json_string(self.island_name),
+            terrain_export_json_string(self.kind),
+            terrain_export_json_string(&self.label),
+            self.mesh.to_json()
         )
     }
 }
