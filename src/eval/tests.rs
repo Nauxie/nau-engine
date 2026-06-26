@@ -138,6 +138,14 @@ fn air_control_metric_sample(
     )
     .with_visible_authored_world_fixture_count(MIN_VISIBLE_AUTHORED_WORLD_FIXTURE_COUNT)
     .with_world_collision_metrics(MIN_WORLD_COLLISION_PROXY_COUNT, 0, 0.0)
+    .with_wind_guide_visual_metrics(
+        MIN_UPDRAFT_GUIDE_VISUAL_COUNT,
+        MIN_UPDRAFT_RIBBON_VISUAL_COUNT,
+        MIN_CROSSWIND_GUIDE_VISUAL_COUNT,
+        MIN_CROSSWIND_RIBBON_VISUAL_COUNT,
+        MIN_UPDRAFT_VISUAL_MOTION_M,
+        MIN_CROSSWIND_VISUAL_MOTION_M,
+    )
     .with_movement_metrics(EvalMovementMetrics {
         desired_body_yaw_error_degrees: yaw_error_degrees,
         body_roll_degrees: -movement_axis.x.signum() * 12.0,

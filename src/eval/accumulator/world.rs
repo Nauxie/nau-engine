@@ -82,6 +82,24 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_environment_motion_offset_m = accumulator
         .max_environment_motion_offset_m
         .max(sample.max_environment_motion_offset_m);
+    accumulator.max_updraft_guide_visual_count = accumulator
+        .max_updraft_guide_visual_count
+        .max(sample.updraft_guide_visual_count);
+    accumulator.max_updraft_ribbon_visual_count = accumulator
+        .max_updraft_ribbon_visual_count
+        .max(sample.updraft_ribbon_visual_count);
+    accumulator.max_crosswind_guide_visual_count = accumulator
+        .max_crosswind_guide_visual_count
+        .max(sample.crosswind_guide_visual_count);
+    accumulator.max_crosswind_ribbon_visual_count = accumulator
+        .max_crosswind_ribbon_visual_count
+        .max(sample.crosswind_ribbon_visual_count);
+    accumulator.max_updraft_visual_motion_m = accumulator
+        .max_updraft_visual_motion_m
+        .max(sample.max_updraft_visual_motion_m);
+    accumulator.max_crosswind_visual_motion_m = accumulator
+        .max_crosswind_visual_motion_m
+        .max(sample.max_crosswind_visual_motion_m);
     accumulator.max_world_collision_proxy_count = accumulator
         .max_world_collision_proxy_count
         .max(sample.world_collision_proxy_count);

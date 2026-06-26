@@ -155,6 +155,42 @@ pub(super) fn build_checks(
             "m",
         ),
         EvalCheck::at_least(
+            "updraft_guide_visual_count",
+            acc.max_updraft_guide_visual_count as f32,
+            MIN_UPDRAFT_GUIDE_VISUAL_COUNT as f32,
+            "entities",
+        ),
+        EvalCheck::at_least(
+            "updraft_ribbon_visual_count",
+            acc.max_updraft_ribbon_visual_count as f32,
+            MIN_UPDRAFT_RIBBON_VISUAL_COUNT as f32,
+            "entities",
+        ),
+        EvalCheck::at_least(
+            "crosswind_guide_visual_count",
+            acc.max_crosswind_guide_visual_count as f32,
+            MIN_CROSSWIND_GUIDE_VISUAL_COUNT as f32,
+            "entities",
+        ),
+        EvalCheck::at_least(
+            "crosswind_ribbon_visual_count",
+            acc.max_crosswind_ribbon_visual_count as f32,
+            MIN_CROSSWIND_RIBBON_VISUAL_COUNT as f32,
+            "entities",
+        ),
+        EvalCheck::at_least(
+            "updraft_visual_motion",
+            acc.max_updraft_visual_motion_m,
+            MIN_UPDRAFT_VISUAL_MOTION_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "crosswind_visual_motion",
+            acc.max_crosswind_visual_motion_m,
+            MIN_CROSSWIND_VISUAL_MOTION_M,
+            "m",
+        ),
+        EvalCheck::at_least(
             "world_collision_proxy_count",
             acc.max_world_collision_proxy_count as f32,
             MIN_WORLD_COLLISION_PROXY_COUNT as f32,

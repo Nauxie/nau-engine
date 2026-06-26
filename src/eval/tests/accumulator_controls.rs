@@ -798,6 +798,46 @@ fn accumulator_gates_dynamic_wind_flow_for_lift_routes() {
 }
 
 #[test]
+fn accumulator_gates_wind_guide_visual_presence_and_motion() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let sample = content_metric_sample(scenario, 0, 12, 0, 96).with_wind_guide_visual_metrics(
+        MIN_UPDRAFT_GUIDE_VISUAL_COUNT - 1,
+        MIN_UPDRAFT_RIBBON_VISUAL_COUNT - 1,
+        MIN_CROSSWIND_GUIDE_VISUAL_COUNT - 1,
+        MIN_CROSSWIND_RIBBON_VISUAL_COUNT - 1,
+        0.0,
+        0.0,
+    );
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for check_name in [
+        "updraft_guide_visual_count",
+        "updraft_ribbon_visual_count",
+        "crosswind_guide_visual_count",
+        "crosswind_ribbon_visual_count",
+        "updraft_visual_motion",
+        "crosswind_visual_motion",
+    ] {
+        assert!(
+            !named_check(&summary, check_name).passed,
+            "{check_name} should fail without animated wind guide visuals"
+        );
+    }
+}
+
+#[test]
 fn accumulator_rejects_nonvarying_lift_visual_flow() {
     let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
     let mut accumulator = EvalAccumulator::default();

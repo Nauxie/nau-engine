@@ -8,7 +8,9 @@ use crate::authored_assets::{
 };
 use crate::camera_runtime::CameraObstacle;
 use crate::content_diagnostics::IslandContentDiagnostics;
-use crate::environment_visuals::{CinematicSun, spawn_updraft_guide, spawn_weather_layers};
+use crate::environment_visuals::{
+    CinematicSun, spawn_crosswind_guide, spawn_updraft_guide, spawn_weather_layers,
+};
 use crate::generated_content::TERRAIN_BIOME_PALETTE_COUNT;
 use crate::island_visuals::{IslandVisualCatalog, queue_sky_island, spawn_initial_island_visuals};
 use crate::power_up_runtime::spawn_power_up_guides;
@@ -16,7 +18,7 @@ use crate::scene_setup_runtime::constants::{PLAYER_START, WORLD_RADIUS};
 use crate::scene_setup_runtime::materials::SceneMaterials;
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::CameraObstruction;
-use nau_engine::environment::{GAMEPLAY_LIFT_ROUTE, WindField};
+use nau_engine::environment::{GAMEPLAY_LIFT_ROUTE, visual_crosswind_fields};
 use nau_engine::world::SkyRoute;
 
 pub(super) fn spawn_world_runtime(
@@ -155,24 +157,18 @@ fn spawn_environment_volumes(
     meshes: &mut Assets<Mesh>,
     scene_materials: &SceneMaterials,
 ) {
-    commands.spawn((
-        WindField::crosswind(
-            Vec3::new(0.0, 5.0, 20.0),
-            Vec3::new(20.0, 4.0, 8.0),
-            Vec3::X,
-            10.0,
-        ),
-        Name::new("Visual wind ribbon"),
-    ));
-    commands.spawn((
-        WindField::crosswind(
-            Vec3::new(34.0, 10.0, -8.0),
-            Vec3::new(18.0, 8.0, 10.0),
-            Vec3::new(-1.0, 0.0, 0.35),
-            7.0,
-        ),
-        Name::new("Visual crosswind volume"),
-    ));
+    for (index, field) in visual_crosswind_fields().into_iter().enumerate() {
+        let label = format!("visual crosswind {}", index + 1);
+        commands.spawn((field, Name::new(format!("{label} volume"))));
+        spawn_crosswind_guide(
+            commands,
+            meshes,
+            scene_materials.updraft_ribbon.clone(),
+            scene_materials.updraft_marker.clone(),
+            field,
+            &label,
+        );
+    }
     for lift in GAMEPLAY_LIFT_ROUTE {
         commands.spawn((
             lift.visual_field(),

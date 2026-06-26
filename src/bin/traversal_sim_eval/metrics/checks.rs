@@ -5,15 +5,14 @@ mod camera_strafe;
 #[path = "checks/core.rs"]
 mod core;
 
-use nau_engine::eval::{AIR_CONTROL_RESPONSE, CAMERA_STRAFE_STABILITY, EvalScenario};
+use nau_engine::eval::{
+    AIR_CONTROL_RESPONSE, CAMERA_STRAFE_STABILITY, EvalScenario, MIN_DYNAMIC_WIND_FLOW_SPEED_MPS,
+    MIN_DYNAMIC_WIND_FLOW_VARIATION, MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE,
+};
 use serde_json::{Value, json};
 
 use super::{super::round4, SimMetrics};
 use crate::LANDING_MIN_POSE_CROUCH_M;
-
-const MIN_DYNAMIC_WIND_FLOW_SPEED_MPS: f32 = 8.0;
-const MIN_DYNAMIC_WIND_FLOW_VARIATION: f32 = 0.12;
-const MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE: f32 = 0.03;
 
 #[derive(Clone, Debug)]
 pub(crate) struct SimCheck {

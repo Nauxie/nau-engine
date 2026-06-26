@@ -172,6 +172,8 @@ fn main() -> AppExit {
                 update_wind_responsive_visuals,
                 update_updraft_guides,
                 update_updraft_ribbons,
+                update_crosswind_guides,
+                update_crosswind_ribbons,
                 update_power_up_guides,
                 update_route_objectives,
                 update_visual_asset_diagnostics,

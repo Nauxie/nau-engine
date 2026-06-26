@@ -1,7 +1,10 @@
 use crate::authored_assets::{AuthoredPlayerAnimation, VisualAssetDiagnostics};
 use crate::camera_runtime::{CameraDiagnostics, CameraFollowFilter};
 use crate::content_diagnostics::IslandContentDiagnostics;
-use crate::environment_visuals::{WeatherDrift, WindResponsiveVisual};
+use crate::environment_visuals::{
+    CrosswindGuide, CrosswindRibbon, UpdraftGuide, UpdraftRibbon, WeatherDrift,
+    WindResponsiveVisual,
+};
 use crate::island_visuals::IslandStreamDiagnostics;
 use crate::power_up_runtime::PowerUpCollectionState;
 use crate::world_collision_runtime::WorldCollisionDiagnostics;
@@ -52,5 +55,9 @@ pub(crate) struct EvalScene<'w, 's> {
     pub(crate) weather_clouds: Query<'w, 's, &'static Transform, With<WeatherDrift>>,
     pub(crate) wind_responsive_visuals:
         Query<'w, 's, (&'static WindResponsiveVisual, &'static Transform)>,
+    pub(crate) updraft_guides: Query<'w, 's, (&'static UpdraftGuide, &'static Transform)>,
+    pub(crate) updraft_ribbons: Query<'w, 's, (&'static UpdraftRibbon, &'static Transform)>,
+    pub(crate) crosswind_guides: Query<'w, 's, (&'static CrosswindGuide, &'static Transform)>,
+    pub(crate) crosswind_ribbons: Query<'w, 's, (&'static CrosswindRibbon, &'static Transform)>,
     pub(crate) all_entities: Query<'w, 's, Entity>,
 }

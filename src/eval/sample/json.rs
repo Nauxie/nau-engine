@@ -170,6 +170,18 @@ impl EvalSample {
             self.total_power_up_activations,
             json_number(self.visual_foot_gap_m),
         );
+        let wind_visual_key = "\"world_collision_proxy_count\"";
+        let wind_visual_metrics = format!(
+            "\"updraft_guide_visual_count\":{},\"updraft_ribbon_visual_count\":{},\"crosswind_guide_visual_count\":{},\"crosswind_ribbon_visual_count\":{},\"max_updraft_visual_motion_m\":{},\"max_crosswind_visual_motion_m\":{},{}",
+            self.updraft_guide_visual_count,
+            self.updraft_ribbon_visual_count,
+            self.crosswind_guide_visual_count,
+            self.crosswind_ribbon_visual_count,
+            json_number(self.max_updraft_visual_motion_m),
+            json_number(self.max_crosswind_visual_motion_m),
+            wind_visual_key
+        );
+        let json = json.replacen(wind_visual_key, &wind_visual_metrics, 1);
         let impostor_count_key = "\"visible_island_detail_count\"";
         let impostor_metrics = format!(
             "\"min_island_impostor_mesh_vertices\":{},\"min_island_impostor_color_bands\":{},{}",

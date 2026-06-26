@@ -1,7 +1,7 @@
 use super::scene::EvalScene;
 use crate::authored_assets::{AuthoredPlayerAnimation, authored_player_clip_for_pose_intent};
 use crate::camera_runtime::CAMERA_PLAYER_FOCUS_HEIGHT;
-use crate::environment_visuals::wind_responsive_visual_metrics;
+use crate::environment_visuals::{wind_guide_visual_metrics, wind_responsive_visual_metrics};
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
 use crate::{grounded_visual_foot_gap_m, movement_facing};
 use bevy::prelude::*;
@@ -122,6 +122,12 @@ pub(crate) fn collect_eval_metrics(
     let content_metrics = *scene.content_diagnostics;
     let (environment_motion_visuals, max_environment_motion_offset_m) =
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
+    let wind_guide_metrics = wind_guide_visual_metrics(
+        scene.updraft_guides.iter(),
+        scene.updraft_ribbons.iter(),
+        scene.crosswind_guides.iter(),
+        scene.crosswind_ribbons.iter(),
+    );
     let movement_input = scripted_input(run.scenario, run.frame);
     let pose_intent_label = animation.pose_intent.label();
     let pose_context = PlayerPoseContext::new(
@@ -266,6 +272,14 @@ pub(crate) fn collect_eval_metrics(
     .with_camera_follow_metrics(scene.camera_diagnostics.follow_direction_error_degrees)
     .with_camera_world_yaw_metrics(camera_world_yaw)
     .with_visual_foot_gap(visual_foot_gap_m)
+    .with_wind_guide_visual_metrics(
+        wind_guide_metrics.updraft_guide_count,
+        wind_guide_metrics.updraft_ribbon_count,
+        wind_guide_metrics.crosswind_guide_count,
+        wind_guide_metrics.crosswind_ribbon_count,
+        wind_guide_metrics.max_updraft_visual_motion_m,
+        wind_guide_metrics.max_crosswind_visual_motion_m,
+    )
     .with_world_collision_metrics(
         scene.collision_diagnostics.proxy_count,
         scene.collision_diagnostics.resolved_count,
