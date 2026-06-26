@@ -12,6 +12,7 @@ mod island_visuals;
 mod player_runtime;
 mod power_up_runtime;
 mod scene_setup_runtime;
+mod world_collision_runtime;
 use authored_assets::*;
 use bevy::light::DirectionalLightShadowMap;
 use bevy::prelude::*;
@@ -54,6 +55,7 @@ use std::collections::HashSet;
 use std::fs;
 #[cfg(test)]
 use std::path::PathBuf;
+use world_collision_runtime::*;
 
 fn main() -> AppExit {
     let cli = match CliAction::from_env() {
@@ -126,6 +128,7 @@ fn main() -> AppExit {
         .insert_resource(IslandStreamDiagnostics::default())
         .insert_resource(RouteObjectiveTracker::default())
         .insert_resource(PowerUpCollectionState::default())
+        .insert_resource(WorldCollisionDiagnostics::default())
         .insert_resource(MouseLookState::default())
         .insert_resource(DebugVisuals {
             enabled: !screenshot_eval,

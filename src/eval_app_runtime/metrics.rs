@@ -238,6 +238,11 @@ pub(crate) fn collect_eval_metrics(
     .with_camera_follow_metrics(scene.camera_diagnostics.follow_direction_error_degrees)
     .with_camera_world_yaw_metrics(camera_world_yaw)
     .with_visual_foot_gap(visual_foot_gap_m)
+    .with_world_collision_metrics(
+        scene.collision_diagnostics.proxy_count,
+        scene.collision_diagnostics.resolved_count,
+        scene.collision_diagnostics.max_push_m,
+    )
     .with_content_metrics(
         content_metrics.island_terrain_surface_count,
         content_metrics.min_island_terrain_mesh_vertices,

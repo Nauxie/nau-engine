@@ -112,6 +112,9 @@ pub struct EvalMetricsSummary {
     pub max_weather_cloud_count: usize,
     pub max_environment_motion_visual_count: usize,
     pub max_environment_motion_offset_m: f32,
+    pub max_world_collision_proxy_count: usize,
+    pub world_collision_resolved_samples: u32,
+    pub max_world_collision_push_m: f32,
     pub min_island_terrain_surface_count: usize,
     pub min_island_terrain_mesh_vertices: usize,
     pub min_island_terrain_color_bands: usize,
@@ -409,6 +412,15 @@ impl EvalMetricsSummary {
             post_brake_key
         );
         let json = json.replacen(&post_brake_key, &planar_brake_metrics, 1);
+        let terrain_surface_key = format!("{indent}  \"min_island_terrain_surface_count\"");
+        let collision_metrics = format!(
+            "{indent}  \"max_world_collision_proxy_count\": {},\n{indent}  \"world_collision_resolved_samples\": {},\n{indent}  \"max_world_collision_push_m\": {},\n{}",
+            self.max_world_collision_proxy_count,
+            self.world_collision_resolved_samples,
+            json_number(self.max_world_collision_push_m),
+            terrain_surface_key
+        );
+        let json = json.replacen(&terrain_surface_key, &collision_metrics, 1);
         let procedural_body_key = format!("{indent}  \"min_procedural_island_body_count\"");
         let impostor_metrics = format!(
             "{indent}  \"min_island_impostor_mesh_vertices\": {},\n{indent}  \"min_island_impostor_color_bands\": {},\n{}",

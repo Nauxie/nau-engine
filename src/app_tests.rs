@@ -490,6 +490,66 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
 }
 
 #[test]
+fn spawned_island_visuals_attach_world_collision_proxies() {
+    let route = SkyRoute::default();
+    let mut catalog = IslandVisualCatalog::default();
+    let mut diagnostics = content_diagnostics::IslandContentDiagnostics::default();
+    let mut meshes = Assets::<Mesh>::default();
+    let material = Handle::<StandardMaterial>::default();
+    let detail_materials = IslandDetailMaterials {
+        trunk: material.clone(),
+        foliage: material.clone(),
+        ground_cover: material.clone(),
+        stone: material.clone(),
+    };
+
+    for (index, island) in route.islands().iter().copied().enumerate() {
+        queue_sky_island(
+            &mut catalog,
+            &mut diagnostics,
+            &mut meshes,
+            material.clone(),
+            material.clone(),
+            material.clone(),
+            material.clone(),
+            material.clone(),
+            detail_materials.clone(),
+            material.clone(),
+            material.clone(),
+            index,
+            island,
+        );
+    }
+
+    let mut world = World::new();
+    {
+        let mut commands = world.commands();
+        spawn_initial_island_visuals(&mut commands, &catalog, nau_engine::world::START_POSITION);
+    }
+    world.flush();
+
+    let mut query = world.query::<&WorldCollisionProxy>();
+    let proxies = query.iter(&world).copied().collect::<Vec<_>>();
+
+    assert!(proxies.len() >= 24);
+    assert!(
+        proxies
+            .iter()
+            .any(|proxy| proxy.kind == WorldCollisionProxyKind::Tree)
+    );
+    assert!(
+        proxies
+            .iter()
+            .any(|proxy| proxy.kind == WorldCollisionProxyKind::Rock)
+    );
+    assert!(
+        proxies
+            .iter()
+            .any(|proxy| proxy.kind == WorldCollisionProxyKind::Landmark)
+    );
+}
+
+#[test]
 fn tree_trunk_mesh_is_tapered_instead_of_a_straight_cylinder() {
     let mesh = tree_trunk_mesh(0.3, 4.0, 123);
     let positions = positions(&mesh);

@@ -8,6 +8,7 @@ use crate::generated_content::{
     mesh_terrain_material_channel_count, mesh_terrain_material_region_count,
     mesh_terrain_material_weight_band_count, mesh_vertex_color_band_count, mesh_y_range,
 };
+use crate::world_collision_runtime::{WorldCollisionProxy, WorldCollisionProxyKind};
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
 use nau_engine::world::{SkyIsland, is_recovery_branch_island};
@@ -33,6 +34,35 @@ pub(super) fn queue_island_visual(
         material,
         transform,
         obstacle,
+        None,
+        None,
+        name,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn queue_collidable_island_visual(
+    entries: &mut Vec<IslandVisualEntry>,
+    visual_index: &mut usize,
+    island: SkyIsland,
+    layer: IslandVisualLayer,
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+    transform: Transform,
+    obstacle: Option<CameraObstacle>,
+    collision: WorldCollisionProxy,
+    name: &'static str,
+) {
+    queue_island_visual_with_motion(
+        entries,
+        visual_index,
+        island,
+        layer,
+        mesh,
+        material,
+        transform,
+        obstacle,
+        Some(collision),
         None,
         name,
     );
@@ -60,6 +90,36 @@ pub(super) fn queue_wind_island_visual(
         material,
         transform,
         obstacle,
+        None,
+        Some(wind_motion),
+        name,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn queue_collidable_wind_island_visual(
+    entries: &mut Vec<IslandVisualEntry>,
+    visual_index: &mut usize,
+    island: SkyIsland,
+    layer: IslandVisualLayer,
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+    transform: Transform,
+    obstacle: Option<CameraObstacle>,
+    collision: WorldCollisionProxy,
+    wind_motion: crate::environment_visuals::WindVisualMotion,
+    name: &'static str,
+) {
+    queue_island_visual_with_motion(
+        entries,
+        visual_index,
+        island,
+        layer,
+        mesh,
+        material,
+        transform,
+        obstacle,
+        Some(collision),
         Some(wind_motion),
         name,
     );
@@ -75,6 +135,7 @@ fn queue_island_visual_with_motion(
     material: Handle<StandardMaterial>,
     transform: Transform,
     obstacle: Option<CameraObstacle>,
+    collision: Option<WorldCollisionProxy>,
     wind_motion: Option<crate::environment_visuals::WindVisualMotion>,
     name: &'static str,
 ) {
@@ -93,6 +154,7 @@ fn queue_island_visual_with_motion(
         material,
         transform,
         obstacle,
+        collision,
         wind_motion,
         name,
     });
@@ -228,7 +290,7 @@ pub(crate) fn queue_sky_island(
             island.mesh_top_y_at(island.center) + 1.8,
             island.center.z,
         );
-        queue_island_visual(
+        queue_collidable_island_visual(
             entries,
             &mut visual_index,
             island,
@@ -240,6 +302,11 @@ pub(crate) fn queue_sky_island(
                 marker_center,
                 Vec3::new(1.1, 3.0, 1.1),
             ))),
+            WorldCollisionProxy::new(
+                marker_center,
+                Vec3::new(1.1, 3.0, 1.1),
+                WorldCollisionProxyKind::Landmark,
+            ),
             "landing target marker",
         );
     }
@@ -276,7 +343,7 @@ fn queue_recovery_branch_marker(
     let mast_height = 5.6;
     let mast_surface = island_visual_surface_position(island, Vec2::new(-0.08, 0.08));
     let mast_center = mast_surface + Vec3::Y * (mast_height * 0.5);
-    queue_island_visual(
+    queue_collidable_island_visual(
         entries,
         visual_index,
         island,
@@ -285,6 +352,11 @@ fn queue_recovery_branch_marker(
         marker_material.clone(),
         Transform::from_translation(mast_center),
         None,
+        WorldCollisionProxy::new(
+            mast_center,
+            Vec3::new(0.42, mast_height * 0.5, 0.42),
+            WorldCollisionProxyKind::Landmark,
+        ),
         "recovery branch mast",
     );
 

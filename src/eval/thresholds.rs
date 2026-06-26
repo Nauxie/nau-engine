@@ -66,6 +66,7 @@ pub(super) const AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES: f32 = 8.0;
 pub(super) const MIN_DYNAMIC_WIND_FLOW_SPEED_MPS: f32 = 8.0;
 pub(super) const MIN_DYNAMIC_WIND_FLOW_VARIATION: f32 = 0.12;
 pub(super) const MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE: f32 = 0.03;
+pub(super) const MIN_WORLD_COLLISION_PROXY_COUNT: usize = 24;
 
 #[derive(Clone, Copy, Debug)]
 pub struct EvalThresholds {

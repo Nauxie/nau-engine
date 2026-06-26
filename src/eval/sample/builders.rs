@@ -156,6 +156,9 @@ impl EvalSample {
             weather_cloud_count,
             environment_motion_visual_count,
             max_environment_motion_offset_m,
+            world_collision_proxy_count: 0,
+            world_collision_resolved_count: 0,
+            max_world_collision_push_m: 0.0,
             island_terrain_surface_count: 0,
             min_island_terrain_mesh_vertices: 0,
             min_island_terrain_color_bands: 0,
@@ -291,6 +294,18 @@ impl EvalSample {
 
     pub fn with_visual_foot_gap(mut self, visual_foot_gap_m: f32) -> Self {
         self.visual_foot_gap_m = visual_foot_gap_m;
+        self
+    }
+
+    pub fn with_world_collision_metrics(
+        mut self,
+        proxy_count: usize,
+        resolved_count: usize,
+        max_push_m: f32,
+    ) -> Self {
+        self.world_collision_proxy_count = proxy_count;
+        self.world_collision_resolved_count = resolved_count;
+        self.max_world_collision_push_m = max_push_m.max(0.0);
         self
     }
 

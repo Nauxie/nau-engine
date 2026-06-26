@@ -4,6 +4,7 @@ use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::environment_visuals::{WeatherDrift, WindResponsiveVisual};
 use crate::island_visuals::IslandStreamDiagnostics;
 use crate::power_up_runtime::PowerUpCollectionState;
+use crate::world_collision_runtime::WorldCollisionDiagnostics;
 use crate::{Player, RouteObjectiveTracker};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
@@ -35,6 +36,7 @@ pub(crate) struct EvalScene<'w, 's> {
     pub(crate) asset_diagnostics: Res<'w, VisualAssetDiagnostics>,
     pub(crate) route_objectives: Res<'w, RouteObjectiveTracker>,
     pub(crate) power_ups: Res<'w, PowerUpCollectionState>,
+    pub(crate) collision_diagnostics: Res<'w, WorldCollisionDiagnostics>,
     pub(crate) wind_fields: Query<'w, 's, &'static WindField>,
     pub(crate) lift_fields: Query<'w, 's, &'static LiftField>,
     pub(crate) weather_clouds: Query<'w, 's, &'static Transform, With<WeatherDrift>>,

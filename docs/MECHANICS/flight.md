@@ -51,6 +51,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Aerial power-up gates are one-time route pickups that apply a small capped forward/upward boost while airborne, then disappear.
 - Diving adds downward acceleration.
 - The floor clamp prevents the player from ending below the floor or retaining downward velocity after collision.
+- Generated tree trunks, rocks, route cairns, launch beacons, recovery masts, and target markers expose simple world-collision proxies; player movement resolves horizontally out of those proxies and clears velocity into the collision normal.
 - Player facing follows desired airborne steering direction with exponential smoothing and bank response, falling back to horizontal velocity when no steering input is active.
 
 ## Forbidden Behaviors
@@ -112,6 +113,7 @@ Current tests cover:
 - gliding descends over time
 - gliding clamps fall speed
 - floor collision clears downward velocity
+- world collision proxies push the player out of obvious generated asset obstacles without affecting proxies above the player
 - visual wind fields keep horizontal flow horizontal
 - visual updraft fields point upward
 - lift fields only apply inside bounds while enabled
@@ -135,6 +137,7 @@ Current tests cover:
 - `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking
 - `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, stronger total/planar backward braking, post-brake recovery, desired heading alignment, average/p95/max body-heading error, max body-yaw error step, body-yaw oscillation, left/right body-bank response, body-roll step smoothness, follow-direction error distribution, view-yaw/world-yaw drift, and movement-input camera non-coupling
 - `long_glide_visibility` eval tracks sustained archipelago traversal, aerial power-up collection/effect samples, and content-scale signals
+- app evals track `world_collision_proxy_count`, `world_collision_resolved_samples`, and `max_world_collision_push_m`, with a proxy-count gate so collidable asset props cannot silently disappear
 
 Future tests should cover:
 
