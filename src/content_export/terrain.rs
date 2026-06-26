@@ -6,8 +6,9 @@ use super::shared::{
 use crate::eval_runtime::{path_string, remove_existing_dir};
 use crate::generated_content::{
     TERRAIN_TEXTURE_SIZE, island_cliff_mesh, island_impostor_mesh, island_terrain_mesh,
-    island_underside_mesh, mesh_terrain_material_channel_count, mesh_terrain_material_region_count,
-    mesh_terrain_material_weight_band_count, mesh_vertex_color_band_count, mesh_y_range,
+    island_underside_mesh, mesh_normal_slope_band_count, mesh_terrain_material_channel_count,
+    mesh_terrain_material_region_count, mesh_terrain_material_weight_band_count,
+    mesh_vertex_color_band_count, mesh_vertical_band_count, mesh_y_range,
     procedural_terrain_surface_texture_data, texture_detail_band_count, texture_edge_promille,
 };
 use bevy::prelude::*;
@@ -29,6 +30,8 @@ pub(crate) struct TerrainExportReport {
     pub(crate) min_terrain_material_weight_bands: usize,
     pub(crate) min_terrain_material_channels: usize,
     pub(crate) min_terrain_material_regions: usize,
+    pub(crate) min_terrain_height_bands: usize,
+    pub(crate) min_terrain_normal_slope_bands: usize,
     pub(crate) min_terrain_texture_detail_bands: usize,
     pub(crate) min_terrain_texture_edge_promille: usize,
     pub(crate) min_terrain_relief_range_m: f32,
@@ -59,6 +62,8 @@ pub(crate) struct TerrainExportMeshSummary {
     pub(crate) material_weight_bands: usize,
     pub(crate) material_channels: usize,
     pub(crate) material_regions: usize,
+    pub(crate) height_bands: usize,
+    pub(crate) normal_slope_bands: usize,
     pub(crate) relief_range_m: f32,
 }
 
@@ -85,6 +90,8 @@ impl TerrainExportReport {
                 "    \"terrain_material_weight_bands\": {},\n",
                 "    \"terrain_material_channels\": {},\n",
                 "    \"terrain_material_regions\": {},\n",
+                "    \"terrain_height_bands\": {},\n",
+                "    \"terrain_normal_slope_bands\": {},\n",
                 "    \"terrain_texture_detail_bands\": {},\n",
                 "    \"terrain_texture_edge_promille\": {},\n",
                 "    \"terrain_relief_range_m\": {},\n",
@@ -106,6 +113,8 @@ impl TerrainExportReport {
             self.min_terrain_material_weight_bands,
             self.min_terrain_material_channels,
             self.min_terrain_material_regions,
+            self.min_terrain_height_bands,
+            self.min_terrain_normal_slope_bands,
             self.min_terrain_texture_detail_bands,
             self.min_terrain_texture_edge_promille,
             terrain_export_json_number(self.min_terrain_relief_range_m),
@@ -161,7 +170,8 @@ impl TerrainExportMeshSummary {
                 "{{\"obj\": {}, \"material_weights_csv\": {}, ",
                 "\"vertex_count\": {}, \"triangle_count\": {}, ",
                 "\"color_bands\": {}, \"material_weight_bands\": {}, ",
-                "\"material_channels\": {}, \"material_regions\": {}, \"relief_range_m\": {}}}"
+                "\"material_channels\": {}, \"material_regions\": {}, ",
+                "\"height_bands\": {}, \"normal_slope_bands\": {}, \"relief_range_m\": {}}}"
             ),
             terrain_export_json_string(&path_string(&self.obj_path)),
             material_weights_path,
@@ -171,6 +181,8 @@ impl TerrainExportMeshSummary {
             self.material_weight_bands,
             self.material_channels,
             self.material_regions,
+            self.height_bands,
+            self.normal_slope_bands,
             terrain_export_json_number(self.relief_range_m)
         )
     }
@@ -273,6 +285,16 @@ pub(crate) fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<Te
         .map(|island| island.terrain.material_regions)
         .min()
         .unwrap_or(0);
+    let min_terrain_height_bands = islands
+        .iter()
+        .map(|island| island.terrain.height_bands)
+        .min()
+        .unwrap_or(0);
+    let min_terrain_normal_slope_bands = islands
+        .iter()
+        .map(|island| island.terrain.normal_slope_bands)
+        .min()
+        .unwrap_or(0);
     let min_terrain_texture_detail_bands = terrain_export_texture_detail_band_floor();
     let min_terrain_texture_edge_promille = terrain_export_texture_edge_promille_floor();
     let min_terrain_relief_range_m = islands
@@ -308,6 +330,8 @@ pub(crate) fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<Te
         min_terrain_material_weight_bands,
         min_terrain_material_channels,
         min_terrain_material_regions,
+        min_terrain_height_bands,
+        min_terrain_normal_slope_bands,
         min_terrain_texture_detail_bands,
         min_terrain_texture_edge_promille,
         min_terrain_relief_range_m,
@@ -335,6 +359,8 @@ fn terrain_export_mesh_summary(
         material_weight_bands: mesh_terrain_material_weight_band_count(mesh),
         material_channels: mesh_terrain_material_channel_count(mesh),
         material_regions: mesh_terrain_material_region_count(mesh),
+        height_bands: mesh_vertical_band_count(mesh),
+        normal_slope_bands: mesh_normal_slope_band_count(mesh),
         relief_range_m: mesh_y_range(mesh),
     }
 }

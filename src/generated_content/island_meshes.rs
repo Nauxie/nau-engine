@@ -16,15 +16,16 @@ pub(crate) use constants::{
 pub(crate) use constants::{
     INDICES_PER_GROUND_BLADE, ISLAND_CLIFF_RINGS, ISLAND_CLIFF_STRATA_BANDS,
     ISLAND_IMPOSTOR_COLOR_BANDS, ISLAND_IMPOSTOR_SEGMENTS, ISLAND_TERRAIN_COLOR_BANDS,
-    ISLAND_TERRAIN_MATERIAL_CHANNELS, ISLAND_TERRAIN_MATERIAL_REGIONS,
-    ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS, ISLAND_TERRAIN_RINGS,
+    ISLAND_TERRAIN_HEIGHT_BANDS, ISLAND_TERRAIN_MATERIAL_CHANNELS, ISLAND_TERRAIN_MATERIAL_REGIONS,
+    ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS, ISLAND_TERRAIN_NORMAL_SLOPE_BANDS, ISLAND_TERRAIN_RINGS,
     ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS, ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE,
     ISLAND_UNDERSIDE_RINGS,
 };
 pub(crate) use ground_cover::island_ground_cover_mesh;
 pub(crate) use metrics::{
-    mesh_terrain_material_channel_count, mesh_terrain_material_region_count,
-    mesh_terrain_material_weight_band_count, mesh_vertex_color_band_count, mesh_y_range,
+    mesh_normal_slope_band_count, mesh_terrain_material_channel_count,
+    mesh_terrain_material_region_count, mesh_terrain_material_weight_band_count,
+    mesh_vertex_color_band_count, mesh_vertical_band_count, mesh_y_range,
 };
 #[cfg(test)]
 pub(crate) use palette::island_terrain_vertex_color;

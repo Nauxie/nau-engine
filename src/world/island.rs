@@ -72,8 +72,11 @@ impl SkyIsland {
         let shoulder = (radius * std::f32::consts::PI).sin() * 0.24;
         let center_falloff = ((1.0 - radius).powi(2) - 1.0) * 0.16;
         let edge_drop = -radius.powf(2.35) * 0.42;
+        let ravines = terrain_ravine_relief_m(radius, angle, phase);
+        let terrace = terrain_terrace_relief_m(radius, angle, phase);
+        let micro = terrain_micro_relief_m(radius, angle, phase);
 
-        (ridge + shoulder + center_falloff + edge_drop)
+        (ridge + shoulder + center_falloff + edge_drop + ravines + terrace + micro)
             .clamp(-TERRAIN_MAX_DROP_M, TERRAIN_MAX_RISE_M)
     }
 
@@ -117,4 +120,36 @@ impl SkyIsland {
             + self.half_extents.x * 0.021
             + self.half_extents.y * 0.017
     }
+}
+
+fn terrain_ravine_relief_m(radius: f32, angle: f32, phase: f32) -> f32 {
+    let radial_mask = smoothstep(0.18, 0.82, radius) * (1.0 - smoothstep(0.88, 1.0, radius));
+    let primary_axis = (angle * 2.0 + phase * 1.3).sin().abs();
+    let secondary_axis = (angle * 3.0 - phase * 0.7).cos().abs();
+    let primary = 1.0 - smoothstep(0.02, 0.18, primary_axis);
+    let secondary = 1.0 - smoothstep(0.02, 0.14, secondary_axis);
+
+    -(primary * 0.14 + secondary * 0.08) * radial_mask
+}
+
+fn terrain_terrace_relief_m(radius: f32, angle: f32, phase: f32) -> f32 {
+    let terrace_mask = smoothstep(0.24, 0.58, radius) * (1.0 - smoothstep(0.76, 0.96, radius));
+    let terrace_wave =
+        (radius * std::f32::consts::TAU * 4.4 + phase * 0.5 + (angle * 2.0 + phase).sin() * 0.45)
+            .sin();
+    terrace_wave * terrace_mask * 0.045
+}
+
+fn terrain_micro_relief_m(radius: f32, angle: f32, phase: f32) -> f32 {
+    let detail_mask = smoothstep(0.12, 0.46, radius) * (1.0 - smoothstep(0.94, 1.0, radius));
+    let fine = (angle * 17.0 + radius * 11.0 + phase).sin() * 0.026
+        + (angle * 23.0 - radius * 7.0 - phase * 0.8).cos() * 0.018
+        + (angle * 31.0 + radius * 19.0 + phase * 0.3).sin() * 0.012;
+
+    fine * detail_mask
+}
+
+fn smoothstep(edge0: f32, edge1: f32, value: f32) -> f32 {
+    let t = ((value - edge0) / (edge1 - edge0).max(f32::EPSILON)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }

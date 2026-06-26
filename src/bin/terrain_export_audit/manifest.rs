@@ -31,12 +31,16 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
     let mut obj_vertex_mismatch_count = 0u64;
     let mut obj_face_mismatch_count = 0u64;
     let mut obj_color_mismatch_count = 0u64;
+    let mut obj_height_band_mismatch_count = 0u64;
+    let mut obj_normal_slope_band_mismatch_count = 0u64;
     let mut csv_row_mismatch_count = 0u64;
     let mut csv_band_mismatch_count = 0u64;
     let mut csv_channel_mismatch_count = 0u64;
     let mut csv_region_mismatch_count = 0u64;
     let mut min_region_promille = [u64::MAX; TERRAIN_MATERIAL_REGION_COUNT];
     let mut min_terrain_silhouette_radius_bands = u64::MAX;
+    let mut min_terrain_vertical_bands = u64::MAX;
+    let mut min_terrain_normal_slope_bands = u64::MAX;
     let mut min_island_body_vertical_range_m = f64::INFINITY;
     let mut min_island_body_silhouette_radius_bands = u64::MAX;
     let mut min_impostor_vertical_range_m = f64::INFINITY;
@@ -135,6 +139,18 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         "regions",
     ));
     checks.push(check_at_least_u64(
+        "terrain_height_bands",
+        value_u64(minimums, "terrain_height_bands"),
+        MIN_TERRAIN_HEIGHT_BANDS,
+        "bands",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_normal_slope_bands",
+        value_u64(minimums, "terrain_normal_slope_bands"),
+        MIN_TERRAIN_NORMAL_SLOPE_BANDS,
+        "bands",
+    ));
+    checks.push(check_at_least_u64(
         "terrain_texture_detail_bands",
         value_u64(minimums, "terrain_texture_detail_bands"),
         MIN_TERRAIN_TEXTURE_DETAIL_BANDS,
@@ -194,9 +210,22 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
                     obj_vertex_mismatch_count += u64::from(vertex_mismatch);
                     obj_face_mismatch_count += u64::from(face_mismatch);
                     obj_color_mismatch_count += u64::from(color_mismatch);
+                    let mut height_band_mismatch = false;
+                    let mut normal_slope_band_mismatch = false;
                     if mesh_kind == "terrain" {
+                        height_band_mismatch =
+                            obj.vertical_band_count != value_u64(mesh, "height_bands");
+                        normal_slope_band_mismatch =
+                            obj.normal_slope_band_count != value_u64(mesh, "normal_slope_bands");
+                        obj_height_band_mismatch_count += u64::from(height_band_mismatch);
+                        obj_normal_slope_band_mismatch_count +=
+                            u64::from(normal_slope_band_mismatch);
                         min_terrain_silhouette_radius_bands =
                             min_terrain_silhouette_radius_bands.min(obj.silhouette_radius_bands);
+                        min_terrain_vertical_bands =
+                            min_terrain_vertical_bands.min(obj.vertical_band_count);
+                        min_terrain_normal_slope_bands =
+                            min_terrain_normal_slope_bands.min(obj.normal_slope_band_count);
                     }
                     if mesh_kind == "cliff" || mesh_kind == "underside" {
                         min_island_body_vertical_range_m =
@@ -220,11 +249,15 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
                         "triangle_count": obj.face_count,
                         "colored_vertex_count": obj.colored_vertex_count,
                         "vertical_range_m": obj.vertical_range_m,
+                        "vertical_band_count": obj.vertical_band_count,
+                        "normal_slope_band_count": obj.normal_slope_band_count,
                         "horizontal_radius_bands": obj.horizontal_radius_bands,
                         "silhouette_radius_bands": obj.silhouette_radius_bands,
                         "vertex_count_matches_manifest": !vertex_mismatch,
                         "triangle_count_matches_manifest": !face_mismatch,
                         "all_vertices_have_color": !color_mismatch,
+                        "height_bands_match_manifest": !height_band_mismatch,
+                        "normal_slope_bands_match_manifest": !normal_slope_band_mismatch,
                     }));
                 }
                 Err(error) => {
@@ -328,6 +361,18 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         "meshes",
     ));
     checks.push(check_eq_u64(
+        "obj_height_band_mismatch_count",
+        obj_height_band_mismatch_count,
+        0,
+        "meshes",
+    ));
+    checks.push(check_eq_u64(
+        "obj_normal_slope_band_mismatch_count",
+        obj_normal_slope_band_mismatch_count,
+        0,
+        "meshes",
+    ));
+    checks.push(check_eq_u64(
         "terrain_weight_csv_row_mismatch_count",
         csv_row_mismatch_count,
         0,
@@ -395,6 +440,28 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         "terrain_silhouette_radius_bands",
         min_terrain_silhouette_radius_bands,
         MIN_TERRAIN_SILHOUETTE_RADIUS_BANDS,
+        "bands",
+    ));
+    let min_terrain_vertical_bands = if min_terrain_vertical_bands == u64::MAX {
+        0
+    } else {
+        min_terrain_vertical_bands
+    };
+    let min_terrain_normal_slope_bands = if min_terrain_normal_slope_bands == u64::MAX {
+        0
+    } else {
+        min_terrain_normal_slope_bands
+    };
+    checks.push(check_at_least_u64(
+        "terrain_obj_height_bands",
+        min_terrain_vertical_bands,
+        MIN_TERRAIN_HEIGHT_BANDS,
+        "bands",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_obj_normal_slope_bands",
+        min_terrain_normal_slope_bands,
+        MIN_TERRAIN_NORMAL_SLOPE_BANDS,
         "bands",
     ));
     checks.push(check_at_least_f64(

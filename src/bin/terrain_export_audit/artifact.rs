@@ -7,6 +7,8 @@ pub(crate) struct ObjAudit {
     pub(crate) face_count: u64,
     pub(crate) colored_vertex_count: u64,
     pub(crate) vertical_range_m: f64,
+    pub(crate) vertical_band_count: u64,
+    pub(crate) normal_slope_band_count: u64,
     pub(crate) horizontal_radius_bands: u64,
     pub(crate) silhouette_radius_bands: u64,
 }
@@ -30,6 +32,7 @@ pub(crate) fn audit_obj_text(text: &str) -> ObjAudit {
     let mut face_count = 0;
     let mut colored_vertex_count = 0;
     let mut positions = Vec::new();
+    let mut normals = Vec::new();
 
     for line in text.lines() {
         if let Some(rest) = line.strip_prefix("v ") {
@@ -44,11 +47,21 @@ pub(crate) fn audit_obj_text(text: &str) -> ObjAudit {
                 let z = columns[2].parse::<f64>().unwrap_or(0.0);
                 positions.push([x, y, z]);
             }
+        } else if let Some(rest) = line.strip_prefix("vn ") {
+            let columns = rest.split_whitespace().collect::<Vec<_>>();
+            if columns.len() >= 3 {
+                let x = columns[0].parse::<f64>().unwrap_or(0.0);
+                let y = columns[1].parse::<f64>().unwrap_or(1.0);
+                let z = columns[2].parse::<f64>().unwrap_or(0.0);
+                normals.push([x, y, z]);
+            }
         } else if line.starts_with("f ") {
             face_count += 1;
         }
     }
     let vertical_range_m = vertical_position_range_m(&positions);
+    let vertical_band_count = vertical_position_band_count(&positions);
+    let normal_slope_band_count = normal_slope_band_count(&normals);
     let horizontal_radius_bands = horizontal_radius_band_count(&positions);
     let silhouette_radius_bands = silhouette_radius_band_count(&positions);
 
@@ -57,6 +70,8 @@ pub(crate) fn audit_obj_text(text: &str) -> ObjAudit {
         face_count,
         colored_vertex_count,
         vertical_range_m,
+        vertical_band_count,
+        normal_slope_band_count,
         horizontal_radius_bands,
         silhouette_radius_bands,
     }
@@ -76,6 +91,38 @@ fn vertical_position_range_m(positions: &[[f64; 3]]) -> f64 {
         .fold(f64::NEG_INFINITY, f64::max);
 
     (max_y - min_y).max(0.0)
+}
+
+fn vertical_position_band_count(positions: &[[f64; 3]]) -> u64 {
+    if positions.is_empty() {
+        return 0;
+    }
+    let min_y = positions
+        .iter()
+        .map(|position| position[1])
+        .fold(f64::INFINITY, f64::min);
+    if !min_y.is_finite() {
+        return 0;
+    }
+
+    positions
+        .iter()
+        .map(|position| ((position[1] - min_y) / 0.05).round() as i64)
+        .collect::<HashSet<_>>()
+        .len() as u64
+}
+
+fn normal_slope_band_count(normals: &[[f64; 3]]) -> u64 {
+    normals
+        .iter()
+        .filter(|normal| normal[1] > 0.0)
+        .map(|normal| {
+            let horizontal = (normal[0] * normal[0] + normal[2] * normal[2]).sqrt();
+            let slope_degrees = horizontal.atan2(normal[1].max(0.0001)).to_degrees();
+            (slope_degrees * 2.0).round() as i64
+        })
+        .collect::<HashSet<_>>()
+        .len() as u64
 }
 
 fn horizontal_radius_band_count(positions: &[[f64; 3]]) -> u64 {
