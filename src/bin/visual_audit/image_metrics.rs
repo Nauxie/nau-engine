@@ -165,6 +165,7 @@ pub(super) struct LowDetailSceneComponentStats {
 }
 
 pub(super) fn low_detail_scene_component_stats(
+    image: &RgbImage,
     luma_values: &[f64],
     scene_mask: &[bool],
     width: usize,
@@ -198,10 +199,9 @@ pub(super) fn low_detail_scene_component_stats(
             component_pixels += 1;
             let x = current % width;
             let y = current / width;
-            let luma = luma_values[current];
 
             if x > 0 && scene_mask[current - 1] {
-                if (luma - luma_values[current - 1]).abs() > 18.0 {
+                if component_edge(image, luma_values, current, current - 1, width) {
                     edge_pixels += 1;
                 }
                 edge_samples += 1;
@@ -211,7 +211,7 @@ pub(super) fn low_detail_scene_component_stats(
                 push_marker_neighbor(current + 1, scene_mask, &mut visited, &mut stack);
             }
             if y > 0 && scene_mask[current - width] {
-                if (luma - luma_values[current - width]).abs() > 18.0 {
+                if component_edge(image, luma_values, current, current - width, width) {
                     edge_pixels += 1;
                 }
                 edge_samples += 1;
@@ -235,6 +235,32 @@ pub(super) fn low_detail_scene_component_stats(
     LowDetailSceneComponentStats {
         dominant_component_fraction: fraction(dominant_low_detail_pixels, scene_pixel_count),
     }
+}
+
+fn component_edge(
+    image: &RgbImage,
+    luma_values: &[f64],
+    current: usize,
+    neighbor: usize,
+    width: usize,
+) -> bool {
+    let luma_delta = (luma_values[current] - luma_values[neighbor]).abs();
+    if luma_delta > 18.0 {
+        return true;
+    }
+
+    let x = current % width;
+    let y = current / width;
+    let neighbor_x = neighbor % width;
+    let neighbor_y = neighbor / width;
+    let [r, g, b] = image.get_pixel(x as u32, y as u32).0;
+    let [neighbor_r, neighbor_g, neighbor_b] =
+        image.get_pixel(neighbor_x as u32, neighbor_y as u32).0;
+    let color_delta = (r as f64 - neighbor_r as f64).abs()
+        + (g as f64 - neighbor_g as f64).abs()
+        + (b as f64 - neighbor_b as f64).abs();
+
+    color_delta >= MIN_LOW_DETAIL_SCENE_COMPONENT_COLOR_EDGE_DELTA
 }
 
 pub(super) const BORDER_REGION_COUNT: usize = 4;
