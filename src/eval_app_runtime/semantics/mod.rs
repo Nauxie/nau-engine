@@ -211,7 +211,7 @@ mod tests {
         ));
         assert!(!checkpoint_requires_wind_visual_sample(
             branch,
-            "branch_landing"
+            "branch_landing_approach"
         ));
         assert!(!checkpoint_requires_wind_visual_sample(
             camera,
