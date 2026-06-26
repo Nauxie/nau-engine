@@ -1,6 +1,9 @@
 use super::super::{super::EvalAccumulator, derived::SummaryDerivedMetrics};
 use crate::eval::{
-    scenarios::{AIR_CONTROL_RESPONSE, CAMERA_STRAFE_STABILITY, EvalScenario},
+    scenarios::{
+        AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
+        EvalScenario, LONG_GLIDE_VISIBILITY, UPDRAFT_ROUTE,
+    },
     summary::EvalCheck,
     thresholds::{EvalThresholds, *},
 };
@@ -88,12 +91,95 @@ pub(super) fn append_scenario_checks(
             "samples",
         ));
     }
+    if wind_force_scenario(scenario) {
+        checks.push(EvalCheck::at_least(
+            "wind_force_samples",
+            acc.wind_force_samples as f32,
+            MIN_WIND_FORCE_SAMPLE_COUNT as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
+            "active_wind_force_fields",
+            acc.max_active_wind_force_fields as f32,
+            1.0,
+            "fields",
+        ));
+        checks.push(EvalCheck::at_least(
+            "wind_force_delta",
+            acc.max_wind_force_delta_mps,
+            MIN_WIND_FORCE_DELTA_MPS,
+            "m/s",
+        ));
+        checks.push(EvalCheck::at_least(
+            "wind_force_flow_speed",
+            acc.max_wind_force_flow_speed_mps,
+            MIN_WIND_FORCE_FLOW_SPEED_MPS,
+            "m/s",
+        ));
+        checks.push(EvalCheck::at_least(
+            "wind_force_variation",
+            acc.max_wind_force_variation,
+            MIN_WIND_FORCE_VARIATION,
+            "ratio",
+        ));
+    }
+    if crosswind_force_scenario(scenario) {
+        checks.push(EvalCheck::at_least(
+            "crosswind_force_samples",
+            acc.crosswind_force_samples as f32,
+            MIN_CROSSWIND_FORCE_SAMPLE_COUNT as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
+            "crosswind_force_fields",
+            acc.max_crosswind_force_fields as f32,
+            1.0,
+            "fields",
+        ));
+        checks.push(EvalCheck::at_least(
+            "crosswind_force_delta",
+            acc.max_crosswind_force_delta_mps,
+            MIN_CROSSWIND_FORCE_DELTA_MPS,
+            "m/s",
+        ));
+    }
+    if thresholds.min_lifted_samples > 0 {
+        checks.push(EvalCheck::at_least(
+            "updraft_swirl_force_samples",
+            acc.updraft_swirl_force_samples as f32,
+            thresholds.min_lifted_samples as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
+            "updraft_swirl_force_fields",
+            acc.max_updraft_swirl_force_fields as f32,
+            1.0,
+            "fields",
+        ));
+        checks.push(EvalCheck::at_least(
+            "updraft_swirl_force_delta",
+            acc.max_updraft_swirl_force_delta_mps,
+            MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+            "m/s",
+        ));
+    }
     if scenario.name == AIR_CONTROL_RESPONSE {
         append_air_control_checks(checks, acc, derived);
     }
     if scenario.name == CAMERA_STRAFE_STABILITY {
         append_camera_strafe_checks(checks, acc);
     }
+}
+
+fn wind_force_scenario(scenario: EvalScenario) -> bool {
+    matches!(
+        scenario.name,
+        BASELINE_ROUTE | UPDRAFT_ROUTE | BRANCH_RECOVERY_ROUTE | LONG_GLIDE_VISIBILITY
+    )
+}
+
+fn crosswind_force_scenario(scenario: EvalScenario) -> bool {
+    matches!(scenario.name, BASELINE_ROUTE | BRANCH_RECOVERY_ROUTE)
 }
 
 fn append_air_control_checks(

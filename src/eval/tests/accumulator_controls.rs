@@ -874,6 +874,131 @@ fn accumulator_gates_dynamic_wind_flow_for_lift_routes() {
     assert!(named_check(&summary, "max_wind_flow_speed").passed);
     assert!(named_check(&summary, "max_wind_flow_variation").passed);
     assert!(named_check(&summary, "max_wind_flow_variation_range").passed);
+    assert!(named_check(&summary, "updraft_swirl_force_samples").passed);
+    assert!(named_check(&summary, "updraft_swirl_force_fields").passed);
+    assert!(named_check(&summary, "updraft_swirl_force_delta").passed);
+}
+
+#[test]
+fn accumulator_rejects_missing_updraft_swirl_force_metrics_for_lift_routes() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..scenario.thresholds.min_lifted_samples {
+        let mut sample = air_control_metric_sample(
+            scenario,
+            frame,
+            Vec3::new(0.0, 8.0, -18.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        );
+        sample.active_lift_fields = 1;
+        sample.readable_lift_fields = 1;
+        sample.dynamic_wind_flow_fields = 1;
+        sample.max_wind_flow_speed_mps = 10.0;
+        sample.max_wind_flow_variation = 0.16 + frame as f32 * 0.02;
+        sample.updraft_swirl_force_fields = 0;
+        sample.max_updraft_swirl_force_delta_mps = 0.0;
+        accumulator.observe(sample);
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert!(named_check(&summary, "dynamic_readable_lift_samples").passed);
+    assert!(!named_check(&summary, "updraft_swirl_force_samples").passed);
+    assert!(!named_check(&summary, "updraft_swirl_force_fields").passed);
+    assert!(!named_check(&summary, "updraft_swirl_force_delta").passed);
+}
+
+#[test]
+fn accumulator_gates_wind_force_response_metrics() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..MIN_WIND_FORCE_SAMPLE_COUNT {
+        accumulator.observe(content_metric_sample(scenario, frame, 12, 0, 96));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for check_name in [
+        "wind_force_samples",
+        "active_wind_force_fields",
+        "wind_force_delta",
+        "wind_force_flow_speed",
+        "wind_force_variation",
+        "crosswind_force_samples",
+        "crosswind_force_fields",
+        "crosswind_force_delta",
+    ] {
+        assert!(
+            named_check(&summary, check_name).passed,
+            "{check_name} should pass with current wind response metrics"
+        );
+    }
+}
+
+#[test]
+fn accumulator_rejects_missing_wind_force_response_metrics() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let mut sample = content_metric_sample(scenario, 0, 12, 0, 96);
+    sample.active_wind_force_fields = 0;
+    sample.crosswind_force_fields = 0;
+    sample.updraft_swirl_force_fields = 0;
+    sample.max_wind_force_delta_mps = 0.0;
+    sample.max_crosswind_force_delta_mps = 0.0;
+    sample.max_updraft_swirl_force_delta_mps = 0.0;
+    sample.max_wind_force_flow_speed_mps = 0.0;
+    sample.max_wind_force_variation = 0.0;
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for check_name in [
+        "wind_force_samples",
+        "active_wind_force_fields",
+        "wind_force_delta",
+        "wind_force_flow_speed",
+        "wind_force_variation",
+        "crosswind_force_samples",
+        "crosswind_force_fields",
+        "crosswind_force_delta",
+    ] {
+        assert!(
+            !named_check(&summary, check_name).passed,
+            "{check_name} should fail without measured wind response"
+        );
+    }
 }
 
 #[test]

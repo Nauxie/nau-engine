@@ -289,6 +289,16 @@ pub(crate) fn collect_eval_metrics(
         wind_guide_metrics.max_updraft_visual_motion_m,
         wind_guide_metrics.max_crosswind_visual_motion_m,
     )
+    .with_wind_force_metrics(
+        scene.wind_force_diagnostics.active_fields,
+        scene.wind_force_diagnostics.crosswind_fields,
+        scene.wind_force_diagnostics.updraft_swirl_fields,
+        scene.wind_force_diagnostics.applied_delta_mps,
+        scene.wind_force_diagnostics.crosswind_delta_mps,
+        scene.wind_force_diagnostics.updraft_swirl_delta_mps,
+        scene.wind_force_diagnostics.max_flow_speed_mps,
+        scene.wind_force_diagnostics.max_variation,
+    )
     .with_world_collision_metrics(
         scene.collision_diagnostics.proxy_count,
         scene.collision_diagnostics.resolved_count,

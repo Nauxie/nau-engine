@@ -14,6 +14,39 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_wind_flow_variation = accumulator
         .max_wind_flow_variation
         .max(sample.max_wind_flow_variation);
+    if sample.active_wind_force_fields > 0 {
+        accumulator.wind_force_samples += 1;
+    }
+    if sample.crosswind_force_fields > 0 {
+        accumulator.crosswind_force_samples += 1;
+    }
+    if sample.updraft_swirl_force_fields > 0 {
+        accumulator.updraft_swirl_force_samples += 1;
+    }
+    accumulator.max_active_wind_force_fields = accumulator
+        .max_active_wind_force_fields
+        .max(sample.active_wind_force_fields);
+    accumulator.max_crosswind_force_fields = accumulator
+        .max_crosswind_force_fields
+        .max(sample.crosswind_force_fields);
+    accumulator.max_updraft_swirl_force_fields = accumulator
+        .max_updraft_swirl_force_fields
+        .max(sample.updraft_swirl_force_fields);
+    accumulator.max_wind_force_delta_mps = accumulator
+        .max_wind_force_delta_mps
+        .max(sample.max_wind_force_delta_mps);
+    accumulator.max_crosswind_force_delta_mps = accumulator
+        .max_crosswind_force_delta_mps
+        .max(sample.max_crosswind_force_delta_mps);
+    accumulator.max_updraft_swirl_force_delta_mps = accumulator
+        .max_updraft_swirl_force_delta_mps
+        .max(sample.max_updraft_swirl_force_delta_mps);
+    accumulator.max_wind_force_flow_speed_mps = accumulator
+        .max_wind_force_flow_speed_mps
+        .max(sample.max_wind_force_flow_speed_mps);
+    accumulator.max_wind_force_variation = accumulator
+        .max_wind_force_variation
+        .max(sample.max_wind_force_variation);
     accumulator.max_active_lift_fields = accumulator
         .max_active_lift_fields
         .max(sample.active_lift_fields);

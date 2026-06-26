@@ -249,6 +249,15 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"max_updraft_guide_visual_count\": 70"));
     assert!(summary_json.contains("\"max_crosswind_guide_visual_count\": 72"));
     assert!(summary_json.contains("\"max_crosswind_visual_motion_m\": 0.3000"));
+    assert!(summary_json.contains("\"wind_force_samples\": 1"));
+    assert!(summary_json.contains("\"max_active_wind_force_fields\": 1"));
+    assert!(summary_json.contains("\"max_crosswind_force_fields\": 1"));
+    assert!(summary_json.contains("\"max_updraft_swirl_force_fields\": 1"));
+    assert!(summary_json.contains("\"max_wind_force_delta_mps\": 0.0400"));
+    assert!(summary_json.contains("\"max_crosswind_force_delta_mps\": 0.0400"));
+    assert!(summary_json.contains("\"max_updraft_swirl_force_delta_mps\": 0.0300"));
+    assert!(summary_json.contains("\"max_wind_force_flow_speed_mps\": 6.0000"));
+    assert!(summary_json.contains("\"max_wind_force_variation\": 0.1200"));
     assert!(summary_json.contains("\"max_world_collision_proxy_count\": 24"));
 }
 
@@ -398,6 +407,14 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"crosswind_ribbon_visual_count\":8"));
     assert!(sample_json.contains("\"max_updraft_visual_motion_m\":0.2000"));
     assert!(sample_json.contains("\"max_crosswind_visual_motion_m\":0.3000"));
+    assert!(sample_json.contains("\"active_wind_force_fields\":1"));
+    assert!(sample_json.contains("\"crosswind_force_fields\":1"));
+    assert!(sample_json.contains("\"updraft_swirl_force_fields\":1"));
+    assert!(sample_json.contains("\"max_wind_force_delta_mps\":0.0400"));
+    assert!(sample_json.contains("\"max_crosswind_force_delta_mps\":0.0400"));
+    assert!(sample_json.contains("\"max_updraft_swirl_force_delta_mps\":0.0300"));
+    assert!(sample_json.contains("\"max_wind_force_flow_speed_mps\":6.0000"));
+    assert!(sample_json.contains("\"max_wind_force_variation\":0.1200"));
     assert!(sample_json.contains("\"island_terrain_archetype_count\":11"));
 }
 
@@ -820,6 +837,16 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
                 MIN_CROSSWIND_RIBBON_VISUAL_COUNT,
                 MIN_UPDRAFT_VISUAL_MOTION_M,
                 MIN_CROSSWIND_VISUAL_MOTION_M,
+            )
+            .with_wind_force_metrics(
+                1,
+                1,
+                1,
+                MIN_WIND_FORCE_DELTA_MPS,
+                MIN_CROSSWIND_FORCE_DELTA_MPS,
+                MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+                MIN_WIND_FORCE_FLOW_SPEED_MPS,
+                MIN_WIND_FORCE_VARIATION,
             ),
         );
     }

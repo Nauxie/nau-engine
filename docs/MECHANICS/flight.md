@@ -44,8 +44,9 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Gliding does not create altitude on its own.
 - Airborne and gliding `W`/`A`/`S`/`D` input gives Nau a camera-relative body-facing intent; `W`/`A`/`D` also steer planar velocity, while pure `S` stays an air-brake/reverse-speed-limited control.
 - Airborne `S` input brakes forward motion first, then allows limited backward drift instead of unrestricted reverse flight.
-- Visual `WindField` volumes are finite axis-aligned boxes for readable wind/updraft streams and expose a shared dynamic `flow_at` sample for gust/swirl diagnostics.
-- Gameplay `LiftField` updraft volumes are separate finite boxes that add upward velocity while the player is airborne inside them.
+- Visual `WindField` volumes are finite axis-aligned boxes for readable wind/updraft streams, gust/swirl diagnostics, and bounded horizontal airborne wind response.
+- Crosswind `WindField`s push airborne horizontal velocity toward their dynamic flow; updraft `WindField`s add only lateral swirl current.
+- Gameplay `LiftField` updraft volumes are separate finite boxes that add vertical velocity while the player is airborne inside them.
 - Authored gameplay updraft route nodes must pair the visual `WindField` and gameplay `LiftField` at the same center and extents.
 - Lift fields clamp against their configured maximum upward speed instead of granting unbounded climb.
 - Aerial power-up gates are one-time route pickups that apply a small capped forward/upward boost while airborne, then disappear.
@@ -57,7 +58,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 ## Forbidden Behaviors
 
 - No midair relaunch spam unless a future mechanic explicitly grants it.
-- No altitude gain from ordinary gliding without wind/updraft/launch support.
+- No altitude gain from ordinary gliding or visual wind current without `LiftField`/launch support.
 - No repeatable power-up farming from the same gate in one flight.
 - No camera anchor based on full 3D velocity.
 - No direct elapsed-time multiplied by speed animation phase. Animation phase should accumulate from delta time.
@@ -94,10 +95,10 @@ Landing:
 
 Wind/updraft:
 
-- crosswind is represented as stream lines inside finite debug fields, with dynamic horizontal flow samples for diagnostics/visual timing
-- gameplay lift is represented as separate updraft volumes that affect airborne traversal
+- visual `WindField` volumes are the shared source for stream visuals, diagnostics, and bounded horizontal airborne wind current
+- crosswinds push laterally without adding vertical lift
+- updraft wind swirl can bend horizontal motion, but vertical climb still comes from paired `LiftField` volumes
 - active lift should be readable through paired updraft visuals, gusting ribbons/motes, and debug bounds before richer particles, cloth/glider motion, vegetation, clouds, or other environment art
-- visual wind and gameplay force math should stay separate until crosswind forces have their own explicit movement design
 
 Power-ups:
 
@@ -116,7 +117,8 @@ Current tests cover:
 - floor collision clears downward velocity
 - world collision proxies push the player out of obvious generated asset obstacles without affecting proxies above the player
 - visual wind fields keep horizontal flow horizontal
-- visual updraft fields point upward
+- visual updraft fields include upward flow plus horizontal swirl
+- wind response applies only while airborne and stays horizontally bounded
 - lift fields only apply inside bounds while enabled
 - authored gameplay lift route nodes pair visual and lift volumes
 - aerial power-up route gates are collectible, directional, and capped
@@ -131,7 +133,7 @@ Current tests cover:
 - frame-time diagnostics avoid invalid values
 - animation phase advances from delta time
 - wing visibility tracks glide mode
-- `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, unreadable lift samples, dynamic readable lift samples, and wind-flow speed/variation/range so active lift must overlap a paired visible updraft with changing flow
+- `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, unreadable lift samples, dynamic readable lift samples, wind-flow speed/variation/range, and wind-force response so active lift must overlap a paired visible updraft with changing flow and lateral current
 - `camera_mouse_control` eval tracks yaw/pitch offsets and obstruction adjustment without player movement
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
 - `camera_strafe_stability` eval tracks right/left lateral movement without camera auto-orbit, including view-yaw and world-yaw drift
@@ -148,7 +150,6 @@ Future tests should cover:
 - explicit player and route-marker classification beyond the current scene-composition visual audit
 - authored animation transitions for bank, brake, recovery, and landing states
 - debug visualization toggles
-- crosswind gameplay force rules if visual wind becomes a movement force
 - lift-field stacking and route-authoring rules
 
 ## Tuning Principles

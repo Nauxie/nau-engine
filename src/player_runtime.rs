@@ -16,7 +16,9 @@ use nau_engine::animation::{
     advance_phase, body_local_pose_velocity, part_pose_with_context, pose_blend,
 };
 use nau_engine::asset_pipeline::VisualAssetKind;
-use nau_engine::environment::{LiftField, apply_lift_fields};
+use nau_engine::environment::{
+    LiftField, WindField, WindForceApplication, apply_lift_fields, apply_wind_fields,
+};
 use nau_engine::eval::scripted_input;
 use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
@@ -61,13 +63,42 @@ pub(crate) struct RouteObjectiveTracker {
     pub(crate) complete: bool,
 }
 
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub(crate) struct WindForceDiagnostics {
+    pub(crate) active_fields: usize,
+    pub(crate) crosswind_fields: usize,
+    pub(crate) updraft_swirl_fields: usize,
+    pub(crate) applied_delta_mps: f32,
+    pub(crate) crosswind_delta_mps: f32,
+    pub(crate) updraft_swirl_delta_mps: f32,
+    pub(crate) max_flow_speed_mps: f32,
+    pub(crate) max_variation: f32,
+}
+
+impl WindForceDiagnostics {
+    fn from_application(application: WindForceApplication) -> Self {
+        Self {
+            active_fields: application.active_fields,
+            crosswind_fields: application.crosswind_fields,
+            updraft_swirl_fields: application.updraft_swirl_fields,
+            applied_delta_mps: application.applied_delta_mps(),
+            crosswind_delta_mps: application.crosswind_delta_mps(),
+            updraft_swirl_delta_mps: application.updraft_swirl_delta_mps(),
+            max_flow_speed_mps: application.max_flow_speed_mps,
+            max_variation: application.max_variation,
+        }
+    }
+}
+
 #[derive(SystemParam)]
 pub(crate) struct MovementWorld<'w, 's> {
     route: Res<'w, SkyRoute>,
     lift_fields: Query<'w, 's, &'static LiftField>,
+    visual_wind_fields: Query<'w, 's, &'static WindField>,
     collision_proxies: Query<'w, 's, &'static WorldCollisionProxy>,
     power_ups: ResMut<'w, PowerUpCollectionState>,
     collision_diagnostics: ResMut<'w, WorldCollisionDiagnostics>,
+    wind_diagnostics: ResMut<'w, WindForceDiagnostics>,
 }
 
 struct PlayerKinematics<'a> {
@@ -80,9 +111,11 @@ struct PlayerStepContext<'a> {
     tuning: &'a FlightTuning,
     route: &'a SkyRoute,
     lift_fields: &'a [LiftField],
+    visual_wind_fields: &'a [WindField],
     power_ups: &'a mut PowerUpCollectionState,
     collision_proxies: &'a [WorldCollisionProxy],
     collision_diagnostics: &'a mut WorldCollisionDiagnostics,
+    wind_diagnostics: &'a mut WindForceDiagnostics,
 }
 
 pub(crate) type GeneratedPlayerPlaceholderFilter = (
@@ -157,16 +190,20 @@ pub(crate) fn fly_player(
     };
     let facing = movement_facing(camera.single().ok(), &transform);
     let dt = time.delta_secs();
+    let elapsed_secs = time.elapsed_secs();
     let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
+    let visual_wind_fields = world.visual_wind_fields.iter().copied().collect::<Vec<_>>();
     let collision_proxies = world.collision_proxies.iter().copied().collect::<Vec<_>>();
     world.power_ups.begin_frame(dt);
     let mut context = PlayerStepContext {
         tuning: &tuning,
         route: &world.route,
         lift_fields: &lift_fields,
+        visual_wind_fields: &visual_wind_fields,
         power_ups: &mut world.power_ups,
         collision_proxies: &collision_proxies,
         collision_diagnostics: &mut world.collision_diagnostics,
+        wind_diagnostics: &mut world.wind_diagnostics,
     };
     let input = keyboard_flight_input(&keyboard);
 
@@ -176,7 +213,14 @@ pub(crate) fn fly_player(
             velocity: &mut velocity,
             controller: &mut controller,
         };
-        step_player(dt, input, facing, &mut context, &mut kinematics);
+        step_player(
+            dt,
+            elapsed_secs,
+            input,
+            facing,
+            &mut context,
+            &mut kinematics,
+        );
     }
     record_animation_context(
         &mut animation,
@@ -230,16 +274,20 @@ pub(crate) fn eval_fly_player(
         facing: Some(facing),
     };
     let dt = run.scenario.fixed_dt;
+    let elapsed_secs = run.frame as f32 * dt;
     let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
+    let visual_wind_fields = world.visual_wind_fields.iter().copied().collect::<Vec<_>>();
     let collision_proxies = world.collision_proxies.iter().copied().collect::<Vec<_>>();
     world.power_ups.begin_frame(dt);
     let mut context = PlayerStepContext {
         tuning: &tuning,
         route: &world.route,
         lift_fields: &lift_fields,
+        visual_wind_fields: &visual_wind_fields,
         power_ups: &mut world.power_ups,
         collision_proxies: &collision_proxies,
         collision_diagnostics: &mut world.collision_diagnostics,
+        wind_diagnostics: &mut world.wind_diagnostics,
     };
     let input = scripted_input(run.scenario, run.frame);
 
@@ -249,7 +297,14 @@ pub(crate) fn eval_fly_player(
             velocity: &mut velocity,
             controller: &mut controller,
         };
-        step_player(dt, input, facing, &mut context, &mut kinematics);
+        step_player(
+            dt,
+            elapsed_secs,
+            input,
+            facing,
+            &mut context,
+            &mut kinematics,
+        );
     }
     record_animation_context(
         &mut animation,
@@ -263,6 +318,7 @@ pub(crate) fn eval_fly_player(
 
 fn step_player(
     dt: f32,
+    elapsed_secs: f32,
     input: FlightInput,
     facing: Facing,
     context: &mut PlayerStepContext,
@@ -295,12 +351,24 @@ fn step_player(
         next.controller.mode != FlightMode::Grounded,
     );
     next.velocity = lift.velocity;
+    let wind = apply_wind_fields(
+        next.position,
+        next.velocity,
+        context.visual_wind_fields.iter().copied(),
+        elapsed_secs,
+        dt,
+        next.controller.mode != FlightMode::Grounded,
+    );
+    next.velocity = wind.velocity;
     collect_aerial_power_ups(&mut next, context.power_ups);
     let next = context
         .route
         .resolve_ground_contact_after_step(next, was_grounded);
     let collision = resolve_world_collisions(next, context.collision_proxies.iter().copied());
     let next = collision.state;
+    *context.wind_diagnostics = WindForceDiagnostics::from_application(
+        wind.for_airborne_diagnostics(next.controller.mode != FlightMode::Grounded),
+    );
     context.collision_diagnostics.proxy_count = context.collision_proxies.len();
     context.collision_diagnostics.resolved_count = collision.hit_count;
     context.collision_diagnostics.max_push_m = collision.max_push_m;
@@ -505,6 +573,7 @@ mod tests {
         let tuning = FlightTuning::default();
         let mut power_ups = PowerUpCollectionState::default();
         let mut collision_diagnostics = WorldCollisionDiagnostics::default();
+        let mut wind_diagnostics = WindForceDiagnostics::default();
         let proxies = [WorldCollisionProxy::new(
             Vec3::new(0.0, nau_engine::world::START_FLOOR_Y + 0.9, 0.0),
             Vec3::new(0.25, 0.9, 0.25),
@@ -518,9 +587,11 @@ mod tests {
             tuning: &tuning,
             route: &route,
             lift_fields: &[],
+            visual_wind_fields: &[],
             power_ups: &mut power_ups,
             collision_proxies: &proxies,
             collision_diagnostics: &mut collision_diagnostics,
+            wind_diagnostics: &mut wind_diagnostics,
         };
         let mut player = PlayerKinematics {
             transform: &mut transform,
@@ -529,6 +600,7 @@ mod tests {
         };
 
         step_player(
+            0.0,
             0.0,
             FlightInput::default(),
             Facing::new(Vec3::NEG_Z, Vec3::X),

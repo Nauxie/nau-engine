@@ -143,6 +143,14 @@ impl EvalSample {
             dynamic_wind_flow_fields,
             max_wind_flow_speed_mps,
             max_wind_flow_variation,
+            active_wind_force_fields: 0,
+            crosswind_force_fields: 0,
+            updraft_swirl_force_fields: 0,
+            max_wind_force_delta_mps: 0.0,
+            max_crosswind_force_delta_mps: 0.0,
+            max_updraft_swirl_force_delta_mps: 0.0,
+            max_wind_force_flow_speed_mps: 0.0,
+            max_wind_force_variation: 0.0,
             active_lift_fields,
             readable_lift_fields,
             lift_field_count,
@@ -321,6 +329,29 @@ impl EvalSample {
 
     pub fn with_visual_foot_gap(mut self, visual_foot_gap_m: f32) -> Self {
         self.visual_foot_gap_m = visual_foot_gap_m;
+        self
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_wind_force_metrics(
+        mut self,
+        active_field_count: usize,
+        crosswind_field_count: usize,
+        updraft_swirl_field_count: usize,
+        max_force_delta_mps: f32,
+        max_crosswind_force_delta_mps: f32,
+        max_updraft_swirl_force_delta_mps: f32,
+        max_flow_speed_mps: f32,
+        max_variation: f32,
+    ) -> Self {
+        self.active_wind_force_fields = active_field_count;
+        self.crosswind_force_fields = crosswind_field_count;
+        self.updraft_swirl_force_fields = updraft_swirl_field_count;
+        self.max_wind_force_delta_mps = max_force_delta_mps.max(0.0);
+        self.max_crosswind_force_delta_mps = max_crosswind_force_delta_mps.max(0.0);
+        self.max_updraft_swirl_force_delta_mps = max_updraft_swirl_force_delta_mps.max(0.0);
+        self.max_wind_force_flow_speed_mps = max_flow_speed_mps.max(0.0);
+        self.max_wind_force_variation = max_variation.max(0.0);
         self
     }
 

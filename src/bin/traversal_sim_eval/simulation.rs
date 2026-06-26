@@ -15,8 +15,8 @@ use nau_engine::{
         update_follow_direction_state,
     },
     environment::{
-        AERIAL_POWER_UP_ROUTE, GAMEPLAY_LIFT_ROUTE, LiftField, apply_aerial_power_up,
-        apply_lift_fields, visual_wind_fields,
+        AERIAL_POWER_UP_ROUTE, GAMEPLAY_LIFT_ROUTE, LiftField, WindField, WindForceApplication,
+        apply_aerial_power_up, apply_lift_fields, apply_wind_fields, visual_wind_fields,
     },
     eval::{EvalScenario, scripted_camera_input, scripted_input},
     movement::{
@@ -66,17 +66,20 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
             route.is_grounded_at(state.position) && state.controller.mode == FlightMode::Grounded;
         let mut frame_tuning = tuning;
         frame_tuning.floor_y = route.ground_at(state.position).floor_y;
-        state = step_flight_with_world(
+        let world_step = step_flight_with_world(
             state,
             input,
             facing,
             &frame_tuning,
             &route,
             &lift_fields,
+            &visual_fields,
+            frame as f32 * scenario.fixed_dt,
             &mut power_ups,
             scenario.fixed_dt,
             was_grounded,
         );
+        state = world_step.state;
         player_rotation = face_flight_direction(
             player_rotation,
             state.velocity,
@@ -152,6 +155,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
                 &route,
                 &lift_fields,
                 &visual_fields,
+                world_step.wind,
                 &objective,
                 &power_ups,
             );
@@ -182,10 +186,12 @@ fn step_flight_with_world(
     tuning: &FlightTuning,
     route: &SkyRoute,
     lift_fields: &[LiftField],
+    visual_fields: &[WindField],
+    elapsed_secs: f32,
     power_ups: &mut SimPowerUps,
     dt: f32,
     was_grounded: bool,
-) -> FlightState {
+) -> SimWorldStep {
     let mut next = nau_engine::movement::step_flight(state, input, facing, tuning, dt);
     let lift = apply_lift_fields(
         next.position,
@@ -195,8 +201,27 @@ fn step_flight_with_world(
         next.controller.mode != FlightMode::Grounded,
     );
     next.velocity = lift.velocity;
+    let wind = apply_wind_fields(
+        next.position,
+        next.velocity,
+        visual_fields.iter().copied(),
+        elapsed_secs,
+        dt,
+        next.controller.mode != FlightMode::Grounded,
+    );
+    next.velocity = wind.velocity;
     collect_aerial_power_ups(&mut next, power_ups);
-    route.resolve_ground_contact_after_step(next, was_grounded)
+    let state = route.resolve_ground_contact_after_step(next, was_grounded);
+    SimWorldStep {
+        state,
+        wind: wind.for_airborne_diagnostics(state.controller.mode != FlightMode::Grounded),
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SimWorldStep {
+    state: FlightState,
+    wind: WindForceApplication,
 }
 
 fn collect_aerial_power_ups(state: &mut FlightState, power_ups: &mut SimPowerUps) {

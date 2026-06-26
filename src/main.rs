@@ -43,8 +43,8 @@ use nau_engine::world::SkyIsland;
 use nau_engine::world::SkyRoute;
 use player_runtime::apply_authored_player_pose_nodes;
 pub(crate) use player_runtime::{
-    Player, RouteObjectiveTracker, grounded_visual_foot_gap_m, keyboard_flight_input,
-    movement_facing,
+    Player, RouteObjectiveTracker, WindForceDiagnostics, grounded_visual_foot_gap_m,
+    keyboard_flight_input, movement_facing,
 };
 use player_runtime::{animate_character, eval_fly_player, fly_player, update_route_objectives};
 use power_up_runtime::*;
@@ -131,6 +131,7 @@ fn main() -> AppExit {
         .insert_resource(RouteObjectiveTracker::default())
         .insert_resource(PowerUpCollectionState::default())
         .insert_resource(WorldCollisionDiagnostics::default())
+        .insert_resource(WindForceDiagnostics::default())
         .insert_resource(MouseLookState::default())
         .insert_resource(DebugVisuals {
             enabled: !screenshot_eval,
