@@ -374,9 +374,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_tree_canopy_lobe_count >= 6);
     assert!(report.min_tree_canopy_detail_card_count >= 12);
     assert!(report.min_tree_canopy_vertical_to_horizontal_ratio >= 0.45);
-    assert!(report.min_weather_cloud_mesh_vertices >= 560);
+    assert!(report.min_weather_cloud_mesh_vertices >= 900);
     assert!(report.min_weather_cloud_lobe_count >= 6);
     assert!(report.min_weather_cloud_wisp_card_count >= 14);
+    assert!(report.min_weather_cloud_filament_ribbon_detail_count >= 14);
     assert!(report.min_weather_cloud_bank_depth_m >= 4.0);
     assert!(report.min_weather_cloud_bank_lobe_count >= 10);
     assert_eq!(
@@ -392,6 +393,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"ground_cover_blade_height_range_m\""));
     assert!(manifest.contains("\"tree_branch_reach_ratio\""));
     assert!(manifest.contains("\"weather_cloud_wisp_card_count\""));
+    assert!(manifest.contains("\"weather_cloud_filament_ribbon_detail_count\""));
     assert!(manifest.contains("\"terrain_biome_palette_count\": 5"));
 
     remove_existing_dir(&output_dir).expect("visual content export test dir should be removable");
@@ -492,6 +494,7 @@ fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
     let positions = positions(&mesh);
     let lobe_vertices = (5 + 1) * (10 + 1);
     let card_vertices = CLOUD_WISP_CARDS_PER_LOBE * DETAIL_CARD_VERTICES;
+    let filament_vertices = CLOUD_FILAMENT_RIBBONS_PER_LOBE * CLOUD_FILAMENT_RIBBON_VERTICES;
     let min_x = positions
         .iter()
         .map(|position| position[0])
@@ -519,7 +522,11 @@ fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
 
     assert_eq!(
         mesh.count_vertices(),
-        CLOUD_BANK_LOBES * (lobe_vertices + card_vertices)
+        CLOUD_BANK_LOBES * (lobe_vertices + card_vertices + filament_vertices)
+    );
+    assert_eq!(
+        cloud_filament_ribbon_detail_count(CLOUD_BANK_LOBES),
+        CLOUD_BANK_LOBES * CLOUD_FILAMENT_RIBBONS_PER_LOBE
     );
     assert!(
         max_x - min_x > 1.2,

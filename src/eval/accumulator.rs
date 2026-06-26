@@ -131,6 +131,7 @@ pub struct EvalAccumulator {
     min_weather_cloud_lobe_count: usize,
     min_max_weather_cloud_lobe_count: usize,
     min_weather_cloud_mesh_vertices: usize,
+    min_weather_cloud_filament_ribbon_detail_count: usize,
     max_resident_island_visual_count: usize,
     max_stream_visibility_changes_per_frame: usize,
     total_stream_visibility_changes: usize,
@@ -253,6 +254,8 @@ impl EvalAccumulator {
             self.min_weather_cloud_lobe_count = sample.min_weather_cloud_lobe_count;
             self.min_max_weather_cloud_lobe_count = sample.max_weather_cloud_lobe_count;
             self.min_weather_cloud_mesh_vertices = sample.min_weather_cloud_mesh_vertices;
+            self.min_weather_cloud_filament_ribbon_detail_count =
+                sample.min_weather_cloud_filament_ribbon_detail_count;
         }
 
         self.sample_count += 1;
@@ -667,6 +670,9 @@ impl EvalAccumulator {
         self.min_weather_cloud_mesh_vertices = self
             .min_weather_cloud_mesh_vertices
             .min(sample.min_weather_cloud_mesh_vertices);
+        self.min_weather_cloud_filament_ribbon_detail_count = self
+            .min_weather_cloud_filament_ribbon_detail_count
+            .min(sample.min_weather_cloud_filament_ribbon_detail_count);
         self.max_resident_island_visual_count = self
             .max_resident_island_visual_count
             .max(sample.resident_island_visual_count);

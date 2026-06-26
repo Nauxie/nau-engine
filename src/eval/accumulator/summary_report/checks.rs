@@ -347,6 +347,12 @@ pub(super) fn build_checks(
             MIN_WEATHER_CLOUD_MESH_VERTICES as f32,
             "vertices",
         ),
+        EvalCheck::at_least(
+            "weather_cloud_filament_ribbon_detail_count",
+            acc.min_weather_cloud_filament_ribbon_detail_count as f32,
+            MIN_WEATHER_CLOUD_FILAMENT_RIBBON_DETAIL_COUNT as f32,
+            "ribbons",
+        ),
         EvalCheck::at_most(
             "resident_island_visual_count",
             acc.max_resident_island_visual_count as f32,

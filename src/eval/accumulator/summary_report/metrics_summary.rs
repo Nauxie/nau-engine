@@ -120,6 +120,8 @@ pub(super) fn build_metrics_summary(
         min_weather_cloud_lobe_count: acc.min_weather_cloud_lobe_count,
         min_max_weather_cloud_lobe_count: acc.min_max_weather_cloud_lobe_count,
         min_weather_cloud_mesh_vertices: acc.min_weather_cloud_mesh_vertices,
+        min_weather_cloud_filament_ribbon_detail_count: acc
+            .min_weather_cloud_filament_ribbon_detail_count,
         max_resident_island_visual_count: acc.max_resident_island_visual_count,
         max_stream_visibility_changes_per_frame: acc.max_stream_visibility_changes_per_frame,
         total_stream_visibility_changes: acc.total_stream_visibility_changes,

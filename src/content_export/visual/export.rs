@@ -212,6 +212,11 @@ pub(crate) fn export_visual_content_inspection(
             .map(|summary| summary.wisp_card_count)
             .min()
             .unwrap_or(0),
+        min_weather_cloud_filament_ribbon_detail_count: clouds
+            .iter()
+            .map(|summary| summary.filament_ribbon_detail_count)
+            .min()
+            .unwrap_or(0),
         min_weather_cloud_bank_depth_m: min_finite_f32(
             clouds
                 .iter()

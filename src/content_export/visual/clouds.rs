@@ -3,6 +3,7 @@ use crate::{
     content_export::shared::write_mesh_obj,
     generated_content::{
         CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, CLOUD_WISP_CARDS_PER_LOBE, cloud_cluster_mesh,
+        cloud_filament_ribbon_detail_count,
     },
 };
 use bevy::prelude::*;
@@ -89,5 +90,6 @@ pub(super) fn write_visual_cloud_summary(
         mesh: mesh_summary,
         lobe_count,
         wisp_card_count: lobe_count * CLOUD_WISP_CARDS_PER_LOBE,
+        filament_ribbon_detail_count: cloud_filament_ribbon_detail_count(lobe_count),
     })
 }

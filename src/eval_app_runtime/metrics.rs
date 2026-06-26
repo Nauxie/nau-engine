@@ -267,6 +267,7 @@ pub(crate) fn collect_eval_metrics(
         content_metrics.min_weather_cloud_lobe_count,
         content_metrics.max_weather_cloud_lobe_count,
         content_metrics.min_weather_cloud_mesh_vertices,
+        content_metrics.min_weather_cloud_filament_ribbon_detail_count,
     )
     .with_movement_metrics(EvalMovementMetrics {
         desired_body_yaw_error_degrees,
