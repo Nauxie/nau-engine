@@ -90,6 +90,7 @@ Dive:
 Landing:
 
 - landing anticipation and post-touchdown recovery are explicit pose intents now
+- high-sink landings enter anticipation slightly before touchdown so the visible pose can flare before contact instead of popping on the landing frame
 - a full authored landing locomotion state with slope-aware collider handling is still future work
 - needs collision and slope logic before polish
 
