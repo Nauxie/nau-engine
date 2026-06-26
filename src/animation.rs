@@ -93,8 +93,8 @@ pub struct PoseReadabilityMetrics {
 
 pub const MIN_KEY_POSE_READABILITY_SCORE: f32 = 0.9;
 const LANDING_ANTICIPATION_BASE_HEIGHT_M: f32 = 6.0;
-const LANDING_ANTICIPATION_MAX_HEIGHT_M: f32 = 18.0;
-const LANDING_ANTICIPATION_SINK_LOOKAHEAD_SECS: f32 = 0.22;
+const LANDING_ANTICIPATION_MAX_HEIGHT_M: f32 = 20.0;
+const LANDING_ANTICIPATION_SINK_LOOKAHEAD_SECS: f32 = 0.32;
 
 #[derive(Clone, Copy, Debug)]
 pub struct PoseReadabilityPartTransforms {
@@ -876,6 +876,35 @@ mod tests {
                 .with_landing_recovery(0.22, 12.0)
             ),
             PlayerPoseIntent::LandingRecovery
+        );
+    }
+
+    #[test]
+    fn high_sink_landing_anticipation_looks_ahead_before_dive_pose() {
+        assert!((landing_anticipation_height_m(-42.0) - 19.44).abs() < 0.001);
+        assert_eq!(
+            player_pose_intent(PlayerPoseContext::new(
+                FlightMode::Airborne,
+                Vec3::new(0.0, -42.0, -18.0),
+                FlightInput {
+                    dive: true,
+                    ..default()
+                },
+                19.0,
+            )),
+            PlayerPoseIntent::LandingAnticipation
+        );
+        assert_eq!(
+            player_pose_intent(PlayerPoseContext::new(
+                FlightMode::Airborne,
+                Vec3::new(0.0, -42.0, -18.0),
+                FlightInput {
+                    dive: true,
+                    ..default()
+                },
+                21.0,
+            )),
+            PlayerPoseIntent::Diving
         );
     }
 
