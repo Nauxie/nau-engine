@@ -30,6 +30,7 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"screenshot_png\": null"));
     assert!(summary.contains("\"pose_gliding_samples\""));
     assert!(summary.contains("\"pose_landing_recovery_samples\""));
+    assert!(summary.contains("\"max_pose_landing_flare_degrees\""));
     assert!(
         result
             .samples
@@ -133,7 +134,27 @@ fn sim_metrics_count_readable_landing_recovery_key_pose_samples() {
 }
 
 #[test]
-fn target_landing_checks_gate_landing_recovery_samples() {
+fn sim_metrics_track_landing_flare_from_landing_anticipation_pose_only() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    let mut non_landing_sample =
+        sim_roll_sample(&route, scenario, 30, FlightMode::Gliding, 0.0, 0.0);
+    non_landing_sample.pose_intent_label = "gliding";
+    non_landing_sample.pose_torso_pitch_degrees = 72.0;
+    metrics.observe(&non_landing_sample, scenario);
+
+    let mut landing_sample = non_landing_sample.clone();
+    landing_sample.pose_intent_label = "landing_anticipation";
+    landing_sample.pose_torso_pitch_degrees = 34.0;
+    metrics.observe(&landing_sample, scenario);
+
+    assert_eq!(metrics.max_pose_torso_pitch_degrees, 72.0);
+    assert_eq!(metrics.max_pose_landing_flare_degrees, 34.0);
+}
+
+#[test]
+fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
     let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("scenario");
     assert!(scenario.thresholds.require_target_landing);
     let route = SkyRoute::default();
@@ -144,6 +165,7 @@ fn target_landing_checks_gate_landing_recovery_samples() {
         "pose_landing_anticipation_samples",
         "pose_landing_recovery_samples",
         "pose_landing_crouch",
+        "pose_landing_flare",
         "unreadable_key_pose_samples",
     ] {
         assert!(
@@ -157,14 +179,27 @@ fn target_landing_checks_gate_landing_recovery_samples() {
         .expect("landing recovery check");
     assert!(!recovery_check.passed);
     assert_eq!(recovery_check.threshold, 1.0);
+    let flare_check = checks
+        .iter()
+        .find(|check| check.name == "pose_landing_flare")
+        .expect("landing flare check");
+    assert!(!flare_check.passed);
+    assert_eq!(flare_check.threshold, 32.0);
+    assert_eq!(flare_check.unit, "deg");
 
     metrics.pose_landing_recovery_samples = 1;
-    let passing_check = metrics
-        .checks(scenario)
-        .into_iter()
+    metrics.max_pose_landing_flare_degrees = 32.0;
+    let passing_checks = metrics.checks(scenario);
+    let passing_recovery_check = passing_checks
+        .iter()
         .find(|check| check.name == "pose_landing_recovery_samples")
         .expect("landing recovery check");
-    assert!(passing_check.passed);
+    assert!(passing_recovery_check.passed);
+    let passing_flare_check = passing_checks
+        .iter()
+        .find(|check| check.name == "pose_landing_flare")
+        .expect("landing flare check");
+    assert!(passing_flare_check.passed);
 }
 
 #[test]
@@ -299,6 +334,8 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_pose_arm_spread",
         "air_control_pose_leg_tuck",
         "air_control_pose_lateral_lean",
+        "air_control_right_pose_lateral_lean",
+        "air_control_left_pose_lateral_lean",
         "air_control_pose_wing_airflow",
         "air_control_unreadable_key_pose_samples",
         "air_control_pose_air_brake_samples",
@@ -315,6 +352,8 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
     let summary = result.to_summary_json();
     assert!(summary.contains("\"backward_right_lateral_response_latency_secs\""));
     assert!(summary.contains("\"backward_left_lateral_response_latency_secs\""));
+    assert!(summary.contains("\"max_right_pose_lateral_lean_degrees\""));
+    assert!(summary.contains("\"max_left_pose_lateral_lean_degrees\""));
 }
 
 #[test]
@@ -391,6 +430,32 @@ fn sim_metrics_reset_body_roll_step_across_grounded_samples() {
     assert_eq!(metrics.max_body_roll_step_degrees, 0.0);
     assert_eq!(metrics.max_right_body_bank_degrees, 12.0);
     assert_eq!(metrics.max_left_body_bank_degrees, 12.0);
+}
+
+#[test]
+fn sim_metrics_track_signed_pose_lateral_lean_by_lateral_input_direction() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    let mut right_wrong_sign = sim_roll_sample(&route, scenario, 30, FlightMode::Gliding, 0.0, 1.0);
+    right_wrong_sign.pose_signed_lateral_lean_degrees = 30.0;
+    metrics.observe(&right_wrong_sign, scenario);
+
+    let mut left_wrong_sign = sim_roll_sample(&route, scenario, 60, FlightMode::Gliding, 0.0, -1.0);
+    left_wrong_sign.pose_signed_lateral_lean_degrees = -30.0;
+    metrics.observe(&left_wrong_sign, scenario);
+
+    let mut right_sample = right_wrong_sign.clone();
+    right_sample.pose_signed_lateral_lean_degrees = -9.0;
+    metrics.observe(&right_sample, scenario);
+
+    let mut left_sample = left_wrong_sign.clone();
+    left_sample.pose_signed_lateral_lean_degrees = 11.0;
+    metrics.observe(&left_sample, scenario);
+
+    assert_eq!(metrics.max_right_pose_lateral_lean_degrees, 9.0);
+    assert_eq!(metrics.max_left_pose_lateral_lean_degrees, 11.0);
 }
 
 fn sim_roll_sample(

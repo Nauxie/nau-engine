@@ -614,15 +614,27 @@ fn accumulator_summarizes_pose_intent_samples() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
     let mut accumulator = EvalAccumulator::default();
 
-    accumulator.observe(air_control_metric_sample(
-        scenario,
-        0,
-        Vec3::new(0.0, -2.0, -18.0),
-        Vec2::ZERO,
-        0.0,
-        18.0,
-        0.0,
-    ));
+    accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            0,
+            Vec3::new(0.0, -2.0, -18.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        )
+        .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+            torso_pitch_degrees: 64.0,
+            arm_spread_degrees: 0.0,
+            leg_tuck_degrees: 0.0,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            landing_crouch_m: 0.0,
+            wing_airflow_strength: 0.0,
+            key_pose_readability_score: 1.0,
+        }),
+    );
     accumulator.observe(air_control_metric_sample(
         scenario,
         1,
@@ -641,9 +653,30 @@ fn accumulator_summarizes_pose_intent_samples() {
         18.0,
         0.0,
     ));
-    let mut landing_recovery_sample = air_control_metric_sample(
+    let mut landing_anticipation_sample = air_control_metric_sample(
         scenario,
         3,
+        Vec3::new(0.0, -2.0, -18.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    )
+    .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: 37.0,
+        arm_spread_degrees: 0.0,
+        leg_tuck_degrees: 0.0,
+        lateral_lean_degrees: 0.0,
+        signed_lateral_lean_degrees: 0.0,
+        landing_crouch_m: 0.0,
+        wing_airflow_strength: 0.0,
+        key_pose_readability_score: 1.0,
+    });
+    landing_anticipation_sample.pose_intent_label = "landing_anticipation";
+    accumulator.observe(landing_anticipation_sample);
+    let mut landing_recovery_sample = air_control_metric_sample(
+        scenario,
+        4,
         Vec3::new(0.0, -2.0, -18.0),
         Vec2::ZERO,
         0.0,
@@ -654,7 +687,7 @@ fn accumulator_summarizes_pose_intent_samples() {
     accumulator.observe(landing_recovery_sample);
     let mut unreadable_landing_recovery_sample = air_control_metric_sample(
         scenario,
-        4,
+        5,
         Vec3::new(0.0, -2.0, -18.0),
         Vec2::ZERO,
         0.0,
@@ -666,6 +699,7 @@ fn accumulator_summarizes_pose_intent_samples() {
         arm_spread_degrees: 0.0,
         leg_tuck_degrees: 0.0,
         lateral_lean_degrees: 0.0,
+        signed_lateral_lean_degrees: 0.0,
         landing_crouch_m: 0.0,
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 0.25,
@@ -688,14 +722,19 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert_eq!(summary.metrics.pose_gliding_samples, 1);
     assert_eq!(summary.metrics.pose_diving_samples, 1);
     assert_eq!(summary.metrics.pose_air_brake_samples, 1);
+    assert_eq!(summary.metrics.pose_landing_anticipation_samples, 1);
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 1);
+    assert_eq!(summary.metrics.max_pose_torso_pitch_degrees, 64.0);
+    assert_eq!(summary.metrics.max_pose_landing_flare_degrees, 37.0);
     assert_eq!(summary.metrics.unreadable_key_pose_samples, 1);
+    assert!(summary_json.contains("\"max_pose_landing_flare_degrees\": 37"));
     assert!(summary_json.contains("\"pose_air_brake_samples\": 1"));
+    assert!(summary_json.contains("\"pose_landing_anticipation_samples\": 1"));
     assert!(summary_json.contains("\"pose_landing_recovery_samples\": 1"));
 }
 
 #[test]
-fn accumulator_gates_target_landing_recovery_pose_samples() {
+fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("island route exists");
     let mut accumulator = EvalAccumulator::default();
     let mut sample = air_control_metric_sample(
@@ -712,6 +751,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples() {
         arm_spread_degrees: 0.0,
         leg_tuck_degrees: 0.0,
         lateral_lean_degrees: 0.0,
+        signed_lateral_lean_degrees: 0.0,
         landing_crouch_m: 1.0,
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 1.0,
@@ -732,11 +772,16 @@ fn accumulator_gates_target_landing_recovery_pose_samples() {
         },
     );
     let landing_recovery_check = named_check(&summary, "pose_landing_recovery_samples");
+    let landing_flare_check = named_check(&summary, "pose_landing_flare");
 
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 0);
+    assert_eq!(summary.metrics.max_pose_landing_flare_degrees, 0.0);
     assert_eq!(landing_recovery_check.value, 0.0);
     assert_eq!(landing_recovery_check.threshold, 1.0);
     assert!(!landing_recovery_check.passed);
+    assert_eq!(landing_flare_check.value, 0.0);
+    assert_eq!(landing_flare_check.threshold, 32.0);
+    assert!(!landing_flare_check.passed);
 }
 
 #[test]
@@ -778,6 +823,8 @@ fn accumulator_gates_air_control_pose_readability() {
         "air_control_pose_arm_spread",
         "air_control_pose_leg_tuck",
         "air_control_pose_lateral_lean",
+        "air_control_right_pose_lateral_lean",
+        "air_control_left_pose_lateral_lean",
         "air_control_pose_wing_airflow",
     ] {
         let check = named_check(&summary, name);
@@ -805,6 +852,7 @@ fn accumulator_rejects_unreadable_key_pose_samples() {
             arm_spread_degrees: 18.0,
             leg_tuck_degrees: 4.0,
             lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 0.25,

@@ -144,9 +144,23 @@ impl SimMetrics {
         self.max_pose_lateral_lean_degrees = self
             .max_pose_lateral_lean_degrees
             .max(sample.pose_lateral_lean_degrees);
+        if sample.movement_input_lateral_axis > 0.25 {
+            self.max_right_pose_lateral_lean_degrees = self
+                .max_right_pose_lateral_lean_degrees
+                .max((-sample.pose_signed_lateral_lean_degrees).max(0.0));
+        } else if sample.movement_input_lateral_axis < -0.25 {
+            self.max_left_pose_lateral_lean_degrees = self
+                .max_left_pose_lateral_lean_degrees
+                .max(sample.pose_signed_lateral_lean_degrees.max(0.0));
+        }
         self.max_pose_landing_crouch_m = self
             .max_pose_landing_crouch_m
             .max(sample.pose_landing_crouch_m);
+        if sample.pose_intent_label == "landing_anticipation" {
+            self.max_pose_landing_flare_degrees = self
+                .max_pose_landing_flare_degrees
+                .max(sample.pose_torso_pitch_degrees);
+        }
         self.max_pose_wing_airflow_strength = self
             .max_pose_wing_airflow_strength
             .max(sample.pose_wing_airflow_strength);

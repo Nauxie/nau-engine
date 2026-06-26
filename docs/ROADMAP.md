@@ -31,7 +31,7 @@ Work:
 - Simple aerial boost/power-up gates along the long-glide route. Initial version complete.
 - Add manual test routes: launch, glide, dive, low-altitude recovery, landing, obstacle pass.
 - Add camera mode profiles for launch, glide, dive, and ground.
-- Add bank/turn behavior that feels like glider traversal rather than free flight.
+- Add bank/turn behavior that feels like glider traversal rather than free flight. Initial signed pose-lean and body-bank eval coverage complete.
 
 Exit criteria:
 
@@ -48,7 +48,7 @@ Work:
 - Import a rigged glTF humanoid.
 - Define animation clips and blend states.
 - Add glider mesh attachment points.
-- Add launch, glide, dive, turn, land, and idle states.
+- Add launch, glide, dive, turn, land, and idle states. Generated/authored pose-intent parity for dive, air-brake, turn lean, landing flare/crouch, and recovery is initially covered by eval metrics.
 - Add animation debugging for current clip/state/weight.
 
 Exit criteria:

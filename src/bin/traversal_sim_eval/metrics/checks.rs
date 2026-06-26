@@ -7,11 +7,12 @@ mod core;
 
 use nau_engine::eval::{
     AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
-    EvalScenario, LONG_GLIDE_VISIBILITY, MIN_CROSSWIND_FORCE_DELTA_MPS,
-    MIN_CROSSWIND_FORCE_SAMPLE_COUNT, MIN_DYNAMIC_WIND_FLOW_SPEED_MPS,
-    MIN_DYNAMIC_WIND_FLOW_VARIATION, MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE,
-    MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_SPEED_MPS,
-    MIN_WIND_FORCE_SAMPLE_COUNT, MIN_WIND_FORCE_VARIATION, UPDRAFT_ROUTE,
+    EvalScenario, LANDING_MIN_POSE_FLARE_DEGREES, LONG_GLIDE_VISIBILITY,
+    MIN_CROSSWIND_FORCE_DELTA_MPS, MIN_CROSSWIND_FORCE_SAMPLE_COUNT,
+    MIN_DYNAMIC_WIND_FLOW_SPEED_MPS, MIN_DYNAMIC_WIND_FLOW_VARIATION,
+    MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE, MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+    MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_SPEED_MPS, MIN_WIND_FORCE_SAMPLE_COUNT,
+    MIN_WIND_FORCE_VARIATION, UPDRAFT_ROUTE,
 };
 use serde_json::{Value, json};
 
@@ -86,6 +87,12 @@ impl SimMetrics {
                 self.max_pose_landing_crouch_m,
                 LANDING_MIN_POSE_CROUCH_M,
                 "m",
+            ));
+            checks.push(SimCheck::at_least(
+                "pose_landing_flare",
+                self.max_pose_landing_flare_degrees,
+                LANDING_MIN_POSE_FLARE_DEGREES,
+                "deg",
             ));
             checks.push(SimCheck::at_most(
                 "unreadable_key_pose_samples",
