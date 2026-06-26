@@ -27,7 +27,11 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/debug_readout_runtime.rs` owns the live HUD/debug readout component, query surface, and diagnostic text formatting.
 - `src/debug_visuals.rs` owns F1 debug-visual toggling and Bevy gizmo drawing for player vectors, camera links, visual wind fields, and gameplay lift fields.
 - `src/environment_visuals.rs` owns cinematic weather/light/fog animation, drifting cloud layers, updraft haze/ribbon/guide motion, wind-responsive prop motion, and fallback glider airflow trails.
-- `src/eval_app_runtime.rs` owns eval ECS query surface, frame-time and metric sampling, eval frame finalization, screenshot capture, checkpoint marker metadata, semantic scene samples, and marker occlusion projection helpers.
+- `src/eval_app_runtime.rs` owns the app eval-runtime facade and stable re-exports used by Bevy scheduling and tests.
+- `src/eval_app_runtime/scene.rs` owns the `EvalScene` ECS query surface shared by app eval sampling and checkpoint metadata.
+- `src/eval_app_runtime/metrics.rs` owns app eval frame-time and per-sample metric collection.
+- `src/eval_app_runtime/finish.rs` owns eval frame finalization, summary write, app exit, final screenshot capture, and screenshot readiness waiting.
+- `src/eval_app_runtime/semantics/mod.rs` and `src/eval_app_runtime/semantics/` own checkpoint screenshot sidecar writes, semantic route markers, semantic scene samples, viewport projection JSON, and marker/scene occlusion helpers.
 - `src/eval_runtime.rs` owns CLI action parsing, eval run artifact paths, eval sample/summary file writing, and temporary output cleanup helpers.
 - `src/bin/traversal_sim_eval.rs` owns the background-safe traversal simulation CLI, scripted flight stepping, sample capture, and artifact writing.
 - `src/bin/traversal_sim_eval/metrics.rs` owns simulation-only metric state and constructor defaults.
