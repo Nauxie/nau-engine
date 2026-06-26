@@ -234,7 +234,8 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_rock_mesh_vertices\": 74"));
     assert!(summary_json.contains("\"min_generated_weather_cloud_bank_count\": 12"));
     assert!(summary_json.contains("\"min_weather_cloud_bank_depth_m\": 4.8000"));
-    assert!(summary_json.contains("\"min_weather_cloud_mesh_vertices\": 574"));
+    assert!(summary_json.contains("\"min_weather_cloud_mesh_vertices\": 910"));
+    assert!(summary_json.contains("\"min_weather_cloud_filament_ribbon_detail_count\": 14"));
 }
 
 #[test]
@@ -243,12 +244,12 @@ fn accumulator_fails_generated_visual_shape_regression() {
     let mut accumulator = EvalAccumulator::default();
     accumulator.observe(
         content_metric_sample(scenario, 0, 12, 0, 96).with_generated_visual_shape_metrics(
-            528, 220, 1100, 12, 12, 62, 316, 5, 48, 74, 12, 12, 4.8, 6, 10, 270,
+            528, 220, 1100, 12, 12, 62, 316, 5, 48, 74, 12, 12, 4.8, 6, 10, 910, 14,
         ),
     );
     accumulator.observe(
         content_metric_sample(scenario, 10, 12, 0, 96).with_generated_visual_shape_metrics(
-            10, 12, 60, 0, 0, 8, 45, 1, 1, 12, 0, 0, 0.4, 1, 1, 45,
+            10, 12, 60, 0, 0, 8, 45, 1, 1, 12, 0, 0, 0.4, 1, 1, 45, 0,
         ),
     );
 
@@ -272,6 +273,8 @@ fn accumulator_fails_generated_visual_shape_regression() {
     let rock_vertex_check = named_check(&summary, "rock_mesh_vertices");
     let cloud_lobe_check = named_check(&summary, "weather_cloud_lobe_count");
     let cloud_bank_lobe_check = named_check(&summary, "weather_cloud_bank_lobe_count");
+    let cloud_mesh_check = named_check(&summary, "weather_cloud_mesh_vertices");
+    let cloud_filament_check = named_check(&summary, "weather_cloud_filament_ribbon_detail_count");
     let cloud_bank_count_check = named_check(&summary, "generated_weather_cloud_bank_count");
     let cloud_bank_depth_check = named_check(&summary, "weather_cloud_bank_depth");
 
@@ -295,6 +298,10 @@ fn accumulator_fails_generated_visual_shape_regression() {
     assert_eq!(cloud_lobe_check.value, 1.0);
     assert!(!cloud_bank_lobe_check.passed);
     assert_eq!(cloud_bank_lobe_check.value, 1.0);
+    assert!(!cloud_mesh_check.passed);
+    assert_eq!(cloud_mesh_check.value, 45.0);
+    assert!(!cloud_filament_check.passed);
+    assert_eq!(cloud_filament_check.value, 0.0);
     assert!(!cloud_bank_count_check.passed);
     assert_eq!(cloud_bank_count_check.value, 0.0);
     assert!(!cloud_bank_depth_check.passed);
@@ -615,7 +622,7 @@ fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample
             .with_island_impostor_metrics(146, 24)
             .with_terrain_material_metrics(36, 3, 4, 64)
             .with_generated_visual_shape_metrics(
-                528, 220, 1100, 37, 37, 62, 412, 5, 60, 74, 30, 12, 4.8, 7, 14, 574,
+                528, 220, 1100, 37, 37, 62, 412, 5, 60, 74, 30, 12, 4.8, 7, 14, 910, 14,
             )
             .with_visible_authored_world_fixture_count(MIN_VISIBLE_AUTHORED_WORLD_FIXTURE_COUNT),
     );

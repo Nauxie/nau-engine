@@ -9,13 +9,15 @@ mod island_meshes;
 
 pub(crate) use detail_meshes::{
     CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, CLOUD_WISP_CARDS_PER_LOBE, TREE_CANOPY_CARD_COUNT,
-    TREE_TRUNK_SEGMENTS, cloud_cluster_mesh, glider_airflow_trail_mesh, rock_scatter_mesh,
-    tree_canopy_mesh, tree_trunk_mesh, updraft_ribbon_mesh,
+    TREE_TRUNK_SEGMENTS, cloud_cluster_mesh, cloud_filament_ribbon_detail_count,
+    glider_airflow_trail_mesh, rock_scatter_mesh, tree_canopy_mesh, tree_trunk_mesh,
+    updraft_ribbon_mesh,
 };
 #[cfg(test)]
 pub(crate) use detail_meshes::{
-    DETAIL_CARD_VERTICES, ROCK_MESH_RINGS, ROCK_MESH_SEGMENTS, TREE_BRANCH_COUNT,
-    TREE_BRANCH_SEGMENTS, TREE_CANOPY_LATITUDE_SEGMENTS, TREE_CANOPY_LONGITUDE_SEGMENTS,
+    CLOUD_FILAMENT_RIBBON_VERTICES, CLOUD_FILAMENT_RIBBONS_PER_LOBE, DETAIL_CARD_VERTICES,
+    ROCK_MESH_RINGS, ROCK_MESH_SEGMENTS, TREE_BRANCH_COUNT, TREE_BRANCH_SEGMENTS,
+    TREE_CANOPY_LATITUDE_SEGMENTS, TREE_CANOPY_LONGITUDE_SEGMENTS,
 };
 pub(crate) use island_meshes::{
     GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES, ISLAND_BODY_SEGMENTS,

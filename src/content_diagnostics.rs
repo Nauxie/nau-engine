@@ -37,6 +37,7 @@ pub(crate) struct IslandContentDiagnostics {
     pub(crate) min_weather_cloud_lobe_count: usize,
     pub(crate) max_weather_cloud_lobe_count: usize,
     pub(crate) min_weather_cloud_mesh_vertices: usize,
+    pub(crate) min_weather_cloud_filament_ribbon_detail_count: usize,
 }
 
 impl IslandContentDiagnostics {
@@ -201,16 +202,21 @@ impl IslandContentDiagnostics {
         &mut self,
         lobe_count: usize,
         mesh_vertices: usize,
+        filament_ribbon_detail_count: usize,
         depth_m: f32,
         is_bank: bool,
     ) {
         if self.generated_weather_cloud_count == 0 {
             self.min_weather_cloud_lobe_count = lobe_count;
             self.min_weather_cloud_mesh_vertices = mesh_vertices;
+            self.min_weather_cloud_filament_ribbon_detail_count = filament_ribbon_detail_count;
         } else {
             self.min_weather_cloud_lobe_count = self.min_weather_cloud_lobe_count.min(lobe_count);
             self.min_weather_cloud_mesh_vertices =
                 self.min_weather_cloud_mesh_vertices.min(mesh_vertices);
+            self.min_weather_cloud_filament_ribbon_detail_count = self
+                .min_weather_cloud_filament_ribbon_detail_count
+                .min(filament_ribbon_detail_count);
         }
         self.generated_weather_cloud_count += 1;
         self.max_weather_cloud_lobe_count = self.max_weather_cloud_lobe_count.max(lobe_count);
@@ -291,8 +297,8 @@ mod tests {
         diagnostics.record_generated_tree_canopy(240);
         diagnostics.record_generated_rock(74);
         diagnostics.record_generated_rock(80);
-        diagnostics.record_generated_weather_cloud(7, 315, 4.2, true);
-        diagnostics.record_generated_weather_cloud(4, 180, 0.8, false);
+        diagnostics.record_generated_weather_cloud(7, 315, 14, 4.2, true);
+        diagnostics.record_generated_weather_cloud(4, 180, 8, 0.8, false);
 
         assert_eq!(diagnostics.generated_ground_cover_patch_count, 88);
         assert_eq!(diagnostics.min_ground_cover_blade_count, 220);
@@ -310,5 +316,9 @@ mod tests {
         assert_eq!(diagnostics.min_weather_cloud_lobe_count, 4);
         assert_eq!(diagnostics.max_weather_cloud_lobe_count, 7);
         assert_eq!(diagnostics.min_weather_cloud_mesh_vertices, 180);
+        assert_eq!(
+            diagnostics.min_weather_cloud_filament_ribbon_detail_count,
+            8
+        );
     }
 }

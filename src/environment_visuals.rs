@@ -2,8 +2,8 @@ use crate::Player;
 use crate::authored_assets::VisualAssetRegistry;
 use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::generated_content::{
-    CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, cloud_cluster_mesh, mesh_y_range, mix_color,
-    updraft_ribbon_mesh,
+    CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, cloud_cluster_mesh, cloud_filament_ribbon_detail_count,
+    mesh_y_range, mix_color, updraft_ribbon_mesh,
 };
 use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
 use bevy::light::VolumetricFog;
@@ -176,6 +176,7 @@ pub(crate) fn spawn_weather_layers(
         content_diagnostics.record_generated_weather_cloud(
             CLOUD_BANK_LOBES,
             cloud_mesh_data.count_vertices(),
+            cloud_filament_ribbon_detail_count(CLOUD_BANK_LOBES),
             cloud_depth_m,
             true,
         );
@@ -231,6 +232,7 @@ pub(crate) fn spawn_weather_layers(
                 content_diagnostics.record_generated_weather_cloud(
                     CLOUD_VEIL_LOBES,
                     veil_mesh_data.count_vertices(),
+                    cloud_filament_ribbon_detail_count(CLOUD_VEIL_LOBES),
                     veil_depth_m,
                     false,
                 );

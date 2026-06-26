@@ -31,6 +31,7 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) min_weather_cloud_mesh_vertices: usize,
     pub(crate) min_weather_cloud_lobe_count: usize,
     pub(crate) min_weather_cloud_wisp_card_count: usize,
+    pub(crate) min_weather_cloud_filament_ribbon_detail_count: usize,
     pub(crate) min_weather_cloud_bank_depth_m: f32,
     pub(crate) min_weather_cloud_bank_lobe_count: usize,
     pub(crate) terrain_biome_palette_count: usize,
@@ -95,6 +96,7 @@ pub(crate) struct VisualCloudSummary {
     pub(crate) mesh: VisualMeshSummary,
     pub(crate) lobe_count: usize,
     pub(crate) wisp_card_count: usize,
+    pub(crate) filament_ribbon_detail_count: usize,
     pub(crate) scaled_horizontal_span_m: f32,
     pub(crate) scaled_vertical_depth_m: f32,
     pub(crate) scaled_depth_span_m: f32,
@@ -165,6 +167,7 @@ impl VisualContentExportReport {
                 "    \"weather_cloud_mesh_vertices\": {},\n",
                 "    \"weather_cloud_lobe_count\": {},\n",
                 "    \"weather_cloud_wisp_card_count\": {},\n",
+                "    \"weather_cloud_filament_ribbon_detail_count\": {},\n",
                 "    \"weather_cloud_bank_depth_m\": {},\n",
                 "    \"weather_cloud_bank_lobe_count\": {},\n",
                 "    \"terrain_biome_palette_count\": {},\n",
@@ -208,6 +211,7 @@ impl VisualContentExportReport {
             self.min_weather_cloud_mesh_vertices,
             self.min_weather_cloud_lobe_count,
             self.min_weather_cloud_wisp_card_count,
+            self.min_weather_cloud_filament_ribbon_detail_count,
             terrain_export_json_number(self.min_weather_cloud_bank_depth_m),
             self.min_weather_cloud_bank_lobe_count,
             self.terrain_biome_palette_count,
@@ -304,6 +308,7 @@ impl VisualCloudSummary {
              {indent}  \"mesh\": {},\n\
              {indent}  \"lobe_count\": {},\n\
              {indent}  \"wisp_card_count\": {},\n\
+             {indent}  \"filament_ribbon_detail_count\": {},\n\
              {indent}  \"scaled_horizontal_span_m\": {},\n\
              {indent}  \"scaled_vertical_depth_m\": {},\n\
              {indent}  \"scaled_depth_span_m\": {}\n\
@@ -314,6 +319,7 @@ impl VisualCloudSummary {
             self.mesh.to_json(),
             self.lobe_count,
             self.wisp_card_count,
+            self.filament_ribbon_detail_count,
             terrain_export_json_number(self.scaled_horizontal_span_m),
             terrain_export_json_number(self.scaled_vertical_depth_m),
             terrain_export_json_number(self.scaled_depth_span_m)
