@@ -93,6 +93,7 @@ pub(crate) struct UpdraftRibbon {
     spin_speed: f32,
     base_translation: Vec3,
     base_rotation: Quat,
+    phase: f32,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -107,7 +108,6 @@ pub(crate) struct CrosswindGuide {
 pub(crate) struct CrosswindRibbon {
     field: WindField,
     base_translation: Vec3,
-    base_rotation: Quat,
     phase: f32,
 }
 
@@ -143,10 +143,11 @@ pub(crate) fn spawn_updraft_guide(
     ));
 
     for ribbon_index in 0..UPDRAFT_RIBBONS_PER_FIELD {
-        let phase = ribbon_index as f32 / UPDRAFT_RIBBONS_PER_FIELD as f32 * std::f32::consts::TAU;
-        let base_rotation = Quat::from_rotation_y(phase * 0.35);
+        let phase = ribbon_index as f32 / UPDRAFT_RIBBONS_PER_FIELD as f32;
+        let mesh_phase = phase * std::f32::consts::TAU;
+        let base_rotation = Quat::from_rotation_y(mesh_phase * 0.35);
         commands.spawn((
-            Mesh3d(meshes.add(updraft_ribbon_mesh(radius, height, phase))),
+            Mesh3d(meshes.add(updraft_ribbon_mesh(radius, height, mesh_phase))),
             MeshMaterial3d(ribbon_material.clone()),
             Transform {
                 translation: lift.center,
@@ -158,6 +159,7 @@ pub(crate) fn spawn_updraft_guide(
                 spin_speed: 0.035 + ribbon_index as f32 * 0.012,
                 base_translation: lift.center,
                 base_rotation,
+                phase,
             },
             Name::new(format!("{} spiral airflow ribbon", lift.name)),
         ));
@@ -218,7 +220,6 @@ pub(crate) fn spawn_crosswind_guide(
             CrosswindRibbon {
                 field,
                 base_translation,
-                base_rotation,
                 phase,
             },
             Name::new(format!("{label} crosswind flow ribbon")),
@@ -516,16 +517,7 @@ pub(crate) fn update_updraft_ribbons(
     let elapsed = time.elapsed_secs();
 
     for (ribbon, mut transform) in &mut ribbons {
-        let flow = ribbon
-            .field
-            .flow_at(ribbon.base_translation, elapsed)
-            .unwrap_or_else(|| ribbon.field.flow_at(ribbon.field.center, elapsed).unwrap());
-        let flow_pulse = 0.75 + flow.gust_strength * 0.35;
-        let horizontal_drift = Vec3::new(flow.vector.x, 0.0, flow.vector.z) * 0.045;
-        transform.translation = ribbon.base_translation + horizontal_drift;
-        transform.rotation =
-            ribbon.base_rotation * Quat::from_rotation_y(elapsed * ribbon.spin_speed * flow_pulse);
-        transform.scale = Vec3::splat(1.0 + flow.variation * 0.035);
+        *transform = updraft_ribbon_transform(ribbon, elapsed);
     }
 }
 
@@ -551,25 +543,111 @@ pub(crate) fn update_crosswind_ribbons(
     let elapsed = time.elapsed_secs();
 
     for (ribbon, mut transform) in &mut ribbons {
-        let flow = ribbon
-            .field
-            .flow_at(ribbon.base_translation, elapsed)
-            .unwrap_or_else(|| ribbon.field.flow_at(ribbon.field.center, elapsed).unwrap());
-        let lateral = wind_lateral_axis(ribbon.field.direction);
-        let wave = (elapsed * 0.82 + ribbon.phase * std::f32::consts::TAU).sin();
-        let lift_wave = (elapsed * 1.16 + ribbon.phase * 4.1).cos();
-        transform.translation = ribbon.base_translation
-            + ribbon.field.direction * (wave * flow.gust_strength * 0.48)
-            + lateral * (flow.variation * 0.42 + wave * 0.18)
-            + Vec3::Y * (lift_wave * 0.08);
-        transform.rotation = ribbon.base_rotation
-            * Quat::from_rotation_x(ribbon.phase * std::f32::consts::TAU)
-            * Quat::from_rotation_z(wave * 0.08);
-        let length_pulse =
-            (0.86 + flow.gust_strength * 0.22 + flow.variation * 0.1).clamp(0.96, 1.24);
-        let width_pulse = (0.82 + flow.variation * 0.34).clamp(0.86, 1.08);
-        transform.scale = Vec3::new(length_pulse, width_pulse, width_pulse);
+        *transform = crosswind_ribbon_transform(ribbon, elapsed);
     }
+}
+
+fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> Transform {
+    let flow = ribbon
+        .field
+        .flow_at(ribbon.base_translation, elapsed)
+        .unwrap_or_else(|| ribbon.field.flow_at(ribbon.field.center, elapsed).unwrap());
+    let phase = ribbon.phase * std::f32::consts::TAU;
+    let field_height = (ribbon.field.half_extents.y * 2.0).max(1.0);
+    let progress =
+        (ribbon.phase + elapsed * ribbon.field.visual_speed.max(1.0) / field_height * 0.44).fract();
+    let vertical_scroll = (progress - 0.5) * ribbon.field.half_extents.y * 0.22;
+    let horizontal_flow = Vec3::new(flow.vector.x, 0.0, flow.vector.z);
+    let radial_axis = horizontal_or(
+        horizontal_flow,
+        Vec3::new(phase.cos(), 0.0, phase.sin()).normalize_or_zero(),
+    );
+    let breathing = (elapsed * 1.18 + phase).sin();
+    let radial_breath = radial_axis * (flow.variation * 0.34 + breathing * 0.18);
+    let horizontal_drift = horizontal_flow * 0.07;
+    let flow_pulse = 0.75 + flow.gust_strength * 0.35;
+
+    Transform {
+        translation: ribbon.base_translation
+            + horizontal_drift
+            + Vec3::Y * vertical_scroll
+            + radial_breath,
+        rotation: ribbon.base_rotation
+            * Quat::from_rotation_y(elapsed * ribbon.spin_speed * flow_pulse)
+            * Quat::from_rotation_z(breathing * flow.variation * 0.07),
+        scale: Vec3::new(
+            1.0 + flow.variation * 0.05,
+            1.0 + flow.gust_strength * 0.035,
+            1.0 + flow.variation * 0.04,
+        ),
+    }
+}
+
+fn crosswind_ribbon_transform(ribbon: &CrosswindRibbon, elapsed: f32) -> Transform {
+    let flow = ribbon
+        .field
+        .flow_at(ribbon.base_translation, elapsed)
+        .unwrap_or_else(|| ribbon.field.flow_at(ribbon.field.center, elapsed).unwrap());
+    let lateral = wind_lateral_axis(ribbon.field.direction);
+    let phase = ribbon.phase * std::f32::consts::TAU;
+    let directional_half_extent = ribbon.field.half_extents.x.max(1.0);
+    let path_length = (directional_half_extent * 2.0).max(1.0);
+    let progress = (ribbon.phase + elapsed * flow.speed_mps.max(1.0) / path_length * 0.62).fract();
+    let advected = (progress - 0.5) * directional_half_extent * 1.1;
+    let wave = (elapsed * 0.82 + phase).sin();
+    let lift_wave = (elapsed * 1.16 + ribbon.phase * 4.1).cos();
+    let flow_axis = horizontal_or(flow.vector, ribbon.field.direction);
+    let length_pulse = (0.86 + flow.gust_strength * 0.22 + flow.variation * 0.1).clamp(0.96, 1.24);
+    let width_pulse = (0.82 + flow.variation * 0.34).clamp(0.86, 1.08);
+
+    Transform {
+        translation: ribbon.base_translation
+            + ribbon.field.direction * advected
+            + lateral * (flow.variation * 0.48 + wave * 0.22)
+            + Vec3::Y * (lift_wave * 0.1),
+        rotation: rotation_from_x_to_direction(flow_axis)
+            * Quat::from_rotation_x(phase + elapsed * 0.38)
+            * Quat::from_rotation_z(wave * 0.1),
+        scale: Vec3::new(length_pulse, width_pulse, width_pulse),
+    }
+}
+
+pub(crate) fn updraft_ribbon_scene_sample_positions(
+    ribbon: &UpdraftRibbon,
+    transform: &Transform,
+) -> [Vec3; 3] {
+    const STRANDS: f32 = 1.45;
+    const STOPS: [f32; 3] = [0.62, 0.78, 0.90];
+
+    let radius = ribbon.field.half_extents.x.min(ribbon.field.half_extents.z);
+    let height = ribbon.field.half_extents.y * 2.0;
+    let ribbon_radius = radius * 0.42;
+    let phase = ribbon.phase * std::f32::consts::TAU;
+
+    STOPS.map(|t| {
+        let angle = phase + t * std::f32::consts::TAU * STRANDS;
+        let y = -height * 0.5 + t * height;
+        let breathing = 1.0 + 0.08 * (angle * 2.0 + phase).sin();
+        let local_position =
+            Vec3::new(angle.cos(), 0.0, angle.sin()) * ribbon_radius * breathing + Vec3::Y * y;
+        transform_local_point(transform, local_position)
+    })
+}
+
+pub(crate) fn crosswind_ribbon_scene_sample_positions(
+    ribbon: &CrosswindRibbon,
+    transform: &Transform,
+) -> [Vec3; 3] {
+    let half_length = (ribbon.field.half_extents.x * 1.28 * 0.5).max(1.5);
+    [
+        transform_local_point(transform, Vec3::new(-half_length * 0.68, 0.0, 0.0)),
+        transform_local_point(transform, Vec3::ZERO),
+        transform_local_point(transform, Vec3::new(half_length * 0.68, 0.0, 0.0)),
+    ]
+}
+
+fn transform_local_point(transform: &Transform, local_position: Vec3) -> Vec3 {
+    transform.translation + transform.rotation * (local_position * transform.scale)
 }
 
 pub(crate) fn update_glider_airflow_trails(
@@ -634,10 +712,15 @@ pub(crate) fn wind_guide_visual_metrics<'a>(
             .max(displacement.y.max(0.0));
     }
     for (ribbon, transform) in updraft_ribbons {
+        let baseline = updraft_ribbon_transform(ribbon, 0.0);
+        let displacement = transform.translation - baseline.translation;
         metrics.updraft_ribbon_count += 1;
         metrics.max_updraft_visual_motion_m = metrics
             .max_updraft_visual_motion_m
-            .max(transform.translation.distance(ribbon.base_translation));
+            .max(displacement.length());
+        metrics.max_updraft_visual_rise_m = metrics
+            .max_updraft_visual_rise_m
+            .max(displacement.y.max(0.0));
     }
     for (guide, transform) in crosswind_guides {
         metrics.crosswind_guide_count += 1;
@@ -651,7 +734,8 @@ pub(crate) fn wind_guide_visual_metrics<'a>(
             .max(displacement.dot(guide.field.direction).max(0.0));
     }
     for (ribbon, transform) in crosswind_ribbons {
-        let displacement = transform.translation - ribbon.base_translation;
+        let baseline = crosswind_ribbon_transform(ribbon, 0.0);
+        let displacement = transform.translation - baseline.translation;
         metrics.crosswind_ribbon_count += 1;
         metrics.max_crosswind_visual_motion_m = metrics
             .max_crosswind_visual_motion_m
@@ -726,6 +810,15 @@ fn rotation_from_x_to_direction(direction: Vec3) -> Quat {
 
 fn wind_lateral_axis(direction: Vec3) -> Vec3 {
     Vec3::new(-direction.z, 0.0, direction.x).normalize_or_zero()
+}
+
+fn horizontal_or(v: Vec3, fallback: Vec3) -> Vec3 {
+    let horizontal = Vec3::new(v.x, 0.0, v.z);
+    if horizontal.length_squared() > 0.0001 {
+        horizontal.normalize()
+    } else {
+        fallback.normalize_or_zero()
+    }
 }
 
 #[cfg(test)]
@@ -834,10 +927,9 @@ mod tests {
         let ribbon = CrosswindRibbon {
             field,
             base_translation: Vec3::ZERO,
-            base_rotation: Quat::IDENTITY,
             phase: 0.0,
         };
-        let transform = Transform::from_translation(field.direction * 1.2);
+        let transform = crosswind_ribbon_transform(&ribbon, 1.5);
         let metrics = wind_guide_visual_metrics(
             std::iter::empty::<(&UpdraftGuide, &Transform)>(),
             std::iter::empty::<(&UpdraftRibbon, &Transform)>(),
@@ -848,5 +940,177 @@ mod tests {
         assert_eq!(metrics.crosswind_ribbon_count, 1);
         assert!(metrics.max_crosswind_visual_motion_m > 1.0);
         assert!(metrics.max_crosswind_ribbon_flow_displacement_m > 1.0);
+    }
+
+    #[test]
+    fn wind_guide_metrics_ignore_ribbon_initial_phase_offsets() {
+        let updraft_field = WindField::updraft(Vec3::ZERO, Vec3::new(8.0, 16.0, 8.0), 12.0);
+        let updraft_ribbon = UpdraftRibbon {
+            field: updraft_field,
+            spin_speed: 0.05,
+            base_translation: Vec3::ZERO,
+            base_rotation: Quat::IDENTITY,
+            phase: 0.2,
+        };
+        let crosswind_field =
+            WindField::crosswind(Vec3::ZERO, Vec3::new(12.0, 6.0, 8.0), Vec3::X, 10.0);
+        let crosswind_ribbon = CrosswindRibbon {
+            field: crosswind_field,
+            base_translation: Vec3::ZERO,
+            phase: 0.18,
+        };
+        let updraft_transform = updraft_ribbon_transform(&updraft_ribbon, 0.0);
+        let crosswind_transform = crosswind_ribbon_transform(&crosswind_ribbon, 0.0);
+        let metrics = wind_guide_visual_metrics(
+            std::iter::empty::<(&UpdraftGuide, &Transform)>(),
+            [(&updraft_ribbon, &updraft_transform)].into_iter(),
+            std::iter::empty::<(&CrosswindGuide, &Transform)>(),
+            [(&crosswind_ribbon, &crosswind_transform)].into_iter(),
+        );
+
+        assert_eq!(metrics.max_updraft_visual_motion_m, 0.0);
+        assert_eq!(metrics.max_updraft_visual_rise_m, 0.0);
+        assert_eq!(metrics.max_crosswind_visual_motion_m, 0.0);
+        assert_eq!(metrics.max_crosswind_ribbon_flow_displacement_m, 0.0);
+    }
+
+    #[test]
+    fn crosswind_ribbon_transform_advects_along_shared_flow() {
+        let field = WindField::crosswind(
+            Vec3::ZERO,
+            Vec3::new(14.0, 6.0, 8.0),
+            Vec3::new(0.4, 0.0, 1.0),
+            10.0,
+        );
+        let ribbon = CrosswindRibbon {
+            field,
+            base_translation: Vec3::ZERO,
+            phase: 0.18,
+        };
+        let start = crosswind_ribbon_transform(&ribbon, 0.0);
+        let later = crosswind_ribbon_transform(&ribbon, 2.0);
+        let displacement = later.translation - start.translation;
+
+        assert!(
+            displacement.dot(field.direction) > 4.0,
+            "expected ribbon to advect downwind, displacement={displacement:?}"
+        );
+        assert!(
+            start.rotation.angle_between(later.rotation) > 0.1,
+            "expected ribbon orientation to flutter with dynamic flow"
+        );
+        assert!(later.scale.x > 1.0);
+    }
+
+    #[test]
+    fn crosswind_ribbon_rotation_tracks_diagonal_flow_once() {
+        let field = WindField::crosswind(
+            Vec3::ZERO,
+            Vec3::new(14.0, 6.0, 8.0),
+            Vec3::new(-1.0, 0.0, 0.35),
+            10.0,
+        );
+        let ribbon = CrosswindRibbon {
+            field,
+            base_translation: Vec3::ZERO,
+            phase: 0.18,
+        };
+        let transform = crosswind_ribbon_transform(&ribbon, 2.0);
+        let local_x = transform.rotation * Vec3::X;
+
+        assert!(
+            local_x.dot(field.direction) > 0.92,
+            "expected ribbon local X to align with field flow, local_x={local_x:?}, direction={:?}",
+            field.direction
+        );
+    }
+
+    #[test]
+    fn updraft_ribbon_transform_scrolls_and_breathes() {
+        let field = WindField::updraft(Vec3::ZERO, Vec3::new(8.0, 16.0, 8.0), 12.0);
+        let ribbon = UpdraftRibbon {
+            field,
+            spin_speed: 0.05,
+            base_translation: Vec3::ZERO,
+            base_rotation: Quat::IDENTITY,
+            phase: 0.2,
+        };
+        let start = updraft_ribbon_transform(&ribbon, 0.0);
+        let later = updraft_ribbon_transform(&ribbon, 2.0);
+        let displacement = later.translation - start.translation;
+
+        assert!(
+            displacement.y.abs() > 1.0,
+            "expected ribbon to visibly scroll through the updraft, displacement={displacement:?}"
+        );
+        assert!(
+            Vec2::new(displacement.x, displacement.z).length() > 0.1,
+            "expected ribbon to breathe laterally with updraft swirl, displacement={displacement:?}"
+        );
+        assert!(later.scale.y > 1.0);
+    }
+
+    #[test]
+    fn updraft_ribbon_scene_samples_cover_readable_upper_spiral() {
+        let field = WindField::updraft(Vec3::ZERO, Vec3::new(12.0, 30.0, 10.0), 18.0);
+        let ribbon = UpdraftRibbon {
+            field,
+            spin_speed: 0.05,
+            base_translation: Vec3::ZERO,
+            base_rotation: Quat::IDENTITY,
+            phase: 0.25,
+        };
+        let transform = Transform::from_translation(Vec3::new(4.0, 20.0, -3.0));
+
+        let samples = updraft_ribbon_scene_sample_positions(&ribbon, &transform);
+        assert_eq!(samples.len(), 3);
+        assert!(samples[0].y > transform.translation.y);
+        assert!(samples[0].y < samples[1].y);
+        assert!(samples[1].y < samples[2].y);
+        assert!(
+            samples
+                .iter()
+                .all(|position| position.xz().distance(transform.translation.xz()) > 2.0)
+        );
+    }
+
+    #[test]
+    fn crosswind_ribbon_scene_samples_cover_flow_length() {
+        let field = WindField::crosswind(Vec3::ZERO, Vec3::new(20.0, 5.0, 4.0), Vec3::X, 22.0);
+        let ribbon = CrosswindRibbon {
+            field,
+            base_translation: Vec3::ZERO,
+            phase: 0.0,
+        };
+        let transform = Transform::from_translation(Vec3::new(10.0, 4.0, -2.0));
+
+        let samples = crosswind_ribbon_scene_sample_positions(&ribbon, &transform);
+        assert_eq!(samples.len(), 3);
+        assert!(samples[0].x < transform.translation.x);
+        assert_eq!(samples[1], transform.translation);
+        assert!(samples[2].x > transform.translation.x);
+    }
+
+    #[test]
+    fn wind_guide_metrics_capture_updraft_ribbon_rise() {
+        let field = WindField::updraft(Vec3::ZERO, Vec3::new(8.0, 16.0, 8.0), 12.0);
+        let ribbon = UpdraftRibbon {
+            field,
+            spin_speed: 0.05,
+            base_translation: Vec3::ZERO,
+            base_rotation: Quat::IDENTITY,
+            phase: 0.2,
+        };
+        let transform = updraft_ribbon_transform(&ribbon, 3.5);
+        let metrics = wind_guide_visual_metrics(
+            std::iter::empty::<(&UpdraftGuide, &Transform)>(),
+            [(&ribbon, &transform)].into_iter(),
+            std::iter::empty::<(&CrosswindGuide, &Transform)>(),
+            std::iter::empty::<(&CrosswindRibbon, &Transform)>(),
+        );
+
+        assert_eq!(metrics.updraft_ribbon_count, 1);
+        assert!(metrics.max_updraft_visual_motion_m > 0.5);
+        assert!(metrics.max_updraft_visual_rise_m > 0.5);
     }
 }
