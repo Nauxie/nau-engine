@@ -156,6 +156,11 @@ fn air_control_metric_sample(
         MIN_WIND_FORCE_FLOW_SPEED_MPS,
         MIN_WIND_FORCE_VARIATION,
     )
+    .with_pose_temporal_metrics(EvalPoseTemporalMetrics {
+        visible_pose_part_count: 5,
+        max_pose_part_rotation_delta_degrees: 8.0,
+        max_pose_part_translation_delta_m: 0.04,
+    })
     .with_movement_metrics(EvalMovementMetrics {
         desired_body_yaw_error_degrees: yaw_error_degrees,
         body_travel_heading_error_degrees: yaw_error_degrees.abs(),

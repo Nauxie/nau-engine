@@ -4,7 +4,8 @@ use crate::movement::FlightMode;
 
 use super::super::vec3_array;
 use super::types::{
-    EvalMovementMetrics, EvalObjectiveProgress, EvalPoseReadabilityMetrics, EvalSample,
+    EvalMovementMetrics, EvalObjectiveProgress, EvalPoseReadabilityMetrics,
+    EvalPoseTemporalMetrics, EvalSample,
 };
 
 impl EvalSample {
@@ -117,6 +118,9 @@ impl EvalSample {
             pose_landing_crouch_m: 0.0,
             pose_wing_airflow_strength: 0.0,
             key_pose_readability_score: 1.0,
+            visible_pose_part_count: 0,
+            max_pose_part_rotation_delta_degrees: f32::NAN,
+            max_pose_part_translation_delta_m: f32::NAN,
             desired_body_yaw_error_degrees: f32::NAN,
             desired_body_heading_error_degrees: f32::NAN,
             body_travel_heading_error_degrees: f32::NAN,
@@ -310,6 +314,15 @@ impl EvalSample {
         self.pose_landing_crouch_m = metrics.landing_crouch_m.max(0.0);
         self.pose_wing_airflow_strength = metrics.wing_airflow_strength.clamp(0.0, 1.0);
         self.key_pose_readability_score = metrics.key_pose_readability_score.clamp(0.0, 1.0);
+        self
+    }
+
+    pub fn with_pose_temporal_metrics(mut self, metrics: EvalPoseTemporalMetrics) -> Self {
+        self.visible_pose_part_count = metrics.visible_pose_part_count;
+        self.max_pose_part_rotation_delta_degrees =
+            finite_nonnegative_or_nan(metrics.max_pose_part_rotation_delta_degrees);
+        self.max_pose_part_translation_delta_m =
+            finite_nonnegative_or_nan(metrics.max_pose_part_translation_delta_m);
         self
     }
 
@@ -526,5 +539,13 @@ impl EvalSample {
     ) -> Self {
         self.deferred_visual_asset_scene_count = deferred_visual_asset_scene_count;
         self
+    }
+}
+
+fn finite_nonnegative_or_nan(value: f32) -> f32 {
+    if value.is_finite() {
+        value.max(0.0)
+    } else {
+        f32::NAN
     }
 }

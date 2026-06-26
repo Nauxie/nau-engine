@@ -59,6 +59,13 @@ pub struct EvalPoseReadabilityMetrics {
 }
 
 #[derive(Clone, Debug)]
+pub struct EvalPoseTemporalMetrics {
+    pub visible_pose_part_count: u32,
+    pub max_pose_part_rotation_delta_degrees: f32,
+    pub max_pose_part_translation_delta_m: f32,
+}
+
+#[derive(Clone, Debug)]
 pub struct EvalSample {
     pub frame: u32,
     pub time_secs: f32,
@@ -76,6 +83,9 @@ pub struct EvalSample {
     pub pose_landing_crouch_m: f32,
     pub pose_wing_airflow_strength: f32,
     pub key_pose_readability_score: f32,
+    pub visible_pose_part_count: u32,
+    pub max_pose_part_rotation_delta_degrees: f32,
+    pub max_pose_part_translation_delta_m: f32,
     pub desired_body_yaw_error_degrees: f32,
     pub desired_body_heading_error_degrees: f32,
     pub body_travel_heading_error_degrees: f32,

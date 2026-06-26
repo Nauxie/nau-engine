@@ -280,6 +280,11 @@ fn observe_body_travel_heading_alignment(accumulator: &mut EvalAccumulator, samp
     accumulator.max_lateral_body_travel_heading_error_degrees = accumulator
         .max_lateral_body_travel_heading_error_degrees
         .max(sample.body_travel_heading_error_degrees);
+    if sample.movement_input_lateral_axis > 0.0 {
+        accumulator.right_lateral_body_travel_heading_samples += 1;
+    } else if sample.movement_input_lateral_axis < 0.0 {
+        accumulator.left_lateral_body_travel_heading_samples += 1;
+    }
 
     if sample.movement_input_forward_axis >= 0.0 {
         return;
@@ -294,6 +299,11 @@ fn observe_body_travel_heading_alignment(accumulator: &mut EvalAccumulator, samp
         accumulator.max_backward_diagonal_body_travel_heading_error_degrees = accumulator
             .max_backward_diagonal_body_travel_heading_error_degrees
             .max(sample.body_travel_heading_error_degrees);
+        if sample.movement_input_lateral_axis > 0.0 {
+            accumulator.backward_right_diagonal_body_travel_heading_samples += 1;
+        } else if sample.movement_input_lateral_axis < 0.0 {
+            accumulator.backward_left_diagonal_body_travel_heading_samples += 1;
+        }
     }
 }
 
@@ -330,6 +340,9 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
     accumulator.max_pose_wing_airflow_strength = accumulator
         .max_pose_wing_airflow_strength
         .max(sample.pose_wing_airflow_strength);
+    accumulator.max_visible_pose_part_count = accumulator
+        .max_visible_pose_part_count
+        .max(sample.visible_pose_part_count);
     if key_pose_intent_label(sample.pose_intent_label) {
         accumulator.max_key_pose_readability_score = accumulator
             .max_key_pose_readability_score
@@ -343,6 +356,17 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
 
         if sample.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE {
             accumulator.unreadable_key_pose_samples += 1;
+        }
+        if sample.max_pose_part_rotation_delta_degrees.is_finite()
+            && sample.max_pose_part_translation_delta_m.is_finite()
+        {
+            accumulator.pose_temporal_stability_samples += 1;
+            accumulator.max_pose_part_rotation_delta_degrees = accumulator
+                .max_pose_part_rotation_delta_degrees
+                .max(sample.max_pose_part_rotation_delta_degrees);
+            accumulator.max_pose_part_translation_delta_m = accumulator
+                .max_pose_part_translation_delta_m
+                .max(sample.max_pose_part_translation_delta_m);
         }
     }
 }

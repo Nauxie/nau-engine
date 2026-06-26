@@ -427,6 +427,11 @@ impl SimMetrics {
         self.max_lateral_body_travel_heading_error_degrees = self
             .max_lateral_body_travel_heading_error_degrees
             .max(sample.body_travel_heading_error_degrees);
+        if sample.movement_input_lateral_axis > 0.0 {
+            self.right_lateral_body_travel_heading_samples += 1;
+        } else if sample.movement_input_lateral_axis < 0.0 {
+            self.left_lateral_body_travel_heading_samples += 1;
+        }
 
         if sample.movement_input_forward_axis >= 0.0 {
             return;
@@ -440,6 +445,11 @@ impl SimMetrics {
             self.max_backward_diagonal_body_travel_heading_error_degrees = self
                 .max_backward_diagonal_body_travel_heading_error_degrees
                 .max(sample.body_travel_heading_error_degrees);
+            if sample.movement_input_lateral_axis > 0.0 {
+                self.backward_right_diagonal_body_travel_heading_samples += 1;
+            } else if sample.movement_input_lateral_axis < 0.0 {
+                self.backward_left_diagonal_body_travel_heading_samples += 1;
+            }
         }
     }
 

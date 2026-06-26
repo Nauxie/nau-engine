@@ -542,8 +542,10 @@ pub(crate) fn animate_character(
 }
 
 pub(crate) fn apply_authored_player_pose_nodes(
+    time: Res<Time>,
+    eval: Option<Res<EvalRun>>,
     player: Query<(&Transform, &Velocity, &FlightController, &AnimationState), With<Player>>,
-    mut pose_nodes: Query<(&AuthoredPlayerPoseNode, &mut Transform), Without<Player>>,
+    mut pose_nodes: Query<(&mut AuthoredPlayerPoseNode, &mut Transform), Without<Player>>,
 ) {
     let Ok((transform, velocity, controller, animation)) = player.single() else {
         return;
@@ -559,16 +561,35 @@ pub(crate) fn apply_authored_player_pose_nodes(
         controller.landing_recovery_timer,
         controller.landing_impact_speed_mps,
     );
+    let pose_time_secs = eval_pose_time_secs(&time, eval.as_deref());
+    let blend = pose_blend(eval_dt(&time, eval.as_deref()));
 
-    for (node, mut transform) in &mut pose_nodes {
+    for (mut node, mut transform) in &mut pose_nodes {
         let pose = part_pose_with_context(&node.part, pose_context, animation.phase);
-        transform.translation = pose.translation;
-        transform.rotation = pose.rotation;
+        if !node.smoothing_initialized {
+            node.smoothed_translation = pose.translation;
+            node.smoothed_rotation = pose.rotation;
+            node.smoothing_initialized = true;
+            node.last_smoothed_time_secs = Some(pose_time_secs);
+        } else if node.last_smoothed_time_secs != Some(pose_time_secs) {
+            node.smoothed_translation = node.smoothed_translation.lerp(pose.translation, blend);
+            node.smoothed_rotation = node.smoothed_rotation.slerp(pose.rotation, blend);
+            node.last_smoothed_time_secs = Some(pose_time_secs);
+        }
+        transform.translation = node.smoothed_translation;
+        transform.rotation = node.smoothed_rotation;
     }
 }
 
 fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
     eval.map_or_else(|| time.delta_secs(), |run| run.scenario.fixed_dt)
+}
+
+fn eval_pose_time_secs(time: &Time, eval: Option<&EvalRun>) -> f32 {
+    eval.map_or_else(
+        || time.elapsed_secs(),
+        |run| run.frame as f32 * run.scenario.fixed_dt,
+    )
 }
 
 #[cfg(test)]
