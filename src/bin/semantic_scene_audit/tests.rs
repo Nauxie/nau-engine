@@ -1,8 +1,11 @@
 use crate::{
-    checkpoint::{audit_checkpoint_path, audit_scene_sample},
+    checkpoint::{audit_checkpoint_path, audit_scene_sample, terrain_material_variant_for_label},
     materials::sample_pixel_hits,
     report::{json_number, json_string, report_checks},
-    thresholds::MIN_SAMPLE_PIXEL_HITS,
+    thresholds::{
+        MIN_PASSED_TERRAIN_MATERIAL_VARIANTS, MIN_SAMPLE_PIXEL_HITS,
+        MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS,
+    },
     types::{CheckpointAudit, SceneSampleAudit},
 };
 use image::{Rgb, RgbImage};
@@ -52,7 +55,55 @@ fn checkpoint_requires_projected_scene_sample_hits() {
         .expect("sample should parse");
 
     assert!(audit.in_viewport);
+    assert_eq!(audit.material_variant, "terrain_unknown");
     assert!(!audit.passed);
+}
+
+#[test]
+fn audit_scene_sample_parses_explicit_material_variant() {
+    let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
+    image.put_pixel(32, 32, Rgb([104, 82, 48]));
+    image.put_pixel(33, 32, Rgb([92, 74, 46]));
+    image.put_pixel(34, 32, Rgb([74, 68, 62]));
+    let sample = serde_json::json!({
+        "kind": "terrain_surface",
+        "label": "launch mesa",
+        "expected_material": "terrain",
+        "material_variant": "terrain_lush_meadow",
+        "in_viewport": true,
+        "visibility": "visible",
+        "screen": {"x": 32.0, "y": 32.0}
+    });
+
+    let audit = audit_scene_sample(&sample, &image, (1.0, 1.0)).expect("sample should parse");
+
+    assert_eq!(audit.material_variant, "terrain_lush_meadow");
+    assert!(audit.passed);
+}
+
+#[test]
+fn audit_scene_sample_derives_legacy_terrain_variant_from_label() {
+    let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
+    image.put_pixel(32, 32, Rgb([104, 82, 48]));
+    image.put_pixel(33, 32, Rgb([92, 74, 46]));
+    image.put_pixel(34, 32, Rgb([74, 68, 62]));
+    let sample = serde_json::json!({
+        "kind": "terrain_surface",
+        "label": "storm porch",
+        "expected_material": "terrain",
+        "in_viewport": true,
+        "visibility": "visible",
+        "screen": {"x": 32.0, "y": 32.0}
+    });
+
+    let audit = audit_scene_sample(&sample, &image, (1.0, 1.0)).expect("sample should parse");
+
+    assert_eq!(
+        terrain_material_variant_for_label("storm porch"),
+        Some("terrain_alpine_mist")
+    );
+    assert_eq!(audit.material_variant, "terrain_alpine_mist");
+    assert!(audit.passed);
 }
 
 #[test]
@@ -85,6 +136,7 @@ fn report_checks_require_visible_material_samples_before_pixel_hits() {
         kind: "terrain_surface".to_string(),
         label: "foreground".to_string(),
         expected_material: "terrain".to_string(),
+        material_variant: "terrain_lush_meadow".to_string(),
         in_viewport: true,
         visibility: "visible".to_string(),
         screen_x: Some(12.0),
@@ -96,6 +148,7 @@ fn report_checks_require_visible_material_samples_before_pixel_hits() {
         kind: "weather_cloud".to_string(),
         label: "blocked cloud".to_string(),
         expected_material: "cloud".to_string(),
+        material_variant: "cloud".to_string(),
         in_viewport: true,
         visibility: "occluded".to_string(),
         screen_x: Some(24.0),
@@ -115,6 +168,8 @@ fn report_checks_require_visible_material_samples_before_pixel_hits() {
         scene_material_pixel_hit_count: 1,
         visible_scene_sample_kind_count: 1,
         scene_sample_kind_pixel_hit_count: 1,
+        visible_terrain_material_variant_count: 1,
+        terrain_material_variant_pixel_hit_count: 1,
         passed: false,
         samples: vec![visible_terrain, occluded_cloud],
         materials: Vec::new(),
@@ -155,6 +210,7 @@ fn report_checks_require_scene_pixel_coverage_not_just_hit_counts() {
         kind: "terrain_surface".to_string(),
         label: "foreground".to_string(),
         expected_material: "terrain".to_string(),
+        material_variant: "terrain_lush_meadow".to_string(),
         in_viewport: true,
         visibility: "visible".to_string(),
         screen_x: Some(12.0),
@@ -174,6 +230,8 @@ fn report_checks_require_scene_pixel_coverage_not_just_hit_counts() {
         scene_material_pixel_hit_count: 1,
         visible_scene_sample_kind_count: 1,
         scene_sample_kind_pixel_hit_count: 1,
+        visible_terrain_material_variant_count: 1,
+        terrain_material_variant_pixel_hit_count: 1,
         passed: false,
         samples: vec![thin_terrain],
         materials: Vec::new(),
@@ -198,6 +256,54 @@ fn report_checks_require_scene_pixel_coverage_not_just_hit_counts() {
     assert_eq!(terrain_coverage.value, MIN_SAMPLE_PIXEL_HITS as f64);
     assert!(!kind_coverage.passed);
     assert_eq!(kind_coverage.value, MIN_SAMPLE_PIXEL_HITS as f64);
+}
+
+#[test]
+fn report_checks_require_terrain_material_variant_diversity() {
+    let checkpoint = CheckpointAudit {
+        metadata_path: "checkpoint.markers.json".to_string(),
+        screenshot_path: "checkpoint.png".to_string(),
+        checkpoint: "test".to_string(),
+        in_viewport_scene_sample_count: 2,
+        occluded_scene_sample_count: 0,
+        visible_scene_sample_count: 2,
+        scene_sample_pixel_hit_count: 2,
+        visible_scene_material_count: 1,
+        scene_material_pixel_hit_count: 1,
+        visible_scene_sample_kind_count: 1,
+        scene_sample_kind_pixel_hit_count: 1,
+        visible_terrain_material_variant_count: 2,
+        terrain_material_variant_pixel_hit_count: 2,
+        passed: false,
+        samples: vec![
+            terrain_audit_sample("launch mesa", "terrain_lush_meadow"),
+            terrain_audit_sample("midpoint shelf", "terrain_gold_meadow"),
+        ],
+        materials: Vec::new(),
+    };
+
+    let checks = report_checks(&[checkpoint]);
+    let visible_variants = checks
+        .iter()
+        .find(|check| check.name == "visible_terrain_material_variant_count")
+        .expect("visible terrain variant check");
+    let hit_variants = checks
+        .iter()
+        .find(|check| check.name == "terrain_material_variant_pixel_hit_count")
+        .expect("terrain variant hit check");
+
+    assert!(!visible_variants.passed);
+    assert_eq!(visible_variants.value, 2.0);
+    assert_eq!(
+        visible_variants.threshold,
+        MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS as f64
+    );
+    assert!(!hit_variants.passed);
+    assert_eq!(hit_variants.value, 2.0);
+    assert_eq!(
+        hit_variants.threshold,
+        MIN_PASSED_TERRAIN_MATERIAL_VARIANTS as f64
+    );
 }
 
 #[test]
@@ -321,6 +427,21 @@ fn unique_temp_dir(name: &str) -> PathBuf {
         process::id(),
         std::thread::current().name().unwrap_or("test")
     ))
+}
+
+fn terrain_audit_sample(label: &str, material_variant: &str) -> SceneSampleAudit {
+    SceneSampleAudit {
+        kind: "terrain_surface".to_string(),
+        label: label.to_string(),
+        expected_material: "terrain".to_string(),
+        material_variant: material_variant.to_string(),
+        in_viewport: true,
+        visibility: "visible".to_string(),
+        screen_x: Some(12.0),
+        screen_y: Some(12.0),
+        semantic_pixel_hits: MIN_SAMPLE_PIXEL_HITS,
+        passed: true,
+    }
 }
 
 fn semantic_metadata_json(
