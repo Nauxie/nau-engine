@@ -98,7 +98,13 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/camera/obstruction.rs` owns floor lifting, obstruction avoidance, and AABB segment-intersection helpers.
 - `src/camera/math.rs` owns shared camera vector and angle helpers.
 - `src/camera/tests.rs` and `src/camera/tests/` own camera follow, input, metric, and obstruction unit coverage.
-- `src/world.rs` owns collision-aware route surfaces, sky-island definitions, deterministic island relief, landing target queries, active chunk counters, stream-window classification, and near/mid/far LOD band classification.
+- `src/world.rs` owns the world module facade, shared route/terrain constants, and stable re-exports.
+- `src/world/route.rs` owns the authored sky-island route catalog, collision-aware route surfaces, landing target queries, and ground-contact resolution.
+- `src/world/island.rs` owns sky-island data, deterministic terrain relief, footing/mesh-top helpers, horizontal containment, and per-island LOD/stream activation helpers.
+- `src/world/streaming.rs` owns active chunk coordinates, stream activation state, and near/mid/far LOD metric types.
+- `src/world/objectives.rs` owns route objective definitions, recovery-branch classification, fly-through completion, and landing objective completion.
+- `src/world/surface.rs` owns ground-surface query results.
+- `src/world/tests.rs` owns route, terrain relief, objective, streaming, LOD, and ground-contact unit coverage.
 - `src/diagnostics.rs` owns pure helpers for frame-time and runtime metric formatting inputs.
 - `src/eval.rs` owns the eval module surface and shared eval JSON helpers.
 - `src/eval/accumulator.rs` owns accumulator state and module wiring for eval metric accumulation.
