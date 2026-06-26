@@ -232,6 +232,12 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_detail_biome_palette_count\": 5"));
     assert!(summary_json.contains("\"min_generated_rock_count\": 60"));
     assert!(summary_json.contains("\"min_rock_mesh_vertices\": 74"));
+    assert!(summary_json.contains("\"min_generated_landmark_count\": 27"));
+    assert!(summary_json.contains("\"min_generated_route_cairn_count\": 10"));
+    assert!(summary_json.contains("\"min_generated_launch_beacon_count\": 1"));
+    assert!(summary_json.contains("\"min_generated_landing_garden_marker_count\": 4"));
+    assert!(summary_json.contains("\"min_generated_pond_surface_count\": 12"));
+    assert!(summary_json.contains("\"min_landmark_mesh_vertices\": 39"));
     assert!(summary_json.contains("\"min_generated_weather_cloud_bank_count\": 12"));
     assert!(summary_json.contains("\"min_weather_cloud_bank_depth_m\": 4.8000"));
     assert!(summary_json.contains("\"min_weather_cloud_mesh_vertices\": 910"));
@@ -244,12 +250,13 @@ fn accumulator_fails_generated_visual_shape_regression() {
     let mut accumulator = EvalAccumulator::default();
     accumulator.observe(
         content_metric_sample(scenario, 0, 12, 0, 96).with_generated_visual_shape_metrics(
-            528, 220, 1100, 12, 12, 62, 316, 5, 48, 74, 12, 12, 4.8, 6, 10, 910, 14,
+            528, 220, 1100, 12, 12, 62, 316, 5, 48, 74, 27, 10, 1, 4, 12, 39, 12, 12, 4.8, 6, 10,
+            910, 14,
         ),
     );
     accumulator.observe(
         content_metric_sample(scenario, 10, 12, 0, 96).with_generated_visual_shape_metrics(
-            10, 12, 60, 0, 0, 8, 45, 1, 1, 12, 0, 0, 0.4, 1, 1, 45, 0,
+            10, 12, 60, 0, 0, 8, 45, 1, 1, 12, 0, 0, 0, 0, 0, 8, 0, 0, 0.4, 1, 1, 45, 0,
         ),
     );
 
@@ -271,6 +278,13 @@ fn accumulator_fails_generated_visual_shape_regression() {
     let detail_palette_check = named_check(&summary, "detail_biome_palette_count");
     let rock_count_check = named_check(&summary, "generated_rock_count");
     let rock_vertex_check = named_check(&summary, "rock_mesh_vertices");
+    let landmark_count_check = named_check(&summary, "generated_landmark_count");
+    let route_cairn_count_check = named_check(&summary, "generated_route_cairn_count");
+    let launch_beacon_count_check = named_check(&summary, "generated_launch_beacon_count");
+    let landing_garden_marker_count_check =
+        named_check(&summary, "generated_landing_garden_marker_count");
+    let pond_surface_count_check = named_check(&summary, "generated_pond_surface_count");
+    let landmark_vertex_check = named_check(&summary, "landmark_mesh_vertices");
     let cloud_lobe_check = named_check(&summary, "weather_cloud_lobe_count");
     let cloud_bank_lobe_check = named_check(&summary, "weather_cloud_bank_lobe_count");
     let cloud_mesh_check = named_check(&summary, "weather_cloud_mesh_vertices");
@@ -294,6 +308,18 @@ fn accumulator_fails_generated_visual_shape_regression() {
     assert_eq!(rock_count_check.value, 1.0);
     assert!(!rock_vertex_check.passed);
     assert_eq!(rock_vertex_check.value, 12.0);
+    assert!(!landmark_count_check.passed);
+    assert_eq!(landmark_count_check.value, 0.0);
+    assert!(!route_cairn_count_check.passed);
+    assert_eq!(route_cairn_count_check.value, 0.0);
+    assert!(!launch_beacon_count_check.passed);
+    assert_eq!(launch_beacon_count_check.value, 0.0);
+    assert!(!landing_garden_marker_count_check.passed);
+    assert_eq!(landing_garden_marker_count_check.value, 0.0);
+    assert!(!pond_surface_count_check.passed);
+    assert_eq!(pond_surface_count_check.value, 0.0);
+    assert!(!landmark_vertex_check.passed);
+    assert_eq!(landmark_vertex_check.value, 8.0);
     assert!(!cloud_lobe_check.passed);
     assert_eq!(cloud_lobe_check.value, 1.0);
     assert!(!cloud_bank_lobe_check.passed);
@@ -622,7 +648,8 @@ fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample
             .with_island_impostor_metrics(146, 24)
             .with_terrain_material_metrics(36, 3, 4, 64)
             .with_generated_visual_shape_metrics(
-                528, 220, 1100, 37, 37, 196, 412, 5, 60, 74, 30, 12, 4.8, 7, 14, 910, 14,
+                528, 220, 1100, 37, 37, 196, 412, 5, 60, 74, 27, 10, 1, 4, 12, 39, 30, 12, 4.8, 7,
+                14, 910, 14,
             )
             .with_visible_authored_world_fixture_count(MIN_VISIBLE_AUTHORED_WORLD_FIXTURE_COUNT),
     );
