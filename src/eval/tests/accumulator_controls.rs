@@ -456,6 +456,12 @@ fn accumulator_gates_air_control_body_travel_heading_misalignment() {
     assert_eq!(max_check.value, 90.0);
     assert!(!p95_check.passed);
     assert!(!max_check.passed);
+
+    let summary_json = summary.to_json();
+    assert!(summary_json.contains("\"p95_lateral_body_travel_heading_error_degrees\""));
+    assert!(summary_json.contains("\"max_lateral_body_travel_heading_error_degrees\""));
+    assert!(summary_json.contains("\"p95_backward_diagonal_body_travel_heading_error_degrees\""));
+    assert!(summary_json.contains("\"max_backward_diagonal_body_travel_heading_error_degrees\""));
 }
 
 #[test]

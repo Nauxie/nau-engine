@@ -230,7 +230,7 @@ The export writes `manifest.json`, generated ground-cover/tree/cloud/landmark OB
 - average and p95 camera follow-direction error must stay bounded so a stable camera cannot hide a stale follow target
 - camera view-yaw and world-yaw drift must stay bounded so movement input cannot quietly rotate the camera
 - average, p95, and max desired body heading error plus desired-heading velocity alignment must stay within thresholds
-- lateral and backward-diagonal body/travel heading error must stay bounded after each direction-specific response window and current-frame lateral response threshold so Nau cannot visibly fly sideways while presenting the wrong body direction
+- lateral and backward-diagonal body/travel heading error must stay bounded after each direction-specific response window and current-frame lateral response threshold so Nau cannot visibly fly sideways while presenting the wrong body direction; the sample field is finite only for airborne/gliding lateral-input samples at or above the 6.0 m/s planar speed floor
 - right, left, rear-right, and rear-left lateral input must each produce measurable response within the response-latency threshold
 - rear-right and rear-left samples must also build a rearward component, exposed as `max_backward_right_rear_response_mps` and `max_backward_left_rear_response_mps`, so pure sideways drift cannot satisfy the diagonal-control gate
 - backward input must produce measurable total and planar air-brake speed drop, and the final forward segment must recover forward alignment
