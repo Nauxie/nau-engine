@@ -145,7 +145,10 @@ pub(super) fn checkpoint_scene_sample_projection_json(
                 .then(|| {
                     marker_occlusion_between(camera_position, sample.world_position, scene_islands)
                 })
-                .flatten();
+                .flatten()
+                .filter(|occlusion| {
+                    sample.expected_material != "terrain" || occlusion.island_name != sample.label
+                });
             let visibility = marker_visibility(behind_camera, in_viewport, occlusion);
             if in_viewport {
                 in_viewport_count += 1;

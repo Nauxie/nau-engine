@@ -29,6 +29,23 @@ pub(super) fn is_scene_like(r: f64, g: f64, b: f64, luma: f64, sky_like: bool) -
     foliage || earth || rock_or_shadow
 }
 
+pub(super) fn is_wind_effect_like(r: f64, g: f64, b: f64, luma: f64) -> bool {
+    if !(55.0..=230.0).contains(&luma) {
+        return false;
+    }
+
+    let saturated_cyan =
+        g >= 92.0 && b >= 112.0 && r <= 135.0 && g >= r + 28.0 && b >= r + 34.0 && b + 46.0 >= g;
+    let translucent_teal = g >= 78.0
+        && b >= 68.0
+        && r <= 120.0
+        && g >= r + 24.0
+        && b >= r + 12.0
+        && (g - b).abs() <= 64.0;
+
+    saturated_cyan || translucent_teal
+}
+
 pub(super) fn scene_material_family(
     r: f64,
     g: f64,

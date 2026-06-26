@@ -82,6 +82,7 @@ pub(super) fn audit_image_with_alpha(
     let mut foreign_canvas_region_pixels = 0usize;
     let mut hud_text_pixels = 0usize;
     let mut scene_mask = vec![false; pixel_count];
+    let mut low_detail_scene_mask = vec![false; pixel_count];
 
     let width_usize = width as usize;
     let height_usize = height as usize;
@@ -116,6 +117,7 @@ pub(super) fn audit_image_with_alpha(
         let y = index / width_usize;
         let sky_like = is_sky_like(r, g, b, luma);
         let scene_like = is_scene_like(r, g, b, luma, sky_like);
+        let wind_effect_like = is_wind_effect_like(r, g, b, luma);
         let hud_region = is_hud_region(x, y, width_usize, height_usize);
         let route_marker_like =
             !hud_region && y >= top_limit && is_route_marker_like(r, g, b, luma);
@@ -134,6 +136,7 @@ pub(super) fn audit_image_with_alpha(
             && !is_player_focus_region(x, y, width_usize, height_usize)
             && is_cloud_layer_region(x, y, width_usize, height_usize);
         scene_mask[index] = scene_like && !hud_region;
+        low_detail_scene_mask[index] = scene_mask[index] && !wind_effect_like;
 
         if y < top_limit {
             top_pixels += 1;
@@ -315,8 +318,13 @@ pub(super) fn audit_image_with_alpha(
     let hud_text_fraction = fraction(hud_text_pixels, pixel_count);
     let scene_detail =
         scene_detail_stats(&image, &luma_values, &scene_mask, width_usize, height_usize);
-    let low_detail_scene_component =
-        low_detail_scene_component_stats(&luma_values, &scene_mask, width_usize, height_usize);
+    let low_detail_scene_component = low_detail_scene_component_stats(
+        &image,
+        &luma_values,
+        &low_detail_scene_mask,
+        width_usize,
+        height_usize,
+    );
 
     let checks = vec![
         Check::at_least("width", width as f64, MIN_WIDTH as f64, "px"),

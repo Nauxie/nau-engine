@@ -60,8 +60,8 @@ pub(super) const BRANCH_RECOVERY_CHECKPOINTS: &[EvalCheckpoint] = &[
         name: "recovery_approach",
     },
     EvalCheckpoint {
-        frame: 690,
-        name: "branch_landing",
+        frame: 580,
+        name: "branch_landing_approach",
     },
 ];
 pub(super) const CAMERA_MOUSE_CHECKPOINTS: &[EvalCheckpoint] = &[

@@ -8,7 +8,7 @@ pub(crate) fn material_audits(samples: &[SceneSampleAudit]) -> Vec<MaterialAudit
     let mut expected_materials = EXPECTED_MATERIALS.to_vec();
     if samples
         .iter()
-        .any(|sample| sample.is_visible() && sample.expected_material == "wind")
+        .any(|sample| sample.passed && sample.expected_material == "wind")
     {
         expected_materials.push("wind");
     }

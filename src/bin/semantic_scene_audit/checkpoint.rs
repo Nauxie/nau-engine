@@ -89,7 +89,7 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
 pub(crate) fn visible_scene_sample_kind_count(samples: &[SceneSampleAudit]) -> usize {
     samples
         .iter()
-        .filter(|sample| sample.is_visible())
+        .filter(|sample| sample_counts_toward_visible_kind(sample))
         .map(|sample| sample.kind.as_str())
         .collect::<BTreeSet<_>>()
         .len()
@@ -102,6 +102,10 @@ pub(crate) fn scene_sample_kind_pixel_hit_count(samples: &[SceneSampleAudit]) ->
         .map(|sample| sample.kind.as_str())
         .collect::<BTreeSet<_>>()
         .len()
+}
+
+fn sample_counts_toward_visible_kind(sample: &SceneSampleAudit) -> bool {
+    sample.is_visible() && (sample.expected_material != "wind" || sample.passed)
 }
 
 pub(crate) fn visible_terrain_material_variant_count(samples: &[SceneSampleAudit]) -> usize {

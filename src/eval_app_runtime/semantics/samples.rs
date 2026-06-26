@@ -2,7 +2,9 @@ use crate::environment_visuals::{
     crosswind_ribbon_scene_sample_positions, updraft_ribbon_scene_sample_positions,
 };
 use crate::eval_app_runtime::scene::EvalScene;
-use crate::generated_content::{TERRAIN_BIOME_PALETTE_COUNT, island_visual_surface_position};
+use crate::generated_content::{
+    TERRAIN_BIOME_PALETTE_COUNT, island_playable_normalized_offset, island_visual_surface_position,
+};
 use bevy::prelude::*;
 use nau_engine::world::SkyIsland;
 
@@ -30,14 +32,15 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
     let mut samples = Vec::new();
 
     for (island_index, island) in scene.route.islands().iter().copied().enumerate() {
-        samples.push(SemanticSceneSample {
-            kind: "terrain_surface",
-            label: island.name,
-            expected_material: "terrain",
-            material_variant: terrain_material_variant(island_index),
-            world_position: island_visual_surface_position(island, Vec2::new(0.16, -0.14))
-                + Vec3::Y * 0.08,
-        });
+        for world_position in island_terrain_surface_sample_positions(island) {
+            samples.push(SemanticSceneSample {
+                kind: "terrain_surface",
+                label: island.name,
+                expected_material: "terrain",
+                material_variant: terrain_material_variant(island_index),
+                world_position,
+            });
+        }
         samples.push(SemanticSceneSample {
             kind: "distant_island",
             label: island.name,
@@ -61,6 +64,44 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
                 material_variant: "foliage",
                 world_position: canopy_position,
             });
+        }
+    }
+
+    if let Ok((player_transform, ..)) = scene.player.single()
+        && let Some((island_index, island)) =
+            nearest_island_to_position(scene.route.islands(), player_transform.translation)
+    {
+        for world_position in player_local_terrain_sample_positions(island, player_transform) {
+            samples.push(SemanticSceneSample {
+                kind: "terrain_surface",
+                label: island.name,
+                expected_material: "terrain",
+                material_variant: terrain_material_variant(island_index),
+                world_position,
+            });
+        }
+    }
+
+    if let Ok((_, camera_global_transform)) = scene.camera_projection.single()
+        && let Ok((player_transform, ..)) = scene.player.single()
+    {
+        let camera_transform = camera_global_transform.compute_transform();
+        if let Some((island_index, island, focus_xz)) = camera_framed_island_terrain_focus(
+            scene.route.islands(),
+            &camera_transform,
+            player_transform.translation,
+        ) {
+            for world_position in
+                camera_framed_terrain_sample_positions(island, &camera_transform, focus_xz)
+            {
+                samples.push(SemanticSceneSample {
+                    kind: "terrain_surface",
+                    label: island.name,
+                    expected_material: "terrain",
+                    material_variant: terrain_material_variant(island_index),
+                    world_position,
+                });
+            }
         }
     }
 
@@ -132,6 +173,143 @@ fn terrain_material_variant(island_index: usize) -> &'static str {
         4 => "terrain_highland_grass",
         _ => "terrain_lush_meadow",
     }
+}
+
+fn island_terrain_surface_sample_positions(island: SkyIsland) -> [Vec3; 4] {
+    [
+        Vec2::new(0.16, -0.14),
+        Vec2::new(-0.28, 0.20),
+        Vec2::new(0.42, 0.18),
+        Vec2::new(0.0, 0.38),
+    ]
+    .map(|offset| island_visual_surface_position(island, offset) + Vec3::Y * 0.08)
+}
+
+fn nearest_island_to_position(islands: &[SkyIsland], position: Vec3) -> Option<(usize, SkyIsland)> {
+    islands
+        .iter()
+        .copied()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| {
+            a.center
+                .xz()
+                .distance_squared(position.xz())
+                .total_cmp(&b.center.xz().distance_squared(position.xz()))
+        })
+}
+
+fn player_local_terrain_sample_positions(
+    island: SkyIsland,
+    player_transform: &Transform,
+) -> [Vec3; 3] {
+    let forward = (player_transform.rotation * -Vec3::Z)
+        .xz()
+        .normalize_or_zero();
+    let forward = if forward.length_squared() > 0.0001 {
+        forward
+    } else {
+        Vec2::NEG_Y
+    };
+    let right = Vec2::new(forward.y, -forward.x);
+    let player_xz = player_transform.translation.xz();
+
+    [
+        player_xz + forward * 4.0,
+        player_xz + forward * 8.0 + right * 3.5,
+        player_xz + forward * 8.0 - right * 3.5,
+    ]
+    .map(|xz| terrain_sample_position_on_island(island, xz))
+}
+
+fn camera_framed_island_terrain_focus(
+    islands: &[SkyIsland],
+    camera_transform: &Transform,
+    fallback_position: Vec3,
+) -> Option<(usize, SkyIsland, Vec2)> {
+    let camera_position = camera_transform.translation;
+    let camera_forward = camera_transform.rotation * -Vec3::Z;
+    if camera_forward.y.abs() <= 0.03 {
+        return nearest_island_to_position(islands, fallback_position)
+            .map(|(index, island)| (index, island, fallback_position.xz()));
+    }
+
+    islands
+        .iter()
+        .copied()
+        .enumerate()
+        .filter_map(|(index, island)| {
+            let distance_to_floor = (island.floor_y() - camera_position.y) / camera_forward.y;
+            if !distance_to_floor.is_finite() || distance_to_floor <= 1.0 {
+                return None;
+            }
+            let focus = camera_position + camera_forward * distance_to_floor;
+            let normalized = island_normalized_offset(island, focus.xz());
+            let radius = normalized.length();
+            let silhouette = island
+                .playable_silhouette_scale(normalized.y.atan2(normalized.x))
+                .max(0.001);
+            let normalized_distance = radius / silhouette;
+
+            Some((index, island, focus.xz(), normalized_distance))
+        })
+        .filter(|(_, _, _, normalized_distance)| *normalized_distance <= 1.28)
+        .min_by(|(_, _, _, a), (_, _, _, b)| a.total_cmp(b))
+        .map(|(index, island, focus_xz, _)| (index, island, focus_xz))
+        .or_else(|| {
+            nearest_island_to_position(islands, fallback_position)
+                .map(|(index, island)| (index, island, fallback_position.xz()))
+        })
+}
+
+fn camera_framed_terrain_sample_positions(
+    island: SkyIsland,
+    camera_transform: &Transform,
+    focus_xz: Vec2,
+) -> [Vec3; 5] {
+    let camera_right = (camera_transform.rotation * Vec3::X)
+        .xz()
+        .normalize_or_zero();
+    let right = if camera_right.length_squared() > 0.0001 {
+        camera_right
+    } else {
+        Vec2::X
+    };
+    let camera_forward = (camera_transform.rotation * -Vec3::Z)
+        .xz()
+        .normalize_or_zero();
+    let forward = if camera_forward.length_squared() > 0.0001 {
+        camera_forward
+    } else {
+        Vec2::NEG_Y
+    };
+
+    [
+        focus_xz,
+        focus_xz + right * 3.5,
+        focus_xz - right * 3.5,
+        focus_xz + forward * 5.0,
+        focus_xz - forward * 5.0,
+    ]
+    .map(|xz| terrain_sample_position_on_island(island, xz))
+}
+
+fn terrain_sample_position_on_island(island: SkyIsland, xz: Vec2) -> Vec3 {
+    let normalized =
+        island_playable_normalized_offset(island, island_normalized_offset(island, xz));
+    let clamped_xz = Vec2::new(
+        island.center.x + normalized.x * island.half_extents.x,
+        island.center.z + normalized.y * island.half_extents.y,
+    );
+    let probe = Vec3::new(clamped_xz.x, island.center.y, clamped_xz.y);
+    let surface_y = island.mesh_top_y_at(probe);
+    Vec3::new(clamped_xz.x, surface_y + 0.16, clamped_xz.y)
+}
+
+fn island_normalized_offset(island: SkyIsland, xz: Vec2) -> Vec2 {
+    Vec2::new(
+        (xz.x - island.center.x) / island.half_extents.x.max(0.001),
+        (xz.y - island.center.z) / island.half_extents.y.max(0.001),
+    )
 }
 
 pub(super) fn tree_canopy_sample_positions(island_index: usize, island: SkyIsland) -> Vec<Vec3> {
