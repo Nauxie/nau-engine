@@ -22,6 +22,8 @@ pub(crate) struct CheckpointAudit {
     pub(crate) scene_sample_pixel_hit_count: usize,
     pub(crate) visible_scene_material_count: usize,
     pub(crate) scene_material_pixel_hit_count: usize,
+    pub(crate) visible_scene_sample_kind_count: usize,
+    pub(crate) scene_sample_kind_pixel_hit_count: usize,
     pub(crate) passed: bool,
     pub(crate) samples: Vec<SceneSampleAudit>,
     pub(crate) materials: Vec<MaterialAudit>,

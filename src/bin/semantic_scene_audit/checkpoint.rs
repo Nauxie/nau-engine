@@ -2,13 +2,15 @@ use crate::{
     materials::{material_audits, sample_pixel_hits},
     thresholds::{
         MIN_PASSED_SAMPLES_PER_CHECKPOINT, MIN_SAMPLE_PIXEL_HITS,
-        MIN_VISIBLE_MATERIALS_PER_CHECKPOINT, MIN_VISIBLE_SAMPLES_PER_CHECKPOINT,
+        MIN_VISIBLE_MATERIALS_PER_CHECKPOINT, MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT,
+        MIN_VISIBLE_SAMPLES_PER_CHECKPOINT,
     },
     types::{CheckpointAudit, SceneSampleAudit},
 };
 use image::{ImageReader, RgbImage};
 use serde_json::Value;
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
 };
@@ -46,10 +48,14 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
     let visible_scene_material_count = materials.len();
     let scene_material_pixel_hit_count =
         materials.iter().filter(|material| material.passed).count();
+    let visible_scene_sample_kind_count = visible_scene_sample_kind_count(&samples);
+    let scene_sample_kind_pixel_hit_count = scene_sample_kind_pixel_hit_count(&samples);
     let passed = visible_scene_sample_count >= MIN_VISIBLE_SAMPLES_PER_CHECKPOINT
         && scene_sample_pixel_hit_count >= MIN_PASSED_SAMPLES_PER_CHECKPOINT
         && visible_scene_material_count >= MIN_VISIBLE_MATERIALS_PER_CHECKPOINT
-        && scene_material_pixel_hit_count >= visible_scene_material_count;
+        && scene_material_pixel_hit_count >= visible_scene_material_count
+        && visible_scene_sample_kind_count >= MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT
+        && scene_sample_kind_pixel_hit_count >= visible_scene_sample_kind_count;
     let checkpoint = parsed
         .get("checkpoint")
         .and_then(Value::as_str)
@@ -66,10 +72,30 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
         scene_sample_pixel_hit_count,
         visible_scene_material_count,
         scene_material_pixel_hit_count,
+        visible_scene_sample_kind_count,
+        scene_sample_kind_pixel_hit_count,
         passed,
         samples,
         materials,
     })
+}
+
+pub(crate) fn visible_scene_sample_kind_count(samples: &[SceneSampleAudit]) -> usize {
+    samples
+        .iter()
+        .filter(|sample| sample.is_visible())
+        .map(|sample| sample.kind.as_str())
+        .collect::<BTreeSet<_>>()
+        .len()
+}
+
+pub(crate) fn scene_sample_kind_pixel_hit_count(samples: &[SceneSampleAudit]) -> usize {
+    samples
+        .iter()
+        .filter(|sample| sample.passed)
+        .map(|sample| sample.kind.as_str())
+        .collect::<BTreeSet<_>>()
+        .len()
 }
 
 pub(crate) fn resolve_screenshot_path(metadata_path: &Path, screenshot_path: &str) -> PathBuf {
