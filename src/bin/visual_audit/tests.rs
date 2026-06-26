@@ -86,7 +86,12 @@ fn paint_high_sky_foliage_scene(image: &mut RgbImage) {
             let (r, g, b) = if y < height * 64 / 100 {
                 (112 + (x % 84), 142 + (y % 78), 178 + ((x + y) % 72))
             } else {
-                (36 + (x % 84), 124 + (y % 76), 18 + ((x + y) % 22))
+                let texture = if (x / 3 + y / 5) % 2 == 0 { 0 } else { 36 };
+                (
+                    36 + (x % 42) + texture / 3,
+                    106 + (y % 50) + texture,
+                    18 + ((x + y) % 22),
+                )
             };
             image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
         }
@@ -225,6 +230,10 @@ fn audit_passes_textured_color_image() {
     let audit = audit_image("synthetic.png".to_string(), image).expect("audit should load");
 
     assert!(audit.passed, "{audit:?}");
+    assert!(
+        audit.dominant_low_detail_scene_component_fraction
+            <= MAX_DOMINANT_LOW_DETAIL_SCENE_COMPONENT_FRACTION
+    );
 }
 
 #[test]
@@ -333,11 +342,56 @@ fn audit_rejects_large_low_detail_scene_surface() {
     assert!(!audit.passed);
     assert!(audit.scene_candidate_tile_count > 0);
     assert!(
+        audit.dominant_low_detail_scene_component_fraction
+            > MAX_DOMINANT_LOW_DETAIL_SCENE_COMPONENT_FRACTION
+    );
+    assert!(
         audit
             .checks
             .iter()
             .any(|check| check.name == "scene_detail_tile_fraction" && !check.passed)
     );
+    assert!(audit.checks.iter().any(|check| {
+        check.name == "dominant_low_detail_scene_component_fraction" && !check.passed
+    }));
+}
+
+#[test]
+fn audit_rejects_blurry_gradient_scene_surface() {
+    let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    for y in 0..MIN_HEIGHT {
+        for x in 0..MIN_WIDTH {
+            let (r, g, b) = if y < MIN_HEIGHT / 3 {
+                (120 + (x % 48), 150 + (y % 48), 185 + ((x + y) % 48))
+            } else {
+                let x_wave = (x % 96).abs_diff(48);
+                let y_wave = (y % 104).abs_diff(52);
+                (
+                    72 + x_wave + y_wave / 2,
+                    56 + y_wave + x_wave / 2,
+                    36 + (x_wave + y_wave) / 3,
+                )
+            };
+            image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+        }
+    }
+    paint_readability_signals(&mut image);
+
+    let audit =
+        audit_image("blurry_gradient_scene.png".to_string(), image).expect("audit should load");
+
+    assert!(!audit.passed);
+    assert!(
+        audit.scene_detail_tile_fraction >= MIN_SCENE_DETAIL_TILE_FRACTION,
+        "tile detail gate should not be the failing signal: {audit:?}"
+    );
+    assert!(
+        audit.dominant_low_detail_scene_component_fraction
+            > MAX_DOMINANT_LOW_DETAIL_SCENE_COMPONENT_FRACTION
+    );
+    assert!(audit.checks.iter().any(|check| {
+        check.name == "dominant_low_detail_scene_component_fraction" && !check.passed
+    }));
 }
 
 #[test]

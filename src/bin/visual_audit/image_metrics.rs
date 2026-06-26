@@ -159,6 +159,84 @@ pub(super) fn scene_detail_stats(
     stats
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct LowDetailSceneComponentStats {
+    pub(super) dominant_component_fraction: f64,
+}
+
+pub(super) fn low_detail_scene_component_stats(
+    luma_values: &[f64],
+    scene_mask: &[bool],
+    width: usize,
+    height: usize,
+) -> LowDetailSceneComponentStats {
+    if width == 0 || height == 0 || scene_mask.len() != width.saturating_mul(height) {
+        return LowDetailSceneComponentStats::default();
+    }
+
+    let scene_pixel_count = scene_mask.iter().filter(|is_scene| **is_scene).count();
+    if scene_pixel_count == 0 {
+        return LowDetailSceneComponentStats::default();
+    }
+
+    let mut visited = vec![false; scene_mask.len()];
+    let mut stack = Vec::new();
+    let mut dominant_low_detail_pixels = 0usize;
+
+    for index in 0..scene_mask.len() {
+        if visited[index] || !scene_mask[index] {
+            continue;
+        }
+
+        let mut component_pixels = 0usize;
+        let mut edge_pixels = 0usize;
+        let mut edge_samples = 0usize;
+        visited[index] = true;
+        stack.push(index);
+
+        while let Some(current) = stack.pop() {
+            component_pixels += 1;
+            let x = current % width;
+            let y = current / width;
+            let luma = luma_values[current];
+
+            if x > 0 && scene_mask[current - 1] {
+                if (luma - luma_values[current - 1]).abs() > 18.0 {
+                    edge_pixels += 1;
+                }
+                edge_samples += 1;
+                push_marker_neighbor(current - 1, scene_mask, &mut visited, &mut stack);
+            }
+            if x + 1 < width {
+                push_marker_neighbor(current + 1, scene_mask, &mut visited, &mut stack);
+            }
+            if y > 0 && scene_mask[current - width] {
+                if (luma - luma_values[current - width]).abs() > 18.0 {
+                    edge_pixels += 1;
+                }
+                edge_samples += 1;
+                push_marker_neighbor(current - width, scene_mask, &mut visited, &mut stack);
+            }
+            if y + 1 < height {
+                push_marker_neighbor(current + width, scene_mask, &mut visited, &mut stack);
+            }
+        }
+
+        if component_pixels < MIN_LOW_DETAIL_SCENE_COMPONENT_PIXELS {
+            continue;
+        }
+
+        let edge_density = fraction(edge_pixels, edge_samples);
+        if edge_density <= MAX_LOW_DETAIL_SCENE_COMPONENT_EDGE_DENSITY {
+            dominant_low_detail_pixels = dominant_low_detail_pixels.max(component_pixels);
+        }
+    }
+
+    LowDetailSceneComponentStats {
+        dominant_component_fraction: fraction(dominant_low_detail_pixels, scene_pixel_count),
+    }
+}
+
 pub(super) const BORDER_REGION_COUNT: usize = 4;
 pub(super) const ROUTE_MARKER_HUE_FAMILY_COUNT: usize = 4;
 pub(super) const SCENE_MATERIAL_FAMILY_COUNT: usize = 4;
