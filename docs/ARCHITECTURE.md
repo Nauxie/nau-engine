@@ -22,7 +22,8 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/content_diagnostics.rs` owns runtime content-quality metric accumulation for generated island terrain, island bodies, ground cover, trees, rocks, clouds, and biome detail palettes.
 - `src/content_export.rs` owns the background-safe export module surface and shared re-exports.
 - `src/content_export/terrain.rs` owns terrain export reports, terrain OBJ/material-weight CSV writing, and terrain manifest metric aggregation.
-- `src/content_export/visual.rs` owns visual-content export reports for generated ground cover, trees, clouds, and biome palettes.
+- `src/content_export/visual.rs` owns the visual-content export facade and stable re-export for generated ground cover, trees, clouds, and biome palettes.
+- `src/content_export/visual/` owns visual-content report serialization, export orchestration, mesh metrics, vegetation metrics, cloud artifact writing, and biome-palette summaries.
 - `src/content_export/shared.rs` owns shared OBJ writing, mesh attribute inspection, slugging, and JSON formatting helpers used by export and screenshot metadata.
 - `src/debug_readout_runtime.rs` owns the live HUD/debug readout component, query surface, and diagnostic text formatting.
 - `src/debug_visuals.rs` owns F1 debug-visual toggling and Bevy gizmo drawing for player vectors, camera links, visual wind fields, and gameplay lift fields.
@@ -40,6 +41,8 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/bin/traversal_sim_eval/metrics/report.rs` owns simulation-only summary serialization and result packaging.
 - `src/bin/traversal_sim_eval/metrics/util.rs` owns shared simulation-metric response, percentile, distance, and rear-diagonal helpers.
 - `src/bin/traversal_sim_eval/tests.rs` owns unit coverage for simulation-only route, camera, air-control, and body-roll regression checks.
+- `src/bin/terrain_export_audit/main.rs` owns terrain-export audit CLI wiring.
+- `src/bin/terrain_export_audit/` owns terrain-export audit manifest validation, OBJ/material-weight artifact parsing, thresholds, check helpers, and unit coverage.
 - `src/bin/visual_audit.rs` owns the non-golden screenshot visual-audit CLI wiring used by screenshot eval runs.
 - `src/bin/visual_audit/analysis.rs` owns per-image audit sampling and check construction.
 - `src/bin/visual_audit/image_metrics.rs` owns reusable image statistics, detail-tile scans, border-clipping math, and component counting.
@@ -48,6 +51,8 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/bin/visual_audit/thresholds.rs` owns visual-audit thresholds.
 - `src/bin/visual_audit/types.rs` owns visual-audit report structs.
 - `src/bin/visual_audit/tests.rs` owns unit coverage for synthetic visual-audit image and sequence regressions.
+- `src/bin/semantic_scene_audit/main.rs` owns semantic scene audit CLI wiring for screenshot marker sidecars.
+- `src/bin/semantic_scene_audit/` owns checkpoint loading, semantic material pixel classification, report JSON/check assembly, thresholds, shared audit types, and unit coverage.
 - `src/lib.rs` declares the reusable module surface.
 - `src/generated_content.rs` owns procedural PBR material/texture helpers and shared generated-content re-exports.
 - `src/generated_content/island_meshes.rs` owns the generated-island mesh facade and stable re-exports shared by runtime spawning, app tests, and export audits.
