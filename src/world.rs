@@ -1,3 +1,4 @@
+mod collision;
 mod island;
 mod objectives;
 mod route;
@@ -9,6 +10,10 @@ mod tests;
 
 use bevy::prelude::Vec3;
 
+pub use collision::{
+    WorldCollisionProxy, WorldCollisionProxyKind, WorldCollisionResolution,
+    resolve_world_collisions,
+};
 pub use island::{IslandTerrainArchetype, SkyIsland};
 pub use objectives::{RouteObjective, RouteObjectiveKind, is_recovery_branch_island};
 pub use route::SkyRoute;
