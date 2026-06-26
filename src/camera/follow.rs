@@ -120,6 +120,16 @@ pub fn movement_input_stable_follow_direction(
     }
 }
 
+pub fn movement_facing_from_follow_direction(
+    follow_direction: Vec3,
+    orbit: CameraOrbit,
+) -> (Vec3, Vec3) {
+    let forward =
+        yawed_horizontal_direction(horizontal_or(follow_direction, Vec3::NEG_Z), orbit.yaw);
+    let right = forward.cross(Vec3::Y).normalize_or_zero();
+    (forward, horizontal_or(right, Vec3::X))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn step_camera_with_direction(
     current_position: Vec3,

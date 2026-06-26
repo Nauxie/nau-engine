@@ -31,6 +31,7 @@ use nau_engine::movement::{
 };
 
 pub(super) const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
+const BODY_TRAVEL_HEADING_MIN_PLANAR_SPEED_MPS: f32 = 6.0;
 
 pub(crate) fn collect_eval_frame_time(time: Res<Time>, mut run: ResMut<EvalRun>) {
     if !run.finalized && run.frame >= EVAL_FRAME_TIME_WARMUP_FRAMES {
@@ -180,6 +181,12 @@ pub(crate) fn collect_eval_metrics(
         .unwrap_or(f32::NAN);
     let lateral_axis_active = movement_input.has_lateral_axis();
     let lateral_input_active = lateral_axis_active && controller.mode != FlightMode::Grounded;
+    let body_travel_heading_error_degrees = body_travel_heading_error_degrees(
+        transform.rotation,
+        velocity.0,
+        controller.mode,
+        lateral_input_active,
+    );
     let lateral_response_mps = if lateral_axis_active {
         lateral_response_speed(velocity.0, movement_input, movement_facing)
     } else {
@@ -365,6 +372,7 @@ pub(crate) fn collect_eval_metrics(
     )
     .with_movement_metrics(EvalMovementMetrics {
         desired_body_yaw_error_degrees,
+        body_travel_heading_error_degrees,
         body_roll_degrees: body_roll_degrees(transform.rotation),
         desired_heading_alignment_mps,
         lateral_response_mps,
@@ -375,6 +383,24 @@ pub(crate) fn collect_eval_metrics(
     if let Err(error) = run.record_sample(sample) {
         run.io_error = Some(format!("failed to write eval sample: {error}"));
     }
+}
+
+fn body_travel_heading_error_degrees(
+    player_rotation: Quat,
+    velocity: Vec3,
+    mode: FlightMode,
+    lateral_input_active: bool,
+) -> f32 {
+    if !lateral_input_active || !matches!(mode, FlightMode::Airborne | FlightMode::Gliding) {
+        return f32::NAN;
+    }
+
+    let horizontal_velocity = Vec3::new(velocity.x, 0.0, velocity.z);
+    if horizontal_velocity.length() < BODY_TRAVEL_HEADING_MIN_PLANAR_SPEED_MPS {
+        return f32::NAN;
+    }
+
+    body_yaw_error_degrees(player_rotation, horizontal_velocity).abs()
 }
 
 fn visible_generated_pose_readability_metrics<'a>(

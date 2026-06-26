@@ -59,6 +59,10 @@ pub struct EvalMetricsSummary {
     pub avg_desired_body_heading_error_degrees: f32,
     pub p95_desired_body_heading_error_degrees: f32,
     pub max_desired_body_heading_error_degrees: f32,
+    pub p95_lateral_body_travel_heading_error_degrees: f32,
+    pub max_lateral_body_travel_heading_error_degrees: f32,
+    pub p95_backward_diagonal_body_travel_heading_error_degrees: f32,
+    pub max_backward_diagonal_body_travel_heading_error_degrees: f32,
     pub max_body_yaw_error_step_degrees: f32,
     pub body_yaw_oscillation_count: u32,
     pub max_body_roll_step_degrees: f32,
@@ -430,6 +434,20 @@ impl EvalMetricsSummary {
             self.gliding_samples,
             self.launching_samples,
             self.grounded_samples,
+        );
+        let max_body_yaw_error_step_key = format!("{indent}  \"max_body_yaw_error_step_degrees\"");
+        let body_travel_heading_metrics = format!(
+            "{indent}  \"p95_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"max_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"p95_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"max_backward_diagonal_body_travel_heading_error_degrees\": {},\n{}",
+            json_number(self.p95_lateral_body_travel_heading_error_degrees),
+            json_number(self.max_lateral_body_travel_heading_error_degrees),
+            json_number(self.p95_backward_diagonal_body_travel_heading_error_degrees),
+            json_number(self.max_backward_diagonal_body_travel_heading_error_degrees),
+            max_body_yaw_error_step_key
+        );
+        let json = json.replacen(
+            &max_body_yaw_error_step_key,
+            &body_travel_heading_metrics,
+            1,
         );
         let max_active_lift_fields_key = format!("{indent}  \"max_active_lift_fields\"");
         let wind_force_metrics = format!(

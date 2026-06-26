@@ -4,9 +4,9 @@ use super::super::math::yawed_horizontal_direction;
 use super::super::{
     CameraControlTuning, CameraOrbit, FollowCamera, FollowCameraState,
     camera_orbit_alignment_degrees, camera_pitch_degrees, camera_target_angle_degrees,
-    camera_view_yaw_degrees, horizontal_follow_direction, movement_input_stable_follow_direction,
-    movement_stable_follow_direction, step_camera, step_camera_with_direction,
-    step_camera_with_orbit, update_follow_direction_state,
+    camera_view_yaw_degrees, horizontal_follow_direction, movement_facing_from_follow_direction,
+    movement_input_stable_follow_direction, movement_stable_follow_direction, step_camera,
+    step_camera_with_direction, step_camera_with_orbit, update_follow_direction_state,
 };
 
 #[test]
@@ -76,6 +76,26 @@ fn lateral_or_released_input_does_not_drag_camera_follow_direction() {
     assert!(backward_diagonal_direction.distance(Vec3::NEG_Z) < 0.001);
     assert!(released_direction.distance(Vec3::NEG_Z) < 0.001);
     assert!(forward_direction.distance(velocity.normalize()) < 0.001);
+}
+
+#[test]
+fn movement_facing_uses_stable_follow_direction_plus_explicit_orbit() {
+    let (forward, right) =
+        movement_facing_from_follow_direction(Vec3::NEG_Z, CameraOrbit::default());
+
+    assert!(forward.distance(Vec3::NEG_Z) < 0.001);
+    assert!(right.distance(Vec3::X) < 0.001);
+
+    let (yawed_forward, yawed_right) = movement_facing_from_follow_direction(
+        Vec3::NEG_Z,
+        CameraOrbit {
+            yaw: std::f32::consts::FRAC_PI_2,
+            pitch: 0.0,
+        },
+    );
+
+    assert!(yawed_forward.distance(Vec3::NEG_X) < 0.001);
+    assert!(yawed_right.distance(Vec3::NEG_Z) < 0.001);
 }
 
 #[test]

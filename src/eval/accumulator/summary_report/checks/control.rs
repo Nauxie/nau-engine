@@ -381,6 +381,30 @@ fn append_air_control_checks(
             "deg",
         ),
         EvalCheck::at_most(
+            "air_control_p95_lateral_body_travel_heading_error",
+            derived.p95_lateral_body_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_P95_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "air_control_max_lateral_body_travel_heading_error",
+            acc.max_lateral_body_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "air_control_p95_backward_diagonal_body_travel_heading_error",
+            derived.p95_backward_diagonal_body_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_P95_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "air_control_max_backward_diagonal_body_travel_heading_error",
+            acc.max_backward_diagonal_body_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
             "air_control_max_body_yaw_error_step",
             acc.max_body_yaw_error_step_degrees,
             AIR_CONTROL_MAX_BODY_YAW_ERROR_STEP_DEGREES,

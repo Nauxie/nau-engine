@@ -9,9 +9,9 @@ mod types;
 mod tests;
 
 pub use follow::{
-    horizontal_follow_direction, movement_input_stable_follow_direction,
-    movement_stable_follow_direction, step_camera, step_camera_with_direction,
-    step_camera_with_orbit, update_follow_direction_state,
+    horizontal_follow_direction, movement_facing_from_follow_direction,
+    movement_input_stable_follow_direction, movement_stable_follow_direction, step_camera,
+    step_camera_with_direction, step_camera_with_orbit, update_follow_direction_state,
 };
 pub use input::apply_camera_input;
 pub use metrics::{

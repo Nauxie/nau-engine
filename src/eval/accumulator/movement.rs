@@ -20,6 +20,7 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     observe_body_roll(accumulator, sample);
     observe_desired_heading_alignment(accumulator, sample);
     observe_lateral_response(accumulator, sample);
+    observe_body_travel_heading_alignment(accumulator, sample);
     observe_air_brake(accumulator, sample);
     observe_pose_readability(accumulator, sample);
     observe_pose_intent_counts(accumulator, sample);
@@ -261,6 +262,41 @@ fn observe_air_brake(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     }
 }
 
+fn observe_body_travel_heading_alignment(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
+    if !body_travel_heading_alignment_sample(sample) {
+        return;
+    }
+
+    let Some(lateral_response_time) = lateral_response_time_for_sample(accumulator, sample) else {
+        return;
+    };
+    if sample.time_secs < lateral_response_time {
+        return;
+    }
+
+    accumulator
+        .lateral_body_travel_heading_error_values_degrees
+        .push(sample.body_travel_heading_error_degrees);
+    accumulator.max_lateral_body_travel_heading_error_degrees = accumulator
+        .max_lateral_body_travel_heading_error_degrees
+        .max(sample.body_travel_heading_error_degrees);
+
+    if sample.movement_input_forward_axis >= 0.0 {
+        return;
+    }
+
+    if backward_diagonal_response_time_for_sample(accumulator, sample)
+        .is_some_and(|time_secs| sample.time_secs >= time_secs)
+    {
+        accumulator
+            .backward_diagonal_body_travel_heading_error_values_degrees
+            .push(sample.body_travel_heading_error_degrees);
+        accumulator.max_backward_diagonal_body_travel_heading_error_degrees = accumulator
+            .max_backward_diagonal_body_travel_heading_error_degrees
+            .max(sample.body_travel_heading_error_degrees);
+    }
+}
+
 fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_pose_torso_pitch_degrees = accumulator
         .max_pose_torso_pitch_degrees
@@ -342,6 +378,35 @@ fn key_pose_intent_label(label: &str) -> bool {
         label,
         "gliding" | "diving" | "air_brake" | "landing_anticipation" | "landing_recovery"
     )
+}
+
+fn body_travel_heading_alignment_sample(sample: &EvalSample) -> bool {
+    matches!(sample.mode, "airborne" | "gliding")
+        && sample.lateral_input_active
+        && sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+        && sample.body_travel_heading_error_degrees.is_finite()
+}
+
+fn lateral_response_time_for_sample(
+    accumulator: &EvalAccumulator,
+    sample: &EvalSample,
+) -> Option<f32> {
+    match sample.movement_input_lateral_axis.signum() {
+        sign if sign > 0.0 => accumulator.first_right_lateral_response_time_secs,
+        sign if sign < 0.0 => accumulator.first_left_lateral_response_time_secs,
+        _ => accumulator.first_lateral_response_time_secs,
+    }
+}
+
+fn backward_diagonal_response_time_for_sample(
+    accumulator: &EvalAccumulator,
+    sample: &EvalSample,
+) -> Option<f32> {
+    match sample.movement_input_lateral_axis.signum() {
+        sign if sign > 0.0 => accumulator.first_backward_right_lateral_response_time_secs,
+        sign if sign < 0.0 => accumulator.first_backward_left_lateral_response_time_secs,
+        _ => accumulator.first_backward_lateral_response_time_secs,
+    }
 }
 
 fn backward_diagonal_rear_response_mps(sample: &EvalSample) -> Option<f32> {

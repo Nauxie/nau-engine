@@ -52,6 +52,10 @@ pub(crate) struct SimMetrics {
     pub(crate) max_body_roll_step_degrees: f32,
     pub(crate) max_right_body_bank_degrees: f32,
     pub(crate) max_left_body_bank_degrees: f32,
+    pub(crate) lateral_body_travel_heading_error_values_degrees: Vec<f32>,
+    pub(crate) max_lateral_body_travel_heading_error_degrees: f32,
+    pub(crate) backward_diagonal_body_travel_heading_error_values_degrees: Vec<f32>,
+    pub(crate) max_backward_diagonal_body_travel_heading_error_degrees: f32,
     pub(crate) max_desired_heading_alignment_mps: f32,
     pub(crate) max_lateral_response_mps: f32,
     pub(crate) first_lateral_input_time_secs: Option<f32>,
@@ -181,6 +185,10 @@ impl SimMetrics {
             max_body_roll_step_degrees: 0.0,
             max_right_body_bank_degrees: 0.0,
             max_left_body_bank_degrees: 0.0,
+            lateral_body_travel_heading_error_values_degrees: Vec::new(),
+            max_lateral_body_travel_heading_error_degrees: 0.0,
+            backward_diagonal_body_travel_heading_error_values_degrees: Vec::new(),
+            max_backward_diagonal_body_travel_heading_error_degrees: 0.0,
             max_desired_heading_alignment_mps: 0.0,
             max_lateral_response_mps: 0.0,
             first_lateral_input_time_secs: None,
@@ -271,5 +279,16 @@ impl SimMetrics {
             launching_samples: 0,
             grounded_samples: 0,
         }
+    }
+
+    pub(crate) fn p95_lateral_body_travel_heading_error_degrees(&self) -> f32 {
+        util::percentile(&self.lateral_body_travel_heading_error_values_degrees, 0.95)
+    }
+
+    pub(crate) fn p95_backward_diagonal_body_travel_heading_error_degrees(&self) -> f32 {
+        util::percentile(
+            &self.backward_diagonal_body_travel_heading_error_values_degrees,
+            0.95,
+        )
     }
 }
