@@ -165,6 +165,12 @@ impl EvalSample {
             weather_cloud_count,
             environment_motion_visual_count,
             max_environment_motion_offset_m,
+            updraft_guide_visual_count: 0,
+            updraft_ribbon_visual_count: 0,
+            crosswind_guide_visual_count: 0,
+            crosswind_ribbon_visual_count: 0,
+            max_updraft_visual_motion_m: 0.0,
+            max_crosswind_visual_motion_m: 0.0,
             world_collision_proxy_count: 0,
             world_collision_resolved_count: 0,
             max_world_collision_push_m: 0.0,
@@ -314,6 +320,25 @@ impl EvalSample {
 
     pub fn with_visual_foot_gap(mut self, visual_foot_gap_m: f32) -> Self {
         self.visual_foot_gap_m = visual_foot_gap_m;
+        self
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_wind_guide_visual_metrics(
+        mut self,
+        updraft_guide_count: usize,
+        updraft_ribbon_count: usize,
+        crosswind_guide_count: usize,
+        crosswind_ribbon_count: usize,
+        max_updraft_motion_m: f32,
+        max_crosswind_motion_m: f32,
+    ) -> Self {
+        self.updraft_guide_visual_count = updraft_guide_count;
+        self.updraft_ribbon_visual_count = updraft_ribbon_count;
+        self.crosswind_guide_visual_count = crosswind_guide_count;
+        self.crosswind_ribbon_visual_count = crosswind_ribbon_count;
+        self.max_updraft_visual_motion_m = max_updraft_motion_m.max(0.0);
+        self.max_crosswind_visual_motion_m = max_crosswind_motion_m.max(0.0);
         self
     }
 

@@ -47,10 +47,11 @@ impl WindField {
     }
 
     pub fn contains(self, position: Vec3) -> bool {
-        let offset = position - self.center;
-        offset.x.abs() <= self.half_extents.x
-            && offset.y.abs() <= self.half_extents.y
-            && offset.z.abs() <= self.half_extents.z
+        let local_offset = self.local_offset(position);
+        let extents = self.half_extents + Vec3::splat(FIELD_PAIR_EPSILON);
+        local_offset.x.abs() <= extents.x
+            && local_offset.y.abs() <= extents.y
+            && local_offset.z.abs() <= extents.z
     }
 
     pub fn flow_vector(self) -> Vec3 {
@@ -62,7 +63,7 @@ impl WindField {
             return None;
         }
 
-        let local = field_local_position(position, self.center, self.half_extents);
+        let local = self.normalized_local_position(position);
         let time = elapsed_secs.max(0.0);
         let phase = local.dot(Vec3::new(1.7, 0.83, -1.19));
         let primary_wave = (time * 0.74 + phase).sin();
@@ -110,9 +111,10 @@ impl WindField {
         match self.kind {
             WindFieldKind::Crosswind => {
                 let leading_edge = self.center - self.direction * self.half_extents.x;
+                let lateral = Vec3::new(-self.direction.z, 0.0, self.direction.x).normalize();
                 leading_edge
                     + Vec3::Y * (y_t * self.half_extents.y * 0.72)
-                    + Vec3::Z * (x_t * self.half_extents.z * 0.72)
+                    + lateral * (x_t * self.half_extents.z * 0.72)
             }
             WindFieldKind::Updraft => {
                 let base = self.center - Vec3::Y * self.half_extents.y;
@@ -120,6 +122,22 @@ impl WindField {
                     + Vec3::Z * (y_t * self.half_extents.z * 0.72)
             }
         }
+    }
+
+    fn local_offset(self, position: Vec3) -> Vec3 {
+        let offset = position - self.center;
+        match self.kind {
+            WindFieldKind::Crosswind => {
+                let lateral = Vec3::new(-self.direction.z, 0.0, self.direction.x).normalize();
+                Vec3::new(offset.dot(self.direction), offset.y, offset.dot(lateral))
+            }
+            WindFieldKind::Updraft => offset,
+        }
+    }
+
+    fn normalized_local_position(self, position: Vec3) -> Vec3 {
+        let safe_extents = self.half_extents.max(Vec3::splat(0.1));
+        self.local_offset(position) / safe_extents
     }
 }
 
@@ -179,9 +197,9 @@ impl LiftField {
 
     pub fn contains(self, position: Vec3) -> bool {
         let offset = position - self.center;
-        offset.x.abs() <= self.half_extents.x
-            && offset.y.abs() <= self.half_extents.y
-            && offset.z.abs() <= self.half_extents.z
+        offset.x.abs() <= self.half_extents.x + FIELD_PAIR_EPSILON
+            && offset.y.abs() <= self.half_extents.y + FIELD_PAIR_EPSILON
+            && offset.z.abs() <= self.half_extents.z + FIELD_PAIR_EPSILON
     }
 }
 
@@ -228,6 +246,31 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 2] = [
         visual_speed: 14.0,
     },
 ];
+
+pub const VISUAL_CROSSWIND_FIELD_COUNT: usize = 2;
+
+pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
+    [
+        WindField::crosswind(
+            Vec3::new(0.0, 5.0, 20.0),
+            Vec3::new(20.0, 4.0, 8.0),
+            Vec3::X,
+            10.0,
+        ),
+        WindField::crosswind(
+            Vec3::new(34.0, 10.0, -8.0),
+            Vec3::new(18.0, 8.0, 10.0),
+            Vec3::new(-1.0, 0.0, 0.35),
+            7.0,
+        ),
+    ]
+}
+
+pub fn visual_wind_fields() -> Vec<WindField> {
+    let mut fields = visual_crosswind_fields().to_vec();
+    fields.extend(GAMEPLAY_LIFT_ROUTE.iter().map(|node| node.visual_field()));
+    fields
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AerialPowerUp {
@@ -357,11 +400,6 @@ fn horizontal_or(v: Vec3, fallback: Vec3) -> Vec3 {
     }
 }
 
-fn field_local_position(position: Vec3, center: Vec3, half_extents: Vec3) -> Vec3 {
-    let safe_extents = half_extents.max(Vec3::splat(0.1));
-    (position - center) / safe_extents
-}
-
 pub fn visible_fields_at(position: Vec3, fields: impl IntoIterator<Item = WindField>) -> usize {
     fields
         .into_iter()
@@ -477,11 +515,65 @@ mod tests {
 
     #[test]
     fn stream_origins_stay_inside_visual_field() {
-        let field = WindField::updraft(Vec3::ZERO, Vec3::new(4.0, 8.0, 4.0), 6.0);
+        let fields = [
+            WindField::updraft(Vec3::ZERO, Vec3::new(4.0, 8.0, 4.0), 6.0),
+            WindField::crosswind(
+                Vec3::new(34.0, 10.0, -8.0),
+                Vec3::new(18.0, 8.0, 10.0),
+                Vec3::new(-1.0, 0.0, 0.35),
+                7.0,
+            ),
+        ];
 
-        for index in 0..16 {
-            assert!(field.contains(field.stream_origin(index, 16)));
+        for field in fields {
+            for index in 0..16 {
+                assert!(field.contains(field.stream_origin(index, 16)));
+            }
         }
+    }
+
+    #[test]
+    fn diagonal_crosswind_stream_paths_stay_inside_rotated_field() {
+        let field = WindField::crosswind(
+            Vec3::new(34.0, 10.0, -8.0),
+            Vec3::new(18.0, 8.0, 10.0),
+            Vec3::new(-1.0, 0.0, 0.35),
+            7.0,
+        );
+        let path_length = field.half_extents.x * 2.0;
+
+        for index in 0..36 {
+            let origin = field.stream_origin(index, 36);
+            for progress in [0.0, 0.25, 0.5, 0.75, 1.0] {
+                let position = origin + field.direction * (progress * path_length);
+                assert!(field.contains(position));
+                assert!(field.flow_at(position, 0.4).is_some());
+            }
+        }
+    }
+
+    #[test]
+    fn crosswind_stream_origins_follow_field_lateral_axis() {
+        let field = WindField::crosswind(
+            Vec3::ZERO,
+            Vec3::new(24.0, 8.0, 24.0),
+            Vec3::new(-1.0, 0.0, 0.35),
+            7.0,
+        );
+        let lateral = Vec3::new(-field.direction.z, 0.0, field.direction.x).normalize();
+        let origins = (0..16)
+            .map(|index| field.stream_origin(index, 16))
+            .collect::<Vec<_>>();
+        let min_lateral = origins
+            .iter()
+            .map(|origin| origin.dot(lateral))
+            .fold(f32::MAX, f32::min);
+        let max_lateral = origins
+            .iter()
+            .map(|origin| origin.dot(lateral))
+            .fold(f32::MIN, f32::max);
+
+        assert!(max_lateral - min_lateral > 12.0);
     }
 
     #[test]
@@ -541,6 +633,25 @@ mod tests {
             assert!(lift.contains(node.center));
             assert!(visual.contains(node.center));
             assert_eq!(visual.kind, WindFieldKind::Updraft);
+        }
+    }
+
+    #[test]
+    fn visual_wind_catalog_pairs_crosswinds_and_updrafts() {
+        let fields = visual_wind_fields();
+        let crosswinds = fields
+            .iter()
+            .filter(|field| field.kind == WindFieldKind::Crosswind)
+            .count();
+        let updrafts = fields
+            .iter()
+            .filter(|field| field.kind == WindFieldKind::Updraft)
+            .count();
+
+        assert_eq!(crosswinds, VISUAL_CROSSWIND_FIELD_COUNT);
+        assert_eq!(updrafts, GAMEPLAY_LIFT_ROUTE.len());
+        for node in GAMEPLAY_LIFT_ROUTE {
+            assert!(fields.iter().any(|field| *field == node.visual_field()));
         }
     }
 

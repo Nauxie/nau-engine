@@ -121,6 +121,12 @@ pub struct EvalMetricsSummary {
     pub max_weather_cloud_count: usize,
     pub max_environment_motion_visual_count: usize,
     pub max_environment_motion_offset_m: f32,
+    pub max_updraft_guide_visual_count: usize,
+    pub max_updraft_ribbon_visual_count: usize,
+    pub max_crosswind_guide_visual_count: usize,
+    pub max_crosswind_ribbon_visual_count: usize,
+    pub max_updraft_visual_motion_m: f32,
+    pub max_crosswind_visual_motion_m: f32,
     pub max_world_collision_proxy_count: usize,
     pub world_collision_resolved_samples: u32,
     pub max_world_collision_push_m: f32,
@@ -437,6 +443,17 @@ impl EvalMetricsSummary {
         );
         let json = json.replacen(&min_target_distance_key, &pose_readability_metrics, 1);
         let terrain_surface_key = format!("{indent}  \"min_island_terrain_surface_count\"");
+        let wind_visual_metrics = format!(
+            "{indent}  \"max_updraft_guide_visual_count\": {},\n{indent}  \"max_updraft_ribbon_visual_count\": {},\n{indent}  \"max_crosswind_guide_visual_count\": {},\n{indent}  \"max_crosswind_ribbon_visual_count\": {},\n{indent}  \"max_updraft_visual_motion_m\": {},\n{indent}  \"max_crosswind_visual_motion_m\": {},\n{}",
+            self.max_updraft_guide_visual_count,
+            self.max_updraft_ribbon_visual_count,
+            self.max_crosswind_guide_visual_count,
+            self.max_crosswind_ribbon_visual_count,
+            json_number(self.max_updraft_visual_motion_m),
+            json_number(self.max_crosswind_visual_motion_m),
+            terrain_surface_key
+        );
+        let json = json.replacen(&terrain_surface_key, &wind_visual_metrics, 1);
         let collision_metrics = format!(
             "{indent}  \"max_world_collision_proxy_count\": {},\n{indent}  \"world_collision_resolved_samples\": {},\n{indent}  \"max_world_collision_push_m\": {},\n{}",
             self.max_world_collision_proxy_count,

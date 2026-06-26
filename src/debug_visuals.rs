@@ -25,6 +25,7 @@ pub(crate) fn toggle_debug_visuals(
 
 pub(crate) fn draw_debug_gizmos(
     mut gizmos: Gizmos,
+    time: Res<Time>,
     visuals: Res<DebugVisuals>,
     player: Query<(&Transform, &Velocity), With<Player>>,
     camera: Query<&Transform, (With<Camera3d>, Without<Player>)>,
@@ -67,15 +68,16 @@ pub(crate) fn draw_debug_gizmos(
         );
     }
 
+    let elapsed = time.elapsed_secs();
     for field in &wind_fields {
-        draw_wind_field(&mut gizmos, *field);
+        draw_wind_field(&mut gizmos, *field, elapsed);
     }
     for field in &lift_fields {
         draw_lift_field(&mut gizmos, *field);
     }
 }
 
-fn draw_wind_field(gizmos: &mut Gizmos, field: WindField) {
+fn draw_wind_field(gizmos: &mut Gizmos, field: WindField, elapsed_secs: f32) {
     const STREAM_COUNT: usize = 16;
 
     let color = wind_field_color(field.kind);
@@ -83,7 +85,10 @@ fn draw_wind_field(gizmos: &mut Gizmos, field: WindField) {
 
     for index in 0..STREAM_COUNT {
         let start = field.stream_origin(index, STREAM_COUNT);
-        let stream = capped_vector(field.flow_vector(), 0.65, 7.5);
+        let flow = field
+            .flow_at(start, elapsed_secs)
+            .unwrap_or_else(|| field.flow_at(field.center, elapsed_secs).unwrap());
+        let stream = capped_vector(flow.vector, 0.65, 7.5);
         draw_vector(gizmos, start, stream, color);
         gizmos.line(start - stream * 0.35, start, color);
     }

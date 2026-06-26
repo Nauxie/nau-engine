@@ -18,7 +18,10 @@ pub use scenarios::{
 pub use summary::{EvalArtifacts, EvalCheck, EvalMetricsSummary, EvalSummary};
 #[cfg(test)]
 use thresholds::*;
-pub use thresholds::{EvalThresholds, MAX_RESIDENT_ISLAND_VISUAL_FRACTION};
+pub use thresholds::{
+    EvalThresholds, MAX_RESIDENT_ISLAND_VISUAL_FRACTION, MIN_DYNAMIC_WIND_FLOW_SPEED_MPS,
+    MIN_DYNAMIC_WIND_FLOW_VARIATION, MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE,
+};
 
 fn vec3_array(value: Vec3) -> [f32; 3] {
     [value.x, value.y, value.z]

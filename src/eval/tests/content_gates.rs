@@ -242,6 +242,9 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_weather_cloud_bank_depth_m\": 6.2000"));
     assert!(summary_json.contains("\"min_weather_cloud_mesh_vertices\": 1458"));
     assert!(summary_json.contains("\"min_weather_cloud_filament_ribbon_detail_count\": 27"));
+    assert!(summary_json.contains("\"max_updraft_guide_visual_count\": 70"));
+    assert!(summary_json.contains("\"max_crosswind_guide_visual_count\": 72"));
+    assert!(summary_json.contains("\"max_crosswind_visual_motion_m\": 0.3000"));
     assert!(summary_json.contains("\"max_world_collision_proxy_count\": 24"));
 }
 
@@ -267,6 +270,53 @@ fn accumulator_fails_when_world_collision_proxies_are_missing() {
 
     assert!(!collision_check.passed);
     assert_eq!(collision_check.value, 0.0);
+}
+
+#[test]
+fn sample_json_emits_wind_guide_visual_metrics() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let sample_json = content_metric_sample(scenario, 0, 12, 0, 96).to_json();
+
+    assert!(sample_json.contains("\"updraft_guide_visual_count\":70"));
+    assert!(sample_json.contains("\"updraft_ribbon_visual_count\":6"));
+    assert!(sample_json.contains("\"crosswind_guide_visual_count\":72"));
+    assert!(sample_json.contains("\"crosswind_ribbon_visual_count\":8"));
+    assert!(sample_json.contains("\"max_updraft_visual_motion_m\":0.2000"));
+    assert!(sample_json.contains("\"max_crosswind_visual_motion_m\":0.3000"));
+}
+
+#[test]
+fn accumulator_fails_when_wind_guide_visuals_are_missing_or_static() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(
+        content_metric_sample(scenario, 0, 12, 0, 96)
+            .with_wind_guide_visual_metrics(0, 0, 0, 0, 0.0, 0.0),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for check_name in [
+        "updraft_guide_visual_count",
+        "updraft_ribbon_visual_count",
+        "crosswind_guide_visual_count",
+        "crosswind_ribbon_visual_count",
+        "updraft_visual_motion",
+        "crosswind_visual_motion",
+    ] {
+        let check = named_check(&summary, check_name);
+        assert!(!check.passed, "{check_name} should fail");
+        assert_eq!(check.value, 0.0);
+    }
 }
 
 #[test]
@@ -646,6 +696,14 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
                 0,
                 0,
                 0,
+            )
+            .with_wind_guide_visual_metrics(
+                MIN_UPDRAFT_GUIDE_VISUAL_COUNT,
+                MIN_UPDRAFT_RIBBON_VISUAL_COUNT,
+                MIN_CROSSWIND_GUIDE_VISUAL_COUNT,
+                MIN_CROSSWIND_RIBBON_VISUAL_COUNT,
+                MIN_UPDRAFT_VISUAL_MOTION_M,
+                MIN_CROSSWIND_VISUAL_MOTION_M,
             ),
         );
     }

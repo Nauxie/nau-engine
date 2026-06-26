@@ -15,8 +15,8 @@ use nau_engine::{
         update_follow_direction_state,
     },
     environment::{
-        AERIAL_POWER_UP_ROUTE, GAMEPLAY_LIFT_ROUTE, LiftField, WindField, apply_aerial_power_up,
-        apply_lift_fields,
+        AERIAL_POWER_UP_ROUTE, GAMEPLAY_LIFT_ROUTE, LiftField, apply_aerial_power_up,
+        apply_lift_fields, visual_wind_fields,
     },
     eval::{EvalScenario, scripted_camera_input, scripted_input},
     movement::{
@@ -254,25 +254,6 @@ fn step_camera_frame(
         obstruction_adjustment_m: obstruction.adjusted_distance_m,
         obstruction_hits: obstruction.hit_count,
     }
-}
-
-fn visual_wind_fields() -> Vec<WindField> {
-    let mut fields = vec![
-        WindField::crosswind(
-            Vec3::new(0.0, 5.0, 20.0),
-            Vec3::new(20.0, 4.0, 8.0),
-            Vec3::X,
-            10.0,
-        ),
-        WindField::crosswind(
-            Vec3::new(34.0, 10.0, -8.0),
-            Vec3::new(18.0, 8.0, 10.0),
-            Vec3::new(-1.0, 0.0, 0.35),
-            7.0,
-        ),
-    ];
-    fields.extend(GAMEPLAY_LIFT_ROUTE.iter().map(|node| node.visual_field()));
-    fields
 }
 
 fn camera_obstructions() -> Vec<CameraObstruction> {

@@ -69,9 +69,15 @@ pub(super) const AIR_CONTROL_MIN_POSE_LATERAL_LEAN_DEGREES: f32 = 8.0;
 pub(super) const AIR_CONTROL_MIN_POSE_WING_AIRFLOW_STRENGTH: f32 = 0.25;
 pub(super) const LANDING_MIN_POSE_CROUCH_M: f32 = 0.05;
 pub(super) const AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES: f32 = 8.0;
-pub(super) const MIN_DYNAMIC_WIND_FLOW_SPEED_MPS: f32 = 8.0;
-pub(super) const MIN_DYNAMIC_WIND_FLOW_VARIATION: f32 = 0.12;
-pub(super) const MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE: f32 = 0.03;
+pub const MIN_DYNAMIC_WIND_FLOW_SPEED_MPS: f32 = 8.0;
+pub const MIN_DYNAMIC_WIND_FLOW_VARIATION: f32 = 0.12;
+pub const MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE: f32 = 0.03;
+pub(super) const MIN_UPDRAFT_GUIDE_VISUAL_COUNT: usize = 70;
+pub(super) const MIN_UPDRAFT_RIBBON_VISUAL_COUNT: usize = 6;
+pub(super) const MIN_CROSSWIND_GUIDE_VISUAL_COUNT: usize = 72;
+pub(super) const MIN_CROSSWIND_RIBBON_VISUAL_COUNT: usize = 8;
+pub(super) const MIN_UPDRAFT_VISUAL_MOTION_M: f32 = 0.2;
+pub(super) const MIN_CROSSWIND_VISUAL_MOTION_M: f32 = 0.3;
 pub(super) const MIN_WORLD_COLLISION_PROXY_COUNT: usize = 24;
 
 #[derive(Clone, Copy, Debug)]

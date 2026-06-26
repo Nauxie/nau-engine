@@ -15,6 +15,12 @@ use nau_engine::environment::{LiftRouteNode, WindField, wind_sway_motion};
 use nau_engine::movement::{FlightController, Velocity};
 use nau_engine::world::SkyIsland;
 
+const UPDRAFT_RIBBONS_PER_FIELD: usize = 3;
+const UPDRAFT_GUIDE_RING_LEVELS: [f32; 5] = [-0.78, -0.34, 0.1, 0.54, 0.9];
+const UPDRAFT_GUIDES_PER_RING: usize = 7;
+const CROSSWIND_RIBBONS_PER_FIELD: usize = 4;
+const CROSSWIND_GUIDES_PER_FIELD: usize = 36;
+
 #[derive(Component)]
 pub(crate) struct CinematicSun;
 
@@ -89,6 +95,32 @@ pub(crate) struct UpdraftRibbon {
     base_rotation: Quat,
 }
 
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct CrosswindGuide {
+    field: WindField,
+    stream_index: usize,
+    stream_count: usize,
+    phase: f32,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct CrosswindRibbon {
+    field: WindField,
+    base_translation: Vec3,
+    base_rotation: Quat,
+    phase: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct WindGuideVisualMetrics {
+    pub(crate) updraft_guide_count: usize,
+    pub(crate) updraft_ribbon_count: usize,
+    pub(crate) crosswind_guide_count: usize,
+    pub(crate) crosswind_ribbon_count: usize,
+    pub(crate) max_updraft_visual_motion_m: f32,
+    pub(crate) max_crosswind_visual_motion_m: f32,
+}
+
 pub(crate) fn spawn_updraft_guide(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -107,8 +139,8 @@ pub(crate) fn spawn_updraft_guide(
         Name::new(format!("{} atmospheric lift haze", lift.name)),
     ));
 
-    for ribbon_index in 0..3 {
-        let phase = ribbon_index as f32 / 3.0 * std::f32::consts::TAU;
+    for ribbon_index in 0..UPDRAFT_RIBBONS_PER_FIELD {
+        let phase = ribbon_index as f32 / UPDRAFT_RIBBONS_PER_FIELD as f32 * std::f32::consts::TAU;
         let base_rotation = Quat::from_rotation_y(phase * 0.35);
         commands.spawn((
             Mesh3d(meshes.add(updraft_ribbon_mesh(radius, height, phase))),
@@ -130,12 +162,11 @@ pub(crate) fn spawn_updraft_guide(
 
     let marker_mesh = meshes.add(Sphere::new(0.32));
     let ring_radius = radius * 0.5;
-    let ring_levels = [-0.78, -0.34, 0.1, 0.54, 0.9];
-    let markers_per_ring = 7;
 
-    for (level_index, level) in ring_levels.into_iter().enumerate() {
-        for marker_index in 0..markers_per_ring {
-            let phase = marker_index as f32 / markers_per_ring as f32 * std::f32::consts::TAU
+    for (level_index, level) in UPDRAFT_GUIDE_RING_LEVELS.into_iter().enumerate() {
+        for marker_index in 0..UPDRAFT_GUIDES_PER_RING {
+            let phase = marker_index as f32 / UPDRAFT_GUIDES_PER_RING as f32
+                * std::f32::consts::TAU
                 + level_index as f32 * 0.46;
             let guide = UpdraftGuide {
                 field,
@@ -153,6 +184,59 @@ pub(crate) fn spawn_updraft_guide(
                 Name::new(format!("{} guide mote", lift.name)),
             ));
         }
+    }
+}
+
+pub(crate) fn spawn_crosswind_guide(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    ribbon_material: Handle<StandardMaterial>,
+    marker_material: Handle<StandardMaterial>,
+    field: WindField,
+    label: &str,
+) {
+    let ribbon_length = (field.half_extents.x * 1.28).max(3.0);
+    let ribbon_mesh = meshes.add(Cuboid::new(ribbon_length, 0.09, 0.18));
+    let marker_mesh = meshes.add(Sphere::new(0.22));
+    let base_rotation = rotation_from_x_to_direction(field.direction);
+
+    for ribbon_index in 0..CROSSWIND_RIBBONS_PER_FIELD {
+        let phase = ribbon_index as f32 / CROSSWIND_RIBBONS_PER_FIELD as f32;
+        let origin = field.stream_origin(ribbon_index, CROSSWIND_RIBBONS_PER_FIELD);
+        let base_translation = origin + field.direction * (field.half_extents.x * 0.62);
+        commands.spawn((
+            Mesh3d(ribbon_mesh.clone()),
+            MeshMaterial3d(ribbon_material.clone()),
+            Transform {
+                translation: base_translation,
+                rotation: base_rotation * Quat::from_rotation_x(phase * std::f32::consts::TAU),
+                ..default()
+            },
+            CrosswindRibbon {
+                field,
+                base_translation,
+                base_rotation,
+                phase,
+            },
+            Name::new(format!("{label} crosswind flow ribbon")),
+        ));
+    }
+
+    for stream_index in 0..CROSSWIND_GUIDES_PER_FIELD {
+        let phase = (stream_index as f32 * 0.381_966).fract();
+        let guide = CrosswindGuide {
+            field,
+            stream_index,
+            stream_count: CROSSWIND_GUIDES_PER_FIELD,
+            phase,
+        };
+        commands.spawn((
+            Mesh3d(marker_mesh.clone()),
+            MeshMaterial3d(marker_material.clone()),
+            Transform::from_translation(crosswind_guide_position(&guide, 0.0)),
+            guide,
+            Name::new(format!("{label} crosswind guide mote")),
+        ));
     }
 }
 
@@ -437,6 +521,48 @@ pub(crate) fn update_updraft_ribbons(
     }
 }
 
+pub(crate) fn update_crosswind_guides(
+    time: Res<Time>,
+    mut guides: Query<(&CrosswindGuide, &mut Transform)>,
+) {
+    let elapsed = time.elapsed_secs();
+
+    for (guide, mut transform) in &mut guides {
+        transform.translation = crosswind_guide_position(guide, elapsed);
+        transform.rotation =
+            rotation_from_x_to_direction(guide.field.direction) * Quat::from_rotation_x(elapsed);
+    }
+}
+
+pub(crate) fn update_crosswind_ribbons(
+    time: Res<Time>,
+    mut ribbons: Query<(&CrosswindRibbon, &mut Transform)>,
+) {
+    let elapsed = time.elapsed_secs();
+
+    for (ribbon, mut transform) in &mut ribbons {
+        let flow = ribbon
+            .field
+            .flow_at(ribbon.base_translation, elapsed)
+            .unwrap_or_else(|| ribbon.field.flow_at(ribbon.field.center, elapsed).unwrap());
+        let lateral = wind_lateral_axis(ribbon.field.direction);
+        let wave = (elapsed * 0.82 + ribbon.phase * std::f32::consts::TAU).sin();
+        let lift_wave = (elapsed * 1.16 + ribbon.phase * 4.1).cos();
+        transform.translation = ribbon.base_translation
+            + ribbon.field.direction * (wave * flow.gust_strength * 0.48)
+            + lateral * (flow.variation * 0.42 + wave * 0.18)
+            + Vec3::Y * (lift_wave * 0.08);
+        transform.rotation = ribbon.base_rotation
+            * Quat::from_rotation_x(ribbon.phase * std::f32::consts::TAU)
+            * Quat::from_rotation_z(wave * 0.08);
+        transform.scale = Vec3::new(
+            1.0 + flow.variation * 0.08,
+            1.0 + flow.variation * 0.18,
+            1.0 + flow.variation * 0.18,
+        );
+    }
+}
+
 pub(crate) fn update_glider_airflow_trails(
     time: Res<Time>,
     visual_assets: Res<VisualAssetRegistry>,
@@ -479,6 +605,46 @@ pub(crate) fn wind_responsive_visual_metrics<'a>(
     })
 }
 
+pub(crate) fn wind_guide_visual_metrics<'a>(
+    updraft_guides: impl Iterator<Item = (&'a UpdraftGuide, &'a Transform)>,
+    updraft_ribbons: impl Iterator<Item = (&'a UpdraftRibbon, &'a Transform)>,
+    crosswind_guides: impl Iterator<Item = (&'a CrosswindGuide, &'a Transform)>,
+    crosswind_ribbons: impl Iterator<Item = (&'a CrosswindRibbon, &'a Transform)>,
+) -> WindGuideVisualMetrics {
+    let mut metrics = WindGuideVisualMetrics::default();
+
+    for (guide, transform) in updraft_guides {
+        metrics.updraft_guide_count += 1;
+        metrics.max_updraft_visual_motion_m = metrics.max_updraft_visual_motion_m.max(
+            transform
+                .translation
+                .distance(updraft_guide_position(guide, 0.0)),
+        );
+    }
+    for (ribbon, transform) in updraft_ribbons {
+        metrics.updraft_ribbon_count += 1;
+        metrics.max_updraft_visual_motion_m = metrics
+            .max_updraft_visual_motion_m
+            .max(transform.translation.distance(ribbon.base_translation));
+    }
+    for (guide, transform) in crosswind_guides {
+        metrics.crosswind_guide_count += 1;
+        metrics.max_crosswind_visual_motion_m = metrics.max_crosswind_visual_motion_m.max(
+            transform
+                .translation
+                .distance(crosswind_guide_position(guide, 0.0)),
+        );
+    }
+    for (ribbon, transform) in crosswind_ribbons {
+        metrics.crosswind_ribbon_count += 1;
+        metrics.max_crosswind_visual_motion_m = metrics
+            .max_crosswind_visual_motion_m
+            .max(transform.translation.distance(ribbon.base_translation));
+    }
+
+    metrics
+}
+
 fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
     let angle = guide.phase + elapsed * guide.angular_speed;
     let base = guide.center
@@ -493,4 +659,28 @@ fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
     });
 
     base + flow_offset
+}
+
+fn crosswind_guide_position(guide: &CrosswindGuide, elapsed: f32) -> Vec3 {
+    let field = guide.field;
+    let path_length = (field.half_extents.x * 2.0).max(1.0);
+    let progress =
+        (guide.phase + elapsed * field.visual_speed.max(1.0) / path_length * 0.72).fract();
+    let lane_origin = field.stream_origin(guide.stream_index, guide.stream_count);
+    let base = lane_origin + field.direction * (progress * path_length);
+    let flow = field
+        .flow_at(base, elapsed)
+        .unwrap_or_else(|| field.flow_at(field.center, elapsed).unwrap());
+    let lateral = wind_lateral_axis(field.direction);
+    let phase = guide.phase * std::f32::consts::TAU;
+    base + lateral * ((elapsed * 1.34 + phase).sin() * 0.28 + flow.variation * 0.26)
+        + Vec3::Y * ((elapsed * 1.7 + phase).cos() * 0.16)
+}
+
+fn rotation_from_x_to_direction(direction: Vec3) -> Quat {
+    Quat::from_rotation_arc(Vec3::X, direction.normalize_or_zero())
+}
+
+fn wind_lateral_axis(direction: Vec3) -> Vec3 {
+    Vec3::new(-direction.z, 0.0, direction.x).normalize_or_zero()
 }
