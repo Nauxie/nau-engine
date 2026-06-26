@@ -131,9 +131,18 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_updraft_visual_motion_m = accumulator
         .max_updraft_visual_motion_m
         .max(sample.max_updraft_visual_motion_m);
+    accumulator.max_updraft_visual_rise_m = accumulator
+        .max_updraft_visual_rise_m
+        .max(sample.max_updraft_visual_rise_m);
     accumulator.max_crosswind_visual_motion_m = accumulator
         .max_crosswind_visual_motion_m
         .max(sample.max_crosswind_visual_motion_m);
+    accumulator.max_crosswind_guide_flow_displacement_m = accumulator
+        .max_crosswind_guide_flow_displacement_m
+        .max(sample.max_crosswind_guide_flow_displacement_m);
+    accumulator.max_crosswind_ribbon_flow_displacement_m = accumulator
+        .max_crosswind_ribbon_flow_displacement_m
+        .max(sample.max_crosswind_ribbon_flow_displacement_m);
     accumulator.max_world_collision_proxy_count = accumulator
         .max_world_collision_proxy_count
         .max(sample.world_collision_proxy_count);

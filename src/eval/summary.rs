@@ -104,10 +104,14 @@ pub struct EvalMetricsSummary {
     pub min_key_pose_readability_score: f32,
     pub max_key_pose_readability_score: f32,
     pub unreadable_key_pose_samples: u32,
+    pub key_pose_transition_grace_samples: u32,
     pub max_visible_pose_part_count: u32,
     pub pose_temporal_stability_samples: u32,
     pub max_pose_part_rotation_delta_degrees: f32,
     pub max_pose_part_translation_delta_m: f32,
+    pub landing_pose_temporal_stability_samples: u32,
+    pub max_landing_pose_part_rotation_delta_degrees: f32,
+    pub max_landing_pose_part_translation_delta_m: f32,
     pub min_target_distance_m: f32,
     pub final_target_distance_m: f32,
     pub min_camera_pitch_degrees: f32,
@@ -154,7 +158,10 @@ pub struct EvalMetricsSummary {
     pub max_crosswind_guide_visual_count: usize,
     pub max_crosswind_ribbon_visual_count: usize,
     pub max_updraft_visual_motion_m: f32,
+    pub max_updraft_visual_rise_m: f32,
     pub max_crosswind_visual_motion_m: f32,
+    pub max_crosswind_guide_flow_displacement_m: f32,
+    pub max_crosswind_ribbon_flow_displacement_m: f32,
     pub max_world_collision_proxy_count: usize,
     pub world_collision_resolved_samples: u32,
     pub world_collision_contact_samples: u32,
@@ -499,7 +506,7 @@ impl EvalMetricsSummary {
         let json = json.replacen(&post_brake_key, &planar_brake_metrics, 1);
         let min_target_distance_key = format!("{indent}  \"min_target_distance_m\"");
         let pose_readability_metrics = format!(
-            "{indent}  \"max_pose_torso_pitch_degrees\": {},\n{indent}  \"max_pose_arm_spread_degrees\": {},\n{indent}  \"max_pose_leg_tuck_degrees\": {},\n{indent}  \"max_pose_lateral_lean_degrees\": {},\n{indent}  \"max_right_pose_lateral_lean_degrees\": {},\n{indent}  \"max_left_pose_lateral_lean_degrees\": {},\n{indent}  \"max_pose_landing_crouch_m\": {},\n{indent}  \"max_pose_landing_flare_degrees\": {},\n{indent}  \"max_pose_wing_airflow_strength\": {},\n{indent}  \"min_key_pose_readability_score\": {},\n{indent}  \"max_key_pose_readability_score\": {},\n{indent}  \"unreadable_key_pose_samples\": {},\n{indent}  \"max_visible_pose_part_count\": {},\n{indent}  \"pose_temporal_stability_samples\": {},\n{indent}  \"max_pose_part_rotation_delta_degrees\": {},\n{indent}  \"max_pose_part_translation_delta_m\": {},\n{}",
+            "{indent}  \"max_pose_torso_pitch_degrees\": {},\n{indent}  \"max_pose_arm_spread_degrees\": {},\n{indent}  \"max_pose_leg_tuck_degrees\": {},\n{indent}  \"max_pose_lateral_lean_degrees\": {},\n{indent}  \"max_right_pose_lateral_lean_degrees\": {},\n{indent}  \"max_left_pose_lateral_lean_degrees\": {},\n{indent}  \"max_pose_landing_crouch_m\": {},\n{indent}  \"max_pose_landing_flare_degrees\": {},\n{indent}  \"max_pose_wing_airflow_strength\": {},\n{indent}  \"min_key_pose_readability_score\": {},\n{indent}  \"max_key_pose_readability_score\": {},\n{indent}  \"unreadable_key_pose_samples\": {},\n{indent}  \"key_pose_transition_grace_samples\": {},\n{indent}  \"max_visible_pose_part_count\": {},\n{indent}  \"pose_temporal_stability_samples\": {},\n{indent}  \"max_pose_part_rotation_delta_degrees\": {},\n{indent}  \"max_pose_part_translation_delta_m\": {},\n{indent}  \"landing_pose_temporal_stability_samples\": {},\n{indent}  \"max_landing_pose_part_rotation_delta_degrees\": {},\n{indent}  \"max_landing_pose_part_translation_delta_m\": {},\n{}",
             json_number(self.max_pose_torso_pitch_degrees),
             json_number(self.max_pose_arm_spread_degrees),
             json_number(self.max_pose_leg_tuck_degrees),
@@ -512,22 +519,29 @@ impl EvalMetricsSummary {
             json_number(self.min_key_pose_readability_score),
             json_number(self.max_key_pose_readability_score),
             self.unreadable_key_pose_samples,
+            self.key_pose_transition_grace_samples,
             self.max_visible_pose_part_count,
             self.pose_temporal_stability_samples,
             json_number(self.max_pose_part_rotation_delta_degrees),
             json_number(self.max_pose_part_translation_delta_m),
+            self.landing_pose_temporal_stability_samples,
+            json_number(self.max_landing_pose_part_rotation_delta_degrees),
+            json_number(self.max_landing_pose_part_translation_delta_m),
             min_target_distance_key
         );
         let json = json.replacen(&min_target_distance_key, &pose_readability_metrics, 1);
         let terrain_surface_key = format!("{indent}  \"min_island_terrain_surface_count\"");
         let wind_visual_metrics = format!(
-            "{indent}  \"max_updraft_guide_visual_count\": {},\n{indent}  \"max_updraft_ribbon_visual_count\": {},\n{indent}  \"max_crosswind_guide_visual_count\": {},\n{indent}  \"max_crosswind_ribbon_visual_count\": {},\n{indent}  \"max_updraft_visual_motion_m\": {},\n{indent}  \"max_crosswind_visual_motion_m\": {},\n{}",
+            "{indent}  \"max_updraft_guide_visual_count\": {},\n{indent}  \"max_updraft_ribbon_visual_count\": {},\n{indent}  \"max_crosswind_guide_visual_count\": {},\n{indent}  \"max_crosswind_ribbon_visual_count\": {},\n{indent}  \"max_updraft_visual_motion_m\": {},\n{indent}  \"max_updraft_visual_rise_m\": {},\n{indent}  \"max_crosswind_visual_motion_m\": {},\n{indent}  \"max_crosswind_guide_flow_displacement_m\": {},\n{indent}  \"max_crosswind_ribbon_flow_displacement_m\": {},\n{}",
             self.max_updraft_guide_visual_count,
             self.max_updraft_ribbon_visual_count,
             self.max_crosswind_guide_visual_count,
             self.max_crosswind_ribbon_visual_count,
             json_number(self.max_updraft_visual_motion_m),
+            json_number(self.max_updraft_visual_rise_m),
             json_number(self.max_crosswind_visual_motion_m),
+            json_number(self.max_crosswind_guide_flow_displacement_m),
+            json_number(self.max_crosswind_ribbon_flow_displacement_m),
             terrain_surface_key
         );
         let json = json.replacen(&terrain_surface_key, &wind_visual_metrics, 1);

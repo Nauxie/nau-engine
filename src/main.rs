@@ -41,12 +41,12 @@ use nau_engine::movement::FlightTuning;
 #[cfg(test)]
 use nau_engine::world::SkyIsland;
 use nau_engine::world::SkyRoute;
-use player_runtime::apply_authored_player_pose_nodes;
 pub(crate) use player_runtime::{
     Player, RouteObjectiveTracker, WindForceDiagnostics, grounded_visual_foot_gap_m,
     keyboard_flight_input, movement_facing,
 };
 use player_runtime::{animate_character, eval_fly_player, fly_player, update_route_objectives};
+use player_runtime::{apply_authored_player_pose_nodes, reapply_authored_player_pose_nodes};
 use power_up_runtime::*;
 use scene_setup_runtime::{INITIAL_SKY_CLEAR_COLOR, WORLD_RADIUS, setup};
 #[cfg(test)]
@@ -170,7 +170,7 @@ fn main() -> AppExit {
         )
         .add_systems(
             PostUpdate,
-            apply_authored_player_pose_nodes
+            reapply_authored_player_pose_nodes
                 .after(AnimationSystems)
                 .before(TransformSystems::Propagate),
         )

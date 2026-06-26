@@ -118,6 +118,7 @@ impl EvalSample {
             pose_landing_crouch_m: 0.0,
             pose_wing_airflow_strength: 0.0,
             key_pose_readability_score: 1.0,
+            key_pose_transition_grace: false,
             visible_pose_part_count: 0,
             max_pose_part_rotation_delta_degrees: f32::NAN,
             max_pose_part_translation_delta_m: f32::NAN,
@@ -184,7 +185,10 @@ impl EvalSample {
             crosswind_guide_visual_count: 0,
             crosswind_ribbon_visual_count: 0,
             max_updraft_visual_motion_m: 0.0,
+            max_updraft_visual_rise_m: 0.0,
             max_crosswind_visual_motion_m: 0.0,
+            max_crosswind_guide_flow_displacement_m: 0.0,
+            max_crosswind_ribbon_flow_displacement_m: 0.0,
             world_collision_proxy_count: 0,
             world_collision_resolved_count: 0,
             max_world_collision_push_m: 0.0,
@@ -317,6 +321,11 @@ impl EvalSample {
         self
     }
 
+    pub fn with_key_pose_transition_grace(mut self, used_transition_grace: bool) -> Self {
+        self.key_pose_transition_grace = used_transition_grace;
+        self
+    }
+
     pub fn with_pose_temporal_metrics(mut self, metrics: EvalPoseTemporalMetrics) -> Self {
         self.visible_pose_part_count = metrics.visible_pose_part_count;
         self.max_pose_part_rotation_delta_degrees =
@@ -393,14 +402,22 @@ impl EvalSample {
         crosswind_guide_count: usize,
         crosswind_ribbon_count: usize,
         max_updraft_motion_m: f32,
+        max_updraft_rise_m: f32,
         max_crosswind_motion_m: f32,
+        max_crosswind_guide_flow_displacement_m: f32,
+        max_crosswind_ribbon_flow_displacement_m: f32,
     ) -> Self {
         self.updraft_guide_visual_count = updraft_guide_count;
         self.updraft_ribbon_visual_count = updraft_ribbon_count;
         self.crosswind_guide_visual_count = crosswind_guide_count;
         self.crosswind_ribbon_visual_count = crosswind_ribbon_count;
         self.max_updraft_visual_motion_m = max_updraft_motion_m.max(0.0);
+        self.max_updraft_visual_rise_m = max_updraft_rise_m.max(0.0);
         self.max_crosswind_visual_motion_m = max_crosswind_motion_m.max(0.0);
+        self.max_crosswind_guide_flow_displacement_m =
+            max_crosswind_guide_flow_displacement_m.max(0.0);
+        self.max_crosswind_ribbon_flow_displacement_m =
+            max_crosswind_ribbon_flow_displacement_m.max(0.0);
         self
     }
 

@@ -118,7 +118,10 @@ pub(crate) struct WindGuideVisualMetrics {
     pub(crate) crosswind_guide_count: usize,
     pub(crate) crosswind_ribbon_count: usize,
     pub(crate) max_updraft_visual_motion_m: f32,
+    pub(crate) max_updraft_visual_rise_m: f32,
     pub(crate) max_crosswind_visual_motion_m: f32,
+    pub(crate) max_crosswind_guide_flow_displacement_m: f32,
+    pub(crate) max_crosswind_ribbon_flow_displacement_m: f32,
 }
 
 pub(crate) fn spawn_updraft_guide(
@@ -621,11 +624,14 @@ pub(crate) fn wind_guide_visual_metrics<'a>(
 
     for (guide, transform) in updraft_guides {
         metrics.updraft_guide_count += 1;
-        metrics.max_updraft_visual_motion_m = metrics.max_updraft_visual_motion_m.max(
-            transform
-                .translation
-                .distance(updraft_guide_position(guide, 0.0)),
-        );
+        let baseline = updraft_guide_position(guide, 0.0);
+        let displacement = transform.translation - baseline;
+        metrics.max_updraft_visual_motion_m = metrics
+            .max_updraft_visual_motion_m
+            .max(displacement.length());
+        metrics.max_updraft_visual_rise_m = metrics
+            .max_updraft_visual_rise_m
+            .max(displacement.y.max(0.0));
     }
     for (ribbon, transform) in updraft_ribbons {
         metrics.updraft_ribbon_count += 1;
@@ -635,17 +641,24 @@ pub(crate) fn wind_guide_visual_metrics<'a>(
     }
     for (guide, transform) in crosswind_guides {
         metrics.crosswind_guide_count += 1;
-        metrics.max_crosswind_visual_motion_m = metrics.max_crosswind_visual_motion_m.max(
-            transform
-                .translation
-                .distance(crosswind_guide_position(guide, 0.0)),
-        );
+        let baseline = crosswind_guide_position(guide, 0.0);
+        let displacement = transform.translation - baseline;
+        metrics.max_crosswind_visual_motion_m = metrics
+            .max_crosswind_visual_motion_m
+            .max(displacement.length());
+        metrics.max_crosswind_guide_flow_displacement_m = metrics
+            .max_crosswind_guide_flow_displacement_m
+            .max(displacement.dot(guide.field.direction).max(0.0));
     }
     for (ribbon, transform) in crosswind_ribbons {
+        let displacement = transform.translation - ribbon.base_translation;
         metrics.crosswind_ribbon_count += 1;
         metrics.max_crosswind_visual_motion_m = metrics
             .max_crosswind_visual_motion_m
-            .max(transform.translation.distance(ribbon.base_translation));
+            .max(displacement.length());
+        metrics.max_crosswind_ribbon_flow_displacement_m = metrics
+            .max_crosswind_ribbon_flow_displacement_m
+            .max(displacement.dot(ribbon.field.direction).max(0.0));
     }
 
     metrics
@@ -761,5 +774,79 @@ mod tests {
 
         assert_eq!(metrics.updraft_guide_count, 1);
         assert!(metrics.max_updraft_visual_motion_m > 3.0);
+        assert!(metrics.max_updraft_visual_rise_m > 3.0);
+    }
+
+    #[test]
+    fn wind_guide_metrics_capture_crosswind_flow_direction_motion() {
+        let field = WindField::crosswind(
+            Vec3::ZERO,
+            Vec3::new(12.0, 6.0, 8.0),
+            Vec3::new(-1.0, 0.0, 0.35),
+            10.0,
+        );
+        let guide = CrosswindGuide {
+            field,
+            stream_index: 4,
+            stream_count: 16,
+            phase: 0.12,
+        };
+        let transform = Transform::from_translation(crosswind_guide_position(&guide, 2.0));
+        let metrics = wind_guide_visual_metrics(
+            std::iter::empty::<(&UpdraftGuide, &Transform)>(),
+            std::iter::empty::<(&UpdraftRibbon, &Transform)>(),
+            [(&guide, &transform)].into_iter(),
+            std::iter::empty::<(&CrosswindRibbon, &Transform)>(),
+        );
+
+        assert_eq!(metrics.crosswind_guide_count, 1);
+        assert!(metrics.max_crosswind_visual_motion_m > 3.0);
+        assert!(metrics.max_crosswind_guide_flow_displacement_m > 3.0);
+    }
+
+    #[test]
+    fn wind_guide_metrics_do_not_treat_lateral_jitter_as_crosswind_flow() {
+        let field = WindField::crosswind(Vec3::ZERO, Vec3::new(12.0, 6.0, 8.0), Vec3::X, 10.0);
+        let guide = CrosswindGuide {
+            field,
+            stream_index: 4,
+            stream_count: 16,
+            phase: 0.12,
+        };
+        let baseline = crosswind_guide_position(&guide, 0.0);
+        let transform =
+            Transform::from_translation(baseline + wind_lateral_axis(field.direction) * 4.0);
+        let metrics = wind_guide_visual_metrics(
+            std::iter::empty::<(&UpdraftGuide, &Transform)>(),
+            std::iter::empty::<(&UpdraftRibbon, &Transform)>(),
+            [(&guide, &transform)].into_iter(),
+            std::iter::empty::<(&CrosswindRibbon, &Transform)>(),
+        );
+
+        assert!(metrics.max_crosswind_visual_motion_m > 3.0);
+        assert_eq!(metrics.max_crosswind_guide_flow_displacement_m, 0.0);
+        assert_eq!(metrics.max_crosswind_ribbon_flow_displacement_m, 0.0);
+    }
+
+    #[test]
+    fn wind_guide_metrics_capture_crosswind_ribbon_flow_direction_motion() {
+        let field = WindField::crosswind(Vec3::ZERO, Vec3::new(12.0, 6.0, 8.0), Vec3::X, 10.0);
+        let ribbon = CrosswindRibbon {
+            field,
+            base_translation: Vec3::ZERO,
+            base_rotation: Quat::IDENTITY,
+            phase: 0.0,
+        };
+        let transform = Transform::from_translation(field.direction * 1.2);
+        let metrics = wind_guide_visual_metrics(
+            std::iter::empty::<(&UpdraftGuide, &Transform)>(),
+            std::iter::empty::<(&UpdraftRibbon, &Transform)>(),
+            std::iter::empty::<(&CrosswindGuide, &Transform)>(),
+            [(&ribbon, &transform)].into_iter(),
+        );
+
+        assert_eq!(metrics.crosswind_ribbon_count, 1);
+        assert!(metrics.max_crosswind_visual_motion_m > 1.0);
+        assert!(metrics.max_crosswind_ribbon_flow_displacement_m > 1.0);
     }
 }
