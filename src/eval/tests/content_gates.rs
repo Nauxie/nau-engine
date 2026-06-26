@@ -239,9 +239,9 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_generated_pond_surface_count\": 12"));
     assert!(summary_json.contains("\"min_landmark_mesh_vertices\": 39"));
     assert!(summary_json.contains("\"min_generated_weather_cloud_bank_count\": 12"));
-    assert!(summary_json.contains("\"min_weather_cloud_bank_depth_m\": 4.8000"));
-    assert!(summary_json.contains("\"min_weather_cloud_mesh_vertices\": 910"));
-    assert!(summary_json.contains("\"min_weather_cloud_filament_ribbon_detail_count\": 14"));
+    assert!(summary_json.contains("\"min_weather_cloud_bank_depth_m\": 6.2000"));
+    assert!(summary_json.contains("\"min_weather_cloud_mesh_vertices\": 1458"));
+    assert!(summary_json.contains("\"min_weather_cloud_filament_ribbon_detail_count\": 27"));
 }
 
 #[test]
@@ -250,8 +250,8 @@ fn accumulator_fails_generated_visual_shape_regression() {
     let mut accumulator = EvalAccumulator::default();
     accumulator.observe(
         content_metric_sample(scenario, 0, 12, 0, 96).with_generated_visual_shape_metrics(
-            528, 220, 1100, 12, 12, 62, 316, 5, 48, 74, 27, 10, 1, 4, 12, 39, 12, 12, 4.8, 6, 10,
-            910, 14,
+            528, 220, 1100, 12, 12, 62, 316, 5, 48, 74, 27, 10, 1, 4, 12, 39, 12, 12, 6.2, 9, 18,
+            1458, 27,
         ),
     );
     accumulator.observe(
@@ -648,8 +648,8 @@ fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample
             .with_island_impostor_metrics(146, 24)
             .with_terrain_material_metrics(36, 3, 4, 64)
             .with_generated_visual_shape_metrics(
-                528, 220, 1100, 37, 37, 196, 412, 5, 60, 74, 27, 10, 1, 4, 12, 39, 30, 12, 4.8, 7,
-                14, 910, 14,
+                528, 220, 1100, 37, 37, 196, 412, 5, 60, 74, 27, 10, 1, 4, 12, 39, 30, 12, 6.2, 9,
+                18, 1458, 27,
             )
             .with_visible_authored_world_fixture_count(MIN_VISIBLE_AUTHORED_WORLD_FIXTURE_COUNT),
     );

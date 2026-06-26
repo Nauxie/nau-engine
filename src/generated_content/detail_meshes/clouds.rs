@@ -6,10 +6,10 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 
-pub(crate) const CLOUD_BANK_LOBES: usize = 14;
-pub(crate) const CLOUD_VEIL_LOBES: usize = 7;
-pub(crate) const CLOUD_WISP_CARDS_PER_LOBE: usize = 2;
-pub(crate) const CLOUD_FILAMENT_RIBBONS_PER_LOBE: usize = 2;
+pub(crate) const CLOUD_BANK_LOBES: usize = 18;
+pub(crate) const CLOUD_VEIL_LOBES: usize = 9;
+pub(crate) const CLOUD_WISP_CARDS_PER_LOBE: usize = 3;
+pub(crate) const CLOUD_FILAMENT_RIBBONS_PER_LOBE: usize = 3;
 const CLOUD_FILAMENT_RIBBON_SEGMENTS: usize = 5;
 #[cfg(test)]
 pub(crate) const CLOUD_FILAMENT_RIBBON_VERTICES: usize = (CLOUD_FILAMENT_RIBBON_SEGMENTS + 1) * 4;
@@ -27,21 +27,23 @@ pub(crate) fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
     for lobe in 0..lobe_count {
         let phase = lobe as f32 / lobe_count as f32 * std::f32::consts::TAU
             + random_unit(seed, lobe as u32, 5) * 0.8;
-        let layer = lobe % 4;
+        let layer = lobe % 5;
         let layer_height = match layer {
-            0 => -0.34,
-            1 => -0.08,
-            2 => 0.18,
-            _ => 0.40,
+            0 => -0.52,
+            1 => -0.22,
+            2 => 0.08,
+            3 => 0.34,
+            _ => 0.60,
         };
         let layer_spread = match layer {
-            0 => 0.72,
-            1 => 0.56,
-            2 => 0.40,
-            _ => 0.24,
+            0 => 0.86,
+            1 => 0.68,
+            2 => 0.52,
+            3 => 0.36,
+            _ => 0.22,
         };
         let radius =
-            0.36 + random_unit(seed, lobe as u32, 19) * 0.27 + if layer == 0 { 0.08 } else { 0.0 };
+            0.36 + random_unit(seed, lobe as u32, 19) * 0.27 + if layer <= 1 { 0.08 } else { 0.0 };
         let center = Vec3::new(
             phase.cos() * (0.18 + layer_spread * random_unit(seed, lobe as u32, 29)),
             layer_height + (random_unit(seed, lobe as u32, 41) - 0.5) * 0.16,
@@ -54,9 +56,9 @@ pub(crate) fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
             &mut indices,
             center,
             Vec3::new(
-                radius * (1.20 + layer as f32 * 0.04),
-                radius * (0.54 + layer as f32 * 0.03),
-                radius * (0.82 + layer as f32 * 0.05),
+                radius * (1.24 + layer as f32 * 0.035),
+                radius * (0.54 + layer as f32 * 0.035),
+                radius * (0.84 + layer as f32 * 0.05),
             ),
             5,
             10,
