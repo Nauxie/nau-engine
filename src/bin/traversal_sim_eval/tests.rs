@@ -6,7 +6,10 @@ use super::{
 };
 use bevy::prelude::{Quat, Transform, Vec3};
 use nau_engine::{
-    eval::{AIR_CONTROL_RESPONSE, CAMERA_MOUSE_CONTROL, EvalScenario, scenario_named},
+    eval::{
+        AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario,
+        ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, UPDRAFT_ROUTE, scenario_named,
+    },
     movement::{Facing, FlightController, FlightInput, FlightMode, FlightState},
     world::{START_POSITION, SkyRoute},
 };
@@ -24,6 +27,70 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"mode\": \"simulation_only\""));
     assert!(summary.contains("\"native_window_created\": false"));
     assert!(summary.contains("\"screenshot_png\": null"));
+}
+
+#[test]
+fn island_landing_simulation_reaches_target_surface() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("scenario");
+    let result = run_simulation(scenario);
+
+    assert!(result.passed);
+    assert!(
+        result.metrics.final_target_distance_m <= scenario.thresholds.max_final_target_distance_m
+    );
+    assert!(
+        result.metrics.target_landing_samples >= scenario.thresholds.min_target_landing_samples
+    );
+    assert!(result.metrics.grounded_samples >= scenario.thresholds.min_grounded_samples);
+}
+
+#[test]
+fn updraft_simulation_uses_readable_lift() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("scenario");
+    let result = run_simulation(scenario);
+
+    assert!(result.passed);
+    assert!(result.metrics.lifted_samples >= scenario.thresholds.min_lifted_samples);
+    assert_eq!(result.metrics.unreadable_lift_samples, 0);
+    assert!(result.metrics.readable_lift_samples >= result.metrics.lifted_samples);
+    assert!(result.metrics.max_altitude_m >= scenario.thresholds.min_max_altitude_m);
+}
+
+#[test]
+fn branch_recovery_simulation_completes_branch_objectives() {
+    let scenario = scenario_named(BRANCH_RECOVERY_ROUTE).expect("scenario");
+    let result = run_simulation(scenario);
+
+    assert!(result.passed);
+    assert_eq!(scenario.target_island_name, Some("sunlit terrace"));
+    assert!(
+        result.metrics.max_completed_objective_count
+            >= scenario.thresholds.min_completed_objective_count
+    );
+    assert!(
+        result.metrics.final_objective_completed_count
+            >= scenario.thresholds.min_completed_objective_count
+    );
+    assert!(
+        result.metrics.target_landing_samples >= scenario.thresholds.min_target_landing_samples
+    );
+}
+
+#[test]
+fn long_glide_simulation_collects_boosts_and_crosses_archipelago() {
+    let scenario = scenario_named(LONG_GLIDE_VISIBILITY).expect("scenario");
+    let result = run_simulation(scenario);
+
+    assert!(result.passed);
+    assert!(result.metrics.horizontal_distance_m >= scenario.thresholds.min_horizontal_distance_m);
+    assert!(result.metrics.max_sky_island_count >= scenario.thresholds.min_sky_island_count);
+    assert!(
+        result.metrics.max_collected_power_up_count
+            >= scenario.thresholds.min_collected_power_up_count
+    );
+    assert!(
+        result.metrics.power_up_effect_samples >= scenario.thresholds.min_power_up_effect_samples
+    );
 }
 
 #[test]
