@@ -1,6 +1,6 @@
 use super::{
     clouds::visual_content_cloud_summaries,
-    metrics::{finite_ratio, min_finite_f32, visual_content_mesh_summary},
+    metrics::{finite_range_f32, finite_ratio, min_finite_f32, visual_content_mesh_summary},
     palette::visual_content_palette_summary,
     types::{VisualContentExportReport, VisualGroundCoverSummary, VisualTreeSummary},
     vegetation::{
@@ -154,6 +154,10 @@ pub(crate) fn export_visual_content_inspection(
         tree_canopy_count: trees.len(),
         weather_cloud_count: clouds.len(),
         weather_cloud_bank_count: clouds.iter().filter(|summary| summary.bank).count(),
+        weather_cloud_veil_count: clouds
+            .iter()
+            .filter(|summary| summary.kind == "veil")
+            .count(),
         min_ground_cover_mesh_vertices: ground_cover
             .iter()
             .map(|summary| summary.mesh.vertex_count)
@@ -195,6 +199,9 @@ pub(crate) fn export_visual_content_inspection(
             .map(|summary| summary.trunk_ring_count)
             .min()
             .unwrap_or(0),
+        tree_trunk_height_range_m: finite_range_f32(
+            trees.iter().map(|summary| summary.trunk_height_m),
+        ),
         min_tree_canopy_mesh_vertices: trees
             .iter()
             .map(|summary| summary.canopy.vertex_count)
@@ -214,6 +221,9 @@ pub(crate) fn export_visual_content_inspection(
             trees
                 .iter()
                 .map(|summary| summary.canopy_vertical_to_horizontal_ratio),
+        ),
+        tree_canopy_radius_range_m: finite_range_f32(
+            trees.iter().map(|summary| summary.canopy_radius_m),
         ),
         min_weather_cloud_mesh_vertices: clouds
             .iter()
@@ -247,6 +257,9 @@ pub(crate) fn export_visual_content_inspection(
             .map(|summary| summary.lobe_count)
             .min()
             .unwrap_or(0),
+        min_weather_cloud_scaled_depth_span_m: min_finite_f32(
+            clouds.iter().map(|summary| summary.scaled_depth_span_m),
+        ),
         terrain_biome_palette_count,
         foliage_palette_count,
         stone_palette_count,

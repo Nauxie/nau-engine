@@ -25,12 +25,16 @@ const MIN_TREE_CANOPY_DETAIL_CARD_COUNT: u64 = 12;
 const MIN_TREE_CANOPY_VERTICAL_TO_HORIZONTAL_RATIO: f64 = 0.45;
 const MIN_WEATHER_CLOUD_COUNT: u64 = 24;
 const MIN_WEATHER_CLOUD_BANK_COUNT: u64 = 12;
+const MIN_WEATHER_CLOUD_VEIL_COUNT: u64 = 12;
 const MIN_WEATHER_CLOUD_MESH_VERTICES: u64 = 900;
 const MIN_WEATHER_CLOUD_LOBE_COUNT: u64 = 6;
 const MIN_WEATHER_CLOUD_WISP_CARD_COUNT: u64 = 14;
 const MIN_WEATHER_CLOUD_FILAMENT_RIBBON_DETAIL_COUNT: u64 = 14;
 const MIN_WEATHER_CLOUD_BANK_DEPTH_M: f64 = 4.0;
 const MIN_WEATHER_CLOUD_BANK_LOBE_COUNT: u64 = 10;
+const MIN_WEATHER_CLOUD_SCALED_DEPTH_SPAN_M: f64 = 12.0;
+const MIN_TREE_TRUNK_HEIGHT_RANGE_M: f64 = 1.5;
+const MIN_TREE_CANOPY_RADIUS_RANGE_M: f64 = 0.35;
 const MIN_TERRAIN_BIOME_PALETTE_COUNT: u64 = 5;
 const MIN_FOLIAGE_PALETTE_COUNT: u64 = 5;
 const MIN_STONE_PALETTE_COUNT: u64 = 4;
@@ -153,6 +157,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "meshes",
     ));
     checks.push(check_at_least_u64(
+        "weather_cloud_veil_count",
+        value_u64(counts, "weather_cloud_veil_count"),
+        MIN_WEATHER_CLOUD_VEIL_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
         "ground_cover_mesh_vertices",
         value_u64(minimums, "ground_cover_mesh_vertices"),
         MIN_GROUND_COVER_MESH_VERTICES,
@@ -206,6 +216,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         MIN_TREE_TRUNK_RING_COUNT,
         "rings",
     ));
+    checks.push(check_at_least_f64(
+        "tree_trunk_height_range",
+        value_f64(minimums, "tree_trunk_height_range_m"),
+        MIN_TREE_TRUNK_HEIGHT_RANGE_M,
+        "m",
+    ));
     checks.push(check_at_least_u64(
         "tree_canopy_mesh_vertices",
         value_u64(minimums, "tree_canopy_mesh_vertices"),
@@ -229,6 +245,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         value_f64(minimums, "tree_canopy_vertical_to_horizontal_ratio"),
         MIN_TREE_CANOPY_VERTICAL_TO_HORIZONTAL_RATIO,
         "ratio",
+    ));
+    checks.push(check_at_least_f64(
+        "tree_canopy_radius_range",
+        value_f64(minimums, "tree_canopy_radius_range_m"),
+        MIN_TREE_CANOPY_RADIUS_RANGE_M,
+        "m",
     ));
     checks.push(check_at_least_u64(
         "weather_cloud_mesh_vertices",
@@ -265,6 +287,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         value_u64(minimums, "weather_cloud_bank_lobe_count"),
         MIN_WEATHER_CLOUD_BANK_LOBE_COUNT,
         "lobes",
+    ));
+    checks.push(check_at_least_f64(
+        "weather_cloud_scaled_depth_span",
+        value_f64(minimums, "weather_cloud_scaled_depth_span_m"),
+        MIN_WEATHER_CLOUD_SCALED_DEPTH_SPAN_M,
+        "m",
     ));
     checks.push(check_at_least_u64(
         "terrain_biome_palette_count",
@@ -556,7 +584,8 @@ mod tests {
                 "tree_trunk_count": 1,
                 "tree_canopy_count": 1,
                 "weather_cloud_count": 1,
-                "weather_cloud_bank_count": 0
+                "weather_cloud_bank_count": 0,
+                "weather_cloud_veil_count": 0
             },
             "minimums": {
                 "ground_cover_mesh_vertices": 10,
@@ -568,16 +597,19 @@ mod tests {
                 "tree_branch_count": 1,
                 "tree_root_flare_count": 0,
                 "tree_trunk_ring_count": 2,
+                "tree_trunk_height_range_m": 0.1,
                 "tree_canopy_mesh_vertices": 45,
                 "tree_canopy_lobe_count": 1,
                 "tree_canopy_detail_card_count": 0,
                 "tree_canopy_vertical_to_horizontal_ratio": 0.1,
+                "tree_canopy_radius_range_m": 0.1,
                 "weather_cloud_mesh_vertices": 45,
                 "weather_cloud_lobe_count": 1,
                 "weather_cloud_wisp_card_count": 0,
                 "weather_cloud_filament_ribbon_detail_count": 0,
                 "weather_cloud_bank_depth_m": 0.2,
                 "weather_cloud_bank_lobe_count": 0,
+                "weather_cloud_scaled_depth_span_m": 0.5,
                 "terrain_biome_palette_count": 1,
                 "foliage_palette_count": 1,
                 "stone_palette_count": 1
@@ -603,11 +635,27 @@ mod tests {
                 .is_some_and(|check| { !check.get("passed").and_then(Value::as_bool).unwrap() })
         );
         assert!(
+            check_named(checks, "tree_trunk_height_range")
+                .is_some_and(|check| { !check.get("passed").and_then(Value::as_bool).unwrap() })
+        );
+        assert!(
+            check_named(checks, "tree_canopy_radius_range")
+                .is_some_and(|check| { !check.get("passed").and_then(Value::as_bool).unwrap() })
+        );
+        assert!(
+            check_named(checks, "weather_cloud_veil_count")
+                .is_some_and(|check| { !check.get("passed").and_then(Value::as_bool).unwrap() })
+        );
+        assert!(
             check_named(checks, "weather_cloud_wisp_card_count")
                 .is_some_and(|check| { !check.get("passed").and_then(Value::as_bool).unwrap() })
         );
         assert!(
             check_named(checks, "weather_cloud_filament_ribbon_detail_count")
+                .is_some_and(|check| { !check.get("passed").and_then(Value::as_bool).unwrap() })
+        );
+        assert!(
+            check_named(checks, "weather_cloud_scaled_depth_span")
                 .is_some_and(|check| { !check.get("passed").and_then(Value::as_bool).unwrap() })
         );
     }
