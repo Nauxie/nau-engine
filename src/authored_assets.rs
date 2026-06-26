@@ -15,10 +15,12 @@ pub(crate) use animation::{
 };
 pub(crate) use diagnostics::update_visual_asset_diagnostics;
 pub(crate) use fixtures::{
-    authored_world_fixture_scene_handles, authored_world_fixture_transform,
-    mark_authored_scene_ready,
+    authored_world_fixture_collision_proxy, authored_world_fixture_scene_handles,
+    authored_world_fixture_transform, mark_authored_scene_ready,
 };
 pub(crate) use registry::prepare_visual_asset_registry;
+#[cfg(test)]
+pub(crate) use types::VisualAssetSlot;
 pub(crate) use types::{
     AuthoredVisualScene, AuthoredVisualSceneRole, GeneratedPlayerPlaceholder,
     VisibleAuthoredWorldFixture, VisualAssetDiagnostics, VisualAssetRegistry,
