@@ -246,6 +246,7 @@ pub(crate) fn default_scene_sample_material_variant(
             "foliage" => "foliage",
             "cloud" => "cloud",
             "distant_island" => "distant_island",
+            "wind" => "wind",
             _ => "unknown",
         };
     }
