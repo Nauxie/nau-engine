@@ -1,0 +1,224 @@
+use crate::{
+    thresholds::{EXPECTED_MATERIALS, MIN_VISIBLE_MATERIALS_PER_CHECKPOINT},
+    types::{Check, CheckpointAudit, MaterialAudit, SceneSampleAudit},
+};
+use std::collections::{BTreeMap, HashSet};
+
+pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
+    let passed_checkpoint_count = checkpoints
+        .iter()
+        .filter(|checkpoint| checkpoint.passed)
+        .count();
+    let material_family_checkpoint_count = checkpoints
+        .iter()
+        .filter(|checkpoint| {
+            checkpoint.visible_scene_material_count >= MIN_VISIBLE_MATERIALS_PER_CHECKPOINT
+                && checkpoint.scene_material_pixel_hit_count
+                    >= checkpoint.visible_scene_material_count
+        })
+        .count();
+    let min_visible_material_count = checkpoints
+        .iter()
+        .map(|checkpoint| checkpoint.visible_scene_material_count)
+        .min()
+        .unwrap_or(0);
+    let material_counts = material_hit_counts(checkpoints);
+    let visible_material_counts = material_visible_counts(checkpoints);
+    let mut checks = vec![Check::at_least(
+        "checkpoint_scene_pixel_hits",
+        passed_checkpoint_count as f64,
+        checkpoints.len() as f64,
+        "checkpoints",
+    )];
+
+    checks.push(Check::at_least(
+        "checkpoint_scene_material_family_hits",
+        material_family_checkpoint_count as f64,
+        checkpoints.len() as f64,
+        "checkpoints",
+    ));
+    checks.push(Check::at_least(
+        "min_visible_scene_material_count",
+        min_visible_material_count as f64,
+        MIN_VISIBLE_MATERIALS_PER_CHECKPOINT as f64,
+        "materials",
+    ));
+
+    for material in EXPECTED_MATERIALS {
+        checks.push(Check::at_least(
+            format!("{material}_visible_scene_samples"),
+            *visible_material_counts.get(material).unwrap_or(&0) as f64,
+            1.0,
+            "samples",
+        ));
+        checks.push(Check::at_least(
+            format!("{material}_scene_sample_pixel_hits"),
+            *material_counts.get(material).unwrap_or(&0) as f64,
+            1.0,
+            "samples",
+        ));
+    }
+
+    checks
+}
+
+pub(crate) fn material_visible_counts(checkpoints: &[CheckpointAudit]) -> BTreeMap<&str, usize> {
+    let mut unique_visible = HashSet::new();
+    for checkpoint in checkpoints {
+        for sample in &checkpoint.samples {
+            if sample.is_visible() {
+                unique_visible.insert((sample.expected_material.as_str(), sample.label.as_str()));
+            }
+        }
+    }
+
+    let mut counts = BTreeMap::new();
+    for (material, _) in unique_visible {
+        *counts.entry(material).or_default() += 1;
+    }
+    counts
+}
+
+pub(crate) fn material_hit_counts(checkpoints: &[CheckpointAudit]) -> BTreeMap<&str, usize> {
+    let mut unique_hits = HashSet::new();
+    for checkpoint in checkpoints {
+        for sample in &checkpoint.samples {
+            if sample.passed {
+                unique_hits.insert((sample.expected_material.as_str(), sample.label.as_str()));
+            }
+        }
+    }
+
+    let mut counts = BTreeMap::new();
+    for (material, _) in unique_hits {
+        *counts.entry(material).or_default() += 1;
+    }
+    counts
+}
+
+pub(crate) fn report_json(
+    passed: bool,
+    checks: &[Check],
+    checkpoints: &[CheckpointAudit],
+) -> String {
+    let checkpoints_json = checkpoints
+        .iter()
+        .map(checkpoint_json)
+        .collect::<Vec<_>>()
+        .join(",\n");
+    let checks_json = checks
+        .iter()
+        .map(check_json)
+        .collect::<Vec<_>>()
+        .join(",\n    ");
+
+    format!(
+        "{{\n  \"passed\": {},\n  \"checkpoint_count\": {},\n  \"checks\": [\n    {}\n  ],\n  \"checkpoints\": [\n{}\n  ]\n}}",
+        passed,
+        checkpoints.len(),
+        checks_json,
+        checkpoints_json
+    )
+}
+
+pub(crate) fn checkpoint_json(checkpoint: &CheckpointAudit) -> String {
+    let samples_json = checkpoint
+        .samples
+        .iter()
+        .map(sample_json)
+        .collect::<Vec<_>>()
+        .join(",\n");
+    let materials_json = checkpoint
+        .materials
+        .iter()
+        .map(material_json)
+        .collect::<Vec<_>>()
+        .join(",\n");
+    format!(
+        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"checkpoint\": {},\n      \"passed\": {},\n      \"in_viewport_scene_sample_count\": {},\n      \"occluded_scene_sample_count\": {},\n      \"visible_scene_sample_count\": {},\n      \"scene_sample_pixel_hit_count\": {},\n      \"visible_scene_material_count\": {},\n      \"scene_material_pixel_hit_count\": {},\n      \"materials\": [\n{}\n      ],\n      \"samples\": [\n{}\n      ]\n    }}",
+        json_string(&checkpoint.metadata_path),
+        json_string(&checkpoint.screenshot_path),
+        json_string(&checkpoint.checkpoint),
+        checkpoint.passed,
+        checkpoint.in_viewport_scene_sample_count,
+        checkpoint.occluded_scene_sample_count,
+        checkpoint.visible_scene_sample_count,
+        checkpoint.scene_sample_pixel_hit_count,
+        checkpoint.visible_scene_material_count,
+        checkpoint.scene_material_pixel_hit_count,
+        materials_json,
+        samples_json
+    )
+}
+
+pub(crate) fn material_json(material: &MaterialAudit) -> String {
+    format!(
+        "        {{\"expected_material\": {}, \"visible_sample_count\": {}, \"sample_pixel_hit_count\": {}, \"min_sample_pixel_hit_count\": {}, \"hit_ratio\": {}, \"passed\": {}}}",
+        json_string(&material.expected_material),
+        material.visible_sample_count,
+        material.sample_pixel_hit_count,
+        material.min_sample_pixel_hit_count,
+        json_number(material.hit_ratio),
+        material.passed
+    )
+}
+
+pub(crate) fn sample_json(sample: &SceneSampleAudit) -> String {
+    let screen = match (sample.screen_x, sample.screen_y) {
+        (Some(x), Some(y)) => format!("{{\"x\": {}, \"y\": {}}}", json_number(x), json_number(y)),
+        _ => "null".to_string(),
+    };
+    format!(
+        "        {{\"kind\": {}, \"label\": {}, \"expected_material\": {}, \"in_viewport\": {}, \"visibility\": {}, \"screen\": {}, \"semantic_pixel_hits\": {}, \"passed\": {}}}",
+        json_string(&sample.kind),
+        json_string(&sample.label),
+        json_string(&sample.expected_material),
+        sample.in_viewport,
+        json_string(&sample.visibility),
+        screen,
+        sample.semantic_pixel_hits,
+        sample.passed
+    )
+}
+
+pub(crate) fn check_json(check: &Check) -> String {
+    format!(
+        "{{\"name\": {}, \"passed\": {}, \"value\": {}, \"comparator\": {}, \"threshold\": {}, \"unit\": {}}}",
+        json_string(&check.name),
+        check.passed,
+        json_number(check.value),
+        json_string(check.comparator),
+        json_number(check.threshold),
+        json_string(check.unit)
+    )
+}
+
+pub(crate) fn json_number(value: f64) -> String {
+    if value.is_finite() {
+        format!("{value:.4}")
+    } else {
+        "0.0000".to_string()
+    }
+}
+
+pub(crate) fn json_string(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len() + 2);
+    for character in value.chars() {
+        match character {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            '\u{08}' => escaped.push_str("\\b"),
+            '\u{0c}' => escaped.push_str("\\f"),
+            character if character <= '\u{1f}' => {
+                use std::fmt::Write as _;
+                write!(&mut escaped, "\\u{:04x}", character as u32)
+                    .expect("writing to a String cannot fail");
+            }
+            character => escaped.push(character),
+        }
+    }
+    format!("\"{escaped}\"")
+}
