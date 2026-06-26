@@ -65,6 +65,7 @@ pub(super) fn audit_image_with_alpha(
     let mut scene_material_family_pixels = [0usize; SCENE_MATERIAL_FAMILY_COUNT];
     let mut scene_material_pixels = 0usize;
     let mut foliage_scene_pixels = 0usize;
+    let mut foliage_scene_mask = vec![false; pixel_count];
     let mut cloud_layer_pixels = 0usize;
     let mut cloud_layer_region_pixels = 0usize;
     let mut cloud_layer_mask = vec![false; pixel_count];
@@ -181,6 +182,7 @@ pub(super) fn audit_image_with_alpha(
             scene_material_family_pixels[family] += 1;
             if family == 1 {
                 foliage_scene_pixels += 1;
+                foliage_scene_mask[index] = true;
             }
         }
         if cloud_layer_region {
@@ -257,14 +259,32 @@ pub(super) fn audit_image_with_alpha(
     let distant_scene_component_count =
         distant_scene_component_count(&distant_scene_mask, width_usize, height_usize);
     let distant_scene_color_bucket_count = distant_scene_color_buckets.len();
+    let distant_scene_bounds = mask_bounds(&distant_scene_mask, width_usize, height_usize);
+    let distant_scene_horizontal_span_fraction =
+        horizontal_span_fraction(distant_scene_bounds, width_usize);
+    let distant_scene_vertical_span_fraction =
+        vertical_span_fraction(distant_scene_bounds, height_usize);
     let scene_material_family_count = scene_material_family_pixels
         .into_iter()
         .filter(|pixels| *pixels >= MIN_SCENE_MATERIAL_FAMILY_PIXELS)
         .count();
     let foliage_scene_fraction = fraction(foliage_scene_pixels, scene_material_pixels);
+    let foliage_scene_tile_count = mask_tile_count(
+        &foliage_scene_mask,
+        width_usize,
+        height_usize,
+        DETAIL_TILE_COLUMNS,
+        DETAIL_TILE_ROWS,
+        MIN_FOLIAGE_SCENE_TILE_PIXELS,
+    );
     let cloud_layer_fraction = fraction(cloud_layer_pixels, cloud_layer_region_pixels);
     let cloud_layer_component_count =
         cloud_layer_component_count(&cloud_layer_mask, width_usize, height_usize);
+    let cloud_layer_bounds = mask_bounds(&cloud_layer_mask, width_usize, height_usize);
+    let cloud_layer_horizontal_span_fraction =
+        horizontal_span_fraction(cloud_layer_bounds, width_usize);
+    let cloud_layer_vertical_span_fraction =
+        vertical_span_fraction(cloud_layer_bounds, height_usize);
     let severe_clipping_fraction = severe_clipping_fraction(
         &border_occluder_pixels,
         &border_region_pixels,
@@ -397,10 +417,15 @@ pub(super) fn audit_image_with_alpha(
         distant_scene_fraction,
         distant_scene_component_count,
         distant_scene_color_bucket_count,
+        distant_scene_horizontal_span_fraction,
+        distant_scene_vertical_span_fraction,
         scene_material_family_count,
         foliage_scene_fraction,
+        foliage_scene_tile_count,
         cloud_layer_fraction,
         cloud_layer_component_count,
+        cloud_layer_horizontal_span_fraction,
+        cloud_layer_vertical_span_fraction,
         severe_clipping_fraction,
         transparent_pixel_fraction,
         foreign_canvas_fraction,
@@ -408,4 +433,84 @@ pub(super) fn audit_image_with_alpha(
         passed,
         checks,
     })
+}
+
+fn mask_bounds(mask: &[bool], width: usize, height: usize) -> Option<(usize, usize, usize, usize)> {
+    if width == 0 || height == 0 || mask.len() != width.saturating_mul(height) {
+        return None;
+    }
+
+    let mut min_x = width;
+    let mut max_x = 0usize;
+    let mut min_y = height;
+    let mut max_y = 0usize;
+    let mut found = false;
+    for (index, present) in mask.iter().enumerate() {
+        if !present {
+            continue;
+        }
+        let x = index % width;
+        let y = index / width;
+        min_x = min_x.min(x);
+        max_x = max_x.max(x);
+        min_y = min_y.min(y);
+        max_y = max_y.max(y);
+        found = true;
+    }
+
+    found.then_some((min_x, max_x, min_y, max_y))
+}
+
+fn horizontal_span_fraction(bounds: Option<(usize, usize, usize, usize)>, width: usize) -> f64 {
+    bounds
+        .map(|(min_x, max_x, _, _)| fraction(max_x.saturating_sub(min_x) + 1, width))
+        .unwrap_or(0.0)
+}
+
+fn vertical_span_fraction(bounds: Option<(usize, usize, usize, usize)>, height: usize) -> f64 {
+    bounds
+        .map(|(_, _, min_y, max_y)| fraction(max_y.saturating_sub(min_y) + 1, height))
+        .unwrap_or(0.0)
+}
+
+fn mask_tile_count(
+    mask: &[bool],
+    width: usize,
+    height: usize,
+    columns: usize,
+    rows: usize,
+    min_pixels_per_tile: usize,
+) -> usize {
+    if width == 0
+        || height == 0
+        || columns == 0
+        || rows == 0
+        || mask.len() != width.saturating_mul(height)
+    {
+        return 0;
+    }
+
+    let mut tile_count = 0usize;
+    for row in 0..rows {
+        let y_start = row * height / rows;
+        let y_end = (row + 1) * height / rows;
+        for column in 0..columns {
+            let x_start = column * width / columns;
+            let x_end = (column + 1) * width / columns;
+            let mut tile_pixels = 0usize;
+            for y in y_start..y_end {
+                let row_start = y * width;
+                for x in x_start..x_end {
+                    if mask[row_start + x] {
+                        tile_pixels += 1;
+                    }
+                }
+            }
+            if tile_pixels >= min_pixels_per_tile {
+                tile_count += 1;
+            }
+        }
+    }
+
+    tile_count
 }
