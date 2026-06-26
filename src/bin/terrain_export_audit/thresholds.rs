@@ -1,5 +1,5 @@
-pub(crate) const MIN_ISLAND_COUNT: u64 = 12;
-pub(crate) const MIN_TERRAIN_ARCHETYPE_COUNT: u64 = 11;
+pub(crate) const MIN_ISLAND_COUNT: u64 = 15;
+pub(crate) const MIN_TERRAIN_ARCHETYPE_COUNT: u64 = 14;
 pub(crate) const MIN_TERRAIN_MESH_VERTICES: u64 = 2305;
 pub(crate) const MIN_TERRAIN_COLOR_BANDS: u64 = 32;
 pub(crate) const MIN_TERRAIN_MATERIAL_WEIGHT_BANDS: u64 = 24;

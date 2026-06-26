@@ -18,10 +18,13 @@ pub enum IslandTerrainArchetype {
     OrchardBasin,
     Needle,
     SapphireBasin,
+    MistArch,
+    BrokenStair,
+    CloudGate,
 }
 
 impl IslandTerrainArchetype {
-    pub const COUNT: usize = 11;
+    pub const COUNT: usize = 14;
 
     pub fn for_name(name: &str) -> Option<Self> {
         match name {
@@ -36,6 +39,9 @@ impl IslandTerrainArchetype {
             "high orchard" => Some(Self::OrchardBasin),
             "far needle" => Some(Self::Needle),
             "sapphire basin" => Some(Self::SapphireBasin),
+            "mist arch" => Some(Self::MistArch),
+            "broken stair" => Some(Self::BrokenStair),
+            "cloud gate" => Some(Self::CloudGate),
             _ => None,
         }
     }
@@ -57,6 +63,9 @@ impl IslandTerrainArchetype {
             Self::OrchardBasin => 8,
             Self::Needle => 9,
             Self::SapphireBasin => 10,
+            Self::MistArch => 11,
+            Self::BrokenStair => 12,
+            Self::CloudGate => 13,
         }
     }
 
@@ -73,6 +82,9 @@ impl IslandTerrainArchetype {
             Self::OrchardBasin => "orchard_basin",
             Self::Needle => "needle",
             Self::SapphireBasin => "sapphire_basin",
+            Self::MistArch => "mist_arch",
+            Self::BrokenStair => "broken_stair",
+            Self::CloudGate => "cloud_gate",
         }
     }
 
@@ -89,6 +101,21 @@ impl IslandTerrainArchetype {
             Self::OrchardBasin => 0.055 * (angle * 5.0 + phase).sin(),
             Self::Needle => -0.14 + 0.06 * (angle * 7.0 + phase).sin(),
             Self::SapphireBasin => 0.075 * (angle * 3.0 - phase).cos(),
+            Self::MistArch => {
+                let open_bite = (angle - phase * 0.15).cos().max(0.0);
+                let rim_lobes = (angle * 2.0 + phase).cos().abs();
+                0.11 * rim_lobes - 0.14 * open_bite
+            }
+            Self::BrokenStair => {
+                let stair_notch = (angle * 4.0 - phase).sin().max(0.0);
+                let long_run = (angle * 1.35 + phase * 0.4).cos().max(0.0);
+                0.13 * long_run - 0.10 * stair_notch
+            }
+            Self::CloudGate => {
+                let gate_shoulders = (angle * 2.0 - phase * 0.5).cos().abs();
+                let cleft = (angle * 5.0 + phase).sin().max(0.0);
+                0.12 * gate_shoulders - 0.07 * cleft
+            }
         }
     }
 
@@ -126,6 +153,33 @@ impl IslandTerrainArchetype {
                 -basin(radius, 0.46, 0.22)
                     + smoothstep(0.70, 0.96, radius) * 0.14
                     + (angle * 3.0 - phase).cos() * radius * 0.06
+            }
+            Self::MistArch => {
+                let rim = (angle * 2.0 + phase).cos().abs();
+                let opening = (angle - phase * 0.15).cos().max(0.0);
+                smoothstep(0.36, 0.86, radius) * rim * 0.20
+                    - smoothstep(0.18, 0.62, radius) * opening * 0.18
+                    - basin(radius, 0.32, 0.10)
+            }
+            Self::BrokenStair => {
+                let run = (angle * 1.35 + phase * 0.4).cos().max(0.0);
+                let step_bands = (radius * std::f32::consts::TAU * 5.0 + phase)
+                    .sin()
+                    .max(0.0);
+                let quiet_shelf = (1.0 - run)
+                    * smoothstep(0.26, 0.58, radius)
+                    * (1.0 - smoothstep(0.72, 0.92, radius));
+                terrain_step(radius, 0.20, 0.78, 0.11)
+                    + run * smoothstep(0.22, 0.92, radius) * 0.09
+                    + step_bands * smoothstep(0.28, 0.82, radius) * 0.05
+                    - quiet_shelf * 0.14
+            }
+            Self::CloudGate => {
+                let shoulders = (angle * 2.0 - phase * 0.5).cos().abs();
+                let gate_cleft = (angle * 5.0 + phase).sin().max(0.0);
+                smoothstep(0.26, 0.74, radius) * shoulders * 0.18
+                    - smoothstep(0.38, 0.92, radius) * gate_cleft * 0.16
+                    + (1.0 - radius).powf(2.1) * 0.12
             }
         }
     }

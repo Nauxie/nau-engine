@@ -103,6 +103,27 @@ impl Default for SkyRoute {
                     16.0,
                     false,
                 ),
+                SkyIsland::new(
+                    "broken stair",
+                    Vec3::new(-176.0, 98.0, -708.0),
+                    Vec2::new(32.0, 44.0),
+                    17.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "mist arch",
+                    Vec3::new(82.0, 104.0, -926.0),
+                    Vec2::new(64.0, 26.0),
+                    20.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "cloud gate",
+                    Vec3::new(204.0, 112.0, -1048.0),
+                    Vec2::new(40.0, 34.0),
+                    19.0,
+                    false,
+                ),
             ],
         }
     }

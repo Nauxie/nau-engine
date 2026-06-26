@@ -87,7 +87,7 @@ fn accumulator_fails_registered_primitive_or_low_silhouette_body_content() {
     accumulator.observe(content_metric_sample(scenario, 0, 12, 1, 48));
     accumulator.observe(
         content_metric_sample(scenario, 5, 12, 0, 96)
-            .with_content_metrics(12, 2305, 61, 0.8, 11, 9, 12, 0, 96, 96.0, 900, 1633),
+            .with_content_metrics(15, 2305, 61, 0.8, 14, 9, 12, 0, 96, 96.0, 900, 1633),
     );
     accumulator.observe(content_metric_sample(scenario, 10, 12, 0, 96));
 
@@ -218,7 +218,7 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     );
     let summary_json = summary.to_json();
 
-    assert!(summary_json.contains("\"min_island_terrain_surface_count\": 12"));
+    assert!(summary_json.contains("\"min_island_terrain_surface_count\": 15"));
     assert!(summary_json.contains("\"min_island_terrain_mesh_vertices\": 2305"));
     assert!(summary_json.contains("\"min_island_terrain_color_bands\": 61"));
     assert!(summary_json.contains("\"min_island_terrain_material_weight_bands\": 36"));
@@ -226,7 +226,7 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_island_terrain_material_regions\": 4"));
     assert!(summary_json.contains("\"min_island_terrain_texture_detail_bands\": 64"));
     assert!(summary_json.contains("\"min_island_terrain_relief_range_m\": 0.8000"));
-    assert!(summary_json.contains("\"min_island_terrain_archetype_count\": 11"));
+    assert!(summary_json.contains("\"min_island_terrain_archetype_count\": 14"));
     assert!(summary_json.contains("\"min_island_cliff_color_bands\": 9"));
     assert!(summary_json.contains("\"min_island_body_mesh_vertices\": 1633"));
     assert!(summary_json.contains("\"min_generated_ground_cover_patch_count\": 528"));
@@ -421,7 +421,7 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"max_updraft_swirl_force_delta_mps\":0.0300"));
     assert!(sample_json.contains("\"max_wind_force_flow_speed_mps\":6.0000"));
     assert!(sample_json.contains("\"max_wind_force_variation\":0.1200"));
-    assert!(sample_json.contains("\"island_terrain_archetype_count\":11"));
+    assert!(sample_json.contains("\"island_terrain_archetype_count\":14"));
 }
 
 #[test]
@@ -589,7 +589,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
             140.0,
             false,
             objective,
-            12,
+            15,
             25,
             6,
             2,
@@ -683,7 +683,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
             0.0,
             false,
             objective,
-            12,
+            15,
             25,
             6,
             2,
@@ -778,7 +778,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
                 140.0 - frame as f32 * 4.0,
                 false,
                 objective,
-                12,
+                15,
                 25,
                 6,
                 2,
@@ -894,7 +894,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
 fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample) {
     accumulator.observe(
         sample
-            .with_content_metrics(12, 2305, 61, 0.8, 11, 9, 12, 0, 96, 96.0, 1633, 1633)
+            .with_content_metrics(15, 2305, 61, 0.8, 14, 9, 12, 0, 96, 96.0, 1633, 1633)
             .with_island_impostor_metrics(146, 24)
             .with_terrain_material_metrics(36, 3, 4, 64)
             .with_generated_visual_shape_metrics(

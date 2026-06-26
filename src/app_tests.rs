@@ -368,7 +368,10 @@ fn terrain_export_writes_manifest_meshes_and_weight_sidecars() {
         report.min_terrain_texture_edge_promille
     )));
     assert!(manifest.contains("\"impostor_mesh_vertices\": 146"));
-    assert!(manifest.contains("\"impostor_color_bands\": 21"));
+    assert!(manifest.contains(&format!(
+        "\"impostor_color_bands\": {}",
+        report.min_impostor_color_bands
+    )));
     assert!(manifest.contains("\"impostor\": {\"obj\": \"islands/00_launch_mesa_impostor.obj\""));
 
     remove_existing_dir(&output_dir).expect("terrain export test dir should be removable");
@@ -396,35 +399,34 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     let midpoint_cairn = output_dir.join("visuals/01_midpoint_shelf_route_cairn.obj");
     let launch_pond = output_dir.join("visuals/00_launch_mesa_pond_surface.obj");
     let landing_marker = output_dir.join("visuals/02_landing_garden_landing_garden_marker_0.obj");
+    let island_count = SkyRoute::default().islands().len();
+    let generated_tree_count = island_count * 3;
+    let weather_veil_count = island_count.div_ceil(2) * 3;
+    let route_cairn_count = island_count - 2;
+    let landmark_count = island_count + route_cairn_count + 1 + 4;
 
-    assert_eq!(
-        report.ground_cover_count,
-        SkyRoute::default().islands().len()
-    );
+    assert_eq!(report.ground_cover_count, island_count);
     assert_eq!(
         report.ground_cover_patch_total,
-        SkyRoute::default().islands().len() * GROUND_COVER_PATCHES
+        island_count * GROUND_COVER_PATCHES
     );
     assert_eq!(
         report.ground_cover_blade_total,
-        SkyRoute::default().islands().len() * GROUND_COVER_PATCHES * GROUND_COVER_BLADES_PER_PATCH
+        island_count * GROUND_COVER_PATCHES * GROUND_COVER_BLADES_PER_PATCH
     );
-    assert_eq!(report.tree_trunk_count, 36);
-    assert_eq!(report.tree_canopy_count, 36);
-    assert_eq!(report.weather_cloud_count, 30);
+    assert_eq!(report.tree_trunk_count, generated_tree_count);
+    assert_eq!(report.tree_canopy_count, generated_tree_count);
     assert_eq!(
-        report.weather_cloud_bank_count,
-        SkyRoute::default().islands().len()
+        report.weather_cloud_count,
+        island_count + weather_veil_count
     );
-    assert_eq!(report.weather_cloud_veil_count, 18);
-    assert_eq!(report.landmark_count, 27);
-    assert_eq!(report.route_cairn_count, 10);
+    assert_eq!(report.weather_cloud_bank_count, island_count);
+    assert_eq!(report.weather_cloud_veil_count, weather_veil_count);
+    assert_eq!(report.landmark_count, landmark_count);
+    assert_eq!(report.route_cairn_count, route_cairn_count);
     assert_eq!(report.launch_beacon_count, 1);
     assert_eq!(report.landing_garden_marker_count, 4);
-    assert_eq!(
-        report.pond_surface_count,
-        SkyRoute::default().islands().len()
-    );
+    assert_eq!(report.pond_surface_count, island_count);
     assert_eq!(
         report.mesh_count,
         report.ground_cover_count
@@ -484,15 +486,17 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"tree_trunk_ring_count\": 5"));
     assert!(manifest.contains("\"tree_trunk_height_range_m\""));
     assert!(manifest.contains("\"tree_canopy_radius_range_m\""));
-    assert!(manifest.contains("\"weather_cloud_veil_count\": 18"));
+    assert!(manifest.contains(&format!(
+        "\"weather_cloud_veil_count\": {weather_veil_count}"
+    )));
     assert!(manifest.contains("\"weather_cloud_scaled_depth_span_m\""));
     assert!(manifest.contains("\"weather_cloud_wisp_card_count\""));
     assert!(manifest.contains("\"weather_cloud_filament_ribbon_detail_count\""));
-    assert!(manifest.contains("\"landmark_count\": 27"));
-    assert!(manifest.contains("\"route_cairn_count\": 10"));
+    assert!(manifest.contains(&format!("\"landmark_count\": {landmark_count}")));
+    assert!(manifest.contains(&format!("\"route_cairn_count\": {route_cairn_count}")));
     assert!(manifest.contains("\"launch_beacon_count\": 1"));
     assert!(manifest.contains("\"landing_garden_marker_count\": 4"));
-    assert!(manifest.contains("\"pond_surface_count\": 12"));
+    assert!(manifest.contains(&format!("\"pond_surface_count\": {island_count}")));
     assert!(manifest.contains("\"route_cairn_vertical_span_m\""));
     assert!(manifest.contains("\"launch_beacon_vertical_span_m\""));
     assert!(manifest.contains("\"landing_garden_marker_vertical_span_m\""));
