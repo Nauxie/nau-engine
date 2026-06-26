@@ -445,23 +445,168 @@ fn accumulator_gates_air_control_body_travel_heading_misalignment() {
         &summary,
         "air_control_max_lateral_body_travel_heading_error",
     );
+    let sample_count_check =
+        named_check(&summary, "air_control_lateral_body_travel_heading_samples");
+    let right_sample_count_check =
+        named_check(&summary, "air_control_right_body_travel_heading_samples");
 
+    assert_eq!(summary.metrics.lateral_body_travel_heading_sample_count, 1);
+    assert_eq!(
+        summary
+            .metrics
+            .right_lateral_body_travel_heading_sample_count,
+        1
+    );
+    assert_eq!(
+        summary
+            .metrics
+            .left_lateral_body_travel_heading_sample_count,
+        0
+    );
     assert_eq!(
         summary
             .metrics
             .max_lateral_body_travel_heading_error_degrees,
         90.0
     );
+    assert_eq!(sample_count_check.value, 1.0);
+    assert!(sample_count_check.passed);
+    assert_eq!(right_sample_count_check.value, 1.0);
+    assert!(right_sample_count_check.passed);
     assert_eq!(p95_check.value, 90.0);
     assert_eq!(max_check.value, 90.0);
     assert!(!p95_check.passed);
     assert!(!max_check.passed);
 
     let summary_json = summary.to_json();
+    assert!(summary_json.contains("\"lateral_body_travel_heading_sample_count\": 1"));
+    assert!(summary_json.contains("\"right_lateral_body_travel_heading_sample_count\": 1"));
+    assert!(summary_json.contains("\"left_lateral_body_travel_heading_sample_count\": 0"));
     assert!(summary_json.contains("\"p95_lateral_body_travel_heading_error_degrees\""));
     assert!(summary_json.contains("\"max_lateral_body_travel_heading_error_degrees\""));
+    assert!(summary_json.contains("\"backward_diagonal_body_travel_heading_sample_count\""));
+    assert!(summary_json.contains("\"backward_right_diagonal_body_travel_heading_sample_count\""));
+    assert!(summary_json.contains("\"backward_left_diagonal_body_travel_heading_sample_count\""));
     assert!(summary_json.contains("\"p95_backward_diagonal_body_travel_heading_error_degrees\""));
     assert!(summary_json.contains("\"max_backward_diagonal_body_travel_heading_error_degrees\""));
+}
+
+#[test]
+fn accumulator_gates_missing_air_control_body_travel_heading_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            90,
+            Vec3::new(20.0, -2.0, -18.0),
+            Vec2::new(1.0, 0.0),
+            20.0,
+            18.0,
+            3.0,
+        )
+        .with_body_travel_heading_error_degrees(f32::NAN),
+    );
+    accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            250,
+            Vec3::new(12.0, -2.0, 14.0),
+            Vec2::new(1.0, -1.0),
+            12.0,
+            18.0,
+            3.0,
+        )
+        .with_body_travel_heading_error_degrees(f32::NAN),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for check_name in [
+        "air_control_lateral_body_travel_heading_samples",
+        "air_control_right_body_travel_heading_samples",
+        "air_control_left_body_travel_heading_samples",
+        "air_control_backward_diagonal_body_travel_heading_samples",
+        "air_control_backward_right_diagonal_body_travel_heading_samples",
+        "air_control_backward_left_diagonal_body_travel_heading_samples",
+    ] {
+        let check = named_check(&summary, check_name);
+        assert!(
+            !check.passed,
+            "{check_name} should fail without finite body/travel samples"
+        );
+        assert_eq!(check.value, 0.0);
+    }
+}
+
+#[test]
+fn accumulator_gates_one_sided_air_control_body_travel_heading_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        90,
+        Vec3::new(20.0, -2.0, -18.0),
+        Vec2::new(1.0, 0.0),
+        20.0,
+        18.0,
+        3.0,
+    ));
+    accumulator.observe(air_control_metric_sample(
+        scenario,
+        250,
+        Vec3::new(12.0, -2.0, 14.0),
+        Vec2::new(1.0, -1.0),
+        12.0,
+        18.0,
+        3.0,
+    ));
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for check_name in [
+        "air_control_left_body_travel_heading_samples",
+        "air_control_backward_left_diagonal_body_travel_heading_samples",
+    ] {
+        let check = named_check(&summary, check_name);
+        assert!(
+            !check.passed,
+            "{check_name} should fail without matching-direction finite samples"
+        );
+        assert_eq!(check.value, 0.0);
+    }
+    assert_eq!(
+        summary
+            .metrics
+            .right_lateral_body_travel_heading_sample_count,
+        2
+    );
+    assert_eq!(
+        summary
+            .metrics
+            .backward_right_diagonal_body_travel_heading_sample_count,
+        1
+    );
 }
 
 #[test]
@@ -500,13 +645,31 @@ fn accumulator_gates_air_control_backward_diagonal_body_travel_heading_misalignm
         &summary,
         "air_control_max_backward_diagonal_body_travel_heading_error",
     );
+    let sample_count_check = named_check(
+        &summary,
+        "air_control_backward_diagonal_body_travel_heading_samples",
+    );
+    let backward_right_sample_count_check = named_check(
+        &summary,
+        "air_control_backward_right_diagonal_body_travel_heading_samples",
+    );
 
+    assert_eq!(
+        summary
+            .metrics
+            .backward_diagonal_body_travel_heading_sample_count,
+        1
+    );
     assert_eq!(
         summary
             .metrics
             .max_backward_diagonal_body_travel_heading_error_degrees,
         70.0
     );
+    assert_eq!(sample_count_check.value, 1.0);
+    assert!(sample_count_check.passed);
+    assert_eq!(backward_right_sample_count_check.value, 1.0);
+    assert!(backward_right_sample_count_check.passed);
     assert_eq!(p95_check.value, 70.0);
     assert_eq!(max_check.value, 70.0);
     assert!(!p95_check.passed);
@@ -984,6 +1147,93 @@ fn accumulator_rejects_unreadable_key_pose_samples() {
     assert_eq!(unreadable_check.value, 1.0);
     assert!(!dive_check.passed);
     assert!(!unreadable_check.passed);
+}
+
+#[test]
+fn accumulator_gates_visible_pose_temporal_jank() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            120,
+            Vec3::new(0.0, -18.0, -26.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        )
+        .with_pose_temporal_metrics(EvalPoseTemporalMetrics {
+            visible_pose_part_count: 5,
+            max_pose_part_rotation_delta_degrees: 150.0,
+            max_pose_part_translation_delta_m: 0.8,
+        }),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let rotation_check = named_check(&summary, "air_control_max_pose_part_rotation_delta");
+    let translation_check = named_check(&summary, "air_control_max_pose_part_translation_delta");
+    let summary_json = summary.to_json();
+
+    assert_eq!(summary.metrics.max_visible_pose_part_count, 5);
+    assert_eq!(summary.metrics.pose_temporal_stability_samples, 1);
+    assert_eq!(summary.metrics.max_pose_part_rotation_delta_degrees, 150.0);
+    assert_eq!(summary.metrics.max_pose_part_translation_delta_m, 0.8);
+    assert!(!rotation_check.passed);
+    assert!(!translation_check.passed);
+    assert!(summary_json.contains("\"max_pose_part_rotation_delta_degrees\": 150"));
+    assert!(summary_json.contains("\"max_pose_part_translation_delta_m\": 0.8000"));
+}
+
+#[test]
+fn accumulator_gates_missing_visible_pose_temporal_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            120,
+            Vec3::new(0.0, -18.0, -26.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        )
+        .with_pose_temporal_metrics(EvalPoseTemporalMetrics {
+            visible_pose_part_count: 5,
+            max_pose_part_rotation_delta_degrees: f32::NAN,
+            max_pose_part_translation_delta_m: f32::NAN,
+        }),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let sample_check = named_check(&summary, "air_control_pose_temporal_stability_samples");
+    let rotation_check = named_check(&summary, "air_control_max_pose_part_rotation_delta");
+    let translation_check = named_check(&summary, "air_control_max_pose_part_translation_delta");
+
+    assert_eq!(summary.metrics.max_visible_pose_part_count, 5);
+    assert_eq!(summary.metrics.pose_temporal_stability_samples, 0);
+    assert!(!sample_check.passed);
+    assert!(rotation_check.passed);
+    assert!(translation_check.passed);
 }
 
 #[test]

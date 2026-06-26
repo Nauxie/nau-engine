@@ -36,10 +36,23 @@ pub(super) fn build_metrics_summary(
         avg_desired_body_heading_error_degrees: derived.avg_desired_body_heading_error_degrees,
         p95_desired_body_heading_error_degrees: derived.p95_desired_body_heading_error_degrees,
         max_desired_body_heading_error_degrees: acc.max_desired_body_heading_error_degrees,
+        lateral_body_travel_heading_sample_count: acc
+            .lateral_body_travel_heading_error_values_degrees
+            .len() as u32,
+        right_lateral_body_travel_heading_sample_count: acc
+            .right_lateral_body_travel_heading_samples,
+        left_lateral_body_travel_heading_sample_count: acc.left_lateral_body_travel_heading_samples,
         p95_lateral_body_travel_heading_error_degrees: derived
             .p95_lateral_body_travel_heading_error_degrees,
         max_lateral_body_travel_heading_error_degrees: acc
             .max_lateral_body_travel_heading_error_degrees,
+        backward_diagonal_body_travel_heading_sample_count: acc
+            .backward_diagonal_body_travel_heading_error_values_degrees
+            .len() as u32,
+        backward_right_diagonal_body_travel_heading_sample_count: acc
+            .backward_right_diagonal_body_travel_heading_samples,
+        backward_left_diagonal_body_travel_heading_sample_count: acc
+            .backward_left_diagonal_body_travel_heading_samples,
         p95_backward_diagonal_body_travel_heading_error_degrees: derived
             .p95_backward_diagonal_body_travel_heading_error_degrees,
         max_backward_diagonal_body_travel_heading_error_degrees: acc
@@ -81,6 +94,10 @@ pub(super) fn build_metrics_summary(
         min_key_pose_readability_score: acc.min_key_pose_readability_score.unwrap_or(1.0),
         max_key_pose_readability_score: acc.max_key_pose_readability_score,
         unreadable_key_pose_samples: acc.unreadable_key_pose_samples,
+        max_visible_pose_part_count: acc.max_visible_pose_part_count,
+        pose_temporal_stability_samples: acc.pose_temporal_stability_samples,
+        max_pose_part_rotation_delta_degrees: acc.max_pose_part_rotation_delta_degrees,
+        max_pose_part_translation_delta_m: acc.max_pose_part_translation_delta_m,
         min_target_distance_m: acc.min_target_distance_m,
         final_target_distance_m: derived.final_target_distance_m,
         min_camera_pitch_degrees: acc.min_camera_pitch_degrees,

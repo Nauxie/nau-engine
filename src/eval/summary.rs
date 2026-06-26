@@ -59,8 +59,14 @@ pub struct EvalMetricsSummary {
     pub avg_desired_body_heading_error_degrees: f32,
     pub p95_desired_body_heading_error_degrees: f32,
     pub max_desired_body_heading_error_degrees: f32,
+    pub lateral_body_travel_heading_sample_count: u32,
+    pub right_lateral_body_travel_heading_sample_count: u32,
+    pub left_lateral_body_travel_heading_sample_count: u32,
     pub p95_lateral_body_travel_heading_error_degrees: f32,
     pub max_lateral_body_travel_heading_error_degrees: f32,
+    pub backward_diagonal_body_travel_heading_sample_count: u32,
+    pub backward_right_diagonal_body_travel_heading_sample_count: u32,
+    pub backward_left_diagonal_body_travel_heading_sample_count: u32,
     pub p95_backward_diagonal_body_travel_heading_error_degrees: f32,
     pub max_backward_diagonal_body_travel_heading_error_degrees: f32,
     pub max_body_yaw_error_step_degrees: f32,
@@ -98,6 +104,10 @@ pub struct EvalMetricsSummary {
     pub min_key_pose_readability_score: f32,
     pub max_key_pose_readability_score: f32,
     pub unreadable_key_pose_samples: u32,
+    pub max_visible_pose_part_count: u32,
+    pub pose_temporal_stability_samples: u32,
+    pub max_pose_part_rotation_delta_degrees: f32,
+    pub max_pose_part_translation_delta_m: f32,
     pub min_target_distance_m: f32,
     pub final_target_distance_m: f32,
     pub min_camera_pitch_degrees: f32,
@@ -437,9 +447,15 @@ impl EvalMetricsSummary {
         );
         let max_body_yaw_error_step_key = format!("{indent}  \"max_body_yaw_error_step_degrees\"");
         let body_travel_heading_metrics = format!(
-            "{indent}  \"p95_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"max_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"p95_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"max_backward_diagonal_body_travel_heading_error_degrees\": {},\n{}",
+            "{indent}  \"lateral_body_travel_heading_sample_count\": {},\n{indent}  \"right_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"left_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"p95_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"max_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"backward_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_right_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_left_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"p95_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"max_backward_diagonal_body_travel_heading_error_degrees\": {},\n{}",
+            self.lateral_body_travel_heading_sample_count,
+            self.right_lateral_body_travel_heading_sample_count,
+            self.left_lateral_body_travel_heading_sample_count,
             json_number(self.p95_lateral_body_travel_heading_error_degrees),
             json_number(self.max_lateral_body_travel_heading_error_degrees),
+            self.backward_diagonal_body_travel_heading_sample_count,
+            self.backward_right_diagonal_body_travel_heading_sample_count,
+            self.backward_left_diagonal_body_travel_heading_sample_count,
             json_number(self.p95_backward_diagonal_body_travel_heading_error_degrees),
             json_number(self.max_backward_diagonal_body_travel_heading_error_degrees),
             max_body_yaw_error_step_key
@@ -483,7 +499,7 @@ impl EvalMetricsSummary {
         let json = json.replacen(&post_brake_key, &planar_brake_metrics, 1);
         let min_target_distance_key = format!("{indent}  \"min_target_distance_m\"");
         let pose_readability_metrics = format!(
-            "{indent}  \"max_pose_torso_pitch_degrees\": {},\n{indent}  \"max_pose_arm_spread_degrees\": {},\n{indent}  \"max_pose_leg_tuck_degrees\": {},\n{indent}  \"max_pose_lateral_lean_degrees\": {},\n{indent}  \"max_right_pose_lateral_lean_degrees\": {},\n{indent}  \"max_left_pose_lateral_lean_degrees\": {},\n{indent}  \"max_pose_landing_crouch_m\": {},\n{indent}  \"max_pose_landing_flare_degrees\": {},\n{indent}  \"max_pose_wing_airflow_strength\": {},\n{indent}  \"min_key_pose_readability_score\": {},\n{indent}  \"max_key_pose_readability_score\": {},\n{indent}  \"unreadable_key_pose_samples\": {},\n{}",
+            "{indent}  \"max_pose_torso_pitch_degrees\": {},\n{indent}  \"max_pose_arm_spread_degrees\": {},\n{indent}  \"max_pose_leg_tuck_degrees\": {},\n{indent}  \"max_pose_lateral_lean_degrees\": {},\n{indent}  \"max_right_pose_lateral_lean_degrees\": {},\n{indent}  \"max_left_pose_lateral_lean_degrees\": {},\n{indent}  \"max_pose_landing_crouch_m\": {},\n{indent}  \"max_pose_landing_flare_degrees\": {},\n{indent}  \"max_pose_wing_airflow_strength\": {},\n{indent}  \"min_key_pose_readability_score\": {},\n{indent}  \"max_key_pose_readability_score\": {},\n{indent}  \"unreadable_key_pose_samples\": {},\n{indent}  \"max_visible_pose_part_count\": {},\n{indent}  \"pose_temporal_stability_samples\": {},\n{indent}  \"max_pose_part_rotation_delta_degrees\": {},\n{indent}  \"max_pose_part_translation_delta_m\": {},\n{}",
             json_number(self.max_pose_torso_pitch_degrees),
             json_number(self.max_pose_arm_spread_degrees),
             json_number(self.max_pose_leg_tuck_degrees),
@@ -496,6 +512,10 @@ impl EvalMetricsSummary {
             json_number(self.min_key_pose_readability_score),
             json_number(self.max_key_pose_readability_score),
             self.unreadable_key_pose_samples,
+            self.max_visible_pose_part_count,
+            self.pose_temporal_stability_samples,
+            json_number(self.max_pose_part_rotation_delta_degrees),
+            json_number(self.max_pose_part_translation_delta_m),
             min_target_distance_key
         );
         let json = json.replacen(&min_target_distance_key, &pose_readability_metrics, 1);

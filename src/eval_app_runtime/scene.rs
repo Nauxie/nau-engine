@@ -53,8 +53,16 @@ pub(crate) struct EvalScene<'w, 's> {
         ),
     >,
     pub(crate) authored_player_animations: Query<'w, 's, &'static AuthoredPlayerAnimation>,
-    pub(crate) authored_player_pose_nodes:
-        Query<'w, 's, (&'static AuthoredPlayerPoseNode, &'static Transform)>,
+    pub(crate) authored_player_pose_nodes: Query<
+        'w,
+        's,
+        (
+            &'static AuthoredPlayerPoseNode,
+            &'static Transform,
+            Option<&'static Visibility>,
+            Option<&'static InheritedVisibility>,
+        ),
+    >,
     pub(crate) wind_fields: Query<'w, 's, &'static WindField>,
     pub(crate) lift_fields: Query<'w, 's, &'static LiftField>,
     pub(crate) weather_clouds: Query<'w, 's, &'static Transform, With<WeatherDrift>>,

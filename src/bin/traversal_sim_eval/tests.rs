@@ -340,8 +340,14 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_unreadable_key_pose_samples",
         "air_control_pose_air_brake_samples",
         "air_control_pose_diving_samples",
+        "air_control_lateral_body_travel_heading_samples",
+        "air_control_right_body_travel_heading_samples",
+        "air_control_left_body_travel_heading_samples",
         "air_control_p95_lateral_body_travel_heading_error",
         "air_control_max_lateral_body_travel_heading_error",
+        "air_control_backward_diagonal_body_travel_heading_samples",
+        "air_control_backward_right_diagonal_body_travel_heading_samples",
+        "air_control_backward_left_diagonal_body_travel_heading_samples",
         "air_control_p95_backward_diagonal_body_travel_heading_error",
         "air_control_max_backward_diagonal_body_travel_heading_error",
     ] {
@@ -358,8 +364,14 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
     assert!(summary.contains("\"backward_left_lateral_response_latency_secs\""));
     assert!(summary.contains("\"max_right_pose_lateral_lean_degrees\""));
     assert!(summary.contains("\"max_left_pose_lateral_lean_degrees\""));
+    assert!(summary.contains("\"lateral_body_travel_heading_sample_count\""));
+    assert!(summary.contains("\"right_lateral_body_travel_heading_sample_count\""));
+    assert!(summary.contains("\"left_lateral_body_travel_heading_sample_count\""));
     assert!(summary.contains("\"p95_lateral_body_travel_heading_error_degrees\""));
     assert!(summary.contains("\"max_lateral_body_travel_heading_error_degrees\""));
+    assert!(summary.contains("\"backward_diagonal_body_travel_heading_sample_count\""));
+    assert!(summary.contains("\"backward_right_diagonal_body_travel_heading_sample_count\""));
+    assert!(summary.contains("\"backward_left_diagonal_body_travel_heading_sample_count\""));
     assert!(summary.contains("\"p95_backward_diagonal_body_travel_heading_error_degrees\""));
     assert!(summary.contains("\"max_backward_diagonal_body_travel_heading_error_degrees\""));
 }
@@ -443,6 +455,71 @@ fn sim_metrics_fail_lateral_body_travel_heading_misalignment() {
         .expect("lateral body/travel heading check");
     assert!(!check.passed, "expected wrong body/travel heading to fail");
     assert!(check.value > check.threshold);
+}
+
+#[test]
+fn sim_metrics_fail_missing_body_travel_heading_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    let mut lateral = sim_roll_sample(&route, scenario, 60, FlightMode::Gliding, 0.0, 1.0);
+    lateral.body_travel_heading_error_degrees = f32::NAN;
+    let mut backward_diagonal =
+        sim_roll_sample(&route, scenario, 240, FlightMode::Gliding, 0.0, 1.0);
+    backward_diagonal.movement_input_forward_axis = -1.0;
+    backward_diagonal.body_travel_heading_error_degrees = f32::NAN;
+
+    metrics.observe(&lateral, scenario);
+    metrics.observe(&backward_diagonal, scenario);
+
+    let checks = metrics.checks(scenario);
+    for check_name in [
+        "air_control_lateral_body_travel_heading_samples",
+        "air_control_right_body_travel_heading_samples",
+        "air_control_left_body_travel_heading_samples",
+        "air_control_backward_diagonal_body_travel_heading_samples",
+        "air_control_backward_right_diagonal_body_travel_heading_samples",
+        "air_control_backward_left_diagonal_body_travel_heading_samples",
+    ] {
+        let check = checks
+            .iter()
+            .find(|check| check.name == check_name)
+            .expect("body/travel heading sample-count check");
+        assert!(
+            !check.passed,
+            "{check_name} should fail without finite body/travel samples"
+        );
+        assert_eq!(check.value, 0.0);
+    }
+}
+
+#[test]
+fn sim_metrics_fail_one_sided_body_travel_heading_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    let right = sim_roll_sample(&route, scenario, 60, FlightMode::Gliding, 0.0, 1.0);
+    let mut backward_right = sim_roll_sample(&route, scenario, 240, FlightMode::Gliding, 0.0, 1.0);
+    backward_right.movement_input_forward_axis = -1.0;
+
+    metrics.observe(&right, scenario);
+    metrics.observe(&backward_right, scenario);
+
+    let checks = metrics.checks(scenario);
+    for check_name in [
+        "air_control_left_body_travel_heading_samples",
+        "air_control_backward_left_diagonal_body_travel_heading_samples",
+    ] {
+        let check = checks
+            .iter()
+            .find(|check| check.name == check_name)
+            .expect("directional body/travel sample-count check");
+        assert!(
+            !check.passed,
+            "{check_name} should fail without matching-direction finite samples"
+        );
+        assert_eq!(check.value, 0.0);
+    }
 }
 
 #[test]

@@ -78,11 +78,21 @@ impl AuthoredPlayerAnimation {
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct AuthoredPlayerPoseNode {
     pub(crate) part: CharacterPart,
+    pub(crate) smoothed_translation: Vec3,
+    pub(crate) smoothed_rotation: Quat,
+    pub(crate) smoothing_initialized: bool,
+    pub(crate) last_smoothed_time_secs: Option<f32>,
 }
 
 impl AuthoredPlayerPoseNode {
     pub(crate) fn new(part: CharacterPart) -> Self {
-        Self { part }
+        Self {
+            part,
+            smoothed_translation: part.base_translation,
+            smoothed_rotation: part.base_rotation,
+            smoothing_initialized: false,
+            last_smoothed_time_secs: None,
+        }
     }
 }
 

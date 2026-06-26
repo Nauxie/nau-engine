@@ -3,5 +3,6 @@ mod json;
 mod types;
 
 pub use types::{
-    EvalMovementMetrics, EvalObjectiveProgress, EvalPoseReadabilityMetrics, EvalSample,
+    EvalMovementMetrics, EvalObjectiveProgress, EvalPoseReadabilityMetrics,
+    EvalPoseTemporalMetrics, EvalSample,
 };

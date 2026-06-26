@@ -92,6 +92,9 @@ pub struct PoseReadabilityMetrics {
 }
 
 pub const MIN_KEY_POSE_READABILITY_SCORE: f32 = 0.9;
+const LANDING_ANTICIPATION_BASE_HEIGHT_M: f32 = 6.0;
+const LANDING_ANTICIPATION_MAX_HEIGHT_M: f32 = 18.0;
+const LANDING_ANTICIPATION_SINK_LOOKAHEAD_SECS: f32 = 0.22;
 
 #[derive(Clone, Copy, Debug)]
 pub struct PoseReadabilityPartTransforms {
@@ -215,7 +218,7 @@ pub fn player_pose_intent(context: PlayerPoseContext) -> PlayerPoseIntent {
     }
 
     let near_landing = context.mode != FlightMode::Grounded
-        && context.height_above_ground_m <= 6.0
+        && context.height_above_ground_m <= landing_anticipation_height_m(context.velocity.y)
         && context.velocity.y < -1.2;
 
     if near_landing {
@@ -290,9 +293,18 @@ fn landing_anticipation_strength(context: PlayerPoseContext, intent: PlayerPoseI
         return 0.0;
     }
 
-    let ground_proximity = ((6.0 - context.height_above_ground_m) / 6.0).clamp(0.0, 1.0);
+    let anticipation_height = landing_anticipation_height_m(context.velocity.y);
+    let ground_proximity = ((anticipation_height - context.height_above_ground_m)
+        / anticipation_height.max(0.1))
+    .clamp(0.0, 1.0);
     let sink_rate = ((-context.velocity.y - 1.2) / 6.0).clamp(0.0, 1.0);
     (0.65 + ground_proximity.max(sink_rate) * 0.35).clamp(0.0, 1.0)
+}
+
+fn landing_anticipation_height_m(vertical_velocity_mps: f32) -> f32 {
+    (LANDING_ANTICIPATION_BASE_HEIGHT_M
+        + (-vertical_velocity_mps).max(0.0) * LANDING_ANTICIPATION_SINK_LOOKAHEAD_SECS)
+        .min(LANDING_ANTICIPATION_MAX_HEIGHT_M)
 }
 
 fn landing_recovery_strength(context: PlayerPoseContext, intent: PlayerPoseIntent) -> f32 {
@@ -763,6 +775,18 @@ mod tests {
                 Vec3::new(0.0, -3.0, -18.0),
                 FlightInput::default(),
                 4.5,
+            )),
+            PlayerPoseIntent::LandingAnticipation
+        );
+        assert_eq!(
+            player_pose_intent(PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -24.0, -18.0),
+                FlightInput {
+                    dive: true,
+                    ..default()
+                },
+                10.5,
             )),
             PlayerPoseIntent::LandingAnticipation
         );

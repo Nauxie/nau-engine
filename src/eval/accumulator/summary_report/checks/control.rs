@@ -96,6 +96,24 @@ pub(super) fn append_scenario_checks(
             0.0,
             "samples",
         ));
+        checks.push(EvalCheck::at_least(
+            "pose_temporal_stability_samples",
+            acc.pose_temporal_stability_samples as f32,
+            MIN_POSE_TEMPORAL_STABILITY_SAMPLES as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_most(
+            "pose_part_rotation_delta",
+            acc.max_pose_part_rotation_delta_degrees,
+            MAX_POSE_PART_ROTATION_DELTA_DEGREES,
+            "deg",
+        ));
+        checks.push(EvalCheck::at_most(
+            "pose_part_translation_delta",
+            acc.max_pose_part_translation_delta_m,
+            MAX_POSE_PART_TRANSLATION_DELTA_M,
+            "m",
+        ));
     }
     if wind_force_scenario(scenario) {
         checks.push(EvalCheck::at_least(
@@ -351,6 +369,24 @@ fn append_air_control_checks(
             "samples",
         ),
         EvalCheck::at_least(
+            "air_control_pose_temporal_stability_samples",
+            acc.pose_temporal_stability_samples as f32,
+            MIN_POSE_TEMPORAL_STABILITY_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "air_control_max_pose_part_rotation_delta",
+            acc.max_pose_part_rotation_delta_degrees,
+            MAX_POSE_PART_ROTATION_DELTA_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "air_control_max_pose_part_translation_delta",
+            acc.max_pose_part_translation_delta_m,
+            MAX_POSE_PART_TRANSLATION_DELTA_M,
+            "m",
+        ),
+        EvalCheck::at_least(
             "air_control_post_brake_forward_alignment",
             acc.max_post_brake_forward_alignment_mps,
             AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS,
@@ -380,6 +416,24 @@ fn append_air_control_checks(
             AIR_CONTROL_MAX_BODY_HEADING_ERROR_DEGREES,
             "deg",
         ),
+        EvalCheck::at_least(
+            "air_control_lateral_body_travel_heading_samples",
+            acc.lateral_body_travel_heading_error_values_degrees.len() as f32,
+            AIR_CONTROL_MIN_LATERAL_BODY_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_right_body_travel_heading_samples",
+            acc.right_lateral_body_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_LATERAL_BODY_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_left_body_travel_heading_samples",
+            acc.left_lateral_body_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_LATERAL_BODY_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
         EvalCheck::at_most(
             "air_control_p95_lateral_body_travel_heading_error",
             derived.p95_lateral_body_travel_heading_error_degrees,
@@ -391,6 +445,25 @@ fn append_air_control_checks(
             acc.max_lateral_body_travel_heading_error_degrees,
             AIR_CONTROL_MAX_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
             "deg",
+        ),
+        EvalCheck::at_least(
+            "air_control_backward_diagonal_body_travel_heading_samples",
+            acc.backward_diagonal_body_travel_heading_error_values_degrees
+                .len() as f32,
+            AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_backward_right_diagonal_body_travel_heading_samples",
+            acc.backward_right_diagonal_body_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_backward_left_diagonal_body_travel_heading_samples",
+            acc.backward_left_diagonal_body_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
         ),
         EvalCheck::at_most(
             "air_control_p95_backward_diagonal_body_travel_heading_error",
