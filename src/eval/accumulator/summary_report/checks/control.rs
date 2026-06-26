@@ -97,20 +97,20 @@ pub(super) fn append_scenario_checks(
             "samples",
         ));
         checks.push(EvalCheck::at_least(
-            "pose_temporal_stability_samples",
-            acc.pose_temporal_stability_samples as f32,
+            "landing_pose_temporal_stability_samples",
+            acc.landing_pose_temporal_stability_samples as f32,
             MIN_POSE_TEMPORAL_STABILITY_SAMPLES as f32,
             "samples",
         ));
         checks.push(EvalCheck::at_most(
-            "pose_part_rotation_delta",
-            acc.max_pose_part_rotation_delta_degrees,
+            "landing_pose_part_rotation_delta",
+            acc.max_landing_pose_part_rotation_delta_degrees,
             MAX_POSE_PART_ROTATION_DELTA_DEGREES,
             "deg",
         ));
         checks.push(EvalCheck::at_most(
-            "pose_part_translation_delta",
-            acc.max_pose_part_translation_delta_m,
+            "landing_pose_part_translation_delta",
+            acc.max_landing_pose_part_translation_delta_m,
             MAX_POSE_PART_TRANSLATION_DELTA_M,
             "m",
         ));

@@ -12,8 +12,8 @@ use crate::world_collision_runtime::{
     WorldCollisionDiagnostics, WorldCollisionProxy, resolve_world_collisions,
 };
 use nau_engine::animation::{
-    AnimationState, CharacterPart, CharacterPartRole, PartVisibility, PlayerPoseContext,
-    advance_phase, body_local_pose_velocity, part_pose_with_context, pose_blend,
+    AnimationState, CharacterPart, CharacterPartRole, PartPose, PartVisibility, PlayerPoseContext,
+    advance_phase, body_local_pose_velocity, part_pose_with_context, pose_blend_for_intent,
 };
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::{
@@ -492,7 +492,7 @@ pub(crate) fn animate_character(
         controller.landing_impact_speed_mps,
     );
     animation.pose_intent = pose_context.intent();
-    let blend = pose_blend(dt);
+    let blend = pose_blend_for_intent(animation.pose_intent, dt);
     let authored_player_ready = visual_assets.scene_ready(VisualAssetKind::PlayerCharacter);
     let authored_glider_ready = visual_assets.scene_ready(VisualAssetKind::Glider);
 
@@ -562,23 +562,45 @@ pub(crate) fn apply_authored_player_pose_nodes(
         controller.landing_impact_speed_mps,
     );
     let pose_time_secs = eval_pose_time_secs(&time, eval.as_deref());
-    let blend = pose_blend(eval_dt(&time, eval.as_deref()));
+    let blend = pose_blend_for_intent(pose_context.intent(), eval_dt(&time, eval.as_deref()));
 
     for (mut node, mut transform) in &mut pose_nodes {
         let pose = part_pose_with_context(&node.part, pose_context, animation.phase);
-        if !node.smoothing_initialized {
-            node.smoothed_translation = pose.translation;
-            node.smoothed_rotation = pose.rotation;
-            node.smoothing_initialized = true;
-            node.last_smoothed_time_secs = Some(pose_time_secs);
-        } else if node.last_smoothed_time_secs != Some(pose_time_secs) {
-            node.smoothed_translation = node.smoothed_translation.lerp(pose.translation, blend);
-            node.smoothed_rotation = node.smoothed_rotation.slerp(pose.rotation, blend);
-            node.last_smoothed_time_secs = Some(pose_time_secs);
-        }
-        transform.translation = node.smoothed_translation;
-        transform.rotation = node.smoothed_rotation;
+        apply_authored_pose_node_smoothing(&mut node, &mut transform, pose, pose_time_secs, blend);
     }
+}
+
+pub(crate) fn reapply_authored_player_pose_nodes(
+    mut pose_nodes: Query<(&AuthoredPlayerPoseNode, &mut Transform)>,
+) {
+    for (node, mut transform) in &mut pose_nodes {
+        reapply_smoothed_authored_pose_node(node, &mut transform);
+    }
+}
+
+fn apply_authored_pose_node_smoothing(
+    node: &mut AuthoredPlayerPoseNode,
+    transform: &mut Transform,
+    pose: PartPose,
+    pose_time_secs: f32,
+    blend: f32,
+) {
+    if !node.smoothing_initialized {
+        node.smoothed_translation = pose.translation;
+        node.smoothed_rotation = pose.rotation;
+        node.smoothing_initialized = true;
+        node.last_smoothed_time_secs = Some(pose_time_secs);
+    } else if node.last_smoothed_time_secs != Some(pose_time_secs) {
+        node.smoothed_translation = node.smoothed_translation.lerp(pose.translation, blend);
+        node.smoothed_rotation = node.smoothed_rotation.slerp(pose.rotation, blend);
+        node.last_smoothed_time_secs = Some(pose_time_secs);
+    }
+    reapply_smoothed_authored_pose_node(node, transform);
+}
+
+fn reapply_smoothed_authored_pose_node(node: &AuthoredPlayerPoseNode, transform: &mut Transform) {
+    transform.translation = node.smoothed_translation;
+    transform.rotation = node.smoothed_rotation;
 }
 
 fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
@@ -621,6 +643,68 @@ mod tests {
             grounded_visual_foot_gap_m(28.0, 28.0, FlightMode::Grounded),
             0.0
         );
+    }
+
+    #[test]
+    fn authored_pose_smoothing_is_idempotent_within_same_eval_frame() {
+        let part = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+        let mut node = AuthoredPlayerPoseNode::new(part);
+        let mut transform = Transform::default();
+        let initial_pose = PartPose {
+            translation: Vec3::new(0.0, 1.0, 0.0),
+            rotation: Quat::from_rotation_x(0.2),
+            visibility: PartVisibility::Inherited,
+        };
+        let target_pose = PartPose {
+            translation: Vec3::new(0.0, 3.0, 2.0),
+            rotation: Quat::from_rotation_x(1.0),
+            visibility: PartVisibility::Inherited,
+        };
+        let clobber_pose = PartPose {
+            translation: Vec3::new(4.0, 9.0, -7.0),
+            rotation: Quat::from_rotation_y(1.4),
+            visibility: PartVisibility::Inherited,
+        };
+
+        apply_authored_pose_node_smoothing(&mut node, &mut transform, initial_pose, 0.0, 1.0);
+        apply_authored_pose_node_smoothing(&mut node, &mut transform, target_pose, 1.0, 0.5);
+        let once_per_frame_translation = transform.translation;
+        let once_per_frame_rotation = transform.rotation;
+
+        apply_authored_pose_node_smoothing(&mut node, &mut transform, clobber_pose, 1.0, 1.0);
+
+        assert!(
+            transform
+                .translation
+                .abs_diff_eq(once_per_frame_translation, 0.0001)
+        );
+        assert!((transform.rotation.dot(once_per_frame_rotation).abs() - 1.0).abs() < 0.0001);
+        apply_authored_pose_node_smoothing(&mut node, &mut transform, clobber_pose, 2.0, 1.0);
+        assert!(
+            transform
+                .translation
+                .abs_diff_eq(clobber_pose.translation, 0.0001)
+        );
+    }
+
+    #[test]
+    fn reapply_authored_pose_node_restores_cached_smoothed_pose() {
+        let part = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+        let mut node = AuthoredPlayerPoseNode::new(part);
+        node.smoothed_translation = Vec3::new(0.4, 1.2, -0.7);
+        node.smoothed_rotation = Quat::from_rotation_z(0.35);
+        node.smoothing_initialized = true;
+        let mut transform = Transform::from_translation(Vec3::new(9.0, 9.0, 9.0));
+        transform.rotation = Quat::from_rotation_y(1.0);
+
+        reapply_smoothed_authored_pose_node(&node, &mut transform);
+
+        assert!(
+            transform
+                .translation
+                .abs_diff_eq(node.smoothed_translation, 0.0001)
+        );
+        assert!((transform.rotation.dot(node.smoothed_rotation).abs() - 1.0).abs() < 0.0001);
     }
 
     #[test]

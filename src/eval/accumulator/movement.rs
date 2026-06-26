@@ -357,9 +357,12 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
         if sample.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE {
             accumulator.unreadable_key_pose_samples += 1;
         }
-        if sample.max_pose_part_rotation_delta_degrees.is_finite()
-            && sample.max_pose_part_translation_delta_m.is_finite()
-        {
+        if sample.key_pose_transition_grace {
+            accumulator.key_pose_transition_grace_samples += 1;
+        }
+        let has_pose_temporal_metrics = sample.max_pose_part_rotation_delta_degrees.is_finite()
+            && sample.max_pose_part_translation_delta_m.is_finite();
+        if has_pose_temporal_metrics {
             accumulator.pose_temporal_stability_samples += 1;
             accumulator.max_pose_part_rotation_delta_degrees = accumulator
                 .max_pose_part_rotation_delta_degrees
@@ -367,6 +370,15 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
             accumulator.max_pose_part_translation_delta_m = accumulator
                 .max_pose_part_translation_delta_m
                 .max(sample.max_pose_part_translation_delta_m);
+            if landing_pose_intent_label(sample.pose_intent_label) {
+                accumulator.landing_pose_temporal_stability_samples += 1;
+                accumulator.max_landing_pose_part_rotation_delta_degrees = accumulator
+                    .max_landing_pose_part_rotation_delta_degrees
+                    .max(sample.max_pose_part_rotation_delta_degrees);
+                accumulator.max_landing_pose_part_translation_delta_m = accumulator
+                    .max_landing_pose_part_translation_delta_m
+                    .max(sample.max_pose_part_translation_delta_m);
+            }
         }
     }
 }
@@ -402,6 +414,10 @@ fn key_pose_intent_label(label: &str) -> bool {
         label,
         "gliding" | "diving" | "air_brake" | "landing_anticipation" | "landing_recovery"
     )
+}
+
+fn landing_pose_intent_label(label: &str) -> bool {
+    matches!(label, "landing_anticipation" | "landing_recovery")
 }
 
 fn body_travel_heading_alignment_sample(sample: &EvalSample) -> bool {

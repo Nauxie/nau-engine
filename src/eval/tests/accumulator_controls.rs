@@ -1054,6 +1054,217 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
 }
 
 #[test]
+fn accumulator_gates_target_landing_pose_temporal_samples() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("island route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let mut non_landing_temporal_sample = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, -4.0, -22.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    )
+    .with_pose_temporal_metrics(EvalPoseTemporalMetrics {
+        visible_pose_part_count: 5,
+        max_pose_part_rotation_delta_degrees: 24.0,
+        max_pose_part_translation_delta_m: 0.12,
+    });
+    non_landing_temporal_sample.pose_intent_label = "gliding";
+    accumulator.observe(non_landing_temporal_sample);
+
+    for (frame, pose_intent_label) in [(0, "landing_anticipation"), (1, "landing_recovery")] {
+        let mut sample = air_control_metric_sample(
+            scenario,
+            frame + 1,
+            Vec3::new(0.0, -2.0, -18.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        )
+        .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+            torso_pitch_degrees: 42.0,
+            arm_spread_degrees: 140.0,
+            leg_tuck_degrees: 52.0,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            landing_crouch_m: 0.12,
+            wing_airflow_strength: 0.0,
+            key_pose_readability_score: 1.0,
+        })
+        .with_pose_temporal_metrics(EvalPoseTemporalMetrics {
+            visible_pose_part_count: 5,
+            max_pose_part_rotation_delta_degrees: f32::NAN,
+            max_pose_part_translation_delta_m: f32::NAN,
+        });
+        sample.pose_intent_label = pose_intent_label;
+        sample.target_distance_m = 0.0;
+        sample.on_landing_target = true;
+        accumulator.observe(sample);
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let temporal_sample_check = named_check(&summary, "landing_pose_temporal_stability_samples");
+
+    assert_eq!(summary.metrics.pose_temporal_stability_samples, 1);
+    assert_eq!(summary.metrics.landing_pose_temporal_stability_samples, 0);
+    assert_eq!(temporal_sample_check.value, 0.0);
+    assert_eq!(temporal_sample_check.threshold, 1.0);
+    assert!(!temporal_sample_check.passed);
+}
+
+#[test]
+fn accumulator_gates_target_landing_pose_temporal_jank() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("island route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let mut sample = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, -2.0, -18.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    )
+    .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: 42.0,
+        arm_spread_degrees: 140.0,
+        leg_tuck_degrees: 52.0,
+        lateral_lean_degrees: 0.0,
+        signed_lateral_lean_degrees: 0.0,
+        landing_crouch_m: 0.12,
+        wing_airflow_strength: 0.0,
+        key_pose_readability_score: 1.0,
+    })
+    .with_pose_temporal_metrics(EvalPoseTemporalMetrics {
+        visible_pose_part_count: 5,
+        max_pose_part_rotation_delta_degrees: 121.0,
+        max_pose_part_translation_delta_m: 0.56,
+    });
+    sample.pose_intent_label = "landing_anticipation";
+    sample.target_distance_m = 0.0;
+    sample.on_landing_target = true;
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let rotation_check = named_check(&summary, "landing_pose_part_rotation_delta");
+    let translation_check = named_check(&summary, "landing_pose_part_translation_delta");
+
+    assert_eq!(summary.metrics.pose_temporal_stability_samples, 1);
+    assert_eq!(summary.metrics.landing_pose_temporal_stability_samples, 1);
+    assert_eq!(
+        summary.metrics.max_landing_pose_part_rotation_delta_degrees,
+        121.0
+    );
+    assert_eq!(
+        summary.metrics.max_landing_pose_part_translation_delta_m,
+        0.56
+    );
+    assert_eq!(rotation_check.value, 121.0);
+    assert_eq!(translation_check.value, 0.56);
+    assert!(!rotation_check.passed);
+    assert!(!translation_check.passed);
+}
+
+#[test]
+fn accumulator_ignores_non_landing_pose_jank_for_landing_temporal_gates() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("island route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let mut gliding_jank_sample = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, -4.0, -22.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    )
+    .with_pose_temporal_metrics(EvalPoseTemporalMetrics {
+        visible_pose_part_count: 5,
+        max_pose_part_rotation_delta_degrees: 150.0,
+        max_pose_part_translation_delta_m: 0.8,
+    });
+    gliding_jank_sample.pose_intent_label = "gliding";
+    accumulator.observe(gliding_jank_sample);
+
+    for (frame, pose_intent_label) in [(1, "landing_anticipation"), (2, "landing_recovery")] {
+        let mut sample = air_control_metric_sample(
+            scenario,
+            frame,
+            Vec3::new(0.0, -2.0, -18.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        )
+        .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+            torso_pitch_degrees: 42.0,
+            arm_spread_degrees: 140.0,
+            leg_tuck_degrees: 52.0,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            landing_crouch_m: 0.12,
+            wing_airflow_strength: 0.0,
+            key_pose_readability_score: 1.0,
+        })
+        .with_pose_temporal_metrics(EvalPoseTemporalMetrics {
+            visible_pose_part_count: 5,
+            max_pose_part_rotation_delta_degrees: 20.0,
+            max_pose_part_translation_delta_m: 0.1,
+        });
+        sample.pose_intent_label = pose_intent_label;
+        sample.target_distance_m = 0.0;
+        sample.on_landing_target = true;
+        accumulator.observe(sample);
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.pose_temporal_stability_samples, 3);
+    assert_eq!(summary.metrics.max_pose_part_rotation_delta_degrees, 150.0);
+    assert_eq!(summary.metrics.landing_pose_temporal_stability_samples, 2);
+    assert_eq!(
+        summary.metrics.max_landing_pose_part_rotation_delta_degrees,
+        20.0
+    );
+    assert_eq!(
+        summary.metrics.max_landing_pose_part_translation_delta_m,
+        0.1
+    );
+    assert!(named_check(&summary, "landing_pose_part_rotation_delta").passed);
+    assert!(named_check(&summary, "landing_pose_part_translation_delta").passed);
+}
+
+#[test]
 fn accumulator_gates_air_control_pose_readability() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
     let mut accumulator = EvalAccumulator::default();
@@ -1415,6 +1626,9 @@ fn accumulator_gates_wind_guide_visual_presence_and_motion() {
         MIN_CROSSWIND_RIBBON_VISUAL_COUNT - 1,
         0.0,
         0.0,
+        0.0,
+        0.0,
+        0.0,
     );
     let mut accumulator = EvalAccumulator::default();
     accumulator.observe(sample);
@@ -1436,13 +1650,83 @@ fn accumulator_gates_wind_guide_visual_presence_and_motion() {
         "crosswind_guide_visual_count",
         "crosswind_ribbon_visual_count",
         "updraft_visual_motion",
+        "updraft_visual_rise",
         "crosswind_visual_motion",
+        "crosswind_guide_flow_displacement",
+        "crosswind_ribbon_flow_displacement",
     ] {
         assert!(
             !named_check(&summary, check_name).passed,
             "{check_name} should fail without animated wind guide visuals"
         );
     }
+}
+
+#[test]
+fn accumulator_gates_wind_guide_visual_flow_direction() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let sample = content_metric_sample(scenario, 0, 12, 0, 96).with_wind_guide_visual_metrics(
+        MIN_UPDRAFT_GUIDE_VISUAL_COUNT,
+        MIN_UPDRAFT_RIBBON_VISUAL_COUNT,
+        MIN_CROSSWIND_GUIDE_VISUAL_COUNT,
+        MIN_CROSSWIND_RIBBON_VISUAL_COUNT,
+        MIN_UPDRAFT_VISUAL_MOTION_M,
+        0.0,
+        MIN_CROSSWIND_VISUAL_MOTION_M,
+        0.0,
+        0.0,
+    );
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert!(named_check(&summary, "updraft_visual_motion").passed);
+    assert!(named_check(&summary, "crosswind_visual_motion").passed);
+    assert!(!named_check(&summary, "updraft_visual_rise").passed);
+    assert!(!named_check(&summary, "crosswind_guide_flow_displacement").passed);
+    assert!(!named_check(&summary, "crosswind_ribbon_flow_displacement").passed);
+}
+
+#[test]
+fn accumulator_gates_crosswind_ribbon_flow_separately_from_guides() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let sample = content_metric_sample(scenario, 0, 12, 0, 96).with_wind_guide_visual_metrics(
+        MIN_UPDRAFT_GUIDE_VISUAL_COUNT,
+        MIN_UPDRAFT_RIBBON_VISUAL_COUNT,
+        MIN_CROSSWIND_GUIDE_VISUAL_COUNT,
+        MIN_CROSSWIND_RIBBON_VISUAL_COUNT,
+        MIN_UPDRAFT_VISUAL_MOTION_M,
+        MIN_UPDRAFT_VISUAL_RISE_M,
+        MIN_CROSSWIND_VISUAL_MOTION_M,
+        MIN_CROSSWIND_GUIDE_FLOW_DISPLACEMENT_M,
+        0.0,
+    );
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert!(named_check(&summary, "crosswind_guide_flow_displacement").passed);
+    assert!(!named_check(&summary, "crosswind_ribbon_flow_displacement").passed);
 }
 
 #[test]

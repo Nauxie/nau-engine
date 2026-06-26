@@ -186,8 +186,15 @@ pub fn advance_phase(phase: f32, speed: f32, dt: f32) -> f32 {
     (phase + (5.0 + speed.max(0.0) * 0.08) * dt.max(0.0)).rem_euclid(TAU)
 }
 
-pub fn pose_blend(dt: f32) -> f32 {
-    smoothing_factor(18.0, dt)
+pub fn pose_blend_for_intent(intent: PlayerPoseIntent, dt: f32) -> f32 {
+    let rate = match intent {
+        PlayerPoseIntent::LandingAnticipation => 36.0,
+        PlayerPoseIntent::LandingRecovery => 30.0,
+        PlayerPoseIntent::Gliding => 30.0,
+        PlayerPoseIntent::Diving | PlayerPoseIntent::AirBrake => 22.0,
+        _ => 18.0,
+    };
+    smoothing_factor(rate, dt)
 }
 
 pub fn wing_airflow_strength(mode: FlightMode, velocity: Vec3) -> f32 {

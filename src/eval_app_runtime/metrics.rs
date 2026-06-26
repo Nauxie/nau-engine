@@ -44,6 +44,7 @@ pub(crate) struct VisiblePoseTemporalState {
     previous_frame: Option<u32>,
     previous_parts: Option<VisiblePosePartTransforms>,
     previous_key_intent: Option<PlayerPoseIntent>,
+    transition_from_key_intent: Option<PlayerPoseIntent>,
     key_intent_age_frames: u32,
     visible_pose_part_count: u32,
     pending_pose_temporal_samples: u32,
@@ -52,8 +53,8 @@ pub(crate) struct VisiblePoseTemporalState {
 }
 
 impl VisiblePoseTemporalState {
-    fn previous_key_intent(&self) -> Option<PlayerPoseIntent> {
-        self.previous_key_intent
+    fn transition_from_key_intent(&self) -> Option<PlayerPoseIntent> {
+        self.transition_from_key_intent
     }
 
     fn key_intent_age_frames(&self) -> u32 {
@@ -84,11 +85,13 @@ impl VisiblePoseTemporalState {
             if self.previous_key_intent == Some(intent) {
                 self.key_intent_age_frames = self.key_intent_age_frames.saturating_add(1);
             } else {
+                self.transition_from_key_intent = self.previous_key_intent;
                 self.previous_key_intent = Some(intent);
                 self.key_intent_age_frames = 1;
             }
         } else {
             self.previous_key_intent = None;
+            self.transition_from_key_intent = None;
             self.key_intent_age_frames = 0;
         }
     }
@@ -328,12 +331,10 @@ pub(crate) fn collect_eval_metrics(
     );
     let movement_input = scripted_input(run.scenario, run.frame);
     let pose_intent_label = animation.pose_intent.label();
-    let previous_key_intent = pose_temporal_state.previous_key_intent();
-    let key_intent_age_frames = pose_temporal_state.key_intent_age_frames();
     let pose_context = PlayerPoseContext::new(
         controller.mode,
         body_local_pose_velocity(velocity.0, transform.rotation),
-        movement_input,
+        animation.last_input,
         animation.height_above_ground_m,
     )
     .with_landing_recovery(
@@ -349,6 +350,8 @@ pub(crate) fn collect_eval_metrics(
         visible_authored_pose_part_set(scene.authored_player_pose_nodes.iter())
     };
     pose_temporal_state.observe_frame(run.frame, pose_context.intent(), visible_pose_parts);
+    let transition_from_key_intent = pose_temporal_state.transition_from_key_intent();
+    let key_intent_age_frames = pose_temporal_state.key_intent_age_frames();
 
     if !run.scenario.should_sample(run.frame) {
         return;
@@ -375,13 +378,14 @@ pub(crate) fn collect_eval_metrics(
                 velocity.0.length(),
             )
         });
-    let pose_readability = transition_aware_pose_readability(
+    let transition_pose_readability = transition_aware_pose_readability(
         pose_readability,
         pose_context.intent(),
-        previous_key_intent,
+        transition_from_key_intent,
         key_intent_age_frames,
         &pose_temporal,
     );
+    let pose_readability = transition_pose_readability.metrics;
     let movement_axis = movement_input.planar_axis();
     let movement_facing = if movement_basis.frame == run.frame {
         movement_basis
@@ -513,7 +517,10 @@ pub(crate) fn collect_eval_metrics(
         wind_guide_metrics.crosswind_guide_count,
         wind_guide_metrics.crosswind_ribbon_count,
         wind_guide_metrics.max_updraft_visual_motion_m,
+        wind_guide_metrics.max_updraft_visual_rise_m,
         wind_guide_metrics.max_crosswind_visual_motion_m,
+        wind_guide_metrics.max_crosswind_guide_flow_displacement_m,
+        wind_guide_metrics.max_crosswind_ribbon_flow_displacement_m,
     )
     .with_wind_force_metrics(
         scene.wind_force_diagnostics.active_fields,
@@ -540,6 +547,7 @@ pub(crate) fn collect_eval_metrics(
         wing_airflow_strength: pose_readability.wing_airflow_strength,
         key_pose_readability_score: pose_readability.key_pose_readability_score,
     })
+    .with_key_pose_transition_grace(transition_pose_readability.used_transition_grace)
     .with_pose_temporal_metrics(pose_temporal)
     .with_content_metrics(
         content_metrics.island_terrain_surface_count,
@@ -717,23 +725,34 @@ fn missing_visible_authored_pose_metrics(
     metrics
 }
 
+#[derive(Clone, Copy, Debug)]
+struct TransitionAwarePoseReadability {
+    metrics: PoseReadabilityMetrics,
+    used_transition_grace: bool,
+}
+
 fn transition_aware_pose_readability(
     mut metrics: PoseReadabilityMetrics,
     current_intent: PlayerPoseIntent,
-    previous_key_intent: Option<PlayerPoseIntent>,
+    transition_from_key_intent: Option<PlayerPoseIntent>,
     key_intent_age_frames: u32,
     pose_temporal: &EvalPoseTemporalMetrics,
-) -> PoseReadabilityMetrics {
+) -> TransitionAwarePoseReadability {
     if key_pose_intent(current_intent)
         && metrics.key_pose_readability_score + KEY_POSE_READABILITY_EPSILON
             >= MIN_KEY_POSE_READABILITY_SCORE
     {
-        metrics.key_pose_readability_score = MIN_KEY_POSE_READABILITY_SCORE;
-        return metrics;
+        metrics.key_pose_readability_score = metrics
+            .key_pose_readability_score
+            .max(MIN_KEY_POSE_READABILITY_SCORE);
+        return TransitionAwarePoseReadability {
+            metrics,
+            used_transition_grace: false,
+        };
     }
 
-    let transition_within_grace = previous_key_intent != Some(current_intent)
-        || key_intent_age_frames < KEY_POSE_TRANSITION_GRACE_FRAMES;
+    let transition_within_grace = transition_from_key_intent.is_some()
+        && key_intent_age_frames <= KEY_POSE_TRANSITION_GRACE_FRAMES;
     let transition_temporally_smooth = pose_temporal
         .max_pose_part_rotation_delta_degrees
         .is_finite()
@@ -745,7 +764,7 @@ fn transition_aware_pose_readability(
     let mut transition_readability_score = metrics.key_pose_readability_score;
     if key_pose_intent(current_intent)
         && metrics.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE
-        && let Some(previous_intent) = previous_key_intent
+        && let Some(previous_intent) = transition_from_key_intent
         && previous_intent != current_intent
     {
         let previous_score = key_pose_readability_score(
@@ -764,8 +783,15 @@ fn transition_aware_pose_readability(
         && transition_readability_score >= KEY_POSE_TRANSITION_READABILITY_FLOOR
     {
         metrics.key_pose_readability_score = MIN_KEY_POSE_READABILITY_SCORE;
+        return TransitionAwarePoseReadability {
+            metrics,
+            used_transition_grace: true,
+        };
     }
-    metrics
+    TransitionAwarePoseReadability {
+        metrics,
+        used_transition_grace: false,
+    }
 }
 
 fn authored_pose_readability_metrics<'a>(
@@ -1127,7 +1153,37 @@ mod tests {
         );
 
         assert!(raw.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
-        assert!(adjusted.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(adjusted.metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(adjusted.used_transition_grace);
+    }
+
+    #[test]
+    fn transition_aware_pose_readability_preserves_strong_current_score() {
+        let raw = PoseReadabilityMetrics {
+            torso_pitch_degrees: 16.0,
+            arm_spread_degrees: 120.0,
+            leg_tuck_degrees: 20.0,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            landing_crouch_m: 0.0,
+            wing_airflow_strength: 0.5,
+            key_pose_readability_score: 1.0,
+        };
+
+        let adjusted = transition_aware_pose_readability(
+            raw,
+            PlayerPoseIntent::Gliding,
+            None,
+            30,
+            &EvalPoseTemporalMetrics {
+                visible_pose_part_count: 5,
+                max_pose_part_rotation_delta_degrees: 4.0,
+                max_pose_part_translation_delta_m: 0.01,
+            },
+        );
+
+        assert_eq!(adjusted.metrics.key_pose_readability_score, 1.0);
+        assert!(!adjusted.used_transition_grace);
     }
 
     #[test]
@@ -1162,7 +1218,8 @@ mod tests {
         );
 
         assert!(raw.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
-        assert!(adjusted.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(adjusted.metrics.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(!adjusted.used_transition_grace);
     }
 
     #[test]
@@ -1190,7 +1247,8 @@ mod tests {
             },
         );
 
-        assert!(adjusted.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(adjusted.metrics.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(!adjusted.used_transition_grace);
     }
 
     #[test]
@@ -1219,9 +1277,10 @@ mod tests {
         );
 
         assert_eq!(
-            adjusted.key_pose_readability_score,
+            adjusted.metrics.key_pose_readability_score,
             MIN_KEY_POSE_READABILITY_SCORE
         );
+        assert!(adjusted.used_transition_grace);
     }
 
     #[test]
@@ -1240,8 +1299,8 @@ mod tests {
         let adjusted = transition_aware_pose_readability(
             raw,
             PlayerPoseIntent::Diving,
-            Some(PlayerPoseIntent::Diving),
-            KEY_POSE_TRANSITION_GRACE_FRAMES,
+            Some(PlayerPoseIntent::AirBrake),
+            KEY_POSE_TRANSITION_GRACE_FRAMES + 1,
             &EvalPoseTemporalMetrics {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 8.0,
@@ -1249,7 +1308,8 @@ mod tests {
             },
         );
 
-        assert!(adjusted.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(adjusted.metrics.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(!adjusted.used_transition_grace);
     }
 
     #[test]
@@ -1269,6 +1329,31 @@ mod tests {
         assert_eq!(changed.visible_pose_part_count, 5);
         assert!(changed.max_pose_part_rotation_delta_degrees > 170.0);
         assert!(changed.max_pose_part_translation_delta_m > 0.69);
+    }
+
+    #[test]
+    fn visible_pose_temporal_state_retains_transition_source_through_grace_window() {
+        let mut state = VisiblePoseTemporalState::default();
+        let parts = visible_pose_part_set(Quat::IDENTITY, Vec3::ZERO);
+
+        state.observe_frame(0, PlayerPoseIntent::AirBrake, parts);
+        assert_eq!(state.transition_from_key_intent(), None);
+
+        state.observe_frame(1, PlayerPoseIntent::Gliding, parts);
+        assert_eq!(
+            state.transition_from_key_intent(),
+            Some(PlayerPoseIntent::AirBrake)
+        );
+        assert_eq!(state.key_intent_age_frames(), 1);
+
+        for frame in 2..=5 {
+            state.observe_frame(frame, PlayerPoseIntent::Gliding, parts);
+        }
+        assert_eq!(
+            state.transition_from_key_intent(),
+            Some(PlayerPoseIntent::AirBrake)
+        );
+        assert_eq!(state.key_intent_age_frames(), 5);
     }
 
     #[test]
