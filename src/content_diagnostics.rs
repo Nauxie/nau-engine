@@ -31,6 +31,12 @@ pub(crate) struct IslandContentDiagnostics {
     pub(crate) detail_biome_palette_mask: u32,
     pub(crate) generated_rock_count: usize,
     pub(crate) min_rock_mesh_vertices: usize,
+    pub(crate) generated_landmark_count: usize,
+    pub(crate) generated_route_cairn_count: usize,
+    pub(crate) generated_launch_beacon_count: usize,
+    pub(crate) generated_landing_garden_marker_count: usize,
+    pub(crate) generated_pond_surface_count: usize,
+    pub(crate) min_landmark_mesh_vertices: usize,
     pub(crate) generated_weather_cloud_count: usize,
     pub(crate) generated_weather_cloud_bank_count: usize,
     pub(crate) min_weather_cloud_bank_depth_cm: usize,
@@ -198,6 +204,27 @@ impl IslandContentDiagnostics {
         self.generated_rock_count += 1;
     }
 
+    pub(crate) fn record_generated_landmark(
+        &mut self,
+        kind: GeneratedLandmarkKind,
+        mesh_vertices: usize,
+    ) {
+        if self.generated_landmark_count == 0 {
+            self.min_landmark_mesh_vertices = mesh_vertices;
+        } else {
+            self.min_landmark_mesh_vertices = self.min_landmark_mesh_vertices.min(mesh_vertices);
+        }
+        self.generated_landmark_count += 1;
+        match kind {
+            GeneratedLandmarkKind::RouteCairn => self.generated_route_cairn_count += 1,
+            GeneratedLandmarkKind::LaunchBeacon => self.generated_launch_beacon_count += 1,
+            GeneratedLandmarkKind::LandingGardenMarker => {
+                self.generated_landing_garden_marker_count += 1;
+            }
+            GeneratedLandmarkKind::PondSurface => self.generated_pond_surface_count += 1,
+        }
+    }
+
     pub(crate) fn record_generated_weather_cloud(
         &mut self,
         lobe_count: usize,
@@ -235,6 +262,14 @@ impl IslandContentDiagnostics {
     pub(crate) fn min_weather_cloud_bank_depth_m(self) -> f32 {
         self.min_weather_cloud_bank_depth_cm as f32 / 100.0
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum GeneratedLandmarkKind {
+    RouteCairn,
+    LaunchBeacon,
+    LandingGardenMarker,
+    PondSurface,
 }
 
 #[cfg(test)]
@@ -297,6 +332,10 @@ mod tests {
         diagnostics.record_generated_tree_canopy(240);
         diagnostics.record_generated_rock(74);
         diagnostics.record_generated_rock(80);
+        diagnostics.record_generated_landmark(GeneratedLandmarkKind::RouteCairn, 250);
+        diagnostics.record_generated_landmark(GeneratedLandmarkKind::LaunchBeacon, 306);
+        diagnostics.record_generated_landmark(GeneratedLandmarkKind::LandingGardenMarker, 39);
+        diagnostics.record_generated_landmark(GeneratedLandmarkKind::PondSurface, 65);
         diagnostics.record_generated_weather_cloud(7, 315, 14, 4.2, true);
         diagnostics.record_generated_weather_cloud(4, 180, 8, 0.8, false);
 
@@ -310,6 +349,12 @@ mod tests {
         assert_eq!(diagnostics.detail_biome_palette_count(), 2);
         assert_eq!(diagnostics.generated_rock_count, 2);
         assert_eq!(diagnostics.min_rock_mesh_vertices, 74);
+        assert_eq!(diagnostics.generated_landmark_count, 4);
+        assert_eq!(diagnostics.generated_route_cairn_count, 1);
+        assert_eq!(diagnostics.generated_launch_beacon_count, 1);
+        assert_eq!(diagnostics.generated_landing_garden_marker_count, 1);
+        assert_eq!(diagnostics.generated_pond_surface_count, 1);
+        assert_eq!(diagnostics.min_landmark_mesh_vertices, 39);
         assert_eq!(diagnostics.generated_weather_cloud_count, 2);
         assert_eq!(diagnostics.generated_weather_cloud_bank_count, 1);
         assert_eq!(diagnostics.min_weather_cloud_bank_depth_m(), 4.2);
