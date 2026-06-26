@@ -4,6 +4,15 @@
     "generator": "NAU Engine self-authored distant impostor fixture generator",
     "copyright": "Self-authored for NAU Engine; no third-party assets."
   },
+  "extras": {
+    "nau": {
+      "schema": "nau_visual_asset_fixture.v1",
+      "asset_kind": "distant_impostor",
+      "asset_label": "sky island distant impostor kit",
+      "residency": "far_lod",
+      "license": "self_authored_no_third_party"
+    }
+  },
   "scenes": [
     {
       "nodes": [

@@ -4,6 +4,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const outPath = join("assets", "models", "player", "player.gltf");
+const NAU_FIXTURE_SCHEMA = "nau_visual_asset_fixture.v1";
+const NAU_FIXTURE_LICENSE = "self_authored_no_third_party";
 
 class GltfBuffer {
   constructor() {
@@ -390,6 +392,15 @@ const gltf = {
     version: "2.0",
     generator: "NAU Engine self-authored animated player fixture",
     copyright: "Self-authored for NAU Engine; no third-party assets.",
+  },
+  extras: {
+    nau: {
+      schema: NAU_FIXTURE_SCHEMA,
+      asset_kind: "player_character",
+      asset_label: "player character rig",
+      residency: "always",
+      license: NAU_FIXTURE_LICENSE,
+    },
   },
   scene: 0,
   scenes: [{ name: "NAU Animated Player Fixture Scene", nodes: [0] }],

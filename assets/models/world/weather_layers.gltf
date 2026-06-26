@@ -4,6 +4,15 @@
     "generator": "NAU Engine self-authored weather layer fixture generator",
     "copyright": "Self-authored for NAU Engine; no third-party assets."
   },
+  "extras": {
+    "nau": {
+      "schema": "nau_visual_asset_fixture.v1",
+      "asset_kind": "weather_layer",
+      "asset_label": "weather cloud layer kit",
+      "residency": "weather",
+      "license": "self_authored_no_third_party"
+    }
+  },
   "scenes": [
     {
       "nodes": [
