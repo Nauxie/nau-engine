@@ -4,7 +4,7 @@ use super::{
 };
 use bevy::prelude::{Quat, Transform, Vec3};
 use nau_engine::{
-    animation::PlayerPoseContext,
+    animation::{PlayerPoseContext, body_local_pose_velocity, pose_readability_metrics},
     camera::{
         CameraOrbit, camera_distance, camera_pitch_degrees, camera_surface_clearance,
         camera_target_angle_degrees, camera_view_yaw_degrees,
@@ -96,6 +96,13 @@ pub(crate) struct SimSample {
     pub(crate) altitude_m: f32,
     pub(crate) mode: &'static str,
     pub(crate) pose_intent_label: &'static str,
+    pub(crate) pose_torso_pitch_degrees: f32,
+    pub(crate) pose_arm_spread_degrees: f32,
+    pub(crate) pose_leg_tuck_degrees: f32,
+    pub(crate) pose_lateral_lean_degrees: f32,
+    pub(crate) pose_landing_crouch_m: f32,
+    pub(crate) pose_wing_airflow_strength: f32,
+    pub(crate) key_pose_readability_score: f32,
     pub(crate) desired_body_yaw_error_degrees: f32,
     pub(crate) desired_body_heading_error_degrees: f32,
     pub(crate) body_roll_degrees: f32,
@@ -149,6 +156,7 @@ impl SimSample {
         frame: u32,
         state: FlightState,
         player_rotation: Quat,
+        pose_phase: f32,
         orbit: CameraOrbit,
         camera: CameraDiagnosticsSample,
         input: FlightInput,
@@ -181,16 +189,16 @@ impl SimSample {
         };
         let height_above_route_ground_m =
             (state.position.y - route.ground_at(state.position).floor_y).max(0.0);
-        let pose_intent_label = PlayerPoseContext::new(
+        let time_secs = frame as f32 * scenario.fixed_dt;
+        let pose_context = PlayerPoseContext::new(
             state.controller.mode,
-            state.velocity,
+            body_local_pose_velocity(state.velocity, player_rotation),
             input,
             height_above_route_ground_m,
-        )
-        .intent()
-        .label();
+        );
+        let pose_intent_label = pose_context.intent().label();
+        let pose_readability = pose_readability_metrics(pose_context, pose_phase);
         let streaming_lod = route.streaming_lod_stats(state.position);
-        let time_secs = frame as f32 * scenario.fixed_dt;
         let wind_flow =
             wind_flow_metrics_at(state.position, time_secs, visual_fields.iter().copied());
 
@@ -203,6 +211,13 @@ impl SimSample {
             altitude_m: state.position.y,
             mode: state.controller.mode.label(),
             pose_intent_label,
+            pose_torso_pitch_degrees: pose_readability.torso_pitch_degrees,
+            pose_arm_spread_degrees: pose_readability.arm_spread_degrees,
+            pose_leg_tuck_degrees: pose_readability.leg_tuck_degrees,
+            pose_lateral_lean_degrees: pose_readability.lateral_lean_degrees,
+            pose_landing_crouch_m: pose_readability.landing_crouch_m,
+            pose_wing_airflow_strength: pose_readability.wing_airflow_strength,
+            key_pose_readability_score: pose_readability.key_pose_readability_score,
             desired_body_yaw_error_degrees,
             desired_body_heading_error_degrees: desired_body_yaw_error_degrees.abs(),
             body_roll_degrees: body_roll_degrees(player_rotation),
@@ -269,6 +284,13 @@ impl SimSample {
             "altitude_m": round4(self.altitude_m),
             "mode": self.mode,
             "pose_intent": self.pose_intent_label,
+            "pose_torso_pitch_degrees": round4(self.pose_torso_pitch_degrees),
+            "pose_arm_spread_degrees": round4(self.pose_arm_spread_degrees),
+            "pose_leg_tuck_degrees": round4(self.pose_leg_tuck_degrees),
+            "pose_lateral_lean_degrees": round4(self.pose_lateral_lean_degrees),
+            "pose_landing_crouch_m": round4(self.pose_landing_crouch_m),
+            "pose_wing_airflow_strength": round4(self.pose_wing_airflow_strength),
+            "key_pose_readability_score": round4(self.key_pose_readability_score),
             "desired_body_yaw_error_degrees": finite_json(self.desired_body_yaw_error_degrees),
             "desired_body_heading_error_degrees": finite_json(self.desired_body_heading_error_degrees),
             "body_roll_degrees": round4(self.body_roll_degrees),

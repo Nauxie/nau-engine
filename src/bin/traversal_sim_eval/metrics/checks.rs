@@ -9,6 +9,7 @@ use nau_engine::eval::{AIR_CONTROL_RESPONSE, CAMERA_STRAFE_STABILITY, EvalScenar
 use serde_json::{Value, json};
 
 use super::{super::round4, SimMetrics};
+use crate::LANDING_MIN_POSE_CROUCH_M;
 
 const MIN_DYNAMIC_WIND_FLOW_SPEED_MPS: f32 = 8.0;
 const MIN_DYNAMIC_WIND_FLOW_VARIATION: f32 = 0.12;
@@ -69,6 +70,18 @@ impl SimMetrics {
                 "pose_landing_anticipation_samples",
                 self.pose_landing_anticipation_samples as f32,
                 1.0,
+                "samples",
+            ));
+            checks.push(SimCheck::at_least(
+                "pose_landing_crouch",
+                self.max_pose_landing_crouch_m,
+                LANDING_MIN_POSE_CROUCH_M,
+                "m",
+            ));
+            checks.push(SimCheck::at_most(
+                "unreadable_key_pose_samples",
+                self.unreadable_key_pose_samples as f32,
+                0.0,
                 "samples",
             ));
         }

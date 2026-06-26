@@ -2,4 +2,6 @@ mod builders;
 mod json;
 mod types;
 
-pub use types::{EvalMovementMetrics, EvalObjectiveProgress, EvalSample};
+pub use types::{
+    EvalMovementMetrics, EvalObjectiveProgress, EvalPoseReadabilityMetrics, EvalSample,
+};

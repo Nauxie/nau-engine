@@ -1,4 +1,4 @@
-use crate::authored_assets::VisualAssetDiagnostics;
+use crate::authored_assets::{AuthoredPlayerAnimation, VisualAssetDiagnostics};
 use crate::camera_runtime::{CameraDiagnostics, CameraFollowFilter};
 use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::environment_visuals::{WeatherDrift, WindResponsiveVisual};
@@ -8,7 +8,7 @@ use crate::world_collision_runtime::WorldCollisionDiagnostics;
 use crate::{Player, RouteObjectiveTracker};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use nau_engine::animation::AnimationState;
+use nau_engine::animation::{AnimationState, CharacterPart};
 use nau_engine::environment::{LiftField, WindField};
 use nau_engine::movement::{FlightController, Velocity};
 use nau_engine::world::SkyRoute;
@@ -37,6 +37,16 @@ pub(crate) struct EvalScene<'w, 's> {
     pub(crate) route_objectives: Res<'w, RouteObjectiveTracker>,
     pub(crate) power_ups: Res<'w, PowerUpCollectionState>,
     pub(crate) collision_diagnostics: Res<'w, WorldCollisionDiagnostics>,
+    pub(crate) generated_character_parts: Query<
+        'w,
+        's,
+        (
+            &'static CharacterPart,
+            &'static Transform,
+            &'static Visibility,
+        ),
+    >,
+    pub(crate) authored_player_animations: Query<'w, 's, &'static AuthoredPlayerAnimation>,
     pub(crate) wind_fields: Query<'w, 's, &'static WindField>,
     pub(crate) lift_fields: Query<'w, 's, &'static LiftField>,
     pub(crate) weather_clouds: Query<'w, 's, &'static Transform, With<WeatherDrift>>,

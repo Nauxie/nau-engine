@@ -6,6 +6,7 @@ use super::{
 };
 use bevy::prelude::{Quat, Transform, Vec3};
 use nau_engine::{
+    animation::advance_phase,
     camera::{
         CameraControlState, CameraControlTuning, CameraObstruction, FollowCamera,
         FollowCameraState, apply_camera_input, avoid_camera_obstructions,
@@ -40,6 +41,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     let mut objective = ObjectiveState::for_route(&route, scenario.target_island_name);
     let mut state = FlightState::new(START_POSITION, Vec3::ZERO, FlightController::default());
     let mut player_rotation = Quat::IDENTITY;
+    let mut animation_phase = 0.0;
     let initial_camera_direction = Vec3::NEG_Z;
     let mut camera_transform = Transform::from_translation(
         START_POSITION - initial_camera_direction * follow.distance + Vec3::Y * follow.height,
@@ -83,6 +85,8 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
             &frame_tuning,
             scenario.fixed_dt,
         );
+        animation_phase =
+            advance_phase(animation_phase, state.velocity.length(), scenario.fixed_dt);
 
         let camera_input = scripted_camera_input(scenario, frame);
         if camera_input.mouse_delta.length_squared() > 0.0 {
@@ -139,6 +143,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
                 frame,
                 state,
                 player_rotation,
+                animation_phase,
                 camera_control.orbit,
                 camera_diagnostics,
                 input,

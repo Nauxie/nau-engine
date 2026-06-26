@@ -12,14 +12,14 @@ use crate::world_collision_runtime::{
 };
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartVisibility, PlayerPoseContext,
-    advance_phase, part_pose_with_context, pose_blend,
+    advance_phase, body_local_pose_velocity, part_pose_with_context, pose_blend,
 };
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::environment::{LiftField, apply_lift_fields};
 use nau_engine::eval::scripted_input;
 use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
-    body_forward, face_flight_direction, step_flight,
+    face_flight_direction, step_flight,
 };
 use nau_engine::world::{SkyRoute, TERRAIN_VISUAL_FOOTING_OFFSET_M};
 
@@ -328,7 +328,7 @@ fn record_animation_context(
     animation.last_input = input;
     animation.height_above_ground_m =
         (transform.translation.y - route.ground_at(transform.translation).floor_y).max(0.0);
-    let pose_velocity = character_pose_velocity(velocity.0, transform.rotation);
+    let pose_velocity = body_local_pose_velocity(velocity.0, transform.rotation);
     animation.pose_intent = PlayerPoseContext::new(
         controller.mode,
         pose_velocity,
@@ -371,7 +371,7 @@ pub(crate) fn animate_character(
 
     let dt = eval_dt(&time, eval.as_deref());
     animation.phase = advance_phase(animation.phase, velocity.0.length(), dt);
-    let pose_velocity = character_pose_velocity(velocity.0, transform.rotation);
+    let pose_velocity = body_local_pose_velocity(velocity.0, transform.rotation);
     let pose_context = PlayerPoseContext::new(
         controller.mode,
         pose_velocity,
@@ -428,16 +428,6 @@ pub(crate) fn animate_character(
     }
 }
 
-fn character_pose_velocity(world_velocity: Vec3, player_rotation: Quat) -> Vec3 {
-    let forward = body_forward(player_rotation);
-    let right = forward.cross(Vec3::Y).normalize_or_zero();
-    Vec3::new(
-        world_velocity.dot(right),
-        world_velocity.y,
-        -world_velocity.dot(forward),
-    )
-}
-
 fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
     eval.map_or_else(|| time.delta_secs(), |run| run.scenario.fixed_dt)
 }
@@ -447,11 +437,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn character_pose_velocity_uses_body_local_lateral_axis() {
+    fn body_local_pose_velocity_uses_body_local_lateral_axis() {
         let rotation = Transform::from_translation(Vec3::ZERO)
             .looking_to(Vec3::X, Vec3::Y)
             .rotation;
-        let pose_velocity = character_pose_velocity(Vec3::NEG_Z * 14.0, rotation);
+        let pose_velocity = body_local_pose_velocity(Vec3::NEG_Z * 14.0, rotation);
 
         assert!(pose_velocity.x < -13.9);
         assert!(pose_velocity.z.abs() < 0.001);

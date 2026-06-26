@@ -1,6 +1,7 @@
 use bevy::prelude::Vec2;
 
 use crate::{
+    animation::MIN_KEY_POSE_READABILITY_SCORE,
     eval::thresholds::{
         AIR_CONTROL_RESPONSE_THRESHOLD_MPS, AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES,
     },
@@ -20,6 +21,7 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     observe_desired_heading_alignment(accumulator, sample);
     observe_lateral_response(accumulator, sample);
     observe_air_brake(accumulator, sample);
+    observe_pose_readability(accumulator, sample);
     observe_pose_intent_counts(accumulator, sample);
     observe_mode_counts(accumulator, sample);
 }
@@ -259,6 +261,42 @@ fn observe_air_brake(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     }
 }
 
+fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
+    accumulator.max_pose_torso_pitch_degrees = accumulator
+        .max_pose_torso_pitch_degrees
+        .max(sample.pose_torso_pitch_degrees);
+    accumulator.max_pose_arm_spread_degrees = accumulator
+        .max_pose_arm_spread_degrees
+        .max(sample.pose_arm_spread_degrees);
+    accumulator.max_pose_leg_tuck_degrees = accumulator
+        .max_pose_leg_tuck_degrees
+        .max(sample.pose_leg_tuck_degrees);
+    accumulator.max_pose_lateral_lean_degrees = accumulator
+        .max_pose_lateral_lean_degrees
+        .max(sample.pose_lateral_lean_degrees);
+    accumulator.max_pose_landing_crouch_m = accumulator
+        .max_pose_landing_crouch_m
+        .max(sample.pose_landing_crouch_m);
+    accumulator.max_pose_wing_airflow_strength = accumulator
+        .max_pose_wing_airflow_strength
+        .max(sample.pose_wing_airflow_strength);
+    if key_pose_intent_label(sample.pose_intent_label) {
+        accumulator.max_key_pose_readability_score = accumulator
+            .max_key_pose_readability_score
+            .max(sample.key_pose_readability_score);
+        let min_score = accumulator
+            .min_key_pose_readability_score
+            .map_or(sample.key_pose_readability_score, |current| {
+                current.min(sample.key_pose_readability_score)
+            });
+        accumulator.min_key_pose_readability_score = Some(min_score);
+
+        if sample.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE {
+            accumulator.unreadable_key_pose_samples += 1;
+        }
+    }
+}
+
 fn observe_mode_counts(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     match sample.mode {
         "gliding" => accumulator.gliding_samples += 1,
@@ -269,6 +307,12 @@ fn observe_mode_counts(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
 }
 
 fn observe_pose_intent_counts(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
+    if key_pose_intent_label(sample.pose_intent_label)
+        && sample.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE
+    {
+        return;
+    }
+
     match sample.pose_intent_label {
         "gliding" => accumulator.pose_gliding_samples += 1,
         "diving" => accumulator.pose_diving_samples += 1,
@@ -276,6 +320,13 @@ fn observe_pose_intent_counts(accumulator: &mut EvalAccumulator, sample: &EvalSa
         "landing_anticipation" => accumulator.pose_landing_anticipation_samples += 1,
         _ => {}
     }
+}
+
+fn key_pose_intent_label(label: &str) -> bool {
+    matches!(
+        label,
+        "gliding" | "diving" | "air_brake" | "landing_anticipation"
+    )
 }
 
 fn backward_diagonal_rear_response_mps(sample: &EvalSample) -> Option<f32> {
