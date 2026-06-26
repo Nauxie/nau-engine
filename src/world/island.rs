@@ -5,6 +5,132 @@ use super::{
     StreamChunkCoord, TERRAIN_MAX_DROP_M, TERRAIN_MAX_RISE_M, TERRAIN_VISUAL_FOOTING_OFFSET_M,
 };
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum IslandTerrainArchetype {
+    LaunchMesa,
+    Shelf,
+    GardenBasin,
+    CrownRidge,
+    WindOverlook,
+    TerracedSpur,
+    RefugeTableland,
+    StormRavine,
+    OrchardBasin,
+    Needle,
+    SapphireBasin,
+}
+
+impl IslandTerrainArchetype {
+    pub const COUNT: usize = 11;
+
+    pub fn for_name(name: &str) -> Option<Self> {
+        match name {
+            "launch mesa" => Some(Self::LaunchMesa),
+            "midpoint shelf" => Some(Self::Shelf),
+            "landing garden" => Some(Self::GardenBasin),
+            "distant crown" => Some(Self::CrownRidge),
+            "wind overlook" => Some(Self::WindOverlook),
+            "copper stair" | "sunlit terrace" => Some(Self::TerracedSpur),
+            "western refuge" => Some(Self::RefugeTableland),
+            "storm porch" => Some(Self::StormRavine),
+            "high orchard" => Some(Self::OrchardBasin),
+            "far needle" => Some(Self::Needle),
+            "sapphire basin" => Some(Self::SapphireBasin),
+            _ => None,
+        }
+    }
+
+    fn for_name_or_default(name: &str) -> Self {
+        Self::for_name(name).unwrap_or(Self::Shelf)
+    }
+
+    pub fn index(self) -> usize {
+        match self {
+            Self::LaunchMesa => 0,
+            Self::Shelf => 1,
+            Self::GardenBasin => 2,
+            Self::CrownRidge => 3,
+            Self::WindOverlook => 4,
+            Self::TerracedSpur => 5,
+            Self::RefugeTableland => 6,
+            Self::StormRavine => 7,
+            Self::OrchardBasin => 8,
+            Self::Needle => 9,
+            Self::SapphireBasin => 10,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::LaunchMesa => "launch_mesa",
+            Self::Shelf => "shelf",
+            Self::GardenBasin => "garden_basin",
+            Self::CrownRidge => "crown_ridge",
+            Self::WindOverlook => "wind_overlook",
+            Self::TerracedSpur => "terraced_spur",
+            Self::RefugeTableland => "refuge_tableland",
+            Self::StormRavine => "storm_ravine",
+            Self::OrchardBasin => "orchard_basin",
+            Self::Needle => "needle",
+            Self::SapphireBasin => "sapphire_basin",
+        }
+    }
+
+    fn silhouette_bias(self, angle: f32, phase: f32) -> f32 {
+        match self {
+            Self::LaunchMesa => -0.035 * (angle * 2.0 + phase).cos(),
+            Self::Shelf => -0.11 * (angle * 1.0 + phase * 0.4).sin().max(0.0),
+            Self::GardenBasin => 0.045 * (angle * 4.0 - phase).cos(),
+            Self::CrownRidge => 0.095 * (angle * 6.0 + phase).sin(),
+            Self::WindOverlook => 0.13 * (angle - phase * 0.12).cos().max(0.0) - 0.05,
+            Self::TerracedSpur => 0.16 * (angle * 1.5 + phase).cos().max(0.0) - 0.06,
+            Self::RefugeTableland => -0.065 * (angle * 3.0 + phase).sin().abs(),
+            Self::StormRavine => -0.12 * (angle * 5.0 - phase).cos().abs(),
+            Self::OrchardBasin => 0.055 * (angle * 5.0 + phase).sin(),
+            Self::Needle => -0.14 + 0.06 * (angle * 7.0 + phase).sin(),
+            Self::SapphireBasin => 0.075 * (angle * 3.0 - phase).cos(),
+        }
+    }
+
+    fn relief_bias_m(self, radius: f32, angle: f32, phase: f32) -> f32 {
+        match self {
+            Self::LaunchMesa => terrain_step(radius, 0.52, 0.75, 0.12),
+            Self::Shelf => {
+                terrain_step(radius, 0.32, 0.58, 0.16) - smoothstep(0.68, 1.0, radius) * 0.10
+            }
+            Self::GardenBasin => -basin(radius, 0.42, 0.18) + smoothstep(0.62, 0.94, radius) * 0.10,
+            Self::CrownRidge => {
+                let crown = (angle * 5.0 + phase).cos().abs();
+                smoothstep(0.18, 0.62, radius) * crown * 0.18
+            }
+            Self::WindOverlook => {
+                let windward = (angle - phase * 0.12).cos().max(0.0);
+                windward * smoothstep(0.22, 0.74, radius) * 0.20
+                    - smoothstep(0.74, 1.0, radius) * 0.08
+            }
+            Self::TerracedSpur => {
+                let spur = (angle * 1.5 + phase).cos().max(0.0);
+                terrain_step(radius, 0.26, 0.72, 0.12) + spur * radius * 0.13
+            }
+            Self::RefugeTableland => terrain_step(radius, 0.38, 0.82, 0.10),
+            Self::StormRavine => {
+                let cuts = (angle * 4.0 + phase * 0.7).sin().abs();
+                -smoothstep(0.22, 0.88, radius) * cuts * 0.20
+            }
+            Self::OrchardBasin => {
+                -basin(radius, 0.50, 0.10)
+                    + (angle * 6.0 + phase).sin() * smoothstep(0.18, 0.72, radius) * 0.05
+            }
+            Self::Needle => (1.0 - radius).powf(1.8) * 0.26 - smoothstep(0.56, 1.0, radius) * 0.18,
+            Self::SapphireBasin => {
+                -basin(radius, 0.46, 0.22)
+                    + smoothstep(0.70, 0.96, radius) * 0.14
+                    + (angle * 3.0 - phase).cos() * radius * 0.06
+            }
+        }
+    }
+}
+
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct SkyIsland {
     pub name: &'static str,
@@ -12,6 +138,7 @@ pub struct SkyIsland {
     pub half_extents: Vec2,
     pub thickness: f32,
     pub is_target: bool,
+    pub terrain_archetype: IslandTerrainArchetype,
 }
 
 impl SkyIsland {
@@ -28,6 +155,7 @@ impl SkyIsland {
             half_extents,
             thickness: thickness.max(1.0),
             is_target,
+            terrain_archetype: IslandTerrainArchetype::for_name_or_default(name),
         }
     }
 
@@ -40,10 +168,7 @@ impl SkyIsland {
     }
 
     pub fn terrain_surface_y_at(self, position: Vec3) -> f32 {
-        let dx = (position.x - self.center.x) / self.half_extents.x.max(0.001);
-        let dz = (position.z - self.center.z) / self.half_extents.y.max(0.001);
-        let radius = Vec2::new(dx, dz).length().clamp(0.0, 1.0);
-        let angle = dz.atan2(dx);
+        let (radius, angle) = self.playable_polar_at(position);
 
         self.terrain_surface_y_at_polar(radius, angle)
     }
@@ -75,15 +200,18 @@ impl SkyIsland {
         let ravines = terrain_ravine_relief_m(radius, angle, phase);
         let terrace = terrain_terrace_relief_m(radius, angle, phase);
         let micro = terrain_micro_relief_m(radius, angle, phase);
+        let archetype = self.terrain_archetype.relief_bias_m(radius, angle, phase);
 
-        (ridge + shoulder + center_falloff + edge_drop + ravines + terrace + micro)
+        (ridge + shoulder + center_falloff + edge_drop + ravines + terrace + micro + archetype)
             .clamp(-TERRAIN_MAX_DROP_M, TERRAIN_MAX_RISE_M)
     }
 
     pub fn contains_horizontal(self, position: Vec3) -> bool {
         let dx = (position.x - self.center.x) / self.half_extents.x.max(0.001);
         let dz = (position.z - self.center.z) / self.half_extents.y.max(0.001);
-        dx * dx + dz * dz <= 1.0
+        let radius = Vec2::new(dx, dz).length();
+        let angle = dz.atan2(dx);
+        radius <= self.playable_silhouette_scale(angle)
     }
 
     pub fn horizontal_distance(self, position: Vec3) -> f32 {
@@ -120,6 +248,29 @@ impl SkyIsland {
             + self.half_extents.x * 0.021
             + self.half_extents.y * 0.017
     }
+
+    pub fn visual_silhouette_scale(self, angle: f32) -> f32 {
+        let phase = self.terrain_phase();
+        (1.0 + 0.09 * (angle * 3.0 + phase).sin()
+            + 0.055 * (angle * 7.0 - phase * 0.4).cos()
+            + 0.032 * (angle * 11.0 + phase * 1.7).sin()
+            + self.terrain_archetype.silhouette_bias(angle, phase))
+        .clamp(0.68, 1.28)
+    }
+
+    pub fn playable_silhouette_scale(self, angle: f32) -> f32 {
+        self.visual_silhouette_scale(angle).clamp(0.62, 1.0)
+    }
+
+    fn playable_polar_at(self, position: Vec3) -> (f32, f32) {
+        let dx = (position.x - self.center.x) / self.half_extents.x.max(0.001);
+        let dz = (position.z - self.center.z) / self.half_extents.y.max(0.001);
+        let local_radius = Vec2::new(dx, dz).length();
+        let angle = dz.atan2(dx);
+        let playable_radius = self.playable_silhouette_scale(angle).max(0.001);
+
+        ((local_radius / playable_radius).clamp(0.0, 1.0), angle)
+    }
 }
 
 fn terrain_ravine_relief_m(radius: f32, angle: f32, phase: f32) -> f32 {
@@ -147,6 +298,15 @@ fn terrain_micro_relief_m(radius: f32, angle: f32, phase: f32) -> f32 {
         + (angle * 31.0 + radius * 19.0 + phase * 0.3).sin() * 0.012;
 
     fine * detail_mask
+}
+
+fn terrain_step(radius: f32, start: f32, end: f32, height_m: f32) -> f32 {
+    smoothstep(start, end, radius) * height_m - smoothstep(end, 1.0, radius) * height_m * 0.5
+}
+
+fn basin(radius: f32, center_radius: f32, depth_m: f32) -> f32 {
+    let distance = ((radius - center_radius).abs() / center_radius.max(0.001)).clamp(0.0, 1.0);
+    (1.0 - distance).powf(1.7) * depth_m
 }
 
 fn smoothstep(edge0: f32, edge1: f32, value: f32) -> f32 {

@@ -59,6 +59,12 @@ pub(super) fn append_content_checks(
             "m",
         ),
         EvalCheck::at_least(
+            "island_terrain_archetype_count",
+            acc.min_island_terrain_archetype_count as f32,
+            thresholds.min_island_terrain_archetype_count as f32,
+            "archetypes",
+        ),
+        EvalCheck::at_least(
             "island_cliff_color_bands",
             acc.min_island_cliff_color_bands as f32,
             thresholds.min_island_cliff_color_bands as f32,

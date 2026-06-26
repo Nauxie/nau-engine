@@ -106,6 +106,60 @@ fn route_has_archipelago_scale_and_distant_landmarks() {
 }
 
 #[test]
+fn route_uses_all_declared_terrain_archetypes() {
+    let route = SkyRoute::default();
+    let mut archetype_mask = 0_u32;
+
+    for island in route.islands() {
+        let declared_archetype = IslandTerrainArchetype::for_name(island.name)
+            .expect("route island names must declare a terrain archetype");
+        assert_eq!(island.terrain_archetype, declared_archetype);
+        archetype_mask |= 1_u32 << island.terrain_archetype.index();
+        assert!(!island.terrain_archetype.label().is_empty());
+    }
+
+    assert_eq!(
+        archetype_mask.count_ones() as usize,
+        IslandTerrainArchetype::COUNT
+    );
+}
+
+#[test]
+fn island_horizontal_containment_follows_playable_silhouette() {
+    let island = SkyIsland::new(
+        "storm porch",
+        Vec3::ZERO,
+        Vec2::new(42.0, 28.0),
+        15.0,
+        false,
+    );
+    let mut smallest_scale = f32::INFINITY;
+    let mut smallest_angle = 0.0;
+    for step in 0..96 {
+        let angle = step as f32 / 96.0 * std::f32::consts::TAU;
+        let scale = island.playable_silhouette_scale(angle);
+        if scale < smallest_scale {
+            smallest_scale = scale;
+            smallest_angle = angle;
+        }
+    }
+
+    let inside = Vec3::new(
+        smallest_angle.cos() * island.half_extents.x * (smallest_scale - 0.02),
+        0.0,
+        smallest_angle.sin() * island.half_extents.y * (smallest_scale - 0.02),
+    );
+    let outside = Vec3::new(
+        smallest_angle.cos() * island.half_extents.x * (smallest_scale + 0.04),
+        0.0,
+        smallest_angle.sin() * island.half_extents.y * (smallest_scale + 0.04),
+    );
+
+    assert!(island.contains_horizontal(inside));
+    assert!(!island.contains_horizontal(outside));
+}
+
+#[test]
 fn streaming_lod_stats_track_active_window_and_distance_bands() {
     let route = SkyRoute::default();
     let stats = route.streaming_lod_stats(START_POSITION);

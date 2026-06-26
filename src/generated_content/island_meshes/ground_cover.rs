@@ -3,6 +3,7 @@ use super::constants::{
     GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES, INDICES_PER_GROUND_BLADE,
     VERTICES_PER_GROUND_BLADE,
 };
+use super::shape::island_playable_normalized_offset;
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
@@ -23,7 +24,10 @@ pub(crate) fn island_ground_cover_mesh(island_index: usize, island: SkyIsland) -
             (random_unit(seed, patch as u32, 17) - 0.5) * 0.08,
             (random_unit(seed, patch as u32, 23) - 0.5) * 0.08,
         );
-        let normalized_offset = Vec2::new(base_angle.cos(), base_angle.sin()) * radius + jitter;
+        let normalized_offset = island_playable_normalized_offset(
+            island,
+            Vec2::new(base_angle.cos(), base_angle.sin()) * radius + jitter,
+        );
         let x = island.center.x + normalized_offset.x * island.half_extents.x;
         let z = island.center.z + normalized_offset.y * island.half_extents.y;
         let surface_y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z)) + 0.08;

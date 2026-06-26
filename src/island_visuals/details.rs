@@ -8,9 +8,9 @@ use crate::content_diagnostics::{GeneratedLandmarkKind, IslandContentDiagnostics
 use crate::environment_visuals::wind_visual_motion;
 use crate::generated_content::{
     GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES, IslandDetailMaterials,
-    island_ground_cover_mesh, island_visual_surface_position, landing_garden_marker_mesh,
-    launch_beacon_mesh, pond_surface_mesh, rock_scatter_mesh, route_cairn_mesh, tree_canopy_mesh,
-    tree_trunk_mesh,
+    island_ground_cover_mesh, island_playable_normalized_offset, island_visual_surface_position,
+    landing_garden_marker_mesh, launch_beacon_mesh, pond_surface_mesh, rock_scatter_mesh,
+    route_cairn_mesh, tree_canopy_mesh, tree_trunk_mesh,
 };
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
@@ -118,8 +118,10 @@ pub(super) fn queue_sky_island_details(
     for index in 0..5 {
         let angle = detail_phase + index as f32 * 1.37;
         let radius = if index % 2 == 0 { 0.52 } else { 0.72 };
-        let x = island.center.x + angle.cos() * island.half_extents.x * radius;
-        let z = island.center.z + angle.sin() * island.half_extents.y * radius;
+        let normalized_offset =
+            island_playable_normalized_offset(island, Vec2::new(angle.cos(), angle.sin()) * radius);
+        let x = island.center.x + normalized_offset.x * island.half_extents.x;
+        let z = island.center.z + normalized_offset.y * island.half_extents.y;
         let stone_scale = 0.45 + index as f32 * 0.08;
         let surface_y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z));
         let rock_mesh = rock_scatter_mesh(

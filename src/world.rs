@@ -9,7 +9,7 @@ mod tests;
 
 use bevy::prelude::Vec3;
 
-pub use island::SkyIsland;
+pub use island::{IslandTerrainArchetype, SkyIsland};
 pub use objectives::{RouteObjective, RouteObjectiveKind, is_recovery_branch_island};
 pub use route::SkyRoute;
 pub use streaming::{LodBand, StreamActivation, StreamChunkCoord, StreamingLodStats};

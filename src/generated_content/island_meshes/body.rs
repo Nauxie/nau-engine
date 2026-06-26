@@ -4,7 +4,7 @@ use super::constants::{
 };
 use super::normals::{smooth_normals_from_triangles, smooth_normals_from_triangles_oriented};
 use super::palette::{island_rock_vertex_color, island_terrain_vertex_color};
-use super::shape::{island_playable_silhouette_scale, island_polar_position};
+use super::shape::{island_polar_position, island_silhouette_scale};
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
@@ -22,7 +22,7 @@ pub(crate) fn island_cliff_surface_position(
         + t * 0.025 * (angle * 13.0 - phase * 0.3 + t * 2.1).cos();
     let ledge_phase = (t * ISLAND_CLIFF_STRATA_BANDS as f32 + phase * 0.11).fract();
     let ledge_shelf = (1.0 - (ledge_phase - 0.5).abs() * 2.0).max(0.0).powf(2.2);
-    let radius_scale = island_playable_silhouette_scale(island_index, angle)
+    let radius_scale = island_silhouette_scale(island, angle)
         * (1.0 - t.powf(1.18) * 0.34)
         * shelf_variation
         * (1.0 + ledge_shelf * 0.028);
@@ -126,7 +126,7 @@ pub(crate) fn island_underside_mesh(island_index: usize, island: SkyIsland) -> M
             }
 
             let twist = 0.045 * (angle * 6.0 + phase + t * 2.4).sin();
-            let radius_scale = island_playable_silhouette_scale(island_index, angle)
+            let radius_scale = island_silhouette_scale(island, angle)
                 * (0.66 * (1.0 - t).powf(1.35) + 0.18 * t)
                 * (1.0 + twist);
             let y = top_y

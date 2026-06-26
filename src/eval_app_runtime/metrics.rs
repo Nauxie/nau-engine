@@ -299,6 +299,7 @@ pub(crate) fn collect_eval_metrics(
         content_metrics.min_island_terrain_mesh_vertices,
         content_metrics.min_island_terrain_color_bands,
         content_metrics.min_island_terrain_relief_range_m(),
+        content_metrics.island_terrain_archetype_count(),
         content_metrics.min_island_cliff_color_bands,
         content_metrics.procedural_island_body_count,
         content_metrics.primitive_island_body_count,

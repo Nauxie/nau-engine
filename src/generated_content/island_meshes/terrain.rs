@@ -44,7 +44,7 @@ pub(crate) fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mes
         let radius = ring as f32 / ISLAND_TERRAIN_RINGS as f32;
         for segment in 0..ISLAND_BODY_SEGMENTS {
             let angle = segment as f32 / ISLAND_BODY_SEGMENTS as f32 * std::f32::consts::TAU;
-            let edge_scale = island_playable_silhouette_scale(island_index, angle);
+            let edge_scale = island_playable_silhouette_scale(island, angle);
             let radius_scale = radius * (1.0 + radius.powf(1.35) * (edge_scale - 1.0));
             let x = island.center.x + angle.cos() * island.half_extents.x * radius_scale;
             let z = island.center.z + angle.sin() * island.half_extents.y * radius_scale;

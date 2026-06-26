@@ -1,5 +1,6 @@
 use crate::generated_content::TERRAIN_BIOME_PALETTE_COUNT;
 use bevy::prelude::*;
+use nau_engine::world::IslandTerrainArchetype;
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
 pub(crate) struct IslandContentDiagnostics {
@@ -11,6 +12,7 @@ pub(crate) struct IslandContentDiagnostics {
     pub(crate) min_island_terrain_material_regions: usize,
     pub(crate) min_island_terrain_texture_detail_bands: usize,
     pub(crate) min_island_terrain_relief_range_cm: usize,
+    pub(crate) island_terrain_archetype_mask: u32,
     pub(crate) min_island_cliff_color_bands: usize,
     pub(crate) min_island_impostor_mesh_vertices: usize,
     pub(crate) min_island_impostor_color_bands: usize,
@@ -92,6 +94,14 @@ impl IslandContentDiagnostics {
                 .min_island_terrain_texture_detail_bands
                 .min(detail_bands);
         }
+    }
+
+    pub(crate) fn record_island_terrain_archetype(&mut self, archetype: IslandTerrainArchetype) {
+        self.island_terrain_archetype_mask |= 1_u32 << archetype.index();
+    }
+
+    pub(crate) fn island_terrain_archetype_count(self) -> usize {
+        self.island_terrain_archetype_mask.count_ones() as usize
     }
 
     pub(crate) fn record_island_cliff_detail(&mut self, color_bands: usize) {
@@ -285,6 +295,9 @@ mod tests {
         diagnostics.record_procedural_island_body(ISLAND_BODY_SEGMENTS, 821);
         diagnostics.record_island_terrain_surface(2305, 9, 16, 3, 4, 1.12);
         diagnostics.record_island_terrain_surface(2305, 7, 12, 3, 4, 0.92);
+        diagnostics.record_island_terrain_archetype(IslandTerrainArchetype::LaunchMesa);
+        diagnostics.record_island_terrain_archetype(IslandTerrainArchetype::GardenBasin);
+        diagnostics.record_island_terrain_archetype(IslandTerrainArchetype::GardenBasin);
         diagnostics.record_terrain_material_texture_detail(72);
         diagnostics.record_terrain_material_texture_detail(64);
         diagnostics.record_island_cliff_detail(11);
@@ -301,6 +314,7 @@ mod tests {
         assert_eq!(diagnostics.min_island_terrain_material_regions, 4);
         assert_eq!(diagnostics.min_island_terrain_texture_detail_bands, 64);
         assert_eq!(diagnostics.min_island_terrain_relief_range_m(), 0.92);
+        assert_eq!(diagnostics.island_terrain_archetype_count(), 2);
         assert_eq!(diagnostics.min_island_cliff_color_bands, 10);
         assert_eq!(diagnostics.min_island_impostor_mesh_vertices, 144);
         assert_eq!(diagnostics.min_island_impostor_color_bands, 19);

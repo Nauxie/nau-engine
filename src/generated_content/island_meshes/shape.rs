@@ -2,22 +2,33 @@ use bevy::prelude::*;
 use nau_engine::world::SkyIsland;
 
 pub(crate) fn island_visual_surface_position(island: SkyIsland, normalized_offset: Vec2) -> Vec3 {
+    let normalized_offset = island_playable_normalized_offset(island, normalized_offset);
     let x = island.center.x + island.half_extents.x * normalized_offset.x;
     let z = island.center.z + island.half_extents.y * normalized_offset.y;
 
     Vec3::new(x, island.mesh_top_y_at(Vec3::new(x, island.center.y, z)), z)
 }
 
-pub(crate) fn island_silhouette_scale(island_index: usize, angle: f32) -> f32 {
-    let phase = island_index as f32 * 0.73;
-    (1.0 + 0.09 * (angle * 3.0 + phase).sin()
-        + 0.055 * (angle * 7.0 - phase * 0.4).cos()
-        + 0.032 * (angle * 11.0 + phase * 1.7).sin())
-    .clamp(0.82, 1.18)
+pub(crate) fn island_playable_normalized_offset(
+    island: SkyIsland,
+    normalized_offset: Vec2,
+) -> Vec2 {
+    let radius = normalized_offset.length();
+    if radius <= f32::EPSILON {
+        return Vec2::ZERO;
+    }
+
+    let angle = normalized_offset.y.atan2(normalized_offset.x);
+    let max_radius = island.playable_silhouette_scale(angle) * 0.94;
+    normalized_offset / radius * radius.min(max_radius)
 }
 
-pub(crate) fn island_playable_silhouette_scale(island_index: usize, angle: f32) -> f32 {
-    island_silhouette_scale(island_index, angle).min(1.0)
+pub(crate) fn island_silhouette_scale(island: SkyIsland, angle: f32) -> f32 {
+    island.visual_silhouette_scale(angle)
+}
+
+pub(crate) fn island_playable_silhouette_scale(island: SkyIsland, angle: f32) -> f32 {
+    island.playable_silhouette_scale(angle)
 }
 
 pub(crate) fn island_polar_position(

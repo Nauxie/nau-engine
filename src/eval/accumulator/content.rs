@@ -25,6 +25,9 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.min_island_terrain_relief_range_m = accumulator
         .min_island_terrain_relief_range_m
         .min(sample.min_island_terrain_relief_range_m);
+    accumulator.min_island_terrain_archetype_count = accumulator
+        .min_island_terrain_archetype_count
+        .min(sample.island_terrain_archetype_count);
     accumulator.min_island_cliff_color_bands = accumulator
         .min_island_cliff_color_bands
         .min(sample.min_island_cliff_color_bands);

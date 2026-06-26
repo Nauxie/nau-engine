@@ -345,11 +345,20 @@ fn terrain_export_writes_manifest_meshes_and_weight_sidecars() {
     assert!(manifest.contains(
         "\"material_weights_csv\": \"islands/00_launch_mesa_terrain_material_weights.csv\""
     ));
-    assert!(manifest.contains("\"terrain_material_weight_bands\": 36"));
-    assert!(manifest.contains("\"terrain_material_regions\": 4"));
+    assert!(manifest.contains(&format!(
+        "\"terrain_material_weight_bands\": {}",
+        report.min_terrain_material_weight_bands
+    )));
+    assert!(manifest.contains(&format!(
+        "\"terrain_material_regions\": {}",
+        report.min_terrain_material_regions
+    )));
     assert!(manifest.contains("\"terrain_height_bands\""));
     assert!(manifest.contains("\"terrain_normal_slope_bands\""));
-    assert!(manifest.contains("\"terrain_texture_detail_bands\": 47"));
+    assert!(manifest.contains(&format!(
+        "\"terrain_texture_detail_bands\": {}",
+        report.min_terrain_texture_detail_bands
+    )));
     assert!(manifest.contains(&format!(
         "\"terrain_texture_edge_promille\": {}",
         report.min_terrain_texture_edge_promille
@@ -729,6 +738,35 @@ fn ground_cover_mesh_uses_dense_curved_blades() {
         max_y - min_y > 1.0,
         "ground cover should have enough varied height to read as dense vegetation"
     );
+}
+
+#[test]
+fn island_detail_surface_offsets_clamp_to_playable_silhouette() {
+    let island = SkyIsland::new(
+        "storm porch",
+        Vec3::ZERO,
+        Vec2::new(42.0, 28.0),
+        15.0,
+        false,
+    );
+    let mut narrow_angle = 0.0;
+    let mut narrow_scale = f32::INFINITY;
+    for step in 0..128 {
+        let angle = step as f32 / 128.0 * std::f32::consts::TAU;
+        let scale = island.playable_silhouette_scale(angle);
+        if scale < narrow_scale {
+            narrow_angle = angle;
+            narrow_scale = scale;
+        }
+    }
+
+    let outside_offset = Vec2::new(narrow_angle.cos(), narrow_angle.sin()) * 0.92;
+    let clamped_offset = island_playable_normalized_offset(island, outside_offset);
+    let surface = island_visual_surface_position(island, outside_offset);
+
+    assert!(clamped_offset.length() < outside_offset.length());
+    assert!(clamped_offset.length() <= narrow_scale * 0.941);
+    assert!(island.contains_horizontal(surface));
 }
 
 #[test]

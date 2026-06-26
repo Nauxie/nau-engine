@@ -38,6 +38,8 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
     let mut csv_channel_mismatch_count = 0u64;
     let mut csv_region_mismatch_count = 0u64;
     let mut min_region_promille = [u64::MAX; TERRAIN_MATERIAL_REGION_COUNT];
+    let mut aggregate_region_promille_sums = [0u64; TERRAIN_MATERIAL_REGION_COUNT];
+    let mut aggregate_region_row_count = 0u64;
     let mut min_terrain_silhouette_radius_bands = u64::MAX;
     let mut min_terrain_vertical_bands = u64::MAX;
     let mut min_terrain_normal_slope_bands = u64::MAX;
@@ -56,6 +58,10 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
 
     let island_count = manifest
         .get("island_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let terrain_archetype_count = manifest
+        .get("terrain_archetype_count")
         .and_then(Value::as_u64)
         .unwrap_or(0);
     let mesh_count = manifest
@@ -87,6 +93,12 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         islands.len() as u64,
         island_count,
         "islands",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_archetype_count",
+        terrain_archetype_count,
+        MIN_TERRAIN_ARCHETYPE_COUNT,
+        "archetypes",
     ));
     checks.push(check_eq_u64(
         "mesh_count",
@@ -187,8 +199,16 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         "bands",
     ));
 
+    let mut terrain_archetype_mask = 0_u64;
     for island in &islands {
         let island_name = island.get("name").and_then(Value::as_str).unwrap_or("");
+        if let Some(archetype_index) = island
+            .get("terrain_archetype_index")
+            .and_then(Value::as_u64)
+            && archetype_index < u64::BITS as u64
+        {
+            terrain_archetype_mask |= 1_u64 << archetype_index;
+        }
         for mesh_kind in ["terrain", "cliff", "underside", "impostor"] {
             let mesh = island.get(mesh_kind).unwrap_or(&Value::Null);
             expected_artifact_count += 1;
@@ -293,8 +313,10 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
                         csv_band_mismatch_count += u64::from(band_mismatch);
                         csv_channel_mismatch_count += u64::from(channel_mismatch);
                         csv_region_mismatch_count += u64::from(region_mismatch);
+                        aggregate_region_row_count += csv.row_count;
                         for (index, promille) in csv.region_promille.iter().enumerate() {
                             min_region_promille[index] = min_region_promille[index].min(*promille);
+                            aggregate_region_promille_sums[index] += promille * csv.row_count;
                         }
 
                         artifacts.push(json!({
@@ -396,8 +418,19 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         0,
         "csvs",
     ));
+    checks.push(check_eq_u64(
+        "terrain_archetype_entry_count",
+        terrain_archetype_mask.count_ones() as u64,
+        terrain_archetype_count,
+        "archetypes",
+    ));
     let min_region_promille =
         min_region_promille.map(|value| if value == u64::MAX { 0 } else { value });
+    let aggregate_region_promille = if aggregate_region_row_count == 0 {
+        [0; TERRAIN_MATERIAL_REGION_COUNT]
+    } else {
+        aggregate_region_promille_sums.map(|sum| sum / aggregate_region_row_count)
+    };
     checks.push(check_at_least_u64(
         "terrain_base_region_promille",
         min_region_promille[0],
@@ -420,6 +453,30 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         "terrain_exposed_region_promille",
         min_region_promille[3],
         MIN_TERRAIN_EXPOSED_REGION_PROMILLE,
+        "promille",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_aggregate_base_region_promille",
+        aggregate_region_promille[0],
+        MIN_TERRAIN_AGGREGATE_BASE_REGION_PROMILLE,
+        "promille",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_aggregate_transition_region_promille",
+        aggregate_region_promille[1],
+        MIN_TERRAIN_AGGREGATE_TRANSITION_REGION_PROMILLE,
+        "promille",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_aggregate_highland_region_promille",
+        aggregate_region_promille[2],
+        MIN_TERRAIN_AGGREGATE_HIGHLAND_REGION_PROMILLE,
+        "promille",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_aggregate_exposed_region_promille",
+        aggregate_region_promille[3],
+        MIN_TERRAIN_AGGREGATE_EXPOSED_REGION_PROMILLE,
         "promille",
     ));
     let min_terrain_silhouette_radius_bands = if min_terrain_silhouette_radius_bands == u64::MAX {
