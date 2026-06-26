@@ -40,6 +40,20 @@ pub(super) fn min_finite_f32(values: impl Iterator<Item = f32>) -> f32 {
         .unwrap_or(0.0)
 }
 
+pub(super) fn finite_range_f32(values: impl Iterator<Item = f32>) -> f32 {
+    let mut min_value = f32::INFINITY;
+    let mut max_value = f32::NEG_INFINITY;
+    let mut found = false;
+
+    for value in values.filter(|value| value.is_finite()) {
+        min_value = min_value.min(value);
+        max_value = max_value.max(value);
+        found = true;
+    }
+
+    if found { max_value - min_value } else { 0.0 }
+}
+
 pub(super) fn finite_ratio(numerator: f32, denominator: f32) -> f32 {
     if denominator.abs() <= f32::EPSILON {
         return 0.0;
