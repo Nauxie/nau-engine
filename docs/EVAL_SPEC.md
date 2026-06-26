@@ -549,7 +549,7 @@ The summary aggregates:
 - active lift sample count
 - readable and unreadable active-lift sample counts
 - dynamic readable lift sample count plus max sampled wind-flow speed, gust variation, and readable-lift variation range
-- pose-intent sample counts for readable gliding, diving, air brake, landing anticipation, and landing recovery; app evals score visible generated part transforms when generated fallback geometry is visible and require authored clip alignment when authored player geometry hides those parts
+- pose-intent sample counts for readable gliding, diving, air brake, landing anticipation, and landing recovery; app evals score visible generated or authored player part transforms when those nodes are available and still require authored clip alignment when authored player geometry hides generated fallback parts
 - pose torso pitch, arm spread, leg tuck, lateral lean, landing crouch, wing-airflow maxima, key-pose readability min/max, and unreadable key-pose sample count
 - gliding, launching, and grounded sample counts
 
@@ -608,7 +608,7 @@ The pass/fail checks currently guard:
 - camera view yaw and world-yaw drift stayed within scenario limits when movement should not rotate the camera
 - camera obstruction avoidance was exercised when a scenario requires it
 - camera mouse scenarios exercised yaw and both pitch directions
-- air-control response latency, right/left/rear-right/rear-left lateral response and latency, rear-right/rear-left rearward response, body-bank response, body-roll step, total and planar air-brake speed drop, readable air-brake/dive pose coverage, pose torso pitch at least 45 degrees, arm spread at least 100 degrees, leg tuck at least 35 degrees, lateral lean at least 8 degrees, wing-airflow strength at least 0.25, zero key-pose samples below the 0.9 readability floor, post-brake forward alignment, desired-heading alignment, average/p95/max body-heading error, max yaw-error step, yaw oscillation count, camera orbit yaw offset, camera view-yaw drift, camera world-yaw drift, and camera rotation delta stayed inside thresholds
+- air-control response latency, right/left/rear-right/rear-left lateral response and latency, rear-right/rear-left rearward response, pure-backward body-heading intent, body-bank response, body-roll step, total and planar air-brake speed drop, readable air-brake/dive pose coverage, pose torso pitch at least 45 degrees, arm spread at least 100 degrees, leg tuck at least 35 degrees, lateral lean at least 8 degrees, wing-airflow strength at least 0.25, zero key-pose samples below the 0.9 readability floor, post-brake forward alignment, desired-heading alignment, average/p95/max body-heading error, max yaw-error step, yaw oscillation count, camera orbit yaw offset, camera view-yaw drift, camera world-yaw drift, and camera rotation delta stayed inside thresholds
 - air-control average and p95 camera follow-direction error stayed inside threshold so movement-only routes cannot pass with a stale follow direction
 - air-control movement-only camera world-yaw drift stayed inside threshold
 - island-route final scenario-target distance stayed under threshold

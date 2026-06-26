@@ -14,6 +14,7 @@ mod power_up_runtime;
 mod scene_setup_runtime;
 mod world_collision_runtime;
 use authored_assets::*;
+use bevy::app::AnimationSystems;
 use bevy::light::DirectionalLightShadowMap;
 use bevy::prelude::*;
 use bevy::window::CompositeAlphaMode;
@@ -40,6 +41,7 @@ use nau_engine::movement::FlightTuning;
 #[cfg(test)]
 use nau_engine::world::SkyIsland;
 use nau_engine::world::SkyRoute;
+use player_runtime::apply_authored_player_pose_nodes;
 pub(crate) use player_runtime::{
     Player, RouteObjectiveTracker, grounded_visual_foot_gap_m, keyboard_flight_input,
     movement_facing,
@@ -156,12 +158,20 @@ fn main() -> AppExit {
                 update_camera_control,
                 animate_character,
                 link_ready_authored_animations,
+                tag_authored_player_pose_nodes,
                 update_authored_player_animation,
+                apply_authored_player_pose_nodes,
                 update_glider_airflow_trails,
                 follow_camera,
             )
                 .chain()
                 .in_set(GameSet::Camera),
+        )
+        .add_systems(
+            PostUpdate,
+            apply_authored_player_pose_nodes
+                .after(AnimationSystems)
+                .before(TransformSystems::Propagate),
         )
         .add_systems(
             Update,
@@ -199,6 +209,7 @@ fn main() -> AppExit {
             .add_systems(
                 Update,
                 (
+                    apply_authored_player_pose_nodes,
                     collect_eval_frame_time,
                     collect_eval_metrics,
                     finish_eval_frame,

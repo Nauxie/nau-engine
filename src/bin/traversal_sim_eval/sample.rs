@@ -168,11 +168,7 @@ impl SimSample {
         power_ups: &SimPowerUps,
     ) -> Self {
         let movement_axis = input.planar_axis();
-        let desired_movement_direction = if input.forward || input.left || input.right {
-            desired_planar_movement_direction(input, facing)
-        } else {
-            None
-        };
+        let desired_movement_direction = desired_planar_movement_direction(input, facing);
         let desired_body_yaw_error_degrees = desired_movement_direction
             .map(|direction| body_yaw_error_degrees(player_rotation, direction))
             .unwrap_or(f32::NAN);

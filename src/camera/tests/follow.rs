@@ -54,12 +54,26 @@ fn lateral_or_released_input_does_not_drag_camera_follow_direction() {
     let velocity = Vec3::new(1.0, 0.0, -20.0);
     let lateral_direction =
         movement_input_stable_follow_direction(velocity, Vec3::X, Vec3::NEG_Z, Vec2::new(1.0, 0.0));
+    let backward_direction = movement_input_stable_follow_direction(
+        Vec3::new(0.0, 0.0, 20.0),
+        Vec3::X,
+        Vec3::NEG_Z,
+        Vec2::NEG_Y,
+    );
+    let backward_diagonal_direction = movement_input_stable_follow_direction(
+        Vec3::new(12.0, 0.0, 12.0),
+        Vec3::X,
+        Vec3::NEG_Z,
+        Vec2::new(1.0, -1.0),
+    );
     let released_direction =
         movement_input_stable_follow_direction(velocity, Vec3::X, Vec3::NEG_Z, Vec2::ZERO);
     let forward_direction =
         movement_input_stable_follow_direction(velocity, Vec3::NEG_Z, Vec3::NEG_Z, Vec2::Y);
 
     assert!(lateral_direction.distance(Vec3::NEG_Z) < 0.001);
+    assert!(backward_direction.distance(Vec3::NEG_Z) < 0.001);
+    assert!(backward_diagonal_direction.distance(Vec3::NEG_Z) < 0.001);
     assert!(released_direction.distance(Vec3::NEG_Z) < 0.001);
     assert!(forward_direction.distance(velocity.normalize()) < 0.001);
 }

@@ -1,5 +1,7 @@
 use super::scene::EvalScene;
-use crate::authored_assets::{AuthoredPlayerAnimation, authored_player_clip_for_pose_intent};
+use crate::authored_assets::{
+    AuthoredPlayerAnimation, AuthoredPlayerPoseNode, authored_player_clip_for_pose_intent,
+};
 use crate::camera_runtime::CAMERA_PLAYER_FOCUS_HEIGHT;
 use crate::environment_visuals::{wind_guide_visual_metrics, wind_responsive_visual_metrics};
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
@@ -146,9 +148,16 @@ pub(crate) fn collect_eval_metrics(
         pose_context,
     )
     .unwrap_or_else(|| {
+        let authored_metrics = visible_authored_pose_readability_metrics(
+            scene.authored_player_pose_nodes.iter(),
+            pose_context,
+        )
+        .unwrap_or_else(|| {
+            missing_visible_authored_pose_metrics(pose_readability, pose_context.intent())
+        });
         authored_pose_readability_metrics(
             scene.authored_player_animations.iter(),
-            pose_readability,
+            authored_metrics,
             pose_context.intent(),
             velocity.0.length(),
         )
@@ -162,11 +171,7 @@ pub(crate) fn collect_eval_metrics(
         movement_facing(scene.camera.single().ok(), transform)
     };
     let desired_movement_direction =
-        if movement_input.forward || movement_input.left || movement_input.right {
-            desired_planar_movement_direction(movement_input, movement_facing)
-        } else {
-            None
-        };
+        desired_planar_movement_direction(movement_input, movement_facing);
     let desired_body_yaw_error_degrees = desired_movement_direction
         .map(|direction| body_yaw_error_degrees(transform.rotation, direction))
         .unwrap_or(f32::NAN);
@@ -408,6 +413,59 @@ fn visible_generated_pose_readability_metrics<'a>(
     ))
 }
 
+fn visible_authored_pose_readability_metrics<'a>(
+    nodes: impl Iterator<Item = (&'a AuthoredPlayerPoseNode, &'a Transform)>,
+    context: PlayerPoseContext,
+) -> Option<PoseReadabilityMetrics> {
+    let mut torso_rotation = None;
+    let mut left_arm_rotation = None;
+    let mut right_arm_rotation = None;
+    let mut left_leg_rotation = None;
+    let mut right_leg_rotation = None;
+    let mut left_leg_translation = None;
+    let mut right_leg_translation = None;
+
+    for (node, transform) in nodes {
+        match node.part.role {
+            CharacterPartRole::Torso => torso_rotation = Some(transform.rotation),
+            CharacterPartRole::Arm(Side::Left) => left_arm_rotation = Some(transform.rotation),
+            CharacterPartRole::Arm(Side::Right) => right_arm_rotation = Some(transform.rotation),
+            CharacterPartRole::Leg(Side::Left) => {
+                left_leg_rotation = Some(transform.rotation);
+                left_leg_translation = Some(transform.translation - node.part.base_translation);
+            }
+            CharacterPartRole::Leg(Side::Right) => {
+                right_leg_rotation = Some(transform.rotation);
+                right_leg_translation = Some(transform.translation - node.part.base_translation);
+            }
+            CharacterPartRole::Head | CharacterPartRole::Wing(_) => {}
+        }
+    }
+
+    Some(pose_readability_metrics_from_part_transforms(
+        context,
+        PoseReadabilityPartTransforms {
+            torso_rotation: torso_rotation?,
+            left_arm_rotation: left_arm_rotation?,
+            right_arm_rotation: right_arm_rotation?,
+            left_leg_rotation: left_leg_rotation?,
+            right_leg_rotation: right_leg_rotation?,
+            left_leg_translation: left_leg_translation?,
+            right_leg_translation: right_leg_translation?,
+        },
+    ))
+}
+
+fn missing_visible_authored_pose_metrics(
+    mut metrics: PoseReadabilityMetrics,
+    intent: PlayerPoseIntent,
+) -> PoseReadabilityMetrics {
+    if key_pose_intent(intent) {
+        metrics.key_pose_readability_score = 0.0;
+    }
+    metrics
+}
+
 fn authored_pose_readability_metrics<'a>(
     mut authored_players: impl Iterator<Item = &'a AuthoredPlayerAnimation>,
     mut metrics: PoseReadabilityMetrics,
@@ -439,6 +497,7 @@ fn key_pose_intent(intent: PlayerPoseIntent) -> bool {
             | PlayerPoseIntent::Diving
             | PlayerPoseIntent::AirBrake
             | PlayerPoseIntent::LandingAnticipation
+            | PlayerPoseIntent::LandingRecovery
     )
 }
 
@@ -611,5 +670,93 @@ mod tests {
 
         assert_eq!(metrics.landing_crouch_m, 0.0);
         assert!(metrics.key_pose_readability_score < 0.1);
+    }
+
+    #[test]
+    fn visible_authored_pose_metrics_use_tagged_node_transforms() {
+        let context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -2.0, -30.0),
+            FlightInput::default(),
+            30.0,
+        );
+        let left_leg_base = Vec3::new(-0.17, 0.30, 0.01);
+        let right_leg_base = Vec3::new(0.17, 0.30, 0.01);
+        let nodes = [
+            (
+                AuthoredPlayerPoseNode::new(CharacterPart::new(
+                    CharacterPartRole::Torso,
+                    Vec3::new(0.0, 1.08, 0.0),
+                    Quat::IDENTITY,
+                )),
+                Transform::from_rotation(Quat::from_rotation_x(-0.32)),
+            ),
+            (
+                AuthoredPlayerPoseNode::new(CharacterPart::new(
+                    CharacterPartRole::Arm(Side::Left),
+                    Vec3::new(-0.48, 1.18, 0.01),
+                    Quat::IDENTITY,
+                )),
+                Transform::from_rotation(Quat::from_rotation_z(1.08)),
+            ),
+            (
+                AuthoredPlayerPoseNode::new(CharacterPart::new(
+                    CharacterPartRole::Arm(Side::Right),
+                    Vec3::new(0.48, 1.18, 0.01),
+                    Quat::IDENTITY,
+                )),
+                Transform::from_rotation(Quat::from_rotation_z(-1.08)),
+            ),
+            (
+                AuthoredPlayerPoseNode::new(CharacterPart::new(
+                    CharacterPartRole::Leg(Side::Left),
+                    left_leg_base,
+                    Quat::IDENTITY,
+                )),
+                Transform {
+                    translation: left_leg_base,
+                    rotation: Quat::from_rotation_x(0.2),
+                    ..default()
+                },
+            ),
+            (
+                AuthoredPlayerPoseNode::new(CharacterPart::new(
+                    CharacterPartRole::Leg(Side::Right),
+                    right_leg_base,
+                    Quat::IDENTITY,
+                )),
+                Transform {
+                    translation: right_leg_base,
+                    rotation: Quat::from_rotation_x(0.2),
+                    ..default()
+                },
+            ),
+        ];
+
+        let metrics = visible_authored_pose_readability_metrics(
+            nodes.iter().map(|(node, transform)| (node, transform)),
+            context,
+        )
+        .expect("visible authored pose metrics");
+
+        assert!(metrics.torso_pitch_degrees > 16.0);
+        assert!(metrics.arm_spread_degrees > 120.0);
+        assert!(metrics.key_pose_readability_score > 0.9);
+    }
+
+    #[test]
+    fn missing_visible_authored_nodes_fail_key_pose_readability() {
+        let context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -2.0, -30.0),
+            FlightInput::default(),
+            30.0,
+        );
+        let metrics = pose_readability_metrics(context, 0.0);
+        assert!(metrics.key_pose_readability_score > 0.9);
+
+        let missing = missing_visible_authored_pose_metrics(metrics, context.intent());
+
+        assert_eq!(missing.key_pose_readability_score, 0.0);
     }
 }

@@ -77,6 +77,40 @@ fn backward_diagonal_glide_input_rotates_body_toward_rear_quadrant() {
 }
 
 #[test]
+fn pure_backward_glide_input_rotates_body_toward_rear_heading() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let input = FlightInput {
+        backward: true,
+        glide: true,
+        ..default()
+    };
+    let mut rotation = Transform::from_translation(Vec3::ZERO)
+        .looking_to(facing.forward, Vec3::Y)
+        .rotation;
+    let desired_direction = desired_planar_movement_direction(input, facing)
+        .expect("backward input has a movement direction");
+
+    for _ in 0..12 {
+        rotation = face_flight_direction(
+            rotation,
+            Vec3::new(0.0, -2.0, 28.0),
+            input,
+            facing,
+            gliding_controller(0.0),
+            &tuning,
+            1.0 / 60.0,
+        );
+    }
+
+    let heading_error = body_heading_error_degrees(rotation, desired_direction);
+    assert!(
+        heading_error < 12.0,
+        "expected backward input to turn toward rear heading, got {heading_error} deg"
+    );
+}
+
+#[test]
 fn flight_body_yaw_tracks_lateral_input_direction() {
     let tuning = FlightTuning::default();
     let facing = Facing::new(Vec3::Z, Vec3::X);

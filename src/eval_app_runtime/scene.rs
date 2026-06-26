@@ -1,4 +1,6 @@
-use crate::authored_assets::{AuthoredPlayerAnimation, VisualAssetDiagnostics};
+use crate::authored_assets::{
+    AuthoredPlayerAnimation, AuthoredPlayerPoseNode, VisualAssetDiagnostics,
+};
 use crate::camera_runtime::{CameraDiagnostics, CameraFollowFilter};
 use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::environment_visuals::{
@@ -50,6 +52,8 @@ pub(crate) struct EvalScene<'w, 's> {
         ),
     >,
     pub(crate) authored_player_animations: Query<'w, 's, &'static AuthoredPlayerAnimation>,
+    pub(crate) authored_player_pose_nodes:
+        Query<'w, 's, (&'static AuthoredPlayerPoseNode, &'static Transform)>,
     pub(crate) wind_fields: Query<'w, 's, &'static WindField>,
     pub(crate) lift_fields: Query<'w, 's, &'static LiftField>,
     pub(crate) weather_clouds: Query<'w, 's, &'static Transform, With<WeatherDrift>>,

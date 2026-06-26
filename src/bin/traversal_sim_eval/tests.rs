@@ -276,6 +276,62 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
 }
 
 #[test]
+fn sim_sample_measures_pure_backward_body_heading_intent() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let input = FlightInput {
+        backward: true,
+        glide: true,
+        ..Default::default()
+    };
+    let state = FlightState::new(
+        START_POSITION + Vec3::Y * 8.0,
+        Vec3::new(0.0, -2.0, 28.0),
+        FlightController {
+            mode: FlightMode::Gliding,
+            ..Default::default()
+        },
+    );
+    let player_rotation = Transform::from_translation(Vec3::ZERO)
+        .looking_to(Vec3::Z, Vec3::Y)
+        .rotation;
+    let camera = CameraDiagnosticsSample {
+        distance_m: 14.0,
+        surface_clearance_m: 5.0,
+        player_angle_degrees: 0.0,
+        pitch_degrees: -18.0,
+        step_distance_m: 0.0,
+        rotation_delta_degrees: 0.0,
+        orbit_alignment_degrees: 0.0,
+        follow_direction_error_degrees: 0.0,
+        view_yaw_degrees: 0.0,
+        world_yaw_degrees: 0.0,
+        obstruction_adjustment_m: 0.0,
+        obstruction_hits: 0,
+    };
+    let objective = ObjectiveState::for_route(&route, scenario.target_island_name);
+    let sample = SimSample::new(
+        scenario,
+        0,
+        state,
+        player_rotation,
+        0.0,
+        nau_engine::camera::CameraOrbit::default(),
+        camera,
+        input,
+        Facing::new(Vec3::Z, Vec3::X),
+        &route,
+        &[],
+        &[],
+        &objective,
+        &SimPowerUps::default(),
+    );
+
+    assert!(sample.desired_body_heading_error_degrees > 170.0);
+    assert!(sample.desired_heading_alignment_mps < -20.0);
+}
+
+#[test]
 fn sim_metrics_reset_body_roll_step_across_grounded_samples() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
     let route = SkyRoute::default();

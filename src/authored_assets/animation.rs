@@ -5,8 +5,11 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 use std::time::Duration;
 
+use super::types::{AuthoredVisualScene, AuthoredVisualSceneRole};
 use crate::Player;
-use nau_engine::animation::{AnimationState, PlayerPoseIntent};
+use nau_engine::animation::{
+    AnimationState, CharacterPart, CharacterPartRole, PlayerPoseIntent, Side,
+};
 use nau_engine::asset_pipeline::VisualAssetKind;
 #[cfg(test)]
 use nau_engine::movement::FlightMode;
@@ -69,6 +72,81 @@ impl AuthoredPlayerAnimation {
 
     pub(crate) fn node(self, clip: AuthoredPlayerClip) -> AnimationNodeIndex {
         self.nodes[clip.index()]
+    }
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct AuthoredPlayerPoseNode {
+    pub(crate) part: CharacterPart,
+}
+
+impl AuthoredPlayerPoseNode {
+    pub(crate) fn new(part: CharacterPart) -> Self {
+        Self { part }
+    }
+}
+
+pub(crate) fn authored_player_pose_node_for_name(name: &str) -> Option<AuthoredPlayerPoseNode> {
+    let part = match name {
+        "Nau Torso" => CharacterPart::new(
+            CharacterPartRole::Torso,
+            Vec3::new(0.0, 1.08, 0.0),
+            Quat::IDENTITY,
+        ),
+        "Nau Head" => CharacterPart::new(
+            CharacterPartRole::Head,
+            Vec3::new(0.0, 1.68, 0.0),
+            Quat::IDENTITY,
+        ),
+        "Nau Left Arm" => CharacterPart::new(
+            CharacterPartRole::Arm(Side::Left),
+            Vec3::new(-0.48, 1.18, 0.01),
+            Quat::IDENTITY,
+        ),
+        "Nau Right Arm" => CharacterPart::new(
+            CharacterPartRole::Arm(Side::Right),
+            Vec3::new(0.48, 1.18, 0.01),
+            Quat::IDENTITY,
+        ),
+        "Nau Left Leg" => CharacterPart::new(
+            CharacterPartRole::Leg(Side::Left),
+            Vec3::new(-0.17, 0.30, 0.01),
+            Quat::IDENTITY,
+        ),
+        "Nau Right Leg" => CharacterPart::new(
+            CharacterPartRole::Leg(Side::Right),
+            Vec3::new(0.17, 0.30, 0.01),
+            Quat::IDENTITY,
+        ),
+        _ => return None,
+    };
+
+    Some(AuthoredPlayerPoseNode::new(part))
+}
+
+pub(crate) fn tag_authored_player_pose_nodes(
+    mut commands: Commands,
+    children: Query<&Children>,
+    authored_scenes: Query<(Entity, &AuthoredVisualScene)>,
+    names: Query<&Name>,
+    pose_nodes: Query<(), With<AuthoredPlayerPoseNode>>,
+) {
+    for (scene_entity, scene) in &authored_scenes {
+        if scene.role != AuthoredVisualSceneRole::PlayerRuntime {
+            continue;
+        }
+
+        for descendant in children.iter_descendants(scene_entity) {
+            if pose_nodes.get(descendant).is_ok() {
+                continue;
+            }
+            let Ok(name) = names.get(descendant) else {
+                continue;
+            };
+            if let Some(node) = authored_player_pose_node_for_name(name.as_str()) {
+                commands.entity(descendant).insert(node);
+            }
+        }
     }
 }
 
@@ -282,5 +360,25 @@ pub(crate) fn update_authored_player_animation(
             .play(&mut animation_player, desired_node, transition_duration)
             .repeat();
         authored_animation.current = desired;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn authored_player_pose_node_names_map_core_fixture_limbs() {
+        let torso = authored_player_pose_node_for_name("Nau Torso").expect("torso node");
+        let left_arm = authored_player_pose_node_for_name("Nau Left Arm").expect("left arm node");
+        let right_leg =
+            authored_player_pose_node_for_name("Nau Right Leg").expect("right leg node");
+
+        assert_eq!(torso.part.role, CharacterPartRole::Torso);
+        assert_eq!(torso.part.base_translation, Vec3::new(0.0, 1.08, 0.0));
+        assert_eq!(left_arm.part.role, CharacterPartRole::Arm(Side::Left));
+        assert_eq!(left_arm.part.base_translation, Vec3::new(-0.48, 1.18, 0.01));
+        assert_eq!(right_leg.part.role, CharacterPartRole::Leg(Side::Right));
+        assert!(authored_player_pose_node_for_name("Nau Belt Buckle Plate").is_none());
     }
 }

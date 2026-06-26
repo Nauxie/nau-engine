@@ -2,7 +2,8 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
 use crate::authored_assets::{
-    AuthoredVisualScene, AuthoredVisualSceneRole, GeneratedPlayerPlaceholder, VisualAssetRegistry,
+    AuthoredPlayerPoseNode, AuthoredVisualScene, AuthoredVisualSceneRole,
+    GeneratedPlayerPlaceholder, VisualAssetRegistry,
 };
 use crate::camera_runtime::CameraFollowFilter;
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
@@ -434,6 +435,32 @@ pub(crate) fn animate_character(
         } else {
             Visibility::Inherited
         };
+    }
+}
+
+pub(crate) fn apply_authored_player_pose_nodes(
+    player: Query<(&Transform, &Velocity, &FlightController, &AnimationState), With<Player>>,
+    mut pose_nodes: Query<(&AuthoredPlayerPoseNode, &mut Transform), Without<Player>>,
+) {
+    let Ok((transform, velocity, controller, animation)) = player.single() else {
+        return;
+    };
+    let pose_velocity = body_local_pose_velocity(velocity.0, transform.rotation);
+    let pose_context = PlayerPoseContext::new(
+        controller.mode,
+        pose_velocity,
+        animation.last_input,
+        animation.height_above_ground_m,
+    )
+    .with_landing_recovery(
+        controller.landing_recovery_timer,
+        controller.landing_impact_speed_mps,
+    );
+
+    for (node, mut transform) in &mut pose_nodes {
+        let pose = part_pose_with_context(&node.part, pose_context, animation.phase);
+        transform.translation = pose.translation;
+        transform.rotation = pose.rotation;
     }
 }
 
