@@ -4,7 +4,7 @@ use crate::{
     report::{json_number, json_string, report_checks},
     thresholds::{
         MIN_PASSED_TERRAIN_MATERIAL_VARIANTS, MIN_SAMPLE_PIXEL_HITS,
-        MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS,
+        MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE, MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS,
     },
     types::{CheckpointAudit, SceneSampleAudit},
 };
@@ -307,6 +307,86 @@ fn report_checks_require_terrain_material_variant_diversity() {
 }
 
 #[test]
+fn report_checks_require_visible_terrain_material_variants_to_hit() {
+    let checkpoint = CheckpointAudit {
+        metadata_path: "checkpoint.markers.json".to_string(),
+        screenshot_path: "checkpoint.png".to_string(),
+        checkpoint: "test".to_string(),
+        in_viewport_scene_sample_count: 2,
+        occluded_scene_sample_count: 0,
+        visible_scene_sample_count: 2,
+        scene_sample_pixel_hit_count: 1,
+        visible_scene_material_count: 1,
+        scene_material_pixel_hit_count: 1,
+        visible_scene_sample_kind_count: 1,
+        scene_sample_kind_pixel_hit_count: 1,
+        visible_terrain_material_variant_count: 2,
+        terrain_material_variant_pixel_hit_count: 1,
+        passed: false,
+        samples: vec![
+            terrain_audit_sample("launch mesa", "terrain_lush_meadow"),
+            visible_failed_terrain_audit_sample("midpoint shelf", "terrain_gold_meadow"),
+        ],
+        materials: Vec::new(),
+    };
+
+    let checks = report_checks(&[checkpoint]);
+    let checkpoint_variants = checks
+        .iter()
+        .find(|check| check.name == "checkpoint_terrain_material_variant_hits")
+        .expect("checkpoint terrain variant hit check");
+    let gold_hits = checks
+        .iter()
+        .find(|check| check.name == "terrain_gold_meadow_terrain_sample_pixel_hits")
+        .expect("gold terrain hit check");
+
+    assert!(!checkpoint_variants.passed);
+    assert_eq!(checkpoint_variants.value, 0.0);
+    assert!(!gold_hits.passed);
+    assert_eq!(gold_hits.value, 0.0);
+    assert_eq!(gold_hits.threshold, 1.0);
+}
+
+#[test]
+fn report_checks_require_per_variant_terrain_pixel_coverage() {
+    let checkpoint = CheckpointAudit {
+        metadata_path: "checkpoint.markers.json".to_string(),
+        screenshot_path: "checkpoint.png".to_string(),
+        checkpoint: "test".to_string(),
+        in_viewport_scene_sample_count: 1,
+        occluded_scene_sample_count: 0,
+        visible_scene_sample_count: 1,
+        scene_sample_pixel_hit_count: 1,
+        visible_scene_material_count: 1,
+        scene_material_pixel_hit_count: 1,
+        visible_scene_sample_kind_count: 1,
+        scene_sample_kind_pixel_hit_count: 1,
+        visible_terrain_material_variant_count: 1,
+        terrain_material_variant_pixel_hit_count: 1,
+        passed: false,
+        samples: vec![terrain_audit_sample_with_hits(
+            "launch mesa",
+            "terrain_lush_meadow",
+            MIN_SAMPLE_PIXEL_HITS,
+        )],
+        materials: Vec::new(),
+    };
+
+    let checks = report_checks(&[checkpoint]);
+    let lush_coverage = checks
+        .iter()
+        .find(|check| check.name == "terrain_lush_meadow_terrain_sample_pixel_coverage")
+        .expect("lush terrain coverage check");
+
+    assert!(!lush_coverage.passed);
+    assert_eq!(lush_coverage.value, MIN_SAMPLE_PIXEL_HITS as f64);
+    assert_eq!(
+        lush_coverage.threshold,
+        MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE as f64
+    );
+}
+
+#[test]
 fn semantic_scene_audit_scales_logical_viewport_to_retina_screenshot() {
     let temp_dir = unique_temp_dir("semantic_scene_retina");
     fs::create_dir_all(&temp_dir).expect("temp dir");
@@ -430,6 +510,14 @@ fn unique_temp_dir(name: &str) -> PathBuf {
 }
 
 fn terrain_audit_sample(label: &str, material_variant: &str) -> SceneSampleAudit {
+    terrain_audit_sample_with_hits(label, material_variant, MIN_SAMPLE_PIXEL_HITS)
+}
+
+fn terrain_audit_sample_with_hits(
+    label: &str,
+    material_variant: &str,
+    semantic_pixel_hits: usize,
+) -> SceneSampleAudit {
     SceneSampleAudit {
         kind: "terrain_surface".to_string(),
         label: label.to_string(),
@@ -439,8 +527,23 @@ fn terrain_audit_sample(label: &str, material_variant: &str) -> SceneSampleAudit
         visibility: "visible".to_string(),
         screen_x: Some(12.0),
         screen_y: Some(12.0),
-        semantic_pixel_hits: MIN_SAMPLE_PIXEL_HITS,
+        semantic_pixel_hits,
         passed: true,
+    }
+}
+
+fn visible_failed_terrain_audit_sample(label: &str, material_variant: &str) -> SceneSampleAudit {
+    SceneSampleAudit {
+        kind: "terrain_surface".to_string(),
+        label: label.to_string(),
+        expected_material: "terrain".to_string(),
+        material_variant: material_variant.to_string(),
+        in_viewport: true,
+        visibility: "visible".to_string(),
+        screen_x: Some(12.0),
+        screen_y: Some(12.0),
+        semantic_pixel_hits: 0,
+        passed: false,
     }
 }
 

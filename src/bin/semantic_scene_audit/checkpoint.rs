@@ -58,7 +58,8 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
         && visible_scene_material_count >= MIN_VISIBLE_MATERIALS_PER_CHECKPOINT
         && scene_material_pixel_hit_count >= visible_scene_material_count
         && visible_scene_sample_kind_count >= MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT
-        && scene_sample_kind_pixel_hit_count >= visible_scene_sample_kind_count;
+        && scene_sample_kind_pixel_hit_count >= visible_scene_sample_kind_count
+        && terrain_material_variant_pixel_hit_count >= visible_terrain_material_variant_count;
     let checkpoint = parsed
         .get("checkpoint")
         .and_then(Value::as_str)
