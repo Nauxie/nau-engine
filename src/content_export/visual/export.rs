@@ -67,7 +67,7 @@ pub(crate) fn export_visual_content_inspection(
             write_mesh_obj(&output_dir.join(&trunk_obj), &trunk_mesh, "tree trunk")?;
             write_mesh_obj(&output_dir.join(&canopy_obj), &canopy_mesh, "tree canopy")?;
 
-            let (trunk_taper_ratio, branch_reach_ratio) = tree_trunk_shape_metrics(&trunk_mesh);
+            let trunk_shape = tree_trunk_shape_metrics(&trunk_mesh);
             let trunk = visual_content_mesh_summary(trunk_obj, &trunk_mesh);
             let canopy = visual_content_mesh_summary(canopy_obj, &canopy_mesh);
             let canopy_horizontal_span = canopy.horizontal_span_m.max(canopy.depth_span_m);
@@ -81,8 +81,11 @@ pub(crate) fn export_visual_content_inspection(
                 canopy,
                 trunk_height_m: tree.trunk_height_m,
                 canopy_radius_m: tree.canopy_radius_m,
-                trunk_taper_ratio,
-                branch_reach_ratio,
+                trunk_taper_ratio: trunk_shape.taper_ratio,
+                branch_reach_ratio: trunk_shape.branch_reach_ratio,
+                branch_count: trunk_shape.branch_count,
+                root_flare_count: trunk_shape.root_flare_count,
+                trunk_ring_count: trunk_shape.trunk_ring_count,
                 canopy_lobe_count: tree_canopy_lobe_count(),
                 canopy_detail_card_count: TREE_CANOPY_CARD_COUNT,
                 canopy_vertical_to_horizontal_ratio,
@@ -177,6 +180,21 @@ pub(crate) fn export_visual_content_inspection(
         min_tree_branch_reach_ratio: min_finite_f32(
             trees.iter().map(|summary| summary.branch_reach_ratio),
         ),
+        min_tree_branch_count: trees
+            .iter()
+            .map(|summary| summary.branch_count)
+            .min()
+            .unwrap_or(0),
+        min_tree_root_flare_count: trees
+            .iter()
+            .map(|summary| summary.root_flare_count)
+            .min()
+            .unwrap_or(0),
+        min_tree_trunk_ring_count: trees
+            .iter()
+            .map(|summary| summary.trunk_ring_count)
+            .min()
+            .unwrap_or(0),
         min_tree_canopy_mesh_vertices: trees
             .iter()
             .map(|summary| summary.canopy.vertex_count)

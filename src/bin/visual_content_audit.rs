@@ -13,9 +13,12 @@ const MIN_GROUND_COVER_BLADE_COUNT: u64 = 200;
 const MIN_GROUND_COVER_BLADE_HEIGHT_RANGE_M: f64 = 0.70;
 const MIN_TREE_TRUNK_COUNT: u64 = 30;
 const MIN_TREE_CANOPY_COUNT: u64 = 30;
-const MIN_TREE_TRUNK_MESH_VERTICES: u64 = 60;
+const MIN_TREE_TRUNK_MESH_VERTICES: u64 = 190;
 const MIN_TREE_TRUNK_TAPER_RATIO: f64 = 1.35;
 const MIN_TREE_BRANCH_REACH_RATIO: f64 = 1.80;
+const MIN_TREE_BRANCH_COUNT: u64 = 4;
+const MIN_TREE_ROOT_FLARE_COUNT: u64 = 5;
+const MIN_TREE_TRUNK_RING_COUNT: u64 = 5;
 const MIN_TREE_CANOPY_MESH_VERTICES: u64 = 400;
 const MIN_TREE_CANOPY_LOBE_COUNT: u64 = 6;
 const MIN_TREE_CANOPY_DETAIL_CARD_COUNT: u64 = 12;
@@ -184,6 +187,24 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         value_f64(minimums, "tree_branch_reach_ratio"),
         MIN_TREE_BRANCH_REACH_RATIO,
         "ratio",
+    ));
+    checks.push(check_at_least_u64(
+        "tree_branch_count",
+        value_u64(minimums, "tree_branch_count"),
+        MIN_TREE_BRANCH_COUNT,
+        "branches",
+    ));
+    checks.push(check_at_least_u64(
+        "tree_root_flare_count",
+        value_u64(minimums, "tree_root_flare_count"),
+        MIN_TREE_ROOT_FLARE_COUNT,
+        "roots",
+    ));
+    checks.push(check_at_least_u64(
+        "tree_trunk_ring_count",
+        value_u64(minimums, "tree_trunk_ring_count"),
+        MIN_TREE_TRUNK_RING_COUNT,
+        "rings",
     ));
     checks.push(check_at_least_u64(
         "tree_canopy_mesh_vertices",
@@ -544,6 +565,9 @@ mod tests {
                 "tree_trunk_mesh_vertices": 8,
                 "tree_trunk_taper_ratio": 1.0,
                 "tree_branch_reach_ratio": 1.0,
+                "tree_branch_count": 1,
+                "tree_root_flare_count": 0,
+                "tree_trunk_ring_count": 2,
                 "tree_canopy_mesh_vertices": 45,
                 "tree_canopy_lobe_count": 1,
                 "tree_canopy_detail_card_count": 0,
@@ -568,6 +592,14 @@ mod tests {
         let checks = report.get("checks").and_then(Value::as_array).unwrap();
         assert!(
             check_named(checks, "tree_branch_reach_ratio")
+                .is_some_and(|check| { !check.get("passed").and_then(Value::as_bool).unwrap() })
+        );
+        assert!(
+            check_named(checks, "tree_root_flare_count")
+                .is_some_and(|check| { !check.get("passed").and_then(Value::as_bool).unwrap() })
+        );
+        assert!(
+            check_named(checks, "tree_trunk_ring_count")
                 .is_some_and(|check| { !check.get("passed").and_then(Value::as_bool).unwrap() })
         );
         assert!(

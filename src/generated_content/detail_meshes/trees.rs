@@ -9,32 +9,41 @@ use bevy::prelude::*;
 pub(crate) const TREE_CANOPY_LATITUDE_SEGMENTS: usize = 6;
 pub(crate) const TREE_CANOPY_LONGITUDE_SEGMENTS: usize = 12;
 pub(crate) const TREE_CANOPY_CARD_COUNT: usize = 12;
-pub(crate) const TREE_TRUNK_SEGMENTS: usize = 8;
-pub(crate) const TREE_BRANCH_COUNT: usize = 3;
-pub(crate) const TREE_BRANCH_SEGMENTS: usize = 6;
+pub(crate) const TREE_TRUNK_SEGMENTS: usize = 10;
+pub(crate) const TREE_TRUNK_RING_COUNT: usize = 5;
+pub(crate) const TREE_BRANCH_COUNT: usize = 4;
+pub(crate) const TREE_BRANCH_SEGMENTS: usize = 8;
+pub(crate) const TREE_ROOT_FLARE_COUNT: usize = 5;
+pub(crate) const TREE_ROOT_FLARE_SEGMENTS: usize = 8;
 
 pub(crate) fn tree_trunk_mesh(radius: f32, height: f32, seed: u32) -> Mesh {
-    let trunk_vertices = TREE_TRUNK_SEGMENTS * 3 + 2;
+    let trunk_vertices = TREE_TRUNK_SEGMENTS * TREE_TRUNK_RING_COUNT + 2;
     let branch_vertices = TREE_BRANCH_COUNT * TREE_BRANCH_SEGMENTS * 2;
-    let mut positions = Vec::with_capacity(trunk_vertices + branch_vertices);
-    let mut normals = Vec::with_capacity(trunk_vertices + branch_vertices);
-    let mut uvs = Vec::with_capacity(trunk_vertices + branch_vertices);
-    let mut indices =
-        Vec::with_capacity(TREE_TRUNK_SEGMENTS * 18 + TREE_BRANCH_COUNT * TREE_BRANCH_SEGMENTS * 6);
+    let root_vertices = TREE_ROOT_FLARE_COUNT * TREE_ROOT_FLARE_SEGMENTS * 2;
+    let mut positions = Vec::with_capacity(trunk_vertices + branch_vertices + root_vertices);
+    let mut normals = Vec::with_capacity(trunk_vertices + branch_vertices + root_vertices);
+    let mut uvs = Vec::with_capacity(trunk_vertices + branch_vertices + root_vertices);
+    let mut indices = Vec::with_capacity(
+        TREE_TRUNK_SEGMENTS * 6 * (TREE_TRUNK_RING_COUNT + 1)
+            + TREE_BRANCH_COUNT * TREE_BRANCH_SEGMENTS * 6
+            + TREE_ROOT_FLARE_COUNT * TREE_ROOT_FLARE_SEGMENTS * 6,
+    );
     let bend = Vec2::new(
         (random_unit(seed, 3, 11) - 0.5) * radius * 0.95,
         (random_unit(seed, 7, 17) - 0.5) * radius * 0.95,
     );
     let rings = [
-        (-0.5, radius * 1.18, Vec2::ZERO),
-        (0.0, radius * 0.96, bend * 0.42),
-        (0.5, radius * 0.68, bend),
+        (-0.5, radius * 1.42, Vec2::ZERO),
+        (-0.24, radius * 1.06, bend * 0.22),
+        (0.04, radius * 0.84, bend * 0.48),
+        (0.30, radius * 0.66, bend * 0.74),
+        (0.5, radius * 0.48, bend),
     ];
 
     for (ring_index, (height_factor, ring_radius, center_offset)) in rings.into_iter().enumerate() {
         for segment in 0..TREE_TRUNK_SEGMENTS {
             let phase = segment as f32 / TREE_TRUNK_SEGMENTS as f32 * std::f32::consts::TAU;
-            let bark_noise = 0.9 + random_unit(seed, segment as u32, ring_index as u32) * 0.2;
+            let bark_noise = 0.88 + random_unit(seed, segment as u32, ring_index as u32) * 0.24;
             let x = center_offset.x + phase.cos() * ring_radius * bark_noise;
             let z = center_offset.y + phase.sin() * ring_radius * bark_noise;
             positions.push([x, height * height_factor, z]);
@@ -50,7 +59,7 @@ pub(crate) fn tree_trunk_mesh(radius: f32, height: f32, seed: u32) -> Mesh {
         }
     }
 
-    for ring in 0..2 {
+    for ring in 0..TREE_TRUNK_RING_COUNT - 1 {
         let start = (ring * TREE_TRUNK_SEGMENTS) as u32;
         let next = ((ring + 1) * TREE_TRUNK_SEGMENTS) as u32;
         for segment in 0..TREE_TRUNK_SEGMENTS {
@@ -71,24 +80,24 @@ pub(crate) fn tree_trunk_mesh(radius: f32, height: f32, seed: u32) -> Mesh {
     normals.push(Vec3::Y.to_array());
     uvs.push([0.5, 0.5]);
 
+    let top_start = ((TREE_TRUNK_RING_COUNT - 1) * TREE_TRUNK_SEGMENTS) as u32;
     for segment in 0..TREE_TRUNK_SEGMENTS {
         let next = ((segment + 1) % TREE_TRUNK_SEGMENTS) as u32;
         indices.extend([bottom_center, segment as u32, next]);
-        let top_start = (2 * TREE_TRUNK_SEGMENTS) as u32;
         indices.extend([top_center, top_start + next, top_start + segment as u32]);
     }
 
     for branch in 0..TREE_BRANCH_COUNT {
-        let height_factor = -0.08 + branch as f32 * 0.23;
+        let height_factor = -0.03 + branch as f32 * 0.14;
         let branch_phase = branch as f32 / TREE_BRANCH_COUNT as f32 * std::f32::consts::TAU
             + random_unit(seed, branch as u32, 89) * 0.55;
         let start = Vec3::new(
-            bend.x * (height_factor + 0.5),
+            bend.x * (height_factor + 0.5).clamp(0.0, 1.0),
             height * height_factor,
-            bend.y * (height_factor + 0.5),
+            bend.y * (height_factor + 0.5).clamp(0.0, 1.0),
         );
-        let reach = radius * (2.6 + random_unit(seed, branch as u32, 97) * 0.85);
-        let lift = height * (0.08 + random_unit(seed, branch as u32, 107) * 0.05);
+        let reach = radius * (3.0 + random_unit(seed, branch as u32, 97) * 1.05);
+        let lift = height * (0.10 + random_unit(seed, branch as u32, 107) * 0.06);
         let end = start + Vec3::new(branch_phase.cos() * reach, lift, branch_phase.sin() * reach);
         append_tapered_limb(
             &mut positions,
@@ -99,6 +108,31 @@ pub(crate) fn tree_trunk_mesh(radius: f32, height: f32, seed: u32) -> Mesh {
             end,
             radius * 0.34,
             radius * 0.12,
+            TREE_BRANCH_SEGMENTS,
+        );
+    }
+
+    for root in 0..TREE_ROOT_FLARE_COUNT {
+        let root_phase = root as f32 / TREE_ROOT_FLARE_COUNT as f32 * std::f32::consts::TAU
+            + random_unit(seed, root as u32, 211) * 0.28;
+        let direction = Vec3::new(root_phase.cos(), -0.18, root_phase.sin()).normalize();
+        let start = Vec3::new(
+            root_phase.cos() * radius * 0.48,
+            -height * 0.44,
+            root_phase.sin() * radius * 0.48,
+        );
+        let reach = radius * (2.10 + random_unit(seed, root as u32, 223) * 0.70);
+        let end = start + direction * reach + Vec3::Y * (-height * 0.035);
+        append_tapered_limb(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            start,
+            end,
+            radius * 0.30,
+            radius * 0.08,
+            TREE_ROOT_FLARE_SEGMENTS,
         );
     }
 
@@ -198,6 +232,7 @@ fn append_tapered_limb(
     end: Vec3,
     base_radius: f32,
     tip_radius: f32,
+    radial_segments: usize,
 ) {
     let axis = (end - start).normalize_or_zero();
     if axis.length_squared() <= 0.0001 {
@@ -216,20 +251,20 @@ fn append_tapered_limb(
         .into_iter()
         .enumerate()
     {
-        for segment in 0..TREE_BRANCH_SEGMENTS {
-            let phase = segment as f32 / TREE_BRANCH_SEGMENTS as f32 * std::f32::consts::TAU;
+        for segment in 0..radial_segments {
+            let phase = segment as f32 / radial_segments as f32 * std::f32::consts::TAU;
             let radial = side * phase.cos() + bitangent * phase.sin();
             positions.push((center + radial * radius).to_array());
             normals.push(radial.normalize().to_array());
-            uvs.push([segment as f32 / TREE_BRANCH_SEGMENTS as f32, ring as f32]);
+            uvs.push([segment as f32 / radial_segments as f32, ring as f32]);
         }
     }
 
-    for segment in 0..TREE_BRANCH_SEGMENTS {
+    for segment in 0..radial_segments {
         let a = first + segment as u32;
-        let b = first + ((segment + 1) % TREE_BRANCH_SEGMENTS) as u32;
-        let c = first + TREE_BRANCH_SEGMENTS as u32 + segment as u32;
-        let d = first + TREE_BRANCH_SEGMENTS as u32 + ((segment + 1) % TREE_BRANCH_SEGMENTS) as u32;
+        let b = first + ((segment + 1) % radial_segments) as u32;
+        let c = first + radial_segments as u32 + segment as u32;
+        let d = first + radial_segments as u32 + ((segment + 1) % radial_segments) as u32;
         indices.extend([a, c, b, b, c, d]);
     }
 }

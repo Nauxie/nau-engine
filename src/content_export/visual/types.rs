@@ -24,6 +24,9 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) min_tree_trunk_mesh_vertices: usize,
     pub(crate) min_tree_trunk_taper_ratio: f32,
     pub(crate) min_tree_branch_reach_ratio: f32,
+    pub(crate) min_tree_branch_count: usize,
+    pub(crate) min_tree_root_flare_count: usize,
+    pub(crate) min_tree_trunk_ring_count: usize,
     pub(crate) min_tree_canopy_mesh_vertices: usize,
     pub(crate) min_tree_canopy_lobe_count: usize,
     pub(crate) min_tree_canopy_detail_card_count: usize,
@@ -83,6 +86,9 @@ pub(crate) struct VisualTreeSummary {
     pub(crate) canopy_radius_m: f32,
     pub(crate) trunk_taper_ratio: f32,
     pub(crate) branch_reach_ratio: f32,
+    pub(crate) branch_count: usize,
+    pub(crate) root_flare_count: usize,
+    pub(crate) trunk_ring_count: usize,
     pub(crate) canopy_lobe_count: usize,
     pub(crate) canopy_detail_card_count: usize,
     pub(crate) canopy_vertical_to_horizontal_ratio: f32,
@@ -160,6 +166,9 @@ impl VisualContentExportReport {
                 "    \"tree_trunk_mesh_vertices\": {},\n",
                 "    \"tree_trunk_taper_ratio\": {},\n",
                 "    \"tree_branch_reach_ratio\": {},\n",
+                "    \"tree_branch_count\": {},\n",
+                "    \"tree_root_flare_count\": {},\n",
+                "    \"tree_trunk_ring_count\": {},\n",
                 "    \"tree_canopy_mesh_vertices\": {},\n",
                 "    \"tree_canopy_lobe_count\": {},\n",
                 "    \"tree_canopy_detail_card_count\": {},\n",
@@ -204,6 +213,9 @@ impl VisualContentExportReport {
             self.min_tree_trunk_mesh_vertices,
             terrain_export_json_number(self.min_tree_trunk_taper_ratio),
             terrain_export_json_number(self.min_tree_branch_reach_ratio),
+            self.min_tree_branch_count,
+            self.min_tree_root_flare_count,
+            self.min_tree_trunk_ring_count,
             self.min_tree_canopy_mesh_vertices,
             self.min_tree_canopy_lobe_count,
             self.min_tree_canopy_detail_card_count,
@@ -279,6 +291,9 @@ impl VisualTreeSummary {
              {indent}  \"canopy_radius_m\": {},\n\
              {indent}  \"trunk_taper_ratio\": {},\n\
              {indent}  \"branch_reach_ratio\": {},\n\
+             {indent}  \"branch_count\": {},\n\
+             {indent}  \"root_flare_count\": {},\n\
+             {indent}  \"trunk_ring_count\": {},\n\
              {indent}  \"canopy_lobe_count\": {},\n\
              {indent}  \"canopy_detail_card_count\": {},\n\
              {indent}  \"canopy_vertical_to_horizontal_ratio\": {}\n\
@@ -291,6 +306,9 @@ impl VisualTreeSummary {
             terrain_export_json_number(self.canopy_radius_m),
             terrain_export_json_number(self.trunk_taper_ratio),
             terrain_export_json_number(self.branch_reach_ratio),
+            self.branch_count,
+            self.root_flare_count,
+            self.trunk_ring_count,
             self.canopy_lobe_count,
             self.canopy_detail_card_count,
             terrain_export_json_number(self.canopy_vertical_to_horizontal_ratio)

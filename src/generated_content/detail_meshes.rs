@@ -16,11 +16,12 @@ pub(crate) use rocks::rock_scatter_mesh;
 pub(crate) use rocks::{ROCK_MESH_RINGS, ROCK_MESH_SEGMENTS};
 #[cfg(test)]
 pub(crate) use shared::DETAIL_CARD_VERTICES;
+pub(crate) use trees::{
+    TREE_BRANCH_COUNT, TREE_CANOPY_CARD_COUNT, TREE_ROOT_FLARE_COUNT, TREE_TRUNK_RING_COUNT,
+    TREE_TRUNK_SEGMENTS, tree_canopy_mesh, tree_trunk_mesh,
+};
 #[cfg(test)]
 pub(crate) use trees::{
-    TREE_BRANCH_COUNT, TREE_BRANCH_SEGMENTS, TREE_CANOPY_LATITUDE_SEGMENTS,
-    TREE_CANOPY_LONGITUDE_SEGMENTS,
-};
-pub(crate) use trees::{
-    TREE_CANOPY_CARD_COUNT, TREE_TRUNK_SEGMENTS, tree_canopy_mesh, tree_trunk_mesh,
+    TREE_BRANCH_SEGMENTS, TREE_CANOPY_LATITUDE_SEGMENTS, TREE_CANOPY_LONGITUDE_SEGMENTS,
+    TREE_ROOT_FLARE_SEGMENTS,
 };

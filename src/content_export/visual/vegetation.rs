@@ -1,7 +1,10 @@
 use super::{metrics::finite_ratio, types::GroundCoverBladeStats};
 use crate::{
     content_export::shared::mesh_positions,
-    generated_content::{TREE_TRUNK_SEGMENTS, VERTICES_PER_GROUND_BLADE},
+    generated_content::{
+        TREE_BRANCH_COUNT, TREE_ROOT_FLARE_COUNT, TREE_TRUNK_RING_COUNT, TREE_TRUNK_SEGMENTS,
+        VERTICES_PER_GROUND_BLADE,
+    },
 };
 use bevy::prelude::*;
 use nau_engine::world::SkyIsland;
@@ -76,12 +79,21 @@ pub(super) fn ground_cover_blade_stats(mesh: &Mesh) -> GroundCoverBladeStats {
     }
 }
 
-pub(super) fn tree_trunk_shape_metrics(mesh: &Mesh) -> (f32, f32) {
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct TreeTrunkShapeMetrics {
+    pub(super) taper_ratio: f32,
+    pub(super) branch_reach_ratio: f32,
+    pub(super) branch_count: usize,
+    pub(super) root_flare_count: usize,
+    pub(super) trunk_ring_count: usize,
+}
+
+pub(super) fn tree_trunk_shape_metrics(mesh: &Mesh) -> TreeTrunkShapeMetrics {
     let positions = mesh_positions(mesh);
-    let top_ring_start = TREE_TRUNK_SEGMENTS * 2;
-    let branch_vertices_start = TREE_TRUNK_SEGMENTS * 3 + 2;
+    let top_ring_start = TREE_TRUNK_SEGMENTS * (TREE_TRUNK_RING_COUNT - 1);
+    let branch_vertices_start = TREE_TRUNK_SEGMENTS * TREE_TRUNK_RING_COUNT + 2;
     if positions.len() <= branch_vertices_start {
-        return (0.0, 0.0);
+        return TreeTrunkShapeMetrics::default();
     }
 
     let bottom_radius = average_xz_radius(&positions[0..TREE_TRUNK_SEGMENTS]);
@@ -95,7 +107,13 @@ pub(super) fn tree_trunk_shape_metrics(mesh: &Mesh) -> (f32, f32) {
     let taper_ratio = finite_ratio(bottom_radius, top_radius);
     let branch_reach_ratio = finite_ratio(branch_reach, bottom_radius);
 
-    (taper_ratio, branch_reach_ratio)
+    TreeTrunkShapeMetrics {
+        taper_ratio,
+        branch_reach_ratio,
+        branch_count: TREE_BRANCH_COUNT,
+        root_flare_count: TREE_ROOT_FLARE_COUNT,
+        trunk_ring_count: TREE_TRUNK_RING_COUNT,
+    }
 }
 
 fn average_xz_radius(points: &[[f32; 3]]) -> f32 {
