@@ -134,6 +134,7 @@ Current tests cover:
 - flight body yaw tracks lateral input direction, bounds the first-frame reversal spike, and recovers quickly after lateral input reversals
 - frame-time diagnostics avoid invalid values
 - animation phase advances from delta time
+- idle breathing and glide/dive airflow micro-motion are phase-driven and covered by pose unit tests
 - wing visibility tracks glide mode
 - `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, unreadable lift samples, dynamic readable lift samples, wind-flow speed/variation/range, and wind-force response so active lift must overlap a paired visible updraft with changing flow and lateral current
 - `camera_mouse_control` eval tracks yaw/pitch offsets and obstruction adjustment without player movement
