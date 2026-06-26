@@ -195,6 +195,10 @@ impl SimSample {
             body_local_pose_velocity(state.velocity, player_rotation),
             input,
             height_above_route_ground_m,
+        )
+        .with_landing_recovery(
+            state.controller.landing_recovery_timer,
+            state.controller.landing_impact_speed_mps,
         );
         let pose_intent_label = pose_context.intent().label();
         let pose_readability = pose_readability_metrics(pose_context, pose_phase);

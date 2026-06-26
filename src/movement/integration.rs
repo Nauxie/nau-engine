@@ -18,14 +18,16 @@ pub fn step_flight(
     state.controller.launch_cooldown_remaining =
         (state.controller.launch_cooldown_remaining - dt).max(0.0);
     state.controller.launch_timer = (state.controller.launch_timer - dt).max(0.0);
+    state.controller.step_landing_recovery(dt);
 
-    let was_grounded = is_grounded(state.position, tuning);
-    if was_grounded {
+    let touching_ground = is_grounded(state.position, tuning);
+    let started_grounded = touching_ground && state.controller.mode == FlightMode::Grounded;
+    if started_grounded {
         state.controller.launch_available = true;
     }
 
     if input.launch
-        && was_grounded
+        && started_grounded
         && state.controller.launch_available
         && state.controller.launch_cooldown_remaining <= 0.0
     {
@@ -34,13 +36,14 @@ pub fn step_flight(
         state.controller.launch_available = false;
         state.controller.launch_cooldown_remaining = tuning.launch_cooldown;
         state.controller.launch_timer = tuning.launch_duration;
+        state.controller.clear_landing_recovery();
     }
 
     let launching = state.controller.launch_timer > 0.0;
-    let gliding = input.glide && !was_grounded && !input.dive && !launching;
+    let gliding = input.glide && !started_grounded && !input.dive && !launching;
     let mut acceleration = Vec3::ZERO;
 
-    if was_grounded && !launching {
+    if started_grounded && !launching {
         if input.forward {
             acceleration += facing.forward * tuning.ground_accel;
         }
@@ -121,7 +124,7 @@ pub fn step_flight(
         acceleration.y -= tuning.dive_accel;
     }
 
-    if was_grounded && !launching && !input.dive {
+    if started_grounded && !launching && !input.dive {
         state.velocity.y = state.velocity.y.max(0.0);
     } else {
         let gravity_scale = if gliding {
@@ -134,7 +137,7 @@ pub fn step_flight(
 
     state.velocity += acceleration * dt;
     state.velocity *= tuning.drag.powf(dt);
-    if was_grounded && !launching {
+    if started_grounded && !launching {
         let ground_friction = tuning.ground_friction.clamp(0.0, 1.0).powf(dt);
         state.velocity.x *= ground_friction;
         state.velocity.z *= ground_friction;
@@ -148,7 +151,7 @@ pub fn step_flight(
         state.velocity.y = state.velocity.y.max(-tuning.glide_max_fall_speed);
     }
 
-    let max_horizontal_speed = if was_grounded && !launching {
+    let max_horizontal_speed = if started_grounded && !launching {
         tuning.ground_max_horizontal_speed
     } else {
         tuning.max_horizontal_speed
@@ -157,7 +160,11 @@ pub fn step_flight(
     state.position += state.velocity * dt;
 
     if state.position.y <= tuning.floor_y + GROUND_EPSILON && state.velocity.y <= 0.0 {
+        let impact_speed_mps = (-state.velocity.y).max(0.0);
         state.position.y = tuning.floor_y;
+        if !started_grounded {
+            state.controller.record_landing_impact(impact_speed_mps);
+        }
         state.velocity.y = state.velocity.y.max(0.0);
     }
 

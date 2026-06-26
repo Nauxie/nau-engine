@@ -72,6 +72,12 @@ impl SimMetrics {
                 "samples",
             ));
             checks.push(SimCheck::at_least(
+                "pose_landing_recovery_samples",
+                self.pose_landing_recovery_samples as f32,
+                1.0,
+                "samples",
+            ));
+            checks.push(SimCheck::at_least(
                 "pose_landing_crouch",
                 self.max_pose_landing_crouch_m,
                 LANDING_MIN_POSE_CROUCH_M,

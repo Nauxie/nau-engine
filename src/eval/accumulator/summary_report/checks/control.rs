@@ -70,6 +70,12 @@ pub(super) fn append_scenario_checks(
             "samples",
         ));
         checks.push(EvalCheck::at_least(
+            "pose_landing_recovery_samples",
+            acc.pose_landing_recovery_samples as f32,
+            1.0,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
             "pose_landing_crouch",
             acc.max_pose_landing_crouch_m,
             LANDING_MIN_POSE_CROUCH_M,

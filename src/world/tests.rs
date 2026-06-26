@@ -247,7 +247,7 @@ fn route_landing_clears_stale_airborne_bank() {
     let route = SkyRoute::default();
     let state = FlightState::new(
         START_POSITION,
-        Vec3::new(8.0, -1.0, -4.0),
+        Vec3::new(8.0, -4.0, -4.0),
         FlightController {
             mode: FlightMode::Gliding,
             bank_degrees: 18.0,
@@ -260,6 +260,8 @@ fn route_landing_clears_stale_airborne_bank() {
 
     assert_eq!(resolved.controller.mode, FlightMode::Grounded);
     assert_eq!(resolved.controller.bank_degrees, 0.0);
+    assert!(resolved.controller.landing_recovery_timer > 0.0);
+    assert_eq!(resolved.controller.landing_impact_speed_mps, 4.0);
 }
 
 #[test]

@@ -246,6 +246,7 @@ pub(crate) fn authored_player_clip_for_pose_intent(
         PlayerPoseIntent::Diving => AuthoredPlayerClip::Dive,
         PlayerPoseIntent::AirBrake => AuthoredPlayerClip::AirBrake,
         PlayerPoseIntent::LandingAnticipation => AuthoredPlayerClip::Land,
+        PlayerPoseIntent::LandingRecovery => AuthoredPlayerClip::Land,
         PlayerPoseIntent::Falling if speed_mps < 8.0 => AuthoredPlayerClip::Land,
         PlayerPoseIntent::Falling => AuthoredPlayerClip::AirBrake,
     }

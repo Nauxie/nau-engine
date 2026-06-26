@@ -12,6 +12,8 @@ pub struct FlightController {
     pub launch_timer: f32,
     pub launch_available: bool,
     pub bank_degrees: f32,
+    pub landing_recovery_timer: f32,
+    pub landing_impact_speed_mps: f32,
 }
 
 impl Default for FlightController {
@@ -22,8 +24,70 @@ impl Default for FlightController {
             launch_timer: 0.0,
             launch_available: true,
             bank_degrees: 0.0,
+            landing_recovery_timer: 0.0,
+            landing_impact_speed_mps: 0.0,
         }
     }
+}
+
+impl FlightController {
+    pub fn step_landing_recovery(&mut self, dt: f32) {
+        self.landing_recovery_timer = (self.landing_recovery_timer - dt.max(0.0)).max(0.0);
+        if self.landing_recovery_timer <= f32::EPSILON {
+            self.landing_recovery_timer = 0.0;
+            self.landing_impact_speed_mps = 0.0;
+        }
+    }
+
+    pub fn clear_landing_recovery(&mut self) {
+        self.landing_recovery_timer = 0.0;
+        self.landing_impact_speed_mps = 0.0;
+    }
+
+    pub fn record_landing_impact(&mut self, impact_speed_mps: f32) {
+        let impact_speed_mps = impact_speed_mps.max(0.0);
+        let duration = landing_recovery_duration_secs(impact_speed_mps);
+        if duration <= 0.0 {
+            return;
+        }
+
+        self.landing_recovery_timer = self.landing_recovery_timer.max(duration);
+        self.landing_impact_speed_mps = self.landing_impact_speed_mps.max(impact_speed_mps);
+    }
+
+    pub fn landing_recovery_strength(self) -> f32 {
+        landing_recovery_strength(self.landing_recovery_timer, self.landing_impact_speed_mps)
+    }
+}
+
+pub const LANDING_RECOVERY_MIN_IMPACT_SPEED_MPS: f32 = 1.8;
+pub const LANDING_RECOVERY_MAX_IMPACT_SPEED_MPS: f32 = 18.0;
+pub const LANDING_RECOVERY_MIN_DURATION_SECS: f32 = 0.18;
+pub const LANDING_RECOVERY_MAX_DURATION_SECS: f32 = 0.46;
+
+pub fn landing_recovery_duration_secs(impact_speed_mps: f32) -> f32 {
+    if impact_speed_mps < LANDING_RECOVERY_MIN_IMPACT_SPEED_MPS {
+        return 0.0;
+    }
+
+    let t = ((impact_speed_mps - LANDING_RECOVERY_MIN_IMPACT_SPEED_MPS)
+        / (LANDING_RECOVERY_MAX_IMPACT_SPEED_MPS - LANDING_RECOVERY_MIN_IMPACT_SPEED_MPS))
+        .clamp(0.0, 1.0);
+    LANDING_RECOVERY_MIN_DURATION_SECS
+        + (LANDING_RECOVERY_MAX_DURATION_SECS - LANDING_RECOVERY_MIN_DURATION_SECS) * t
+}
+
+pub fn landing_recovery_strength(remaining_secs: f32, impact_speed_mps: f32) -> f32 {
+    let duration = landing_recovery_duration_secs(impact_speed_mps);
+    if duration <= 0.0 || remaining_secs <= 0.0 {
+        return 0.0;
+    }
+
+    let impact = ((impact_speed_mps - LANDING_RECOVERY_MIN_IMPACT_SPEED_MPS)
+        / (LANDING_RECOVERY_MAX_IMPACT_SPEED_MPS - LANDING_RECOVERY_MIN_IMPACT_SPEED_MPS))
+        .clamp(0.0, 1.0);
+    let remaining = (remaining_secs / duration).clamp(0.0, 1.0);
+    (0.45 + impact * 0.35 + remaining * 0.20).clamp(0.0, 1.0)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

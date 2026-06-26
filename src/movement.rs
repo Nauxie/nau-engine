@@ -17,4 +17,5 @@ pub use orientation::{
 };
 pub use types::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
+    landing_recovery_strength,
 };

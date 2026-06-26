@@ -549,7 +549,7 @@ The summary aggregates:
 - active lift sample count
 - readable and unreadable active-lift sample counts
 - dynamic readable lift sample count plus max sampled wind-flow speed, gust variation, and readable-lift variation range
-- pose-intent sample counts for readable gliding, diving, air brake, and landing anticipation; app evals score visible generated part transforms when generated fallback geometry is visible and require authored clip alignment when authored player geometry hides those parts
+- pose-intent sample counts for readable gliding, diving, air brake, landing anticipation, and landing recovery; app evals score visible generated part transforms when generated fallback geometry is visible and require authored clip alignment when authored player geometry hides those parts
 - pose torso pitch, arm spread, leg tuck, lateral lean, landing crouch, wing-airflow maxima, key-pose readability min/max, and unreadable key-pose sample count
 - gliding, launching, and grounded sample counts
 
@@ -613,7 +613,7 @@ The pass/fail checks currently guard:
 - air-control movement-only camera world-yaw drift stayed inside threshold
 - island-route final scenario-target distance stayed under threshold
 - island-route grounded target landing was observed on the configured target island
-- landing-required routes exercised readable landing-anticipation pose coverage before contact, reached at least 0.05 m of landing crouch, and produced zero key-pose samples below the 0.9 readability floor
+- landing-required routes exercised readable landing-anticipation pose coverage before contact, readable landing-recovery pose coverage after contact, reached at least 0.05 m of landing crouch, and produced zero key-pose samples below the 0.9 readability floor
 
 Thresholds should remain loose until the intended route becomes richer. Tight thresholds belong only after a mechanic or route is deliberately locked.
 

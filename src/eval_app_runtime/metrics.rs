@@ -135,6 +135,10 @@ pub(crate) fn collect_eval_metrics(
         body_local_pose_velocity(velocity.0, transform.rotation),
         movement_input,
         animation.height_above_ground_m,
+    )
+    .with_landing_recovery(
+        controller.landing_recovery_timer,
+        controller.landing_impact_speed_mps,
     );
     let pose_readability = pose_readability_metrics(pose_context, animation.phase);
     let pose_readability = visible_generated_pose_readability_metrics(

@@ -318,6 +318,7 @@ fn observe_pose_intent_counts(accumulator: &mut EvalAccumulator, sample: &EvalSa
         "diving" => accumulator.pose_diving_samples += 1,
         "air_brake" => accumulator.pose_air_brake_samples += 1,
         "landing_anticipation" => accumulator.pose_landing_anticipation_samples += 1,
+        "landing_recovery" => accumulator.pose_landing_recovery_samples += 1,
         _ => {}
     }
 }
@@ -325,7 +326,7 @@ fn observe_pose_intent_counts(accumulator: &mut EvalAccumulator, sample: &EvalSa
 fn key_pose_intent_label(label: &str) -> bool {
     matches!(
         label,
-        "gliding" | "diving" | "air_brake" | "landing_anticipation"
+        "gliding" | "diving" | "air_brake" | "landing_anticipation" | "landing_recovery"
     )
 }
 

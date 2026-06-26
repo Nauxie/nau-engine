@@ -268,7 +268,8 @@ fn step_player(
     player: &mut PlayerKinematics,
 ) {
     let mut tuning = *context.tuning;
-    let was_grounded = context.route.is_grounded_at(player.transform.translation);
+    let was_grounded = context.route.is_grounded_at(player.transform.translation)
+        && player.controller.mode == FlightMode::Grounded;
     tuning.floor_y = context
         .route
         .ground_at(player.transform.translation)
@@ -335,6 +336,10 @@ fn record_animation_context(
         input,
         animation.height_above_ground_m,
     )
+    .with_landing_recovery(
+        controller.landing_recovery_timer,
+        controller.landing_impact_speed_mps,
+    )
     .intent();
 }
 
@@ -377,6 +382,10 @@ pub(crate) fn animate_character(
         pose_velocity,
         animation.last_input,
         animation.height_above_ground_m,
+    )
+    .with_landing_recovery(
+        controller.landing_recovery_timer,
+        controller.landing_impact_speed_mps,
     );
     animation.pose_intent = pose_context.intent();
     let blend = pose_blend(dt);

@@ -190,10 +190,12 @@ impl SkyRoute {
     ) -> FlightState {
         let ground = self.ground_at(state.position);
         if state.position.y <= ground.floor_y + GROUND_CONTACT_EPSILON {
+            let impact_speed_mps = (-state.velocity.y).max(0.0);
             state.position.y = ground.floor_y;
             if apply_landing_damping {
                 state.velocity.x *= GROUND_CONTACT_HORIZONTAL_DAMPING;
                 state.velocity.z *= GROUND_CONTACT_HORIZONTAL_DAMPING;
+                state.controller.record_landing_impact(impact_speed_mps);
             }
             state.velocity.y = state.velocity.y.max(0.0);
             state.controller.launch_timer = 0.0;
