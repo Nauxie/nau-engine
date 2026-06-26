@@ -44,6 +44,9 @@ fn spawn_island_visual_entry(commands: &mut Commands, entry: &IslandVisualEntry)
     if let Some(obstacle) = entry.obstacle {
         entity.insert(obstacle);
     }
+    if let Some(collision) = entry.collision {
+        entity.insert(collision);
+    }
     if let Some(motion) = entry.wind_motion {
         entity.insert(WindResponsiveVisual {
             base_translation: entry.transform.translation,

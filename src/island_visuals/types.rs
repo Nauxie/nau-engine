@@ -1,5 +1,6 @@
 use crate::camera_runtime::CameraObstacle;
 use crate::environment_visuals::WindVisualMotion;
+use crate::world_collision_runtime::WorldCollisionProxy;
 use bevy::prelude::*;
 use nau_engine::world::{LodBand, SkyIsland, StreamActivation};
 use std::collections::HashMap;
@@ -102,6 +103,7 @@ pub(super) struct IslandVisualEntry {
     pub(super) material: Handle<StandardMaterial>,
     pub(super) transform: Transform,
     pub(super) obstacle: Option<CameraObstacle>,
+    pub(super) collision: Option<WorldCollisionProxy>,
     pub(super) wind_motion: Option<WindVisualMotion>,
     pub(super) name: &'static str,
 }

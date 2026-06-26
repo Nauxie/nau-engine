@@ -82,7 +82,7 @@ Goal: build one high-quality island route before attempting a massive world.
 
 Work:
 
-- Import or generate an island terrain mesh. Initial generated visual relief, irregular rims, and cliff/underside body meshes are complete; collision is still a simple route surface.
+- Import or generate an island terrain mesh. Initial generated visual relief, irregular rims, cliff/underside body meshes, and simple generated prop collision proxies are complete; collision is still a route surface plus AABB proxies rather than full physics geometry.
 - Add water plane, sky, fog, lighting, shadows, and PBR materials.
 - Add launch point, glide route, landing target, and recovery path.
 - Add simple vegetation/rocks/landmarks.

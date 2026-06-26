@@ -137,6 +137,7 @@ fn air_control_metric_sample(
         1458, 27,
     )
     .with_visible_authored_world_fixture_count(MIN_VISIBLE_AUTHORED_WORLD_FIXTURE_COUNT)
+    .with_world_collision_metrics(MIN_WORLD_COLLISION_PROXY_COUNT, 0, 0.0)
     .with_movement_metrics(EvalMovementMetrics {
         desired_body_yaw_error_degrees: yaw_error_degrees,
         body_roll_degrees: -movement_axis.x.signum() * 12.0,

@@ -154,6 +154,12 @@ pub(super) fn build_checks(
             thresholds.min_environment_motion_offset_m,
             "m",
         ),
+        EvalCheck::at_least(
+            "world_collision_proxy_count",
+            acc.max_world_collision_proxy_count as f32,
+            MIN_WORLD_COLLISION_PROXY_COUNT as f32,
+            "proxies",
+        ),
     ];
 
     content::append_content_checks(&mut checks, acc, &thresholds);

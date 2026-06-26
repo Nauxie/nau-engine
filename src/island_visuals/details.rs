@@ -1,4 +1,7 @@
-use super::queue::{queue_island_visual, queue_wind_island_visual};
+use super::queue::{
+    queue_collidable_island_visual, queue_collidable_wind_island_visual, queue_island_visual,
+    queue_wind_island_visual,
+};
 use super::types::{IslandVisualEntry, IslandVisualLayer};
 use crate::camera_runtime::CameraObstacle;
 use crate::content_diagnostics::{GeneratedLandmarkKind, IslandContentDiagnostics};
@@ -12,6 +15,8 @@ use crate::generated_content::{
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
 use nau_engine::world::SkyIsland;
+
+use crate::world_collision_runtime::{WorldCollisionProxy, WorldCollisionProxyKind};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn queue_sky_island_details(
@@ -73,7 +78,7 @@ pub(super) fn queue_sky_island_details(
         );
         content_diagnostics.record_generated_tree_canopy(canopy_mesh.count_vertices());
 
-        queue_wind_island_visual(
+        queue_collidable_wind_island_visual(
             entries,
             visual_index,
             island,
@@ -85,6 +90,11 @@ pub(super) fn queue_sky_island_details(
                 trunk_center,
                 Vec3::new(0.22, trunk_height * 0.5, 0.22),
             ))),
+            WorldCollisionProxy::new(
+                trunk_center,
+                Vec3::new(0.24, trunk_height * 0.5, 0.24),
+                WorldCollisionProxyKind::Tree,
+            ),
             wind_visual_motion(island_index, index as f32 * 0.61, 0.025, 0.018, 0.9),
             "island tree trunk",
         );
@@ -118,15 +128,21 @@ pub(super) fn queue_sky_island_details(
         );
         content_diagnostics.record_generated_rock(rock_mesh.count_vertices());
 
-        queue_island_visual(
+        let rock_center = Vec3::new(x, surface_y + stone_scale * 0.5, z);
+        queue_collidable_island_visual(
             entries,
             visual_index,
             island,
             IslandVisualLayer::Detail,
             meshes.add(rock_mesh),
             detail_materials.stone.clone(),
-            Transform::from_xyz(x, surface_y + stone_scale * 0.5, z),
+            Transform::from_translation(rock_center),
             None,
+            WorldCollisionProxy::new(
+                rock_center,
+                Vec3::new(stone_scale * 0.52, stone_scale * 0.45, stone_scale * 0.52),
+                WorldCollisionProxyKind::Rock,
+            ),
             "island stone scatter",
         );
     }
@@ -170,7 +186,7 @@ pub(super) fn queue_sky_island_details(
             GeneratedLandmarkKind::RouteCairn,
             cairn_mesh.count_vertices(),
         );
-        queue_island_visual(
+        queue_collidable_island_visual(
             entries,
             visual_index,
             island,
@@ -179,6 +195,11 @@ pub(super) fn queue_sky_island_details(
             flower_material.clone(),
             Transform::from_translation(beacon_center),
             None,
+            WorldCollisionProxy::new(
+                beacon_center,
+                Vec3::new(0.48, beacon_height * 0.5, 0.48),
+                WorldCollisionProxyKind::Landmark,
+            ),
             "route cairn",
         );
     }
@@ -240,7 +261,7 @@ pub(super) fn queue_sky_island_details(
             GeneratedLandmarkKind::LaunchBeacon,
             beacon_mesh.count_vertices(),
         );
-        queue_island_visual(
+        queue_collidable_island_visual(
             entries,
             visual_index,
             island,
@@ -252,6 +273,11 @@ pub(super) fn queue_sky_island_details(
                 beacon_obstacle_center,
                 Vec3::new(0.8, 1.65, 0.8),
             ))),
+            WorldCollisionProxy::new(
+                beacon_obstacle_center,
+                Vec3::new(0.8, 1.65, 0.8),
+                WorldCollisionProxyKind::Landmark,
+            ),
             "launch beacon",
         );
 
@@ -276,7 +302,7 @@ pub(super) fn queue_sky_island_details(
             tree_canopy_mesh(launch_canopy_radius, 8_000 + island_index as u32 * 101);
         content_diagnostics.record_generated_tree_canopy(launch_canopy_mesh.count_vertices());
 
-        queue_wind_island_visual(
+        queue_collidable_wind_island_visual(
             entries,
             visual_index,
             island,
@@ -288,6 +314,11 @@ pub(super) fn queue_sky_island_details(
                 launch_tree_center,
                 Vec3::new(0.35, launch_tree_height * 0.5, 0.35),
             ))),
+            WorldCollisionProxy::new(
+                launch_tree_center,
+                Vec3::new(0.37, launch_tree_height * 0.5, 0.37),
+                WorldCollisionProxyKind::Tree,
+            ),
             wind_visual_motion(island_index, 4.2, 0.035, 0.02, 0.9),
             "launch camera tree trunk",
         );

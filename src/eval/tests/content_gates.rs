@@ -242,6 +242,31 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_weather_cloud_bank_depth_m\": 6.2000"));
     assert!(summary_json.contains("\"min_weather_cloud_mesh_vertices\": 1458"));
     assert!(summary_json.contains("\"min_weather_cloud_filament_ribbon_detail_count\": 27"));
+    assert!(summary_json.contains("\"max_world_collision_proxy_count\": 24"));
+}
+
+#[test]
+fn accumulator_fails_when_world_collision_proxies_are_missing() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(
+        content_metric_sample(scenario, 0, 12, 0, 96).with_world_collision_metrics(0, 0, 0.0),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let collision_check = named_check(&summary, "world_collision_proxy_count");
+
+    assert!(!collision_check.passed);
+    assert_eq!(collision_check.value, 0.0);
 }
 
 #[test]
@@ -663,6 +688,7 @@ fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample
                 528, 220, 1100, 37, 37, 196, 412, 5, 60, 74, 27, 10, 1, 4, 12, 39, 30, 12, 6.2, 9,
                 18, 1458, 27,
             )
+            .with_world_collision_metrics(MIN_WORLD_COLLISION_PROXY_COUNT, 0, 0.0)
             .with_visible_authored_world_fixture_count(MIN_VISIBLE_AUTHORED_WORLD_FIXTURE_COUNT),
     );
 }

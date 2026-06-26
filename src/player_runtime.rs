@@ -7,6 +7,9 @@ use crate::authored_assets::{
 use crate::camera_runtime::CameraFollowFilter;
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
 use crate::power_up_runtime::{PowerUpCollectionState, collect_aerial_power_ups};
+use crate::world_collision_runtime::{
+    WorldCollisionDiagnostics, WorldCollisionProxy, resolve_world_collisions,
+};
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartVisibility, PlayerPoseContext,
     advance_phase, part_pose_with_context, pose_blend,
@@ -61,7 +64,9 @@ pub(crate) struct RouteObjectiveTracker {
 pub(crate) struct MovementWorld<'w, 's> {
     route: Res<'w, SkyRoute>,
     lift_fields: Query<'w, 's, &'static LiftField>,
+    collision_proxies: Query<'w, 's, &'static WorldCollisionProxy>,
     power_ups: ResMut<'w, PowerUpCollectionState>,
+    collision_diagnostics: ResMut<'w, WorldCollisionDiagnostics>,
 }
 
 struct PlayerKinematics<'a> {
@@ -75,6 +80,8 @@ struct PlayerStepContext<'a> {
     route: &'a SkyRoute,
     lift_fields: &'a [LiftField],
     power_ups: &'a mut PowerUpCollectionState,
+    collision_proxies: &'a [WorldCollisionProxy],
+    collision_diagnostics: &'a mut WorldCollisionDiagnostics,
 }
 
 pub(crate) type GeneratedPlayerPlaceholderFilter = (
@@ -150,12 +157,15 @@ pub(crate) fn fly_player(
     let facing = movement_facing(camera.single().ok(), &transform);
     let dt = time.delta_secs();
     let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
+    let collision_proxies = world.collision_proxies.iter().copied().collect::<Vec<_>>();
     world.power_ups.begin_frame(dt);
     let mut context = PlayerStepContext {
         tuning: &tuning,
         route: &world.route,
         lift_fields: &lift_fields,
         power_ups: &mut world.power_ups,
+        collision_proxies: &collision_proxies,
+        collision_diagnostics: &mut world.collision_diagnostics,
     };
     let input = keyboard_flight_input(&keyboard);
 
@@ -220,12 +230,15 @@ pub(crate) fn eval_fly_player(
     };
     let dt = run.scenario.fixed_dt;
     let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
+    let collision_proxies = world.collision_proxies.iter().copied().collect::<Vec<_>>();
     world.power_ups.begin_frame(dt);
     let mut context = PlayerStepContext {
         tuning: &tuning,
         route: &world.route,
         lift_fields: &lift_fields,
         power_ups: &mut world.power_ups,
+        collision_proxies: &collision_proxies,
+        collision_diagnostics: &mut world.collision_diagnostics,
     };
     let input = scripted_input(run.scenario, run.frame);
 
@@ -284,6 +297,11 @@ fn step_player(
     let next = context
         .route
         .resolve_ground_contact_after_step(next, was_grounded);
+    let collision = resolve_world_collisions(next, context.collision_proxies.iter().copied());
+    let next = collision.state;
+    context.collision_diagnostics.proxy_count = context.collision_proxies.len();
+    context.collision_diagnostics.resolved_count = collision.hit_count;
+    context.collision_diagnostics.max_push_m = collision.max_push_m;
 
     player.transform.translation = next.position;
     player.velocity.0 = next.velocity;
@@ -453,5 +471,49 @@ mod tests {
             grounded_visual_foot_gap_m(28.0, 28.0, FlightMode::Grounded),
             0.0
         );
+    }
+
+    #[test]
+    fn step_player_resolves_world_collision_proxies_and_records_diagnostics() {
+        let route = SkyRoute::default();
+        let tuning = FlightTuning::default();
+        let mut power_ups = PowerUpCollectionState::default();
+        let mut collision_diagnostics = WorldCollisionDiagnostics::default();
+        let proxies = [WorldCollisionProxy::new(
+            Vec3::new(0.0, nau_engine::world::START_FLOOR_Y + 0.9, 0.0),
+            Vec3::new(0.25, 0.9, 0.25),
+            crate::world_collision_runtime::WorldCollisionProxyKind::Tree,
+        )];
+        let mut transform =
+            Transform::from_translation(Vec3::new(0.2, nau_engine::world::START_FLOOR_Y, 0.0));
+        let mut velocity = Velocity(Vec3::new(-6.0, 0.0, 0.0));
+        let mut controller = FlightController::default();
+        let mut context = PlayerStepContext {
+            tuning: &tuning,
+            route: &route,
+            lift_fields: &[],
+            power_ups: &mut power_ups,
+            collision_proxies: &proxies,
+            collision_diagnostics: &mut collision_diagnostics,
+        };
+        let mut player = PlayerKinematics {
+            transform: &mut transform,
+            velocity: &mut velocity,
+            controller: &mut controller,
+        };
+
+        step_player(
+            0.0,
+            FlightInput::default(),
+            Facing::new(Vec3::NEG_Z, Vec3::X),
+            &mut context,
+            &mut player,
+        );
+
+        assert_eq!(collision_diagnostics.proxy_count, 1);
+        assert_eq!(collision_diagnostics.resolved_count, 1);
+        assert!(collision_diagnostics.max_push_m > 0.0);
+        assert!(transform.translation.x >= 0.25 + 0.42);
+        assert_eq!(velocity.0.x, 0.0);
     }
 }
