@@ -77,7 +77,12 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/island_visuals/details.rs` owns generated ground cover, trees, stones, ponds, route cairns, launch/target decorations, and wind-responsive detail placement.
 - `src/island_visuals/streaming.rs` owns island visual residency decisions, initial spawning, stream-window spawn/despawn, and stream diagnostics updates.
 - `src/power_up_runtime.rs` owns aerial power-up collection state, visual guide spawning/animation, and one-time boost application.
-- `src/asset_pipeline.rs` owns the declared glTF visual asset inventory, expected player animation clip names, residency classes, deterministic load-admission policy, file/load-state readiness metrics, recursive dependency preload metrics, scene-instance readiness metrics, visible authored world-fixture metrics, and animation graph/player readiness metrics while generated primitives remain the fallback.
+- `src/asset_pipeline.rs` owns the visual asset pipeline facade and stable re-exports used by runtime, evals, and tests.
+- `src/asset_pipeline/types.rs` owns visual asset kinds, residency classes, load/admission/preload/scene/animation state types, specs, policies, and metrics structs.
+- `src/asset_pipeline/specs.rs` owns the declared glTF visual asset inventory, expected player animation clip names, residency slot counts, readiness floors, and default load policy while generated primitives remain the fallback.
+- `src/asset_pipeline/policy.rs` owns deterministic visual asset load-admission ordering.
+- `src/asset_pipeline/metrics.rs` owns file/load-state readiness metrics, recursive dependency preload metrics, scene-instance readiness metrics, and animation graph/player readiness metrics.
+- `src/asset_pipeline/tests.rs` and `src/asset_pipeline/tests/` own asset inventory, policy, and metric bucket unit coverage.
 - `src/movement.rs` owns the public movement module facade and stable re-exports used by runtime and eval code.
 - `src/movement/types.rs` owns flight state, controller mode, input state, camera-relative facing, velocity, and tuning resources.
 - `src/movement/integration.rs` owns launch/glide/dive stepping, ground/air acceleration, backward air braking, floor clamp, velocity limits, and mode transitions.
