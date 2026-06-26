@@ -493,6 +493,18 @@ pub fn part_pose_with_context(
     let turn_weight = pose_turn_weight(context);
     let airborne_pose = airborne_pose_intent(intent);
     let roll = pose_lateral_lean_radians(context);
+    let turn_reach = if intent == PlayerPoseIntent::AirTurn {
+        turn_weight.abs()
+    } else {
+        0.0
+    };
+    let air_turn_yaw = if intent == PlayerPoseIntent::AirTurn {
+        turn_weight * 0.24
+    } else if airborne_pose {
+        turn_weight * 0.08
+    } else {
+        0.0
+    };
     let vertical_pitch = (-context.velocity.y * 0.004).clamp(-0.1, 0.1);
     let mut translation = part.base_translation;
     let mut rotation = part.base_rotation;
@@ -522,10 +534,14 @@ pub fn part_pose_with_context(
                 translation.y -= 0.06 + recovery_strength * 0.05;
                 translation.z += 0.04 + recovery_strength * 0.06;
             }
-            rotation *= Quat::from_rotation_x(pitch) * Quat::from_rotation_z(roll);
+            translation.x += turn_weight * turn_reach * 0.035;
+            rotation *= Quat::from_rotation_x(pitch)
+                * Quat::from_rotation_y(air_turn_yaw)
+                * Quat::from_rotation_z(roll);
         }
         CharacterPartRole::Head => {
             translation.y += cycle.abs() * (0.01 + gait_weight * 0.006);
+            translation.x += turn_weight * turn_reach * 0.025;
             let pitch = match intent {
                 PlayerPoseIntent::AirTurn => -0.10,
                 PlayerPoseIntent::Diving => 0.18,
@@ -534,10 +550,14 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::LandingRecovery => -0.12,
                 _ => -0.05,
             };
-            rotation *= Quat::from_rotation_x(pitch) * Quat::from_rotation_z(roll * 0.35);
+            rotation *= Quat::from_rotation_x(pitch)
+                * Quat::from_rotation_y(air_turn_yaw * 1.45)
+                * Quat::from_rotation_z(roll * 0.35);
         }
         CharacterPartRole::Arm(side) => {
             let sign = side.sign();
+            let same_side_turn = (sign * turn_weight).max(0.0);
+            let opposite_side_turn = (-sign * turn_weight).max(0.0);
             let gait = -side_cycle(phase, side);
             let spread = match intent {
                 PlayerPoseIntent::GroundedIdle => 0.08,
@@ -574,15 +594,19 @@ pub fn part_pose_with_context(
                 _ => 0.0,
             };
             if airborne_pose {
-                translation.y += sign * turn_weight * 0.045;
-                translation.z += turn_weight.abs() * 0.025;
+                translation.x += sign * turn_reach * 0.045;
+                translation.y += sign * turn_weight * 0.045 + same_side_turn * 0.035;
+                translation.z +=
+                    turn_weight.abs() * 0.025 - same_side_turn * 0.05 + opposite_side_turn * 0.025;
             }
             rotation *= Quat::from_rotation_z(sign * spread)
-                * Quat::from_rotation_x(sweep)
-                * Quat::from_rotation_y(sign * turn_weight * 0.12);
+                * Quat::from_rotation_x(sweep - same_side_turn * 0.16 + opposite_side_turn * 0.06)
+                * Quat::from_rotation_y(sign * turn_weight * 0.12 + same_side_turn * 0.10);
         }
         CharacterPartRole::Leg(side) => {
             let sign = side.sign();
+            let same_side_turn = (sign * turn_weight).max(0.0);
+            let opposite_side_turn = (-sign * turn_weight).max(0.0);
             let gait = side_cycle(phase, side);
             let spread = match intent {
                 PlayerPoseIntent::GroundedIdle => 0.04,
@@ -618,12 +642,13 @@ pub fn part_pose_with_context(
                 translation.y += 0.035 + recovery_strength * 0.055;
             }
             if airborne_pose {
-                translation.x += sign * turn_weight * 0.035;
-                translation.y += turn_weight.abs() * 0.018;
+                translation.x += sign * turn_weight * 0.035 + sign * turn_reach * 0.025;
+                translation.y += turn_weight.abs() * 0.018 + same_side_turn * 0.035;
+                translation.z += same_side_turn * 0.08 - opposite_side_turn * 0.035;
             }
             rotation *= Quat::from_rotation_z(sign * spread)
-                * Quat::from_rotation_x(trail)
-                * Quat::from_rotation_y(sign * turn_weight * 0.08);
+                * Quat::from_rotation_x(trail - same_side_turn * 0.18 + opposite_side_turn * 0.05)
+                * Quat::from_rotation_y(sign * turn_weight * 0.08 + same_side_turn * 0.08);
         }
         CharacterPartRole::Wing(side) => {
             visibility = if context.mode == FlightMode::Gliding {
@@ -1116,6 +1141,73 @@ mod tests {
         assert!(right.signed_lateral_lean_degrees < -10.0);
         assert!(left.signed_lateral_lean_degrees > 10.0);
         assert!((right.lateral_lean_degrees - left.lateral_lean_degrees).abs() < 0.1);
+    }
+
+    #[test]
+    fn airborne_turn_pose_leads_with_head_and_same_side_limbs() {
+        let right_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -2.0, -32.0),
+            FlightInput {
+                right: true,
+                ..default()
+            },
+            40.0,
+        );
+        let left_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -2.0, -32.0),
+            FlightInput {
+                left: true,
+                ..default()
+            },
+            40.0,
+        );
+        let head = CharacterPart::new(CharacterPartRole::Head, Vec3::ZERO, Quat::IDENTITY);
+        let torso = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+        let left_arm = CharacterPart::new(
+            CharacterPartRole::Arm(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let right_arm = CharacterPart::new(
+            CharacterPartRole::Arm(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let left_leg = CharacterPart::new(
+            CharacterPartRole::Leg(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let right_leg = CharacterPart::new(
+            CharacterPartRole::Leg(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+
+        let right_head = part_pose_with_context(&head, right_context, 0.0);
+        let left_head = part_pose_with_context(&head, left_context, 0.0);
+        let right_torso = part_pose_with_context(&torso, right_context, 0.0);
+        let left_torso = part_pose_with_context(&torso, left_context, 0.0);
+        let right_turn_left_arm = part_pose_with_context(&left_arm, right_context, 0.0);
+        let right_turn_right_arm = part_pose_with_context(&right_arm, right_context, 0.0);
+        let right_turn_left_leg = part_pose_with_context(&left_leg, right_context, 0.0);
+        let right_turn_right_leg = part_pose_with_context(&right_leg, right_context, 0.0);
+
+        assert!(
+            right_head
+                .rotation
+                .angle_between(left_head.rotation)
+                .to_degrees()
+                > 15.0
+        );
+        assert!(right_torso.translation.x > 0.01);
+        assert!(left_torso.translation.x < -0.01);
+        assert!(right_turn_right_arm.translation.y > right_turn_left_arm.translation.y + 0.05);
+        assert!(right_turn_right_arm.translation.z < right_turn_left_arm.translation.z - 0.03);
+        assert!(right_turn_right_leg.translation.y > right_turn_left_leg.translation.y + 0.02);
+        assert!(right_turn_right_leg.translation.z > right_turn_left_leg.translation.z + 0.05);
     }
 
     #[test]
