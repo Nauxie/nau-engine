@@ -597,7 +597,7 @@ The pass/fail checks currently guard:
 - simulation-supported wind-current scenarios register enough active wind-force samples and separately clear bounded horizontal response, source flow speed, and source variation floors
 - crosswind-current scenarios specifically register crosswind-force samples and clear a crosswind delta floor
 - lift-required scenarios specifically register updraft-swirl force samples and clear a horizontal-current delta floor while vertical climb remains `LiftField` lift
-- the app scene contains enough updraft and crosswind guide/ribbon visuals
+- the app scene contains enough updraft and crosswind guide/ribbon visuals; the current minimums are 126 updraft guide motes, 8 updraft ribbons, 96 crosswind guide motes, and 10 crosswind ribbons
 - wind guide/ribbon visuals animate enough to prove the sampled airflow cues are not static
 - wind guides move coherently with their field direction: updraft motes must rise, and both crosswind motes and ribbons must travel along the crosswind direction
 - screenshot wind-current checkpoints keep at least one projected wind guide/ribbon sample visible for wind-critical routes
