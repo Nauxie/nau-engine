@@ -143,6 +143,10 @@ fn authored_player_clip_selection_tracks_pose_intent() {
         AuthoredPlayerClip::Dive
     );
     assert_eq!(
+        authored_player_clip_for_pose_intent(PlayerPoseIntent::AirTurn, 28.0),
+        AuthoredPlayerClip::Glide
+    );
+    assert_eq!(
         authored_player_clip_for_pose_intent(PlayerPoseIntent::AirBrake, 28.0),
         AuthoredPlayerClip::AirBrake
     );

@@ -21,6 +21,7 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     observe_desired_heading_alignment(accumulator, sample);
     observe_lateral_response(accumulator, sample);
     observe_body_travel_heading_alignment(accumulator, sample);
+    observe_desired_travel_heading_alignment(accumulator, sample);
     observe_air_brake(accumulator, sample);
     observe_pose_readability(accumulator, sample);
     observe_pose_intent_counts(accumulator, sample);
@@ -307,6 +308,44 @@ fn observe_body_travel_heading_alignment(accumulator: &mut EvalAccumulator, samp
     }
 }
 
+fn observe_desired_travel_heading_alignment(
+    accumulator: &mut EvalAccumulator,
+    sample: &EvalSample,
+) {
+    if !desired_travel_heading_alignment_sample(sample) {
+        return;
+    }
+
+    let Some(lateral_response_time) = lateral_response_time_for_sample(accumulator, sample) else {
+        return;
+    };
+    if sample.time_secs < lateral_response_time {
+        return;
+    }
+
+    accumulator
+        .desired_travel_heading_error_values_degrees
+        .push(sample.desired_travel_heading_error_degrees);
+    accumulator.max_desired_travel_heading_error_degrees = accumulator
+        .max_desired_travel_heading_error_degrees
+        .max(sample.desired_travel_heading_error_degrees);
+    if sample.movement_input_lateral_axis > 0.0 {
+        accumulator.right_desired_travel_heading_samples += 1;
+    } else if sample.movement_input_lateral_axis < 0.0 {
+        accumulator.left_desired_travel_heading_samples += 1;
+    }
+    if sample.movement_input_forward_axis < 0.0
+        && backward_diagonal_response_time_for_sample(accumulator, sample)
+            .is_some_and(|time_secs| sample.time_secs >= time_secs)
+    {
+        if sample.movement_input_lateral_axis > 0.0 {
+            accumulator.backward_right_desired_travel_heading_samples += 1;
+        } else if sample.movement_input_lateral_axis < 0.0 {
+            accumulator.backward_left_desired_travel_heading_samples += 1;
+        }
+    }
+}
+
 fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_pose_torso_pitch_degrees = accumulator
         .max_pose_torso_pitch_degrees
@@ -401,6 +440,14 @@ fn observe_pose_intent_counts(accumulator: &mut EvalAccumulator, sample: &EvalSa
 
     match sample.pose_intent_label {
         "gliding" => accumulator.pose_gliding_samples += 1,
+        "air_turn" => {
+            accumulator.pose_air_turn_samples += 1;
+            if sample.movement_input_lateral_axis > 0.25 {
+                accumulator.right_pose_air_turn_samples += 1;
+            } else if sample.movement_input_lateral_axis < -0.25 {
+                accumulator.left_pose_air_turn_samples += 1;
+            }
+        }
         "diving" => accumulator.pose_diving_samples += 1,
         "air_brake" => accumulator.pose_air_brake_samples += 1,
         "landing_anticipation" => accumulator.pose_landing_anticipation_samples += 1,
@@ -412,7 +459,12 @@ fn observe_pose_intent_counts(accumulator: &mut EvalAccumulator, sample: &EvalSa
 fn key_pose_intent_label(label: &str) -> bool {
     matches!(
         label,
-        "gliding" | "diving" | "air_brake" | "landing_anticipation" | "landing_recovery"
+        "gliding"
+            | "air_turn"
+            | "diving"
+            | "air_brake"
+            | "landing_anticipation"
+            | "landing_recovery"
     )
 }
 
@@ -425,6 +477,13 @@ fn body_travel_heading_alignment_sample(sample: &EvalSample) -> bool {
         && sample.lateral_input_active
         && sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
         && sample.body_travel_heading_error_degrees.is_finite()
+}
+
+fn desired_travel_heading_alignment_sample(sample: &EvalSample) -> bool {
+    matches!(sample.mode, "airborne" | "gliding")
+        && sample.lateral_input_active
+        && sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+        && sample.desired_travel_heading_error_degrees.is_finite()
 }
 
 fn lateral_response_time_for_sample(

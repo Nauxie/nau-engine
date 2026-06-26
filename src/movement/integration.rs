@@ -65,6 +65,10 @@ pub fn step_flight(
                 tuning.glide_counter_steer_accel,
                 tuning.air_steer_min_speed,
             );
+            if input.has_lateral_axis() {
+                acceleration +=
+                    desired_planar_thrust(desired_direction, input, tuning.glide_lateral_accel);
+            }
         }
         if input.forward {
             acceleration += facing.forward * tuning.glide_forward_accel;
@@ -82,12 +86,6 @@ pub fn step_flight(
             state.velocity.x *= tuning.glide_brake_drag.powf(dt);
             state.velocity.z *= tuning.glide_brake_drag.powf(dt);
         }
-        if input.left {
-            acceleration -= facing.right * tuning.glide_lateral_accel;
-        }
-        if input.right {
-            acceleration += facing.right * tuning.glide_lateral_accel;
-        }
     } else {
         if let Some(desired_direction) = desired_air_steering_direction(input, facing) {
             acceleration += directional_air_steering_acceleration(
@@ -97,6 +95,10 @@ pub fn step_flight(
                 tuning.air_counter_steer_accel,
                 tuning.air_steer_min_speed,
             );
+            if input.has_lateral_axis() {
+                acceleration +=
+                    desired_planar_thrust(desired_direction, input, tuning.lateral_accel);
+            }
         }
         if input.forward {
             acceleration += facing.forward * tuning.forward_accel;
@@ -111,12 +113,6 @@ pub fn step_flight(
                 !input.has_lateral_axis(),
                 dt,
             );
-        }
-        if input.left {
-            acceleration -= facing.right * tuning.lateral_accel;
-        }
-        if input.right {
-            acceleration += facing.right * tuning.lateral_accel;
         }
     }
 
@@ -191,6 +187,10 @@ pub fn step_flight(
     }
 
     state
+}
+
+fn desired_planar_thrust(desired_direction: Vec3, input: FlightInput, accel: f32) -> Vec3 {
+    desired_direction * input.planar_axis().length().clamp(0.0, 1.0) * accel.max(0.0)
 }
 
 fn directional_air_steering_acceleration(

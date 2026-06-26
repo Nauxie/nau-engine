@@ -127,6 +127,7 @@ impl EvalSample {
             body_travel_heading_error_degrees: f32::NAN,
             body_roll_degrees: 0.0,
             desired_heading_alignment_mps: f32::NAN,
+            desired_travel_heading_error_degrees: f32::NAN,
             lateral_response_mps: 0.0,
             lateral_input_active: false,
             movement_input_lateral_axis: 0.0,
@@ -289,6 +290,7 @@ impl EvalSample {
         self.body_travel_heading_error_degrees = metrics.body_travel_heading_error_degrees;
         self.body_roll_degrees = metrics.body_roll_degrees;
         self.desired_heading_alignment_mps = metrics.desired_heading_alignment_mps;
+        self.desired_travel_heading_error_degrees = metrics.desired_travel_heading_error_degrees;
         self.lateral_response_mps = metrics.lateral_response_mps;
         self.lateral_input_active = metrics.lateral_input_active;
         self.movement_input_lateral_axis = metrics.movement_axis.x;
@@ -298,6 +300,15 @@ impl EvalSample {
 
     pub fn with_body_travel_heading_error_degrees(mut self, error_degrees: f32) -> Self {
         self.body_travel_heading_error_degrees = if error_degrees.is_finite() {
+            error_degrees.max(0.0)
+        } else {
+            f32::NAN
+        };
+        self
+    }
+
+    pub fn with_desired_travel_heading_error_degrees(mut self, error_degrees: f32) -> Self {
+        self.desired_travel_heading_error_degrees = if error_degrees.is_finite() {
             error_degrees.max(0.0)
         } else {
             f32::NAN

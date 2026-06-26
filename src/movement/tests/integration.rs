@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 use super::super::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, GROUND_EPSILON,
+    desired_planar_movement_direction, desired_planar_travel_heading_error_degrees,
     math::horizontal, step_flight,
 };
 use super::default_state;
@@ -239,6 +240,9 @@ fn backward_diagonal_glide_input_steers_toward_rear_quadrant() {
 
     let left_speed = horizontal(state.velocity).dot(-facing.right);
     let forward_speed = horizontal(state.velocity).dot(facing.forward);
+    let desired_direction = desired_planar_movement_direction(input, facing).unwrap();
+    let desired_travel_error =
+        desired_planar_travel_heading_error_degrees(state.velocity, desired_direction, 6.0);
     assert!(
         left_speed > 10.0,
         "expected back-left input to build leftward control, got {left_speed}"
@@ -246,6 +250,10 @@ fn backward_diagonal_glide_input_steers_toward_rear_quadrant() {
     assert!(
         forward_speed < 6.0,
         "expected back-left input to brake forward drift, got {forward_speed}"
+    );
+    assert!(
+        desired_travel_error < 24.0,
+        "expected back-left travel to align with desired rear quadrant, got {desired_travel_error} deg"
     );
 }
 
@@ -274,6 +282,9 @@ fn lateral_air_input_steers_velocity_toward_desired_plane() {
 
     let side_speed = horizontal(state.velocity).dot(facing.right);
     let forward_speed = horizontal(state.velocity).dot(facing.forward);
+    let desired_direction = desired_planar_movement_direction(input, facing).unwrap();
+    let desired_travel_error =
+        desired_planar_travel_heading_error_degrees(state.velocity, desired_direction, 6.0);
     assert!(
         side_speed > 14.0,
         "expected right input to build meaningful planar side speed, got {side_speed}"
@@ -281,6 +292,10 @@ fn lateral_air_input_steers_velocity_toward_desired_plane() {
     assert!(
         forward_speed < 28.0,
         "expected steering to rotate velocity away from pure forward drift, got {forward_speed}"
+    );
+    assert!(
+        desired_travel_error < 28.0,
+        "expected right input to align travel with desired side heading, got {desired_travel_error} deg"
     );
 }
 

@@ -132,6 +132,7 @@ impl SimMetrics {
         }
         self.observe_lateral_response(sample);
         self.observe_body_travel_heading_alignment(sample);
+        self.observe_desired_travel_heading_alignment(sample);
         self.observe_backward_air_control(sample);
         self.max_pose_torso_pitch_degrees = self
             .max_pose_torso_pitch_degrees
@@ -300,6 +301,14 @@ impl SimMetrics {
 
         match sample.pose_intent_label {
             "gliding" => self.pose_gliding_samples += 1,
+            "air_turn" => {
+                self.pose_air_turn_samples += 1;
+                if sample.movement_input_lateral_axis > 0.25 {
+                    self.right_pose_air_turn_samples += 1;
+                } else if sample.movement_input_lateral_axis < -0.25 {
+                    self.left_pose_air_turn_samples += 1;
+                }
+            }
             "diving" => self.pose_diving_samples += 1,
             "air_brake" => self.pose_air_brake_samples += 1,
             "landing_anticipation" => self.pose_landing_anticipation_samples += 1,
@@ -453,6 +462,44 @@ impl SimMetrics {
         }
     }
 
+    fn observe_desired_travel_heading_alignment(&mut self, sample: &SimSample) {
+        if !desired_travel_heading_alignment_sample(sample) {
+            return;
+        }
+
+        let Some(lateral_response_time) = lateral_response_time_for_sample(self, sample) else {
+            return;
+        };
+        if sample.time_secs < lateral_response_time {
+            return;
+        }
+
+        self.desired_travel_heading_error_values_degrees
+            .push(sample.desired_travel_heading_error_degrees);
+        self.max_desired_travel_heading_error_degrees = self
+            .max_desired_travel_heading_error_degrees
+            .max(sample.desired_travel_heading_error_degrees);
+        if sample.movement_input_lateral_axis > 0.0 {
+            self.right_desired_travel_heading_samples += 1;
+        } else if sample.movement_input_lateral_axis < 0.0 {
+            self.left_desired_travel_heading_samples += 1;
+        }
+
+        if sample.movement_input_forward_axis >= 0.0 {
+            return;
+        }
+
+        if backward_diagonal_response_time_for_sample(self, sample)
+            .is_some_and(|time_secs| sample.time_secs >= time_secs)
+        {
+            if sample.movement_input_lateral_axis > 0.0 {
+                self.backward_right_desired_travel_heading_samples += 1;
+            } else if sample.movement_input_lateral_axis < 0.0 {
+                self.backward_left_desired_travel_heading_samples += 1;
+            }
+        }
+    }
+
     fn observe_backward_air_control(&mut self, sample: &SimSample) {
         if sample.movement_input_forward_axis >= 0.0 || sample.mode == "grounded" {
             return;
@@ -489,7 +536,12 @@ impl SimMetrics {
 fn key_pose_intent_label(label: &str) -> bool {
     matches!(
         label,
-        "gliding" | "diving" | "air_brake" | "landing_anticipation" | "landing_recovery"
+        "gliding"
+            | "air_turn"
+            | "diving"
+            | "air_brake"
+            | "landing_anticipation"
+            | "landing_recovery"
     )
 }
 
@@ -498,6 +550,13 @@ fn body_travel_heading_alignment_sample(sample: &SimSample) -> bool {
         && sample.lateral_input_active
         && sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
         && sample.body_travel_heading_error_degrees.is_finite()
+}
+
+fn desired_travel_heading_alignment_sample(sample: &SimSample) -> bool {
+    matches!(sample.mode, "airborne" | "gliding")
+        && sample.lateral_input_active
+        && sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+        && sample.desired_travel_heading_error_degrees.is_finite()
 }
 
 fn lateral_response_time_for_sample(metrics: &SimMetrics, sample: &SimSample) -> Option<f32> {

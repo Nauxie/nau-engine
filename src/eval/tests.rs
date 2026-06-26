@@ -35,6 +35,8 @@ fn air_control_metric_sample(
         "air_brake"
     } else if velocity.y < -14.0 {
         "diving"
+    } else if movement_axis.x.abs() > f32::EPSILON {
+        "air_turn"
     } else {
         "gliding"
     };
@@ -169,6 +171,7 @@ fn air_control_metric_sample(
         body_travel_heading_error_degrees: yaw_error_degrees.abs(),
         body_roll_degrees: -movement_axis.x.signum() * 12.0,
         desired_heading_alignment_mps: desired_alignment_mps,
+        desired_travel_heading_error_degrees: yaw_error_degrees.abs(),
         lateral_response_mps,
         lateral_input_active: movement_axis.x.abs() > f32::EPSILON,
         movement_axis,

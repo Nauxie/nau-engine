@@ -115,6 +115,7 @@ pub enum PlayerPoseIntent {
     Launching,
     Falling,
     Gliding,
+    AirTurn,
     Diving,
     AirBrake,
     LandingAnticipation,
@@ -129,6 +130,7 @@ impl PlayerPoseIntent {
             Self::Launching => "launching",
             Self::Falling => "falling",
             Self::Gliding => "gliding",
+            Self::AirTurn => "air_turn",
             Self::Diving => "diving",
             Self::AirBrake => "air_brake",
             Self::LandingAnticipation => "landing_anticipation",
@@ -190,7 +192,7 @@ pub fn pose_blend_for_intent(intent: PlayerPoseIntent, dt: f32) -> f32 {
     let rate = match intent {
         PlayerPoseIntent::LandingAnticipation => 36.0,
         PlayerPoseIntent::LandingRecovery => 30.0,
-        PlayerPoseIntent::Gliding => 30.0,
+        PlayerPoseIntent::Gliding | PlayerPoseIntent::AirTurn => 30.0,
         PlayerPoseIntent::Diving | PlayerPoseIntent::AirBrake => 22.0,
         _ => 18.0,
     };
@@ -245,12 +247,18 @@ pub fn player_pose_intent(context: PlayerPoseContext) -> PlayerPoseIntent {
         FlightMode::Gliding if context.input.dive || context.velocity.y < -14.0 => {
             PlayerPoseIntent::Diving
         }
+        FlightMode::Gliding if airborne_turn_input(context) => PlayerPoseIntent::AirTurn,
         FlightMode::Gliding => PlayerPoseIntent::Gliding,
         FlightMode::Airborne if context.input.dive || context.velocity.y < -18.0 => {
             PlayerPoseIntent::Diving
         }
+        FlightMode::Airborne if airborne_turn_input(context) => PlayerPoseIntent::AirTurn,
         FlightMode::Airborne => PlayerPoseIntent::Falling,
     }
+}
+
+fn airborne_turn_input(context: PlayerPoseContext) -> bool {
+    context.input.planar_axis().x.abs() >= 0.25
 }
 
 fn side_cycle(phase: f32, side: Side) -> f32 {
@@ -263,6 +271,7 @@ fn airborne_pose_intent(intent: PlayerPoseIntent) -> bool {
         intent,
         PlayerPoseIntent::Falling
             | PlayerPoseIntent::Gliding
+            | PlayerPoseIntent::AirTurn
             | PlayerPoseIntent::Diving
             | PlayerPoseIntent::AirBrake
             | PlayerPoseIntent::LandingAnticipation
@@ -287,7 +296,9 @@ fn pose_turn_weight(context: PlayerPoseContext) -> f32 {
 
 fn pose_lateral_lean_radians(context: PlayerPoseContext) -> f32 {
     let intent = context.intent();
-    let max_lean = if airborne_pose_intent(intent) {
+    let max_lean = if intent == PlayerPoseIntent::AirTurn {
+        0.30
+    } else if airborne_pose_intent(intent) {
         0.22
     } else {
         0.08
@@ -496,6 +507,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedStride => -0.04 * gait_weight,
                 PlayerPoseIntent::Falling => -0.12 + vertical_pitch,
                 PlayerPoseIntent::Gliding => -0.30 + vertical_pitch * 0.5,
+                PlayerPoseIntent::AirTurn => -0.34 + vertical_pitch * 0.45,
                 PlayerPoseIntent::Diving => -1.04 + vertical_pitch * 0.18,
                 PlayerPoseIntent::AirBrake => 0.08 + vertical_pitch * 0.35,
                 PlayerPoseIntent::LandingAnticipation => 0.46 + landing_strength * 0.22,
@@ -515,6 +527,7 @@ pub fn part_pose_with_context(
         CharacterPartRole::Head => {
             translation.y += cycle.abs() * (0.01 + gait_weight * 0.006);
             let pitch = match intent {
+                PlayerPoseIntent::AirTurn => -0.10,
                 PlayerPoseIntent::Diving => 0.18,
                 PlayerPoseIntent::AirBrake => -0.14,
                 PlayerPoseIntent::LandingAnticipation => -0.34,
@@ -531,6 +544,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedStride => 0.08 + gait.abs() * 0.06 * gait_weight,
                 PlayerPoseIntent::Falling => 0.65,
                 PlayerPoseIntent::Gliding => 1.08,
+                PlayerPoseIntent::AirTurn => 1.18,
                 PlayerPoseIntent::Diving => 1.50,
                 PlayerPoseIntent::AirBrake => 1.50,
                 PlayerPoseIntent::LandingAnticipation => 0.92 + landing_strength * 0.20,
@@ -541,6 +555,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedIdle => cycle * 0.025,
                 PlayerPoseIntent::GroundedStride => gait * 0.48 * gait_weight,
                 PlayerPoseIntent::Gliding => -0.58,
+                PlayerPoseIntent::AirTurn => -0.46 + turn_weight.abs() * 0.10,
                 PlayerPoseIntent::Diving => 0.10,
                 PlayerPoseIntent::AirBrake => 0.42,
                 PlayerPoseIntent::LandingAnticipation => 1.08 + landing_strength * 0.28,
@@ -574,6 +589,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedStride => 0.04 + gait.abs() * 0.05 * gait_weight,
                 PlayerPoseIntent::Falling => 0.14,
                 PlayerPoseIntent::Gliding => 0.2,
+                PlayerPoseIntent::AirTurn => 0.24,
                 PlayerPoseIntent::Diving => 0.12,
                 PlayerPoseIntent::AirBrake => 0.34,
                 PlayerPoseIntent::LandingAnticipation => 0.46 + landing_strength * 0.16,
@@ -584,6 +600,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedIdle => 0.02,
                 PlayerPoseIntent::GroundedStride => gait * 0.52 * gait_weight,
                 PlayerPoseIntent::Gliding => 0.46 + cycle * 0.04,
+                PlayerPoseIntent::AirTurn => 0.50 + cycle * 0.04,
                 PlayerPoseIntent::Diving => 0.98 + cycle * 0.02,
                 PlayerPoseIntent::AirBrake => -0.34,
                 PlayerPoseIntent::LandingAnticipation => -0.98 - landing_strength * 0.32,
@@ -616,7 +633,8 @@ pub fn part_pose_with_context(
             };
 
             let sign = side.sign();
-            let bank = (context.velocity.x * 0.012).clamp(-0.2, 0.2);
+            let bank =
+                (context.velocity.x * 0.008 + pose_turn_weight(context) * 0.18).clamp(-0.26, 0.26);
             let airflow = wing_airflow_strength(context.mode, context.velocity);
             let flutter = (phase * 2.4).sin() * (0.018 + airflow * 0.038);
             let air_brake_cup = if intent == PlayerPoseIntent::AirBrake {
@@ -775,6 +793,56 @@ mod tests {
                 40.0,
             )),
             PlayerPoseIntent::AirBrake
+        );
+        assert_eq!(
+            player_pose_intent(PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -2.0, -32.0),
+                FlightInput {
+                    right: true,
+                    ..default()
+                },
+                40.0,
+            )),
+            PlayerPoseIntent::AirTurn
+        );
+        assert_eq!(
+            player_pose_intent(PlayerPoseContext::new(
+                FlightMode::Airborne,
+                Vec3::new(0.0, -2.0, -24.0),
+                FlightInput {
+                    left: true,
+                    ..default()
+                },
+                40.0,
+            )),
+            PlayerPoseIntent::AirTurn
+        );
+        assert_eq!(
+            player_pose_intent(PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -2.0, -26.0),
+                FlightInput {
+                    backward: true,
+                    right: true,
+                    ..default()
+                },
+                40.0,
+            )),
+            PlayerPoseIntent::AirBrake
+        );
+        assert_eq!(
+            player_pose_intent(PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -18.0, -32.0),
+                FlightInput {
+                    dive: true,
+                    right: true,
+                    ..default()
+                },
+                40.0,
+            )),
+            PlayerPoseIntent::Diving
         );
         assert_eq!(
             player_pose_intent(PlayerPoseContext::new(
@@ -942,6 +1010,7 @@ mod tests {
         );
         let metrics = pose_readability_metrics(context, 0.0);
 
+        assert_eq!(context.intent(), PlayerPoseIntent::AirTurn);
         assert!(metrics.lateral_lean_degrees > 11.0);
         assert!(metrics.arm_spread_degrees > 100.0);
         assert!(metrics.wing_airflow_strength > 0.25);
@@ -971,8 +1040,21 @@ mod tests {
             0.0,
         );
 
+        assert_eq!(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -2.0, -32.0),
+                FlightInput {
+                    right: true,
+                    ..default()
+                },
+                40.0,
+            )
+            .intent(),
+            PlayerPoseIntent::AirTurn
+        );
         assert!(neutral.lateral_lean_degrees < 0.5);
-        assert!(turning.lateral_lean_degrees > 7.0);
+        assert!(turning.lateral_lean_degrees > 10.0);
     }
 
     #[test]
@@ -1002,8 +1084,8 @@ mod tests {
             0.0,
         );
 
-        assert!(right.signed_lateral_lean_degrees < -7.0);
-        assert!(left.signed_lateral_lean_degrees > 7.0);
+        assert!(right.signed_lateral_lean_degrees < -10.0);
+        assert!(left.signed_lateral_lean_degrees > 10.0);
         assert!((right.lateral_lean_degrees - left.lateral_lean_degrees).abs() < 0.1);
     }
 

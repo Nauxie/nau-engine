@@ -69,6 +69,13 @@ pub struct EvalMetricsSummary {
     pub backward_left_diagonal_body_travel_heading_sample_count: u32,
     pub p95_backward_diagonal_body_travel_heading_error_degrees: f32,
     pub max_backward_diagonal_body_travel_heading_error_degrees: f32,
+    pub desired_travel_heading_sample_count: u32,
+    pub right_desired_travel_heading_sample_count: u32,
+    pub left_desired_travel_heading_sample_count: u32,
+    pub backward_right_desired_travel_heading_sample_count: u32,
+    pub backward_left_desired_travel_heading_sample_count: u32,
+    pub p95_desired_travel_heading_error_degrees: f32,
+    pub max_desired_travel_heading_error_degrees: f32,
     pub max_body_yaw_error_step_degrees: f32,
     pub body_yaw_oscillation_count: u32,
     pub max_body_roll_step_degrees: f32,
@@ -262,6 +269,9 @@ pub struct EvalMetricsSummary {
     pub unreadable_lift_samples: u32,
     pub dynamic_readable_lift_samples: u32,
     pub pose_gliding_samples: u32,
+    pub pose_air_turn_samples: u32,
+    pub right_pose_air_turn_samples: u32,
+    pub left_pose_air_turn_samples: u32,
     pub pose_diving_samples: u32,
     pub pose_air_brake_samples: u32,
     pub pose_landing_anticipation_samples: u32,
@@ -452,9 +462,20 @@ impl EvalMetricsSummary {
             self.launching_samples,
             self.grounded_samples,
         );
+        let pose_gliding_samples_key = format!(
+            "{indent}  \"pose_gliding_samples\": {}",
+            self.pose_gliding_samples
+        );
+        let pose_turn_sample_metrics = format!(
+            "{pose_gliding_samples_key},\n{indent}  \"pose_air_turn_samples\": {},\n{indent}  \"right_pose_air_turn_samples\": {},\n{indent}  \"left_pose_air_turn_samples\": {}",
+            self.pose_air_turn_samples,
+            self.right_pose_air_turn_samples,
+            self.left_pose_air_turn_samples
+        );
+        let json = json.replacen(&pose_gliding_samples_key, &pose_turn_sample_metrics, 1);
         let max_body_yaw_error_step_key = format!("{indent}  \"max_body_yaw_error_step_degrees\"");
         let body_travel_heading_metrics = format!(
-            "{indent}  \"lateral_body_travel_heading_sample_count\": {},\n{indent}  \"right_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"left_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"p95_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"max_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"backward_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_right_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_left_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"p95_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"max_backward_diagonal_body_travel_heading_error_degrees\": {},\n{}",
+            "{indent}  \"lateral_body_travel_heading_sample_count\": {},\n{indent}  \"right_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"left_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"p95_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"max_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"backward_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_right_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_left_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"p95_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"max_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"desired_travel_heading_sample_count\": {},\n{indent}  \"right_desired_travel_heading_sample_count\": {},\n{indent}  \"left_desired_travel_heading_sample_count\": {},\n{indent}  \"backward_right_desired_travel_heading_sample_count\": {},\n{indent}  \"backward_left_desired_travel_heading_sample_count\": {},\n{indent}  \"p95_desired_travel_heading_error_degrees\": {},\n{indent}  \"max_desired_travel_heading_error_degrees\": {},\n{}",
             self.lateral_body_travel_heading_sample_count,
             self.right_lateral_body_travel_heading_sample_count,
             self.left_lateral_body_travel_heading_sample_count,
@@ -465,6 +486,13 @@ impl EvalMetricsSummary {
             self.backward_left_diagonal_body_travel_heading_sample_count,
             json_number(self.p95_backward_diagonal_body_travel_heading_error_degrees),
             json_number(self.max_backward_diagonal_body_travel_heading_error_degrees),
+            self.desired_travel_heading_sample_count,
+            self.right_desired_travel_heading_sample_count,
+            self.left_desired_travel_heading_sample_count,
+            self.backward_right_desired_travel_heading_sample_count,
+            self.backward_left_desired_travel_heading_sample_count,
+            json_number(self.p95_desired_travel_heading_error_degrees),
+            json_number(self.max_desired_travel_heading_error_degrees),
             max_body_yaw_error_step_key
         );
         let json = json.replacen(
