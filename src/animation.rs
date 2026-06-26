@@ -265,7 +265,13 @@ fn pose_turn_weight(context: PlayerPoseContext) -> f32 {
     } else {
         12.0
     };
-    (context.velocity.x / divisor).clamp(-1.0, 1.0)
+    let velocity_weight = (context.velocity.x / divisor).clamp(-1.0, 1.0);
+    let input_weight = context.input.planar_axis().x.clamp(-1.0, 1.0);
+    if airborne_pose_intent(intent) && input_weight.abs() > f32::EPSILON {
+        (velocity_weight * 0.35 + input_weight * 0.65).clamp(-1.0, 1.0)
+    } else {
+        velocity_weight
+    }
 }
 
 fn pose_lateral_lean_radians(context: PlayerPoseContext) -> f32 {
@@ -889,6 +895,34 @@ mod tests {
         assert!(metrics.lateral_lean_degrees > 11.0);
         assert!(metrics.arm_spread_degrees > 100.0);
         assert!(metrics.wing_airflow_strength > 0.25);
+    }
+
+    #[test]
+    fn airborne_turn_pose_responds_to_lateral_input_before_velocity_builds() {
+        let neutral = pose_readability_metrics(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -2.0, -32.0),
+                FlightInput::default(),
+                40.0,
+            ),
+            0.0,
+        );
+        let turning = pose_readability_metrics(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -2.0, -32.0),
+                FlightInput {
+                    right: true,
+                    ..default()
+                },
+                40.0,
+            ),
+            0.0,
+        );
+
+        assert!(neutral.lateral_lean_degrees < 0.5);
+        assert!(turning.lateral_lean_degrees > 7.0);
     }
 
     #[test]

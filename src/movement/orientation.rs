@@ -32,7 +32,7 @@ pub fn face_flight_direction(
     let desired_direction = if controller.mode == FlightMode::Grounded {
         None
     } else {
-        desired_air_steering_direction(input, facing)
+        desired_air_body_direction(input, facing)
     };
     let target_direction = desired_direction.or_else(|| {
         let horizontal_velocity = horizontal(velocity);
@@ -103,6 +103,10 @@ pub fn lateral_response_speed(velocity: Vec3, input: FlightInput, facing: Facing
     }
 
     horizontal(velocity).dot(facing.right * lateral.signum())
+}
+
+fn desired_air_body_direction(input: FlightInput, facing: Facing) -> Option<Vec3> {
+    desired_planar_movement_direction(input, facing)
 }
 
 pub(super) fn desired_air_steering_direction(input: FlightInput, facing: Facing) -> Option<Vec3> {
