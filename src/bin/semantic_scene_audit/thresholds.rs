@@ -3,5 +3,12 @@ pub(crate) const MIN_SAMPLE_PIXEL_HITS: usize = 3;
 pub(crate) const MIN_VISIBLE_SAMPLES_PER_CHECKPOINT: usize = 2;
 pub(crate) const MIN_PASSED_SAMPLES_PER_CHECKPOINT: usize = 1;
 pub(crate) const MIN_VISIBLE_MATERIALS_PER_CHECKPOINT: usize = 3;
+pub(crate) const MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT: usize = 3;
 pub(crate) const MIN_MATERIAL_SAMPLE_HIT_RATIO: f64 = 0.45;
 pub(crate) const EXPECTED_MATERIALS: [&str; 4] = ["terrain", "foliage", "cloud", "distant_island"];
+pub(crate) const EXPECTED_SCENE_SAMPLE_KINDS: [&str; 4] = [
+    "terrain_surface",
+    "tree_canopy",
+    "weather_cloud",
+    "distant_island",
+];

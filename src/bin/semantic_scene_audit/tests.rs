@@ -113,6 +113,8 @@ fn report_checks_require_visible_material_samples_before_pixel_hits() {
         scene_sample_pixel_hit_count: 1,
         visible_scene_material_count: 1,
         scene_material_pixel_hit_count: 1,
+        visible_scene_sample_kind_count: 1,
+        scene_sample_kind_pixel_hit_count: 1,
         passed: false,
         samples: vec![visible_terrain, occluded_cloud],
         materials: Vec::new(),
@@ -132,6 +134,19 @@ fn report_checks_require_visible_material_samples_before_pixel_hits() {
     assert_eq!(cloud_visible.value, 0.0);
     assert!(!cloud_hits.passed);
     assert_eq!(cloud_hits.value, 0.0);
+    let canopy_visible = checks
+        .iter()
+        .find(|check| check.name == "scene_kind_tree_canopy_visible_samples")
+        .expect("tree canopy visible check");
+    let canopy_hits = checks
+        .iter()
+        .find(|check| check.name == "scene_kind_tree_canopy_pixel_hits")
+        .expect("tree canopy hit check");
+
+    assert!(!canopy_visible.passed);
+    assert_eq!(canopy_visible.value, 0.0);
+    assert!(!canopy_hits.passed);
+    assert_eq!(canopy_hits.value, 0.0);
 }
 
 #[test]
@@ -207,6 +222,45 @@ fn checkpoint_requires_each_visible_material_family_to_hit() {
             .iter()
             .any(|material| material.expected_material == "cloud" && !material.passed)
     );
+    let _ = fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn checkpoint_requires_visible_scene_sample_kind_diversity() {
+    let temp_dir = unique_temp_dir("semantic_scene_kinds");
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let screenshot_path = temp_dir.join("checkpoint.png");
+    let metadata_path = temp_dir.join("checkpoint.markers.json");
+    let mut image = RgbImage::from_pixel(80, 60, Rgb([130, 170, 220]));
+    image.put_pixel(20, 15, Rgb([104, 82, 48]));
+    image.put_pixel(21, 15, Rgb([92, 74, 46]));
+    image.put_pixel(22, 15, Rgb([74, 68, 62]));
+    image.put_pixel(40, 30, Rgb([44, 126, 32]));
+    image.put_pixel(41, 30, Rgb([48, 132, 36]));
+    image.put_pixel(42, 30, Rgb([52, 138, 34]));
+    image.put_pixel(60, 45, Rgb([158, 166, 174]));
+    image.put_pixel(61, 45, Rgb([166, 174, 184]));
+    image.put_pixel(62, 45, Rgb([148, 158, 168]));
+    image.save(&screenshot_path).expect("screenshot");
+    fs::write(
+        &metadata_path,
+        format!(
+            "{{\"passed\": true, \"checkpoint\": \"test\", \"screenshot\": {}, \"viewport\": {{\"width\": 80, \"height\": 60}}, \"scene_samples\": [\
+             {{\"kind\": \"terrain_surface\", \"label\": \"terrain\", \"expected_material\": \"terrain\", \"in_viewport\": true, \"screen\": {{\"x\": 20, \"y\": 15}}}},\
+             {{\"kind\": \"terrain_surface\", \"label\": \"foliage substitute\", \"expected_material\": \"foliage\", \"in_viewport\": true, \"screen\": {{\"x\": 40, \"y\": 30}}}},\
+             {{\"kind\": \"terrain_surface\", \"label\": \"cloud substitute\", \"expected_material\": \"cloud\", \"in_viewport\": true, \"screen\": {{\"x\": 60, \"y\": 45}}}}]}}",
+            json_string(&screenshot_path.to_string_lossy())
+        ),
+    )
+    .expect("metadata");
+
+    let audit = audit_checkpoint_path(&metadata_path).expect("audit");
+
+    assert!(!audit.passed);
+    assert_eq!(audit.visible_scene_material_count, 3);
+    assert_eq!(audit.scene_material_pixel_hit_count, 3);
+    assert_eq!(audit.visible_scene_sample_kind_count, 1);
+    assert_eq!(audit.scene_sample_kind_pixel_hit_count, 1);
     let _ = fs::remove_dir_all(temp_dir);
 }
 

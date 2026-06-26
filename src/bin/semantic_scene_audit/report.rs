@@ -1,5 +1,8 @@
 use crate::{
-    thresholds::{EXPECTED_MATERIALS, MIN_VISIBLE_MATERIALS_PER_CHECKPOINT},
+    thresholds::{
+        EXPECTED_MATERIALS, EXPECTED_SCENE_SAMPLE_KINDS, MIN_VISIBLE_MATERIALS_PER_CHECKPOINT,
+        MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT,
+    },
     types::{Check, CheckpointAudit, MaterialAudit, SceneSampleAudit},
 };
 use std::collections::{BTreeMap, HashSet};
@@ -24,6 +27,21 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
         .unwrap_or(0);
     let material_counts = material_hit_counts(checkpoints);
     let visible_material_counts = material_visible_counts(checkpoints);
+    let kind_counts = sample_kind_hit_counts(checkpoints);
+    let visible_kind_counts = sample_kind_visible_counts(checkpoints);
+    let kind_family_checkpoint_count = checkpoints
+        .iter()
+        .filter(|checkpoint| {
+            checkpoint.visible_scene_sample_kind_count >= MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT
+                && checkpoint.scene_sample_kind_pixel_hit_count
+                    >= checkpoint.visible_scene_sample_kind_count
+        })
+        .count();
+    let min_visible_kind_count = checkpoints
+        .iter()
+        .map(|checkpoint| checkpoint.visible_scene_sample_kind_count)
+        .min()
+        .unwrap_or(0);
     let mut checks = vec![Check::at_least(
         "checkpoint_scene_pixel_hits",
         passed_checkpoint_count as f64,
@@ -43,6 +61,18 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
         MIN_VISIBLE_MATERIALS_PER_CHECKPOINT as f64,
         "materials",
     ));
+    checks.push(Check::at_least(
+        "checkpoint_scene_sample_kind_hits",
+        kind_family_checkpoint_count as f64,
+        checkpoints.len() as f64,
+        "checkpoints",
+    ));
+    checks.push(Check::at_least(
+        "min_visible_scene_sample_kind_count",
+        min_visible_kind_count as f64,
+        MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT as f64,
+        "sample_kinds",
+    ));
 
     for material in EXPECTED_MATERIALS {
         checks.push(Check::at_least(
@@ -54,6 +84,21 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
         checks.push(Check::at_least(
             format!("{material}_scene_sample_pixel_hits"),
             *material_counts.get(material).unwrap_or(&0) as f64,
+            1.0,
+            "samples",
+        ));
+    }
+
+    for kind in EXPECTED_SCENE_SAMPLE_KINDS {
+        checks.push(Check::at_least(
+            format!("scene_kind_{kind}_visible_samples"),
+            *visible_kind_counts.get(kind).unwrap_or(&0) as f64,
+            1.0,
+            "samples",
+        ));
+        checks.push(Check::at_least(
+            format!("scene_kind_{kind}_pixel_hits"),
+            *kind_counts.get(kind).unwrap_or(&0) as f64,
             1.0,
             "samples",
         ));
@@ -92,6 +137,40 @@ pub(crate) fn material_hit_counts(checkpoints: &[CheckpointAudit]) -> BTreeMap<&
     let mut counts = BTreeMap::new();
     for (material, _) in unique_hits {
         *counts.entry(material).or_default() += 1;
+    }
+    counts
+}
+
+pub(crate) fn sample_kind_visible_counts(checkpoints: &[CheckpointAudit]) -> BTreeMap<&str, usize> {
+    let mut unique_visible = HashSet::new();
+    for checkpoint in checkpoints {
+        for sample in &checkpoint.samples {
+            if sample.is_visible() {
+                unique_visible.insert((sample.kind.as_str(), sample.label.as_str()));
+            }
+        }
+    }
+
+    let mut counts = BTreeMap::new();
+    for (kind, _) in unique_visible {
+        *counts.entry(kind).or_default() += 1;
+    }
+    counts
+}
+
+pub(crate) fn sample_kind_hit_counts(checkpoints: &[CheckpointAudit]) -> BTreeMap<&str, usize> {
+    let mut unique_hits = HashSet::new();
+    for checkpoint in checkpoints {
+        for sample in &checkpoint.samples {
+            if sample.passed {
+                unique_hits.insert((sample.kind.as_str(), sample.label.as_str()));
+            }
+        }
+    }
+
+    let mut counts = BTreeMap::new();
+    for (kind, _) in unique_hits {
+        *counts.entry(kind).or_default() += 1;
     }
     counts
 }
@@ -135,7 +214,7 @@ pub(crate) fn checkpoint_json(checkpoint: &CheckpointAudit) -> String {
         .collect::<Vec<_>>()
         .join(",\n");
     format!(
-        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"checkpoint\": {},\n      \"passed\": {},\n      \"in_viewport_scene_sample_count\": {},\n      \"occluded_scene_sample_count\": {},\n      \"visible_scene_sample_count\": {},\n      \"scene_sample_pixel_hit_count\": {},\n      \"visible_scene_material_count\": {},\n      \"scene_material_pixel_hit_count\": {},\n      \"materials\": [\n{}\n      ],\n      \"samples\": [\n{}\n      ]\n    }}",
+        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"checkpoint\": {},\n      \"passed\": {},\n      \"in_viewport_scene_sample_count\": {},\n      \"occluded_scene_sample_count\": {},\n      \"visible_scene_sample_count\": {},\n      \"scene_sample_pixel_hit_count\": {},\n      \"visible_scene_material_count\": {},\n      \"scene_material_pixel_hit_count\": {},\n      \"visible_scene_sample_kind_count\": {},\n      \"scene_sample_kind_pixel_hit_count\": {},\n      \"materials\": [\n{}\n      ],\n      \"samples\": [\n{}\n      ]\n    }}",
         json_string(&checkpoint.metadata_path),
         json_string(&checkpoint.screenshot_path),
         json_string(&checkpoint.checkpoint),
@@ -146,6 +225,8 @@ pub(crate) fn checkpoint_json(checkpoint: &CheckpointAudit) -> String {
         checkpoint.scene_sample_pixel_hit_count,
         checkpoint.visible_scene_material_count,
         checkpoint.scene_material_pixel_hit_count,
+        checkpoint.visible_scene_sample_kind_count,
+        checkpoint.scene_sample_kind_pixel_hit_count,
         materials_json,
         samples_json
     )
