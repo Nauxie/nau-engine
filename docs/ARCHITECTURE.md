@@ -15,7 +15,11 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 
 - `src/main.rs` owns Bevy app resource/plugin setup, app system scheduling, and CLI action dispatch.
 - `src/app_tests.rs` owns binary-level app integration tests for CLI parsing, eval window setup, exported content artifacts, generated content mesh quality, and app-visible helper behavior.
-- `src/scene_setup_runtime.rs` owns startup scene construction: lights, ground plane, island catalog seeding, authored fixture scene spawning, player child visuals, follow camera spawn, and HUD root spawn.
+- `src/scene_setup_runtime.rs` owns startup scene setup orchestration, authored scene registration, follow camera spawn, and stable startup constants.
+- `src/scene_setup_runtime/materials.rs` owns startup PBR material and procedural texture-handle preparation for player, terrain, clouds, updrafts, water, and detail assets.
+- `src/scene_setup_runtime/world.rs` owns startup world spawning: sun, ground plane, island catalog seeding, camera obstacles, wind/lift volumes, weather layers, power-up guides, and authored world fixtures.
+- `src/scene_setup_runtime/player.rs` owns startup player entity spawning, authored player/glider scene children, fallback character parts, glider wings, and airflow trail children.
+- `src/scene_setup_runtime/hud.rs` owns startup HUD/debug readout root spawning.
 - `src/player_runtime.rs` owns the player marker/resource types, keyboard flight input mapping, player movement ECS systems, route objective updates, generated/authored player visibility handoff, and fallback character animation.
 - `src/camera_runtime.rs` owns runtime camera resources, mouse-look capture, follow-camera ECS wiring, camera obstruction components, camera spawn/render-stack setup, and camera diagnostics.
 - `src/authored_assets.rs` owns the authored-asset runtime facade and stable re-exports.
