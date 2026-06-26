@@ -115,12 +115,13 @@ pub(super) fn checkpoint_scene_sample_projection_json(
     camera_transform: &GlobalTransform,
     samples: &[SemanticSceneSample],
     scene_islands: &[SkyIsland],
-) -> (Vec<String>, usize, usize, usize, usize) {
+) -> (Vec<String>, usize, usize, usize, usize, usize) {
     let viewport_size = camera.logical_viewport_size();
     let camera_position = camera_transform.translation();
     let mut visible_count = 0usize;
     let mut in_viewport_count = 0usize;
     let mut occluded_count = 0usize;
+    let mut visible_wind_count = 0usize;
     let mut visible_materials = HashSet::new();
     let entries = samples
         .iter()
@@ -155,6 +156,9 @@ pub(super) fn checkpoint_scene_sample_projection_json(
             if visibility == SemanticMarkerVisibility::Visible {
                 visible_count += 1;
                 visible_materials.insert(sample.expected_material);
+                if sample.expected_material == "wind" {
+                    visible_wind_count += 1;
+                }
             }
 
             let screen_json = projected
@@ -192,6 +196,7 @@ pub(super) fn checkpoint_scene_sample_projection_json(
         in_viewport_count,
         occluded_count,
         visible_materials.len(),
+        visible_wind_count,
     )
 }
 
