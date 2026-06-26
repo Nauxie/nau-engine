@@ -99,7 +99,7 @@ Wind/updraft:
 - visual `WindField` volumes are the shared source for stream visuals, diagnostics, and bounded horizontal airborne wind current
 - crosswinds push laterally without adding vertical lift
 - updraft wind swirl can bend horizontal motion, but vertical climb still comes from paired `LiftField` volumes
-- active lift should be readable through paired updraft visuals, gusting ribbons/motes, and debug bounds before richer particles, cloth/glider motion, vegetation, clouds, or other environment art
+- active lift should be readable through paired updraft visuals, gusting/advection-driven ribbons and motes, and debug bounds before richer particles, cloth/glider motion, vegetation, clouds, or other environment art
 
 Power-ups:
 
