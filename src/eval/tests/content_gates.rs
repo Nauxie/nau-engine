@@ -622,7 +622,7 @@ fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample
             .with_island_impostor_metrics(146, 24)
             .with_terrain_material_metrics(36, 3, 4, 64)
             .with_generated_visual_shape_metrics(
-                528, 220, 1100, 37, 37, 62, 412, 5, 60, 74, 30, 12, 4.8, 7, 14, 910, 14,
+                528, 220, 1100, 37, 37, 196, 412, 5, 60, 74, 30, 12, 4.8, 7, 14, 910, 14,
             )
             .with_visible_authored_world_fixture_count(MIN_VISIBLE_AUTHORED_WORLD_FIXTURE_COUNT),
     );

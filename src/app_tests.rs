@@ -362,14 +362,17 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         report.mesh_count,
         report.ground_cover_count + report.tree_trunk_count * 2 + report.weather_cloud_count
     );
-    assert!(report.total_vertex_count > 40_000);
-    assert!(report.total_triangle_count > 50_000);
+    assert!(report.total_vertex_count > 70_000);
+    assert!(report.total_triangle_count > 75_000);
     assert!(report.min_ground_cover_mesh_vertices >= 1100);
     assert!(report.min_ground_cover_blade_count >= 220);
     assert!(report.min_ground_cover_blade_height_range_m >= 0.7);
-    assert!(report.min_tree_trunk_mesh_vertices >= 60);
+    assert!(report.min_tree_trunk_mesh_vertices >= 190);
     assert!(report.min_tree_trunk_taper_ratio >= 1.35);
     assert!(report.min_tree_branch_reach_ratio >= 1.8);
+    assert!(report.min_tree_branch_count >= 4);
+    assert!(report.min_tree_root_flare_count >= 5);
+    assert!(report.min_tree_trunk_ring_count >= 5);
     assert!(report.min_tree_canopy_mesh_vertices >= 400);
     assert!(report.min_tree_canopy_lobe_count >= 6);
     assert!(report.min_tree_canopy_detail_card_count >= 12);
@@ -392,6 +395,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"schema\": \"nau_visual_content_export.v1\""));
     assert!(manifest.contains("\"ground_cover_blade_height_range_m\""));
     assert!(manifest.contains("\"tree_branch_reach_ratio\""));
+    assert!(manifest.contains("\"tree_root_flare_count\": 5"));
+    assert!(manifest.contains("\"tree_trunk_ring_count\": 5"));
     assert!(manifest.contains("\"weather_cloud_wisp_card_count\""));
     assert!(manifest.contains("\"weather_cloud_filament_ribbon_detail_count\""));
     assert!(manifest.contains("\"terrain_biome_palette_count\": 5"));
@@ -404,8 +409,10 @@ fn tree_trunk_mesh_is_tapered_instead_of_a_straight_cylinder() {
     let mesh = tree_trunk_mesh(0.3, 4.0, 123);
     let positions = positions(&mesh);
     let bottom_ring = &positions[..TREE_TRUNK_SEGMENTS];
-    let top_ring = &positions[2 * TREE_TRUNK_SEGMENTS..3 * TREE_TRUNK_SEGMENTS];
-    let branch_vertices_start = TREE_TRUNK_SEGMENTS * 3 + 2;
+    let top_ring_start = TREE_TRUNK_SEGMENTS * (TREE_TRUNK_RING_COUNT - 1);
+    let top_ring = &positions[top_ring_start..top_ring_start + TREE_TRUNK_SEGMENTS];
+    let branch_vertices_start = TREE_TRUNK_SEGMENTS * TREE_TRUNK_RING_COUNT + 2;
+    let root_vertices_start = branch_vertices_start + TREE_BRANCH_COUNT * TREE_BRANCH_SEGMENTS * 2;
     let top_center = top_ring
         .iter()
         .map(|position| Vec2::new(position[0], position[2]))
@@ -421,14 +428,21 @@ fn tree_trunk_mesh_is_tapered_instead_of_a_straight_cylinder() {
         .map(|position| (Vec2::new(position[0], position[2]) - top_center).length())
         .sum::<f32>()
         / TREE_TRUNK_SEGMENTS as f32;
-    let max_branch_reach = positions[branch_vertices_start..]
+    let max_branch_reach = positions[branch_vertices_start..root_vertices_start]
+        .iter()
+        .map(|position| Vec2::new(position[0], position[2]).length())
+        .fold(0.0, f32::max);
+    let max_root_reach = positions[root_vertices_start..]
         .iter()
         .map(|position| Vec2::new(position[0], position[2]).length())
         .fold(0.0, f32::max);
 
     assert_eq!(
         mesh.count_vertices(),
-        TREE_TRUNK_SEGMENTS * 3 + 2 + TREE_BRANCH_COUNT * TREE_BRANCH_SEGMENTS * 2
+        TREE_TRUNK_SEGMENTS * TREE_TRUNK_RING_COUNT
+            + 2
+            + TREE_BRANCH_COUNT * TREE_BRANCH_SEGMENTS * 2
+            + TREE_ROOT_FLARE_COUNT * TREE_ROOT_FLARE_SEGMENTS * 2
     );
     assert!(
         average_bottom_radius > average_top_radius * 1.45,
@@ -438,6 +452,10 @@ fn tree_trunk_mesh_is_tapered_instead_of_a_straight_cylinder() {
         max_branch_reach > average_bottom_radius * 1.8,
         "tree trunks should include visible branch mass instead of only a tapered stick"
     );
+    assert!(
+        max_root_reach > average_bottom_radius * 1.35,
+        "tree trunks should include root flares that break the pole silhouette near the ground"
+    );
 }
 
 #[test]
@@ -445,7 +463,7 @@ fn tree_trunk_cap_winding_matches_declared_normals() {
     let mesh = tree_trunk_mesh(0.3, 4.0, 123);
     let positions = positions(&mesh);
     let indices = u32_indices(&mesh);
-    let cap_start = TREE_TRUNK_SEGMENTS * 12;
+    let cap_start = TREE_TRUNK_SEGMENTS * 6 * (TREE_TRUNK_RING_COUNT - 1);
 
     for segment in 0..TREE_TRUNK_SEGMENTS {
         let bottom = &indices[cap_start + segment * 6..cap_start + segment * 6 + 3];
