@@ -54,6 +54,7 @@ pub struct EvalSample {
     pub speed_mps: f32,
     pub altitude_m: f32,
     pub mode: &'static str,
+    pub pose_intent_label: &'static str,
     pub desired_body_yaw_error_degrees: f32,
     pub desired_body_heading_error_degrees: f32,
     pub body_roll_degrees: f32,

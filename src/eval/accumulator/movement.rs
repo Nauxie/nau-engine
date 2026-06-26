@@ -20,6 +20,7 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     observe_desired_heading_alignment(accumulator, sample);
     observe_lateral_response(accumulator, sample);
     observe_air_brake(accumulator, sample);
+    observe_pose_intent_counts(accumulator, sample);
     observe_mode_counts(accumulator, sample);
 }
 
@@ -263,6 +264,16 @@ fn observe_mode_counts(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
         "gliding" => accumulator.gliding_samples += 1,
         "launching" => accumulator.launching_samples += 1,
         "grounded" => accumulator.grounded_samples += 1,
+        _ => {}
+    }
+}
+
+fn observe_pose_intent_counts(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
+    match sample.pose_intent_label {
+        "gliding" => accumulator.pose_gliding_samples += 1,
+        "diving" => accumulator.pose_diving_samples += 1,
+        "air_brake" => accumulator.pose_air_brake_samples += 1,
+        "landing_anticipation" => accumulator.pose_landing_anticipation_samples += 1,
         _ => {}
     }
 }

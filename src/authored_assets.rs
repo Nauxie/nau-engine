@@ -6,7 +6,8 @@ mod types;
 
 #[cfg(test)]
 pub(crate) use animation::{
-    AuthoredPlayerClip, authored_player_clip_for_state, resolve_named_animation_clip_handles,
+    AuthoredPlayerClip, authored_player_clip_for_pose_intent, authored_player_clip_for_state,
+    resolve_named_animation_clip_handles,
 };
 pub(crate) use animation::{link_ready_authored_animations, update_authored_player_animation};
 pub(crate) use diagnostics::update_visual_asset_diagnostics;

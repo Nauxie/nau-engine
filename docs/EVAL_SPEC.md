@@ -264,6 +264,7 @@ Every sample includes:
 - `altitude_m`
 - `visual_foot_gap_m`
 - `mode`
+- `pose_intent`
 - `desired_body_yaw_error_degrees`
 - `desired_body_heading_error_degrees`
 - `body_roll_degrees`
@@ -510,6 +511,7 @@ The summary aggregates:
 - target landing sample count
 - active lift sample count
 - readable and unreadable active-lift sample counts
+- pose-intent sample counts for gliding, diving, air brake, and landing anticipation
 - gliding, launching, and grounded sample counts
 
 The pass/fail checks currently guard:
@@ -562,11 +564,12 @@ The pass/fail checks currently guard:
 - camera view yaw and world-yaw drift stayed within scenario limits when movement should not rotate the camera
 - camera obstruction avoidance was exercised when a scenario requires it
 - camera mouse scenarios exercised yaw and both pitch directions
-- air-control response latency, right/left/rear-right/rear-left lateral response and latency, rear-right/rear-left rearward response, body-bank response, body-roll step, total and planar air-brake speed drop, post-brake forward alignment, desired-heading alignment, average/p95/max body-heading error, max yaw-error step, yaw oscillation count, camera orbit yaw offset, camera view-yaw drift, camera world-yaw drift, and camera rotation delta stayed inside thresholds
+- air-control response latency, right/left/rear-right/rear-left lateral response and latency, rear-right/rear-left rearward response, body-bank response, body-roll step, total and planar air-brake speed drop, air-brake and dive pose coverage, post-brake forward alignment, desired-heading alignment, average/p95/max body-heading error, max yaw-error step, yaw oscillation count, camera orbit yaw offset, camera view-yaw drift, camera world-yaw drift, and camera rotation delta stayed inside thresholds
 - air-control average and p95 camera follow-direction error stayed inside threshold so movement-only routes cannot pass with a stale follow direction
 - air-control movement-only camera world-yaw drift stayed inside threshold
 - island-route final scenario-target distance stayed under threshold
 - island-route grounded target landing was observed on the configured target island
+- landing-required routes exercised landing-anticipation pose coverage before contact
 
 Thresholds should remain loose until the intended route becomes richer. Tight thresholds belong only after a mechanic or route is deliberately locked.
 

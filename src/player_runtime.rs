@@ -8,8 +8,8 @@ use crate::camera_runtime::CameraFollowFilter;
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
 use crate::power_up_runtime::{PowerUpCollectionState, collect_aerial_power_ups};
 use nau_engine::animation::{
-    AnimationState, CharacterPart, CharacterPartRole, PartVisibility, advance_phase, part_pose,
-    pose_blend,
+    AnimationState, CharacterPart, CharacterPartRole, PartVisibility, PlayerPoseContext,
+    advance_phase, part_pose_with_context, pose_blend,
 };
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::environment::{LiftField, apply_lift_fields};
@@ -133,17 +133,21 @@ pub(crate) fn fly_player(
     tuning: Res<FlightTuning>,
     mut world: MovementWorld,
     camera: Query<&Transform, CameraFollowFilter>,
-    mut player: Query<(&mut Transform, &mut Velocity, &mut FlightController), With<Player>>,
+    mut player: Query<
+        (
+            &mut Transform,
+            &mut Velocity,
+            &mut FlightController,
+            &mut AnimationState,
+        ),
+        With<Player>,
+    >,
 ) {
-    let Ok((mut transform, mut velocity, mut controller)) = player.single_mut() else {
+    let Ok((mut transform, mut velocity, mut controller, mut animation)) = player.single_mut()
+    else {
         return;
     };
     let facing = movement_facing(camera.single().ok(), &transform);
-    let mut kinematics = PlayerKinematics {
-        transform: &mut transform,
-        velocity: &mut velocity,
-        controller: &mut controller,
-    };
     let dt = time.delta_secs();
     let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
     world.power_ups.begin_frame(dt);
@@ -153,13 +157,23 @@ pub(crate) fn fly_player(
         lift_fields: &lift_fields,
         power_ups: &mut world.power_ups,
     };
+    let input = keyboard_flight_input(&keyboard);
 
-    step_player(
-        dt,
-        keyboard_flight_input(&keyboard),
-        facing,
-        &mut context,
-        &mut kinematics,
+    {
+        let mut kinematics = PlayerKinematics {
+            transform: &mut transform,
+            velocity: &mut velocity,
+            controller: &mut controller,
+        };
+        step_player(dt, input, facing, &mut context, &mut kinematics);
+    }
+    record_animation_context(
+        &mut animation,
+        input,
+        &world.route,
+        &transform,
+        &velocity,
+        &controller,
     );
 }
 
@@ -181,24 +195,28 @@ pub(crate) fn eval_fly_player(
     mut world: MovementWorld,
     camera: Query<&Transform, CameraFollowFilter>,
     mut movement_basis: ResMut<EvalMovementBasis>,
-    mut player: Query<(&mut Transform, &mut Velocity, &mut FlightController), With<Player>>,
+    mut player: Query<
+        (
+            &mut Transform,
+            &mut Velocity,
+            &mut FlightController,
+            &mut AnimationState,
+        ),
+        With<Player>,
+    >,
 ) {
     if run.finalized {
         return;
     }
 
-    let Ok((mut transform, mut velocity, mut controller)) = player.single_mut() else {
+    let Ok((mut transform, mut velocity, mut controller, mut animation)) = player.single_mut()
+    else {
         return;
     };
     let facing = movement_facing(camera.single().ok(), &transform);
     *movement_basis = EvalMovementBasis {
         frame: run.frame,
         facing: Some(facing),
-    };
-    let mut kinematics = PlayerKinematics {
-        transform: &mut transform,
-        velocity: &mut velocity,
-        controller: &mut controller,
     };
     let dt = run.scenario.fixed_dt;
     let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
@@ -209,13 +227,23 @@ pub(crate) fn eval_fly_player(
         lift_fields: &lift_fields,
         power_ups: &mut world.power_ups,
     };
+    let input = scripted_input(run.scenario, run.frame);
 
-    step_player(
-        dt,
-        scripted_input(run.scenario, run.frame),
-        facing,
-        &mut context,
-        &mut kinematics,
+    {
+        let mut kinematics = PlayerKinematics {
+            transform: &mut transform,
+            velocity: &mut velocity,
+            controller: &mut controller,
+        };
+        step_player(dt, input, facing, &mut context, &mut kinematics);
+    }
+    record_animation_context(
+        &mut animation,
+        input,
+        &world.route,
+        &transform,
+        &velocity,
+        &controller,
     );
 }
 
@@ -271,6 +299,27 @@ fn step_player(
     );
 }
 
+fn record_animation_context(
+    animation: &mut AnimationState,
+    input: FlightInput,
+    route: &SkyRoute,
+    transform: &Transform,
+    velocity: &Velocity,
+    controller: &FlightController,
+) {
+    animation.last_input = input;
+    animation.height_above_ground_m =
+        (transform.translation.y - route.ground_at(transform.translation).floor_y).max(0.0);
+    let pose_velocity = character_pose_velocity(velocity.0, transform.rotation);
+    animation.pose_intent = PlayerPoseContext::new(
+        controller.mode,
+        pose_velocity,
+        input,
+        animation.height_above_ground_m,
+    )
+    .intent();
+}
+
 pub(crate) fn movement_facing(camera: Option<&Transform>, player_transform: &Transform) -> Facing {
     camera.map_or_else(
         || Facing::new(*player_transform.forward(), *player_transform.right()),
@@ -305,12 +354,19 @@ pub(crate) fn animate_character(
     let dt = eval_dt(&time, eval.as_deref());
     animation.phase = advance_phase(animation.phase, velocity.0.length(), dt);
     let pose_velocity = character_pose_velocity(velocity.0, transform.rotation);
+    let pose_context = PlayerPoseContext::new(
+        controller.mode,
+        pose_velocity,
+        animation.last_input,
+        animation.height_above_ground_m,
+    );
+    animation.pose_intent = pose_context.intent();
     let blend = pose_blend(dt);
     let authored_player_ready = visual_assets.scene_ready(VisualAssetKind::PlayerCharacter);
     let authored_glider_ready = visual_assets.scene_ready(VisualAssetKind::Glider);
 
     for (part, mut transform, mut visibility) in &mut parts {
-        let pose = part_pose(part, controller.mode, pose_velocity, animation.phase);
+        let pose = part_pose_with_context(part, pose_context, animation.phase);
         transform.translation = transform.translation.lerp(pose.translation, blend);
         transform.rotation = transform.rotation.slerp(pose.rotation, blend);
 

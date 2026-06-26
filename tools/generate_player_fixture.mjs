@@ -375,6 +375,14 @@ const animations = [
     { node: 5, path: "rotation", times: loopTimes, values: [rotZ(-1.08), rotZ(-1.18), rotZ(-1.08)] },
     { node: 2, path: "rotation", times: loopTimes, values: [rotX(0.08), rotX(0.14), rotX(0.08)] },
   ]),
+  animation("Dive_Loop", [
+    { node: 2, path: "rotation", times: loopTimes, values: [rotX(-0.92), rotX(-0.86), rotX(-0.92)] },
+    { node: 3, path: "rotation", times: loopTimes, values: [rotX(0.18), rotX(0.24), rotX(0.18)] },
+    { node: 4, path: "rotation", times: loopTimes, values: [rotZ(1.34), rotZ(1.42), rotZ(1.34)] },
+    { node: 5, path: "rotation", times: loopTimes, values: [rotZ(-1.34), rotZ(-1.42), rotZ(-1.34)] },
+    { node: 6, path: "rotation", times: loopTimes, values: [rotX(0.78), rotX(0.86), rotX(0.78)] },
+    { node: 7, path: "rotation", times: loopTimes, values: [rotX(0.78), rotX(0.86), rotX(0.78)] },
+  ]),
   animation("Air_Brake", [
     { node: 2, path: "rotation", times: shortTimes, values: [rotX(0.0), rotX(-0.24), rotX(-0.16)] },
     { node: 4, path: "rotation", times: shortTimes, values: [rotZ(0.55), rotZ(0.92), rotZ(0.72)] },

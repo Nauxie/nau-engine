@@ -1,5 +1,6 @@
 use super::*;
 use bevy::mesh::{Indices, VertexAttributeValues};
+use nau_engine::animation::PlayerPoseIntent;
 
 fn test_island() -> SkyIsland {
     SkyIsland::new(
@@ -128,13 +129,38 @@ fn authored_player_clip_selection_tracks_flight_state() {
 }
 
 #[test]
+fn authored_player_clip_selection_tracks_pose_intent() {
+    assert_eq!(
+        authored_player_clip_for_pose_intent(PlayerPoseIntent::GroundedIdle, 0.2),
+        AuthoredPlayerClip::Idle
+    );
+    assert_eq!(
+        authored_player_clip_for_pose_intent(PlayerPoseIntent::GroundedStride, 4.0),
+        AuthoredPlayerClip::Jog
+    );
+    assert_eq!(
+        authored_player_clip_for_pose_intent(PlayerPoseIntent::Diving, 34.0),
+        AuthoredPlayerClip::Dive
+    );
+    assert_eq!(
+        authored_player_clip_for_pose_intent(PlayerPoseIntent::AirBrake, 28.0),
+        AuthoredPlayerClip::AirBrake
+    );
+    assert_eq!(
+        authored_player_clip_for_pose_intent(PlayerPoseIntent::LandingAnticipation, 12.0),
+        AuthoredPlayerClip::Land
+    );
+}
+
+#[test]
 fn authored_player_clip_indices_match_declared_gltf_order() {
     assert_eq!(AuthoredPlayerClip::Idle.index(), 0);
     assert_eq!(AuthoredPlayerClip::Jog.index(), 1);
     assert_eq!(AuthoredPlayerClip::Launch.index(), 2);
     assert_eq!(AuthoredPlayerClip::Glide.index(), 3);
-    assert_eq!(AuthoredPlayerClip::AirBrake.index(), 4);
-    assert_eq!(AuthoredPlayerClip::Land.index(), 5);
+    assert_eq!(AuthoredPlayerClip::Dive.index(), 4);
+    assert_eq!(AuthoredPlayerClip::AirBrake.index(), 5);
+    assert_eq!(AuthoredPlayerClip::Land.index(), 6);
 }
 
 #[test]

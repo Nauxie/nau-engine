@@ -7,6 +7,7 @@ use crate::power_up_runtime::PowerUpCollectionState;
 use crate::{Player, RouteObjectiveTracker};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
+use nau_engine::animation::AnimationState;
 use nau_engine::environment::{LiftField, WindField};
 use nau_engine::movement::{FlightController, Velocity};
 use nau_engine::world::SkyRoute;
@@ -21,6 +22,7 @@ pub(crate) struct EvalScene<'w, 's> {
             &'static Transform,
             &'static Velocity,
             &'static FlightController,
+            &'static AnimationState,
         ),
         With<Player>,
     >,

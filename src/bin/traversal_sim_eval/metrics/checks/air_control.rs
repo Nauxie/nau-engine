@@ -223,5 +223,17 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS,
             "mps",
         ),
+        SimCheck::at_least(
+            "air_control_pose_air_brake_samples",
+            metrics.pose_air_brake_samples as f32,
+            1.0,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_pose_diving_samples",
+            metrics.pose_diving_samples as f32,
+            1.0,
+            "samples",
+        ),
     ]);
 }
