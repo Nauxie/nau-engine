@@ -560,6 +560,16 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
             .iter()
             .any(|proxy| proxy.kind == WorldCollisionProxyKind::Landmark)
     );
+    assert!(
+        proxies
+            .iter()
+            .filter(|proxy| {
+                proxy.kind == WorldCollisionProxyKind::Landmark
+                    && (proxy.half_extents.x > 3.0 || proxy.half_extents.z > 3.0)
+            })
+            .count()
+            >= 4
+    );
 }
 
 #[test]
