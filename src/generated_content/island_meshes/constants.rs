@@ -14,6 +14,10 @@ pub(crate) const ISLAND_TERRAIN_MATERIAL_CHANNELS: usize = 3;
 #[cfg(test)]
 pub(crate) const ISLAND_TERRAIN_MATERIAL_REGIONS: usize = 4;
 #[cfg(test)]
+pub(crate) const ISLAND_TERRAIN_HEIGHT_BANDS: usize = 19;
+#[cfg(test)]
+pub(crate) const ISLAND_TERRAIN_NORMAL_SLOPE_BANDS: usize = 10;
+#[cfg(test)]
 pub(crate) const ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS: usize = 44;
 #[cfg(test)]
 pub(crate) const ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE: usize = 240;

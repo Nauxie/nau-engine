@@ -3,7 +3,7 @@ use crate::{
     manifest::audit_manifest,
 };
 use serde_json::{Value, json};
-use std::path::Path;
+use std::{fs, path::Path};
 
 #[test]
 fn obj_audit_counts_vertices_faces_and_vertex_colors() {
@@ -20,6 +20,8 @@ fn obj_audit_counts_vertices_faces_and_vertex_colors() {
     assert_eq!(audit.face_count, 1);
     assert_eq!(audit.colored_vertex_count, 2);
     assert_eq!(audit.vertical_range_m, 1.0);
+    assert_eq!(audit.vertical_band_count, 2);
+    assert_eq!(audit.normal_slope_band_count, 1);
     assert_eq!(audit.horizontal_radius_bands, 2);
     assert_eq!(audit.silhouette_radius_bands, 1);
 }
@@ -38,6 +40,8 @@ fn obj_audit_tracks_vertical_mass_and_radius_variation() {
     );
 
     assert_eq!(audit.vertical_range_m, 9.0);
+    assert_eq!(audit.vertical_band_count, 3);
+    assert_eq!(audit.normal_slope_band_count, 0);
     assert!(
         audit.horizontal_radius_bands >= 3,
         "radius bands should reflect broad, shoulder, and center mass"
@@ -46,6 +50,97 @@ fn obj_audit_tracks_vertical_mass_and_radius_variation() {
         audit.silhouette_radius_bands >= 2,
         "silhouette bands should track outer radius variation"
     );
+}
+
+#[test]
+fn obj_audit_ignores_downward_normals_for_slope_bands() {
+    let audit = audit_obj_text(
+        "# flipped terrain normals\n\
+             v 0.0 0.0 0.0 0.1 0.2 0.3\n\
+             v 1.0 0.0 0.0 0.1 0.2 0.3\n\
+             v 0.0 1.0 0.0 0.1 0.2 0.3\n\
+             vn 0.0 -1.0 0.0\n\
+             vn 0.5 -0.8660 0.0\n\
+             vn 0.7071 -0.7071 0.0\n\
+             f 1//1 2//2 3//3\n",
+    );
+
+    assert_eq!(audit.normal_slope_band_count, 0);
+}
+
+#[test]
+fn audit_manifest_compares_terrain_band_metrics_to_obj_artifact() {
+    let root = std::env::temp_dir().join(format!(
+        "nau-terrain-audit-band-mismatch-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).expect("temp audit dir should be created");
+    fs::write(
+        root.join("terrain.obj"),
+        "# terrain\n\
+             v 0.0 0.00 0.0 0.1 0.2 0.3\n\
+             v 1.0 0.05 0.0 0.1 0.2 0.3\n\
+             v 0.0 0.10 1.0 0.1 0.2 0.3\n\
+             vn 0.0 1.0 0.0\n\
+             vn 0.5 0.8660 0.0\n\
+             vn 0.7071 0.7071 0.0\n\
+             f 1//1 2//2 3//3\n",
+    )
+    .expect("terrain obj should be written");
+
+    let manifest = json!({
+        "schema": "nau_terrain_export.v1",
+        "island_count": 1,
+        "mesh_count": 4,
+        "total_vertex_count": 2305,
+        "total_triangle_count": 4000,
+        "minimums": {
+            "terrain_mesh_vertices": 2305,
+            "terrain_color_bands": 32,
+            "terrain_material_weight_bands": 24,
+            "terrain_material_channels": 3,
+            "terrain_material_regions": 4,
+            "terrain_height_bands": 19,
+            "terrain_normal_slope_bands": 10,
+            "terrain_texture_detail_bands": 44,
+            "terrain_texture_edge_promille": 240,
+            "terrain_relief_range_m": 0.8,
+            "cliff_color_bands": 9,
+            "impostor_mesh_vertices": 140,
+            "impostor_color_bands": 18
+        },
+        "islands": [{
+            "name": "launch mesa",
+            "terrain": {
+                "obj": "terrain.obj",
+                "material_weights_csv": "missing_weights.csv",
+                "vertex_count": 3,
+                "triangle_count": 1,
+                "material_weight_bands": 24,
+                "material_channels": 3,
+                "material_regions": 4,
+                "height_bands": 99,
+                "normal_slope_bands": 99
+            },
+            "cliff": {"obj": "missing_cliff.obj", "vertex_count": 96, "triangle_count": 180},
+            "underside": {"obj": "missing_underside.obj", "vertex_count": 96, "triangle_count": 180},
+            "impostor": {"obj": "missing_impostor.obj", "vertex_count": 140, "triangle_count": 200}
+        }]
+    });
+
+    let report = audit_manifest(&manifest, &root, "manifest.json");
+
+    assert!(!audit_check_passed(
+        &report,
+        "obj_height_band_mismatch_count"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "obj_normal_slope_band_mismatch_count"
+    ));
+
+    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -62,6 +157,8 @@ fn audit_manifest_requires_impostor_entries_and_minimums() {
             "terrain_material_weight_bands": 24,
             "terrain_material_channels": 3,
             "terrain_material_regions": 4,
+            "terrain_height_bands": 8,
+            "terrain_normal_slope_bands": 3,
             "terrain_texture_detail_bands": 44,
             "terrain_texture_edge_promille": 120,
             "terrain_relief_range_m": 0.8,
@@ -101,6 +198,8 @@ fn audit_manifest_requires_impostor_entries_and_minimums() {
             .unwrap_or(true)
     );
     assert!(!audit_check_passed(&report, "mesh_count"));
+    assert!(!audit_check_passed(&report, "terrain_height_bands"));
+    assert!(!audit_check_passed(&report, "terrain_normal_slope_bands"));
     assert!(!audit_check_passed(
         &report,
         "terrain_texture_edge_promille"
@@ -115,6 +214,11 @@ fn audit_manifest_requires_impostor_entries_and_minimums() {
     assert!(!audit_check_passed(
         &report,
         "terrain_silhouette_radius_bands"
+    ));
+    assert!(!audit_check_passed(&report, "terrain_obj_height_bands"));
+    assert!(!audit_check_passed(
+        &report,
+        "terrain_obj_normal_slope_bands"
     ));
     assert!(!audit_check_passed(&report, "island_body_vertical_range"));
     assert!(!audit_check_passed(

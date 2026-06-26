@@ -302,6 +302,8 @@ fn terrain_export_writes_manifest_meshes_and_weight_sidecars() {
     assert!(report.min_terrain_material_weight_bands >= ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS);
     assert!(report.min_terrain_material_channels >= ISLAND_TERRAIN_MATERIAL_CHANNELS);
     assert!(report.min_terrain_material_regions >= ISLAND_TERRAIN_MATERIAL_REGIONS);
+    assert!(report.min_terrain_height_bands >= ISLAND_TERRAIN_HEIGHT_BANDS);
+    assert!(report.min_terrain_normal_slope_bands >= ISLAND_TERRAIN_NORMAL_SLOPE_BANDS);
     assert!(report.min_terrain_texture_detail_bands >= ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS);
     assert!(report.min_terrain_texture_edge_promille >= ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE);
     assert!(report.min_terrain_relief_range_m >= 0.8);
@@ -319,6 +321,8 @@ fn terrain_export_writes_manifest_meshes_and_weight_sidecars() {
     ));
     assert!(manifest.contains("\"terrain_material_weight_bands\": 36"));
     assert!(manifest.contains("\"terrain_material_regions\": 4"));
+    assert!(manifest.contains("\"terrain_height_bands\""));
+    assert!(manifest.contains("\"terrain_normal_slope_bands\""));
     assert!(manifest.contains("\"terrain_texture_detail_bands\": 47"));
     assert!(manifest.contains(&format!(
         "\"terrain_texture_edge_promille\": {}",
@@ -807,6 +811,14 @@ fn terrain_mesh_uses_high_resolution_irregular_silhouette() {
     assert!(
         mesh_terrain_material_region_count(&mesh) >= ISLAND_TERRAIN_MATERIAL_REGIONS,
         "terrain mesh should expose distinct meadow, transition, highland, and edge regions"
+    );
+    assert!(
+        mesh_vertical_band_count(&mesh) >= ISLAND_TERRAIN_HEIGHT_BANDS,
+        "terrain mesh should expose enough vertical bands for ravines and terrace relief"
+    );
+    assert!(
+        mesh_normal_slope_band_count(&mesh) >= ISLAND_TERRAIN_NORMAL_SLOPE_BANDS,
+        "terrain mesh normals should expose slope variety rather than one smooth plate"
     );
     let uvs = mesh_uv0(&mesh).expect("terrain mesh should expose material uvs");
     let min_u = uvs.iter().map(|uv| uv[0]).fold(f32::INFINITY, f32::min);

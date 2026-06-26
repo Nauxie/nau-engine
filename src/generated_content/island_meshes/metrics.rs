@@ -22,6 +22,45 @@ pub(crate) fn mesh_y_range(mesh: &Mesh) -> f32 {
     }
 }
 
+pub(crate) fn mesh_vertical_band_count(mesh: &Mesh) -> usize {
+    let Some(VertexAttributeValues::Float32x3(positions)) =
+        mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+    else {
+        return 0;
+    };
+    let min_y = positions
+        .iter()
+        .map(|position| position[1])
+        .fold(f32::INFINITY, f32::min);
+    if !min_y.is_finite() {
+        return 0;
+    }
+
+    positions
+        .iter()
+        .map(|position| ((position[1] - min_y) / 0.05).round() as i32)
+        .collect::<HashSet<_>>()
+        .len()
+}
+
+pub(crate) fn mesh_normal_slope_band_count(mesh: &Mesh) -> usize {
+    let Some(VertexAttributeValues::Float32x3(normals)) = mesh.attribute(Mesh::ATTRIBUTE_NORMAL)
+    else {
+        return 0;
+    };
+
+    normals
+        .iter()
+        .filter(|normal| normal[1] > 0.0)
+        .map(|normal| {
+            let horizontal = Vec2::new(normal[0], normal[2]).length();
+            let slope_degrees = horizontal.atan2(normal[1].max(0.0001)).to_degrees();
+            (slope_degrees * 2.0).round() as i32
+        })
+        .collect::<HashSet<_>>()
+        .len()
+}
+
 pub(crate) fn mesh_vertex_color_band_count(mesh: &Mesh) -> usize {
     let Some(VertexAttributeValues::Float32x4(colors)) = mesh.attribute(Mesh::ATTRIBUTE_COLOR)
     else {
