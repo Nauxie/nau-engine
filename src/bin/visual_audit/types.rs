@@ -14,6 +14,7 @@ pub(super) struct ImageAudit {
     pub(super) center_edge_density: f64,
     pub(super) scene_detail_tile_fraction: f64,
     pub(super) flat_scene_tile_fraction: f64,
+    pub(super) dominant_low_detail_scene_component_fraction: f64,
     pub(super) scene_detail_tile_count: usize,
     pub(super) flat_scene_tile_count: usize,
     pub(super) scene_candidate_tile_count: usize,

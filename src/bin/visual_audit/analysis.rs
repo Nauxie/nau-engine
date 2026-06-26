@@ -277,6 +277,8 @@ pub(super) fn audit_image_with_alpha(
     let hud_text_fraction = fraction(hud_text_pixels, pixel_count);
     let scene_detail =
         scene_detail_stats(&image, &luma_values, &scene_mask, width_usize, height_usize);
+    let low_detail_scene_component =
+        low_detail_scene_component_stats(&luma_values, &scene_mask, width_usize, height_usize);
 
     let checks = vec![
         Check::at_least("width", width as f64, MIN_WIDTH as f64, "px"),
@@ -328,6 +330,12 @@ pub(super) fn audit_image_with_alpha(
             MAX_FLAT_SCENE_TILE_FRACTION,
             "ratio",
         ),
+        Check::at_most(
+            "dominant_low_detail_scene_component_fraction",
+            low_detail_scene_component.dominant_component_fraction,
+            MAX_DOMINANT_LOW_DETAIL_SCENE_COMPONENT_FRACTION,
+            "ratio",
+        ),
         Check::at_least(
             "player_focus_fraction",
             player_focus_fraction,
@@ -376,6 +384,8 @@ pub(super) fn audit_image_with_alpha(
         center_edge_density,
         scene_detail_tile_fraction: scene_detail.detail_tile_fraction,
         flat_scene_tile_fraction: scene_detail.flat_tile_fraction,
+        dominant_low_detail_scene_component_fraction: low_detail_scene_component
+            .dominant_component_fraction,
         scene_detail_tile_count: scene_detail.detail_tile_count,
         flat_scene_tile_count: scene_detail.flat_tile_count,
         scene_candidate_tile_count: scene_detail.candidate_tile_count,
