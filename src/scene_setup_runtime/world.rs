@@ -3,8 +3,8 @@ use bevy::prelude::*;
 
 use crate::authored_assets::{
     AuthoredVisualScene, AuthoredVisualSceneRole, VisibleAuthoredWorldFixture, VisualAssetRegistry,
-    authored_world_fixture_scene_handles, authored_world_fixture_transform,
-    mark_authored_scene_ready,
+    authored_world_fixture_collision_proxy, authored_world_fixture_scene_handles,
+    authored_world_fixture_transform, mark_authored_scene_ready,
 };
 use crate::camera_runtime::CameraObstacle;
 use crate::content_diagnostics::IslandContentDiagnostics;
@@ -198,9 +198,11 @@ fn spawn_authored_world_fixtures(
         Vec::with_capacity(authored_world_fixture_scene_handles.len());
 
     for (kind, label, scene_handle) in authored_world_fixture_scene_handles {
+        let transform = authored_world_fixture_transform(kind, route);
+        let collision_proxy = authored_world_fixture_collision_proxy(kind, &transform);
         let mut scene = commands.spawn((
             SceneRoot(scene_handle),
-            authored_world_fixture_transform(kind, route),
+            transform,
             Visibility::Inherited,
             AuthoredVisualScene {
                 kind,
@@ -209,9 +211,90 @@ fn spawn_authored_world_fixtures(
             VisibleAuthoredWorldFixture { kind },
             Name::new(format!("visible authored {label} fixture scene")),
         ));
+        if let Some(collision_proxy) = collision_proxy {
+            scene.insert((
+                collision_proxy,
+                CameraObstacle(CameraObstruction::new(
+                    collision_proxy.center,
+                    collision_proxy.half_extents,
+                )),
+            ));
+        }
         scene.observe(mark_authored_scene_ready);
         authored_world_fixture_scene_entities.push((kind, scene.id()));
     }
 
     authored_world_fixture_scene_entities
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::authored_assets::VisualAssetSlot;
+    use crate::world_collision_runtime::WorldCollisionProxy;
+    use nau_engine::asset_pipeline::{
+        VISUAL_ASSET_SPECS, VisualAssetKind, VisualAssetLoadAdmission,
+    };
+
+    #[test]
+    fn authored_world_fixture_spawn_attaches_collision_to_solid_fixtures() {
+        let route = SkyRoute::default();
+        let registry = VisualAssetRegistry {
+            slots: VISUAL_ASSET_SPECS
+                .iter()
+                .copied()
+                .map(|spec| VisualAssetSlot {
+                    spec,
+                    load_admission: VisualAssetLoadAdmission::Admitted,
+                    gltf_handle: None,
+                    scene_handle: Some(Handle::default()),
+                    scene_entity: None,
+                    scene_ready: false,
+                    animation_player_entity: None,
+                    ready_animation_clip_count: 0,
+                    animation_graph_ready: false,
+                })
+                .collect(),
+        };
+        let mut world = World::new();
+        {
+            let mut commands = world.commands();
+            let spawned = spawn_authored_world_fixtures(&mut commands, &route, &registry);
+            assert_eq!(spawned.len(), 7);
+        }
+        world.flush();
+
+        let mut query = world.query::<(
+            &VisibleAuthoredWorldFixture,
+            Option<&WorldCollisionProxy>,
+            Option<&CameraObstacle>,
+        )>();
+        let mut solid_count = 0;
+        let mut non_solid_count = 0;
+        for (fixture, collision_proxy, camera_obstacle) in query.iter(&world) {
+            match fixture.kind {
+                VisualAssetKind::IslandTerrain
+                | VisualAssetKind::IslandFoliage
+                | VisualAssetKind::IslandRock
+                | VisualAssetKind::RouteMarker => {
+                    solid_count += 1;
+                    assert!(collision_proxy.is_some());
+                    assert!(camera_obstacle.is_some());
+                }
+                VisualAssetKind::IslandWater
+                | VisualAssetKind::WeatherLayer
+                | VisualAssetKind::DistantImpostor => {
+                    non_solid_count += 1;
+                    assert!(collision_proxy.is_none());
+                    assert!(camera_obstacle.is_none());
+                }
+                VisualAssetKind::PlayerCharacter | VisualAssetKind::Glider => {
+                    panic!("player/glider assets are not authored world fixtures");
+                }
+            }
+        }
+
+        assert_eq!(solid_count, 4);
+        assert_eq!(non_solid_count, 3);
+    }
 }
