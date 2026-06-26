@@ -4,12 +4,40 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_visible_wind_fields = accumulator
         .max_visible_wind_fields
         .max(sample.visible_wind_fields);
+    accumulator.max_dynamic_wind_flow_fields = accumulator
+        .max_dynamic_wind_flow_fields
+        .max(sample.dynamic_wind_flow_fields);
+    accumulator.max_wind_flow_speed_mps = accumulator
+        .max_wind_flow_speed_mps
+        .max(sample.max_wind_flow_speed_mps);
+    accumulator.max_wind_flow_variation = accumulator
+        .max_wind_flow_variation
+        .max(sample.max_wind_flow_variation);
     accumulator.max_active_lift_fields = accumulator
         .max_active_lift_fields
         .max(sample.active_lift_fields);
     accumulator.max_readable_lift_fields = accumulator
         .max_readable_lift_fields
         .max(sample.readable_lift_fields);
+    if sample.active_lift_fields > 0
+        && sample.readable_lift_fields > 0
+        && sample.dynamic_wind_flow_fields > 0
+        && sample.max_wind_flow_variation > 0.05
+    {
+        accumulator.dynamic_readable_lift_samples += 1;
+        accumulator.max_dynamic_readable_wind_flow_variation = accumulator
+            .max_dynamic_readable_wind_flow_variation
+            .max(sample.max_wind_flow_variation);
+        let min_variation = accumulator
+            .min_dynamic_readable_wind_flow_variation
+            .map_or(sample.max_wind_flow_variation, |current| {
+                current.min(sample.max_wind_flow_variation)
+            });
+        accumulator.min_dynamic_readable_wind_flow_variation = Some(min_variation);
+        accumulator.max_wind_flow_variation_range = accumulator
+            .max_wind_flow_variation_range
+            .max(accumulator.max_dynamic_readable_wind_flow_variation - min_variation);
+    }
     accumulator.max_sky_island_count = accumulator
         .max_sky_island_count
         .max(sample.sky_island_count);

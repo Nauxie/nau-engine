@@ -150,6 +150,15 @@ impl SimMetrics {
             self.target_landing_samples += 1;
         }
         self.max_sky_island_count = self.max_sky_island_count.max(sample.sky_island_count);
+        self.max_dynamic_wind_flow_fields = self
+            .max_dynamic_wind_flow_fields
+            .max(sample.dynamic_wind_flow_fields);
+        self.max_wind_flow_speed_mps = self
+            .max_wind_flow_speed_mps
+            .max(sample.max_wind_flow_speed_mps);
+        self.max_wind_flow_variation = self
+            .max_wind_flow_variation
+            .max(sample.max_wind_flow_variation);
         self.max_active_chunk_count = self.max_active_chunk_count.max(sample.active_chunk_count);
         self.max_active_island_count = self.max_active_island_count.max(sample.active_island_count);
         self.max_near_lod_islands = self.max_near_lod_islands.max(sample.near_lod_islands);
@@ -170,6 +179,21 @@ impl SimMetrics {
             self.lifted_samples += 1;
             if sample.readable_lift_fields > 0 {
                 self.readable_lift_samples += 1;
+                if sample.dynamic_wind_flow_fields > 0 && sample.max_wind_flow_variation > 0.05 {
+                    self.dynamic_readable_lift_samples += 1;
+                    self.max_dynamic_readable_wind_flow_variation = self
+                        .max_dynamic_readable_wind_flow_variation
+                        .max(sample.max_wind_flow_variation);
+                    let min_variation = self
+                        .min_dynamic_readable_wind_flow_variation
+                        .map_or(sample.max_wind_flow_variation, |current| {
+                            current.min(sample.max_wind_flow_variation)
+                        });
+                    self.min_dynamic_readable_wind_flow_variation = Some(min_variation);
+                    self.max_wind_flow_variation_range = self
+                        .max_wind_flow_variation_range
+                        .max(self.max_dynamic_readable_wind_flow_variation - min_variation);
+                }
             } else {
                 self.unreadable_lift_samples += 1;
             }

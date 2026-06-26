@@ -289,6 +289,9 @@ Every sample includes:
 - `camera_obstruction_hits`
 - `visible_wind_fields`
 - `wind_field_count`
+- `dynamic_wind_flow_fields`
+- `max_wind_flow_speed_mps`
+- `max_wind_flow_variation`
 - `active_lift_fields`
 - `readable_lift_fields`
 - `lift_field_count`
@@ -395,7 +398,7 @@ Add fields here before adding them to code. New fields should be cheap to collec
 The island terrain/detail/impostor hidden counts are catalog entries that are not currently resident. `catalog_island_visual_count`, `hidden_island_visual_count`, and `resident_island_visual_fraction` report stream pressure directly so future optimization work does not have to infer it from per-layer fields. The `stream_visibility_*` names are retained for artifact compatibility, but now report resident island visual spawn/despawn churn rather than `Visibility` flag flips; the `stream_spawned_*` and `stream_despawned_*` fields split that churn into directional budget signals.
 The visual asset fields report the declared glTF scene inventory, how many slots are loaded and ready, how many are still using generated placeholders, how many Bevy scene handles are deferred/queued/loading/loaded/failed, how many optional scene instances have spawned/reported ready, how many non-player authored world fixture kinds are visibly placed in the scene, how many named player animation clips are declared/ready, whether nested animation players were linked, whether animation graphs were prepared, and how slots divide across always-loaded, stream-window, near-LOD, far-LOD, and weather residency classes. Missing files, deferred admissions, and failed loads count as placeholder-backed; deferred slots do not allocate Bevy handles, and queued/loading files are not counted as ready until Bevy reports them loaded. These are readiness signals for replacing primitives with real assets; they now gate every declared fixture slot, zero deferred current fixtures, the seven visible non-player world fixture kinds, the self-authored player fixture's full named clip set, one linked `AnimationPlayer`, and one ready `AnimationGraph`. The separate asset fixture audit verifies fixture semantic-name, geometry, and provenance floors, but neither signal proves final art quality yet.
 The power-up fields report authored aerial boost gates, how many remain visible, how many have been collected, whether an effect is currently active, and the total activation count. They are route-readiness signals for the simple power-up slice, not final ability design.
-The environment-motion fields report how many resident near-LOD visuals are wind-responsive and the largest sampled transform offset from their base placement. They prove the visual motion layer exists and is active; they do not evaluate final animation quality.
+The environment-motion fields report how many resident near-LOD visuals are wind-responsive and the largest sampled transform offset from their base placement. Dynamic wind-flow fields report how many visual wind volumes contain the sampled player position, the strongest shared flow speed, and the strongest gust variation sampled from the same `WindField` model used by updraft motes/ribbons. Summary metrics also track the sampled variation range while lift is active/readable, so a nonzero but static wind-flow value cannot satisfy lift-required scenarios. Together they prove the visual motion layer and readable lift flow are active; they do not evaluate final animation quality.
 The island-terrain fields report generated terrain surface count, minimum terrain mesh vertex count, minimum vertex-color band count, minimum encoded material-weight band count, minimum material channel count, minimum derived material-region count, minimum terrain texture-detail band count, minimum sampled terrain relief range, and minimum cliff/underside color-band count. The material weights are currently encoded into `UV_1` as lush/highland and exposed-edge blend channels; material regions quantize those channels into stable base, transition, lush, and exposed-edge identities; texture-detail bands count coarse color bins in the terrain-specific procedural albedo maps, which are tiled across world-space terrain UVs instead of stretched once across an island, so future PBR material blending or glTF export has a measurable substrate. The headless terrain export adds texture-edge, height-band, and normal-slope-band floors over manifest and OBJ artifacts so smeared, flat, or single-slope terrain fills fail offline even before screenshot review. These are structural signals for denser generated island substrate with ravines, terraces, and microrelief; they do not replace screenshot or human review for final material quality.
 The island-impostor fields report the minimum generated far-LOD impostor mesh vertex count and vertex-color band count. They are structural gates for distant island silhouettes and layered terrain/cliff/underside color variation, not final far-field art quality.
 The island-body fields report whether the catalogued route island bodies are generated procedural meshes or registered primitive/fallback body placeholders, plus the minimum silhouette segment count and minimum/maximum body mesh vertex count signals. They are a structural signal for replacing cylinder-like islands; they do not prove final terrain art quality or texture fidelity.
@@ -511,6 +514,7 @@ The summary aggregates:
 - target landing sample count
 - active lift sample count
 - readable and unreadable active-lift sample counts
+- dynamic readable lift sample count plus max sampled wind-flow speed, gust variation, and readable-lift variation range
 - pose-intent sample counts for gliding, diving, air brake, and landing anticipation
 - gliding, launching, and grounded sample counts
 
@@ -525,6 +529,7 @@ The pass/fail checks currently guard:
 - the route spent enough sampled frames inside gameplay lift when a scenario requires it
 - lift-required scenarios spend enough sampled active-lift frames inside a paired visible updraft field
 - lift-required scenarios have zero unreadable active-lift samples
+- lift-required scenarios sample non-static dynamic wind flow with enough speed, gust variation, and variation range while lift is active/readable
 - the world has enough sky islands to catch accidental route collapse
 - the active chunk window stays inside the scenario budget
 - enough islands enter the active chunk window

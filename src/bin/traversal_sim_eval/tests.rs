@@ -37,6 +37,15 @@ fn baseline_simulation_writes_windowless_artifacts() {
             .get("pose_intent")
             .is_some()
     );
+    assert!(
+        result
+            .samples
+            .last()
+            .unwrap()
+            .to_json()
+            .get("max_wind_flow_variation")
+            .is_some()
+    );
 }
 
 #[test]
@@ -70,6 +79,23 @@ fn updraft_simulation_uses_readable_lift() {
     assert!(result.metrics.lifted_samples >= scenario.thresholds.min_lifted_samples);
     assert_eq!(result.metrics.unreadable_lift_samples, 0);
     assert!(result.metrics.readable_lift_samples >= result.metrics.lifted_samples);
+    assert!(result.metrics.dynamic_readable_lift_samples >= result.metrics.lifted_samples);
+    assert!(result.metrics.max_wind_flow_speed_mps >= 8.0);
+    assert!(result.metrics.max_wind_flow_variation >= 0.12);
+    assert!(result.metrics.max_wind_flow_variation_range >= 0.03);
+    for check_name in [
+        "dynamic_readable_lift_samples",
+        "max_wind_flow_speed",
+        "max_wind_flow_variation",
+        "max_wind_flow_variation_range",
+    ] {
+        let check = result
+            .checks
+            .iter()
+            .find(|check| check.name == check_name)
+            .expect("dynamic wind check");
+        assert!(check.passed, "{check_name} should pass");
+    }
     assert!(result.metrics.max_altitude_m >= scenario.thresholds.min_max_altitude_m);
 }
 

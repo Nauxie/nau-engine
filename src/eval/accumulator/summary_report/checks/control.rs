@@ -25,6 +25,30 @@ pub(super) fn append_scenario_checks(
             0.0,
             "samples",
         ));
+        checks.push(EvalCheck::at_least(
+            "dynamic_readable_lift_samples",
+            acc.dynamic_readable_lift_samples as f32,
+            thresholds.min_lifted_samples as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
+            "max_wind_flow_speed",
+            acc.max_wind_flow_speed_mps,
+            MIN_DYNAMIC_WIND_FLOW_SPEED_MPS,
+            "m/s",
+        ));
+        checks.push(EvalCheck::at_least(
+            "max_wind_flow_variation",
+            acc.max_wind_flow_variation,
+            MIN_DYNAMIC_WIND_FLOW_VARIATION,
+            "ratio",
+        ));
+        checks.push(EvalCheck::at_least(
+            "max_wind_flow_variation_range",
+            acc.max_wind_flow_variation_range,
+            MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE,
+            "ratio",
+        ));
     }
     if thresholds.require_target_landing {
         checks.push(EvalCheck::at_most(
