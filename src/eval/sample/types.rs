@@ -139,6 +139,7 @@ pub struct EvalSample {
     pub min_island_terrain_material_regions: usize,
     pub min_island_terrain_texture_detail_bands: usize,
     pub min_island_terrain_relief_range_m: f32,
+    pub island_terrain_archetype_count: usize,
     pub min_island_cliff_color_bands: usize,
     pub min_island_impostor_mesh_vertices: usize,
     pub min_island_impostor_color_bands: usize,

@@ -1,4 +1,5 @@
 use super::{EvalAccumulator, EvalSample};
+use crate::eval::thresholds::MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M;
 
 pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_visible_wind_fields = accumulator
@@ -105,6 +106,9 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
         .max(sample.world_collision_proxy_count);
     if sample.world_collision_resolved_count > 0 {
         accumulator.world_collision_resolved_samples += 1;
+        if sample.max_world_collision_push_m >= MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M {
+            accumulator.world_collision_contact_samples += 1;
+        }
     }
     accumulator.max_world_collision_push_m = accumulator
         .max_world_collision_push_m

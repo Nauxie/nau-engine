@@ -22,6 +22,7 @@ use std::{
 pub(crate) struct TerrainExportReport {
     pub(crate) manifest_path: PathBuf,
     pub(crate) island_count: usize,
+    pub(crate) terrain_archetype_count: usize,
     pub(crate) mesh_count: usize,
     pub(crate) total_vertex_count: usize,
     pub(crate) total_triangle_count: usize,
@@ -81,6 +82,7 @@ impl TerrainExportReport {
                 "{{\n",
                 "  \"schema\": \"nau_terrain_export.v1\",\n",
                 "  \"island_count\": {},\n",
+                "  \"terrain_archetype_count\": {},\n",
                 "  \"mesh_count\": {},\n",
                 "  \"total_vertex_count\": {},\n",
                 "  \"total_triangle_count\": {},\n",
@@ -105,6 +107,7 @@ impl TerrainExportReport {
                 "}}\n"
             ),
             self.island_count,
+            self.terrain_archetype_count,
             self.mesh_count,
             self.total_vertex_count,
             self.total_triangle_count,
@@ -133,6 +136,8 @@ impl TerrainExportIslandSummary {
              {indent}  \"index\": {},\n\
              {indent}  \"name\": {},\n\
              {indent}  \"slug\": {},\n\
+             {indent}  \"terrain_archetype\": {},\n\
+             {indent}  \"terrain_archetype_index\": {},\n\
              {indent}  \"center\": {},\n\
              {indent}  \"half_extents\": {},\n\
              {indent}  \"thickness_m\": {},\n\
@@ -145,6 +150,8 @@ impl TerrainExportIslandSummary {
             self.index,
             terrain_export_json_string(self.island.name),
             terrain_export_json_string(&self.slug),
+            terrain_export_json_string(self.island.terrain_archetype.label()),
+            self.island.terrain_archetype.index(),
             terrain_export_json_vec3(self.island.center),
             terrain_export_json_vec2(self.island.half_extents),
             terrain_export_json_number(self.island.thickness),
@@ -241,6 +248,12 @@ pub(crate) fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<Te
     }
 
     let island_count = islands.len();
+    let terrain_archetype_count = islands
+        .iter()
+        .fold(0_u32, |mask, island| {
+            mask | (1_u32 << island.island.terrain_archetype.index())
+        })
+        .count_ones() as usize;
     let mesh_count = island_count * 4;
     let total_vertex_count = islands
         .iter()
@@ -322,6 +335,7 @@ pub(crate) fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<Te
     let report = TerrainExportReport {
         manifest_path,
         island_count,
+        terrain_archetype_count,
         mesh_count,
         total_vertex_count,
         total_triangle_count,

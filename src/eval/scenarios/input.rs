@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use super::{
     AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, CAMERA_STRAFE_STABILITY,
     CAMERA_TURN_STABILITY, CAMERA_YAW_STABILITY, EvalScenario, GROUND_TAXI_CONTROL,
-    ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, UPDRAFT_ROUTE,
+    ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
 };
 
 pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
@@ -36,6 +36,12 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
             forward: (0.05..=1.95).contains(&t),
             right: (0.75..=1.65).contains(&t),
             backward: (2.2..=2.35).contains(&t),
+            ..default()
+        };
+    }
+    if scenario.name == WORLD_COLLISION_CONTACT {
+        return FlightInput {
+            backward: (0.05..=2.8).contains(&t),
             ..default()
         };
     }

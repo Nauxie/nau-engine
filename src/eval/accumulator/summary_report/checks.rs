@@ -7,7 +7,11 @@ mod control;
 
 use super::super::EvalAccumulator;
 use super::derived::SummaryDerivedMetrics;
-use crate::eval::{scenarios::EvalScenario, summary::EvalCheck, thresholds::*};
+use crate::eval::{
+    scenarios::{EvalScenario, WORLD_COLLISION_CONTACT},
+    summary::EvalCheck,
+    thresholds::*,
+};
 
 pub(super) fn build_checks(
     acc: &EvalAccumulator,
@@ -197,6 +201,23 @@ pub(super) fn build_checks(
             "proxies",
         ),
     ];
+
+    if scenario.name == WORLD_COLLISION_CONTACT {
+        checks.extend([
+            EvalCheck::at_least(
+                "world_collision_contact_samples",
+                acc.world_collision_contact_samples as f32,
+                MIN_WORLD_COLLISION_CONTACT_SAMPLES as f32,
+                "samples",
+            ),
+            EvalCheck::at_least(
+                "world_collision_push",
+                acc.max_world_collision_push_m,
+                MIN_WORLD_COLLISION_CONTACT_PUSH_M,
+                "m",
+            ),
+        ]);
+    }
 
     content::append_content_checks(&mut checks, acc, &thresholds);
 

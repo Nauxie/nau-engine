@@ -204,6 +204,7 @@ fn audit_manifest_requires_impostor_entries_and_minimums() {
         &report,
         "terrain_texture_edge_promille"
     ));
+    assert!(!audit_check_passed(&report, "terrain_archetype_count"));
     assert!(!audit_check_passed(&report, "impostor_mesh_vertices"));
     assert!(!audit_check_passed(&report, "impostor_color_bands"));
     assert!(!audit_check_passed(&report, "impostor_vertical_range"));
@@ -224,6 +225,22 @@ fn audit_manifest_requires_impostor_entries_and_minimums() {
     assert!(!audit_check_passed(
         &report,
         "island_body_silhouette_radius_bands"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "terrain_aggregate_base_region_promille"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "terrain_aggregate_transition_region_promille"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "terrain_aggregate_highland_region_promille"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "terrain_aggregate_exposed_region_promille"
     ));
     assert!(
         report

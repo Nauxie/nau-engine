@@ -180,6 +180,8 @@ pub(crate) fn queue_sky_island(
     let mut visual_index = 0;
     let entries = &mut catalog.entries;
 
+    content_diagnostics.record_island_terrain_archetype(island.terrain_archetype);
+
     let impostor_mesh = island_impostor_mesh(island_index, island);
     content_diagnostics.record_island_impostor(
         impostor_mesh.count_vertices(),

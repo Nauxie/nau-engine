@@ -13,7 +13,8 @@ pub use scenarios::{
     AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL,
     CAMERA_STRAFE_STABILITY, CAMERA_TURN_STABILITY, CAMERA_YAW_STABILITY, EvalCheckpoint,
     EvalScenario, GROUND_TAXI_CONTROL, ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY,
-    SCENARIO_NAMES, UPDRAFT_ROUTE, scenario_named, scripted_camera_input, scripted_input,
+    SCENARIO_NAMES, UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT, scenario_named, scripted_camera_input,
+    scripted_input,
 };
 pub use summary::{EvalArtifacts, EvalCheck, EvalMetricsSummary, EvalSummary};
 #[cfg(test)]

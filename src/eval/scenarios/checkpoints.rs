@@ -30,6 +30,16 @@ pub(super) const GROUND_TAXI_CHECKPOINTS: &[EvalCheckpoint] = &[
         name: "reverse_check",
     },
 ];
+pub(super) const WORLD_COLLISION_CONTACT_CHECKPOINTS: &[EvalCheckpoint] = &[
+    EvalCheckpoint {
+        frame: 80,
+        name: "approach_tree",
+    },
+    EvalCheckpoint {
+        frame: 150,
+        name: "blocked_by_tree",
+    },
+];
 pub(super) const UPDRAFT_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
         frame: 150,

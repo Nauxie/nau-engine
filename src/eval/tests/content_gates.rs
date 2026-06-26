@@ -87,7 +87,7 @@ fn accumulator_fails_registered_primitive_or_low_silhouette_body_content() {
     accumulator.observe(content_metric_sample(scenario, 0, 12, 1, 48));
     accumulator.observe(
         content_metric_sample(scenario, 5, 12, 0, 96)
-            .with_content_metrics(12, 2305, 61, 0.8, 9, 12, 0, 96, 96.0, 900, 1633),
+            .with_content_metrics(12, 2305, 61, 0.8, 11, 9, 12, 0, 96, 96.0, 900, 1633),
     );
     accumulator.observe(content_metric_sample(scenario, 10, 12, 0, 96));
 
@@ -153,7 +153,7 @@ fn accumulator_fails_terrain_detail_regression() {
     accumulator.observe(content_metric_sample(scenario, 0, 12, 0, 96));
     accumulator.observe(
         content_metric_sample(scenario, 10, 12, 0, 96)
-            .with_content_metrics(10, 1200, 2, 0.2, 3, 12, 0, 96, 96.0, 1633, 1633)
+            .with_content_metrics(10, 1200, 2, 0.2, 3, 3, 12, 0, 96, 96.0, 1633, 1633)
             .with_terrain_material_metrics(4, 2, 2, 16),
     );
 
@@ -175,6 +175,7 @@ fn accumulator_fails_terrain_detail_regression() {
     let material_region_check = named_check(&summary, "island_terrain_material_regions");
     let texture_detail_check = named_check(&summary, "island_terrain_texture_detail_bands");
     let relief_check = named_check(&summary, "island_terrain_relief_range");
+    let archetype_check = named_check(&summary, "island_terrain_archetype_count");
     let cliff_color_check = named_check(&summary, "island_cliff_color_bands");
 
     assert!(!terrain_count_check.passed);
@@ -193,6 +194,8 @@ fn accumulator_fails_terrain_detail_regression() {
     assert_eq!(texture_detail_check.value, 16.0);
     assert!(!relief_check.passed);
     assert_eq!(relief_check.value, 0.2);
+    assert!(!archetype_check.passed);
+    assert_eq!(archetype_check.value, 3.0);
     assert!(!cliff_color_check.passed);
     assert_eq!(cliff_color_check.value, 3.0);
 }
@@ -223,6 +226,7 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_island_terrain_material_regions\": 4"));
     assert!(summary_json.contains("\"min_island_terrain_texture_detail_bands\": 64"));
     assert!(summary_json.contains("\"min_island_terrain_relief_range_m\": 0.8000"));
+    assert!(summary_json.contains("\"min_island_terrain_archetype_count\": 11"));
     assert!(summary_json.contains("\"min_island_cliff_color_bands\": 9"));
     assert!(summary_json.contains("\"min_island_body_mesh_vertices\": 1633"));
     assert!(summary_json.contains("\"min_generated_ground_cover_patch_count\": 528"));
@@ -273,6 +277,117 @@ fn accumulator_fails_when_world_collision_proxies_are_missing() {
 }
 
 #[test]
+fn collision_contact_eval_fails_without_asset_contact_resolution() {
+    let scenario = scenario_named(WORLD_COLLISION_CONTACT).expect("collision route exists");
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(
+        content_metric_sample(scenario, 0, 12, 0, 96).with_world_collision_metrics(
+            MIN_WORLD_COLLISION_PROXY_COUNT,
+            0,
+            0.0,
+        ),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let contact_check = named_check(&summary, "world_collision_contact_samples");
+    let push_check = named_check(&summary, "world_collision_push");
+
+    assert!(!contact_check.passed);
+    assert_eq!(contact_check.value, 0.0);
+    assert!(!push_check.passed);
+    assert_eq!(push_check.value, 0.0);
+}
+
+#[test]
+fn collision_contact_eval_fails_when_contact_samples_are_only_skin_depth() {
+    let scenario = scenario_named(WORLD_COLLISION_CONTACT).expect("collision route exists");
+    let mut accumulator = EvalAccumulator::default();
+    for frame in 0..MIN_WORLD_COLLISION_CONTACT_SAMPLES {
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 12, 0, 96).with_world_collision_metrics(
+                MIN_WORLD_COLLISION_PROXY_COUNT,
+                1,
+                MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M * 0.5,
+            ),
+        );
+    }
+    accumulator.observe(
+        content_metric_sample(scenario, 99, 12, 0, 96).with_world_collision_metrics(
+            MIN_WORLD_COLLISION_PROXY_COUNT,
+            0,
+            MIN_WORLD_COLLISION_CONTACT_PUSH_M,
+        ),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let contact_check = named_check(&summary, "world_collision_contact_samples");
+    let push_check = named_check(&summary, "world_collision_push");
+
+    assert!(!contact_check.passed);
+    assert_eq!(contact_check.value, 0.0);
+    assert!(push_check.passed);
+}
+
+#[test]
+fn collision_contact_eval_passes_when_asset_contact_resolves_with_meaningful_push() {
+    let scenario = scenario_named(WORLD_COLLISION_CONTACT).expect("collision route exists");
+    let mut accumulator = EvalAccumulator::default();
+    for frame in 0..MIN_WORLD_COLLISION_CONTACT_SAMPLES {
+        let push_m = if frame == 0 {
+            MIN_WORLD_COLLISION_CONTACT_PUSH_M
+        } else {
+            MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M
+        };
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 12, 0, 96).with_world_collision_metrics(
+                MIN_WORLD_COLLISION_PROXY_COUNT,
+                1,
+                push_m,
+            ),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let contact_check = named_check(&summary, "world_collision_contact_samples");
+    let push_check = named_check(&summary, "world_collision_push");
+
+    assert!(contact_check.passed);
+    assert_eq!(
+        contact_check.value,
+        MIN_WORLD_COLLISION_CONTACT_SAMPLES as f32
+    );
+    assert!(push_check.passed);
+    assert_eq!(push_check.value, MIN_WORLD_COLLISION_CONTACT_PUSH_M);
+}
+
+#[test]
 fn sample_json_emits_wind_guide_visual_metrics() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
     let sample_json = content_metric_sample(scenario, 0, 12, 0, 96).to_json();
@@ -283,6 +398,7 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"crosswind_ribbon_visual_count\":8"));
     assert!(sample_json.contains("\"max_updraft_visual_motion_m\":0.2000"));
     assert!(sample_json.contains("\"max_crosswind_visual_motion_m\":0.3000"));
+    assert!(sample_json.contains("\"island_terrain_archetype_count\":11"));
 }
 
 #[test]
@@ -739,7 +855,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
 fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample) {
     accumulator.observe(
         sample
-            .with_content_metrics(12, 2305, 61, 0.8, 9, 12, 0, 96, 96.0, 1633, 1633)
+            .with_content_metrics(12, 2305, 61, 0.8, 11, 9, 12, 0, 96, 96.0, 1633, 1633)
             .with_island_impostor_metrics(146, 24)
             .with_terrain_material_metrics(36, 3, 4, 64)
             .with_generated_visual_shape_metrics(

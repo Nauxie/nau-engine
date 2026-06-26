@@ -21,6 +21,16 @@ fn ground_taxi_script_exercises_wasd_without_launching() {
 }
 
 #[test]
+fn world_collision_contact_script_taxis_into_launch_tree() {
+    let scenario = scenario_named(WORLD_COLLISION_CONTACT).expect("collision route exists");
+
+    assert!(scripted_input(scenario, 60).backward);
+    assert!(scripted_input(scenario, 150).backward);
+    assert!(!scripted_input(scenario, 1).launch);
+    assert!(!scripted_input(scenario, 60).glide);
+}
+
+#[test]
 fn updraft_route_steers_toward_lift_without_diving() {
     let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
 

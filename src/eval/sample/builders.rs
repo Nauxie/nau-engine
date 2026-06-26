@@ -182,6 +182,7 @@ impl EvalSample {
             min_island_terrain_material_regions: 0,
             min_island_terrain_texture_detail_bands: 0,
             min_island_terrain_relief_range_m: 0.0,
+            island_terrain_archetype_count: 0,
             min_island_cliff_color_bands: 0,
             min_island_impostor_mesh_vertices: 0,
             min_island_impostor_color_bands: 0,
@@ -361,6 +362,7 @@ impl EvalSample {
         min_island_terrain_mesh_vertices: usize,
         min_island_terrain_color_bands: usize,
         min_island_terrain_relief_range_m: f32,
+        island_terrain_archetype_count: usize,
         min_island_cliff_color_bands: usize,
         procedural_island_body_count: usize,
         primitive_island_body_count: usize,
@@ -373,6 +375,7 @@ impl EvalSample {
         self.min_island_terrain_mesh_vertices = min_island_terrain_mesh_vertices;
         self.min_island_terrain_color_bands = min_island_terrain_color_bands;
         self.min_island_terrain_relief_range_m = min_island_terrain_relief_range_m;
+        self.island_terrain_archetype_count = island_terrain_archetype_count;
         self.min_island_cliff_color_bands = min_island_cliff_color_bands;
         self.procedural_island_body_count = procedural_island_body_count;
         self.primitive_island_body_count = primitive_island_body_count;

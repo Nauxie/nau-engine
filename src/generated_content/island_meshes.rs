@@ -32,5 +32,5 @@ pub(crate) use palette::island_terrain_vertex_color;
 pub(crate) use palette::{
     IslandDetailMaterials, biome_detail_color_set, biome_detail_materials, terrain_biome_palette,
 };
-pub(crate) use shape::island_visual_surface_position;
+pub(crate) use shape::{island_playable_normalized_offset, island_visual_surface_position};
 pub(crate) use terrain::island_terrain_mesh;
