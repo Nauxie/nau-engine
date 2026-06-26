@@ -1,5 +1,5 @@
 use crate::eval_app_runtime::scene::EvalScene;
-use crate::generated_content::island_visual_surface_position;
+use crate::generated_content::{TERRAIN_BIOME_PALETTE_COUNT, island_visual_surface_position};
 use bevy::prelude::*;
 use nau_engine::world::SkyIsland;
 
@@ -8,6 +8,7 @@ pub(super) struct SemanticSceneSample {
     pub(super) kind: &'static str,
     pub(super) label: &'static str,
     pub(super) expected_material: &'static str,
+    pub(super) material_variant: &'static str,
     pub(super) world_position: Vec3,
 }
 
@@ -19,6 +20,7 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
             kind: "terrain_surface",
             label: island.name,
             expected_material: "terrain",
+            material_variant: terrain_material_variant(island_index),
             world_position: island_visual_surface_position(island, Vec2::new(0.16, -0.14))
                 + Vec3::Y * 0.08,
         });
@@ -26,6 +28,7 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
             kind: "distant_island",
             label: island.name,
             expected_material: "distant_island",
+            material_variant: "distant_island",
             world_position: island_visual_surface_position(island, Vec2::new(0.0, 0.0))
                 + Vec3::Y * 1.2,
         });
@@ -41,6 +44,7 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
                 kind: "tree_canopy",
                 label: island.name,
                 expected_material: "foliage",
+                material_variant: "foliage",
                 world_position: canopy_position,
             });
         }
@@ -51,11 +55,22 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
             kind: "weather_cloud",
             label: "weather cloud",
             expected_material: "cloud",
+            material_variant: "cloud",
             world_position: cloud_transform.translation,
         });
     }
 
     samples
+}
+
+fn terrain_material_variant(island_index: usize) -> &'static str {
+    match island_index % TERRAIN_BIOME_PALETTE_COUNT {
+        1 => "terrain_gold_meadow",
+        2 => "terrain_copper_clay",
+        3 => "terrain_alpine_mist",
+        4 => "terrain_highland_grass",
+        _ => "terrain_lush_meadow",
+    }
 }
 
 pub(super) fn tree_canopy_sample_positions(island_index: usize, island: SkyIsland) -> Vec<Vec3> {

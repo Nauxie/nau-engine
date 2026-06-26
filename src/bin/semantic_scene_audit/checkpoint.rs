@@ -50,6 +50,9 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
         materials.iter().filter(|material| material.passed).count();
     let visible_scene_sample_kind_count = visible_scene_sample_kind_count(&samples);
     let scene_sample_kind_pixel_hit_count = scene_sample_kind_pixel_hit_count(&samples);
+    let visible_terrain_material_variant_count = visible_terrain_material_variant_count(&samples);
+    let terrain_material_variant_pixel_hit_count =
+        terrain_material_variant_pixel_hit_count(&samples);
     let passed = visible_scene_sample_count >= MIN_VISIBLE_SAMPLES_PER_CHECKPOINT
         && scene_sample_pixel_hit_count >= MIN_PASSED_SAMPLES_PER_CHECKPOINT
         && visible_scene_material_count >= MIN_VISIBLE_MATERIALS_PER_CHECKPOINT
@@ -74,6 +77,8 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
         scene_material_pixel_hit_count,
         visible_scene_sample_kind_count,
         scene_sample_kind_pixel_hit_count,
+        visible_terrain_material_variant_count,
+        terrain_material_variant_pixel_hit_count,
         passed,
         samples,
         materials,
@@ -94,6 +99,24 @@ pub(crate) fn scene_sample_kind_pixel_hit_count(samples: &[SceneSampleAudit]) ->
         .iter()
         .filter(|sample| sample.passed)
         .map(|sample| sample.kind.as_str())
+        .collect::<BTreeSet<_>>()
+        .len()
+}
+
+pub(crate) fn visible_terrain_material_variant_count(samples: &[SceneSampleAudit]) -> usize {
+    samples
+        .iter()
+        .filter(|sample| sample.is_visible() && sample.expected_material == "terrain")
+        .map(|sample| sample.material_variant.as_str())
+        .collect::<BTreeSet<_>>()
+        .len()
+}
+
+pub(crate) fn terrain_material_variant_pixel_hit_count(samples: &[SceneSampleAudit]) -> usize {
+    samples
+        .iter()
+        .filter(|sample| sample.passed && sample.expected_material == "terrain")
+        .map(|sample| sample.material_variant.as_str())
         .collect::<BTreeSet<_>>()
         .len()
 }
@@ -167,6 +190,14 @@ pub(crate) fn audit_scene_sample(
         .and_then(Value::as_str)
         .unwrap_or("unknown")
         .to_string();
+    let material_variant = sample
+        .get("material_variant")
+        .and_then(Value::as_str)
+        .filter(|variant| !variant.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            default_scene_sample_material_variant(&expected_material, &label).to_string()
+        });
     let in_viewport = sample
         .get("in_viewport")
         .and_then(Value::as_bool)
@@ -195,6 +226,7 @@ pub(crate) fn audit_scene_sample(
         kind,
         label,
         expected_material,
+        material_variant,
         in_viewport,
         visibility,
         screen_x,
@@ -202,4 +234,31 @@ pub(crate) fn audit_scene_sample(
         semantic_pixel_hits,
         passed: visible && semantic_pixel_hits >= MIN_SAMPLE_PIXEL_HITS,
     })
+}
+
+pub(crate) fn default_scene_sample_material_variant(
+    expected_material: &str,
+    label: &str,
+) -> &'static str {
+    if expected_material != "terrain" {
+        return match expected_material {
+            "foliage" => "foliage",
+            "cloud" => "cloud",
+            "distant_island" => "distant_island",
+            _ => "unknown",
+        };
+    }
+
+    terrain_material_variant_for_label(label).unwrap_or("terrain_unknown")
+}
+
+pub(crate) fn terrain_material_variant_for_label(label: &str) -> Option<&'static str> {
+    match label {
+        "launch mesa" | "copper stair" | "far needle" => Some("terrain_lush_meadow"),
+        "midpoint shelf" | "sunlit terrace" | "sapphire basin" => Some("terrain_gold_meadow"),
+        "landing garden" | "western refuge" => Some("terrain_copper_clay"),
+        "distant crown" | "storm porch" => Some("terrain_alpine_mist"),
+        "wind overlook" | "high orchard" => Some("terrain_highland_grass"),
+        _ => None,
+    }
 }

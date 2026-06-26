@@ -171,10 +171,11 @@ pub(super) fn checkpoint_scene_sample_projection_json(
             let camera_distance_m = sample.world_position.distance(camera_position);
 
             format!(
-                "{{\"kind\": {}, \"label\": {}, \"expected_material\": {}, \"world\": {}, \"screen\": {}, \"in_viewport\": {}, \"visibility\": {}, \"occluder\": {}, \"camera_distance_m\": {}}}",
+                "{{\"kind\": {}, \"label\": {}, \"expected_material\": {}, \"material_variant\": {}, \"world\": {}, \"screen\": {}, \"in_viewport\": {}, \"visibility\": {}, \"occluder\": {}, \"camera_distance_m\": {}}}",
                 terrain_export_json_string(sample.kind),
                 terrain_export_json_string(sample.label),
                 terrain_export_json_string(sample.expected_material),
+                terrain_export_json_string(sample.material_variant),
                 terrain_export_json_vec3(sample.world_position),
                 screen_json,
                 in_viewport,
