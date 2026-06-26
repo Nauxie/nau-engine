@@ -69,6 +69,7 @@ fn write_checkpoint_marker_metadata(
         occluded_scene_sample_count,
         visible_scene_sample_count,
         visible_scene_material_count,
+        visible_wind_scene_sample_count,
     ) = match scene.camera_projection.single() {
         Ok((camera, camera_transform)) => {
             let (
@@ -90,6 +91,7 @@ fn write_checkpoint_marker_metadata(
                 in_viewport_scene_sample_count,
                 occluded_scene_sample_count,
                 visible_scene_material_count,
+                visible_wind_scene_sample_count,
             ) = projection::checkpoint_scene_sample_projection_json(
                 camera,
                 camera_transform,
@@ -108,9 +110,10 @@ fn write_checkpoint_marker_metadata(
                 occluded_scene_sample_count,
                 visible_scene_sample_count,
                 visible_scene_material_count,
+                visible_wind_scene_sample_count,
             )
         }
-        Err(_) => (None, Vec::new(), 0, 0, 0, false, Vec::new(), 0, 0, 0, 0),
+        Err(_) => (None, Vec::new(), 0, 0, 0, false, Vec::new(), 0, 0, 0, 0, 0),
     };
     let viewport_json = viewport_size
         .map(|size| {
@@ -125,13 +128,15 @@ fn write_checkpoint_marker_metadata(
         && visible_count > 0
         && scene_samples.len() >= 4
         && visible_scene_sample_count > 0
+        && (!checkpoint_requires_wind_visual_sample(scenario, checkpoint.name)
+            || visible_wind_scene_sample_count > 0)
         && viewport_size.is_some();
     let target_island = scenario
         .target_island_name
         .map(terrain_export_json_string)
         .unwrap_or_else(|| "null".to_string());
     let json = format!(
-        "{{\n  \"passed\": {},\n  \"scenario\": {},\n  \"target_island\": {},\n  \"frame\": {},\n  \"checkpoint\": {},\n  \"screenshot\": {},\n  \"viewport\": {},\n  \"semantic_marker_count\": {},\n  \"expected_objective_marker_count\": {},\n  \"in_viewport_semantic_marker_count\": {},\n  \"occluded_semantic_marker_count\": {},\n  \"visible_semantic_marker_count\": {},\n  \"current_objective_visible\": {},\n  \"semantic_scene_sample_count\": {},\n  \"in_viewport_semantic_scene_sample_count\": {},\n  \"occluded_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_material_count\": {},\n  \"markers\": [\n{}\n  ],\n  \"scene_samples\": [\n{}\n  ]\n}}\n",
+        "{{\n  \"passed\": {},\n  \"scenario\": {},\n  \"target_island\": {},\n  \"frame\": {},\n  \"checkpoint\": {},\n  \"screenshot\": {},\n  \"viewport\": {},\n  \"semantic_marker_count\": {},\n  \"expected_objective_marker_count\": {},\n  \"in_viewport_semantic_marker_count\": {},\n  \"occluded_semantic_marker_count\": {},\n  \"visible_semantic_marker_count\": {},\n  \"current_objective_visible\": {},\n  \"semantic_scene_sample_count\": {},\n  \"in_viewport_semantic_scene_sample_count\": {},\n  \"occluded_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_material_count\": {},\n  \"visible_wind_scene_sample_count\": {},\n  \"markers\": [\n{}\n  ],\n  \"scene_samples\": [\n{}\n  ]\n}}\n",
         passed,
         terrain_export_json_string(scenario.name),
         target_island,
@@ -150,6 +155,7 @@ fn write_checkpoint_marker_metadata(
         occluded_scene_sample_count,
         visible_scene_sample_count,
         visible_scene_material_count,
+        visible_wind_scene_sample_count,
         marker_json
             .into_iter()
             .map(|entry| format!("    {entry}"))
@@ -163,4 +169,53 @@ fn write_checkpoint_marker_metadata(
     );
 
     fs::write(path, json)
+}
+
+fn checkpoint_requires_wind_visual_sample(scenario: EvalScenario, checkpoint_name: &str) -> bool {
+    matches!(
+        (scenario.name, checkpoint_name),
+        ("updraft_route", "updraft_entry" | "high_glide")
+            | (
+                "branch_recovery_route",
+                "branch_choice" | "recovery_approach"
+            )
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nau_engine::eval::scenario_named;
+
+    #[test]
+    fn wind_visual_sidecar_gate_only_applies_to_wind_critical_checkpoints() {
+        let updraft = scenario_named("updraft_route").expect("updraft scenario");
+        let branch = scenario_named("branch_recovery_route").expect("branch scenario");
+        let camera = scenario_named("camera_mouse_control").expect("camera scenario");
+
+        assert!(checkpoint_requires_wind_visual_sample(
+            updraft,
+            "updraft_entry"
+        ));
+        assert!(checkpoint_requires_wind_visual_sample(
+            updraft,
+            "high_glide"
+        ));
+        assert!(checkpoint_requires_wind_visual_sample(
+            branch,
+            "branch_choice"
+        ));
+        assert!(checkpoint_requires_wind_visual_sample(
+            branch,
+            "recovery_approach"
+        ));
+        assert!(!checkpoint_requires_wind_visual_sample(
+            branch,
+            "branch_landing"
+        ));
+        assert!(!checkpoint_requires_wind_visual_sample(
+            camera,
+            "settled_view"
+        ));
+    }
 }
