@@ -101,8 +101,8 @@ fn route_has_archipelago_scale_and_distant_landmarks() {
         .map(|island| island.center.z)
         .fold(0.0_f32, f32::min);
 
-    assert!(route.islands().len() >= 12);
-    assert!(farthest_z < -800.0);
+    assert!(route.islands().len() >= 15);
+    assert!(farthest_z < -1000.0);
 }
 
 #[test]

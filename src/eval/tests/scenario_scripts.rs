@@ -144,7 +144,7 @@ fn long_glide_visibility_script_crosses_archipelago() {
     assert!(scripted_input(scenario, 160).left);
     assert!(scripted_input(scenario, 620).glide);
     assert!(!scripted_input(scenario, 620).dive);
-    assert!(scenario.thresholds.min_sky_island_count >= 12);
+    assert!(scenario.thresholds.min_sky_island_count >= 15);
     assert_eq!(scenario.thresholds.min_power_up_count, 3);
     assert_eq!(scenario.thresholds.min_collected_power_up_count, 3);
     assert!(scenario.thresholds.min_power_up_effect_samples >= 3);

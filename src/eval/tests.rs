@@ -70,7 +70,7 @@ fn air_control_metric_sample(
         140.0,
         false,
         objective,
-        12,
+        15,
         25,
         6,
         2,
@@ -131,7 +131,7 @@ fn air_control_metric_sample(
         0,
         0,
     )
-    .with_content_metrics(12, 2305, 61, 0.8, 11, 9, 12, 0, 96, 96.0, 1633, 1633)
+    .with_content_metrics(15, 2305, 61, 0.8, 14, 9, 12, 0, 96, 96.0, 1633, 1633)
     .with_island_impostor_metrics(146, 24)
     .with_terrain_material_metrics(36, 3, 4, 64)
     .with_generated_visual_shape_metrics(
@@ -195,11 +195,11 @@ fn content_metric_sample(
         8.0,
     )
     .with_content_metrics(
-        12,
+        15,
         2305,
         61,
         0.8,
-        11,
+        14,
         9,
         procedural_body_count,
         primitive_body_count,
