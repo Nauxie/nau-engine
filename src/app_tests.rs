@@ -358,6 +358,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         report.weather_cloud_bank_count,
         SkyRoute::default().islands().len()
     );
+    assert_eq!(report.weather_cloud_veil_count, 18);
     assert_eq!(
         report.mesh_count,
         report.ground_cover_count + report.tree_trunk_count * 2 + report.weather_cloud_count
@@ -373,16 +374,19 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_tree_branch_count >= 4);
     assert!(report.min_tree_root_flare_count >= 5);
     assert!(report.min_tree_trunk_ring_count >= 5);
+    assert!(report.tree_trunk_height_range_m >= 1.5);
     assert!(report.min_tree_canopy_mesh_vertices >= 400);
     assert!(report.min_tree_canopy_lobe_count >= 6);
     assert!(report.min_tree_canopy_detail_card_count >= 12);
     assert!(report.min_tree_canopy_vertical_to_horizontal_ratio >= 0.45);
+    assert!(report.tree_canopy_radius_range_m >= 0.35);
     assert!(report.min_weather_cloud_mesh_vertices >= 900);
     assert!(report.min_weather_cloud_lobe_count >= 6);
     assert!(report.min_weather_cloud_wisp_card_count >= 14);
     assert!(report.min_weather_cloud_filament_ribbon_detail_count >= 14);
     assert!(report.min_weather_cloud_bank_depth_m >= 4.0);
     assert!(report.min_weather_cloud_bank_lobe_count >= 10);
+    assert!(report.min_weather_cloud_scaled_depth_span_m >= 12.0);
     assert_eq!(
         report.terrain_biome_palette_count,
         TERRAIN_BIOME_PALETTE_COUNT
@@ -397,6 +401,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"tree_branch_reach_ratio\""));
     assert!(manifest.contains("\"tree_root_flare_count\": 5"));
     assert!(manifest.contains("\"tree_trunk_ring_count\": 5"));
+    assert!(manifest.contains("\"tree_trunk_height_range_m\""));
+    assert!(manifest.contains("\"tree_canopy_radius_range_m\""));
+    assert!(manifest.contains("\"weather_cloud_veil_count\": 18"));
+    assert!(manifest.contains("\"weather_cloud_scaled_depth_span_m\""));
     assert!(manifest.contains("\"weather_cloud_wisp_card_count\""));
     assert!(manifest.contains("\"weather_cloud_filament_ribbon_detail_count\""));
     assert!(manifest.contains("\"terrain_biome_palette_count\": 5"));
