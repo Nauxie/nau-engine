@@ -86,7 +86,10 @@ pub struct EvalMetricsSummary {
     pub max_pose_arm_spread_degrees: f32,
     pub max_pose_leg_tuck_degrees: f32,
     pub max_pose_lateral_lean_degrees: f32,
+    pub max_right_pose_lateral_lean_degrees: f32,
+    pub max_left_pose_lateral_lean_degrees: f32,
     pub max_pose_landing_crouch_m: f32,
+    pub max_pose_landing_flare_degrees: f32,
     pub max_pose_wing_airflow_strength: f32,
     pub min_key_pose_readability_score: f32,
     pub max_key_pose_readability_score: f32,
@@ -462,12 +465,15 @@ impl EvalMetricsSummary {
         let json = json.replacen(&post_brake_key, &planar_brake_metrics, 1);
         let min_target_distance_key = format!("{indent}  \"min_target_distance_m\"");
         let pose_readability_metrics = format!(
-            "{indent}  \"max_pose_torso_pitch_degrees\": {},\n{indent}  \"max_pose_arm_spread_degrees\": {},\n{indent}  \"max_pose_leg_tuck_degrees\": {},\n{indent}  \"max_pose_lateral_lean_degrees\": {},\n{indent}  \"max_pose_landing_crouch_m\": {},\n{indent}  \"max_pose_wing_airflow_strength\": {},\n{indent}  \"min_key_pose_readability_score\": {},\n{indent}  \"max_key_pose_readability_score\": {},\n{indent}  \"unreadable_key_pose_samples\": {},\n{}",
+            "{indent}  \"max_pose_torso_pitch_degrees\": {},\n{indent}  \"max_pose_arm_spread_degrees\": {},\n{indent}  \"max_pose_leg_tuck_degrees\": {},\n{indent}  \"max_pose_lateral_lean_degrees\": {},\n{indent}  \"max_right_pose_lateral_lean_degrees\": {},\n{indent}  \"max_left_pose_lateral_lean_degrees\": {},\n{indent}  \"max_pose_landing_crouch_m\": {},\n{indent}  \"max_pose_landing_flare_degrees\": {},\n{indent}  \"max_pose_wing_airflow_strength\": {},\n{indent}  \"min_key_pose_readability_score\": {},\n{indent}  \"max_key_pose_readability_score\": {},\n{indent}  \"unreadable_key_pose_samples\": {},\n{}",
             json_number(self.max_pose_torso_pitch_degrees),
             json_number(self.max_pose_arm_spread_degrees),
             json_number(self.max_pose_leg_tuck_degrees),
             json_number(self.max_pose_lateral_lean_degrees),
+            json_number(self.max_right_pose_lateral_lean_degrees),
+            json_number(self.max_left_pose_lateral_lean_degrees),
             json_number(self.max_pose_landing_crouch_m),
+            json_number(self.max_pose_landing_flare_degrees),
             json_number(self.max_pose_wing_airflow_strength),
             json_number(self.min_key_pose_readability_score),
             json_number(self.max_key_pose_readability_score),

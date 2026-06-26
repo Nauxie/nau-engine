@@ -235,7 +235,8 @@ The export writes `manifest.json`, generated ground-cover/tree/cloud/landmark OB
 - backward input must produce measurable total and planar air-brake speed drop, and the final forward segment must recover forward alignment
 - max body-yaw error step and oscillation count must remain bounded so input reversals do not become spin or wobble regressions
 - body roll must bank in both lateral directions and stay smooth across sampled input transitions
-- current gates require lateral response within 0.20 seconds, at least 18 m/s directional right/left lateral response, at least 10 m/s rear-right and rear-left lateral response, at least 10 m/s rear-right and rear-left rearward response, at least 12 m/s of total and planar air-brake speed drop, at least 14 m/s of post-brake forward recovery, at least 8 degrees of left and right body-bank response, sampled body-roll steps at or under 12 degrees, camera view-yaw and world-yaw drift at or under 2 degrees, p95 body-heading error at or under 22 degrees, and max body-heading/yaw-step error at or under 36 degrees
+- signed pose lean must agree with input direction, so right input must produce readable right lean and left input must produce readable left lean instead of one good unsigned lean sample satisfying both directions
+- current gates require lateral response within 0.20 seconds, at least 18 m/s directional right/left lateral response, at least 10 m/s rear-right and rear-left lateral response, at least 10 m/s rear-right and rear-left rearward response, at least 12 m/s of total and planar air-brake speed drop, at least 14 m/s of post-brake forward recovery, at least 8 degrees of left and right body-bank response, at least 8 degrees of signed right and left pose lean, sampled body-roll steps at or under 12 degrees, camera view-yaw and world-yaw drift at or under 2 degrees, p95 body-heading error at or under 22 degrees, and max body-heading/yaw-step error at or under 36 degrees
 
 `camera_strafe_stability` is the lateral-movement camera regression test:
 
@@ -284,6 +285,7 @@ Every sample includes:
 - `pose_arm_spread_degrees`
 - `pose_leg_tuck_degrees`
 - `pose_lateral_lean_degrees`
+- `pose_signed_lateral_lean_degrees`
 - `pose_landing_crouch_m`
 - `pose_wing_airflow_strength`
 - `key_pose_readability_score`
@@ -561,7 +563,7 @@ The summary aggregates:
 - readable and unreadable active-lift sample counts
 - dynamic readable lift sample count plus max sampled wind-flow speed, gust variation, and readable-lift variation range
 - pose-intent sample counts for readable gliding, diving, air brake, landing anticipation, and landing recovery; app evals score visible generated or authored player part transforms when those nodes are available and still require authored clip alignment when authored player geometry hides generated fallback parts
-- pose torso pitch, arm spread, leg tuck, lateral lean, landing crouch, wing-airflow maxima, key-pose readability min/max, and unreadable key-pose sample count
+- pose torso pitch, arm spread, leg tuck, lateral lean, signed right/left lateral lean, landing crouch, landing flare, wing-airflow maxima, key-pose readability min/max, and unreadable key-pose sample count
 - gliding, launching, and grounded sample counts
 
 The pass/fail checks currently guard:
@@ -622,12 +624,12 @@ The pass/fail checks currently guard:
 - camera view yaw and world-yaw drift stayed within scenario limits when movement should not rotate the camera
 - camera obstruction avoidance was exercised when a scenario requires it
 - camera mouse scenarios exercised yaw and both pitch directions
-- air-control response latency, right/left/rear-right/rear-left lateral response and latency, rear-right/rear-left rearward response, pure-backward body-heading intent, body-bank response, body-roll step, total and planar air-brake speed drop, readable air-brake/dive pose coverage, pose torso pitch at least 45 degrees, arm spread at least 100 degrees, leg tuck at least 35 degrees, lateral lean at least 8 degrees, wing-airflow strength at least 0.25, zero key-pose samples below the 0.9 readability floor, post-brake forward alignment, desired-heading alignment, average/p95/max body-heading error, max yaw-error step, yaw oscillation count, camera orbit yaw offset, camera view-yaw drift, camera world-yaw drift, and camera rotation delta stayed inside thresholds
+- air-control response latency, right/left/rear-right/rear-left lateral response and latency, rear-right/rear-left rearward response, pure-backward body-heading intent, body-bank response, body-roll step, total and planar air-brake speed drop, readable air-brake/dive pose coverage, pose torso pitch at least 45 degrees, arm spread at least 100 degrees, leg tuck at least 35 degrees, lateral lean at least 8 degrees, signed right/left pose lean at least 8 degrees in the matching input direction, wing-airflow strength at least 0.25, zero key-pose samples below the 0.9 readability floor, post-brake forward alignment, desired-heading alignment, average/p95/max body-heading error, max yaw-error step, yaw oscillation count, camera orbit yaw offset, camera view-yaw drift, camera world-yaw drift, and camera rotation delta stayed inside thresholds
 - air-control average and p95 camera follow-direction error stayed inside threshold so movement-only routes cannot pass with a stale follow direction
 - air-control movement-only camera world-yaw drift stayed inside threshold
 - island-route final scenario-target distance stayed under threshold
 - island-route grounded target landing was observed on the configured target island
-- landing-required routes exercised readable landing-anticipation pose coverage before contact, readable landing-recovery pose coverage after contact, reached at least 0.05 m of landing crouch, and produced zero key-pose samples below the 0.9 readability floor
+- landing-required routes exercised readable landing-anticipation pose coverage before contact, readable landing-recovery pose coverage after contact, reached at least 0.05 m of landing crouch, reached at least 32 degrees of landing flare, and produced zero key-pose samples below the 0.9 readability floor
 
 Thresholds should remain loose until the intended route becomes richer. Tight thresholds belong only after a mechanic or route is deliberately locked.
 

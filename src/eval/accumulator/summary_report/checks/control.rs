@@ -84,6 +84,12 @@ pub(super) fn append_scenario_checks(
             LANDING_MIN_POSE_CROUCH_M,
             "m",
         ));
+        checks.push(EvalCheck::at_least(
+            "pose_landing_flare",
+            acc.max_pose_landing_flare_degrees,
+            LANDING_MIN_POSE_FLARE_DEGREES,
+            "deg",
+        ));
         checks.push(EvalCheck::at_most(
             "unreadable_key_pose_samples",
             acc.unreadable_key_pose_samples as f32,
@@ -318,6 +324,18 @@ fn append_air_control_checks(
             "air_control_pose_lateral_lean",
             acc.max_pose_lateral_lean_degrees,
             AIR_CONTROL_MIN_POSE_LATERAL_LEAN_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "air_control_right_pose_lateral_lean",
+            acc.max_right_pose_lateral_lean_degrees,
+            AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "air_control_left_pose_lateral_lean",
+            acc.max_left_pose_lateral_lean_degrees,
+            AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
             "deg",
         ),
         EvalCheck::at_least(

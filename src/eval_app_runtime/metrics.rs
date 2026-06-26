@@ -309,6 +309,7 @@ pub(crate) fn collect_eval_metrics(
         arm_spread_degrees: pose_readability.arm_spread_degrees,
         leg_tuck_degrees: pose_readability.leg_tuck_degrees,
         lateral_lean_degrees: pose_readability.lateral_lean_degrees,
+        signed_lateral_lean_degrees: pose_readability.signed_lateral_lean_degrees,
         landing_crouch_m: pose_readability.landing_crouch_m,
         wing_airflow_strength: pose_readability.wing_airflow_strength,
         key_pose_readability_score: pose_readability.key_pose_readability_score,

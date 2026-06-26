@@ -113,6 +113,7 @@ impl EvalSample {
             pose_arm_spread_degrees: 0.0,
             pose_leg_tuck_degrees: 0.0,
             pose_lateral_lean_degrees: 0.0,
+            pose_signed_lateral_lean_degrees: 0.0,
             pose_landing_crouch_m: 0.0,
             pose_wing_airflow_strength: 0.0,
             key_pose_readability_score: 1.0,
@@ -290,6 +291,11 @@ impl EvalSample {
         self.pose_arm_spread_degrees = metrics.arm_spread_degrees.max(0.0);
         self.pose_leg_tuck_degrees = metrics.leg_tuck_degrees.max(0.0);
         self.pose_lateral_lean_degrees = metrics.lateral_lean_degrees.max(0.0);
+        self.pose_signed_lateral_lean_degrees = if metrics.signed_lateral_lean_degrees.is_finite() {
+            metrics.signed_lateral_lean_degrees
+        } else {
+            0.0
+        };
         self.pose_landing_crouch_m = metrics.landing_crouch_m.max(0.0);
         self.pose_wing_airflow_strength = metrics.wing_airflow_strength.clamp(0.0, 1.0);
         self.key_pose_readability_score = metrics.key_pose_readability_score.clamp(0.0, 1.0);

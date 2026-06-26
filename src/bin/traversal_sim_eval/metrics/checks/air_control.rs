@@ -12,6 +12,7 @@ use crate::{
     AIR_CONTROL_MIN_POSE_ARM_SPREAD_DEGREES, AIR_CONTROL_MIN_POSE_LATERAL_LEAN_DEGREES,
     AIR_CONTROL_MIN_POSE_LEG_TUCK_DEGREES, AIR_CONTROL_MIN_POSE_TORSO_PITCH_DEGREES,
     AIR_CONTROL_MIN_POSE_WING_AIRFLOW_STRENGTH, AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS,
+    AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
     MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES,
 };
 
@@ -248,6 +249,18 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             "air_control_pose_lateral_lean",
             metrics.max_pose_lateral_lean_degrees,
             AIR_CONTROL_MIN_POSE_LATERAL_LEAN_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "air_control_right_pose_lateral_lean",
+            metrics.max_right_pose_lateral_lean_degrees,
+            AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "air_control_left_pose_lateral_lean",
+            metrics.max_left_pose_lateral_lean_degrees,
+            AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
             "deg",
         ),
         SimCheck::at_least(
