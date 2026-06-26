@@ -1,8 +1,12 @@
 use nau_engine::asset_pipeline::{
-    PLAYER_ANIMATION_CLIP_NAMES, VISUAL_ASSET_SPECS, VisualAssetKind,
+    PLAYER_ANIMATION_CLIP_NAMES, VISUAL_ASSET_SPECS, VisualAssetKind, VisualAssetResidency,
+    VisualAssetSpec,
 };
 use serde_json::{Value, json};
 use std::{fs, path::Path, process};
+
+const NAU_FIXTURE_SCHEMA: &str = "nau_visual_asset_fixture.v1";
+const NAU_FIXTURE_LICENSE: &str = "self_authored_no_third_party";
 
 #[derive(Clone, Copy)]
 struct Requirement {
@@ -178,7 +182,7 @@ fn audit_all_fixtures() -> Result<Value, String> {
             continue;
         };
         let path = Path::new("assets").join(spec.gltf_scene_path);
-        let fixture = audit_fixture(&path, requirement)?;
+        let fixture = audit_fixture(&path, &spec, requirement)?;
         checks.push(check_bool(
             "fixture_present",
             fixture["present"].as_bool().unwrap_or(false),
@@ -208,7 +212,11 @@ fn audit_all_fixtures() -> Result<Value, String> {
     }))
 }
 
-fn audit_fixture(path: &Path, requirement: &Requirement) -> Result<Value, String> {
+fn audit_fixture(
+    path: &Path,
+    spec: &VisualAssetSpec,
+    requirement: &Requirement,
+) -> Result<Value, String> {
     let path_string = path.to_string_lossy().into_owned();
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
@@ -229,6 +237,7 @@ fn audit_fixture(path: &Path, requirement: &Requirement) -> Result<Value, String
     let asset = gltf.get("asset").unwrap_or(&Value::Null);
     let generator = asset.get("generator").and_then(Value::as_str).unwrap_or("");
     let copyright = asset.get("copyright").and_then(Value::as_str).unwrap_or("");
+    let nau_metadata = gltf.pointer("/extras/nau").unwrap_or(&Value::Null);
     let nodes = array_len(&gltf, "nodes");
     let meshes = array_len(&gltf, "meshes");
     let materials = array_len(&gltf, "materials");
@@ -264,6 +273,37 @@ fn audit_fixture(path: &Path, requirement: &Requirement) -> Result<Value, String
             copyright,
             "Self-authored for NAU Engine; no third-party assets.",
             "provenance",
+        ),
+        check_bool("nau_metadata_present", nau_metadata.is_object(), "metadata"),
+        check_eq_str(
+            "nau_metadata_schema",
+            nau_metadata_str(nau_metadata, "schema"),
+            NAU_FIXTURE_SCHEMA,
+            "metadata",
+        ),
+        check_eq_str(
+            "nau_metadata_asset_kind",
+            nau_metadata_str(nau_metadata, "asset_kind"),
+            kind_name(spec.kind),
+            "metadata",
+        ),
+        check_eq_str(
+            "nau_metadata_asset_label",
+            nau_metadata_str(nau_metadata, "asset_label"),
+            spec.label,
+            "metadata",
+        ),
+        check_eq_str(
+            "nau_metadata_residency",
+            nau_metadata_str(nau_metadata, "residency"),
+            residency_name(spec.residency),
+            "metadata",
+        ),
+        check_eq_str(
+            "nau_metadata_license",
+            nau_metadata_str(nau_metadata, "license"),
+            NAU_FIXTURE_LICENSE,
+            "metadata",
         ),
         check_at_least_u64("node_count", nodes, requirement.min_nodes, "nodes"),
         check_at_least_u64("mesh_count", meshes, requirement.min_meshes, "meshes"),
@@ -328,6 +368,7 @@ fn audit_fixture(path: &Path, requirement: &Requirement) -> Result<Value, String
         "present": true,
         "passed": passed,
         "generator": generator,
+        "nau_metadata": nau_metadata,
         "node_count": nodes,
         "mesh_count": meshes,
         "material_count": materials,
@@ -340,6 +381,10 @@ fn audit_fixture(path: &Path, requirement: &Requirement) -> Result<Value, String
         "player_named_clip_count": ready_player_clip_count,
         "checks": checks,
     }))
+}
+
+fn nau_metadata_str<'a>(metadata: &'a Value, key: &str) -> &'a str {
+    metadata.get(key).and_then(Value::as_str).unwrap_or("")
 }
 
 fn named_components(gltf: &Value) -> Vec<String> {
@@ -510,6 +555,16 @@ fn kind_name(kind: VisualAssetKind) -> &'static str {
     }
 }
 
+fn residency_name(residency: VisualAssetResidency) -> &'static str {
+    match residency {
+        VisualAssetResidency::Always => "always",
+        VisualAssetResidency::StreamWindow => "stream_window",
+        VisualAssetResidency::NearLod => "near_lod",
+        VisualAssetResidency::FarLod => "far_lod",
+        VisualAssetResidency::Weather => "weather",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -532,5 +587,26 @@ mod tests {
         assert!(has_name_fragment(&names, "cliff"));
         assert!(has_name_fragment(&names, "underside"));
         assert!(!has_name_fragment(&names, "missing route ring"));
+    }
+
+    #[test]
+    fn nau_fixture_metadata_uses_registry_contract_names() {
+        let metadata = json!({
+            "schema": NAU_FIXTURE_SCHEMA,
+            "asset_kind": "island_terrain",
+            "asset_label": "island terrain kit",
+            "residency": "stream_window",
+            "license": NAU_FIXTURE_LICENSE
+        });
+
+        assert_eq!(nau_metadata_str(&metadata, "schema"), NAU_FIXTURE_SCHEMA);
+        assert_eq!(
+            kind_name(VisualAssetKind::IslandTerrain),
+            nau_metadata_str(&metadata, "asset_kind")
+        );
+        assert_eq!(
+            residency_name(VisualAssetResidency::StreamWindow),
+            nau_metadata_str(&metadata, "residency")
+        );
     }
 }

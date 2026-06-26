@@ -4,6 +4,15 @@
     "generator": "NAU Engine self-authored rock fixture generator",
     "copyright": "Self-authored for NAU Engine; no third-party assets."
   },
+  "extras": {
+    "nau": {
+      "schema": "nau_visual_asset_fixture.v1",
+      "asset_kind": "island_rock",
+      "asset_label": "island rock kit",
+      "residency": "stream_window",
+      "license": "self_authored_no_third_party"
+    }
+  },
   "scenes": [
     {
       "nodes": [

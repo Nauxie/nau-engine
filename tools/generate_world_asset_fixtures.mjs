@@ -5,6 +5,8 @@ import { dirname, join } from "node:path";
 
 const TARGET_ARRAY_BUFFER = 34962;
 const TARGET_ELEMENT_ARRAY_BUFFER = 34963;
+const NAU_FIXTURE_SCHEMA = "nau_visual_asset_fixture.v1";
+const NAU_FIXTURE_LICENSE = "self_authored_no_third_party";
 
 class GltfBuffer {
   constructor() {
@@ -167,7 +169,29 @@ function makePrimitive(buffer, mesh) {
   };
 }
 
-function writeFixture({ path, generator, copyright, materials, meshes, nodes }) {
+function nauFixtureExtras(assetKind, assetLabel, residency) {
+  return {
+    nau: {
+      schema: NAU_FIXTURE_SCHEMA,
+      asset_kind: assetKind,
+      asset_label: assetLabel,
+      residency,
+      license: NAU_FIXTURE_LICENSE,
+    },
+  };
+}
+
+function writeFixture({
+  path,
+  generator,
+  copyright,
+  assetKind,
+  assetLabel,
+  residency,
+  materials,
+  meshes,
+  nodes,
+}) {
   const buffer = new GltfBuffer();
   const gltfMeshes = meshes.map((mesh) => ({
     name: mesh.name,
@@ -180,6 +204,7 @@ function writeFixture({ path, generator, copyright, materials, meshes, nodes }) 
       generator,
       copyright,
     },
+    extras: nauFixtureExtras(assetKind, assetLabel, residency),
     scenes: [{ nodes: [0] }],
     scene: 0,
     nodes,
@@ -415,6 +440,9 @@ function terrainFixture() {
     path: join("assets", "models", "world", "island_terrain.gltf"),
     generator: "NAU Engine self-authored island terrain fixture generator",
     copyright: "Self-authored for NAU Engine; no third-party assets.",
+    assetKind: "island_terrain",
+    assetLabel: "island terrain kit",
+    residency: "stream_window",
     materials,
     meshes,
     nodes,
@@ -453,6 +481,9 @@ function foliageFixture() {
     path: join("assets", "models", "world", "foliage.gltf"),
     generator: "NAU Engine self-authored foliage fixture generator",
     copyright: "Self-authored for NAU Engine; no third-party assets.",
+    assetKind: "island_foliage",
+    assetLabel: "island foliage kit",
+    residency: "near_lod",
     materials,
     meshes,
     nodes,
@@ -494,6 +525,9 @@ function waterFixture() {
     path: join("assets", "models", "world", "water.gltf"),
     generator: "NAU Engine self-authored water fixture generator",
     copyright: "Self-authored for NAU Engine; no third-party assets.",
+    assetKind: "island_water",
+    assetLabel: "pond and water kit",
+    residency: "near_lod",
     materials,
     meshes,
     nodes,
@@ -550,6 +584,9 @@ function rocksFixture() {
     path: join("assets", "models", "world", "rocks.gltf"),
     generator: "NAU Engine self-authored rock fixture generator",
     copyright: "Self-authored for NAU Engine; no third-party assets.",
+    assetKind: "island_rock",
+    assetLabel: "island rock kit",
+    residency: "stream_window",
     materials,
     meshes,
     nodes,
@@ -588,6 +625,9 @@ function routeMarkerFixture() {
     path: join("assets", "models", "world", "route_markers.gltf"),
     generator: "NAU Engine self-authored route marker fixture generator",
     copyright: "Self-authored for NAU Engine; no third-party assets.",
+    assetKind: "route_marker",
+    assetLabel: "route marker kit",
+    residency: "always",
     materials,
     meshes,
     nodes,
@@ -633,6 +673,9 @@ function weatherLayerFixture() {
     path: join("assets", "models", "world", "weather_layers.gltf"),
     generator: "NAU Engine self-authored weather layer fixture generator",
     copyright: "Self-authored for NAU Engine; no third-party assets.",
+    assetKind: "weather_layer",
+    assetLabel: "weather cloud layer kit",
+    residency: "weather",
     materials,
     meshes,
     nodes,
@@ -671,6 +714,9 @@ function impostorFixture() {
     path: join("assets", "models", "world", "island_impostors.gltf"),
     generator: "NAU Engine self-authored distant impostor fixture generator",
     copyright: "Self-authored for NAU Engine; no third-party assets.",
+    assetKind: "distant_impostor",
+    assetLabel: "sky island distant impostor kit",
+    residency: "far_lod",
     materials,
     meshes,
     nodes,
