@@ -234,7 +234,17 @@ pub(super) fn queue_sky_island_details(
                 GeneratedLandmarkKind::LandingGardenMarker,
                 marker_mesh.count_vertices(),
             );
-            queue_island_visual(
+            let marker_center = Vec3::new(
+                island.center.x + offset.x,
+                surface_y + offset.y,
+                island.center.z + offset.z,
+            );
+            let marker_half_extents = if rotation_y.abs() < 0.01 {
+                Vec3::new(ring_size * 0.5, 0.24, 0.36)
+            } else {
+                Vec3::new(0.36, 0.24, ring_size * 0.5)
+            };
+            queue_collidable_island_visual(
                 entries,
                 visual_index,
                 island,
@@ -242,15 +252,16 @@ pub(super) fn queue_sky_island_details(
                 meshes.add(marker_mesh),
                 flower_material.clone(),
                 Transform {
-                    translation: Vec3::new(
-                        island.center.x + offset.x,
-                        surface_y + offset.y,
-                        island.center.z + offset.z,
-                    ),
+                    translation: marker_center,
                     rotation: Quat::from_rotation_y(rotation_y),
                     ..default()
                 },
                 None,
+                WorldCollisionProxy::new(
+                    marker_center,
+                    marker_half_extents,
+                    WorldCollisionProxyKind::Landmark,
+                ),
                 "landing garden ring",
             );
         }
