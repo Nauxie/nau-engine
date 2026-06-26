@@ -255,6 +255,7 @@ impl SimMetrics {
             "diving" => self.pose_diving_samples += 1,
             "air_brake" => self.pose_air_brake_samples += 1,
             "landing_anticipation" => self.pose_landing_anticipation_samples += 1,
+            "landing_recovery" => self.pose_landing_recovery_samples += 1,
             _ => {}
         }
     }
@@ -397,6 +398,6 @@ impl SimMetrics {
 fn key_pose_intent_label(label: &str) -> bool {
     matches!(
         label,
-        "gliding" | "diving" | "air_brake" | "landing_anticipation"
+        "gliding" | "diving" | "air_brake" | "landing_anticipation" | "landing_recovery"
     )
 }

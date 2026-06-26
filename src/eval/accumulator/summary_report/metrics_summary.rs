@@ -213,6 +213,7 @@ pub(super) fn build_metrics_summary(
         pose_diving_samples: acc.pose_diving_samples,
         pose_air_brake_samples: acc.pose_air_brake_samples,
         pose_landing_anticipation_samples: acc.pose_landing_anticipation_samples,
+        pose_landing_recovery_samples: acc.pose_landing_recovery_samples,
         gliding_samples: acc.gliding_samples,
         launching_samples: acc.launching_samples,
         grounded_samples: acc.grounded_samples,

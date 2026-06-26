@@ -93,6 +93,7 @@ impl SimMetrics {
             "pose_diving_samples": self.pose_diving_samples,
             "pose_air_brake_samples": self.pose_air_brake_samples,
             "pose_landing_anticipation_samples": self.pose_landing_anticipation_samples,
+            "pose_landing_recovery_samples": self.pose_landing_recovery_samples,
             "lifted_samples": self.lifted_samples,
             "readable_lift_samples": self.readable_lift_samples,
             "unreadable_lift_samples": self.unreadable_lift_samples,

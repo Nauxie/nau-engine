@@ -641,6 +641,37 @@ fn accumulator_summarizes_pose_intent_samples() {
         18.0,
         0.0,
     ));
+    let mut landing_recovery_sample = air_control_metric_sample(
+        scenario,
+        3,
+        Vec3::new(0.0, -2.0, -18.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    );
+    landing_recovery_sample.pose_intent_label = "landing_recovery";
+    accumulator.observe(landing_recovery_sample);
+    let mut unreadable_landing_recovery_sample = air_control_metric_sample(
+        scenario,
+        4,
+        Vec3::new(0.0, -2.0, -18.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    )
+    .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: 0.0,
+        arm_spread_degrees: 0.0,
+        leg_tuck_degrees: 0.0,
+        lateral_lean_degrees: 0.0,
+        landing_crouch_m: 0.0,
+        wing_airflow_strength: 0.0,
+        key_pose_readability_score: 0.25,
+    });
+    unreadable_landing_recovery_sample.pose_intent_label = "landing_recovery";
+    accumulator.observe(unreadable_landing_recovery_sample);
 
     let summary = accumulator.summary(
         scenario,
@@ -657,7 +688,55 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert_eq!(summary.metrics.pose_gliding_samples, 1);
     assert_eq!(summary.metrics.pose_diving_samples, 1);
     assert_eq!(summary.metrics.pose_air_brake_samples, 1);
+    assert_eq!(summary.metrics.pose_landing_recovery_samples, 1);
+    assert_eq!(summary.metrics.unreadable_key_pose_samples, 1);
     assert!(summary_json.contains("\"pose_air_brake_samples\": 1"));
+    assert!(summary_json.contains("\"pose_landing_recovery_samples\": 1"));
+}
+
+#[test]
+fn accumulator_gates_target_landing_recovery_pose_samples() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("island route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let mut sample = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, -2.0, -18.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    )
+    .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: 0.0,
+        arm_spread_degrees: 0.0,
+        leg_tuck_degrees: 0.0,
+        lateral_lean_degrees: 0.0,
+        landing_crouch_m: 1.0,
+        wing_airflow_strength: 0.0,
+        key_pose_readability_score: 1.0,
+    });
+    sample.pose_intent_label = "landing_anticipation";
+    sample.target_distance_m = 0.0;
+    sample.on_landing_target = true;
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let landing_recovery_check = named_check(&summary, "pose_landing_recovery_samples");
+
+    assert_eq!(summary.metrics.pose_landing_recovery_samples, 0);
+    assert_eq!(landing_recovery_check.value, 0.0);
+    assert_eq!(landing_recovery_check.threshold, 1.0);
+    assert!(!landing_recovery_check.passed);
 }
 
 #[test]

@@ -28,6 +28,7 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"native_window_created\": false"));
     assert!(summary.contains("\"screenshot_png\": null"));
     assert!(summary.contains("\"pose_gliding_samples\""));
+    assert!(summary.contains("\"pose_landing_recovery_samples\""));
     assert!(
         result
             .samples
@@ -77,6 +78,59 @@ fn island_landing_simulation_reaches_target_surface() {
         .expect("landing pose intent check");
     assert!(check.passed, "expected landing pose intent check to pass");
     assert!(result.metrics.grounded_samples >= scenario.thresholds.min_grounded_samples);
+}
+
+#[test]
+fn sim_metrics_count_readable_landing_recovery_key_pose_samples() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    let mut readable_sample = sim_roll_sample(&route, scenario, 30, FlightMode::Gliding, 0.0, 0.0);
+    readable_sample.pose_intent_label = "landing_recovery";
+    readable_sample.key_pose_readability_score = 1.0;
+    metrics.observe(&readable_sample, scenario);
+
+    let mut unreadable_sample = readable_sample.clone();
+    unreadable_sample.key_pose_readability_score = 0.0;
+    metrics.observe(&unreadable_sample, scenario);
+
+    assert_eq!(metrics.pose_landing_recovery_samples, 1);
+    assert_eq!(metrics.unreadable_key_pose_samples, 1);
+}
+
+#[test]
+fn target_landing_checks_gate_landing_recovery_samples() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("scenario");
+    assert!(scenario.thresholds.require_target_landing);
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    let checks = metrics.checks(scenario);
+    for name in [
+        "pose_landing_anticipation_samples",
+        "pose_landing_recovery_samples",
+        "pose_landing_crouch",
+        "unreadable_key_pose_samples",
+    ] {
+        assert!(
+            checks.iter().any(|check| check.name == name),
+            "missing target landing check {name}"
+        );
+    }
+    let recovery_check = checks
+        .iter()
+        .find(|check| check.name == "pose_landing_recovery_samples")
+        .expect("landing recovery check");
+    assert!(!recovery_check.passed);
+    assert_eq!(recovery_check.threshold, 1.0);
+
+    metrics.pose_landing_recovery_samples = 1;
+    let passing_check = metrics
+        .checks(scenario)
+        .into_iter()
+        .find(|check| check.name == "pose_landing_recovery_samples")
+        .expect("landing recovery check");
+    assert!(passing_check.passed);
 }
 
 #[test]

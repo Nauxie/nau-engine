@@ -88,7 +88,8 @@ Dive:
 
 Landing:
 
-- should become an explicit state later
+- landing anticipation and post-touchdown recovery are explicit pose intents now
+- a full authored landing locomotion state with slope-aware collider handling is still future work
 - needs collision and slope logic before polish
 
 Wind/updraft:
@@ -138,7 +139,7 @@ Current tests cover:
 - `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, stronger total/planar backward braking, readable dive/air-brake key-pose coverage, torso pitch, arm spread, leg tuck, lateral lean, wing-airflow strength, zero key-pose samples below the readability floor, post-brake recovery, desired heading alignment, average/p95/max body-heading error, max body-yaw error step, body-yaw oscillation, left/right body-bank response, body-roll step smoothness, follow-direction error distribution, view-yaw/world-yaw drift, and movement-input camera non-coupling
 - `long_glide_visibility` eval tracks sustained archipelago traversal, aerial power-up collection/effect samples, and content-scale signals
 - app evals track `world_collision_proxy_count`, `world_collision_resolved_samples`, `world_collision_contact_samples`, and `max_world_collision_push_m`, with a proxy-count gate so collidable asset props cannot silently disappear and a `world_collision_contact` route that must sustain meaningful launch-mesa obstacle contact
-- landing-required evals track landing anticipation, landing crouch depth, and zero unreadable key-pose samples before contact
+- landing-required evals track landing anticipation, post-contact landing recovery, landing crouch depth, and zero unreadable key-pose samples across both key landing poses
 
 Future tests should cover:
 

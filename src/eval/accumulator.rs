@@ -233,6 +233,7 @@ pub struct EvalAccumulator {
     pose_diving_samples: u32,
     pose_air_brake_samples: u32,
     pose_landing_anticipation_samples: u32,
+    pose_landing_recovery_samples: u32,
     gliding_samples: u32,
     launching_samples: u32,
     grounded_samples: u32,

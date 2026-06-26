@@ -341,9 +341,13 @@ fn lateral_air_bank_smooths_toward_input() {
 fn floor_collision_clears_downward_velocity() {
     let tuning = FlightTuning::default();
     let state = FlightState::new(
-        Vec3::new(0.0, tuning.floor_y + 0.01, 0.0),
+        Vec3::new(0.0, tuning.floor_y + 0.2, 0.0),
         Vec3::new(0.0, -20.0, 0.0),
-        FlightController::default(),
+        FlightController {
+            mode: FlightMode::Airborne,
+            launch_available: false,
+            ..default()
+        },
     );
 
     let next = step_flight(
@@ -357,4 +361,69 @@ fn floor_collision_clears_downward_velocity() {
     assert_eq!(next.position.y, tuning.floor_y);
     assert!(next.velocity.y >= 0.0);
     assert_eq!(next.controller.mode, FlightMode::Grounded);
+    assert!(next.controller.landing_recovery_timer > 0.0);
+    assert!(next.controller.landing_impact_speed_mps > 20.0);
+}
+
+#[test]
+fn near_floor_airborne_collision_records_landing_recovery() {
+    let tuning = FlightTuning::default();
+    let state = FlightState::new(
+        Vec3::new(0.0, tuning.floor_y + GROUND_EPSILON * 0.5, 0.0),
+        Vec3::new(0.0, -12.0, 0.0),
+        FlightController {
+            mode: FlightMode::Airborne,
+            launch_available: false,
+            ..default()
+        },
+    );
+
+    let next = step_flight(
+        state,
+        FlightInput::default(),
+        Facing::new(Vec3::Z, Vec3::X),
+        &tuning,
+        1.0 / 60.0,
+    );
+
+    assert_eq!(next.position.y, tuning.floor_y);
+    assert_eq!(next.controller.mode, FlightMode::Grounded);
+    assert!(next.controller.landing_recovery_timer > 0.0);
+    assert!(next.controller.landing_impact_speed_mps > 12.0);
+}
+
+#[test]
+fn landing_recovery_timer_expires_after_touchdown() {
+    let tuning = FlightTuning::default();
+    let mut state = FlightState::new(
+        Vec3::new(0.0, tuning.floor_y + 0.2, 0.0),
+        Vec3::new(0.0, -20.0, 0.0),
+        FlightController {
+            mode: FlightMode::Airborne,
+            launch_available: false,
+            ..default()
+        },
+    );
+
+    state = step_flight(
+        state,
+        FlightInput::default(),
+        Facing::new(Vec3::Z, Vec3::X),
+        &tuning,
+        0.2,
+    );
+    assert!(state.controller.landing_recovery_timer > 0.0);
+
+    for _ in 0..60 {
+        state = step_flight(
+            state,
+            FlightInput::default(),
+            Facing::new(Vec3::Z, Vec3::X),
+            &tuning,
+            1.0 / 60.0,
+        );
+    }
+
+    assert_eq!(state.controller.landing_recovery_timer, 0.0);
+    assert_eq!(state.controller.landing_impact_speed_mps, 0.0);
 }

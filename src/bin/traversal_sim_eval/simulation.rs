@@ -62,7 +62,8 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
         power_ups.begin_frame(scenario.fixed_dt);
         let facing = Facing::new(*camera_transform.forward(), *camera_transform.right());
         let movement_facing = facing;
-        let was_grounded = route.is_grounded_at(state.position);
+        let was_grounded =
+            route.is_grounded_at(state.position) && state.controller.mode == FlightMode::Grounded;
         let mut frame_tuning = tuning;
         frame_tuning.floor_y = route.ground_at(state.position).floor_y;
         state = step_flight_with_world(
