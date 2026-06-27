@@ -386,6 +386,12 @@ fn append_air_control_checks(
             AIR_CONTROL_MIN_POSE_WING_AIRFLOW_STRENGTH,
             "ratio",
         ),
+        EvalCheck::at_least(
+            "air_control_authored_glider_response",
+            acc.max_authored_glider_response_degrees,
+            AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES,
+            "deg",
+        ),
         EvalCheck::at_most(
             "air_control_unreadable_key_pose_samples",
             acc.unreadable_key_pose_samples as f32,

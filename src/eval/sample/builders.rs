@@ -280,6 +280,8 @@ impl EvalSample {
             authored_player_desired_clip_label: "none",
             authored_player_count: 0,
             authored_transition_duration_ms: 0,
+            authored_glider_response_degrees: 0.0,
+            authored_glider_motion_m: 0.0,
             power_up_count,
             visible_power_up_count,
             collected_power_up_count,
@@ -353,6 +355,12 @@ impl EvalSample {
         self.authored_player_desired_clip_label = desired_clip_label;
         self.authored_player_count = player_count;
         self.authored_transition_duration_ms = transition_duration_ms;
+        self
+    }
+
+    pub fn with_authored_glider_metrics(mut self, response_degrees: f32, motion_m: f32) -> Self {
+        self.authored_glider_response_degrees = response_degrees.max(0.0);
+        self.authored_glider_motion_m = motion_m.max(0.0);
         self
     }
 

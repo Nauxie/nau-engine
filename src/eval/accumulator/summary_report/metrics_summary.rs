@@ -101,6 +101,8 @@ pub(super) fn build_metrics_summary(
         max_pose_landing_crouch_m: acc.max_pose_landing_crouch_m,
         max_pose_landing_flare_degrees: acc.max_pose_landing_flare_degrees,
         max_pose_wing_airflow_strength: acc.max_pose_wing_airflow_strength,
+        max_authored_glider_response_degrees: acc.max_authored_glider_response_degrees,
+        max_authored_glider_motion_m: acc.max_authored_glider_motion_m,
         min_key_pose_readability_score: acc.min_key_pose_readability_score.unwrap_or(1.0),
         max_key_pose_readability_score: acc.max_key_pose_readability_score,
         unreadable_key_pose_samples: acc.unreadable_key_pose_samples,

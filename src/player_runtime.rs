@@ -13,7 +13,8 @@ use crate::world_collision_runtime::{
 };
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartPose, PartVisibility, PlayerPoseContext,
-    advance_phase, body_local_pose_velocity, part_pose_with_context, pose_blend_for_intent,
+    advance_phase, body_local_pose_velocity, glider_traversal_pose, part_pose_with_context,
+    pose_blend_for_intent,
 };
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::{
@@ -51,6 +52,40 @@ pub(crate) fn grounded_visual_foot_gap_m(
     let visual_foot_y = player_y + authored_player_scene_transform().translation.y;
     let terrain_visual_y = ground_floor_y - TERRAIN_VISUAL_FOOTING_OFFSET_M;
     visual_foot_y - terrain_visual_y
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct AuthoredGliderPose {
+    base_translation: Vec3,
+    base_rotation: Quat,
+    smoothed_translation: Vec3,
+    smoothed_rotation: Quat,
+    smoothing_initialized: bool,
+    last_smoothed_time_secs: Option<f32>,
+}
+
+impl AuthoredGliderPose {
+    pub(crate) fn new(base_transform: &Transform) -> Self {
+        Self {
+            base_translation: base_transform.translation,
+            base_rotation: base_transform.rotation,
+            smoothed_translation: base_transform.translation,
+            smoothed_rotation: base_transform.rotation,
+            smoothing_initialized: false,
+            last_smoothed_time_secs: None,
+        }
+    }
+
+    pub(crate) fn response_degrees(self, transform: &Transform) -> f32 {
+        transform
+            .rotation
+            .angle_between(self.base_rotation)
+            .to_degrees()
+    }
+
+    pub(crate) fn motion_m(self, transform: &Transform) -> f32 {
+        transform.translation.distance(self.base_translation)
+    }
 }
 
 #[derive(Component)]
@@ -570,11 +605,55 @@ pub(crate) fn apply_authored_player_pose_nodes(
     }
 }
 
+pub(crate) fn apply_authored_glider_pose(
+    time: Res<Time>,
+    eval: Option<Res<EvalRun>>,
+    player: Query<(&Transform, &Velocity, &FlightController, &AnimationState), With<Player>>,
+    mut gliders: Query<(&mut AuthoredGliderPose, &mut Transform), Without<Player>>,
+) {
+    let Ok((transform, velocity, controller, animation)) = player.single() else {
+        return;
+    };
+    let pose_velocity = body_local_pose_velocity(velocity.0, transform.rotation);
+    let pose_context = PlayerPoseContext::new(
+        controller.mode,
+        pose_velocity,
+        animation.last_input,
+        animation.height_above_ground_m,
+    )
+    .with_landing_recovery(
+        controller.landing_recovery_timer,
+        controller.landing_impact_speed_mps,
+    );
+    let pose_time_secs = eval_pose_time_secs(&time, eval.as_deref());
+    let blend = pose_blend_for_intent(pose_context.intent(), eval_dt(&time, eval.as_deref()));
+
+    for (mut glider, mut transform) in &mut gliders {
+        let pose = glider_traversal_pose(pose_context, animation.phase);
+        apply_authored_glider_pose_smoothing(
+            &mut glider,
+            &mut transform,
+            pose.translation_offset,
+            pose.rotation_offset,
+            pose_time_secs,
+            blend,
+        );
+    }
+}
+
 pub(crate) fn reapply_authored_player_pose_nodes(
     mut pose_nodes: Query<(&AuthoredPlayerPoseNode, &mut Transform)>,
 ) {
     for (node, mut transform) in &mut pose_nodes {
         reapply_smoothed_authored_pose_node(node, &mut transform);
+    }
+}
+
+pub(crate) fn reapply_authored_glider_pose(
+    mut gliders: Query<(&AuthoredGliderPose, &mut Transform)>,
+) {
+    for (glider, mut transform) in &mut gliders {
+        reapply_smoothed_authored_glider_pose(glider, &mut transform);
     }
 }
 
@@ -601,6 +680,34 @@ fn apply_authored_pose_node_smoothing(
 fn reapply_smoothed_authored_pose_node(node: &AuthoredPlayerPoseNode, transform: &mut Transform) {
     transform.translation = node.smoothed_translation;
     transform.rotation = node.smoothed_rotation;
+}
+
+fn apply_authored_glider_pose_smoothing(
+    glider: &mut AuthoredGliderPose,
+    transform: &mut Transform,
+    translation_offset: Vec3,
+    rotation_offset: Quat,
+    pose_time_secs: f32,
+    blend: f32,
+) {
+    let target_translation = glider.base_translation + translation_offset;
+    let target_rotation = glider.base_rotation * rotation_offset;
+    if !glider.smoothing_initialized {
+        glider.smoothed_translation = target_translation;
+        glider.smoothed_rotation = target_rotation;
+        glider.smoothing_initialized = true;
+        glider.last_smoothed_time_secs = Some(pose_time_secs);
+    } else if glider.last_smoothed_time_secs != Some(pose_time_secs) {
+        glider.smoothed_translation = glider.smoothed_translation.lerp(target_translation, blend);
+        glider.smoothed_rotation = glider.smoothed_rotation.slerp(target_rotation, blend);
+        glider.last_smoothed_time_secs = Some(pose_time_secs);
+    }
+    reapply_smoothed_authored_glider_pose(glider, transform);
+}
+
+fn reapply_smoothed_authored_glider_pose(glider: &AuthoredGliderPose, transform: &mut Transform) {
+    transform.translation = glider.smoothed_translation;
+    transform.rotation = glider.smoothed_rotation;
 }
 
 fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
@@ -685,6 +792,50 @@ mod tests {
                 .translation
                 .abs_diff_eq(clobber_pose.translation, 0.0001)
         );
+    }
+
+    #[test]
+    fn authored_glider_pose_smoothing_is_idempotent_within_same_eval_frame() {
+        let base = authored_glider_scene_transform();
+        let mut glider = AuthoredGliderPose::new(&base);
+        let mut transform = base;
+
+        apply_authored_glider_pose_smoothing(
+            &mut glider,
+            &mut transform,
+            Vec3::new(0.0, 0.04, 0.08),
+            Quat::from_rotation_z(-0.12),
+            0.0,
+            1.0,
+        );
+        apply_authored_glider_pose_smoothing(
+            &mut glider,
+            &mut transform,
+            Vec3::new(0.0, 0.12, 0.24),
+            Quat::from_rotation_z(-0.32),
+            1.0,
+            0.5,
+        );
+        let once_per_frame_translation = transform.translation;
+        let once_per_frame_rotation = transform.rotation;
+
+        apply_authored_glider_pose_smoothing(
+            &mut glider,
+            &mut transform,
+            Vec3::new(4.0, 9.0, -7.0),
+            Quat::from_rotation_y(1.4),
+            1.0,
+            1.0,
+        );
+
+        assert!(
+            transform
+                .translation
+                .abs_diff_eq(once_per_frame_translation, 0.0001)
+        );
+        assert!((transform.rotation.dot(once_per_frame_rotation).abs() - 1.0).abs() < 0.0001);
+        assert!(glider.response_degrees(&transform) > 10.0);
+        assert!(glider.motion_m(&transform) > 0.05);
     }
 
     #[test]

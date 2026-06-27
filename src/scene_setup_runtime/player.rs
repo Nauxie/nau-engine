@@ -7,7 +7,9 @@ use crate::authored_assets::{
 };
 use crate::environment_visuals::GliderAirflowTrail;
 use crate::generated_content::glider_airflow_trail_mesh;
-use crate::player_runtime::{authored_glider_scene_transform, authored_player_scene_transform};
+use crate::player_runtime::{
+    AuthoredGliderPose, authored_glider_scene_transform, authored_player_scene_transform,
+};
 use crate::scene_setup_runtime::constants::PLAYER_START;
 use crate::scene_setup_runtime::materials::SceneMaterials;
 use nau_engine::animation::{AnimationState, CharacterPart, CharacterPartRole, Side};
@@ -61,10 +63,12 @@ pub(super) fn spawn_player_runtime(
             }
 
             if let Some(scene_handle) = glider_scene_handle.clone() {
+                let glider_transform = authored_glider_scene_transform();
                 let mut scene = parent.spawn((
                     SceneRoot(scene_handle),
-                    authored_glider_scene_transform(),
+                    glider_transform,
                     Visibility::Hidden,
+                    AuthoredGliderPose::new(&glider_transform),
                     AuthoredVisualScene {
                         kind: VisualAssetKind::Glider,
                         role: AuthoredVisualSceneRole::GliderRuntime,
