@@ -106,6 +106,25 @@ fn route_has_archipelago_scale_and_distant_landmarks() {
 }
 
 #[test]
+fn route_has_large_traversible_anchor_islands() {
+    let route = SkyRoute::default();
+    let mut total_base_area = 0.0_f32;
+    let mut largest_base_area = 0.0_f32;
+    let mut large_anchor_count = 0;
+
+    for island in route.islands() {
+        let base_area = island.half_extents.x * island.half_extents.y;
+        total_base_area += base_area;
+        largest_base_area = largest_base_area.max(base_area);
+        large_anchor_count += usize::from(base_area >= 1500.0);
+    }
+
+    assert!(total_base_area >= 28_000.0);
+    assert!(largest_base_area >= 3_300.0);
+    assert!(large_anchor_count >= 9);
+}
+
+#[test]
 fn route_preserves_core_path_and_appends_satellite_islands() {
     let route = SkyRoute::default();
     let core_route_names = [
@@ -191,6 +210,47 @@ fn route_footprint_profiles_create_lobes_coves_and_large_playable_shelves() {
 
     assert!(lobe_islands >= 8);
     assert!(cove_islands >= 8);
+}
+
+#[test]
+fn island_relief_has_midfield_path_and_crag_detail() {
+    let route = SkyRoute::default();
+    let island = route
+        .island_named("sunlit terrace")
+        .expect("sunlit terrace route island exists");
+    let sample_count = 144;
+    let radius = 0.62;
+    let mut min_relief = f32::INFINITY;
+    let mut max_relief = f32::NEG_INFINITY;
+    let mut trough_samples = 0;
+    let mut ridge_samples = 0;
+    let mut previous_relief = island.terrain_relief_m(radius, 0.0);
+    let mut previous_slope = 0.0_f32;
+    let mut slope_reversals = 0;
+
+    for step in 1..=sample_count {
+        let angle = step as f32 / sample_count as f32 * std::f32::consts::TAU;
+        let relief = island.terrain_relief_m(radius, angle);
+        min_relief = min_relief.min(relief);
+        max_relief = max_relief.max(relief);
+        trough_samples += usize::from(relief <= -0.12);
+        ridge_samples += usize::from(relief >= 0.16);
+
+        let slope = relief - previous_relief;
+        if previous_slope.abs() > 0.003
+            && slope.abs() > 0.003
+            && previous_slope.signum() != slope.signum()
+        {
+            slope_reversals += 1;
+        }
+        previous_slope = slope;
+        previous_relief = relief;
+    }
+
+    assert!(max_relief - min_relief >= 0.42);
+    assert!(trough_samples >= 4);
+    assert!(ridge_samples >= 8);
+    assert!(slope_reversals >= 18);
 }
 
 #[test]
