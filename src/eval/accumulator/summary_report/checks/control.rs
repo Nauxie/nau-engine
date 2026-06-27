@@ -274,6 +274,62 @@ pub(super) fn append_scenario_checks(
             "m/s",
         ));
     }
+    if layered_wind_force_scenario(scenario) {
+        checks.push(EvalCheck::at_least(
+            "layered_dynamic_wind_flow_fields",
+            acc.max_dynamic_wind_flow_fields as f32,
+            2.0,
+            "fields",
+        ));
+        checks.push(EvalCheck::at_least(
+            "layered_wind_force_samples",
+            acc.layered_wind_force_samples as f32,
+            MIN_WIND_FORCE_SAMPLE_COUNT as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
+            "aligned_layered_wind_force_samples",
+            acc.aligned_layered_wind_force_samples as f32,
+            MIN_WIND_FORCE_SAMPLE_COUNT as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
+            "crosswind_updraft_overlap_samples",
+            acc.crosswind_updraft_overlap_samples as f32,
+            MIN_WIND_FORCE_SAMPLE_COUNT as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
+            "aligned_crosswind_updraft_overlap_samples",
+            acc.aligned_crosswind_updraft_overlap_samples as f32,
+            MIN_WIND_FORCE_SAMPLE_COUNT as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
+            "layered_wind_force_fields",
+            acc.max_layered_wind_force_fields as f32,
+            2.0,
+            "fields",
+        ));
+        checks.push(EvalCheck::at_least(
+            "layered_wind_force_delta",
+            acc.max_layered_wind_force_delta_mps,
+            MIN_WIND_FORCE_DELTA_MPS,
+            "m/s",
+        ));
+        checks.push(EvalCheck::at_least(
+            "layered_wind_force_flow_alignment",
+            acc.max_layered_wind_force_flow_alignment,
+            MIN_WIND_FORCE_FLOW_ALIGNMENT,
+            "dot",
+        ));
+        checks.push(EvalCheck::at_least(
+            "layered_wind_force_aligned_delta",
+            acc.max_layered_wind_force_aligned_delta_mps,
+            MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
+            "m/s",
+        ));
+    }
     if scenario.name == AIR_CONTROL_RESPONSE {
         append_air_control_checks(checks, acc, derived);
     }
@@ -294,6 +350,10 @@ fn wind_force_scenario(scenario: EvalScenario) -> bool {
 
 fn crosswind_force_scenario(scenario: EvalScenario) -> bool {
     matches!(scenario.name, BASELINE_ROUTE | BRANCH_RECOVERY_ROUTE)
+}
+
+fn layered_wind_force_scenario(scenario: EvalScenario) -> bool {
+    scenario.name == UPDRAFT_ROUTE
 }
 
 fn append_air_control_checks(
