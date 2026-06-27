@@ -115,6 +115,12 @@ pub(super) fn build_metrics_summary(
         max_landing_pose_part_rotation_delta_degrees: acc
             .max_landing_pose_part_rotation_delta_degrees,
         max_landing_pose_part_translation_delta_m: acc.max_landing_pose_part_translation_delta_m,
+        authored_clip_match_samples: acc.authored_clip_match_samples,
+        authored_clip_mismatch_samples: acc.authored_clip_mismatch_samples,
+        authored_dive_clip_samples: acc.authored_dive_clip_samples,
+        authored_air_brake_clip_samples: acc.authored_air_brake_clip_samples,
+        authored_land_clip_samples: acc.authored_land_clip_samples,
+        max_authored_transition_duration_ms: acc.max_authored_transition_duration_ms,
         min_target_distance_m: acc.min_target_distance_m,
         final_target_distance_m: derived.final_target_distance_m,
         min_camera_pitch_degrees: acc.min_camera_pitch_degrees,

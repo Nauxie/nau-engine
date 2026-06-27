@@ -40,6 +40,7 @@ fn air_control_metric_sample(
     } else {
         "gliding"
     };
+    let authored_clip_label = authored_clip_label_for_pose_intent_label(pose_intent_label);
     EvalSample::new(
         frame,
         scenario.fixed_dt,
@@ -209,6 +210,7 @@ fn air_control_metric_sample(
         max_pose_part_translation_delta_m: 0.04,
     })
     .with_authored_glider_metrics(AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES, 0.08)
+    .with_authored_animation_metrics(authored_clip_label, authored_clip_label, 1, 140)
     .with_movement_metrics(EvalMovementMetrics {
         desired_body_yaw_error_degrees: yaw_error_degrees,
         body_travel_heading_error_degrees: yaw_error_degrees.abs(),
@@ -219,6 +221,19 @@ fn air_control_metric_sample(
         lateral_input_active: movement_axis.x.abs() > f32::EPSILON,
         movement_axis,
     })
+}
+
+fn authored_clip_label_for_pose_intent_label(pose_intent_label: &str) -> &'static str {
+    match pose_intent_label {
+        "grounded_idle" => "idle",
+        "grounded_stride" | "grounded_walk" | "grounded_run" => "jog",
+        "launching" => "launch",
+        "diving" => "dive",
+        "air_brake" => "air_brake",
+        "landing_anticipation" | "landing_recovery" => "land",
+        "falling" => "air_brake",
+        _ => "glide",
+    }
 }
 
 fn content_metric_sample(
