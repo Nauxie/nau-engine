@@ -6,6 +6,7 @@ use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::debug_visuals::DebugVisuals;
 use crate::environment_visuals::{WindResponsiveVisual, wind_responsive_visual_metrics};
 use crate::island_visuals::IslandStreamDiagnostics;
+use crate::player_runtime::WindForceDiagnostics;
 use crate::power_up_runtime::PowerUpCollectionState;
 use crate::world_collision_runtime::WorldCollisionDiagnostics;
 use crate::{Player, RouteObjectiveTracker};
@@ -46,6 +47,7 @@ pub(crate) struct DebugScene<'w, 's> {
     route_objectives: Res<'w, RouteObjectiveTracker>,
     power_ups: Res<'w, PowerUpCollectionState>,
     collision_diagnostics: Res<'w, WorldCollisionDiagnostics>,
+    wind_force_diagnostics: Res<'w, WindForceDiagnostics>,
     wind_fields: Query<'w, 's, &'static WindField>,
     lift_fields: Query<'w, 's, &'static LiftField>,
     wind_responsive_visuals: Query<'w, 's, (&'static WindResponsiveVisual, &'static Transform)>,
@@ -112,7 +114,7 @@ pub(crate) fn update_debug_readout(
     let body_roll = body_roll_degrees(transform.rotation);
 
     **text = format!(
-        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nbody bank/roll {:>5.1} / {:>5.1} deg\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/deferred/failed {} / {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nauthored world fixtures {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nauthored anim current/desired {} / {} players {} transition {} ms\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nlift fields {} / {}\nworld collisions proxies/resolved/push {} / {} / {:>4.2} m\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices min/max {} / {}\nground cover patches {} blades {} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated landmarks {} cairn/launch/landing/pond {} / {} / {} / {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {} filaments {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
+        "frame {:>4.1} ms\nmode {}\nspeed {:>5.1} m/s\naltitude {:>5.1} m\ntarget {:>5.1} m {}\nobjective {}/{} {} {:>5.1} m {}\ncamera pitch {:>5.1} deg\ncamera distance {:>5.1} m\ncamera frame {:>5.1} deg\ncamera motion {:>4.1} m / {:>4.1} deg\ncamera orbit {:>5.1} deg\ncamera obstruction {:>4.1} m / {}\nmouse yaw {:>5.1} deg\nmouse pitch {:>5.1} deg\nmouse {}\nvelocity [{:>5.1}, {:>5.1}, {:>5.1}]\nbody bank/roll {:>5.1} / {:>5.1} deg\npower ups visible/collected/active {} / {} / {}\nvisual assets {} gltf {} ready {} placeholders {} missing {} stream {}\nasset load queued/loading/loaded/deferred/failed {} / {} / {} / {} / {}\nasset preload deps/ready {} / {} always/stream {} / {}\nasset scene spawned/ready {} / {}\nauthored world fixtures {}\nasset anim clips ready/declared {} / {} players {} graphs {}\nauthored anim current/desired {} / {} players {} transition {} ms\nasset residency always/window/near/far/weather {} / {} / {} / {} / {}\nvisual wind fields {} / {}\nwind force fields/cross/swirl {} / {} / {} load {:>4.2}\nwind force delta/cross/swirl {:>4.2} / {:>4.2} / {:>4.2} m/s\nlift fields {} / {}\nworld collisions proxies/resolved/push {} / {} / {:>4.2} m\nsky islands {}\nisland terrain surfaces {} vertices {} color bands {} material bands/channels/regions/texture {} / {} / {} / {} relief {:>4.2} m cliff bands {}\nisland body proc/prim {} / {} silhouette min/avg {} / {:>4.1} vertices min/max {} / {}\nground cover patches {} blades {} vertices {}\ngenerated trees trunk/canopy {} / {} vertices {} / {} biome palettes {}\ngenerated rocks {} vertices {}\ngenerated landmarks {} cairn/launch/landing/pond {} / {} / {} / {} vertices {}\ngenerated clouds {} banks {} depth {:>4.1} m lobes min/max {} / {} vertices {} filaments {}\nstream chunk [{}, {}] active {} / {}\nlod near/mid/far {} / {} / {}\nstream terrain visible/hidden {} / {}\nstream impostor visible/hidden {} / {}\nlod detail visible/hidden {} / {}\nenvironment motion {} / {:>4.2} m\nstream residency {} / {} {:>4.1}% hidden {}\nstream spawn/despawn {} / {} max {} / {} total {} / {}\nstream entity changes {} max {} total {}\nroute beacons {}\nlaunch cooldown {:>4.1}s\nlaunch ready {}\ndebug visuals {} (F1)\nWASD camera-relative  Click mouse lock  Esc release  Space glider  E launch  Shift dive",
         frame_ms(time.delta_secs()),
         controller.mode.label(),
         velocity.0.length(),
@@ -176,6 +178,13 @@ pub(crate) fn update_debug_readout(
         asset_metrics.weather_slot_count,
         visible_wind_fields,
         wind_field_count,
+        scene.wind_force_diagnostics.active_fields,
+        scene.wind_force_diagnostics.crosswind_fields,
+        scene.wind_force_diagnostics.updraft_swirl_fields,
+        scene.wind_force_diagnostics.wind_lateral_load,
+        scene.wind_force_diagnostics.applied_delta_mps,
+        scene.wind_force_diagnostics.crosswind_delta_mps,
+        scene.wind_force_diagnostics.updraft_swirl_delta_mps,
         active_lift_fields,
         lift_field_count,
         scene.collision_diagnostics.proxy_count,
