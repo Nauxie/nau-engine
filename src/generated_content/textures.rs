@@ -5,7 +5,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use std::collections::HashSet;
 
 pub(crate) const PROCEDURAL_TEXTURE_SIZE: u32 = 128;
-pub(crate) const TERRAIN_TEXTURE_SIZE: u32 = 256;
+pub(crate) const TERRAIN_TEXTURE_SIZE: u32 = 512;
 
 pub(crate) fn procedural_surface_texture(
     primary: [u8; 4],
@@ -74,12 +74,23 @@ pub(crate) fn procedural_terrain_surface_texture_data(
                 y.wrapping_mul(17).wrapping_add(x.wrapping_mul(5)),
                 seed.wrapping_add(211),
             );
+            let pitted = texture_noise(
+                x.wrapping_mul(47).wrapping_add(y.wrapping_mul(11)),
+                y.wrapping_mul(41).wrapping_add(x.wrapping_mul(13)),
+                seed.wrapping_add(317),
+            );
             let broad = smooth_texture_noise(x, y, 22, seed.wrapping_add(19));
             let streak = smooth_texture_noise(
                 x.wrapping_mul(2).wrapping_add(y / 2),
                 y.wrapping_mul(5).wrapping_add(x / 2),
                 12,
                 seed.wrapping_add(137),
+            );
+            let strata = smooth_texture_noise(
+                x.wrapping_mul(7).wrapping_add(y.wrapping_mul(13)),
+                y.wrapping_mul(11).wrapping_add(x.wrapping_mul(5)),
+                3,
+                seed.wrapping_add(401),
             );
             let fissure = smooth_texture_noise(
                 x.wrapping_mul(3).wrapping_add(y),
@@ -90,18 +101,27 @@ pub(crate) fn procedural_terrain_surface_texture_data(
             let secondary_weight = ((118i16 - broad as i16).max(0) as u16 * 126 / 118)
                 .saturating_add((grain > 192) as u16 * 24)
                 .saturating_add((micro < 28) as u16 * 16)
+                .saturating_add((pitted < 34) as u16 * 22)
                 .min(150);
             let accent_weight = ((broad as i16 - 164).max(0) as u16 * 142 / 91)
                 .saturating_add((fine > 222 && grain > 142) as u16 * 70)
                 .saturating_add((micro > 226) as u16 * 38)
+                .saturating_add((pitted > 224) as u16 * 30)
                 .min(172);
             let vein = (x.wrapping_mul(17) + y.wrapping_mul(29) + seed).is_multiple_of(47);
-            let mineral_fleck = (fine > 222 && grain > 142) || (micro > 234 && fissure > 164);
+            let mineral_fleck =
+                (fine > 222 && grain > 142) || (micro > 234 && fissure > 164) || pitted > 242;
             let mut color = mix_rgba(primary, secondary, secondary_weight);
             color = mix_rgba(color, accent, accent_weight);
 
             if vein {
                 color = mix_rgba(color, secondary, 104);
+            }
+            if strata < 36 {
+                color = mix_rgba(color, secondary, 72);
+            }
+            if strata > 220 {
+                color = mix_rgba(color, accent, 76);
             }
             if fissure > 218 {
                 color = mix_rgba(color, accent, 58);
@@ -110,8 +130,13 @@ pub(crate) fn procedural_terrain_surface_texture_data(
                 color = mix_rgba(color, accent, 96);
             }
 
-            let shade =
-                fine as i16 / 5 + grain as i16 / 8 + streak as i16 / 10 + micro as i16 / 9 - 97;
+            let shade = fine as i16 / 5
+                + grain as i16 / 8
+                + streak as i16 / 10
+                + micro as i16 / 9
+                + pitted as i16 / 11
+                + strata as i16 / 14
+                - 128;
             data.extend_from_slice(&shade_rgba(color, shade));
         }
     }
@@ -367,7 +392,7 @@ mod tests {
         );
 
         assert!(prop_data.len() >= 128 * 128 * 4);
-        assert!(terrain_data.len() >= 256 * 256 * 4);
+        assert!(terrain_data.len() >= 512 * 512 * 4);
     }
 
     #[test]
@@ -385,6 +410,6 @@ mod tests {
             (TERRAIN_TEXTURE_SIZE * TERRAIN_TEXTURE_SIZE * 4) as usize
         );
         assert!(texture_detail_band_count(&data) >= 56);
-        assert!(texture_edge_promille(&data, TERRAIN_TEXTURE_SIZE) >= 260);
+        assert!(texture_edge_promille(&data, TERRAIN_TEXTURE_SIZE) >= 590);
     }
 }

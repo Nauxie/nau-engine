@@ -18,9 +18,9 @@ pub(crate) const ISLAND_TERRAIN_HEIGHT_BANDS: usize = 19;
 #[cfg(test)]
 pub(crate) const ISLAND_TERRAIN_NORMAL_SLOPE_BANDS: usize = 10;
 #[cfg(test)]
-pub(crate) const ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS: usize = 44;
+pub(crate) const ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS: usize = 50;
 #[cfg(test)]
-pub(crate) const ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE: usize = 240;
+pub(crate) const ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE: usize = 590;
 #[cfg(test)]
 pub(crate) const ISLAND_IMPOSTOR_COLOR_BANDS: usize = 18;
 pub(crate) const ISLAND_CLIFF_STRATA_BANDS: usize = 9;
