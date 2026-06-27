@@ -188,6 +188,12 @@ fn air_control_metric_sample(
         MIN_CROSSWIND_GUIDE_FLOW_DISPLACEMENT_M,
         MIN_CROSSWIND_RIBBON_FLOW_DISPLACEMENT_M,
     )
+    .with_wind_guide_depth_metrics(
+        MIN_UPDRAFT_VISUAL_DEPTH_SPAN_M,
+        MIN_UPDRAFT_VISUAL_SCALE_PULSE,
+        MIN_CROSSWIND_VISUAL_LANE_DEPTH_SPAN_M,
+        MIN_CROSSWIND_VISUAL_SCALE_PULSE,
+    )
     .with_wind_guide_flow_coherence_metrics(
         MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT,
         MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT,

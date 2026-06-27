@@ -2257,18 +2257,20 @@ fn accumulator_rejects_missing_wind_force_response_metrics() {
 #[test]
 fn accumulator_gates_wind_guide_visual_presence_and_motion() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
-    let sample = content_metric_sample(scenario, 0, 12, 0, 96).with_wind_guide_visual_metrics(
-        MIN_UPDRAFT_GUIDE_VISUAL_COUNT - 1,
-        MIN_UPDRAFT_RIBBON_VISUAL_COUNT - 1,
-        MIN_CROSSWIND_GUIDE_VISUAL_COUNT - 1,
-        MIN_CROSSWIND_RIBBON_VISUAL_COUNT - 1,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-    );
+    let sample = content_metric_sample(scenario, 0, 12, 0, 96)
+        .with_wind_guide_visual_metrics(
+            MIN_UPDRAFT_GUIDE_VISUAL_COUNT - 1,
+            MIN_UPDRAFT_RIBBON_VISUAL_COUNT - 1,
+            MIN_CROSSWIND_GUIDE_VISUAL_COUNT - 1,
+            MIN_CROSSWIND_RIBBON_VISUAL_COUNT - 1,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        )
+        .with_wind_guide_depth_metrics(0.0, 0.0, 0.0, 0.0);
     let mut accumulator = EvalAccumulator::default();
     accumulator.observe(sample);
 
@@ -2291,9 +2293,13 @@ fn accumulator_gates_wind_guide_visual_presence_and_motion() {
         "updraft_visual_motion",
         "updraft_visual_rise",
         "updraft_visual_swirl_displacement",
+        "updraft_visual_depth_span",
+        "updraft_visual_scale_pulse",
         "crosswind_visual_motion",
         "crosswind_guide_flow_displacement",
         "crosswind_ribbon_flow_displacement",
+        "crosswind_visual_lane_depth_span",
+        "crosswind_visual_scale_pulse",
     ] {
         assert!(
             !named_check(&summary, check_name).passed,

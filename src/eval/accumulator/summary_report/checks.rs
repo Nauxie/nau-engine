@@ -203,6 +203,18 @@ pub(super) fn build_checks(
             "m",
         ),
         EvalCheck::at_least(
+            "updraft_visual_depth_span",
+            acc.max_updraft_visual_depth_span_m,
+            MIN_UPDRAFT_VISUAL_DEPTH_SPAN_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "updraft_visual_scale_pulse",
+            acc.max_updraft_visual_scale_pulse,
+            MIN_UPDRAFT_VISUAL_SCALE_PULSE,
+            "scale",
+        ),
+        EvalCheck::at_least(
             "crosswind_visual_motion",
             acc.max_crosswind_visual_motion_m,
             MIN_CROSSWIND_VISUAL_MOTION_M,
@@ -219,6 +231,18 @@ pub(super) fn build_checks(
             acc.max_crosswind_ribbon_flow_displacement_m,
             MIN_CROSSWIND_RIBBON_FLOW_DISPLACEMENT_M,
             "m",
+        ),
+        EvalCheck::at_least(
+            "crosswind_visual_lane_depth_span",
+            acc.max_crosswind_visual_lane_depth_span_m,
+            MIN_CROSSWIND_VISUAL_LANE_DEPTH_SPAN_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "crosswind_visual_scale_pulse",
+            acc.max_crosswind_visual_scale_pulse,
+            MIN_CROSSWIND_VISUAL_SCALE_PULSE,
+            "scale",
         ),
         EvalCheck::at_least(
             "updraft_flow_coherent_visual_count",
