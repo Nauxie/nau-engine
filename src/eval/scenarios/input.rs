@@ -97,7 +97,7 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
     }
     if scenario.name == CAMERA_TURN_STABILITY {
         return FlightInput {
-            forward: (0.05..=1.6).contains(&t),
+            forward: (0.05..=3.35).contains(&t),
             backward: (3.9..=5.1).contains(&t),
             left: (1.05..=1.65).contains(&t) || (2.2..=2.75).contains(&t),
             right: (1.65..=2.2).contains(&t) || (2.75..=3.35).contains(&t),

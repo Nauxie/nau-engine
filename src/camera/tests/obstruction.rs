@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use super::super::{
     CameraFrame, CameraObstruction, avoid_camera_obstructions, camera_surface_clearance,
-    camera_target_angle_degrees, lift_camera_above_floor,
+    camera_target_angle_degrees, clamp_camera_step, lift_camera_above_floor,
 };
 
 #[test]
@@ -90,4 +90,23 @@ fn camera_obstruction_uses_nearest_blocker() {
     assert_eq!(resolved.hit_count, 2);
     assert!(resolved.frame.position.z < 3.0);
     assert!(resolved.frame.position.z > 2.3);
+}
+
+#[test]
+fn camera_step_clamp_limits_large_obstruction_snaps() {
+    let frame = CameraFrame {
+        position: Vec3::new(0.0, 4.0, -16.0),
+        rotation: Quat::IDENTITY,
+        look_target: Vec3::new(0.0, 3.0, 0.0),
+    };
+    let previous_position = Vec3::new(0.0, 4.0, 2.0);
+
+    let clamped = clamp_camera_step(frame, previous_position, 9.5);
+
+    assert!(previous_position.distance(clamped.position) <= 9.5001);
+    assert!(clamped.position.z > frame.position.z);
+    assert!(
+        camera_target_angle_degrees(clamped.position, clamped.rotation, clamped.look_target)
+            < 0.001
+    );
 }

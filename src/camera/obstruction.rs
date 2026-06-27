@@ -18,6 +18,25 @@ pub fn lift_camera_above_floor(
     frame
 }
 
+pub fn clamp_camera_step(
+    mut frame: CameraFrame,
+    previous_position: Vec3,
+    max_step_m: f32,
+) -> CameraFrame {
+    let max_step_m = max_step_m.max(0.0);
+    let step = frame.position - previous_position;
+    let step_distance = step.length();
+    if step_distance <= max_step_m || step_distance <= 0.001 || !step_distance.is_finite() {
+        return frame;
+    }
+
+    frame.position = previous_position + step / step_distance * max_step_m;
+    frame.rotation = Transform::from_translation(frame.position)
+        .looking_at(frame.look_target, Vec3::Y)
+        .rotation;
+    frame
+}
+
 pub fn avoid_camera_obstructions(
     frame: CameraFrame,
     obstructions: impl IntoIterator<Item = CameraObstruction>,

@@ -13,7 +13,7 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use nau_engine::camera::{
     CameraControlState, CameraControlTuning, CameraInput, CameraObstruction, FollowCamera,
     FollowCameraState, apply_camera_input, avoid_camera_obstructions,
-    camera_orbit_alignment_degrees, lift_camera_above_floor,
+    camera_orbit_alignment_degrees, clamp_camera_step, lift_camera_above_floor,
     movement_input_stable_follow_direction, step_camera_with_direction,
     update_follow_direction_state,
 };
@@ -23,6 +23,7 @@ use nau_engine::world::SkyRoute;
 
 const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
 const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
+const CAMERA_MAX_STEP_M: f32 = 9.5;
 pub(crate) const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
@@ -255,6 +256,7 @@ pub(crate) fn follow_camera(
         camera_floor_y,
         CAMERA_MIN_SURFACE_CLEARANCE,
     );
+    let frame = clamp_camera_step(frame, previous_camera_position, CAMERA_MAX_STEP_M);
 
     scene.camera_diagnostics.step_distance_m = previous_camera_position.distance(frame.position);
     scene.camera_diagnostics.rotation_delta_degrees = previous_camera_rotation
