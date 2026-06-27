@@ -8,6 +8,8 @@ use super::{
     StreamingLodStats,
 };
 
+pub const SKY_ROUTE_ISLAND_COUNT: usize = 20;
+
 #[derive(Resource, Clone, Debug)]
 pub struct SkyRoute {
     pub fallback_floor_y: f32,
@@ -122,6 +124,41 @@ impl Default for SkyRoute {
                     Vec3::new(204.0, 112.0, -1048.0),
                     Vec2::new(40.0, 34.0),
                     19.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "launch spur",
+                    Vec3::new(58.0, 34.0, -72.0),
+                    Vec2::new(21.0, 16.0),
+                    9.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "garden apron",
+                    Vec3::new(-102.0, 56.0, -306.0),
+                    Vec2::new(28.0, 18.0),
+                    10.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "storm shard",
+                    Vec3::new(-132.0, 84.0, -614.0),
+                    Vec2::new(24.0, 18.0),
+                    16.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "orchard spur",
+                    Vec3::new(82.0, 88.0, -638.0),
+                    Vec2::new(28.0, 18.0),
+                    12.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "mist stepping stone",
+                    Vec3::new(148.0, 108.0, -990.0),
+                    Vec2::new(22.0, 18.0),
+                    15.0,
                     false,
                 ),
             ],

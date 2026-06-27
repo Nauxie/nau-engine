@@ -70,7 +70,7 @@ fn air_control_metric_sample(
         140.0,
         false,
         objective,
-        15,
+        MIN_SKY_ISLAND_COUNT,
         25,
         6,
         2,
@@ -131,12 +131,46 @@ fn air_control_metric_sample(
         0,
         0,
     )
-    .with_content_metrics(15, 2305, 61, 0.8, 14, 9, 12, 0, 96, 96.0, 1633, 1633)
+    .with_content_metrics(
+        MIN_ISLAND_TERRAIN_SURFACE_COUNT,
+        2305,
+        61,
+        0.8,
+        MIN_ISLAND_TERRAIN_ARCHETYPE_COUNT,
+        9,
+        MIN_SKY_ISLAND_COUNT,
+        0,
+        96,
+        96.0,
+        1633,
+        1633,
+    )
     .with_island_impostor_metrics(146, 24)
     .with_terrain_material_metrics(36, 3, 4, 64)
     .with_generated_visual_shape_metrics(
-        528, 220, 1100, 37, 37, 196, 412, 5, 60, 74, 27, 10, 1, 4, 12, 39, 30, 12, 6.2, 9, 18,
-        1458, 27,
+        MIN_GENERATED_GROUND_COVER_PATCH_COUNT,
+        220,
+        1100,
+        MIN_GENERATED_TREE_TRUNK_COUNT,
+        MIN_GENERATED_TREE_CANOPY_COUNT,
+        196,
+        412,
+        MIN_DETAIL_BIOME_PALETTE_COUNT,
+        MIN_GENERATED_ROCK_COUNT,
+        74,
+        MIN_GENERATED_LANDMARK_COUNT,
+        MIN_GENERATED_ROUTE_CAIRN_COUNT,
+        MIN_GENERATED_LAUNCH_BEACON_COUNT,
+        MIN_GENERATED_LANDING_GARDEN_MARKER_COUNT,
+        MIN_GENERATED_POND_SURFACE_COUNT,
+        39,
+        MIN_GENERATED_WEATHER_CLOUD_COUNT,
+        MIN_GENERATED_WEATHER_CLOUD_BANK_COUNT,
+        6.2,
+        9,
+        18,
+        1458,
+        27,
     )
     .with_visible_authored_world_fixture_count(MIN_VISIBLE_AUTHORED_WORLD_FIXTURE_COUNT)
     .with_world_collision_metrics(MIN_WORLD_COLLISION_PROXY_COUNT, 0, 0.0)
@@ -198,11 +232,11 @@ fn content_metric_sample(
         8.0,
     )
     .with_content_metrics(
-        15,
+        MIN_ISLAND_TERRAIN_SURFACE_COUNT,
         2305,
         61,
         0.8,
-        14,
+        MIN_ISLAND_TERRAIN_ARCHETYPE_COUNT,
         9,
         procedural_body_count,
         primitive_body_count,

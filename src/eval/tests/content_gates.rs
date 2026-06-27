@@ -61,8 +61,20 @@ fn accumulator_gates_authored_asset_readiness() {
 fn accumulator_fails_when_procedural_body_count_disappears_after_startup() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
     let mut accumulator = EvalAccumulator::default();
-    accumulator.observe(content_metric_sample(scenario, 0, 12, 0, 96));
-    accumulator.observe(content_metric_sample(scenario, 10, 8, 0, 96));
+    accumulator.observe(content_metric_sample(
+        scenario,
+        0,
+        MIN_SKY_ISLAND_COUNT,
+        0,
+        96,
+    ));
+    accumulator.observe(content_metric_sample(
+        scenario,
+        10,
+        MIN_SKY_ISLAND_COUNT - 4,
+        0,
+        96,
+    ));
 
     let summary = accumulator.summary(
         scenario,
@@ -77,19 +89,43 @@ fn accumulator_fails_when_procedural_body_count_disappears_after_startup() {
     let procedural_check = named_check(&summary, "procedural_island_body_count");
 
     assert!(!procedural_check.passed);
-    assert_eq!(procedural_check.value, 8.0);
+    assert_eq!(procedural_check.value, (MIN_SKY_ISLAND_COUNT - 4) as f32);
 }
 
 #[test]
 fn accumulator_fails_registered_primitive_or_low_silhouette_body_content() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
     let mut accumulator = EvalAccumulator::default();
-    accumulator.observe(content_metric_sample(scenario, 0, 12, 1, 48));
+    accumulator.observe(content_metric_sample(
+        scenario,
+        0,
+        MIN_SKY_ISLAND_COUNT,
+        1,
+        48,
+    ));
     accumulator.observe(
-        content_metric_sample(scenario, 5, 12, 0, 96)
-            .with_content_metrics(15, 2305, 61, 0.8, 14, 9, 12, 0, 96, 96.0, 900, 1633),
+        content_metric_sample(scenario, 5, MIN_SKY_ISLAND_COUNT, 0, 96).with_content_metrics(
+            MIN_ISLAND_TERRAIN_SURFACE_COUNT,
+            2305,
+            61,
+            0.8,
+            MIN_ISLAND_TERRAIN_ARCHETYPE_COUNT,
+            9,
+            MIN_SKY_ISLAND_COUNT,
+            0,
+            96,
+            96.0,
+            900,
+            1633,
+        ),
     );
-    accumulator.observe(content_metric_sample(scenario, 10, 12, 0, 96));
+    accumulator.observe(content_metric_sample(
+        scenario,
+        10,
+        MIN_SKY_ISLAND_COUNT,
+        0,
+        96,
+    ));
 
     let summary = accumulator.summary(
         scenario,
@@ -218,7 +254,7 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     );
     let summary_json = summary.to_json();
 
-    assert!(summary_json.contains("\"min_island_terrain_surface_count\": 15"));
+    assert!(summary_json.contains("\"min_island_terrain_surface_count\": 20"));
     assert!(summary_json.contains("\"min_island_terrain_mesh_vertices\": 2305"));
     assert!(summary_json.contains("\"min_island_terrain_color_bands\": 61"));
     assert!(summary_json.contains("\"min_island_terrain_material_weight_bands\": 36"));
@@ -226,23 +262,23 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_island_terrain_material_regions\": 4"));
     assert!(summary_json.contains("\"min_island_terrain_texture_detail_bands\": 64"));
     assert!(summary_json.contains("\"min_island_terrain_relief_range_m\": 0.8000"));
-    assert!(summary_json.contains("\"min_island_terrain_archetype_count\": 14"));
+    assert!(summary_json.contains("\"min_island_terrain_archetype_count\": 19"));
     assert!(summary_json.contains("\"min_island_cliff_color_bands\": 9"));
     assert!(summary_json.contains("\"min_island_body_mesh_vertices\": 1633"));
-    assert!(summary_json.contains("\"min_generated_ground_cover_patch_count\": 528"));
+    assert!(summary_json.contains("\"min_generated_ground_cover_patch_count\": 800"));
     assert!(summary_json.contains("\"min_ground_cover_blade_count\": 220"));
     assert!(summary_json.contains("\"min_ground_cover_mesh_vertices\": 1100"));
     assert!(summary_json.contains("\"min_tree_canopy_mesh_vertices\": 412"));
     assert!(summary_json.contains("\"min_detail_biome_palette_count\": 5"));
-    assert!(summary_json.contains("\"min_generated_rock_count\": 60"));
+    assert!(summary_json.contains("\"min_generated_rock_count\": 90"));
     assert!(summary_json.contains("\"min_rock_mesh_vertices\": 74"));
-    assert!(summary_json.contains("\"min_generated_landmark_count\": 27"));
-    assert!(summary_json.contains("\"min_generated_route_cairn_count\": 10"));
+    assert!(summary_json.contains("\"min_generated_landmark_count\": 40"));
+    assert!(summary_json.contains("\"min_generated_route_cairn_count\": 16"));
     assert!(summary_json.contains("\"min_generated_launch_beacon_count\": 1"));
     assert!(summary_json.contains("\"min_generated_landing_garden_marker_count\": 4"));
-    assert!(summary_json.contains("\"min_generated_pond_surface_count\": 12"));
+    assert!(summary_json.contains("\"min_generated_pond_surface_count\": 20"));
     assert!(summary_json.contains("\"min_landmark_mesh_vertices\": 39"));
-    assert!(summary_json.contains("\"min_generated_weather_cloud_bank_count\": 12"));
+    assert!(summary_json.contains("\"min_generated_weather_cloud_bank_count\": 20"));
     assert!(summary_json.contains("\"min_weather_cloud_bank_depth_m\": 6.2000"));
     assert!(summary_json.contains("\"min_weather_cloud_mesh_vertices\": 1458"));
     assert!(summary_json.contains("\"min_weather_cloud_filament_ribbon_detail_count\": 27"));
@@ -591,7 +627,7 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"terrain_rim_collision_proxy_count\":4"));
     assert!(sample_json.contains("\"terrain_rim_collision_resolved_count\":0"));
     assert!(sample_json.contains("\"max_terrain_rim_collision_push_m\":0.0000"));
-    assert!(sample_json.contains("\"island_terrain_archetype_count\":14"));
+    assert!(sample_json.contains("\"island_terrain_archetype_count\":19"));
 }
 
 #[test]
@@ -760,7 +796,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
             140.0,
             false,
             objective,
-            15,
+            MIN_SKY_ISLAND_COUNT,
             25,
             6,
             2,
@@ -854,7 +890,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
             0.0,
             false,
             objective,
-            15,
+            MIN_SKY_ISLAND_COUNT,
             25,
             6,
             2,
@@ -949,7 +985,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
                 140.0 - frame as f32 * 4.0,
                 false,
                 objective,
-                15,
+                MIN_SKY_ISLAND_COUNT,
                 25,
                 6,
                 2,
@@ -1066,12 +1102,46 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
 fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample) {
     accumulator.observe(
         sample
-            .with_content_metrics(15, 2305, 61, 0.8, 14, 9, 12, 0, 96, 96.0, 1633, 1633)
+            .with_content_metrics(
+                MIN_ISLAND_TERRAIN_SURFACE_COUNT,
+                2305,
+                61,
+                0.8,
+                MIN_ISLAND_TERRAIN_ARCHETYPE_COUNT,
+                9,
+                MIN_SKY_ISLAND_COUNT,
+                0,
+                96,
+                96.0,
+                1633,
+                1633,
+            )
             .with_island_impostor_metrics(146, 24)
             .with_terrain_material_metrics(36, 3, 4, 64)
             .with_generated_visual_shape_metrics(
-                528, 220, 1100, 37, 37, 196, 412, 5, 60, 74, 27, 10, 1, 4, 12, 39, 30, 12, 6.2, 9,
-                18, 1458, 27,
+                MIN_GENERATED_GROUND_COVER_PATCH_COUNT,
+                220,
+                1100,
+                MIN_GENERATED_TREE_TRUNK_COUNT,
+                MIN_GENERATED_TREE_CANOPY_COUNT,
+                196,
+                412,
+                MIN_DETAIL_BIOME_PALETTE_COUNT,
+                MIN_GENERATED_ROCK_COUNT,
+                74,
+                MIN_GENERATED_LANDMARK_COUNT,
+                MIN_GENERATED_ROUTE_CAIRN_COUNT,
+                MIN_GENERATED_LAUNCH_BEACON_COUNT,
+                MIN_GENERATED_LANDING_GARDEN_MARKER_COUNT,
+                MIN_GENERATED_POND_SURFACE_COUNT,
+                39,
+                MIN_GENERATED_WEATHER_CLOUD_COUNT,
+                MIN_GENERATED_WEATHER_CLOUD_BANK_COUNT,
+                6.2,
+                9,
+                18,
+                1458,
+                27,
             )
             .with_world_collision_metrics(MIN_WORLD_COLLISION_PROXY_COUNT, 0, 0.0)
             .with_terrain_rim_collision_metrics(MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT, 0, 0.0)

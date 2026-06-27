@@ -16,7 +16,7 @@ pub use collision::{
 };
 pub use island::{IslandTerrainArchetype, SkyIsland};
 pub use objectives::{RouteObjective, RouteObjectiveKind, is_recovery_branch_island};
-pub use route::SkyRoute;
+pub use route::{SKY_ROUTE_ISLAND_COUNT, SkyRoute};
 pub use streaming::{LodBand, StreamActivation, StreamChunkCoord, StreamingLodStats};
 pub use surface::GroundSurface;
 

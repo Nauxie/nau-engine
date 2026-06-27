@@ -101,8 +101,44 @@ fn route_has_archipelago_scale_and_distant_landmarks() {
         .map(|island| island.center.z)
         .fold(0.0_f32, f32::min);
 
-    assert!(route.islands().len() >= 15);
+    assert_eq!(route.islands().len(), SKY_ROUTE_ISLAND_COUNT);
     assert!(farthest_z < -1000.0);
+}
+
+#[test]
+fn route_preserves_core_path_and_appends_satellite_islands() {
+    let route = SkyRoute::default();
+    let core_route_names = [
+        "launch mesa",
+        "midpoint shelf",
+        "landing garden",
+        "distant crown",
+        "wind overlook",
+        "copper stair",
+        "sunlit terrace",
+        "western refuge",
+        "storm porch",
+        "high orchard",
+        "far needle",
+        "sapphire basin",
+        "broken stair",
+        "mist arch",
+        "cloud gate",
+    ];
+    let satellite_names = [
+        "launch spur",
+        "garden apron",
+        "storm shard",
+        "orchard spur",
+        "mist stepping stone",
+    ];
+
+    for (index, expected_name) in core_route_names.into_iter().enumerate() {
+        assert_eq!(route.islands()[index].name, expected_name);
+    }
+    for expected_name in satellite_names {
+        assert!(route.island_named(expected_name).is_some());
+    }
 }
 
 #[test]
