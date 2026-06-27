@@ -128,6 +128,7 @@ pub struct EvalSample {
     pub dynamic_wind_flow_fields: usize,
     pub max_wind_flow_speed_mps: f32,
     pub max_wind_flow_variation: f32,
+    pub max_wind_flow_direction_change_degrees: f32,
     pub active_wind_force_fields: usize,
     pub crosswind_force_fields: usize,
     pub updraft_swirl_force_fields: usize,

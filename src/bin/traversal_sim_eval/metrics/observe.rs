@@ -248,6 +248,9 @@ impl SimMetrics {
         self.max_wind_flow_variation = self
             .max_wind_flow_variation
             .max(sample.max_wind_flow_variation);
+        self.max_wind_flow_direction_change_degrees = self
+            .max_wind_flow_direction_change_degrees
+            .max(sample.max_wind_flow_direction_change_degrees);
         if sample.active_wind_force_fields > 0 {
             self.wind_force_samples += 1;
             let meaningful_delta = sample.max_wind_force_delta_mps >= MIN_WIND_FORCE_DELTA_MPS

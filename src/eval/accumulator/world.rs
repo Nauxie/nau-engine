@@ -27,6 +27,9 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_wind_flow_variation = accumulator
         .max_wind_flow_variation
         .max(sample.max_wind_flow_variation);
+    accumulator.max_wind_flow_direction_change_degrees = accumulator
+        .max_wind_flow_direction_change_degrees
+        .max(sample.max_wind_flow_direction_change_degrees);
     if sample.active_wind_force_fields > 0 {
         accumulator.wind_force_samples += 1;
         let meaningful_delta = sample.max_wind_force_delta_mps >= MIN_WIND_FORCE_DELTA_MPS

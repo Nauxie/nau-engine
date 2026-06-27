@@ -108,9 +108,13 @@ impl WindField {
                 let downwind_channel =
                     (1.0 + local.x * 0.05 + gust_cell * 0.035 + gust_packet_strength * 0.04)
                         .clamp(0.86, 1.12);
-                let shear = lane_wave * 0.11 + pulse_wave * 0.045 + gust_cell * 0.075
-                    - wake_wave * 0.035
-                    + gust_packet_strength * 0.055;
+                let depth_shear =
+                    (time * 0.66 + local.y * 3.2 - local.z * 1.1 + field_phase * 0.37).sin();
+                let shear = (lane_wave * 0.16 + pulse_wave * 0.07 + gust_cell * 0.11
+                    - wake_wave * 0.05
+                    + depth_shear * 0.055
+                    + gust_packet_strength * (0.08 + depth_shear * 0.04))
+                    .clamp(-0.3, 0.3);
                 self.direction * (speed * downwind_channel) + lateral * (speed * shear)
             }
             WindFieldKind::Updraft => {
@@ -260,6 +264,7 @@ pub struct WindFlowMetrics {
     pub active_fields: usize,
     pub max_speed_mps: f32,
     pub max_variation: f32,
+    pub max_direction_change_degrees: f32,
 }
 
 pub fn wind_flow_metrics_at(
@@ -269,13 +274,105 @@ pub fn wind_flow_metrics_at(
 ) -> WindFlowMetrics {
     fields
         .into_iter()
-        .filter_map(|field| field.flow_at(position, elapsed_secs))
-        .fold(WindFlowMetrics::default(), |mut metrics, sample| {
-            metrics.active_fields += 1;
-            metrics.max_speed_mps = metrics.max_speed_mps.max(sample.speed_mps);
-            metrics.max_variation = metrics.max_variation.max(sample.variation);
-            metrics
+        .filter_map(|field| {
+            field
+                .flow_at(position, elapsed_secs)
+                .map(|sample| (field, sample))
         })
+        .fold(
+            WindFlowMetrics::default(),
+            |mut metrics, (field, sample)| {
+                metrics.active_fields += 1;
+                metrics.max_speed_mps = metrics.max_speed_mps.max(sample.speed_mps);
+                metrics.max_variation = metrics.max_variation.max(sample.variation);
+                metrics.max_direction_change_degrees =
+                    metrics
+                        .max_direction_change_degrees
+                        .max(wind_flow_direction_change_degrees(
+                            field,
+                            position,
+                            elapsed_secs,
+                            sample.vector,
+                        ));
+                metrics
+            },
+        )
+}
+
+fn wind_flow_direction_change_degrees(
+    field: WindField,
+    position: Vec3,
+    elapsed_secs: f32,
+    base_vector: Vec3,
+) -> f32 {
+    let Some(base_direction) = wind_flow_direction(field.kind, base_vector) else {
+        return 0.0;
+    };
+
+    let mut max_change = 0.0_f32;
+    let temporal_probe = elapsed_secs + 0.45;
+    if let Some(flow) = field.flow_at(position, temporal_probe) {
+        max_change = max_change.max(wind_flow_angle_degrees(
+            field.kind,
+            base_direction,
+            flow.vector,
+        ));
+    }
+
+    for offset in wind_flow_direction_probe_offsets(field) {
+        let probe_position = position + offset;
+        if let Some(flow) = field.flow_at(probe_position, elapsed_secs) {
+            max_change = max_change.max(wind_flow_angle_degrees(
+                field.kind,
+                base_direction,
+                flow.vector,
+            ));
+        }
+    }
+
+    max_change
+}
+
+fn wind_flow_direction_probe_offsets(field: WindField) -> [Vec3; 4] {
+    match field.kind {
+        WindFieldKind::Crosswind => {
+            let lateral = Vec3::new(-field.direction.z, 0.0, field.direction.x).normalize();
+            [
+                lateral * field.half_extents.z * 0.26,
+                -lateral * field.half_extents.z * 0.26,
+                Vec3::Y * field.half_extents.y * 0.22,
+                Vec3::NEG_Y * field.half_extents.y * 0.22,
+            ]
+        }
+        WindFieldKind::Updraft => [
+            Vec3::X * field.half_extents.x * 0.24,
+            Vec3::NEG_X * field.half_extents.x * 0.24,
+            Vec3::Z * field.half_extents.z * 0.24,
+            Vec3::NEG_Z * field.half_extents.z * 0.24,
+        ],
+    }
+}
+
+fn wind_flow_angle_degrees(kind: WindFieldKind, base_direction: Vec3, vector: Vec3) -> f32 {
+    wind_flow_direction(kind, vector).map_or(0.0, |direction| {
+        base_direction
+            .dot(direction)
+            .clamp(-1.0, 1.0)
+            .acos()
+            .to_degrees()
+    })
+}
+
+fn wind_flow_direction(kind: WindFieldKind, vector: Vec3) -> Option<Vec3> {
+    let directional_vector = match kind {
+        WindFieldKind::Crosswind => Vec3::new(vector.x, 0.0, vector.z),
+        WindFieldKind::Updraft => vector,
+    };
+    if directional_vector.length_squared() > DIRECTION_EPSILON {
+        Some(directional_vector.normalize())
+    } else {
+        None
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -1102,6 +1199,25 @@ mod tests {
         assert!(inside.max_speed_mps > 8.0);
         assert!(inside.max_variation > 0.15);
         assert_eq!(outside.active_fields, 0);
+    }
+
+    #[test]
+    fn wind_flow_metrics_capture_direction_change() {
+        let crosswind = WindField::crosswind(Vec3::ZERO, Vec3::new(18.0, 8.0, 12.0), Vec3::X, 14.0);
+        let updraft =
+            WindField::updraft(Vec3::new(0.0, 0.0, 28.0), Vec3::new(10.0, 18.0, 10.0), 14.0);
+
+        let crosswind_metrics = wind_flow_metrics_at(Vec3::new(1.0, 1.5, 2.0), 1.2, [crosswind]);
+        let updraft_metrics = wind_flow_metrics_at(Vec3::new(2.0, 1.0, 30.0), 1.2, [updraft]);
+
+        assert!(
+            crosswind_metrics.max_direction_change_degrees > 4.0,
+            "expected crosswind probe to expose directional shear, metrics={crosswind_metrics:?}"
+        );
+        assert!(
+            updraft_metrics.max_direction_change_degrees > 6.0,
+            "expected updraft probe to expose rotating thermal flow, metrics={updraft_metrics:?}"
+        );
     }
 
     #[test]

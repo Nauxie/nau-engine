@@ -2638,6 +2638,7 @@ fn accumulator_gates_dynamic_wind_flow_for_lift_routes() {
         sample.updraft_swirl_force_fields = 1;
         sample.max_wind_flow_speed_mps = 10.0;
         sample.max_wind_flow_variation = 0.16 + frame as f32 * 0.02;
+        sample.max_wind_flow_direction_change_degrees = 8.0;
         accumulator.observe(sample);
     }
 
@@ -2659,6 +2660,7 @@ fn accumulator_gates_dynamic_wind_flow_for_lift_routes() {
     assert!(named_check(&summary, "dynamic_readable_lift_samples").passed);
     assert!(named_check(&summary, "max_wind_flow_speed").passed);
     assert!(named_check(&summary, "max_wind_flow_variation").passed);
+    assert!(named_check(&summary, "max_wind_flow_direction_change").passed);
     assert!(named_check(&summary, "max_wind_flow_variation_range").passed);
     assert!(named_check(&summary, "updraft_swirl_force_samples").passed);
     assert!(named_check(&summary, "aligned_updraft_swirl_force_samples").passed);
@@ -2697,6 +2699,7 @@ fn accumulator_rejects_missing_updraft_swirl_force_metrics_for_lift_routes() {
         sample.dynamic_wind_flow_fields = 1;
         sample.max_wind_flow_speed_mps = 10.0;
         sample.max_wind_flow_variation = 0.16 + frame as f32 * 0.02;
+        sample.max_wind_flow_direction_change_degrees = 8.0;
         sample.updraft_swirl_force_fields = 0;
         sample.max_updraft_swirl_force_flow_alignment = 0.0;
         sample.max_updraft_swirl_force_aligned_delta_mps = 0.0;
@@ -2746,6 +2749,7 @@ fn accumulator_rejects_single_source_wind_force_for_layered_lift_routes() {
         sample.dynamic_wind_flow_fields = 2;
         sample.max_wind_flow_speed_mps = 10.0;
         sample.max_wind_flow_variation = 0.16 + frame as f32 * 0.02;
+        sample.max_wind_flow_direction_change_degrees = 8.0;
         sample.active_wind_force_fields = 1;
         sample.crosswind_force_fields = 0;
         sample.updraft_swirl_force_fields = 1;
@@ -3437,6 +3441,7 @@ fn accumulator_rejects_nonvarying_lift_visual_flow() {
     assert!(named_check(&summary, "dynamic_readable_lift_samples").passed);
     assert!(named_check(&summary, "max_wind_flow_speed").passed);
     assert!(named_check(&summary, "max_wind_flow_variation").passed);
+    assert!(!named_check(&summary, "max_wind_flow_direction_change").passed);
     assert!(!named_check(&summary, "max_wind_flow_variation_range").passed);
 }
 
@@ -3475,6 +3480,7 @@ fn accumulator_rejects_static_lift_visual_flow() {
     assert!(!named_check(&summary, "dynamic_readable_lift_samples").passed);
     assert!(!named_check(&summary, "max_wind_flow_speed").passed);
     assert!(!named_check(&summary, "max_wind_flow_variation").passed);
+    assert!(!named_check(&summary, "max_wind_flow_direction_change").passed);
     assert!(!named_check(&summary, "max_wind_flow_variation_range").passed);
 }
 

@@ -103,6 +103,7 @@ impl SimMetrics {
             "max_dynamic_wind_flow_fields": self.max_dynamic_wind_flow_fields,
             "max_wind_flow_speed_mps": self.max_wind_flow_speed_mps,
             "max_wind_flow_variation": self.max_wind_flow_variation,
+            "max_wind_flow_direction_change_degrees": self.max_wind_flow_direction_change_degrees,
             "max_wind_flow_variation_range": self.max_wind_flow_variation_range,
             "wind_force_samples": self.wind_force_samples,
             "meaningful_wind_force_samples": self.meaningful_wind_force_samples,

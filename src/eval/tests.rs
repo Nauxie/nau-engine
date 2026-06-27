@@ -68,6 +68,7 @@ fn air_control_metric_sample(
         0,
         0.0,
         0.0,
+        0.0,
         0,
         0,
         1,
