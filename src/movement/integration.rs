@@ -143,6 +143,17 @@ pub fn step_flight(
     if let Some(desired_direction) =
         air_steering_direction.filter(|_| input.has_lateral_axis() || input.backward)
     {
+        let orthogonal_damping = if gliding {
+            tuning.glide_input_orthogonal_damping
+        } else {
+            tuning.air_input_orthogonal_damping
+        };
+        damp_horizontal_velocity_orthogonal_to_input(
+            &mut state.velocity,
+            desired_direction,
+            orthogonal_damping,
+            dt,
+        );
         let (turn_rate, counter_turn_rate) = if gliding {
             (
                 tuning.glide_velocity_turn_rate_degrees,
@@ -249,6 +260,29 @@ fn directional_air_steering_acceleration(
         };
         correction.normalize() * accel.max(0.0)
     }
+}
+
+fn damp_horizontal_velocity_orthogonal_to_input(
+    velocity: &mut Vec3,
+    desired_direction: Vec3,
+    damping_rate: f32,
+    dt: f32,
+) {
+    let horizontal_velocity = horizontal(*velocity);
+    if horizontal_velocity.length_squared() <= 0.0001 {
+        return;
+    }
+
+    let desired_direction = horizontal_or(desired_direction, Vec3::Z);
+    let aligned_velocity = desired_direction * horizontal_velocity.dot(desired_direction);
+    let orthogonal_velocity = horizontal_velocity - aligned_velocity;
+    if orthogonal_velocity.length_squared() <= 0.0001 {
+        return;
+    }
+
+    let damping = smoothing_factor(damping_rate.max(0.0), dt);
+    velocity.x -= orthogonal_velocity.x * damping;
+    velocity.z -= orthogonal_velocity.z * damping;
 }
 
 fn rotate_horizontal_velocity_toward(
