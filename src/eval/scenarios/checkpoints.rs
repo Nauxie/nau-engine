@@ -50,6 +50,16 @@ pub(super) const TERRAIN_RIM_COLLISION_CONTACT_CHECKPOINTS: &[EvalCheckpoint] = 
         name: "blocked_by_rim",
     },
 ];
+pub(super) const TERRAIN_BODY_COLLISION_CONTACT_CHECKPOINTS: &[EvalCheckpoint] = &[
+    EvalCheckpoint {
+        frame: 120,
+        name: "approach_cliff_body",
+    },
+    EvalCheckpoint {
+        frame: 260,
+        name: "blocked_by_cliff_body",
+    },
+];
 pub(super) const UPDRAFT_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
         frame: 150,

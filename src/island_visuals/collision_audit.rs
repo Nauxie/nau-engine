@@ -1,8 +1,12 @@
 use super::types::{IslandVisualCatalog, IslandVisualLayer};
 use crate::world_collision_runtime::WorldCollisionProxyKind;
-use nau_engine::world::{SkyRoute, TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND};
+use nau_engine::world::{
+    SkyRoute, TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND, TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND,
+};
 
 const TERRAIN_RIM_NAME: &str = "island terrain rim collision";
+const TERRAIN_BODY_NAME: &str = "island procedural cliff body";
+const TERRAIN_BODY_COLLISION_NAME: &str = "island procedural cliff body collision";
 
 #[derive(Clone, Copy)]
 struct SolidVisualRequirement {
@@ -11,6 +15,10 @@ struct SolidVisualRequirement {
 }
 
 const SOLID_VISUAL_REQUIREMENTS: &[SolidVisualRequirement] = &[
+    SolidVisualRequirement {
+        name: TERRAIN_BODY_NAME,
+        kind: WorldCollisionProxyKind::TerrainBody,
+    },
     SolidVisualRequirement {
         name: "island ridge",
         kind: WorldCollisionProxyKind::Landmark,
@@ -53,11 +61,7 @@ const SOLID_VISUAL_REQUIREMENTS: &[SolidVisualRequirement] = &[
     },
 ];
 
-const CAMERA_ONLY_ALLOWLIST: &[&str] = &[
-    "island procedural cliff body",
-    "island tree canopy",
-    "launch camera tree canopy",
-];
+const CAMERA_ONLY_ALLOWLIST: &[&str] = &["island tree canopy", "launch camera tree canopy"];
 
 #[derive(Debug)]
 pub(crate) struct IslandCollisionCoverageAudit {
@@ -65,6 +69,7 @@ pub(crate) struct IslandCollisionCoverageAudit {
     pub(crate) checked_visual_count: usize,
     pub(crate) solid_visual_count: usize,
     pub(crate) terrain_rim_proxy_count: usize,
+    pub(crate) terrain_body_proxy_count: usize,
     pub(crate) camera_only_allowance_count: usize,
     pub(crate) failures: Vec<String>,
 }
@@ -76,6 +81,7 @@ pub(crate) fn audit_island_collision_coverage(
     let mut failures = Vec::new();
     let mut solid_visual_count = 0;
     let mut terrain_rim_proxy_count = 0;
+    let mut terrain_body_proxy_count = 0;
     let mut camera_only_allowance_count = 0;
     let mut required_name_counts = SOLID_VISUAL_REQUIREMENTS
         .iter()
@@ -121,7 +127,30 @@ pub(crate) fn audit_island_collision_coverage(
                         ));
                     }
                 }
+                WorldCollisionProxyKind::TerrainBody
+                    if entry.name == TERRAIN_BODY_COLLISION_NAME =>
+                {
+                    terrain_body_proxy_count += 1;
+                    if entry.layer != IslandVisualLayer::Collision {
+                        failures.push(format!(
+                            "{} on {} uses terrain-body collision outside the collision layer",
+                            entry.name, entry.key.island_name
+                        ));
+                    }
+                    if entry.has_visible_mesh()
+                        || entry.material.is_some()
+                        || entry.obstacle.is_some()
+                    {
+                        failures.push(format!(
+                            "{} on {} should remain an invisible collision-only cliff body segment",
+                            entry.name, entry.key.island_name
+                        ));
+                    }
+                }
                 kind => {
+                    if kind == WorldCollisionProxyKind::TerrainBody {
+                        terrain_body_proxy_count += 1;
+                    }
                     solid_visual_count += 1;
                     if !entry.has_visible_mesh() || entry.material.is_none() {
                         failures.push(format!(
@@ -149,7 +178,7 @@ pub(crate) fn audit_island_collision_coverage(
             ));
         }
 
-        if entry.obstacle.is_some() && entry.collision.is_none() {
+        if entry.obstacle.is_some() && entry.collision.is_none() && expected_solid.is_none() {
             if let Some((_, count)) = allowlisted_camera_only_counts
                 .iter_mut()
                 .find(|(name, _)| *name == entry.name)
@@ -166,6 +195,23 @@ pub(crate) fn audit_island_collision_coverage(
     }
 
     for island in route.islands() {
+        let island_body_count = catalog
+            .entries
+            .iter()
+            .filter(|entry| {
+                entry.key.island_name == island.name
+                    && entry.collision.is_some_and(|collision| {
+                        collision.kind == WorldCollisionProxyKind::TerrainBody
+                    })
+            })
+            .count();
+        if island_body_count != TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND {
+            failures.push(format!(
+                "{} has {island_body_count} terrain-body cliff segments, expected {TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND}",
+                island.name
+            ));
+        }
+
         let island_rim_count = catalog
             .entries
             .iter()
@@ -206,6 +252,7 @@ pub(crate) fn audit_island_collision_coverage(
         checked_visual_count: catalog.entries.len(),
         solid_visual_count,
         terrain_rim_proxy_count,
+        terrain_body_proxy_count,
         camera_only_allowance_count,
         failures,
     }
@@ -299,6 +346,29 @@ mod tests {
         assert!(!audit.passed);
         assert!(audit.failures.iter().any(|failure| {
             failure.contains("island tree trunk") && failure.contains("expected Tree")
+        }));
+    }
+
+    #[test]
+    fn audit_requires_procedural_cliff_body_terrain_body_collision() {
+        let route = SkyRoute::default();
+        let island = route.islands()[0];
+        let blocker = CameraObstacle(CameraObstruction::new(Vec3::ZERO, Vec3::ONE));
+        let catalog = IslandVisualCatalog {
+            entries: vec![audit_entry(
+                island,
+                TERRAIN_BODY_NAME,
+                IslandVisualLayer::Terrain,
+                Some(blocker),
+                None,
+            )],
+        };
+
+        let audit = audit_island_collision_coverage(&catalog, &route);
+
+        assert!(!audit.passed);
+        assert!(audit.failures.iter().any(|failure| {
+            failure.contains(TERRAIN_BODY_NAME) && failure.contains("no TerrainBody")
         }));
     }
 }

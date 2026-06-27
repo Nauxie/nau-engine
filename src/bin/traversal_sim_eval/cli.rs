@@ -1,8 +1,5 @@
 use super::{metrics::SimResult, run_simulation};
-use nau_engine::eval::{
-    EvalScenario, SCENARIO_NAMES, TERRAIN_RIM_COLLISION_CONTACT, WORLD_COLLISION_CONTACT,
-    scenario_named,
-};
+use nau_engine::eval::{APP_ONLY_SCENARIO_NAMES, EvalScenario, SCENARIO_NAMES, scenario_named};
 use std::{
     env,
     fs::{self, File, OpenOptions},
@@ -62,10 +59,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<SimOptions, Stri
             SCENARIO_NAMES.join(", ")
         )
     })?;
-    if matches!(
-        scenario.name,
-        WORLD_COLLISION_CONTACT | TERRAIN_RIM_COLLISION_CONTACT
-    ) {
+    if APP_ONLY_SCENARIO_NAMES.contains(&scenario.name) {
         return Err(format!(
             "{} is app-only because it depends on Bevy-spawned world-collision proxies; run it without NAU_EVAL_SIM_ONLY=1",
             scenario.name
@@ -83,7 +77,7 @@ pub(crate) fn usage() -> String {
     format!(
         "Usage:\n  cargo run --bin traversal_sim_eval -- [scenario] [output_dir]\n  cargo run --bin traversal_sim_eval -- --scenario <scenario> --output <dir>\n\nSimulation-supported scenarios: {}\nApp-only scenarios: {}",
         simulation_scenario_names().join(", "),
-        [WORLD_COLLISION_CONTACT, TERRAIN_RIM_COLLISION_CONTACT].join(", ")
+        APP_ONLY_SCENARIO_NAMES.join(", ")
     )
 }
 
@@ -91,12 +85,7 @@ fn simulation_scenario_names() -> Vec<&'static str> {
     SCENARIO_NAMES
         .iter()
         .copied()
-        .filter(|scenario| {
-            !matches!(
-                *scenario,
-                WORLD_COLLISION_CONTACT | TERRAIN_RIM_COLLISION_CONTACT
-            )
-        })
+        .filter(|scenario| !APP_ONLY_SCENARIO_NAMES.contains(scenario))
         .collect()
 }
 
@@ -158,15 +147,21 @@ fn path_string(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nau_engine::eval::{TERRAIN_BODY_COLLISION_CONTACT, WORLD_COLLISION_CONTACT};
 
     #[test]
     fn parse_args_rejects_app_only_collision_contact_route() {
         let error = parse_args([WORLD_COLLISION_CONTACT.to_string()])
             .expect_err("world collision contact should be app-only");
+        let body_error = parse_args([TERRAIN_BODY_COLLISION_CONTACT.to_string()])
+            .expect_err("terrain body collision contact should be app-only");
 
         assert!(error.contains("app-only"));
+        assert!(body_error.contains("app-only"));
         assert!(error.contains("NAU_EVAL_SIM_ONLY"));
         assert!(!simulation_scenario_names().contains(&WORLD_COLLISION_CONTACT));
+        assert!(!simulation_scenario_names().contains(&TERRAIN_BODY_COLLISION_CONTACT));
         assert!(usage().contains("App-only scenarios: world_collision_contact"));
+        assert!(usage().contains("terrain_body_collision_contact"));
     }
 }

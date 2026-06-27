@@ -328,6 +328,9 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_terrain_rim_collision_proxy_count = accumulator
         .max_terrain_rim_collision_proxy_count
         .max(sample.terrain_rim_collision_proxy_count);
+    accumulator.max_terrain_body_collision_proxy_count = accumulator
+        .max_terrain_body_collision_proxy_count
+        .max(sample.terrain_body_collision_proxy_count);
     accumulator.max_solid_world_collision_proxy_count = accumulator
         .max_solid_world_collision_proxy_count
         .max(sample.solid_world_collision_proxy_count);
@@ -352,12 +355,21 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
             accumulator.terrain_rim_collision_contact_samples += 1;
         }
     }
+    if sample.terrain_body_collision_resolved_count > 0 {
+        accumulator.terrain_body_collision_resolved_samples += 1;
+        if sample.max_terrain_body_collision_push_m >= MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M {
+            accumulator.terrain_body_collision_contact_samples += 1;
+        }
+    }
     accumulator.max_world_collision_push_m = accumulator
         .max_world_collision_push_m
         .max(sample.max_world_collision_push_m);
     accumulator.max_terrain_rim_collision_push_m = accumulator
         .max_terrain_rim_collision_push_m
         .max(sample.max_terrain_rim_collision_push_m);
+    accumulator.max_terrain_body_collision_push_m = accumulator
+        .max_terrain_body_collision_push_m
+        .max(sample.max_terrain_body_collision_push_m);
     accumulator.max_resident_island_visual_count = accumulator
         .max_resident_island_visual_count
         .max(sample.resident_island_visual_count);

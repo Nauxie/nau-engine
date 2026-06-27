@@ -186,6 +186,26 @@ impl IslandVisualCatalog {
             .filter(|entry| entry.mesh.is_some())
             .count()
     }
+
+    #[cfg(test)]
+    pub(crate) fn resident_collision_proxy_count(
+        &self,
+        player_position: Vec3,
+        kind: crate::world_collision_runtime::WorldCollisionProxyKind,
+    ) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| {
+                entry
+                    .collision
+                    .is_some_and(|collision| collision.kind == kind)
+                    && entry.layer.is_resident_in(
+                        entry.island.stream_activation(player_position),
+                        entry.island.lod_band(player_position),
+                    )
+            })
+            .count()
+    }
 }
 
 #[derive(Resource, Default)]

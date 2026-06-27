@@ -11,7 +11,8 @@ use crate::generated_content::{
     island_visual_surface_position,
 };
 use crate::world_collision_runtime::{
-    WorldCollisionProxy, WorldCollisionProxyKind, terrain_rim_collision_proxies,
+    WorldCollisionProxy, WorldCollisionProxyKind, terrain_body_collision_proxies,
+    terrain_rim_collision_proxies,
 };
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
@@ -68,6 +69,35 @@ fn queue_generated_island_visual(
         transform,
         obstacle,
         None,
+        None,
+        name,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn queue_collidable_generated_island_visual(
+    entries: &mut Vec<IslandVisualEntry>,
+    visual_index: &mut usize,
+    island: SkyIsland,
+    layer: IslandVisualLayer,
+    mesh_recipe: IslandVisualMeshRecipe,
+    material: Handle<StandardMaterial>,
+    transform: Transform,
+    obstacle: Option<CameraObstacle>,
+    collision: WorldCollisionProxy,
+    name: &'static str,
+) {
+    queue_island_visual_with_motion(
+        entries,
+        visual_index,
+        island,
+        layer,
+        None,
+        Some(mesh_recipe),
+        Some(material),
+        transform,
+        obstacle,
+        Some(collision),
         None,
         name,
     );
@@ -297,9 +327,10 @@ pub(crate) fn queue_sky_island(
         island.thickness * 0.5,
         island.half_extents.y * 0.78,
     );
+    let terrain_body_collisions = terrain_body_collision_proxies(island);
     let body_diagnostics = island_body_mesh_diagnostics(island_index, island);
     content_diagnostics.record_island_cliff_detail(body_diagnostics.cliff_color_bands);
-    queue_generated_island_visual(
+    queue_collidable_generated_island_visual(
         entries,
         &mut visual_index,
         island,
@@ -314,6 +345,7 @@ pub(crate) fn queue_sky_island(
             rock_body_center,
             rock_body_half_extents,
         ))),
+        terrain_body_collisions[0],
         "island procedural cliff body",
     );
 
@@ -334,6 +366,15 @@ pub(crate) fn queue_sky_island(
     );
     content_diagnostics
         .record_procedural_island_body(ISLAND_BODY_SEGMENTS, body_diagnostics.total_vertex_count());
+    for collision in terrain_body_collisions.into_iter().skip(1) {
+        queue_collision_only_island_proxy(
+            entries,
+            &mut visual_index,
+            island,
+            collision,
+            "island procedural cliff body collision",
+        );
+    }
     for collision in terrain_rim_collision_proxies(island) {
         queue_collision_only_island_proxy(
             entries,

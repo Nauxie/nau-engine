@@ -11,8 +11,8 @@ use crate::{
     environment::{GAMEPLAY_LIFT_ROUTE, VISUAL_CROSSWIND_FIELD_COUNT},
     eval::{
         scenarios::{
-            EvalScenario, GROUND_TAXI_CONTROL, TERRAIN_RIM_COLLISION_CONTACT,
-            WORLD_COLLISION_CONTACT,
+            EvalScenario, GROUND_TAXI_CONTROL, TERRAIN_BODY_COLLISION_CONTACT,
+            TERRAIN_RIM_COLLISION_CONTACT, WORLD_COLLISION_CONTACT,
         },
         summary::EvalCheck,
         thresholds::*,
@@ -381,6 +381,12 @@ pub(super) fn build_checks(
             "proxies",
         ),
         EvalCheck::at_least(
+            "terrain_body_collision_proxy_count",
+            acc.max_terrain_body_collision_proxy_count as f32,
+            MIN_TERRAIN_BODY_COLLISION_PROXY_COUNT as f32,
+            "proxies",
+        ),
+        EvalCheck::at_least(
             "solid_world_collision_proxy_count",
             acc.max_solid_world_collision_proxy_count as f32,
             MIN_SOLID_WORLD_COLLISION_PROXY_COUNT as f32,
@@ -435,6 +441,28 @@ pub(super) fn build_checks(
                 acc.max_terrain_rim_collision_push_m,
                 MIN_WORLD_COLLISION_CONTACT_PUSH_M,
                 "m",
+            ),
+        ]);
+    }
+    if scenario.name == TERRAIN_BODY_COLLISION_CONTACT {
+        checks.extend([
+            EvalCheck::at_least(
+                "terrain_body_collision_contact_samples",
+                acc.terrain_body_collision_contact_samples as f32,
+                MIN_TERRAIN_BODY_COLLISION_CONTACT_SAMPLES as f32,
+                "samples",
+            ),
+            EvalCheck::at_least(
+                "terrain_body_collision_push",
+                acc.max_terrain_body_collision_push_m,
+                MIN_TERRAIN_BODY_COLLISION_CONTACT_PUSH_M,
+                "m",
+            ),
+            EvalCheck::at_most(
+                "terrain_body_collision_rim_resolved_samples",
+                acc.terrain_rim_collision_resolved_samples as f32,
+                0.0,
+                "samples",
             ),
         ]);
     }
