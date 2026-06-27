@@ -150,6 +150,7 @@ pub(super) fn build_metrics_summary(
         max_dynamic_wind_flow_fields: acc.max_dynamic_wind_flow_fields,
         max_wind_flow_speed_mps: acc.max_wind_flow_speed_mps,
         max_wind_flow_variation: acc.max_wind_flow_variation,
+        max_wind_flow_direction_change_degrees: acc.max_wind_flow_direction_change_degrees,
         max_wind_flow_variation_range: acc.max_wind_flow_variation_range,
         wind_force_samples: acc.wind_force_samples,
         meaningful_wind_force_samples: acc.meaningful_wind_force_samples,
