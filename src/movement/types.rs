@@ -191,8 +191,8 @@ impl Default for FlightTuning {
             glide_velocity_counter_turn_rate_degrees: 415.0,
             max_bank_degrees: 20.0,
             bank_response_rate: 6.0,
-            turn_rate: 12.5,
-            input_turn_rate_boost: 8.5,
+            turn_rate: 14.0,
+            input_turn_rate_boost: 10.0,
             floor_y: 1.2,
         }
     }
