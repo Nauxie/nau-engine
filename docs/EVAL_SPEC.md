@@ -387,9 +387,13 @@ Every sample includes:
 - `max_updraft_visual_motion_m`
 - `max_updraft_visual_rise_m`
 - `max_updraft_visual_swirl_displacement_m`
+- `max_updraft_visual_depth_span_m`
+- `max_updraft_visual_scale_pulse`
 - `max_crosswind_visual_motion_m`
 - `max_crosswind_guide_flow_displacement_m`
 - `max_crosswind_ribbon_flow_displacement_m`
+- `max_crosswind_visual_lane_depth_span_m`
+- `max_crosswind_visual_scale_pulse`
 - `updraft_flow_coherent_visual_count`
 - `crosswind_flow_coherent_visual_count`
 - `max_updraft_visual_flow_alignment`
