@@ -8,7 +8,7 @@ use bevy::prelude::*;
 
 pub(crate) const CLOUD_BANK_LOBES: usize = 18;
 pub(crate) const CLOUD_VEIL_LOBES: usize = 9;
-pub(crate) const CLOUD_WISP_CARDS_PER_LOBE: usize = 3;
+pub(crate) const CLOUD_WISP_CARDS_PER_LOBE: usize = 4;
 pub(crate) const CLOUD_FILAMENT_RIBBONS_PER_LOBE: usize = 3;
 const CLOUD_FILAMENT_RIBBON_SEGMENTS: usize = 5;
 #[cfg(test)]
@@ -67,25 +67,56 @@ pub(crate) fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
         );
 
         for card in 0..CLOUD_WISP_CARDS_PER_LOBE {
+            let lower_depth_card = card == CLOUD_WISP_CARDS_PER_LOBE - 1;
             let card_phase = phase
-                + card as f32 / CLOUD_WISP_CARDS_PER_LOBE as f32 * 1.9
+                + card as f32 / CLOUD_WISP_CARDS_PER_LOBE as f32 * 2.35
                 + random_unit(seed, lobe as u32, 211 + card as u32) * 0.45;
-            let outward = Vec3::new(
-                card_phase.cos(),
-                0.10 + layer as f32 * 0.025,
-                card_phase.sin(),
-            )
+            let outward = if lower_depth_card {
+                Vec3::new(
+                    card_phase.cos() * 0.86,
+                    -0.16 - layer as f32 * 0.018,
+                    card_phase.sin() * 1.12,
+                )
+            } else {
+                Vec3::new(
+                    card_phase.cos(),
+                    0.10 + layer as f32 * 0.025,
+                    card_phase.sin(),
+                )
+            }
             .normalize();
             let tangent = Vec3::new(-card_phase.sin(), 0.0, card_phase.cos()).normalize();
-            let up = (Vec3::Y * 0.78 + outward * 0.22).normalize();
-            let card_center = center
-                + outward
-                    * radius
-                    * (0.58 + random_unit(seed, lobe as u32, 223 + card as u32) * 0.22);
-            let half_width =
-                radius * (0.62 + random_unit(seed, lobe as u32, 229 + card as u32) * 0.22);
-            let half_height =
-                radius * (0.20 + random_unit(seed, lobe as u32, 233 + card as u32) * 0.10);
+            let up = if lower_depth_card {
+                (Vec3::Y * 0.55 - outward * 0.25).normalize()
+            } else {
+                (Vec3::Y * 0.78 + outward * 0.22).normalize()
+            };
+            let card_center = if lower_depth_card {
+                center
+                    + outward
+                        * radius
+                        * (0.78 + random_unit(seed, lobe as u32, 223 + card as u32) * 0.22)
+                    - Vec3::Y
+                        * radius
+                        * (0.18 + random_unit(seed, lobe as u32, 239 + card as u32) * 0.10)
+            } else {
+                center
+                    + outward
+                        * radius
+                        * (0.58 + random_unit(seed, lobe as u32, 223 + card as u32) * 0.22)
+            };
+            let half_width = radius
+                * if lower_depth_card {
+                    0.70 + random_unit(seed, lobe as u32, 229 + card as u32) * 0.18
+                } else {
+                    0.62 + random_unit(seed, lobe as u32, 229 + card as u32) * 0.22
+                };
+            let half_height = radius
+                * if lower_depth_card {
+                    0.28 + random_unit(seed, lobe as u32, 233 + card as u32) * 0.12
+                } else {
+                    0.20 + random_unit(seed, lobe as u32, 233 + card as u32) * 0.10
+                };
             append_double_sided_detail_card(
                 &mut positions,
                 &mut normals,

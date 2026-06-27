@@ -280,7 +280,7 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_landmark_mesh_vertices\": 39"));
     assert!(summary_json.contains("\"min_generated_weather_cloud_bank_count\": 20"));
     assert!(summary_json.contains("\"min_weather_cloud_bank_depth_m\": 6.2000"));
-    assert!(summary_json.contains("\"min_weather_cloud_mesh_vertices\": 1458"));
+    assert!(summary_json.contains("\"min_weather_cloud_mesh_vertices\": 1530"));
     assert!(summary_json.contains("\"min_weather_cloud_filament_ribbon_detail_count\": 27"));
     assert!(summary_json.contains("\"max_updraft_guide_visual_count\": 126"));
     assert!(summary_json.contains("\"max_updraft_ribbon_visual_count\": 12"));
@@ -776,7 +776,7 @@ fn accumulator_fails_generated_visual_shape_regression() {
     accumulator.observe(
         content_metric_sample(scenario, 0, 12, 0, 96).with_generated_visual_shape_metrics(
             528, 220, 1320, 12, 12, 62, 316, 5, 48, 74, 27, 10, 1, 4, 12, 39, 12, 12, 6.2, 9, 18,
-            1458, 27,
+            1530, 27,
         ),
     );
     accumulator.observe(
@@ -1277,7 +1277,7 @@ fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample
                 6.2,
                 9,
                 18,
-                1458,
+                1530,
                 27,
             )
             .with_world_collision_metrics(MIN_WORLD_COLLISION_PROXY_COUNT, 0, 0.0)
