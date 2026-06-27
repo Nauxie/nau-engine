@@ -421,6 +421,8 @@ fn step_player(
         next.position,
         next.velocity,
         context.lift_fields.iter().copied(),
+        context.visual_wind_fields.iter().copied(),
+        elapsed_secs,
         dt,
         next.controller.mode != FlightMode::Grounded,
     );
