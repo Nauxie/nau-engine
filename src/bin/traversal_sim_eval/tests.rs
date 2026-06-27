@@ -17,11 +17,11 @@ use nau_engine::{
         AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES, AIR_CONTROL_RESPONSE,
         BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario, ISLAND_LAUNCH_TO_LANDING,
         LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M,
-        LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES, LONG_GLIDE_VISIBILITY,
-        MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS, MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE,
-        MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES, MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
-        MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_LOAD_POSE_LEAN_DEGREES,
-        MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
+        LANDING_MIN_POSE_FOOT_SPLIT_M, LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+        LONG_GLIDE_VISIBILITY, MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS,
+        MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE, MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES,
+        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
+        MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
         POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES,
         POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES, UPDRAFT_ROUTE, scenario_named,
     },
@@ -51,6 +51,7 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"pose_air_turn_samples\""));
     assert!(summary.contains("\"pose_landing_recovery_samples\""));
     assert!(summary.contains("\"max_pose_landing_foot_forward_m\""));
+    assert!(summary.contains("\"max_pose_landing_foot_split_m\""));
     assert!(summary.contains("\"max_pose_landing_flare_degrees\""));
     assert!(summary.contains("\"max_pose_landing_recovery_flip_degrees\""));
     assert!(summary.contains("\"key_pose_transition_grace_samples\""));
@@ -70,6 +71,15 @@ fn baseline_simulation_writes_windowless_artifacts() {
             .unwrap()
             .to_json()
             .get("key_pose_readability_score")
+            .is_some()
+    );
+    assert!(
+        result
+            .samples
+            .last()
+            .unwrap()
+            .to_json()
+            .get("pose_landing_foot_split_m")
             .is_some()
     );
     assert!(
@@ -196,6 +206,7 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
     assert!(result.metrics.pose_landing_recovery_samples >= 1);
     assert!(result.metrics.max_pose_landing_crouch_m >= LANDING_MIN_POSE_CROUCH_M);
     assert!(result.metrics.max_pose_landing_foot_forward_m >= LANDING_MIN_POSE_FOOT_FORWARD_M);
+    assert!(result.metrics.max_pose_landing_foot_split_m >= LANDING_MIN_POSE_FOOT_SPLIT_M);
     assert!(result.metrics.max_pose_landing_flare_degrees >= LANDING_MIN_POSE_FLARE_DEGREES);
     assert!(
         result.metrics.max_pose_landing_recovery_flip_degrees
@@ -223,6 +234,7 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         "pose_state_landing_recovery_samples",
         "pose_state_landing_crouch",
         "pose_state_landing_foot_forward",
+        "pose_state_landing_foot_split",
         "pose_state_landing_flare",
         "pose_state_landing_recovery_flip",
         "pose_state_unreadable_key_pose_samples",
@@ -294,6 +306,7 @@ fn pose_state_coverage_sim_checks_reject_static_grounded_stride() {
     metrics.pose_landing_recovery_samples = 1;
     metrics.max_pose_landing_crouch_m = LANDING_MIN_POSE_CROUCH_M;
     metrics.max_pose_landing_foot_forward_m = LANDING_MIN_POSE_FOOT_FORWARD_M;
+    metrics.max_pose_landing_foot_split_m = LANDING_MIN_POSE_FOOT_SPLIT_M;
     metrics.max_pose_landing_flare_degrees = LANDING_MIN_POSE_FLARE_DEGREES;
     metrics.max_pose_landing_recovery_flip_degrees = LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES;
 
@@ -381,7 +394,7 @@ fn sim_metrics_count_key_pose_transition_grace_samples() {
 }
 
 #[test]
-fn sim_metrics_track_landing_flare_from_landing_anticipation_pose_only() {
+fn sim_metrics_track_landing_flare_and_foot_split_from_landing_pose() {
     let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("scenario");
     let route = SkyRoute::default();
     let mut metrics = SimMetrics::new(&route);
@@ -395,11 +408,17 @@ fn sim_metrics_track_landing_flare_from_landing_anticipation_pose_only() {
     landing_sample.pose_intent_label = "landing_anticipation";
     landing_sample.pose_torso_pitch_degrees = 34.0;
     landing_sample.pose_landing_foot_forward_m = 0.41;
+    landing_sample.pose_landing_foot_split_m = 0.25;
     metrics.observe(&landing_sample, scenario);
 
     assert_eq!(metrics.max_pose_torso_pitch_degrees, 72.0);
     assert_eq!(metrics.max_pose_landing_flare_degrees, 34.0);
     assert_eq!(metrics.max_pose_landing_foot_forward_m, 0.41);
+    assert_eq!(metrics.max_pose_landing_foot_split_m, 0.25);
+    assert_eq!(
+        landing_sample.to_json()["pose_landing_foot_split_m"].as_f64(),
+        Some(0.25)
+    );
 }
 
 #[test]
@@ -448,7 +467,7 @@ fn sim_metrics_serialize_and_observe_landing_recovery_flip() {
 }
 
 #[test]
-fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
+fn target_landing_checks_gate_landing_recovery_and_foot_split() {
     let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("scenario");
     assert!(scenario.thresholds.require_target_landing);
     let route = SkyRoute::default();
@@ -460,6 +479,7 @@ fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
         "pose_landing_recovery_samples",
         "pose_landing_crouch",
         "pose_landing_foot_forward",
+        "pose_landing_foot_split",
         "pose_landing_flare",
         "pose_landing_recovery_flip",
         "unreadable_key_pose_samples",
@@ -489,6 +509,13 @@ fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
     assert!(!foot_forward_check.passed);
     assert_eq!(foot_forward_check.threshold, 0.32);
     assert_eq!(foot_forward_check.unit, "m");
+    let foot_split_check = checks
+        .iter()
+        .find(|check| check.name == "pose_landing_foot_split")
+        .expect("landing foot-split check");
+    assert!(!foot_split_check.passed);
+    assert_eq!(foot_split_check.threshold, LANDING_MIN_POSE_FOOT_SPLIT_M);
+    assert_eq!(foot_split_check.unit, "m");
     let recovery_flip_check = checks
         .iter()
         .find(|check| check.name == "pose_landing_recovery_flip")
@@ -502,6 +529,7 @@ fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
 
     metrics.pose_landing_recovery_samples = 1;
     metrics.max_pose_landing_foot_forward_m = 0.32;
+    metrics.max_pose_landing_foot_split_m = LANDING_MIN_POSE_FOOT_SPLIT_M;
     metrics.max_pose_landing_flare_degrees = LANDING_MIN_POSE_FLARE_DEGREES;
     let failing_flip_checks = metrics.checks(scenario);
     let failing_flip_check = failing_flip_checks
@@ -528,6 +556,11 @@ fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
         .find(|check| check.name == "pose_landing_foot_forward")
         .expect("landing foot-forward check");
     assert!(passing_foot_forward_check.passed);
+    let passing_foot_split_check = passing_checks
+        .iter()
+        .find(|check| check.name == "pose_landing_foot_split")
+        .expect("landing foot-split check");
+    assert!(passing_foot_split_check.passed);
     let passing_recovery_flip_check = passing_checks
         .iter()
         .find(|check| check.name == "pose_landing_recovery_flip")

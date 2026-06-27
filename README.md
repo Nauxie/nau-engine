@@ -13,7 +13,7 @@ The NAU Engine is a Mac-first Rust/Bevy sandbox for flight traversal experiments
 
 The first executable is a simple 3D flight testbed:
 
-- primitive humanoid character with separate head, torso, limbs, scarf accents, grounded walk/run stride, readable launch/fall, glide, deeper readability-gated arms-out dive, air-brake, landing-anticipation flare/crouch/feet-forward tuck, post-touchdown landing recovery, turn-readable airborne lean, speed-responsive glider wing flex, and measurable key-pose/scarf readability
+- primitive humanoid character with separate head, torso, limbs, scarf accents, grounded walk/run stride, readable launch/fall, glide, deeper readability-gated arms-out dive, air-brake, asymmetric landing-anticipation flare/crouch/feet-forward tuck, post-touchdown landing recovery, turn-readable airborne lean, speed-responsive glider wing flex, and measurable key-pose/scarf readability
 - deployable glider wing panels with subtle wingtip airflow trails and visible authored traversal response on `Space`
 - one-launch-per-airtime vertical burst on `E`
 - dive on `Shift`

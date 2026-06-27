@@ -120,6 +120,7 @@ impl EvalSample {
             pose_grounded_stride_leg_opposition_degrees: 0.0,
             pose_landing_crouch_m: 0.0,
             pose_landing_foot_forward_m: 0.0,
+            pose_landing_foot_split_m: 0.0,
             pose_landing_recovery_flip_degrees: 0.0,
             pose_wing_airflow_strength: 0.0,
             pose_scarf_stream_m: 0.0,
@@ -381,6 +382,7 @@ impl EvalSample {
             metrics.grounded_stride_leg_opposition_degrees.max(0.0);
         self.pose_landing_crouch_m = metrics.landing_crouch_m.max(0.0);
         self.pose_landing_foot_forward_m = metrics.landing_foot_forward_m.max(0.0);
+        self.pose_landing_foot_split_m = metrics.landing_foot_split_m.max(0.0);
         self.pose_landing_recovery_flip_degrees = metrics.landing_recovery_flip_degrees.max(0.0);
         self.pose_wing_airflow_strength = metrics.wing_airflow_strength.clamp(0.0, 1.0);
         self.key_pose_readability_score = metrics.key_pose_readability_score.clamp(0.0, 1.0);

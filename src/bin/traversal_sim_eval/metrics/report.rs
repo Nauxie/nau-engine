@@ -92,6 +92,7 @@ impl SimMetrics {
             "max_grounded_run_stride_leg_opposition_degrees": round4(self.max_grounded_run_stride_leg_opposition_degrees),
             "max_pose_landing_crouch_m": round4(self.max_pose_landing_crouch_m),
             "max_pose_landing_foot_forward_m": round4(self.max_pose_landing_foot_forward_m),
+            "max_pose_landing_foot_split_m": round4(self.max_pose_landing_foot_split_m),
             "max_pose_landing_flare_degrees": round4(self.max_pose_landing_flare_degrees),
             "max_pose_landing_recovery_flip_degrees": round4(self.max_pose_landing_recovery_flip_degrees),
             "max_pose_wing_airflow_strength": round4(self.max_pose_wing_airflow_strength),

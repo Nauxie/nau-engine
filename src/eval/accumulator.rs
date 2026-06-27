@@ -121,6 +121,7 @@ pub struct EvalAccumulator {
     max_grounded_run_stride_leg_opposition_degrees: f32,
     max_pose_landing_crouch_m: f32,
     max_pose_landing_foot_forward_m: f32,
+    max_pose_landing_foot_split_m: f32,
     max_pose_landing_flare_degrees: f32,
     max_pose_landing_recovery_flip_degrees: f32,
     max_pose_wing_airflow_strength: f32,

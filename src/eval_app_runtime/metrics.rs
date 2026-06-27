@@ -664,6 +664,7 @@ pub(crate) fn collect_eval_metrics(
             .grounded_stride_leg_opposition_degrees,
         landing_crouch_m: pose_readability.landing_crouch_m,
         landing_foot_forward_m: pose_readability.landing_foot_forward_m,
+        landing_foot_split_m: pose_readability.landing_foot_split_m,
         landing_recovery_flip_degrees: pose_readability.landing_recovery_flip_degrees,
         wing_airflow_strength: pose_readability.wing_airflow_strength,
         key_pose_readability_score: pose_readability.key_pose_readability_score,
@@ -964,6 +965,7 @@ fn transition_aware_pose_readability(
             metrics.leg_tuck_degrees,
             metrics.landing_crouch_m,
             metrics.landing_foot_forward_m,
+            metrics.landing_foot_split_m,
         );
         transition_readability_score = transition_readability_score.max(previous_score);
     }
@@ -1627,6 +1629,7 @@ mod tests {
                 25.0,
                 0.0,
                 0.0,
+                0.0,
             ),
             ..default()
         };
@@ -1701,6 +1704,7 @@ mod tests {
                 5.0,
                 155.0,
                 25.0,
+                0.0,
                 0.0,
                 0.0,
             ),
@@ -1816,6 +1820,7 @@ mod tests {
                 62.72,
                 0.0,
                 0.0,
+                0.0,
             ),
             ..default()
         };
@@ -1861,6 +1866,7 @@ mod tests {
                 16.34,
                 0.0,
                 0.0,
+                0.0,
             ),
             ..default()
         };
@@ -1897,6 +1903,7 @@ mod tests {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.159,
             landing_foot_forward_m: 0.40,
+            landing_foot_split_m: 0.20,
             landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: key_pose_readability_score(
@@ -1906,6 +1913,7 @@ mod tests {
                 51.9,
                 0.159,
                 0.40,
+                0.20,
             ),
             ..default()
         };
@@ -1942,6 +1950,7 @@ mod tests {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.159,
             landing_foot_forward_m: 0.40,
+            landing_foot_split_m: 0.20,
             landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: key_pose_readability_score(
@@ -1951,6 +1960,7 @@ mod tests {
                 51.9,
                 0.159,
                 0.40,
+                0.20,
             ),
             ..default()
         };
@@ -1990,6 +2000,7 @@ mod tests {
                 6.72,
                 143.76,
                 19.54,
+                0.0,
                 0.0,
                 0.0,
             ),
@@ -2035,6 +2046,7 @@ mod tests {
                 6.72,
                 143.76,
                 19.54,
+                0.0,
                 0.0,
                 0.0,
             ),
