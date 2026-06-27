@@ -15,7 +15,7 @@ use crate::world_collision_runtime::{
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartPose, PartVisibility, PlayerPoseContext,
     advance_phase, body_local_pose_velocity, glider_traversal_pose, part_pose_with_context,
-    pose_blend_for_intent, wind_lateral_load_from_delta,
+    pose_blend_for_intent, resolve_pose_input, resolve_pose_intent, wind_lateral_load_from_delta,
 };
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::{
@@ -297,11 +297,14 @@ pub(crate) fn fly_player(
     record_animation_context(
         &mut animation,
         input,
-        &world.route,
-        &transform,
-        &velocity,
         &controller,
-        world.wind_diagnostics.wind_lateral_load,
+        AnimationKinematics::new(
+            &world.route,
+            &transform,
+            &velocity,
+            world.wind_diagnostics.wind_lateral_load,
+            dt,
+        ),
     );
 }
 
@@ -382,11 +385,14 @@ pub(crate) fn eval_fly_player(
     record_animation_context(
         &mut animation,
         input,
-        &world.route,
-        &transform,
-        &velocity,
         &controller,
-        world.wind_diagnostics.wind_lateral_load,
+        AnimationKinematics::new(
+            &world.route,
+            &transform,
+            &velocity,
+            world.wind_diagnostics.wind_lateral_load,
+            dt,
+        ),
     );
 }
 
@@ -486,23 +492,46 @@ fn step_player(
     *context.wind_diagnostics = WindForceDiagnostics::from_application(wind, wind_lateral_load);
 }
 
+#[derive(Clone, Copy)]
+struct AnimationKinematics {
+    height_above_ground_m: f32,
+    pose_velocity: Vec3,
+    wind_lateral_load: f32,
+    dt: f32,
+}
+
+impl AnimationKinematics {
+    fn new(
+        route: &SkyRoute,
+        transform: &Transform,
+        velocity: &Velocity,
+        wind_lateral_load: f32,
+        dt: f32,
+    ) -> Self {
+        Self {
+            height_above_ground_m: (transform.translation.y
+                - route.ground_at(transform.translation).floor_y)
+                .max(0.0),
+            pose_velocity: body_local_pose_velocity(velocity.0, transform.rotation),
+            wind_lateral_load,
+            dt,
+        }
+    }
+}
+
 fn record_animation_context(
     animation: &mut AnimationState,
     input: FlightInput,
-    route: &SkyRoute,
-    transform: &Transform,
-    velocity: &Velocity,
     controller: &FlightController,
-    wind_lateral_load: f32,
+    kinematics: AnimationKinematics,
 ) {
-    animation.last_input = input;
-    animation.wind_lateral_load = wind_lateral_load;
-    animation.height_above_ground_m =
-        (transform.translation.y - route.ground_at(transform.translation).floor_y).max(0.0);
-    let pose_velocity = body_local_pose_velocity(velocity.0, transform.rotation);
-    animation.pose_intent = PlayerPoseContext::new(
+    let previous_intent = animation.pose_intent;
+    let previous_input = animation.last_input;
+    animation.wind_lateral_load = kinematics.wind_lateral_load;
+    animation.height_above_ground_m = kinematics.height_above_ground_m;
+    let pose_context = PlayerPoseContext::new(
         controller.mode,
-        pose_velocity,
+        kinematics.pose_velocity,
         input,
         animation.height_above_ground_m,
     )
@@ -510,8 +539,23 @@ fn record_animation_context(
     .with_landing_recovery(
         controller.landing_recovery_timer,
         controller.landing_impact_speed_mps,
-    )
-    .intent();
+    );
+    let raw_intent = pose_context.intent();
+    let resolved = resolve_pose_intent(
+        previous_intent,
+        animation.pose_intent_hold_remaining_secs,
+        pose_context,
+        kinematics.dt,
+    );
+    animation.pose_intent = resolved.intent;
+    animation.pose_intent_hold_remaining_secs = resolved.hold_remaining_secs;
+    animation.last_input = resolve_pose_input(
+        previous_intent,
+        resolved.intent,
+        raw_intent,
+        previous_input,
+        input,
+    );
 }
 
 pub(crate) fn movement_facing(camera: Option<&Transform>, player_transform: &Transform) -> Facing {
@@ -572,8 +616,8 @@ pub(crate) fn animate_character(
     .with_landing_recovery(
         controller.landing_recovery_timer,
         controller.landing_impact_speed_mps,
-    );
-    animation.pose_intent = pose_context.intent();
+    )
+    .with_resolved_intent(animation.pose_intent);
     let blend = pose_blend_for_intent(animation.pose_intent, dt);
     let authored_player_ready = visual_assets.scene_ready(VisualAssetKind::PlayerCharacter);
     let authored_glider_ready = visual_assets.scene_ready(VisualAssetKind::Glider);
@@ -643,9 +687,10 @@ pub(crate) fn apply_authored_player_pose_nodes(
     .with_landing_recovery(
         controller.landing_recovery_timer,
         controller.landing_impact_speed_mps,
-    );
+    )
+    .with_resolved_intent(animation.pose_intent);
     let pose_time_secs = eval_pose_time_secs(&time, eval.as_deref());
-    let blend = pose_blend_for_intent(pose_context.intent(), eval_dt(&time, eval.as_deref()));
+    let blend = pose_blend_for_intent(animation.pose_intent, eval_dt(&time, eval.as_deref()));
 
     for (mut node, mut transform) in &mut pose_nodes {
         node.capture_rest_transform(&transform);
@@ -674,9 +719,10 @@ pub(crate) fn apply_authored_glider_pose(
     .with_landing_recovery(
         controller.landing_recovery_timer,
         controller.landing_impact_speed_mps,
-    );
+    )
+    .with_resolved_intent(animation.pose_intent);
     let pose_time_secs = eval_pose_time_secs(&time, eval.as_deref());
-    let blend = pose_blend_for_intent(pose_context.intent(), eval_dt(&time, eval.as_deref()));
+    let blend = pose_blend_for_intent(animation.pose_intent, eval_dt(&time, eval.as_deref()));
 
     for (mut glider, mut transform) in &mut gliders {
         let pose = glider_traversal_pose(pose_context, animation.phase);
