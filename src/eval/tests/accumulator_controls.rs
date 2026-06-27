@@ -3304,6 +3304,10 @@ fn accumulator_gates_wind_guide_visual_flow_coherence() {
             MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT - 1,
             MIN_WIND_VISUAL_FLOW_ALIGNMENT - 0.01,
             MIN_WIND_VISUAL_FLOW_ALIGNMENT - 0.01,
+        )
+        .with_crosswind_ribbon_flow_coherence_metrics(
+            MIN_CROSSWIND_RIBBON_FLOW_COHERENT_SAMPLE_COUNT - 1,
+            MIN_WIND_VISUAL_FLOW_ALIGNMENT - 0.01,
         );
     let mut accumulator = EvalAccumulator::default();
     accumulator.observe(sample);
@@ -3322,8 +3326,10 @@ fn accumulator_gates_wind_guide_visual_flow_coherence() {
     for check_name in [
         "updraft_flow_coherent_visual_count",
         "crosswind_flow_coherent_visual_count",
+        "crosswind_ribbon_flow_coherent_sample_count",
         "updraft_visual_flow_alignment",
         "crosswind_visual_flow_alignment",
+        "crosswind_ribbon_visual_flow_alignment",
     ] {
         assert!(
             !named_check(&summary, check_name).passed,
@@ -3388,6 +3394,7 @@ fn accumulator_requires_sustained_wind_visual_flow_samples() {
     let undersampled_flow_count = MIN_SUSTAINED_WIND_VISUAL_FLOW_SAMPLES
         .min(MIN_SUSTAINED_UPDRAFT_VISUAL_FLOW_SAMPLES)
         .min(MIN_SUSTAINED_CROSSWIND_VISUAL_FLOW_SAMPLES)
+        .min(MIN_SUSTAINED_CROSSWIND_RIBBON_ADVECTED_FLOW_SAMPLES)
         - 1;
     for frame in 0..undersampled_flow_count {
         accumulator.observe(content_metric_sample(scenario, frame, 12, 0, 96));
@@ -3412,6 +3419,7 @@ fn accumulator_requires_sustained_wind_visual_flow_samples() {
         "sustained_wind_visual_flow_samples",
         "sustained_updraft_visual_flow_samples",
         "sustained_crosswind_visual_flow_samples",
+        "sustained_crosswind_ribbon_advected_flow_samples",
     ] {
         assert!(
             !named_check(&summary, check_name).passed,
@@ -3538,18 +3546,29 @@ fn accumulator_rejects_weak_sustained_wind_visual_count_and_alignment_samples() 
 #[test]
 fn accumulator_gates_crosswind_ribbon_flow_separately_from_guides() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
-    let sample = content_metric_sample(scenario, 0, 12, 0, 96).with_wind_guide_visual_metrics(
-        MIN_UPDRAFT_GUIDE_VISUAL_COUNT,
-        MIN_UPDRAFT_RIBBON_VISUAL_COUNT,
-        MIN_CROSSWIND_GUIDE_VISUAL_COUNT,
-        MIN_CROSSWIND_RIBBON_VISUAL_COUNT,
-        MIN_UPDRAFT_VISUAL_MOTION_M,
-        MIN_UPDRAFT_VISUAL_RISE_M,
-        MIN_UPDRAFT_VISUAL_SWIRL_DISPLACEMENT_M,
-        MIN_CROSSWIND_VISUAL_MOTION_M,
-        MIN_CROSSWIND_GUIDE_FLOW_DISPLACEMENT_M,
-        0.0,
-    );
+    let sample = content_metric_sample(scenario, 0, 12, 0, 96)
+        .with_wind_guide_visual_metrics(
+            MIN_UPDRAFT_GUIDE_VISUAL_COUNT,
+            MIN_UPDRAFT_RIBBON_VISUAL_COUNT,
+            MIN_CROSSWIND_GUIDE_VISUAL_COUNT,
+            MIN_CROSSWIND_RIBBON_VISUAL_COUNT,
+            MIN_UPDRAFT_VISUAL_MOTION_M,
+            MIN_UPDRAFT_VISUAL_RISE_M,
+            MIN_UPDRAFT_VISUAL_SWIRL_DISPLACEMENT_M,
+            MIN_CROSSWIND_VISUAL_MOTION_M,
+            MIN_CROSSWIND_GUIDE_FLOW_DISPLACEMENT_M,
+            0.0,
+        )
+        .with_wind_guide_flow_coherence_metrics(
+            MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT,
+            MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT,
+            MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+            MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+        )
+        .with_crosswind_ribbon_flow_coherence_metrics(
+            MIN_CROSSWIND_RIBBON_FLOW_COHERENT_SAMPLE_COUNT - 1,
+            MIN_WIND_VISUAL_FLOW_ALIGNMENT - 0.01,
+        );
     let mut accumulator = EvalAccumulator::default();
     accumulator.observe(sample);
 
@@ -3566,6 +3585,14 @@ fn accumulator_gates_crosswind_ribbon_flow_separately_from_guides() {
 
     assert!(named_check(&summary, "crosswind_guide_flow_displacement").passed);
     assert!(!named_check(&summary, "crosswind_ribbon_flow_displacement").passed);
+    assert!(
+        !named_check(&summary, "crosswind_ribbon_flow_coherent_sample_count").passed,
+        "crosswind ribbons should need their own advected scene-sample flow alignment"
+    );
+    assert!(
+        !named_check(&summary, "crosswind_ribbon_visual_flow_alignment").passed,
+        "crosswind ribbon flow alignment should not be covered by guide motes"
+    );
 }
 
 #[test]

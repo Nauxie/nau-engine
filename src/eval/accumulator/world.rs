@@ -2,15 +2,15 @@ use super::{EvalAccumulator, EvalSample};
 use crate::eval::thresholds::{
     MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT, MIN_CROSSWIND_FORCE_DELTA_MPS,
     MIN_CROSSWIND_GUIDE_FLOW_DISPLACEMENT_M, MIN_CROSSWIND_GUIDE_VISUAL_COUNT,
-    MIN_CROSSWIND_RIBBON_FLOW_DISPLACEMENT_M, MIN_CROSSWIND_RIBBON_VISUAL_COUNT,
-    MIN_CROSSWIND_VISUAL_LANE_DEPTH_SPAN_M, MIN_CROSSWIND_VISUAL_MOTION_M,
-    MIN_CROSSWIND_VISUAL_SCALE_PULSE, MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT,
-    MIN_UPDRAFT_GUIDE_VISUAL_COUNT, MIN_UPDRAFT_RIBBON_VISUAL_COUNT,
-    MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS, MIN_UPDRAFT_VISUAL_DEPTH_SPAN_M,
-    MIN_UPDRAFT_VISUAL_MOTION_M, MIN_UPDRAFT_VISUAL_RISE_M, MIN_UPDRAFT_VISUAL_SCALE_PULSE,
-    MIN_UPDRAFT_VISUAL_SWIRL_DISPLACEMENT_M, MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
-    MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT, MIN_WIND_FORCE_VARIATION,
-    MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+    MIN_CROSSWIND_RIBBON_FLOW_COHERENT_SAMPLE_COUNT, MIN_CROSSWIND_RIBBON_FLOW_DISPLACEMENT_M,
+    MIN_CROSSWIND_RIBBON_VISUAL_COUNT, MIN_CROSSWIND_VISUAL_LANE_DEPTH_SPAN_M,
+    MIN_CROSSWIND_VISUAL_MOTION_M, MIN_CROSSWIND_VISUAL_SCALE_PULSE,
+    MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT, MIN_UPDRAFT_GUIDE_VISUAL_COUNT,
+    MIN_UPDRAFT_RIBBON_VISUAL_COUNT, MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+    MIN_UPDRAFT_VISUAL_DEPTH_SPAN_M, MIN_UPDRAFT_VISUAL_MOTION_M, MIN_UPDRAFT_VISUAL_RISE_M,
+    MIN_UPDRAFT_VISUAL_SCALE_PULSE, MIN_UPDRAFT_VISUAL_SWIRL_DISPLACEMENT_M,
+    MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT,
+    MIN_WIND_FORCE_VARIATION, MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_VISUAL_FLOW_ALIGNMENT,
     MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M, SUSTAINED_WIND_VISUAL_FLOW_FLOOR_RATIO,
 };
 
@@ -264,12 +264,18 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_crosswind_flow_coherent_visual_count = accumulator
         .max_crosswind_flow_coherent_visual_count
         .max(sample.crosswind_flow_coherent_visual_count);
+    accumulator.max_crosswind_ribbon_flow_coherent_sample_count = accumulator
+        .max_crosswind_ribbon_flow_coherent_sample_count
+        .max(sample.crosswind_ribbon_flow_coherent_sample_count);
     accumulator.max_updraft_visual_flow_alignment = accumulator
         .max_updraft_visual_flow_alignment
         .max(sample.max_updraft_visual_flow_alignment);
     accumulator.max_crosswind_visual_flow_alignment = accumulator
         .max_crosswind_visual_flow_alignment
         .max(sample.max_crosswind_visual_flow_alignment);
+    accumulator.max_crosswind_ribbon_visual_flow_alignment = accumulator
+        .max_crosswind_ribbon_visual_flow_alignment
+        .max(sample.max_crosswind_ribbon_visual_flow_alignment);
     accumulator.max_updraft_field_count = accumulator
         .max_updraft_field_count
         .max(sample.updraft_field_count);
@@ -302,11 +308,16 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
         .max(sample.crosswind_flow_coherent_field_count);
     let sustained_updraft_visual_flow = has_sustained_updraft_visual_flow(sample);
     let sustained_crosswind_visual_flow = has_sustained_crosswind_visual_flow(sample);
+    let sustained_crosswind_ribbon_advected_flow =
+        has_sustained_crosswind_ribbon_advected_flow(sample);
     if sustained_updraft_visual_flow {
         accumulator.sustained_updraft_visual_flow_samples += 1;
     }
     if sustained_crosswind_visual_flow {
         accumulator.sustained_crosswind_visual_flow_samples += 1;
+    }
+    if sustained_crosswind_ribbon_advected_flow {
+        accumulator.sustained_crosswind_ribbon_advected_flow_samples += 1;
     }
     if sustained_updraft_visual_flow || sustained_crosswind_visual_flow {
         accumulator.sustained_wind_visual_flow_samples += 1;
@@ -452,6 +463,13 @@ fn has_sustained_crosswind_visual_flow(sample: &EvalSample) -> bool {
         >= MIN_WIND_VISUAL_FLOW_ALIGNMENT;
 
     has_enough_guides && has_strong_motion && has_flow_coherence
+}
+
+fn has_sustained_crosswind_ribbon_advected_flow(sample: &EvalSample) -> bool {
+    sustained_visual_count(
+        sample.crosswind_ribbon_flow_coherent_sample_count,
+        MIN_CROSSWIND_RIBBON_FLOW_COHERENT_SAMPLE_COUNT,
+    ) && sample.max_crosswind_ribbon_visual_flow_alignment >= MIN_WIND_VISUAL_FLOW_ALIGNMENT
 }
 
 fn sustained_visual_floor(value: f32, floor: f32) -> bool {

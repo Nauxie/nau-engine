@@ -321,6 +321,12 @@ pub(super) fn build_checks(
             "entities",
         ),
         EvalCheck::at_least(
+            "crosswind_ribbon_flow_coherent_sample_count",
+            acc.max_crosswind_ribbon_flow_coherent_sample_count as f32,
+            MIN_CROSSWIND_RIBBON_FLOW_COHERENT_SAMPLE_COUNT as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
             "updraft_visual_flow_alignment",
             acc.max_updraft_visual_flow_alignment,
             MIN_WIND_VISUAL_FLOW_ALIGNMENT,
@@ -329,6 +335,12 @@ pub(super) fn build_checks(
         EvalCheck::at_least(
             "crosswind_visual_flow_alignment",
             acc.max_crosswind_visual_flow_alignment,
+            MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+            "dot",
+        ),
+        EvalCheck::at_least(
+            "crosswind_ribbon_visual_flow_alignment",
+            acc.max_crosswind_ribbon_visual_flow_alignment,
             MIN_WIND_VISUAL_FLOW_ALIGNMENT,
             "dot",
         ),
@@ -348,6 +360,12 @@ pub(super) fn build_checks(
             "sustained_crosswind_visual_flow_samples",
             acc.sustained_crosswind_visual_flow_samples as f32,
             MIN_SUSTAINED_CROSSWIND_VISUAL_FLOW_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "sustained_crosswind_ribbon_advected_flow_samples",
+            acc.sustained_crosswind_ribbon_advected_flow_samples as f32,
+            MIN_SUSTAINED_CROSSWIND_RIBBON_ADVECTED_FLOW_SAMPLES as f32,
             "samples",
         ),
         EvalCheck::at_least(

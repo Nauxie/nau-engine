@@ -303,11 +303,14 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"max_crosswind_visual_scale_pulse\": 0.2400"));
     assert!(summary_json.contains("\"max_updraft_flow_coherent_visual_count\": 126"));
     assert!(summary_json.contains("\"max_crosswind_flow_coherent_visual_count\": 180"));
+    assert!(summary_json.contains("\"max_crosswind_ribbon_flow_coherent_sample_count\": 30"));
     assert!(summary_json.contains("\"max_updraft_visual_flow_alignment\": 0.5500"));
     assert!(summary_json.contains("\"max_crosswind_visual_flow_alignment\": 0.5500"));
+    assert!(summary_json.contains("\"max_crosswind_ribbon_visual_flow_alignment\": 0.5500"));
     assert!(summary_json.contains("\"sustained_wind_visual_flow_samples\": 1"));
     assert!(summary_json.contains("\"sustained_updraft_visual_flow_samples\": 1"));
     assert!(summary_json.contains("\"sustained_crosswind_visual_flow_samples\": 1"));
+    assert!(summary_json.contains("\"sustained_crosswind_ribbon_advected_flow_samples\": 1"));
     assert!(summary_json.contains("\"wind_force_samples\": 1"));
     assert!(summary_json.contains("\"meaningful_wind_force_samples\": 1"));
     assert!(summary_json.contains("\"aligned_wind_force_samples\": 1"));
@@ -706,8 +709,10 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"max_crosswind_visual_scale_pulse\":0.2400"));
     assert!(sample_json.contains("\"updraft_flow_coherent_visual_count\":126"));
     assert!(sample_json.contains("\"crosswind_flow_coherent_visual_count\":180"));
+    assert!(sample_json.contains("\"crosswind_ribbon_flow_coherent_sample_count\":30"));
     assert!(sample_json.contains("\"max_updraft_visual_flow_alignment\":0.5500"));
     assert!(sample_json.contains("\"max_crosswind_visual_flow_alignment\":0.5500"));
+    assert!(sample_json.contains("\"max_crosswind_ribbon_visual_flow_alignment\":0.5500"));
     assert!(sample_json.contains("\"active_wind_force_fields\":1"));
     assert!(sample_json.contains("\"crosswind_force_fields\":1"));
     assert!(sample_json.contains("\"updraft_swirl_force_fields\":1"));
@@ -1069,7 +1074,8 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
         .min_gliding_samples
         .max(MIN_SUSTAINED_WIND_VISUAL_FLOW_SAMPLES)
         .max(MIN_SUSTAINED_UPDRAFT_VISUAL_FLOW_SAMPLES)
-        .max(MIN_SUSTAINED_CROSSWIND_VISUAL_FLOW_SAMPLES);
+        .max(MIN_SUSTAINED_CROSSWIND_VISUAL_FLOW_SAMPLES)
+        .max(MIN_SUSTAINED_CROSSWIND_RIBBON_ADVECTED_FLOW_SAMPLES);
     for frame in 1..=required_flow_samples {
         observe_current_content(
             &mut accumulator,
@@ -1187,6 +1193,10 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
                 MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT,
                 MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT,
                 MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+                MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+            )
+            .with_crosswind_ribbon_flow_coherence_metrics(
+                MIN_CROSSWIND_RIBBON_FLOW_COHERENT_SAMPLE_COUNT,
                 MIN_WIND_VISUAL_FLOW_ALIGNMENT,
             )
             .with_wind_field_visual_coverage_metrics(

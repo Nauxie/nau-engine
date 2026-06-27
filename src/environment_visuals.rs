@@ -155,8 +155,10 @@ pub(crate) struct WindGuideVisualMetrics {
     pub(crate) max_crosswind_visual_scale_pulse: f32,
     pub(crate) updraft_flow_coherent_visual_count: usize,
     pub(crate) crosswind_flow_coherent_visual_count: usize,
+    pub(crate) crosswind_ribbon_flow_coherent_sample_count: usize,
     pub(crate) max_updraft_visual_flow_alignment: f32,
     pub(crate) max_crosswind_visual_flow_alignment: f32,
+    pub(crate) max_crosswind_ribbon_visual_flow_alignment: f32,
 }
 
 pub(crate) fn spawn_updraft_guide(
@@ -707,7 +709,7 @@ fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> Transform {
 }
 
 fn crosswind_ribbon_transform(ribbon: &CrosswindRibbon, elapsed: f32) -> Transform {
-    let flow = ribbon
+    let base_flow = ribbon
         .field
         .flow_at(ribbon.base_translation, elapsed)
         .unwrap_or_else(|| ribbon.field.flow_at(ribbon.field.center, elapsed).unwrap());
@@ -716,12 +718,18 @@ fn crosswind_ribbon_transform(ribbon: &CrosswindRibbon, elapsed: f32) -> Transfo
     let directional_half_extent = ribbon.field.half_extents.x.max(1.0);
     let path_length = (directional_half_extent * 2.0).max(1.0);
     let stream_variation = 0.88 + ribbon.phase * 0.24;
-    let scroll_speed = flow
+    let scroll_speed = base_flow
         .speed_mps
         .min(ribbon.field.visual_speed.max(1.0) * 1.35)
         .max(1.0);
     let progress =
         (ribbon.phase + elapsed * scroll_speed / path_length * 0.84 * stream_variation).fract();
+    let advected = (progress - 0.5) * directional_half_extent * 1.18;
+    let advected_center = ribbon.base_translation + ribbon.field.direction * advected;
+    let flow = ribbon
+        .field
+        .flow_at(advected_center, elapsed)
+        .unwrap_or(base_flow);
     let gust_packet = travelling_gust_packet(
         elapsed,
         ribbon.phase + flow.variation * 0.19,
@@ -730,7 +738,6 @@ fn crosswind_ribbon_transform(ribbon: &CrosswindRibbon, elapsed: f32) -> Transfo
     )
     .max(flow.gust_packet_strength * 0.35)
     .max(flow.layered_gust_strength * 0.34);
-    let advected = (progress - 0.5) * directional_half_extent * 1.18;
     let wave = (elapsed * 0.82 + phase).sin();
     let lift_wave = (elapsed * 1.16 + ribbon.phase * 4.1).cos();
     let depth_wave =
@@ -738,10 +745,10 @@ fn crosswind_ribbon_transform(ribbon: &CrosswindRibbon, elapsed: f32) -> Transfo
     let vertical_roll =
         (elapsed * 0.71 + phase * 0.83 + progress * std::f32::consts::TAU * 1.82).cos();
     let flow_axis = horizontal_or(flow.vector, ribbon.field.direction);
-    let gust_front = ((elapsed * 1.95 + phase * 0.63).sin())
-        .max(0.0)
-        .max(flow.gust_packet_strength * 0.35)
-        .max(flow.layered_gust_strength * 0.26);
+    let gust_front = flow
+        .gust_packet_strength
+        .max(flow.layered_gust_strength * 0.72)
+        .max(gust_packet * 0.5);
     let length_pulse = (0.78
         + flow.gust_strength * 0.42
         + flow.variation * 0.22
@@ -1108,14 +1115,23 @@ fn wind_guide_visual_metrics_for_expected_fields<'a>(
         metrics.max_crosswind_ribbon_flow_displacement_m = metrics
             .max_crosswind_ribbon_flow_displacement_m
             .max(displacement.dot(ribbon.field.direction).max(0.0));
+        let next_transform =
+            crosswind_ribbon_transform(ribbon, elapsed_secs + WIND_VISUAL_COHERENCE_DT);
         let coherent = record_crosswind_flow_coherence(
             &mut metrics,
             ribbon.field,
             transform.translation,
-            crosswind_ribbon_transform(ribbon, elapsed_secs + WIND_VISUAL_COHERENCE_DT).translation,
+            next_transform.translation,
             elapsed_secs,
         );
-        if let (Some(field_index), true) = (field_index, coherent) {
+        let ribbon_coherent = record_crosswind_ribbon_advected_flow_coherence(
+            &mut metrics,
+            ribbon.field,
+            crosswind_ribbon_scene_sample_positions(ribbon, transform),
+            crosswind_ribbon_scene_sample_positions(ribbon, &next_transform),
+            elapsed_secs,
+        );
+        if let (Some(field_index), true) = (field_index, coherent || ribbon_coherent) {
             crosswind_coverage[field_index].coherent_visual_count += 1;
         }
     }
@@ -1216,7 +1232,8 @@ fn record_updraft_flow_coherence(
     next: Vec3,
     elapsed_secs: f32,
 ) -> bool {
-    let Some(alignment) = visual_flow_alignment(field, current, next, elapsed_secs, true) else {
+    let Some(alignment) = visual_flow_alignment(field, current, next, elapsed_secs, true, true)
+    else {
         return false;
     };
 
@@ -1237,7 +1254,8 @@ fn record_crosswind_flow_coherence(
     next: Vec3,
     elapsed_secs: f32,
 ) -> bool {
-    let Some(alignment) = visual_flow_alignment(field, current, next, elapsed_secs, false) else {
+    let Some(alignment) = visual_flow_alignment(field, current, next, elapsed_secs, false, true)
+    else {
         return false;
     };
 
@@ -1251,22 +1269,55 @@ fn record_crosswind_flow_coherence(
     false
 }
 
+fn record_crosswind_ribbon_advected_flow_coherence(
+    metrics: &mut WindGuideVisualMetrics,
+    field: WindField,
+    current_samples: [Vec3; 3],
+    next_samples: [Vec3; 3],
+    elapsed_secs: f32,
+) -> bool {
+    let mut coherent_samples = 0;
+    for (current, next) in current_samples.into_iter().zip(next_samples) {
+        let Some(alignment) =
+            visual_flow_alignment(field, current, next, elapsed_secs, false, false)
+        else {
+            continue;
+        };
+
+        metrics.max_crosswind_ribbon_visual_flow_alignment = metrics
+            .max_crosswind_ribbon_visual_flow_alignment
+            .max(alignment);
+        if alignment >= WIND_VISUAL_ALIGNMENT_MIN_DOT {
+            coherent_samples += 1;
+            metrics.crosswind_ribbon_flow_coherent_sample_count += 1;
+        }
+    }
+
+    coherent_samples >= 2
+}
+
 fn visual_flow_alignment(
     field: WindField,
     current: Vec3,
     next: Vec3,
     elapsed_secs: f32,
     include_vertical: bool,
+    allow_center_fallback: bool,
 ) -> Option<f32> {
     let displacement = next - current;
     let max_step = field.half_extents.max_element().max(1.0) * 0.5;
     if displacement.length_squared() <= 0.0001 || displacement.length() > max_step {
         return None;
     }
+    if !allow_center_fallback && !field.contains(next) {
+        return None;
+    }
 
-    let flow = field
-        .flow_at(current, elapsed_secs)
-        .or_else(|| field.flow_at(field.center, elapsed_secs))?;
+    let flow = match field.flow_at(current, elapsed_secs) {
+        Some(flow) => flow,
+        None if allow_center_fallback => field.flow_at(field.center, elapsed_secs)?,
+        None => return None,
+    };
     let motion = if include_vertical {
         displacement
     } else {
@@ -2006,6 +2057,38 @@ mod tests {
             "expected crosswind ribbon to stay flow coherent, metrics={metrics:?}, short_horizon_motion={short_horizon_motion:?}, sampled_flow={sampled_flow:?}"
         );
         assert!(metrics.max_crosswind_visual_flow_alignment > 0.55);
+        assert!(
+            metrics.crosswind_ribbon_flow_coherent_sample_count >= 2,
+            "expected ribbon front/mid/tail scene samples to track local flow, metrics={metrics:?}"
+        );
+        assert!(metrics.max_crosswind_ribbon_visual_flow_alignment > 0.55);
+    }
+
+    #[test]
+    fn crosswind_ribbon_advected_flow_samples_must_stay_inside_field() {
+        let field = WindField::crosswind(Vec3::ZERO, Vec3::new(2.0, 2.0, 2.0), Vec3::X, 10.0);
+        let current_samples = [
+            Vec3::new(4.0, 0.0, 0.0),
+            Vec3::new(5.0, 0.0, 0.0),
+            Vec3::new(6.0, 0.0, 0.0),
+        ];
+        let next_samples = current_samples.map(|position| position + Vec3::X * 0.25);
+        let mut metrics = WindGuideVisualMetrics::default();
+
+        let coherent = record_crosswind_ribbon_advected_flow_coherence(
+            &mut metrics,
+            field,
+            current_samples,
+            next_samples,
+            1.0,
+        );
+
+        assert!(
+            !coherent,
+            "off-field ribbon samples must not pass via field-center fallback"
+        );
+        assert_eq!(metrics.crosswind_ribbon_flow_coherent_sample_count, 0);
+        assert_eq!(metrics.max_crosswind_ribbon_visual_flow_alignment, 0.0);
     }
 
     #[test]

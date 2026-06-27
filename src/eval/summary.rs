@@ -223,8 +223,10 @@ pub struct EvalMetricsSummary {
     pub max_crosswind_visual_scale_pulse: f32,
     pub max_updraft_flow_coherent_visual_count: usize,
     pub max_crosswind_flow_coherent_visual_count: usize,
+    pub max_crosswind_ribbon_flow_coherent_sample_count: usize,
     pub max_updraft_visual_flow_alignment: f32,
     pub max_crosswind_visual_flow_alignment: f32,
+    pub max_crosswind_ribbon_visual_flow_alignment: f32,
     pub max_updraft_field_count: usize,
     pub max_updraft_fields_with_guides_count: usize,
     pub max_updraft_fields_with_ribbons_count: usize,
@@ -238,6 +240,7 @@ pub struct EvalMetricsSummary {
     pub sustained_wind_visual_flow_samples: u32,
     pub sustained_updraft_visual_flow_samples: u32,
     pub sustained_crosswind_visual_flow_samples: u32,
+    pub sustained_crosswind_ribbon_advected_flow_samples: u32,
     pub max_world_collision_proxy_count: usize,
     pub max_terrain_rim_collision_proxy_count: usize,
     pub max_solid_world_collision_proxy_count: usize,
@@ -700,7 +703,7 @@ impl EvalMetricsSummary {
         let json = json.replacen(&min_target_distance_key, &pose_readability_metrics, 1);
         let terrain_surface_key = format!("{indent}  \"min_island_terrain_surface_count\"");
         let wind_visual_metrics = format!(
-            "{indent}  \"max_updraft_guide_visual_count\": {},\n{indent}  \"max_updraft_ribbon_visual_count\": {},\n{indent}  \"max_crosswind_guide_visual_count\": {},\n{indent}  \"max_crosswind_ribbon_visual_count\": {},\n{indent}  \"max_updraft_field_count\": {},\n{indent}  \"max_updraft_fields_with_guides_count\": {},\n{indent}  \"max_updraft_fields_with_ribbons_count\": {},\n{indent}  \"max_updraft_fields_with_guides_and_ribbons_count\": {},\n{indent}  \"max_updraft_flow_coherent_field_count\": {},\n{indent}  \"max_crosswind_field_count\": {},\n{indent}  \"max_crosswind_fields_with_guides_count\": {},\n{indent}  \"max_crosswind_fields_with_ribbons_count\": {},\n{indent}  \"max_crosswind_fields_with_guides_and_ribbons_count\": {},\n{indent}  \"max_crosswind_flow_coherent_field_count\": {},\n{indent}  \"max_updraft_visual_motion_m\": {},\n{indent}  \"max_updraft_visual_rise_m\": {},\n{indent}  \"max_updraft_visual_swirl_displacement_m\": {},\n{indent}  \"max_updraft_visual_depth_span_m\": {},\n{indent}  \"max_updraft_visual_scale_pulse\": {},\n{indent}  \"max_crosswind_visual_motion_m\": {},\n{indent}  \"max_crosswind_guide_flow_displacement_m\": {},\n{indent}  \"max_crosswind_ribbon_flow_displacement_m\": {},\n{indent}  \"max_crosswind_visual_lane_depth_span_m\": {},\n{indent}  \"max_crosswind_visual_scale_pulse\": {},\n{indent}  \"max_updraft_flow_coherent_visual_count\": {},\n{indent}  \"max_crosswind_flow_coherent_visual_count\": {},\n{indent}  \"max_updraft_visual_flow_alignment\": {},\n{indent}  \"max_crosswind_visual_flow_alignment\": {},\n{indent}  \"sustained_wind_visual_flow_samples\": {},\n{indent}  \"sustained_updraft_visual_flow_samples\": {},\n{indent}  \"sustained_crosswind_visual_flow_samples\": {},\n{}",
+            "{indent}  \"max_updraft_guide_visual_count\": {},\n{indent}  \"max_updraft_ribbon_visual_count\": {},\n{indent}  \"max_crosswind_guide_visual_count\": {},\n{indent}  \"max_crosswind_ribbon_visual_count\": {},\n{indent}  \"max_updraft_field_count\": {},\n{indent}  \"max_updraft_fields_with_guides_count\": {},\n{indent}  \"max_updraft_fields_with_ribbons_count\": {},\n{indent}  \"max_updraft_fields_with_guides_and_ribbons_count\": {},\n{indent}  \"max_updraft_flow_coherent_field_count\": {},\n{indent}  \"max_crosswind_field_count\": {},\n{indent}  \"max_crosswind_fields_with_guides_count\": {},\n{indent}  \"max_crosswind_fields_with_ribbons_count\": {},\n{indent}  \"max_crosswind_fields_with_guides_and_ribbons_count\": {},\n{indent}  \"max_crosswind_flow_coherent_field_count\": {},\n{indent}  \"max_updraft_visual_motion_m\": {},\n{indent}  \"max_updraft_visual_rise_m\": {},\n{indent}  \"max_updraft_visual_swirl_displacement_m\": {},\n{indent}  \"max_updraft_visual_depth_span_m\": {},\n{indent}  \"max_updraft_visual_scale_pulse\": {},\n{indent}  \"max_crosswind_visual_motion_m\": {},\n{indent}  \"max_crosswind_guide_flow_displacement_m\": {},\n{indent}  \"max_crosswind_ribbon_flow_displacement_m\": {},\n{indent}  \"max_crosswind_visual_lane_depth_span_m\": {},\n{indent}  \"max_crosswind_visual_scale_pulse\": {},\n{indent}  \"max_updraft_flow_coherent_visual_count\": {},\n{indent}  \"max_crosswind_flow_coherent_visual_count\": {},\n{indent}  \"max_crosswind_ribbon_flow_coherent_sample_count\": {},\n{indent}  \"max_updraft_visual_flow_alignment\": {},\n{indent}  \"max_crosswind_visual_flow_alignment\": {},\n{indent}  \"max_crosswind_ribbon_visual_flow_alignment\": {},\n{indent}  \"sustained_wind_visual_flow_samples\": {},\n{indent}  \"sustained_updraft_visual_flow_samples\": {},\n{indent}  \"sustained_crosswind_visual_flow_samples\": {},\n{indent}  \"sustained_crosswind_ribbon_advected_flow_samples\": {},\n{}",
             self.max_updraft_guide_visual_count,
             self.max_updraft_ribbon_visual_count,
             self.max_crosswind_guide_visual_count,
@@ -727,11 +730,14 @@ impl EvalMetricsSummary {
             json_number(self.max_crosswind_visual_scale_pulse),
             self.max_updraft_flow_coherent_visual_count,
             self.max_crosswind_flow_coherent_visual_count,
+            self.max_crosswind_ribbon_flow_coherent_sample_count,
             json_number(self.max_updraft_visual_flow_alignment),
             json_number(self.max_crosswind_visual_flow_alignment),
+            json_number(self.max_crosswind_ribbon_visual_flow_alignment),
             self.sustained_wind_visual_flow_samples,
             self.sustained_updraft_visual_flow_samples,
             self.sustained_crosswind_visual_flow_samples,
+            self.sustained_crosswind_ribbon_advected_flow_samples,
             terrain_surface_key
         );
         let json = json.replacen(&terrain_surface_key, &wind_visual_metrics, 1);
