@@ -232,7 +232,7 @@ The export writes `manifest.json`, generated ground-cover/tree/cloud/landmark OB
 
 `camera_turn_stability` is the airborne camera-feel regression test:
 
-- scripted launch, glide deployment, alternating left/right air turns, and a late backward air-brake segment
+- scripted launch, glide deployment, forward travel through alternating left/right air turns, and a late backward air-brake segment
 - camera step distance and rotation delta must remain under thresholds during rapid heading changes
 - the route must keep gliding samples and traversal distance high enough to avoid a no-op pass
 

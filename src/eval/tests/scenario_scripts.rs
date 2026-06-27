@@ -112,6 +112,7 @@ fn camera_turn_script_exercises_air_turns_and_air_brake() {
     assert!(scripted_input(scenario, 80).glide);
     assert!(scripted_input(scenario, 85).left);
     assert!(scripted_input(scenario, 115).right);
+    assert!(scripted_input(scenario, 180).forward);
     assert!(scripted_input(scenario, 255).backward);
 }
 

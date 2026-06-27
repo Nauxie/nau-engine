@@ -127,7 +127,7 @@ Current tests cover:
 - visual field bounds and stream origins are deterministic
 - smoothing factors do not overshoot
 - camera ignores vertical-only launch velocity and sideways/backward movement for automatic follow-heading changes
-- camera mouse X/Y input, pitch clamps, pitch/distance/framing helpers, surface-clearance lift, and obstruction avoidance
+- camera mouse X/Y input, pitch clamps, pitch/distance/framing helpers, surface-clearance lift, obstruction avoidance, and a bounded post-obstruction camera step so blockers cannot pull the camera into a one-frame snap
 - camera follow direction smoothing limits rapid turn snaps
 - lateral air input steers velocity toward the camera-relative plane
 - pure backward air input brakes planar drift, while backward plus lateral input steers into rear-diagonal glide control
@@ -140,7 +140,7 @@ Current tests cover:
 - `camera_mouse_control` eval tracks yaw/pitch offsets and obstruction adjustment without player movement
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
 - `camera_strafe_stability` eval tracks right/left lateral movement without camera auto-orbit, including view-yaw and world-yaw drift
-- `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking
+- `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking while the scripted forward input stays active long enough to make the distance gate non-vacuous
 - `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, stronger total/planar backward braking, pure-backward and diagonal body-heading intent, readable right/left air-turn plus dive/air-brake key-pose coverage, authored dive/air-brake clip coverage, visible pose part count, bounded key-pose part rotation/translation deltas, torso pitch, arm spread, leg tuck, unsigned and signed lateral lean, wing-airflow strength, visible authored glider response/motion, zero key-pose samples below the readability floor, post-brake recovery, desired heading and aggregate plus right/left/backward-right/backward-left desired-travel alignment, average/p95/max body-heading error, tighter right/left and backward-right/backward-left body/travel heading samples and error, max body-yaw error step, body-yaw oscillation, left/right body-bank response, body-roll step smoothness, follow-direction error distribution, view-yaw/world-yaw drift, and movement-input camera non-coupling
 - `pose_state_coverage` eval tracks grounded walk/run samples plus readable launch, fall, and glide key-pose samples in both the app and windowless sim harnesses
 - `long_glide_visibility` eval tracks sustained archipelago traversal, aerial power-up collection/effect samples, and content-scale signals

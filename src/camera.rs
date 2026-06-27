@@ -18,7 +18,7 @@ pub use metrics::{
     camera_distance, camera_orbit_alignment_degrees, camera_pitch_degrees,
     camera_surface_clearance, camera_target_angle_degrees, camera_view_yaw_degrees,
 };
-pub use obstruction::{avoid_camera_obstructions, lift_camera_above_floor};
+pub use obstruction::{avoid_camera_obstructions, clamp_camera_step, lift_camera_above_floor};
 pub use types::{
     CameraControlState, CameraControlTuning, CameraFrame, CameraInput, CameraObstruction,
     CameraObstructionResolution, CameraOrbit, FollowCamera, FollowCameraState,
