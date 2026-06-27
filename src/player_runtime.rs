@@ -112,6 +112,12 @@ pub(crate) struct WindForceDiagnostics {
     pub(crate) updraft_swirl_delta_mps: f32,
     pub(crate) max_flow_speed_mps: f32,
     pub(crate) max_variation: f32,
+    pub(crate) max_flow_alignment: f32,
+    pub(crate) max_crosswind_flow_alignment: f32,
+    pub(crate) max_updraft_swirl_flow_alignment: f32,
+    pub(crate) max_flow_aligned_delta_mps: f32,
+    pub(crate) max_crosswind_flow_aligned_delta_mps: f32,
+    pub(crate) max_updraft_swirl_flow_aligned_delta_mps: f32,
 }
 
 impl WindForceDiagnostics {
@@ -125,6 +131,13 @@ impl WindForceDiagnostics {
             updraft_swirl_delta_mps: application.updraft_swirl_delta_mps(),
             max_flow_speed_mps: application.max_flow_speed_mps,
             max_variation: application.max_variation,
+            max_flow_alignment: application.max_flow_alignment,
+            max_crosswind_flow_alignment: application.max_crosswind_flow_alignment,
+            max_updraft_swirl_flow_alignment: application.max_updraft_swirl_flow_alignment,
+            max_flow_aligned_delta_mps: application.max_flow_aligned_delta_mps,
+            max_crosswind_flow_aligned_delta_mps: application.max_crosswind_flow_aligned_delta_mps,
+            max_updraft_swirl_flow_aligned_delta_mps: application
+                .max_updraft_swirl_flow_aligned_delta_mps,
         }
     }
 }

@@ -215,6 +215,12 @@ fn air_control_metric_sample(
         MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
         MIN_WIND_FORCE_FLOW_SPEED_MPS,
         MIN_WIND_FORCE_VARIATION,
+        MIN_WIND_FORCE_FLOW_ALIGNMENT,
+        MIN_WIND_FORCE_FLOW_ALIGNMENT,
+        MIN_WIND_FORCE_FLOW_ALIGNMENT,
+        MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
+        MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
+        MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
     )
     .with_pose_temporal_metrics(EvalPoseTemporalMetrics {
         visible_pose_part_count: 5,

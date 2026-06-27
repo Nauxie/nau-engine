@@ -6,7 +6,8 @@ mod textures;
 pub(crate) use detail_meshes::{
     CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, CLOUD_WISP_CARDS_PER_LOBE, TREE_BRANCH_COUNT,
     TREE_CANOPY_CARD_COUNT, TREE_ROOT_FLARE_COUNT, TREE_TRUNK_RING_COUNT, TREE_TRUNK_SEGMENTS,
-    cloud_cluster_mesh, cloud_filament_ribbon_detail_count, glider_airflow_trail_mesh,
+    cloud_cluster_mesh, cloud_filament_ribbon_detail_count,
+    crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh, glider_airflow_trail_mesh,
     landing_garden_marker_mesh, launch_beacon_mesh, pond_surface_mesh, rock_scatter_mesh,
     route_cairn_mesh, tree_canopy_mesh, tree_trunk_mesh, updraft_ribbon_mesh,
 };

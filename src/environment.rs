@@ -201,6 +201,12 @@ pub struct WindForceApplication {
     pub updraft_swirl_delta: Vec3,
     pub max_flow_speed_mps: f32,
     pub max_variation: f32,
+    pub max_flow_alignment: f32,
+    pub max_crosswind_flow_alignment: f32,
+    pub max_updraft_swirl_flow_alignment: f32,
+    pub max_flow_aligned_delta_mps: f32,
+    pub max_crosswind_flow_aligned_delta_mps: f32,
+    pub max_updraft_swirl_flow_aligned_delta_mps: f32,
 }
 
 impl WindForceApplication {
@@ -260,27 +266,49 @@ pub fn apply_wind_fields(
             Vec3::new(application.velocity.x, 0.0, application.velocity.z).dot(axis);
         let response_rate = wind_force_response_rate(field.kind);
         let max_step_delta = wind_force_max_step_delta(field.kind, dt);
-        let delta_speed = ((horizontal_speed - current_axis_speed) * response_rate * dt)
-            .clamp(-max_step_delta, max_step_delta);
+        let axis_speed_error = horizontal_speed - current_axis_speed;
+        let delta_speed =
+            (axis_speed_error * response_rate * dt).clamp(-max_step_delta, max_step_delta);
         if delta_speed.abs() <= DIRECTION_EPSILON {
             continue;
         }
 
         let delta = axis * delta_speed;
+        let correction_axis = axis * axis_speed_error.signum();
+        let flow_alignment = delta
+            .normalize_or_zero()
+            .dot(correction_axis)
+            .clamp(-1.0, 1.0);
+        let flow_aligned_delta_mps = delta.dot(correction_axis).max(0.0);
         application.velocity += delta;
         application.applied_delta += delta;
         application.active_fields += 1;
         application.max_flow_speed_mps = application.max_flow_speed_mps.max(horizontal_speed);
         application.max_variation = application.max_variation.max(flow.variation);
+        application.max_flow_alignment = application.max_flow_alignment.max(flow_alignment);
+        application.max_flow_aligned_delta_mps = application
+            .max_flow_aligned_delta_mps
+            .max(flow_aligned_delta_mps);
 
         match field.kind {
             WindFieldKind::Crosswind => {
                 application.crosswind_fields += 1;
                 application.crosswind_delta += delta;
+                application.max_crosswind_flow_alignment =
+                    application.max_crosswind_flow_alignment.max(flow_alignment);
+                application.max_crosswind_flow_aligned_delta_mps = application
+                    .max_crosswind_flow_aligned_delta_mps
+                    .max(flow_aligned_delta_mps);
             }
             WindFieldKind::Updraft => {
                 application.updraft_swirl_fields += 1;
                 application.updraft_swirl_delta += delta;
+                application.max_updraft_swirl_flow_alignment = application
+                    .max_updraft_swirl_flow_alignment
+                    .max(flow_alignment);
+                application.max_updraft_swirl_flow_aligned_delta_mps = application
+                    .max_updraft_swirl_flow_aligned_delta_mps
+                    .max(flow_aligned_delta_mps);
             }
         }
     }
@@ -784,6 +812,27 @@ mod tests {
         assert_eq!(application.velocity, application.applied_delta);
         assert!(application.max_flow_speed_mps > 6.0);
         assert!(application.max_variation > 0.15);
+        assert!(application.max_flow_alignment > 0.99);
+        assert!(application.max_crosswind_flow_alignment > 0.99);
+        assert!(application.max_flow_aligned_delta_mps >= application.crosswind_delta_mps());
+        assert!(
+            application.max_crosswind_flow_aligned_delta_mps >= application.crosswind_delta_mps()
+        );
+    }
+
+    #[test]
+    fn wind_force_flow_alignment_accepts_braking_toward_field_speed() {
+        let field = WindField::crosswind(Vec3::ZERO, Vec3::splat(12.0), Vec3::X, 10.0);
+        let application = apply_wind_fields(Vec3::ZERO, Vec3::X * 24.0, [field], 0.5, 0.5, true);
+
+        assert_eq!(application.active_fields, 1);
+        assert!(application.crosswind_delta.x < 0.0);
+        assert!(application.max_flow_alignment > 0.99);
+        assert!(application.max_crosswind_flow_alignment > 0.99);
+        assert!(application.max_flow_aligned_delta_mps >= application.crosswind_delta_mps());
+        assert!(
+            application.max_crosswind_flow_aligned_delta_mps >= application.crosswind_delta_mps()
+        );
     }
 
     #[test]
@@ -803,6 +852,11 @@ mod tests {
         assert!(application.updraft_swirl_delta.xz().length() > 0.0);
         assert_eq!(application.updraft_swirl_delta.y, 0.0);
         assert_eq!(application.velocity.y, 0.0);
+        assert!(application.max_updraft_swirl_flow_alignment > 0.99);
+        assert!(
+            application.max_updraft_swirl_flow_aligned_delta_mps
+                >= application.updraft_swirl_delta_mps()
+        );
     }
 
     #[test]

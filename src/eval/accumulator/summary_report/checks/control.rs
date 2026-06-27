@@ -156,6 +156,12 @@ pub(super) fn append_scenario_checks(
             "samples",
         ));
         checks.push(EvalCheck::at_least(
+            "aligned_wind_force_samples",
+            acc.aligned_wind_force_samples as f32,
+            MIN_WIND_FORCE_SAMPLE_COUNT as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
             "active_wind_force_fields",
             acc.max_active_wind_force_fields as f32,
             1.0,
@@ -179,11 +185,29 @@ pub(super) fn append_scenario_checks(
             MIN_WIND_FORCE_VARIATION,
             "ratio",
         ));
+        checks.push(EvalCheck::at_least(
+            "wind_force_flow_alignment",
+            acc.max_wind_force_flow_alignment,
+            MIN_WIND_FORCE_FLOW_ALIGNMENT,
+            "dot",
+        ));
+        checks.push(EvalCheck::at_least(
+            "wind_force_aligned_delta",
+            acc.max_wind_force_aligned_delta_mps,
+            MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
+            "m/s",
+        ));
     }
     if crosswind_force_scenario(scenario) {
         checks.push(EvalCheck::at_least(
             "crosswind_force_samples",
             acc.crosswind_force_samples as f32,
+            MIN_CROSSWIND_FORCE_SAMPLE_COUNT as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
+            "aligned_crosswind_force_samples",
+            acc.aligned_crosswind_force_samples as f32,
             MIN_CROSSWIND_FORCE_SAMPLE_COUNT as f32,
             "samples",
         ));
@@ -199,11 +223,29 @@ pub(super) fn append_scenario_checks(
             MIN_CROSSWIND_FORCE_DELTA_MPS,
             "m/s",
         ));
+        checks.push(EvalCheck::at_least(
+            "crosswind_force_flow_alignment",
+            acc.max_crosswind_force_flow_alignment,
+            MIN_WIND_FORCE_FLOW_ALIGNMENT,
+            "dot",
+        ));
+        checks.push(EvalCheck::at_least(
+            "crosswind_force_aligned_delta",
+            acc.max_crosswind_force_aligned_delta_mps,
+            MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
+            "m/s",
+        ));
     }
     if thresholds.min_lifted_samples > 0 {
         checks.push(EvalCheck::at_least(
             "updraft_swirl_force_samples",
             acc.updraft_swirl_force_samples as f32,
+            thresholds.min_lifted_samples as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
+            "aligned_updraft_swirl_force_samples",
+            acc.aligned_updraft_swirl_force_samples as f32,
             thresholds.min_lifted_samples as f32,
             "samples",
         ));
@@ -217,6 +259,18 @@ pub(super) fn append_scenario_checks(
             "updraft_swirl_force_delta",
             acc.max_updraft_swirl_force_delta_mps,
             MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+            "m/s",
+        ));
+        checks.push(EvalCheck::at_least(
+            "updraft_swirl_force_flow_alignment",
+            acc.max_updraft_swirl_force_flow_alignment,
+            MIN_WIND_FORCE_FLOW_ALIGNMENT,
+            "dot",
+        ));
+        checks.push(EvalCheck::at_least(
+            "updraft_swirl_force_aligned_delta",
+            acc.max_updraft_swirl_force_aligned_delta_mps,
+            MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
             "m/s",
         ));
     }
