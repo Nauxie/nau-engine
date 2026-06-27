@@ -369,6 +369,25 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
             .max_left_pose_lateral_lean_degrees
             .max(sample.pose_signed_lateral_lean_degrees.max(0.0));
     }
+    match sample.pose_intent_label {
+        "grounded_walk" => {
+            accumulator.max_grounded_walk_stride_foot_travel_m = accumulator
+                .max_grounded_walk_stride_foot_travel_m
+                .max(sample.pose_grounded_stride_foot_travel_m);
+            accumulator.max_grounded_walk_stride_leg_opposition_degrees = accumulator
+                .max_grounded_walk_stride_leg_opposition_degrees
+                .max(sample.pose_grounded_stride_leg_opposition_degrees);
+        }
+        "grounded_run" => {
+            accumulator.max_grounded_run_stride_foot_travel_m = accumulator
+                .max_grounded_run_stride_foot_travel_m
+                .max(sample.pose_grounded_stride_foot_travel_m);
+            accumulator.max_grounded_run_stride_leg_opposition_degrees = accumulator
+                .max_grounded_run_stride_leg_opposition_degrees
+                .max(sample.pose_grounded_stride_leg_opposition_degrees);
+        }
+        _ => {}
+    }
     accumulator.max_pose_landing_crouch_m = accumulator
         .max_pose_landing_crouch_m
         .max(sample.pose_landing_crouch_m);
@@ -445,6 +464,16 @@ fn observe_authored_clip_coverage(accumulator: &mut EvalAccumulator, sample: &Ev
     accumulator.max_authored_transition_duration_ms = accumulator
         .max_authored_transition_duration_ms
         .max(sample.authored_transition_duration_ms);
+
+    if matches!(
+        sample.pose_intent_label,
+        "grounded_walk" | "grounded_run" | "grounded_stride"
+    ) && sample.authored_player_count > 0
+        && sample.authored_player_current_clip_label == "jog"
+        && sample.authored_player_desired_clip_label == "jog"
+    {
+        accumulator.authored_jog_clip_samples += 1;
+    }
 
     if !key_pose_intent_label(sample.pose_intent_label) {
         return;

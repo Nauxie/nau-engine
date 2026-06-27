@@ -18,7 +18,11 @@ use nau_engine::eval::{
 use serde_json::{Value, json};
 
 use super::{super::round4, SimMetrics};
-use crate::LANDING_MIN_POSE_CROUCH_M;
+use crate::{
+    GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+    GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+    LANDING_MIN_POSE_CROUCH_M,
+};
 
 const POSE_STATE_MIN_WALK_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_RUN_SAMPLES: f32 = 8.0;
@@ -363,6 +367,30 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             metrics.pose_grounded_run_samples as f32,
             POSE_STATE_MIN_RUN_SAMPLES,
             "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_walk_stride_foot_travel",
+            metrics.max_grounded_walk_stride_foot_travel_m,
+            GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M,
+            "m",
+        ),
+        SimCheck::at_least(
+            "pose_state_run_stride_foot_travel",
+            metrics.max_grounded_run_stride_foot_travel_m,
+            GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M,
+            "m",
+        ),
+        SimCheck::at_least(
+            "pose_state_walk_stride_leg_opposition",
+            metrics.max_grounded_walk_stride_leg_opposition_degrees,
+            GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "pose_state_run_stride_leg_opposition",
+            metrics.max_grounded_run_stride_leg_opposition_degrees,
+            GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+            "deg",
         ),
         SimCheck::at_least(
             "pose_state_launching_samples",

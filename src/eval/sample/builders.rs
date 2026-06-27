@@ -115,6 +115,8 @@ impl EvalSample {
             pose_leg_tuck_degrees: 0.0,
             pose_lateral_lean_degrees: 0.0,
             pose_signed_lateral_lean_degrees: 0.0,
+            pose_grounded_stride_foot_travel_m: 0.0,
+            pose_grounded_stride_leg_opposition_degrees: 0.0,
             pose_landing_crouch_m: 0.0,
             pose_landing_foot_forward_m: 0.0,
             pose_wing_airflow_strength: 0.0,
@@ -365,6 +367,9 @@ impl EvalSample {
         } else {
             0.0
         };
+        self.pose_grounded_stride_foot_travel_m = metrics.grounded_stride_foot_travel_m.max(0.0);
+        self.pose_grounded_stride_leg_opposition_degrees =
+            metrics.grounded_stride_leg_opposition_degrees.max(0.0);
         self.pose_landing_crouch_m = metrics.landing_crouch_m.max(0.0);
         self.pose_landing_foot_forward_m = metrics.landing_foot_forward_m.max(0.0);
         self.pose_wing_airflow_strength = metrics.wing_airflow_strength.clamp(0.0, 1.0);

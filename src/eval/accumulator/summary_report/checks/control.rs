@@ -1,11 +1,17 @@
 use super::super::{super::EvalAccumulator, derived::SummaryDerivedMetrics};
-use crate::eval::{
-    scenarios::{
-        AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
-        EvalScenario, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE, UPDRAFT_ROUTE,
+use crate::{
+    animation::{
+        GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+        GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
     },
-    summary::EvalCheck,
-    thresholds::{EvalThresholds, *},
+    eval::{
+        scenarios::{
+            AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
+            EvalScenario, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE, UPDRAFT_ROUTE,
+        },
+        summary::EvalCheck,
+        thresholds::{EvalThresholds, *},
+    },
 };
 
 const POSE_STATE_MIN_WALK_SAMPLES: f32 = 8.0;
@@ -824,6 +830,36 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             "pose_state_grounded_run_samples",
             acc.pose_grounded_run_samples as f32,
             POSE_STATE_MIN_RUN_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_walk_stride_foot_travel",
+            acc.max_grounded_walk_stride_foot_travel_m,
+            GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "pose_state_run_stride_foot_travel",
+            acc.max_grounded_run_stride_foot_travel_m,
+            GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "pose_state_walk_stride_leg_opposition",
+            acc.max_grounded_walk_stride_leg_opposition_degrees,
+            GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "pose_state_run_stride_leg_opposition",
+            acc.max_grounded_run_stride_leg_opposition_degrees,
+            GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "pose_state_authored_jog_clip_samples",
+            acc.authored_jog_clip_samples as f32,
+            POSE_STATE_MIN_WALK_SAMPLES + POSE_STATE_MIN_RUN_SAMPLES,
             "samples",
         ),
         EvalCheck::at_least(

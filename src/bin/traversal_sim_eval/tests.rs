@@ -6,6 +6,10 @@ use super::{
 };
 use bevy::prelude::{Quat, Transform, Vec3};
 use nau_engine::{
+    animation::{
+        GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+        GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+    },
     environment::WindForceApplication,
     eval::{
         AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario,
@@ -122,6 +126,26 @@ fn pose_state_coverage_simulation_gates_walk_run_launch_fall_and_glide() {
     assert!(result.passed);
     assert!(result.metrics.pose_grounded_walk_samples >= 8);
     assert!(result.metrics.pose_grounded_run_samples >= 8);
+    assert!(
+        result.metrics.max_grounded_walk_stride_foot_travel_m
+            >= GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M
+    );
+    assert!(
+        result.metrics.max_grounded_run_stride_foot_travel_m
+            >= GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M
+    );
+    assert!(
+        result
+            .metrics
+            .max_grounded_walk_stride_leg_opposition_degrees
+            >= GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES
+    );
+    assert!(
+        result
+            .metrics
+            .max_grounded_run_stride_leg_opposition_degrees
+            >= GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES
+    );
     assert!(result.metrics.pose_launching_samples >= 3);
     assert!(result.metrics.pose_falling_samples >= 8);
     assert!(result.metrics.pose_gliding_samples >= 18);
@@ -130,6 +154,10 @@ fn pose_state_coverage_simulation_gates_walk_run_launch_fall_and_glide() {
     for name in [
         "pose_state_grounded_walk_samples",
         "pose_state_grounded_run_samples",
+        "pose_state_walk_stride_foot_travel",
+        "pose_state_run_stride_foot_travel",
+        "pose_state_walk_stride_leg_opposition",
+        "pose_state_run_stride_leg_opposition",
         "pose_state_launching_samples",
         "pose_state_falling_samples",
         "pose_state_gliding_samples",
@@ -162,6 +190,45 @@ fn pose_state_coverage_sim_checks_reject_thin_samples() {
         "pose_state_launching_samples",
         "pose_state_falling_samples",
         "pose_state_gliding_samples",
+    ] {
+        let check = checks
+            .iter()
+            .find(|check| check.name == name)
+            .unwrap_or_else(|| panic!("missing sim check {name}"));
+        assert!(!check.passed, "expected {name} to fail: {check:?}");
+    }
+}
+
+#[test]
+fn pose_state_coverage_sim_checks_reject_static_grounded_stride() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    metrics.pose_grounded_walk_samples = 8;
+    metrics.pose_grounded_run_samples = 8;
+    metrics.pose_launching_samples = 3;
+    metrics.pose_falling_samples = 8;
+    metrics.pose_gliding_samples = 18;
+
+    let checks = metrics.checks(scenario);
+    for name in [
+        "pose_state_grounded_walk_samples",
+        "pose_state_grounded_run_samples",
+        "pose_state_launching_samples",
+        "pose_state_falling_samples",
+        "pose_state_gliding_samples",
+    ] {
+        let check = checks
+            .iter()
+            .find(|check| check.name == name)
+            .unwrap_or_else(|| panic!("missing sim check {name}"));
+        assert!(check.passed, "expected {name} to pass: {check:?}");
+    }
+    for name in [
+        "pose_state_walk_stride_foot_travel",
+        "pose_state_run_stride_foot_travel",
+        "pose_state_walk_stride_leg_opposition",
+        "pose_state_run_stride_leg_opposition",
     ] {
         let check = checks
             .iter()
