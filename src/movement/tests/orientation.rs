@@ -36,7 +36,7 @@ fn diagonal_glide_input_rotates_body_toward_camera_relative_heading() {
 
     let heading_error = body_heading_error_degrees(rotation, desired_direction);
     assert!(
-        heading_error < 8.0,
+        heading_error < 6.0,
         "expected diagonal input to turn toward camera-relative heading, got {heading_error} deg"
     );
 }
@@ -71,7 +71,7 @@ fn backward_diagonal_glide_input_rotates_body_toward_rear_quadrant() {
 
     let heading_error = body_heading_error_degrees(rotation, desired_direction);
     assert!(
-        heading_error < 18.0,
+        heading_error < 12.0,
         "expected backward-diagonal input to turn toward rear quadrant, got {heading_error} deg"
     );
 }
@@ -105,7 +105,7 @@ fn pure_backward_glide_input_rotates_body_toward_rear_heading() {
 
     let heading_error = body_heading_error_degrees(rotation, desired_direction);
     assert!(
-        heading_error < 12.0,
+        heading_error < 8.0,
         "expected backward input to turn toward rear heading, got {heading_error} deg"
     );
 }
@@ -137,7 +137,7 @@ fn flight_body_yaw_tracks_lateral_input_direction() {
 
     let heading_error = body_heading_error_degrees(rotation, facing.right);
     assert!(
-        heading_error < 20.0,
+        heading_error < 8.0,
         "expected body yaw to turn toward right input, got {heading_error} deg"
     );
 }
@@ -169,7 +169,7 @@ fn flight_body_yaw_reverses_lateral_air_input_quickly() {
 
     let heading_error = body_heading_error_degrees(rotation, -facing.right);
     assert!(
-        heading_error < 35.0,
+        heading_error < 20.0,
         "expected rapid body-yaw recovery after lateral reversal, got {heading_error} deg"
     );
 }
@@ -199,7 +199,7 @@ fn flight_body_yaw_limits_first_frame_reversal_spike() {
 
     let heading_error = body_heading_error_degrees(rotation, -facing.right);
     assert!(
-        heading_error < 45.0,
+        heading_error < 28.0,
         "expected first-frame lateral reversal to stay bounded, got {heading_error} deg"
     );
 }
