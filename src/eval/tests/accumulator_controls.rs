@@ -1104,6 +1104,7 @@ fn accumulator_summarizes_pose_intent_samples() {
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 1.0,
         }),
@@ -1151,6 +1152,7 @@ fn accumulator_summarizes_pose_intent_samples() {
         lateral_lean_degrees: 0.0,
         signed_lateral_lean_degrees: 0.0,
         landing_crouch_m: 0.0,
+        landing_foot_forward_m: 0.0,
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 1.0,
     });
@@ -1187,6 +1189,7 @@ fn accumulator_summarizes_pose_intent_samples() {
         lateral_lean_degrees: 0.0,
         signed_lateral_lean_degrees: 0.0,
         landing_crouch_m: 0.0,
+        landing_foot_forward_m: 0.0,
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 0.25,
     });
@@ -1224,6 +1227,7 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert_eq!(summary.metrics.max_pose_torso_pitch_degrees, 64.0);
     assert_eq!(summary.metrics.max_pose_landing_flare_degrees, 37.0);
     assert_eq!(summary.metrics.unreadable_key_pose_samples, 1);
+    assert!(summary_json.contains("\"max_pose_landing_foot_forward_m\""));
     assert!(summary_json.contains("\"max_pose_landing_flare_degrees\": 37"));
     assert!(summary_json.contains("\"pose_air_turn_samples\": 1"));
     assert!(summary_json.contains("\"right_pose_air_turn_samples\": 1"));
@@ -1259,6 +1263,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         lateral_lean_degrees: 0.0,
         signed_lateral_lean_degrees: 0.0,
         landing_crouch_m: 1.0,
+        landing_foot_forward_m: 0.40,
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 1.0,
     });
@@ -1279,11 +1284,13 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         },
     );
     let landing_recovery_check = named_check(&summary, "pose_landing_recovery_samples");
+    let landing_foot_forward_check = named_check(&summary, "pose_landing_foot_forward");
     let landing_flare_check = named_check(&summary, "pose_landing_flare");
     let authored_land_check = named_check(&summary, "authored_landing_clip_samples");
 
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 0);
     assert_eq!(summary.metrics.authored_land_clip_samples, 1);
+    assert_eq!(summary.metrics.max_pose_landing_foot_forward_m, 0.40);
     assert_eq!(summary.metrics.max_pose_landing_flare_degrees, 0.0);
     assert_eq!(landing_recovery_check.value, 0.0);
     assert_eq!(landing_recovery_check.threshold, 1.0);
@@ -1291,6 +1298,9 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     assert_eq!(authored_land_check.value, 1.0);
     assert_eq!(authored_land_check.threshold, 2.0);
     assert!(!authored_land_check.passed);
+    assert_eq!(landing_foot_forward_check.value, 0.40);
+    assert_eq!(landing_foot_forward_check.threshold, 0.32);
+    assert!(landing_foot_forward_check.passed);
     assert_eq!(landing_flare_check.value, 0.0);
     assert_eq!(landing_flare_check.threshold, 48.0);
     assert!(!landing_flare_check.passed);
@@ -1334,6 +1344,7 @@ fn accumulator_gates_target_landing_pose_temporal_samples() {
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.12,
+            landing_foot_forward_m: 0.40,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 1.0,
         })
@@ -1388,6 +1399,7 @@ fn accumulator_gates_target_landing_pose_temporal_jank() {
         lateral_lean_degrees: 0.0,
         signed_lateral_lean_degrees: 0.0,
         landing_crouch_m: 0.12,
+        landing_foot_forward_m: 0.40,
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 1.0,
     })
@@ -1469,6 +1481,7 @@ fn accumulator_ignores_non_landing_pose_jank_for_landing_temporal_gates() {
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.12,
+            landing_foot_forward_m: 0.40,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 1.0,
         })
@@ -1789,6 +1802,7 @@ fn accumulator_rejects_unreadable_air_control_turn_pose_samples() {
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 0.25,
         }),
@@ -1836,6 +1850,7 @@ fn accumulator_rejects_unreadable_key_pose_samples() {
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 0.25,
         }),

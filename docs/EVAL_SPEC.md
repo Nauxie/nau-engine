@@ -305,6 +305,7 @@ Every sample includes:
 - `pose_lateral_lean_degrees`
 - `pose_signed_lateral_lean_degrees`
 - `pose_landing_crouch_m`
+- `pose_landing_foot_forward_m`
 - `pose_wing_airflow_strength`
 - `key_pose_readability_score`
 - `key_pose_transition_grace`
@@ -619,7 +620,7 @@ The summary aggregates:
 - readable and unreadable active-lift sample counts
 - dynamic readable lift sample count plus max sampled wind-flow speed, gust variation, and readable-lift variation range
 - pose-intent sample counts for readable gliding, launching, falling, diving, air brake, landing anticipation, and landing recovery; app and simulation summaries also count grounded walk/run pose samples, and app evals score visible generated or authored player part transforms when those nodes are available and still require authored clip alignment when authored player geometry hides generated fallback parts
-- pose torso pitch, arm spread, leg tuck, lateral lean, signed right/left lateral lean, landing crouch, landing flare, wing-airflow maxima, authored glider response/motion maxima, key-pose readability min/max, unreadable key-pose sample count, and key-pose transition-grace sample count
+- pose torso pitch, arm spread, leg tuck, lateral lean, signed right/left lateral lean, landing crouch, landing foot-forward tuck, landing flare, wing-airflow maxima, authored glider response/motion maxima, key-pose readability min/max, unreadable key-pose sample count, and key-pose transition-grace sample count
 - gliding, launching, and grounded sample counts
 
 The pass/fail checks currently guard:
@@ -694,7 +695,7 @@ The pass/fail checks currently guard:
 - air-control movement-only camera world-yaw drift stayed inside threshold
 - island-route final scenario-target distance stayed under threshold
 - island-route grounded target landing was observed on the configured target island
-- landing-required routes exercised readable landing-anticipation pose coverage before contact, readable landing-recovery pose coverage after contact, reached at least 0.05 m of landing crouch, reached at least 48 degrees of landing flare, produced zero key-pose samples below the 0.9 readability floor after bounded transition grace, recorded landing-only visible-pose temporal samples, and kept landing pose-part rotation/translation deltas within route thresholds
+- landing-required routes exercised readable landing-anticipation pose coverage before contact, readable landing-recovery pose coverage after contact, reached at least 0.05 m of landing crouch, reached at least 0.32 m of feet-forward landing tuck, reached at least 48 degrees of landing flare, produced zero key-pose samples below the 0.9 readability floor after bounded transition grace, recorded landing-only visible-pose temporal samples, and kept landing pose-part rotation/translation deltas within route thresholds
 
 Thresholds should remain loose until the intended route becomes richer. Tight thresholds belong only after a mechanic or route is deliberately locked.
 

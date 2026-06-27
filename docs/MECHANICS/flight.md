@@ -90,7 +90,7 @@ Dive:
 Landing:
 
 - landing anticipation and post-touchdown recovery are explicit pose intents now
-- high-sink landings enter anticipation slightly before touchdown so the visible pose can flare before contact instead of popping on the landing frame
+- high-sink landings enter anticipation slightly before touchdown so the visible pose can flare and tuck the feet forward before contact instead of popping on the landing frame
 - a full authored landing locomotion state with slope-aware collider handling is still future work
 - needs collision and slope logic before polish
 
@@ -145,7 +145,7 @@ Current tests cover:
 - `pose_state_coverage` eval tracks grounded walk/run samples plus readable launch, fall, and glide key-pose samples in both the app and windowless sim harnesses
 - `long_glide_visibility` eval tracks sustained archipelago traversal, aerial power-up collection/effect samples, and content-scale signals
 - app evals track `world_collision_proxy_count`, `solid_world_collision_proxy_count`, `tree_world_collision_proxy_count`, `rock_world_collision_proxy_count`, `landmark_world_collision_proxy_count`, `world_collision_resolved_samples`, `world_collision_contact_samples`, `max_world_collision_push_m`, `terrain_rim_collision_proxy_count`, `terrain_rim_collision_contact_samples`, and `max_terrain_rim_collision_push_m`, with proxy-count gates so collidable props, per-kind solid asset distribution, and terrain rim rails cannot silently disappear; `world_collision_contact` must sustain launch-mesa obstacle contact, `terrain_rim_collision_contact` must sustain launch-mesa rim contact, and `ground_taxi_control` must stay free of terrain-rim contact
-- landing-required evals track landing anticipation, landing flare, post-contact landing recovery, landing crouch depth, zero unreadable key-pose samples across both key landing poses, landing-only visible-pose temporal samples, and bounded landing pose-part rotation/translation deltas
+- landing-required evals track landing anticipation, landing flare, feet-forward landing tuck, post-contact landing recovery, landing crouch depth, zero unreadable key-pose samples across both key landing poses, landing-only visible-pose temporal samples, and bounded landing pose-part rotation/translation deltas
 
 Future tests should cover:
 

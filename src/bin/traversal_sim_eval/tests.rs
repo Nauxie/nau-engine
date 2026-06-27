@@ -36,6 +36,7 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"pose_falling_samples\""));
     assert!(summary.contains("\"pose_air_turn_samples\""));
     assert!(summary.contains("\"pose_landing_recovery_samples\""));
+    assert!(summary.contains("\"max_pose_landing_foot_forward_m\""));
     assert!(summary.contains("\"max_pose_landing_flare_degrees\""));
     assert!(
         result
@@ -211,10 +212,12 @@ fn sim_metrics_track_landing_flare_from_landing_anticipation_pose_only() {
     let mut landing_sample = non_landing_sample.clone();
     landing_sample.pose_intent_label = "landing_anticipation";
     landing_sample.pose_torso_pitch_degrees = 34.0;
+    landing_sample.pose_landing_foot_forward_m = 0.41;
     metrics.observe(&landing_sample, scenario);
 
     assert_eq!(metrics.max_pose_torso_pitch_degrees, 72.0);
     assert_eq!(metrics.max_pose_landing_flare_degrees, 34.0);
+    assert_eq!(metrics.max_pose_landing_foot_forward_m, 0.41);
 }
 
 #[test]
@@ -229,6 +232,7 @@ fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
         "pose_landing_anticipation_samples",
         "pose_landing_recovery_samples",
         "pose_landing_crouch",
+        "pose_landing_foot_forward",
         "pose_landing_flare",
         "unreadable_key_pose_samples",
     ] {
@@ -250,8 +254,16 @@ fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
     assert!(!flare_check.passed);
     assert_eq!(flare_check.threshold, 48.0);
     assert_eq!(flare_check.unit, "deg");
+    let foot_forward_check = checks
+        .iter()
+        .find(|check| check.name == "pose_landing_foot_forward")
+        .expect("landing foot-forward check");
+    assert!(!foot_forward_check.passed);
+    assert_eq!(foot_forward_check.threshold, 0.32);
+    assert_eq!(foot_forward_check.unit, "m");
 
     metrics.pose_landing_recovery_samples = 1;
+    metrics.max_pose_landing_foot_forward_m = 0.32;
     metrics.max_pose_landing_flare_degrees = 48.0;
     let passing_checks = metrics.checks(scenario);
     let passing_recovery_check = passing_checks
@@ -264,6 +276,11 @@ fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
         .find(|check| check.name == "pose_landing_flare")
         .expect("landing flare check");
     assert!(passing_flare_check.passed);
+    let passing_foot_forward_check = passing_checks
+        .iter()
+        .find(|check| check.name == "pose_landing_foot_forward")
+        .expect("landing foot-forward check");
+    assert!(passing_foot_forward_check.passed);
 }
 
 #[test]
