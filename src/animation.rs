@@ -107,6 +107,8 @@ pub const GROUNDED_STRIDE_MIN_LEG_OPPOSITION_DEGREES: f32 =
     GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES;
 pub const WIND_LOAD_FULL_RESPONSE_DELTA_MPS: f32 = 0.10;
 pub const LANDING_MIN_FOOT_FORWARD_READABILITY_M: f32 = 0.32;
+const DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES: f32 = 60.0;
+const DIVE_MIN_ARM_SPREAD_READABILITY_DEGREES: f32 = 165.0;
 const LANDING_ANTICIPATION_BASE_HEIGHT_M: f32 = 6.0;
 const LANDING_ANTICIPATION_MAX_HEIGHT_M: f32 = 36.0;
 const LANDING_ANTICIPATION_SINK_LOOKAHEAD_SECS: f32 = 0.95;
@@ -488,9 +490,12 @@ pub fn key_pose_readability_score(
     landing_foot_forward_m: f32,
 ) -> f32 {
     match intent {
-        PlayerPoseIntent::Diving => {
-            readable_pair_score(torso_pitch_degrees, 54.0, arm_spread_degrees, 155.0)
-        }
+        PlayerPoseIntent::Diving => readable_pair_score(
+            torso_pitch_degrees,
+            DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES / MIN_KEY_POSE_READABILITY_SCORE,
+            arm_spread_degrees,
+            DIVE_MIN_ARM_SPREAD_READABILITY_DEGREES / MIN_KEY_POSE_READABILITY_SCORE,
+        ),
         PlayerPoseIntent::AirBrake => {
             readable_pair_score(torso_pitch_degrees, 4.0, arm_spread_degrees, 160.0)
         }
@@ -755,7 +760,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Falling => -0.22 + vertical_pitch * 0.30,
                 PlayerPoseIntent::Gliding => -0.30 + vertical_pitch * 0.5,
                 PlayerPoseIntent::AirTurn => -0.34 + vertical_pitch * 0.45,
-                PlayerPoseIntent::Diving => -0.68 - dive_pressure * 0.48 + vertical_pitch * 0.18,
+                PlayerPoseIntent::Diving => -0.80 - dive_pressure * 0.46 + vertical_pitch * 0.18,
                 PlayerPoseIntent::AirBrake => {
                     0.10 + turn_weight.abs() * 0.05 + vertical_pitch * 0.35
                 }
@@ -823,7 +828,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Falling => 0.78,
                 PlayerPoseIntent::Gliding => 1.22 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => 1.18 + airflow * 0.040,
-                PlayerPoseIntent::Diving => 1.32 + dive_extension * 0.22 + airflow * 0.025,
+                PlayerPoseIntent::Diving => 1.395 + dive_extension * 0.19 + airflow * 0.025,
                 PlayerPoseIntent::AirBrake => 1.565 + same_side_turn * 0.08,
                 PlayerPoseIntent::LandingAnticipation => {
                     1.00 + landing_strength * 0.14 + landing_flip * 0.22
@@ -838,7 +843,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedRun => gait * (0.58 + run_weight * 0.18),
                 PlayerPoseIntent::Gliding => -0.58 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => -0.46 + turn_weight.abs() * 0.10,
-                PlayerPoseIntent::Diving => -0.22 - dive_extension * 0.16 + airflow * 0.018,
+                PlayerPoseIntent::Diving => -0.16 - dive_extension * 0.12 + airflow * 0.018,
                 PlayerPoseIntent::AirBrake => 0.42 + same_side_turn * 0.12,
                 PlayerPoseIntent::LandingAnticipation => {
                     1.16 + landing_strength * 0.22 + landing_flip * 0.26
@@ -1685,6 +1690,38 @@ mod tests {
     }
 
     #[test]
+    fn dive_readability_requires_flat_torso_and_arms_out_shape() {
+        let weak_torso_score = key_pose_readability_score(
+            PlayerPoseIntent::Diving,
+            DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES - 8.0,
+            DIVE_MIN_ARM_SPREAD_READABILITY_DEGREES + 8.0,
+            80.0,
+            0.0,
+            0.0,
+        );
+        let weak_arm_score = key_pose_readability_score(
+            PlayerPoseIntent::Diving,
+            DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES + 8.0,
+            DIVE_MIN_ARM_SPREAD_READABILITY_DEGREES - 16.0,
+            80.0,
+            0.0,
+            0.0,
+        );
+        let readable_score = key_pose_readability_score(
+            PlayerPoseIntent::Diving,
+            DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES + 6.0,
+            DIVE_MIN_ARM_SPREAD_READABILITY_DEGREES + 6.0,
+            80.0,
+            0.0,
+            0.0,
+        );
+
+        assert!(weak_torso_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(weak_arm_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(readable_score >= MIN_KEY_POSE_READABILITY_SCORE);
+    }
+
+    #[test]
     fn freefall_dive_pose_extends_arms_into_flat_silhouette() {
         let left_arm = CharacterPart::new(
             CharacterPartRole::Arm(Side::Left),
@@ -1718,8 +1755,8 @@ mod tests {
         let right_dive_arm = part_pose_with_context(&right_arm, dive_context, 0.0);
 
         assert_eq!(dive_context.intent(), PlayerPoseIntent::Diving);
-        assert!(dive_metrics.torso_pitch_degrees > 58.0);
-        assert!(dive_metrics.arm_spread_degrees > 166.0);
+        assert!(dive_metrics.torso_pitch_degrees > DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES + 8.0);
+        assert!(dive_metrics.arm_spread_degrees > DIVE_MIN_ARM_SPREAD_READABILITY_DEGREES + 4.0);
         assert!(dive_metrics.leg_tuck_degrees > falling_metrics.leg_tuck_degrees + 30.0);
         assert!(left_dive_arm.translation.x < -0.09);
         assert!(right_dive_arm.translation.x > 0.09);
@@ -2257,7 +2294,7 @@ mod tests {
         assert!(landing.landing_crouch_m > 0.05);
         assert!(landing.landing_foot_forward_m > 0.32);
         assert!(recovery.landing_crouch_m > 0.055);
-        assert!(dive.key_pose_readability_score >= 0.98);
+        assert!(dive.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
         assert!(air_brake.key_pose_readability_score >= 0.98);
         assert!(landing.key_pose_readability_score >= 0.98);
         assert!(recovery.key_pose_readability_score >= 0.98);
