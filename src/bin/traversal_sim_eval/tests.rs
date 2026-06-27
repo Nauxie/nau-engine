@@ -19,7 +19,8 @@ use nau_engine::{
         LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES, LONG_GLIDE_VISIBILITY,
         MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES, MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
         MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_LOAD_POSE_LEAN_DEGREES,
-        MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE, UPDRAFT_ROUTE, scenario_named,
+        MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
+        POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES, UPDRAFT_ROUTE, scenario_named,
     },
     movement::{Facing, FlightController, FlightInput, FlightMode, FlightState},
     world::{START_POSITION, SkyRoute},
@@ -167,8 +168,14 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
     assert!(result.metrics.pose_falling_samples >= 8);
     assert!(result.metrics.pose_gliding_samples >= 18);
     assert!(result.metrics.pose_air_turn_samples >= 6);
-    assert!(result.metrics.right_pose_air_turn_samples >= 3);
-    assert!(result.metrics.left_pose_air_turn_samples >= 3);
+    assert!(
+        result.metrics.right_pose_air_turn_samples
+            >= POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES as u32
+    );
+    assert!(
+        result.metrics.left_pose_air_turn_samples
+            >= POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES as u32
+    );
     assert!(result.metrics.pose_air_brake_samples >= 4);
     assert!(result.metrics.pose_diving_samples >= 1);
     assert!(result.metrics.gliding_dive_samples >= 1);
@@ -444,7 +451,7 @@ fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
         .find(|check| check.name == "pose_landing_flare")
         .expect("landing flare check");
     assert!(!flare_check.passed);
-    assert_eq!(flare_check.threshold, 48.0);
+    assert_eq!(flare_check.threshold, LANDING_MIN_POSE_FLARE_DEGREES);
     assert_eq!(flare_check.unit, "deg");
     let foot_forward_check = checks
         .iter()
@@ -466,7 +473,7 @@ fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
 
     metrics.pose_landing_recovery_samples = 1;
     metrics.max_pose_landing_foot_forward_m = 0.32;
-    metrics.max_pose_landing_flare_degrees = 48.0;
+    metrics.max_pose_landing_flare_degrees = LANDING_MIN_POSE_FLARE_DEGREES;
     let failing_flip_checks = metrics.checks(scenario);
     let failing_flip_check = failing_flip_checks
         .iter()
