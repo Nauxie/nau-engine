@@ -121,15 +121,16 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
     } else {
         t >= 0.05
     };
+    let backward = scenario.name == ISLAND_LAUNCH_TO_LANDING && (7.05..=7.55).contains(&t);
 
     FlightInput {
         forward,
+        backward,
         left,
         right,
         glide: t >= 0.45,
         dive,
         launch: frame == 1,
-        ..default()
     }
 }
 
