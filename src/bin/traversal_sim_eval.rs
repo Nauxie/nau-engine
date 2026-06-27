@@ -12,6 +12,10 @@ mod simulation;
 mod state;
 
 use cli::{SimOptions, run_and_write, usage};
+use nau_engine::animation::{
+    GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+    GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+};
 
 pub(crate) use sample::{SimSample, round4, round4_f64, vec3_json};
 pub(crate) use simulation::run_simulation;

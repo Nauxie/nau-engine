@@ -98,6 +98,12 @@ pub(super) fn build_metrics_summary(
         max_pose_lateral_lean_degrees: acc.max_pose_lateral_lean_degrees,
         max_right_pose_lateral_lean_degrees: acc.max_right_pose_lateral_lean_degrees,
         max_left_pose_lateral_lean_degrees: acc.max_left_pose_lateral_lean_degrees,
+        max_grounded_walk_stride_foot_travel_m: acc.max_grounded_walk_stride_foot_travel_m,
+        max_grounded_run_stride_foot_travel_m: acc.max_grounded_run_stride_foot_travel_m,
+        max_grounded_walk_stride_leg_opposition_degrees: acc
+            .max_grounded_walk_stride_leg_opposition_degrees,
+        max_grounded_run_stride_leg_opposition_degrees: acc
+            .max_grounded_run_stride_leg_opposition_degrees,
         max_pose_landing_crouch_m: acc.max_pose_landing_crouch_m,
         max_pose_landing_foot_forward_m: acc.max_pose_landing_foot_forward_m,
         max_pose_landing_flare_degrees: acc.max_pose_landing_flare_degrees,
@@ -123,6 +129,7 @@ pub(super) fn build_metrics_summary(
         authored_clip_mismatch_samples: acc.authored_clip_mismatch_samples,
         authored_bank_left_clip_samples: acc.authored_bank_left_clip_samples,
         authored_bank_right_clip_samples: acc.authored_bank_right_clip_samples,
+        authored_jog_clip_samples: acc.authored_jog_clip_samples,
         authored_fall_clip_samples: acc.authored_fall_clip_samples,
         authored_dive_clip_samples: acc.authored_dive_clip_samples,
         authored_air_brake_clip_samples: acc.authored_air_brake_clip_samples,

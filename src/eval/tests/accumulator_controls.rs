@@ -1,4 +1,8 @@
 use super::*;
+use crate::animation::{
+    GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+    GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+};
 
 #[test]
 fn accumulator_summarizes_frame_time_percentiles() {
@@ -1103,6 +1107,8 @@ fn accumulator_summarizes_pose_intent_samples() {
             leg_tuck_degrees: 0.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.0,
             landing_foot_forward_m: 0.0,
             wing_airflow_strength: 0.0,
@@ -1164,6 +1170,8 @@ fn accumulator_summarizes_pose_intent_samples() {
         leg_tuck_degrees: 0.0,
         lateral_lean_degrees: 0.0,
         signed_lateral_lean_degrees: 0.0,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
         landing_crouch_m: 0.0,
         landing_foot_forward_m: 0.0,
         wing_airflow_strength: 0.0,
@@ -1201,6 +1209,8 @@ fn accumulator_summarizes_pose_intent_samples() {
         leg_tuck_degrees: 0.0,
         lateral_lean_degrees: 0.0,
         signed_lateral_lean_degrees: 0.0,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
         landing_crouch_m: 0.0,
         landing_foot_forward_m: 0.0,
         wing_airflow_strength: 0.0,
@@ -1292,6 +1302,8 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         leg_tuck_degrees: 0.0,
         lateral_lean_degrees: 0.0,
         signed_lateral_lean_degrees: 0.0,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
         landing_crouch_m: 1.0,
         landing_foot_forward_m: 0.40,
         wing_airflow_strength: 0.0,
@@ -1373,6 +1385,8 @@ fn accumulator_gates_target_landing_pose_temporal_samples() {
             leg_tuck_degrees: 52.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.12,
             landing_foot_forward_m: 0.40,
             wing_airflow_strength: 0.0,
@@ -1428,6 +1442,8 @@ fn accumulator_gates_target_landing_pose_temporal_jank() {
         leg_tuck_degrees: 52.0,
         lateral_lean_degrees: 0.0,
         signed_lateral_lean_degrees: 0.0,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
         landing_crouch_m: 0.12,
         landing_foot_forward_m: 0.40,
         wing_airflow_strength: 0.0,
@@ -1510,6 +1526,8 @@ fn accumulator_ignores_non_landing_pose_jank_for_landing_temporal_gates() {
             leg_tuck_degrees: 52.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.12,
             landing_foot_forward_m: 0.40,
             wing_airflow_strength: 0.0,
@@ -1961,6 +1979,8 @@ fn accumulator_rejects_unreadable_air_control_turn_pose_samples() {
             leg_tuck_degrees: 2.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.0,
             landing_foot_forward_m: 0.0,
             wing_airflow_strength: 0.0,
@@ -2009,6 +2029,8 @@ fn accumulator_rejects_unreadable_key_pose_samples() {
             leg_tuck_degrees: 4.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.0,
             landing_foot_forward_m: 0.0,
             wing_airflow_strength: 0.0,
@@ -2067,8 +2089,29 @@ fn accumulator_gates_pose_state_coverage_samples() {
 
     assert_eq!(summary.metrics.pose_grounded_walk_samples, 8);
     assert_eq!(summary.metrics.pose_grounded_run_samples, 8);
+    assert!(
+        summary.metrics.max_grounded_walk_stride_foot_travel_m
+            >= GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M
+    );
+    assert!(
+        summary.metrics.max_grounded_run_stride_foot_travel_m
+            >= GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M
+    );
+    assert!(
+        summary
+            .metrics
+            .max_grounded_walk_stride_leg_opposition_degrees
+            >= GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES
+    );
+    assert!(
+        summary
+            .metrics
+            .max_grounded_run_stride_leg_opposition_degrees
+            >= GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES
+    );
     assert_eq!(summary.metrics.pose_launching_samples, 3);
     assert_eq!(summary.metrics.pose_falling_samples, 8);
+    assert_eq!(summary.metrics.authored_jog_clip_samples, 16);
     assert_eq!(summary.metrics.authored_fall_clip_samples, 8);
     assert_eq!(summary.metrics.pose_gliding_samples, 18);
     assert_eq!(summary.metrics.unreadable_key_pose_samples, 0);
@@ -2081,6 +2124,11 @@ fn accumulator_gates_pose_state_coverage_samples() {
     for name in [
         "pose_state_grounded_walk_samples",
         "pose_state_grounded_run_samples",
+        "pose_state_walk_stride_foot_travel",
+        "pose_state_run_stride_foot_travel",
+        "pose_state_walk_stride_leg_opposition",
+        "pose_state_run_stride_leg_opposition",
+        "pose_state_authored_jog_clip_samples",
         "pose_state_launching_samples",
         "pose_state_falling_samples",
         "pose_state_authored_fall_clip_samples",
@@ -2122,10 +2170,53 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
     for name in [
         "pose_state_grounded_walk_samples",
         "pose_state_grounded_run_samples",
+        "pose_state_authored_jog_clip_samples",
         "pose_state_launching_samples",
         "pose_state_falling_samples",
         "pose_state_authored_fall_clip_samples",
         "pose_state_gliding_samples",
+    ] {
+        assert!(!named_check(&summary, name).passed, "{name} should fail");
+    }
+}
+
+#[test]
+fn accumulator_rejects_static_grounded_pose_state_stride() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    observe_pose_state_samples_with_grounded_stride(
+        &mut accumulator,
+        scenario,
+        &[
+            ("grounded_walk", FlightMode::Grounded.label(), 8),
+            ("grounded_run", FlightMode::Grounded.label(), 8),
+            ("launching", FlightMode::Launching.label(), 3),
+            ("falling", FlightMode::Airborne.label(), 8),
+            ("gliding", FlightMode::Gliding.label(), 18),
+        ],
+        false,
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert!(named_check(&summary, "pose_state_grounded_walk_samples").passed);
+    assert!(named_check(&summary, "pose_state_grounded_run_samples").passed);
+    assert!(named_check(&summary, "pose_state_authored_jog_clip_samples").passed);
+    for name in [
+        "pose_state_walk_stride_foot_travel",
+        "pose_state_run_stride_foot_travel",
+        "pose_state_walk_stride_leg_opposition",
+        "pose_state_run_stride_leg_opposition",
     ] {
         assert!(!named_check(&summary, name).passed, "{name} should fail");
     }
@@ -2178,6 +2269,15 @@ fn observe_pose_state_samples(
     scenario: EvalScenario,
     samples: &[(&'static str, &'static str, u32)],
 ) {
+    observe_pose_state_samples_with_grounded_stride(accumulator, scenario, samples, true);
+}
+
+fn observe_pose_state_samples_with_grounded_stride(
+    accumulator: &mut EvalAccumulator,
+    scenario: EvalScenario,
+    samples: &[(&'static str, &'static str, u32)],
+    include_grounded_stride_metrics: bool,
+) {
     let mut frame = 10;
     for &(pose_intent_label, mode, count) in samples {
         for _ in 0..count {
@@ -2185,6 +2285,22 @@ fn observe_pose_state_samples(
             sample.mode = mode;
             sample.pose_intent_label = pose_intent_label;
             sample.key_pose_readability_score = 1.0;
+            if include_grounded_stride_metrics
+                && matches!(pose_intent_label, "grounded_walk" | "grounded_run")
+            {
+                let (foot_travel_m, leg_opposition_degrees) = match pose_intent_label {
+                    "grounded_walk" => (
+                        GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M + 0.04,
+                        GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES + 6.0,
+                    ),
+                    _ => (
+                        GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M + 0.04,
+                        GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES + 6.0,
+                    ),
+                };
+                sample.pose_grounded_stride_foot_travel_m = foot_travel_m;
+                sample.pose_grounded_stride_leg_opposition_degrees = leg_opposition_degrees;
+            }
             let authored_clip_label =
                 authored_clip_label_for_pose_intent_label(pose_intent_label, Vec2::ZERO);
             sample = sample.with_authored_animation_metrics(

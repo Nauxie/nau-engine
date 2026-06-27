@@ -159,6 +159,25 @@ impl SimMetrics {
                 .max_left_pose_lateral_lean_degrees
                 .max(sample.pose_signed_lateral_lean_degrees.max(0.0));
         }
+        match sample.pose_intent_label {
+            "grounded_walk" => {
+                self.max_grounded_walk_stride_foot_travel_m = self
+                    .max_grounded_walk_stride_foot_travel_m
+                    .max(sample.pose_grounded_stride_foot_travel_m);
+                self.max_grounded_walk_stride_leg_opposition_degrees = self
+                    .max_grounded_walk_stride_leg_opposition_degrees
+                    .max(sample.pose_grounded_stride_leg_opposition_degrees);
+            }
+            "grounded_run" => {
+                self.max_grounded_run_stride_foot_travel_m = self
+                    .max_grounded_run_stride_foot_travel_m
+                    .max(sample.pose_grounded_stride_foot_travel_m);
+                self.max_grounded_run_stride_leg_opposition_degrees = self
+                    .max_grounded_run_stride_leg_opposition_degrees
+                    .max(sample.pose_grounded_stride_leg_opposition_degrees);
+            }
+            _ => {}
+        }
         self.max_pose_landing_crouch_m = self
             .max_pose_landing_crouch_m
             .max(sample.pose_landing_crouch_m);

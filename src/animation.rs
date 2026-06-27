@@ -86,6 +86,8 @@ pub struct PoseReadabilityMetrics {
     pub leg_tuck_degrees: f32,
     pub lateral_lean_degrees: f32,
     pub signed_lateral_lean_degrees: f32,
+    pub grounded_stride_foot_travel_m: f32,
+    pub grounded_stride_leg_opposition_degrees: f32,
     pub landing_crouch_m: f32,
     pub landing_foot_forward_m: f32,
     pub wing_airflow_strength: f32,
@@ -93,6 +95,13 @@ pub struct PoseReadabilityMetrics {
 }
 
 pub const MIN_KEY_POSE_READABILITY_SCORE: f32 = 0.9;
+pub const GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M: f32 = 0.08;
+pub const GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M: f32 = 0.16;
+pub const GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES: f32 = 20.0;
+pub const GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES: f32 = 34.0;
+pub const GROUNDED_STRIDE_MIN_FOOT_TRAVEL_M: f32 = GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M;
+pub const GROUNDED_STRIDE_MIN_LEG_OPPOSITION_DEGREES: f32 =
+    GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES;
 pub const LANDING_MIN_FOOT_FORWARD_READABILITY_M: f32 = 0.32;
 const LANDING_ANTICIPATION_BASE_HEIGHT_M: f32 = 6.0;
 const LANDING_ANTICIPATION_MAX_HEIGHT_M: f32 = 36.0;
@@ -539,6 +548,25 @@ pub fn pose_readability_metrics_from_part_transforms(
             .angle_between(Quat::IDENTITY)
             .to_degrees())
         * 0.5;
+    let grounded_stride_pose = matches!(
+        context.intent(),
+        PlayerPoseIntent::GroundedStride
+            | PlayerPoseIntent::GroundedWalk
+            | PlayerPoseIntent::GroundedRun
+    );
+    let grounded_stride_foot_travel_m = if grounded_stride_pose {
+        (parts.left_leg_translation.z - parts.right_leg_translation.z).abs()
+    } else {
+        0.0
+    };
+    let grounded_stride_leg_opposition_degrees = if grounded_stride_pose {
+        parts
+            .left_leg_rotation
+            .angle_between(parts.right_leg_rotation)
+            .to_degrees()
+    } else {
+        0.0
+    };
 
     PoseReadabilityMetrics {
         torso_pitch_degrees,
@@ -546,6 +574,8 @@ pub fn pose_readability_metrics_from_part_transforms(
         leg_tuck_degrees,
         lateral_lean_degrees: torso_lateral_lean_degrees(parts.torso_rotation),
         signed_lateral_lean_degrees: torso_signed_lateral_lean_degrees(parts.torso_rotation),
+        grounded_stride_foot_travel_m,
+        grounded_stride_leg_opposition_degrees,
         landing_crouch_m,
         landing_foot_forward_m,
         wing_airflow_strength: wing_airflow_strength(context.mode, context.velocity),
@@ -1203,6 +1233,48 @@ mod tests {
         assert!(
             run.rotation.angle_between(Quat::IDENTITY)
                 > walk.rotation.angle_between(Quat::IDENTITY)
+        );
+    }
+
+    #[test]
+    fn grounded_stride_readability_metrics_require_leg_opposition_and_foot_travel() {
+        let walk_metrics = pose_readability_metrics(
+            PlayerPoseContext::new(
+                FlightMode::Grounded,
+                Vec3::new(0.0, 0.0, -5.5),
+                FlightInput::default(),
+                0.0,
+            ),
+            TAU * 0.25,
+        );
+        let run_metrics = pose_readability_metrics(
+            PlayerPoseContext::new(
+                FlightMode::Grounded,
+                Vec3::new(0.0, 0.0, -10.0),
+                FlightInput::default(),
+                0.0,
+            ),
+            TAU * 0.25,
+        );
+
+        assert!(
+            walk_metrics.grounded_stride_foot_travel_m > GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M
+        );
+        assert!(
+            walk_metrics.grounded_stride_leg_opposition_degrees
+                > GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES
+        );
+        assert!(run_metrics.grounded_stride_foot_travel_m > GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M);
+        assert!(
+            run_metrics.grounded_stride_leg_opposition_degrees
+                > GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES
+        );
+        assert!(
+            run_metrics.grounded_stride_foot_travel_m > walk_metrics.grounded_stride_foot_travel_m
+        );
+        assert!(
+            run_metrics.grounded_stride_leg_opposition_degrees
+                > walk_metrics.grounded_stride_leg_opposition_degrees
         );
     }
 
