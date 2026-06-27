@@ -615,6 +615,10 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         coverage.terrain_rim_proxy_count,
         route.islands().len() * nau_engine::world::TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND
     );
+    assert_eq!(
+        coverage.terrain_body_proxy_count,
+        route.islands().len() * nau_engine::world::TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND
+    );
     assert!(coverage.camera_only_allowance_count >= route.islands().len());
     assert_eq!(catalog.deferred_mesh_count(), route.islands().len() * 4);
     assert!(catalog.prebuilt_mesh_count() > catalog.deferred_mesh_count());
@@ -641,6 +645,10 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         .iter()
         .filter(|proxy| proxy.kind == WorldCollisionProxyKind::TerrainRim)
         .count();
+    let terrain_body_proxy_count = proxies
+        .iter()
+        .filter(|proxy| proxy.kind == WorldCollisionProxyKind::TerrainBody)
+        .count();
     let expected_spawned_near_island_count = route
         .islands()
         .iter()
@@ -654,6 +662,10 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         .count();
     let expected_spawned_terrain_rim_proxy_count = expected_spawned_near_island_count
         * nau_engine::world::TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND;
+    let expected_spawned_terrain_body_proxy_count = catalog.resident_collision_proxy_count(
+        nau_engine::world::START_POSITION,
+        WorldCollisionProxyKind::TerrainBody,
+    );
     let tree_proxy_count = proxies
         .iter()
         .filter(|proxy| proxy.kind == WorldCollisionProxyKind::Tree)
@@ -676,6 +688,10 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
     assert_eq!(
         terrain_rim_proxy_count,
         expected_spawned_terrain_rim_proxy_count
+    );
+    assert_eq!(
+        terrain_body_proxy_count,
+        expected_spawned_terrain_body_proxy_count
     );
     assert!(
         proxies

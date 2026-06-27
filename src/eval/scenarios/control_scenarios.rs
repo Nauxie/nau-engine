@@ -14,12 +14,12 @@ use crate::{
 use super::{
     AIR_CONTROL_RESPONSE, CAMERA_MOUSE_CONTROL, CAMERA_STRAFE_STABILITY, CAMERA_TURN_STABILITY,
     CAMERA_YAW_STABILITY, EvalScenario, GROUND_TAXI_CONTROL, POSE_STATE_COVERAGE,
-    TERRAIN_RIM_COLLISION_CONTACT, WORLD_COLLISION_CONTACT,
+    TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_RIM_COLLISION_CONTACT, WORLD_COLLISION_CONTACT,
     checkpoints::{
         AIR_CONTROL_RESPONSE_CHECKPOINTS, CAMERA_MOUSE_CHECKPOINTS, CAMERA_STRAFE_CHECKPOINTS,
         CAMERA_TURN_CHECKPOINTS, CAMERA_YAW_STABILITY_CHECKPOINTS, GROUND_TAXI_CHECKPOINTS,
-        POSE_STATE_CHECKPOINTS, TERRAIN_RIM_COLLISION_CONTACT_CHECKPOINTS,
-        WORLD_COLLISION_CONTACT_CHECKPOINTS,
+        POSE_STATE_CHECKPOINTS, TERRAIN_BODY_COLLISION_CONTACT_CHECKPOINTS,
+        TERRAIN_RIM_COLLISION_CONTACT_CHECKPOINTS, WORLD_COLLISION_CONTACT_CHECKPOINTS,
     },
 };
 
@@ -304,6 +304,23 @@ pub(super) fn terrain_rim_collision_contact() -> EvalScenario {
             max_final_target_distance_m: 280.0,
             min_target_landing_samples: 0,
         },
+    }
+}
+
+pub(super) fn terrain_body_collision_contact() -> EvalScenario {
+    let base = terrain_rim_collision_contact();
+    EvalScenario {
+        name: TERRAIN_BODY_COLLISION_CONTACT,
+        frame_count: 360,
+        checkpoints: TERRAIN_BODY_COLLISION_CONTACT_CHECKPOINTS,
+        thresholds: EvalThresholds {
+            min_horizontal_distance_m: 1.0,
+            min_max_altitude_m: 27.5,
+            min_max_speed_mps: 1.0,
+            max_stream_visibility_changes_per_frame: 33,
+            ..base.thresholds
+        },
+        ..base
     }
 }
 

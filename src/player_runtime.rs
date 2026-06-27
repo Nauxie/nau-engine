@@ -454,25 +454,30 @@ fn step_player(
     let mut rock_proxy_count = 0;
     let mut landmark_proxy_count = 0;
     let mut terrain_rim_proxy_count = 0;
+    let mut terrain_body_proxy_count = 0;
     for proxy in context.collision_proxies {
         match proxy.kind {
             WorldCollisionProxyKind::Tree => tree_proxy_count += 1,
             WorldCollisionProxyKind::Rock => rock_proxy_count += 1,
             WorldCollisionProxyKind::Landmark => landmark_proxy_count += 1,
             WorldCollisionProxyKind::TerrainRim => terrain_rim_proxy_count += 1,
+            WorldCollisionProxyKind::TerrainBody => terrain_body_proxy_count += 1,
         }
     }
     context.collision_diagnostics.proxy_count = context.collision_proxies.len();
     context.collision_diagnostics.terrain_rim_proxy_count = terrain_rim_proxy_count;
+    context.collision_diagnostics.terrain_body_proxy_count = terrain_body_proxy_count;
     context.collision_diagnostics.solid_proxy_count =
-        tree_proxy_count + rock_proxy_count + landmark_proxy_count;
+        terrain_body_proxy_count + tree_proxy_count + rock_proxy_count + landmark_proxy_count;
     context.collision_diagnostics.tree_proxy_count = tree_proxy_count;
     context.collision_diagnostics.rock_proxy_count = rock_proxy_count;
     context.collision_diagnostics.landmark_proxy_count = landmark_proxy_count;
     context.collision_diagnostics.resolved_count = collision.hit_count;
     context.collision_diagnostics.terrain_rim_resolved_count = collision.terrain_rim_hit_count;
+    context.collision_diagnostics.terrain_body_resolved_count = collision.terrain_body_hit_count;
     context.collision_diagnostics.max_push_m = collision.max_push_m;
     context.collision_diagnostics.max_terrain_rim_push_m = collision.max_terrain_rim_push_m;
+    context.collision_diagnostics.max_terrain_body_push_m = collision.max_terrain_body_push_m;
 
     player.transform.translation = next.position;
     player.velocity.0 = next.velocity;
@@ -1031,11 +1036,18 @@ mod tests {
         let mut power_ups = PowerUpCollectionState::default();
         let mut collision_diagnostics = WorldCollisionDiagnostics::default();
         let mut wind_diagnostics = WindForceDiagnostics::default();
-        let proxies = [WorldCollisionProxy::new(
-            Vec3::new(0.0, nau_engine::world::START_FLOOR_Y + 0.9, 0.0),
-            Vec3::new(0.25, 0.9, 0.25),
-            crate::world_collision_runtime::WorldCollisionProxyKind::Tree,
-        )];
+        let proxies = [
+            WorldCollisionProxy::new(
+                Vec3::new(0.0, nau_engine::world::START_FLOOR_Y + 0.9, 0.0),
+                Vec3::new(0.25, 0.9, 0.25),
+                WorldCollisionProxyKind::Tree,
+            ),
+            WorldCollisionProxy::new(
+                Vec3::new(24.0, nau_engine::world::START_FLOOR_Y - 4.0, 0.0),
+                Vec3::new(12.0, 4.0, 12.0),
+                WorldCollisionProxyKind::TerrainBody,
+            ),
+        ];
         let mut transform =
             Transform::from_translation(Vec3::new(0.2, nau_engine::world::START_FLOOR_Y, 0.0));
         let mut velocity = Velocity(Vec3::new(-6.0, 0.0, 0.0));
@@ -1065,15 +1077,18 @@ mod tests {
             &mut player,
         );
 
-        assert_eq!(collision_diagnostics.proxy_count, 1);
+        assert_eq!(collision_diagnostics.proxy_count, 2);
         assert_eq!(collision_diagnostics.resolved_count, 1);
         assert_eq!(collision_diagnostics.terrain_rim_proxy_count, 0);
-        assert_eq!(collision_diagnostics.solid_proxy_count, 1);
+        assert_eq!(collision_diagnostics.terrain_body_proxy_count, 1);
+        assert_eq!(collision_diagnostics.solid_proxy_count, 2);
         assert_eq!(collision_diagnostics.tree_proxy_count, 1);
         assert_eq!(collision_diagnostics.rock_proxy_count, 0);
         assert_eq!(collision_diagnostics.landmark_proxy_count, 0);
         assert_eq!(collision_diagnostics.terrain_rim_resolved_count, 0);
+        assert_eq!(collision_diagnostics.terrain_body_resolved_count, 0);
         assert_eq!(collision_diagnostics.max_terrain_rim_push_m, 0.0);
+        assert_eq!(collision_diagnostics.max_terrain_body_push_m, 0.0);
         assert!(collision_diagnostics.max_push_m > 0.0);
         assert!(transform.translation.x >= 0.25 + 0.42);
         assert_eq!(velocity.0.x, 0.0);

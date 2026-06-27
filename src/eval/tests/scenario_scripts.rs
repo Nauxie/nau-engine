@@ -50,6 +50,20 @@ fn terrain_rim_collision_contact_script_taxis_into_launch_rim() {
 }
 
 #[test]
+fn terrain_body_collision_contact_script_taxis_into_launch_cliff_body() {
+    let scenario = scenario_named(TERRAIN_BODY_COLLISION_CONTACT).expect("body route exists");
+
+    assert!(scripted_input(scenario, 60).right);
+    assert!(scripted_input(scenario, 180).right);
+    assert!(scripted_input(scenario, 320).right);
+    assert!(!scripted_input(scenario, 180).forward);
+    assert!(!scripted_input(scenario, 1).launch);
+    assert!(!scripted_input(scenario, 60).glide);
+    assert!(!scripted_input(scenario, 120).backward);
+    assert!(scenario.frame_count >= 360);
+}
+
+#[test]
 fn updraft_route_steers_toward_lift_without_diving() {
     let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
 

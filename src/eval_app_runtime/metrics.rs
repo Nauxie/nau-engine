@@ -647,6 +647,11 @@ pub(crate) fn collect_eval_metrics(
         scene.collision_diagnostics.terrain_rim_resolved_count,
         scene.collision_diagnostics.max_terrain_rim_push_m,
     )
+    .with_terrain_body_collision_metrics(
+        scene.collision_diagnostics.terrain_body_proxy_count,
+        scene.collision_diagnostics.terrain_body_resolved_count,
+        scene.collision_diagnostics.max_terrain_body_push_m,
+    )
     .with_world_collision_kind_metrics(
         scene.collision_diagnostics.solid_proxy_count,
         scene.collision_diagnostics.tree_proxy_count,

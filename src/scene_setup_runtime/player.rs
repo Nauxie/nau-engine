@@ -10,7 +10,6 @@ use crate::generated_content::glider_airflow_trail_mesh;
 use crate::player_runtime::{
     AuthoredGliderPose, authored_glider_scene_transform, authored_player_scene_transform,
 };
-use crate::scene_setup_runtime::constants::PLAYER_START;
 use crate::scene_setup_runtime::materials::SceneMaterials;
 use nau_engine::animation::{AnimationState, CharacterPart, CharacterPartRole, ScarfSegment, Side};
 use nau_engine::asset_pipeline::VisualAssetKind;
@@ -27,6 +26,7 @@ pub(super) fn spawn_player_runtime(
     scene_materials: &SceneMaterials,
     player_scene_handle: Option<Handle<Scene>>,
     glider_scene_handle: Option<Handle<Scene>>,
+    player_start: Vec3,
 ) -> PlayerSceneEntities {
     let torso_mesh = meshes.add(Capsule3d::new(0.4, 1.0));
     let head_mesh = meshes.add(Sphere::new(0.3));
@@ -39,7 +39,7 @@ pub(super) fn spawn_player_runtime(
 
     commands
         .spawn((
-            Transform::from_translation(PLAYER_START),
+            Transform::from_translation(player_start),
             Player,
             Velocity::default(),
             FlightController::default(),
