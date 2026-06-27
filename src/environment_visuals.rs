@@ -1484,13 +1484,16 @@ fn crosswind_guide_scale(guide: &CrosswindGuide, position: Vec3, elapsed: f32) -
         .unwrap_or_else(|| guide.field.flow_at(guide.field.center, elapsed).unwrap());
     let phase = guide.phase * std::f32::consts::TAU;
     let pulse = (elapsed * 1.78 + phase + flow.variation * 1.4).sin();
+    let gust_packet = flow.gust_packet_strength.max(flow.layered_gust_strength);
     let length_pulse = (0.72
         + flow.gust_strength * 0.48
         + flow.variation * 0.34
         + pulse.max(0.0) * 0.14
+        + gust_packet * 0.2
         + flow.layered_gust_strength * 0.1)
-        .clamp(1.04, 1.72);
-    let width_pulse = (0.66 + flow.variation * 0.58 - pulse * 0.07).clamp(0.78, 1.24);
+        .clamp(1.04, 1.88);
+    let width_pulse =
+        (0.66 + flow.variation * 0.58 - pulse * 0.07 + gust_packet * 0.12).clamp(0.78, 1.36);
 
     Vec3::new(length_pulse, width_pulse, width_pulse)
 }
@@ -1967,6 +1970,49 @@ mod tests {
         assert!(
             leading_depth.distance(trailing_depth) > 0.25,
             "expected phase-staggered crosswind streams to move through different depth lanes, leading={leading_depth:?}, trailing={trailing_depth:?}"
+        );
+    }
+
+    #[test]
+    fn crosswind_guide_scale_uses_shared_gust_packet() {
+        let field = WindField::crosswind(Vec3::ZERO, Vec3::new(18.0, 8.0, 10.0), Vec3::X, 14.0);
+        let guide = CrosswindGuide {
+            field,
+            stream_index: 6,
+            stream_count: 16,
+            phase: 0.31,
+        };
+        let elapsed = 1.25;
+        let lane_origin = field.stream_origin(guide.stream_index, guide.stream_count);
+        let path_length = field.half_extents.x * 2.0;
+        let mut peak_position = None;
+        let mut calm_position = None;
+
+        for index in 0..=140 {
+            let progress = index as f32 / 140.0;
+            let position = lane_origin + field.direction * (progress * path_length);
+            let flow = field.flow_at(position, elapsed).unwrap();
+            let packet = flow.gust_packet_strength.max(flow.layered_gust_strength);
+
+            if packet > 0.9 && peak_position.is_none() {
+                peak_position = Some(position);
+            }
+            if packet < 0.05 && calm_position.is_none() {
+                calm_position = Some(position);
+            }
+            if peak_position.is_some() && calm_position.is_some() {
+                break;
+            }
+        }
+
+        let peak_position = peak_position.expect("expected a crosswind gust-packet peak");
+        let calm_position = calm_position.expect("expected a calm crosswind lane gap");
+        let peak_scale = crosswind_guide_scale(&guide, peak_position, elapsed);
+        let calm_scale = crosswind_guide_scale(&guide, calm_position, elapsed);
+
+        assert!(
+            scale_delta(peak_scale, calm_scale) > 0.08,
+            "expected shared gust packet to visibly pulse crosswind guide scale, peak={peak_scale:?}, calm={calm_scale:?}"
         );
     }
 
