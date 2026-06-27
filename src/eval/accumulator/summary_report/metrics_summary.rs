@@ -123,6 +123,7 @@ pub(super) fn build_metrics_summary(
         authored_clip_mismatch_samples: acc.authored_clip_mismatch_samples,
         authored_bank_left_clip_samples: acc.authored_bank_left_clip_samples,
         authored_bank_right_clip_samples: acc.authored_bank_right_clip_samples,
+        authored_fall_clip_samples: acc.authored_fall_clip_samples,
         authored_dive_clip_samples: acc.authored_dive_clip_samples,
         authored_air_brake_clip_samples: acc.authored_air_brake_clip_samples,
         authored_land_clip_samples: acc.authored_land_clip_samples,

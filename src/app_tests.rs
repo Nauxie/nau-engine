@@ -121,11 +121,11 @@ fn authored_player_clip_selection_tracks_flight_state() {
     );
     assert_eq!(
         authored_player_clip_for_state(FlightMode::Airborne, 16.0),
-        AuthoredPlayerClip::AirBrake
+        AuthoredPlayerClip::Fall
     );
     assert_eq!(
         authored_player_clip_for_state(FlightMode::Airborne, 4.0),
-        AuthoredPlayerClip::Land
+        AuthoredPlayerClip::Fall
     );
 }
 
@@ -202,12 +202,13 @@ fn authored_player_clip_indices_match_declared_gltf_order() {
     assert_eq!(AuthoredPlayerClip::Idle.index(), 0);
     assert_eq!(AuthoredPlayerClip::Jog.index(), 1);
     assert_eq!(AuthoredPlayerClip::Launch.index(), 2);
-    assert_eq!(AuthoredPlayerClip::Glide.index(), 3);
-    assert_eq!(AuthoredPlayerClip::BankLeft.index(), 4);
-    assert_eq!(AuthoredPlayerClip::BankRight.index(), 5);
-    assert_eq!(AuthoredPlayerClip::Dive.index(), 6);
-    assert_eq!(AuthoredPlayerClip::AirBrake.index(), 7);
-    assert_eq!(AuthoredPlayerClip::Land.index(), 8);
+    assert_eq!(AuthoredPlayerClip::Fall.index(), 3);
+    assert_eq!(AuthoredPlayerClip::Glide.index(), 4);
+    assert_eq!(AuthoredPlayerClip::BankLeft.index(), 5);
+    assert_eq!(AuthoredPlayerClip::BankRight.index(), 6);
+    assert_eq!(AuthoredPlayerClip::Dive.index(), 7);
+    assert_eq!(AuthoredPlayerClip::AirBrake.index(), 8);
+    assert_eq!(AuthoredPlayerClip::Land.index(), 9);
 }
 
 #[test]

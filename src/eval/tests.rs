@@ -255,7 +255,7 @@ fn authored_clip_label_for_pose_intent_label(
         "diving" => "dive",
         "air_brake" => "air_brake",
         "landing_anticipation" | "landing_recovery" => "land",
-        "falling" => "air_brake",
+        "falling" => "fall",
         _ => "glide",
     }
 }

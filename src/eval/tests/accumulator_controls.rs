@@ -1136,6 +1136,19 @@ fn accumulator_summarizes_pose_intent_samples() {
         18.0,
         0.0,
     ));
+    let mut falling_sample = air_control_metric_sample(
+        scenario,
+        7,
+        Vec3::new(0.0, -8.0, -18.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    );
+    falling_sample.mode = FlightMode::Airborne.label();
+    falling_sample.pose_intent_label = "falling";
+    falling_sample = falling_sample.with_authored_animation_metrics("fall", "fall", 1, 140);
+    accumulator.observe(falling_sample);
     let mut landing_anticipation_sample = air_control_metric_sample(
         scenario,
         3,
@@ -1214,15 +1227,17 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert_eq!(summary.metrics.pose_air_turn_samples, 1);
     assert_eq!(summary.metrics.right_pose_air_turn_samples, 1);
     assert_eq!(summary.metrics.left_pose_air_turn_samples, 0);
+    assert_eq!(summary.metrics.pose_falling_samples, 1);
     assert_eq!(summary.metrics.pose_diving_samples, 1);
     assert_eq!(summary.metrics.gliding_dive_samples, 1);
     assert_eq!(summary.metrics.pose_air_brake_samples, 1);
     assert_eq!(summary.metrics.pose_landing_anticipation_samples, 1);
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 1);
-    assert_eq!(summary.metrics.authored_clip_match_samples, 7);
+    assert_eq!(summary.metrics.authored_clip_match_samples, 8);
     assert_eq!(summary.metrics.authored_clip_mismatch_samples, 0);
     assert_eq!(summary.metrics.authored_bank_left_clip_samples, 0);
     assert_eq!(summary.metrics.authored_bank_right_clip_samples, 1);
+    assert_eq!(summary.metrics.authored_fall_clip_samples, 1);
     assert_eq!(summary.metrics.authored_dive_clip_samples, 1);
     assert_eq!(summary.metrics.authored_air_brake_clip_samples, 1);
     assert_eq!(summary.metrics.authored_land_clip_samples, 3);
@@ -1240,16 +1255,18 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert!(summary_json.contains("\"pose_air_turn_samples\": 1"));
     assert!(summary_json.contains("\"right_pose_air_turn_samples\": 1"));
     assert!(summary_json.contains("\"left_pose_air_turn_samples\": 0"));
+    assert!(summary_json.contains("\"pose_falling_samples\": 1"));
     assert!(summary_json.contains("\"gliding_dive_samples\": 1"));
     assert!(summary_json.contains("\"max_authored_glider_dive_response_degrees\""));
     assert!(summary_json.contains("\"max_authored_glider_dive_motion_m\""));
     assert!(summary_json.contains("\"pose_air_brake_samples\": 1"));
     assert!(summary_json.contains("\"pose_landing_anticipation_samples\": 1"));
     assert!(summary_json.contains("\"pose_landing_recovery_samples\": 1"));
-    assert!(summary_json.contains("\"authored_clip_match_samples\": 7"));
+    assert!(summary_json.contains("\"authored_clip_match_samples\": 8"));
     assert!(summary_json.contains("\"authored_clip_mismatch_samples\": 0"));
     assert!(summary_json.contains("\"authored_bank_left_clip_samples\": 0"));
     assert!(summary_json.contains("\"authored_bank_right_clip_samples\": 1"));
+    assert!(summary_json.contains("\"authored_fall_clip_samples\": 1"));
     assert!(summary_json.contains("\"authored_dive_clip_samples\": 1"));
     assert!(summary_json.contains("\"authored_air_brake_clip_samples\": 1"));
     assert!(summary_json.contains("\"authored_land_clip_samples\": 3"));
@@ -2052,14 +2069,21 @@ fn accumulator_gates_pose_state_coverage_samples() {
     assert_eq!(summary.metrics.pose_grounded_run_samples, 8);
     assert_eq!(summary.metrics.pose_launching_samples, 3);
     assert_eq!(summary.metrics.pose_falling_samples, 8);
+    assert_eq!(summary.metrics.authored_fall_clip_samples, 8);
     assert_eq!(summary.metrics.pose_gliding_samples, 18);
     assert_eq!(summary.metrics.unreadable_key_pose_samples, 0);
     assert!(summary.to_json().contains("\"pose_grounded_walk_samples\""));
+    assert!(
+        summary
+            .to_json()
+            .contains("\"authored_fall_clip_samples\": 8")
+    );
     for name in [
         "pose_state_grounded_walk_samples",
         "pose_state_grounded_run_samples",
         "pose_state_launching_samples",
         "pose_state_falling_samples",
+        "pose_state_authored_fall_clip_samples",
         "pose_state_gliding_samples",
         "pose_state_unreadable_key_pose_samples",
     ] {
@@ -2100,10 +2124,53 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
         "pose_state_grounded_run_samples",
         "pose_state_launching_samples",
         "pose_state_falling_samples",
+        "pose_state_authored_fall_clip_samples",
         "pose_state_gliding_samples",
     ] {
         assert!(!named_check(&summary, name).passed, "{name} should fail");
     }
+}
+
+#[test]
+fn accumulator_gates_missing_authored_fall_clip_samples() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    observe_pose_state_samples(
+        &mut accumulator,
+        scenario,
+        &[
+            ("grounded_walk", FlightMode::Grounded.label(), 8),
+            ("grounded_run", FlightMode::Grounded.label(), 8),
+            ("launching", FlightMode::Launching.label(), 3),
+            ("gliding", FlightMode::Gliding.label(), 18),
+        ],
+    );
+
+    for frame in 0..8 {
+        let mut sample = content_metric_sample(scenario, 300 + frame, 20, 0, 96);
+        sample.mode = FlightMode::Airborne.label();
+        sample.pose_intent_label = "falling";
+        sample.key_pose_readability_score = 1.0;
+        sample = sample.with_authored_animation_metrics("air_brake", "air_brake", 1, 140);
+        accumulator.observe(sample);
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.pose_falling_samples, 8);
+    assert_eq!(summary.metrics.authored_fall_clip_samples, 0);
+    assert!(named_check(&summary, "pose_state_falling_samples").passed);
+    assert!(!named_check(&summary, "pose_state_authored_fall_clip_samples").passed);
 }
 
 fn observe_pose_state_samples(
@@ -2118,6 +2185,14 @@ fn observe_pose_state_samples(
             sample.mode = mode;
             sample.pose_intent_label = pose_intent_label;
             sample.key_pose_readability_score = 1.0;
+            let authored_clip_label =
+                authored_clip_label_for_pose_intent_label(pose_intent_label, Vec2::ZERO);
+            sample = sample.with_authored_animation_metrics(
+                authored_clip_label,
+                authored_clip_label,
+                1,
+                140,
+            );
             accumulator.observe(sample);
             frame += 5;
         }

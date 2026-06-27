@@ -839,6 +839,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             "samples",
         ),
         EvalCheck::at_least(
+            "pose_state_authored_fall_clip_samples",
+            acc.authored_fall_clip_samples as f32,
+            POSE_STATE_MIN_FALLING_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
             "pose_state_gliding_samples",
             acc.pose_gliding_samples as f32,
             POSE_STATE_MIN_GLIDING_POSE_SAMPLES,

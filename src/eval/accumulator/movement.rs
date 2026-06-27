@@ -469,6 +469,7 @@ fn observe_authored_clip_coverage(accumulator: &mut EvalAccumulator, sample: &Ev
         ("air_turn", "bank_right") if sample.movement_input_lateral_axis > 0.25 => {
             accumulator.authored_bank_right_clip_samples += 1;
         }
+        ("falling", "fall") => accumulator.authored_fall_clip_samples += 1,
         ("diving", "dive") => accumulator.authored_dive_clip_samples += 1,
         ("air_brake", "air_brake") => accumulator.authored_air_brake_clip_samples += 1,
         ("landing_anticipation" | "landing_recovery", "land") => {

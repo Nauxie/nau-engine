@@ -370,6 +370,14 @@ const animations = [
     { node: 4, path: "rotation", times: shortTimes, values: [rotX(0.15), rotX(-0.85), rotX(-0.35)] },
     { node: 5, path: "rotation", times: shortTimes, values: [rotX(0.15), rotX(-0.85), rotX(-0.35)] },
   ]),
+  animation("Fall_Loop", [
+    { node: 2, path: "rotation", times: loopTimes, values: [rotX(-0.32), rotX(-0.42), rotX(-0.32)] },
+    { node: 3, path: "rotation", times: loopTimes, values: [rotX(0.16), rotX(0.24), rotX(0.16)] },
+    { node: 4, path: "rotation", times: loopTimes, values: [rotZ(0.48), rotZ(0.58), rotZ(0.48)] },
+    { node: 5, path: "rotation", times: loopTimes, values: [rotZ(-0.48), rotZ(-0.58), rotZ(-0.48)] },
+    { node: 6, path: "rotation", times: loopTimes, values: [rotX(0.28), rotX(0.38), rotX(0.28)] },
+    { node: 7, path: "rotation", times: loopTimes, values: [rotX(0.28), rotX(0.38), rotX(0.28)] },
+  ]),
   animation("Glide_Loop", [
     { node: 4, path: "rotation", times: loopTimes, values: [rotZ(1.08), rotZ(1.18), rotZ(1.08)] },
     { node: 5, path: "rotation", times: loopTimes, values: [rotZ(-1.08), rotZ(-1.18), rotZ(-1.08)] },

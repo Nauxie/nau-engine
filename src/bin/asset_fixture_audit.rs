@@ -395,6 +395,11 @@ fn audit_fixture(
             player_bank_clip_motion_is_distinct(&gltf),
             "clips",
         ));
+        checks.push(check_bool(
+            "player_fall_clip_motion_distinct",
+            player_fall_clip_motion_is_distinct(&gltf),
+            "clips",
+        ));
     }
 
     let passed = checks_passed(&checks);
@@ -416,6 +421,7 @@ fn audit_fixture(
         "blend_material_count": blend_material_count,
         "player_named_clip_count": ready_player_clip_count,
         "player_bank_clip_motion_distinct": player_bank_clip_motion_is_distinct(&gltf),
+        "player_fall_clip_motion_distinct": player_fall_clip_motion_is_distinct(&gltf),
         "checks": checks,
     }))
 }
@@ -534,6 +540,23 @@ fn player_bank_clip_motion_is_distinct(gltf: &Value) -> bool {
         && bank_left != glide
         && bank_right != glide
         && bank_left != bank_right
+}
+
+fn player_fall_clip_motion_is_distinct(gltf: &Value) -> bool {
+    let Some(fall) = animation_signature(gltf, "Fall_Loop") else {
+        return false;
+    };
+    let Some(glide) = animation_signature(gltf, "Glide_Loop") else {
+        return false;
+    };
+    let Some(air_brake) = animation_signature(gltf, "Air_Brake") else {
+        return false;
+    };
+    let Some(land) = animation_signature(gltf, "Land") else {
+        return false;
+    };
+
+    fall.len() >= 4 && fall != glide && fall != air_brake && fall != land
 }
 
 fn animation_signature(gltf: &Value, animation_name: &str) -> Option<Vec<String>> {
@@ -713,6 +736,20 @@ mod tests {
         assert!(player_bank_clip_motion_is_distinct(&gltf));
     }
 
+    #[test]
+    fn player_fall_clip_motion_rejects_air_brake_reuse() {
+        let gltf = fall_clip_test_gltf(false);
+
+        assert!(!player_fall_clip_motion_is_distinct(&gltf));
+    }
+
+    #[test]
+    fn player_fall_clip_motion_accepts_distinct_fall_track() {
+        let gltf = fall_clip_test_gltf(true);
+
+        assert!(player_fall_clip_motion_is_distinct(&gltf));
+    }
+
     fn bank_clip_test_gltf(distinct_banks: bool) -> Value {
         let accessors = json!([
             {"min": [0.0], "max": [1.0]},
@@ -742,6 +779,40 @@ mod tests {
                 clip("Glide_Loop", [0, 0, 0, 0]),
                 clip("Bank_Left", left_outputs),
                 clip("Bank_Right", right_outputs)
+            ]
+        })
+    }
+
+    fn fall_clip_test_gltf(distinct_fall: bool) -> Value {
+        let accessors = json!([
+            {"min": [0.0], "max": [0.2]},
+            {"min": [0.0], "max": [0.4]},
+            {"min": [0.0], "max": [0.6]},
+            {"min": [0.0], "max": [0.8]},
+            {"min": [-0.2], "max": [0.0]},
+            {"min": [-0.4], "max": [0.0]},
+            {"min": [-0.6], "max": [0.0]},
+            {"min": [-0.8], "max": [0.0]},
+            {"min": [0.1], "max": [0.5]},
+            {"min": [0.2], "max": [0.6]},
+            {"min": [0.3], "max": [0.7]},
+            {"min": [0.4], "max": [0.8]},
+            {"min": [0.5], "max": [0.9]}
+        ]);
+        let air_brake_outputs = [1, 2, 3, 4];
+        let fall_outputs = if distinct_fall {
+            [9, 10, 11, 12]
+        } else {
+            air_brake_outputs
+        };
+
+        json!({
+            "accessors": accessors,
+            "animations": [
+                clip("Glide_Loop", [0, 0, 0, 0]),
+                clip("Air_Brake", air_brake_outputs),
+                clip("Land", [5, 6, 7, 8]),
+                clip("Fall_Loop", fall_outputs)
             ]
         })
     }
