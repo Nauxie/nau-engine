@@ -40,6 +40,16 @@ pub(super) const WORLD_COLLISION_CONTACT_CHECKPOINTS: &[EvalCheckpoint] = &[
         name: "blocked_by_tree",
     },
 ];
+pub(super) const TERRAIN_RIM_COLLISION_CONTACT_CHECKPOINTS: &[EvalCheckpoint] = &[
+    EvalCheckpoint {
+        frame: 90,
+        name: "approach_rim",
+    },
+    EvalCheckpoint {
+        frame: 180,
+        name: "blocked_by_rim",
+    },
+];
 pub(super) const UPDRAFT_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
         frame: 150,

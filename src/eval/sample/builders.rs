@@ -192,8 +192,11 @@ impl EvalSample {
             max_crosswind_guide_flow_displacement_m: 0.0,
             max_crosswind_ribbon_flow_displacement_m: 0.0,
             world_collision_proxy_count: 0,
+            terrain_rim_collision_proxy_count: 0,
             world_collision_resolved_count: 0,
+            terrain_rim_collision_resolved_count: 0,
             max_world_collision_push_m: 0.0,
+            max_terrain_rim_collision_push_m: 0.0,
             island_terrain_surface_count: 0,
             min_island_terrain_mesh_vertices: 0,
             min_island_terrain_color_bands: 0,
@@ -470,6 +473,18 @@ impl EvalSample {
         self.world_collision_proxy_count = proxy_count;
         self.world_collision_resolved_count = resolved_count;
         self.max_world_collision_push_m = max_push_m.max(0.0);
+        self
+    }
+
+    pub fn with_terrain_rim_collision_metrics(
+        mut self,
+        proxy_count: usize,
+        resolved_count: usize,
+        max_push_m: f32,
+    ) -> Self {
+        self.terrain_rim_collision_proxy_count = proxy_count;
+        self.terrain_rim_collision_resolved_count = resolved_count;
+        self.max_terrain_rim_collision_push_m = max_push_m.max(0.0);
         self
     }
 

@@ -140,6 +140,7 @@ fn air_control_metric_sample(
     )
     .with_visible_authored_world_fixture_count(MIN_VISIBLE_AUTHORED_WORLD_FIXTURE_COUNT)
     .with_world_collision_metrics(MIN_WORLD_COLLISION_PROXY_COUNT, 0, 0.0)
+    .with_terrain_rim_collision_metrics(MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT, 0, 0.0)
     .with_wind_guide_visual_metrics(
         MIN_UPDRAFT_GUIDE_VISUAL_COUNT,
         MIN_UPDRAFT_RIBBON_VISUAL_COUNT,

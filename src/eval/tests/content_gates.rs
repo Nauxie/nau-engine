@@ -264,6 +264,7 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"max_wind_force_flow_speed_mps\": 6.0000"));
     assert!(summary_json.contains("\"max_wind_force_variation\": 0.1200"));
     assert!(summary_json.contains("\"max_world_collision_proxy_count\": 24"));
+    assert!(summary_json.contains("\"max_terrain_rim_collision_proxy_count\": 4"));
 }
 
 #[test]
@@ -285,6 +286,30 @@ fn accumulator_fails_when_world_collision_proxies_are_missing() {
         },
     );
     let collision_check = named_check(&summary, "world_collision_proxy_count");
+
+    assert!(!collision_check.passed);
+    assert_eq!(collision_check.value, 0.0);
+}
+
+#[test]
+fn accumulator_fails_when_terrain_rim_collision_proxies_are_missing() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(
+        content_metric_sample(scenario, 0, 12, 0, 96).with_terrain_rim_collision_metrics(0, 0, 0.0),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let collision_check = named_check(&summary, "terrain_rim_collision_proxy_count");
 
     assert!(!collision_check.passed);
     assert_eq!(collision_check.value, 0.0);
@@ -402,6 +427,145 @@ fn collision_contact_eval_passes_when_asset_contact_resolves_with_meaningful_pus
 }
 
 #[test]
+fn terrain_rim_contact_eval_fails_without_rim_contact_resolution() {
+    let scenario = scenario_named(TERRAIN_RIM_COLLISION_CONTACT).expect("rim route exists");
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(
+        content_metric_sample(scenario, 0, 12, 0, 96).with_terrain_rim_collision_metrics(
+            MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT,
+            0,
+            0.0,
+        ),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let contact_check = named_check(&summary, "terrain_rim_collision_contact_samples");
+    let push_check = named_check(&summary, "terrain_rim_collision_push");
+
+    assert!(!contact_check.passed);
+    assert_eq!(contact_check.value, 0.0);
+    assert!(!push_check.passed);
+    assert_eq!(push_check.value, 0.0);
+}
+
+#[test]
+fn terrain_rim_contact_eval_fails_when_contact_samples_are_only_skin_depth() {
+    let scenario = scenario_named(TERRAIN_RIM_COLLISION_CONTACT).expect("rim route exists");
+    let mut accumulator = EvalAccumulator::default();
+    for frame in 0..MIN_WORLD_COLLISION_CONTACT_SAMPLES {
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 12, 0, 96).with_terrain_rim_collision_metrics(
+                MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT,
+                1,
+                MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M * 0.5,
+            ),
+        );
+    }
+    accumulator.observe(
+        content_metric_sample(scenario, 99, 12, 0, 96).with_terrain_rim_collision_metrics(
+            MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT,
+            0,
+            MIN_WORLD_COLLISION_CONTACT_PUSH_M,
+        ),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let contact_check = named_check(&summary, "terrain_rim_collision_contact_samples");
+    let push_check = named_check(&summary, "terrain_rim_collision_push");
+
+    assert!(!contact_check.passed);
+    assert_eq!(contact_check.value, 0.0);
+    assert!(push_check.passed);
+}
+
+#[test]
+fn terrain_rim_contact_eval_passes_when_rim_contact_resolves_with_meaningful_push() {
+    let scenario = scenario_named(TERRAIN_RIM_COLLISION_CONTACT).expect("rim route exists");
+    let mut accumulator = EvalAccumulator::default();
+    for frame in 0..MIN_WORLD_COLLISION_CONTACT_SAMPLES {
+        let push_m = if frame == 0 {
+            MIN_WORLD_COLLISION_CONTACT_PUSH_M
+        } else {
+            MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M
+        };
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 12, 0, 96).with_terrain_rim_collision_metrics(
+                MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT,
+                1,
+                push_m,
+            ),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let contact_check = named_check(&summary, "terrain_rim_collision_contact_samples");
+    let push_check = named_check(&summary, "terrain_rim_collision_push");
+
+    assert!(contact_check.passed);
+    assert_eq!(
+        contact_check.value,
+        MIN_WORLD_COLLISION_CONTACT_SAMPLES as f32
+    );
+    assert!(push_check.passed);
+    assert_eq!(push_check.value, MIN_WORLD_COLLISION_CONTACT_PUSH_M);
+}
+
+#[test]
+fn ground_taxi_control_fails_when_terrain_rim_contacts_are_recorded() {
+    let scenario = scenario_named(GROUND_TAXI_CONTROL).expect("ground taxi route exists");
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(
+        content_metric_sample(scenario, 0, 12, 0, 96).with_terrain_rim_collision_metrics(
+            MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT,
+            1,
+            MIN_WORLD_COLLISION_CONTACT_PUSH_M,
+        ),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let contact_check = named_check(&summary, "ground_taxi_terrain_rim_contact_samples");
+
+    assert!(!contact_check.passed);
+    assert_eq!(contact_check.value, 1.0);
+}
+
+#[test]
 fn sample_json_emits_wind_guide_visual_metrics() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
     let sample_json = content_metric_sample(scenario, 0, 12, 0, 96).to_json();
@@ -424,6 +588,9 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"max_updraft_swirl_force_delta_mps\":0.0300"));
     assert!(sample_json.contains("\"max_wind_force_flow_speed_mps\":6.0000"));
     assert!(sample_json.contains("\"max_wind_force_variation\":0.1200"));
+    assert!(sample_json.contains("\"terrain_rim_collision_proxy_count\":4"));
+    assert!(sample_json.contains("\"terrain_rim_collision_resolved_count\":0"));
+    assert!(sample_json.contains("\"max_terrain_rim_collision_push_m\":0.0000"));
     assert!(sample_json.contains("\"island_terrain_archetype_count\":14"));
 }
 
@@ -907,6 +1074,7 @@ fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample
                 18, 1458, 27,
             )
             .with_world_collision_metrics(MIN_WORLD_COLLISION_PROXY_COUNT, 0, 0.0)
+            .with_terrain_rim_collision_metrics(MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT, 0, 0.0)
             .with_visible_authored_world_fixture_count(MIN_VISIBLE_AUTHORED_WORLD_FIXTURE_COUNT),
     );
 }

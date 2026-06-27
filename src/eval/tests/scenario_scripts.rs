@@ -31,6 +31,17 @@ fn world_collision_contact_script_taxis_into_launch_tree() {
 }
 
 #[test]
+fn terrain_rim_collision_contact_script_taxis_into_launch_rim() {
+    let scenario = scenario_named(TERRAIN_RIM_COLLISION_CONTACT).expect("rim route exists");
+
+    assert!(scripted_input(scenario, 60).forward);
+    assert!(scripted_input(scenario, 150).forward);
+    assert!(!scripted_input(scenario, 1).launch);
+    assert!(!scripted_input(scenario, 60).glide);
+    assert!(!scripted_input(scenario, 120).backward);
+}
+
+#[test]
 fn updraft_route_steers_toward_lift_without_diving() {
     let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
 
