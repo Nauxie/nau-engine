@@ -116,7 +116,7 @@ fn spawn_island_visuals(
     }
 
     let island_stream_state =
-        spawn_initial_island_visuals(commands, &island_visual_catalog, PLAYER_START);
+        spawn_initial_island_visuals(commands, meshes, &island_visual_catalog, PLAYER_START);
     commands.insert_resource(island_visual_catalog);
     commands.insert_resource(island_stream_state);
 

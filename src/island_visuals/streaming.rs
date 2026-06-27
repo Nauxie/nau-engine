@@ -16,6 +16,7 @@ fn island_visual_is_resident(entry: &IslandVisualEntry, player_position: Vec3) -
 
 pub(crate) fn spawn_initial_island_visuals(
     commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
     catalog: &IslandVisualCatalog,
     player_position: Vec3,
 ) -> IslandStreamState {
@@ -26,17 +27,24 @@ pub(crate) fn spawn_initial_island_visuals(
         .iter()
         .filter(|entry| island_visual_is_resident(entry, player_position))
     {
-        let entity = spawn_island_visual_entry(commands, entry);
+        let entity = spawn_island_visual_entry(commands, meshes, &mut state, entry);
         state.spawned.insert(entry.key, entity);
     }
 
     state
 }
 
-fn spawn_island_visual_entry(commands: &mut Commands, entry: &IslandVisualEntry) -> Entity {
+fn spawn_island_visual_entry(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    stream_state: &mut IslandStreamState,
+    entry: &IslandVisualEntry,
+) -> Entity {
     let mut entity = commands.spawn((entry.transform, IslandLodVisual, Name::new(entry.name)));
-    if let (Some(mesh), Some(material)) = (&entry.mesh, &entry.material) {
-        entity.insert((Mesh3d(mesh.clone()), MeshMaterial3d(material.clone())));
+    if let Some(material) = entry.material.as_ref()
+        && let Some(mesh) = mesh_handle_for_entry(meshes, stream_state, entry)
+    {
+        entity.insert((Mesh3d(mesh), MeshMaterial3d(material.clone())));
     }
     if let Some(obstacle) = entry.obstacle {
         entity.insert(obstacle);
@@ -56,8 +64,28 @@ fn spawn_island_visual_entry(commands: &mut Commands, entry: &IslandVisualEntry)
     entity.id()
 }
 
+fn mesh_handle_for_entry(
+    meshes: &mut Assets<Mesh>,
+    stream_state: &mut IslandStreamState,
+    entry: &IslandVisualEntry,
+) -> Option<Handle<Mesh>> {
+    if let Some(mesh) = &entry.mesh {
+        return Some(mesh.clone());
+    }
+
+    let recipe = entry.mesh_recipe?;
+    Some(
+        stream_state
+            .loaded_meshes
+            .entry(entry.key)
+            .or_insert_with(|| meshes.add(recipe.build_mesh()))
+            .clone(),
+    )
+}
+
 pub(crate) fn update_island_stream_visibility(
     mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
     player: Query<&Transform, With<Player>>,
     catalog: Res<IslandVisualCatalog>,
     mut stream_state: ResMut<IslandStreamState>,
@@ -78,11 +106,10 @@ pub(crate) fn update_island_stream_visibility(
 
         if resident {
             desired_keys.insert(entry.key);
-            if let std::collections::hash_map::Entry::Vacant(slot) =
-                stream_state.spawned.entry(entry.key)
-            {
-                let entity = spawn_island_visual_entry(&mut commands, entry);
-                slot.insert(entity);
+            if !stream_state.spawned.contains_key(&entry.key) {
+                let entity =
+                    spawn_island_visual_entry(&mut commands, &mut meshes, &mut stream_state, entry);
+                stream_state.spawned.insert(entry.key, entity);
                 if diagnostics.initialized {
                     spawned_visuals += 1;
                 }

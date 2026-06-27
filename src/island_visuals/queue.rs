@@ -1,12 +1,14 @@
 use super::details::queue_sky_island_details;
-use super::types::{IslandVisualCatalog, IslandVisualEntry, IslandVisualKey, IslandVisualLayer};
+use super::types::{
+    IslandVisualCatalog, IslandVisualEntry, IslandVisualKey, IslandVisualLayer,
+    IslandVisualMeshRecipe,
+};
 use crate::camera_runtime::CameraObstacle;
 use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::generated_content::{
-    ISLAND_BODY_SEGMENTS, IslandDetailMaterials, island_cliff_mesh, island_impostor_mesh,
-    island_terrain_mesh, island_underside_mesh, island_visual_surface_position,
-    mesh_terrain_material_channel_count, mesh_terrain_material_region_count,
-    mesh_terrain_material_weight_band_count, mesh_vertex_color_band_count, mesh_y_range,
+    ISLAND_BODY_SEGMENTS, IslandDetailMaterials, island_body_mesh_diagnostics,
+    island_impostor_mesh_diagnostics, island_terrain_mesh_diagnostics,
+    island_visual_surface_position,
 };
 use crate::world_collision_runtime::{
     WorldCollisionProxy, WorldCollisionProxyKind, terrain_rim_collision_proxies,
@@ -33,6 +35,35 @@ pub(super) fn queue_island_visual(
         island,
         layer,
         Some(mesh),
+        None,
+        Some(material),
+        transform,
+        obstacle,
+        None,
+        None,
+        name,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn queue_generated_island_visual(
+    entries: &mut Vec<IslandVisualEntry>,
+    visual_index: &mut usize,
+    island: SkyIsland,
+    layer: IslandVisualLayer,
+    mesh_recipe: IslandVisualMeshRecipe,
+    material: Handle<StandardMaterial>,
+    transform: Transform,
+    obstacle: Option<CameraObstacle>,
+    name: &'static str,
+) {
+    queue_island_visual_with_motion(
+        entries,
+        visual_index,
+        island,
+        layer,
+        None,
+        Some(mesh_recipe),
         Some(material),
         transform,
         obstacle,
@@ -61,6 +92,7 @@ pub(super) fn queue_collidable_island_visual(
         island,
         layer,
         Some(mesh),
+        None,
         Some(material),
         transform,
         obstacle,
@@ -89,6 +121,7 @@ pub(super) fn queue_wind_island_visual(
         island,
         layer,
         Some(mesh),
+        None,
         Some(material),
         transform,
         obstacle,
@@ -118,6 +151,7 @@ pub(super) fn queue_collidable_wind_island_visual(
         island,
         layer,
         Some(mesh),
+        None,
         Some(material),
         transform,
         obstacle,
@@ -134,6 +168,7 @@ fn queue_island_visual_with_motion(
     island: SkyIsland,
     layer: IslandVisualLayer,
     mesh: Option<Handle<Mesh>>,
+    mesh_recipe: Option<IslandVisualMeshRecipe>,
     material: Option<Handle<StandardMaterial>>,
     transform: Transform,
     obstacle: Option<CameraObstacle>,
@@ -153,6 +188,7 @@ fn queue_island_visual_with_motion(
         island,
         layer,
         mesh,
+        mesh_recipe,
         material,
         transform,
         obstacle,
@@ -174,6 +210,7 @@ fn queue_collision_only_island_proxy(
         visual_index,
         island,
         IslandVisualLayer::Collision,
+        None,
         None,
         None,
         Transform::from_translation(collision.center),
@@ -206,38 +243,44 @@ pub(crate) fn queue_sky_island(
 
     content_diagnostics.record_island_terrain_archetype(island.terrain_archetype);
 
-    let impostor_mesh = island_impostor_mesh(island_index, island);
+    let impostor_diagnostics = island_impostor_mesh_diagnostics(island_index, island);
     content_diagnostics.record_island_impostor(
-        impostor_mesh.count_vertices(),
-        mesh_vertex_color_band_count(&impostor_mesh),
+        impostor_diagnostics.vertex_count,
+        impostor_diagnostics.color_bands,
     );
-    queue_island_visual(
+    queue_generated_island_visual(
         entries,
         &mut visual_index,
         island,
         IslandVisualLayer::Impostor,
-        meshes.add(impostor_mesh),
+        IslandVisualMeshRecipe::Impostor {
+            island_index,
+            island,
+        },
         top_material.clone(),
         Transform::default(),
         None,
         "island distant impostor",
     );
 
-    let terrain_mesh = island_terrain_mesh(island_index, island);
+    let terrain_diagnostics = island_terrain_mesh_diagnostics(island_index, island);
     content_diagnostics.record_island_terrain_surface(
-        terrain_mesh.count_vertices(),
-        mesh_vertex_color_band_count(&terrain_mesh),
-        mesh_terrain_material_weight_band_count(&terrain_mesh),
-        mesh_terrain_material_channel_count(&terrain_mesh),
-        mesh_terrain_material_region_count(&terrain_mesh),
-        mesh_y_range(&terrain_mesh),
+        terrain_diagnostics.vertex_count,
+        terrain_diagnostics.color_bands,
+        terrain_diagnostics.material_weight_bands,
+        terrain_diagnostics.material_channels,
+        terrain_diagnostics.material_regions,
+        terrain_diagnostics.relief_range_m,
     );
-    queue_island_visual(
+    queue_generated_island_visual(
         entries,
         &mut visual_index,
         island,
         IslandVisualLayer::Terrain,
-        meshes.add(terrain_mesh),
+        IslandVisualMeshRecipe::Terrain {
+            island_index,
+            island,
+        },
         top_material,
         Transform::default(),
         None,
@@ -254,15 +297,17 @@ pub(crate) fn queue_sky_island(
         island.thickness * 0.5,
         island.half_extents.y * 0.78,
     );
-    let cliff_mesh = island_cliff_mesh(island_index, island);
-    let cliff_vertex_count = cliff_mesh.count_vertices();
-    content_diagnostics.record_island_cliff_detail(mesh_vertex_color_band_count(&cliff_mesh));
-    queue_island_visual(
+    let body_diagnostics = island_body_mesh_diagnostics(island_index, island);
+    content_diagnostics.record_island_cliff_detail(body_diagnostics.cliff_color_bands);
+    queue_generated_island_visual(
         entries,
         &mut visual_index,
         island,
         IslandVisualLayer::Terrain,
-        meshes.add(cliff_mesh),
+        IslandVisualMeshRecipe::Cliff {
+            island_index,
+            island,
+        },
         rock_material,
         Transform::default(),
         Some(CameraObstacle(CameraObstruction::new(
@@ -272,24 +317,23 @@ pub(crate) fn queue_sky_island(
         "island procedural cliff body",
     );
 
-    let underside_mesh = island_underside_mesh(island_index, island);
-    let underside_vertex_count = underside_mesh.count_vertices();
-    content_diagnostics.record_island_cliff_detail(mesh_vertex_color_band_count(&underside_mesh));
-    queue_island_visual(
+    content_diagnostics.record_island_cliff_detail(body_diagnostics.underside_color_bands);
+    queue_generated_island_visual(
         entries,
         &mut visual_index,
         island,
         IslandVisualLayer::Terrain,
-        meshes.add(underside_mesh),
+        IslandVisualMeshRecipe::Underside {
+            island_index,
+            island,
+        },
         under_material.clone(),
         Transform::default(),
         None,
         "island tapered underside",
     );
-    content_diagnostics.record_procedural_island_body(
-        ISLAND_BODY_SEGMENTS,
-        cliff_vertex_count + underside_vertex_count,
-    );
+    content_diagnostics
+        .record_procedural_island_body(ISLAND_BODY_SEGMENTS, body_diagnostics.total_vertex_count());
     for collision in terrain_rim_collision_proxies(island) {
         queue_collision_only_island_proxy(
             entries,
