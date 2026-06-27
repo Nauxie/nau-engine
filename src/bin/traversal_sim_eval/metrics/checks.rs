@@ -12,12 +12,18 @@ use nau_engine::eval::{
     MIN_DYNAMIC_WIND_FLOW_SPEED_MPS, MIN_DYNAMIC_WIND_FLOW_VARIATION,
     MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE, MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
     MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_SPEED_MPS, MIN_WIND_FORCE_SAMPLE_COUNT,
-    MIN_WIND_FORCE_VARIATION, UPDRAFT_ROUTE,
+    MIN_WIND_FORCE_VARIATION, POSE_STATE_COVERAGE, UPDRAFT_ROUTE,
 };
 use serde_json::{Value, json};
 
 use super::{super::round4, SimMetrics};
 use crate::LANDING_MIN_POSE_CROUCH_M;
+
+const POSE_STATE_MIN_WALK_SAMPLES: f32 = 8.0;
+const POSE_STATE_MIN_RUN_SAMPLES: f32 = 8.0;
+const POSE_STATE_MIN_LAUNCH_SAMPLES: f32 = 3.0;
+const POSE_STATE_MIN_FALLING_SAMPLES: f32 = 8.0;
+const POSE_STATE_MIN_GLIDING_POSE_SAMPLES: f32 = 18.0;
 
 #[derive(Clone, Debug)]
 pub(crate) struct SimCheck {
@@ -218,8 +224,53 @@ impl SimMetrics {
             air_control::append_checks(&mut checks, self);
         }
 
+        if scenario.name == POSE_STATE_COVERAGE {
+            append_pose_state_coverage_checks(&mut checks, self);
+        }
+
         checks
     }
+}
+
+fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
+    checks.extend([
+        SimCheck::at_least(
+            "pose_state_grounded_walk_samples",
+            metrics.pose_grounded_walk_samples as f32,
+            POSE_STATE_MIN_WALK_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_grounded_run_samples",
+            metrics.pose_grounded_run_samples as f32,
+            POSE_STATE_MIN_RUN_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_launching_samples",
+            metrics.pose_launching_samples as f32,
+            POSE_STATE_MIN_LAUNCH_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_falling_samples",
+            metrics.pose_falling_samples as f32,
+            POSE_STATE_MIN_FALLING_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_gliding_samples",
+            metrics.pose_gliding_samples as f32,
+            POSE_STATE_MIN_GLIDING_POSE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_most(
+            "pose_state_unreadable_key_pose_samples",
+            metrics.unreadable_key_pose_samples as f32,
+            0.0,
+            "samples",
+        ),
+    ]);
 }
 
 fn wind_force_scenario(scenario: EvalScenario) -> bool {

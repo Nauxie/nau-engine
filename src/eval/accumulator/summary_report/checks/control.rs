@@ -2,11 +2,17 @@ use super::super::{super::EvalAccumulator, derived::SummaryDerivedMetrics};
 use crate::eval::{
     scenarios::{
         AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
-        EvalScenario, LONG_GLIDE_VISIBILITY, UPDRAFT_ROUTE,
+        EvalScenario, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE, UPDRAFT_ROUTE,
     },
     summary::EvalCheck,
     thresholds::{EvalThresholds, *},
 };
+
+const POSE_STATE_MIN_WALK_SAMPLES: f32 = 8.0;
+const POSE_STATE_MIN_RUN_SAMPLES: f32 = 8.0;
+const POSE_STATE_MIN_LAUNCH_SAMPLES: f32 = 3.0;
+const POSE_STATE_MIN_FALLING_SAMPLES: f32 = 8.0;
+const POSE_STATE_MIN_GLIDING_POSE_SAMPLES: f32 = 18.0;
 
 pub(super) fn append_scenario_checks(
     checks: &mut Vec<EvalCheck>,
@@ -195,6 +201,9 @@ pub(super) fn append_scenario_checks(
     }
     if scenario.name == AIR_CONTROL_RESPONSE {
         append_air_control_checks(checks, acc, derived);
+    }
+    if scenario.name == POSE_STATE_COVERAGE {
+        append_pose_state_coverage_checks(checks, acc);
     }
     if scenario.name == CAMERA_STRAFE_STABILITY {
         append_camera_strafe_checks(checks, acc);
@@ -614,6 +623,47 @@ fn append_air_control_checks(
             acc.max_camera_world_yaw_drift_degrees,
             MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES,
             "deg",
+        ),
+    ]);
+}
+
+fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccumulator) {
+    checks.extend([
+        EvalCheck::at_least(
+            "pose_state_grounded_walk_samples",
+            acc.pose_grounded_walk_samples as f32,
+            POSE_STATE_MIN_WALK_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_grounded_run_samples",
+            acc.pose_grounded_run_samples as f32,
+            POSE_STATE_MIN_RUN_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_launching_samples",
+            acc.pose_launching_samples as f32,
+            POSE_STATE_MIN_LAUNCH_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_falling_samples",
+            acc.pose_falling_samples as f32,
+            POSE_STATE_MIN_FALLING_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_gliding_samples",
+            acc.pose_gliding_samples as f32,
+            POSE_STATE_MIN_GLIDING_POSE_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "pose_state_unreadable_key_pose_samples",
+            acc.unreadable_key_pose_samples as f32,
+            0.0,
+            "samples",
         ),
     ]);
 }

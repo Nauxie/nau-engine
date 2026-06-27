@@ -4,8 +4,8 @@ use bevy::prelude::*;
 use super::{
     AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, CAMERA_STRAFE_STABILITY,
     CAMERA_TURN_STABILITY, CAMERA_YAW_STABILITY, EvalScenario, GROUND_TAXI_CONTROL,
-    ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, TERRAIN_RIM_COLLISION_CONTACT, UPDRAFT_ROUTE,
-    WORLD_COLLISION_CONTACT,
+    ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE,
+    TERRAIN_RIM_COLLISION_CONTACT, UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
 };
 
 pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
@@ -30,6 +30,17 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
             glide: t >= 0.45 && !dive,
             dive,
             launch: frame == 1,
+        };
+    }
+    if scenario.name == POSE_STATE_COVERAGE {
+        let walk_accel = (0.05..=0.45).contains(&t);
+        let runup = (1.45..=2.55).contains(&t);
+        return FlightInput {
+            forward: walk_accel || runup,
+            right: (1.85..=2.15).contains(&t),
+            launch: frame == 153,
+            glide: t >= 3.65,
+            ..default()
         };
     }
     if scenario.name == GROUND_TAXI_CONTROL {

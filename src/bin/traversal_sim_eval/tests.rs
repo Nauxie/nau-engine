@@ -9,7 +9,8 @@ use nau_engine::{
     environment::WindForceApplication,
     eval::{
         AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario,
-        ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, UPDRAFT_ROUTE, scenario_named,
+        ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE, UPDRAFT_ROUTE,
+        scenario_named,
     },
     movement::{Facing, FlightController, FlightInput, FlightMode, FlightState},
     world::{START_POSITION, SkyRoute},
@@ -29,6 +30,10 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"native_window_created\": false"));
     assert!(summary.contains("\"screenshot_png\": null"));
     assert!(summary.contains("\"pose_gliding_samples\""));
+    assert!(summary.contains("\"pose_grounded_walk_samples\""));
+    assert!(summary.contains("\"pose_grounded_run_samples\""));
+    assert!(summary.contains("\"pose_launching_samples\""));
+    assert!(summary.contains("\"pose_falling_samples\""));
     assert!(summary.contains("\"pose_air_turn_samples\""));
     assert!(summary.contains("\"pose_landing_recovery_samples\""));
     assert!(summary.contains("\"max_pose_landing_flare_degrees\""));
@@ -92,6 +97,63 @@ fn baseline_simulation_writes_windowless_artifacts() {
             .find(|check| check.name == check_name)
             .expect("wind-force check");
         assert!(check.passed, "{check_name} should pass");
+    }
+}
+
+#[test]
+fn pose_state_coverage_simulation_gates_walk_run_launch_fall_and_glide() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("scenario");
+    let result = run_simulation(scenario);
+
+    assert!(result.passed);
+    assert!(result.metrics.pose_grounded_walk_samples >= 8);
+    assert!(result.metrics.pose_grounded_run_samples >= 8);
+    assert!(result.metrics.pose_launching_samples >= 3);
+    assert!(result.metrics.pose_falling_samples >= 8);
+    assert!(result.metrics.pose_gliding_samples >= 18);
+    assert_eq!(result.metrics.unreadable_key_pose_samples, 0);
+
+    for name in [
+        "pose_state_grounded_walk_samples",
+        "pose_state_grounded_run_samples",
+        "pose_state_launching_samples",
+        "pose_state_falling_samples",
+        "pose_state_gliding_samples",
+        "pose_state_unreadable_key_pose_samples",
+    ] {
+        let check = result
+            .checks
+            .iter()
+            .find(|check| check.name == name)
+            .unwrap_or_else(|| panic!("missing sim check {name}"));
+        assert!(check.passed, "expected {name} to pass: {check:?}");
+    }
+}
+
+#[test]
+fn pose_state_coverage_sim_checks_reject_thin_samples() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    metrics.pose_grounded_walk_samples = 7;
+    metrics.pose_grounded_run_samples = 7;
+    metrics.pose_launching_samples = 2;
+    metrics.pose_falling_samples = 7;
+    metrics.pose_gliding_samples = 17;
+
+    let checks = metrics.checks(scenario);
+    for name in [
+        "pose_state_grounded_walk_samples",
+        "pose_state_grounded_run_samples",
+        "pose_state_launching_samples",
+        "pose_state_falling_samples",
+        "pose_state_gliding_samples",
+    ] {
+        let check = checks
+            .iter()
+            .find(|check| check.name == name)
+            .unwrap_or_else(|| panic!("missing sim check {name}"));
+        assert!(!check.passed, "expected {name} to fail: {check:?}");
     }
 }
 

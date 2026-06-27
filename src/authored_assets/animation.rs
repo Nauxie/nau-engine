@@ -358,7 +358,9 @@ pub(crate) fn authored_player_clip_for_pose_intent(
 ) -> AuthoredPlayerClip {
     match intent {
         PlayerPoseIntent::GroundedIdle => AuthoredPlayerClip::Idle,
-        PlayerPoseIntent::GroundedStride => AuthoredPlayerClip::Jog,
+        PlayerPoseIntent::GroundedStride
+        | PlayerPoseIntent::GroundedWalk
+        | PlayerPoseIntent::GroundedRun => AuthoredPlayerClip::Jog,
         PlayerPoseIntent::Launching => AuthoredPlayerClip::Launch,
         PlayerPoseIntent::Gliding => AuthoredPlayerClip::Glide,
         PlayerPoseIntent::AirTurn => AuthoredPlayerClip::Glide,

@@ -152,6 +152,20 @@ pub(super) const AIR_CONTROL_RESPONSE_CHECKPOINTS: &[EvalCheckpoint] = &[
         name: "air_brake_recovery",
     },
 ];
+pub(super) const POSE_STATE_CHECKPOINTS: &[EvalCheckpoint] = &[
+    EvalCheckpoint {
+        frame: 55,
+        name: "grounded_walk_coast",
+    },
+    EvalCheckpoint {
+        frame: 210,
+        name: "launch_to_fall",
+    },
+    EvalCheckpoint {
+        frame: 290,
+        name: "glide_recovery",
+    },
+];
 pub(super) const LONG_GLIDE_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
         frame: 180,

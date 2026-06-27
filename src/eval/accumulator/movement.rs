@@ -438,6 +438,12 @@ fn observe_mode_counts(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
 }
 
 fn observe_pose_intent_counts(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
+    match sample.pose_intent_label {
+        "grounded_walk" => accumulator.pose_grounded_walk_samples += 1,
+        "grounded_run" => accumulator.pose_grounded_run_samples += 1,
+        _ => {}
+    }
+
     if key_pose_intent_label(sample.pose_intent_label)
         && sample.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE
     {
@@ -445,6 +451,8 @@ fn observe_pose_intent_counts(accumulator: &mut EvalAccumulator, sample: &EvalSa
     }
 
     match sample.pose_intent_label {
+        "launching" => accumulator.pose_launching_samples += 1,
+        "falling" => accumulator.pose_falling_samples += 1,
         "gliding" => accumulator.pose_gliding_samples += 1,
         "air_turn" => {
             accumulator.pose_air_turn_samples += 1;
@@ -465,7 +473,9 @@ fn observe_pose_intent_counts(accumulator: &mut EvalAccumulator, sample: &EvalSa
 fn key_pose_intent_label(label: &str) -> bool {
     matches!(
         label,
-        "gliding"
+        "launching"
+            | "falling"
+            | "gliding"
             | "air_turn"
             | "diving"
             | "air_brake"

@@ -276,6 +276,10 @@ pub struct EvalMetricsSummary {
     pub readable_lift_samples: u32,
     pub unreadable_lift_samples: u32,
     pub dynamic_readable_lift_samples: u32,
+    pub pose_grounded_walk_samples: u32,
+    pub pose_grounded_run_samples: u32,
+    pub pose_launching_samples: u32,
+    pub pose_falling_samples: u32,
     pub pose_gliding_samples: u32,
     pub pose_air_turn_samples: u32,
     pub right_pose_air_turn_samples: u32,
@@ -475,7 +479,11 @@ impl EvalMetricsSummary {
             self.pose_gliding_samples
         );
         let pose_turn_sample_metrics = format!(
-            "{pose_gliding_samples_key},\n{indent}  \"pose_air_turn_samples\": {},\n{indent}  \"right_pose_air_turn_samples\": {},\n{indent}  \"left_pose_air_turn_samples\": {}",
+            "{indent}  \"pose_grounded_walk_samples\": {},\n{indent}  \"pose_grounded_run_samples\": {},\n{indent}  \"pose_launching_samples\": {},\n{indent}  \"pose_falling_samples\": {},\n{pose_gliding_samples_key},\n{indent}  \"pose_air_turn_samples\": {},\n{indent}  \"right_pose_air_turn_samples\": {},\n{indent}  \"left_pose_air_turn_samples\": {}",
+            self.pose_grounded_walk_samples,
+            self.pose_grounded_run_samples,
+            self.pose_launching_samples,
+            self.pose_falling_samples,
             self.pose_air_turn_samples,
             self.right_pose_air_turn_samples,
             self.left_pose_air_turn_samples
