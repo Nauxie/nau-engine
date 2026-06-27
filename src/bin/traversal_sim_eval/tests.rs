@@ -1,4 +1,5 @@
 use super::{
+    LANDING_MIN_POSE_CROUCH_M,
     metrics::{SimMetrics, SimResult},
     sample::{CameraDiagnosticsSample, SimSample},
     simulation::run_simulation,
@@ -13,7 +14,8 @@ use nau_engine::{
     environment::WindForceApplication,
     eval::{
         AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario,
-        ISLAND_LAUNCH_TO_LANDING, LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES, LONG_GLIDE_VISIBILITY,
+        ISLAND_LAUNCH_TO_LANDING, LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M,
+        LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES, LONG_GLIDE_VISIBILITY,
         MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
         MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
         UPDRAFT_ROUTE, scenario_named,
@@ -124,7 +126,7 @@ fn baseline_simulation_writes_windowless_artifacts() {
 }
 
 #[test]
-fn pose_state_coverage_simulation_gates_walk_run_launch_fall_and_glide() {
+fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
     let scenario = scenario_named(POSE_STATE_COVERAGE).expect("scenario");
     let result = run_simulation(scenario);
 
@@ -154,6 +156,19 @@ fn pose_state_coverage_simulation_gates_walk_run_launch_fall_and_glide() {
     assert!(result.metrics.pose_launching_samples >= 3);
     assert!(result.metrics.pose_falling_samples >= 8);
     assert!(result.metrics.pose_gliding_samples >= 18);
+    assert!(result.metrics.pose_air_turn_samples >= 4);
+    assert!(result.metrics.pose_air_brake_samples >= 4);
+    assert!(result.metrics.pose_diving_samples >= 1);
+    assert!(result.metrics.gliding_dive_samples >= 1);
+    assert!(result.metrics.pose_landing_anticipation_samples >= 1);
+    assert!(result.metrics.pose_landing_recovery_samples >= 1);
+    assert!(result.metrics.max_pose_landing_crouch_m >= LANDING_MIN_POSE_CROUCH_M);
+    assert!(result.metrics.max_pose_landing_foot_forward_m >= LANDING_MIN_POSE_FOOT_FORWARD_M);
+    assert!(result.metrics.max_pose_landing_flare_degrees >= LANDING_MIN_POSE_FLARE_DEGREES);
+    assert!(
+        result.metrics.max_pose_landing_recovery_flip_degrees
+            >= LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES
+    );
     assert_eq!(result.metrics.unreadable_key_pose_samples, 0);
 
     for name in [
@@ -166,6 +181,16 @@ fn pose_state_coverage_simulation_gates_walk_run_launch_fall_and_glide() {
         "pose_state_launching_samples",
         "pose_state_falling_samples",
         "pose_state_gliding_samples",
+        "pose_state_air_turn_samples",
+        "pose_state_air_brake_samples",
+        "pose_state_diving_samples",
+        "pose_state_gliding_dive_samples",
+        "pose_state_landing_anticipation_samples",
+        "pose_state_landing_recovery_samples",
+        "pose_state_landing_crouch",
+        "pose_state_landing_foot_forward",
+        "pose_state_landing_flare",
+        "pose_state_landing_recovery_flip",
         "pose_state_unreadable_key_pose_samples",
     ] {
         let check = result
@@ -187,6 +212,8 @@ fn pose_state_coverage_sim_checks_reject_thin_samples() {
     metrics.pose_launching_samples = 2;
     metrics.pose_falling_samples = 7;
     metrics.pose_gliding_samples = 17;
+    metrics.pose_air_turn_samples = 3;
+    metrics.pose_air_brake_samples = 3;
 
     let checks = metrics.checks(scenario);
     for name in [
@@ -195,6 +222,12 @@ fn pose_state_coverage_sim_checks_reject_thin_samples() {
         "pose_state_launching_samples",
         "pose_state_falling_samples",
         "pose_state_gliding_samples",
+        "pose_state_air_turn_samples",
+        "pose_state_air_brake_samples",
+        "pose_state_diving_samples",
+        "pose_state_gliding_dive_samples",
+        "pose_state_landing_anticipation_samples",
+        "pose_state_landing_recovery_samples",
     ] {
         let check = checks
             .iter()
@@ -214,6 +247,16 @@ fn pose_state_coverage_sim_checks_reject_static_grounded_stride() {
     metrics.pose_launching_samples = 3;
     metrics.pose_falling_samples = 8;
     metrics.pose_gliding_samples = 18;
+    metrics.pose_air_turn_samples = 4;
+    metrics.pose_air_brake_samples = 4;
+    metrics.pose_diving_samples = 1;
+    metrics.gliding_dive_samples = 1;
+    metrics.pose_landing_anticipation_samples = 1;
+    metrics.pose_landing_recovery_samples = 1;
+    metrics.max_pose_landing_crouch_m = LANDING_MIN_POSE_CROUCH_M;
+    metrics.max_pose_landing_foot_forward_m = LANDING_MIN_POSE_FOOT_FORWARD_M;
+    metrics.max_pose_landing_flare_degrees = LANDING_MIN_POSE_FLARE_DEGREES;
+    metrics.max_pose_landing_recovery_flip_degrees = LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES;
 
     let checks = metrics.checks(scenario);
     for name in [

@@ -19,6 +19,11 @@ const POSE_STATE_MIN_RUN_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_LAUNCH_SAMPLES: f32 = 3.0;
 const POSE_STATE_MIN_FALLING_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_GLIDING_POSE_SAMPLES: f32 = 18.0;
+const POSE_STATE_MIN_AIR_TURN_SAMPLES: f32 = 4.0;
+const POSE_STATE_MIN_AIR_BRAKE_SAMPLES: f32 = 4.0;
+const POSE_STATE_MIN_DIVING_SAMPLES: f32 = 1.0;
+const POSE_STATE_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
+const POSE_STATE_MIN_LANDING_POSE_SAMPLES: f32 = 1.0;
 const AIR_CONTROL_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 const AIR_CONTROL_MIN_AUTHORED_DIVE_CLIP_SAMPLES: f32 = 1.0;
 const AIR_CONTROL_MIN_AUTHORED_AIR_BRAKE_CLIP_SAMPLES: f32 = 4.0;
@@ -921,6 +926,66 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             acc.pose_gliding_samples as f32,
             POSE_STATE_MIN_GLIDING_POSE_SAMPLES,
             "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_air_turn_samples",
+            acc.pose_air_turn_samples as f32,
+            POSE_STATE_MIN_AIR_TURN_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_air_brake_samples",
+            acc.pose_air_brake_samples as f32,
+            POSE_STATE_MIN_AIR_BRAKE_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_diving_samples",
+            acc.pose_diving_samples as f32,
+            POSE_STATE_MIN_DIVING_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_gliding_dive_samples",
+            acc.gliding_dive_samples as f32,
+            POSE_STATE_MIN_GLIDING_DIVE_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_landing_anticipation_samples",
+            acc.pose_landing_anticipation_samples as f32,
+            POSE_STATE_MIN_LANDING_POSE_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_landing_recovery_samples",
+            acc.pose_landing_recovery_samples as f32,
+            POSE_STATE_MIN_LANDING_POSE_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_landing_crouch",
+            acc.max_pose_landing_crouch_m,
+            LANDING_MIN_POSE_CROUCH_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "pose_state_landing_foot_forward",
+            acc.max_pose_landing_foot_forward_m,
+            LANDING_MIN_POSE_FOOT_FORWARD_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "pose_state_landing_flare",
+            acc.max_pose_landing_flare_degrees,
+            LANDING_MIN_POSE_FLARE_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "pose_state_landing_recovery_flip",
+            acc.max_pose_landing_recovery_flip_degrees,
+            LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+            "deg",
         ),
         EvalCheck::at_most(
             "pose_state_unreadable_key_pose_samples",

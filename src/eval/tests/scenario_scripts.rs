@@ -156,20 +156,25 @@ fn air_control_response_script_exercises_lateral_brake_and_recovery_without_mous
 }
 
 #[test]
-fn pose_state_coverage_script_exercises_walk_run_launch_fall_and_glide() {
+fn pose_state_coverage_script_exercises_full_traversal_pose_chain() {
     let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
 
+    assert!(scripted_input(scenario, 1).launch);
     assert!(scripted_input(scenario, 20).forward);
-    assert!(!scripted_input(scenario, 65).forward);
-    assert!(scripted_input(scenario, 120).right);
-    assert!(scripted_input(scenario, 153).launch);
-    assert!(!scripted_input(scenario, 210).glide);
-    assert!(scripted_input(scenario, 240).glide);
-    assert_eq!(scripted_camera_input(scenario, 153), CameraInput::default());
-    assert!(scenario.frame_count >= 360);
-    assert!(scenario.thresholds.min_samples >= 65);
+    assert!(!scripted_input(scenario, 30).glide);
+    assert!(scripted_input(scenario, 75).glide);
+    assert!(scripted_input(scenario, 200).left);
+    assert!(scripted_input(scenario, 260).dive);
+    assert!(scripted_input(scenario, 290).backward);
+    assert!(scripted_input(scenario, 315).right);
+    assert!(scripted_input(scenario, 360).dive);
+    assert!(scripted_input(scenario, 540).forward);
+    assert!(!scripted_input(scenario, 650).forward);
+    assert_eq!(scripted_camera_input(scenario, 360), CameraInput::default());
+    assert!(scenario.frame_count >= 780);
+    assert!(scenario.thresholds.min_samples >= 140);
     assert!(scenario.thresholds.min_grounded_samples >= 12);
-    assert!(scenario.thresholds.min_gliding_samples >= 12);
+    assert!(scenario.thresholds.min_gliding_samples >= 55);
 }
 
 #[test]
