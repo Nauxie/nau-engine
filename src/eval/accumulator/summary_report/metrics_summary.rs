@@ -99,6 +99,7 @@ pub(super) fn build_metrics_summary(
         max_right_pose_lateral_lean_degrees: acc.max_right_pose_lateral_lean_degrees,
         max_left_pose_lateral_lean_degrees: acc.max_left_pose_lateral_lean_degrees,
         max_pose_landing_crouch_m: acc.max_pose_landing_crouch_m,
+        max_pose_landing_foot_forward_m: acc.max_pose_landing_foot_forward_m,
         max_pose_landing_flare_degrees: acc.max_pose_landing_flare_degrees,
         max_pose_wing_airflow_strength: acc.max_pose_wing_airflow_strength,
         max_authored_glider_response_degrees: acc.max_authored_glider_response_degrees,

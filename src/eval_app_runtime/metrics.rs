@@ -599,6 +599,7 @@ pub(crate) fn collect_eval_metrics(
         lateral_lean_degrees: pose_readability.lateral_lean_degrees,
         signed_lateral_lean_degrees: pose_readability.signed_lateral_lean_degrees,
         landing_crouch_m: pose_readability.landing_crouch_m,
+        landing_foot_forward_m: pose_readability.landing_foot_forward_m,
         wing_airflow_strength: pose_readability.wing_airflow_strength,
         key_pose_readability_score: pose_readability.key_pose_readability_score,
     })
@@ -882,6 +883,7 @@ fn transition_aware_pose_readability(
             metrics.arm_spread_degrees,
             metrics.leg_tuck_degrees,
             metrics.landing_crouch_m,
+            metrics.landing_foot_forward_m,
         );
         transition_readability_score = transition_readability_score.max(previous_score);
     }
@@ -1327,12 +1329,14 @@ mod tests {
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
             wing_airflow_strength: 0.5,
             key_pose_readability_score: key_pose_readability_score(
                 PlayerPoseIntent::Gliding,
                 5.0,
                 155.0,
                 25.0,
+                0.0,
                 0.0,
             ),
         };
@@ -1363,6 +1367,7 @@ mod tests {
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
             wing_airflow_strength: 0.5,
             key_pose_readability_score: 1.0,
         };
@@ -1392,12 +1397,14 @@ mod tests {
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
             wing_airflow_strength: 0.5,
             key_pose_readability_score: key_pose_readability_score(
                 PlayerPoseIntent::Gliding,
                 5.0,
                 155.0,
                 25.0,
+                0.0,
                 0.0,
             ),
         };
@@ -1428,6 +1435,7 @@ mod tests {
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 0.1,
         };
@@ -1457,6 +1465,7 @@ mod tests {
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
             wing_airflow_strength: 0.4,
             key_pose_readability_score: 0.72,
         };
@@ -1489,6 +1498,7 @@ mod tests {
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.159,
+            landing_foot_forward_m: 0.40,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: key_pose_readability_score(
                 PlayerPoseIntent::LandingAnticipation,
@@ -1496,6 +1506,7 @@ mod tests {
                 163.7,
                 51.9,
                 0.159,
+                0.40,
             ),
         };
 
@@ -1528,6 +1539,7 @@ mod tests {
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.159,
+            landing_foot_forward_m: 0.40,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: key_pose_readability_score(
                 PlayerPoseIntent::LandingAnticipation,
@@ -1535,6 +1547,7 @@ mod tests {
                 163.7,
                 51.9,
                 0.159,
+                0.40,
             ),
         };
 
@@ -1563,6 +1576,7 @@ mod tests {
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
             wing_airflow_strength: 0.4,
             key_pose_readability_score: 0.72,
         };

@@ -1,5 +1,8 @@
 use super::json_number;
-use crate::world::{IslandTerrainArchetype, SKY_ROUTE_ISLAND_COUNT};
+use crate::{
+    animation::LANDING_MIN_FOOT_FORWARD_READABILITY_M,
+    world::{IslandTerrainArchetype, SKY_ROUTE_ISLAND_COUNT},
+};
 
 pub const MAX_RESIDENT_ISLAND_VISUAL_FRACTION: f32 = 0.70;
 pub(super) const MAX_VISIBLE_ISLAND_DETAIL_COUNT: usize = 130;
@@ -90,6 +93,7 @@ pub(super) const MIN_POSE_TEMPORAL_STABILITY_SAMPLES: u32 = 1;
 pub(super) const MAX_POSE_PART_ROTATION_DELTA_DEGREES: f32 = 120.0;
 pub(super) const MAX_POSE_PART_TRANSLATION_DELTA_M: f32 = 0.55;
 pub(super) const LANDING_MIN_POSE_CROUCH_M: f32 = 0.05;
+pub const LANDING_MIN_POSE_FOOT_FORWARD_M: f32 = LANDING_MIN_FOOT_FORWARD_READABILITY_M;
 pub const LANDING_MIN_POSE_FLARE_DEGREES: f32 = 48.0;
 pub(super) const AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES: f32 = 8.0;
 pub const MIN_DYNAMIC_WIND_FLOW_SPEED_MPS: f32 = 8.0;

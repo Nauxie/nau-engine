@@ -55,6 +55,7 @@ pub struct EvalPoseReadabilityMetrics {
     pub lateral_lean_degrees: f32,
     pub signed_lateral_lean_degrees: f32,
     pub landing_crouch_m: f32,
+    pub landing_foot_forward_m: f32,
     pub wing_airflow_strength: f32,
     pub key_pose_readability_score: f32,
 }
@@ -82,6 +83,7 @@ pub struct EvalSample {
     pub pose_lateral_lean_degrees: f32,
     pub pose_signed_lateral_lean_degrees: f32,
     pub pose_landing_crouch_m: f32,
+    pub pose_landing_foot_forward_m: f32,
     pub pose_wing_airflow_strength: f32,
     pub key_pose_readability_score: f32,
     pub key_pose_transition_grace: bool,

@@ -116,6 +116,7 @@ impl EvalSample {
             pose_lateral_lean_degrees: 0.0,
             pose_signed_lateral_lean_degrees: 0.0,
             pose_landing_crouch_m: 0.0,
+            pose_landing_foot_forward_m: 0.0,
             pose_wing_airflow_strength: 0.0,
             key_pose_readability_score: 1.0,
             key_pose_transition_grace: false,
@@ -349,6 +350,7 @@ impl EvalSample {
             0.0
         };
         self.pose_landing_crouch_m = metrics.landing_crouch_m.max(0.0);
+        self.pose_landing_foot_forward_m = metrics.landing_foot_forward_m.max(0.0);
         self.pose_wing_airflow_strength = metrics.wing_airflow_strength.clamp(0.0, 1.0);
         self.key_pose_readability_score = metrics.key_pose_readability_score.clamp(0.0, 1.0);
         self
