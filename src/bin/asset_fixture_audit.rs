@@ -396,6 +396,11 @@ fn audit_fixture(
             "clips",
         ));
         checks.push(check_bool(
+            "player_launch_glide_land_clip_motion_distinct",
+            player_launch_glide_land_clip_motion_is_distinct(&gltf),
+            "clips",
+        ));
+        checks.push(check_bool(
             "player_grounded_locomotion_clip_motion_distinct",
             player_grounded_locomotion_clip_motion_is_distinct(&gltf),
             "clips",
@@ -426,6 +431,7 @@ fn audit_fixture(
         "blend_material_count": blend_material_count,
         "player_named_clip_count": ready_player_clip_count,
         "player_bank_clip_motion_distinct": player_bank_clip_motion_is_distinct(&gltf),
+        "player_launch_glide_land_clip_motion_distinct": player_launch_glide_land_clip_motion_is_distinct(&gltf),
         "player_grounded_locomotion_clip_motion_distinct": player_grounded_locomotion_clip_motion_is_distinct(&gltf),
         "player_fall_clip_motion_distinct": player_fall_clip_motion_is_distinct(&gltf),
         "checks": checks,
@@ -546,6 +552,25 @@ fn player_bank_clip_motion_is_distinct(gltf: &Value) -> bool {
         && bank_left != glide
         && bank_right != glide
         && bank_left != bank_right
+}
+
+fn player_launch_glide_land_clip_motion_is_distinct(gltf: &Value) -> bool {
+    let Some(launch) = animation_signature(gltf, "Launch_Start") else {
+        return false;
+    };
+    let Some(glide) = animation_signature(gltf, "Glide_Loop") else {
+        return false;
+    };
+    let Some(land) = animation_signature(gltf, "Land") else {
+        return false;
+    };
+
+    !launch.is_empty()
+        && !glide.is_empty()
+        && !land.is_empty()
+        && launch != glide
+        && launch != land
+        && glide != land
 }
 
 fn player_grounded_locomotion_clip_motion_is_distinct(gltf: &Value) -> bool {
@@ -762,6 +787,20 @@ mod tests {
     }
 
     #[test]
+    fn player_launch_glide_land_clip_motion_rejects_reused_tracks() {
+        let gltf = launch_glide_land_clip_test_gltf(false);
+
+        assert!(!player_launch_glide_land_clip_motion_is_distinct(&gltf));
+    }
+
+    #[test]
+    fn player_launch_glide_land_clip_motion_accepts_distinct_tracks() {
+        let gltf = launch_glide_land_clip_test_gltf(true);
+
+        assert!(player_launch_glide_land_clip_motion_is_distinct(&gltf));
+    }
+
+    #[test]
     fn player_fall_clip_motion_rejects_air_brake_reuse() {
         let gltf = fall_clip_test_gltf(false);
 
@@ -818,6 +857,43 @@ mod tests {
                 clip("Glide_Loop", [0, 0, 0, 0]),
                 clip("Bank_Left", left_outputs),
                 clip("Bank_Right", right_outputs)
+            ]
+        })
+    }
+
+    fn launch_glide_land_clip_test_gltf(distinct_launch_and_land: bool) -> Value {
+        let accessors = json!([
+            {"min": [0.0], "max": [0.2]},
+            {"min": [0.1], "max": [0.4]},
+            {"min": [0.2], "max": [0.6]},
+            {"min": [0.3], "max": [0.8]},
+            {"min": [-0.8], "max": [-0.2]},
+            {"min": [-0.6], "max": [-0.1]},
+            {"min": [-0.4], "max": [0.0]},
+            {"min": [-0.2], "max": [0.1]},
+            {"min": [0.4], "max": [1.0]},
+            {"min": [0.5], "max": [1.1]},
+            {"min": [0.6], "max": [1.2]},
+            {"min": [0.7], "max": [1.3]}
+        ]);
+        let glide_outputs = [0, 1, 2, 3];
+        let launch_outputs = if distinct_launch_and_land {
+            [4, 5, 6, 7]
+        } else {
+            glide_outputs
+        };
+        let land_outputs = if distinct_launch_and_land {
+            [8, 9, 10, 11]
+        } else {
+            glide_outputs
+        };
+
+        json!({
+            "accessors": accessors,
+            "animations": [
+                clip("Launch_Start", launch_outputs),
+                clip("Glide_Loop", glide_outputs),
+                clip("Land", land_outputs)
             ]
         })
     }

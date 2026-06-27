@@ -1292,10 +1292,13 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert_eq!(summary.metrics.authored_clip_mismatch_samples, 0);
     assert_eq!(summary.metrics.authored_bank_left_clip_samples, 0);
     assert_eq!(summary.metrics.authored_bank_right_clip_samples, 1);
+    assert_eq!(summary.metrics.authored_launch_clip_samples, 0);
+    assert_eq!(summary.metrics.authored_glide_clip_samples, 1);
     assert_eq!(summary.metrics.authored_fall_clip_samples, 1);
     assert_eq!(summary.metrics.authored_dive_clip_samples, 1);
     assert_eq!(summary.metrics.authored_air_brake_clip_samples, 1);
     assert_eq!(summary.metrics.authored_land_clip_samples, 3);
+    assert_eq!(summary.metrics.authored_transition_active_samples, 0);
     assert_eq!(summary.metrics.max_authored_transition_duration_ms, 140);
     assert_eq!(summary.metrics.max_pose_torso_pitch_degrees, 64.0);
     assert_eq!(summary.metrics.max_pose_landing_flare_degrees, 37.0);
@@ -1321,10 +1324,13 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert!(summary_json.contains("\"authored_clip_mismatch_samples\": 0"));
     assert!(summary_json.contains("\"authored_bank_left_clip_samples\": 0"));
     assert!(summary_json.contains("\"authored_bank_right_clip_samples\": 1"));
+    assert!(summary_json.contains("\"authored_launch_clip_samples\": 0"));
+    assert!(summary_json.contains("\"authored_glide_clip_samples\": 1"));
     assert!(summary_json.contains("\"authored_fall_clip_samples\": 1"));
     assert!(summary_json.contains("\"authored_dive_clip_samples\": 1"));
     assert!(summary_json.contains("\"authored_air_brake_clip_samples\": 1"));
     assert!(summary_json.contains("\"authored_land_clip_samples\": 3"));
+    assert!(summary_json.contains("\"authored_transition_active_samples\": 0"));
     assert!(summary_json.contains("\"max_authored_transition_duration_ms\": 140"));
 }
 
@@ -1840,6 +1846,39 @@ fn accumulator_gates_authored_clip_mismatch_for_air_control() {
     assert_eq!(summary.metrics.authored_dive_clip_samples, 0);
     assert_eq!(mismatch_check.value, 1.0);
     assert!(!mismatch_check.passed);
+}
+
+#[test]
+fn accumulator_does_not_count_active_authored_transition_as_settled_clip_coverage() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let mut sample = content_metric_sample(scenario, 5, 20, 0, 96);
+    sample.mode = FlightMode::Launching.label();
+    sample.pose_intent_label = "launching";
+    sample.key_pose_readability_score = 1.0;
+    sample = sample
+        .with_authored_animation_metrics("launch", "launch", 1, 40)
+        .with_authored_animation_transition_metrics("idle", "launch", true, 20, 0.5, "urgent_pose");
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.authored_transition_active_samples, 1);
+    assert_eq!(summary.metrics.max_authored_transition_elapsed_ms, 20);
+    assert_eq!(summary.metrics.max_authored_transition_duration_ms, 40);
+    assert_eq!(summary.metrics.max_authored_transition_progress, 0.5);
+    assert_eq!(summary.metrics.authored_clip_match_samples, 0);
+    assert_eq!(summary.metrics.authored_launch_clip_samples, 0);
+    assert!(!named_check(&summary, "pose_state_authored_launch_clip_samples").passed);
 }
 
 #[test]
@@ -2648,6 +2687,8 @@ fn accumulator_gates_pose_state_coverage_samples() {
     assert_eq!(summary.metrics.authored_grounded_idle_clip_samples, 3);
     assert_eq!(summary.metrics.authored_grounded_walk_clip_samples, 8);
     assert_eq!(summary.metrics.authored_grounded_run_clip_samples, 8);
+    assert_eq!(summary.metrics.authored_launch_clip_samples, 3);
+    assert_eq!(summary.metrics.authored_glide_clip_samples, 18);
     assert_eq!(summary.metrics.authored_fall_clip_samples, 8);
     assert_eq!(summary.metrics.pose_gliding_samples, 18);
     assert_eq!(summary.metrics.pose_air_turn_samples, 10);
@@ -2675,6 +2716,16 @@ fn accumulator_gates_pose_state_coverage_samples() {
     assert!(
         summary
             .to_json()
+            .contains("\"authored_launch_clip_samples\": 3")
+    );
+    assert!(
+        summary
+            .to_json()
+            .contains("\"authored_glide_clip_samples\": 18")
+    );
+    assert!(
+        summary
+            .to_json()
             .contains("\"authored_fall_clip_samples\": 8")
     );
     for name in [
@@ -2689,9 +2740,11 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_authored_grounded_walk_clip_samples",
         "pose_state_authored_grounded_run_clip_samples",
         "pose_state_launching_samples",
+        "pose_state_authored_launch_clip_samples",
         "pose_state_falling_samples",
         "pose_state_authored_fall_clip_samples",
         "pose_state_gliding_samples",
+        "pose_state_authored_glide_clip_samples",
         "pose_state_air_turn_samples",
         "pose_state_right_air_turn_samples",
         "pose_state_left_air_turn_samples",
@@ -2700,6 +2753,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_gliding_dive_samples",
         "pose_state_landing_anticipation_samples",
         "pose_state_landing_recovery_samples",
+        "pose_state_authored_land_clip_samples",
         "pose_state_landing_crouch",
         "pose_state_landing_foot_forward",
         "pose_state_landing_flare",
@@ -2758,9 +2812,11 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
         "pose_state_authored_grounded_walk_clip_samples",
         "pose_state_authored_grounded_run_clip_samples",
         "pose_state_launching_samples",
+        "pose_state_authored_launch_clip_samples",
         "pose_state_falling_samples",
         "pose_state_authored_fall_clip_samples",
         "pose_state_gliding_samples",
+        "pose_state_authored_glide_clip_samples",
         "pose_state_air_turn_samples",
         "pose_state_right_air_turn_samples",
         "pose_state_left_air_turn_samples",
@@ -2769,6 +2825,7 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
         "pose_state_gliding_dive_samples",
         "pose_state_landing_anticipation_samples",
         "pose_state_landing_recovery_samples",
+        "pose_state_authored_land_clip_samples",
     ] {
         assert!(!named_check(&summary, name).passed, "{name} should fail");
     }

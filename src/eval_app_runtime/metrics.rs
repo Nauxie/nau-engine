@@ -725,6 +725,14 @@ pub(crate) fn collect_eval_metrics(
         authored_animation_metrics.player_count,
         authored_animation_metrics.transition_duration_ms,
     )
+    .with_authored_animation_transition_metrics(
+        authored_animation_metrics.transition_from_clip_label,
+        authored_animation_metrics.transition_to_clip_label,
+        authored_animation_metrics.transition_active,
+        authored_animation_metrics.transition_elapsed_ms,
+        authored_animation_metrics.transition_progress,
+        authored_animation_metrics.transition_class_label,
+    )
     .with_authored_glider_metrics(
         authored_glider_metrics.max_response_degrees,
         authored_glider_metrics.max_motion_m,
@@ -918,12 +926,18 @@ pub(crate) fn collect_eval_metrics(
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct AuthoredAnimationSampleMetrics {
     current_clip_label: &'static str,
     desired_clip_label: &'static str,
     player_count: usize,
     transition_duration_ms: u64,
+    transition_from_clip_label: &'static str,
+    transition_to_clip_label: &'static str,
+    transition_active: bool,
+    transition_elapsed_ms: u64,
+    transition_progress: f32,
+    transition_class_label: &'static str,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -941,6 +955,12 @@ fn authored_animation_sample_metrics(
         desired_clip_label: diagnostics.desired_label(),
         player_count: diagnostics.player_count,
         transition_duration_ms: diagnostics.transition_duration_ms,
+        transition_from_clip_label: diagnostics.transition_from_label(),
+        transition_to_clip_label: diagnostics.transition_to_label(),
+        transition_active: diagnostics.transition_active,
+        transition_elapsed_ms: diagnostics.transition_elapsed_ms,
+        transition_progress: diagnostics.transition_progress,
+        transition_class_label: diagnostics.transition_class_label,
     }
 }
 
@@ -1293,7 +1313,13 @@ mod tests {
             player_count: 2,
             current_clip: Some(AuthoredPlayerClip::Dive),
             desired_clip: Some(AuthoredPlayerClip::Glide),
-            transition_duration_ms: 140,
+            transition_from_clip: Some(AuthoredPlayerClip::Glide),
+            transition_to_clip: Some(AuthoredPlayerClip::Dive),
+            transition_active: true,
+            transition_elapsed_ms: 64,
+            transition_duration_ms: 190,
+            transition_progress: 0.34,
+            transition_class_label: "traversal_blend",
         }));
 
         assert_eq!(
@@ -1302,7 +1328,13 @@ mod tests {
                 current_clip_label: "dive",
                 desired_clip_label: "glide",
                 player_count: 2,
-                transition_duration_ms: 140,
+                transition_duration_ms: 190,
+                transition_from_clip_label: "glide",
+                transition_to_clip_label: "dive",
+                transition_active: true,
+                transition_elapsed_ms: 64,
+                transition_progress: 0.34,
+                transition_class_label: "traversal_blend",
             }
         );
         assert_eq!(
@@ -1312,6 +1344,12 @@ mod tests {
                 desired_clip_label: "none",
                 player_count: 0,
                 transition_duration_ms: 0,
+                transition_from_clip_label: "none",
+                transition_to_clip_label: "none",
+                transition_active: false,
+                transition_elapsed_ms: 0,
+                transition_progress: 0.0,
+                transition_class_label: "none",
             }
         );
     }
