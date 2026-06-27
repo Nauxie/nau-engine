@@ -18,13 +18,16 @@ const POSE_STATE_MIN_WALK_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_RUN_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_IDLE_SAMPLES: f32 = 3.0;
 const POSE_STATE_MIN_LAUNCH_SAMPLES: f32 = 3.0;
+const POSE_STATE_MIN_AUTHORED_LAUNCH_CLIP_SAMPLES: f32 = 3.0;
 const POSE_STATE_MIN_FALLING_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_GLIDING_POSE_SAMPLES: f32 = 18.0;
+const POSE_STATE_MIN_AUTHORED_GLIDE_CLIP_SAMPLES: f32 = 18.0;
 const POSE_STATE_MIN_AIR_TURN_SAMPLES: f32 = 6.0;
 const POSE_STATE_MIN_AIR_BRAKE_SAMPLES: f32 = 4.0;
 const POSE_STATE_MIN_DIVING_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_LANDING_POSE_SAMPLES: f32 = 1.0;
+const POSE_STATE_MIN_AUTHORED_LAND_CLIP_SAMPLES: f32 = 1.0;
 const AIR_CONTROL_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 const AIR_CONTROL_MIN_AUTHORED_DIVE_CLIP_SAMPLES: f32 = 1.0;
 const AIR_CONTROL_MIN_AUTHORED_AIR_BRAKE_CLIP_SAMPLES: f32 = 4.0;
@@ -1032,6 +1035,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             "samples",
         ),
         EvalCheck::at_least(
+            "pose_state_authored_launch_clip_samples",
+            acc.authored_launch_clip_samples as f32,
+            POSE_STATE_MIN_AUTHORED_LAUNCH_CLIP_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
             "pose_state_falling_samples",
             acc.pose_falling_samples as f32,
             POSE_STATE_MIN_FALLING_SAMPLES,
@@ -1047,6 +1056,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             "pose_state_gliding_samples",
             acc.pose_gliding_samples as f32,
             POSE_STATE_MIN_GLIDING_POSE_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_authored_glide_clip_samples",
+            acc.authored_glide_clip_samples as f32,
+            POSE_STATE_MIN_AUTHORED_GLIDE_CLIP_SAMPLES,
             "samples",
         ),
         EvalCheck::at_least(
@@ -1095,6 +1110,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             "pose_state_landing_recovery_samples",
             acc.pose_landing_recovery_samples as f32,
             POSE_STATE_MIN_LANDING_POSE_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_authored_land_clip_samples",
+            acc.authored_land_clip_samples as f32,
+            POSE_STATE_MIN_AUTHORED_LAND_CLIP_SAMPLES,
             "samples",
         ),
         EvalCheck::at_least(
@@ -1148,6 +1169,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
         EvalCheck::at_most(
             "pose_state_unreadable_key_pose_samples",
             acc.unreadable_key_pose_samples as f32,
+            0.0,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "pose_state_authored_clip_mismatch_samples",
+            acc.authored_clip_mismatch_samples as f32,
             0.0,
             "samples",
         ),

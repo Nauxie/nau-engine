@@ -85,12 +85,35 @@ impl AuthoredPlayerClip {
     }
 }
 
-#[derive(Resource, Clone, Copy, Debug, Default)]
+#[derive(Resource, Clone, Copy, Debug)]
 pub(crate) struct AuthoredAnimationDiagnostics {
     pub(crate) player_count: usize,
     pub(crate) current_clip: Option<AuthoredPlayerClip>,
     pub(crate) desired_clip: Option<AuthoredPlayerClip>,
+    pub(crate) transition_from_clip: Option<AuthoredPlayerClip>,
+    pub(crate) transition_to_clip: Option<AuthoredPlayerClip>,
+    pub(crate) transition_active: bool,
+    pub(crate) transition_elapsed_ms: u64,
     pub(crate) transition_duration_ms: u64,
+    pub(crate) transition_progress: f32,
+    pub(crate) transition_class_label: &'static str,
+}
+
+impl Default for AuthoredAnimationDiagnostics {
+    fn default() -> Self {
+        Self {
+            player_count: 0,
+            current_clip: None,
+            desired_clip: None,
+            transition_from_clip: None,
+            transition_to_clip: None,
+            transition_active: false,
+            transition_elapsed_ms: 0,
+            transition_duration_ms: 0,
+            transition_progress: 0.0,
+            transition_class_label: "none",
+        }
+    }
 }
 
 impl AuthoredAnimationDiagnostics {
@@ -101,12 +124,48 @@ impl AuthoredAnimationDiagnostics {
     pub(crate) fn desired_label(self) -> &'static str {
         self.desired_clip.map_or("none", AuthoredPlayerClip::label)
     }
+
+    pub(crate) fn transition_from_label(self) -> &'static str {
+        self.transition_from_clip
+            .map_or("none", AuthoredPlayerClip::label)
+    }
+
+    pub(crate) fn transition_to_label(self) -> &'static str {
+        self.transition_to_clip
+            .map_or("none", AuthoredPlayerClip::label)
+    }
+
+    fn observe_player_transition(&mut self, animation: AuthoredPlayerAnimation) {
+        self.current_clip = Some(animation.current);
+        if !animation.transition_active() {
+            return;
+        }
+
+        self.transition_active = true;
+        self.transition_from_clip = animation.transition_from;
+        self.transition_to_clip = animation.transition_to;
+        self.transition_elapsed_ms = self
+            .transition_elapsed_ms
+            .max((animation.transition_elapsed_secs * 1000.0).round() as u64);
+        self.transition_duration_ms = self
+            .transition_duration_ms
+            .max((animation.transition_duration_secs * 1000.0).round() as u64);
+        self.transition_progress = self
+            .transition_progress
+            .max(animation.transition_progress());
+        self.transition_class_label = animation.transition_class_label;
+    }
 }
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct AuthoredPlayerAnimation {
     pub(crate) nodes: [AnimationNodeIndex; AUTHORED_PLAYER_CLIP_COUNT],
     pub(crate) current: AuthoredPlayerClip,
+    transition_from: Option<AuthoredPlayerClip>,
+    transition_to: Option<AuthoredPlayerClip>,
+    transition_elapsed_secs: f32,
+    transition_duration_secs: f32,
+    transition_class_label: &'static str,
 }
 
 impl AuthoredPlayerAnimation {
@@ -114,11 +173,87 @@ impl AuthoredPlayerAnimation {
         nodes: [AnimationNodeIndex; AUTHORED_PLAYER_CLIP_COUNT],
         current: AuthoredPlayerClip,
     ) -> Self {
-        Self { nodes, current }
+        Self {
+            nodes,
+            current,
+            transition_from: None,
+            transition_to: None,
+            transition_elapsed_secs: 0.0,
+            transition_duration_secs: 0.0,
+            transition_class_label: "none",
+        }
     }
 
     pub(crate) fn node(self, clip: AuthoredPlayerClip) -> AnimationNodeIndex {
         self.nodes[clip.index()]
+    }
+
+    fn advance_transition(&mut self, dt: f32) {
+        if self.transition_duration_secs <= f32::EPSILON {
+            self.clear_transition();
+            return;
+        }
+
+        self.transition_elapsed_secs =
+            (self.transition_elapsed_secs + dt.max(0.0)).min(self.transition_duration_secs);
+        if !self.transition_active() {
+            self.clear_transition();
+        }
+    }
+
+    fn start_transition(
+        &mut self,
+        from: AuthoredPlayerClip,
+        to: AuthoredPlayerClip,
+        profile: AuthoredTransitionProfile,
+    ) {
+        self.current = to;
+        if profile.duration.is_zero() {
+            self.clear_transition();
+            return;
+        }
+
+        self.transition_from = Some(from);
+        self.transition_to = Some(to);
+        self.transition_elapsed_secs = 0.0;
+        self.transition_duration_secs = profile.duration.as_secs_f32();
+        self.transition_class_label = profile.class_label;
+    }
+
+    fn transition_active(self) -> bool {
+        self.transition_duration_secs > f32::EPSILON
+            && self.transition_elapsed_secs < self.transition_duration_secs
+    }
+
+    fn transition_progress(self) -> f32 {
+        if self.transition_duration_secs <= f32::EPSILON {
+            1.0
+        } else {
+            (self.transition_elapsed_secs / self.transition_duration_secs).clamp(0.0, 1.0)
+        }
+    }
+
+    fn clear_transition(&mut self) {
+        self.transition_from = None;
+        self.transition_to = None;
+        self.transition_elapsed_secs = 0.0;
+        self.transition_duration_secs = 0.0;
+        self.transition_class_label = "none";
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct AuthoredTransitionProfile {
+    duration: Duration,
+    class_label: &'static str,
+}
+
+impl AuthoredTransitionProfile {
+    fn new(duration_ms: u64, class_label: &'static str) -> Self {
+        Self {
+            duration: Duration::from_millis(duration_ms),
+            class_label,
+        }
     }
 }
 
@@ -434,6 +569,7 @@ fn authored_player_air_turn_clip(input: FlightInput) -> AuthoredPlayerClip {
 }
 
 pub(crate) fn update_authored_player_animation(
+    time: Res<Time>,
     player: Query<(&Velocity, &AnimationState), With<Player>>,
     mut authored_players: Query<(
         &mut AnimationPlayer,
@@ -455,40 +591,89 @@ pub(crate) fn update_authored_player_animation(
         desired_clip: Some(desired),
         ..default()
     };
+    let dt = time.delta_secs();
 
     for (mut animation_player, mut transitions, mut authored_animation) in &mut authored_players {
         next_diagnostics.player_count += 1;
+        authored_animation.advance_transition(dt);
         let desired_node = authored_animation.node(desired);
         if authored_animation.current == desired
             && animation_player.is_playing_animation(desired_node)
         {
-            next_diagnostics.current_clip = Some(authored_animation.current);
+            next_diagnostics.observe_player_transition(*authored_animation);
             continue;
         }
 
-        let transition_duration =
-            authored_player_transition_duration(authored_animation.current, desired);
-        next_diagnostics.transition_duration_ms = next_diagnostics
-            .transition_duration_ms
-            .max(transition_duration.as_millis() as u64);
+        let from_clip = authored_animation.current;
+        let transition_profile = authored_player_transition_profile(from_clip, desired);
         transitions
-            .play(&mut animation_player, desired_node, transition_duration)
+            .play(
+                &mut animation_player,
+                desired_node,
+                transition_profile.duration,
+            )
             .repeat();
-        authored_animation.current = desired;
-        next_diagnostics.current_clip = Some(authored_animation.current);
+        authored_animation.start_transition(from_clip, desired, transition_profile);
+        next_diagnostics.observe_player_transition(*authored_animation);
     }
     *diagnostics = next_diagnostics;
 }
 
+#[cfg(test)]
 fn authored_player_transition_duration(
     current: AuthoredPlayerClip,
     desired: AuthoredPlayerClip,
 ) -> Duration {
+    authored_player_transition_profile(current, desired).duration
+}
+
+fn authored_player_transition_profile(
+    current: AuthoredPlayerClip,
+    desired: AuthoredPlayerClip,
+) -> AuthoredTransitionProfile {
     if current == desired {
-        Duration::ZERO
-    } else {
-        Duration::from_millis(140)
+        return AuthoredTransitionProfile::new(0, "settled");
     }
+
+    if matches!(
+        desired,
+        AuthoredPlayerClip::Launch | AuthoredPlayerClip::Land
+    ) {
+        return AuthoredTransitionProfile::new(40, "urgent_pose");
+    }
+
+    if current == AuthoredPlayerClip::Launch && desired == AuthoredPlayerClip::Fall {
+        return AuthoredTransitionProfile::new(100, "launch_settle");
+    }
+
+    if bank_clip(current) && bank_clip(desired) {
+        return AuthoredTransitionProfile::new(120, "bank_reversal");
+    }
+
+    if traversal_clip(current) && traversal_clip(desired) {
+        return AuthoredTransitionProfile::new(190, "traversal_blend");
+    }
+
+    AuthoredTransitionProfile::new(140, "standard")
+}
+
+fn bank_clip(clip: AuthoredPlayerClip) -> bool {
+    matches!(
+        clip,
+        AuthoredPlayerClip::BankLeft | AuthoredPlayerClip::BankRight
+    )
+}
+
+fn traversal_clip(clip: AuthoredPlayerClip) -> bool {
+    matches!(
+        clip,
+        AuthoredPlayerClip::Fall
+            | AuthoredPlayerClip::Glide
+            | AuthoredPlayerClip::BankLeft
+            | AuthoredPlayerClip::BankRight
+            | AuthoredPlayerClip::Dive
+            | AuthoredPlayerClip::AirBrake
+    )
 }
 
 #[cfg(test)]
@@ -533,11 +718,17 @@ mod tests {
             player_count: 1,
             current_clip: Some(AuthoredPlayerClip::BankLeft),
             desired_clip: Some(AuthoredPlayerClip::BankRight),
-            transition_duration_ms: 140,
+            transition_from_clip: Some(AuthoredPlayerClip::Glide),
+            transition_to_clip: Some(AuthoredPlayerClip::BankRight),
+            transition_duration_ms: 120,
+            transition_class_label: "bank_reversal",
+            ..default()
         };
 
         assert_eq!(diagnostics.current_label(), "bank_left");
         assert_eq!(diagnostics.desired_label(), "bank_right");
+        assert_eq!(diagnostics.transition_from_label(), "glide");
+        assert_eq!(diagnostics.transition_to_label(), "bank_right");
     }
 
     #[test]
@@ -586,7 +777,37 @@ mod tests {
                 AuthoredPlayerClip::Glide,
                 AuthoredPlayerClip::Dive
             ),
-            Duration::from_millis(140)
+            Duration::from_millis(190)
+        );
+    }
+
+    #[test]
+    fn authored_player_transition_profile_is_pair_aware() {
+        assert_eq!(
+            authored_player_transition_profile(AuthoredPlayerClip::Glide, AuthoredPlayerClip::Land),
+            AuthoredTransitionProfile::new(40, "urgent_pose")
+        );
+        assert_eq!(
+            authored_player_transition_profile(
+                AuthoredPlayerClip::Launch,
+                AuthoredPlayerClip::Fall
+            ),
+            AuthoredTransitionProfile::new(100, "launch_settle")
+        );
+        assert_eq!(
+            authored_player_transition_profile(
+                AuthoredPlayerClip::BankLeft,
+                AuthoredPlayerClip::BankRight
+            ),
+            AuthoredTransitionProfile::new(120, "bank_reversal")
+        );
+        assert_eq!(
+            authored_player_transition_profile(AuthoredPlayerClip::Glide, AuthoredPlayerClip::Dive),
+            AuthoredTransitionProfile::new(190, "traversal_blend")
+        );
+        assert_eq!(
+            authored_player_transition_profile(AuthoredPlayerClip::Run, AuthoredPlayerClip::Walk),
+            AuthoredTransitionProfile::new(140, "standard")
         );
     }
 }

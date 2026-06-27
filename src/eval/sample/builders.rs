@@ -339,6 +339,12 @@ impl EvalSample {
             authored_player_desired_clip_label: "none",
             authored_player_count: 0,
             authored_transition_duration_ms: 0,
+            authored_transition_from_clip_label: "none",
+            authored_transition_to_clip_label: "none",
+            authored_transition_active: false,
+            authored_transition_elapsed_ms: 0,
+            authored_transition_progress: 0.0,
+            authored_transition_class_label: "none",
             authored_glider_response_degrees: 0.0,
             authored_glider_motion_m: 0.0,
             power_up_count,
@@ -432,6 +438,24 @@ impl EvalSample {
         self.authored_player_desired_clip_label = desired_clip_label;
         self.authored_player_count = player_count;
         self.authored_transition_duration_ms = transition_duration_ms;
+        self
+    }
+
+    pub fn with_authored_animation_transition_metrics(
+        mut self,
+        from_clip_label: &'static str,
+        to_clip_label: &'static str,
+        active: bool,
+        elapsed_ms: u64,
+        progress: f32,
+        class_label: &'static str,
+    ) -> Self {
+        self.authored_transition_from_clip_label = from_clip_label;
+        self.authored_transition_to_clip_label = to_clip_label;
+        self.authored_transition_active = active;
+        self.authored_transition_elapsed_ms = elapsed_ms;
+        self.authored_transition_progress = progress.clamp(0.0, 1.0);
+        self.authored_transition_class_label = class_label;
         self
     }
 

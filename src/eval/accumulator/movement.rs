@@ -550,6 +550,15 @@ fn observe_authored_clip_coverage(accumulator: &mut EvalAccumulator, sample: &Ev
     accumulator.max_authored_transition_duration_ms = accumulator
         .max_authored_transition_duration_ms
         .max(sample.authored_transition_duration_ms);
+    accumulator.max_authored_transition_elapsed_ms = accumulator
+        .max_authored_transition_elapsed_ms
+        .max(sample.authored_transition_elapsed_ms);
+    accumulator.max_authored_transition_progress = accumulator
+        .max_authored_transition_progress
+        .max(sample.authored_transition_progress);
+    if sample.authored_transition_active {
+        accumulator.authored_transition_active_samples += 1;
+    }
 
     match sample.pose_intent_label {
         "grounded_idle" if authored_clip_matches(sample, "idle") => {
@@ -578,9 +587,14 @@ fn observe_authored_clip_coverage(accumulator: &mut EvalAccumulator, sample: &Ev
         accumulator.authored_clip_mismatch_samples += 1;
         return;
     }
+    if sample.authored_transition_active {
+        return;
+    }
 
     accumulator.authored_clip_match_samples += 1;
     match (sample.pose_intent_label, current_clip) {
+        ("launching", "launch") => accumulator.authored_launch_clip_samples += 1,
+        ("gliding", "glide") => accumulator.authored_glide_clip_samples += 1,
         ("air_turn", "bank_left") if sample.movement_input_lateral_axis < -0.25 => {
             accumulator.authored_bank_left_clip_samples += 1;
         }
@@ -599,6 +613,7 @@ fn observe_authored_clip_coverage(accumulator: &mut EvalAccumulator, sample: &Ev
 
 fn authored_clip_matches(sample: &EvalSample, clip_label: &str) -> bool {
     sample.authored_player_count > 0
+        && !sample.authored_transition_active
         && sample.authored_player_current_clip_label == clip_label
         && sample.authored_player_desired_clip_label == clip_label
 }
