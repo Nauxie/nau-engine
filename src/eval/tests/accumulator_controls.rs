@@ -1268,7 +1268,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     assert_eq!(landing_recovery_check.threshold, 1.0);
     assert!(!landing_recovery_check.passed);
     assert_eq!(landing_flare_check.value, 0.0);
-    assert_eq!(landing_flare_check.threshold, 32.0);
+    assert_eq!(landing_flare_check.threshold, 48.0);
     assert!(!landing_flare_check.passed);
 }
 

@@ -185,11 +185,11 @@ fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
         .find(|check| check.name == "pose_landing_flare")
         .expect("landing flare check");
     assert!(!flare_check.passed);
-    assert_eq!(flare_check.threshold, 32.0);
+    assert_eq!(flare_check.threshold, 48.0);
     assert_eq!(flare_check.unit, "deg");
 
     metrics.pose_landing_recovery_samples = 1;
-    metrics.max_pose_landing_flare_degrees = 32.0;
+    metrics.max_pose_landing_flare_degrees = 48.0;
     let passing_checks = metrics.checks(scenario);
     let passing_recovery_check = passing_checks
         .iter()

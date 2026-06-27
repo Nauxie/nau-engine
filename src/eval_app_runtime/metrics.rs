@@ -36,10 +36,13 @@ use nau_engine::movement::{
 pub(super) const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
 const BODY_TRAVEL_HEADING_MIN_PLANAR_SPEED_MPS: f32 = 6.0;
 const KEY_POSE_TRANSITION_READABILITY_FLOOR: f32 = 0.65;
+const KEY_POSE_LANDING_FLIP_TRANSITION_READABILITY_FLOOR: f32 = 0.35;
 const KEY_POSE_READABILITY_EPSILON: f32 = 0.005;
 const KEY_POSE_TRANSITION_GRACE_FRAMES: u32 = 5;
 const KEY_POSE_TRANSITION_MAX_ROTATION_DELTA_DEGREES: f32 = 60.0;
 const KEY_POSE_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.15;
+const KEY_POSE_LANDING_FLIP_TRANSITION_MAX_ROTATION_DELTA_DEGREES: f32 = 120.0;
+const KEY_POSE_LANDING_FLIP_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.55;
 
 #[derive(Resource, Default)]
 pub(crate) struct VisiblePoseTemporalState {
@@ -792,21 +795,22 @@ fn transition_aware_pose_readability(
         };
     }
 
-    let transition_within_grace = transition_from_key_intent.is_some()
+    let previous_transition_intent =
+        transition_from_key_intent.filter(|previous_intent| *previous_intent != current_intent);
+    let transition_within_grace = previous_transition_intent.is_some()
         && key_intent_age_frames <= KEY_POSE_TRANSITION_GRACE_FRAMES;
+    let (max_transition_rotation_delta, max_transition_translation_delta) =
+        key_pose_transition_temporal_limits(current_intent, previous_transition_intent);
     let transition_temporally_smooth = pose_temporal
         .max_pose_part_rotation_delta_degrees
         .is_finite()
         && pose_temporal.max_pose_part_translation_delta_m.is_finite()
-        && pose_temporal.max_pose_part_rotation_delta_degrees
-            <= KEY_POSE_TRANSITION_MAX_ROTATION_DELTA_DEGREES
-        && pose_temporal.max_pose_part_translation_delta_m
-            <= KEY_POSE_TRANSITION_MAX_TRANSLATION_DELTA_M;
+        && pose_temporal.max_pose_part_rotation_delta_degrees <= max_transition_rotation_delta
+        && pose_temporal.max_pose_part_translation_delta_m <= max_transition_translation_delta;
     let mut transition_readability_score = metrics.key_pose_readability_score;
     if key_pose_intent(current_intent)
         && metrics.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE
-        && let Some(previous_intent) = transition_from_key_intent
-        && previous_intent != current_intent
+        && let Some(previous_intent) = previous_transition_intent
     {
         let previous_score = key_pose_readability_score(
             previous_intent,
@@ -817,11 +821,13 @@ fn transition_aware_pose_readability(
         );
         transition_readability_score = transition_readability_score.max(previous_score);
     }
+    let transition_readability_floor =
+        key_pose_transition_readability_floor(current_intent, previous_transition_intent);
     if key_pose_intent(current_intent)
         && metrics.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE
         && transition_within_grace
         && transition_temporally_smooth
-        && transition_readability_score >= KEY_POSE_TRANSITION_READABILITY_FLOOR
+        && transition_readability_score >= transition_readability_floor
     {
         metrics.key_pose_readability_score = MIN_KEY_POSE_READABILITY_SCORE;
         return TransitionAwarePoseReadability {
@@ -832,6 +838,38 @@ fn transition_aware_pose_readability(
     TransitionAwarePoseReadability {
         metrics,
         used_transition_grace: false,
+    }
+}
+
+fn key_pose_transition_readability_floor(
+    current_intent: PlayerPoseIntent,
+    previous_intent: Option<PlayerPoseIntent>,
+) -> f32 {
+    if current_intent == PlayerPoseIntent::LandingAnticipation
+        && previous_intent == Some(PlayerPoseIntent::Diving)
+    {
+        KEY_POSE_LANDING_FLIP_TRANSITION_READABILITY_FLOOR
+    } else {
+        KEY_POSE_TRANSITION_READABILITY_FLOOR
+    }
+}
+
+fn key_pose_transition_temporal_limits(
+    current_intent: PlayerPoseIntent,
+    previous_intent: Option<PlayerPoseIntent>,
+) -> (f32, f32) {
+    if current_intent == PlayerPoseIntent::LandingAnticipation
+        && previous_intent == Some(PlayerPoseIntent::Diving)
+    {
+        (
+            KEY_POSE_LANDING_FLIP_TRANSITION_MAX_ROTATION_DELTA_DEGREES,
+            KEY_POSE_LANDING_FLIP_TRANSITION_MAX_TRANSLATION_DELTA_M,
+        )
+    } else {
+        (
+            KEY_POSE_TRANSITION_MAX_ROTATION_DELTA_DEGREES,
+            KEY_POSE_TRANSITION_MAX_TRANSLATION_DELTA_M,
+        )
     }
 }
 
@@ -1374,6 +1412,80 @@ mod tests {
             MIN_KEY_POSE_READABILITY_SCORE
         );
         assert!(adjusted.used_transition_grace);
+    }
+
+    #[test]
+    fn transition_aware_pose_readability_accepts_bounded_dive_to_landing_flip() {
+        let raw = PoseReadabilityMetrics {
+            torso_pitch_degrees: 15.4,
+            arm_spread_degrees: 163.7,
+            leg_tuck_degrees: 51.9,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            landing_crouch_m: 0.159,
+            wing_airflow_strength: 0.0,
+            key_pose_readability_score: key_pose_readability_score(
+                PlayerPoseIntent::LandingAnticipation,
+                15.4,
+                163.7,
+                51.9,
+                0.159,
+            ),
+        };
+
+        let adjusted = transition_aware_pose_readability(
+            raw,
+            PlayerPoseIntent::LandingAnticipation,
+            Some(PlayerPoseIntent::Diving),
+            1,
+            &EvalPoseTemporalMetrics {
+                visible_pose_part_count: 5,
+                max_pose_part_rotation_delta_degrees: 103.0,
+                max_pose_part_translation_delta_m: 0.375,
+            },
+        );
+
+        assert!(raw.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert_eq!(
+            adjusted.metrics.key_pose_readability_score,
+            MIN_KEY_POSE_READABILITY_SCORE
+        );
+        assert!(adjusted.used_transition_grace);
+    }
+
+    #[test]
+    fn transition_aware_pose_readability_rejects_unbounded_dive_to_landing_flip() {
+        let raw = PoseReadabilityMetrics {
+            torso_pitch_degrees: 15.4,
+            arm_spread_degrees: 163.7,
+            leg_tuck_degrees: 51.9,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            landing_crouch_m: 0.159,
+            wing_airflow_strength: 0.0,
+            key_pose_readability_score: key_pose_readability_score(
+                PlayerPoseIntent::LandingAnticipation,
+                15.4,
+                163.7,
+                51.9,
+                0.159,
+            ),
+        };
+
+        let adjusted = transition_aware_pose_readability(
+            raw,
+            PlayerPoseIntent::LandingAnticipation,
+            Some(PlayerPoseIntent::Diving),
+            1,
+            &EvalPoseTemporalMetrics {
+                visible_pose_part_count: 5,
+                max_pose_part_rotation_delta_degrees: 121.0,
+                max_pose_part_translation_delta_m: 0.375,
+            },
+        );
+
+        assert!(adjusted.metrics.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(!adjusted.used_transition_grace);
     }
 
     #[test]
