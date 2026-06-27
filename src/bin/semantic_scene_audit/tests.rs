@@ -1,6 +1,6 @@
 use crate::{
     checkpoint::{audit_checkpoint_path, audit_scene_sample, terrain_material_variant_for_label},
-    materials::{material_matches, sample_pixel_hits},
+    materials::{material_matches, sample_pixel_hits, sample_pixel_hits_with_variant},
     report::{json_number, json_string, report_checks},
     thresholds::{
         MIN_PASSED_TERRAIN_MATERIAL_VARIANTS, MIN_SAMPLE_PIXEL_HITS,
@@ -49,6 +49,103 @@ fn sample_pixel_hits_classifies_expected_scene_materials() {
 }
 
 #[test]
+fn sample_pixel_hits_classifies_terrain_material_variants() {
+    let mut image = RgbImage::from_pixel(320, 32, Rgb([130, 170, 220]));
+    for (x, color) in [
+        (24, Rgb([54, 128, 70])),
+        (25, Rgb([34, 100, 62])),
+        (26, Rgb([70, 150, 94])),
+        (84, Rgb([96, 138, 70])),
+        (85, Rgb([128, 154, 78])),
+        (86, Rgb([166, 172, 90])),
+        (144, Rgb([126, 104, 76])),
+        (145, Rgb([106, 82, 62])),
+        (146, Rgb([162, 138, 96])),
+        (204, Rgb([52, 110, 118])),
+        (205, Rgb([76, 130, 132])),
+        (206, Rgb([142, 176, 164])),
+        (264, Rgb([132, 132, 92])),
+        (265, Rgb([112, 122, 82])),
+        (266, Rgb([178, 166, 112])),
+    ] {
+        image.put_pixel(x, 16, color);
+    }
+
+    assert!(
+        sample_pixel_hits_with_variant(
+            &image,
+            25.0,
+            16.0,
+            "terrain",
+            "terrain_lush_meadow",
+            (1.0, 1.0)
+        ) >= MIN_SAMPLE_PIXEL_HITS
+    );
+    assert_eq!(
+        sample_pixel_hits_with_variant(
+            &image,
+            25.0,
+            16.0,
+            "terrain",
+            "terrain_copper_clay",
+            (1.0, 1.0)
+        ),
+        0
+    );
+    assert!(
+        sample_pixel_hits_with_variant(
+            &image,
+            145.0,
+            16.0,
+            "terrain",
+            "terrain_copper_clay",
+            (1.0, 1.0)
+        ) >= MIN_SAMPLE_PIXEL_HITS
+    );
+    assert_eq!(
+        sample_pixel_hits_with_variant(
+            &image,
+            145.0,
+            16.0,
+            "terrain",
+            "terrain_alpine_mist",
+            (1.0, 1.0)
+        ),
+        0
+    );
+    assert!(
+        sample_pixel_hits_with_variant(
+            &image,
+            205.0,
+            16.0,
+            "terrain",
+            "terrain_alpine_mist",
+            (1.0, 1.0)
+        ) >= MIN_SAMPLE_PIXEL_HITS
+    );
+    assert!(
+        sample_pixel_hits_with_variant(
+            &image,
+            265.0,
+            16.0,
+            "terrain",
+            "terrain_highland_grass",
+            (1.0, 1.0)
+        ) >= MIN_SAMPLE_PIXEL_HITS
+    );
+    assert!(
+        sample_pixel_hits_with_variant(
+            &image,
+            85.0,
+            16.0,
+            "terrain",
+            "terrain_gold_meadow",
+            (1.0, 1.0)
+        ) >= MIN_SAMPLE_PIXEL_HITS
+    );
+}
+
+#[test]
 fn sample_pixel_hits_classifies_wind_pixels() {
     let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
     image.put_pixel(32, 32, Rgb([62, 198, 244]));
@@ -82,9 +179,9 @@ fn checkpoint_requires_projected_scene_sample_hits() {
 #[test]
 fn audit_scene_sample_parses_explicit_material_variant() {
     let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
-    image.put_pixel(32, 32, Rgb([104, 82, 48]));
-    image.put_pixel(33, 32, Rgb([92, 74, 46]));
-    image.put_pixel(34, 32, Rgb([74, 68, 62]));
+    image.put_pixel(32, 32, Rgb([54, 128, 70]));
+    image.put_pixel(33, 32, Rgb([34, 100, 62]));
+    image.put_pixel(34, 32, Rgb([70, 150, 94]));
     let sample = serde_json::json!({
         "kind": "terrain_surface",
         "label": "launch mesa",
@@ -102,11 +199,34 @@ fn audit_scene_sample_parses_explicit_material_variant() {
 }
 
 #[test]
+fn audit_scene_sample_requires_terrain_pixels_to_match_material_variant() {
+    let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
+    image.put_pixel(32, 32, Rgb([54, 128, 70]));
+    image.put_pixel(33, 32, Rgb([34, 100, 62]));
+    image.put_pixel(34, 32, Rgb([70, 150, 94]));
+    let sample = serde_json::json!({
+        "kind": "terrain_surface",
+        "label": "landing garden",
+        "expected_material": "terrain",
+        "material_variant": "terrain_copper_clay",
+        "in_viewport": true,
+        "visibility": "visible",
+        "screen": {"x": 32.0, "y": 32.0}
+    });
+
+    let audit = audit_scene_sample(&sample, &image, (1.0, 1.0)).expect("sample should parse");
+
+    assert_eq!(audit.material_variant, "terrain_copper_clay");
+    assert_eq!(audit.semantic_pixel_hits, 0);
+    assert!(!audit.passed);
+}
+
+#[test]
 fn audit_scene_sample_derives_legacy_terrain_variant_from_label() {
     let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
-    image.put_pixel(32, 32, Rgb([104, 82, 48]));
-    image.put_pixel(33, 32, Rgb([92, 74, 46]));
-    image.put_pixel(34, 32, Rgb([74, 68, 62]));
+    image.put_pixel(32, 32, Rgb([52, 110, 118]));
+    image.put_pixel(33, 32, Rgb([76, 130, 132]));
+    image.put_pixel(34, 32, Rgb([142, 176, 164]));
     let sample = serde_json::json!({
         "kind": "terrain_surface",
         "label": "storm porch",
@@ -232,9 +352,9 @@ fn visible_wind_samples_fail_report_and_checkpoint_coverage_without_wind_pixels(
     let screenshot_path = temp_dir.join("checkpoint.png");
     let metadata_path = temp_dir.join("checkpoint.markers.json");
     let mut image = RgbImage::from_pixel(100, 80, Rgb([130, 170, 220]));
-    image.put_pixel(20, 15, Rgb([104, 82, 48]));
-    image.put_pixel(21, 15, Rgb([92, 74, 46]));
-    image.put_pixel(22, 15, Rgb([74, 68, 62]));
+    image.put_pixel(20, 15, Rgb([54, 128, 70]));
+    image.put_pixel(21, 15, Rgb([34, 100, 62]));
+    image.put_pixel(22, 15, Rgb([70, 150, 94]));
     image.put_pixel(50, 20, Rgb([44, 126, 32]));
     image.put_pixel(51, 20, Rgb([48, 132, 36]));
     image.put_pixel(52, 20, Rgb([52, 138, 34]));
@@ -292,9 +412,9 @@ fn sparse_translucent_wind_sample_hit_satisfies_checkpoint_material_audit() {
     let screenshot_path = temp_dir.join("checkpoint.png");
     let metadata_path = temp_dir.join("checkpoint.markers.json");
     let mut image = RgbImage::from_pixel(100, 80, Rgb([130, 170, 220]));
-    image.put_pixel(20, 15, Rgb([104, 82, 48]));
-    image.put_pixel(21, 15, Rgb([92, 74, 46]));
-    image.put_pixel(22, 15, Rgb([74, 68, 62]));
+    image.put_pixel(20, 15, Rgb([54, 128, 70]));
+    image.put_pixel(21, 15, Rgb([34, 100, 62]));
+    image.put_pixel(22, 15, Rgb([70, 150, 94]));
     image.put_pixel(50, 20, Rgb([44, 126, 32]));
     image.put_pixel(51, 20, Rgb([48, 132, 36]));
     image.put_pixel(52, 20, Rgb([52, 138, 34]));
@@ -444,20 +564,21 @@ fn report_checks_require_visible_terrain_material_variants_to_hit() {
         metadata_path: "checkpoint.markers.json".to_string(),
         screenshot_path: "checkpoint.png".to_string(),
         checkpoint: "test".to_string(),
-        in_viewport_scene_sample_count: 2,
+        in_viewport_scene_sample_count: 3,
         occluded_scene_sample_count: 0,
-        visible_scene_sample_count: 2,
+        visible_scene_sample_count: 3,
         scene_sample_pixel_hit_count: 1,
         visible_scene_material_count: 1,
         scene_material_pixel_hit_count: 1,
         visible_scene_sample_kind_count: 1,
         scene_sample_kind_pixel_hit_count: 1,
-        visible_terrain_material_variant_count: 2,
+        visible_terrain_material_variant_count: 3,
         terrain_material_variant_pixel_hit_count: 1,
         passed: false,
         samples: vec![
             terrain_audit_sample("launch mesa", "terrain_lush_meadow"),
             visible_failed_terrain_audit_sample("midpoint shelf", "terrain_gold_meadow"),
+            visible_failed_terrain_audit_sample("landing garden", "terrain_copper_clay"),
         ],
         materials: Vec::new(),
     };
@@ -558,9 +679,9 @@ fn checkpoint_requires_each_visible_material_family_to_hit() {
     let screenshot_path = temp_dir.join("checkpoint.png");
     let metadata_path = temp_dir.join("checkpoint.markers.json");
     let mut image = RgbImage::from_pixel(80, 60, Rgb([130, 170, 220]));
-    image.put_pixel(20, 15, Rgb([104, 82, 48]));
-    image.put_pixel(21, 15, Rgb([92, 74, 46]));
-    image.put_pixel(22, 15, Rgb([74, 68, 62]));
+    image.put_pixel(20, 15, Rgb([54, 128, 70]));
+    image.put_pixel(21, 15, Rgb([34, 100, 62]));
+    image.put_pixel(22, 15, Rgb([70, 150, 94]));
     image.save(&screenshot_path).expect("screenshot");
     fs::write(
         &metadata_path,
@@ -595,15 +716,15 @@ fn checkpoint_requires_each_visible_material_family_to_hit() {
 }
 
 #[test]
-fn checkpoint_requires_each_visible_terrain_material_variant_to_hit() {
+fn checkpoint_requires_enough_visible_terrain_material_variants_to_hit() {
     let temp_dir = unique_temp_dir("semantic_scene_terrain_variants");
     fs::create_dir_all(&temp_dir).expect("temp dir");
     let screenshot_path = temp_dir.join("checkpoint.png");
     let metadata_path = temp_dir.join("checkpoint.markers.json");
     let mut image = RgbImage::from_pixel(80, 60, Rgb([130, 170, 220]));
-    image.put_pixel(20, 15, Rgb([104, 82, 48]));
-    image.put_pixel(21, 15, Rgb([92, 74, 46]));
-    image.put_pixel(22, 15, Rgb([74, 68, 62]));
+    image.put_pixel(20, 15, Rgb([54, 128, 70]));
+    image.put_pixel(21, 15, Rgb([34, 100, 62]));
+    image.put_pixel(22, 15, Rgb([70, 150, 94]));
     image.put_pixel(40, 30, Rgb([44, 126, 32]));
     image.put_pixel(41, 30, Rgb([48, 132, 36]));
     image.put_pixel(42, 30, Rgb([52, 138, 34]));
@@ -617,6 +738,7 @@ fn checkpoint_requires_each_visible_terrain_material_variant_to_hit() {
             "{{\"passed\": true, \"checkpoint\": \"test\", \"screenshot\": {}, \"viewport\": {{\"width\": 80, \"height\": 60}}, \"scene_samples\": [\
              {{\"kind\": \"terrain_surface\", \"label\": \"launch mesa\", \"expected_material\": \"terrain\", \"material_variant\": \"terrain_lush_meadow\", \"in_viewport\": true, \"screen\": {{\"x\": 20, \"y\": 15}}}},\
              {{\"kind\": \"terrain_surface\", \"label\": \"midpoint shelf\", \"expected_material\": \"terrain\", \"material_variant\": \"terrain_gold_meadow\", \"in_viewport\": true, \"screen\": {{\"x\": 10, \"y\": 50}}}},\
+             {{\"kind\": \"terrain_surface\", \"label\": \"landing garden\", \"expected_material\": \"terrain\", \"material_variant\": \"terrain_copper_clay\", \"in_viewport\": true, \"screen\": {{\"x\": 70, \"y\": 50}}}},\
              {{\"kind\": \"tree_canopy\", \"label\": \"foliage\", \"expected_material\": \"foliage\", \"in_viewport\": true, \"screen\": {{\"x\": 40, \"y\": 30}}}},\
              {{\"kind\": \"weather_cloud\", \"label\": \"cloud\", \"expected_material\": \"cloud\", \"in_viewport\": true, \"screen\": {{\"x\": 60, \"y\": 45}}}}]}}",
             json_string(&screenshot_path.to_string_lossy())
@@ -631,7 +753,7 @@ fn checkpoint_requires_each_visible_terrain_material_variant_to_hit() {
     assert_eq!(audit.scene_material_pixel_hit_count, 3);
     assert_eq!(audit.visible_scene_sample_kind_count, 3);
     assert_eq!(audit.scene_sample_kind_pixel_hit_count, 3);
-    assert_eq!(audit.visible_terrain_material_variant_count, 2);
+    assert_eq!(audit.visible_terrain_material_variant_count, 3);
     assert_eq!(audit.terrain_material_variant_pixel_hit_count, 1);
     let _ = fs::remove_dir_all(temp_dir);
 }

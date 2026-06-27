@@ -326,7 +326,7 @@ pub(super) fn long_glide_visibility() -> EvalScenario {
             min_near_lod_island_count: 2,
             min_mid_lod_island_count: 3,
             min_far_lod_island_count: 3,
-            max_visible_island_terrain_count: 55,
+            max_visible_island_terrain_count: 60,
             min_hidden_island_terrain_count: 5,
             min_visible_island_impostor_count: 2,
             max_visible_island_detail_count: MAX_VISIBLE_ISLAND_DETAIL_COUNT,

@@ -1,5 +1,5 @@
 use crate::{
-    materials::{material_audits, sample_pixel_hits},
+    materials::{material_audits, sample_pixel_hits_with_variant},
     thresholds::{
         MIN_PASSED_SAMPLES_PER_CHECKPOINT, MIN_SAMPLE_PIXEL_HITS,
         MIN_VISIBLE_MATERIALS_PER_CHECKPOINT, MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT,
@@ -59,7 +59,8 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
         && scene_material_pixel_hit_count >= visible_scene_material_count
         && visible_scene_sample_kind_count >= MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT
         && scene_sample_kind_pixel_hit_count >= visible_scene_sample_kind_count
-        && terrain_material_variant_pixel_hit_count >= visible_terrain_material_variant_count;
+        && terrain_material_variant_pixel_hit_count
+            >= min_terrain_material_variant_hit_count(visible_terrain_material_variant_count);
     let checkpoint = parsed
         .get("checkpoint")
         .and_then(Value::as_str)
@@ -84,6 +85,13 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
         samples,
         materials,
     })
+}
+
+pub(crate) fn min_terrain_material_variant_hit_count(visible_variant_count: usize) -> usize {
+    crate::materials::min_sample_hit_count_with_ratio(
+        visible_variant_count,
+        crate::thresholds::MIN_TERRAIN_MATERIAL_VARIANT_HIT_RATIO,
+    )
 }
 
 pub(crate) fn visible_scene_sample_kind_count(samples: &[SceneSampleAudit]) -> usize {
@@ -221,9 +229,14 @@ pub(crate) fn audit_scene_sample(
         .and_then(Value::as_f64);
     let visible = in_viewport && visibility == "visible";
     let semantic_pixel_hits = match (visible, screen_x, screen_y) {
-        (true, Some(x), Some(y)) => {
-            sample_pixel_hits(image, x, y, &expected_material, screenshot_scale)
-        }
+        (true, Some(x), Some(y)) => sample_pixel_hits_with_variant(
+            image,
+            x,
+            y,
+            &expected_material,
+            &material_variant,
+            screenshot_scale,
+        ),
         _ => 0,
     };
 

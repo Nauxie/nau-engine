@@ -1,5 +1,8 @@
 use crate::{
-    thresholds::{EXPECTED_MATERIALS, MIN_MATERIAL_SAMPLE_HIT_RATIO, SAMPLE_SEARCH_RADIUS_PX},
+    thresholds::{
+        EXPECTED_MATERIALS, MIN_MATERIAL_SAMPLE_HIT_RATIO, MIN_TERRAIN_MATERIAL_SAMPLE_HIT_RATIO,
+        SAMPLE_SEARCH_RADIUS_PX,
+    },
     types::{MaterialAudit, SceneSampleAudit},
 };
 use image::RgbImage;
@@ -52,25 +55,52 @@ fn min_material_sample_pixel_hit_count_for(
     if expected_material == "wind" {
         return visible_sample_count.min(1);
     }
+    if expected_material == "terrain" {
+        return min_sample_hit_count_with_ratio(
+            visible_sample_count,
+            MIN_TERRAIN_MATERIAL_SAMPLE_HIT_RATIO,
+        );
+    }
 
     min_material_sample_pixel_hit_count(visible_sample_count)
 }
 
 pub(crate) fn min_material_sample_pixel_hit_count(visible_sample_count: usize) -> usize {
+    min_sample_hit_count_with_ratio(visible_sample_count, MIN_MATERIAL_SAMPLE_HIT_RATIO)
+}
+
+pub(crate) fn min_sample_hit_count_with_ratio(visible_sample_count: usize, ratio: f64) -> usize {
     if visible_sample_count == 0 {
         0
     } else {
-        (visible_sample_count as f64 * MIN_MATERIAL_SAMPLE_HIT_RATIO)
-            .ceil()
-            .max(1.0) as usize
+        (visible_sample_count as f64 * ratio).ceil().max(1.0) as usize
     }
 }
 
+#[cfg(test)]
 pub(crate) fn sample_pixel_hits(
     image: &RgbImage,
     screen_x: f64,
     screen_y: f64,
     expected_material: &str,
+    screenshot_scale: (f64, f64),
+) -> usize {
+    sample_pixel_hits_with_variant(
+        image,
+        screen_x,
+        screen_y,
+        expected_material,
+        "terrain_unknown",
+        screenshot_scale,
+    )
+}
+
+pub(crate) fn sample_pixel_hits_with_variant(
+    image: &RgbImage,
+    screen_x: f64,
+    screen_y: f64,
+    expected_material: &str,
+    material_variant: &str,
     screenshot_scale: (f64, f64),
 ) -> usize {
     if !screen_x.is_finite() || !screen_y.is_finite() {
@@ -90,13 +120,33 @@ pub(crate) fn sample_pixel_hits(
     for y in (center_y - radius_y).max(0)..=(center_y + radius_y).min(height.saturating_sub(1)) {
         for x in (center_x - radius_x).max(0)..=(center_x + radius_x).min(width.saturating_sub(1)) {
             let [r, g, b] = image.get_pixel(x as u32, y as u32).0;
-            if material_matches(expected_material, r as f64, g as f64, b as f64) {
+            if material_variant_matches(
+                expected_material,
+                material_variant,
+                r as f64,
+                g as f64,
+                b as f64,
+            ) {
                 hits += 1;
             }
         }
     }
 
     hits
+}
+
+pub(crate) fn material_variant_matches(
+    expected_material: &str,
+    material_variant: &str,
+    r: f64,
+    g: f64,
+    b: f64,
+) -> bool {
+    if expected_material == "terrain" {
+        return terrain_variant_matches(material_variant, r, g, b);
+    }
+
+    material_matches(expected_material, r, g, b)
 }
 
 pub(crate) fn material_matches(expected_material: &str, r: f64, g: f64, b: f64) -> bool {
@@ -110,6 +160,80 @@ pub(crate) fn material_matches(expected_material: &str, r: f64, g: f64, b: f64) 
         "wind" => is_wind_like(r, g, b, luma),
         _ => false,
     }
+}
+
+pub(crate) fn terrain_variant_matches(material_variant: &str, r: f64, g: f64, b: f64) -> bool {
+    let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    if is_non_surface_variant_color(r, g, b, luma) {
+        return false;
+    }
+
+    match material_variant {
+        "terrain_lush_meadow" => is_lush_meadow_variant(r, g, b, luma),
+        "terrain_gold_meadow" => is_gold_meadow_variant(r, g, b, luma),
+        "terrain_copper_clay" => is_copper_clay_variant(r, g, b, luma),
+        "terrain_alpine_mist" => is_alpine_mist_variant(r, g, b, luma),
+        "terrain_highland_grass" => is_highland_grass_variant(r, g, b, luma),
+        _ => is_scene_like(r, g, b, luma, is_sky_like(r, g, b, luma)),
+    }
+}
+
+fn is_non_surface_variant_color(r: f64, g: f64, b: f64, luma: f64) -> bool {
+    let max_channel = r.max(g).max(b);
+    let min_channel = r.min(g).min(b);
+    let saturation = max_channel - min_channel;
+    let clear_blue_sky = luma >= 80.0 && b >= 128.0 && b >= r + 24.0 && b >= g + 10.0;
+    let pale_neutral_cloud = luma >= 135.0 && saturation <= 30.0 && max_channel >= 145.0;
+
+    luma <= 8.0 || luma >= 245.0 || clear_blue_sky || pale_neutral_cloud
+}
+
+fn is_lush_meadow_variant(r: f64, g: f64, b: f64, luma: f64) -> bool {
+    (28.0..=185.0).contains(&luma)
+        && g >= 74.0
+        && g >= r + 18.0
+        && g >= b + 18.0
+        && r <= 125.0
+        && b <= 125.0
+}
+
+fn is_gold_meadow_variant(r: f64, g: f64, b: f64, luma: f64) -> bool {
+    (55.0..=205.0).contains(&luma)
+        && r >= 72.0
+        && g >= 88.0
+        && b <= 132.0
+        && g >= b + 24.0
+        && r >= b + 14.0
+        && g >= r - 16.0
+}
+
+fn is_copper_clay_variant(r: f64, g: f64, b: f64, luma: f64) -> bool {
+    (42.0..=185.0).contains(&luma)
+        && r >= 78.0
+        && g >= 52.0
+        && b <= 122.0
+        && r >= g + 8.0
+        && r >= b + 24.0
+        && g >= b + 6.0
+}
+
+fn is_alpine_mist_variant(r: f64, g: f64, b: f64, luma: f64) -> bool {
+    (38.0..=205.0).contains(&luma)
+        && g >= 76.0
+        && b >= 82.0
+        && b >= r + 8.0
+        && g >= r + 4.0
+        && (b - g).abs() <= 44.0
+}
+
+fn is_highland_grass_variant(r: f64, g: f64, b: f64, luma: f64) -> bool {
+    (58.0..=205.0).contains(&luma)
+        && r >= 82.0
+        && g >= 86.0
+        && b <= 132.0
+        && g >= b + 14.0
+        && r >= b + 12.0
+        && (r - g).abs() <= 42.0
 }
 
 pub(crate) fn is_sky_like(r: f64, g: f64, b: f64, luma: f64) -> bool {
