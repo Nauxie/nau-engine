@@ -1111,6 +1111,7 @@ fn accumulator_summarizes_pose_intent_samples() {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.0,
             landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 1.0,
         }),
@@ -1174,6 +1175,7 @@ fn accumulator_summarizes_pose_intent_samples() {
         grounded_stride_leg_opposition_degrees: 0.0,
         landing_crouch_m: 0.0,
         landing_foot_forward_m: 0.0,
+        landing_recovery_flip_degrees: 0.0,
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 1.0,
     });
@@ -1213,6 +1215,7 @@ fn accumulator_summarizes_pose_intent_samples() {
         grounded_stride_leg_opposition_degrees: 0.0,
         landing_crouch_m: 0.0,
         landing_foot_forward_m: 0.0,
+        landing_recovery_flip_degrees: 0.0,
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 0.25,
     });
@@ -1306,6 +1309,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         grounded_stride_leg_opposition_degrees: 0.0,
         landing_crouch_m: 1.0,
         landing_foot_forward_m: 0.40,
+        landing_recovery_flip_degrees: 0.0,
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 1.0,
     });
@@ -1328,12 +1332,14 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     let landing_recovery_check = named_check(&summary, "pose_landing_recovery_samples");
     let landing_foot_forward_check = named_check(&summary, "pose_landing_foot_forward");
     let landing_flare_check = named_check(&summary, "pose_landing_flare");
+    let landing_recovery_flip_check = named_check(&summary, "pose_landing_recovery_flip");
     let authored_land_check = named_check(&summary, "authored_landing_clip_samples");
 
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 0);
     assert_eq!(summary.metrics.authored_land_clip_samples, 1);
     assert_eq!(summary.metrics.max_pose_landing_foot_forward_m, 0.40);
     assert_eq!(summary.metrics.max_pose_landing_flare_degrees, 0.0);
+    assert_eq!(summary.metrics.max_pose_landing_recovery_flip_degrees, 0.0);
     assert_eq!(landing_recovery_check.value, 0.0);
     assert_eq!(landing_recovery_check.threshold, 1.0);
     assert!(!landing_recovery_check.passed);
@@ -1346,6 +1352,94 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     assert_eq!(landing_flare_check.value, 0.0);
     assert_eq!(landing_flare_check.threshold, 48.0);
     assert!(!landing_flare_check.passed);
+    assert_eq!(landing_recovery_flip_check.value, 0.0);
+    assert_eq!(
+        landing_recovery_flip_check.threshold,
+        LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES
+    );
+    assert!(!landing_recovery_flip_check.passed);
+
+    let mut passing_accumulator = EvalAccumulator::default();
+    let mut passing_anticipation = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, -2.0, -18.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    )
+    .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: LANDING_MIN_POSE_FLARE_DEGREES,
+        arm_spread_degrees: 0.0,
+        leg_tuck_degrees: 64.0,
+        lateral_lean_degrees: 0.0,
+        signed_lateral_lean_degrees: 0.0,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
+        landing_crouch_m: 0.12,
+        landing_foot_forward_m: LANDING_MIN_POSE_FOOT_FORWARD_M,
+        landing_recovery_flip_degrees: 0.0,
+        wing_airflow_strength: 0.0,
+        key_pose_readability_score: 1.0,
+    });
+    passing_anticipation.pose_intent_label = "landing_anticipation";
+    passing_anticipation =
+        passing_anticipation.with_authored_animation_metrics("land", "land", 1, 140);
+    passing_anticipation.target_distance_m = 0.0;
+    passing_anticipation.on_landing_target = true;
+    passing_accumulator.observe(passing_anticipation);
+
+    let mut passing_recovery = air_control_metric_sample(
+        scenario,
+        1,
+        Vec3::new(0.0, 0.0, -5.0),
+        Vec2::ZERO,
+        0.0,
+        12.0,
+        0.0,
+    )
+    .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+        arm_spread_degrees: 0.0,
+        leg_tuck_degrees: 42.0,
+        lateral_lean_degrees: 0.0,
+        signed_lateral_lean_degrees: 0.0,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
+        landing_crouch_m: 0.09,
+        landing_foot_forward_m: 0.0,
+        landing_recovery_flip_degrees: LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+        wing_airflow_strength: 0.0,
+        key_pose_readability_score: 1.0,
+    });
+    passing_recovery.pose_intent_label = "landing_recovery";
+    passing_recovery = passing_recovery.with_authored_animation_metrics("land", "land", 1, 140);
+    passing_accumulator.observe(passing_recovery);
+
+    let passing_summary = passing_accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert!(named_check(&passing_summary, "pose_landing_recovery_flip").passed);
+    assert_eq!(
+        passing_summary
+            .metrics
+            .max_pose_landing_recovery_flip_degrees,
+        LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES
+    );
+    assert!(
+        passing_summary
+            .to_json()
+            .contains("\"max_pose_landing_recovery_flip_degrees\"")
+    );
 }
 
 #[test]
@@ -1389,6 +1483,7 @@ fn accumulator_gates_target_landing_pose_temporal_samples() {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.12,
             landing_foot_forward_m: 0.40,
+            landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 1.0,
         })
@@ -1446,6 +1541,7 @@ fn accumulator_gates_target_landing_pose_temporal_jank() {
         grounded_stride_leg_opposition_degrees: 0.0,
         landing_crouch_m: 0.12,
         landing_foot_forward_m: 0.40,
+        landing_recovery_flip_degrees: 0.0,
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 1.0,
     })
@@ -1530,6 +1626,7 @@ fn accumulator_ignores_non_landing_pose_jank_for_landing_temporal_gates() {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.12,
             landing_foot_forward_m: 0.40,
+            landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 1.0,
         })
@@ -1983,6 +2080,7 @@ fn accumulator_rejects_unreadable_air_control_turn_pose_samples() {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.0,
             landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 0.25,
         }),
@@ -2033,6 +2131,7 @@ fn accumulator_rejects_unreadable_key_pose_samples() {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.0,
             landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 0.25,
         }),

@@ -1,5 +1,5 @@
 use super::{
-    metrics::SimMetrics,
+    metrics::{SimMetrics, SimResult},
     sample::{CameraDiagnosticsSample, SimSample},
     simulation::run_simulation,
     state::{ObjectiveState, SimPowerUps},
@@ -13,8 +13,8 @@ use nau_engine::{
     environment::WindForceApplication,
     eval::{
         AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario,
-        ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE, UPDRAFT_ROUTE,
-        scenario_named,
+        ISLAND_LAUNCH_TO_LANDING, LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES, LONG_GLIDE_VISIBILITY,
+        POSE_STATE_COVERAGE, UPDRAFT_ROUTE, scenario_named,
     },
     movement::{Facing, FlightController, FlightInput, FlightMode, FlightState},
     world::{START_POSITION, SkyRoute},
@@ -43,6 +43,7 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"pose_landing_recovery_samples\""));
     assert!(summary.contains("\"max_pose_landing_foot_forward_m\""));
     assert!(summary.contains("\"max_pose_landing_flare_degrees\""));
+    assert!(summary.contains("\"max_pose_landing_recovery_flip_degrees\""));
     assert!(
         result
             .samples
@@ -301,6 +302,51 @@ fn sim_metrics_track_landing_flare_from_landing_anticipation_pose_only() {
 }
 
 #[test]
+fn sim_metrics_serialize_and_observe_landing_recovery_flip() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    let mut non_recovery_sample =
+        sim_roll_sample(&route, scenario, 30, FlightMode::Gliding, 0.0, 0.0);
+    non_recovery_sample.pose_intent_label = "gliding";
+    non_recovery_sample.pose_landing_recovery_flip_degrees = 64.0;
+    metrics.observe(&non_recovery_sample, scenario);
+    assert_eq!(metrics.max_pose_landing_recovery_flip_degrees, 0.0);
+
+    let mut recovery_sample = non_recovery_sample.clone();
+    recovery_sample.pose_intent_label = "landing_recovery";
+    recovery_sample.pose_landing_recovery_flip_degrees = 36.5;
+    metrics.observe(&recovery_sample, scenario);
+    assert_eq!(metrics.max_pose_landing_recovery_flip_degrees, 36.5);
+    assert_eq!(
+        recovery_sample.to_json()["pose_landing_recovery_flip_degrees"].as_f64(),
+        Some(36.5)
+    );
+
+    let checks = metrics.checks(scenario);
+    let result = SimResult {
+        scenario,
+        passed: checks.iter().all(|check| check.passed),
+        metrics,
+        checks,
+        samples: vec![recovery_sample],
+        elapsed_ms: 0.0,
+        summary_path: String::new(),
+        samples_path: String::new(),
+    };
+    let summary_json: serde_json::Value =
+        serde_json::from_str(&result.to_summary_json()).expect("sim summary json parses");
+    assert_eq!(
+        summary_json["metrics"]["max_pose_landing_recovery_flip_degrees"].as_f64(),
+        Some(36.5)
+    );
+    assert_eq!(
+        summary_json["final_sample"]["pose_landing_recovery_flip_degrees"].as_f64(),
+        Some(36.5)
+    );
+}
+
+#[test]
 fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
     let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("scenario");
     assert!(scenario.thresholds.require_target_landing);
@@ -314,6 +360,7 @@ fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
         "pose_landing_crouch",
         "pose_landing_foot_forward",
         "pose_landing_flare",
+        "pose_landing_recovery_flip",
         "unreadable_key_pose_samples",
     ] {
         assert!(
@@ -341,10 +388,29 @@ fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
     assert!(!foot_forward_check.passed);
     assert_eq!(foot_forward_check.threshold, 0.32);
     assert_eq!(foot_forward_check.unit, "m");
+    let recovery_flip_check = checks
+        .iter()
+        .find(|check| check.name == "pose_landing_recovery_flip")
+        .expect("landing recovery flip check");
+    assert!(!recovery_flip_check.passed);
+    assert_eq!(
+        recovery_flip_check.threshold,
+        LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES
+    );
+    assert_eq!(recovery_flip_check.unit, "deg");
 
     metrics.pose_landing_recovery_samples = 1;
     metrics.max_pose_landing_foot_forward_m = 0.32;
     metrics.max_pose_landing_flare_degrees = 48.0;
+    let failing_flip_checks = metrics.checks(scenario);
+    let failing_flip_check = failing_flip_checks
+        .iter()
+        .find(|check| check.name == "pose_landing_recovery_flip")
+        .expect("landing recovery flip check");
+    assert!(!failing_flip_check.passed);
+    assert_eq!(failing_flip_check.value, 0.0);
+
+    metrics.max_pose_landing_recovery_flip_degrees = LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES;
     let passing_checks = metrics.checks(scenario);
     let passing_recovery_check = passing_checks
         .iter()
@@ -361,6 +427,11 @@ fn target_landing_checks_gate_landing_recovery_samples_and_flare() {
         .find(|check| check.name == "pose_landing_foot_forward")
         .expect("landing foot-forward check");
     assert!(passing_foot_forward_check.passed);
+    let passing_recovery_flip_check = passing_checks
+        .iter()
+        .find(|check| check.name == "pose_landing_recovery_flip")
+        .expect("landing recovery flip check");
+    assert!(passing_recovery_flip_check.passed);
 }
 
 #[test]

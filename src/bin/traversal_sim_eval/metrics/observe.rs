@@ -189,6 +189,11 @@ impl SimMetrics {
                 .max_pose_landing_flare_degrees
                 .max(sample.pose_torso_pitch_degrees);
         }
+        if sample.pose_intent_label == "landing_recovery" {
+            self.max_pose_landing_recovery_flip_degrees = self
+                .max_pose_landing_recovery_flip_degrees
+                .max(sample.pose_landing_recovery_flip_degrees);
+        }
         self.max_pose_wing_airflow_strength = self
             .max_pose_wing_airflow_strength
             .max(sample.pose_wing_airflow_strength);

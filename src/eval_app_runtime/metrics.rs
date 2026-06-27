@@ -628,6 +628,7 @@ pub(crate) fn collect_eval_metrics(
             .grounded_stride_leg_opposition_degrees,
         landing_crouch_m: pose_readability.landing_crouch_m,
         landing_foot_forward_m: pose_readability.landing_foot_forward_m,
+        landing_recovery_flip_degrees: pose_readability.landing_recovery_flip_degrees,
         wing_airflow_strength: pose_readability.wing_airflow_strength,
         key_pose_readability_score: pose_readability.key_pose_readability_score,
     })
@@ -1361,6 +1362,7 @@ mod tests {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.0,
             landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.5,
             key_pose_readability_score: key_pose_readability_score(
                 PlayerPoseIntent::Gliding,
@@ -1401,6 +1403,7 @@ mod tests {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.0,
             landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.5,
             key_pose_readability_score: 1.0,
         };
@@ -1433,6 +1436,7 @@ mod tests {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.0,
             landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.5,
             key_pose_readability_score: key_pose_readability_score(
                 PlayerPoseIntent::Gliding,
@@ -1473,6 +1477,7 @@ mod tests {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.0,
             landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 0.1,
         };
@@ -1505,6 +1510,7 @@ mod tests {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.0,
             landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.4,
             key_pose_readability_score: 0.72,
         };
@@ -1540,6 +1546,7 @@ mod tests {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.159,
             landing_foot_forward_m: 0.40,
+            landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: key_pose_readability_score(
                 PlayerPoseIntent::LandingAnticipation,
@@ -1583,6 +1590,7 @@ mod tests {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.159,
             landing_foot_forward_m: 0.40,
+            landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: key_pose_readability_score(
                 PlayerPoseIntent::LandingAnticipation,
@@ -1622,6 +1630,7 @@ mod tests {
             grounded_stride_leg_opposition_degrees: 0.0,
             landing_crouch_m: 0.0,
             landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.4,
             key_pose_readability_score: 0.72,
         };

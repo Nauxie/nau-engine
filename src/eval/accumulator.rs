@@ -113,6 +113,7 @@ pub struct EvalAccumulator {
     max_pose_landing_crouch_m: f32,
     max_pose_landing_foot_forward_m: f32,
     max_pose_landing_flare_degrees: f32,
+    max_pose_landing_recovery_flip_degrees: f32,
     max_pose_wing_airflow_strength: f32,
     min_key_pose_readability_score: Option<f32>,
     max_key_pose_readability_score: f32,

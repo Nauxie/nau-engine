@@ -58,6 +58,7 @@ pub struct EvalPoseReadabilityMetrics {
     pub grounded_stride_leg_opposition_degrees: f32,
     pub landing_crouch_m: f32,
     pub landing_foot_forward_m: f32,
+    pub landing_recovery_flip_degrees: f32,
     pub wing_airflow_strength: f32,
     pub key_pose_readability_score: f32,
 }
@@ -88,6 +89,7 @@ pub struct EvalSample {
     pub pose_grounded_stride_leg_opposition_degrees: f32,
     pub pose_landing_crouch_m: f32,
     pub pose_landing_foot_forward_m: f32,
+    pub pose_landing_recovery_flip_degrees: f32,
     pub pose_wing_airflow_strength: f32,
     pub key_pose_readability_score: f32,
     pub key_pose_transition_grace: bool,

@@ -125,6 +125,12 @@ pub(super) fn append_scenario_checks(
             LANDING_MIN_POSE_FLARE_DEGREES,
             "deg",
         ));
+        checks.push(EvalCheck::at_least(
+            "pose_landing_recovery_flip",
+            acc.max_pose_landing_recovery_flip_degrees,
+            LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+            "deg",
+        ));
         checks.push(EvalCheck::at_most(
             "unreadable_key_pose_samples",
             acc.unreadable_key_pose_samples as f32,
