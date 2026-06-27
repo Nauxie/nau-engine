@@ -321,7 +321,7 @@ fn backward_diagonal_glide_input_steers_toward_rear_quadrant() {
     let desired_travel_error =
         desired_planar_travel_heading_error_degrees(state.velocity, desired_direction, 6.0);
     assert!(
-        left_speed > 10.0,
+        left_speed > 11.0,
         "expected back-left input to build leftward control, got {left_speed}"
     );
     assert!(
@@ -331,6 +331,49 @@ fn backward_diagonal_glide_input_steers_toward_rear_quadrant() {
     assert!(
         desired_travel_error < 24.0,
         "expected back-left travel to align with desired rear quadrant, got {desired_travel_error} deg"
+    );
+}
+
+#[test]
+fn backward_right_diagonal_glide_input_steers_toward_rear_quadrant() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let mut state = FlightState::new(
+        Vec3::new(0.0, 45.0, 0.0),
+        Vec3::new(-18.0, -2.0, 26.0),
+        FlightController {
+            mode: FlightMode::Gliding,
+            launch_available: false,
+            ..default()
+        },
+    );
+    let input = FlightInput {
+        backward: true,
+        right: true,
+        glide: true,
+        ..default()
+    };
+
+    for _ in 0..45 {
+        state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+    }
+
+    let right_speed = horizontal(state.velocity).dot(facing.right);
+    let forward_speed = horizontal(state.velocity).dot(facing.forward);
+    let desired_direction = desired_planar_movement_direction(input, facing).unwrap();
+    let desired_travel_error =
+        desired_planar_travel_heading_error_degrees(state.velocity, desired_direction, 6.0);
+    assert!(
+        right_speed > 11.0,
+        "expected back-right input to build rightward control, got {right_speed}"
+    );
+    assert!(
+        forward_speed < 6.0,
+        "expected back-right input to brake forward drift, got {forward_speed}"
+    );
+    assert!(
+        desired_travel_error < 24.0,
+        "expected back-right travel to align with desired rear quadrant, got {desired_travel_error} deg"
     );
 }
 
@@ -363,15 +406,15 @@ fn lateral_air_input_steers_velocity_toward_desired_plane() {
     let desired_travel_error =
         desired_planar_travel_heading_error_degrees(state.velocity, desired_direction, 6.0);
     assert!(
-        side_speed > 24.0,
+        side_speed > 28.0,
         "expected right input to build meaningful planar side speed, got {side_speed}"
     );
     assert!(
-        forward_speed < 14.0,
+        forward_speed < 11.0,
         "expected steering to rotate velocity away from pure forward drift, got {forward_speed}"
     );
     assert!(
-        desired_travel_error < 18.0,
+        desired_travel_error < 15.0,
         "expected right input to align travel with desired side heading, got {desired_travel_error} deg"
     );
 }
@@ -456,7 +499,7 @@ fn lateral_air_input_reverses_side_velocity_before_it_feels_stuck() {
 
     let left_response = horizontal(state.velocity).dot(-facing.right);
     assert!(
-        left_response > 8.0,
+        left_response > 10.0,
         "expected left reversal to recover promptly, got {left_response}"
     );
 }

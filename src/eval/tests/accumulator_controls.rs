@@ -46,9 +46,9 @@ fn accumulator_requires_both_air_control_lateral_phases() {
     accumulator.observe(air_control_metric_sample(
         scenario,
         90,
-        Vec3::new(24.0, -2.0, -18.0),
+        Vec3::new(28.0, -2.0, -18.0),
         Vec2::new(1.0, 0.0),
-        24.0,
+        28.0,
         18.0,
         4.0,
     ));
@@ -94,7 +94,7 @@ fn accumulator_requires_both_air_control_lateral_phases() {
 
     assert!(right_check.passed);
     assert!(!left_check.passed);
-    assert_eq!(summary.metrics.max_right_lateral_response_mps, 24.0);
+    assert_eq!(summary.metrics.max_right_lateral_response_mps, 28.0);
     assert_eq!(summary.metrics.max_left_lateral_response_mps, 2.0);
 }
 
