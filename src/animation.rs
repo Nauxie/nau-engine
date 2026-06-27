@@ -979,9 +979,9 @@ pub fn part_pose_with_context(
                         + vertical_pitch * 0.35
                 }
                 PlayerPoseIntent::LandingAnticipation => {
-                    0.52 + landing_strength * 0.16 + landing_flip * 0.34
+                    0.56 + landing_strength * 0.18 + landing_flip * 0.42
                 }
-                PlayerPoseIntent::LandingRecovery => 0.42 + recovery_strength * 0.42,
+                PlayerPoseIntent::LandingRecovery => 0.50 + recovery_strength * 0.50,
                 PlayerPoseIntent::Launching => -0.42 + vertical_pitch * 0.35,
             };
             translation.y += match intent {
@@ -994,11 +994,11 @@ pub fn part_pose_with_context(
                 _ => cycle.abs() * (0.014 + gait_weight * 0.018),
             };
             if intent == PlayerPoseIntent::LandingAnticipation {
-                translation.y += 0.12 + landing_strength * 0.06 + landing_flip * 0.06;
-                translation.z += 0.16 + landing_strength * 0.08 + landing_flip * 0.12;
+                translation.y += 0.13 + landing_strength * 0.07 + landing_flip * 0.08;
+                translation.z += 0.18 + landing_strength * 0.10 + landing_flip * 0.16;
             } else if intent == PlayerPoseIntent::LandingRecovery {
-                translation.y -= 0.07 + recovery_strength * 0.08;
-                translation.z += 0.08 + recovery_strength * 0.12;
+                translation.y -= 0.08 + recovery_strength * 0.10;
+                translation.z += 0.10 + recovery_strength * 0.15;
             }
             translation.x += turn_weight * turn_reach * 0.035;
             if intent == PlayerPoseIntent::Diving {
@@ -1021,8 +1021,8 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::AirTurn => -0.10,
                 PlayerPoseIntent::Diving => 0.12 + dive_pressure * 0.17 - dive_flutter * 0.045,
                 PlayerPoseIntent::AirBrake => -0.14 - rearward_brake_pressure * 0.08,
-                PlayerPoseIntent::LandingAnticipation => -0.38 - landing_flip * 0.18,
-                PlayerPoseIntent::LandingRecovery => -0.22 - recovery_strength * 0.14,
+                PlayerPoseIntent::LandingAnticipation => -0.42 - landing_flip * 0.24,
+                PlayerPoseIntent::LandingRecovery => -0.26 - recovery_strength * 0.18,
                 PlayerPoseIntent::GroundedIdle => -0.05 + breath * 0.018,
                 PlayerPoseIntent::GroundedWalk => -0.04,
                 PlayerPoseIntent::GroundedRun => -0.02 + run_weight * 0.04,
@@ -1055,9 +1055,9 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Diving => 1.395 + dive_extension * 0.19 + airflow * 0.025,
                 PlayerPoseIntent::AirBrake => 1.52 + brake_pressure * 0.045 + same_side_turn * 0.08,
                 PlayerPoseIntent::LandingAnticipation => {
-                    1.00 + landing_strength * 0.14 + landing_flip * 0.22
+                    1.06 + landing_strength * 0.16 + landing_flip * 0.28
                 }
-                PlayerPoseIntent::LandingRecovery => 0.82 + recovery_strength * 0.28,
+                PlayerPoseIntent::LandingRecovery => 0.88 + recovery_strength * 0.34,
                 PlayerPoseIntent::Launching => 0.36 + run_weight * 0.08,
             };
             let sweep = match intent {
@@ -1074,9 +1074,9 @@ pub fn part_pose_with_context(
                         + same_side_turn * 0.12
                 }
                 PlayerPoseIntent::LandingAnticipation => {
-                    1.16 + landing_strength * 0.22 + landing_flip * 0.26
+                    1.22 + landing_strength * 0.24 + landing_flip * 0.32
                 }
-                PlayerPoseIntent::LandingRecovery => 0.64 + recovery_strength * 0.34,
+                PlayerPoseIntent::LandingRecovery => 0.70 + recovery_strength * 0.40,
                 PlayerPoseIntent::Launching => -0.36,
                 PlayerPoseIntent::Falling => -0.24 + airflow * 0.018,
             };
@@ -1089,8 +1089,8 @@ pub fn part_pose_with_context(
                         + rearward_brake_pressure * 0.035
                         + same_side_turn * 0.045
                 }
-                _ if intent == PlayerPoseIntent::LandingAnticipation => -0.14 - landing_flip * 0.04,
-                _ if intent == PlayerPoseIntent::LandingRecovery => -0.10,
+                _ if intent == PlayerPoseIntent::LandingAnticipation => -0.15 - landing_flip * 0.05,
+                _ if intent == PlayerPoseIntent::LandingRecovery => -0.12,
                 FlightMode::Gliding => 0.04,
                 FlightMode::Airborne => -0.02,
                 _ => 0.0,
@@ -1138,7 +1138,7 @@ pub fn part_pose_with_context(
             let spread = match intent {
                 PlayerPoseIntent::GroundedIdle => 0.04,
                 PlayerPoseIntent::GroundedStride => 0.04 + gait.abs() * 0.05 * gait_weight,
-                PlayerPoseIntent::GroundedWalk => 0.05 + gait.abs() * 0.04 * walk_weight,
+                PlayerPoseIntent::GroundedWalk => 0.06 + gait.abs() * 0.055 * walk_weight,
                 PlayerPoseIntent::GroundedRun => 0.08 + gait.abs() * 0.08,
                 PlayerPoseIntent::Falling => 0.14,
                 PlayerPoseIntent::Gliding => 0.20 + airflow.abs() * 0.025,
@@ -1146,15 +1146,15 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Diving => 0.10 + dive_pressure * 0.08 + airflow.abs() * 0.020,
                 PlayerPoseIntent::AirBrake => 0.30 + brake_pressure * 0.04 + same_side_turn * 0.08,
                 PlayerPoseIntent::LandingAnticipation => {
-                    0.52 + landing_strength * 0.12 + landing_flip * 0.18
+                    0.58 + landing_strength * 0.14 + landing_flip * 0.24
                 }
-                PlayerPoseIntent::LandingRecovery => 0.34 + recovery_strength * 0.16,
+                PlayerPoseIntent::LandingRecovery => 0.40 + recovery_strength * 0.20,
                 PlayerPoseIntent::Launching => 0.18,
             };
             let trail = match intent {
                 PlayerPoseIntent::GroundedIdle => 0.02,
                 PlayerPoseIntent::GroundedStride => gait * 0.52 * gait_weight,
-                PlayerPoseIntent::GroundedWalk => gait * 0.38 * walk_weight,
+                PlayerPoseIntent::GroundedWalk => gait * 0.46 * walk_weight,
                 PlayerPoseIntent::GroundedRun => gait * (0.68 + run_weight * 0.22),
                 PlayerPoseIntent::Gliding => 0.50 + cycle * 0.04 + airflow * 0.025,
                 PlayerPoseIntent::AirTurn => 0.54 + cycle * 0.04 + airflow * 0.025,
@@ -1168,9 +1168,9 @@ pub fn part_pose_with_context(
                         - same_side_turn * 0.16
                 }
                 PlayerPoseIntent::LandingAnticipation => {
-                    -1.08 - landing_strength * 0.24 - landing_flip * 0.42
+                    -1.14 - landing_strength * 0.28 - landing_flip * 0.52
                 }
-                PlayerPoseIntent::LandingRecovery => -0.58 - recovery_strength * 0.34,
+                PlayerPoseIntent::LandingRecovery => -0.64 - recovery_strength * 0.42,
                 PlayerPoseIntent::Falling => 0.30 + vertical_pitch,
                 PlayerPoseIntent::Launching => -0.44,
             };
@@ -1195,11 +1195,11 @@ pub fn part_pose_with_context(
                 translation.y += rearward_brake_pressure * 0.035;
             }
             if intent == PlayerPoseIntent::LandingAnticipation {
-                translation.z += 0.30 + landing_strength * 0.14 + landing_flip * 0.28;
-                translation.y += 0.10 + landing_strength * 0.06 + landing_flip * 0.07;
+                translation.z += 0.34 + landing_strength * 0.16 + landing_flip * 0.34;
+                translation.y += 0.11 + landing_strength * 0.07 + landing_flip * 0.08;
             } else if intent == PlayerPoseIntent::LandingRecovery {
-                translation.z += 0.14 + recovery_strength * 0.14;
-                translation.y += 0.05 + recovery_strength * 0.07;
+                translation.z += 0.17 + recovery_strength * 0.17;
+                translation.y += 0.06 + recovery_strength * 0.08;
             }
             if airborne_pose {
                 translation.x += sign * turn_weight * 0.035 + sign * turn_reach * 0.025;

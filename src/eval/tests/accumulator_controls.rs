@@ -1389,7 +1389,10 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     assert_eq!(landing_foot_forward_check.threshold, 0.32);
     assert!(landing_foot_forward_check.passed);
     assert_eq!(landing_flare_check.value, 0.0);
-    assert_eq!(landing_flare_check.threshold, 48.0);
+    assert_eq!(
+        landing_flare_check.threshold,
+        LANDING_MIN_POSE_FLARE_DEGREES
+    );
     assert!(!landing_flare_check.passed);
     assert_eq!(landing_recovery_flip_check.value, 0.0);
     assert_eq!(
@@ -2336,7 +2339,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
             ("launching", FlightMode::Launching.label(), 3),
             ("falling", FlightMode::Airborne.label(), 8),
             ("gliding", FlightMode::Gliding.label(), 18),
-            ("air_turn", FlightMode::Gliding.label(), 6),
+            ("air_turn", FlightMode::Gliding.label(), 10),
             ("air_brake", FlightMode::Gliding.label(), 4),
             ("diving", FlightMode::Gliding.label(), 1),
             ("landing_anticipation", FlightMode::Gliding.label(), 1),
@@ -2382,9 +2385,15 @@ fn accumulator_gates_pose_state_coverage_samples() {
     assert_eq!(summary.metrics.authored_jog_clip_samples, 16);
     assert_eq!(summary.metrics.authored_fall_clip_samples, 8);
     assert_eq!(summary.metrics.pose_gliding_samples, 18);
-    assert_eq!(summary.metrics.pose_air_turn_samples, 6);
-    assert_eq!(summary.metrics.right_pose_air_turn_samples, 3);
-    assert_eq!(summary.metrics.left_pose_air_turn_samples, 3);
+    assert_eq!(summary.metrics.pose_air_turn_samples, 10);
+    assert_eq!(
+        summary.metrics.right_pose_air_turn_samples,
+        POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES as u32
+    );
+    assert_eq!(
+        summary.metrics.left_pose_air_turn_samples,
+        POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES as u32
+    );
     assert_eq!(summary.metrics.pose_air_brake_samples, 4);
     assert_eq!(summary.metrics.pose_diving_samples, 1);
     assert_eq!(summary.metrics.gliding_dive_samples, 1);
@@ -2425,6 +2434,14 @@ fn accumulator_gates_pose_state_coverage_samples() {
     ] {
         assert!(named_check(&summary, name).passed, "{name} should pass");
     }
+    assert_eq!(
+        named_check(&summary, "pose_state_right_air_turn_samples").threshold,
+        POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES
+    );
+    assert_eq!(
+        named_check(&summary, "pose_state_left_air_turn_samples").threshold,
+        POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES
+    );
 }
 
 #[test]
