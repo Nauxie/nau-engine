@@ -157,6 +157,8 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
     assert!(result.metrics.pose_falling_samples >= 8);
     assert!(result.metrics.pose_gliding_samples >= 18);
     assert!(result.metrics.pose_air_turn_samples >= 4);
+    assert!(result.metrics.right_pose_air_turn_samples >= 3);
+    assert!(result.metrics.left_pose_air_turn_samples >= 3);
     assert!(result.metrics.pose_air_brake_samples >= 4);
     assert!(result.metrics.pose_diving_samples >= 1);
     assert!(result.metrics.gliding_dive_samples >= 1);
@@ -182,6 +184,8 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         "pose_state_falling_samples",
         "pose_state_gliding_samples",
         "pose_state_air_turn_samples",
+        "pose_state_right_air_turn_samples",
+        "pose_state_left_air_turn_samples",
         "pose_state_air_brake_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
@@ -213,6 +217,8 @@ fn pose_state_coverage_sim_checks_reject_thin_samples() {
     metrics.pose_falling_samples = 7;
     metrics.pose_gliding_samples = 17;
     metrics.pose_air_turn_samples = 3;
+    metrics.right_pose_air_turn_samples = 2;
+    metrics.left_pose_air_turn_samples = 2;
     metrics.pose_air_brake_samples = 3;
 
     let checks = metrics.checks(scenario);
@@ -223,6 +229,8 @@ fn pose_state_coverage_sim_checks_reject_thin_samples() {
         "pose_state_falling_samples",
         "pose_state_gliding_samples",
         "pose_state_air_turn_samples",
+        "pose_state_right_air_turn_samples",
+        "pose_state_left_air_turn_samples",
         "pose_state_air_brake_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
