@@ -5,7 +5,7 @@ use super::{
 use bevy::prelude::{Quat, Transform, Vec3};
 use nau_engine::{
     animation::{
-        PlayerPoseContext, body_local_pose_velocity, glider_traversal_pose,
+        PlayerPoseContext, PlayerPoseIntent, body_local_pose_velocity, glider_traversal_pose,
         pose_readability_metrics, wind_lateral_load_from_delta,
     },
     camera::{
@@ -188,9 +188,11 @@ impl SimSample {
         state: FlightState,
         player_rotation: Quat,
         pose_phase: f32,
+        pose_intent: PlayerPoseIntent,
         orbit: CameraOrbit,
         camera: CameraDiagnosticsSample,
         input: FlightInput,
+        pose_input: FlightInput,
         facing: Facing,
         route: &SkyRoute,
         lift_fields: &[LiftField],
@@ -238,14 +240,15 @@ impl SimSample {
         let pose_context = PlayerPoseContext::new(
             state.controller.mode,
             body_local_pose_velocity(state.velocity, player_rotation),
-            input,
+            pose_input,
             height_above_route_ground_m,
         )
         .with_wind_lateral_load(wind_lateral_load)
         .with_landing_recovery(
             state.controller.landing_recovery_timer,
             state.controller.landing_impact_speed_mps,
-        );
+        )
+        .with_resolved_intent(pose_intent);
         let pose_intent_label = pose_context.intent().label();
         let pose_readability = pose_readability_metrics(pose_context, pose_phase);
         let wind_load_glider_response_degrees =
