@@ -17,7 +17,8 @@ use nau_engine::eval::{
     MIN_WIND_FORCE_FLOW_SPEED_MPS, MIN_WIND_FORCE_SAMPLE_COUNT, MIN_WIND_FORCE_VARIATION,
     MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
     MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
-    POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES, UPDRAFT_ROUTE,
+    POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES, POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES,
+    UPDRAFT_ROUTE,
 };
 use serde_json::{Value, json};
 
@@ -586,6 +587,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             "pose_state_unreadable_key_pose_samples",
             metrics.unreadable_key_pose_samples as f32,
             0.0,
+            "samples",
+        ),
+        SimCheck::at_most(
+            "pose_state_key_pose_transition_grace_samples",
+            metrics.key_pose_transition_grace_samples as f32,
+            POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32,
             "samples",
         ),
     ]);

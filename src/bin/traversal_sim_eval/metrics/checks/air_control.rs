@@ -26,6 +26,7 @@ use crate::{
     MIN_POSE_SCARF_LATERAL_SWAY_M, MIN_POSE_SCARF_STREAM_M, MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
     MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES,
 };
+use nau_engine::eval::AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES;
 
 use crate::metrics::util::{
     avg_body_heading_error_degrees, p95_body_heading_error_degrees, response_latency_secs,
@@ -411,6 +412,12 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             "air_control_unreadable_key_pose_samples",
             metrics.unreadable_key_pose_samples as f32,
             0.0,
+            "samples",
+        ),
+        SimCheck::at_most(
+            "air_control_key_pose_transition_grace_samples",
+            metrics.key_pose_transition_grace_samples as f32,
+            AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32,
             "samples",
         ),
         SimCheck::at_least(

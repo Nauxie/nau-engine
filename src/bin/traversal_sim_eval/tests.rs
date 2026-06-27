@@ -14,13 +14,15 @@ use nau_engine::{
     },
     environment::{LiftApplication, WindForceApplication},
     eval::{
-        AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario,
-        ISLAND_LAUNCH_TO_LANDING, LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M,
+        AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES, AIR_CONTROL_RESPONSE,
+        BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario, ISLAND_LAUNCH_TO_LANDING,
+        LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M,
         LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES, LONG_GLIDE_VISIBILITY,
         MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS, MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE,
         MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES, MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
         MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_LOAD_POSE_LEAN_DEGREES,
         MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
+        POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES,
         POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES, UPDRAFT_ROUTE, scenario_named,
     },
     movement::{Facing, FlightController, FlightInput, FlightMode, FlightState},
@@ -51,6 +53,7 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"max_pose_landing_foot_forward_m\""));
     assert!(summary.contains("\"max_pose_landing_flare_degrees\""));
     assert!(summary.contains("\"max_pose_landing_recovery_flip_degrees\""));
+    assert!(summary.contains("\"key_pose_transition_grace_samples\""));
     assert!(
         result
             .samples
@@ -67,6 +70,15 @@ fn baseline_simulation_writes_windowless_artifacts() {
             .unwrap()
             .to_json()
             .get("key_pose_readability_score")
+            .is_some()
+    );
+    assert!(
+        result
+            .samples
+            .last()
+            .unwrap()
+            .to_json()
+            .get("key_pose_transition_grace")
             .is_some()
     );
     assert!(
@@ -214,6 +226,7 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         "pose_state_landing_flare",
         "pose_state_landing_recovery_flip",
         "pose_state_unreadable_key_pose_samples",
+        "pose_state_key_pose_transition_grace_samples",
     ] {
         let check = result
             .checks
@@ -350,6 +363,21 @@ fn sim_metrics_count_readable_landing_recovery_key_pose_samples() {
 
     assert_eq!(metrics.pose_landing_recovery_samples, 1);
     assert_eq!(metrics.unreadable_key_pose_samples, 1);
+}
+
+#[test]
+fn sim_metrics_count_key_pose_transition_grace_samples() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    let mut sample = sim_roll_sample(&route, scenario, 30, FlightMode::Gliding, 0.0, 0.0);
+    sample.pose_intent_label = "gliding";
+    sample.key_pose_readability_score = 1.0;
+    sample.key_pose_transition_grace = true;
+
+    metrics.observe(&sample, scenario);
+
+    assert_eq!(metrics.key_pose_transition_grace_samples, 1);
 }
 
 #[test]
@@ -845,6 +873,7 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_left_pose_lateral_lean",
         "air_control_pose_wing_airflow",
         "air_control_unreadable_key_pose_samples",
+        "air_control_key_pose_transition_grace_samples",
         "air_control_pose_air_turn_samples",
         "air_control_right_pose_air_turn_samples",
         "air_control_left_pose_air_turn_samples",
@@ -893,6 +922,7 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
     assert!(summary.contains("\"left_pose_air_brake_samples\""));
     assert!(summary.contains("\"backward_right_pose_air_brake_samples\""));
     assert!(summary.contains("\"backward_left_pose_air_brake_samples\""));
+    assert!(summary.contains("\"key_pose_transition_grace_samples\""));
     assert!(summary.contains("\"lateral_body_travel_heading_sample_count\""));
     assert!(summary.contains("\"right_lateral_body_travel_heading_sample_count\""));
     assert!(summary.contains("\"left_lateral_body_travel_heading_sample_count\""));
@@ -1475,6 +1505,48 @@ fn sim_metrics_reject_unreadable_air_brake_pose_samples() {
     assert_eq!(metrics.right_pose_air_brake_samples, 0);
     assert_eq!(metrics.backward_right_pose_air_brake_samples, 0);
     assert_eq!(metrics.unreadable_key_pose_samples, 1);
+}
+
+#[test]
+fn air_control_sim_checks_reject_excess_transition_grace_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    metrics.key_pose_transition_grace_samples =
+        AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES + 1;
+
+    let checks = metrics.checks(scenario);
+    let check = checks
+        .iter()
+        .find(|check| check.name == "air_control_key_pose_transition_grace_samples")
+        .expect("transition-grace check");
+
+    assert_eq!(
+        check.threshold,
+        AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32
+    );
+    assert!(!check.passed);
+}
+
+#[test]
+fn pose_state_sim_checks_reject_excess_transition_grace_samples() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    metrics.key_pose_transition_grace_samples =
+        POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES + 1;
+
+    let checks = metrics.checks(scenario);
+    let check = checks
+        .iter()
+        .find(|check| check.name == "pose_state_key_pose_transition_grace_samples")
+        .expect("transition-grace check");
+
+    assert_eq!(
+        check.threshold,
+        POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32
+    );
+    assert!(!check.passed);
 }
 
 fn sim_roll_sample(

@@ -2326,6 +2326,48 @@ fn accumulator_rejects_unreadable_key_pose_samples() {
 }
 
 #[test]
+fn accumulator_rejects_excess_air_control_transition_grace_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+    for frame in 0..=AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES {
+        accumulator.observe(
+            air_control_metric_sample(
+                scenario,
+                120 + frame,
+                Vec3::new(0.0, -18.0, -26.0),
+                Vec2::ZERO,
+                0.0,
+                18.0,
+                0.0,
+            )
+            .with_key_pose_transition_grace(true),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let grace_check = named_check(&summary, "air_control_key_pose_transition_grace_samples");
+
+    assert_eq!(
+        summary.metrics.key_pose_transition_grace_samples,
+        AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES + 1
+    );
+    assert_eq!(
+        grace_check.threshold,
+        AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32
+    );
+    assert!(!grace_check.passed);
+}
+
+#[test]
 fn accumulator_gates_pose_state_coverage_samples() {
     let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
     let mut accumulator = EvalAccumulator::default();
@@ -2431,6 +2473,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_landing_flare",
         "pose_state_landing_recovery_flip",
         "pose_state_unreadable_key_pose_samples",
+        "pose_state_key_pose_transition_grace_samples",
     ] {
         assert!(named_check(&summary, name).passed, "{name} should pass");
     }
@@ -2493,6 +2536,39 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
     ] {
         assert!(!named_check(&summary, name).passed, "{name} should fail");
     }
+}
+
+#[test]
+fn accumulator_rejects_excess_pose_state_transition_grace_samples() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
+    let mut accumulator = EvalAccumulator::default();
+    for frame in 0..=POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES {
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 20, 0, 96).with_key_pose_transition_grace(true),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let grace_check = named_check(&summary, "pose_state_key_pose_transition_grace_samples");
+
+    assert_eq!(
+        summary.metrics.key_pose_transition_grace_samples,
+        POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES + 1
+    );
+    assert_eq!(
+        grace_check.threshold,
+        POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32
+    );
+    assert!(!grace_check.passed);
 }
 
 #[test]

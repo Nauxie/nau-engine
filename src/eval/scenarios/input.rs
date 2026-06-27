@@ -61,7 +61,7 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
     }
     if scenario.name == TERRAIN_RIM_COLLISION_CONTACT {
         return FlightInput {
-            forward: (0.05..=3.2).contains(&t),
+            forward: (0.05..=4.8).contains(&t),
             ..default()
         };
     }

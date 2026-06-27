@@ -981,7 +981,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::LandingAnticipation => {
                     0.56 + landing_strength * 0.18 + landing_flip * 0.42
                 }
-                PlayerPoseIntent::LandingRecovery => 0.50 + recovery_strength * 0.50,
+                PlayerPoseIntent::LandingRecovery => 0.53 + recovery_strength * 0.50,
                 PlayerPoseIntent::Launching => -0.42 + vertical_pitch * 0.35,
             };
             translation.y += match intent {
@@ -2632,7 +2632,7 @@ mod tests {
         assert!(recovery_torso.translation.y < stride_torso.translation.y - 0.06);
         assert!(recovery_leg.translation.z > stride_leg.translation.z + 0.1);
         assert!(recovery_leg.rotation.angle_between(stride_leg.rotation) > 0.55);
-        assert!(recovery_metrics.landing_recovery_flip_degrees > 40.0);
+        assert!(recovery_metrics.landing_recovery_flip_degrees > 48.0);
         assert!(recovery_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
     }
 
