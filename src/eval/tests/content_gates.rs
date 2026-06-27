@@ -286,6 +286,12 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"max_updraft_ribbon_visual_count\": 12"));
     assert!(summary_json.contains("\"max_crosswind_guide_visual_count\": 120"));
     assert!(summary_json.contains("\"max_crosswind_ribbon_visual_count\": 14"));
+    assert!(summary_json.contains("\"max_updraft_field_count\": 2"));
+    assert!(summary_json.contains("\"max_updraft_fields_with_guides_and_ribbons_count\": 2"));
+    assert!(summary_json.contains("\"max_updraft_flow_coherent_field_count\": 2"));
+    assert!(summary_json.contains("\"max_crosswind_field_count\": 3"));
+    assert!(summary_json.contains("\"max_crosswind_fields_with_guides_and_ribbons_count\": 3"));
+    assert!(summary_json.contains("\"max_crosswind_flow_coherent_field_count\": 3"));
     assert!(summary_json.contains("\"max_updraft_visual_rise_m\": 0.4500"));
     assert!(summary_json.contains("\"max_updraft_visual_swirl_displacement_m\": 0.3500"));
     assert!(summary_json.contains("\"max_updraft_visual_depth_span_m\": 48.0000"));
@@ -299,6 +305,9 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"max_crosswind_flow_coherent_visual_count\": 100"));
     assert!(summary_json.contains("\"max_updraft_visual_flow_alignment\": 0.5500"));
     assert!(summary_json.contains("\"max_crosswind_visual_flow_alignment\": 0.5500"));
+    assert!(summary_json.contains("\"sustained_wind_visual_flow_samples\": 1"));
+    assert!(summary_json.contains("\"sustained_updraft_visual_flow_samples\": 1"));
+    assert!(summary_json.contains("\"sustained_crosswind_visual_flow_samples\": 1"));
     assert!(summary_json.contains("\"wind_force_samples\": 1"));
     assert!(summary_json.contains("\"meaningful_wind_force_samples\": 1"));
     assert!(summary_json.contains("\"aligned_wind_force_samples\": 1"));
@@ -673,6 +682,12 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"updraft_ribbon_visual_count\":12"));
     assert!(sample_json.contains("\"crosswind_guide_visual_count\":120"));
     assert!(sample_json.contains("\"crosswind_ribbon_visual_count\":14"));
+    assert!(sample_json.contains("\"updraft_field_count\":2"));
+    assert!(sample_json.contains("\"updraft_fields_with_guides_and_ribbons_count\":2"));
+    assert!(sample_json.contains("\"updraft_flow_coherent_field_count\":2"));
+    assert!(sample_json.contains("\"crosswind_field_count\":3"));
+    assert!(sample_json.contains("\"crosswind_fields_with_guides_and_ribbons_count\":3"));
+    assert!(sample_json.contains("\"crosswind_flow_coherent_field_count\":3"));
     assert!(sample_json.contains("\"max_updraft_visual_motion_m\":0.4500"));
     assert!(sample_json.contains("\"max_updraft_visual_rise_m\":0.4500"));
     assert!(sample_json.contains("\"max_updraft_visual_swirl_displacement_m\":0.3500"));
@@ -1155,6 +1170,18 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
                 MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT,
                 MIN_WIND_VISUAL_FLOW_ALIGNMENT,
                 MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+            )
+            .with_wind_field_visual_coverage_metrics(
+                GAMEPLAY_LIFT_ROUTE.len(),
+                GAMEPLAY_LIFT_ROUTE.len(),
+                GAMEPLAY_LIFT_ROUTE.len(),
+                GAMEPLAY_LIFT_ROUTE.len(),
+                GAMEPLAY_LIFT_ROUTE.len(),
+                VISUAL_CROSSWIND_FIELD_COUNT,
+                VISUAL_CROSSWIND_FIELD_COUNT,
+                VISUAL_CROSSWIND_FIELD_COUNT,
+                VISUAL_CROSSWIND_FIELD_COUNT,
+                VISUAL_CROSSWIND_FIELD_COUNT,
             )
             .with_wind_force_metrics(
                 1,

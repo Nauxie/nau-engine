@@ -7,12 +7,16 @@ mod control;
 
 use super::super::EvalAccumulator;
 use super::derived::SummaryDerivedMetrics;
-use crate::eval::{
-    scenarios::{
-        EvalScenario, GROUND_TAXI_CONTROL, TERRAIN_RIM_COLLISION_CONTACT, WORLD_COLLISION_CONTACT,
+use crate::{
+    environment::{GAMEPLAY_LIFT_ROUTE, VISUAL_CROSSWIND_FIELD_COUNT},
+    eval::{
+        scenarios::{
+            EvalScenario, GROUND_TAXI_CONTROL, TERRAIN_RIM_COLLISION_CONTACT,
+            WORLD_COLLISION_CONTACT,
+        },
+        summary::EvalCheck,
+        thresholds::*,
     },
-    summary::EvalCheck,
-    thresholds::*,
 };
 
 pub(super) fn build_checks(
@@ -185,6 +189,66 @@ pub(super) fn build_checks(
             "entities",
         ),
         EvalCheck::at_least(
+            "updraft_field_count",
+            acc.max_updraft_field_count as f32,
+            GAMEPLAY_LIFT_ROUTE.len() as f32,
+            "fields",
+        ),
+        EvalCheck::at_least(
+            "updraft_fields_with_guides",
+            acc.max_updraft_fields_with_guides_count as f32,
+            GAMEPLAY_LIFT_ROUTE.len() as f32,
+            "fields",
+        ),
+        EvalCheck::at_least(
+            "updraft_fields_with_ribbons",
+            acc.max_updraft_fields_with_ribbons_count as f32,
+            GAMEPLAY_LIFT_ROUTE.len() as f32,
+            "fields",
+        ),
+        EvalCheck::at_least(
+            "updraft_fields_with_guides_and_ribbons",
+            acc.max_updraft_fields_with_guides_and_ribbons_count as f32,
+            GAMEPLAY_LIFT_ROUTE.len() as f32,
+            "fields",
+        ),
+        EvalCheck::at_least(
+            "updraft_flow_coherent_field_count",
+            acc.max_updraft_flow_coherent_field_count as f32,
+            GAMEPLAY_LIFT_ROUTE.len() as f32,
+            "fields",
+        ),
+        EvalCheck::at_least(
+            "crosswind_field_count",
+            acc.max_crosswind_field_count as f32,
+            VISUAL_CROSSWIND_FIELD_COUNT as f32,
+            "fields",
+        ),
+        EvalCheck::at_least(
+            "crosswind_fields_with_guides",
+            acc.max_crosswind_fields_with_guides_count as f32,
+            VISUAL_CROSSWIND_FIELD_COUNT as f32,
+            "fields",
+        ),
+        EvalCheck::at_least(
+            "crosswind_fields_with_ribbons",
+            acc.max_crosswind_fields_with_ribbons_count as f32,
+            VISUAL_CROSSWIND_FIELD_COUNT as f32,
+            "fields",
+        ),
+        EvalCheck::at_least(
+            "crosswind_fields_with_guides_and_ribbons",
+            acc.max_crosswind_fields_with_guides_and_ribbons_count as f32,
+            VISUAL_CROSSWIND_FIELD_COUNT as f32,
+            "fields",
+        ),
+        EvalCheck::at_least(
+            "crosswind_flow_coherent_field_count",
+            acc.max_crosswind_flow_coherent_field_count as f32,
+            VISUAL_CROSSWIND_FIELD_COUNT as f32,
+            "fields",
+        ),
+        EvalCheck::at_least(
             "updraft_visual_motion",
             acc.max_updraft_visual_motion_m,
             MIN_UPDRAFT_VISUAL_MOTION_M,
@@ -267,6 +331,24 @@ pub(super) fn build_checks(
             acc.max_crosswind_visual_flow_alignment,
             MIN_WIND_VISUAL_FLOW_ALIGNMENT,
             "dot",
+        ),
+        EvalCheck::at_least(
+            "sustained_wind_visual_flow_samples",
+            acc.sustained_wind_visual_flow_samples as f32,
+            MIN_SUSTAINED_WIND_VISUAL_FLOW_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "sustained_updraft_visual_flow_samples",
+            acc.sustained_updraft_visual_flow_samples as f32,
+            MIN_SUSTAINED_UPDRAFT_VISUAL_FLOW_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "sustained_crosswind_visual_flow_samples",
+            acc.sustained_crosswind_visual_flow_samples as f32,
+            MIN_SUSTAINED_CROSSWIND_VISUAL_FLOW_SAMPLES as f32,
+            "samples",
         ),
         EvalCheck::at_least(
             "world_collision_proxy_count",

@@ -124,7 +124,7 @@ Current tests cover:
 - world collision proxies push the player out of obvious generated asset obstacles without affecting proxies above the player
 - visual wind fields keep horizontal flow horizontal
 - visual updraft fields include upward flow plus horizontal swirl
-- wind-current evals gate sustained updraft visual rise, updraft/crosswind visual depth span, baseline-relative guide/ribbon scale pulse, split guide/ribbon crosswind motion along the gameplay field direction, short-horizon guide/ribbon motion aligned with shared `WindField::flow_at`, and wind-force deltas aligned with the field-axis correction direction toward that same shared flow; focused visual tests also cover stream-specific crosswind variation so motes do not move in lockstep
+- wind-current evals gate sustained updraft visual rise, per-field guide/ribbon coverage, sustained updraft/crosswind visual-flow sample windows, updraft/crosswind visual depth span, baseline-relative guide/ribbon scale pulse, split guide/ribbon crosswind motion along the gameplay field direction, short-horizon guide/ribbon motion aligned with shared `WindField::flow_at`, and wind-force deltas aligned with the field-axis correction direction toward that same shared flow; focused visual tests also cover stream-specific crosswind variation so motes do not move in lockstep
 - wind response applies only while airborne and stays horizontally bounded
 - lift fields only apply inside bounds while enabled
 - authored gameplay lift route nodes pair visual and lift volumes
@@ -141,7 +141,7 @@ Current tests cover:
 - animation phase advances from delta time
 - idle breathing, glide airflow micro-motion, and pressure-scaled dive flattening/limb trail are phase-driven and covered by pose unit tests
 - wing visibility tracks glide mode
-- `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, unreadable lift samples, dynamic readable lift samples, wind-flow speed/variation/range, wind-guide depth/pulse/coherence, layered dynamic flow fields, and simultaneous crosswind-plus-updraft swirl force response so active lift must overlap a paired visible updraft with changing flow, layered aligned visual airflow, and lateral current
+- `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, unreadable lift samples, dynamic readable lift samples, wind-flow speed/variation/range, wind-guide depth/pulse/coherence, per-field visual coverage, sustained visual-flow sample windows, layered dynamic flow fields, and simultaneous crosswind-plus-updraft swirl force response so active lift must overlap a paired visible updraft with changing flow, layered aligned visual airflow, and lateral current
 - `camera_mouse_control` eval tracks yaw/pitch offsets and route-spire obstruction adjustment without player movement in both app and simulation coverage
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
 - `camera_strafe_stability` eval tracks right/left lateral movement without camera auto-orbit, including view-yaw and world-yaw drift

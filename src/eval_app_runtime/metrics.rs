@@ -567,6 +567,18 @@ pub(crate) fn collect_eval_metrics(
         wind_guide_metrics.max_updraft_visual_flow_alignment,
         wind_guide_metrics.max_crosswind_visual_flow_alignment,
     )
+    .with_wind_field_visual_coverage_metrics(
+        wind_guide_metrics.updraft_field_count,
+        wind_guide_metrics.updraft_fields_with_guides_count,
+        wind_guide_metrics.updraft_fields_with_ribbons_count,
+        wind_guide_metrics.updraft_fields_with_guides_and_ribbons_count,
+        wind_guide_metrics.updraft_flow_coherent_field_count,
+        wind_guide_metrics.crosswind_field_count,
+        wind_guide_metrics.crosswind_fields_with_guides_count,
+        wind_guide_metrics.crosswind_fields_with_ribbons_count,
+        wind_guide_metrics.crosswind_fields_with_guides_and_ribbons_count,
+        wind_guide_metrics.crosswind_flow_coherent_field_count,
+    )
     .with_wind_force_metrics(
         scene.wind_force_diagnostics.active_fields,
         scene.wind_force_diagnostics.crosswind_fields,

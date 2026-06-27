@@ -192,6 +192,16 @@ impl EvalSample {
             updraft_ribbon_visual_count: 0,
             crosswind_guide_visual_count: 0,
             crosswind_ribbon_visual_count: 0,
+            updraft_field_count: 0,
+            updraft_fields_with_guides_count: 0,
+            updraft_fields_with_ribbons_count: 0,
+            updraft_fields_with_guides_and_ribbons_count: 0,
+            updraft_flow_coherent_field_count: 0,
+            crosswind_field_count: 0,
+            crosswind_fields_with_guides_count: 0,
+            crosswind_fields_with_ribbons_count: 0,
+            crosswind_fields_with_guides_and_ribbons_count: 0,
+            crosswind_flow_coherent_field_count: 0,
             max_updraft_visual_motion_m: 0.0,
             max_updraft_visual_rise_m: 0.0,
             max_updraft_visual_swirl_displacement_m: 0.0,
@@ -509,6 +519,35 @@ impl EvalSample {
         self.crosswind_flow_coherent_visual_count = crosswind_coherent_visual_count;
         self.max_updraft_visual_flow_alignment = max_updraft_flow_alignment.clamp(0.0, 1.0);
         self.max_crosswind_visual_flow_alignment = max_crosswind_flow_alignment.clamp(0.0, 1.0);
+        self
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_wind_field_visual_coverage_metrics(
+        mut self,
+        updraft_field_count: usize,
+        updraft_fields_with_guides_count: usize,
+        updraft_fields_with_ribbons_count: usize,
+        updraft_fields_with_guides_and_ribbons_count: usize,
+        updraft_flow_coherent_field_count: usize,
+        crosswind_field_count: usize,
+        crosswind_fields_with_guides_count: usize,
+        crosswind_fields_with_ribbons_count: usize,
+        crosswind_fields_with_guides_and_ribbons_count: usize,
+        crosswind_flow_coherent_field_count: usize,
+    ) -> Self {
+        self.updraft_field_count = updraft_field_count;
+        self.updraft_fields_with_guides_count = updraft_fields_with_guides_count;
+        self.updraft_fields_with_ribbons_count = updraft_fields_with_ribbons_count;
+        self.updraft_fields_with_guides_and_ribbons_count =
+            updraft_fields_with_guides_and_ribbons_count;
+        self.updraft_flow_coherent_field_count = updraft_flow_coherent_field_count;
+        self.crosswind_field_count = crosswind_field_count;
+        self.crosswind_fields_with_guides_count = crosswind_fields_with_guides_count;
+        self.crosswind_fields_with_ribbons_count = crosswind_fields_with_ribbons_count;
+        self.crosswind_fields_with_guides_and_ribbons_count =
+            crosswind_fields_with_guides_and_ribbons_count;
+        self.crosswind_flow_coherent_field_count = crosswind_flow_coherent_field_count;
         self
     }
 
