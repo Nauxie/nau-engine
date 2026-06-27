@@ -1,5 +1,8 @@
 use crate::camera_runtime::CameraObstacle;
 use crate::environment_visuals::WindVisualMotion;
+use crate::generated_content::{
+    island_cliff_mesh, island_impostor_mesh, island_terrain_mesh, island_underside_mesh,
+};
 use crate::world_collision_runtime::WorldCollisionProxy;
 use bevy::prelude::*;
 use nau_engine::world::{LodBand, SkyIsland, StreamActivation};
@@ -97,12 +100,56 @@ pub(super) struct IslandVisualKey {
     pub(super) index: usize,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(super) enum IslandVisualMeshRecipe {
+    Terrain {
+        island_index: usize,
+        island: SkyIsland,
+    },
+    Cliff {
+        island_index: usize,
+        island: SkyIsland,
+    },
+    Underside {
+        island_index: usize,
+        island: SkyIsland,
+    },
+    Impostor {
+        island_index: usize,
+        island: SkyIsland,
+    },
+}
+
+impl IslandVisualMeshRecipe {
+    pub(super) fn build_mesh(self) -> Mesh {
+        match self {
+            Self::Terrain {
+                island_index,
+                island,
+            } => island_terrain_mesh(island_index, island),
+            Self::Cliff {
+                island_index,
+                island,
+            } => island_cliff_mesh(island_index, island),
+            Self::Underside {
+                island_index,
+                island,
+            } => island_underside_mesh(island_index, island),
+            Self::Impostor {
+                island_index,
+                island,
+            } => island_impostor_mesh(island_index, island),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct IslandVisualEntry {
     pub(super) key: IslandVisualKey,
     pub(super) island: SkyIsland,
     pub(super) layer: IslandVisualLayer,
     pub(super) mesh: Option<Handle<Mesh>>,
+    pub(super) mesh_recipe: Option<IslandVisualMeshRecipe>,
     pub(super) material: Option<Handle<StandardMaterial>>,
     pub(super) transform: Transform,
     pub(super) obstacle: Option<CameraObstacle>,
@@ -111,12 +158,45 @@ pub(super) struct IslandVisualEntry {
     pub(super) name: &'static str,
 }
 
+impl IslandVisualEntry {
+    #[cfg(test)]
+    pub(super) fn has_visible_mesh(&self) -> bool {
+        self.mesh.is_some() || self.mesh_recipe.is_some()
+    }
+}
+
 #[derive(Resource, Default)]
 pub(crate) struct IslandVisualCatalog {
     pub(super) entries: Vec<IslandVisualEntry>,
 }
 
+impl IslandVisualCatalog {
+    #[cfg(test)]
+    pub(crate) fn deferred_mesh_count(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| entry.mesh_recipe.is_some())
+            .count()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn prebuilt_mesh_count(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| entry.mesh.is_some())
+            .count()
+    }
+}
+
 #[derive(Resource, Default)]
 pub(crate) struct IslandStreamState {
     pub(super) spawned: HashMap<IslandVisualKey, Entity>,
+    pub(super) loaded_meshes: HashMap<IslandVisualKey, Handle<Mesh>>,
+}
+
+impl IslandStreamState {
+    #[cfg(test)]
+    pub(crate) fn loaded_mesh_count(&self) -> usize {
+        self.loaded_meshes.len()
+    }
 }

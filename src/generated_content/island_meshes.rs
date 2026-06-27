@@ -1,5 +1,6 @@
 mod body;
 mod constants;
+mod diagnostics;
 mod ground_cover;
 mod metrics;
 mod normals;
@@ -20,6 +21,9 @@ pub(crate) use constants::{
     ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS, ISLAND_TERRAIN_NORMAL_SLOPE_BANDS, ISLAND_TERRAIN_RINGS,
     ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS, ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE,
     ISLAND_UNDERSIDE_RINGS,
+};
+pub(crate) use diagnostics::{
+    island_body_mesh_diagnostics, island_impostor_mesh_diagnostics, island_terrain_mesh_diagnostics,
 };
 pub(crate) use ground_cover::island_ground_cover_mesh;
 pub(crate) use metrics::{

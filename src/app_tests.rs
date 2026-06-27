@@ -608,13 +608,23 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         route.islands().len() * nau_engine::world::TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND
     );
     assert!(coverage.camera_only_allowance_count >= route.islands().len());
+    assert_eq!(catalog.deferred_mesh_count(), route.islands().len() * 4);
+    assert!(catalog.prebuilt_mesh_count() > catalog.deferred_mesh_count());
 
     let mut world = World::new();
+    let stream_state;
     {
         let mut commands = world.commands();
-        spawn_initial_island_visuals(&mut commands, &catalog, nau_engine::world::START_POSITION);
+        stream_state = spawn_initial_island_visuals(
+            &mut commands,
+            &mut meshes,
+            &catalog,
+            nau_engine::world::START_POSITION,
+        );
     }
     world.flush();
+    assert!(stream_state.loaded_mesh_count() > 0);
+    assert!(stream_state.loaded_mesh_count() < catalog.deferred_mesh_count());
 
     let mut query = world.query::<&WorldCollisionProxy>();
     let proxies = query.iter(&world).copied().collect::<Vec<_>>();

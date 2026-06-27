@@ -22,12 +22,13 @@ pub(crate) use detail_meshes::{
 pub(crate) use island_meshes::{
     GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES, ISLAND_BODY_SEGMENTS,
     IslandDetailMaterials, TERRAIN_BIOME_PALETTE_COUNT, VERTICES_PER_GROUND_BLADE,
-    biome_detail_color_set, biome_detail_materials, island_cliff_mesh, island_ground_cover_mesh,
-    island_impostor_mesh, island_playable_normalized_offset, island_terrain_mesh,
-    island_underside_mesh, island_visual_surface_position, mesh_normal_slope_band_count,
-    mesh_terrain_material_channel_count, mesh_terrain_material_region_count,
-    mesh_terrain_material_weight_band_count, mesh_vertex_color_band_count,
-    mesh_vertical_band_count, mesh_y_range, terrain_biome_palette,
+    biome_detail_color_set, biome_detail_materials, island_body_mesh_diagnostics,
+    island_cliff_mesh, island_ground_cover_mesh, island_impostor_mesh,
+    island_impostor_mesh_diagnostics, island_playable_normalized_offset, island_terrain_mesh,
+    island_terrain_mesh_diagnostics, island_underside_mesh, island_visual_surface_position,
+    mesh_normal_slope_band_count, mesh_terrain_material_channel_count,
+    mesh_terrain_material_region_count, mesh_terrain_material_weight_band_count,
+    mesh_vertex_color_band_count, mesh_vertical_band_count, mesh_y_range, terrain_biome_palette,
 };
 #[cfg(test)]
 pub(crate) use island_meshes::{

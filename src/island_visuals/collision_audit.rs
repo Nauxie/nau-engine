@@ -111,7 +111,9 @@ pub(crate) fn audit_island_collision_coverage(
                             entry.name, entry.key.island_name
                         ));
                     }
-                    if entry.mesh.is_some() || entry.material.is_some() || entry.obstacle.is_some()
+                    if entry.has_visible_mesh()
+                        || entry.material.is_some()
+                        || entry.obstacle.is_some()
                     {
                         failures.push(format!(
                             "{} on {} should remain an invisible collision-only rim rail",
@@ -121,7 +123,7 @@ pub(crate) fn audit_island_collision_coverage(
                 }
                 kind => {
                     solid_visual_count += 1;
-                    if entry.mesh.is_none() || entry.material.is_none() {
+                    if !entry.has_visible_mesh() || entry.material.is_none() {
                         failures.push(format!(
                             "{} on {} has solid collision but no visible mesh/material",
                             entry.name, entry.key.island_name
@@ -241,6 +243,7 @@ mod tests {
             island,
             layer,
             mesh: collision.map(|_| Handle::<Mesh>::default()),
+            mesh_recipe: None,
             material: collision.map(|_| Handle::<StandardMaterial>::default()),
             transform: Transform::default(),
             obstacle,
