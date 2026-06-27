@@ -399,6 +399,11 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
             .max_pose_landing_flare_degrees
             .max(sample.pose_torso_pitch_degrees);
     }
+    if sample.pose_intent_label == "landing_recovery" {
+        accumulator.max_pose_landing_recovery_flip_degrees = accumulator
+            .max_pose_landing_recovery_flip_degrees
+            .max(sample.pose_landing_recovery_flip_degrees);
+    }
     accumulator.max_pose_wing_airflow_strength = accumulator
         .max_pose_wing_airflow_strength
         .max(sample.pose_wing_airflow_strength);

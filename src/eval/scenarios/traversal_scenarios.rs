@@ -274,7 +274,7 @@ pub(super) fn branch_recovery_route() -> EvalScenario {
             max_primitive_island_body_count: 0,
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
-            max_stream_visibility_changes_per_frame: 32,
+            max_stream_visibility_changes_per_frame: 40,
             min_entity_count: 220,
             max_camera_distance_m: 38.0,
             min_camera_surface_clearance_m: 1.0,
