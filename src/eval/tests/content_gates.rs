@@ -268,7 +268,7 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_generated_ground_cover_patch_count\": 800"));
     assert!(summary_json.contains("\"min_ground_cover_blade_count\": 220"));
     assert!(summary_json.contains("\"min_ground_cover_mesh_vertices\": 1320"));
-    assert!(summary_json.contains("\"min_tree_canopy_mesh_vertices\": 412"));
+    assert!(summary_json.contains("\"min_tree_canopy_mesh_vertices\": 460"));
     assert!(summary_json.contains("\"min_detail_biome_palette_count\": 5"));
     assert!(summary_json.contains("\"min_generated_rock_count\": 90"));
     assert!(summary_json.contains("\"min_rock_mesh_vertices\": 74"));
@@ -1262,7 +1262,7 @@ fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample
                 MIN_GENERATED_TREE_TRUNK_COUNT,
                 MIN_GENERATED_TREE_CANOPY_COUNT,
                 196,
-                412,
+                460,
                 MIN_DETAIL_BIOME_PALETTE_COUNT,
                 MIN_GENERATED_ROCK_COUNT,
                 74,

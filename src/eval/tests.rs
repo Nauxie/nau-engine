@@ -158,7 +158,7 @@ fn air_control_metric_sample(
         MIN_GENERATED_TREE_TRUNK_COUNT,
         MIN_GENERATED_TREE_CANOPY_COUNT,
         196,
-        412,
+        460,
         MIN_DETAIL_BIOME_PALETTE_COUNT,
         MIN_GENERATED_ROCK_COUNT,
         74,

@@ -492,9 +492,9 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_tree_root_flare_count >= 5);
     assert!(report.min_tree_trunk_ring_count >= 5);
     assert!(report.tree_trunk_height_range_m >= 1.5);
-    assert!(report.min_tree_canopy_mesh_vertices >= 400);
+    assert!(report.min_tree_canopy_mesh_vertices >= 450);
     assert!(report.min_tree_canopy_lobe_count >= 6);
-    assert!(report.min_tree_canopy_detail_card_count >= 12);
+    assert!(report.min_tree_canopy_detail_card_count >= 18);
     assert!(report.min_tree_canopy_vertical_to_horizontal_ratio >= 0.45);
     assert!(report.tree_canopy_radius_range_m >= 0.35);
     assert!(report.min_weather_cloud_mesh_vertices >= 1458);
@@ -780,7 +780,12 @@ fn tree_canopy_mesh_uses_overlapping_lobes_instead_of_one_sphere() {
     let positions = positions(&mesh);
     let single_lobe_vertices =
         (TREE_CANOPY_LATITUDE_SEGMENTS + 1) * (TREE_CANOPY_LONGITUDE_SEGMENTS + 1);
+    let secondary_lobe_vertices = 5 * ((4 + 1) * (8 + 1));
+    let lobe_vertices = single_lobe_vertices + secondary_lobe_vertices;
     let expected_card_vertices = TREE_CANOPY_CARD_COUNT * DETAIL_CARD_VERTICES;
+    let skirt_card_vertices = 6 * DETAIL_CARD_VERTICES;
+    let skirt_start = lobe_vertices + expected_card_vertices - skirt_card_vertices;
+    let skirt_positions = &positions[skirt_start..skirt_start + skirt_card_vertices];
     let min_y = positions
         .iter()
         .map(|position| position[1])
@@ -793,11 +798,23 @@ fn tree_canopy_mesh_uses_overlapping_lobes_instead_of_one_sphere() {
         .iter()
         .map(|position| Vec2::new(position[0], position[2]).length())
         .fold(0.0, f32::max);
+    let avg_skirt_y = skirt_positions
+        .iter()
+        .map(|position| position[1])
+        .sum::<f32>()
+        / skirt_positions.len() as f32;
+    let skirt_horizontal_span = skirt_positions
+        .iter()
+        .map(|position| Vec2::new(position[0], position[2]).length())
+        .fold(0.0, f32::max);
 
     assert!(mesh.count_vertices() > single_lobe_vertices * 3);
     assert!(mesh.count_vertices() >= single_lobe_vertices + expected_card_vertices);
+    assert!(mesh.count_vertices() >= 460);
     assert!(max_y - min_y > 1.9);
     assert!(horizontal_span > 1.45);
+    assert!(avg_skirt_y < -0.18);
+    assert!(skirt_horizontal_span > 1.0);
 }
 
 #[test]
