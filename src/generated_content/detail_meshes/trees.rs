@@ -8,7 +8,7 @@ use bevy::prelude::*;
 
 pub(crate) const TREE_CANOPY_LATITUDE_SEGMENTS: usize = 6;
 pub(crate) const TREE_CANOPY_LONGITUDE_SEGMENTS: usize = 12;
-pub(crate) const TREE_CANOPY_CARD_COUNT: usize = 12;
+pub(crate) const TREE_CANOPY_CARD_COUNT: usize = 18;
 pub(crate) const TREE_TRUNK_SEGMENTS: usize = 10;
 pub(crate) const TREE_TRUNK_RING_COUNT: usize = 5;
 pub(crate) const TREE_BRANCH_COUNT: usize = 4;
@@ -187,18 +187,50 @@ pub(crate) fn tree_canopy_mesh(radius: f32, seed: u32) -> Mesh {
     }
 
     for card in 0..TREE_CANOPY_CARD_COUNT {
+        let lower_skirt = card >= TREE_CANOPY_CARD_COUNT.saturating_sub(6);
         let phase = card as f32 / TREE_CANOPY_CARD_COUNT as f32 * std::f32::consts::TAU
             + random_unit(seed, card as u32, 151) * 0.24;
         let outward = Vec3::new(phase.cos(), 0.0, phase.sin());
         let tangent = Vec3::new(-phase.sin(), 0.0, phase.cos()).normalize();
-        let up = (Vec3::Y + outward * 0.16).normalize();
+        let up = if lower_skirt {
+            (Vec3::Y * 0.62 - outward * 0.26).normalize()
+        } else {
+            (Vec3::Y + outward * 0.16).normalize()
+        };
         let center = Vec3::new(
-            outward.x * radius * (0.58 + random_unit(seed, card as u32, 163) * 0.22),
-            radius * (-0.08 + random_unit(seed, card as u32, 167) * 0.34),
-            outward.z * radius * (0.54 + random_unit(seed, card as u32, 173) * 0.20),
+            outward.x
+                * radius
+                * if lower_skirt {
+                    0.74 + random_unit(seed, card as u32, 163) * 0.16
+                } else {
+                    0.58 + random_unit(seed, card as u32, 163) * 0.22
+                },
+            radius
+                * if lower_skirt {
+                    -0.34 + random_unit(seed, card as u32, 167) * 0.16
+                } else {
+                    -0.08 + random_unit(seed, card as u32, 167) * 0.34
+                },
+            outward.z
+                * radius
+                * if lower_skirt {
+                    0.70 + random_unit(seed, card as u32, 173) * 0.16
+                } else {
+                    0.54 + random_unit(seed, card as u32, 173) * 0.20
+                },
         );
-        let half_width = radius * (0.20 + random_unit(seed, card as u32, 179) * 0.08);
-        let half_height = radius * (0.28 + random_unit(seed, card as u32, 181) * 0.12);
+        let half_width = radius
+            * if lower_skirt {
+                0.18 + random_unit(seed, card as u32, 179) * 0.07
+            } else {
+                0.20 + random_unit(seed, card as u32, 179) * 0.08
+            };
+        let half_height = radius
+            * if lower_skirt {
+                0.36 + random_unit(seed, card as u32, 181) * 0.14
+            } else {
+                0.28 + random_unit(seed, card as u32, 181) * 0.12
+            };
         append_double_sided_detail_card(
             &mut positions,
             &mut normals,
