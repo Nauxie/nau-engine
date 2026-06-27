@@ -125,7 +125,7 @@ fn desired_air_body_direction(input: FlightInput, facing: Facing) -> Option<Vec3
 }
 
 pub(super) fn desired_air_steering_direction(input: FlightInput, facing: Facing) -> Option<Vec3> {
-    if !input.forward && !input.left && !input.right {
+    if !input.forward && !input.backward && !input.left && !input.right {
         return None;
     }
 

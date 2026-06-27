@@ -61,13 +61,15 @@ pub fn step_flight(
         }
     } else if gliding {
         if let Some(desired_direction) = air_steering_direction {
-            acceleration += directional_air_steering_acceleration(
-                state.velocity,
-                desired_direction,
-                tuning.glide_steer_accel,
-                tuning.glide_counter_steer_accel,
-                tuning.air_steer_min_speed,
-            );
+            if input_adds_air_steering_acceleration(input) {
+                acceleration += directional_air_steering_acceleration(
+                    state.velocity,
+                    desired_direction,
+                    tuning.glide_steer_accel,
+                    tuning.glide_counter_steer_accel,
+                    tuning.air_steer_min_speed,
+                );
+            }
             if input.has_lateral_axis() {
                 acceleration +=
                     desired_planar_thrust(desired_direction, input, tuning.glide_lateral_accel);
@@ -91,13 +93,15 @@ pub fn step_flight(
         }
     } else {
         if let Some(desired_direction) = air_steering_direction {
-            acceleration += directional_air_steering_acceleration(
-                state.velocity,
-                desired_direction,
-                tuning.air_steer_accel,
-                tuning.air_counter_steer_accel,
-                tuning.air_steer_min_speed,
-            );
+            if input_adds_air_steering_acceleration(input) {
+                acceleration += directional_air_steering_acceleration(
+                    state.velocity,
+                    desired_direction,
+                    tuning.air_steer_accel,
+                    tuning.air_counter_steer_accel,
+                    tuning.air_steer_min_speed,
+                );
+            }
             if input.has_lateral_axis() {
                 acceleration +=
                     desired_planar_thrust(desired_direction, input, tuning.lateral_accel);
@@ -216,6 +220,10 @@ pub fn step_flight(
 
 fn desired_planar_thrust(desired_direction: Vec3, input: FlightInput, accel: f32) -> Vec3 {
     desired_direction * input.planar_axis().length().clamp(0.0, 1.0) * accel.max(0.0)
+}
+
+fn input_adds_air_steering_acceleration(input: FlightInput) -> bool {
+    input.forward || input.has_lateral_axis()
 }
 
 fn directional_air_steering_acceleration(
