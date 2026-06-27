@@ -12,6 +12,7 @@ pub struct AnimationState {
     pub height_above_ground_m: f32,
     pub wind_lateral_load: f32,
     pub pose_intent: PlayerPoseIntent,
+    pub pose_intent_hold_remaining_secs: f32,
 }
 
 impl Default for AnimationState {
@@ -22,6 +23,7 @@ impl Default for AnimationState {
             height_above_ground_m: f32::INFINITY,
             wind_lateral_load: 0.0,
             pose_intent: PlayerPoseIntent::GroundedIdle,
+            pose_intent_hold_remaining_secs: 0.0,
         }
     }
 }
@@ -179,6 +181,7 @@ pub struct PlayerPoseContext {
     pub wind_lateral_load: f32,
     pub landing_recovery_remaining_secs: f32,
     pub landing_impact_speed_mps: f32,
+    pub resolved_intent: Option<PlayerPoseIntent>,
 }
 
 impl PlayerPoseContext {
@@ -196,6 +199,7 @@ impl PlayerPoseContext {
             wind_lateral_load: 0.0,
             landing_recovery_remaining_secs: 0.0,
             landing_impact_speed_mps: 0.0,
+            resolved_intent: None,
         }
     }
 
@@ -210,8 +214,14 @@ impl PlayerPoseContext {
         self
     }
 
+    pub fn with_resolved_intent(mut self, intent: PlayerPoseIntent) -> Self {
+        self.resolved_intent = Some(intent);
+        self
+    }
+
     pub fn intent(self) -> PlayerPoseIntent {
-        player_pose_intent(self)
+        self.resolved_intent
+            .unwrap_or_else(|| player_pose_intent(self.without_resolved_intent()))
     }
 
     pub fn landing_recovery_strength(self) -> f32 {
@@ -220,6 +230,17 @@ impl PlayerPoseContext {
             self.landing_impact_speed_mps,
         )
     }
+
+    fn without_resolved_intent(mut self) -> Self {
+        self.resolved_intent = None;
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PoseIntentResolution {
+    pub intent: PlayerPoseIntent,
+    pub hold_remaining_secs: f32,
 }
 
 pub fn advance_phase(phase: f32, speed: f32, dt: f32) -> f32 {
@@ -342,6 +363,7 @@ pub fn body_local_pose_velocity(world_velocity: Vec3, player_rotation: Quat) -> 
 }
 
 pub fn player_pose_intent(context: PlayerPoseContext) -> PlayerPoseIntent {
+    let context = context.without_resolved_intent();
     let horizontal_speed = Vec2::new(context.velocity.x, context.velocity.z).length();
     if context.mode == FlightMode::Grounded && context.landing_recovery_strength() > 0.0 {
         return PlayerPoseIntent::LandingRecovery;
@@ -378,6 +400,134 @@ pub fn player_pose_intent(context: PlayerPoseContext) -> PlayerPoseIntent {
         FlightMode::Airborne if airborne_turn_input(context) => PlayerPoseIntent::AirTurn,
         FlightMode::Airborne => PlayerPoseIntent::Falling,
     }
+}
+
+pub fn resolve_pose_intent(
+    previous_intent: PlayerPoseIntent,
+    previous_hold_remaining_secs: f32,
+    context: PlayerPoseContext,
+    dt: f32,
+) -> PoseIntentResolution {
+    let raw_intent = player_pose_intent(context);
+    let decayed_hold = (previous_hold_remaining_secs - dt.max(0.0)).max(0.0);
+
+    if raw_intent == previous_intent {
+        return PoseIntentResolution {
+            intent: raw_intent,
+            hold_remaining_secs: pose_intent_hold_secs(raw_intent),
+        };
+    }
+
+    if pose_intent_is_immediate(raw_intent) {
+        return PoseIntentResolution {
+            intent: raw_intent,
+            hold_remaining_secs: pose_intent_hold_secs(raw_intent),
+        };
+    }
+
+    if pose_intent_can_hold(previous_intent)
+        && pose_intent_can_be_held_over(raw_intent)
+        && decayed_hold > 0.0
+    {
+        return PoseIntentResolution {
+            intent: previous_intent,
+            hold_remaining_secs: decayed_hold,
+        };
+    }
+
+    PoseIntentResolution {
+        intent: raw_intent,
+        hold_remaining_secs: pose_intent_hold_secs(raw_intent),
+    }
+}
+
+pub fn resolve_pose_input(
+    previous_intent: PlayerPoseIntent,
+    resolved_intent: PlayerPoseIntent,
+    raw_intent: PlayerPoseIntent,
+    previous_input: FlightInput,
+    current_input: FlightInput,
+) -> FlightInput {
+    let holding_previous_intent = resolved_intent == previous_intent
+        && raw_intent != resolved_intent
+        && pose_intent_can_hold(resolved_intent)
+        && pose_intent_can_be_held_over(raw_intent);
+
+    if !holding_previous_intent {
+        return current_input;
+    }
+
+    match resolved_intent {
+        PlayerPoseIntent::AirTurn => carry_lateral_pose_input(previous_input, current_input),
+        PlayerPoseIntent::AirBrake => carry_air_brake_pose_input(previous_input, current_input),
+        _ => current_input,
+    }
+}
+
+fn carry_lateral_pose_input(
+    previous_input: FlightInput,
+    current_input: FlightInput,
+) -> FlightInput {
+    if !previous_input.has_lateral_axis() || current_input.has_lateral_axis() {
+        return current_input;
+    }
+
+    FlightInput {
+        left: previous_input.left,
+        right: previous_input.right,
+        ..current_input
+    }
+}
+
+fn carry_air_brake_pose_input(
+    previous_input: FlightInput,
+    current_input: FlightInput,
+) -> FlightInput {
+    if !previous_input.backward {
+        return current_input;
+    }
+
+    let mut pose_input = current_input;
+    if !pose_input.backward {
+        pose_input.backward = true;
+    }
+    if previous_input.has_lateral_axis() && !pose_input.has_lateral_axis() {
+        pose_input.left = previous_input.left;
+        pose_input.right = previous_input.right;
+    }
+    pose_input
+}
+
+fn pose_intent_hold_secs(intent: PlayerPoseIntent) -> f32 {
+    match intent {
+        PlayerPoseIntent::AirTurn => 0.10,
+        PlayerPoseIntent::AirBrake => 0.12,
+        _ => 0.0,
+    }
+}
+
+fn pose_intent_can_hold(intent: PlayerPoseIntent) -> bool {
+    pose_intent_hold_secs(intent) > 0.0
+}
+
+fn pose_intent_can_be_held_over(intent: PlayerPoseIntent) -> bool {
+    matches!(
+        intent,
+        PlayerPoseIntent::Falling | PlayerPoseIntent::Gliding
+    )
+}
+
+fn pose_intent_is_immediate(intent: PlayerPoseIntent) -> bool {
+    matches!(
+        intent,
+        PlayerPoseIntent::GroundedIdle
+            | PlayerPoseIntent::GroundedStride
+            | PlayerPoseIntent::GroundedWalk
+            | PlayerPoseIntent::GroundedRun
+            | PlayerPoseIntent::Launching
+            | PlayerPoseIntent::LandingAnticipation
+            | PlayerPoseIntent::LandingRecovery
+    )
 }
 
 fn airborne_turn_input(context: PlayerPoseContext) -> bool {
@@ -814,7 +964,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Falling => -0.22 + vertical_pitch * 0.30,
                 PlayerPoseIntent::Gliding => -0.30 + vertical_pitch * 0.5,
                 PlayerPoseIntent::AirTurn => -0.34 + vertical_pitch * 0.45,
-                PlayerPoseIntent::Diving => -0.80 - dive_pressure * 0.46 + vertical_pitch * 0.18,
+                PlayerPoseIntent::Diving => -0.90 - dive_pressure * 0.46 + vertical_pitch * 0.18,
                 PlayerPoseIntent::AirBrake => {
                     0.08 + brake_pressure * 0.07
                         + rearward_brake_pressure * 0.12
@@ -1743,6 +1893,204 @@ mod tests {
             ),
             PlayerPoseIntent::LandingRecovery
         );
+    }
+
+    #[test]
+    fn pose_intent_resolution_holds_air_turn_through_short_input_gaps() {
+        let turn_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -2.0, -32.0),
+            FlightInput {
+                right: true,
+                ..default()
+            },
+            40.0,
+        );
+        let neutral_glide_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -2.0, -32.0),
+            FlightInput::default(),
+            40.0,
+        );
+
+        let initial = resolve_pose_intent(PlayerPoseIntent::Gliding, 0.0, turn_context, 1.0 / 60.0);
+        let held = resolve_pose_intent(
+            initial.intent,
+            initial.hold_remaining_secs,
+            neutral_glide_context,
+            1.0 / 60.0,
+        );
+        let released = resolve_pose_intent(
+            held.intent,
+            held.hold_remaining_secs,
+            neutral_glide_context,
+            0.20,
+        );
+
+        assert_eq!(initial.intent, PlayerPoseIntent::AirTurn);
+        assert_eq!(held.intent, PlayerPoseIntent::AirTurn);
+        assert!(held.hold_remaining_secs < initial.hold_remaining_secs);
+        assert_eq!(released.intent, PlayerPoseIntent::Gliding);
+        assert_eq!(released.hold_remaining_secs, 0.0);
+    }
+
+    #[test]
+    fn pose_input_resolution_preserves_held_air_turn_direction() {
+        let previous_input = FlightInput {
+            right: true,
+            glide: true,
+            ..default()
+        };
+        let current_input = FlightInput {
+            glide: true,
+            ..default()
+        };
+
+        let pose_input = resolve_pose_input(
+            PlayerPoseIntent::AirTurn,
+            PlayerPoseIntent::AirTurn,
+            PlayerPoseIntent::Gliding,
+            previous_input,
+            current_input,
+        );
+
+        assert!(pose_input.right);
+        assert!(!pose_input.left);
+        assert!(pose_input.glide);
+    }
+
+    #[test]
+    fn pose_input_resolution_uses_current_input_for_active_air_turn() {
+        let previous_input = FlightInput {
+            right: true,
+            glide: true,
+            ..default()
+        };
+        let current_input = FlightInput {
+            left: true,
+            glide: true,
+            ..default()
+        };
+
+        let pose_input = resolve_pose_input(
+            PlayerPoseIntent::AirTurn,
+            PlayerPoseIntent::AirTurn,
+            PlayerPoseIntent::AirTurn,
+            previous_input,
+            current_input,
+        );
+
+        assert!(pose_input.left);
+        assert!(!pose_input.right);
+    }
+
+    #[test]
+    fn pose_input_resolution_preserves_held_air_brake_pressure() {
+        let previous_input = FlightInput {
+            backward: true,
+            left: true,
+            glide: true,
+            ..default()
+        };
+        let current_input = FlightInput {
+            glide: true,
+            ..default()
+        };
+
+        let pose_input = resolve_pose_input(
+            PlayerPoseIntent::AirBrake,
+            PlayerPoseIntent::AirBrake,
+            PlayerPoseIntent::Gliding,
+            previous_input,
+            current_input,
+        );
+
+        assert!(pose_input.backward);
+        assert!(pose_input.left);
+        assert!(!pose_input.right);
+        assert!(pose_input.glide);
+    }
+
+    #[test]
+    fn pose_input_resolution_uses_current_input_for_immediate_landing() {
+        let previous_input = FlightInput {
+            backward: true,
+            right: true,
+            glide: true,
+            ..default()
+        };
+        let current_input = FlightInput {
+            glide: true,
+            ..default()
+        };
+
+        let pose_input = resolve_pose_input(
+            PlayerPoseIntent::AirBrake,
+            PlayerPoseIntent::LandingAnticipation,
+            PlayerPoseIntent::LandingAnticipation,
+            previous_input,
+            current_input,
+        );
+
+        assert_eq!(pose_input, current_input);
+    }
+
+    #[test]
+    fn landing_anticipation_interrupts_held_air_pose_intent() {
+        let near_ground = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -18.0, -28.0),
+            FlightInput {
+                dive: true,
+                ..default()
+            },
+            4.0,
+        );
+
+        let resolved = resolve_pose_intent(PlayerPoseIntent::Diving, 0.12, near_ground, 1.0 / 60.0);
+
+        assert_eq!(resolved.intent, PlayerPoseIntent::LandingAnticipation);
+        assert_eq!(resolved.hold_remaining_secs, 0.0);
+    }
+
+    #[test]
+    fn pose_intent_resolution_does_not_hold_dive_over_readable_glide() {
+        let neutral_glide_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -7.5, -32.0),
+            FlightInput::default(),
+            40.0,
+        );
+
+        let resolved = resolve_pose_intent(
+            PlayerPoseIntent::Diving,
+            0.12,
+            neutral_glide_context,
+            1.0 / 60.0,
+        );
+
+        assert_eq!(resolved.intent, PlayerPoseIntent::Gliding);
+        assert_eq!(resolved.hold_remaining_secs, 0.0);
+    }
+
+    #[test]
+    fn resolved_pose_context_drives_generated_pose_metrics() {
+        let raw_glide_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -2.0, -32.0),
+            FlightInput::default(),
+            40.0,
+        );
+        let resolved_dive_context =
+            raw_glide_context.with_resolved_intent(PlayerPoseIntent::Diving);
+
+        let glide_metrics = pose_readability_metrics(raw_glide_context, 0.0);
+        let dive_metrics = pose_readability_metrics(resolved_dive_context, 0.0);
+
+        assert_eq!(raw_glide_context.intent(), PlayerPoseIntent::Gliding);
+        assert_eq!(resolved_dive_context.intent(), PlayerPoseIntent::Diving);
+        assert!(dive_metrics.torso_pitch_degrees > glide_metrics.torso_pitch_degrees + 18.0);
+        assert!(dive_metrics.arm_spread_degrees > glide_metrics.arm_spread_degrees);
     }
 
     #[test]
