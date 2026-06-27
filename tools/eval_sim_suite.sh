@@ -54,6 +54,7 @@ if command -v jq >/dev/null 2>&1; then
           pose_launching_samples: .metrics.pose_launching_samples,
           pose_falling_samples: .metrics.pose_falling_samples,
           pose_gliding_samples: .metrics.pose_gliding_samples,
+          gliding_dive_samples: .metrics.gliding_dive_samples,
           unreadable_key_pose_samples: .metrics.unreadable_key_pose_samples,
           wind_force_samples: .metrics.wind_force_samples,
           meaningful_wind_force_samples: .metrics.meaningful_wind_force_samples,

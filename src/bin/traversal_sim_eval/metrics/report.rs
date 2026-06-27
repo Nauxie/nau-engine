@@ -156,6 +156,7 @@ impl SimMetrics {
             "unreadable_lift_samples": self.unreadable_lift_samples,
             "dynamic_readable_lift_samples": self.dynamic_readable_lift_samples,
             "gliding_samples": self.gliding_samples,
+            "gliding_dive_samples": self.gliding_dive_samples,
             "launching_samples": self.launching_samples,
             "grounded_samples": self.grounded_samples,
             "final_position": vec3_json(self.final_position),

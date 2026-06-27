@@ -31,6 +31,7 @@ use crate::metrics::util::{
 };
 
 const AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES: f32 = 4.0;
+const AIR_CONTROL_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 
 pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
     let lateral_response_latency_secs = response_latency_secs(
@@ -421,6 +422,12 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             "air_control_pose_diving_samples",
             metrics.pose_diving_samples as f32,
             1.0,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_gliding_dive_samples",
+            metrics.gliding_dive_samples as f32,
+            AIR_CONTROL_MIN_GLIDING_DIVE_SAMPLES,
             "samples",
         ),
     ]);

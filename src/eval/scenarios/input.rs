@@ -27,7 +27,7 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
             right: (1.0..=2.45).contains(&t) || (4.0..=4.55).contains(&t),
             left: (2.65..=3.75).contains(&t) || (4.75..=5.3).contains(&t),
             backward: (4.0..=5.65).contains(&t),
-            glide: t >= 0.45 && !dive,
+            glide: t >= 0.45,
             dive,
             launch: frame == 1,
         };
@@ -80,7 +80,7 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
             backward: (10.75..=11.1).contains(&t),
             right: (1.2..=2.2).contains(&t) || (9.1..=9.75).contains(&t),
             left: (4.7..=5.0).contains(&t),
-            glide: t >= 0.45 && !dive,
+            glide: t >= 0.45,
             dive,
             launch: frame == 1,
         };
@@ -124,7 +124,7 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
         forward,
         left,
         right,
-        glide: t >= 0.45 && !dive,
+        glide: t >= 0.45,
         dive,
         launch: frame == 1,
         ..default()

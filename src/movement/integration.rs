@@ -40,7 +40,7 @@ pub fn step_flight(
     }
 
     let launching = state.controller.launch_timer > 0.0;
-    let gliding = input.glide && !started_grounded && !input.dive && !launching;
+    let gliding = input.glide && !started_grounded && !launching;
     let air_steering_direction = (!started_grounded && !launching)
         .then(|| desired_air_steering_direction(input, facing))
         .flatten();
@@ -168,7 +168,7 @@ pub fn step_flight(
         }
     }
 
-    if gliding {
+    if gliding && !input.dive {
         state.velocity.y = state.velocity.y.max(-tuning.glide_max_fall_speed);
     }
 

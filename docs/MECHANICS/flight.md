@@ -33,14 +33,15 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - `Grounded`: player is at or near floor height.
 - `Launching`: short lockout after a valid launch.
 - `Airborne`: falling or moving through air without glider.
-- `Gliding`: glider input is held while airborne and not diving or launching.
+- `Gliding`: glider input is held while airborne and not launching. Holding dive while gliding keeps the glider deployed and enters a high-sink glider-dive pose.
 
 ## Current Rules
 
 - `E` launch is ground-gated.
 - Launch is one use per airtime.
 - Launch gives vertical velocity and a small forward bonus.
-- Gliding reduces gravity and clamps fall speed.
+- Gliding reduces gravity and clamps ordinary fall speed.
+- A glider dive keeps the glider deployed but bypasses the ordinary glide fall-speed clamp so dive can trade altitude for speed without hiding the wing state.
 - Gliding does not create altitude on its own.
 - Airborne and gliding `W`/`A`/`S`/`D` input uses the stable camera follow direction plus explicit mouse orbit as the camera-relative movement basis. `W`/`A`/`D` and rear diagonals steer planar velocity with input-aligned acceleration and faster heading rotation so Nau turns into lateral glide travel, while pure `S` stays an air-brake/reverse-speed-limited control.
 - Airborne `S` input brakes forward motion first, then allows limited backward drift instead of unrestricted reverse flight.
@@ -117,7 +118,8 @@ Current tests cover:
 - launch only fires from the ground
 - relaunch is blocked during airtime
 - gliding descends over time
-- gliding clamps fall speed
+- gliding clamps ordinary fall speed
+- deployed glider dive keeps `Gliding` mode active, descends faster than ordinary glide, and is counted separately in evals
 - floor collision clears downward velocity
 - world collision proxies push the player out of obvious generated asset obstacles without affecting proxies above the player
 - visual wind fields keep horizontal flow horizontal
@@ -144,7 +146,7 @@ Current tests cover:
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
 - `camera_strafe_stability` eval tracks right/left lateral movement without camera auto-orbit, including view-yaw and world-yaw drift
 - `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking while the scripted forward input stays active long enough to make the distance gate non-vacuous
-- `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, stronger total/planar backward braking, pure-backward and diagonal body-heading intent, readable right/left air-turn plus dive/air-brake key-pose coverage, authored bank-left/bank-right/dive/air-brake clip coverage, visible pose part count, bounded key-pose part rotation/translation deltas, torso pitch, arm spread, leg tuck, unsigned and signed lateral lean, wing-airflow strength, visible authored glider response/motion, zero key-pose samples below the readability floor, post-brake recovery, desired heading and aggregate plus right/left/backward-right/backward-left desired-travel alignment, average/p95/max body-heading error, tighter right/left and backward-right/backward-left body/travel heading samples and error, max body-yaw error step, body-yaw oscillation, left/right body-bank response, body-roll step smoothness, follow-direction error distribution, view-yaw/world-yaw drift, and movement-input camera non-coupling
+- `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, stronger total/planar backward braking, pure-backward and diagonal body-heading intent, readable right/left air-turn plus deployed-glider dive/air-brake key-pose coverage, authored bank-left/bank-right/dive/air-brake clip coverage, visible pose part count, bounded key-pose part rotation/translation deltas, torso pitch, arm spread, leg tuck, unsigned and signed lateral lean, wing-airflow strength, visible authored glider response/motion including dive-specific glider response/motion, zero key-pose samples below the readability floor, post-brake recovery, desired heading and aggregate plus right/left/backward-right/backward-left desired-travel alignment, average/p95/max body-heading error, tighter right/left and backward-right/backward-left body/travel heading samples and error, max body-yaw error step, body-yaw oscillation, left/right body-bank response, body-roll step smoothness, follow-direction error distribution, view-yaw/world-yaw drift, and movement-input camera non-coupling
 - `pose_state_coverage` eval tracks grounded walk/run samples plus readable launch, fall, and glide key-pose samples in both the app and windowless sim harnesses
 - `long_glide_visibility` eval tracks sustained archipelago traversal, aerial power-up collection/effect samples, and content-scale signals
 - app evals track `world_collision_proxy_count`, `solid_world_collision_proxy_count`, `tree_world_collision_proxy_count`, `rock_world_collision_proxy_count`, `landmark_world_collision_proxy_count`, `world_collision_resolved_samples`, `world_collision_contact_samples`, `max_world_collision_push_m`, `terrain_rim_collision_proxy_count`, `terrain_rim_collision_contact_samples`, and `max_terrain_rim_collision_push_m`, with proxy-count gates so collidable props, route obstruction spires, per-kind solid asset distribution, and terrain rim rails cannot silently disappear; `world_collision_contact` must sustain launch-mesa obstacle contact, `terrain_rim_collision_contact` must sustain launch-mesa rim contact, and `ground_taxi_control` must stay free of terrain-rim contact

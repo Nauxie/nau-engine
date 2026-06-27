@@ -389,6 +389,15 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
     accumulator.max_authored_glider_motion_m = accumulator
         .max_authored_glider_motion_m
         .max(sample.authored_glider_motion_m);
+    if sample.mode == "gliding" && sample.pose_intent_label == "diving" {
+        accumulator.gliding_dive_samples += 1;
+        accumulator.max_authored_glider_dive_response_degrees = accumulator
+            .max_authored_glider_dive_response_degrees
+            .max(sample.authored_glider_response_degrees);
+        accumulator.max_authored_glider_dive_motion_m = accumulator
+            .max_authored_glider_dive_motion_m
+            .max(sample.authored_glider_motion_m);
+    }
     accumulator.max_visible_pose_part_count = accumulator
         .max_visible_pose_part_count
         .max(sample.visible_pose_part_count);

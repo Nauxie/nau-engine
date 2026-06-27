@@ -179,6 +179,7 @@ pub(crate) struct SimMetrics {
     pub(crate) unreadable_lift_samples: u32,
     pub(crate) dynamic_readable_lift_samples: u32,
     pub(crate) gliding_samples: u32,
+    pub(crate) gliding_dive_samples: u32,
     pub(crate) launching_samples: u32,
     pub(crate) grounded_samples: u32,
 }
@@ -348,6 +349,7 @@ impl SimMetrics {
             unreadable_lift_samples: 0,
             dynamic_readable_lift_samples: 0,
             gliding_samples: 0,
+            gliding_dive_samples: 0,
             launching_samples: 0,
             grounded_samples: 0,
         }

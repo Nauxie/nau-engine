@@ -34,6 +34,7 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"pose_grounded_run_samples\""));
     assert!(summary.contains("\"pose_launching_samples\""));
     assert!(summary.contains("\"pose_falling_samples\""));
+    assert!(summary.contains("\"gliding_dive_samples\""));
     assert!(summary.contains("\"pose_air_turn_samples\""));
     assert!(summary.contains("\"pose_landing_recovery_samples\""));
     assert!(summary.contains("\"max_pose_landing_foot_forward_m\""));
@@ -430,6 +431,7 @@ fn air_control_simulation_measures_backward_diagonal_response() {
     assert!(result.metrics.pose_air_turn_samples > 0);
     assert!(result.metrics.pose_air_brake_samples > 0);
     assert!(result.metrics.pose_diving_samples > 0);
+    assert!(result.metrics.gliding_dive_samples > 0);
 }
 
 #[test]
@@ -464,6 +466,7 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_left_pose_air_turn_samples",
         "air_control_pose_air_brake_samples",
         "air_control_pose_diving_samples",
+        "air_control_gliding_dive_samples",
         "air_control_lateral_body_travel_heading_samples",
         "air_control_right_body_travel_heading_samples",
         "air_control_left_body_travel_heading_samples",
@@ -531,6 +534,7 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "backward_left_desired_travel_heading_sample_count",
         "right_pose_air_turn_samples",
         "left_pose_air_turn_samples",
+        "gliding_dive_samples",
     ] {
         assert!(
             summary_json["metrics"][key]
@@ -817,6 +821,28 @@ fn sim_metrics_track_signed_pose_lateral_lean_by_lateral_input_direction() {
     assert_eq!(metrics.pose_air_turn_samples, 4);
     assert_eq!(metrics.right_pose_air_turn_samples, 2);
     assert_eq!(metrics.left_pose_air_turn_samples, 2);
+}
+
+#[test]
+fn sim_metrics_count_deployed_glider_dive_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    let mut sample = sim_roll_sample(&route, scenario, 30, FlightMode::Gliding, 0.0, 0.0);
+    sample.pose_intent_label = "diving";
+
+    assert_eq!(sample.mode, "gliding");
+
+    metrics.observe(&sample, scenario);
+
+    assert_eq!(metrics.pose_diving_samples, 1);
+    assert_eq!(metrics.gliding_dive_samples, 1);
+    let check = metrics
+        .checks(scenario)
+        .into_iter()
+        .find(|check| check.name == "air_control_gliding_dive_samples")
+        .expect("gliding dive sample check");
+    assert!(check.passed);
 }
 
 #[test]
