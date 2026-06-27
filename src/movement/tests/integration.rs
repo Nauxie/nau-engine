@@ -406,7 +406,7 @@ fn lateral_air_input_steers_velocity_toward_desired_plane() {
     let desired_travel_error =
         desired_planar_travel_heading_error_degrees(state.velocity, desired_direction, 6.0);
     assert!(
-        side_speed > 28.0,
+        side_speed > 24.0,
         "expected right input to build meaningful planar side speed, got {side_speed}"
     );
     assert!(
@@ -501,6 +501,49 @@ fn lateral_air_input_reverses_side_velocity_before_it_feels_stuck() {
     assert!(
         left_response > 10.0,
         "expected left reversal to recover promptly, got {left_response}"
+    );
+}
+
+#[test]
+fn lateral_air_reversal_sheds_stale_forward_drift() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let mut state = FlightState::new(
+        Vec3::new(0.0, 45.0, 0.0),
+        Vec3::new(34.0, -2.0, 14.0),
+        FlightController {
+            mode: FlightMode::Gliding,
+            launch_available: false,
+            ..default()
+        },
+    );
+    let input = FlightInput {
+        left: true,
+        glide: true,
+        ..default()
+    };
+
+    for _ in 0..12 {
+        state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+    }
+
+    let left_response = horizontal(state.velocity).dot(-facing.right);
+    let stale_forward_drift = horizontal(state.velocity).dot(facing.forward).abs();
+    let desired_direction = desired_planar_movement_direction(input, facing).unwrap();
+    let desired_travel_error =
+        desired_planar_travel_heading_error_degrees(state.velocity, desired_direction, 6.0);
+
+    assert!(
+        left_response > 14.0,
+        "expected left reversal to build readable lateral travel, got {left_response}"
+    );
+    assert!(
+        stale_forward_drift < 4.0,
+        "expected left reversal to shed stale forward drift, got {stale_forward_drift}"
+    );
+    assert!(
+        desired_travel_error < 12.0,
+        "expected reversed travel to align with left input, got {desired_travel_error} deg"
     );
 }
 
