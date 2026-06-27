@@ -798,7 +798,7 @@ fn visible_generated_pose_part_set<'a>(
             CharacterPartRole::Arm(Side::Right) => parts_set.right_arm = Some(pose_part),
             CharacterPartRole::Leg(Side::Left) => parts_set.left_leg = Some(pose_part),
             CharacterPartRole::Leg(Side::Right) => parts_set.right_leg = Some(pose_part),
-            CharacterPartRole::Head | CharacterPartRole::Wing(_) => {}
+            CharacterPartRole::Head | CharacterPartRole::Wing(_) | CharacterPartRole::Scarf(_) => {}
         }
     }
 
@@ -842,7 +842,7 @@ fn visible_authored_pose_part_set<'a>(
             CharacterPartRole::Arm(Side::Right) => parts_set.right_arm = Some(pose_part),
             CharacterPartRole::Leg(Side::Left) => parts_set.left_leg = Some(pose_part),
             CharacterPartRole::Leg(Side::Right) => parts_set.right_leg = Some(pose_part),
-            CharacterPartRole::Head | CharacterPartRole::Wing(_) => {}
+            CharacterPartRole::Head | CharacterPartRole::Wing(_) | CharacterPartRole::Scarf(_) => {}
         }
     }
 

@@ -8,7 +8,7 @@ use std::time::Duration;
 use super::types::{AuthoredVisualScene, AuthoredVisualSceneRole};
 use crate::Player;
 use nau_engine::animation::{
-    AnimationState, CharacterPart, CharacterPartRole, PlayerPoseIntent, Side,
+    AnimationState, CharacterPart, CharacterPartRole, PlayerPoseIntent, ScarfSegment, Side,
 };
 use nau_engine::asset_pipeline::VisualAssetKind;
 #[cfg(test)]
@@ -183,6 +183,16 @@ pub(crate) fn authored_player_pose_node_for_name(name: &str) -> Option<AuthoredP
         "Nau Right Leg" => CharacterPart::new(
             CharacterPartRole::Leg(Side::Right),
             Vec3::new(0.17, 0.30, 0.01),
+            Quat::IDENTITY,
+        ),
+        "Nau Back Scarf Anchor Accent" => CharacterPart::new(
+            CharacterPartRole::Scarf(ScarfSegment::Anchor),
+            Vec3::new(0.0, 0.0, 0.25),
+            Quat::IDENTITY,
+        ),
+        "Nau Wind Scarf Accent" => CharacterPart::new(
+            CharacterPartRole::Scarf(ScarfSegment::Trail),
+            Vec3::new(0.24, 1.18, 0.26),
             Quat::IDENTITY,
         ),
         _ => return None,
@@ -488,12 +498,18 @@ mod tests {
         let left_arm = authored_player_pose_node_for_name("Nau Left Arm").expect("left arm node");
         let right_leg =
             authored_player_pose_node_for_name("Nau Right Leg").expect("right leg node");
+        let scarf =
+            authored_player_pose_node_for_name("Nau Wind Scarf Accent").expect("scarf node");
 
         assert_eq!(torso.part.role, CharacterPartRole::Torso);
         assert_eq!(torso.part.base_translation, Vec3::new(0.0, 1.08, 0.0));
         assert_eq!(left_arm.part.role, CharacterPartRole::Arm(Side::Left));
         assert_eq!(left_arm.part.base_translation, Vec3::new(-0.48, 1.18, 0.01));
         assert_eq!(right_leg.part.role, CharacterPartRole::Leg(Side::Right));
+        assert_eq!(
+            scarf.part.role,
+            CharacterPartRole::Scarf(ScarfSegment::Trail)
+        );
         assert!(authored_player_pose_node_for_name("Nau Belt Buckle Plate").is_none());
     }
 
