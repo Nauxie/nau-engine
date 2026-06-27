@@ -13,8 +13,10 @@ const POSE_STATE_MIN_RUN_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_LAUNCH_SAMPLES: f32 = 3.0;
 const POSE_STATE_MIN_FALLING_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_GLIDING_POSE_SAMPLES: f32 = 18.0;
+const AIR_CONTROL_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 const AIR_CONTROL_MIN_AUTHORED_DIVE_CLIP_SAMPLES: f32 = 1.0;
 const AIR_CONTROL_MIN_AUTHORED_AIR_BRAKE_CLIP_SAMPLES: f32 = 4.0;
+const AIR_CONTROL_MIN_AUTHORED_GLIDER_DIVE_MOTION_M: f32 = 0.04;
 const TARGET_LANDING_MIN_AUTHORED_LAND_CLIP_SAMPLES: f32 = 2.0;
 
 pub(super) fn append_scenario_checks(
@@ -489,6 +491,12 @@ fn append_air_control_checks(
             "samples",
         ),
         EvalCheck::at_least(
+            "air_control_gliding_dive_samples",
+            acc.gliding_dive_samples as f32,
+            AIR_CONTROL_MIN_GLIDING_DIVE_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
             "air_control_authored_bank_left_clip_samples",
             acc.authored_bank_left_clip_samples as f32,
             AIR_CONTROL_MIN_DIRECTIONAL_POSE_AIR_TURN_SAMPLES as f32,
@@ -565,6 +573,18 @@ fn append_air_control_checks(
             acc.max_authored_glider_response_degrees,
             AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES,
             "deg",
+        ),
+        EvalCheck::at_least(
+            "air_control_authored_glider_dive_response",
+            acc.max_authored_glider_dive_response_degrees,
+            AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "air_control_authored_glider_dive_motion",
+            acc.max_authored_glider_dive_motion_m,
+            AIR_CONTROL_MIN_AUTHORED_GLIDER_DIVE_MOTION_M,
+            "m",
         ),
         EvalCheck::at_most(
             "air_control_unreadable_key_pose_samples",

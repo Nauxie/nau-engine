@@ -7,6 +7,8 @@ fn baseline_route_has_scripted_launch_and_glide() {
     assert!(scripted_input(scenario, 1).launch);
     assert!(!scripted_input(scenario, 2).launch);
     assert!(scripted_input(scenario, 60).glide);
+    assert!(scripted_input(scenario, 390).glide);
+    assert!(scripted_input(scenario, 390).dive);
 }
 
 #[test]
@@ -57,6 +59,8 @@ fn island_launch_script_releases_forward_after_touchdown() {
     let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("island route exists");
 
     assert!(scripted_input(scenario, 360).forward);
+    assert!(scripted_input(scenario, 360).glide);
+    assert!(scripted_input(scenario, 360).dive);
     assert!(scripted_input(scenario, 423).forward);
     assert!(!scripted_input(scenario, 430).forward);
     assert!(scenario.thresholds.require_target_landing);
@@ -71,6 +75,7 @@ fn branch_recovery_route_targets_named_recovery_island() {
     assert_eq!(scenario.thresholds.min_objective_total_count, 3);
     assert_eq!(scenario.thresholds.min_completed_objective_count, 3);
     assert!(scripted_input(scenario, 1).launch);
+    assert!(scripted_input(scenario, 540).glide);
     assert!(scripted_input(scenario, 540).dive);
     assert!(scripted_input(scenario, 630).forward);
     assert!(scripted_input(scenario, 650).backward);
@@ -141,6 +146,8 @@ fn air_control_response_script_exercises_lateral_brake_and_recovery_without_mous
     assert!(scripted_input(scenario, 250).right);
     assert!(scripted_input(scenario, 310).backward);
     assert!(scripted_input(scenario, 310).left);
+    assert!(scripted_input(scenario, 350).glide);
+    assert!(scripted_input(scenario, 350).dive);
     assert!(scripted_input(scenario, 370).forward);
     assert_eq!(scripted_camera_input(scenario, 90), CameraInput::default());
     assert_eq!(scripted_camera_input(scenario, 210), CameraInput::default());

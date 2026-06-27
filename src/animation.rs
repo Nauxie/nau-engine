@@ -252,7 +252,7 @@ pub fn glider_traversal_pose(context: PlayerPoseContext, phase: f32) -> GliderTr
     let turn_weight = pose_turn_weight(context);
     let airflow = wing_airflow_strength(context.mode, context.velocity);
     let dive_pressure = if intent == PlayerPoseIntent::Diving {
-        ((-context.velocity.y - 6.0) / 24.0).clamp(0.0, 1.0)
+        ((-context.velocity.y - 4.0) / 18.0).clamp(0.0, 1.0)
     } else {
         0.0
     };
@@ -269,14 +269,14 @@ pub fn glider_traversal_pose(context: PlayerPoseContext, phase: f32) -> GliderTr
     let flutter = (phase * 2.2).sin() * (0.010 + airflow * 0.035);
     let roll = (-turn_pressure * 0.22).clamp(-0.24, 0.24);
     let yaw = (turn_pressure * 0.08).clamp(-0.10, 0.10);
-    let pitch = (-airflow * 0.06 - dive_pressure * 0.16 + brake_pressure * 0.18 + flutter)
+    let pitch = (-airflow * 0.06 - dive_pressure * 0.20 + brake_pressure * 0.18 + flutter)
         .clamp(-0.24, 0.26);
 
     GliderTraversalPose {
         translation_offset: Vec3::new(
             turn_pressure * 0.060,
-            airflow * 0.050 + brake_pressure * 0.035 + flutter * 0.50,
-            airflow * 0.080 + dive_pressure * 0.040 - brake_pressure * 0.100,
+            airflow * 0.050 + dive_pressure * 0.018 + brake_pressure * 0.035 + flutter * 0.50,
+            airflow * 0.080 + dive_pressure * 0.085 - brake_pressure * 0.100,
         ),
         rotation_offset: Quat::from_rotation_z(roll)
             * Quat::from_rotation_y(yaw)
@@ -1034,6 +1034,25 @@ mod tests {
         assert!(dive.translation_offset.z > air_brake.translation_offset.z + 0.10);
         assert!(dive.response_degrees() < 18.0);
         assert!(air_brake.response_degrees() < 18.0);
+    }
+
+    #[test]
+    fn glider_traversal_pose_keeps_moderate_deployed_dive_readable() {
+        let dive = glider_traversal_pose(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -13.5, -26.0),
+                FlightInput {
+                    dive: true,
+                    ..default()
+                },
+                50.0,
+            ),
+            0.0,
+        );
+
+        assert!(dive.response_degrees() > 4.0);
+        assert!(dive.motion_m() > 0.04);
     }
 
     #[test]

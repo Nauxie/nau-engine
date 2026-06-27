@@ -120,6 +120,44 @@ fn glide_clamps_fall_speed() {
 }
 
 #[test]
+fn glider_dive_stays_deployed_and_descends_faster_than_plain_glide() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let start = FlightState::new(
+        Vec3::new(0.0, 70.0, 0.0),
+        Vec3::new(0.0, -2.0, 28.0),
+        FlightController {
+            mode: FlightMode::Gliding,
+            launch_available: false,
+            ..default()
+        },
+    );
+    let plain_input = FlightInput {
+        glide: true,
+        ..default()
+    };
+    let dive_input = FlightInput {
+        glide: true,
+        dive: true,
+        ..default()
+    };
+    let mut plain = start;
+    let mut diving = start;
+    let mut previous_dive_y = diving.position.y;
+
+    for _ in 0..45 {
+        plain = step_flight(plain, plain_input, facing, &tuning, 1.0 / 60.0);
+        diving = step_flight(diving, dive_input, facing, &tuning, 1.0 / 60.0);
+        assert!(diving.position.y <= previous_dive_y);
+        previous_dive_y = diving.position.y;
+    }
+
+    assert_eq!(diving.controller.mode, FlightMode::Gliding);
+    assert!(diving.position.y < plain.position.y - 4.0);
+    assert!(diving.velocity.y < -tuning.glide_max_fall_speed - 1.0);
+}
+
+#[test]
 fn airborne_backward_input_brakes_forward_motion() {
     let tuning = FlightTuning::default();
     let facing = Facing::new(Vec3::Z, Vec3::X);

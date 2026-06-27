@@ -590,7 +590,7 @@ pub(crate) fn animate_character(
         let visible = match scene.role {
             AuthoredVisualSceneRole::PlayerRuntime => authored_player_ready,
             AuthoredVisualSceneRole::GliderRuntime => {
-                authored_glider_ready && controller.mode == FlightMode::Gliding
+                authored_glider_scene_visible(authored_glider_ready, controller.mode)
             }
             AuthoredVisualSceneRole::WorldFixture => visual_assets.scene_ready(scene.kind),
         };
@@ -744,6 +744,10 @@ fn reapply_smoothed_authored_glider_pose(glider: &AuthoredGliderPose, transform:
     transform.rotation = glider.smoothed_rotation;
 }
 
+fn authored_glider_scene_visible(authored_glider_ready: bool, mode: FlightMode) -> bool {
+    authored_glider_ready && mode == FlightMode::Gliding
+}
+
 fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
     eval.map_or_else(|| time.delta_secs(), |run| run.scenario.fixed_dt)
 }
@@ -870,6 +874,13 @@ mod tests {
         assert!((transform.rotation.dot(once_per_frame_rotation).abs() - 1.0).abs() < 0.0001);
         assert!(glider.response_degrees(&transform) > 10.0);
         assert!(glider.motion_m(&transform) > 0.05);
+    }
+
+    #[test]
+    fn authored_glider_scene_visibility_tracks_deployed_glide_mode() {
+        assert!(authored_glider_scene_visible(true, FlightMode::Gliding));
+        assert!(!authored_glider_scene_visible(true, FlightMode::Airborne));
+        assert!(!authored_glider_scene_visible(false, FlightMode::Gliding));
     }
 
     #[test]

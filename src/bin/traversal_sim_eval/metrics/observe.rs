@@ -353,6 +353,9 @@ impl SimMetrics {
             "grounded" => self.grounded_samples += 1,
             _ => {}
         }
+        if sample.mode == "gliding" && sample.pose_intent_label == "diving" {
+            self.gliding_dive_samples += 1;
+        }
         self.observe_pose_intent_counts(sample);
 
         if scenario.name == CAMERA_STRAFE_STABILITY {

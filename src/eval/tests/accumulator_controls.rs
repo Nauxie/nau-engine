@@ -1215,6 +1215,7 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert_eq!(summary.metrics.right_pose_air_turn_samples, 1);
     assert_eq!(summary.metrics.left_pose_air_turn_samples, 0);
     assert_eq!(summary.metrics.pose_diving_samples, 1);
+    assert_eq!(summary.metrics.gliding_dive_samples, 1);
     assert_eq!(summary.metrics.pose_air_brake_samples, 1);
     assert_eq!(summary.metrics.pose_landing_anticipation_samples, 1);
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 1);
@@ -1228,12 +1229,20 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert_eq!(summary.metrics.max_authored_transition_duration_ms, 140);
     assert_eq!(summary.metrics.max_pose_torso_pitch_degrees, 64.0);
     assert_eq!(summary.metrics.max_pose_landing_flare_degrees, 37.0);
+    assert_eq!(
+        summary.metrics.max_authored_glider_dive_response_degrees,
+        AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES
+    );
+    assert_eq!(summary.metrics.max_authored_glider_dive_motion_m, 0.08);
     assert_eq!(summary.metrics.unreadable_key_pose_samples, 1);
     assert!(summary_json.contains("\"max_pose_landing_foot_forward_m\""));
     assert!(summary_json.contains("\"max_pose_landing_flare_degrees\": 37"));
     assert!(summary_json.contains("\"pose_air_turn_samples\": 1"));
     assert!(summary_json.contains("\"right_pose_air_turn_samples\": 1"));
     assert!(summary_json.contains("\"left_pose_air_turn_samples\": 0"));
+    assert!(summary_json.contains("\"gliding_dive_samples\": 1"));
+    assert!(summary_json.contains("\"max_authored_glider_dive_response_degrees\""));
+    assert!(summary_json.contains("\"max_authored_glider_dive_motion_m\""));
     assert!(summary_json.contains("\"pose_air_brake_samples\": 1"));
     assert!(summary_json.contains("\"pose_landing_anticipation_samples\": 1"));
     assert!(summary_json.contains("\"pose_landing_recovery_samples\": 1"));
@@ -1556,20 +1565,31 @@ fn accumulator_gates_air_control_pose_readability() {
     let air_brake_check = named_check(&summary, "air_control_pose_air_brake_samples");
     let air_turn_check = named_check(&summary, "air_control_pose_air_turn_samples");
     let dive_check = named_check(&summary, "air_control_pose_diving_samples");
+    let gliding_dive_check = named_check(&summary, "air_control_gliding_dive_samples");
     let authored_air_brake_check =
         named_check(&summary, "air_control_authored_air_brake_clip_samples");
     let authored_dive_check = named_check(&summary, "air_control_authored_dive_clip_samples");
+    let authored_glider_dive_response_check =
+        named_check(&summary, "air_control_authored_glider_dive_response");
+    let authored_glider_dive_motion_check =
+        named_check(&summary, "air_control_authored_glider_dive_motion");
 
     assert_eq!(air_turn_check.value, 4.0);
     assert!(air_turn_check.passed);
     assert_eq!(air_brake_check.value, 0.0);
     assert_eq!(dive_check.value, 0.0);
+    assert_eq!(gliding_dive_check.value, 0.0);
     assert_eq!(authored_air_brake_check.value, 0.0);
     assert_eq!(authored_dive_check.value, 0.0);
+    assert_eq!(authored_glider_dive_response_check.value, 0.0);
+    assert_eq!(authored_glider_dive_motion_check.value, 0.0);
     assert!(!air_brake_check.passed);
     assert!(!dive_check.passed);
+    assert!(!gliding_dive_check.passed);
     assert!(!authored_air_brake_check.passed);
     assert!(!authored_dive_check.passed);
+    assert!(!authored_glider_dive_response_check.passed);
+    assert!(!authored_glider_dive_motion_check.passed);
     for name in [
         "air_control_pose_torso_pitch",
         "air_control_pose_arm_spread",
@@ -1738,6 +1758,49 @@ fn accumulator_gates_authored_glider_response() {
     assert_eq!(summary_json["metrics"]["max_authored_glider_motion_m"], 0.0);
     assert_eq!(check.value, 0.0);
     assert!(!check.passed);
+}
+
+#[test]
+fn accumulator_gates_authored_glider_dive_response() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut sample = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, -18.0, -26.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    );
+    sample.authored_glider_response_degrees = 0.0;
+    sample.authored_glider_motion_m = 0.0;
+
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let response_check = named_check(&summary, "air_control_authored_glider_dive_response");
+    let motion_check = named_check(&summary, "air_control_authored_glider_dive_motion");
+
+    assert_eq!(summary.metrics.gliding_dive_samples, 1);
+    assert_eq!(
+        summary.metrics.max_authored_glider_dive_response_degrees,
+        0.0
+    );
+    assert_eq!(summary.metrics.max_authored_glider_dive_motion_m, 0.0);
+    assert_eq!(response_check.value, 0.0);
+    assert_eq!(motion_check.value, 0.0);
+    assert!(!response_check.passed);
+    assert!(!motion_check.passed);
 }
 
 #[test]
