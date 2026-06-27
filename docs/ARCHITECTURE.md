@@ -87,6 +87,7 @@ The NAU Engine is a Mac-first Bevy project. The current goal is a traversal sand
 - `src/island_visuals/queue.rs` owns terrain/body/impostor/ridge/beacon catalog construction for each sky island.
 - `src/island_visuals/details.rs` owns generated ground cover, trees, stones, ponds, route cairns, launch/target decorations, and wind-responsive detail placement.
 - `src/island_visuals/streaming.rs` owns island visual residency decisions, initial spawning, stream-window spawn/despawn, and stream diagnostics updates.
+- `src/island_visuals/collision_audit.rs` owns test-only parity checks that generated solid visuals have typed collision proxies, every route island has terrain-rim rails, and camera-only blockers are explicitly allowlisted.
 - `src/power_up_runtime.rs` owns aerial power-up collection state, visual guide spawning/animation, and one-time boost application.
 - `src/asset_pipeline.rs` owns the visual asset pipeline facade and stable re-exports used by runtime, evals, and tests.
 - `src/asset_pipeline/types.rs` owns visual asset kinds, residency classes, load/admission/preload/scene/animation state types, specs, policies, and metrics structs.
