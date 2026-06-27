@@ -50,6 +50,7 @@ pub enum CharacterPartRole {
     Arm(Side),
     Leg(Side),
     Wing(Side),
+    Scarf(ScarfSegment),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,6 +66,12 @@ impl Side {
             Self::Right => 1.0,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScarfSegment {
+    Anchor,
+    Trail,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1034,6 +1041,48 @@ pub fn part_pose_with_context(
                 flutter - airflow * 0.09 + air_brake_cup * 0.55 - dive_wing_sweep * 0.22,
             );
         }
+        CharacterPartRole::Scarf(segment) => {
+            let segment_weight = match segment {
+                ScarfSegment::Anchor => 0.34,
+                ScarfSegment::Trail => 1.0,
+            };
+            let speed_pressure = (horizontal_speed / 38.0).clamp(0.0, 1.0);
+            let sink_pressure = (-context.velocity.y / 34.0).clamp(0.0, 1.0);
+            let stream_pressure = (speed_pressure + sink_pressure * 0.45).clamp(0.0, 1.0);
+            let lateral_sway =
+                (context.wind_lateral_load * 0.18 + turn_weight * 0.15).clamp(-0.34, 0.34);
+            let flutter_phase = phase * (2.2 + segment_weight * 0.8) + segment_weight * 1.7;
+            let flutter = flutter_phase.sin() * (0.012 + stream_pressure * 0.034)
+                + breath * (0.004 + stream_pressure * 0.008);
+            let trailing_stream = match intent {
+                PlayerPoseIntent::GroundedIdle => 0.03 + breath.abs() * 0.012,
+                PlayerPoseIntent::GroundedStride
+                | PlayerPoseIntent::GroundedWalk
+                | PlayerPoseIntent::GroundedRun => 0.04 + gait_weight * 0.045 + cycle.abs() * 0.018,
+                PlayerPoseIntent::Launching => 0.12 + stream_pressure * 0.08,
+                PlayerPoseIntent::Falling => 0.16 + stream_pressure * 0.15,
+                PlayerPoseIntent::Gliding => 0.20 + stream_pressure * 0.22,
+                PlayerPoseIntent::AirTurn => {
+                    0.22 + stream_pressure * 0.22 + turn_weight.abs() * 0.05
+                }
+                PlayerPoseIntent::Diving => 0.34 + dive_pressure * 0.28 + stream_pressure * 0.18,
+                PlayerPoseIntent::AirBrake => {
+                    0.10 + brake_pressure * 0.06 + rearward_brake_pressure * 0.12
+                }
+                PlayerPoseIntent::LandingAnticipation => {
+                    0.12 + landing_strength * 0.05 + landing_flip * 0.04
+                }
+                PlayerPoseIntent::LandingRecovery => 0.08 + recovery_strength * 0.08,
+            };
+
+            translation.x += (lateral_sway * 0.18 + flutter * 0.32) * segment_weight;
+            translation.y += (flutter * 0.55 - stream_pressure * 0.020) * segment_weight;
+            translation.z += trailing_stream * segment_weight;
+            rotation *= Quat::from_rotation_x(
+                -trailing_stream * segment_weight * (0.70 + segment_weight * 0.22) + flutter * 1.7,
+            ) * Quat::from_rotation_y(lateral_sway * (0.80 + segment_weight * 0.35))
+                * Quat::from_rotation_z(-lateral_sway * 0.42 * segment_weight);
+        }
     }
 
     PartPose {
@@ -1777,6 +1826,92 @@ mod tests {
         assert!(fast_metrics.arm_spread_degrees > shallow_metrics.arm_spread_degrees + 8.0);
         assert!(fast_metrics.leg_tuck_degrees > shallow_metrics.leg_tuck_degrees + 8.0);
         assert!(fast_leg.translation.z > shallow_leg.translation.z + 0.08);
+    }
+
+    #[test]
+    fn scarf_trail_streams_harder_in_deployed_glider_dive() {
+        let scarf = CharacterPart::new(
+            CharacterPartRole::Scarf(ScarfSegment::Trail),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let glide_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -3.0, -24.0),
+            FlightInput {
+                glide: true,
+                ..default()
+            },
+            40.0,
+        );
+        let dive_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -24.0, -48.0),
+            FlightInput {
+                glide: true,
+                dive: true,
+                ..default()
+            },
+            40.0,
+        );
+
+        let glide = part_pose_with_context(&scarf, glide_context, 0.0);
+        let dive = part_pose_with_context(&scarf, dive_context, 0.0);
+
+        assert_eq!(glide.visibility, PartVisibility::Inherited);
+        assert_eq!(dive_context.intent(), PlayerPoseIntent::Diving);
+        assert!(
+            dive.translation.z > glide.translation.z + 0.32,
+            "expected dive scarf stream to read behind the player, glide {}, dive {}",
+            glide.translation.z,
+            dive.translation.z
+        );
+        assert!(
+            dive.rotation.angle_between(Quat::IDENTITY)
+                > glide.rotation.angle_between(Quat::IDENTITY) + 0.28
+        );
+    }
+
+    #[test]
+    fn scarf_trail_reacts_to_crosswind_and_anchors_less_than_tail() {
+        let anchor = CharacterPart::new(
+            CharacterPartRole::Scarf(ScarfSegment::Anchor),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let tail = CharacterPart::new(
+            CharacterPartRole::Scarf(ScarfSegment::Trail),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let base_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -5.0, -34.0),
+            FlightInput {
+                right: true,
+                glide: true,
+                ..default()
+            },
+            40.0,
+        );
+        let left_wind = base_context.with_wind_lateral_load(-1.0);
+        let right_wind = base_context.with_wind_lateral_load(1.0);
+
+        let left_tail = part_pose_with_context(&tail, left_wind, 0.4);
+        let right_tail = part_pose_with_context(&tail, right_wind, 0.4);
+        let right_anchor = part_pose_with_context(&anchor, right_wind, 0.4);
+
+        assert!(
+            right_tail.translation.x > left_tail.translation.x + 0.06,
+            "expected scarf tail to sway with crosswind, left {}, right {}",
+            left_tail.translation.x,
+            right_tail.translation.x
+        );
+        assert!(right_tail.translation.z > right_anchor.translation.z + 0.14);
+        assert!(
+            right_tail.rotation.angle_between(right_anchor.rotation) > 0.25,
+            "expected scarf tail to flex more than anchor"
+        );
     }
 
     #[test]
