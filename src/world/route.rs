@@ -241,6 +241,26 @@ impl SkyRoute {
         self.resolve_ground_contact_with_landing(state, !was_grounded)
     }
 
+    pub fn resolve_grounded_after_horizontal_correction(
+        &self,
+        mut state: FlightState,
+    ) -> FlightState {
+        if state.controller.mode != FlightMode::Grounded {
+            return state;
+        }
+
+        let ground = self.ground_at(state.position);
+        if state.position.y <= ground.floor_y + GROUND_CONTACT_EPSILON {
+            state.position.y = ground.floor_y;
+            state.velocity.y = state.velocity.y.max(0.0);
+            state.controller.launch_timer = 0.0;
+            state.controller.launch_available = true;
+            state.controller.bank_degrees = 0.0;
+        }
+
+        state
+    }
+
     fn resolve_ground_contact_with_landing(
         &self,
         mut state: FlightState,

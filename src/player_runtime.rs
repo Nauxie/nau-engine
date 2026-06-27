@@ -441,7 +441,9 @@ fn step_player(
         .route
         .resolve_ground_contact_after_step(next, was_grounded);
     let collision = resolve_world_collisions(next, context.collision_proxies.iter().copied());
-    let next = collision.state;
+    let next = context
+        .route
+        .resolve_grounded_after_horizontal_correction(collision.state);
     let mut tree_proxy_count = 0;
     let mut rock_proxy_count = 0;
     let mut landmark_proxy_count = 0;

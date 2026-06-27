@@ -1,12 +1,12 @@
 use crate::movement::FlightState;
 use bevy::prelude::*;
 
-use super::SkyIsland;
+use super::{ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT, SkyIsland};
 
 const PLAYER_COLLISION_RADIUS_M: f32 = 0.42;
 const PLAYER_COLLISION_HEIGHT_M: f32 = 1.85;
 const BASE_COLLISION_SKIN_M: f32 = 0.002;
-pub const TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND: usize = 4;
+pub const TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND: usize = ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WorldCollisionProxyKind {
@@ -33,58 +33,40 @@ impl WorldCollisionProxy {
     }
 }
 
-pub fn terrain_rim_collision_proxies(island: SkyIsland) -> [WorldCollisionProxy; 4] {
+pub fn terrain_rim_collision_proxies(
+    island: SkyIsland,
+) -> [WorldCollisionProxy; TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND] {
+    std::array::from_fn(|segment| terrain_rim_collision_proxy(island, segment))
+}
+
+fn terrain_rim_collision_proxy(island: SkyIsland, segment: usize) -> WorldCollisionProxy {
     let half_depth = 0.55;
     let half_height = (island.thickness * 0.5).max(1.2);
     let center_y = island.floor_y() - half_height + 0.08;
-    let east_extent = island.half_extents.x * island.playable_silhouette_scale(0.0);
-    let west_extent =
-        island.half_extents.x * island.playable_silhouette_scale(std::f32::consts::PI);
-    let north_extent =
-        island.half_extents.y * island.playable_silhouette_scale(std::f32::consts::FRAC_PI_2);
-    let south_extent =
-        island.half_extents.y * island.playable_silhouette_scale(-std::f32::consts::FRAC_PI_2);
-    let x_span = island.half_extents.x * 0.72;
-    let z_span = island.half_extents.y * 0.72;
+    let angle0 =
+        segment as f32 / TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND as f32 * std::f32::consts::TAU;
+    let angle1 = (segment + 1) as f32 / TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND as f32
+        * std::f32::consts::TAU;
+    let start = island.footprint_contour_point(angle0, false);
+    let end = island.footprint_contour_point(angle1, false);
+    let midpoint = (start + end) * 0.5;
+    let island_center = Vec2::new(island.center.x, island.center.z);
+    let outward = (midpoint - island_center).normalize_or_zero();
+    let center = midpoint + outward * half_depth;
+    let chord = end - start;
+    let horizontal_padding =
+        Vec2::new(outward.x.abs(), outward.y.abs()) * half_depth + Vec2::splat(0.24);
+    let half_extents = Vec3::new(
+        (chord.x.abs() * 0.5 + horizontal_padding.x).max(0.42),
+        half_height,
+        (chord.y.abs() * 0.5 + horizontal_padding.y).max(0.42),
+    );
 
-    [
-        WorldCollisionProxy::new(
-            Vec3::new(
-                island.center.x + east_extent + half_depth,
-                center_y,
-                island.center.z,
-            ),
-            Vec3::new(half_depth, half_height, z_span),
-            WorldCollisionProxyKind::TerrainRim,
-        ),
-        WorldCollisionProxy::new(
-            Vec3::new(
-                island.center.x - west_extent - half_depth,
-                center_y,
-                island.center.z,
-            ),
-            Vec3::new(half_depth, half_height, z_span),
-            WorldCollisionProxyKind::TerrainRim,
-        ),
-        WorldCollisionProxy::new(
-            Vec3::new(
-                island.center.x,
-                center_y,
-                island.center.z + north_extent + half_depth,
-            ),
-            Vec3::new(x_span, half_height, half_depth),
-            WorldCollisionProxyKind::TerrainRim,
-        ),
-        WorldCollisionProxy::new(
-            Vec3::new(
-                island.center.x,
-                center_y,
-                island.center.z - south_extent - half_depth,
-            ),
-            Vec3::new(x_span, half_height, half_depth),
-            WorldCollisionProxyKind::TerrainRim,
-        ),
-    ]
+    WorldCollisionProxy::new(
+        Vec3::new(center.x, center_y, center.y),
+        half_extents,
+        WorldCollisionProxyKind::TerrainRim,
+    )
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -173,6 +155,8 @@ fn collision_skin_m(kind: WorldCollisionProxyKind) -> f32 {
 mod tests {
     use super::*;
     use crate::movement::FlightController;
+    use crate::world::START_FLOOR_Y;
+    use std::collections::HashSet;
 
     #[test]
     fn collision_pushes_player_out_of_tree_proxy() {
@@ -245,5 +229,37 @@ mod tests {
         assert!(side_resolution.max_terrain_rim_push_m > 0.0);
         assert!(side_resolution.state.position.x >= 10.0 + PLAYER_COLLISION_RADIUS_M);
         assert_eq!(side_resolution.state.velocity.x, 0.0);
+    }
+
+    #[test]
+    fn terrain_rim_collision_samples_full_footprint_contour() {
+        let island = SkyIsland::new(
+            "storm porch",
+            Vec3::new(-74.0, START_FLOOR_Y, -548.0),
+            Vec2::new(42.0, 28.0),
+            15.0,
+            false,
+        );
+        let proxies = terrain_rim_collision_proxies(island);
+        let mut occupied_octants = HashSet::new();
+
+        assert_eq!(proxies.len(), TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND);
+        for proxy in proxies {
+            assert_eq!(proxy.kind, WorldCollisionProxyKind::TerrainRim);
+            assert!(proxy.half_extents.x > 0.42);
+            assert!(proxy.half_extents.z > 0.42);
+            let offset = Vec2::new(
+                proxy.center.x - island.center.x,
+                proxy.center.z - island.center.z,
+            );
+            assert!(offset.length() > island.half_extents.min_element() * 0.45);
+            let octant = (offset.y.atan2(offset.x).rem_euclid(std::f32::consts::TAU)
+                / std::f32::consts::TAU
+                * 8.0)
+                .round() as i32;
+            occupied_octants.insert(octant);
+        }
+
+        assert!(occupied_octants.len() >= 7);
     }
 }

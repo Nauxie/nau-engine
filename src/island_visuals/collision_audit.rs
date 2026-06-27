@@ -116,7 +116,7 @@ pub(crate) fn audit_island_collision_coverage(
                         || entry.obstacle.is_some()
                     {
                         failures.push(format!(
-                            "{} on {} should remain an invisible collision-only rim rail",
+                            "{} on {} should remain an invisible collision-only rim segment",
                             entry.name, entry.key.island_name
                         ));
                     }
@@ -179,7 +179,7 @@ pub(crate) fn audit_island_collision_coverage(
             .count();
         if island_rim_count != TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND {
             failures.push(format!(
-                "{} has {island_rim_count} terrain-rim collision proxies, expected {TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND}",
+                "{} has {island_rim_count} terrain-rim contour segments, expected {TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND}",
                 island.name
             ));
         }

@@ -15,7 +15,10 @@ pub use collision::{
     TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND, WorldCollisionProxy, WorldCollisionProxyKind,
     WorldCollisionResolution, resolve_world_collisions, terrain_rim_collision_proxies,
 };
-pub use island::{IslandTerrainArchetype, SkyIsland};
+pub use island::{
+    ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT, IslandFootprintProfile, IslandTerrainArchetype,
+    SkyIsland,
+};
 pub use objectives::{RouteObjective, RouteObjectiveKind, is_recovery_branch_island};
 pub use obstruction_spires::{
     ROUTE_OBSTRUCTION_SPIRES_PER_ISLAND, RouteObstructionSpire, route_obstruction_spire,

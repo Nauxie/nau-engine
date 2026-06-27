@@ -161,6 +161,39 @@ fn route_uses_all_declared_terrain_archetypes() {
 }
 
 #[test]
+fn route_footprint_profiles_create_lobes_coves_and_large_playable_shelves() {
+    let route = SkyRoute::default();
+    let mut lobe_islands = 0;
+    let mut cove_islands = 0;
+
+    for island in route.islands() {
+        let mut min_scale = f32::INFINITY;
+        let mut max_scale = f32::NEG_INFINITY;
+        for step in 0..128 {
+            let angle = step as f32 / 128.0 * std::f32::consts::TAU;
+            let scale = island.playable_silhouette_scale(angle);
+            min_scale = min_scale.min(scale);
+            max_scale = max_scale.max(scale);
+        }
+
+        lobe_islands += usize::from(max_scale > 1.03);
+        cove_islands += usize::from(min_scale < 0.82);
+        assert!(
+            max_scale - min_scale > 0.16,
+            "{} footprint is too uniform",
+            island.name
+        );
+        assert_eq!(
+            island.footprint_contour_samples(false).len(),
+            ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT
+        );
+    }
+
+    assert!(lobe_islands >= 8);
+    assert!(cove_islands >= 8);
+}
+
+#[test]
 fn island_horizontal_containment_follows_playable_silhouette() {
     let island = SkyIsland::new(
         "storm porch",
@@ -276,6 +309,32 @@ fn already_grounded_route_contact_does_not_damp_wasd_motion() {
     assert_eq!(resolved.velocity.x, state.velocity.x);
     assert_eq!(resolved.velocity.z, state.velocity.z);
     assert_eq!(resolved.controller.mode, FlightMode::Grounded);
+}
+
+#[test]
+fn horizontal_correction_realigns_grounded_player_to_higher_relief_without_damping() {
+    let route = SkyRoute::default();
+    let island = route.islands()[0];
+    let corrected_position = Vec3::new(
+        island.center.x + island.half_extents.x * 0.28,
+        START_FLOOR_Y - 0.1,
+        island.center.z - island.half_extents.y * 0.24,
+    );
+    let ground = route.ground_at(corrected_position);
+    let state = FlightState::new(
+        corrected_position,
+        Vec3::new(8.0, -1.5, -4.0),
+        FlightController::default(),
+    );
+
+    let resolved = route.resolve_grounded_after_horizontal_correction(state);
+
+    assert_eq!(resolved.position.y, ground.floor_y);
+    assert_eq!(resolved.velocity.x, state.velocity.x);
+    assert_eq!(resolved.velocity.z, state.velocity.z);
+    assert_eq!(resolved.velocity.y, 0.0);
+    assert_eq!(resolved.controller.mode, FlightMode::Grounded);
+    assert!(resolved.controller.launch_available);
 }
 
 #[test]
