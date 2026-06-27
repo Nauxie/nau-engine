@@ -187,6 +187,7 @@ impl EvalSample {
             crosswind_ribbon_visual_count: 0,
             max_updraft_visual_motion_m: 0.0,
             max_updraft_visual_rise_m: 0.0,
+            max_updraft_visual_swirl_displacement_m: 0.0,
             max_crosswind_visual_motion_m: 0.0,
             max_crosswind_guide_flow_displacement_m: 0.0,
             max_crosswind_ribbon_flow_displacement_m: 0.0,
@@ -432,6 +433,7 @@ impl EvalSample {
         crosswind_ribbon_count: usize,
         max_updraft_motion_m: f32,
         max_updraft_rise_m: f32,
+        max_updraft_swirl_displacement_m: f32,
         max_crosswind_motion_m: f32,
         max_crosswind_guide_flow_displacement_m: f32,
         max_crosswind_ribbon_flow_displacement_m: f32,
@@ -442,6 +444,7 @@ impl EvalSample {
         self.crosswind_ribbon_visual_count = crosswind_ribbon_count;
         self.max_updraft_visual_motion_m = max_updraft_motion_m.max(0.0);
         self.max_updraft_visual_rise_m = max_updraft_rise_m.max(0.0);
+        self.max_updraft_visual_swirl_displacement_m = max_updraft_swirl_displacement_m.max(0.0);
         self.max_crosswind_visual_motion_m = max_crosswind_motion_m.max(0.0);
         self.max_crosswind_guide_flow_displacement_m =
             max_crosswind_guide_flow_displacement_m.max(0.0);

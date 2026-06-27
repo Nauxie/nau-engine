@@ -153,6 +153,7 @@ pub struct EvalSample {
     pub crosswind_ribbon_visual_count: usize,
     pub max_updraft_visual_motion_m: f32,
     pub max_updraft_visual_rise_m: f32,
+    pub max_updraft_visual_swirl_displacement_m: f32,
     pub max_crosswind_visual_motion_m: f32,
     pub max_crosswind_guide_flow_displacement_m: f32,
     pub max_crosswind_ribbon_flow_displacement_m: f32,

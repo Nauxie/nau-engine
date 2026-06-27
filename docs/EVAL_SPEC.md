@@ -503,7 +503,7 @@ The summary aggregates:
 - min and max camera pitch offset
 - max visible wind-field count
 - max dynamic wind-flow field count, wind-flow speed, wind-flow variation, and readable-lift variation range
-- wind-force sample counts, max active wind-force field count, crosswind and updraft-swirl force field counts, wind-force delta, crosswind delta, updraft-swirl delta, wind-force flow speed, and wind-force variation
+- wind-force sample counts, sustained meaningful wind-force sample counts, max active wind-force field count, crosswind and updraft-swirl force field counts, wind-force delta, crosswind delta, updraft-swirl delta, wind-force flow speed, and wind-force variation
 - max active lift-field count
 - max readable lift-field count
 - max sky-island count
@@ -598,12 +598,12 @@ The pass/fail checks currently guard:
 - lift-required scenarios spend enough sampled active-lift frames inside a paired visible updraft field
 - lift-required scenarios have zero unreadable active-lift samples
 - lift-required scenarios sample non-static dynamic wind flow with enough speed, gust variation, and variation range while lift is active/readable
-- simulation-supported wind-current scenarios register enough active wind-force samples and separately clear bounded horizontal response, source flow speed, and source variation floors
+- simulation-supported wind-current scenarios register enough active wind-force samples, enough sustained samples with per-source meaningful force delta and source variation, and separately clear bounded horizontal response, source flow speed, and source variation floors
 - crosswind-current scenarios specifically register crosswind-force samples and clear a crosswind delta floor
 - lift-required scenarios specifically register updraft-swirl force samples and clear a horizontal-current delta floor while vertical climb remains `LiftField` lift
 - the app scene contains enough updraft and crosswind guide/ribbon visuals; the current minimums are 126 updraft guide motes, 8 updraft ribbons, 96 crosswind guide motes, and 10 crosswind ribbons
 - wind guide/ribbon visuals animate enough to prove the sampled airflow cues are not static
-- wind guides move coherently with their field direction: updraft motes must rise, and both crosswind motes and ribbons must travel along the crosswind direction
+- wind guides move coherently with their field direction: updraft motes must rise and visibly curl around the updraft tangent, and both crosswind motes and ribbons must travel along the crosswind direction
 - screenshot wind-current checkpoints keep at least one projected wind guide/ribbon sample visible for wind-critical routes
 - the world has enough sky islands to catch accidental route collapse
 - the active chunk window stays inside the scenario budget

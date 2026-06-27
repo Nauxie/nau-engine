@@ -105,6 +105,7 @@ pub(super) const MIN_CROSSWIND_GUIDE_VISUAL_COUNT: usize = 96;
 pub(super) const MIN_CROSSWIND_RIBBON_VISUAL_COUNT: usize = 10;
 pub(super) const MIN_UPDRAFT_VISUAL_MOTION_M: f32 = 0.2;
 pub(super) const MIN_UPDRAFT_VISUAL_RISE_M: f32 = 0.2;
+pub(super) const MIN_UPDRAFT_VISUAL_SWIRL_DISPLACEMENT_M: f32 = 0.2;
 pub(super) const MIN_CROSSWIND_VISUAL_MOTION_M: f32 = 0.3;
 pub(super) const MIN_CROSSWIND_GUIDE_FLOW_DISPLACEMENT_M: f32 = 0.3;
 pub(super) const MIN_CROSSWIND_RIBBON_FLOW_DISPLACEMENT_M: f32 = 0.3;

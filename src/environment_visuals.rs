@@ -119,6 +119,7 @@ pub(crate) struct WindGuideVisualMetrics {
     pub(crate) crosswind_ribbon_count: usize,
     pub(crate) max_updraft_visual_motion_m: f32,
     pub(crate) max_updraft_visual_rise_m: f32,
+    pub(crate) max_updraft_visual_swirl_displacement_m: f32,
     pub(crate) max_crosswind_visual_motion_m: f32,
     pub(crate) max_crosswind_guide_flow_displacement_m: f32,
     pub(crate) max_crosswind_ribbon_flow_displacement_m: f32,
@@ -710,6 +711,13 @@ pub(crate) fn wind_guide_visual_metrics<'a>(
         metrics.max_updraft_visual_rise_m = metrics
             .max_updraft_visual_rise_m
             .max(displacement.y.max(0.0));
+        metrics.max_updraft_visual_swirl_displacement_m = metrics
+            .max_updraft_visual_swirl_displacement_m
+            .max(updraft_swirl_displacement(
+                guide.field,
+                baseline,
+                displacement,
+            ));
     }
     for (ribbon, transform) in updraft_ribbons {
         let baseline = updraft_ribbon_transform(ribbon, 0.0);
@@ -721,6 +729,10 @@ pub(crate) fn wind_guide_visual_metrics<'a>(
         metrics.max_updraft_visual_rise_m = metrics
             .max_updraft_visual_rise_m
             .max(displacement.y.max(0.0));
+        metrics.max_updraft_visual_swirl_displacement_m =
+            metrics.max_updraft_visual_swirl_displacement_m.max(
+                updraft_swirl_displacement_on_axis(updraft_ribbon_swirl_axis(ribbon), displacement),
+            );
     }
     for (guide, transform) in crosswind_guides {
         metrics.crosswind_guide_count += 1;
@@ -804,6 +816,31 @@ fn crosswind_guide_scale(guide: &CrosswindGuide, position: Vec3, elapsed: f32) -
     Vec3::new(length_pulse, width_pulse, width_pulse)
 }
 
+fn updraft_swirl_displacement(field: WindField, position: Vec3, displacement: Vec3) -> f32 {
+    let radial = Vec3::new(
+        position.x - field.center.x,
+        0.0,
+        position.z - field.center.z,
+    );
+    if radial.length_squared() <= 0.0001 {
+        return 0.0;
+    }
+
+    let tangent = Vec3::new(-radial.z, 0.0, radial.x).normalize();
+    updraft_swirl_displacement_on_axis(tangent, displacement)
+}
+
+fn updraft_ribbon_swirl_axis(ribbon: &UpdraftRibbon) -> Vec3 {
+    let angle = ribbon.phase * std::f32::consts::TAU;
+    Vec3::new(-angle.sin(), 0.0, angle.cos()).normalize_or_zero()
+}
+
+fn updraft_swirl_displacement_on_axis(tangent: Vec3, displacement: Vec3) -> f32 {
+    Vec3::new(displacement.x, 0.0, displacement.z)
+        .dot(tangent)
+        .abs()
+}
+
 fn rotation_from_x_to_direction(direction: Vec3) -> Quat {
     Quat::from_rotation_arc(Vec3::X, direction.normalize_or_zero())
 }
@@ -868,6 +905,7 @@ mod tests {
         assert_eq!(metrics.updraft_guide_count, 1);
         assert!(metrics.max_updraft_visual_motion_m > 3.0);
         assert!(metrics.max_updraft_visual_rise_m > 3.0);
+        assert!(metrics.max_updraft_visual_swirl_displacement_m > 0.2);
     }
 
     #[test]
@@ -970,6 +1008,7 @@ mod tests {
 
         assert_eq!(metrics.max_updraft_visual_motion_m, 0.0);
         assert_eq!(metrics.max_updraft_visual_rise_m, 0.0);
+        assert_eq!(metrics.max_updraft_visual_swirl_displacement_m, 0.0);
         assert_eq!(metrics.max_crosswind_visual_motion_m, 0.0);
         assert_eq!(metrics.max_crosswind_ribbon_flow_displacement_m, 0.0);
     }
@@ -1112,5 +1151,6 @@ mod tests {
         assert_eq!(metrics.updraft_ribbon_count, 1);
         assert!(metrics.max_updraft_visual_motion_m > 0.5);
         assert!(metrics.max_updraft_visual_rise_m > 0.5);
+        assert!(metrics.max_updraft_visual_swirl_displacement_m > 0.1);
     }
 }
