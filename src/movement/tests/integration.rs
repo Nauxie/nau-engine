@@ -219,6 +219,44 @@ fn gliding_backward_input_slows_without_runaway_reverse() {
 }
 
 #[test]
+fn gliding_backward_input_turns_travel_toward_rear_heading() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let mut state = FlightState::new(
+        Vec3::new(0.0, 45.0, 0.0),
+        Vec3::new(0.0, -2.0, 34.0),
+        FlightController {
+            mode: FlightMode::Gliding,
+            launch_available: false,
+            ..default()
+        },
+    );
+    let input = FlightInput {
+        backward: true,
+        glide: true,
+        ..default()
+    };
+
+    for _ in 0..45 {
+        state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+    }
+
+    let desired_direction = desired_planar_movement_direction(input, facing).unwrap();
+    let desired_travel_error =
+        desired_planar_travel_heading_error_degrees(state.velocity, desired_direction, 3.0);
+    let rear_speed = horizontal(state.velocity).dot(-facing.forward);
+
+    assert!(
+        rear_speed > 3.0,
+        "expected backward glide input to create rearward travel, got {rear_speed}"
+    );
+    assert!(
+        desired_travel_error < 18.0,
+        "expected backward glide travel to turn toward rear heading, got {desired_travel_error} deg"
+    );
+}
+
+#[test]
 fn gliding_backward_input_brakes_sideways_momentum() {
     let tuning = FlightTuning::default();
     let facing = Facing::new(Vec3::Z, Vec3::X);
