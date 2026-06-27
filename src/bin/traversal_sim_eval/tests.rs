@@ -16,9 +16,9 @@ use nau_engine::{
         AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario,
         ISLAND_LAUNCH_TO_LANDING, LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M,
         LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES, LONG_GLIDE_VISIBILITY,
-        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
-        MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
-        UPDRAFT_ROUTE, scenario_named,
+        MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES, MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+        MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+        MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE, UPDRAFT_ROUTE, scenario_named,
     },
     movement::{Facing, FlightController, FlightInput, FlightMode, FlightState},
     world::{START_POSITION, SkyRoute},
@@ -73,6 +73,15 @@ fn baseline_simulation_writes_windowless_artifacts() {
             .unwrap()
             .to_json()
             .get("max_wind_flow_variation")
+            .is_some()
+    );
+    assert!(
+        result
+            .samples
+            .last()
+            .unwrap()
+            .to_json()
+            .get("max_wind_flow_direction_change_degrees")
             .is_some()
     );
     let last_sample_json = result.samples.last().unwrap().to_json();
@@ -501,6 +510,10 @@ fn updraft_simulation_uses_readable_lift() {
     assert!(result.metrics.dynamic_readable_lift_samples >= result.metrics.lifted_samples);
     assert!(result.metrics.max_wind_flow_speed_mps >= 8.0);
     assert!(result.metrics.max_wind_flow_variation >= 0.12);
+    assert!(
+        result.metrics.max_wind_flow_direction_change_degrees
+            >= MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES
+    );
     assert!(result.metrics.max_wind_flow_variation_range >= 0.03);
     assert!(result.metrics.max_dynamic_wind_flow_fields >= 2);
     assert!(result.metrics.layered_wind_force_samples >= 2);
@@ -522,6 +535,7 @@ fn updraft_simulation_uses_readable_lift() {
         "dynamic_readable_lift_samples",
         "max_wind_flow_speed",
         "max_wind_flow_variation",
+        "max_wind_flow_direction_change",
         "max_wind_flow_variation_range",
         "wind_force_samples",
         "meaningful_wind_force_samples",
