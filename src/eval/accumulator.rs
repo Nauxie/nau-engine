@@ -161,6 +161,7 @@ pub struct EvalAccumulator {
     max_dynamic_wind_flow_fields: usize,
     max_wind_flow_speed_mps: f32,
     max_wind_flow_variation: f32,
+    max_wind_flow_direction_change_degrees: f32,
     min_dynamic_readable_wind_flow_variation: Option<f32>,
     max_dynamic_readable_wind_flow_variation: f32,
     max_wind_flow_variation_range: f32,
