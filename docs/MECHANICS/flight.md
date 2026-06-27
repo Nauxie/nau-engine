@@ -103,7 +103,7 @@ Wind/updraft:
 - visual `WindField` volumes are the shared source for stream visuals, diagnostics, and bounded horizontal airborne wind current
 - crosswinds push laterally without adding vertical lift
 - updraft wind swirl can bend horizontal motion, but vertical climb still comes from paired `LiftField` volumes
-- active lift should be readable through paired updraft visuals, breathing lift haze, gusting/advection-driven guide motes/ribbons, traveling clumped gust-packet fronts, crosswind stream-to-stream speed variation, curved tapered crosswind ribbons, layered visual depth, flow-driven scale pulse, and debug bounds before richer particles, cloth/glider motion, vegetation, clouds, or other environment art
+- active lift should be readable through paired updraft visuals, breathing lift haze, gusting/advection-driven guide motes/ribbons, traveling clumped gust-packet fronts, crosswind stream-to-stream speed variation, flow-facing crosswind motes, curved tapered crosswind ribbons, phase-staggered thermal depth lanes, layered visual depth, flow-driven scale pulse, and debug bounds before richer particles, cloth/glider motion, vegetation, clouds, or other environment art
 - wind-current evals should prove not only that current force is nonzero, but that enough applied horizontal delta points in the field-axis correction direction toward the sampled `WindField::flow_at` speed
 
 Power-ups:
@@ -125,7 +125,7 @@ Current tests cover:
 - world collision proxies push the player out of obvious generated asset obstacles without affecting proxies above the player
 - visual wind fields keep horizontal flow horizontal
 - visual updraft fields include upward flow plus horizontal swirl
-- wind-current evals gate sustained updraft visual rise, per-field guide/ribbon coverage, sustained updraft/crosswind visual-flow sample windows, updraft/crosswind visual depth span, baseline-relative guide/ribbon scale pulse, split guide/ribbon crosswind motion along the gameplay field direction, short-horizon guide/ribbon motion aligned with shared soft-edged gust-cell `WindField::flow_at`, and wind-force deltas aligned with the field-axis correction direction toward that same shared flow; the visual floors are intentionally high enough to fail nearly static wind, and focused visual tests also cover stream-specific crosswind variation plus traveling clumped gust packets so motes do not move in lockstep
+- wind-current evals gate sustained updraft visual rise, per-field guide/ribbon coverage, sustained updraft/crosswind visual-flow sample windows, updraft/crosswind visual depth span, baseline-relative guide/ribbon scale pulse, split guide/ribbon crosswind motion along the gameplay field direction, short-horizon guide/ribbon motion aligned with shared soft-edged gust-cell `WindField::flow_at`, and wind-force deltas aligned with the field-axis correction direction toward that same shared flow; the visual floors are intentionally high enough to fail nearly static wind, and focused visual tests also cover stream-specific crosswind variation, sampled-flow-facing crosswind guide orientation, phase-staggered thermal depth lanes, plus traveling clumped gust packets so motes do not move in lockstep
 - wind response applies only while airborne and stays horizontally bounded
 - lift fields only apply inside bounds while enabled
 - authored gameplay lift route nodes pair visual and lift volumes
