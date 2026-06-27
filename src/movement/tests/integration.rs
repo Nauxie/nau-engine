@@ -2,8 +2,9 @@ use bevy::prelude::*;
 
 use super::super::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, GROUND_EPSILON,
-    desired_planar_movement_direction, desired_planar_travel_heading_error_degrees,
-    math::horizontal, step_flight,
+    body_heading_error_degrees, desired_planar_movement_direction,
+    desired_planar_travel_heading_error_degrees, face_flight_direction, math::horizontal,
+    step_flight,
 };
 use super::default_state;
 
@@ -296,6 +297,61 @@ fn lateral_air_input_steers_velocity_toward_desired_plane() {
     assert!(
         desired_travel_error < 18.0,
         "expected right input to align travel with desired side heading, got {desired_travel_error} deg"
+    );
+}
+
+#[test]
+fn lateral_glide_input_turns_body_and_travel_together() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let mut state = FlightState::new(
+        Vec3::new(0.0, 45.0, 0.0),
+        Vec3::new(0.0, -2.0, 34.0),
+        FlightController {
+            mode: FlightMode::Gliding,
+            launch_available: false,
+            ..default()
+        },
+    );
+    let mut rotation = Transform::from_translation(Vec3::ZERO)
+        .looking_to(facing.forward, Vec3::Y)
+        .rotation;
+    let input = FlightInput {
+        right: true,
+        glide: true,
+        ..default()
+    };
+
+    for _ in 0..30 {
+        state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+        rotation = face_flight_direction(
+            rotation,
+            state.velocity,
+            input,
+            facing,
+            state.controller,
+            &tuning,
+            1.0 / 60.0,
+        );
+    }
+
+    let desired_direction = desired_planar_movement_direction(input, facing).unwrap();
+    let desired_travel_error =
+        desired_planar_travel_heading_error_degrees(state.velocity, desired_direction, 6.0);
+    let body_desired_error = body_heading_error_degrees(rotation, desired_direction);
+    let body_travel_error = body_heading_error_degrees(rotation, horizontal(state.velocity));
+
+    assert!(
+        desired_travel_error < 12.0,
+        "expected lateral glide travel to turn toward input, got {desired_travel_error} deg"
+    );
+    assert!(
+        body_desired_error < 12.0,
+        "expected body yaw to face lateral input, got {body_desired_error} deg"
+    );
+    assert!(
+        body_travel_error < 8.0,
+        "expected body and travel headings to stay coupled, got {body_travel_error} deg"
     );
 }
 
