@@ -30,6 +30,7 @@ use crate::{
     MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
 };
 
+const POSE_STATE_MIN_IDLE_SAMPLES: f32 = 3.0;
 const POSE_STATE_MIN_WALK_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_RUN_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_LAUNCH_SAMPLES: f32 = 3.0;
@@ -445,6 +446,12 @@ impl SimMetrics {
 
 fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
     checks.extend([
+        SimCheck::at_least(
+            "pose_state_grounded_idle_samples",
+            metrics.pose_grounded_idle_samples as f32,
+            POSE_STATE_MIN_IDLE_SAMPLES,
+            "samples",
+        ),
         SimCheck::at_least(
             "pose_state_grounded_walk_samples",
             metrics.pose_grounded_walk_samples as f32,

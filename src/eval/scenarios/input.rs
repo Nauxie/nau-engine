@@ -35,7 +35,8 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
     }
     if scenario.name == POSE_STATE_COVERAGE {
         let route_forward = (0.05..=7.05).contains(&t);
-        let post_landing_stride = (8.45..=10.75).contains(&t);
+        let post_landing_idle_hold_end = 8.45;
+        let post_landing_stride = (post_landing_idle_hold_end..=10.75).contains(&t);
         return FlightInput {
             forward: route_forward || post_landing_stride,
             right: (5.1..=5.55).contains(&t),

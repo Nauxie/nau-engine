@@ -117,7 +117,11 @@ fn authored_player_clip_selection_tracks_flight_state() {
     );
     assert_eq!(
         authored_player_clip_for_state(FlightMode::Grounded, 4.0),
-        AuthoredPlayerClip::Jog
+        AuthoredPlayerClip::Walk
+    );
+    assert_eq!(
+        authored_player_clip_for_state(FlightMode::Grounded, 7.0),
+        AuthoredPlayerClip::Run
     );
     assert_eq!(
         authored_player_clip_for_state(FlightMode::Launching, 18.0),
@@ -143,16 +147,18 @@ fn authored_player_clip_selection_tracks_pose_intent() {
         authored_player_clip_for_pose_intent(PlayerPoseIntent::GroundedIdle, 0.2),
         AuthoredPlayerClip::Idle
     );
-    for intent in [
-        PlayerPoseIntent::GroundedStride,
-        PlayerPoseIntent::GroundedWalk,
-        PlayerPoseIntent::GroundedRun,
-    ] {
-        assert_eq!(
-            authored_player_clip_for_pose_intent(intent, 4.0),
-            AuthoredPlayerClip::Jog
-        );
-    }
+    assert_eq!(
+        authored_player_clip_for_pose_intent(PlayerPoseIntent::GroundedWalk, 4.0),
+        AuthoredPlayerClip::Walk
+    );
+    assert_eq!(
+        authored_player_clip_for_pose_intent(PlayerPoseIntent::GroundedStride, 4.0),
+        AuthoredPlayerClip::Run
+    );
+    assert_eq!(
+        authored_player_clip_for_pose_intent(PlayerPoseIntent::GroundedRun, 4.0),
+        AuthoredPlayerClip::Run
+    );
     assert_eq!(
         authored_player_clip_for_pose_intent(PlayerPoseIntent::Diving, 34.0),
         AuthoredPlayerClip::Dive
@@ -208,15 +214,16 @@ fn authored_player_clip_selection_tracks_pose_intent() {
 #[test]
 fn authored_player_clip_indices_match_declared_gltf_order() {
     assert_eq!(AuthoredPlayerClip::Idle.index(), 0);
-    assert_eq!(AuthoredPlayerClip::Jog.index(), 1);
-    assert_eq!(AuthoredPlayerClip::Launch.index(), 2);
-    assert_eq!(AuthoredPlayerClip::Fall.index(), 3);
-    assert_eq!(AuthoredPlayerClip::Glide.index(), 4);
-    assert_eq!(AuthoredPlayerClip::BankLeft.index(), 5);
-    assert_eq!(AuthoredPlayerClip::BankRight.index(), 6);
-    assert_eq!(AuthoredPlayerClip::Dive.index(), 7);
-    assert_eq!(AuthoredPlayerClip::AirBrake.index(), 8);
-    assert_eq!(AuthoredPlayerClip::Land.index(), 9);
+    assert_eq!(AuthoredPlayerClip::Walk.index(), 1);
+    assert_eq!(AuthoredPlayerClip::Run.index(), 2);
+    assert_eq!(AuthoredPlayerClip::Launch.index(), 3);
+    assert_eq!(AuthoredPlayerClip::Fall.index(), 4);
+    assert_eq!(AuthoredPlayerClip::Glide.index(), 5);
+    assert_eq!(AuthoredPlayerClip::BankLeft.index(), 6);
+    assert_eq!(AuthoredPlayerClip::BankRight.index(), 7);
+    assert_eq!(AuthoredPlayerClip::Dive.index(), 8);
+    assert_eq!(AuthoredPlayerClip::AirBrake.index(), 9);
+    assert_eq!(AuthoredPlayerClip::Land.index(), 10);
 }
 
 #[test]
@@ -226,13 +233,13 @@ fn named_animation_clip_resolution_reports_missing_clips() {
     named_animations.insert("Glide_Loop".to_string(), Handle::<AnimationClip>::default());
 
     let resolution = resolve_named_animation_clip_handles(
-        &["Idle_Loop", "Jog_Fwd_Loop", "Glide_Loop"],
+        &["Idle_Loop", "Walk_Fwd_Loop", "Glide_Loop"],
         &named_animations,
     );
 
     assert_eq!(resolution.ready_clip_count(), 2);
     assert_eq!(resolution.expected_clip_count, 3);
-    assert_eq!(resolution.missing_clip_names, vec!["Jog_Fwd_Loop"]);
+    assert_eq!(resolution.missing_clip_names, vec!["Walk_Fwd_Loop"]);
     assert!(!resolution.is_complete());
 }
 

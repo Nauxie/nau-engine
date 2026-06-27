@@ -49,6 +49,7 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"pose_falling_samples\""));
     assert!(summary.contains("\"gliding_dive_samples\""));
     assert!(summary.contains("\"pose_air_turn_samples\""));
+    assert!(summary.contains("\"pose_grounded_idle_samples\""));
     assert!(summary.contains("\"pose_landing_recovery_samples\""));
     assert!(summary.contains("\"max_pose_landing_foot_forward_m\""));
     assert!(summary.contains("\"max_pose_landing_foot_split_m\""));
@@ -165,6 +166,7 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
     let result = run_simulation(scenario);
 
     assert!(result.passed);
+    assert!(result.metrics.pose_grounded_idle_samples >= 3);
     assert!(result.metrics.pose_grounded_walk_samples >= 8);
     assert!(result.metrics.pose_grounded_run_samples >= 8);
     assert!(
@@ -217,6 +219,7 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
     for name in [
         "pose_state_grounded_walk_samples",
         "pose_state_grounded_run_samples",
+        "pose_state_grounded_idle_samples",
         "pose_state_walk_stride_foot_travel",
         "pose_state_run_stride_foot_travel",
         "pose_state_walk_stride_leg_opposition",
@@ -254,6 +257,7 @@ fn pose_state_coverage_sim_checks_reject_thin_samples() {
     let scenario = scenario_named(POSE_STATE_COVERAGE).expect("scenario");
     let route = SkyRoute::default();
     let mut metrics = SimMetrics::new(&route);
+    metrics.pose_grounded_idle_samples = 2;
     metrics.pose_grounded_walk_samples = 7;
     metrics.pose_grounded_run_samples = 7;
     metrics.pose_launching_samples = 2;
@@ -268,6 +272,7 @@ fn pose_state_coverage_sim_checks_reject_thin_samples() {
     for name in [
         "pose_state_grounded_walk_samples",
         "pose_state_grounded_run_samples",
+        "pose_state_grounded_idle_samples",
         "pose_state_launching_samples",
         "pose_state_falling_samples",
         "pose_state_gliding_samples",

@@ -60,6 +60,7 @@ if command -v jq >/dev/null 2>&1; then
           target_landing_samples: .metrics.target_landing_samples,
           max_collected_power_up_count: .metrics.max_collected_power_up_count,
           power_up_effect_samples: .metrics.power_up_effect_samples,
+          pose_grounded_idle_samples: .metrics.pose_grounded_idle_samples,
           pose_grounded_walk_samples: .metrics.pose_grounded_walk_samples,
           pose_grounded_run_samples: .metrics.pose_grounded_run_samples,
           pose_launching_samples: .metrics.pose_launching_samples,

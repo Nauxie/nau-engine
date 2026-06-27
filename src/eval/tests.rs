@@ -268,7 +268,8 @@ fn authored_clip_label_for_pose_intent_label(
 ) -> &'static str {
     match pose_intent_label {
         "grounded_idle" => "idle",
-        "grounded_stride" | "grounded_walk" | "grounded_run" => "jog",
+        "grounded_walk" => "walk",
+        "grounded_stride" | "grounded_run" => "run",
         "launching" => "launch",
         "air_turn" if movement_axis.x < 0.0 => "bank_left",
         "air_turn" if movement_axis.x > 0.0 => "bank_right",

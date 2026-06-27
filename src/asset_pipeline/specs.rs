@@ -2,7 +2,8 @@ use super::{VisualAssetKind, VisualAssetLoadPolicy, VisualAssetResidency, Visual
 
 pub const PLAYER_ANIMATION_CLIP_NAMES: &[&str] = &[
     "Idle_Loop",
-    "Jog_Fwd_Loop",
+    "Walk_Fwd_Loop",
+    "Run_Fwd_Loop",
     "Launch_Start",
     "Fall_Loop",
     "Glide_Loop",

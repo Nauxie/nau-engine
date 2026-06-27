@@ -396,6 +396,11 @@ fn audit_fixture(
             "clips",
         ));
         checks.push(check_bool(
+            "player_grounded_locomotion_clip_motion_distinct",
+            player_grounded_locomotion_clip_motion_is_distinct(&gltf),
+            "clips",
+        ));
+        checks.push(check_bool(
             "player_fall_clip_motion_distinct",
             player_fall_clip_motion_is_distinct(&gltf),
             "clips",
@@ -421,6 +426,7 @@ fn audit_fixture(
         "blend_material_count": blend_material_count,
         "player_named_clip_count": ready_player_clip_count,
         "player_bank_clip_motion_distinct": player_bank_clip_motion_is_distinct(&gltf),
+        "player_grounded_locomotion_clip_motion_distinct": player_grounded_locomotion_clip_motion_is_distinct(&gltf),
         "player_fall_clip_motion_distinct": player_fall_clip_motion_is_distinct(&gltf),
         "checks": checks,
     }))
@@ -540,6 +546,25 @@ fn player_bank_clip_motion_is_distinct(gltf: &Value) -> bool {
         && bank_left != glide
         && bank_right != glide
         && bank_left != bank_right
+}
+
+fn player_grounded_locomotion_clip_motion_is_distinct(gltf: &Value) -> bool {
+    let Some(idle) = animation_signature(gltf, "Idle_Loop") else {
+        return false;
+    };
+    let Some(walk) = animation_signature(gltf, "Walk_Fwd_Loop") else {
+        return false;
+    };
+    let Some(run) = animation_signature(gltf, "Run_Fwd_Loop") else {
+        return false;
+    };
+
+    !idle.is_empty()
+        && walk.len() >= 4
+        && run.len() >= 4
+        && idle != walk
+        && idle != run
+        && walk != run
 }
 
 fn player_fall_clip_motion_is_distinct(gltf: &Value) -> bool {
@@ -750,6 +775,20 @@ mod tests {
         assert!(player_fall_clip_motion_is_distinct(&gltf));
     }
 
+    #[test]
+    fn player_grounded_locomotion_clip_motion_rejects_walk_run_reuse() {
+        let gltf = grounded_locomotion_clip_test_gltf(false);
+
+        assert!(!player_grounded_locomotion_clip_motion_is_distinct(&gltf));
+    }
+
+    #[test]
+    fn player_grounded_locomotion_clip_motion_accepts_distinct_walk_run() {
+        let gltf = grounded_locomotion_clip_test_gltf(true);
+
+        assert!(player_grounded_locomotion_clip_motion_is_distinct(&gltf));
+    }
+
     fn bank_clip_test_gltf(distinct_banks: bool) -> Value {
         let accessors = json!([
             {"min": [0.0], "max": [1.0]},
@@ -813,6 +852,38 @@ mod tests {
                 clip("Air_Brake", air_brake_outputs),
                 clip("Land", [5, 6, 7, 8]),
                 clip("Fall_Loop", fall_outputs)
+            ]
+        })
+    }
+
+    fn grounded_locomotion_clip_test_gltf(distinct_run: bool) -> Value {
+        let accessors = json!([
+            {"min": [0.0], "max": [0.1]},
+            {"min": [0.0], "max": [0.2]},
+            {"min": [0.0], "max": [0.3]},
+            {"min": [0.0], "max": [0.4]},
+            {"min": [-0.4], "max": [0.0]},
+            {"min": [-0.3], "max": [0.0]},
+            {"min": [-0.2], "max": [0.0]},
+            {"min": [-0.1], "max": [0.0]},
+            {"min": [0.2], "max": [0.7]},
+            {"min": [0.3], "max": [0.8]},
+            {"min": [0.4], "max": [0.9]},
+            {"min": [0.5], "max": [1.0]}
+        ]);
+        let walk_outputs = [1, 2, 3, 4];
+        let run_outputs = if distinct_run {
+            [8, 9, 10, 11]
+        } else {
+            walk_outputs
+        };
+
+        json!({
+            "accessors": accessors,
+            "animations": [
+                clip("Idle_Loop", [0, 0, 0, 0]),
+                clip("Walk_Fwd_Loop", walk_outputs),
+                clip("Run_Fwd_Loop", run_outputs)
             ]
         })
     }
