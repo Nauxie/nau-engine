@@ -590,7 +590,20 @@ fn observe_pose_intent_counts(accumulator: &mut EvalAccumulator, sample: &EvalSa
             }
         }
         "diving" => accumulator.pose_diving_samples += 1,
-        "air_brake" => accumulator.pose_air_brake_samples += 1,
+        "air_brake" => {
+            accumulator.pose_air_brake_samples += 1;
+            if sample.movement_input_lateral_axis > 0.25 {
+                accumulator.right_pose_air_brake_samples += 1;
+                if sample.movement_input_forward_axis < -0.25 {
+                    accumulator.backward_right_pose_air_brake_samples += 1;
+                }
+            } else if sample.movement_input_lateral_axis < -0.25 {
+                accumulator.left_pose_air_brake_samples += 1;
+                if sample.movement_input_forward_axis < -0.25 {
+                    accumulator.backward_left_pose_air_brake_samples += 1;
+                }
+            }
+        }
         "landing_anticipation" => accumulator.pose_landing_anticipation_samples += 1,
         "landing_recovery" => accumulator.pose_landing_recovery_samples += 1,
         _ => {}
