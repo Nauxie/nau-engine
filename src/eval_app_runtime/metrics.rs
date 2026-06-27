@@ -490,6 +490,7 @@ pub(crate) fn collect_eval_metrics(
         wind_flow.active_fields,
         wind_flow.max_speed_mps,
         wind_flow.max_variation,
+        wind_flow.max_direction_change_degrees,
         active_lift_fields,
         readable_lift_fields,
         scene.lift_fields.iter().count(),
