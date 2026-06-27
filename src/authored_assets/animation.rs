@@ -17,7 +17,7 @@ use nau_engine::movement::{FlightInput, Velocity};
 
 use super::types::{PendingAuthoredAnimationLink, VisualAssetRegistry};
 
-const AUTHORED_PLAYER_CLIP_COUNT: usize = 9;
+const AUTHORED_PLAYER_CLIP_COUNT: usize = 10;
 
 #[derive(Debug)]
 pub(crate) struct NamedAnimationClipResolution {
@@ -41,6 +41,7 @@ pub(crate) enum AuthoredPlayerClip {
     Idle,
     Jog,
     Launch,
+    Fall,
     Glide,
     BankLeft,
     BankRight,
@@ -55,12 +56,13 @@ impl AuthoredPlayerClip {
             Self::Idle => 0,
             Self::Jog => 1,
             Self::Launch => 2,
-            Self::Glide => 3,
-            Self::BankLeft => 4,
-            Self::BankRight => 5,
-            Self::Dive => 6,
-            Self::AirBrake => 7,
-            Self::Land => 8,
+            Self::Fall => 3,
+            Self::Glide => 4,
+            Self::BankLeft => 5,
+            Self::BankRight => 6,
+            Self::Dive => 7,
+            Self::AirBrake => 8,
+            Self::Land => 9,
         }
     }
 
@@ -69,6 +71,7 @@ impl AuthoredPlayerClip {
             Self::Idle => "idle",
             Self::Jog => "jog",
             Self::Launch => "launch",
+            Self::Fall => "fall",
             Self::Glide => "glide",
             Self::BankLeft => "bank_left",
             Self::BankRight => "bank_right",
@@ -360,8 +363,7 @@ pub(crate) fn authored_player_clip_for_state(
         FlightMode::Grounded => AuthoredPlayerClip::Idle,
         FlightMode::Launching => AuthoredPlayerClip::Launch,
         FlightMode::Gliding => AuthoredPlayerClip::Glide,
-        FlightMode::Airborne if speed_mps < 8.0 => AuthoredPlayerClip::Land,
-        FlightMode::Airborne => AuthoredPlayerClip::AirBrake,
+        FlightMode::Airborne => AuthoredPlayerClip::Fall,
     }
 }
 
@@ -375,7 +377,7 @@ pub(crate) fn authored_player_clip_for_pose_intent(
 
 pub(crate) fn authored_player_clip_for_pose_intent_with_input(
     intent: PlayerPoseIntent,
-    speed_mps: f32,
+    _speed_mps: f32,
     input: FlightInput,
 ) -> AuthoredPlayerClip {
     match intent {
@@ -390,8 +392,7 @@ pub(crate) fn authored_player_clip_for_pose_intent_with_input(
         PlayerPoseIntent::AirBrake => AuthoredPlayerClip::AirBrake,
         PlayerPoseIntent::LandingAnticipation => AuthoredPlayerClip::Land,
         PlayerPoseIntent::LandingRecovery => AuthoredPlayerClip::Land,
-        PlayerPoseIntent::Falling if speed_mps < 8.0 => AuthoredPlayerClip::Land,
-        PlayerPoseIntent::Falling => AuthoredPlayerClip::AirBrake,
+        PlayerPoseIntent::Falling => AuthoredPlayerClip::Fall,
     }
 }
 
@@ -486,6 +487,8 @@ mod tests {
     #[test]
     fn authored_player_clip_labels_match_debug_contract() {
         assert_eq!(AuthoredPlayerClip::Idle.label(), "idle");
+        assert_eq!(AuthoredPlayerClip::Fall.index(), 3);
+        assert_eq!(AuthoredPlayerClip::Fall.label(), "fall");
         assert_eq!(AuthoredPlayerClip::BankLeft.label(), "bank_left");
         assert_eq!(AuthoredPlayerClip::BankRight.label(), "bank_right");
         assert_eq!(AuthoredPlayerClip::AirBrake.label(), "air_brake");
@@ -499,6 +502,26 @@ mod tests {
 
         assert_eq!(diagnostics.current_label(), "bank_left");
         assert_eq!(diagnostics.desired_label(), "bank_right");
+    }
+
+    #[test]
+    fn authored_player_pose_intent_maps_falling_to_fall_clip() {
+        assert_eq!(
+            authored_player_clip_for_pose_intent(PlayerPoseIntent::Falling, 2.0),
+            AuthoredPlayerClip::Fall
+        );
+        assert_eq!(
+            authored_player_clip_for_pose_intent(PlayerPoseIntent::Falling, 14.0),
+            AuthoredPlayerClip::Fall
+        );
+        assert_eq!(
+            authored_player_clip_for_pose_intent(PlayerPoseIntent::AirBrake, 14.0),
+            AuthoredPlayerClip::AirBrake
+        );
+        assert_eq!(
+            authored_player_clip_for_pose_intent(PlayerPoseIntent::LandingRecovery, 2.0),
+            AuthoredPlayerClip::Land
+        );
     }
 
     #[test]
