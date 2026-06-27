@@ -134,10 +134,16 @@ fn authored_player_clip_selection_tracks_pose_intent() {
         authored_player_clip_for_pose_intent(PlayerPoseIntent::GroundedIdle, 0.2),
         AuthoredPlayerClip::Idle
     );
-    assert_eq!(
-        authored_player_clip_for_pose_intent(PlayerPoseIntent::GroundedStride, 4.0),
-        AuthoredPlayerClip::Jog
-    );
+    for intent in [
+        PlayerPoseIntent::GroundedStride,
+        PlayerPoseIntent::GroundedWalk,
+        PlayerPoseIntent::GroundedRun,
+    ] {
+        assert_eq!(
+            authored_player_clip_for_pose_intent(intent, 4.0),
+            AuthoredPlayerClip::Jog
+        );
+    }
     assert_eq!(
         authored_player_clip_for_pose_intent(PlayerPoseIntent::Diving, 34.0),
         AuthoredPlayerClip::Dive

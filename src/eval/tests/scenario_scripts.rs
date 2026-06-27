@@ -147,6 +147,23 @@ fn air_control_response_script_exercises_lateral_brake_and_recovery_without_mous
 }
 
 #[test]
+fn pose_state_coverage_script_exercises_walk_run_launch_fall_and_glide() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
+
+    assert!(scripted_input(scenario, 20).forward);
+    assert!(!scripted_input(scenario, 65).forward);
+    assert!(scripted_input(scenario, 120).right);
+    assert!(scripted_input(scenario, 153).launch);
+    assert!(!scripted_input(scenario, 210).glide);
+    assert!(scripted_input(scenario, 240).glide);
+    assert_eq!(scripted_camera_input(scenario, 153), CameraInput::default());
+    assert!(scenario.frame_count >= 360);
+    assert!(scenario.thresholds.min_samples >= 65);
+    assert!(scenario.thresholds.min_grounded_samples >= 12);
+    assert!(scenario.thresholds.min_gliding_samples >= 12);
+}
+
+#[test]
 fn long_glide_visibility_script_crosses_archipelago() {
     let scenario = scenario_named(LONG_GLIDE_VISIBILITY).expect("long glide route exists");
 

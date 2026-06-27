@@ -14,6 +14,7 @@ scenarios=(
   camera_turn_stability
   camera_strafe_stability
   air_control_response
+  pose_state_coverage
   long_glide_visibility
 )
 
@@ -48,6 +49,12 @@ if command -v jq >/dev/null 2>&1; then
           target_landing_samples: .metrics.target_landing_samples,
           max_collected_power_up_count: .metrics.max_collected_power_up_count,
           power_up_effect_samples: .metrics.power_up_effect_samples,
+          pose_grounded_walk_samples: .metrics.pose_grounded_walk_samples,
+          pose_grounded_run_samples: .metrics.pose_grounded_run_samples,
+          pose_launching_samples: .metrics.pose_launching_samples,
+          pose_falling_samples: .metrics.pose_falling_samples,
+          pose_gliding_samples: .metrics.pose_gliding_samples,
+          unreadable_key_pose_samples: .metrics.unreadable_key_pose_samples,
           native_window_created: .metrics.native_window_created
         }
       })

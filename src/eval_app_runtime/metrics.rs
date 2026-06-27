@@ -944,7 +944,9 @@ fn authored_pose_readability_metrics<'a>(
 fn key_pose_intent(intent: PlayerPoseIntent) -> bool {
     matches!(
         intent,
-        PlayerPoseIntent::Gliding
+        PlayerPoseIntent::Launching
+            | PlayerPoseIntent::Falling
+            | PlayerPoseIntent::Gliding
             | PlayerPoseIntent::AirTurn
             | PlayerPoseIntent::Diving
             | PlayerPoseIntent::AirBrake

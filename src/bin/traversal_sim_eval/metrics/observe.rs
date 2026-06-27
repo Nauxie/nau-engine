@@ -289,6 +289,12 @@ impl SimMetrics {
     }
 
     fn observe_pose_intent_counts(&mut self, sample: &SimSample) {
+        match sample.pose_intent_label {
+            "grounded_walk" => self.pose_grounded_walk_samples += 1,
+            "grounded_run" => self.pose_grounded_run_samples += 1,
+            _ => {}
+        }
+
         if !key_pose_intent_label(sample.pose_intent_label) {
             return;
         }
@@ -309,6 +315,8 @@ impl SimMetrics {
         }
 
         match sample.pose_intent_label {
+            "launching" => self.pose_launching_samples += 1,
+            "falling" => self.pose_falling_samples += 1,
             "gliding" => self.pose_gliding_samples += 1,
             "air_turn" => {
                 self.pose_air_turn_samples += 1;
@@ -546,6 +554,8 @@ fn key_pose_intent_label(label: &str) -> bool {
     matches!(
         label,
         "gliding"
+            | "launching"
+            | "falling"
             | "air_turn"
             | "diving"
             | "air_brake"

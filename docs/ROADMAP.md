@@ -48,7 +48,7 @@ Work:
 - Import a rigged glTF humanoid.
 - Define animation clips and blend states.
 - Add glider mesh attachment points.
-- Add launch, glide, dive, turn, land, and idle states. Generated/authored pose-intent parity for dive, air-brake, turn lean, landing flare/crouch, recovery, and visible authored glider traversal response is initially covered by eval metrics.
+- Add launch, fall, glide, dive, turn, land, grounded walk/run, and idle states. Generated/authored pose-intent parity for walk/run, launch/fall, dive, air-brake, turn lean, landing flare/crouch, recovery, and visible authored glider traversal response is initially covered by eval metrics.
 - Add animation debugging for current clip/state/weight.
 
 Exit criteria:

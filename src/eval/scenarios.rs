@@ -18,6 +18,7 @@ pub const CAMERA_YAW_STABILITY: &str = "camera_yaw_stability";
 pub const CAMERA_TURN_STABILITY: &str = "camera_turn_stability";
 pub const CAMERA_STRAFE_STABILITY: &str = "camera_strafe_stability";
 pub const AIR_CONTROL_RESPONSE: &str = "air_control_response";
+pub const POSE_STATE_COVERAGE: &str = "pose_state_coverage";
 pub const LONG_GLIDE_VISIBILITY: &str = "long_glide_visibility";
 pub const BRANCH_RECOVERY_ROUTE: &str = "branch_recovery_route";
 pub const SCENARIO_NAMES: &[&str] = &[
@@ -33,6 +34,7 @@ pub const SCENARIO_NAMES: &[&str] = &[
     CAMERA_TURN_STABILITY,
     CAMERA_STRAFE_STABILITY,
     AIR_CONTROL_RESPONSE,
+    POSE_STATE_COVERAGE,
     LONG_GLIDE_VISIBILITY,
 ];
 
@@ -103,6 +105,9 @@ pub fn scenario_named(name: &str) -> Option<EvalScenario> {
         }
         AIR_CONTROL_RESPONSE | "air_control" | "air_response" => {
             Some(control_scenarios::air_control_response())
+        }
+        POSE_STATE_COVERAGE | "pose_state" | "pose_coverage" => {
+            Some(control_scenarios::pose_state_coverage())
         }
         LONG_GLIDE_VISIBILITY | "long_glide" | "glide_visibility" => {
             Some(traversal_scenarios::long_glide_visibility())

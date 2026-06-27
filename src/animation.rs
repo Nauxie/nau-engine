@@ -112,6 +112,8 @@ pub enum PlayerPoseIntent {
     #[default]
     GroundedIdle,
     GroundedStride,
+    GroundedWalk,
+    GroundedRun,
     Launching,
     Falling,
     Gliding,
@@ -127,6 +129,8 @@ impl PlayerPoseIntent {
         match self {
             Self::GroundedIdle => "grounded_idle",
             Self::GroundedStride => "grounded_stride",
+            Self::GroundedWalk => "grounded_walk",
+            Self::GroundedRun => "grounded_run",
             Self::Launching => "launching",
             Self::Falling => "falling",
             Self::Gliding => "gliding",
@@ -304,8 +308,10 @@ pub fn player_pose_intent(context: PlayerPoseContext) -> PlayerPoseIntent {
 
     match context.mode {
         FlightMode::Grounded => {
-            if horizontal_speed > 1.0 {
-                PlayerPoseIntent::GroundedStride
+            if horizontal_speed > 6.0 {
+                PlayerPoseIntent::GroundedRun
+            } else if horizontal_speed > 1.0 {
+                PlayerPoseIntent::GroundedWalk
             } else {
                 PlayerPoseIntent::GroundedIdle
             }
@@ -435,6 +441,17 @@ pub fn key_pose_readability_score(
         }
         PlayerPoseIntent::AirBrake => {
             readable_pair_score(torso_pitch_degrees, 4.0, arm_spread_degrees, 160.0)
+        }
+        PlayerPoseIntent::Launching => readable_triple_score(
+            torso_pitch_degrees,
+            16.0,
+            arm_spread_degrees,
+            28.0,
+            leg_tuck_degrees,
+            18.0,
+        ),
+        PlayerPoseIntent::Falling => {
+            readable_pair_score(torso_pitch_degrees, 8.0, arm_spread_degrees, 64.0)
         }
         PlayerPoseIntent::LandingAnticipation => readable_triple_score(
             torso_pitch_degrees,
@@ -597,6 +614,8 @@ pub fn part_pose_with_context(
     let intent = context.intent();
     let horizontal_speed = Vec2::new(context.velocity.x, context.velocity.z).length();
     let gait_weight = (horizontal_speed / 16.0).clamp(0.0, 1.0);
+    let walk_weight = ((horizontal_speed - 1.0) / 7.0).clamp(0.0, 1.0);
+    let run_weight = ((horizontal_speed - 6.0) / 8.0).clamp(0.0, 1.0);
     let turn_weight = pose_turn_weight(context);
     let airborne_pose = airborne_pose_intent(intent);
     let roll = pose_lateral_lean_radians(context);
@@ -626,7 +645,9 @@ pub fn part_pose_with_context(
             let pitch = match intent {
                 PlayerPoseIntent::GroundedIdle => 0.018 + breath * 0.018,
                 PlayerPoseIntent::GroundedStride => -0.04 * gait_weight,
-                PlayerPoseIntent::Falling => -0.12 + vertical_pitch,
+                PlayerPoseIntent::GroundedWalk => -0.035 * walk_weight,
+                PlayerPoseIntent::GroundedRun => -0.08 - run_weight * 0.07,
+                PlayerPoseIntent::Falling => -0.22 + vertical_pitch * 0.30,
                 PlayerPoseIntent::Gliding => -0.30 + vertical_pitch * 0.5,
                 PlayerPoseIntent::AirTurn => -0.34 + vertical_pitch * 0.45,
                 PlayerPoseIntent::Diving => -1.04 + vertical_pitch * 0.18,
@@ -635,10 +656,12 @@ pub fn part_pose_with_context(
                     0.52 + landing_strength * 0.16 + landing_flip * 0.34
                 }
                 PlayerPoseIntent::LandingRecovery => 0.20 + recovery_strength * 0.16,
-                PlayerPoseIntent::Launching => 0.1,
+                PlayerPoseIntent::Launching => -0.42 + vertical_pitch * 0.35,
             };
             translation.y += match intent {
                 PlayerPoseIntent::GroundedIdle => 0.018 + breath * 0.012,
+                PlayerPoseIntent::GroundedWalk => cycle.abs() * (0.018 + walk_weight * 0.018),
+                PlayerPoseIntent::GroundedRun => cycle.abs() * (0.032 + run_weight * 0.030),
                 PlayerPoseIntent::Gliding | PlayerPoseIntent::AirTurn => {
                     cycle.abs() * (0.010 + gait_weight * 0.010) + breath * 0.004
                 }
@@ -666,6 +689,9 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::LandingAnticipation => -0.38 - landing_flip * 0.18,
                 PlayerPoseIntent::LandingRecovery => -0.12,
                 PlayerPoseIntent::GroundedIdle => -0.05 + breath * 0.018,
+                PlayerPoseIntent::GroundedWalk => -0.04,
+                PlayerPoseIntent::GroundedRun => -0.02 + run_weight * 0.04,
+                PlayerPoseIntent::Launching => 0.10,
                 _ => -0.05,
             };
             rotation *= Quat::from_rotation_x(pitch)
@@ -681,8 +707,10 @@ pub fn part_pose_with_context(
             let spread = match intent {
                 PlayerPoseIntent::GroundedIdle => 0.08,
                 PlayerPoseIntent::GroundedStride => 0.08 + gait.abs() * 0.06 * gait_weight,
-                PlayerPoseIntent::Falling => 0.65,
-                PlayerPoseIntent::Gliding => 1.08 + airflow * 0.035,
+                PlayerPoseIntent::GroundedWalk => 0.10 + gait.abs() * 0.08 * walk_weight,
+                PlayerPoseIntent::GroundedRun => 0.16 + gait.abs() * 0.14,
+                PlayerPoseIntent::Falling => 0.78,
+                PlayerPoseIntent::Gliding => 1.22 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => 1.18 + airflow * 0.040,
                 PlayerPoseIntent::Diving => 1.55 + airflow * 0.025,
                 PlayerPoseIntent::AirBrake => 1.565,
@@ -690,11 +718,13 @@ pub fn part_pose_with_context(
                     1.00 + landing_strength * 0.14 + landing_flip * 0.22
                 }
                 PlayerPoseIntent::LandingRecovery => 0.62 + recovery_strength * 0.22,
-                PlayerPoseIntent::Launching => 0.28,
+                PlayerPoseIntent::Launching => 0.36 + run_weight * 0.08,
             };
             let sweep = match intent {
                 PlayerPoseIntent::GroundedIdle => cycle * 0.025,
                 PlayerPoseIntent::GroundedStride => gait * 0.48 * gait_weight,
+                PlayerPoseIntent::GroundedWalk => gait * 0.34 * walk_weight,
+                PlayerPoseIntent::GroundedRun => gait * (0.58 + run_weight * 0.18),
                 PlayerPoseIntent::Gliding => -0.58 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => -0.46 + turn_weight.abs() * 0.10,
                 PlayerPoseIntent::Diving => 0.02 + airflow * 0.018,
@@ -703,11 +733,12 @@ pub fn part_pose_with_context(
                     1.16 + landing_strength * 0.22 + landing_flip * 0.26
                 }
                 PlayerPoseIntent::LandingRecovery => 0.36 + recovery_strength * 0.24,
-                PlayerPoseIntent::Launching => 0.22,
-                PlayerPoseIntent::Falling => -0.2,
+                PlayerPoseIntent::Launching => -0.36,
+                PlayerPoseIntent::Falling => -0.24 + airflow * 0.018,
             };
             translation.z += gait * 0.08 * gait_weight;
             translation.y += match context.mode {
+                _ if intent == PlayerPoseIntent::Launching => -0.04,
                 _ if intent == PlayerPoseIntent::Diving => 0.16,
                 _ if intent == PlayerPoseIntent::AirBrake => 0.10,
                 _ if intent == PlayerPoseIntent::LandingAnticipation => -0.14 - landing_flip * 0.04,
@@ -742,6 +773,8 @@ pub fn part_pose_with_context(
             let spread = match intent {
                 PlayerPoseIntent::GroundedIdle => 0.04,
                 PlayerPoseIntent::GroundedStride => 0.04 + gait.abs() * 0.05 * gait_weight,
+                PlayerPoseIntent::GroundedWalk => 0.05 + gait.abs() * 0.04 * walk_weight,
+                PlayerPoseIntent::GroundedRun => 0.08 + gait.abs() * 0.08,
                 PlayerPoseIntent::Falling => 0.14,
                 PlayerPoseIntent::Gliding => 0.20 + airflow.abs() * 0.025,
                 PlayerPoseIntent::AirTurn => 0.24 + airflow.abs() * 0.030,
@@ -751,11 +784,13 @@ pub fn part_pose_with_context(
                     0.52 + landing_strength * 0.12 + landing_flip * 0.18
                 }
                 PlayerPoseIntent::LandingRecovery => 0.30 + recovery_strength * 0.12,
-                PlayerPoseIntent::Launching => 0.02,
+                PlayerPoseIntent::Launching => 0.18,
             };
             let trail = match intent {
                 PlayerPoseIntent::GroundedIdle => 0.02,
                 PlayerPoseIntent::GroundedStride => gait * 0.52 * gait_weight,
+                PlayerPoseIntent::GroundedWalk => gait * 0.38 * walk_weight,
+                PlayerPoseIntent::GroundedRun => gait * (0.68 + run_weight * 0.22),
                 PlayerPoseIntent::Gliding => 0.50 + cycle * 0.04 + airflow * 0.025,
                 PlayerPoseIntent::AirTurn => 0.54 + cycle * 0.04 + airflow * 0.025,
                 PlayerPoseIntent::Diving => 1.08 + cycle * 0.02 + airflow * 0.018,
@@ -764,11 +799,19 @@ pub fn part_pose_with_context(
                     -1.08 - landing_strength * 0.24 - landing_flip * 0.42
                 }
                 PlayerPoseIntent::LandingRecovery => -0.42 - recovery_strength * 0.28,
-                PlayerPoseIntent::Falling => 0.22 + vertical_pitch,
-                PlayerPoseIntent::Launching => -0.12,
+                PlayerPoseIntent::Falling => 0.30 + vertical_pitch,
+                PlayerPoseIntent::Launching => -0.44,
             };
             translation.z += gait * 0.18 * gait_weight;
             translation.y += gait.max(0.0) * 0.045 * gait_weight;
+            if intent == PlayerPoseIntent::GroundedRun {
+                translation.y += gait.max(0.0) * 0.045 * (0.5 + run_weight);
+                translation.z += gait * 0.045 * run_weight;
+            }
+            if intent == PlayerPoseIntent::Launching {
+                translation.z += 0.08;
+                translation.y += 0.05;
+            }
             if intent == PlayerPoseIntent::LandingAnticipation {
                 translation.z += 0.22 + landing_strength * 0.10 + landing_flip * 0.18;
                 translation.y += 0.08 + landing_strength * 0.05 + landing_flip * 0.05;
@@ -1057,6 +1100,56 @@ mod tests {
     }
 
     #[test]
+    fn grounded_pose_intent_splits_walk_and_run_speed_bands() {
+        assert_eq!(
+            player_pose_intent(PlayerPoseContext::new(
+                FlightMode::Grounded,
+                Vec3::new(0.0, 0.0, -3.0),
+                FlightInput::default(),
+                0.0,
+            )),
+            PlayerPoseIntent::GroundedWalk
+        );
+        assert_eq!(
+            player_pose_intent(PlayerPoseContext::new(
+                FlightMode::Grounded,
+                Vec3::new(0.0, 0.0, -10.0),
+                FlightInput::default(),
+                0.0,
+            )),
+            PlayerPoseIntent::GroundedRun
+        );
+    }
+
+    #[test]
+    fn grounded_run_has_larger_stride_than_walk() {
+        let leg = CharacterPart::new(
+            CharacterPartRole::Leg(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let walk = part_pose(
+            &leg,
+            FlightMode::Grounded,
+            Vec3::new(0.0, 0.0, -3.0),
+            TAU * 0.25,
+        );
+        let run = part_pose(
+            &leg,
+            FlightMode::Grounded,
+            Vec3::new(0.0, 0.0, -10.0),
+            TAU * 0.25,
+        );
+
+        assert!(run.translation.z > walk.translation.z + 0.08);
+        assert!(run.translation.y > walk.translation.y + 0.03);
+        assert!(
+            run.rotation.angle_between(Quat::IDENTITY)
+                > walk.rotation.angle_between(Quat::IDENTITY)
+        );
+    }
+
+    #[test]
     fn gliding_pose_lifts_arms_into_glider_posture() {
         let arm = CharacterPart::new(
             CharacterPartRole::Arm(Side::Left),
@@ -1077,6 +1170,24 @@ mod tests {
 
     #[test]
     fn pose_intent_classifies_dive_air_brake_and_landing_anticipation() {
+        assert_eq!(
+            player_pose_intent(PlayerPoseContext::new(
+                FlightMode::Launching,
+                Vec3::new(0.0, 12.0, -8.0),
+                FlightInput::default(),
+                40.0,
+            )),
+            PlayerPoseIntent::Launching
+        );
+        assert_eq!(
+            player_pose_intent(PlayerPoseContext::new(
+                FlightMode::Airborne,
+                Vec3::new(0.0, -8.0, -12.0),
+                FlightInput::default(),
+                40.0,
+            )),
+            PlayerPoseIntent::Falling
+        );
         assert_eq!(
             player_pose_intent(PlayerPoseContext::new(
                 FlightMode::Gliding,
@@ -1251,6 +1362,36 @@ mod tests {
                 > gliding_torso.rotation.angle_between(Quat::IDENTITY) + 0.45
         );
         assert!(diving_arm.translation.y > gliding_arm.translation.y + 0.07);
+    }
+
+    #[test]
+    fn launching_and_falling_key_poses_are_readable() {
+        let launch_metrics = pose_readability_metrics(
+            PlayerPoseContext::new(
+                FlightMode::Launching,
+                Vec3::new(0.0, 12.0, -8.0),
+                FlightInput::default(),
+                40.0,
+            ),
+            0.0,
+        );
+        let falling_metrics = pose_readability_metrics(
+            PlayerPoseContext::new(
+                FlightMode::Airborne,
+                Vec3::new(0.0, -12.0, -14.0),
+                FlightInput::default(),
+                40.0,
+            ),
+            0.0,
+        );
+
+        assert!(launch_metrics.torso_pitch_degrees >= 16.0);
+        assert!(launch_metrics.arm_spread_degrees >= 28.0);
+        assert!(launch_metrics.leg_tuck_degrees >= 18.0);
+        assert!(launch_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(falling_metrics.torso_pitch_degrees >= 8.0);
+        assert!(falling_metrics.arm_spread_degrees >= 64.0);
+        assert!(falling_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
     }
 
     #[test]

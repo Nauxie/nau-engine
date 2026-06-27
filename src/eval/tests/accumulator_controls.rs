@@ -1794,6 +1794,110 @@ fn accumulator_rejects_unreadable_key_pose_samples() {
 }
 
 #[test]
+fn accumulator_gates_pose_state_coverage_samples() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    observe_pose_state_samples(
+        &mut accumulator,
+        scenario,
+        &[
+            ("grounded_walk", FlightMode::Grounded.label(), 8),
+            ("grounded_run", FlightMode::Grounded.label(), 8),
+            ("launching", FlightMode::Launching.label(), 3),
+            ("falling", FlightMode::Airborne.label(), 8),
+            ("gliding", FlightMode::Gliding.label(), 18),
+        ],
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.pose_grounded_walk_samples, 8);
+    assert_eq!(summary.metrics.pose_grounded_run_samples, 8);
+    assert_eq!(summary.metrics.pose_launching_samples, 3);
+    assert_eq!(summary.metrics.pose_falling_samples, 8);
+    assert_eq!(summary.metrics.pose_gliding_samples, 18);
+    assert_eq!(summary.metrics.unreadable_key_pose_samples, 0);
+    assert!(summary.to_json().contains("\"pose_grounded_walk_samples\""));
+    for name in [
+        "pose_state_grounded_walk_samples",
+        "pose_state_grounded_run_samples",
+        "pose_state_launching_samples",
+        "pose_state_falling_samples",
+        "pose_state_gliding_samples",
+        "pose_state_unreadable_key_pose_samples",
+    ] {
+        assert!(named_check(&summary, name).passed, "{name} should pass");
+    }
+}
+
+#[test]
+fn accumulator_rejects_thin_pose_state_coverage_samples() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    observe_pose_state_samples(
+        &mut accumulator,
+        scenario,
+        &[
+            ("grounded_walk", FlightMode::Grounded.label(), 7),
+            ("grounded_run", FlightMode::Grounded.label(), 7),
+            ("launching", FlightMode::Launching.label(), 2),
+            ("falling", FlightMode::Airborne.label(), 7),
+            ("gliding", FlightMode::Gliding.label(), 17),
+        ],
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for name in [
+        "pose_state_grounded_walk_samples",
+        "pose_state_grounded_run_samples",
+        "pose_state_launching_samples",
+        "pose_state_falling_samples",
+        "pose_state_gliding_samples",
+    ] {
+        assert!(!named_check(&summary, name).passed, "{name} should fail");
+    }
+}
+
+fn observe_pose_state_samples(
+    accumulator: &mut EvalAccumulator,
+    scenario: EvalScenario,
+    samples: &[(&'static str, &'static str, u32)],
+) {
+    let mut frame = 10;
+    for &(pose_intent_label, mode, count) in samples {
+        for _ in 0..count {
+            let mut sample = content_metric_sample(scenario, frame, 20, 0, 96);
+            sample.mode = mode;
+            sample.pose_intent_label = pose_intent_label;
+            sample.key_pose_readability_score = 1.0;
+            accumulator.observe(sample);
+            frame += 5;
+        }
+    }
+}
+
+#[test]
 fn accumulator_gates_visible_pose_temporal_jank() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
     let mut accumulator = EvalAccumulator::default();
