@@ -82,6 +82,7 @@ if command -v jq >/dev/null 2>&1; then
           max_pose_landing_flare_degrees: .metrics.max_pose_landing_flare_degrees,
           max_pose_landing_recovery_flip_degrees: .metrics.max_pose_landing_recovery_flip_degrees,
           unreadable_key_pose_samples: .metrics.unreadable_key_pose_samples,
+          key_pose_transition_grace_samples: .metrics.key_pose_transition_grace_samples,
           max_dynamic_wind_flow_fields: .metrics.max_dynamic_wind_flow_fields,
           max_wind_flow_speed_mps: .metrics.max_wind_flow_speed_mps,
           max_wind_flow_variation: .metrics.max_wind_flow_variation,

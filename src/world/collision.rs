@@ -88,6 +88,11 @@ pub fn resolve_world_collisions(
     let mut max_terrain_rim_push_m = 0.0_f32;
 
     for proxy in proxies {
+        if proxy.kind == WorldCollisionProxyKind::TerrainRim
+            && state.controller.landing_recovery_timer > 0.0
+        {
+            continue;
+        }
         let Some((normal, push_m)) = player_proxy_push_out(state.position, proxy) else {
             continue;
         };
@@ -216,6 +221,19 @@ mod tests {
         assert_eq!(top_resolution.hit_count, 0);
         assert_eq!(top_resolution.terrain_rim_hit_count, 0);
         assert_eq!(top_resolution.state.position, top_state.position);
+
+        let mut recovery_controller = FlightController::default();
+        recovery_controller.record_landing_impact(12.0);
+        let landing_recovery_state =
+            FlightState::new(Vec3::new(9.8, 10.0, 0.0), Vec3::ZERO, recovery_controller);
+        let landing_recovery_resolution = resolve_world_collisions(landing_recovery_state, [proxy]);
+
+        assert_eq!(landing_recovery_resolution.hit_count, 0);
+        assert_eq!(landing_recovery_resolution.terrain_rim_hit_count, 0);
+        assert_eq!(
+            landing_recovery_resolution.state.position,
+            landing_recovery_state.position
+        );
 
         let side_state = FlightState::new(
             Vec3::new(10.1, 9.0, 0.0),

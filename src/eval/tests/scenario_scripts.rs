@@ -42,9 +42,11 @@ fn terrain_rim_collision_contact_script_taxis_into_launch_rim() {
 
     assert!(scripted_input(scenario, 60).forward);
     assert!(scripted_input(scenario, 150).forward);
+    assert!(scripted_input(scenario, 260).forward);
     assert!(!scripted_input(scenario, 1).launch);
     assert!(!scripted_input(scenario, 60).glide);
     assert!(!scripted_input(scenario, 120).backward);
+    assert!(scenario.frame_count >= 300);
 }
 
 #[test]

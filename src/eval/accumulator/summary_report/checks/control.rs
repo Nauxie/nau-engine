@@ -687,6 +687,12 @@ fn append_air_control_checks(
             0.0,
             "samples",
         ),
+        EvalCheck::at_most(
+            "air_control_key_pose_transition_grace_samples",
+            acc.key_pose_transition_grace_samples as f32,
+            AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32,
+            "samples",
+        ),
         EvalCheck::at_least(
             "air_control_pose_temporal_stability_samples",
             acc.pose_temporal_stability_samples as f32,
@@ -1069,6 +1075,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             "pose_state_unreadable_key_pose_samples",
             acc.unreadable_key_pose_samples as f32,
             0.0,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "pose_state_key_pose_transition_grace_samples",
+            acc.key_pose_transition_grace_samples as f32,
+            POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32,
             "samples",
         ),
     ]);

@@ -472,6 +472,10 @@ impl SimMetrics {
             });
         self.min_key_pose_readability_score = Some(min_score);
 
+        if sample.key_pose_transition_grace {
+            self.key_pose_transition_grace_samples += 1;
+        }
+
         if sample.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE {
             self.unreadable_key_pose_samples += 1;
             return;

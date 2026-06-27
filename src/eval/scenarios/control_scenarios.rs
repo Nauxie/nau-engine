@@ -240,7 +240,7 @@ pub(super) fn terrain_rim_collision_contact() -> EvalScenario {
     EvalScenario {
         name: TERRAIN_RIM_COLLISION_CONTACT,
         fixed_dt: 1.0 / 60.0,
-        frame_count: 210,
+        frame_count: 300,
         sample_stride: 1,
         target_island_name: None,
         checkpoints: TERRAIN_RIM_COLLISION_CONTACT_CHECKPOINTS,
