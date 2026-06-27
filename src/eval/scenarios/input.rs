@@ -37,7 +37,7 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
         let post_landing_stride = (8.45..=10.75).contains(&t);
         return FlightInput {
             forward: route_forward || post_landing_stride,
-            right: (5.1..=5.35).contains(&t),
+            right: (5.1..=5.55).contains(&t),
             left: (3.1..=4.2).contains(&t),
             backward: (4.65..=5.05).contains(&t),
             launch: frame == 1,
