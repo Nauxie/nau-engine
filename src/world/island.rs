@@ -21,10 +21,15 @@ pub enum IslandTerrainArchetype {
     MistArch,
     BrokenStair,
     CloudGate,
+    LaunchSpur,
+    GardenApron,
+    StormShard,
+    OrchardSpur,
+    MistStep,
 }
 
 impl IslandTerrainArchetype {
-    pub const COUNT: usize = 14;
+    pub const COUNT: usize = 19;
 
     pub fn for_name(name: &str) -> Option<Self> {
         match name {
@@ -42,6 +47,11 @@ impl IslandTerrainArchetype {
             "mist arch" => Some(Self::MistArch),
             "broken stair" => Some(Self::BrokenStair),
             "cloud gate" => Some(Self::CloudGate),
+            "launch spur" => Some(Self::LaunchSpur),
+            "garden apron" => Some(Self::GardenApron),
+            "storm shard" => Some(Self::StormShard),
+            "orchard spur" => Some(Self::OrchardSpur),
+            "mist stepping stone" => Some(Self::MistStep),
             _ => None,
         }
     }
@@ -66,6 +76,11 @@ impl IslandTerrainArchetype {
             Self::MistArch => 11,
             Self::BrokenStair => 12,
             Self::CloudGate => 13,
+            Self::LaunchSpur => 14,
+            Self::GardenApron => 15,
+            Self::StormShard => 16,
+            Self::OrchardSpur => 17,
+            Self::MistStep => 18,
         }
     }
 
@@ -85,6 +100,11 @@ impl IslandTerrainArchetype {
             Self::MistArch => "mist_arch",
             Self::BrokenStair => "broken_stair",
             Self::CloudGate => "cloud_gate",
+            Self::LaunchSpur => "launch_spur",
+            Self::GardenApron => "garden_apron",
+            Self::StormShard => "storm_shard",
+            Self::OrchardSpur => "orchard_spur",
+            Self::MistStep => "mist_step",
         }
     }
 
@@ -115,6 +135,28 @@ impl IslandTerrainArchetype {
                 let gate_shoulders = (angle * 2.0 - phase * 0.5).cos().abs();
                 let cleft = (angle * 5.0 + phase).sin().max(0.0);
                 0.12 * gate_shoulders - 0.07 * cleft
+            }
+            Self::LaunchSpur => {
+                let forward_lip = (angle - phase * 0.18).cos().max(0.0);
+                let rear_cut = (angle * 3.0 + phase).sin().abs();
+                0.14 * forward_lip - 0.08 * rear_cut
+            }
+            Self::GardenApron => {
+                let scallop = (angle * 6.0 - phase).cos().max(0.0);
+                -0.04 + 0.08 * scallop
+            }
+            Self::StormShard => {
+                let shard = (angle * 2.5 + phase * 0.5).sin().abs();
+                0.16 * shard - 0.12 * (angle * 5.0 - phase).cos().abs()
+            }
+            Self::OrchardSpur => {
+                let branch = (angle * 2.0 + phase * 0.35).cos().max(0.0);
+                0.12 * branch + 0.04 * (angle * 7.0 - phase).sin()
+            }
+            Self::MistStep => {
+                let stepping_edge = (angle * 4.0 - phase * 0.25).sin().max(0.0);
+                let airy_cut = (angle - phase * 0.2).cos().max(0.0);
+                0.10 * stepping_edge - 0.13 * airy_cut
             }
         }
     }
@@ -180,6 +222,41 @@ impl IslandTerrainArchetype {
                 smoothstep(0.26, 0.74, radius) * shoulders * 0.18
                     - smoothstep(0.38, 0.92, radius) * gate_cleft * 0.16
                     + (1.0 - radius).powf(2.1) * 0.12
+            }
+            Self::LaunchSpur => {
+                let forward_lip = (angle - phase * 0.18).cos().max(0.0);
+                let rear_cut = (angle * 3.0 + phase).sin().abs();
+                terrain_step(radius, 0.24, 0.66, 0.10)
+                    + forward_lip * smoothstep(0.32, 0.92, radius) * 0.14
+                    - rear_cut * smoothstep(0.56, 1.0, radius) * 0.10
+            }
+            Self::GardenApron => {
+                let scallop = (angle * 6.0 - phase).cos().max(0.0);
+                -basin(radius, 0.36, 0.12)
+                    + scallop * smoothstep(0.54, 0.96, radius) * 0.13
+                    + terrain_step(radius, 0.62, 0.86, 0.06)
+            }
+            Self::StormShard => {
+                let shard = (angle * 2.5 + phase * 0.5).sin().abs();
+                let crack = (angle * 5.0 - phase).cos().abs();
+                shard * smoothstep(0.18, 0.80, radius) * 0.22
+                    - crack * smoothstep(0.36, 0.98, radius) * 0.18
+                    - smoothstep(0.78, 1.0, radius) * 0.08
+            }
+            Self::OrchardSpur => {
+                let branch = (angle * 2.0 + phase * 0.35).cos().max(0.0);
+                -basin(radius, 0.48, 0.08)
+                    + branch * smoothstep(0.24, 0.88, radius) * 0.16
+                    + (angle * 7.0 - phase).sin() * smoothstep(0.30, 0.72, radius) * 0.04
+            }
+            Self::MistStep => {
+                let step_bands = (radius * std::f32::consts::TAU * 4.0 + phase)
+                    .sin()
+                    .max(0.0);
+                let airy_cut = (angle - phase * 0.2).cos().max(0.0);
+                terrain_step(radius, 0.20, 0.72, 0.09)
+                    + step_bands * smoothstep(0.22, 0.86, radius) * 0.07
+                    - airy_cut * smoothstep(0.42, 0.92, radius) * 0.18
             }
         }
     }
