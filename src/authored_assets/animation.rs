@@ -125,6 +125,7 @@ pub(crate) struct AuthoredPlayerPoseNode {
     pub(crate) smoothed_translation: Vec3,
     pub(crate) smoothed_rotation: Quat,
     pub(crate) smoothing_initialized: bool,
+    pub(crate) rest_transform_initialized: bool,
     pub(crate) last_smoothed_time_secs: Option<f32>,
 }
 
@@ -135,8 +136,20 @@ impl AuthoredPlayerPoseNode {
             smoothed_translation: part.base_translation,
             smoothed_rotation: part.base_rotation,
             smoothing_initialized: false,
+            rest_transform_initialized: false,
             last_smoothed_time_secs: None,
         }
+    }
+
+    pub(crate) fn capture_rest_transform(&mut self, transform: &Transform) {
+        if self.rest_transform_initialized {
+            return;
+        }
+        self.part.base_translation = transform.translation;
+        self.part.base_rotation = transform.rotation;
+        self.smoothed_translation = transform.translation;
+        self.smoothed_rotation = transform.rotation;
+        self.rest_transform_initialized = true;
     }
 }
 

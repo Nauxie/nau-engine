@@ -634,6 +634,7 @@ pub(crate) fn apply_authored_player_pose_nodes(
     let blend = pose_blend_for_intent(pose_context.intent(), eval_dt(&time, eval.as_deref()));
 
     for (mut node, mut transform) in &mut pose_nodes {
+        node.capture_rest_transform(&transform);
         let pose = part_pose_with_context(&node.part, pose_context, animation.phase);
         apply_authored_pose_node_smoothing(&mut node, &mut transform, pose, pose_time_secs, blend);
     }
@@ -762,6 +763,7 @@ fn eval_pose_time_secs(time: &Time, eval: Option<&EvalRun>) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nau_engine::animation::Side;
 
     #[test]
     fn body_local_pose_velocity_uses_body_local_lateral_axis() {
@@ -830,6 +832,64 @@ mod tests {
                 .translation
                 .abs_diff_eq(clobber_pose.translation, 0.0001)
         );
+    }
+
+    #[test]
+    fn authored_pose_nodes_capture_authored_rest_transform_once() {
+        let part = CharacterPart::new(
+            CharacterPartRole::Arm(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let mut node = AuthoredPlayerPoseNode::new(part);
+        let mut rest = Transform::from_translation(Vec3::new(-0.6, 1.4, 0.2));
+        rest.rotation = Quat::from_rotation_z(-0.35);
+        let mut later_transform = Transform::from_translation(Vec3::new(4.0, 5.0, 6.0));
+        later_transform.rotation = Quat::from_rotation_y(0.8);
+
+        node.capture_rest_transform(&rest);
+        node.capture_rest_transform(&later_transform);
+
+        assert!(
+            node.part
+                .base_translation
+                .abs_diff_eq(rest.translation, 0.0001)
+        );
+        assert!((node.part.base_rotation.dot(rest.rotation).abs() - 1.0).abs() < 0.0001);
+        assert!(
+            node.smoothed_translation
+                .abs_diff_eq(rest.translation, 0.0001)
+        );
+        assert!((node.smoothed_rotation.dot(rest.rotation).abs() - 1.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn authored_pose_targets_are_generated_from_captured_rest_transform() {
+        let part = CharacterPart::new(
+            CharacterPartRole::Leg(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let mut node = AuthoredPlayerPoseNode::new(part);
+        let mut transform = Transform::from_translation(Vec3::new(0.35, 0.42, -0.08));
+        transform.rotation = Quat::from_rotation_z(0.22);
+        node.capture_rest_transform(&transform);
+
+        let pose = part_pose_with_context(
+            &node.part,
+            PlayerPoseContext::new(
+                FlightMode::Grounded,
+                Vec3::new(0.0, 0.0, -8.0),
+                FlightInput::default(),
+                f32::INFINITY,
+            ),
+            std::f32::consts::TAU * 0.25,
+        );
+        apply_authored_pose_node_smoothing(&mut node, &mut transform, pose, 0.0, 1.0);
+
+        assert!(transform.translation.distance(node.part.base_translation) > 0.04);
+        assert!(transform.translation.distance(pose.translation) < 0.0001);
+        assert!((transform.rotation.dot(pose.rotation).abs() - 1.0).abs() < 0.0001);
     }
 
     #[test]
