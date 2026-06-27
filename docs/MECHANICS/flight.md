@@ -124,7 +124,7 @@ Current tests cover:
 - world collision proxies push the player out of obvious generated asset obstacles without affecting proxies above the player
 - visual wind fields keep horizontal flow horizontal
 - visual updraft fields include upward flow plus horizontal swirl
-- wind-current evals gate sustained updraft visual rise, per-field guide/ribbon coverage, sustained updraft/crosswind visual-flow sample windows, updraft/crosswind visual depth span, baseline-relative guide/ribbon scale pulse, split guide/ribbon crosswind motion along the gameplay field direction, short-horizon guide/ribbon motion aligned with shared soft-edged gust-cell `WindField::flow_at`, and wind-force deltas aligned with the field-axis correction direction toward that same shared flow; focused visual tests also cover stream-specific crosswind variation so motes do not move in lockstep
+- wind-current evals gate sustained updraft visual rise, per-field guide/ribbon coverage, sustained updraft/crosswind visual-flow sample windows, updraft/crosswind visual depth span, baseline-relative guide/ribbon scale pulse, split guide/ribbon crosswind motion along the gameplay field direction, short-horizon guide/ribbon motion aligned with shared soft-edged gust-cell `WindField::flow_at`, and wind-force deltas aligned with the field-axis correction direction toward that same shared flow; the visual floors are intentionally high enough to fail nearly static wind, and focused visual tests also cover stream-specific crosswind variation so motes do not move in lockstep
 - wind response applies only while airborne and stays horizontally bounded
 - lift fields only apply inside bounds while enabled
 - authored gameplay lift route nodes pair visual and lift volumes

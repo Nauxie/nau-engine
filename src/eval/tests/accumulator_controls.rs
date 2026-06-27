@@ -2981,7 +2981,11 @@ fn accumulator_gates_wind_field_visual_coverage_per_field() {
 fn accumulator_requires_sustained_wind_visual_flow_samples() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
     let mut accumulator = EvalAccumulator::default();
-    for frame in 0..(MIN_SUSTAINED_WIND_VISUAL_FLOW_SAMPLES - 1) {
+    let undersampled_flow_count = MIN_SUSTAINED_WIND_VISUAL_FLOW_SAMPLES
+        .min(MIN_SUSTAINED_UPDRAFT_VISUAL_FLOW_SAMPLES)
+        .min(MIN_SUSTAINED_CROSSWIND_VISUAL_FLOW_SAMPLES)
+        - 1;
+    for frame in 0..undersampled_flow_count {
         accumulator.observe(content_metric_sample(scenario, frame, 12, 0, 96));
     }
 
@@ -2998,7 +3002,7 @@ fn accumulator_requires_sustained_wind_visual_flow_samples() {
 
     assert_eq!(
         summary.metrics.sustained_wind_visual_flow_samples,
-        MIN_SUSTAINED_WIND_VISUAL_FLOW_SAMPLES - 1
+        undersampled_flow_count
     );
     for check_name in [
         "sustained_wind_visual_flow_samples",
