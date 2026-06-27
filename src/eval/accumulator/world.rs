@@ -246,6 +246,47 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_crosswind_visual_flow_alignment = accumulator
         .max_crosswind_visual_flow_alignment
         .max(sample.max_crosswind_visual_flow_alignment);
+    accumulator.max_updraft_field_count = accumulator
+        .max_updraft_field_count
+        .max(sample.updraft_field_count);
+    accumulator.max_updraft_fields_with_guides_count = accumulator
+        .max_updraft_fields_with_guides_count
+        .max(sample.updraft_fields_with_guides_count);
+    accumulator.max_updraft_fields_with_ribbons_count = accumulator
+        .max_updraft_fields_with_ribbons_count
+        .max(sample.updraft_fields_with_ribbons_count);
+    accumulator.max_updraft_fields_with_guides_and_ribbons_count = accumulator
+        .max_updraft_fields_with_guides_and_ribbons_count
+        .max(sample.updraft_fields_with_guides_and_ribbons_count);
+    accumulator.max_updraft_flow_coherent_field_count = accumulator
+        .max_updraft_flow_coherent_field_count
+        .max(sample.updraft_flow_coherent_field_count);
+    accumulator.max_crosswind_field_count = accumulator
+        .max_crosswind_field_count
+        .max(sample.crosswind_field_count);
+    accumulator.max_crosswind_fields_with_guides_count = accumulator
+        .max_crosswind_fields_with_guides_count
+        .max(sample.crosswind_fields_with_guides_count);
+    accumulator.max_crosswind_fields_with_ribbons_count = accumulator
+        .max_crosswind_fields_with_ribbons_count
+        .max(sample.crosswind_fields_with_ribbons_count);
+    accumulator.max_crosswind_fields_with_guides_and_ribbons_count = accumulator
+        .max_crosswind_fields_with_guides_and_ribbons_count
+        .max(sample.crosswind_fields_with_guides_and_ribbons_count);
+    accumulator.max_crosswind_flow_coherent_field_count = accumulator
+        .max_crosswind_flow_coherent_field_count
+        .max(sample.crosswind_flow_coherent_field_count);
+    let sustained_updraft_visual_flow = has_sustained_updraft_visual_flow(sample);
+    let sustained_crosswind_visual_flow = has_sustained_crosswind_visual_flow(sample);
+    if sustained_updraft_visual_flow {
+        accumulator.sustained_updraft_visual_flow_samples += 1;
+    }
+    if sustained_crosswind_visual_flow {
+        accumulator.sustained_crosswind_visual_flow_samples += 1;
+    }
+    if sustained_updraft_visual_flow || sustained_crosswind_visual_flow {
+        accumulator.sustained_wind_visual_flow_samples += 1;
+    }
     accumulator.max_world_collision_proxy_count = accumulator
         .max_world_collision_proxy_count
         .max(sample.world_collision_proxy_count);
@@ -313,4 +354,28 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
         .total_stream_despawned_visuals
         .max(sample.total_stream_despawned_visuals);
     accumulator.max_entity_count = accumulator.max_entity_count.max(sample.entity_count);
+}
+
+fn has_sustained_updraft_visual_flow(sample: &EvalSample) -> bool {
+    sample.updraft_guide_visual_count > 0
+        && sample.updraft_ribbon_visual_count > 0
+        && sample.max_updraft_visual_motion_m > 0.0
+        && sample.max_updraft_visual_rise_m > 0.0
+        && sample.max_updraft_visual_swirl_displacement_m > 0.0
+        && sample.max_updraft_visual_depth_span_m > 0.0
+        && sample.max_updraft_visual_scale_pulse > 0.0
+        && sample.updraft_flow_coherent_visual_count > 0
+        && sample.max_updraft_visual_flow_alignment > 0.0
+}
+
+fn has_sustained_crosswind_visual_flow(sample: &EvalSample) -> bool {
+    sample.crosswind_guide_visual_count > 0
+        && sample.crosswind_ribbon_visual_count > 0
+        && sample.max_crosswind_visual_motion_m > 0.0
+        && sample.max_crosswind_guide_flow_displacement_m > 0.0
+        && sample.max_crosswind_ribbon_flow_displacement_m > 0.0
+        && sample.max_crosswind_visual_lane_depth_span_m > 0.0
+        && sample.max_crosswind_visual_scale_pulse > 0.0
+        && sample.crosswind_flow_coherent_visual_count > 0
+        && sample.max_crosswind_visual_flow_alignment > 0.0
 }

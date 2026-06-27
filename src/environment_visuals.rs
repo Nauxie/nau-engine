@@ -12,7 +12,9 @@ use bevy::prelude::*;
 use bevy::render::render_resource::BlendState;
 use nau_engine::animation::{Side, wing_airflow_strength};
 use nau_engine::asset_pipeline::VisualAssetKind;
-use nau_engine::environment::{LiftRouteNode, WindField, wind_sway_motion};
+use nau_engine::environment::{
+    GAMEPLAY_LIFT_ROUTE, LiftRouteNode, WindField, visual_crosswind_fields, wind_sway_motion,
+};
 use nau_engine::movement::{FlightController, Velocity};
 use nau_engine::world::SkyIsland;
 
@@ -23,6 +25,7 @@ const CROSSWIND_RIBBONS_PER_FIELD: usize = 7;
 const CROSSWIND_GUIDES_PER_FIELD: usize = 60;
 const WIND_VISUAL_COHERENCE_DT: f32 = 0.2;
 const WIND_VISUAL_ALIGNMENT_MIN_DOT: f32 = 0.55;
+const WIND_FIELD_METRIC_EPSILON: f32 = 0.001;
 
 #[derive(Component)]
 pub(crate) struct CinematicSun;
@@ -127,6 +130,16 @@ pub(crate) struct WindGuideVisualMetrics {
     pub(crate) updraft_ribbon_count: usize,
     pub(crate) crosswind_guide_count: usize,
     pub(crate) crosswind_ribbon_count: usize,
+    pub(crate) updraft_field_count: usize,
+    pub(crate) updraft_fields_with_guides_count: usize,
+    pub(crate) updraft_fields_with_ribbons_count: usize,
+    pub(crate) updraft_fields_with_guides_and_ribbons_count: usize,
+    pub(crate) updraft_flow_coherent_field_count: usize,
+    pub(crate) crosswind_field_count: usize,
+    pub(crate) crosswind_fields_with_guides_count: usize,
+    pub(crate) crosswind_fields_with_ribbons_count: usize,
+    pub(crate) crosswind_fields_with_guides_and_ribbons_count: usize,
+    pub(crate) crosswind_flow_coherent_field_count: usize,
     pub(crate) max_updraft_visual_motion_m: f32,
     pub(crate) max_updraft_visual_rise_m: f32,
     pub(crate) max_updraft_visual_swirl_displacement_m: f32,
@@ -819,8 +832,62 @@ impl CrosswindDepthSpan {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct WindFieldVisualCoverage {
+    field: WindField,
+    guide_count: usize,
+    ribbon_count: usize,
+    coherent_visual_count: usize,
+}
+
+impl WindFieldVisualCoverage {
+    fn new(field: WindField) -> Self {
+        Self {
+            field,
+            guide_count: 0,
+            ribbon_count: 0,
+            coherent_visual_count: 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct WindFieldVisualCoverageCounts {
+    field_count: usize,
+    fields_with_guides_count: usize,
+    fields_with_ribbons_count: usize,
+    fields_with_guides_and_ribbons_count: usize,
+    flow_coherent_field_count: usize,
+}
+
 pub(crate) fn wind_guide_visual_metrics<'a>(
     elapsed_secs: f32,
+    updraft_guides: impl Iterator<Item = (&'a UpdraftGuide, &'a Transform)>,
+    updraft_ribbons: impl Iterator<Item = (&'a UpdraftRibbon, &'a Transform)>,
+    crosswind_guides: impl Iterator<Item = (&'a CrosswindGuide, &'a Transform)>,
+    crosswind_ribbons: impl Iterator<Item = (&'a CrosswindRibbon, &'a Transform)>,
+) -> WindGuideVisualMetrics {
+    let expected_updraft_fields = expected_updraft_visual_fields();
+    let expected_crosswind_fields = visual_crosswind_fields();
+    wind_guide_visual_metrics_for_expected_fields(
+        elapsed_secs,
+        &expected_updraft_fields,
+        &expected_crosswind_fields,
+        updraft_guides,
+        updraft_ribbons,
+        crosswind_guides,
+        crosswind_ribbons,
+    )
+}
+
+fn expected_updraft_visual_fields() -> [WindField; GAMEPLAY_LIFT_ROUTE.len()] {
+    GAMEPLAY_LIFT_ROUTE.map(|node| node.visual_field())
+}
+
+fn wind_guide_visual_metrics_for_expected_fields<'a>(
+    elapsed_secs: f32,
+    expected_updraft_fields: &[WindField],
+    expected_crosswind_fields: &[WindField],
     updraft_guides: impl Iterator<Item = (&'a UpdraftGuide, &'a Transform)>,
     updraft_ribbons: impl Iterator<Item = (&'a UpdraftRibbon, &'a Transform)>,
     crosswind_guides: impl Iterator<Item = (&'a CrosswindGuide, &'a Transform)>,
@@ -829,9 +896,18 @@ pub(crate) fn wind_guide_visual_metrics<'a>(
     let mut metrics = WindGuideVisualMetrics::default();
     let mut updraft_depth = VisualSpan::default();
     let mut crosswind_depth = CrosswindDepthSpan::default();
+    let mut updraft_coverage =
+        wind_field_visual_coverage_for_expected_fields(expected_updraft_fields);
+    let mut crosswind_coverage =
+        wind_field_visual_coverage_for_expected_fields(expected_crosswind_fields);
 
     for (guide, transform) in updraft_guides {
         metrics.updraft_guide_count += 1;
+        let field_index =
+            observe_expected_wind_field_visual_coverage(&updraft_coverage, guide.field);
+        if let Some(field_index) = field_index {
+            updraft_coverage[field_index].guide_count += 1;
+        }
         updraft_depth.observe(transform.translation.y - guide.field.center.y);
         let baseline = updraft_guide_position(guide, 0.0);
         let displacement = transform.translation - baseline;
@@ -851,18 +927,26 @@ pub(crate) fn wind_guide_visual_metrics<'a>(
                 baseline,
                 displacement,
             ));
-        record_updraft_flow_coherence(
+        let coherent = record_updraft_flow_coherence(
             &mut metrics,
             guide.field,
             transform.translation,
             updraft_guide_position(guide, elapsed_secs + WIND_VISUAL_COHERENCE_DT),
             elapsed_secs,
         );
+        if let (Some(field_index), true) = (field_index, coherent) {
+            updraft_coverage[field_index].coherent_visual_count += 1;
+        }
     }
     for (ribbon, transform) in updraft_ribbons {
         let baseline = updraft_ribbon_transform(ribbon, 0.0);
         let displacement = transform.translation - baseline.translation;
         metrics.updraft_ribbon_count += 1;
+        let field_index =
+            observe_expected_wind_field_visual_coverage(&updraft_coverage, ribbon.field);
+        if let Some(field_index) = field_index {
+            updraft_coverage[field_index].ribbon_count += 1;
+        }
         observe_updraft_ribbon_depth(&mut updraft_depth, ribbon, transform);
         metrics.max_updraft_visual_scale_pulse = metrics
             .max_updraft_visual_scale_pulse
@@ -877,16 +961,24 @@ pub(crate) fn wind_guide_visual_metrics<'a>(
             metrics.max_updraft_visual_swirl_displacement_m.max(
                 updraft_swirl_displacement_on_axis(updraft_ribbon_swirl_axis(ribbon), displacement),
             );
-        record_updraft_flow_coherence(
+        let coherent = record_updraft_flow_coherence(
             &mut metrics,
             ribbon.field,
             transform.translation,
             updraft_ribbon_transform(ribbon, elapsed_secs + WIND_VISUAL_COHERENCE_DT).translation,
             elapsed_secs,
         );
+        if let (Some(field_index), true) = (field_index, coherent) {
+            updraft_coverage[field_index].coherent_visual_count += 1;
+        }
     }
     for (guide, transform) in crosswind_guides {
         metrics.crosswind_guide_count += 1;
+        let field_index =
+            observe_expected_wind_field_visual_coverage(&crosswind_coverage, guide.field);
+        if let Some(field_index) = field_index {
+            crosswind_coverage[field_index].guide_count += 1;
+        }
         crosswind_depth.observe(guide.field, transform.translation);
         let baseline = crosswind_guide_position(guide, 0.0);
         let displacement = transform.translation - baseline;
@@ -899,18 +991,26 @@ pub(crate) fn wind_guide_visual_metrics<'a>(
         metrics.max_crosswind_guide_flow_displacement_m = metrics
             .max_crosswind_guide_flow_displacement_m
             .max(displacement.dot(guide.field.direction).max(0.0));
-        record_crosswind_flow_coherence(
+        let coherent = record_crosswind_flow_coherence(
             &mut metrics,
             guide.field,
             transform.translation,
             crosswind_guide_position(guide, elapsed_secs + WIND_VISUAL_COHERENCE_DT),
             elapsed_secs,
         );
+        if let (Some(field_index), true) = (field_index, coherent) {
+            crosswind_coverage[field_index].coherent_visual_count += 1;
+        }
     }
     for (ribbon, transform) in crosswind_ribbons {
         let baseline = crosswind_ribbon_transform(ribbon, 0.0);
         let displacement = transform.translation - baseline.translation;
         metrics.crosswind_ribbon_count += 1;
+        let field_index =
+            observe_expected_wind_field_visual_coverage(&crosswind_coverage, ribbon.field);
+        if let Some(field_index) = field_index {
+            crosswind_coverage[field_index].ribbon_count += 1;
+        }
         crosswind_depth.observe(ribbon.field, transform.translation);
         metrics.max_crosswind_visual_scale_pulse = metrics
             .max_crosswind_visual_scale_pulse
@@ -921,18 +1021,88 @@ pub(crate) fn wind_guide_visual_metrics<'a>(
         metrics.max_crosswind_ribbon_flow_displacement_m = metrics
             .max_crosswind_ribbon_flow_displacement_m
             .max(displacement.dot(ribbon.field.direction).max(0.0));
-        record_crosswind_flow_coherence(
+        let coherent = record_crosswind_flow_coherence(
             &mut metrics,
             ribbon.field,
             transform.translation,
             crosswind_ribbon_transform(ribbon, elapsed_secs + WIND_VISUAL_COHERENCE_DT).translation,
             elapsed_secs,
         );
+        if let (Some(field_index), true) = (field_index, coherent) {
+            crosswind_coverage[field_index].coherent_visual_count += 1;
+        }
     }
+
+    let updraft_counts = wind_field_visual_coverage_counts(&updraft_coverage);
+    metrics.updraft_field_count = updraft_counts.field_count;
+    metrics.updraft_fields_with_guides_count = updraft_counts.fields_with_guides_count;
+    metrics.updraft_fields_with_ribbons_count = updraft_counts.fields_with_ribbons_count;
+    metrics.updraft_fields_with_guides_and_ribbons_count =
+        updraft_counts.fields_with_guides_and_ribbons_count;
+    metrics.updraft_flow_coherent_field_count = updraft_counts.flow_coherent_field_count;
+
+    let crosswind_counts = wind_field_visual_coverage_counts(&crosswind_coverage);
+    metrics.crosswind_field_count = crosswind_counts.field_count;
+    metrics.crosswind_fields_with_guides_count = crosswind_counts.fields_with_guides_count;
+    metrics.crosswind_fields_with_ribbons_count = crosswind_counts.fields_with_ribbons_count;
+    metrics.crosswind_fields_with_guides_and_ribbons_count =
+        crosswind_counts.fields_with_guides_and_ribbons_count;
+    metrics.crosswind_flow_coherent_field_count = crosswind_counts.flow_coherent_field_count;
 
     metrics.max_updraft_visual_depth_span_m = updraft_depth.span();
     metrics.max_crosswind_visual_lane_depth_span_m = crosswind_depth.span_m();
     metrics
+}
+
+fn wind_field_visual_coverage_for_expected_fields(
+    fields: &[WindField],
+) -> Vec<WindFieldVisualCoverage> {
+    fields
+        .iter()
+        .copied()
+        .map(WindFieldVisualCoverage::new)
+        .collect()
+}
+
+fn observe_expected_wind_field_visual_coverage(
+    coverage: &[WindFieldVisualCoverage],
+    field: WindField,
+) -> Option<usize> {
+    coverage
+        .iter()
+        .position(|entry| same_wind_field_for_metrics(entry.field, field))
+}
+
+fn wind_field_visual_coverage_counts(
+    coverage: &[WindFieldVisualCoverage],
+) -> WindFieldVisualCoverageCounts {
+    WindFieldVisualCoverageCounts {
+        field_count: coverage.len(),
+        fields_with_guides_count: coverage
+            .iter()
+            .filter(|entry| entry.guide_count > 0)
+            .count(),
+        fields_with_ribbons_count: coverage
+            .iter()
+            .filter(|entry| entry.ribbon_count > 0)
+            .count(),
+        fields_with_guides_and_ribbons_count: coverage
+            .iter()
+            .filter(|entry| entry.guide_count > 0 && entry.ribbon_count > 0)
+            .count(),
+        flow_coherent_field_count: coverage
+            .iter()
+            .filter(|entry| entry.coherent_visual_count > 0)
+            .count(),
+    }
+}
+
+fn same_wind_field_for_metrics(a: WindField, b: WindField) -> bool {
+    a.kind == b.kind
+        && a.center.distance_squared(b.center) <= WIND_FIELD_METRIC_EPSILON.powi(2)
+        && a.half_extents.distance_squared(b.half_extents) <= WIND_FIELD_METRIC_EPSILON.powi(2)
+        && a.direction.distance_squared(b.direction) <= WIND_FIELD_METRIC_EPSILON.powi(2)
+        && (a.visual_speed - b.visual_speed).abs() <= WIND_FIELD_METRIC_EPSILON
 }
 
 fn observe_updraft_ribbon_depth(
@@ -958,16 +1128,19 @@ fn record_updraft_flow_coherence(
     current: Vec3,
     next: Vec3,
     elapsed_secs: f32,
-) {
+) -> bool {
     let Some(alignment) = visual_flow_alignment(field, current, next, elapsed_secs, true) else {
-        return;
+        return false;
     };
 
     metrics.max_updraft_visual_flow_alignment =
         metrics.max_updraft_visual_flow_alignment.max(alignment);
     if alignment >= WIND_VISUAL_ALIGNMENT_MIN_DOT {
         metrics.updraft_flow_coherent_visual_count += 1;
+        return true;
     }
+
+    false
 }
 
 fn record_crosswind_flow_coherence(
@@ -976,16 +1149,19 @@ fn record_crosswind_flow_coherence(
     current: Vec3,
     next: Vec3,
     elapsed_secs: f32,
-) {
+) -> bool {
     let Some(alignment) = visual_flow_alignment(field, current, next, elapsed_secs, false) else {
-        return;
+        return false;
     };
 
     metrics.max_crosswind_visual_flow_alignment =
         metrics.max_crosswind_visual_flow_alignment.max(alignment);
     if alignment >= WIND_VISUAL_ALIGNMENT_MIN_DOT {
         metrics.crosswind_flow_coherent_visual_count += 1;
+        return true;
     }
+
+    false
 }
 
 fn visual_flow_alignment(
@@ -1229,6 +1405,101 @@ mod tests {
     }
 
     #[test]
+    fn wind_guide_metrics_count_updraft_field_visual_coverage() {
+        let elapsed = 2.0;
+        let covered_field = WindField::updraft(Vec3::ZERO, Vec3::new(8.0, 16.0, 8.0), 12.0);
+        let covered_guide = UpdraftGuide {
+            field: covered_field,
+            center: covered_field.center,
+            radius: 4.0,
+            height_offset: -10.0,
+            phase: 0.31,
+            angular_speed: 0.34,
+        };
+        let covered_guide_translation = updraft_guide_position(&covered_guide, elapsed);
+        let covered_guide_transform = Transform {
+            translation: covered_guide_translation,
+            scale: updraft_guide_scale(&covered_guide, covered_guide_translation, elapsed),
+            ..default()
+        };
+        let covered_ribbon = UpdraftRibbon {
+            field: covered_field,
+            spin_speed: 0.05,
+            base_translation: covered_field.center,
+            base_rotation: Quat::IDENTITY,
+            phase: 0.2,
+        };
+        let covered_ribbon_transform = updraft_ribbon_transform(&covered_ribbon, elapsed);
+        let guide_only_field =
+            WindField::updraft(Vec3::new(32.0, 0.0, 0.0), Vec3::new(8.0, 16.0, 8.0), 12.0);
+        let guide_only = UpdraftGuide {
+            field: guide_only_field,
+            center: guide_only_field.center,
+            radius: 4.0,
+            height_offset: -8.0,
+            phase: 0.48,
+            angular_speed: 0.3,
+        };
+        let guide_only_translation = updraft_guide_position(&guide_only, elapsed);
+        let guide_only_transform = Transform {
+            translation: guide_only_translation,
+            scale: updraft_guide_scale(&guide_only, guide_only_translation, elapsed),
+            ..default()
+        };
+        let missing_expected_field =
+            WindField::updraft(Vec3::new(64.0, 0.0, 0.0), Vec3::new(8.0, 16.0, 8.0), 12.0);
+        let unexpected_field =
+            WindField::updraft(Vec3::new(96.0, 0.0, 0.0), Vec3::new(8.0, 16.0, 8.0), 12.0);
+        let unexpected_guide = UpdraftGuide {
+            field: unexpected_field,
+            center: unexpected_field.center,
+            radius: 4.0,
+            height_offset: -8.0,
+            phase: 0.18,
+            angular_speed: 0.28,
+        };
+        let unexpected_guide_translation = updraft_guide_position(&unexpected_guide, elapsed);
+        let unexpected_guide_transform = Transform {
+            translation: unexpected_guide_translation,
+            scale: updraft_guide_scale(&unexpected_guide, unexpected_guide_translation, elapsed),
+            ..default()
+        };
+        let unexpected_ribbon = UpdraftRibbon {
+            field: unexpected_field,
+            spin_speed: 0.05,
+            base_translation: unexpected_field.center,
+            base_rotation: Quat::IDENTITY,
+            phase: 0.44,
+        };
+        let unexpected_ribbon_transform = updraft_ribbon_transform(&unexpected_ribbon, elapsed);
+
+        let metrics = wind_guide_visual_metrics_for_expected_fields(
+            elapsed,
+            &[covered_field, guide_only_field, missing_expected_field],
+            &[],
+            [
+                (&covered_guide, &covered_guide_transform),
+                (&guide_only, &guide_only_transform),
+                (&unexpected_guide, &unexpected_guide_transform),
+            ]
+            .into_iter(),
+            [
+                (&covered_ribbon, &covered_ribbon_transform),
+                (&unexpected_ribbon, &unexpected_ribbon_transform),
+            ]
+            .into_iter(),
+            std::iter::empty::<(&CrosswindGuide, &Transform)>(),
+            std::iter::empty::<(&CrosswindRibbon, &Transform)>(),
+        );
+
+        assert_eq!(metrics.updraft_field_count, 3);
+        assert_eq!(metrics.updraft_fields_with_guides_count, 2);
+        assert_eq!(metrics.updraft_fields_with_ribbons_count, 1);
+        assert_eq!(metrics.updraft_fields_with_guides_and_ribbons_count, 1);
+        assert_eq!(metrics.updraft_flow_coherent_field_count, 2);
+    }
+
+    #[test]
     fn wind_guide_metrics_capture_crosswind_flow_direction_motion() {
         let field = WindField::crosswind(
             Vec3::ZERO,
@@ -1256,6 +1527,102 @@ mod tests {
         assert!(metrics.max_crosswind_guide_flow_displacement_m > 3.0);
         assert_eq!(metrics.crosswind_flow_coherent_visual_count, 1);
         assert!(metrics.max_crosswind_visual_flow_alignment > 0.55);
+    }
+
+    #[test]
+    fn wind_guide_metrics_count_crosswind_field_coherence_once_per_field() {
+        let elapsed = 1.5;
+        let coherent_field = WindField::crosswind(
+            Vec3::ZERO,
+            Vec3::new(12.0, 6.0, 8.0),
+            Vec3::new(-1.0, 0.0, 0.35),
+            10.0,
+        );
+        let coherent_guide = CrosswindGuide {
+            field: coherent_field,
+            stream_index: 4,
+            stream_count: 16,
+            phase: 0.12,
+        };
+        let coherent_guide_transform =
+            Transform::from_translation(crosswind_guide_position(&coherent_guide, elapsed));
+        let coherent_ribbon = CrosswindRibbon {
+            field: coherent_field,
+            base_translation: coherent_field.center,
+            phase: 0.18,
+        };
+        let coherent_ribbon_transform = crosswind_ribbon_transform(&coherent_ribbon, elapsed);
+        let opposing_field = WindField::crosswind(
+            Vec3::new(36.0, 0.0, 0.0),
+            Vec3::new(12.0, 6.0, 8.0),
+            Vec3::X,
+            10.0,
+        );
+        let opposing_guide = CrosswindGuide {
+            field: opposing_field,
+            stream_index: 3,
+            stream_count: 16,
+            phase: 0.36,
+        };
+        let opposing_future =
+            crosswind_guide_position(&opposing_guide, elapsed + WIND_VISUAL_COHERENCE_DT);
+        let opposing_transform =
+            Transform::from_translation(opposing_future + opposing_field.direction * 4.0);
+        let missing_expected_field = WindField::crosswind(
+            Vec3::new(72.0, 0.0, 0.0),
+            Vec3::new(12.0, 6.0, 8.0),
+            Vec3::X,
+            10.0,
+        );
+        let unexpected_field = WindField::crosswind(
+            Vec3::new(108.0, 0.0, 0.0),
+            Vec3::new(12.0, 6.0, 8.0),
+            Vec3::X,
+            10.0,
+        );
+        let unexpected_guide = CrosswindGuide {
+            field: unexpected_field,
+            stream_index: 5,
+            stream_count: 16,
+            phase: 0.2,
+        };
+        let unexpected_guide_transform =
+            Transform::from_translation(crosswind_guide_position(&unexpected_guide, elapsed));
+        let unexpected_ribbon = CrosswindRibbon {
+            field: unexpected_field,
+            base_translation: unexpected_field.center,
+            phase: 0.33,
+        };
+        let unexpected_ribbon_transform = crosswind_ribbon_transform(&unexpected_ribbon, elapsed);
+
+        let metrics = wind_guide_visual_metrics_for_expected_fields(
+            elapsed,
+            &[],
+            &[coherent_field, opposing_field, missing_expected_field],
+            std::iter::empty::<(&UpdraftGuide, &Transform)>(),
+            std::iter::empty::<(&UpdraftRibbon, &Transform)>(),
+            [
+                (&coherent_guide, &coherent_guide_transform),
+                (&opposing_guide, &opposing_transform),
+                (&unexpected_guide, &unexpected_guide_transform),
+            ]
+            .into_iter(),
+            [
+                (&coherent_ribbon, &coherent_ribbon_transform),
+                (&unexpected_ribbon, &unexpected_ribbon_transform),
+            ]
+            .into_iter(),
+        );
+
+        assert_eq!(metrics.crosswind_field_count, 3);
+        assert_eq!(metrics.crosswind_fields_with_guides_count, 2);
+        assert_eq!(metrics.crosswind_fields_with_ribbons_count, 1);
+        assert_eq!(metrics.crosswind_fields_with_guides_and_ribbons_count, 1);
+        assert_eq!(metrics.crosswind_flow_coherent_field_count, 1);
+        assert!(
+            metrics.crosswind_flow_coherent_visual_count
+                > metrics.crosswind_flow_coherent_field_count
+        );
     }
 
     #[test]

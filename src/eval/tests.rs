@@ -11,7 +11,9 @@ use crate::asset_pipeline::{
     STREAMING_VISUAL_ASSET_SLOT_COUNT, VISUAL_ASSET_SLOT_COUNT, WEATHER_VISUAL_ASSET_SLOT_COUNT,
 };
 use crate::camera::CameraInput;
-use crate::environment::AERIAL_POWER_UP_ROUTE;
+use crate::environment::{
+    AERIAL_POWER_UP_ROUTE, GAMEPLAY_LIFT_ROUTE, VISUAL_CROSSWIND_FIELD_COUNT,
+};
 use crate::movement::{FlightInput, FlightMode};
 use bevy::prelude::{Vec2, Vec3};
 
@@ -206,6 +208,18 @@ fn air_control_metric_sample(
         MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT,
         MIN_WIND_VISUAL_FLOW_ALIGNMENT,
         MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+    )
+    .with_wind_field_visual_coverage_metrics(
+        GAMEPLAY_LIFT_ROUTE.len(),
+        GAMEPLAY_LIFT_ROUTE.len(),
+        GAMEPLAY_LIFT_ROUTE.len(),
+        GAMEPLAY_LIFT_ROUTE.len(),
+        GAMEPLAY_LIFT_ROUTE.len(),
+        VISUAL_CROSSWIND_FIELD_COUNT,
+        VISUAL_CROSSWIND_FIELD_COUNT,
+        VISUAL_CROSSWIND_FIELD_COUNT,
+        VISUAL_CROSSWIND_FIELD_COUNT,
+        VISUAL_CROSSWIND_FIELD_COUNT,
     )
     .with_wind_force_metrics(
         1,

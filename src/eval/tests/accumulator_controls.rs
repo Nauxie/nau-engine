@@ -2714,6 +2714,90 @@ fn accumulator_gates_wind_guide_visual_flow_coherence() {
 }
 
 #[test]
+fn accumulator_gates_wind_field_visual_coverage_per_field() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let sample = content_metric_sample(scenario, 0, 12, 0, 96)
+        .with_wind_field_visual_coverage_metrics(
+            GAMEPLAY_LIFT_ROUTE.len() - 1,
+            GAMEPLAY_LIFT_ROUTE.len() - 1,
+            GAMEPLAY_LIFT_ROUTE.len() - 1,
+            GAMEPLAY_LIFT_ROUTE.len() - 1,
+            GAMEPLAY_LIFT_ROUTE.len() - 1,
+            VISUAL_CROSSWIND_FIELD_COUNT - 1,
+            VISUAL_CROSSWIND_FIELD_COUNT - 1,
+            VISUAL_CROSSWIND_FIELD_COUNT - 1,
+            VISUAL_CROSSWIND_FIELD_COUNT - 1,
+            VISUAL_CROSSWIND_FIELD_COUNT - 1,
+        );
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for check_name in [
+        "updraft_field_count",
+        "updraft_fields_with_guides",
+        "updraft_fields_with_ribbons",
+        "updraft_fields_with_guides_and_ribbons",
+        "updraft_flow_coherent_field_count",
+        "crosswind_field_count",
+        "crosswind_fields_with_guides",
+        "crosswind_fields_with_ribbons",
+        "crosswind_fields_with_guides_and_ribbons",
+        "crosswind_flow_coherent_field_count",
+    ] {
+        assert!(
+            !named_check(&summary, check_name).passed,
+            "{check_name} should fail when a wind field is missing visual coverage"
+        );
+    }
+}
+
+#[test]
+fn accumulator_requires_sustained_wind_visual_flow_samples() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut accumulator = EvalAccumulator::default();
+    for frame in 0..(MIN_SUSTAINED_WIND_VISUAL_FLOW_SAMPLES - 1) {
+        accumulator.observe(content_metric_sample(scenario, frame, 12, 0, 96));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(
+        summary.metrics.sustained_wind_visual_flow_samples,
+        MIN_SUSTAINED_WIND_VISUAL_FLOW_SAMPLES - 1
+    );
+    for check_name in [
+        "sustained_wind_visual_flow_samples",
+        "sustained_updraft_visual_flow_samples",
+        "sustained_crosswind_visual_flow_samples",
+    ] {
+        assert!(
+            !named_check(&summary, check_name).passed,
+            "{check_name} should fail without a sustained visual-flow window"
+        );
+    }
+}
+
+#[test]
 fn accumulator_gates_crosswind_ribbon_flow_separately_from_guides() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
     let sample = content_metric_sample(scenario, 0, 12, 0, 96).with_wind_guide_visual_metrics(
