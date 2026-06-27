@@ -13,9 +13,11 @@ use nau_engine::animation::{
 use nau_engine::asset_pipeline::VisualAssetKind;
 #[cfg(test)]
 use nau_engine::movement::FlightMode;
-use nau_engine::movement::Velocity;
+use nau_engine::movement::{FlightInput, Velocity};
 
 use super::types::{PendingAuthoredAnimationLink, VisualAssetRegistry};
+
+const AUTHORED_PLAYER_CLIP_COUNT: usize = 9;
 
 #[derive(Debug)]
 pub(crate) struct NamedAnimationClipResolution {
@@ -40,6 +42,8 @@ pub(crate) enum AuthoredPlayerClip {
     Jog,
     Launch,
     Glide,
+    BankLeft,
+    BankRight,
     Dive,
     AirBrake,
     Land,
@@ -52,9 +56,11 @@ impl AuthoredPlayerClip {
             Self::Jog => 1,
             Self::Launch => 2,
             Self::Glide => 3,
-            Self::Dive => 4,
-            Self::AirBrake => 5,
-            Self::Land => 6,
+            Self::BankLeft => 4,
+            Self::BankRight => 5,
+            Self::Dive => 6,
+            Self::AirBrake => 7,
+            Self::Land => 8,
         }
     }
 
@@ -64,6 +70,8 @@ impl AuthoredPlayerClip {
             Self::Jog => "jog",
             Self::Launch => "launch",
             Self::Glide => "glide",
+            Self::BankLeft => "bank_left",
+            Self::BankRight => "bank_right",
             Self::Dive => "dive",
             Self::AirBrake => "air_brake",
             Self::Land => "land",
@@ -91,12 +99,15 @@ impl AuthoredAnimationDiagnostics {
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct AuthoredPlayerAnimation {
-    pub(crate) nodes: [AnimationNodeIndex; 7],
+    pub(crate) nodes: [AnimationNodeIndex; AUTHORED_PLAYER_CLIP_COUNT],
     pub(crate) current: AuthoredPlayerClip,
 }
 
 impl AuthoredPlayerAnimation {
-    pub(crate) fn new(nodes: [AnimationNodeIndex; 7], current: AuthoredPlayerClip) -> Self {
+    pub(crate) fn new(
+        nodes: [AnimationNodeIndex; AUTHORED_PLAYER_CLIP_COUNT],
+        current: AuthoredPlayerClip,
+    ) -> Self {
         Self { nodes, current }
     }
 
@@ -252,7 +263,9 @@ fn link_ready_authored_animation(
     let (animation_graph, animation_nodes) = AnimationGraph::from_clips(clip_resolution.clips);
     let graph_handle = animation_graphs.add(animation_graph);
     let player_animation = if pending.kind == VisualAssetKind::PlayerCharacter {
-        let Ok(nodes) = <[AnimationNodeIndex; 7]>::try_from(animation_nodes.as_slice()) else {
+        let Ok(nodes) = <[AnimationNodeIndex; AUTHORED_PLAYER_CLIP_COUNT]>::try_from(
+            animation_nodes.as_slice(),
+        ) else {
             return;
         };
         Some(AuthoredPlayerAnimation::new(
@@ -352,9 +365,18 @@ pub(crate) fn authored_player_clip_for_state(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn authored_player_clip_for_pose_intent(
     intent: PlayerPoseIntent,
     speed_mps: f32,
+) -> AuthoredPlayerClip {
+    authored_player_clip_for_pose_intent_with_input(intent, speed_mps, FlightInput::default())
+}
+
+pub(crate) fn authored_player_clip_for_pose_intent_with_input(
+    intent: PlayerPoseIntent,
+    speed_mps: f32,
+    input: FlightInput,
 ) -> AuthoredPlayerClip {
     match intent {
         PlayerPoseIntent::GroundedIdle => AuthoredPlayerClip::Idle,
@@ -363,13 +385,24 @@ pub(crate) fn authored_player_clip_for_pose_intent(
         | PlayerPoseIntent::GroundedRun => AuthoredPlayerClip::Jog,
         PlayerPoseIntent::Launching => AuthoredPlayerClip::Launch,
         PlayerPoseIntent::Gliding => AuthoredPlayerClip::Glide,
-        PlayerPoseIntent::AirTurn => AuthoredPlayerClip::Glide,
+        PlayerPoseIntent::AirTurn => authored_player_air_turn_clip(input),
         PlayerPoseIntent::Diving => AuthoredPlayerClip::Dive,
         PlayerPoseIntent::AirBrake => AuthoredPlayerClip::AirBrake,
         PlayerPoseIntent::LandingAnticipation => AuthoredPlayerClip::Land,
         PlayerPoseIntent::LandingRecovery => AuthoredPlayerClip::Land,
         PlayerPoseIntent::Falling if speed_mps < 8.0 => AuthoredPlayerClip::Land,
         PlayerPoseIntent::Falling => AuthoredPlayerClip::AirBrake,
+    }
+}
+
+fn authored_player_air_turn_clip(input: FlightInput) -> AuthoredPlayerClip {
+    let lateral_axis = input.planar_axis().x;
+    if lateral_axis < 0.0 {
+        AuthoredPlayerClip::BankLeft
+    } else if lateral_axis > 0.0 {
+        AuthoredPlayerClip::BankRight
+    } else {
+        AuthoredPlayerClip::Glide
     }
 }
 
@@ -386,7 +419,11 @@ pub(crate) fn update_authored_player_animation(
         *diagnostics = AuthoredAnimationDiagnostics::default();
         return;
     };
-    let desired = authored_player_clip_for_pose_intent(animation.pose_intent, velocity.0.length());
+    let desired = authored_player_clip_for_pose_intent_with_input(
+        animation.pose_intent,
+        velocity.0.length(),
+        animation.last_input,
+    );
     let mut next_diagnostics = AuthoredAnimationDiagnostics {
         desired_clip: Some(desired),
         ..default()
@@ -449,17 +486,19 @@ mod tests {
     #[test]
     fn authored_player_clip_labels_match_debug_contract() {
         assert_eq!(AuthoredPlayerClip::Idle.label(), "idle");
+        assert_eq!(AuthoredPlayerClip::BankLeft.label(), "bank_left");
+        assert_eq!(AuthoredPlayerClip::BankRight.label(), "bank_right");
         assert_eq!(AuthoredPlayerClip::AirBrake.label(), "air_brake");
 
         let diagnostics = AuthoredAnimationDiagnostics {
             player_count: 1,
-            current_clip: Some(AuthoredPlayerClip::Dive),
-            desired_clip: Some(AuthoredPlayerClip::Glide),
+            current_clip: Some(AuthoredPlayerClip::BankLeft),
+            desired_clip: Some(AuthoredPlayerClip::BankRight),
             transition_duration_ms: 140,
         };
 
-        assert_eq!(diagnostics.current_label(), "dive");
-        assert_eq!(diagnostics.desired_label(), "glide");
+        assert_eq!(diagnostics.current_label(), "bank_left");
+        assert_eq!(diagnostics.desired_label(), "bank_right");
     }
 
     #[test]

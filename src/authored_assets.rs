@@ -6,12 +6,13 @@ mod types;
 
 pub(crate) use animation::{
     AuthoredAnimationDiagnostics, AuthoredPlayerAnimation, AuthoredPlayerPoseNode,
-    authored_player_clip_for_pose_intent, link_ready_authored_animations,
+    authored_player_clip_for_pose_intent_with_input, link_ready_authored_animations,
     tag_authored_player_pose_nodes, update_authored_player_animation,
 };
 #[cfg(test)]
 pub(crate) use animation::{
-    AuthoredPlayerClip, authored_player_clip_for_state, resolve_named_animation_clip_handles,
+    AuthoredPlayerClip, authored_player_clip_for_pose_intent, authored_player_clip_for_state,
+    resolve_named_animation_clip_handles,
 };
 pub(crate) use diagnostics::update_visual_asset_diagnostics;
 pub(crate) use fixtures::{

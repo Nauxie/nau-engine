@@ -390,6 +390,11 @@ fn audit_fixture(
             PLAYER_ANIMATION_CLIP_NAMES.len() as u64,
             "clips",
         ));
+        checks.push(check_bool(
+            "player_bank_clip_motion_distinct",
+            player_bank_clip_motion_is_distinct(&gltf),
+            "clips",
+        ));
     }
 
     let passed = checks_passed(&checks);
@@ -410,6 +415,7 @@ fn audit_fixture(
         "missing_uv_primitives": metrics.missing_uvs,
         "blend_material_count": blend_material_count,
         "player_named_clip_count": ready_player_clip_count,
+        "player_bank_clip_motion_distinct": player_bank_clip_motion_is_distinct(&gltf),
         "checks": checks,
     }))
 }
@@ -510,6 +516,58 @@ fn player_clip_count(gltf: &Value) -> u64 {
             })
         })
         .count() as u64
+}
+
+fn player_bank_clip_motion_is_distinct(gltf: &Value) -> bool {
+    let Some(glide) = animation_signature(gltf, "Glide_Loop") else {
+        return false;
+    };
+    let Some(bank_left) = animation_signature(gltf, "Bank_Left") else {
+        return false;
+    };
+    let Some(bank_right) = animation_signature(gltf, "Bank_Right") else {
+        return false;
+    };
+
+    bank_left.len() >= 4
+        && bank_right.len() >= 4
+        && bank_left != glide
+        && bank_right != glide
+        && bank_left != bank_right
+}
+
+fn animation_signature(gltf: &Value, animation_name: &str) -> Option<Vec<String>> {
+    let accessors = gltf.get("accessors").and_then(Value::as_array)?;
+    let animation = gltf
+        .get("animations")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|animation| {
+            animation
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| name == animation_name)
+        })?;
+    let samplers = animation.get("samplers").and_then(Value::as_array)?;
+    let channels = animation.get("channels").and_then(Value::as_array)?;
+
+    channels
+        .iter()
+        .map(|channel| {
+            let sampler_index = channel.get("sampler").and_then(Value::as_u64)? as usize;
+            let output_accessor = samplers
+                .get(sampler_index)?
+                .get("output")
+                .and_then(Value::as_u64)? as usize;
+            let accessor = accessors.get(output_accessor)?;
+            let target = channel.get("target")?;
+            let node = target.get("node").and_then(Value::as_u64)?;
+            let path = target.get("path").and_then(Value::as_str)?;
+            let min = accessor.get("min").unwrap_or(&Value::Null);
+            let max = accessor.get("max").unwrap_or(&Value::Null);
+            Some(format!("{node}:{path}:{}:{}", min, max))
+        })
+        .collect()
 }
 
 fn array_len(value: &Value, key: &str) -> u64 {
@@ -639,5 +697,70 @@ mod tests {
             residency_name(VisualAssetResidency::StreamWindow),
             nau_metadata_str(&metadata, "residency")
         );
+    }
+
+    #[test]
+    fn player_bank_clip_motion_rejects_glide_reuse() {
+        let gltf = bank_clip_test_gltf(false);
+
+        assert!(!player_bank_clip_motion_is_distinct(&gltf));
+    }
+
+    #[test]
+    fn player_bank_clip_motion_accepts_distinct_bank_tracks() {
+        let gltf = bank_clip_test_gltf(true);
+
+        assert!(player_bank_clip_motion_is_distinct(&gltf));
+    }
+
+    fn bank_clip_test_gltf(distinct_banks: bool) -> Value {
+        let accessors = json!([
+            {"min": [0.0], "max": [1.0]},
+            {"min": [0.0], "max": [0.5]},
+            {"min": [0.0], "max": [0.6]},
+            {"min": [0.0], "max": [0.7]},
+            {"min": [0.0], "max": [0.8]},
+            {"min": [-0.8], "max": [0.0]},
+            {"min": [-0.7], "max": [0.0]},
+            {"min": [-0.6], "max": [0.0]},
+            {"min": [-0.5], "max": [0.0]}
+        ]);
+        let left_outputs = if distinct_banks {
+            [1, 2, 3, 4]
+        } else {
+            [0, 0, 0, 0]
+        };
+        let right_outputs = if distinct_banks {
+            [5, 6, 7, 8]
+        } else {
+            [0, 0, 0, 0]
+        };
+
+        json!({
+            "accessors": accessors,
+            "animations": [
+                clip("Glide_Loop", [0, 0, 0, 0]),
+                clip("Bank_Left", left_outputs),
+                clip("Bank_Right", right_outputs)
+            ]
+        })
+    }
+
+    fn clip(name: &str, outputs: [u64; 4]) -> Value {
+        json!({
+            "name": name,
+            "samplers": [
+                {"output": outputs[0]},
+                {"output": outputs[1]},
+                {"output": outputs[2]},
+                {"output": outputs[3]}
+            ],
+            "channels": [
+                {"sampler": 0, "target": {"node": 2, "path": "rotation"}},
+                {"sampler": 1, "target": {"node": 3, "path": "rotation"}},
+                {"sampler": 2, "target": {"node": 4, "path": "rotation"}},
+                {"sampler": 3, "target": {"node": 5, "path": "rotation"}}
+            ]
+        })
     }
 }

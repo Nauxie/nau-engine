@@ -40,7 +40,8 @@ fn air_control_metric_sample(
     } else {
         "gliding"
     };
-    let authored_clip_label = authored_clip_label_for_pose_intent_label(pose_intent_label);
+    let authored_clip_label =
+        authored_clip_label_for_pose_intent_label(pose_intent_label, movement_axis);
     EvalSample::new(
         frame,
         scenario.fixed_dt,
@@ -241,11 +242,16 @@ fn air_control_metric_sample(
     })
 }
 
-fn authored_clip_label_for_pose_intent_label(pose_intent_label: &str) -> &'static str {
+fn authored_clip_label_for_pose_intent_label(
+    pose_intent_label: &str,
+    movement_axis: Vec2,
+) -> &'static str {
     match pose_intent_label {
         "grounded_idle" => "idle",
         "grounded_stride" | "grounded_walk" | "grounded_run" => "jog",
         "launching" => "launch",
+        "air_turn" if movement_axis.x < 0.0 => "bank_left",
+        "air_turn" if movement_axis.x > 0.0 => "bank_right",
         "diving" => "dive",
         "air_brake" => "air_brake",
         "landing_anticipation" | "landing_recovery" => "land",

@@ -129,6 +129,8 @@ pub struct EvalAccumulator {
     max_authored_glider_motion_m: f32,
     authored_clip_match_samples: u32,
     authored_clip_mismatch_samples: u32,
+    authored_bank_left_clip_samples: u32,
+    authored_bank_right_clip_samples: u32,
     authored_dive_clip_samples: u32,
     authored_air_brake_clip_samples: u32,
     authored_land_clip_samples: u32,

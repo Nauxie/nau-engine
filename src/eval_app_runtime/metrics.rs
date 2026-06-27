@@ -1,7 +1,7 @@
 use super::scene::EvalScene;
 use crate::authored_assets::{
     AuthoredAnimationDiagnostics, AuthoredPlayerAnimation, AuthoredPlayerPoseNode,
-    authored_player_clip_for_pose_intent,
+    authored_player_clip_for_pose_intent_with_input,
 };
 use crate::camera_runtime::CAMERA_PLAYER_FOCUS_HEIGHT;
 use crate::environment_visuals::{wind_guide_visual_metrics, wind_responsive_visual_metrics};
@@ -29,9 +29,9 @@ use nau_engine::eval::{
     EvalPoseTemporalMetrics, EvalSample, scripted_input,
 };
 use nau_engine::movement::{
-    FlightMode, body_roll_degrees, body_yaw_error_degrees, desired_heading_alignment_speed,
-    desired_planar_movement_direction, desired_planar_travel_heading_error_degrees,
-    lateral_response_speed,
+    FlightInput, FlightMode, body_roll_degrees, body_yaw_error_degrees,
+    desired_heading_alignment_speed, desired_planar_movement_direction,
+    desired_planar_travel_heading_error_degrees, lateral_response_speed,
 };
 
 pub(super) const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
@@ -388,6 +388,7 @@ pub(crate) fn collect_eval_metrics(
                 authored_metrics,
                 pose_context.intent(),
                 velocity.0.length(),
+                pose_context.input,
             )
         });
     let transition_pose_readability = transition_aware_pose_readability(
@@ -956,12 +957,13 @@ fn authored_pose_readability_metrics<'a>(
     mut metrics: PoseReadabilityMetrics,
     intent: PlayerPoseIntent,
     speed_mps: f32,
+    input: FlightInput,
 ) -> PoseReadabilityMetrics {
     if !key_pose_intent(intent) {
         return metrics;
     }
 
-    let desired_clip = authored_player_clip_for_pose_intent(intent, speed_mps);
+    let desired_clip = authored_player_clip_for_pose_intent_with_input(intent, speed_mps, input);
     let Some(first_authored_player) = authored_players.next() else {
         metrics.key_pose_readability_score = 0.0;
         return metrics;

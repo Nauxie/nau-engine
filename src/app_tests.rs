@@ -1,6 +1,7 @@
 use super::*;
 use bevy::mesh::{Indices, VertexAttributeValues};
 use nau_engine::animation::PlayerPoseIntent;
+use nau_engine::movement::FlightInput;
 
 fn test_island() -> SkyIsland {
     SkyIsland::new(
@@ -153,6 +154,40 @@ fn authored_player_clip_selection_tracks_pose_intent() {
         AuthoredPlayerClip::Glide
     );
     assert_eq!(
+        authored_player_clip_for_pose_intent_with_input(
+            PlayerPoseIntent::AirTurn,
+            28.0,
+            FlightInput {
+                left: true,
+                ..default()
+            },
+        ),
+        AuthoredPlayerClip::BankLeft
+    );
+    assert_eq!(
+        authored_player_clip_for_pose_intent_with_input(
+            PlayerPoseIntent::AirTurn,
+            28.0,
+            FlightInput {
+                right: true,
+                ..default()
+            },
+        ),
+        AuthoredPlayerClip::BankRight
+    );
+    assert_eq!(
+        authored_player_clip_for_pose_intent_with_input(
+            PlayerPoseIntent::Diving,
+            34.0,
+            FlightInput {
+                right: true,
+                dive: true,
+                ..default()
+            },
+        ),
+        AuthoredPlayerClip::Dive
+    );
+    assert_eq!(
         authored_player_clip_for_pose_intent(PlayerPoseIntent::AirBrake, 28.0),
         AuthoredPlayerClip::AirBrake
     );
@@ -168,9 +203,11 @@ fn authored_player_clip_indices_match_declared_gltf_order() {
     assert_eq!(AuthoredPlayerClip::Jog.index(), 1);
     assert_eq!(AuthoredPlayerClip::Launch.index(), 2);
     assert_eq!(AuthoredPlayerClip::Glide.index(), 3);
-    assert_eq!(AuthoredPlayerClip::Dive.index(), 4);
-    assert_eq!(AuthoredPlayerClip::AirBrake.index(), 5);
-    assert_eq!(AuthoredPlayerClip::Land.index(), 6);
+    assert_eq!(AuthoredPlayerClip::BankLeft.index(), 4);
+    assert_eq!(AuthoredPlayerClip::BankRight.index(), 5);
+    assert_eq!(AuthoredPlayerClip::Dive.index(), 6);
+    assert_eq!(AuthoredPlayerClip::AirBrake.index(), 7);
+    assert_eq!(AuthoredPlayerClip::Land.index(), 8);
 }
 
 #[test]
