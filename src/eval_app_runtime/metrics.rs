@@ -554,6 +554,12 @@ pub(crate) fn collect_eval_metrics(
         wind_guide_metrics.max_crosswind_guide_flow_displacement_m,
         wind_guide_metrics.max_crosswind_ribbon_flow_displacement_m,
     )
+    .with_wind_guide_depth_metrics(
+        wind_guide_metrics.max_updraft_visual_depth_span_m,
+        wind_guide_metrics.max_updraft_visual_scale_pulse,
+        wind_guide_metrics.max_crosswind_visual_lane_depth_span_m,
+        wind_guide_metrics.max_crosswind_visual_scale_pulse,
+    )
     .with_wind_guide_flow_coherence_metrics(
         wind_guide_metrics.updraft_flow_coherent_visual_count,
         wind_guide_metrics.crosswind_flow_coherent_visual_count,

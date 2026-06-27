@@ -189,6 +189,7 @@ fn main() -> AppExit {
                 update_cinematic_weather,
                 update_weather_drift,
                 update_wind_responsive_visuals,
+                update_updraft_columns,
                 update_updraft_guides,
                 update_updraft_ribbons,
                 update_crosswind_guides,

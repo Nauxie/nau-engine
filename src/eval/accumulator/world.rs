@@ -146,6 +146,12 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_updraft_visual_swirl_displacement_m = accumulator
         .max_updraft_visual_swirl_displacement_m
         .max(sample.max_updraft_visual_swirl_displacement_m);
+    accumulator.max_updraft_visual_depth_span_m = accumulator
+        .max_updraft_visual_depth_span_m
+        .max(sample.max_updraft_visual_depth_span_m);
+    accumulator.max_updraft_visual_scale_pulse = accumulator
+        .max_updraft_visual_scale_pulse
+        .max(sample.max_updraft_visual_scale_pulse);
     accumulator.max_crosswind_visual_motion_m = accumulator
         .max_crosswind_visual_motion_m
         .max(sample.max_crosswind_visual_motion_m);
@@ -155,6 +161,12 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_crosswind_ribbon_flow_displacement_m = accumulator
         .max_crosswind_ribbon_flow_displacement_m
         .max(sample.max_crosswind_ribbon_flow_displacement_m);
+    accumulator.max_crosswind_visual_lane_depth_span_m = accumulator
+        .max_crosswind_visual_lane_depth_span_m
+        .max(sample.max_crosswind_visual_lane_depth_span_m);
+    accumulator.max_crosswind_visual_scale_pulse = accumulator
+        .max_crosswind_visual_scale_pulse
+        .max(sample.max_crosswind_visual_scale_pulse);
     accumulator.max_updraft_flow_coherent_visual_count = accumulator
         .max_updraft_flow_coherent_visual_count
         .max(sample.updraft_flow_coherent_visual_count);
