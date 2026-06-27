@@ -167,6 +167,7 @@ fn air_control_metric_sample(
         max_pose_part_rotation_delta_degrees: 8.0,
         max_pose_part_translation_delta_m: 0.04,
     })
+    .with_authored_glider_metrics(AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES, 0.08)
     .with_movement_metrics(EvalMovementMetrics {
         desired_body_yaw_error_degrees: yaw_error_degrees,
         body_travel_heading_error_degrees: yaw_error_degrees.abs(),

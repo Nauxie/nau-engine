@@ -120,6 +120,8 @@ pub struct EvalAccumulator {
     landing_pose_temporal_stability_samples: u32,
     max_landing_pose_part_rotation_delta_degrees: f32,
     max_landing_pose_part_translation_delta_m: f32,
+    max_authored_glider_response_degrees: f32,
+    max_authored_glider_motion_m: f32,
     min_target_distance_m: f32,
     min_camera_pitch_degrees: f32,
     max_camera_pitch_degrees: f32,

@@ -6,6 +6,7 @@ use crate::authored_assets::{
 use crate::camera_runtime::CAMERA_PLAYER_FOCUS_HEIGHT;
 use crate::environment_visuals::{wind_guide_visual_metrics, wind_responsive_visual_metrics};
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
+use crate::player_runtime::AuthoredGliderPose;
 use crate::{grounded_visual_foot_gap_m, movement_facing};
 use bevy::prelude::*;
 use nau_engine::animation::{
@@ -328,6 +329,7 @@ pub(crate) fn collect_eval_metrics(
     let asset_metrics = scene.asset_diagnostics.metrics;
     let authored_animation_metrics =
         authored_animation_sample_metrics(authored_animation_diagnostics.as_deref());
+    let authored_glider_metrics = visible_authored_glider_metrics(scene.authored_gliders.iter());
     let content_metrics = *scene.content_diagnostics;
     let (environment_motion_visuals, max_environment_motion_offset_m) =
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
@@ -531,6 +533,10 @@ pub(crate) fn collect_eval_metrics(
         authored_animation_metrics.player_count,
         authored_animation_metrics.transition_duration_ms,
     )
+    .with_authored_glider_metrics(
+        authored_glider_metrics.max_response_degrees,
+        authored_glider_metrics.max_motion_m,
+    )
     .with_camera_follow_metrics(scene.camera_diagnostics.follow_direction_error_degrees)
     .with_camera_world_yaw_metrics(camera_world_yaw)
     .with_visual_foot_gap(visual_foot_gap_m)
@@ -646,6 +652,12 @@ struct AuthoredAnimationSampleMetrics {
     transition_duration_ms: u64,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct AuthoredGliderSampleMetrics {
+    max_response_degrees: f32,
+    max_motion_m: f32,
+}
+
 fn authored_animation_sample_metrics(
     diagnostics: Option<&AuthoredAnimationDiagnostics>,
 ) -> AuthoredAnimationSampleMetrics {
@@ -656,6 +668,32 @@ fn authored_animation_sample_metrics(
         player_count: diagnostics.player_count,
         transition_duration_ms: diagnostics.transition_duration_ms,
     }
+}
+
+fn visible_authored_glider_metrics<'a>(
+    gliders: impl Iterator<
+        Item = (
+            &'a AuthoredGliderPose,
+            &'a Transform,
+            Option<&'a Visibility>,
+            Option<&'a InheritedVisibility>,
+        ),
+    >,
+) -> AuthoredGliderSampleMetrics {
+    gliders.fold(
+        AuthoredGliderSampleMetrics::default(),
+        |metrics, (glider, transform, visibility, inherited_visibility)| {
+            if !authored_pose_part_visible(visibility, inherited_visibility) {
+                return metrics;
+            }
+            AuthoredGliderSampleMetrics {
+                max_response_degrees: metrics
+                    .max_response_degrees
+                    .max(glider.response_degrees(transform)),
+                max_motion_m: metrics.max_motion_m.max(glider.motion_m(transform)),
+            }
+        },
+    )
 }
 
 fn body_travel_heading_error_degrees(

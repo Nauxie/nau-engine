@@ -8,6 +8,7 @@ use crate::environment_visuals::{
     WindResponsiveVisual,
 };
 use crate::island_visuals::IslandStreamDiagnostics;
+use crate::player_runtime::AuthoredGliderPose;
 use crate::power_up_runtime::PowerUpCollectionState;
 use crate::world_collision_runtime::WorldCollisionDiagnostics;
 use crate::{Player, RouteObjectiveTracker, WindForceDiagnostics};
@@ -58,6 +59,16 @@ pub(crate) struct EvalScene<'w, 's> {
         's,
         (
             &'static AuthoredPlayerPoseNode,
+            &'static Transform,
+            Option<&'static Visibility>,
+            Option<&'static InheritedVisibility>,
+        ),
+    >,
+    pub(crate) authored_gliders: Query<
+        'w,
+        's,
+        (
+            &'static AuthoredGliderPose,
             &'static Transform,
             Option<&'static Visibility>,
             Option<&'static InheritedVisibility>,

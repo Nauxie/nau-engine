@@ -210,6 +210,74 @@ pub fn wing_airflow_strength(mode: FlightMode, velocity: Vec3) -> f32 {
     (speed_pressure + sink_pressure).clamp(0.0, 1.0)
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct GliderTraversalPose {
+    pub translation_offset: Vec3,
+    pub rotation_offset: Quat,
+}
+
+impl Default for GliderTraversalPose {
+    fn default() -> Self {
+        Self {
+            translation_offset: Vec3::ZERO,
+            rotation_offset: Quat::IDENTITY,
+        }
+    }
+}
+
+impl GliderTraversalPose {
+    pub fn response_degrees(self) -> f32 {
+        self.rotation_offset
+            .angle_between(Quat::IDENTITY)
+            .to_degrees()
+    }
+
+    pub fn motion_m(self) -> f32 {
+        self.translation_offset.length()
+    }
+}
+
+pub fn glider_traversal_pose(context: PlayerPoseContext, phase: f32) -> GliderTraversalPose {
+    if context.mode != FlightMode::Gliding {
+        return GliderTraversalPose::default();
+    }
+
+    let intent = context.intent();
+    let turn_weight = pose_turn_weight(context);
+    let airflow = wing_airflow_strength(context.mode, context.velocity);
+    let dive_pressure = if intent == PlayerPoseIntent::Diving {
+        ((-context.velocity.y - 6.0) / 24.0).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let brake_pressure = if intent == PlayerPoseIntent::AirBrake {
+        1.0
+    } else {
+        0.0
+    };
+    let turn_pressure = if intent == PlayerPoseIntent::AirTurn {
+        turn_weight
+    } else {
+        turn_weight * 0.45
+    };
+    let flutter = (phase * 2.2).sin() * (0.010 + airflow * 0.035);
+    let roll = (-turn_pressure * 0.22).clamp(-0.24, 0.24);
+    let yaw = (turn_pressure * 0.08).clamp(-0.10, 0.10);
+    let pitch = (-airflow * 0.06 - dive_pressure * 0.16 + brake_pressure * 0.18 + flutter)
+        .clamp(-0.24, 0.26);
+
+    GliderTraversalPose {
+        translation_offset: Vec3::new(
+            turn_pressure * 0.060,
+            airflow * 0.050 + brake_pressure * 0.035 + flutter * 0.50,
+            airflow * 0.080 + dive_pressure * 0.040 - brake_pressure * 0.100,
+        ),
+        rotation_offset: Quat::from_rotation_z(roll)
+            * Quat::from_rotation_y(yaw)
+            * Quat::from_rotation_x(pitch),
+    }
+}
+
 pub fn body_local_pose_velocity(world_velocity: Vec3, player_rotation: Quat) -> Vec3 {
     let forward = body_forward(player_rotation);
     let right = forward.cross(Vec3::Y).normalize_or_zero();
@@ -820,6 +888,92 @@ mod tests {
 
         assert!(fast.translation.y > slow.translation.y + 0.035);
         assert!(fast.translation.z > slow.translation.z);
+    }
+
+    #[test]
+    fn glider_traversal_pose_is_neutral_when_not_gliding() {
+        let pose = glider_traversal_pose(
+            PlayerPoseContext::new(
+                FlightMode::Airborne,
+                Vec3::new(0.0, -12.0, -36.0),
+                FlightInput {
+                    right: true,
+                    ..default()
+                },
+                40.0,
+            ),
+            0.0,
+        );
+
+        assert_eq!(pose.motion_m(), 0.0);
+        assert_eq!(pose.response_degrees(), 0.0);
+    }
+
+    #[test]
+    fn glider_traversal_pose_banks_with_lateral_turn_input() {
+        let right_pose = glider_traversal_pose(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -4.0, -36.0),
+                FlightInput {
+                    right: true,
+                    ..default()
+                },
+                40.0,
+            ),
+            0.0,
+        );
+        let left_pose = glider_traversal_pose(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -4.0, -36.0),
+                FlightInput {
+                    left: true,
+                    ..default()
+                },
+                40.0,
+            ),
+            0.0,
+        );
+
+        assert!(right_pose.response_degrees() > 8.0);
+        assert!(left_pose.response_degrees() > 8.0);
+        assert!((right_pose.rotation_offset * Vec3::Y).x > 0.09);
+        assert!((left_pose.rotation_offset * Vec3::Y).x < -0.09);
+    }
+
+    #[test]
+    fn glider_traversal_pose_distinguishes_dive_and_air_brake() {
+        let dive = glider_traversal_pose(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -22.0, -44.0),
+                FlightInput {
+                    dive: true,
+                    ..default()
+                },
+                50.0,
+            ),
+            0.0,
+        );
+        let air_brake = glider_traversal_pose(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -4.0, -34.0),
+                FlightInput {
+                    backward: true,
+                    ..default()
+                },
+                50.0,
+            ),
+            0.0,
+        );
+
+        assert!(dive.response_degrees() > 6.0);
+        assert!(air_brake.response_degrees() > 8.0);
+        assert!(dive.translation_offset.z > air_brake.translation_offset.z + 0.10);
+        assert!(dive.response_degrees() < 18.0);
+        assert!(air_brake.response_degrees() < 18.0);
     }
 
     #[test]

@@ -379,6 +379,12 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
     accumulator.max_pose_wing_airflow_strength = accumulator
         .max_pose_wing_airflow_strength
         .max(sample.pose_wing_airflow_strength);
+    accumulator.max_authored_glider_response_degrees = accumulator
+        .max_authored_glider_response_degrees
+        .max(sample.authored_glider_response_degrees);
+    accumulator.max_authored_glider_motion_m = accumulator
+        .max_authored_glider_motion_m
+        .max(sample.authored_glider_motion_m);
     accumulator.max_visible_pose_part_count = accumulator
         .max_visible_pose_part_count
         .max(sample.visible_pose_part_count);

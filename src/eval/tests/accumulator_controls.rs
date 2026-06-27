@@ -1536,6 +1536,49 @@ fn accumulator_gates_air_control_pose_readability() {
 }
 
 #[test]
+fn accumulator_gates_authored_glider_response() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut sample = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(24.0, -2.0, -18.0),
+        Vec2::new(1.0, 0.0),
+        24.0,
+        18.0,
+        4.0,
+    );
+    sample.authored_glider_response_degrees = 0.0;
+    sample.authored_glider_motion_m = 0.0;
+
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let check = named_check(&summary, "air_control_authored_glider_response");
+
+    assert_eq!(summary.metrics.max_authored_glider_response_degrees, 0.0);
+    assert_eq!(summary.metrics.max_authored_glider_motion_m, 0.0);
+    let summary_json: serde_json::Value =
+        serde_json::from_str(&summary.to_json()).expect("summary json parses");
+    assert_eq!(
+        summary_json["metrics"]["max_authored_glider_response_degrees"],
+        0.0
+    );
+    assert_eq!(summary_json["metrics"]["max_authored_glider_motion_m"], 0.0);
+    assert_eq!(check.value, 0.0);
+    assert!(!check.passed);
+}
+
+#[test]
 fn accumulator_gates_missing_air_control_turn_pose_samples() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
     let mut accumulator = EvalAccumulator::default();

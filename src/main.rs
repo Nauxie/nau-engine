@@ -46,7 +46,10 @@ pub(crate) use player_runtime::{
     keyboard_flight_input, movement_facing,
 };
 use player_runtime::{animate_character, eval_fly_player, fly_player, update_route_objectives};
-use player_runtime::{apply_authored_player_pose_nodes, reapply_authored_player_pose_nodes};
+use player_runtime::{
+    apply_authored_glider_pose, apply_authored_player_pose_nodes, reapply_authored_glider_pose,
+    reapply_authored_player_pose_nodes,
+};
 use power_up_runtime::*;
 use scene_setup_runtime::{INITIAL_SKY_CLEAR_COLOR, WORLD_RADIUS, setup};
 #[cfg(test)]
@@ -163,6 +166,7 @@ fn main() -> AppExit {
                 tag_authored_player_pose_nodes,
                 update_authored_player_animation,
                 apply_authored_player_pose_nodes,
+                apply_authored_glider_pose,
                 update_glider_airflow_trails,
                 follow_camera,
             )
@@ -171,7 +175,10 @@ fn main() -> AppExit {
         )
         .add_systems(
             PostUpdate,
-            reapply_authored_player_pose_nodes
+            (
+                reapply_authored_player_pose_nodes,
+                reapply_authored_glider_pose,
+            )
                 .after(AnimationSystems)
                 .before(TransformSystems::Propagate),
         )
@@ -213,6 +220,7 @@ fn main() -> AppExit {
                 Update,
                 (
                     apply_authored_player_pose_nodes,
+                    apply_authored_glider_pose,
                     collect_eval_frame_time,
                     collect_eval_metrics,
                     finish_eval_frame,

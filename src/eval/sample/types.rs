@@ -246,6 +246,8 @@ pub struct EvalSample {
     pub authored_player_desired_clip_label: &'static str,
     pub authored_player_count: usize,
     pub authored_transition_duration_ms: u64,
+    pub authored_glider_response_degrees: f32,
+    pub authored_glider_motion_m: f32,
     pub power_up_count: usize,
     pub visible_power_up_count: usize,
     pub collected_power_up_count: usize,

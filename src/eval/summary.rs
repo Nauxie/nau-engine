@@ -119,6 +119,8 @@ pub struct EvalMetricsSummary {
     pub landing_pose_temporal_stability_samples: u32,
     pub max_landing_pose_part_rotation_delta_degrees: f32,
     pub max_landing_pose_part_translation_delta_m: f32,
+    pub max_authored_glider_response_degrees: f32,
+    pub max_authored_glider_motion_m: f32,
     pub min_target_distance_m: f32,
     pub final_target_distance_m: f32,
     pub min_camera_pitch_degrees: f32,
@@ -537,7 +539,7 @@ impl EvalMetricsSummary {
         let json = json.replacen(&post_brake_key, &planar_brake_metrics, 1);
         let min_target_distance_key = format!("{indent}  \"min_target_distance_m\"");
         let pose_readability_metrics = format!(
-            "{indent}  \"max_pose_torso_pitch_degrees\": {},\n{indent}  \"max_pose_arm_spread_degrees\": {},\n{indent}  \"max_pose_leg_tuck_degrees\": {},\n{indent}  \"max_pose_lateral_lean_degrees\": {},\n{indent}  \"max_right_pose_lateral_lean_degrees\": {},\n{indent}  \"max_left_pose_lateral_lean_degrees\": {},\n{indent}  \"max_pose_landing_crouch_m\": {},\n{indent}  \"max_pose_landing_flare_degrees\": {},\n{indent}  \"max_pose_wing_airflow_strength\": {},\n{indent}  \"min_key_pose_readability_score\": {},\n{indent}  \"max_key_pose_readability_score\": {},\n{indent}  \"unreadable_key_pose_samples\": {},\n{indent}  \"key_pose_transition_grace_samples\": {},\n{indent}  \"max_visible_pose_part_count\": {},\n{indent}  \"pose_temporal_stability_samples\": {},\n{indent}  \"max_pose_part_rotation_delta_degrees\": {},\n{indent}  \"max_pose_part_translation_delta_m\": {},\n{indent}  \"landing_pose_temporal_stability_samples\": {},\n{indent}  \"max_landing_pose_part_rotation_delta_degrees\": {},\n{indent}  \"max_landing_pose_part_translation_delta_m\": {},\n{}",
+            "{indent}  \"max_pose_torso_pitch_degrees\": {},\n{indent}  \"max_pose_arm_spread_degrees\": {},\n{indent}  \"max_pose_leg_tuck_degrees\": {},\n{indent}  \"max_pose_lateral_lean_degrees\": {},\n{indent}  \"max_right_pose_lateral_lean_degrees\": {},\n{indent}  \"max_left_pose_lateral_lean_degrees\": {},\n{indent}  \"max_pose_landing_crouch_m\": {},\n{indent}  \"max_pose_landing_flare_degrees\": {},\n{indent}  \"max_pose_wing_airflow_strength\": {},\n{indent}  \"max_authored_glider_response_degrees\": {},\n{indent}  \"max_authored_glider_motion_m\": {},\n{indent}  \"min_key_pose_readability_score\": {},\n{indent}  \"max_key_pose_readability_score\": {},\n{indent}  \"unreadable_key_pose_samples\": {},\n{indent}  \"key_pose_transition_grace_samples\": {},\n{indent}  \"max_visible_pose_part_count\": {},\n{indent}  \"pose_temporal_stability_samples\": {},\n{indent}  \"max_pose_part_rotation_delta_degrees\": {},\n{indent}  \"max_pose_part_translation_delta_m\": {},\n{indent}  \"landing_pose_temporal_stability_samples\": {},\n{indent}  \"max_landing_pose_part_rotation_delta_degrees\": {},\n{indent}  \"max_landing_pose_part_translation_delta_m\": {},\n{}",
             json_number(self.max_pose_torso_pitch_degrees),
             json_number(self.max_pose_arm_spread_degrees),
             json_number(self.max_pose_leg_tuck_degrees),
@@ -547,6 +549,8 @@ impl EvalMetricsSummary {
             json_number(self.max_pose_landing_crouch_m),
             json_number(self.max_pose_landing_flare_degrees),
             json_number(self.max_pose_wing_airflow_strength),
+            json_number(self.max_authored_glider_response_degrees),
+            json_number(self.max_authored_glider_motion_m),
             json_number(self.min_key_pose_readability_score),
             json_number(self.max_key_pose_readability_score),
             self.unreadable_key_pose_samples,
