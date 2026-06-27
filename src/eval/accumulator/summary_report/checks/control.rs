@@ -19,7 +19,8 @@ const POSE_STATE_MIN_RUN_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_LAUNCH_SAMPLES: f32 = 3.0;
 const POSE_STATE_MIN_FALLING_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_GLIDING_POSE_SAMPLES: f32 = 18.0;
-const POSE_STATE_MIN_AIR_TURN_SAMPLES: f32 = 4.0;
+const POSE_STATE_MIN_AIR_TURN_SAMPLES: f32 = 6.0;
+const POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES: f32 = 3.0;
 const POSE_STATE_MIN_AIR_BRAKE_SAMPLES: f32 = 4.0;
 const POSE_STATE_MIN_DIVING_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
@@ -979,6 +980,18 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             "pose_state_air_turn_samples",
             acc.pose_air_turn_samples as f32,
             POSE_STATE_MIN_AIR_TURN_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_right_air_turn_samples",
+            acc.right_pose_air_turn_samples as f32,
+            POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_left_air_turn_samples",
+            acc.left_pose_air_turn_samples as f32,
+            POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES,
             "samples",
         ),
         EvalCheck::at_least(
