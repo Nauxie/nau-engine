@@ -115,7 +115,7 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
         });
     }
 
-    for (_, transform) in scene.updraft_guides.iter().step_by(7).take(14) {
+    for (_, _, transform) in scene.updraft_guides.iter().step_by(7).take(14) {
         samples.push(SemanticSceneSample {
             kind: "updraft_wind_visual",
             label: "updraft wind mote",
@@ -124,7 +124,7 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
             world_position: transform.translation,
         });
     }
-    for (ribbon, transform) in scene.updraft_ribbons.iter().take(6) {
+    for (_, ribbon, transform) in scene.updraft_ribbons.iter().take(6) {
         for (label, world_position) in UPDRAFT_RIBBON_SAMPLE_LABELS
             .into_iter()
             .zip(updraft_ribbon_scene_sample_positions(ribbon, transform))
@@ -138,7 +138,7 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
             });
         }
     }
-    for (_, transform) in scene.crosswind_guides.iter().step_by(8).take(12) {
+    for (_, _, transform) in scene.crosswind_guides.iter().step_by(8).take(12) {
         samples.push(SemanticSceneSample {
             kind: "crosswind_wind_visual",
             label: "crosswind wind mote",
@@ -147,7 +147,7 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
             world_position: transform.translation,
         });
     }
-    for (ribbon, transform) in scene.crosswind_ribbons.iter().take(8) {
+    for (_, ribbon, transform) in scene.crosswind_ribbons.iter().take(8) {
         for (label, world_position) in CROSSWIND_RIBBON_SAMPLE_LABELS
             .into_iter()
             .zip(crosswind_ribbon_scene_sample_positions(ribbon, transform))

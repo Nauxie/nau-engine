@@ -240,6 +240,27 @@ pub(super) fn build_metrics_summary(
         max_updraft_visual_flow_alignment: acc.max_updraft_visual_flow_alignment,
         max_crosswind_visual_flow_alignment: acc.max_crosswind_visual_flow_alignment,
         max_crosswind_ribbon_visual_flow_alignment: acc.max_crosswind_ribbon_visual_flow_alignment,
+        max_observed_updraft_flow_coherent_visual_count: acc
+            .max_observed_updraft_flow_coherent_visual_count,
+        max_observed_crosswind_flow_coherent_visual_count: acc
+            .max_observed_crosswind_flow_coherent_visual_count,
+        max_observed_crosswind_ribbon_flow_coherent_sample_count: acc
+            .max_observed_crosswind_ribbon_flow_coherent_sample_count,
+        max_observed_updraft_visual_frame_motion_m: acc.max_observed_updraft_visual_frame_motion_m,
+        max_observed_updraft_visual_frame_rise_m: acc.max_observed_updraft_visual_frame_rise_m,
+        max_observed_updraft_visual_frame_swirl_displacement_m: acc
+            .max_observed_updraft_visual_frame_swirl_displacement_m,
+        max_observed_crosswind_visual_frame_motion_m: acc
+            .max_observed_crosswind_visual_frame_motion_m,
+        max_observed_crosswind_guide_frame_flow_displacement_m: acc
+            .max_observed_crosswind_guide_frame_flow_displacement_m,
+        max_observed_crosswind_ribbon_frame_flow_displacement_m: acc
+            .max_observed_crosswind_ribbon_frame_flow_displacement_m,
+        max_observed_updraft_visual_flow_alignment: acc.max_observed_updraft_visual_flow_alignment,
+        max_observed_crosswind_visual_flow_alignment: acc
+            .max_observed_crosswind_visual_flow_alignment,
+        max_observed_crosswind_ribbon_visual_flow_alignment: acc
+            .max_observed_crosswind_ribbon_visual_flow_alignment,
         max_updraft_field_count: acc.max_updraft_field_count,
         max_updraft_fields_with_guides_count: acc.max_updraft_fields_with_guides_count,
         max_updraft_fields_with_ribbons_count: acc.max_updraft_fields_with_ribbons_count,

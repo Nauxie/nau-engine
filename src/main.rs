@@ -216,6 +216,7 @@ fn main() -> AppExit {
         app.insert_resource(eval_run)
             .insert_resource(EvalMovementBasis::default())
             .insert_resource(VisiblePoseTemporalState::default())
+            .insert_resource(ObservedWindVisualMotionState::default())
             .add_systems(Update, eval_fly_player.in_set(GameSet::Movement))
             .add_systems(
                 Update,

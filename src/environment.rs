@@ -630,7 +630,7 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 2] = [
     },
 ];
 
-pub const VISUAL_CROSSWIND_FIELD_COUNT: usize = 3;
+pub const VISUAL_CROSSWIND_FIELD_COUNT: usize = 4;
 
 pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
     [
@@ -651,6 +651,12 @@ pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
             Vec3::new(34.0, 30.0, 30.0),
             Vec3::new(0.7, 0.0, -0.4),
             8.0,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[1].center,
+            Vec3::new(44.0, 36.0, 34.0),
+            Vec3::new(-0.45, 0.0, -0.75),
+            9.5,
         ),
     ]
 }
@@ -1417,48 +1423,58 @@ mod tests {
     }
 
     #[test]
-    fn near_route_updraft_has_crosswind_overlap() {
-        let near_updraft = GAMEPLAY_LIFT_ROUTE[0];
+    fn gameplay_lift_route_has_layered_crosswind_overlap() {
         let fields = visual_wind_fields();
-        let overlapping_fields = fields
-            .iter()
-            .filter(|field| field.contains(near_updraft.center))
-            .collect::<Vec<_>>();
-        let crosswind_count = overlapping_fields
-            .iter()
-            .filter(|field| field.kind == WindFieldKind::Crosswind)
-            .count();
-        let updraft_count = overlapping_fields
-            .iter()
-            .filter(|field| field.kind == WindFieldKind::Updraft)
-            .count();
-        let flow = wind_flow_metrics_at(near_updraft.center, 0.75, fields.iter().copied());
+        for node in GAMEPLAY_LIFT_ROUTE {
+            let overlapping_fields = fields
+                .iter()
+                .filter(|field| field.contains(node.center))
+                .collect::<Vec<_>>();
+            let crosswind_count = overlapping_fields
+                .iter()
+                .filter(|field| field.kind == WindFieldKind::Crosswind)
+                .count();
+            let updraft_count = overlapping_fields
+                .iter()
+                .filter(|field| field.kind == WindFieldKind::Updraft)
+                .count();
+            let flow = wind_flow_metrics_at(node.center, 0.75, fields.iter().copied());
 
-        assert!(crosswind_count >= 1);
-        assert!(updraft_count >= 1);
-        assert!(flow.active_fields >= 2);
-        assert!(flow.max_speed_mps >= 9.0);
-        assert!(flow.max_variation > 0.0);
+            assert!(
+                crosswind_count >= 1,
+                "expected {} to overlap a readable crosswind layer",
+                node.name
+            );
+            assert!(updraft_count >= 1);
+            assert!(flow.active_fields >= 2);
+            assert!(flow.max_speed_mps >= 9.0);
+            assert!(flow.max_variation > 0.0);
+        }
     }
 
     #[test]
-    fn near_route_updraft_applies_layered_crosswind_and_swirl_force() {
-        let near_updraft = GAMEPLAY_LIFT_ROUTE[0];
-        let application = apply_wind_fields(
-            near_updraft.center,
-            Vec3::ZERO,
-            visual_wind_fields(),
-            0.75,
-            1.0 / 60.0,
-            true,
-        );
+    fn gameplay_lift_route_applies_layered_crosswind_and_swirl_force() {
+        for node in GAMEPLAY_LIFT_ROUTE {
+            let application = apply_wind_fields(
+                node.center,
+                Vec3::ZERO,
+                visual_wind_fields(),
+                0.75,
+                1.0 / 60.0,
+                true,
+            );
 
-        assert!(application.active_fields >= 2);
-        assert!(application.crosswind_fields >= 1);
-        assert!(application.updraft_swirl_fields >= 1);
-        assert!(application.applied_delta_mps() > 0.0);
-        assert!(application.crosswind_delta_mps() > 0.0);
-        assert!(application.updraft_swirl_delta_mps() > 0.0);
+            assert!(
+                application.active_fields >= 2,
+                "expected layered wind at {}",
+                node.name
+            );
+            assert!(application.crosswind_fields >= 1);
+            assert!(application.updraft_swirl_fields >= 1);
+            assert!(application.applied_delta_mps() > 0.0);
+            assert!(application.crosswind_delta_mps() > 0.0);
+            assert!(application.updraft_swirl_delta_mps() > 0.0);
+        }
     }
 
     #[test]
