@@ -3,7 +3,7 @@ use nau_engine::animation::MIN_KEY_POSE_READABILITY_SCORE;
 use nau_engine::eval::{
     CAMERA_STRAFE_STABILITY, EvalScenario, MIN_CROSSWIND_FORCE_DELTA_MPS,
     MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS, MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS,
-    MIN_WIND_FORCE_FLOW_ALIGNMENT, MIN_WIND_FORCE_VARIATION,
+    MIN_WIND_FORCE_FLOW_ALIGNMENT, MIN_WIND_FORCE_VARIATION, MIN_WIND_LOAD_LATERAL_LOAD,
 };
 
 use super::super::{
@@ -348,6 +348,18 @@ impl SimMetrics {
         self.max_updraft_swirl_force_aligned_delta_mps = self
             .max_updraft_swirl_force_aligned_delta_mps
             .max(sample.max_updraft_swirl_force_aligned_delta_mps);
+        if wind_load_response_sample(sample) {
+            self.wind_load_response_samples += 1;
+            self.max_wind_load_lateral_load = self
+                .max_wind_load_lateral_load
+                .max(sample.wind_lateral_load.abs());
+            self.max_wind_load_pose_lean_degrees = self
+                .max_wind_load_pose_lean_degrees
+                .max(sample.pose_lateral_lean_degrees);
+            self.max_wind_load_glider_response_degrees = self
+                .max_wind_load_glider_response_degrees
+                .max(sample.wind_load_glider_response_degrees);
+        }
         self.max_active_chunk_count = self.max_active_chunk_count.max(sample.active_chunk_count);
         self.max_active_island_count = self.max_active_island_count.max(sample.active_island_count);
         self.max_near_lod_islands = self.max_near_lod_islands.max(sample.near_lod_islands);
@@ -663,6 +675,14 @@ impl SimMetrics {
             self.max_air_brake_planar_speed_drop_mps = (start - minimum).max(0.0);
         }
     }
+}
+
+fn wind_load_response_sample(sample: &SimSample) -> bool {
+    matches!(sample.mode, "airborne" | "gliding")
+        && sample.movement_input_lateral_axis.abs() < 0.25
+        && sample.crosswind_force_fields > 0
+        && sample.max_crosswind_force_delta_mps >= MIN_CROSSWIND_FORCE_DELTA_MPS
+        && sample.wind_lateral_load.abs() >= MIN_WIND_LOAD_LATERAL_LOAD
 }
 
 fn body_yaw_intent_axis(sample: &SimSample) -> Option<Vec2> {

@@ -2,7 +2,8 @@ use super::{EvalAccumulator, EvalSample};
 use crate::eval::thresholds::{
     MIN_CROSSWIND_FORCE_DELTA_MPS, MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
     MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT,
-    MIN_WIND_FORCE_VARIATION, MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M,
+    MIN_WIND_FORCE_VARIATION, MIN_WIND_LOAD_LATERAL_LOAD,
+    MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M,
 };
 
 pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
@@ -123,6 +124,18 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_updraft_swirl_force_aligned_delta_mps = accumulator
         .max_updraft_swirl_force_aligned_delta_mps
         .max(sample.max_updraft_swirl_force_aligned_delta_mps);
+    if wind_load_response_sample(sample) {
+        accumulator.wind_load_response_samples += 1;
+        accumulator.max_wind_load_lateral_load = accumulator
+            .max_wind_load_lateral_load
+            .max(sample.wind_lateral_load.abs());
+        accumulator.max_wind_load_pose_lean_degrees = accumulator
+            .max_wind_load_pose_lean_degrees
+            .max(sample.pose_lateral_lean_degrees);
+        accumulator.max_wind_load_glider_response_degrees = accumulator
+            .max_wind_load_glider_response_degrees
+            .max(sample.authored_glider_response_degrees);
+    }
     accumulator.max_active_lift_fields = accumulator
         .max_active_lift_fields
         .max(sample.active_lift_fields);
@@ -354,6 +367,14 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
         .total_stream_despawned_visuals
         .max(sample.total_stream_despawned_visuals);
     accumulator.max_entity_count = accumulator.max_entity_count.max(sample.entity_count);
+}
+
+fn wind_load_response_sample(sample: &EvalSample) -> bool {
+    matches!(sample.mode, "airborne" | "gliding")
+        && sample.movement_input_lateral_axis.abs() < 0.25
+        && sample.crosswind_force_fields > 0
+        && sample.max_crosswind_force_delta_mps >= MIN_CROSSWIND_FORCE_DELTA_MPS
+        && sample.wind_lateral_load.abs() >= MIN_WIND_LOAD_LATERAL_LOAD
 }
 
 fn has_sustained_updraft_visual_flow(sample: &EvalSample) -> bool {

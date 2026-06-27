@@ -169,6 +169,7 @@ impl EvalSample {
             max_wind_force_aligned_delta_mps: 0.0,
             max_crosswind_force_aligned_delta_mps: 0.0,
             max_updraft_swirl_force_aligned_delta_mps: 0.0,
+            wind_lateral_load: 0.0,
             active_lift_fields,
             readable_lift_fields,
             lift_field_count,
@@ -483,6 +484,11 @@ impl EvalSample {
         self.max_crosswind_force_aligned_delta_mps = max_crosswind_flow_aligned_delta_mps.max(0.0);
         self.max_updraft_swirl_force_aligned_delta_mps =
             max_updraft_swirl_flow_aligned_delta_mps.max(0.0);
+        self
+    }
+
+    pub fn with_wind_lateral_load(mut self, wind_lateral_load: f32) -> Self {
+        self.wind_lateral_load = wind_lateral_load.clamp(-1.0, 1.0);
         self
     }
 

@@ -601,6 +601,7 @@ pub(crate) fn collect_eval_metrics(
             .wind_force_diagnostics
             .max_updraft_swirl_flow_aligned_delta_mps,
     )
+    .with_wind_lateral_load(scene.wind_force_diagnostics.wind_lateral_load)
     .with_world_collision_metrics(
         scene.collision_diagnostics.proxy_count,
         scene.collision_diagnostics.resolved_count,

@@ -10,6 +10,7 @@ pub struct AnimationState {
     pub phase: f32,
     pub last_input: FlightInput,
     pub height_above_ground_m: f32,
+    pub wind_lateral_load: f32,
     pub pose_intent: PlayerPoseIntent,
 }
 
@@ -19,6 +20,7 @@ impl Default for AnimationState {
             phase: 0.0,
             last_input: FlightInput::default(),
             height_above_ground_m: f32::INFINITY,
+            wind_lateral_load: 0.0,
             pose_intent: PlayerPoseIntent::GroundedIdle,
         }
     }
@@ -103,6 +105,7 @@ pub const GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES: f32 = 34.0;
 pub const GROUNDED_STRIDE_MIN_FOOT_TRAVEL_M: f32 = GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M;
 pub const GROUNDED_STRIDE_MIN_LEG_OPPOSITION_DEGREES: f32 =
     GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES;
+pub const WIND_LOAD_FULL_RESPONSE_DELTA_MPS: f32 = 0.10;
 pub const LANDING_MIN_FOOT_FORWARD_READABILITY_M: f32 = 0.32;
 const LANDING_ANTICIPATION_BASE_HEIGHT_M: f32 = 6.0;
 const LANDING_ANTICIPATION_MAX_HEIGHT_M: f32 = 36.0;
@@ -161,6 +164,7 @@ pub struct PlayerPoseContext {
     pub velocity: Vec3,
     pub input: FlightInput,
     pub height_above_ground_m: f32,
+    pub wind_lateral_load: f32,
     pub landing_recovery_remaining_secs: f32,
     pub landing_impact_speed_mps: f32,
 }
@@ -177,9 +181,15 @@ impl PlayerPoseContext {
             velocity,
             input,
             height_above_ground_m,
+            wind_lateral_load: 0.0,
             landing_recovery_remaining_secs: 0.0,
             landing_impact_speed_mps: 0.0,
         }
+    }
+
+    pub fn with_wind_lateral_load(mut self, wind_lateral_load: f32) -> Self {
+        self.wind_lateral_load = wind_lateral_load.clamp(-1.0, 1.0);
+        self
     }
 
     pub fn with_landing_recovery(mut self, remaining_secs: f32, impact_speed_mps: f32) -> Self {
@@ -224,6 +234,16 @@ pub fn wing_airflow_strength(mode: FlightMode, velocity: Vec3) -> f32 {
     let speed_pressure = ((horizontal_speed - 18.0) / 44.0).clamp(0.0, 1.0);
     let sink_pressure = (-velocity.y / 28.0).clamp(0.0, 1.0) * 0.18;
     (speed_pressure + sink_pressure).clamp(0.0, 1.0)
+}
+
+pub fn wind_lateral_load_from_delta(crosswind_delta: Vec3, player_rotation: Quat) -> f32 {
+    let forward = body_forward(player_rotation);
+    let right = forward.cross(Vec3::Y).normalize_or_zero();
+    if right.length_squared() <= f32::EPSILON {
+        return 0.0;
+    }
+
+    (crosswind_delta.dot(right) / WIND_LOAD_FULL_RESPONSE_DELTA_MPS).clamp(-1.0, 1.0)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -384,10 +404,16 @@ fn pose_turn_weight(context: PlayerPoseContext) -> f32 {
     };
     let velocity_weight = (context.velocity.x / divisor).clamp(-1.0, 1.0);
     let input_weight = context.input.planar_axis().x.clamp(-1.0, 1.0);
-    if airborne_pose_intent(intent) && input_weight.abs() > f32::EPSILON {
+    let base_weight = if airborne_pose_intent(intent) && input_weight.abs() > f32::EPSILON {
         (velocity_weight * 0.35 + input_weight * 0.65).clamp(-1.0, 1.0)
     } else {
         velocity_weight
+    };
+    if airborne_pose_intent(intent) {
+        let wind_weight = context.wind_lateral_load * (1.0 - input_weight.abs()).clamp(0.0, 1.0);
+        (base_weight + wind_weight * 0.55).clamp(-1.0, 1.0)
+    } else {
+        base_weight
     }
 }
 
@@ -2003,6 +2029,43 @@ mod tests {
         assert!(right.signed_lateral_lean_degrees < -10.0);
         assert!(left.signed_lateral_lean_degrees > 10.0);
         assert!((right.lateral_lean_degrees - left.lateral_lean_degrees).abs() < 0.1);
+    }
+
+    #[test]
+    fn neutral_gliding_pose_reacts_to_wind_lateral_load() {
+        let context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -2.0, -34.0),
+            FlightInput {
+                forward: true,
+                ..default()
+            },
+            40.0,
+        )
+        .with_wind_lateral_load(0.8);
+        let metrics = pose_readability_metrics(context, 0.0);
+        let glider = glider_traversal_pose(context, 0.0);
+
+        assert!(metrics.signed_lateral_lean_degrees < -5.0);
+        assert!(metrics.lateral_lean_degrees > 5.0);
+        assert!(glider.response_degrees() > 2.0);
+    }
+
+    #[test]
+    fn manual_lateral_input_dominates_wind_lateral_load() {
+        let context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -2.0, -34.0),
+            FlightInput {
+                right: true,
+                ..default()
+            },
+            40.0,
+        )
+        .with_wind_lateral_load(-1.0);
+        let metrics = pose_readability_metrics(context, 0.0);
+
+        assert!(metrics.signed_lateral_lean_degrees < -10.0);
     }
 
     #[test]

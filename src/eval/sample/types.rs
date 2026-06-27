@@ -139,6 +139,7 @@ pub struct EvalSample {
     pub max_wind_force_aligned_delta_mps: f32,
     pub max_crosswind_force_aligned_delta_mps: f32,
     pub max_updraft_swirl_force_aligned_delta_mps: f32,
+    pub wind_lateral_load: f32,
     pub active_lift_fields: usize,
     pub readable_lift_fields: usize,
     pub lift_field_count: usize,

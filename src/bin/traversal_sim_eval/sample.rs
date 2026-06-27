@@ -4,7 +4,10 @@ use super::{
 };
 use bevy::prelude::{Quat, Transform, Vec3};
 use nau_engine::{
-    animation::{PlayerPoseContext, body_local_pose_velocity, pose_readability_metrics},
+    animation::{
+        PlayerPoseContext, body_local_pose_velocity, glider_traversal_pose,
+        pose_readability_metrics, wind_lateral_load_from_delta,
+    },
     camera::{
         CameraOrbit, camera_distance, camera_pitch_degrees, camera_surface_clearance,
         camera_target_angle_degrees, camera_view_yaw_degrees,
@@ -152,6 +155,8 @@ pub(crate) struct SimSample {
     pub(crate) max_wind_force_aligned_delta_mps: f32,
     pub(crate) max_crosswind_force_aligned_delta_mps: f32,
     pub(crate) max_updraft_swirl_force_aligned_delta_mps: f32,
+    pub(crate) wind_lateral_load: f32,
+    pub(crate) wind_load_glider_response_degrees: f32,
     pub(crate) active_lift_fields: usize,
     pub(crate) readable_lift_fields: usize,
     pub(crate) lift_field_count: usize,
@@ -224,18 +229,23 @@ impl SimSample {
         let height_above_route_ground_m =
             (state.position.y - route.ground_at(state.position).floor_y).max(0.0);
         let time_secs = frame as f32 * scenario.fixed_dt;
+        let wind_lateral_load =
+            wind_lateral_load_from_delta(wind_force.crosswind_delta, player_rotation);
         let pose_context = PlayerPoseContext::new(
             state.controller.mode,
             body_local_pose_velocity(state.velocity, player_rotation),
             input,
             height_above_route_ground_m,
         )
+        .with_wind_lateral_load(wind_lateral_load)
         .with_landing_recovery(
             state.controller.landing_recovery_timer,
             state.controller.landing_impact_speed_mps,
         );
         let pose_intent_label = pose_context.intent().label();
         let pose_readability = pose_readability_metrics(pose_context, pose_phase);
+        let wind_load_glider_response_degrees =
+            glider_traversal_pose(pose_context, pose_phase).response_degrees();
         let streaming_lod = route.streaming_lod_stats(state.position);
         let wind_flow =
             wind_flow_metrics_at(state.position, time_secs, visual_fields.iter().copied());
@@ -306,6 +316,8 @@ impl SimSample {
             max_crosswind_force_aligned_delta_mps: wind_force.max_crosswind_flow_aligned_delta_mps,
             max_updraft_swirl_force_aligned_delta_mps: wind_force
                 .max_updraft_swirl_flow_aligned_delta_mps,
+            wind_lateral_load,
+            wind_load_glider_response_degrees,
             active_lift_fields: active_lift_fields_at(state.position, lift_fields.iter().copied()),
             readable_lift_fields: readable_lift_fields_at(
                 state.position,
@@ -400,6 +412,8 @@ impl SimSample {
             "max_wind_force_aligned_delta_mps": round4(self.max_wind_force_aligned_delta_mps),
             "max_crosswind_force_aligned_delta_mps": round4(self.max_crosswind_force_aligned_delta_mps),
             "max_updraft_swirl_force_aligned_delta_mps": round4(self.max_updraft_swirl_force_aligned_delta_mps),
+            "wind_lateral_load": round4(self.wind_lateral_load),
+            "wind_load_glider_response_degrees": round4(self.wind_load_glider_response_degrees),
             "active_lift_fields": self.active_lift_fields,
             "readable_lift_fields": self.readable_lift_fields,
             "lift_field_count": self.lift_field_count,
