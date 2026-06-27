@@ -497,9 +497,9 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_tree_canopy_detail_card_count >= 18);
     assert!(report.min_tree_canopy_vertical_to_horizontal_ratio >= 0.45);
     assert!(report.tree_canopy_radius_range_m >= 0.35);
-    assert!(report.min_weather_cloud_mesh_vertices >= 1458);
+    assert!(report.min_weather_cloud_mesh_vertices >= 1530);
     assert!(report.min_weather_cloud_lobe_count >= 9);
-    assert!(report.min_weather_cloud_wisp_card_count >= 27);
+    assert!(report.min_weather_cloud_wisp_card_count >= 36);
     assert!(report.min_weather_cloud_filament_ribbon_detail_count >= 27);
     assert!(report.min_weather_cloud_bank_depth_m >= 5.8);
     assert!(report.min_weather_cloud_bank_lobe_count >= 18);
@@ -824,6 +824,8 @@ fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
     let lobe_vertices = (5 + 1) * (10 + 1);
     let card_vertices = CLOUD_WISP_CARDS_PER_LOBE * DETAIL_CARD_VERTICES;
     let filament_vertices = CLOUD_FILAMENT_RIBBONS_PER_LOBE * CLOUD_FILAMENT_RIBBON_VERTICES;
+    let per_lobe_vertices = lobe_vertices + card_vertices + filament_vertices;
+    let mut lower_depth_wisp_count = 0usize;
     let min_x = positions
         .iter()
         .map(|position| position[0])
@@ -849,10 +851,7 @@ fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
         .map(|position| position[1])
         .fold(f32::NEG_INFINITY, f32::max);
 
-    assert_eq!(
-        mesh.count_vertices(),
-        CLOUD_BANK_LOBES * (lobe_vertices + card_vertices + filament_vertices)
-    );
+    assert_eq!(mesh.count_vertices(), CLOUD_BANK_LOBES * per_lobe_vertices);
     assert_eq!(
         cloud_filament_ribbon_detail_count(CLOUD_BANK_LOBES),
         CLOUD_BANK_LOBES * CLOUD_FILAMENT_RIBBONS_PER_LOBE
@@ -868,6 +867,28 @@ fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
     assert!(
         max_z - min_z > 0.8,
         "cloud clusters should have visible depth, not one flat blob"
+    );
+    for lobe in 0..CLOUD_BANK_LOBES {
+        let lobe_start = lobe * per_lobe_vertices + lobe_vertices;
+        let lower_depth_start = lobe_start + (CLOUD_WISP_CARDS_PER_LOBE - 1) * DETAIL_CARD_VERTICES;
+        let lower_depth_wisp =
+            &positions[lower_depth_start..lower_depth_start + DETAIL_CARD_VERTICES];
+        let upper_wisp = &positions[lobe_start..lower_depth_start];
+        let lower_avg_y = lower_depth_wisp
+            .iter()
+            .map(|position| position[1])
+            .sum::<f32>()
+            / lower_depth_wisp.len() as f32;
+        let upper_avg_y =
+            upper_wisp.iter().map(|position| position[1]).sum::<f32>() / upper_wisp.len() as f32;
+
+        if lower_avg_y + 0.05 < upper_avg_y {
+            lower_depth_wisp_count += 1;
+        }
+    }
+    assert!(
+        lower_depth_wisp_count > CLOUD_BANK_LOBES * 3 / 4,
+        "cloud clusters should add lower depth wisps under most lobes"
     );
 }
 

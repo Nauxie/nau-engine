@@ -173,7 +173,7 @@ fn air_control_metric_sample(
         6.2,
         9,
         18,
-        1458,
+        1530,
         27,
     )
     .with_visible_authored_world_fixture_count(MIN_VISIBLE_AUTHORED_WORLD_FIXTURE_COUNT)
