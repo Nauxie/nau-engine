@@ -46,6 +46,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Airborne `S` input brakes forward motion first, then allows limited backward drift instead of unrestricted reverse flight.
 - Visual `WindField` volumes are finite axis-aligned boxes for readable wind/updraft streams, gust/swirl diagnostics, and bounded horizontal airborne wind response.
 - Crosswind `WindField`s push airborne horizontal velocity toward their dynamic flow; updraft `WindField`s add only lateral swirl current.
+- The near route updraft intentionally overlaps an angled crosswind layer so `updraft_route` can prove simultaneous crosswind-plus-updraft swirl response rather than one isolated field at a time.
 - Gameplay `LiftField` updraft volumes are separate finite boxes that add vertical velocity while the player is airborne inside them.
 - Authored gameplay updraft route nodes must pair the visual `WindField` and gameplay `LiftField` at the same center and extents.
 - Lift fields clamp against their configured maximum upward speed instead of granting unbounded climb.
@@ -138,7 +139,7 @@ Current tests cover:
 - animation phase advances from delta time
 - idle breathing and glide/dive airflow micro-motion are phase-driven and covered by pose unit tests
 - wing visibility tracks glide mode
-- `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, unreadable lift samples, dynamic readable lift samples, wind-flow speed/variation/range, wind-guide depth/pulse/coherence, and wind-force response so active lift must overlap a paired visible updraft with changing flow, layered aligned visual airflow, and lateral current
+- `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, unreadable lift samples, dynamic readable lift samples, wind-flow speed/variation/range, wind-guide depth/pulse/coherence, layered dynamic flow fields, and simultaneous crosswind-plus-updraft swirl force response so active lift must overlap a paired visible updraft with changing flow, layered aligned visual airflow, and lateral current
 - `camera_mouse_control` eval tracks yaw/pitch offsets and route-spire obstruction adjustment without player movement in both app and simulation coverage
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
 - `camera_strafe_stability` eval tracks right/left lateral movement without camera auto-orbit, including view-yaw and world-yaw drift

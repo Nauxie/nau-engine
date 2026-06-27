@@ -48,6 +48,39 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
             accumulator.aligned_updraft_swirl_force_samples += 1;
         }
     }
+    if sample.active_wind_force_fields >= 2 {
+        accumulator.layered_wind_force_samples += 1;
+        accumulator.max_layered_wind_force_fields = accumulator
+            .max_layered_wind_force_fields
+            .max(sample.active_wind_force_fields);
+        accumulator.max_layered_wind_force_delta_mps = accumulator
+            .max_layered_wind_force_delta_mps
+            .max(sample.max_wind_force_delta_mps);
+        accumulator.max_layered_wind_force_flow_alignment = accumulator
+            .max_layered_wind_force_flow_alignment
+            .max(sample.max_wind_force_flow_alignment);
+        accumulator.max_layered_wind_force_aligned_delta_mps = accumulator
+            .max_layered_wind_force_aligned_delta_mps
+            .max(sample.max_wind_force_aligned_delta_mps);
+        if sample.max_wind_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
+            && sample.max_wind_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+        {
+            accumulator.aligned_layered_wind_force_samples += 1;
+        }
+    }
+    if sample.active_wind_force_fields >= 2
+        && sample.crosswind_force_fields > 0
+        && sample.updraft_swirl_force_fields > 0
+    {
+        accumulator.crosswind_updraft_overlap_samples += 1;
+        if sample.max_crosswind_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
+            && sample.max_crosswind_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+            && sample.max_updraft_swirl_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
+            && sample.max_updraft_swirl_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+        {
+            accumulator.aligned_crosswind_updraft_overlap_samples += 1;
+        }
+    }
     accumulator.max_active_wind_force_fields = accumulator
         .max_active_wind_force_fields
         .max(sample.active_wind_force_fields);

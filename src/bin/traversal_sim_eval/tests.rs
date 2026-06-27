@@ -308,6 +308,12 @@ fn updraft_simulation_uses_readable_lift() {
     assert!(result.metrics.max_wind_flow_speed_mps >= 8.0);
     assert!(result.metrics.max_wind_flow_variation >= 0.12);
     assert!(result.metrics.max_wind_flow_variation_range >= 0.03);
+    assert!(result.metrics.max_dynamic_wind_flow_fields >= 2);
+    assert!(result.metrics.layered_wind_force_samples >= 2);
+    assert!(result.metrics.aligned_layered_wind_force_samples >= 2);
+    assert!(result.metrics.crosswind_updraft_overlap_samples >= 2);
+    assert!(result.metrics.aligned_crosswind_updraft_overlap_samples >= 2);
+    assert!(result.metrics.max_layered_wind_force_fields >= 2);
     for check_name in [
         "dynamic_readable_lift_samples",
         "max_wind_flow_speed",
@@ -328,6 +334,15 @@ fn updraft_simulation_uses_readable_lift() {
         "updraft_swirl_force_delta",
         "updraft_swirl_force_flow_alignment",
         "updraft_swirl_force_aligned_delta",
+        "layered_dynamic_wind_flow_fields",
+        "layered_wind_force_samples",
+        "aligned_layered_wind_force_samples",
+        "crosswind_updraft_overlap_samples",
+        "aligned_crosswind_updraft_overlap_samples",
+        "layered_wind_force_fields",
+        "layered_wind_force_delta",
+        "layered_wind_force_flow_alignment",
+        "layered_wind_force_aligned_delta",
     ] {
         let check = result
             .checks
