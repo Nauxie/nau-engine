@@ -6,7 +6,10 @@ use super::{
 };
 use bevy::prelude::{Quat, Transform, Vec3};
 use nau_engine::{
-    animation::advance_phase,
+    animation::{
+        PlayerPoseContext, PlayerPoseIntent, advance_phase, body_local_pose_velocity,
+        resolve_pose_input, resolve_pose_intent, wind_lateral_load_from_delta,
+    },
     camera::{
         CameraControlState, CameraControlTuning, CameraObstruction, FollowCamera,
         FollowCameraState, apply_camera_input, avoid_camera_obstructions,
@@ -42,6 +45,9 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     let mut state = FlightState::new(START_POSITION, Vec3::ZERO, FlightController::default());
     let mut player_rotation = Quat::IDENTITY;
     let mut animation_phase = 0.0;
+    let mut pose_intent = PlayerPoseIntent::GroundedIdle;
+    let mut pose_intent_hold_remaining_secs = 0.0;
+    let mut pose_input = FlightInput::default();
     let initial_camera_direction = Vec3::NEG_Z;
     let mut camera_transform = Transform::from_translation(
         START_POSITION - initial_camera_direction * follow.distance + Vec3::Y * follow.height,
@@ -93,6 +99,39 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
         );
         animation_phase =
             advance_phase(animation_phase, state.velocity.length(), scenario.fixed_dt);
+        let height_above_route_ground_m =
+            (state.position.y - route.ground_at(state.position).floor_y).max(0.0);
+        let wind_lateral_load =
+            wind_lateral_load_from_delta(world_step.wind.crosswind_delta, player_rotation);
+        let pose_context = PlayerPoseContext::new(
+            state.controller.mode,
+            body_local_pose_velocity(state.velocity, player_rotation),
+            input,
+            height_above_route_ground_m,
+        )
+        .with_wind_lateral_load(wind_lateral_load)
+        .with_landing_recovery(
+            state.controller.landing_recovery_timer,
+            state.controller.landing_impact_speed_mps,
+        );
+        let previous_pose_intent = pose_intent;
+        let previous_pose_input = pose_input;
+        let raw_pose_intent = pose_context.intent();
+        let resolved = resolve_pose_intent(
+            previous_pose_intent,
+            pose_intent_hold_remaining_secs,
+            pose_context,
+            scenario.fixed_dt,
+        );
+        pose_intent = resolved.intent;
+        pose_intent_hold_remaining_secs = resolved.hold_remaining_secs;
+        pose_input = resolve_pose_input(
+            previous_pose_intent,
+            pose_intent,
+            raw_pose_intent,
+            previous_pose_input,
+            input,
+        );
 
         let camera_input = scripted_camera_input(scenario, frame);
         if camera_input.mouse_delta.length_squared() > 0.0 {
@@ -150,9 +189,11 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
                 state,
                 player_rotation,
                 animation_phase,
+                pose_intent,
                 camera_control.orbit,
                 camera_diagnostics,
                 input,
+                pose_input,
                 movement_facing,
                 &route,
                 &lift_fields,

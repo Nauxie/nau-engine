@@ -2336,7 +2336,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
             ("launching", FlightMode::Launching.label(), 3),
             ("falling", FlightMode::Airborne.label(), 8),
             ("gliding", FlightMode::Gliding.label(), 18),
-            ("air_turn", FlightMode::Gliding.label(), 4),
+            ("air_turn", FlightMode::Gliding.label(), 6),
             ("air_brake", FlightMode::Gliding.label(), 4),
             ("diving", FlightMode::Gliding.label(), 1),
             ("landing_anticipation", FlightMode::Gliding.label(), 1),
@@ -2382,7 +2382,9 @@ fn accumulator_gates_pose_state_coverage_samples() {
     assert_eq!(summary.metrics.authored_jog_clip_samples, 16);
     assert_eq!(summary.metrics.authored_fall_clip_samples, 8);
     assert_eq!(summary.metrics.pose_gliding_samples, 18);
-    assert_eq!(summary.metrics.pose_air_turn_samples, 4);
+    assert_eq!(summary.metrics.pose_air_turn_samples, 6);
+    assert_eq!(summary.metrics.right_pose_air_turn_samples, 3);
+    assert_eq!(summary.metrics.left_pose_air_turn_samples, 3);
     assert_eq!(summary.metrics.pose_air_brake_samples, 4);
     assert_eq!(summary.metrics.pose_diving_samples, 1);
     assert_eq!(summary.metrics.gliding_dive_samples, 1);
@@ -2408,6 +2410,8 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_authored_fall_clip_samples",
         "pose_state_gliding_samples",
         "pose_state_air_turn_samples",
+        "pose_state_right_air_turn_samples",
+        "pose_state_left_air_turn_samples",
         "pose_state_air_brake_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
@@ -2462,6 +2466,8 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
         "pose_state_authored_fall_clip_samples",
         "pose_state_gliding_samples",
         "pose_state_air_turn_samples",
+        "pose_state_right_air_turn_samples",
+        "pose_state_left_air_turn_samples",
         "pose_state_air_brake_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
@@ -2486,7 +2492,7 @@ fn accumulator_rejects_static_grounded_pose_state_stride() {
             ("launching", FlightMode::Launching.label(), 3),
             ("falling", FlightMode::Airborne.label(), 8),
             ("gliding", FlightMode::Gliding.label(), 18),
-            ("air_turn", FlightMode::Gliding.label(), 4),
+            ("air_turn", FlightMode::Gliding.label(), 6),
             ("air_brake", FlightMode::Gliding.label(), 4),
             ("diving", FlightMode::Gliding.label(), 1),
             ("landing_anticipation", FlightMode::Gliding.label(), 1),
@@ -2577,11 +2583,17 @@ fn observe_pose_state_samples_with_grounded_stride(
 ) {
     let mut frame = 10;
     for &(pose_intent_label, mode, count) in samples {
-        for _ in 0..count {
+        for sample_index in 0..count {
             let mut sample = content_metric_sample(scenario, frame, 20, 0, 96);
             sample.mode = mode;
             sample.pose_intent_label = pose_intent_label;
             sample.key_pose_readability_score = 1.0;
+            let movement_axis = pose_state_movement_axis_for_label(pose_intent_label, sample_index);
+            sample.movement_input_lateral_axis = movement_axis.x;
+            sample.movement_input_forward_axis = movement_axis.y;
+            sample.lateral_input_active = movement_axis.x.abs() > f32::EPSILON;
+            sample.body_roll_degrees = -movement_axis.x.signum() * 12.0;
+            sample.lateral_response_mps = movement_axis.x.abs() * 18.0;
             sample = sample.with_pose_readability_metrics(
                 pose_state_readability_metrics_for_label(pose_intent_label),
             );
@@ -2608,7 +2620,7 @@ fn observe_pose_state_samples_with_grounded_stride(
                 );
             }
             let authored_clip_label =
-                authored_clip_label_for_pose_intent_label(pose_intent_label, Vec2::ZERO);
+                authored_clip_label_for_pose_intent_label(pose_intent_label, movement_axis);
             sample = sample.with_authored_animation_metrics(
                 authored_clip_label,
                 authored_clip_label,
@@ -2618,6 +2630,16 @@ fn observe_pose_state_samples_with_grounded_stride(
             accumulator.observe(sample);
             frame += 5;
         }
+    }
+}
+
+fn pose_state_movement_axis_for_label(pose_intent_label: &str, sample_index: u32) -> Vec2 {
+    match pose_intent_label {
+        "air_turn" if sample_index.is_multiple_of(2) => Vec2::new(1.0, 0.0),
+        "air_turn" => Vec2::new(-1.0, 0.0),
+        "air_brake" => Vec2::new(0.0, -1.0),
+        "diving" => Vec2::new(0.0, 1.0),
+        _ => Vec2::ZERO,
     }
 }
 

@@ -381,7 +381,8 @@ pub(crate) fn collect_eval_metrics(
     .with_landing_recovery(
         controller.landing_recovery_timer,
         controller.landing_impact_speed_mps,
-    );
+    )
+    .with_resolved_intent(animation.pose_intent);
     let fallback_pose_readability = pose_readability_metrics(pose_context, animation.phase);
     let generated_pose_parts =
         visible_generated_pose_part_set(scene.generated_character_parts.iter());
