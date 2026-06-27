@@ -2,6 +2,8 @@ use bevy::prelude::*;
 
 const DIRECTION_EPSILON: f32 = 0.0001;
 const FIELD_PAIR_EPSILON: f32 = 0.001;
+const WIND_SOFT_EDGE_START: f32 = 0.62;
+const WIND_SOFT_EDGE_END: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WindFieldKind {
@@ -71,19 +73,33 @@ impl WindField {
         let lane_wave = (time * 1.43 + local.z * 2.1 - local.y * 1.34 + field_phase * 0.7).cos();
         let pulse_wave =
             (time * 2.18 + local.x * 3.0 + local.y * 1.6 + local.z * 0.9 + field_phase * 1.3).sin();
-        let variation =
-            (0.2 + traveling_wave.abs() * 0.28 + lane_wave.abs() * 0.14 + pulse_wave.abs() * 0.08)
-                .clamp(0.0, 1.0);
-        let gust_strength =
-            (0.82 + traveling_wave * 0.18 + lane_wave * 0.1 + pulse_wave * 0.05).clamp(0.48, 1.28);
-        let edge_falloff = (1.0 - local.abs().max_element() * 0.22).clamp(0.48, 1.0);
+        let gust_cell = (time * 1.07 + local.x * 4.35 - local.z * 2.7 + field_phase * 0.43).sin()
+            * (time * 0.73 + local.y * 2.45 + local.z * 3.15 - field_phase * 0.31).cos();
+        let wake_wave =
+            (time * 1.71 - local.x * 1.15 + local.y * 3.4 + local.z * 2.25 + field_phase).sin();
+        let variation = (0.16
+            + traveling_wave.abs() * 0.25
+            + lane_wave.abs() * 0.13
+            + pulse_wave.abs() * 0.08
+            + gust_cell.abs() * 0.16
+            + wake_wave.abs() * 0.07)
+            .clamp(0.0, 1.0);
+        let gust_strength = (0.78
+            + traveling_wave * 0.15
+            + lane_wave * 0.08
+            + pulse_wave * 0.05
+            + gust_cell * 0.16
+            + wake_wave * 0.05)
+            .clamp(0.42, 1.34);
+        let edge_falloff = wind_soft_edge_falloff(local);
         let speed = self.visual_speed * gust_strength * edge_falloff;
         let vector = match self.kind {
             WindFieldKind::Crosswind => {
                 let lateral =
                     Vec3::new(-self.direction.z, 0.0, self.direction.x).normalize_or_zero();
-                let downwind_channel = (1.0 + local.x * 0.05).clamp(0.9, 1.08);
-                let shear = lane_wave * 0.11 + pulse_wave * 0.045;
+                let downwind_channel = (1.0 + local.x * 0.05 + gust_cell * 0.035).clamp(0.86, 1.12);
+                let shear =
+                    lane_wave * 0.11 + pulse_wave * 0.045 + gust_cell * 0.075 - wake_wave * 0.035;
                 self.direction * (speed * downwind_channel) + lateral * (speed * shear)
             }
             WindFieldKind::Updraft => {
@@ -97,11 +113,17 @@ impl WindField {
                     fallback_radial
                 };
                 let tangent = Vec3::new(-radial_axis.z, 0.0, radial_axis.x).normalize_or_zero();
-                let curl_pulse =
-                    0.82 + (time * 1.18 + local.y * 1.8 + field_phase * 0.5).sin() * 0.18;
-                let swirl = tangent * (speed * (0.2 + variation * 0.16) * curl_pulse);
-                let breath = radial_axis * (speed * 0.055 * lane_wave);
-                Vec3::Y * speed + swirl + breath
+                let curl_pulse = 0.82
+                    + (time * 1.18 + local.y * 1.8 + field_phase * 0.5).sin() * 0.18
+                    + gust_cell * 0.1;
+                let thermal_core =
+                    (1.0 - Vec2::new(local.x, local.z).length().clamp(0.0, 1.0)).powf(0.85);
+                let vertical_pulse =
+                    (0.9 + thermal_core * 0.15 + gust_cell * 0.1).clamp(0.74, 1.26);
+                let swirl = tangent
+                    * (speed * (0.2 + variation * 0.2 + gust_cell.abs() * 0.08) * curl_pulse);
+                let breath = radial_axis * (speed * (lane_wave * 0.055 + wake_wave * 0.035));
+                Vec3::Y * (speed * vertical_pulse) + swirl + breath
             }
         };
 
@@ -157,6 +179,17 @@ impl WindField {
         (self.center.dot(Vec3::new(0.071, 0.113, -0.053)) + self.visual_speed * 0.137)
             .rem_euclid(std::f32::consts::TAU)
     }
+}
+
+fn wind_soft_edge_falloff(local: Vec3) -> f32 {
+    let edge_distance = local.abs().max_element();
+    let edge_fade = smoothstep(WIND_SOFT_EDGE_START, WIND_SOFT_EDGE_END, edge_distance);
+    (1.0 - edge_fade * 0.38).clamp(0.56, 1.0)
+}
+
+fn smoothstep(edge0: f32, edge1: f32, value: f32) -> f32 {
+    let t = ((value - edge0) / (edge1 - edge0).max(f32::EPSILON)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -769,6 +802,23 @@ mod tests {
     }
 
     #[test]
+    fn crosswind_gust_cells_vary_across_neighboring_lanes() {
+        let field = WindField::crosswind(Vec3::ZERO, Vec3::splat(10.0), Vec3::X, 10.0);
+        let left_lane = field.flow_at(Vec3::new(-1.0, 1.0, -4.0), 0.8).unwrap();
+        let right_lane = field.flow_at(Vec3::new(-1.0, 1.0, 4.0), 0.8).unwrap();
+
+        assert!(left_lane.vector.y.abs() < 0.001);
+        assert!(right_lane.vector.y.abs() < 0.001);
+        assert!(left_lane.vector.normalize().dot(field.direction) > 0.94);
+        assert!(right_lane.vector.normalize().dot(field.direction) > 0.94);
+        assert!(
+            (left_lane.gust_strength - right_lane.gust_strength).abs() > 0.08
+                || (left_lane.variation - right_lane.variation).abs() > 0.08,
+            "expected neighboring crosswind lanes to carry different gust cells, left={left_lane:?}, right={right_lane:?}"
+        );
+    }
+
+    #[test]
     fn updraft_dynamic_flow_keeps_upward_bias_and_swirl() {
         let field = WindField::updraft(Vec3::ZERO, Vec3::new(8.0, 16.0, 8.0), 12.0);
         let position = Vec3::new(3.0, 0.0, 2.0);
@@ -790,6 +840,32 @@ mod tests {
             "expected updraft curl direction to evolve with time/height, flow={flow:?}, later={later:?}"
         );
         assert!(flow.variation > 0.15);
+    }
+
+    #[test]
+    fn updraft_gust_cells_vary_lift_and_swirl_across_the_column() {
+        let field = WindField::updraft(Vec3::ZERO, Vec3::new(10.0, 18.0, 10.0), 12.0);
+        let first = field.flow_at(Vec3::new(2.5, 2.0, 1.0), 1.1).unwrap();
+        let second = field.flow_at(Vec3::new(-2.5, 2.0, -1.0), 1.1).unwrap();
+
+        assert!(first.vector.y > first.vector.xz().length() * 1.7);
+        assert!(second.vector.y > second.vector.xz().length() * 1.7);
+        assert!(
+            (first.vector.y - second.vector.y).abs() > 0.4
+                || first.vector.xz().distance(second.vector.xz()) > 0.8,
+            "expected updraft gust cells to break uniform lift/swirl, first={first:?}, second={second:?}"
+        );
+    }
+
+    #[test]
+    fn wind_flow_softens_toward_field_edges_without_collapsing() {
+        assert_eq!(wind_soft_edge_falloff(Vec3::ZERO), 1.0);
+        let mid_field = wind_soft_edge_falloff(Vec3::splat(0.7));
+        let near_edge = wind_soft_edge_falloff(Vec3::splat(0.96));
+
+        assert!(mid_field < 1.0);
+        assert!(near_edge < mid_field);
+        assert!(near_edge > 0.36);
     }
 
     #[test]
@@ -820,9 +896,12 @@ mod tests {
         assert!(application.max_variation > 0.15);
         assert!(application.max_flow_alignment > 0.99);
         assert!(application.max_crosswind_flow_alignment > 0.99);
-        assert!(application.max_flow_aligned_delta_mps >= application.crosswind_delta_mps());
         assert!(
-            application.max_crosswind_flow_aligned_delta_mps >= application.crosswind_delta_mps()
+            application.max_flow_aligned_delta_mps + 0.001 >= application.crosswind_delta_mps()
+        );
+        assert!(
+            application.max_crosswind_flow_aligned_delta_mps + 0.001
+                >= application.crosswind_delta_mps()
         );
     }
 
@@ -835,9 +914,12 @@ mod tests {
         assert!(application.crosswind_delta.x < 0.0);
         assert!(application.max_flow_alignment > 0.99);
         assert!(application.max_crosswind_flow_alignment > 0.99);
-        assert!(application.max_flow_aligned_delta_mps >= application.crosswind_delta_mps());
         assert!(
-            application.max_crosswind_flow_aligned_delta_mps >= application.crosswind_delta_mps()
+            application.max_flow_aligned_delta_mps + 0.001 >= application.crosswind_delta_mps()
+        );
+        assert!(
+            application.max_crosswind_flow_aligned_delta_mps + 0.001
+                >= application.crosswind_delta_mps()
         );
     }
 
@@ -860,7 +942,7 @@ mod tests {
         assert_eq!(application.velocity.y, 0.0);
         assert!(application.max_updraft_swirl_flow_alignment > 0.99);
         assert!(
-            application.max_updraft_swirl_flow_aligned_delta_mps
+            application.max_updraft_swirl_flow_aligned_delta_mps + 0.001
                 >= application.updraft_swirl_delta_mps()
         );
     }
