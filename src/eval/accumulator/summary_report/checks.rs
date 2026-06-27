@@ -8,7 +8,9 @@ mod control;
 use super::super::EvalAccumulator;
 use super::derived::SummaryDerivedMetrics;
 use crate::eval::{
-    scenarios::{EvalScenario, WORLD_COLLISION_CONTACT},
+    scenarios::{
+        EvalScenario, GROUND_TAXI_CONTROL, TERRAIN_RIM_COLLISION_CONTACT, WORLD_COLLISION_CONTACT,
+    },
     summary::EvalCheck,
     thresholds::*,
 };
@@ -224,6 +226,12 @@ pub(super) fn build_checks(
             MIN_WORLD_COLLISION_PROXY_COUNT as f32,
             "proxies",
         ),
+        EvalCheck::at_least(
+            "terrain_rim_collision_proxy_count",
+            acc.max_terrain_rim_collision_proxy_count as f32,
+            MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT as f32,
+            "proxies",
+        ),
     ];
 
     if scenario.name == WORLD_COLLISION_CONTACT {
@@ -241,6 +249,30 @@ pub(super) fn build_checks(
                 "m",
             ),
         ]);
+    }
+    if scenario.name == TERRAIN_RIM_COLLISION_CONTACT {
+        checks.extend([
+            EvalCheck::at_least(
+                "terrain_rim_collision_contact_samples",
+                acc.terrain_rim_collision_contact_samples as f32,
+                MIN_WORLD_COLLISION_CONTACT_SAMPLES as f32,
+                "samples",
+            ),
+            EvalCheck::at_least(
+                "terrain_rim_collision_push",
+                acc.max_terrain_rim_collision_push_m,
+                MIN_WORLD_COLLISION_CONTACT_PUSH_M,
+                "m",
+            ),
+        ]);
+    }
+    if scenario.name == GROUND_TAXI_CONTROL {
+        checks.push(EvalCheck::at_most(
+            "ground_taxi_terrain_rim_contact_samples",
+            acc.terrain_rim_collision_resolved_samples as f32,
+            0.0,
+            "samples",
+        ));
     }
 
     content::append_content_checks(&mut checks, acc, &thresholds);

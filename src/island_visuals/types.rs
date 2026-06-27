@@ -14,6 +14,7 @@ pub(super) enum IslandVisualLayer {
     Detail,
     Beacon,
     Impostor,
+    Collision,
 }
 
 impl IslandVisualLayer {
@@ -23,6 +24,7 @@ impl IslandVisualLayer {
             Self::Detail => activation.is_active() && band == LodBand::Near,
             Self::Beacon => true,
             Self::Impostor => !activation.is_active() || band != LodBand::Near,
+            Self::Collision => activation.is_active() && band == LodBand::Near,
         }
     }
 }
@@ -49,6 +51,7 @@ impl IslandLodVisualCounts {
             (IslandVisualLayer::Beacon, true) => {}
             (IslandVisualLayer::Impostor, false) => self.visible_impostor_count += 1,
             (IslandVisualLayer::Impostor, true) => self.hidden_impostor_count += 1,
+            (IslandVisualLayer::Collision, _) => {}
         }
     }
 
@@ -99,8 +102,8 @@ pub(super) struct IslandVisualEntry {
     pub(super) key: IslandVisualKey,
     pub(super) island: SkyIsland,
     pub(super) layer: IslandVisualLayer,
-    pub(super) mesh: Handle<Mesh>,
-    pub(super) material: Handle<StandardMaterial>,
+    pub(super) mesh: Option<Handle<Mesh>>,
+    pub(super) material: Option<Handle<StandardMaterial>>,
     pub(super) transform: Transform,
     pub(super) obstacle: Option<CameraObstacle>,
     pub(super) collision: Option<WorldCollisionProxy>,

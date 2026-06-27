@@ -548,7 +548,28 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
     let mut query = world.query::<&WorldCollisionProxy>();
     let proxies = query.iter(&world).copied().collect::<Vec<_>>();
 
+    let terrain_rim_proxy_count = proxies
+        .iter()
+        .filter(|proxy| proxy.kind == WorldCollisionProxyKind::TerrainRim)
+        .count();
+    let expected_spawned_terrain_rim_proxy_count = route
+        .islands()
+        .iter()
+        .filter(|island| {
+            island
+                .stream_activation(nau_engine::world::START_POSITION)
+                .is_active()
+                && island.lod_band(nau_engine::world::START_POSITION)
+                    == nau_engine::world::LodBand::Near
+        })
+        .count()
+        * nau_engine::world::TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND;
+
     assert!(proxies.len() >= 24);
+    assert_eq!(
+        terrain_rim_proxy_count,
+        expected_spawned_terrain_rim_proxy_count
+    );
     assert!(
         proxies
             .iter()

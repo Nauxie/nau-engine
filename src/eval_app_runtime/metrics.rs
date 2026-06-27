@@ -567,6 +567,11 @@ pub(crate) fn collect_eval_metrics(
         scene.collision_diagnostics.resolved_count,
         scene.collision_diagnostics.max_push_m,
     )
+    .with_terrain_rim_collision_metrics(
+        scene.collision_diagnostics.terrain_rim_proxy_count,
+        scene.collision_diagnostics.terrain_rim_resolved_count,
+        scene.collision_diagnostics.max_terrain_rim_push_m,
+    )
     .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
         torso_pitch_degrees: pose_readability.torso_pitch_degrees,
         arm_spread_degrees: pose_readability.arm_spread_degrees,

@@ -8,7 +8,9 @@ use crate::generated_content::{
     mesh_terrain_material_channel_count, mesh_terrain_material_region_count,
     mesh_terrain_material_weight_band_count, mesh_vertex_color_band_count, mesh_y_range,
 };
-use crate::world_collision_runtime::{WorldCollisionProxy, WorldCollisionProxyKind};
+use crate::world_collision_runtime::{
+    WorldCollisionProxy, WorldCollisionProxyKind, terrain_rim_collision_proxies,
+};
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
 use nau_engine::world::{SkyIsland, is_recovery_branch_island};
@@ -30,8 +32,8 @@ pub(super) fn queue_island_visual(
         visual_index,
         island,
         layer,
-        mesh,
-        material,
+        Some(mesh),
+        Some(material),
         transform,
         obstacle,
         None,
@@ -58,8 +60,8 @@ pub(super) fn queue_collidable_island_visual(
         visual_index,
         island,
         layer,
-        mesh,
-        material,
+        Some(mesh),
+        Some(material),
         transform,
         obstacle,
         Some(collision),
@@ -86,8 +88,8 @@ pub(super) fn queue_wind_island_visual(
         visual_index,
         island,
         layer,
-        mesh,
-        material,
+        Some(mesh),
+        Some(material),
         transform,
         obstacle,
         None,
@@ -115,8 +117,8 @@ pub(super) fn queue_collidable_wind_island_visual(
         visual_index,
         island,
         layer,
-        mesh,
-        material,
+        Some(mesh),
+        Some(material),
         transform,
         obstacle,
         Some(collision),
@@ -131,8 +133,8 @@ fn queue_island_visual_with_motion(
     visual_index: &mut usize,
     island: SkyIsland,
     layer: IslandVisualLayer,
-    mesh: Handle<Mesh>,
-    material: Handle<StandardMaterial>,
+    mesh: Option<Handle<Mesh>>,
+    material: Option<Handle<StandardMaterial>>,
     transform: Transform,
     obstacle: Option<CameraObstacle>,
     collision: Option<WorldCollisionProxy>,
@@ -158,6 +160,28 @@ fn queue_island_visual_with_motion(
         wind_motion,
         name,
     });
+}
+
+fn queue_collision_only_island_proxy(
+    entries: &mut Vec<IslandVisualEntry>,
+    visual_index: &mut usize,
+    island: SkyIsland,
+    collision: WorldCollisionProxy,
+    name: &'static str,
+) {
+    queue_island_visual_with_motion(
+        entries,
+        visual_index,
+        island,
+        IslandVisualLayer::Collision,
+        None,
+        None,
+        Transform::from_translation(collision.center),
+        None,
+        Some(collision),
+        None,
+        name,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -266,6 +290,15 @@ pub(crate) fn queue_sky_island(
         ISLAND_BODY_SEGMENTS,
         cliff_vertex_count + underside_vertex_count,
     );
+    for collision in terrain_rim_collision_proxies(island) {
+        queue_collision_only_island_proxy(
+            entries,
+            &mut visual_index,
+            island,
+            collision,
+            "island terrain rim collision",
+        );
+    }
 
     let ridge_width = island.half_extents.x * 0.32;
     let ridge_surface = island_visual_surface_position(island, Vec2::new(0.28, -0.24));

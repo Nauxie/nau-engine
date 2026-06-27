@@ -198,6 +198,29 @@ impl EvalSample {
             wind_force_key
         );
         let json = json.replacen(wind_force_key, &wind_force_metrics, 1);
+        let collision_resolved_key = "\"world_collision_resolved_count\"";
+        let terrain_rim_collision_metrics = format!(
+            "\"terrain_rim_collision_proxy_count\":{},{}",
+            self.terrain_rim_collision_proxy_count, collision_resolved_key
+        );
+        let json = json.replacen(collision_resolved_key, &terrain_rim_collision_metrics, 1);
+        let collision_push_key = "\"max_world_collision_push_m\"";
+        let terrain_rim_collision_push_metrics = format!(
+            "\"terrain_rim_collision_resolved_count\":{},{}",
+            self.terrain_rim_collision_resolved_count, collision_push_key
+        );
+        let json = json.replacen(collision_push_key, &terrain_rim_collision_push_metrics, 1);
+        let terrain_surface_key = "\"island_terrain_surface_count\"";
+        let terrain_rim_collision_max_push_metrics = format!(
+            "\"max_terrain_rim_collision_push_m\":{},{}",
+            json_number(self.max_terrain_rim_collision_push_m),
+            terrain_surface_key
+        );
+        let json = json.replacen(
+            terrain_surface_key,
+            &terrain_rim_collision_max_push_metrics,
+            1,
+        );
         let wind_visual_key = "\"world_collision_proxy_count\"";
         let wind_visual_metrics = format!(
             "\"updraft_guide_visual_count\":{},\"updraft_ribbon_visual_count\":{},\"crosswind_guide_visual_count\":{},\"crosswind_ribbon_visual_count\":{},\"max_updraft_visual_motion_m\":{},\"max_updraft_visual_rise_m\":{},\"max_updraft_visual_swirl_displacement_m\":{},\"max_crosswind_visual_motion_m\":{},\"max_crosswind_guide_flow_displacement_m\":{},\"max_crosswind_ribbon_flow_displacement_m\":{},{}",

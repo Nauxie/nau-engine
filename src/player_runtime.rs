@@ -9,7 +9,8 @@ use crate::camera_runtime::{CameraDiagnostics, CameraFollowFilter};
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
 use crate::power_up_runtime::{PowerUpCollectionState, collect_aerial_power_ups};
 use crate::world_collision_runtime::{
-    WorldCollisionDiagnostics, WorldCollisionProxy, resolve_world_collisions,
+    WorldCollisionDiagnostics, WorldCollisionProxy, WorldCollisionProxyKind,
+    resolve_world_collisions,
 };
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartPose, PartVisibility, PlayerPoseContext,
@@ -426,8 +427,15 @@ fn step_player(
         wind.for_airborne_diagnostics(next.controller.mode != FlightMode::Grounded),
     );
     context.collision_diagnostics.proxy_count = context.collision_proxies.len();
+    context.collision_diagnostics.terrain_rim_proxy_count = context
+        .collision_proxies
+        .iter()
+        .filter(|proxy| proxy.kind == WorldCollisionProxyKind::TerrainRim)
+        .count();
     context.collision_diagnostics.resolved_count = collision.hit_count;
+    context.collision_diagnostics.terrain_rim_resolved_count = collision.terrain_rim_hit_count;
     context.collision_diagnostics.max_push_m = collision.max_push_m;
+    context.collision_diagnostics.max_terrain_rim_push_m = collision.max_terrain_rim_push_m;
 
     player.transform.translation = next.position;
     player.velocity.0 = next.velocity;
@@ -901,6 +909,9 @@ mod tests {
 
         assert_eq!(collision_diagnostics.proxy_count, 1);
         assert_eq!(collision_diagnostics.resolved_count, 1);
+        assert_eq!(collision_diagnostics.terrain_rim_proxy_count, 0);
+        assert_eq!(collision_diagnostics.terrain_rim_resolved_count, 0);
+        assert_eq!(collision_diagnostics.max_terrain_rim_push_m, 0.0);
         assert!(collision_diagnostics.max_push_m > 0.0);
         assert!(transform.translation.x >= 0.25 + 0.42);
         assert_eq!(velocity.0.x, 0.0);

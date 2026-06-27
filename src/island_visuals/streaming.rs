@@ -34,13 +34,10 @@ pub(crate) fn spawn_initial_island_visuals(
 }
 
 fn spawn_island_visual_entry(commands: &mut Commands, entry: &IslandVisualEntry) -> Entity {
-    let mut entity = commands.spawn((
-        Mesh3d(entry.mesh.clone()),
-        MeshMaterial3d(entry.material.clone()),
-        entry.transform,
-        IslandLodVisual,
-        Name::new(entry.name),
-    ));
+    let mut entity = commands.spawn((entry.transform, IslandLodVisual, Name::new(entry.name)));
+    if let (Some(mesh), Some(material)) = (&entry.mesh, &entry.material) {
+        entity.insert((Mesh3d(mesh.clone()), MeshMaterial3d(material.clone())));
+    }
     if let Some(obstacle) = entry.obstacle {
         entity.insert(obstacle);
     }
