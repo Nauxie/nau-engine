@@ -651,6 +651,10 @@ fn air_control_simulation_measures_backward_diagonal_response() {
     assert!(result.metrics.max_air_brake_planar_speed_drop_mps >= 12.0);
     assert!(result.metrics.pose_air_turn_samples > 0);
     assert!(result.metrics.pose_air_brake_samples > 0);
+    assert!(result.metrics.right_pose_air_brake_samples > 0);
+    assert!(result.metrics.left_pose_air_brake_samples > 0);
+    assert!(result.metrics.backward_right_pose_air_brake_samples > 0);
+    assert!(result.metrics.backward_left_pose_air_brake_samples > 0);
     assert!(result.metrics.pose_diving_samples > 0);
     assert!(result.metrics.gliding_dive_samples > 0);
 }
@@ -686,6 +690,10 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_right_pose_air_turn_samples",
         "air_control_left_pose_air_turn_samples",
         "air_control_pose_air_brake_samples",
+        "air_control_right_pose_air_brake_samples",
+        "air_control_left_pose_air_brake_samples",
+        "air_control_backward_right_pose_air_brake_samples",
+        "air_control_backward_left_pose_air_brake_samples",
         "air_control_pose_diving_samples",
         "air_control_gliding_dive_samples",
         "air_control_lateral_body_travel_heading_samples",
@@ -722,6 +730,10 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
     assert!(summary.contains("\"pose_air_turn_samples\""));
     assert!(summary.contains("\"right_pose_air_turn_samples\""));
     assert!(summary.contains("\"left_pose_air_turn_samples\""));
+    assert!(summary.contains("\"right_pose_air_brake_samples\""));
+    assert!(summary.contains("\"left_pose_air_brake_samples\""));
+    assert!(summary.contains("\"backward_right_pose_air_brake_samples\""));
+    assert!(summary.contains("\"backward_left_pose_air_brake_samples\""));
     assert!(summary.contains("\"lateral_body_travel_heading_sample_count\""));
     assert!(summary.contains("\"right_lateral_body_travel_heading_sample_count\""));
     assert!(summary.contains("\"left_lateral_body_travel_heading_sample_count\""));
@@ -755,6 +767,10 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "backward_left_desired_travel_heading_sample_count",
         "right_pose_air_turn_samples",
         "left_pose_air_turn_samples",
+        "right_pose_air_brake_samples",
+        "left_pose_air_brake_samples",
+        "backward_right_pose_air_brake_samples",
+        "backward_left_pose_air_brake_samples",
         "gliding_dive_samples",
     ] {
         assert!(
@@ -1086,6 +1102,33 @@ fn sim_metrics_track_signed_pose_lateral_lean_by_lateral_input_direction() {
 }
 
 #[test]
+fn sim_metrics_count_readable_directional_air_brake_pose_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    let mut right_sample = sim_roll_sample(&route, scenario, 30, FlightMode::Gliding, 0.0, 1.0);
+    right_sample.pose_intent_label = "air_brake";
+    right_sample.movement_input_forward_axis = -1.0;
+    metrics.observe(&right_sample, scenario);
+
+    let mut left_sample = sim_roll_sample(&route, scenario, 60, FlightMode::Gliding, 0.0, -1.0);
+    left_sample.pose_intent_label = "air_brake";
+    left_sample.movement_input_forward_axis = -1.0;
+    metrics.observe(&left_sample, scenario);
+
+    let mut forward_right_sample = right_sample.clone();
+    forward_right_sample.movement_input_forward_axis = 1.0;
+    metrics.observe(&forward_right_sample, scenario);
+
+    assert_eq!(metrics.pose_air_brake_samples, 3);
+    assert_eq!(metrics.right_pose_air_brake_samples, 2);
+    assert_eq!(metrics.left_pose_air_brake_samples, 1);
+    assert_eq!(metrics.backward_right_pose_air_brake_samples, 1);
+    assert_eq!(metrics.backward_left_pose_air_brake_samples, 1);
+}
+
+#[test]
 fn sim_metrics_count_deployed_glider_dive_samples() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
     let route = SkyRoute::default();
@@ -1137,6 +1180,44 @@ fn sim_metrics_fail_one_sided_air_turn_pose_samples() {
 }
 
 #[test]
+fn sim_metrics_fail_one_sided_air_brake_pose_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    for frame in [240, 270, 300, 330] {
+        let mut sample = sim_roll_sample(&route, scenario, frame, FlightMode::Gliding, 0.0, 1.0);
+        sample.pose_intent_label = "air_brake";
+        sample.movement_input_forward_axis = -1.0;
+        metrics.observe(&sample, scenario);
+    }
+
+    assert_eq!(metrics.pose_air_brake_samples, 4);
+    assert_eq!(metrics.right_pose_air_brake_samples, 4);
+    assert_eq!(metrics.left_pose_air_brake_samples, 0);
+    assert_eq!(metrics.backward_right_pose_air_brake_samples, 4);
+    assert_eq!(metrics.backward_left_pose_air_brake_samples, 0);
+
+    let checks = metrics.checks(scenario);
+    let aggregate = checks
+        .iter()
+        .find(|check| check.name == "air_control_pose_air_brake_samples")
+        .expect("aggregate air-brake pose check");
+    assert!(aggregate.passed);
+    for check_name in [
+        "air_control_left_pose_air_brake_samples",
+        "air_control_backward_left_pose_air_brake_samples",
+    ] {
+        let check = checks
+            .iter()
+            .find(|check| check.name == check_name)
+            .unwrap_or_else(|| panic!("missing sim check {check_name}"));
+        assert!(!check.passed, "{check_name} coverage should fail");
+        assert_eq!(check.value, 0.0);
+    }
+}
+
+#[test]
 fn sim_metrics_reject_unreadable_air_turn_pose_samples() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
     let route = SkyRoute::default();
@@ -1147,6 +1228,24 @@ fn sim_metrics_reject_unreadable_air_turn_pose_samples() {
     metrics.observe(&sample, scenario);
 
     assert_eq!(metrics.pose_air_turn_samples, 0);
+    assert_eq!(metrics.unreadable_key_pose_samples, 1);
+}
+
+#[test]
+fn sim_metrics_reject_unreadable_air_brake_pose_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    let mut sample = sim_roll_sample(&route, scenario, 30, FlightMode::Gliding, 0.0, 1.0);
+    sample.pose_intent_label = "air_brake";
+    sample.movement_input_forward_axis = -1.0;
+    sample.key_pose_readability_score = 0.25;
+
+    metrics.observe(&sample, scenario);
+
+    assert_eq!(metrics.pose_air_brake_samples, 0);
+    assert_eq!(metrics.right_pose_air_brake_samples, 0);
+    assert_eq!(metrics.backward_right_pose_air_brake_samples, 0);
     assert_eq!(metrics.unreadable_key_pose_samples, 1);
 }
 

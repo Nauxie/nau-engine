@@ -534,7 +534,31 @@ fn append_air_control_checks(
         EvalCheck::at_least(
             "air_control_pose_air_brake_samples",
             acc.pose_air_brake_samples as f32,
-            4.0,
+            AIR_CONTROL_MIN_POSE_AIR_BRAKE_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_right_pose_air_brake_samples",
+            acc.right_pose_air_brake_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_POSE_AIR_BRAKE_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_left_pose_air_brake_samples",
+            acc.left_pose_air_brake_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_POSE_AIR_BRAKE_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_backward_right_pose_air_brake_samples",
+            acc.backward_right_pose_air_brake_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_POSE_AIR_BRAKE_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_backward_left_pose_air_brake_samples",
+            acc.backward_left_pose_air_brake_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_POSE_AIR_BRAKE_SAMPLES as f32,
             "samples",
         ),
         EvalCheck::at_least(

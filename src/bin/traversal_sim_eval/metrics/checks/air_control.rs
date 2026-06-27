@@ -438,6 +438,30 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             "samples",
         ),
         SimCheck::at_least(
+            "air_control_right_pose_air_brake_samples",
+            metrics.right_pose_air_brake_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_left_pose_air_brake_samples",
+            metrics.left_pose_air_brake_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_backward_right_pose_air_brake_samples",
+            metrics.backward_right_pose_air_brake_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_backward_left_pose_air_brake_samples",
+            metrics.backward_left_pose_air_brake_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
             "air_control_pose_diving_samples",
             metrics.pose_diving_samples as f32,
             1.0,

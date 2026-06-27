@@ -2095,6 +2095,68 @@ fn accumulator_counts_bidirectional_air_control_turn_pose_samples() {
 }
 
 #[test]
+fn accumulator_counts_bidirectional_air_control_air_brake_pose_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for (frame, input, velocity) in [
+        (0, Vec2::new(1.0, -1.0), Vec3::new(16.0, -2.0, -18.0)),
+        (30, Vec2::new(1.0, -1.0), Vec3::new(16.0, -2.0, -18.0)),
+        (60, Vec2::new(1.0, -1.0), Vec3::new(16.0, -2.0, -18.0)),
+        (90, Vec2::new(1.0, -1.0), Vec3::new(16.0, -2.0, -18.0)),
+        (120, Vec2::new(-1.0, -1.0), Vec3::new(-16.0, -2.0, -18.0)),
+        (150, Vec2::new(-1.0, -1.0), Vec3::new(-16.0, -2.0, -18.0)),
+        (180, Vec2::new(-1.0, -1.0), Vec3::new(-16.0, -2.0, -18.0)),
+        (210, Vec2::new(-1.0, -1.0), Vec3::new(-16.0, -2.0, -18.0)),
+    ] {
+        accumulator.observe(air_control_metric_sample(
+            scenario, frame, velocity, input, 16.0, 18.0, 4.0,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let summary_json: serde_json::Value =
+        serde_json::from_str(&summary.to_json()).expect("summary json parses");
+
+    assert_eq!(summary.metrics.pose_air_brake_samples, 8);
+    assert_eq!(summary.metrics.right_pose_air_brake_samples, 4);
+    assert_eq!(summary.metrics.left_pose_air_brake_samples, 4);
+    assert_eq!(summary.metrics.backward_right_pose_air_brake_samples, 4);
+    assert_eq!(summary.metrics.backward_left_pose_air_brake_samples, 4);
+    assert!(named_check(&summary, "air_control_pose_air_brake_samples").passed);
+    assert!(named_check(&summary, "air_control_right_pose_air_brake_samples").passed);
+    assert!(named_check(&summary, "air_control_left_pose_air_brake_samples").passed);
+    assert!(
+        named_check(
+            &summary,
+            "air_control_backward_right_pose_air_brake_samples"
+        )
+        .passed
+    );
+    assert!(named_check(&summary, "air_control_backward_left_pose_air_brake_samples").passed);
+    assert_eq!(summary_json["metrics"]["pose_air_brake_samples"], 8);
+    assert_eq!(summary_json["metrics"]["right_pose_air_brake_samples"], 4);
+    assert_eq!(summary_json["metrics"]["left_pose_air_brake_samples"], 4);
+    assert_eq!(
+        summary_json["metrics"]["backward_right_pose_air_brake_samples"],
+        4
+    );
+    assert_eq!(
+        summary_json["metrics"]["backward_left_pose_air_brake_samples"],
+        4
+    );
+}
+
+#[test]
 fn accumulator_rejects_unreadable_air_control_turn_pose_samples() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
     let mut accumulator = EvalAccumulator::default();
@@ -2143,6 +2205,69 @@ fn accumulator_rejects_unreadable_air_control_turn_pose_samples() {
     assert_eq!(air_turn_check.value, 0.0);
     assert_eq!(unreadable_check.value, 1.0);
     assert!(!air_turn_check.passed);
+    assert!(!unreadable_check.passed);
+}
+
+#[test]
+fn accumulator_rejects_unreadable_air_control_air_brake_pose_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            90,
+            Vec3::new(16.0, -2.0, -18.0),
+            Vec2::new(1.0, -1.0),
+            16.0,
+            18.0,
+            4.0,
+        )
+        .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+            torso_pitch_degrees: 4.0,
+            arm_spread_degrees: 12.0,
+            leg_tuck_degrees: 2.0,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
+            landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
+            wing_airflow_strength: 0.0,
+            key_pose_readability_score: 0.25,
+        }),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let air_brake_check = named_check(&summary, "air_control_pose_air_brake_samples");
+    let right_air_brake_check = named_check(&summary, "air_control_right_pose_air_brake_samples");
+    let backward_right_air_brake_check = named_check(
+        &summary,
+        "air_control_backward_right_pose_air_brake_samples",
+    );
+    let unreadable_check = named_check(&summary, "air_control_unreadable_key_pose_samples");
+
+    assert_eq!(summary.metrics.pose_air_brake_samples, 0);
+    assert_eq!(summary.metrics.right_pose_air_brake_samples, 0);
+    assert_eq!(summary.metrics.backward_right_pose_air_brake_samples, 0);
+    assert_eq!(summary.metrics.unreadable_key_pose_samples, 1);
+    assert_eq!(air_brake_check.value, 0.0);
+    assert_eq!(right_air_brake_check.value, 0.0);
+    assert_eq!(backward_right_air_brake_check.value, 0.0);
+    assert_eq!(unreadable_check.value, 1.0);
+    assert!(!air_brake_check.passed);
+    assert!(!right_air_brake_check.passed);
+    assert!(!backward_right_air_brake_check.passed);
     assert!(!unreadable_check.passed);
 }
 

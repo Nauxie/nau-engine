@@ -464,7 +464,20 @@ impl SimMetrics {
                 }
             }
             "diving" => self.pose_diving_samples += 1,
-            "air_brake" => self.pose_air_brake_samples += 1,
+            "air_brake" => {
+                self.pose_air_brake_samples += 1;
+                if sample.movement_input_lateral_axis > 0.25 {
+                    self.right_pose_air_brake_samples += 1;
+                    if sample.movement_input_forward_axis < -0.25 {
+                        self.backward_right_pose_air_brake_samples += 1;
+                    }
+                } else if sample.movement_input_lateral_axis < -0.25 {
+                    self.left_pose_air_brake_samples += 1;
+                    if sample.movement_input_forward_axis < -0.25 {
+                        self.backward_left_pose_air_brake_samples += 1;
+                    }
+                }
+            }
             "landing_anticipation" => self.pose_landing_anticipation_samples += 1,
             "landing_recovery" => self.pose_landing_recovery_samples += 1,
             _ => {}
