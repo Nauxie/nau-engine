@@ -338,8 +338,8 @@ mod tests {
         diagnostics.record_detail_biome_palette(0);
         diagnostics.record_detail_biome_palette(2);
         diagnostics.record_detail_biome_palette(2);
-        diagnostics.record_generated_ground_cover(44, 220, 1100);
-        diagnostics.record_generated_ground_cover(44, 220, 1100);
+        diagnostics.record_generated_ground_cover(44, 220, 1320);
+        diagnostics.record_generated_ground_cover(44, 220, 1320);
         diagnostics.record_generated_tree_trunk(26);
         diagnostics.record_generated_tree_trunk(30);
         diagnostics.record_generated_tree_canopy(226);
@@ -355,7 +355,7 @@ mod tests {
 
         assert_eq!(diagnostics.generated_ground_cover_patch_count, 88);
         assert_eq!(diagnostics.min_ground_cover_blade_count, 220);
-        assert_eq!(diagnostics.min_ground_cover_mesh_vertices, 1100);
+        assert_eq!(diagnostics.min_ground_cover_mesh_vertices, 1320);
         assert_eq!(diagnostics.generated_tree_trunk_count, 2);
         assert_eq!(diagnostics.generated_tree_canopy_count, 2);
         assert_eq!(diagnostics.min_tree_trunk_mesh_vertices, 26);

@@ -482,7 +482,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     );
     assert!(report.total_vertex_count > 70_000);
     assert!(report.total_triangle_count > 75_000);
-    assert!(report.min_ground_cover_mesh_vertices >= 1100);
+    assert!(report.min_ground_cover_mesh_vertices >= 1320);
     assert!(report.min_ground_cover_blade_count >= 220);
     assert!(report.min_ground_cover_blade_height_range_m >= 0.7);
     assert!(report.min_tree_trunk_mesh_vertices >= 190);
@@ -860,6 +860,7 @@ fn ground_cover_mesh_uses_dense_curved_blades() {
     let positions = positions(&mesh);
     let indices = u32_indices(&mesh);
     let blade_count = GROUND_COVER_PATCHES * GROUND_COVER_BLADES_PER_PATCH;
+    let mut side_leaf_count = 0usize;
     let min_y = positions
         .iter()
         .map(|position| position[1])
@@ -877,6 +878,39 @@ fn ground_cover_mesh_uses_dense_curved_blades() {
     assert!(
         max_y - min_y > 1.0,
         "ground cover should have enough varied height to read as dense vegetation"
+    );
+    for (blade_index, blade) in positions
+        .chunks_exact(VERTICES_PER_GROUND_BLADE)
+        .enumerate()
+    {
+        let base_center = (Vec3::from_array(blade[0]) + Vec3::from_array(blade[1])) * 0.5;
+        let mid_center = (Vec3::from_array(blade[2]) + Vec3::from_array(blade[3])) * 0.5;
+        let tip = Vec3::from_array(blade[4]);
+        let leaflet = Vec3::from_array(blade[5]);
+        let main_axis = Vec2::new(tip.x - base_center.x, tip.z - base_center.z).normalize();
+        let side_axis = Vec2::new(-main_axis.y, main_axis.x);
+        let side_offset = Vec2::new(leaflet.x - mid_center.x, leaflet.z - mid_center.z)
+            .dot(side_axis)
+            .abs();
+
+        if side_offset > 0.08 && leaflet.y > mid_center.y && leaflet.y < tip.y {
+            side_leaf_count += 1;
+        }
+
+        let blade_vertex_start = blade_index * VERTICES_PER_GROUND_BLADE;
+        let blade_vertex_end = blade_vertex_start + VERTICES_PER_GROUND_BLADE;
+        let blade_index_start = blade_index * INDICES_PER_GROUND_BLADE;
+        for index in &indices[blade_index_start..blade_index_start + INDICES_PER_GROUND_BLADE] {
+            let index = *index as usize;
+            assert!(
+                index >= blade_vertex_start && index < blade_vertex_end,
+                "ground cover indices should stay inside their blade chunk"
+            );
+        }
+    }
+    assert!(
+        side_leaf_count > blade_count * 9 / 10,
+        "ground cover should add side leaflets to most blades"
     );
 }
 
