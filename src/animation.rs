@@ -271,20 +271,27 @@ pub fn glider_traversal_pose(context: PlayerPoseContext, phase: f32) -> GliderTr
     } else {
         0.0
     };
+    let brake_turn_pressure = if intent == PlayerPoseIntent::AirBrake {
+        turn_weight
+    } else {
+        0.0
+    };
     let turn_pressure = if intent == PlayerPoseIntent::AirTurn {
         turn_weight
+    } else if intent == PlayerPoseIntent::AirBrake {
+        turn_weight * 0.72
     } else {
         turn_weight * 0.45
     };
     let flutter = (phase * 2.2).sin() * (0.010 + airflow * 0.035);
-    let roll = (-turn_pressure * 0.22).clamp(-0.24, 0.24);
-    let yaw = (turn_pressure * 0.08).clamp(-0.10, 0.10);
+    let roll = (-turn_pressure * 0.22 - brake_turn_pressure * 0.09).clamp(-0.31, 0.31);
+    let yaw = (turn_pressure * 0.08 + brake_turn_pressure * 0.06).clamp(-0.16, 0.16);
     let pitch = (-airflow * 0.06 - dive_pressure * 0.20 + brake_pressure * 0.18 + flutter)
         .clamp(-0.24, 0.26);
 
     GliderTraversalPose {
         translation_offset: Vec3::new(
-            turn_pressure * 0.060,
+            turn_pressure * 0.060 + brake_turn_pressure * 0.045,
             airflow * 0.050 + dive_pressure * 0.018 + brake_pressure * 0.035 + flutter * 0.50,
             airflow * 0.080 + dive_pressure * 0.085 - brake_pressure * 0.100,
         ),
@@ -687,13 +694,15 @@ pub fn part_pose_with_context(
     let turn_weight = pose_turn_weight(context);
     let airborne_pose = airborne_pose_intent(intent);
     let roll = pose_lateral_lean_radians(context);
-    let turn_reach = if intent == PlayerPoseIntent::AirTurn {
-        turn_weight.abs()
-    } else {
-        0.0
+    let turn_reach = match intent {
+        PlayerPoseIntent::AirTurn => turn_weight.abs(),
+        PlayerPoseIntent::AirBrake => turn_weight.abs() * 0.72,
+        _ => 0.0,
     };
     let air_turn_yaw = if intent == PlayerPoseIntent::AirTurn {
         turn_weight * 0.24
+    } else if intent == PlayerPoseIntent::AirBrake {
+        turn_weight * 0.16
     } else if airborne_pose {
         turn_weight * 0.08
     } else {
@@ -720,7 +729,9 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => -0.30 + vertical_pitch * 0.5,
                 PlayerPoseIntent::AirTurn => -0.34 + vertical_pitch * 0.45,
                 PlayerPoseIntent::Diving => -0.64 - dive_pressure * 0.42 + vertical_pitch * 0.18,
-                PlayerPoseIntent::AirBrake => 0.08 + vertical_pitch * 0.35,
+                PlayerPoseIntent::AirBrake => {
+                    0.10 + turn_weight.abs() * 0.05 + vertical_pitch * 0.35
+                }
                 PlayerPoseIntent::LandingAnticipation => {
                     0.52 + landing_strength * 0.16 + landing_flip * 0.34
                 }
@@ -786,7 +797,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => 1.22 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => 1.18 + airflow * 0.040,
                 PlayerPoseIntent::Diving => 1.28 + dive_pressure * 0.30 + airflow * 0.025,
-                PlayerPoseIntent::AirBrake => 1.565,
+                PlayerPoseIntent::AirBrake => 1.565 + same_side_turn * 0.08,
                 PlayerPoseIntent::LandingAnticipation => {
                     1.00 + landing_strength * 0.14 + landing_flip * 0.22
                 }
@@ -801,7 +812,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => -0.58 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => -0.46 + turn_weight.abs() * 0.10,
                 PlayerPoseIntent::Diving => -0.08 + dive_pressure * 0.14 + airflow * 0.018,
-                PlayerPoseIntent::AirBrake => 0.42,
+                PlayerPoseIntent::AirBrake => 0.42 + same_side_turn * 0.12,
                 PlayerPoseIntent::LandingAnticipation => {
                     1.16 + landing_strength * 0.22 + landing_flip * 0.26
                 }
@@ -813,7 +824,7 @@ pub fn part_pose_with_context(
             translation.y += match context.mode {
                 _ if intent == PlayerPoseIntent::Launching => -0.04,
                 _ if intent == PlayerPoseIntent::Diving => 0.10 + dive_pressure * 0.09,
-                _ if intent == PlayerPoseIntent::AirBrake => 0.10,
+                _ if intent == PlayerPoseIntent::AirBrake => 0.10 + same_side_turn * 0.045,
                 _ if intent == PlayerPoseIntent::LandingAnticipation => -0.14 - landing_flip * 0.04,
                 _ if intent == PlayerPoseIntent::LandingRecovery => -0.10,
                 FlightMode::Gliding => 0.04,
@@ -826,7 +837,7 @@ pub fn part_pose_with_context(
                 } else {
                     airflow * 0.018
                 };
-                translation.x += sign * turn_reach * 0.045;
+                translation.x += sign * turn_reach * 0.060;
                 translation.y +=
                     sign * turn_weight * 0.045 + same_side_turn * 0.035 + airflow * 0.012;
                 translation.z += turn_weight.abs() * 0.025 - same_side_turn * 0.05
@@ -852,7 +863,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => 0.20 + airflow.abs() * 0.025,
                 PlayerPoseIntent::AirTurn => 0.24 + airflow.abs() * 0.030,
                 PlayerPoseIntent::Diving => 0.10 + dive_pressure * 0.08 + airflow.abs() * 0.020,
-                PlayerPoseIntent::AirBrake => 0.34,
+                PlayerPoseIntent::AirBrake => 0.34 + same_side_turn * 0.08,
                 PlayerPoseIntent::LandingAnticipation => {
                     0.52 + landing_strength * 0.12 + landing_flip * 0.18
                 }
@@ -869,7 +880,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Diving => {
                     0.72 + dive_pressure * 0.42 + cycle * 0.02 + airflow * 0.018
                 }
-                PlayerPoseIntent::AirBrake => -0.34,
+                PlayerPoseIntent::AirBrake => -0.34 - same_side_turn * 0.16,
                 PlayerPoseIntent::LandingAnticipation => {
                     -1.08 - landing_strength * 0.24 - landing_flip * 0.42
                 }
@@ -1096,6 +1107,54 @@ mod tests {
         assert!(dive.translation_offset.z > air_brake.translation_offset.z + 0.10);
         assert!(dive.response_degrees() < 18.0);
         assert!(air_brake.response_degrees() < 18.0);
+    }
+
+    #[test]
+    fn glider_traversal_pose_skids_directionally_while_air_braking() {
+        let pure_brake = glider_traversal_pose(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -4.0, -34.0),
+                FlightInput {
+                    backward: true,
+                    ..default()
+                },
+                50.0,
+            ),
+            0.0,
+        );
+        let right_brake = glider_traversal_pose(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -4.0, -34.0),
+                FlightInput {
+                    backward: true,
+                    right: true,
+                    ..default()
+                },
+                50.0,
+            ),
+            0.0,
+        );
+        let left_brake = glider_traversal_pose(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -4.0, -34.0),
+                FlightInput {
+                    backward: true,
+                    left: true,
+                    ..default()
+                },
+                50.0,
+            ),
+            0.0,
+        );
+
+        assert!(right_brake.response_degrees() > pure_brake.response_degrees() + 4.0);
+        assert!(right_brake.translation_offset.x > pure_brake.translation_offset.x + 0.045);
+        assert!(left_brake.translation_offset.x < pure_brake.translation_offset.x - 0.045);
+        assert!((right_brake.rotation_offset * Vec3::Y).x > 0.13);
+        assert!((left_brake.rotation_offset * Vec3::Y).x < -0.13);
     }
 
     #[test]
@@ -1914,6 +1973,76 @@ mod tests {
         assert!(right_turn_right_arm.translation.z < right_turn_left_arm.translation.z - 0.03);
         assert!(right_turn_right_leg.translation.y > right_turn_left_leg.translation.y + 0.02);
         assert!(right_turn_right_leg.translation.z > right_turn_left_leg.translation.z + 0.05);
+    }
+
+    #[test]
+    fn diagonal_air_brake_pose_cups_same_side_limbs_into_skid() {
+        let right_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -3.0, -34.0),
+            FlightInput {
+                backward: true,
+                right: true,
+                ..default()
+            },
+            40.0,
+        );
+        let left_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -3.0, -34.0),
+            FlightInput {
+                backward: true,
+                left: true,
+                ..default()
+            },
+            40.0,
+        );
+        let neutral_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -3.0, -34.0),
+            FlightInput {
+                backward: true,
+                ..default()
+            },
+            40.0,
+        );
+        let right_arm = CharacterPart::new(
+            CharacterPartRole::Arm(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let left_arm = CharacterPart::new(
+            CharacterPartRole::Arm(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let right_leg = CharacterPart::new(
+            CharacterPartRole::Leg(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let left_leg = CharacterPart::new(
+            CharacterPartRole::Leg(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+
+        let neutral_metrics = pose_readability_metrics(neutral_context, 0.0);
+        let right_metrics = pose_readability_metrics(right_context, 0.0);
+        let left_metrics = pose_readability_metrics(left_context, 0.0);
+        let right_brake_right_arm = part_pose_with_context(&right_arm, right_context, 0.0);
+        let right_brake_left_arm = part_pose_with_context(&left_arm, right_context, 0.0);
+        let right_brake_right_leg = part_pose_with_context(&right_leg, right_context, 0.0);
+        let right_brake_left_leg = part_pose_with_context(&left_leg, right_context, 0.0);
+
+        assert_eq!(right_context.intent(), PlayerPoseIntent::AirBrake);
+        assert!(neutral_metrics.lateral_lean_degrees < 0.5);
+        assert!(right_metrics.signed_lateral_lean_degrees < -7.0);
+        assert!(left_metrics.signed_lateral_lean_degrees > 7.0);
+        assert!(right_brake_right_arm.translation.y > right_brake_left_arm.translation.y + 0.08);
+        assert!(right_brake_right_arm.translation.x > right_brake_left_arm.translation.x + 0.05);
+        assert!(right_brake_right_leg.translation.z > right_brake_left_leg.translation.z + 0.05);
+        assert!(right_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
     }
 
     #[test]
