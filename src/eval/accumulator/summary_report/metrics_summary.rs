@@ -118,6 +118,8 @@ pub(super) fn build_metrics_summary(
         max_landing_pose_part_translation_delta_m: acc.max_landing_pose_part_translation_delta_m,
         authored_clip_match_samples: acc.authored_clip_match_samples,
         authored_clip_mismatch_samples: acc.authored_clip_mismatch_samples,
+        authored_bank_left_clip_samples: acc.authored_bank_left_clip_samples,
+        authored_bank_right_clip_samples: acc.authored_bank_right_clip_samples,
         authored_dive_clip_samples: acc.authored_dive_clip_samples,
         authored_air_brake_clip_samples: acc.authored_air_brake_clip_samples,
         authored_land_clip_samples: acc.authored_land_clip_samples,

@@ -375,6 +375,22 @@ const animations = [
     { node: 5, path: "rotation", times: loopTimes, values: [rotZ(-1.08), rotZ(-1.18), rotZ(-1.08)] },
     { node: 2, path: "rotation", times: loopTimes, values: [rotX(0.08), rotX(0.14), rotX(0.08)] },
   ]),
+  animation("Bank_Left", [
+    { node: 2, path: "rotation", times: loopTimes, values: [rotZ(0.22), rotZ(0.34), rotZ(0.22)] },
+    { node: 3, path: "rotation", times: loopTimes, values: [rotZ(-0.12), rotZ(-0.18), rotZ(-0.12)] },
+    { node: 4, path: "rotation", times: loopTimes, values: [rotZ(0.86), rotZ(0.98), rotZ(0.86)] },
+    { node: 5, path: "rotation", times: loopTimes, values: [rotZ(-1.28), rotZ(-1.40), rotZ(-1.28)] },
+    { node: 6, path: "rotation", times: loopTimes, values: [rotX(0.12), rotX(0.22), rotX(0.12)] },
+    { node: 7, path: "rotation", times: loopTimes, values: [rotX(-0.08), rotX(-0.14), rotX(-0.08)] },
+  ]),
+  animation("Bank_Right", [
+    { node: 2, path: "rotation", times: loopTimes, values: [rotZ(-0.22), rotZ(-0.34), rotZ(-0.22)] },
+    { node: 3, path: "rotation", times: loopTimes, values: [rotZ(0.12), rotZ(0.18), rotZ(0.12)] },
+    { node: 4, path: "rotation", times: loopTimes, values: [rotZ(1.28), rotZ(1.40), rotZ(1.28)] },
+    { node: 5, path: "rotation", times: loopTimes, values: [rotZ(-0.86), rotZ(-0.98), rotZ(-0.86)] },
+    { node: 6, path: "rotation", times: loopTimes, values: [rotX(-0.08), rotX(-0.14), rotX(-0.08)] },
+    { node: 7, path: "rotation", times: loopTimes, values: [rotX(0.12), rotX(0.22), rotX(0.12)] },
+  ]),
   animation("Dive_Loop", [
     { node: 2, path: "rotation", times: loopTimes, values: [rotX(-0.92), rotX(-0.86), rotX(-0.92)] },
     { node: 3, path: "rotation", times: loopTimes, values: [rotX(0.18), rotX(0.24), rotX(0.18)] },

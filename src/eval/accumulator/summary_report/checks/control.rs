@@ -429,6 +429,18 @@ fn append_air_control_checks(
             "samples",
         ),
         EvalCheck::at_least(
+            "air_control_authored_bank_left_clip_samples",
+            acc.authored_bank_left_clip_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_POSE_AIR_TURN_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_authored_bank_right_clip_samples",
+            acc.authored_bank_right_clip_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_POSE_AIR_TURN_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
             "air_control_authored_dive_clip_samples",
             acc.authored_dive_clip_samples as f32,
             AIR_CONTROL_MIN_AUTHORED_DIVE_CLIP_SAMPLES,

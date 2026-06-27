@@ -1220,6 +1220,8 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 1);
     assert_eq!(summary.metrics.authored_clip_match_samples, 7);
     assert_eq!(summary.metrics.authored_clip_mismatch_samples, 0);
+    assert_eq!(summary.metrics.authored_bank_left_clip_samples, 0);
+    assert_eq!(summary.metrics.authored_bank_right_clip_samples, 1);
     assert_eq!(summary.metrics.authored_dive_clip_samples, 1);
     assert_eq!(summary.metrics.authored_air_brake_clip_samples, 1);
     assert_eq!(summary.metrics.authored_land_clip_samples, 3);
@@ -1237,6 +1239,8 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert!(summary_json.contains("\"pose_landing_recovery_samples\": 1"));
     assert!(summary_json.contains("\"authored_clip_match_samples\": 7"));
     assert!(summary_json.contains("\"authored_clip_mismatch_samples\": 0"));
+    assert!(summary_json.contains("\"authored_bank_left_clip_samples\": 0"));
+    assert!(summary_json.contains("\"authored_bank_right_clip_samples\": 1"));
     assert!(summary_json.contains("\"authored_dive_clip_samples\": 1"));
     assert!(summary_json.contains("\"authored_air_brake_clip_samples\": 1"));
     assert!(summary_json.contains("\"authored_land_clip_samples\": 3"));
@@ -1615,6 +1619,82 @@ fn accumulator_gates_authored_clip_mismatch_for_air_control() {
     assert_eq!(summary.metrics.authored_dive_clip_samples, 0);
     assert_eq!(mismatch_check.value, 1.0);
     assert!(!mismatch_check.passed);
+}
+
+#[test]
+fn accumulator_gates_one_sided_authored_bank_clip_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in [0, 30, 60, 90] {
+        accumulator.observe(air_control_metric_sample(
+            scenario,
+            frame,
+            Vec3::new(16.0, -2.0, -18.0),
+            Vec2::new(1.0, 0.0),
+            16.0,
+            18.0,
+            4.0,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let left_bank_check = named_check(&summary, "air_control_authored_bank_left_clip_samples");
+    let right_bank_check = named_check(&summary, "air_control_authored_bank_right_clip_samples");
+
+    assert_eq!(summary.metrics.authored_bank_left_clip_samples, 0);
+    assert_eq!(summary.metrics.authored_bank_right_clip_samples, 4);
+    assert_eq!(left_bank_check.value, 0.0);
+    assert_eq!(right_bank_check.value, 4.0);
+    assert!(!left_bank_check.passed);
+    assert!(right_bank_check.passed);
+}
+
+#[test]
+fn accumulator_gates_missing_authored_bank_clip_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for (frame, input, velocity) in [
+        (0, Vec2::new(1.0, 0.0), Vec3::new(16.0, -2.0, -18.0)),
+        (30, Vec2::new(-1.0, 0.0), Vec3::new(-16.0, -2.0, -18.0)),
+    ] {
+        accumulator.observe(
+            air_control_metric_sample(scenario, frame, velocity, input, 16.0, 18.0, 4.0)
+                .with_authored_animation_metrics("glide", "glide", 1, 140),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let left_bank_check = named_check(&summary, "air_control_authored_bank_left_clip_samples");
+    let right_bank_check = named_check(&summary, "air_control_authored_bank_right_clip_samples");
+
+    assert_eq!(summary.metrics.authored_clip_match_samples, 2);
+    assert_eq!(summary.metrics.authored_clip_mismatch_samples, 0);
+    assert_eq!(summary.metrics.authored_bank_left_clip_samples, 0);
+    assert_eq!(summary.metrics.authored_bank_right_clip_samples, 0);
+    assert_eq!(left_bank_check.value, 0.0);
+    assert_eq!(right_bank_check.value, 0.0);
+    assert!(!left_bank_check.passed);
+    assert!(!right_bank_check.passed);
 }
 
 #[test]
