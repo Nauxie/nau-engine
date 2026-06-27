@@ -23,9 +23,12 @@ pub(crate) use landmarks::{
 pub(crate) use landmarks::{
     landing_garden_marker_mesh, launch_beacon_mesh, pond_surface_mesh, route_cairn_mesh,
 };
-pub(crate) use rocks::rock_scatter_mesh;
 #[cfg(test)]
-pub(crate) use rocks::{ROCK_MESH_RINGS, ROCK_MESH_SEGMENTS};
+pub(crate) use rocks::{
+    OBSTRUCTION_SPIRE_RIB_COUNT, OBSTRUCTION_SPIRE_RINGS, OBSTRUCTION_SPIRE_SEGMENTS,
+    ROCK_MESH_RINGS, ROCK_MESH_SEGMENTS,
+};
+pub(crate) use rocks::{obstruction_spire_mesh, rock_scatter_mesh};
 #[cfg(test)]
 pub(crate) use shared::DETAIL_CARD_VERTICES;
 pub(crate) use trees::{

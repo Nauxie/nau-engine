@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use serde_json::{Value, json};
 use std::{
     env, fs,
@@ -35,11 +37,12 @@ const MIN_WEATHER_CLOUD_BANK_LOBE_COUNT: u64 = 18;
 const MIN_WEATHER_CLOUD_SCALED_DEPTH_SPAN_M: f64 = 12.0;
 const MIN_TREE_TRUNK_HEIGHT_RANGE_M: f64 = 1.5;
 const MIN_TREE_CANOPY_RADIUS_RANGE_M: f64 = 0.35;
-const MIN_LANDMARK_COUNT: u64 = 40;
+const MIN_LANDMARK_COUNT: u64 = 60;
 const MIN_ROUTE_CAIRN_COUNT: u64 = 16;
 const MIN_LAUNCH_BEACON_COUNT: u64 = 1;
 const MIN_LANDING_GARDEN_MARKER_COUNT: u64 = 4;
 const MIN_POND_SURFACE_COUNT: u64 = 20;
+const MIN_OBSTRUCTION_SPIRE_COUNT: u64 = 20;
 const MIN_ROUTE_CAIRN_MESH_VERTICES: u64 = 240;
 const MIN_ROUTE_CAIRN_VERTICAL_SPAN_M: f64 = 3.0;
 const MIN_LAUNCH_BEACON_MESH_VERTICES: u64 = 300;
@@ -48,6 +51,12 @@ const MIN_LANDING_GARDEN_MARKER_MESH_VERTICES: u64 = 39;
 const MIN_LANDING_GARDEN_MARKER_VERTICAL_SPAN_M: f64 = 0.12;
 const MIN_POND_SURFACE_MESH_VERTICES: u64 = 65;
 const MIN_POND_SURFACE_VERTICAL_SPAN_M: f64 = 0.015;
+const MIN_OBSTRUCTION_SPIRE_MESH_VERTICES: u64 = 300;
+const MIN_OBSTRUCTION_SPIRE_TRIANGLE_COUNT: u64 = 500;
+const MIN_OBSTRUCTION_SPIRE_VERTICAL_SPAN_M: f64 = 3.0;
+const MIN_OBSTRUCTION_SPIRE_HEIGHT_BANDS: u64 = 6;
+const MIN_OBSTRUCTION_SPIRE_RADIUS_BANDS: u64 = 5;
+const MIN_OBSTRUCTION_SPIRE_NORMAL_SLOPE_BANDS: u64 = 5;
 const MIN_TERRAIN_BIOME_PALETTE_COUNT: u64 = 5;
 const MIN_FOLIAGE_PALETTE_COUNT: u64 = 5;
 const MIN_STONE_PALETTE_COUNT: u64 = 4;
@@ -203,6 +212,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "pond_surface_count",
         value_u64(counts, "pond_surface_count"),
         MIN_POND_SURFACE_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "obstruction_spire_count",
+        value_u64(counts, "obstruction_spire_count"),
+        MIN_OBSTRUCTION_SPIRE_COUNT,
         "meshes",
     ));
     checks.push(check_at_least_u64(
@@ -384,6 +399,42 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         value_f64(minimums, "pond_surface_vertical_span_m"),
         MIN_POND_SURFACE_VERTICAL_SPAN_M,
         "m",
+    ));
+    checks.push(check_at_least_u64(
+        "obstruction_spire_mesh_vertices",
+        value_u64(minimums, "obstruction_spire_mesh_vertices"),
+        MIN_OBSTRUCTION_SPIRE_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_u64(
+        "obstruction_spire_triangle_count",
+        value_u64(minimums, "obstruction_spire_triangle_count"),
+        MIN_OBSTRUCTION_SPIRE_TRIANGLE_COUNT,
+        "triangles",
+    ));
+    checks.push(check_at_least_f64(
+        "obstruction_spire_vertical_span",
+        value_f64(minimums, "obstruction_spire_vertical_span_m"),
+        MIN_OBSTRUCTION_SPIRE_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "obstruction_spire_height_bands",
+        value_u64(minimums, "obstruction_spire_height_band_count"),
+        MIN_OBSTRUCTION_SPIRE_HEIGHT_BANDS,
+        "bands",
+    ));
+    checks.push(check_at_least_u64(
+        "obstruction_spire_radius_bands",
+        value_u64(minimums, "obstruction_spire_radius_band_count"),
+        MIN_OBSTRUCTION_SPIRE_RADIUS_BANDS,
+        "bands",
+    ));
+    checks.push(check_at_least_u64(
+        "obstruction_spire_normal_slope_bands",
+        value_u64(minimums, "obstruction_spire_normal_slope_band_count"),
+        MIN_OBSTRUCTION_SPIRE_NORMAL_SLOPE_BANDS,
+        "bands",
     ));
     checks.push(check_at_least_u64(
         "terrain_biome_palette_count",
@@ -688,7 +739,8 @@ mod tests {
                 "route_cairn_count": 0,
                 "launch_beacon_count": 0,
                 "landing_garden_marker_count": 0,
-                "pond_surface_count": 0
+                "pond_surface_count": 0,
+                "obstruction_spire_count": 0
             },
             "minimums": {
                 "ground_cover_mesh_vertices": 10,
@@ -721,6 +773,12 @@ mod tests {
                 "landing_garden_marker_vertical_span_m": 0.01,
                 "pond_surface_mesh_vertices": 6,
                 "pond_surface_vertical_span_m": 0.0,
+                "obstruction_spire_mesh_vertices": 8,
+                "obstruction_spire_triangle_count": 12,
+                "obstruction_spire_vertical_span_m": 0.4,
+                "obstruction_spire_height_band_count": 2,
+                "obstruction_spire_radius_band_count": 1,
+                "obstruction_spire_normal_slope_band_count": 1,
                 "terrain_biome_palette_count": 1,
                 "foliage_palette_count": 1,
                 "stone_palette_count": 1
@@ -776,6 +834,7 @@ mod tests {
             "launch_beacon_count",
             "landing_garden_marker_count",
             "pond_surface_count",
+            "obstruction_spire_count",
             "route_cairn_mesh_vertices",
             "route_cairn_vertical_span",
             "launch_beacon_mesh_vertices",
@@ -784,6 +843,12 @@ mod tests {
             "landing_garden_marker_vertical_span",
             "pond_surface_mesh_vertices",
             "pond_surface_vertical_span",
+            "obstruction_spire_mesh_vertices",
+            "obstruction_spire_triangle_count",
+            "obstruction_spire_vertical_span",
+            "obstruction_spire_height_bands",
+            "obstruction_spire_radius_bands",
+            "obstruction_spire_normal_slope_bands",
         ] {
             assert!(
                 check_named(checks, name).is_some_and(|check| {

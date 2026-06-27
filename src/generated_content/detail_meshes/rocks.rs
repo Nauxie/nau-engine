@@ -5,6 +5,9 @@ use bevy::prelude::*;
 
 pub(crate) const ROCK_MESH_SEGMENTS: usize = 12;
 pub(crate) const ROCK_MESH_RINGS: usize = 6;
+pub(crate) const OBSTRUCTION_SPIRE_SEGMENTS: usize = 22;
+pub(crate) const OBSTRUCTION_SPIRE_RINGS: usize = 12;
+pub(crate) const OBSTRUCTION_SPIRE_RIB_COUNT: usize = 7;
 
 pub(crate) fn rock_scatter_mesh(radius: f32, seed: u32) -> Mesh {
     let mut positions = Vec::with_capacity(ROCK_MESH_RINGS * ROCK_MESH_SEGMENTS + 2);
@@ -101,4 +104,174 @@ pub(crate) fn rock_scatter_mesh(radius: f32, seed: u32) -> Mesh {
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+pub(crate) fn obstruction_spire_mesh(radius: f32, height: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::with_capacity(
+        OBSTRUCTION_SPIRE_RINGS * OBSTRUCTION_SPIRE_SEGMENTS + 2 + OBSTRUCTION_SPIRE_RIB_COUNT * 8,
+    );
+    let mut normals = Vec::with_capacity(positions.capacity());
+    let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut indices = Vec::with_capacity(
+        (OBSTRUCTION_SPIRE_RINGS - 1) * OBSTRUCTION_SPIRE_SEGMENTS * 6
+            + OBSTRUCTION_SPIRE_SEGMENTS * 6
+            + OBSTRUCTION_SPIRE_RIB_COUNT * 12,
+    );
+    let height = height.max(1.0);
+    let radius = radius.max(0.2);
+    let lean = Vec2::new(
+        (random_unit(seed, 3, 11) - 0.5) * radius * 0.42,
+        (random_unit(seed, 5, 13) - 0.5) * radius * 0.42,
+    );
+    let stretch = Vec2::new(
+        0.88 + random_unit(seed, 7, 17) * 0.28,
+        0.82 + random_unit(seed, 9, 19) * 0.32,
+    );
+
+    let bottom_center = positions.len() as u32;
+    positions.push([0.0, 0.0, 0.0]);
+    normals.push(Vec3::NEG_Y.to_array());
+    uvs.push([0.5, 0.0]);
+
+    for ring in 0..OBSTRUCTION_SPIRE_RINGS {
+        let t = ring as f32 / (OBSTRUCTION_SPIRE_RINGS - 1) as f32;
+        let y = height * t;
+        let taper = (1.0 - t).powf(1.35) * 0.78 + 0.16;
+        let shelf = 1.0 + 0.11 * (t * std::f32::consts::TAU * 2.3 + seed as f32 * 0.013).sin();
+        let center = lean * t.powf(1.45);
+
+        for segment in 0..OBSTRUCTION_SPIRE_SEGMENTS {
+            let phase = segment as f32 / OBSTRUCTION_SPIRE_SEGMENTS as f32 * std::f32::consts::TAU;
+            let ridge = (phase * 3.0 + t * 2.8 + seed as f32 * 0.017).sin() * 0.12;
+            let fracture = (random_unit(seed, ring as u32 * 37 + segment as u32, 29) - 0.5) * 0.18;
+            let notch = 1.0 - 0.10 * (phase * 5.0 - t * 4.0 + seed as f32 * 0.007).cos().max(0.0);
+            let radial = radius * taper * shelf * (1.0 + ridge + fracture) * notch;
+            let x = center.x + phase.cos() * radial * stretch.x;
+            let z = center.y + phase.sin() * radial * stretch.y;
+            let normal = Vec3::new(
+                phase.cos() / stretch.x.max(0.1),
+                0.14 + (1.0 - t) * 0.24,
+                phase.sin() / stretch.y.max(0.1),
+            )
+            .normalize();
+
+            positions.push([x, y, z]);
+            normals.push(normal.to_array());
+            uvs.push([
+                segment as f32 / OBSTRUCTION_SPIRE_SEGMENTS as f32,
+                t.clamp(0.0, 1.0),
+            ]);
+        }
+    }
+
+    let first_ring = 1_u32;
+    for segment in 0..OBSTRUCTION_SPIRE_SEGMENTS {
+        let next = ((segment + 1) % OBSTRUCTION_SPIRE_SEGMENTS) as u32;
+        indices.extend([
+            bottom_center,
+            first_ring + segment as u32,
+            first_ring + next,
+        ]);
+    }
+
+    for ring in 0..OBSTRUCTION_SPIRE_RINGS - 1 {
+        let start = 1 + (ring * OBSTRUCTION_SPIRE_SEGMENTS) as u32;
+        let next_start = 1 + ((ring + 1) * OBSTRUCTION_SPIRE_SEGMENTS) as u32;
+        for segment in 0..OBSTRUCTION_SPIRE_SEGMENTS {
+            let a = start + segment as u32;
+            let b = start + ((segment + 1) % OBSTRUCTION_SPIRE_SEGMENTS) as u32;
+            let c = next_start + segment as u32;
+            let d = next_start + ((segment + 1) % OBSTRUCTION_SPIRE_SEGMENTS) as u32;
+            indices.extend([a, c, b, b, c, d]);
+        }
+    }
+
+    let top_center = positions.len() as u32;
+    positions.push([lean.x, height + radius * 0.24, lean.y]);
+    normals.push(Vec3::Y.to_array());
+    uvs.push([0.5, 1.0]);
+    let top_ring = 1 + ((OBSTRUCTION_SPIRE_RINGS - 1) * OBSTRUCTION_SPIRE_SEGMENTS) as u32;
+    for segment in 0..OBSTRUCTION_SPIRE_SEGMENTS {
+        let next = ((segment + 1) % OBSTRUCTION_SPIRE_SEGMENTS) as u32;
+        indices.extend([top_center, top_ring + next, top_ring + segment as u32]);
+    }
+
+    append_spire_ribs(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        radius,
+        height,
+        seed,
+    );
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+fn append_spire_ribs(
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    uvs: &mut Vec<[f32; 2]>,
+    indices: &mut Vec<u32>,
+    radius: f32,
+    height: f32,
+    seed: u32,
+) {
+    for rib in 0..OBSTRUCTION_SPIRE_RIB_COUNT {
+        let phase = rib as f32 / OBSTRUCTION_SPIRE_RIB_COUNT as f32 * std::f32::consts::TAU
+            + random_unit(seed, rib as u32, 151) * 0.4;
+        let outward = Vec3::new(phase.cos(), 0.0, phase.sin());
+        let tangent = Vec3::new(-phase.sin(), 0.0, phase.cos());
+        let base_radius = radius * (0.72 + random_unit(seed, rib as u32, 157) * 0.18);
+        let root_reach = radius * (1.10 + random_unit(seed, rib as u32, 163) * 0.26);
+        let rib_height = height * (0.34 + random_unit(seed, rib as u32, 167) * 0.18);
+        let half_width = radius * (0.09 + random_unit(seed, rib as u32, 173) * 0.035);
+        let base = outward * root_reach;
+        let upper = outward * base_radius + Vec3::Y * rib_height;
+        let start = positions.len() as u32;
+        let normal = outward.normalize();
+
+        for point in [
+            base - tangent * half_width,
+            base + tangent * half_width,
+            upper - tangent * half_width * 0.42,
+            upper + tangent * half_width * 0.42,
+        ] {
+            positions.push(point.to_array());
+            normals.push(normal.to_array());
+        }
+        uvs.extend([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]);
+        for point in [
+            base - tangent * half_width,
+            base + tangent * half_width,
+            upper - tangent * half_width * 0.42,
+            upper + tangent * half_width * 0.42,
+        ] {
+            positions.push(point.to_array());
+            normals.push((-normal).to_array());
+        }
+        uvs.extend([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]);
+        indices.extend([
+            start,
+            start + 2,
+            start + 1,
+            start + 1,
+            start + 2,
+            start + 3,
+            start + 5,
+            start + 6,
+            start + 4,
+            start + 7,
+            start + 6,
+            start + 5,
+        ]);
+    }
 }

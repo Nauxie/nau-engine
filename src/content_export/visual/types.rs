@@ -24,6 +24,7 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) launch_beacon_count: usize,
     pub(crate) landing_garden_marker_count: usize,
     pub(crate) pond_surface_count: usize,
+    pub(crate) obstruction_spire_count: usize,
     pub(crate) min_ground_cover_mesh_vertices: usize,
     pub(crate) min_ground_cover_blade_count: usize,
     pub(crate) min_ground_cover_blade_height_range_m: f32,
@@ -54,6 +55,12 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) min_landing_garden_marker_vertical_span_m: f32,
     pub(crate) min_pond_surface_mesh_vertices: usize,
     pub(crate) min_pond_surface_vertical_span_m: f32,
+    pub(crate) min_obstruction_spire_mesh_vertices: usize,
+    pub(crate) min_obstruction_spire_triangle_count: usize,
+    pub(crate) min_obstruction_spire_vertical_span_m: f32,
+    pub(crate) min_obstruction_spire_height_band_count: usize,
+    pub(crate) min_obstruction_spire_radius_band_count: usize,
+    pub(crate) min_obstruction_spire_normal_slope_band_count: usize,
     pub(crate) terrain_biome_palette_count: usize,
     pub(crate) foliage_palette_count: usize,
     pub(crate) stone_palette_count: usize,
@@ -132,6 +139,9 @@ pub(crate) struct VisualLandmarkSummary {
     pub(crate) kind: &'static str,
     pub(crate) label: String,
     pub(crate) mesh: VisualMeshSummary,
+    pub(crate) height_band_count: usize,
+    pub(crate) radius_band_count: usize,
+    pub(crate) normal_slope_band_count: usize,
 }
 
 #[derive(Debug)]
@@ -195,7 +205,8 @@ impl VisualContentExportReport {
                 "    \"route_cairn_count\": {},\n",
                 "    \"launch_beacon_count\": {},\n",
                 "    \"landing_garden_marker_count\": {},\n",
-                "    \"pond_surface_count\": {}\n",
+                "    \"pond_surface_count\": {},\n",
+                "    \"obstruction_spire_count\": {}\n",
                 "  }},\n",
                 "  \"minimums\": {{\n",
                 "    \"ground_cover_mesh_vertices\": {},\n",
@@ -228,6 +239,12 @@ impl VisualContentExportReport {
                 "    \"landing_garden_marker_vertical_span_m\": {},\n",
                 "    \"pond_surface_mesh_vertices\": {},\n",
                 "    \"pond_surface_vertical_span_m\": {},\n",
+                "    \"obstruction_spire_mesh_vertices\": {},\n",
+                "    \"obstruction_spire_triangle_count\": {},\n",
+                "    \"obstruction_spire_vertical_span_m\": {},\n",
+                "    \"obstruction_spire_height_band_count\": {},\n",
+                "    \"obstruction_spire_radius_band_count\": {},\n",
+                "    \"obstruction_spire_normal_slope_band_count\": {},\n",
                 "    \"terrain_biome_palette_count\": {},\n",
                 "    \"foliage_palette_count\": {},\n",
                 "    \"stone_palette_count\": {}\n",
@@ -265,6 +282,7 @@ impl VisualContentExportReport {
             self.launch_beacon_count,
             self.landing_garden_marker_count,
             self.pond_surface_count,
+            self.obstruction_spire_count,
             self.min_ground_cover_mesh_vertices,
             self.min_ground_cover_blade_count,
             terrain_export_json_number(self.min_ground_cover_blade_height_range_m),
@@ -295,6 +313,12 @@ impl VisualContentExportReport {
             terrain_export_json_number(self.min_landing_garden_marker_vertical_span_m),
             self.min_pond_surface_mesh_vertices,
             terrain_export_json_number(self.min_pond_surface_vertical_span_m),
+            self.min_obstruction_spire_mesh_vertices,
+            self.min_obstruction_spire_triangle_count,
+            terrain_export_json_number(self.min_obstruction_spire_vertical_span_m),
+            self.min_obstruction_spire_height_band_count,
+            self.min_obstruction_spire_radius_band_count,
+            self.min_obstruction_spire_normal_slope_band_count,
             self.terrain_biome_palette_count,
             self.foliage_palette_count,
             self.stone_palette_count,
@@ -422,12 +446,18 @@ impl VisualLandmarkSummary {
              {indent}  \"island\": {},\n\
              {indent}  \"kind\": {},\n\
              {indent}  \"label\": {},\n\
-             {indent}  \"mesh\": {}\n\
+             {indent}  \"mesh\": {},\n\
+             {indent}  \"height_band_count\": {},\n\
+             {indent}  \"radius_band_count\": {},\n\
+             {indent}  \"normal_slope_band_count\": {}\n\
              {indent}}}",
             terrain_export_json_string(self.island_name),
             terrain_export_json_string(self.kind),
             terrain_export_json_string(&self.label),
-            self.mesh.to_json()
+            self.mesh.to_json(),
+            self.height_band_count,
+            self.radius_band_count,
+            self.normal_slope_band_count
         )
     }
 }
