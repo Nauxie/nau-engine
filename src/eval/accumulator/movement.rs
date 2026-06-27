@@ -440,6 +440,15 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
     accumulator.max_pose_wing_airflow_strength = accumulator
         .max_pose_wing_airflow_strength
         .max(sample.pose_wing_airflow_strength);
+    accumulator.max_pose_scarf_stream_m = accumulator
+        .max_pose_scarf_stream_m
+        .max(sample.pose_scarf_stream_m);
+    accumulator.max_pose_scarf_lateral_sway_m = accumulator
+        .max_pose_scarf_lateral_sway_m
+        .max(sample.pose_scarf_lateral_sway_m);
+    accumulator.max_pose_scarf_tail_flex_degrees = accumulator
+        .max_pose_scarf_tail_flex_degrees
+        .max(sample.pose_scarf_tail_flex_degrees);
     accumulator.max_authored_glider_response_degrees = accumulator
         .max_authored_glider_response_degrees
         .max(sample.authored_glider_response_degrees);

@@ -121,6 +121,9 @@ impl EvalSample {
             pose_landing_foot_forward_m: 0.0,
             pose_landing_recovery_flip_degrees: 0.0,
             pose_wing_airflow_strength: 0.0,
+            pose_scarf_stream_m: 0.0,
+            pose_scarf_lateral_sway_m: 0.0,
+            pose_scarf_tail_flex_degrees: 0.0,
             key_pose_readability_score: 1.0,
             key_pose_transition_grace: false,
             visible_pose_part_count: 0,
@@ -382,6 +385,18 @@ impl EvalSample {
 
     pub fn with_key_pose_transition_grace(mut self, used_transition_grace: bool) -> Self {
         self.key_pose_transition_grace = used_transition_grace;
+        self
+    }
+
+    pub fn with_scarf_pose_metrics(
+        mut self,
+        stream_m: f32,
+        lateral_sway_m: f32,
+        tail_flex_degrees: f32,
+    ) -> Self {
+        self.pose_scarf_stream_m = stream_m.max(0.0);
+        self.pose_scarf_lateral_sway_m = lateral_sway_m.max(0.0);
+        self.pose_scarf_tail_flex_degrees = tail_flex_degrees.max(0.0);
         self
     }
 

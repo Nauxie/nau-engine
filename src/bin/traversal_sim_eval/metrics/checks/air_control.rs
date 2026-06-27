@@ -23,6 +23,7 @@ use crate::{
     AIR_CONTROL_MIN_POSE_LATERAL_LEAN_DEGREES, AIR_CONTROL_MIN_POSE_LEG_TUCK_DEGREES,
     AIR_CONTROL_MIN_POSE_TORSO_PITCH_DEGREES, AIR_CONTROL_MIN_POSE_WING_AIRFLOW_STRENGTH,
     AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS, AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
+    MIN_POSE_SCARF_LATERAL_SWAY_M, MIN_POSE_SCARF_STREAM_M, MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
     MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES,
 };
 
@@ -387,6 +388,24 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             metrics.max_pose_wing_airflow_strength,
             AIR_CONTROL_MIN_POSE_WING_AIRFLOW_STRENGTH,
             "ratio",
+        ),
+        SimCheck::at_least(
+            "air_control_pose_scarf_stream",
+            metrics.max_pose_scarf_stream_m,
+            MIN_POSE_SCARF_STREAM_M,
+            "m",
+        ),
+        SimCheck::at_least(
+            "air_control_pose_scarf_lateral_sway",
+            metrics.max_pose_scarf_lateral_sway_m,
+            MIN_POSE_SCARF_LATERAL_SWAY_M,
+            "m",
+        ),
+        SimCheck::at_least(
+            "air_control_pose_scarf_tail_flex",
+            metrics.max_pose_scarf_tail_flex_degrees,
+            MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
+            "deg",
         ),
         SimCheck::at_most(
             "air_control_unreadable_key_pose_samples",

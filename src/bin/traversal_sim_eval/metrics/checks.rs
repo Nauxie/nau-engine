@@ -23,7 +23,8 @@ use super::{super::round4, SimMetrics};
 use crate::{
     GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
     GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
-    LANDING_MIN_POSE_CROUCH_M,
+    LANDING_MIN_POSE_CROUCH_M, MIN_POSE_SCARF_LATERAL_SWAY_M, MIN_POSE_SCARF_STREAM_M,
+    MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
 };
 
 const POSE_STATE_MIN_WALK_SAMPLES: f32 = 8.0;
@@ -521,6 +522,24 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             "pose_state_landing_recovery_flip",
             metrics.max_pose_landing_recovery_flip_degrees,
             LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "pose_state_scarf_stream",
+            metrics.max_pose_scarf_stream_m,
+            MIN_POSE_SCARF_STREAM_M,
+            "m",
+        ),
+        SimCheck::at_least(
+            "pose_state_scarf_lateral_sway",
+            metrics.max_pose_scarf_lateral_sway_m,
+            MIN_POSE_SCARF_LATERAL_SWAY_M,
+            "m",
+        ),
+        SimCheck::at_least(
+            "pose_state_scarf_tail_flex",
+            metrics.max_pose_scarf_tail_flex_degrees,
+            MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
             "deg",
         ),
         SimCheck::at_most(

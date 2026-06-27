@@ -213,6 +213,13 @@ impl SimMetrics {
         self.max_pose_wing_airflow_strength = self
             .max_pose_wing_airflow_strength
             .max(sample.pose_wing_airflow_strength);
+        self.max_pose_scarf_stream_m = self.max_pose_scarf_stream_m.max(sample.pose_scarf_stream_m);
+        self.max_pose_scarf_lateral_sway_m = self
+            .max_pose_scarf_lateral_sway_m
+            .max(sample.pose_scarf_lateral_sway_m);
+        self.max_pose_scarf_tail_flex_degrees = self
+            .max_pose_scarf_tail_flex_degrees
+            .max(sample.pose_scarf_tail_flex_degrees);
 
         self.min_target_distance_m = self.min_target_distance_m.min(sample.target_distance_m);
         self.final_target_distance_m = sample.target_distance_m;

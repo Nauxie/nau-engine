@@ -101,6 +101,9 @@ pub struct PoseReadabilityMetrics {
     pub landing_foot_forward_m: f32,
     pub landing_recovery_flip_degrees: f32,
     pub wing_airflow_strength: f32,
+    pub scarf_stream_m: f32,
+    pub scarf_lateral_sway_m: f32,
+    pub scarf_tail_flex_degrees: f32,
     pub key_pose_readability_score: f32,
 }
 
@@ -652,6 +655,9 @@ pub fn pose_readability_metrics_from_part_transforms(
             0.0
         },
         wing_airflow_strength: wing_airflow_strength(context.mode, context.velocity),
+        scarf_stream_m: 0.0,
+        scarf_lateral_sway_m: 0.0,
+        scarf_tail_flex_degrees: 0.0,
         key_pose_readability_score: key_pose_readability_score(
             context.intent(),
             torso_pitch_degrees,
@@ -704,12 +710,24 @@ pub fn pose_readability_metrics(context: PlayerPoseContext, phase: f32) -> PoseR
         Vec3::ZERO,
         Quat::IDENTITY,
     );
+    let scarf_anchor = CharacterPart::new(
+        CharacterPartRole::Scarf(ScarfSegment::Anchor),
+        Vec3::ZERO,
+        Quat::IDENTITY,
+    );
+    let scarf_tail = CharacterPart::new(
+        CharacterPartRole::Scarf(ScarfSegment::Trail),
+        Vec3::ZERO,
+        Quat::IDENTITY,
+    );
 
     let torso_pose = part_pose_with_context(&torso, context, phase);
     let left_arm_pose = part_pose_with_context(&left_arm, context, phase);
     let right_arm_pose = part_pose_with_context(&right_arm, context, phase);
     let left_leg_pose = part_pose_with_context(&left_leg, context, phase);
     let right_leg_pose = part_pose_with_context(&right_leg, context, phase);
+    let scarf_anchor_pose = part_pose_with_context(&scarf_anchor, context, phase);
+    let scarf_tail_pose = part_pose_with_context(&scarf_tail, context, phase);
     let mut metrics = pose_readability_metrics_from_part_transforms(
         context,
         PoseReadabilityPartTransforms {
@@ -724,6 +742,12 @@ pub fn pose_readability_metrics(context: PlayerPoseContext, phase: f32) -> PoseR
     );
     metrics.signed_lateral_lean_degrees = pose_lateral_lean_radians(context).to_degrees();
     metrics.lateral_lean_degrees = metrics.signed_lateral_lean_degrees.abs();
+    metrics.scarf_stream_m = scarf_tail_pose.translation.z.max(0.0);
+    metrics.scarf_lateral_sway_m = scarf_tail_pose.translation.x.abs();
+    metrics.scarf_tail_flex_degrees = scarf_tail_pose
+        .rotation
+        .angle_between(scarf_anchor_pose.rotation)
+        .to_degrees();
     metrics
 }
 
@@ -1857,6 +1881,8 @@ mod tests {
 
         let glide = part_pose_with_context(&scarf, glide_context, 0.0);
         let dive = part_pose_with_context(&scarf, dive_context, 0.0);
+        let glide_metrics = pose_readability_metrics(glide_context, 0.0);
+        let dive_metrics = pose_readability_metrics(dive_context, 0.0);
 
         assert_eq!(glide.visibility, PartVisibility::Inherited);
         assert_eq!(dive_context.intent(), PlayerPoseIntent::Diving);
@@ -1870,6 +1896,9 @@ mod tests {
             dive.rotation.angle_between(Quat::IDENTITY)
                 > glide.rotation.angle_between(Quat::IDENTITY) + 0.28
         );
+        assert!(dive_metrics.scarf_stream_m > glide_metrics.scarf_stream_m + 0.32);
+        assert!(dive_metrics.scarf_tail_flex_degrees > glide_metrics.scarf_tail_flex_degrees + 9.0);
+        assert!(dive_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
     }
 
     #[test]
@@ -1900,6 +1929,8 @@ mod tests {
         let left_tail = part_pose_with_context(&tail, left_wind, 0.4);
         let right_tail = part_pose_with_context(&tail, right_wind, 0.4);
         let right_anchor = part_pose_with_context(&anchor, right_wind, 0.4);
+        let left_metrics = pose_readability_metrics(left_wind, 0.4);
+        let right_metrics = pose_readability_metrics(right_wind, 0.4);
 
         assert!(
             right_tail.translation.x > left_tail.translation.x + 0.06,
@@ -1912,6 +1943,9 @@ mod tests {
             right_tail.rotation.angle_between(right_anchor.rotation) > 0.25,
             "expected scarf tail to flex more than anchor"
         );
+        assert!(right_metrics.scarf_lateral_sway_m > left_metrics.scarf_lateral_sway_m + 0.02);
+        assert!(right_metrics.scarf_stream_m > 0.25);
+        assert!(right_metrics.scarf_tail_flex_degrees > 14.0);
     }
 
     #[test]
