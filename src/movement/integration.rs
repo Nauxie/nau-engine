@@ -41,6 +41,9 @@ pub fn step_flight(
 
     let launching = state.controller.launch_timer > 0.0;
     let gliding = input.glide && !started_grounded && !input.dive && !launching;
+    let air_steering_direction = (!started_grounded && !launching)
+        .then(|| desired_air_steering_direction(input, facing))
+        .flatten();
     let mut acceleration = Vec3::ZERO;
 
     if started_grounded && !launching {
@@ -57,7 +60,7 @@ pub fn step_flight(
             acceleration += facing.right * tuning.ground_lateral_accel;
         }
     } else if gliding {
-        if let Some(desired_direction) = desired_air_steering_direction(input, facing) {
+        if let Some(desired_direction) = air_steering_direction {
             acceleration += directional_air_steering_acceleration(
                 state.velocity,
                 desired_direction,
@@ -87,7 +90,7 @@ pub fn step_flight(
             state.velocity.z *= tuning.glide_brake_drag.powf(dt);
         }
     } else {
-        if let Some(desired_direction) = desired_air_steering_direction(input, facing) {
+        if let Some(desired_direction) = air_steering_direction {
             acceleration += directional_air_steering_acceleration(
                 state.velocity,
                 desired_direction,
@@ -133,6 +136,28 @@ pub fn step_flight(
 
     state.velocity += acceleration * dt;
     state.velocity *= tuning.drag.powf(dt);
+    if let Some(desired_direction) =
+        air_steering_direction.filter(|_| input.has_lateral_axis() || input.backward)
+    {
+        let (turn_rate, counter_turn_rate) = if gliding {
+            (
+                tuning.glide_velocity_turn_rate_degrees,
+                tuning.glide_velocity_counter_turn_rate_degrees,
+            )
+        } else {
+            (
+                tuning.air_velocity_turn_rate_degrees,
+                tuning.air_velocity_counter_turn_rate_degrees,
+            )
+        };
+        state.velocity = rotate_horizontal_velocity_toward(
+            state.velocity,
+            desired_direction,
+            turn_rate,
+            counter_turn_rate,
+            dt,
+        );
+    }
     if started_grounded && !launching {
         let ground_friction = tuning.ground_friction.clamp(0.0, 1.0).powf(dt);
         state.velocity.x *= ground_friction;
@@ -216,6 +241,49 @@ fn directional_air_steering_acceleration(
         };
         correction.normalize() * accel.max(0.0)
     }
+}
+
+fn rotate_horizontal_velocity_toward(
+    mut velocity: Vec3,
+    desired_direction: Vec3,
+    turn_rate_degrees: f32,
+    counter_turn_rate_degrees: f32,
+    dt: f32,
+) -> Vec3 {
+    let horizontal_velocity = horizontal(velocity);
+    let speed = horizontal_velocity.length();
+    if speed <= 0.05 {
+        return velocity;
+    }
+
+    let current_direction = horizontal_velocity / speed;
+    let desired_direction = horizontal_or(desired_direction, Vec3::Z);
+    let signed_angle = current_direction
+        .cross(desired_direction)
+        .y
+        .atan2(current_direction.dot(desired_direction).clamp(-1.0, 1.0));
+    if signed_angle.abs() <= 0.0001 {
+        return velocity;
+    }
+
+    let reversing = current_direction.dot(desired_direction) < -0.1;
+    let max_step = if reversing {
+        counter_turn_rate_degrees
+    } else {
+        turn_rate_degrees
+    }
+    .max(0.0)
+    .to_radians()
+        * dt.max(0.0);
+    if max_step <= 0.0 {
+        return velocity;
+    }
+
+    let step = signed_angle.clamp(-max_step, max_step);
+    let rotated = Quat::from_rotation_y(step) * current_direction * speed;
+    velocity.x = rotated.x;
+    velocity.z = rotated.z;
+    velocity
 }
 
 fn target_bank_degrees(input: FlightInput, mode: FlightMode, tuning: &FlightTuning) -> f32 {

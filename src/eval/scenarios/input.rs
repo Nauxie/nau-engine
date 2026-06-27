@@ -58,9 +58,9 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
     if scenario.name == BRANCH_RECOVERY_ROUTE {
         let dive = (8.45..=10.9).contains(&t);
         return FlightInput {
-            forward: (0.05..=9.45).contains(&t),
-            backward: (9.55..=10.25).contains(&t),
-            right: (1.2..=2.2).contains(&t) || (9.1..=9.55).contains(&t),
+            forward: (0.05..=9.9).contains(&t),
+            backward: (10.05..=10.65).contains(&t),
+            right: (1.2..=2.2).contains(&t) || (9.1..=9.75).contains(&t),
             left: (4.7..=5.0).contains(&t),
             glide: t >= 0.45 && !dive,
             dive,
@@ -71,7 +71,7 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
         return FlightInput {
             forward: t >= 0.05,
             right: (1.1..=2.25).contains(&t),
-            left: (2.35..=2.8).contains(&t),
+            left: (2.45..=2.7).contains(&t),
             glide: t >= 0.45,
             launch: frame == 1,
             ..default()

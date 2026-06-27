@@ -30,7 +30,7 @@ use crate::metrics::util::{
     avg_body_heading_error_degrees, p95_body_heading_error_degrees, response_latency_secs,
 };
 
-const AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES: f32 = 1.0;
+const AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES: f32 = 4.0;
 
 pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
     let lateral_response_latency_secs = response_latency_secs(

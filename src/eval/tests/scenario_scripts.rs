@@ -61,7 +61,7 @@ fn branch_recovery_route_targets_named_recovery_island() {
     assert_eq!(scenario.thresholds.min_completed_objective_count, 3);
     assert!(scripted_input(scenario, 1).launch);
     assert!(scripted_input(scenario, 540).dive);
-    assert!(scripted_input(scenario, 600).backward);
+    assert!(scripted_input(scenario, 610).backward);
     assert!(!scripted_input(scenario, 660).backward);
     assert!(!scripted_input(scenario, 750).forward);
 }

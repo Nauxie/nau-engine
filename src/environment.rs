@@ -366,7 +366,7 @@ pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
     [
         WindField::crosswind(
             Vec3::new(20.0, 52.0, -68.0),
-            Vec3::new(38.0, 24.0, 18.0),
+            Vec3::new(38.0, 24.0, 20.0),
             Vec3::X,
             10.0,
         ),
