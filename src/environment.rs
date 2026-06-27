@@ -5,6 +5,7 @@ const FIELD_PAIR_EPSILON: f32 = 0.001;
 const WIND_SOFT_EDGE_START: f32 = 0.62;
 const WIND_SOFT_EDGE_END: f32 = 1.0;
 const WIND_GUST_PACKET_WIDTH: f32 = 0.18;
+const WIND_LAYERED_GUST_PACKET_WEIGHT: f32 = 0.58;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WindFieldKind {
@@ -83,13 +84,24 @@ impl WindField {
         let gust_front_progress = wind_gust_front_progress(time, gust_phase, self.visual_speed);
         let gust_packet_strength =
             wind_gust_packet_strength_at_front(gust_front_progress, stream_progress);
+        let layered_gust_front_progress =
+            wind_layered_gust_front_progress(time, gust_phase, self.visual_speed, field_phase);
+        let layered_gust_wave =
+            wind_gust_packet_strength_at_front(layered_gust_front_progress, stream_progress);
+        let layered_gust_strength = (layered_gust_wave
+            * (0.46 + lane_wave.abs() * 0.24 + gust_cell.abs() * 0.2))
+            .clamp(0.0, 1.0);
+        let gust_energy = (gust_packet_strength
+            + layered_gust_strength * WIND_LAYERED_GUST_PACKET_WEIGHT)
+            .clamp(0.0, 1.0);
         let variation = (0.16
             + traveling_wave.abs() * 0.25
             + lane_wave.abs() * 0.13
             + pulse_wave.abs() * 0.08
             + gust_cell.abs() * 0.16
             + wake_wave.abs() * 0.07
-            + gust_packet_strength * 0.14)
+            + gust_energy * 0.14
+            + layered_gust_strength * 0.06)
             .clamp(0.0, 1.0);
         let gust_strength = (0.78
             + traveling_wave * 0.15
@@ -97,7 +109,8 @@ impl WindField {
             + pulse_wave * 0.05
             + gust_cell * 0.16
             + wake_wave * 0.05
-            + gust_packet_strength * 0.1)
+            + gust_energy * 0.08
+            + layered_gust_strength * 0.06)
             .clamp(0.42, 1.34);
         let edge_falloff = wind_soft_edge_falloff(local);
         let speed = self.visual_speed * gust_strength * edge_falloff;
@@ -105,15 +118,19 @@ impl WindField {
             WindFieldKind::Crosswind => {
                 let lateral =
                     Vec3::new(-self.direction.z, 0.0, self.direction.x).normalize_or_zero();
-                let downwind_channel =
-                    (1.0 + local.x * 0.05 + gust_cell * 0.035 + gust_packet_strength * 0.04)
-                        .clamp(0.86, 1.12);
+                let downwind_channel = (1.0
+                    + local.x * 0.05
+                    + gust_cell * 0.035
+                    + gust_energy * 0.035
+                    + layered_gust_strength * 0.035)
+                    .clamp(0.86, 1.12);
                 let depth_shear =
                     (time * 0.66 + local.y * 3.2 - local.z * 1.1 + field_phase * 0.37).sin();
                 let shear = (lane_wave * 0.16 + pulse_wave * 0.07 + gust_cell * 0.11
                     - wake_wave * 0.05
                     + depth_shear * 0.055
-                    + gust_packet_strength * (0.08 + depth_shear * 0.04))
+                    + gust_energy * (0.06 + depth_shear * 0.03)
+                    + layered_gust_strength * (0.08 - depth_shear * 0.025))
                     .clamp(-0.3, 0.3);
                 self.direction * (speed * downwind_channel) + lateral * (speed * shear)
             }
@@ -131,17 +148,24 @@ impl WindField {
                 let curl_pulse = 0.82
                     + (time * 1.18 + local.y * 1.8 + field_phase * 0.5).sin() * 0.18
                     + gust_cell * 0.1
-                    + gust_packet_strength * 0.08;
+                    + gust_energy * 0.06
+                    + layered_gust_strength * 0.08;
                 let thermal_core =
                     (1.0 - Vec2::new(local.x, local.z).length().clamp(0.0, 1.0)).powf(0.85);
-                let vertical_pulse =
-                    (0.9 + thermal_core * 0.15 + gust_cell * 0.1 + gust_packet_strength * 0.12)
-                        .clamp(0.74, 1.26);
+                let vertical_pulse = (0.9
+                    + thermal_core * 0.15
+                    + gust_cell * 0.1
+                    + gust_energy * 0.08
+                    + layered_gust_strength * 0.09)
+                    .clamp(0.74, 1.28);
                 let swirl = tangent
                     * (speed * (0.2 + variation * 0.2 + gust_cell.abs() * 0.08) * curl_pulse);
                 let breath = radial_axis
                     * (speed
-                        * (lane_wave * 0.055 + wake_wave * 0.035 + gust_packet_strength * 0.025));
+                        * (lane_wave * 0.055
+                            + wake_wave * 0.035
+                            + gust_energy * 0.018
+                            + layered_gust_strength * 0.03));
                 Vec3::Y * (speed * vertical_pulse) + swirl + breath
             }
         };
@@ -153,6 +177,7 @@ impl WindField {
             variation,
             gust_front_progress,
             gust_packet_strength,
+            layered_gust_strength,
         })
     }
 
@@ -249,6 +274,19 @@ fn wind_gust_packet_strength_at_front(front: f32, stream_progress: f32) -> f32 {
     core * core * (3.0 - 2.0 * core)
 }
 
+fn wind_layered_gust_front_progress(
+    elapsed_secs: f32,
+    phase: f32,
+    speed_scale: f32,
+    field_phase: f32,
+) -> f32 {
+    wind_gust_front_progress(
+        elapsed_secs * 0.73 + field_phase.rem_euclid(std::f32::consts::TAU) * 0.061,
+        phase + 0.57,
+        speed_scale * 0.77,
+    )
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WindFlowSample {
     pub vector: Vec3,
@@ -257,6 +295,7 @@ pub struct WindFlowSample {
     pub variation: f32,
     pub gust_front_progress: f32,
     pub gust_packet_strength: f32,
+    pub layered_gust_strength: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -1110,6 +1149,42 @@ mod tests {
         );
         assert!(peak.vector.y.abs() < 0.001);
         assert!(quiet.vector.y.abs() < 0.001);
+    }
+
+    #[test]
+    fn wind_flow_samples_expose_layered_gust_energy_between_primary_fronts() {
+        let field = WindField::crosswind(Vec3::ZERO, Vec3::new(12.0, 6.0, 10.0), Vec3::X, 12.0);
+        let elapsed = 1.4;
+        let lane_y = 1.0;
+        let lane_z = 2.5;
+        let mut layered_peak = None;
+        let mut calm_gap = None;
+
+        for index in 0..=120 {
+            let progress = index as f32 / 120.0;
+            let x = (progress * 2.0 - 1.0) * field.half_extents.x;
+            let sample = field
+                .flow_at(Vec3::new(x, lane_y, lane_z), elapsed)
+                .unwrap();
+
+            if sample.gust_packet_strength < 0.12 && sample.layered_gust_strength > 0.32 {
+                layered_peak = Some(sample);
+            }
+            if sample.gust_packet_strength < 0.08 && sample.layered_gust_strength < 0.04 {
+                calm_gap = Some(sample);
+            }
+        }
+
+        let layered_peak =
+            layered_peak.expect("expected a secondary gust packet between primary clumped fronts");
+        let calm_gap = calm_gap.expect("expected a quiet lane gap between layered gust packets");
+
+        assert!(layered_peak.vector.y.abs() < 0.001);
+        assert!(calm_gap.vector.y.abs() < 0.001);
+        assert!(
+            layered_peak.variation > calm_gap.variation + 0.03,
+            "expected secondary packet to add readable turbulent energy, layered={layered_peak:?}, calm={calm_gap:?}"
+        );
     }
 
     #[test]
