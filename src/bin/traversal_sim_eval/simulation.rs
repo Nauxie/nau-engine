@@ -199,6 +199,8 @@ fn step_flight_with_world(
         next.position,
         next.velocity,
         lift_fields.iter().copied(),
+        visual_fields.iter().copied(),
+        elapsed_secs,
         dt,
         next.controller.mode != FlightMode::Grounded,
     );

@@ -538,23 +538,47 @@ pub struct LiftApplication {
     pub velocity: Vec3,
     pub active_fields: usize,
     pub applied_delta_y: f32,
+    pub paired_visual_fields: usize,
+    pub dynamic_lift_fields: usize,
+    pub min_lift_multiplier: f32,
+    pub max_lift_multiplier: f32,
 }
 
 pub fn apply_lift_fields(
     position: Vec3,
     mut velocity: Vec3,
     fields: impl IntoIterator<Item = LiftField>,
+    visual_fields: impl IntoIterator<Item = WindField>,
+    elapsed_secs: f32,
     dt: f32,
     enabled: bool,
 ) -> LiftApplication {
     let mut active_fields = 0;
     let mut lift_accel = 0.0_f32;
     let mut max_upward_speed = velocity.y;
+    let mut paired_visual_fields = 0;
+    let mut dynamic_lift_fields = 0;
+    let mut min_lift_multiplier = f32::MAX;
+    let mut max_lift_multiplier = 0.0_f32;
+    let visual_updrafts = visual_fields
+        .into_iter()
+        .filter(|field| field.kind == WindFieldKind::Updraft)
+        .collect::<Vec<_>>();
 
     for field in fields {
         if field.contains(position) {
             active_fields += 1;
-            lift_accel += field.lift_accel;
+            let lift_response =
+                dynamic_lift_response(field, position, &visual_updrafts, elapsed_secs);
+            if lift_response.paired_visual {
+                paired_visual_fields += 1;
+            }
+            if lift_response.dynamic {
+                dynamic_lift_fields += 1;
+            }
+            min_lift_multiplier = min_lift_multiplier.min(lift_response.multiplier);
+            max_lift_multiplier = max_lift_multiplier.max(lift_response.multiplier);
+            lift_accel += field.lift_accel * lift_response.multiplier;
             max_upward_speed = max_upward_speed.max(field.max_upward_speed);
         }
     }
@@ -571,6 +595,66 @@ pub fn apply_lift_fields(
         velocity,
         active_fields,
         applied_delta_y,
+        paired_visual_fields,
+        dynamic_lift_fields,
+        min_lift_multiplier: if active_fields > 0 {
+            min_lift_multiplier
+        } else {
+            0.0
+        },
+        max_lift_multiplier,
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct DynamicLiftResponse {
+    multiplier: f32,
+    paired_visual: bool,
+    dynamic: bool,
+}
+
+fn dynamic_lift_response(
+    lift: LiftField,
+    position: Vec3,
+    visual_updrafts: &[WindField],
+    elapsed_secs: f32,
+) -> DynamicLiftResponse {
+    let Some(visual) = visual_updrafts
+        .iter()
+        .copied()
+        .find(|visual| lift_matches_visual_updraft(lift, *visual))
+    else {
+        return DynamicLiftResponse {
+            multiplier: 1.0,
+            paired_visual: false,
+            dynamic: false,
+        };
+    };
+    let Some(flow) = visual.flow_at(position, elapsed_secs) else {
+        return DynamicLiftResponse {
+            multiplier: 1.0,
+            paired_visual: true,
+            dynamic: false,
+        };
+    };
+
+    let local = (position - lift.center) / lift.half_extents.max(Vec3::splat(0.1));
+    let horizontal_core = (1.0 - Vec2::new(local.x, local.z).length().clamp(0.0, 1.0)).powf(0.75);
+    let vertical_core = 1.0 - local.y.abs().clamp(0.0, 1.0) * 0.35;
+    let upward_ratio = (flow.vector.y.max(0.0) / visual.visual_speed.max(1.0)).clamp(0.0, 1.45);
+    let gust_bias = (flow.gust_strength - 1.0).clamp(-0.45, 0.45);
+    let multiplier = (0.58
+        + horizontal_core * 0.24
+        + vertical_core * 0.08
+        + upward_ratio * 0.18
+        + flow.variation * 0.12
+        + gust_bias * 0.16)
+        .clamp(0.58, 1.34);
+
+    DynamicLiftResponse {
+        multiplier,
+        paired_visual: true,
+        dynamic: true,
     }
 }
 
@@ -1096,17 +1180,62 @@ mod tests {
     #[test]
     fn lift_field_only_applies_inside_bounds_when_enabled() {
         let field = LiftField::updraft(Vec3::ZERO, Vec3::splat(4.0), 20.0, 12.0);
-        let outside = apply_lift_fields(Vec3::new(10.0, 0.0, 0.0), Vec3::ZERO, [field], 0.5, true);
-        let disabled = apply_lift_fields(Vec3::ZERO, Vec3::ZERO, [field], 0.5, false);
-        let active = apply_lift_fields(Vec3::ZERO, Vec3::ZERO, [field], 0.5, true);
+        let outside = apply_lift_fields(
+            Vec3::new(10.0, 0.0, 0.0),
+            Vec3::ZERO,
+            [field],
+            [],
+            0.5,
+            0.5,
+            true,
+        );
+        let disabled = apply_lift_fields(Vec3::ZERO, Vec3::ZERO, [field], [], 0.5, 0.5, false);
+        let active = apply_lift_fields(Vec3::ZERO, Vec3::ZERO, [field], [], 0.5, 0.5, true);
 
         assert_eq!(outside.active_fields, 0);
         assert_eq!(outside.velocity, Vec3::ZERO);
         assert_eq!(disabled.active_fields, 1);
+        assert_eq!(disabled.paired_visual_fields, 0);
         assert_eq!(disabled.applied_delta_y, 0.0);
         assert_eq!(active.active_fields, 1);
         assert!(active.velocity.y > 0.0);
         assert!(active.velocity.y <= field.max_upward_speed);
+    }
+
+    #[test]
+    fn paired_updraft_visual_flow_modulates_lift_strength() {
+        let node = GAMEPLAY_LIFT_ROUTE[0];
+        let lift = node.lift_field();
+        let visual = node.visual_field();
+        let elapsed = 1.25;
+        let center = apply_lift_fields(
+            node.center,
+            Vec3::ZERO,
+            [lift],
+            [visual],
+            elapsed,
+            0.25,
+            true,
+        );
+        let edge_position =
+            node.center + Vec3::new(node.half_extents.x * 0.94, 0.0, node.half_extents.z * 0.04);
+        let edge = apply_lift_fields(
+            edge_position,
+            Vec3::ZERO,
+            [lift],
+            [visual],
+            elapsed,
+            0.25,
+            true,
+        );
+
+        assert_eq!(center.active_fields, 1);
+        assert_eq!(center.paired_visual_fields, 1);
+        assert_eq!(center.dynamic_lift_fields, 1);
+        assert!(center.max_lift_multiplier > 1.0);
+        assert!(edge.max_lift_multiplier < center.max_lift_multiplier);
+        assert!(edge.applied_delta_y < center.applied_delta_y);
+        assert!(center.velocity.y <= lift.max_upward_speed);
     }
 
     #[test]
