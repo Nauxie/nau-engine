@@ -243,7 +243,7 @@ impl EvalSample {
         );
         let wind_visual_key = "\"world_collision_proxy_count\"";
         let wind_visual_metrics = format!(
-            "\"updraft_guide_visual_count\":{},\"updraft_ribbon_visual_count\":{},\"crosswind_guide_visual_count\":{},\"crosswind_ribbon_visual_count\":{},\"updraft_field_count\":{},\"updraft_fields_with_guides_count\":{},\"updraft_fields_with_ribbons_count\":{},\"updraft_fields_with_guides_and_ribbons_count\":{},\"updraft_flow_coherent_field_count\":{},\"crosswind_field_count\":{},\"crosswind_fields_with_guides_count\":{},\"crosswind_fields_with_ribbons_count\":{},\"crosswind_fields_with_guides_and_ribbons_count\":{},\"crosswind_flow_coherent_field_count\":{},\"max_updraft_visual_motion_m\":{},\"max_updraft_visual_rise_m\":{},\"max_updraft_visual_swirl_displacement_m\":{},\"max_updraft_visual_depth_span_m\":{},\"max_updraft_visual_scale_pulse\":{},\"max_crosswind_visual_motion_m\":{},\"max_crosswind_guide_flow_displacement_m\":{},\"max_crosswind_ribbon_flow_displacement_m\":{},\"max_crosswind_visual_lane_depth_span_m\":{},\"max_crosswind_visual_scale_pulse\":{},\"updraft_flow_coherent_visual_count\":{},\"crosswind_flow_coherent_visual_count\":{},\"max_updraft_visual_flow_alignment\":{},\"max_crosswind_visual_flow_alignment\":{},{}",
+            "\"updraft_guide_visual_count\":{},\"updraft_ribbon_visual_count\":{},\"crosswind_guide_visual_count\":{},\"crosswind_ribbon_visual_count\":{},\"updraft_field_count\":{},\"updraft_fields_with_guides_count\":{},\"updraft_fields_with_ribbons_count\":{},\"updraft_fields_with_guides_and_ribbons_count\":{},\"updraft_flow_coherent_field_count\":{},\"crosswind_field_count\":{},\"crosswind_fields_with_guides_count\":{},\"crosswind_fields_with_ribbons_count\":{},\"crosswind_fields_with_guides_and_ribbons_count\":{},\"crosswind_flow_coherent_field_count\":{},\"max_updraft_visual_motion_m\":{},\"max_updraft_visual_rise_m\":{},\"max_updraft_visual_swirl_displacement_m\":{},\"max_updraft_visual_depth_span_m\":{},\"max_updraft_visual_scale_pulse\":{},\"max_crosswind_visual_motion_m\":{},\"max_crosswind_guide_flow_displacement_m\":{},\"max_crosswind_ribbon_flow_displacement_m\":{},\"max_crosswind_visual_lane_depth_span_m\":{},\"max_crosswind_visual_scale_pulse\":{},\"updraft_flow_coherent_visual_count\":{},\"crosswind_flow_coherent_visual_count\":{},\"crosswind_ribbon_flow_coherent_sample_count\":{},\"max_updraft_visual_flow_alignment\":{},\"max_crosswind_visual_flow_alignment\":{},\"max_crosswind_ribbon_visual_flow_alignment\":{},{}",
             self.updraft_guide_visual_count,
             self.updraft_ribbon_visual_count,
             self.crosswind_guide_visual_count,
@@ -270,8 +270,10 @@ impl EvalSample {
             json_number(self.max_crosswind_visual_scale_pulse),
             self.updraft_flow_coherent_visual_count,
             self.crosswind_flow_coherent_visual_count,
+            self.crosswind_ribbon_flow_coherent_sample_count,
             json_number(self.max_updraft_visual_flow_alignment),
             json_number(self.max_crosswind_visual_flow_alignment),
+            json_number(self.max_crosswind_ribbon_visual_flow_alignment),
             wind_visual_key
         );
         let json = json.replacen(wind_visual_key, &wind_visual_metrics, 1);

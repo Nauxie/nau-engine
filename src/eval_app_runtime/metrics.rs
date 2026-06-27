@@ -598,6 +598,10 @@ pub(crate) fn collect_eval_metrics(
         wind_guide_metrics.max_updraft_visual_flow_alignment,
         wind_guide_metrics.max_crosswind_visual_flow_alignment,
     )
+    .with_crosswind_ribbon_flow_coherence_metrics(
+        wind_guide_metrics.crosswind_ribbon_flow_coherent_sample_count,
+        wind_guide_metrics.max_crosswind_ribbon_visual_flow_alignment,
+    )
     .with_wind_field_visual_coverage_metrics(
         wind_guide_metrics.updraft_field_count,
         wind_guide_metrics.updraft_fields_with_guides_count,

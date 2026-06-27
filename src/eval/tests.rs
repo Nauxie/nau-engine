@@ -210,6 +210,10 @@ fn air_control_metric_sample(
         MIN_WIND_VISUAL_FLOW_ALIGNMENT,
         MIN_WIND_VISUAL_FLOW_ALIGNMENT,
     )
+    .with_crosswind_ribbon_flow_coherence_metrics(
+        MIN_CROSSWIND_RIBBON_FLOW_COHERENT_SAMPLE_COUNT,
+        MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+    )
     .with_wind_field_visual_coverage_metrics(
         GAMEPLAY_LIFT_ROUTE.len(),
         GAMEPLAY_LIFT_ROUTE.len(),

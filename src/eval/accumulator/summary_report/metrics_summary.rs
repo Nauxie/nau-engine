@@ -219,8 +219,11 @@ pub(super) fn build_metrics_summary(
         max_crosswind_visual_scale_pulse: acc.max_crosswind_visual_scale_pulse,
         max_updraft_flow_coherent_visual_count: acc.max_updraft_flow_coherent_visual_count,
         max_crosswind_flow_coherent_visual_count: acc.max_crosswind_flow_coherent_visual_count,
+        max_crosswind_ribbon_flow_coherent_sample_count: acc
+            .max_crosswind_ribbon_flow_coherent_sample_count,
         max_updraft_visual_flow_alignment: acc.max_updraft_visual_flow_alignment,
         max_crosswind_visual_flow_alignment: acc.max_crosswind_visual_flow_alignment,
+        max_crosswind_ribbon_visual_flow_alignment: acc.max_crosswind_ribbon_visual_flow_alignment,
         max_updraft_field_count: acc.max_updraft_field_count,
         max_updraft_fields_with_guides_count: acc.max_updraft_fields_with_guides_count,
         max_updraft_fields_with_ribbons_count: acc.max_updraft_fields_with_ribbons_count,
@@ -236,6 +239,8 @@ pub(super) fn build_metrics_summary(
         sustained_wind_visual_flow_samples: acc.sustained_wind_visual_flow_samples,
         sustained_updraft_visual_flow_samples: acc.sustained_updraft_visual_flow_samples,
         sustained_crosswind_visual_flow_samples: acc.sustained_crosswind_visual_flow_samples,
+        sustained_crosswind_ribbon_advected_flow_samples: acc
+            .sustained_crosswind_ribbon_advected_flow_samples,
         max_world_collision_proxy_count: acc.max_world_collision_proxy_count,
         max_terrain_rim_collision_proxy_count: acc.max_terrain_rim_collision_proxy_count,
         max_solid_world_collision_proxy_count: acc.max_solid_world_collision_proxy_count,
