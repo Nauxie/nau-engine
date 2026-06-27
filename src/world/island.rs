@@ -192,7 +192,7 @@ impl IslandTerrainArchetype {
                 -basin(radius, 0.50, 0.10)
                     + (angle * 6.0 + phase).sin() * smoothstep(0.18, 0.72, radius) * 0.05
             }
-            Self::Needle => (1.0 - radius).powf(1.8) * 0.26 - smoothstep(0.56, 1.0, radius) * 0.18,
+            Self::Needle => (1.0 - radius).powf(1.8) * 0.23 - smoothstep(0.56, 1.0, radius) * 0.18,
             Self::SapphireBasin => {
                 -basin(radius, 0.46, 0.22)
                     + smoothstep(0.70, 0.96, radius) * 0.14
@@ -558,10 +558,21 @@ impl SkyIsland {
         let edge_drop = -radius.powf(2.35) * 0.42;
         let ravines = terrain_ravine_relief_m(radius, angle, phase);
         let terrace = terrain_terrace_relief_m(radius, angle, phase);
+        let braided_path = terrain_braided_path_relief_m(radius, angle, phase);
+        let strata_crag = terrain_strata_crag_relief_m(radius, angle, phase);
         let micro = terrain_micro_relief_m(radius, angle, phase);
         let archetype = self.terrain_archetype.relief_bias_m(radius, angle, phase);
 
-        (ridge + shoulder + center_falloff + edge_drop + ravines + terrace + micro + archetype)
+        (ridge
+            + shoulder
+            + center_falloff
+            + edge_drop
+            + ravines
+            + terrace
+            + braided_path
+            + strata_crag
+            + micro
+            + archetype)
             .clamp(-TERRAIN_MAX_DROP_M, TERRAIN_MAX_RISE_M)
     }
 
@@ -678,6 +689,38 @@ fn terrain_terrace_relief_m(radius: f32, angle: f32, phase: f32) -> f32 {
         (radius * std::f32::consts::TAU * 4.4 + phase * 0.5 + (angle * 2.0 + phase).sin() * 0.45)
             .sin();
     terrace_wave * terrace_mask * 0.045
+}
+
+fn terrain_braided_path_relief_m(radius: f32, angle: f32, phase: f32) -> f32 {
+    let path_mask = smoothstep(0.16, 0.30, radius) * (1.0 - smoothstep(0.86, 0.98, radius));
+    let braid_a_axis = (angle + radius * 1.85 + phase * 0.37).sin().abs();
+    let braid_b_axis = (angle - radius * 2.25 - phase * 0.19).cos().abs();
+    let braid_a_cut = 1.0 - smoothstep(0.025, 0.115, braid_a_axis);
+    let braid_b_cut = 1.0 - smoothstep(0.020, 0.095, braid_b_axis);
+    let braid_a_berm =
+        smoothstep(0.095, 0.145, braid_a_axis) * (1.0 - smoothstep(0.145, 0.240, braid_a_axis));
+    let braid_b_berm =
+        smoothstep(0.080, 0.130, braid_b_axis) * (1.0 - smoothstep(0.130, 0.220, braid_b_axis));
+
+    path_mask
+        * (braid_a_berm * 0.032 + braid_b_berm * 0.024 - braid_a_cut * 0.060 - braid_b_cut * 0.040)
+}
+
+fn terrain_strata_crag_relief_m(radius: f32, angle: f32, phase: f32) -> f32 {
+    let strata_mask = smoothstep(0.22, 0.48, radius) * (1.0 - smoothstep(0.90, 1.0, radius));
+    let strata_phase =
+        radius * std::f32::consts::TAU * 8.0 + phase * 0.6 + (angle * 3.0 + phase).sin() * 0.7;
+    let ledge = 1.0 - smoothstep(0.015, 0.170, strata_phase.sin().abs());
+    let crag_high = (angle * 13.0 + radius * 15.0 + phase)
+        .sin()
+        .max(0.0)
+        .powf(2.4);
+    let crag_cut = (angle * 11.0 - radius * 10.0 - phase * 0.8)
+        .cos()
+        .max(0.0)
+        .powf(2.2);
+
+    strata_mask * (ledge * 0.020 + crag_high * 0.020 - crag_cut * 0.018)
 }
 
 fn terrain_micro_relief_m(radius: f32, angle: f32, phase: f32) -> f32 {
