@@ -69,6 +69,12 @@ pub(super) fn append_scenario_checks(
             "ratio",
         ));
         checks.push(EvalCheck::at_least(
+            "max_wind_flow_direction_change",
+            acc.max_wind_flow_direction_change_degrees,
+            MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES,
+            "deg",
+        ));
+        checks.push(EvalCheck::at_least(
             "max_wind_flow_variation_range",
             acc.max_wind_flow_variation_range,
             MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE,
