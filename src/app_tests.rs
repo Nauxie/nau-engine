@@ -49,6 +49,14 @@ fn normalized_radius(island: SkyIsland, position: [f32; 3]) -> f32 {
     .length()
 }
 
+fn normalized_playable_radius(island: SkyIsland, position: [f32; 3]) -> f32 {
+    let normalized = Vec2::new(
+        (position[0] - island.center.x) / island.half_extents.x,
+        (position[2] - island.center.z) / island.half_extents.y,
+    );
+    normalized.length() / island.playable_silhouette_scale(normalized.y.atan2(normalized.x))
+}
+
 fn radial_range(positions: &[[f32; 3]]) -> f32 {
     let mut min_radius = f32::INFINITY;
     let mut max_radius = f32::NEG_INFINITY;
@@ -1152,14 +1160,18 @@ fn terrain_mesh_uses_high_resolution_irregular_silhouette() {
         .iter()
         .map(|position| normalized_radius(island, *position))
         .fold(f32::NEG_INFINITY, f32::max);
+    let max_playable_radius = outer_ring
+        .iter()
+        .map(|position| normalized_playable_radius(island, *position))
+        .fold(f32::NEG_INFINITY, f32::max);
 
     assert_eq!(
         mesh.count_vertices(),
         1 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS
     );
     assert!(
-        max_radius <= 1.001,
-        "playable terrain must stay inside the route collision footprint"
+        max_playable_radius <= 1.001,
+        "playable terrain must stay inside the profiled route collision footprint"
     );
     assert!(
         max_radius - min_radius > 0.10,

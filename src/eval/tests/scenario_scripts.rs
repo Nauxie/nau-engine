@@ -20,6 +20,10 @@ fn ground_taxi_script_exercises_wasd_without_launching() {
     assert!(scripted_input(scenario, 135).backward);
     assert!(!scripted_input(scenario, 1).launch);
     assert!(!scripted_input(scenario, 60).glide);
+    assert_eq!(scenario.sample_stride, 1);
+    assert!(scenario.frame_count >= MIN_SUSTAINED_WIND_VISUAL_FLOW_SAMPLES);
+    assert!(scenario.frame_count >= MIN_SUSTAINED_UPDRAFT_VISUAL_FLOW_SAMPLES);
+    assert!(scenario.frame_count >= MIN_SUSTAINED_CROSSWIND_VISUAL_FLOW_SAMPLES);
 }
 
 #[test]

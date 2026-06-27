@@ -1,7 +1,9 @@
 use super::json_number;
 use crate::{
     animation::LANDING_MIN_FOOT_FORWARD_READABILITY_M,
-    world::{IslandTerrainArchetype, SKY_ROUTE_ISLAND_COUNT},
+    world::{
+        IslandTerrainArchetype, SKY_ROUTE_ISLAND_COUNT, TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND,
+    },
 };
 
 pub const MAX_RESIDENT_ISLAND_VISUAL_FRACTION: f32 = 0.70;
@@ -134,7 +136,8 @@ pub(super) const MIN_SUSTAINED_WIND_VISUAL_FLOW_SAMPLES: u32 = 32;
 pub(super) const MIN_SUSTAINED_UPDRAFT_VISUAL_FLOW_SAMPLES: u32 = 32;
 pub(super) const MIN_SUSTAINED_CROSSWIND_VISUAL_FLOW_SAMPLES: u32 = 30;
 pub(super) const MIN_WORLD_COLLISION_PROXY_COUNT: usize = 24;
-pub(super) const MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT: usize = 4;
+pub(super) const MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT: usize =
+    TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND;
 pub(super) const MIN_SOLID_WORLD_COLLISION_PROXY_COUNT: usize = 60;
 pub(super) const MIN_TREE_WORLD_COLLISION_PROXY_COUNT: usize = 10;
 pub(super) const MIN_ROCK_WORLD_COLLISION_PROXY_COUNT: usize = 16;

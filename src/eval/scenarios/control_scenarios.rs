@@ -28,7 +28,7 @@ pub(super) fn ground_taxi_control() -> EvalScenario {
         name: GROUND_TAXI_CONTROL,
         fixed_dt: 1.0 / 60.0,
         frame_count: 180,
-        sample_stride: 5,
+        sample_stride: 1,
         target_island_name: None,
         checkpoints: GROUND_TAXI_CHECKPOINTS,
         thresholds: EvalThresholds {

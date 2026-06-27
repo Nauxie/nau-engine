@@ -5,6 +5,8 @@ use super::{
     StreamChunkCoord, TERRAIN_MAX_DROP_M, TERRAIN_MAX_RISE_M, TERRAIN_VISUAL_FOOTING_OFFSET_M,
 };
 
+pub const ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT: usize = 16;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum IslandTerrainArchetype {
     LaunchMesa,
@@ -260,6 +262,232 @@ impl IslandTerrainArchetype {
             }
         }
     }
+
+    fn footprint_profile(self) -> IslandFootprintProfile {
+        match self {
+            Self::LaunchMesa => IslandFootprintProfile::new(
+                3.0,
+                0.055,
+                4.0,
+                0.040,
+                FootprintShelf::new(-0.35, 0.72, 0.040),
+                1.06,
+            ),
+            Self::Shelf => IslandFootprintProfile::new(
+                2.0,
+                0.070,
+                3.0,
+                0.055,
+                FootprintShelf::new(-1.45, 0.78, 0.060),
+                1.10,
+            ),
+            Self::GardenBasin => IslandFootprintProfile::new(
+                5.0,
+                0.055,
+                4.0,
+                0.045,
+                FootprintShelf::new(-1.20, 0.92, 0.045),
+                1.08,
+            ),
+            Self::CrownRidge => IslandFootprintProfile::new(
+                6.0,
+                0.075,
+                5.0,
+                0.030,
+                FootprintShelf::new(-0.80, 0.70, 0.040),
+                1.12,
+            ),
+            Self::WindOverlook => IslandFootprintProfile::new(
+                2.0,
+                0.095,
+                3.0,
+                0.050,
+                FootprintShelf::new(-0.15, 0.68, 0.095),
+                1.14,
+            ),
+            Self::TerracedSpur => IslandFootprintProfile::new(
+                2.0,
+                0.085,
+                4.0,
+                0.040,
+                FootprintShelf::new(-0.55, 0.74, 0.105),
+                1.16,
+            ),
+            Self::RefugeTableland => IslandFootprintProfile::new(
+                3.0,
+                0.045,
+                6.0,
+                0.060,
+                FootprintShelf::new(-2.20, 0.84, 0.035),
+                1.05,
+            ),
+            Self::StormRavine => IslandFootprintProfile::new(
+                5.0,
+                0.060,
+                7.0,
+                0.090,
+                FootprintShelf::new(-1.05, 0.58, 0.035),
+                1.02,
+            ),
+            Self::OrchardBasin => IslandFootprintProfile::new(
+                5.0,
+                0.070,
+                4.0,
+                0.045,
+                FootprintShelf::new(-0.70, 0.94, 0.050),
+                1.10,
+            ),
+            Self::Needle => IslandFootprintProfile::new(
+                7.0,
+                0.040,
+                5.0,
+                0.075,
+                FootprintShelf::new(-1.35, 0.54, 0.020),
+                0.92,
+            ),
+            Self::SapphireBasin => IslandFootprintProfile::new(
+                3.0,
+                0.060,
+                4.0,
+                0.055,
+                FootprintShelf::new(-1.70, 0.86, 0.040),
+                1.08,
+            ),
+            Self::MistArch => IslandFootprintProfile::new(
+                2.0,
+                0.105,
+                3.0,
+                0.100,
+                FootprintShelf::new(-0.35, 0.60, 0.080),
+                1.12,
+            ),
+            Self::BrokenStair => IslandFootprintProfile::new(
+                4.0,
+                0.080,
+                5.0,
+                0.070,
+                FootprintShelf::new(-0.95, 0.66, 0.075),
+                1.13,
+            ),
+            Self::CloudGate => IslandFootprintProfile::new(
+                2.0,
+                0.090,
+                5.0,
+                0.060,
+                FootprintShelf::new(-0.20, 0.74, 0.080),
+                1.12,
+            ),
+            Self::LaunchSpur => IslandFootprintProfile::new(
+                2.0,
+                0.090,
+                4.0,
+                0.055,
+                FootprintShelf::new(-0.65, 0.68, 0.115),
+                1.15,
+            ),
+            Self::GardenApron => IslandFootprintProfile::new(
+                6.0,
+                0.065,
+                5.0,
+                0.040,
+                FootprintShelf::new(-1.10, 1.00, 0.055),
+                1.10,
+            ),
+            Self::StormShard => IslandFootprintProfile::new(
+                3.0,
+                0.115,
+                6.0,
+                0.110,
+                FootprintShelf::new(-0.85, 0.50, 0.040),
+                1.06,
+            ),
+            Self::OrchardSpur => IslandFootprintProfile::new(
+                2.0,
+                0.095,
+                5.0,
+                0.050,
+                FootprintShelf::new(-0.55, 0.72, 0.105),
+                1.15,
+            ),
+            Self::MistStep => IslandFootprintProfile::new(
+                4.0,
+                0.070,
+                4.0,
+                0.085,
+                FootprintShelf::new(-0.90, 0.58, 0.070),
+                1.07,
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct FootprintShelf {
+    angle: f32,
+    width: f32,
+    strength: f32,
+}
+
+impl FootprintShelf {
+    const fn new(angle: f32, width: f32, strength: f32) -> Self {
+        Self {
+            angle,
+            width,
+            strength,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IslandFootprintProfile {
+    lobes: f32,
+    lobe_strength: f32,
+    coves: f32,
+    cove_depth: f32,
+    shelf_angle: f32,
+    shelf_width: f32,
+    shelf_strength: f32,
+    playable_max_scale: f32,
+}
+
+impl IslandFootprintProfile {
+    const fn new(
+        lobes: f32,
+        lobe_strength: f32,
+        coves: f32,
+        cove_depth: f32,
+        shelf: FootprintShelf,
+        playable_max_scale: f32,
+    ) -> Self {
+        Self {
+            lobes,
+            lobe_strength,
+            coves,
+            cove_depth,
+            shelf_angle: shelf.angle,
+            shelf_width: shelf.width,
+            shelf_strength: shelf.strength,
+            playable_max_scale,
+        }
+    }
+
+    fn bias(self, angle: f32, phase: f32) -> f32 {
+        let lobe = (angle * self.lobes + phase * 0.57).cos() * self.lobe_strength;
+        let cove = (angle * self.coves - phase * 0.41).sin().max(0.0).powf(1.6) * self.cove_depth;
+        let shelf_axis = self.shelf_angle + phase * 0.07;
+        let shelf =
+            angular_lobe(angle, shelf_axis, self.shelf_width).powf(1.25) * self.shelf_strength;
+        let neck = angular_lobe(
+            angle,
+            shelf_axis + std::f32::consts::PI,
+            self.shelf_width * 0.74,
+        )
+        .powf(1.1)
+            * self.cove_depth
+            * 0.55;
+
+        lobe + shelf - cove - neck
+    }
 }
 
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
@@ -385,12 +613,42 @@ impl SkyIsland {
         (1.0 + 0.09 * (angle * 3.0 + phase).sin()
             + 0.055 * (angle * 7.0 - phase * 0.4).cos()
             + 0.032 * (angle * 11.0 + phase * 1.7).sin()
-            + self.terrain_archetype.silhouette_bias(angle, phase))
-        .clamp(0.68, 1.28)
+            + self.terrain_archetype.silhouette_bias(angle, phase)
+            + self.footprint_profile().bias(angle, phase))
+        .clamp(0.54, 1.34)
     }
 
     pub fn playable_silhouette_scale(self, angle: f32) -> f32 {
-        self.visual_silhouette_scale(angle).clamp(0.62, 1.0)
+        self.visual_silhouette_scale(angle)
+            .clamp(0.54, self.footprint_profile().playable_max_scale)
+    }
+
+    pub fn footprint_profile(self) -> IslandFootprintProfile {
+        self.terrain_archetype.footprint_profile()
+    }
+
+    pub fn footprint_contour_point(self, angle: f32, visual: bool) -> Vec2 {
+        let scale = if visual {
+            self.visual_silhouette_scale(angle)
+        } else {
+            self.playable_silhouette_scale(angle)
+        };
+
+        Vec2::new(
+            self.center.x + angle.cos() * self.half_extents.x * scale,
+            self.center.z + angle.sin() * self.half_extents.y * scale,
+        )
+    }
+
+    pub fn footprint_contour_samples(
+        self,
+        visual: bool,
+    ) -> [Vec2; ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT] {
+        std::array::from_fn(|index| {
+            let angle =
+                index as f32 / ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT as f32 * std::f32::consts::TAU;
+            self.footprint_contour_point(angle, visual)
+        })
     }
 
     fn playable_polar_at(self, position: Vec3) -> (f32, f32) {
@@ -438,6 +696,12 @@ fn terrain_step(radius: f32, start: f32, end: f32, height_m: f32) -> f32 {
 fn basin(radius: f32, center_radius: f32, depth_m: f32) -> f32 {
     let distance = ((radius - center_radius).abs() / center_radius.max(0.001)).clamp(0.0, 1.0);
     (1.0 - distance).powf(1.7) * depth_m
+}
+
+fn angular_lobe(angle: f32, center: f32, width: f32) -> f32 {
+    let diff = (angle - center + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)
+        - std::f32::consts::PI;
+    (1.0 - diff.abs() / width.max(0.001)).clamp(0.0, 1.0)
 }
 
 fn smoothstep(edge0: f32, edge1: f32, value: f32) -> f32 {

@@ -213,10 +213,10 @@ pub(crate) fn island_impostor_mesh(island_index: usize, island: SkyIsland) -> Me
 
     for segment in 0..ISLAND_IMPOSTOR_SEGMENTS {
         let angle = segment as f32 / ISLAND_IMPOSTOR_SEGMENTS as f32 * std::f32::consts::TAU;
-        let edge_variation =
-            1.0 + 0.09 * (angle * 3.0 + phase).sin() + 0.045 * (angle * 7.0 - phase).cos();
-        let radius_x = island.half_extents.x * 0.9 * edge_variation;
-        let radius_z = island.half_extents.y * 0.9 * edge_variation;
+        let contour_scale = island_silhouette_scale(island, angle);
+        let edge_variation = 0.96 + 0.035 * (angle * 7.0 - phase).cos();
+        let radius_x = island.half_extents.x * 0.9 * contour_scale * edge_variation;
+        let radius_z = island.half_extents.y * 0.9 * contour_scale * edge_variation;
         let x = island.center.x + angle.cos() * radius_x;
         let z = island.center.z + angle.sin() * radius_z;
         let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z)) - 0.18;
@@ -240,10 +240,11 @@ pub(crate) fn island_impostor_mesh(island_index: usize, island: SkyIsland) -> Me
     {
         for segment in 0..ISLAND_IMPOSTOR_SEGMENTS {
             let angle = segment as f32 / ISLAND_IMPOSTOR_SEGMENTS as f32 * std::f32::consts::TAU;
+            let contour_scale = island_silhouette_scale(island, angle);
             let edge_variation =
                 1.0 + 0.08 * (angle * 4.0 + phase).sin() - 0.035 * (angle * 8.0).cos();
-            let radius_x = island.half_extents.x * radius_scale * edge_variation;
-            let radius_z = island.half_extents.y * radius_scale * edge_variation;
+            let radius_x = island.half_extents.x * radius_scale * contour_scale * edge_variation;
+            let radius_z = island.half_extents.y * radius_scale * contour_scale * edge_variation;
             let x = island.center.x + angle.cos() * radius_x;
             let z = island.center.z + angle.sin() * radius_z;
             let y = center_y - island.thickness * 0.05 * (angle * 5.0 + phase).sin().abs();
