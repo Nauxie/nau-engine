@@ -261,11 +261,7 @@ pub fn glider_traversal_pose(context: PlayerPoseContext, phase: f32) -> GliderTr
     let intent = context.intent();
     let turn_weight = pose_turn_weight(context);
     let airflow = wing_airflow_strength(context.mode, context.velocity);
-    let dive_pressure = if intent == PlayerPoseIntent::Diving {
-        ((-context.velocity.y - 4.0) / 18.0).clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
+    let dive_pressure = dive_pose_pressure(context, intent);
     let brake_pressure = if intent == PlayerPoseIntent::AirBrake {
         1.0
     } else {
@@ -286,14 +282,14 @@ pub fn glider_traversal_pose(context: PlayerPoseContext, phase: f32) -> GliderTr
     let flutter = (phase * 2.2).sin() * (0.010 + airflow * 0.035);
     let roll = (-turn_pressure * 0.22 - brake_turn_pressure * 0.09).clamp(-0.31, 0.31);
     let yaw = (turn_pressure * 0.08 + brake_turn_pressure * 0.06).clamp(-0.16, 0.16);
-    let pitch = (-airflow * 0.06 - dive_pressure * 0.20 + brake_pressure * 0.18 + flutter)
+    let pitch = (-airflow * 0.06 - dive_pressure * 0.24 + brake_pressure * 0.18 + flutter)
         .clamp(-0.24, 0.26);
 
     GliderTraversalPose {
         translation_offset: Vec3::new(
             turn_pressure * 0.060 + brake_turn_pressure * 0.045,
-            airflow * 0.050 + dive_pressure * 0.018 + brake_pressure * 0.035 + flutter * 0.50,
-            airflow * 0.080 + dive_pressure * 0.085 - brake_pressure * 0.100,
+            airflow * 0.050 + dive_pressure * 0.012 + brake_pressure * 0.035 + flutter * 0.50,
+            airflow * 0.080 + dive_pressure * 0.125 - brake_pressure * 0.100,
         ),
         rotation_offset: Quat::from_rotation_z(roll)
             * Quat::from_rotation_y(yaw)
@@ -709,6 +705,11 @@ pub fn part_pose_with_context(
         0.0
     };
     let dive_pressure = dive_pose_pressure(context, intent);
+    let dive_extension = if intent == PlayerPoseIntent::Diving {
+        ((dive_pressure - 0.45) / 0.55).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let vertical_pitch = (-context.velocity.y * 0.004).clamp(-0.1, 0.1);
     let mut translation = part.base_translation;
     let mut rotation = part.base_rotation;
@@ -728,7 +729,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Falling => -0.22 + vertical_pitch * 0.30,
                 PlayerPoseIntent::Gliding => -0.30 + vertical_pitch * 0.5,
                 PlayerPoseIntent::AirTurn => -0.34 + vertical_pitch * 0.45,
-                PlayerPoseIntent::Diving => -0.64 - dive_pressure * 0.42 + vertical_pitch * 0.18,
+                PlayerPoseIntent::Diving => -0.68 - dive_pressure * 0.48 + vertical_pitch * 0.18,
                 PlayerPoseIntent::AirBrake => {
                     0.10 + turn_weight.abs() * 0.05 + vertical_pitch * 0.35
                 }
@@ -768,7 +769,7 @@ pub fn part_pose_with_context(
             translation.x += turn_weight * turn_reach * 0.025;
             let pitch = match intent {
                 PlayerPoseIntent::AirTurn => -0.10,
-                PlayerPoseIntent::Diving => 0.08 + dive_pressure * 0.13,
+                PlayerPoseIntent::Diving => 0.12 + dive_pressure * 0.17,
                 PlayerPoseIntent::AirBrake => -0.14,
                 PlayerPoseIntent::LandingAnticipation => -0.38 - landing_flip * 0.18,
                 PlayerPoseIntent::LandingRecovery => -0.22 - recovery_strength * 0.14,
@@ -796,7 +797,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Falling => 0.78,
                 PlayerPoseIntent::Gliding => 1.22 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => 1.18 + airflow * 0.040,
-                PlayerPoseIntent::Diving => 1.28 + dive_pressure * 0.30 + airflow * 0.025,
+                PlayerPoseIntent::Diving => 1.32 + dive_extension * 0.22 + airflow * 0.025,
                 PlayerPoseIntent::AirBrake => 1.565 + same_side_turn * 0.08,
                 PlayerPoseIntent::LandingAnticipation => {
                     1.00 + landing_strength * 0.14 + landing_flip * 0.22
@@ -811,7 +812,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedRun => gait * (0.58 + run_weight * 0.18),
                 PlayerPoseIntent::Gliding => -0.58 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => -0.46 + turn_weight.abs() * 0.10,
-                PlayerPoseIntent::Diving => -0.08 + dive_pressure * 0.14 + airflow * 0.018,
+                PlayerPoseIntent::Diving => -0.22 - dive_extension * 0.16 + airflow * 0.018,
                 PlayerPoseIntent::AirBrake => 0.42 + same_side_turn * 0.12,
                 PlayerPoseIntent::LandingAnticipation => {
                     1.16 + landing_strength * 0.22 + landing_flip * 0.26
@@ -823,7 +824,7 @@ pub fn part_pose_with_context(
             translation.z += gait * 0.08 * gait_weight;
             translation.y += match context.mode {
                 _ if intent == PlayerPoseIntent::Launching => -0.04,
-                _ if intent == PlayerPoseIntent::Diving => 0.10 + dive_pressure * 0.09,
+                _ if intent == PlayerPoseIntent::Diving => 0.10 + dive_pressure * 0.08,
                 _ if intent == PlayerPoseIntent::AirBrake => 0.10 + same_side_turn * 0.045,
                 _ if intent == PlayerPoseIntent::LandingAnticipation => -0.14 - landing_flip * 0.04,
                 _ if intent == PlayerPoseIntent::LandingRecovery => -0.10,
@@ -843,6 +844,10 @@ pub fn part_pose_with_context(
                 translation.z += turn_weight.abs() * 0.025 - same_side_turn * 0.05
                     + opposite_side_turn * 0.025
                     + airflow_z;
+            }
+            if intent == PlayerPoseIntent::Diving {
+                translation.x += sign * dive_extension * 0.11;
+                translation.z -= dive_extension * 0.045;
             }
             rotation *= Quat::from_rotation_z(sign * spread)
                 * Quat::from_rotation_x(sweep - same_side_turn * 0.16 + opposite_side_turn * 0.06)
@@ -878,7 +883,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => 0.50 + cycle * 0.04 + airflow * 0.025,
                 PlayerPoseIntent::AirTurn => 0.54 + cycle * 0.04 + airflow * 0.025,
                 PlayerPoseIntent::Diving => {
-                    0.72 + dive_pressure * 0.42 + cycle * 0.02 + airflow * 0.018
+                    0.82 + dive_pressure * 0.48 + cycle * 0.02 + airflow * 0.018
                 }
                 PlayerPoseIntent::AirBrake => -0.34 - same_side_turn * 0.16,
                 PlayerPoseIntent::LandingAnticipation => {
@@ -899,8 +904,8 @@ pub fn part_pose_with_context(
                 translation.y += 0.05;
             }
             if intent == PlayerPoseIntent::Diving {
-                translation.z += dive_pressure * 0.24;
-                translation.y -= dive_pressure * 0.025;
+                translation.z += dive_pressure * 0.32;
+                translation.y -= dive_pressure * 0.045;
             }
             if intent == PlayerPoseIntent::LandingAnticipation {
                 translation.z += 0.30 + landing_strength * 0.14 + landing_flip * 0.28;
@@ -936,11 +941,21 @@ pub fn part_pose_with_context(
             } else {
                 0.0
             };
-            translation.y += flutter * 0.5 + airflow * 0.050 + air_brake_cup * 0.2;
-            translation.z += airflow * 0.06 - air_brake_cup * 0.12;
-            rotation *= Quat::from_rotation_z(sign * (bank + airflow * 0.05 + air_brake_cup))
-                * Quat::from_rotation_y(sign * (airflow * 0.08 + air_brake_cup * 0.25))
-                * Quat::from_rotation_x(flutter - airflow * 0.09 + air_brake_cup * 0.55);
+            let dive_wing_sweep = if intent == PlayerPoseIntent::Diving {
+                dive_pressure
+            } else {
+                0.0
+            };
+            translation.y +=
+                flutter * 0.5 + airflow * 0.050 + air_brake_cup * 0.2 - dive_wing_sweep * 0.035;
+            translation.z += airflow * 0.06 - air_brake_cup * 0.12 + dive_wing_sweep * 0.16;
+            rotation *= Quat::from_rotation_z(
+                sign * (bank + airflow * 0.05 + air_brake_cup - dive_wing_sweep * 0.035),
+            ) * Quat::from_rotation_y(
+                sign * (airflow * 0.08 + air_brake_cup * 0.25 + dive_wing_sweep * 0.12),
+            ) * Quat::from_rotation_x(
+                flutter - airflow * 0.09 + air_brake_cup * 0.55 - dive_wing_sweep * 0.22,
+            );
         }
     }
 
@@ -1015,12 +1030,52 @@ mod tests {
         let fast = part_pose(
             &wing,
             FlightMode::Gliding,
-            Vec3::new(0.0, -18.0, -55.0),
+            Vec3::new(0.0, -10.0, -55.0),
             0.0,
         );
 
         assert!(fast.translation.y > slow.translation.y + 0.035);
         assert!(fast.translation.z > slow.translation.z);
+    }
+
+    #[test]
+    fn deployed_glider_dive_sweeps_wings_into_streamline() {
+        let wing = CharacterPart::new(
+            CharacterPartRole::Wing(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let glide_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -4.0, -32.0),
+            FlightInput::default(),
+            50.0,
+        );
+        let dive_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -22.0, -44.0),
+            FlightInput {
+                dive: true,
+                ..default()
+            },
+            50.0,
+        );
+
+        let glide = part_pose_with_context(&wing, glide_context, 0.0);
+        let dive = part_pose_with_context(&wing, dive_context, 0.0);
+        let glide_traversal = glider_traversal_pose(glide_context, 0.0);
+        let dive_traversal = glider_traversal_pose(dive_context, 0.0);
+
+        assert_eq!(dive.visibility, PartVisibility::Visible);
+        assert!(dive.translation.z > glide.translation.z + 0.10);
+        assert!(
+            dive.rotation.angle_between(glide.rotation).to_degrees() > 10.0,
+            "expected deployed dive wing to visibly pitch/sweep, glide={:?}, dive={:?}",
+            glide.rotation,
+            dive.rotation
+        );
+        assert!(dive_traversal.motion_m() > glide_traversal.motion_m() + 0.08);
+        assert!(dive_traversal.response_degrees() > glide_traversal.response_degrees() + 8.0);
     }
 
     #[test]
@@ -1601,6 +1656,48 @@ mod tests {
         assert!(fast_metrics.arm_spread_degrees > shallow_metrics.arm_spread_degrees + 8.0);
         assert!(fast_metrics.leg_tuck_degrees > shallow_metrics.leg_tuck_degrees + 8.0);
         assert!(fast_leg.translation.z > shallow_leg.translation.z + 0.08);
+    }
+
+    #[test]
+    fn freefall_dive_pose_extends_arms_into_flat_silhouette() {
+        let left_arm = CharacterPart::new(
+            CharacterPartRole::Arm(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let right_arm = CharacterPart::new(
+            CharacterPartRole::Arm(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let falling_context = PlayerPoseContext::new(
+            FlightMode::Airborne,
+            Vec3::new(0.0, -12.0, -14.0),
+            FlightInput::default(),
+            50.0,
+        );
+        let dive_context = PlayerPoseContext::new(
+            FlightMode::Airborne,
+            Vec3::new(0.0, -30.0, -30.0),
+            FlightInput {
+                dive: true,
+                ..default()
+            },
+            50.0,
+        );
+
+        let falling_metrics = pose_readability_metrics(falling_context, 0.0);
+        let dive_metrics = pose_readability_metrics(dive_context, 0.0);
+        let left_dive_arm = part_pose_with_context(&left_arm, dive_context, 0.0);
+        let right_dive_arm = part_pose_with_context(&right_arm, dive_context, 0.0);
+
+        assert_eq!(dive_context.intent(), PlayerPoseIntent::Diving);
+        assert!(dive_metrics.torso_pitch_degrees > 58.0);
+        assert!(dive_metrics.arm_spread_degrees > 166.0);
+        assert!(dive_metrics.leg_tuck_degrees > falling_metrics.leg_tuck_degrees + 30.0);
+        assert!(left_dive_arm.translation.x < -0.09);
+        assert!(right_dive_arm.translation.x > 0.09);
+        assert!(dive_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
     }
 
     #[test]

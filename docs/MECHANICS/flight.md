@@ -88,6 +88,7 @@ Dive:
 
 - commits the player downward
 - increases urgency and speed
+- should read as a flattened human dive silhouette with arms extended into the airflow, trailing legs, and deployed glider wings pitching/sweeping under dive pressure when the glider is out
 - should be reversible only with enough altitude, wind, or later abilities
 
 Landing:
@@ -139,7 +140,7 @@ Current tests cover:
 - flight body yaw tracks lateral input direction, bounds the first-frame reversal spike, and recovers quickly after lateral input reversals
 - frame-time diagnostics avoid invalid values
 - animation phase advances from delta time
-- idle breathing, glide airflow micro-motion, and pressure-scaled dive flattening/limb trail are phase-driven and covered by pose unit tests
+- idle breathing, glide airflow micro-motion, pressure-scaled dive flattening/arms-out limb trail, and deployed-glider dive wing sweep are phase-driven and covered by pose unit tests
 - wing visibility tracks glide mode
 - `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, unreadable lift samples, dynamic readable lift samples, wind-flow speed/variation/range, wind-guide depth/pulse/coherence, per-field visual coverage, sustained visual-flow sample windows, layered dynamic flow fields, and simultaneous crosswind-plus-updraft swirl force response so active lift must overlap a paired visible updraft with changing flow, layered aligned visual airflow, and lateral current
 - `camera_mouse_control` eval tracks yaw/pitch offsets and route-spire obstruction adjustment without player movement in both app and simulation coverage
