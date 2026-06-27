@@ -2211,6 +2211,11 @@ fn accumulator_gates_pose_state_coverage_samples() {
             ("launching", FlightMode::Launching.label(), 3),
             ("falling", FlightMode::Airborne.label(), 8),
             ("gliding", FlightMode::Gliding.label(), 18),
+            ("air_turn", FlightMode::Gliding.label(), 4),
+            ("air_brake", FlightMode::Gliding.label(), 4),
+            ("diving", FlightMode::Gliding.label(), 1),
+            ("landing_anticipation", FlightMode::Gliding.label(), 1),
+            ("landing_recovery", FlightMode::Grounded.label(), 1),
         ],
     );
 
@@ -2252,6 +2257,12 @@ fn accumulator_gates_pose_state_coverage_samples() {
     assert_eq!(summary.metrics.authored_jog_clip_samples, 16);
     assert_eq!(summary.metrics.authored_fall_clip_samples, 8);
     assert_eq!(summary.metrics.pose_gliding_samples, 18);
+    assert_eq!(summary.metrics.pose_air_turn_samples, 4);
+    assert_eq!(summary.metrics.pose_air_brake_samples, 4);
+    assert_eq!(summary.metrics.pose_diving_samples, 1);
+    assert_eq!(summary.metrics.gliding_dive_samples, 1);
+    assert_eq!(summary.metrics.pose_landing_anticipation_samples, 1);
+    assert_eq!(summary.metrics.pose_landing_recovery_samples, 1);
     assert_eq!(summary.metrics.unreadable_key_pose_samples, 0);
     assert!(summary.to_json().contains("\"pose_grounded_walk_samples\""));
     assert!(
@@ -2271,6 +2282,16 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_falling_samples",
         "pose_state_authored_fall_clip_samples",
         "pose_state_gliding_samples",
+        "pose_state_air_turn_samples",
+        "pose_state_air_brake_samples",
+        "pose_state_diving_samples",
+        "pose_state_gliding_dive_samples",
+        "pose_state_landing_anticipation_samples",
+        "pose_state_landing_recovery_samples",
+        "pose_state_landing_crouch",
+        "pose_state_landing_foot_forward",
+        "pose_state_landing_flare",
+        "pose_state_landing_recovery_flip",
         "pose_state_unreadable_key_pose_samples",
     ] {
         assert!(named_check(&summary, name).passed, "{name} should pass");
@@ -2291,6 +2312,8 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
             ("launching", FlightMode::Launching.label(), 2),
             ("falling", FlightMode::Airborne.label(), 7),
             ("gliding", FlightMode::Gliding.label(), 17),
+            ("air_turn", FlightMode::Gliding.label(), 3),
+            ("air_brake", FlightMode::Gliding.label(), 3),
         ],
     );
 
@@ -2313,6 +2336,12 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
         "pose_state_falling_samples",
         "pose_state_authored_fall_clip_samples",
         "pose_state_gliding_samples",
+        "pose_state_air_turn_samples",
+        "pose_state_air_brake_samples",
+        "pose_state_diving_samples",
+        "pose_state_gliding_dive_samples",
+        "pose_state_landing_anticipation_samples",
+        "pose_state_landing_recovery_samples",
     ] {
         assert!(!named_check(&summary, name).passed, "{name} should fail");
     }
@@ -2332,6 +2361,11 @@ fn accumulator_rejects_static_grounded_pose_state_stride() {
             ("launching", FlightMode::Launching.label(), 3),
             ("falling", FlightMode::Airborne.label(), 8),
             ("gliding", FlightMode::Gliding.label(), 18),
+            ("air_turn", FlightMode::Gliding.label(), 4),
+            ("air_brake", FlightMode::Gliding.label(), 4),
+            ("diving", FlightMode::Gliding.label(), 1),
+            ("landing_anticipation", FlightMode::Gliding.label(), 1),
+            ("landing_recovery", FlightMode::Grounded.label(), 1),
         ],
         false,
     );
@@ -2423,6 +2457,9 @@ fn observe_pose_state_samples_with_grounded_stride(
             sample.mode = mode;
             sample.pose_intent_label = pose_intent_label;
             sample.key_pose_readability_score = 1.0;
+            sample = sample.with_pose_readability_metrics(
+                pose_state_readability_metrics_for_label(pose_intent_label),
+            );
             if include_grounded_stride_metrics
                 && matches!(pose_intent_label, "grounded_walk" | "grounded_run")
             {
@@ -2439,6 +2476,12 @@ fn observe_pose_state_samples_with_grounded_stride(
                 sample.pose_grounded_stride_foot_travel_m = foot_travel_m;
                 sample.pose_grounded_stride_leg_opposition_degrees = leg_opposition_degrees;
             }
+            if sample.mode == FlightMode::Gliding.label() && pose_intent_label == "diving" {
+                sample = sample.with_authored_glider_metrics(
+                    AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES,
+                    0.08,
+                );
+            }
             let authored_clip_label =
                 authored_clip_label_for_pose_intent_label(pose_intent_label, Vec2::ZERO);
             sample = sample.with_authored_animation_metrics(
@@ -2451,6 +2494,38 @@ fn observe_pose_state_samples_with_grounded_stride(
             frame += 5;
         }
     }
+}
+
+fn pose_state_readability_metrics_for_label(pose_intent_label: &str) -> EvalPoseReadabilityMetrics {
+    let mut metrics = EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: 30.0,
+        arm_spread_degrees: 120.0,
+        leg_tuck_degrees: 40.0,
+        lateral_lean_degrees: 8.0,
+        signed_lateral_lean_degrees: 8.0,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
+        landing_crouch_m: 0.0,
+        landing_foot_forward_m: 0.0,
+        landing_recovery_flip_degrees: 0.0,
+        wing_airflow_strength: 0.35,
+        key_pose_readability_score: 1.0,
+    };
+
+    match pose_intent_label {
+        "landing_anticipation" => {
+            metrics.torso_pitch_degrees = LANDING_MIN_POSE_FLARE_DEGREES;
+            metrics.landing_crouch_m = LANDING_MIN_POSE_CROUCH_M;
+            metrics.landing_foot_forward_m = LANDING_MIN_POSE_FOOT_FORWARD_M;
+        }
+        "landing_recovery" => {
+            metrics.landing_crouch_m = LANDING_MIN_POSE_CROUCH_M;
+            metrics.landing_recovery_flip_degrees = LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES;
+        }
+        _ => {}
+    }
+
+    metrics
 }
 
 #[test]

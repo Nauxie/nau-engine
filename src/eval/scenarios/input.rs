@@ -33,14 +33,16 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
         };
     }
     if scenario.name == POSE_STATE_COVERAGE {
-        let walk_accel = (0.05..=0.45).contains(&t);
-        let runup = (1.45..=2.55).contains(&t);
+        let route_forward = (0.05..=7.05).contains(&t);
+        let post_landing_stride = (8.45..=10.75).contains(&t);
         return FlightInput {
-            forward: walk_accel || runup,
-            right: (1.85..=2.15).contains(&t),
-            launch: frame == 153,
-            glide: t >= 3.65,
-            ..default()
+            forward: route_forward || post_landing_stride,
+            right: (5.1..=5.35).contains(&t),
+            left: (3.1..=4.2).contains(&t),
+            backward: (4.65..=5.05).contains(&t),
+            launch: frame == 1,
+            glide: (1.15..=8.0).contains(&t),
+            dive: (4.25..=4.45).contains(&t) || (5.8..=6.7).contains(&t),
         };
     }
     if scenario.name == GROUND_TAXI_CONTROL {

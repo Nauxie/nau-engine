@@ -31,6 +31,11 @@ const POSE_STATE_MIN_RUN_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_LAUNCH_SAMPLES: f32 = 3.0;
 const POSE_STATE_MIN_FALLING_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_GLIDING_POSE_SAMPLES: f32 = 18.0;
+const POSE_STATE_MIN_AIR_TURN_SAMPLES: f32 = 4.0;
+const POSE_STATE_MIN_AIR_BRAKE_SAMPLES: f32 = 4.0;
+const POSE_STATE_MIN_DIVING_SAMPLES: f32 = 1.0;
+const POSE_STATE_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
+const POSE_STATE_MIN_LANDING_POSE_SAMPLES: f32 = 1.0;
 
 #[derive(Clone, Debug)]
 pub(crate) struct SimCheck {
@@ -444,6 +449,66 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             metrics.pose_gliding_samples as f32,
             POSE_STATE_MIN_GLIDING_POSE_SAMPLES,
             "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_air_turn_samples",
+            metrics.pose_air_turn_samples as f32,
+            POSE_STATE_MIN_AIR_TURN_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_air_brake_samples",
+            metrics.pose_air_brake_samples as f32,
+            POSE_STATE_MIN_AIR_BRAKE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_diving_samples",
+            metrics.pose_diving_samples as f32,
+            POSE_STATE_MIN_DIVING_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_gliding_dive_samples",
+            metrics.gliding_dive_samples as f32,
+            POSE_STATE_MIN_GLIDING_DIVE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_landing_anticipation_samples",
+            metrics.pose_landing_anticipation_samples as f32,
+            POSE_STATE_MIN_LANDING_POSE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_landing_recovery_samples",
+            metrics.pose_landing_recovery_samples as f32,
+            POSE_STATE_MIN_LANDING_POSE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_landing_crouch",
+            metrics.max_pose_landing_crouch_m,
+            LANDING_MIN_POSE_CROUCH_M,
+            "m",
+        ),
+        SimCheck::at_least(
+            "pose_state_landing_foot_forward",
+            metrics.max_pose_landing_foot_forward_m,
+            LANDING_MIN_POSE_FOOT_FORWARD_M,
+            "m",
+        ),
+        SimCheck::at_least(
+            "pose_state_landing_flare",
+            metrics.max_pose_landing_flare_degrees,
+            LANDING_MIN_POSE_FLARE_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "pose_state_landing_recovery_flip",
+            metrics.max_pose_landing_recovery_flip_degrees,
+            LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+            "deg",
         ),
         SimCheck::at_most(
             "pose_state_unreadable_key_pose_samples",
