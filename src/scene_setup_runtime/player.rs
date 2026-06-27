@@ -12,7 +12,7 @@ use crate::player_runtime::{
 };
 use crate::scene_setup_runtime::constants::PLAYER_START;
 use crate::scene_setup_runtime::materials::SceneMaterials;
-use nau_engine::animation::{AnimationState, CharacterPart, CharacterPartRole, Side};
+use nau_engine::animation::{AnimationState, CharacterPart, CharacterPartRole, ScarfSegment, Side};
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::movement::{FlightController, Velocity};
 
@@ -121,6 +121,11 @@ pub(super) fn spawn_player_runtime(
                 Transform::from_xyz(0.0, 1.15, -0.28),
                 Visibility::Inherited,
                 GeneratedPlayerPlaceholder,
+                CharacterPart::new(
+                    CharacterPartRole::Scarf(ScarfSegment::Trail),
+                    Vec3::new(0.0, 1.15, -0.28),
+                    Quat::IDENTITY,
+                ),
             ));
         });
 
