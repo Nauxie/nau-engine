@@ -361,7 +361,7 @@ fn accumulator_gates_air_control_body_heading_spikes() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
     let mut accumulator = EvalAccumulator::default();
 
-    for frame in 0..20 {
+    for frame in 0..40 {
         accumulator.observe(air_control_metric_sample(
             scenario,
             frame,
@@ -369,7 +369,7 @@ fn accumulator_gates_air_control_body_heading_spikes() {
             Vec2::new(0.0, 1.0),
             0.0,
             18.0,
-            3.0,
+            2.0,
         ));
     }
     accumulator.observe(air_control_metric_sample(
