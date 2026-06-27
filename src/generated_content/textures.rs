@@ -4,8 +4,8 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use std::collections::HashSet;
 
-pub(crate) const PROCEDURAL_TEXTURE_SIZE: u32 = 64;
-pub(crate) const TERRAIN_TEXTURE_SIZE: u32 = 128;
+pub(crate) const PROCEDURAL_TEXTURE_SIZE: u32 = 128;
+pub(crate) const TERRAIN_TEXTURE_SIZE: u32 = 256;
 
 pub(crate) fn procedural_surface_texture(
     primary: [u8; 4],
@@ -69,6 +69,11 @@ pub(crate) fn procedural_terrain_surface_texture_data(
         for x in 0..size {
             let fine = texture_noise(x.wrapping_mul(5), y.wrapping_mul(5), seed);
             let grain = texture_noise(x.wrapping_mul(13), y.wrapping_mul(7), seed.wrapping_add(71));
+            let micro = texture_noise(
+                x.wrapping_mul(31).wrapping_add(y.wrapping_mul(3)),
+                y.wrapping_mul(17).wrapping_add(x.wrapping_mul(5)),
+                seed.wrapping_add(211),
+            );
             let broad = smooth_texture_noise(x, y, 22, seed.wrapping_add(19));
             let streak = smooth_texture_noise(
                 x.wrapping_mul(2).wrapping_add(y / 2),
@@ -76,25 +81,37 @@ pub(crate) fn procedural_terrain_surface_texture_data(
                 12,
                 seed.wrapping_add(137),
             );
+            let fissure = smooth_texture_noise(
+                x.wrapping_mul(3).wrapping_add(y),
+                y.wrapping_mul(7).wrapping_add(x.wrapping_mul(2)),
+                5,
+                seed.wrapping_add(241),
+            );
             let secondary_weight = ((118i16 - broad as i16).max(0) as u16 * 126 / 118)
                 .saturating_add((grain > 192) as u16 * 24)
+                .saturating_add((micro < 28) as u16 * 16)
                 .min(150);
             let accent_weight = ((broad as i16 - 164).max(0) as u16 * 142 / 91)
                 .saturating_add((fine > 222 && grain > 142) as u16 * 70)
+                .saturating_add((micro > 226) as u16 * 38)
                 .min(172);
-            let vein = (x.wrapping_mul(17) + y.wrapping_mul(29) + seed).is_multiple_of(53);
-            let mineral_fleck = fine > 222 && grain > 142;
+            let vein = (x.wrapping_mul(17) + y.wrapping_mul(29) + seed).is_multiple_of(47);
+            let mineral_fleck = (fine > 222 && grain > 142) || (micro > 234 && fissure > 164);
             let mut color = mix_rgba(primary, secondary, secondary_weight);
             color = mix_rgba(color, accent, accent_weight);
 
             if vein {
                 color = mix_rgba(color, secondary, 104);
             }
+            if fissure > 218 {
+                color = mix_rgba(color, accent, 58);
+            }
             if mineral_fleck {
                 color = mix_rgba(color, accent, 96);
             }
 
-            let shade = fine as i16 / 4 + grain as i16 / 7 + streak as i16 / 9 - 82;
+            let shade =
+                fine as i16 / 5 + grain as i16 / 8 + streak as i16 / 10 + micro as i16 / 9 - 97;
             data.extend_from_slice(&shade_rgba(color, shade));
         }
     }
@@ -326,4 +343,48 @@ pub(crate) fn mix_color(source: Color, target: Color, target_weight: f32) -> Col
 
 pub(crate) fn random_unit(seed: u32, x: u32, salt: u32) -> f32 {
     texture_noise(x.wrapping_mul(17).wrapping_add(salt), salt, seed) as f32 / 255.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn procedural_texture_sizes_keep_materials_inspectable() {
+        let prop_data = procedural_surface_texture_data(
+            [80, 142, 72, 255],
+            [45, 96, 64, 255],
+            [164, 144, 82, 255],
+            211,
+            PROCEDURAL_TEXTURE_SIZE,
+        );
+        let terrain_data = procedural_terrain_surface_texture_data(
+            [80, 142, 72, 255],
+            [45, 96, 64, 255],
+            [164, 144, 82, 255],
+            311,
+            TERRAIN_TEXTURE_SIZE,
+        );
+
+        assert!(prop_data.len() >= 128 * 128 * 4);
+        assert!(terrain_data.len() >= 256 * 256 * 4);
+    }
+
+    #[test]
+    fn terrain_surface_texture_keeps_high_frequency_detail() {
+        let data = procedural_terrain_surface_texture_data(
+            [80, 142, 72, 255],
+            [45, 96, 64, 255],
+            [164, 144, 82, 255],
+            311,
+            TERRAIN_TEXTURE_SIZE,
+        );
+
+        assert_eq!(
+            data.len(),
+            (TERRAIN_TEXTURE_SIZE * TERRAIN_TEXTURE_SIZE * 4) as usize
+        );
+        assert!(texture_detail_band_count(&data) >= 56);
+        assert!(texture_edge_promille(&data, TERRAIN_TEXTURE_SIZE) >= 260);
+    }
 }
