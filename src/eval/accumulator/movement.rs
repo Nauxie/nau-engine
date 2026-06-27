@@ -25,6 +25,7 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     observe_lateral_response(accumulator, sample);
     observe_body_travel_heading_alignment(accumulator, sample);
     observe_desired_travel_heading_alignment(accumulator, sample);
+    observe_pure_air_turn_sideways_alignment(accumulator, sample);
     observe_air_brake(accumulator, sample);
     observe_pose_readability(accumulator, sample);
     observe_authored_clip_coverage(accumulator, sample);
@@ -380,6 +381,41 @@ fn observe_desired_travel_heading_alignment(
     }
 }
 
+fn observe_pure_air_turn_sideways_alignment(
+    accumulator: &mut EvalAccumulator,
+    sample: &EvalSample,
+) {
+    if !pure_air_turn_sideways_alignment_sample(sample) {
+        return;
+    }
+
+    let Some(lateral_response_time) = lateral_response_time_for_sample(accumulator, sample) else {
+        return;
+    };
+    if sample.time_secs < lateral_response_time {
+        return;
+    }
+
+    accumulator
+        .pure_air_turn_sideways_body_travel_heading_error_values_degrees
+        .push(sample.body_travel_heading_error_degrees);
+    accumulator.max_pure_air_turn_sideways_body_travel_heading_error_degrees = accumulator
+        .max_pure_air_turn_sideways_body_travel_heading_error_degrees
+        .max(sample.body_travel_heading_error_degrees);
+    accumulator
+        .pure_air_turn_sideways_desired_travel_heading_error_values_degrees
+        .push(sample.desired_travel_heading_error_degrees);
+    accumulator.max_pure_air_turn_sideways_desired_travel_heading_error_degrees = accumulator
+        .max_pure_air_turn_sideways_desired_travel_heading_error_degrees
+        .max(sample.desired_travel_heading_error_degrees);
+
+    if sample.movement_input_lateral_axis > 0.0 {
+        accumulator.right_pure_air_turn_sideways_samples += 1;
+    } else if sample.movement_input_lateral_axis < 0.0 {
+        accumulator.left_pure_air_turn_sideways_samples += 1;
+    }
+}
+
 fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_pose_torso_pitch_degrees = accumulator
         .max_pose_torso_pitch_degrees
@@ -639,6 +675,19 @@ fn desired_travel_heading_alignment_sample(sample: &EvalSample) -> bool {
     matches!(sample.mode, "airborne" | "gliding")
         && sample.lateral_input_active
         && sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+        && sample.desired_travel_heading_error_degrees.is_finite()
+}
+
+fn pure_air_turn_sideways_alignment_sample(sample: &EvalSample) -> bool {
+    matches!(sample.mode, "airborne" | "gliding")
+        && sample.pose_intent_label == "air_turn"
+        && sample.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE
+        && !sample.key_pose_transition_grace
+        && sample.lateral_input_active
+        && sample.movement_input_lateral_axis.abs() > 0.25
+        && sample.movement_input_forward_axis.abs() < 0.25
+        && sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+        && sample.body_travel_heading_error_degrees.is_finite()
         && sample.desired_travel_heading_error_degrees.is_finite()
 }
 

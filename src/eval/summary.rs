@@ -76,6 +76,13 @@ pub struct EvalMetricsSummary {
     pub backward_left_desired_travel_heading_sample_count: u32,
     pub p95_desired_travel_heading_error_degrees: f32,
     pub max_desired_travel_heading_error_degrees: f32,
+    pub pure_air_turn_sideways_sample_count: u32,
+    pub right_pure_air_turn_sideways_sample_count: u32,
+    pub left_pure_air_turn_sideways_sample_count: u32,
+    pub p95_pure_air_turn_sideways_body_travel_heading_error_degrees: f32,
+    pub max_pure_air_turn_sideways_body_travel_heading_error_degrees: f32,
+    pub p95_pure_air_turn_sideways_desired_travel_heading_error_degrees: f32,
+    pub max_pure_air_turn_sideways_desired_travel_heading_error_degrees: f32,
     pub max_body_yaw_error_step_degrees: f32,
     pub body_yaw_oscillation_count: u32,
     pub max_body_roll_step_degrees: f32,
@@ -572,7 +579,7 @@ impl EvalMetricsSummary {
         let json = json.replacen(&pose_gliding_samples_key, &pose_turn_sample_metrics, 1);
         let max_body_yaw_error_step_key = format!("{indent}  \"max_body_yaw_error_step_degrees\"");
         let body_travel_heading_metrics = format!(
-            "{indent}  \"lateral_body_travel_heading_sample_count\": {},\n{indent}  \"right_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"left_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"p95_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"max_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"backward_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_right_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_left_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"p95_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"max_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"desired_travel_heading_sample_count\": {},\n{indent}  \"right_desired_travel_heading_sample_count\": {},\n{indent}  \"left_desired_travel_heading_sample_count\": {},\n{indent}  \"backward_right_desired_travel_heading_sample_count\": {},\n{indent}  \"backward_left_desired_travel_heading_sample_count\": {},\n{indent}  \"p95_desired_travel_heading_error_degrees\": {},\n{indent}  \"max_desired_travel_heading_error_degrees\": {},\n{}",
+            "{indent}  \"lateral_body_travel_heading_sample_count\": {},\n{indent}  \"right_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"left_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"p95_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"max_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"backward_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_right_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_left_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"p95_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"max_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"desired_travel_heading_sample_count\": {},\n{indent}  \"right_desired_travel_heading_sample_count\": {},\n{indent}  \"left_desired_travel_heading_sample_count\": {},\n{indent}  \"backward_right_desired_travel_heading_sample_count\": {},\n{indent}  \"backward_left_desired_travel_heading_sample_count\": {},\n{indent}  \"p95_desired_travel_heading_error_degrees\": {},\n{indent}  \"max_desired_travel_heading_error_degrees\": {},\n{indent}  \"pure_air_turn_sideways_sample_count\": {},\n{indent}  \"right_pure_air_turn_sideways_sample_count\": {},\n{indent}  \"left_pure_air_turn_sideways_sample_count\": {},\n{indent}  \"p95_pure_air_turn_sideways_body_travel_heading_error_degrees\": {},\n{indent}  \"max_pure_air_turn_sideways_body_travel_heading_error_degrees\": {},\n{indent}  \"p95_pure_air_turn_sideways_desired_travel_heading_error_degrees\": {},\n{indent}  \"max_pure_air_turn_sideways_desired_travel_heading_error_degrees\": {},\n{}",
             self.lateral_body_travel_heading_sample_count,
             self.right_lateral_body_travel_heading_sample_count,
             self.left_lateral_body_travel_heading_sample_count,
@@ -590,6 +597,13 @@ impl EvalMetricsSummary {
             self.backward_left_desired_travel_heading_sample_count,
             json_number(self.p95_desired_travel_heading_error_degrees),
             json_number(self.max_desired_travel_heading_error_degrees),
+            self.pure_air_turn_sideways_sample_count,
+            self.right_pure_air_turn_sideways_sample_count,
+            self.left_pure_air_turn_sideways_sample_count,
+            json_number(self.p95_pure_air_turn_sideways_body_travel_heading_error_degrees),
+            json_number(self.max_pure_air_turn_sideways_body_travel_heading_error_degrees),
+            json_number(self.p95_pure_air_turn_sideways_desired_travel_heading_error_degrees),
+            json_number(self.max_pure_air_turn_sideways_desired_travel_heading_error_degrees),
             max_body_yaw_error_step_key
         );
         let json = json.replacen(

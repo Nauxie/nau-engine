@@ -2098,6 +2098,195 @@ fn accumulator_counts_bidirectional_air_control_turn_pose_samples() {
 }
 
 #[test]
+fn accumulator_counts_pure_air_turn_sideways_alignment_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for (frame, input, velocity, roll) in [
+        (0, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0), 4.0),
+        (30, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0), 4.0),
+        (60, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0), 4.0),
+        (90, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0), 4.0),
+        (
+            120,
+            Vec2::new(-1.0, 0.0),
+            Vec3::new(-18.0, -2.0, -18.0),
+            -4.0,
+        ),
+        (
+            150,
+            Vec2::new(-1.0, 0.0),
+            Vec3::new(-18.0, -2.0, -18.0),
+            -4.0,
+        ),
+        (
+            180,
+            Vec2::new(-1.0, 0.0),
+            Vec3::new(-18.0, -2.0, -18.0),
+            -4.0,
+        ),
+        (
+            210,
+            Vec2::new(-1.0, 0.0),
+            Vec3::new(-18.0, -2.0, -18.0),
+            -4.0,
+        ),
+    ] {
+        accumulator.observe(air_control_metric_sample(
+            scenario, frame, velocity, input, 18.0, 18.0, roll,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let summary_json: serde_json::Value =
+        serde_json::from_str(&summary.to_json()).expect("summary json parses");
+
+    assert_eq!(summary.metrics.pure_air_turn_sideways_sample_count, 8);
+    assert_eq!(summary.metrics.right_pure_air_turn_sideways_sample_count, 4);
+    assert_eq!(summary.metrics.left_pure_air_turn_sideways_sample_count, 4);
+    assert!(named_check(&summary, "air_control_pure_air_turn_sideways_samples").passed);
+    assert!(named_check(&summary, "air_control_right_pure_air_turn_sideways_samples").passed);
+    assert!(named_check(&summary, "air_control_left_pure_air_turn_sideways_samples").passed);
+    assert!(
+        named_check(
+            &summary,
+            "air_control_p95_pure_air_turn_sideways_body_travel_heading_error"
+        )
+        .passed
+    );
+    assert!(
+        named_check(
+            &summary,
+            "air_control_p95_pure_air_turn_sideways_desired_travel_heading_error"
+        )
+        .passed
+    );
+    assert_eq!(
+        summary_json["metrics"]["pure_air_turn_sideways_sample_count"],
+        8
+    );
+    assert_eq!(
+        summary_json["metrics"]["right_pure_air_turn_sideways_sample_count"],
+        4
+    );
+    assert_eq!(
+        summary_json["metrics"]["left_pure_air_turn_sideways_sample_count"],
+        4
+    );
+}
+
+#[test]
+fn accumulator_requires_air_turn_sideways_alignment_in_same_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for (frame, input, velocity) in [
+        (0, Vec2::new(1.0, 1.0), Vec3::new(18.0, -2.0, -18.0)),
+        (30, Vec2::new(1.0, 1.0), Vec3::new(18.0, -2.0, -18.0)),
+        (60, Vec2::new(1.0, 1.0), Vec3::new(18.0, -2.0, -18.0)),
+        (90, Vec2::new(1.0, 1.0), Vec3::new(18.0, -2.0, -18.0)),
+        (120, Vec2::new(-1.0, 1.0), Vec3::new(-18.0, -2.0, -18.0)),
+        (150, Vec2::new(-1.0, 1.0), Vec3::new(-18.0, -2.0, -18.0)),
+        (180, Vec2::new(-1.0, 1.0), Vec3::new(-18.0, -2.0, -18.0)),
+        (210, Vec2::new(-1.0, 1.0), Vec3::new(-18.0, -2.0, -18.0)),
+    ] {
+        accumulator.observe(air_control_metric_sample(
+            scenario, frame, velocity, input, 18.0, 18.0, 4.0,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert!(named_check(&summary, "air_control_pose_air_turn_samples").passed);
+    assert!(named_check(&summary, "air_control_lateral_body_travel_heading_samples").passed);
+    assert!(named_check(&summary, "air_control_desired_travel_heading_samples").passed);
+    assert_eq!(summary.metrics.pure_air_turn_sideways_sample_count, 0);
+    assert!(!named_check(&summary, "air_control_pure_air_turn_sideways_samples").passed);
+    assert!(!named_check(&summary, "air_control_right_pure_air_turn_sideways_samples").passed);
+    assert!(!named_check(&summary, "air_control_left_pure_air_turn_sideways_samples").passed);
+}
+
+#[test]
+fn accumulator_gates_pure_air_turn_sideways_misalignment() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for (frame, input, velocity) in [
+        (0, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0)),
+        (30, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0)),
+        (60, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0)),
+        (90, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0)),
+        (120, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
+        (150, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
+        (180, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
+        (210, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
+    ] {
+        accumulator.observe(air_control_metric_sample(
+            scenario, frame, velocity, input, 18.0, 18.0, 48.0,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.pure_air_turn_sideways_sample_count, 8);
+    assert!(
+        !named_check(
+            &summary,
+            "air_control_p95_pure_air_turn_sideways_body_travel_heading_error"
+        )
+        .passed
+    );
+    assert!(
+        !named_check(
+            &summary,
+            "air_control_max_pure_air_turn_sideways_body_travel_heading_error"
+        )
+        .passed
+    );
+    assert!(
+        !named_check(
+            &summary,
+            "air_control_p95_pure_air_turn_sideways_desired_travel_heading_error"
+        )
+        .passed
+    );
+    assert!(
+        !named_check(
+            &summary,
+            "air_control_max_pure_air_turn_sideways_desired_travel_heading_error"
+        )
+        .passed
+    );
+}
+
+#[test]
 fn accumulator_counts_bidirectional_air_control_air_brake_pose_samples() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
     let mut accumulator = EvalAccumulator::default();

@@ -844,6 +844,49 @@ fn append_air_control_checks(
             AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
             "deg",
         ),
+        EvalCheck::at_least(
+            "air_control_pure_air_turn_sideways_samples",
+            acc.pure_air_turn_sideways_body_travel_heading_error_values_degrees
+                .len() as f32,
+            AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_right_pure_air_turn_sideways_samples",
+            acc.right_pure_air_turn_sideways_samples as f32,
+            AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_left_pure_air_turn_sideways_samples",
+            acc.left_pure_air_turn_sideways_samples as f32,
+            AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "air_control_p95_pure_air_turn_sideways_body_travel_heading_error",
+            derived.p95_pure_air_turn_sideways_body_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_P95_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "air_control_max_pure_air_turn_sideways_body_travel_heading_error",
+            acc.max_pure_air_turn_sideways_body_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "air_control_p95_pure_air_turn_sideways_desired_travel_heading_error",
+            derived.p95_pure_air_turn_sideways_desired_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_P95_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "air_control_max_pure_air_turn_sideways_desired_travel_heading_error",
+            acc.max_pure_air_turn_sideways_desired_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
         EvalCheck::at_most(
             "air_control_max_body_yaw_error_step",
             acc.max_body_yaw_error_step_degrees,

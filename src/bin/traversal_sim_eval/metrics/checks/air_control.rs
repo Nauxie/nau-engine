@@ -306,6 +306,50 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
             "deg",
         ),
+        SimCheck::at_least(
+            "air_control_pure_air_turn_sideways_samples",
+            metrics
+                .pure_air_turn_sideways_body_travel_heading_error_values_degrees
+                .len() as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_right_pure_air_turn_sideways_samples",
+            metrics.right_pure_air_turn_sideways_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_left_pure_air_turn_sideways_samples",
+            metrics.left_pure_air_turn_sideways_samples as f32,
+            AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_most(
+            "air_control_p95_pure_air_turn_sideways_body_travel_heading_error",
+            metrics.p95_pure_air_turn_sideways_body_travel_heading_error_degrees(),
+            AIR_CONTROL_MAX_P95_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_most(
+            "air_control_max_pure_air_turn_sideways_body_travel_heading_error",
+            metrics.max_pure_air_turn_sideways_body_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_most(
+            "air_control_p95_pure_air_turn_sideways_desired_travel_heading_error",
+            metrics.p95_pure_air_turn_sideways_desired_travel_heading_error_degrees(),
+            AIR_CONTROL_MAX_P95_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_most(
+            "air_control_max_pure_air_turn_sideways_desired_travel_heading_error",
+            metrics.max_pure_air_turn_sideways_desired_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
         SimCheck::at_most(
             "air_control_camera_orbit_yaw_offset",
             metrics.max_abs_camera_yaw_offset_degrees,

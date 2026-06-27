@@ -40,6 +40,8 @@ pub(super) struct SummaryDerivedMetrics {
     pub(super) p95_lateral_body_travel_heading_error_degrees: f32,
     pub(super) p95_backward_diagonal_body_travel_heading_error_degrees: f32,
     pub(super) p95_desired_travel_heading_error_degrees: f32,
+    pub(super) p95_pure_air_turn_sideways_body_travel_heading_error_degrees: f32,
+    pub(super) p95_pure_air_turn_sideways_desired_travel_heading_error_degrees: f32,
     pub(super) avg_camera_follow_direction_error_degrees: f32,
     pub(super) p95_camera_follow_direction_error_degrees: f32,
     pub(super) lateral_response_latency_secs: f32,
@@ -99,6 +101,22 @@ impl SummaryDerivedMetrics {
         desired_travel_heading_error_values_degrees.sort_by(f32::total_cmp);
         let p95_desired_travel_heading_error_degrees =
             percentile(&desired_travel_heading_error_values_degrees, 0.95);
+        let mut pure_air_turn_sideways_body_travel_heading_error_values_degrees = acc
+            .pure_air_turn_sideways_body_travel_heading_error_values_degrees
+            .clone();
+        pure_air_turn_sideways_body_travel_heading_error_values_degrees.sort_by(f32::total_cmp);
+        let p95_pure_air_turn_sideways_body_travel_heading_error_degrees = percentile(
+            &pure_air_turn_sideways_body_travel_heading_error_values_degrees,
+            0.95,
+        );
+        let mut pure_air_turn_sideways_desired_travel_heading_error_values_degrees = acc
+            .pure_air_turn_sideways_desired_travel_heading_error_values_degrees
+            .clone();
+        pure_air_turn_sideways_desired_travel_heading_error_values_degrees.sort_by(f32::total_cmp);
+        let p95_pure_air_turn_sideways_desired_travel_heading_error_degrees = percentile(
+            &pure_air_turn_sideways_desired_travel_heading_error_values_degrees,
+            0.95,
+        );
         let avg_camera_follow_direction_error_degrees =
             if acc.camera_follow_direction_error_samples == 0 {
                 0.0
@@ -123,6 +141,8 @@ impl SummaryDerivedMetrics {
             p95_lateral_body_travel_heading_error_degrees,
             p95_backward_diagonal_body_travel_heading_error_degrees,
             p95_desired_travel_heading_error_degrees,
+            p95_pure_air_turn_sideways_body_travel_heading_error_degrees,
+            p95_pure_air_turn_sideways_desired_travel_heading_error_degrees,
             avg_camera_follow_direction_error_degrees,
             p95_camera_follow_direction_error_degrees,
             lateral_response_latency_secs: response_latency_secs(

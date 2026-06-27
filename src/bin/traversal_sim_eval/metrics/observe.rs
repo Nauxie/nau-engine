@@ -153,6 +153,7 @@ impl SimMetrics {
         self.observe_lateral_response(sample);
         self.observe_body_travel_heading_alignment(sample);
         self.observe_desired_travel_heading_alignment(sample);
+        self.observe_pure_air_turn_sideways_alignment(sample);
         self.observe_backward_air_control(sample);
         self.max_pose_torso_pitch_degrees = self
             .max_pose_torso_pitch_degrees
@@ -697,6 +698,36 @@ impl SimMetrics {
         }
     }
 
+    fn observe_pure_air_turn_sideways_alignment(&mut self, sample: &SimSample) {
+        if !pure_air_turn_sideways_alignment_sample(sample) {
+            return;
+        }
+
+        let Some(lateral_response_time) = lateral_response_time_for_sample(self, sample) else {
+            return;
+        };
+        if sample.time_secs < lateral_response_time {
+            return;
+        }
+
+        self.pure_air_turn_sideways_body_travel_heading_error_values_degrees
+            .push(sample.body_travel_heading_error_degrees);
+        self.max_pure_air_turn_sideways_body_travel_heading_error_degrees = self
+            .max_pure_air_turn_sideways_body_travel_heading_error_degrees
+            .max(sample.body_travel_heading_error_degrees);
+        self.pure_air_turn_sideways_desired_travel_heading_error_values_degrees
+            .push(sample.desired_travel_heading_error_degrees);
+        self.max_pure_air_turn_sideways_desired_travel_heading_error_degrees = self
+            .max_pure_air_turn_sideways_desired_travel_heading_error_degrees
+            .max(sample.desired_travel_heading_error_degrees);
+
+        if sample.movement_input_lateral_axis > 0.0 {
+            self.right_pure_air_turn_sideways_samples += 1;
+        } else if sample.movement_input_lateral_axis < 0.0 {
+            self.left_pure_air_turn_sideways_samples += 1;
+        }
+    }
+
     fn observe_backward_air_control(&mut self, sample: &SimSample) {
         if sample.movement_input_forward_axis >= 0.0 || sample.mode == "grounded" {
             return;
@@ -779,6 +810,19 @@ fn desired_travel_heading_alignment_sample(sample: &SimSample) -> bool {
     matches!(sample.mode, "airborne" | "gliding")
         && sample.lateral_input_active
         && sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+        && sample.desired_travel_heading_error_degrees.is_finite()
+}
+
+fn pure_air_turn_sideways_alignment_sample(sample: &SimSample) -> bool {
+    matches!(sample.mode, "airborne" | "gliding")
+        && sample.pose_intent_label == "air_turn"
+        && sample.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE
+        && !sample.key_pose_transition_grace
+        && sample.lateral_input_active
+        && sample.movement_input_lateral_axis.abs() > 0.25
+        && sample.movement_input_forward_axis.abs() < 0.25
+        && sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+        && sample.body_travel_heading_error_degrees.is_finite()
         && sample.desired_travel_heading_error_degrees.is_finite()
 }
 

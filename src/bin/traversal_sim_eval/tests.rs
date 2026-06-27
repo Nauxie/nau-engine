@@ -901,6 +901,13 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_backward_left_desired_travel_heading_samples",
         "air_control_p95_desired_travel_heading_error",
         "air_control_max_desired_travel_heading_error",
+        "air_control_pure_air_turn_sideways_samples",
+        "air_control_right_pure_air_turn_sideways_samples",
+        "air_control_left_pure_air_turn_sideways_samples",
+        "air_control_p95_pure_air_turn_sideways_body_travel_heading_error",
+        "air_control_max_pure_air_turn_sideways_body_travel_heading_error",
+        "air_control_p95_pure_air_turn_sideways_desired_travel_heading_error",
+        "air_control_max_pure_air_turn_sideways_desired_travel_heading_error",
     ] {
         let check = result
             .checks
@@ -940,6 +947,17 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
     assert!(summary.contains("\"backward_left_desired_travel_heading_sample_count\""));
     assert!(summary.contains("\"p95_desired_travel_heading_error_degrees\""));
     assert!(summary.contains("\"max_desired_travel_heading_error_degrees\""));
+    assert!(summary.contains("\"pure_air_turn_sideways_sample_count\""));
+    assert!(summary.contains("\"right_pure_air_turn_sideways_sample_count\""));
+    assert!(summary.contains("\"left_pure_air_turn_sideways_sample_count\""));
+    assert!(summary.contains("\"p95_pure_air_turn_sideways_body_travel_heading_error_degrees\""));
+    assert!(summary.contains("\"max_pure_air_turn_sideways_body_travel_heading_error_degrees\""));
+    assert!(
+        summary.contains("\"p95_pure_air_turn_sideways_desired_travel_heading_error_degrees\"")
+    );
+    assert!(
+        summary.contains("\"max_pure_air_turn_sideways_desired_travel_heading_error_degrees\"")
+    );
 
     let summary_json: serde_json::Value =
         serde_json::from_str(&summary).expect("sim summary json parses");
@@ -954,6 +972,8 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "left_desired_travel_heading_sample_count",
         "backward_right_desired_travel_heading_sample_count",
         "backward_left_desired_travel_heading_sample_count",
+        "right_pure_air_turn_sideways_sample_count",
+        "left_pure_air_turn_sideways_sample_count",
         "right_pose_air_turn_samples",
         "left_pose_air_turn_samples",
         "right_pose_air_brake_samples",
@@ -1435,6 +1455,191 @@ fn sim_metrics_fail_one_sided_air_turn_pose_samples() {
         .expect("left air-turn pose check");
     assert!(!left.passed, "left air-turn coverage should fail");
     assert_eq!(left.value, 0.0);
+}
+
+#[test]
+fn sim_metrics_count_pure_air_turn_sideways_alignment_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    for (frame, lateral_axis) in [
+        (30, 1.0),
+        (60, 1.0),
+        (90, 1.0),
+        (120, 1.0),
+        (150, -1.0),
+        (180, -1.0),
+        (210, -1.0),
+        (240, -1.0),
+    ] {
+        let mut sample = sim_roll_sample(
+            &route,
+            scenario,
+            frame,
+            FlightMode::Gliding,
+            0.0,
+            lateral_axis,
+        );
+        sample.lateral_response_mps = 18.0;
+        sample.body_travel_heading_error_degrees = 4.0;
+        sample.desired_travel_heading_error_degrees = 3.0;
+        metrics.observe(&sample, scenario);
+    }
+
+    assert_eq!(
+        metrics
+            .pure_air_turn_sideways_body_travel_heading_error_values_degrees
+            .len(),
+        8
+    );
+    assert_eq!(metrics.right_pure_air_turn_sideways_samples, 4);
+    assert_eq!(metrics.left_pure_air_turn_sideways_samples, 4);
+    assert_eq!(
+        metrics.p95_pure_air_turn_sideways_body_travel_heading_error_degrees(),
+        4.0
+    );
+    assert_eq!(
+        metrics.p95_pure_air_turn_sideways_desired_travel_heading_error_degrees(),
+        3.0
+    );
+
+    for check_name in [
+        "air_control_pure_air_turn_sideways_samples",
+        "air_control_right_pure_air_turn_sideways_samples",
+        "air_control_left_pure_air_turn_sideways_samples",
+        "air_control_p95_pure_air_turn_sideways_body_travel_heading_error",
+        "air_control_max_pure_air_turn_sideways_body_travel_heading_error",
+        "air_control_p95_pure_air_turn_sideways_desired_travel_heading_error",
+        "air_control_max_pure_air_turn_sideways_desired_travel_heading_error",
+    ] {
+        let check = metrics
+            .checks(scenario)
+            .into_iter()
+            .find(|check| check.name == check_name)
+            .unwrap_or_else(|| panic!("missing sim check {check_name}"));
+        assert!(check.passed, "{check_name} should pass: {check:?}");
+    }
+}
+
+#[test]
+fn sim_metrics_require_air_turn_sideways_alignment_in_same_samples() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    for (frame, lateral_axis) in [
+        (30, 1.0),
+        (60, 1.0),
+        (90, 1.0),
+        (120, 1.0),
+        (150, -1.0),
+        (180, -1.0),
+        (210, -1.0),
+        (240, -1.0),
+    ] {
+        let mut sample = sim_roll_sample(
+            &route,
+            scenario,
+            frame,
+            FlightMode::Gliding,
+            0.0,
+            lateral_axis,
+        );
+        sample.movement_input_forward_axis = 1.0;
+        sample.lateral_response_mps = 18.0;
+        sample.body_travel_heading_error_degrees = 4.0;
+        sample.desired_travel_heading_error_degrees = 3.0;
+        metrics.observe(&sample, scenario);
+    }
+
+    assert_eq!(metrics.pose_air_turn_samples, 8);
+    assert_eq!(
+        metrics
+            .lateral_body_travel_heading_error_values_degrees
+            .len(),
+        8
+    );
+    assert_eq!(metrics.desired_travel_heading_error_values_degrees.len(), 8);
+    assert_eq!(
+        metrics
+            .pure_air_turn_sideways_body_travel_heading_error_values_degrees
+            .len(),
+        0
+    );
+
+    for check_name in [
+        "air_control_pure_air_turn_sideways_samples",
+        "air_control_right_pure_air_turn_sideways_samples",
+        "air_control_left_pure_air_turn_sideways_samples",
+    ] {
+        let check = metrics
+            .checks(scenario)
+            .into_iter()
+            .find(|check| check.name == check_name)
+            .unwrap_or_else(|| panic!("missing sim check {check_name}"));
+        assert!(
+            !check.passed,
+            "{check_name} should fail without pure sideways samples"
+        );
+        assert_eq!(check.value, 0.0);
+    }
+}
+
+#[test]
+fn sim_metrics_fail_pure_air_turn_sideways_misalignment() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    for (frame, lateral_axis) in [
+        (30, 1.0),
+        (60, 1.0),
+        (90, 1.0),
+        (120, 1.0),
+        (150, -1.0),
+        (180, -1.0),
+        (210, -1.0),
+        (240, -1.0),
+    ] {
+        let mut sample = sim_roll_sample(
+            &route,
+            scenario,
+            frame,
+            FlightMode::Gliding,
+            0.0,
+            lateral_axis,
+        );
+        sample.lateral_response_mps = 18.0;
+        sample.body_travel_heading_error_degrees = 48.0;
+        sample.desired_travel_heading_error_degrees = 48.0;
+        metrics.observe(&sample, scenario);
+    }
+
+    assert_eq!(
+        metrics
+            .pure_air_turn_sideways_body_travel_heading_error_values_degrees
+            .len(),
+        8
+    );
+
+    for check_name in [
+        "air_control_p95_pure_air_turn_sideways_body_travel_heading_error",
+        "air_control_max_pure_air_turn_sideways_body_travel_heading_error",
+        "air_control_p95_pure_air_turn_sideways_desired_travel_heading_error",
+        "air_control_max_pure_air_turn_sideways_desired_travel_heading_error",
+    ] {
+        let check = metrics
+            .checks(scenario)
+            .into_iter()
+            .find(|check| check.name == check_name)
+            .unwrap_or_else(|| panic!("missing sim check {check_name}"));
+        assert!(
+            !check.passed,
+            "{check_name} should fail for high heading error"
+        );
+        assert!(check.value > check.threshold);
+    }
 }
 
 #[test]
