@@ -12,11 +12,12 @@ use nau_engine::{
         GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
         PlayerPoseIntent,
     },
-    environment::WindForceApplication,
+    environment::{LiftApplication, WindForceApplication},
     eval::{
         AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario,
         ISLAND_LAUNCH_TO_LANDING, LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M,
         LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES, LONG_GLIDE_VISIBILITY,
+        MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS, MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE,
         MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES, MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
         MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_LOAD_POSE_LEAN_DEGREES,
         MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
@@ -516,6 +517,11 @@ fn updraft_simulation_uses_readable_lift() {
     assert_eq!(result.metrics.unreadable_lift_samples, 0);
     assert!(result.metrics.readable_lift_samples >= result.metrics.lifted_samples);
     assert!(result.metrics.dynamic_readable_lift_samples >= result.metrics.lifted_samples);
+    assert!(result.metrics.dynamic_lift_samples >= scenario.thresholds.min_lifted_samples);
+    assert!(result.metrics.max_paired_visual_lift_fields >= 1);
+    assert!(result.metrics.max_dynamic_lift_fields >= 1);
+    assert!(result.metrics.max_lift_applied_delta_mps >= MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS);
+    assert!(result.metrics.max_dynamic_lift_multiplier_range >= MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE);
     assert!(result.metrics.max_wind_flow_speed_mps >= 8.0);
     assert!(result.metrics.max_wind_flow_variation >= 0.12);
     assert!(
@@ -573,6 +579,11 @@ fn updraft_simulation_uses_readable_lift() {
         "wind_load_lateral_load",
         "wind_load_pose_lean",
         "wind_load_glider_response",
+        "dynamic_lift_samples",
+        "paired_visual_lift_fields",
+        "dynamic_lift_fields",
+        "lift_applied_delta",
+        "dynamic_lift_multiplier_range",
     ] {
         let check = result
             .checks
@@ -581,6 +592,61 @@ fn updraft_simulation_uses_readable_lift() {
             .expect("dynamic wind check");
         assert!(check.passed, "{check_name} should pass");
     }
+    let dynamic_lift_sample = result
+        .samples
+        .iter()
+        .find(|sample| {
+            sample.dynamic_lift_fields > 0
+                && sample.lift_applied_delta_mps > 0.001
+                && sample.max_lift_multiplier > 1.0
+        })
+        .expect("dynamic lift sample");
+    let dynamic_lift_sample_json = dynamic_lift_sample.to_json();
+    assert_eq!(
+        dynamic_lift_sample_json["paired_visual_lift_fields"].as_u64(),
+        Some(dynamic_lift_sample.paired_visual_lift_fields as u64)
+    );
+    assert_eq!(
+        dynamic_lift_sample_json["dynamic_lift_fields"].as_u64(),
+        Some(dynamic_lift_sample.dynamic_lift_fields as u64)
+    );
+    assert!(
+        dynamic_lift_sample_json["lift_applied_delta_mps"]
+            .as_f64()
+            .expect("sample lift delta is numeric")
+            > 0.001
+    );
+    assert!(
+        dynamic_lift_sample_json["max_lift_multiplier"]
+            .as_f64()
+            .expect("sample lift multiplier is numeric")
+            > 1.0
+    );
+    let summary_json: serde_json::Value =
+        serde_json::from_str(&result.to_summary_json()).expect("sim summary json parses");
+    for key in [
+        "dynamic_lift_samples",
+        "max_paired_visual_lift_fields",
+        "max_dynamic_lift_fields",
+        "max_lift_applied_delta_mps",
+        "min_dynamic_lift_multiplier",
+        "max_dynamic_lift_multiplier",
+        "max_dynamic_lift_multiplier_range",
+    ] {
+        assert!(
+            summary_json["metrics"]
+                .as_object()
+                .expect("metrics object")
+                .contains_key(key),
+            "summary should include {key}"
+        );
+    }
+    assert!(
+        summary_json["metrics"]["max_lift_applied_delta_mps"]
+            .as_f64()
+            .expect("summary lift delta is numeric")
+            >= MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS as f64
+    );
     assert!(result.metrics.max_altitude_m >= scenario.thresholds.min_max_altitude_m);
 }
 
@@ -602,6 +668,72 @@ fn branch_recovery_simulation_completes_branch_objectives() {
     assert!(
         result.metrics.target_landing_samples >= scenario.thresholds.min_target_landing_samples
     );
+    assert!(result.metrics.dynamic_lift_samples >= scenario.thresholds.min_lifted_samples);
+    assert!(result.metrics.max_paired_visual_lift_fields >= 1);
+    assert!(result.metrics.max_dynamic_lift_fields >= 1);
+    assert!(result.metrics.max_lift_applied_delta_mps >= MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS);
+    assert!(result.metrics.max_dynamic_lift_multiplier_range >= MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE);
+}
+
+#[test]
+fn dynamic_lift_delta_gate_ignores_unpaired_static_lift() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    let mut static_lift_sample =
+        sim_roll_sample(&route, scenario, 30, FlightMode::Gliding, 0.0, 0.0);
+    static_lift_sample.active_lift_fields = 1;
+    static_lift_sample.paired_visual_lift_fields = 0;
+    static_lift_sample.dynamic_lift_fields = 0;
+    static_lift_sample.lift_applied_delta_mps = MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS + 1.0;
+    static_lift_sample.min_lift_multiplier = 1.0;
+    static_lift_sample.max_lift_multiplier = 1.0;
+    metrics.observe(&static_lift_sample, scenario);
+
+    assert_eq!(metrics.dynamic_lift_samples, 0);
+    assert_eq!(metrics.max_lift_applied_delta_mps, 0.0);
+
+    for frame in 40..(40 + scenario.thresholds.min_lifted_samples) {
+        let mut weak_dynamic_sample =
+            sim_roll_sample(&route, scenario, frame, FlightMode::Gliding, 0.0, 0.0);
+        weak_dynamic_sample.active_lift_fields = 1;
+        weak_dynamic_sample.paired_visual_lift_fields = 1;
+        weak_dynamic_sample.dynamic_lift_fields = 1;
+        weak_dynamic_sample.lift_applied_delta_mps = 0.01;
+        weak_dynamic_sample.min_lift_multiplier = 0.9;
+        weak_dynamic_sample.max_lift_multiplier = 1.1;
+        metrics.observe(&weak_dynamic_sample, scenario);
+    }
+
+    assert_eq!(
+        metrics.dynamic_lift_samples,
+        scenario.thresholds.min_lifted_samples
+    );
+    let failing_delta_check = metrics
+        .checks(scenario)
+        .into_iter()
+        .find(|check| check.name == "lift_applied_delta")
+        .expect("lift applied delta check");
+    assert!(!failing_delta_check.passed);
+    assert!(failing_delta_check.value < failing_delta_check.threshold);
+
+    let mut strong_dynamic_sample =
+        sim_roll_sample(&route, scenario, 90, FlightMode::Gliding, 0.0, 0.0);
+    strong_dynamic_sample.active_lift_fields = 1;
+    strong_dynamic_sample.paired_visual_lift_fields = 1;
+    strong_dynamic_sample.dynamic_lift_fields = 1;
+    strong_dynamic_sample.lift_applied_delta_mps = MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS;
+    strong_dynamic_sample.min_lift_multiplier = 0.9;
+    strong_dynamic_sample.max_lift_multiplier = 1.1;
+    metrics.observe(&strong_dynamic_sample, scenario);
+
+    let passing_delta_check = metrics
+        .checks(scenario)
+        .into_iter()
+        .find(|check| check.name == "lift_applied_delta")
+        .expect("lift applied delta check");
+    assert!(passing_delta_check.passed);
 }
 
 #[test]
@@ -878,6 +1010,7 @@ fn sim_sample_measures_pure_backward_body_heading_intent() {
         &route,
         &[],
         &[],
+        LiftApplication::default(),
         WindForceApplication::default(),
         &objective,
         &SimPowerUps::default(),
@@ -942,6 +1075,7 @@ fn sim_sample_uses_resolved_pose_input_without_relabeling_movement_axis() {
         &route,
         &[],
         &[],
+        LiftApplication::default(),
         WindForceApplication::default(),
         &objective,
         &SimPowerUps::default(),
@@ -1407,6 +1541,7 @@ fn sim_roll_sample(
         route,
         &[],
         &[],
+        LiftApplication::default(),
         WindForceApplication::default(),
         &objective,
         &power_ups,

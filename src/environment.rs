@@ -724,7 +724,7 @@ pub fn apply_aerial_power_up(mut velocity: Vec3, power_up: AerialPowerUp) -> Vec
     velocity
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LiftApplication {
     pub velocity: Vec3,
     pub active_fields: usize,
