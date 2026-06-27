@@ -187,6 +187,12 @@ fn air_control_metric_sample(
         MIN_CROSSWIND_GUIDE_FLOW_DISPLACEMENT_M,
         MIN_CROSSWIND_RIBBON_FLOW_DISPLACEMENT_M,
     )
+    .with_wind_guide_flow_coherence_metrics(
+        MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT,
+        MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT,
+        MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+        MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+    )
     .with_wind_force_metrics(
         1,
         1,

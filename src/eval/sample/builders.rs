@@ -191,6 +191,10 @@ impl EvalSample {
             max_crosswind_visual_motion_m: 0.0,
             max_crosswind_guide_flow_displacement_m: 0.0,
             max_crosswind_ribbon_flow_displacement_m: 0.0,
+            updraft_flow_coherent_visual_count: 0,
+            crosswind_flow_coherent_visual_count: 0,
+            max_updraft_visual_flow_alignment: 0.0,
+            max_crosswind_visual_flow_alignment: 0.0,
             world_collision_proxy_count: 0,
             terrain_rim_collision_proxy_count: 0,
             world_collision_resolved_count: 0,
@@ -461,6 +465,20 @@ impl EvalSample {
             max_crosswind_guide_flow_displacement_m.max(0.0);
         self.max_crosswind_ribbon_flow_displacement_m =
             max_crosswind_ribbon_flow_displacement_m.max(0.0);
+        self
+    }
+
+    pub fn with_wind_guide_flow_coherence_metrics(
+        mut self,
+        updraft_coherent_visual_count: usize,
+        crosswind_coherent_visual_count: usize,
+        max_updraft_flow_alignment: f32,
+        max_crosswind_flow_alignment: f32,
+    ) -> Self {
+        self.updraft_flow_coherent_visual_count = updraft_coherent_visual_count;
+        self.crosswind_flow_coherent_visual_count = crosswind_coherent_visual_count;
+        self.max_updraft_visual_flow_alignment = max_updraft_flow_alignment.clamp(0.0, 1.0);
+        self.max_crosswind_visual_flow_alignment = max_crosswind_flow_alignment.clamp(0.0, 1.0);
         self
     }
 

@@ -289,6 +289,10 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"max_crosswind_visual_motion_m\": 0.3000"));
     assert!(summary_json.contains("\"max_crosswind_guide_flow_displacement_m\": 0.3000"));
     assert!(summary_json.contains("\"max_crosswind_ribbon_flow_displacement_m\": 0.3000"));
+    assert!(summary_json.contains("\"max_updraft_flow_coherent_visual_count\": 96"));
+    assert!(summary_json.contains("\"max_crosswind_flow_coherent_visual_count\": 80"));
+    assert!(summary_json.contains("\"max_updraft_visual_flow_alignment\": 0.5500"));
+    assert!(summary_json.contains("\"max_crosswind_visual_flow_alignment\": 0.5500"));
     assert!(summary_json.contains("\"wind_force_samples\": 1"));
     assert!(summary_json.contains("\"meaningful_wind_force_samples\": 1"));
     assert!(summary_json.contains("\"max_active_wind_force_fields\": 1"));
@@ -616,6 +620,10 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"max_crosswind_visual_motion_m\":0.3000"));
     assert!(sample_json.contains("\"max_crosswind_guide_flow_displacement_m\":0.3000"));
     assert!(sample_json.contains("\"max_crosswind_ribbon_flow_displacement_m\":0.3000"));
+    assert!(sample_json.contains("\"updraft_flow_coherent_visual_count\":96"));
+    assert!(sample_json.contains("\"crosswind_flow_coherent_visual_count\":80"));
+    assert!(sample_json.contains("\"max_updraft_visual_flow_alignment\":0.5500"));
+    assert!(sample_json.contains("\"max_crosswind_visual_flow_alignment\":0.5500"));
     assert!(sample_json.contains("\"active_wind_force_fields\":1"));
     assert!(sample_json.contains("\"crosswind_force_fields\":1"));
     assert!(sample_json.contains("\"updraft_swirl_force_fields\":1"));
@@ -1057,6 +1065,12 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
                 MIN_CROSSWIND_VISUAL_MOTION_M,
                 MIN_CROSSWIND_GUIDE_FLOW_DISPLACEMENT_M,
                 MIN_CROSSWIND_RIBBON_FLOW_DISPLACEMENT_M,
+            )
+            .with_wind_guide_flow_coherence_metrics(
+                MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT,
+                MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT,
+                MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+                MIN_WIND_VISUAL_FLOW_ALIGNMENT,
             )
             .with_wind_force_metrics(
                 1,

@@ -119,7 +119,7 @@ Current tests cover:
 - world collision proxies push the player out of obvious generated asset obstacles without affecting proxies above the player
 - visual wind fields keep horizontal flow horizontal
 - visual updraft fields include upward flow plus horizontal swirl
-- wind-current evals gate sustained updraft visual rise plus split guide/ribbon crosswind motion along the gameplay field direction
+- wind-current evals gate sustained updraft visual rise, split guide/ribbon crosswind motion along the gameplay field direction, and short-horizon guide/ribbon motion aligned with shared `WindField::flow_at`
 - wind response applies only while airborne and stays horizontally bounded
 - lift fields only apply inside bounds while enabled
 - authored gameplay lift route nodes pair visual and lift volumes
@@ -136,7 +136,7 @@ Current tests cover:
 - animation phase advances from delta time
 - idle breathing and glide/dive airflow micro-motion are phase-driven and covered by pose unit tests
 - wing visibility tracks glide mode
-- `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, unreadable lift samples, dynamic readable lift samples, wind-flow speed/variation/range, and wind-force response so active lift must overlap a paired visible updraft with changing flow and lateral current
+- `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, unreadable lift samples, dynamic readable lift samples, wind-flow speed/variation/range, wind-guide flow coherence, and wind-force response so active lift must overlap a paired visible updraft with changing flow, aligned visual airflow, and lateral current
 - `camera_mouse_control` eval tracks yaw/pitch offsets and obstruction adjustment without player movement
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
 - `camera_strafe_stability` eval tracks right/left lateral movement without camera auto-orbit, including view-yaw and world-yaw drift
