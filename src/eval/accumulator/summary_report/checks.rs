@@ -195,6 +195,12 @@ pub(super) fn build_checks(
             "m",
         ),
         EvalCheck::at_least(
+            "updraft_visual_swirl_displacement",
+            acc.max_updraft_visual_swirl_displacement_m,
+            MIN_UPDRAFT_VISUAL_SWIRL_DISPLACEMENT_M,
+            "m",
+        ),
+        EvalCheck::at_least(
             "crosswind_visual_motion",
             acc.max_crosswind_visual_motion_m,
             MIN_CROSSWIND_VISUAL_MOTION_M,

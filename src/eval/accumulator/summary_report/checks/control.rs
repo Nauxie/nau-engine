@@ -123,6 +123,12 @@ pub(super) fn append_scenario_checks(
             "samples",
         ));
         checks.push(EvalCheck::at_least(
+            "meaningful_wind_force_samples",
+            acc.meaningful_wind_force_samples as f32,
+            MIN_WIND_FORCE_SAMPLE_COUNT as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
             "active_wind_force_fields",
             acc.max_active_wind_force_fields as f32,
             1.0,

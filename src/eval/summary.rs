@@ -132,6 +132,7 @@ pub struct EvalMetricsSummary {
     pub max_wind_flow_variation: f32,
     pub max_wind_flow_variation_range: f32,
     pub wind_force_samples: u32,
+    pub meaningful_wind_force_samples: u32,
     pub crosswind_force_samples: u32,
     pub updraft_swirl_force_samples: u32,
     pub max_active_wind_force_fields: usize,
@@ -166,6 +167,7 @@ pub struct EvalMetricsSummary {
     pub max_crosswind_ribbon_visual_count: usize,
     pub max_updraft_visual_motion_m: f32,
     pub max_updraft_visual_rise_m: f32,
+    pub max_updraft_visual_swirl_displacement_m: f32,
     pub max_crosswind_visual_motion_m: f32,
     pub max_crosswind_guide_flow_displacement_m: f32,
     pub max_crosswind_ribbon_flow_displacement_m: f32,
@@ -502,8 +504,9 @@ impl EvalMetricsSummary {
         );
         let max_active_lift_fields_key = format!("{indent}  \"max_active_lift_fields\"");
         let wind_force_metrics = format!(
-            "{indent}  \"wind_force_samples\": {},\n{indent}  \"crosswind_force_samples\": {},\n{indent}  \"updraft_swirl_force_samples\": {},\n{indent}  \"max_active_wind_force_fields\": {},\n{indent}  \"max_crosswind_force_fields\": {},\n{indent}  \"max_updraft_swirl_force_fields\": {},\n{indent}  \"max_wind_force_delta_mps\": {},\n{indent}  \"max_crosswind_force_delta_mps\": {},\n{indent}  \"max_updraft_swirl_force_delta_mps\": {},\n{indent}  \"max_wind_force_flow_speed_mps\": {},\n{indent}  \"max_wind_force_variation\": {},\n{}",
+            "{indent}  \"wind_force_samples\": {},\n{indent}  \"meaningful_wind_force_samples\": {},\n{indent}  \"crosswind_force_samples\": {},\n{indent}  \"updraft_swirl_force_samples\": {},\n{indent}  \"max_active_wind_force_fields\": {},\n{indent}  \"max_crosswind_force_fields\": {},\n{indent}  \"max_updraft_swirl_force_fields\": {},\n{indent}  \"max_wind_force_delta_mps\": {},\n{indent}  \"max_crosswind_force_delta_mps\": {},\n{indent}  \"max_updraft_swirl_force_delta_mps\": {},\n{indent}  \"max_wind_force_flow_speed_mps\": {},\n{indent}  \"max_wind_force_variation\": {},\n{}",
             self.wind_force_samples,
+            self.meaningful_wind_force_samples,
             self.crosswind_force_samples,
             self.updraft_swirl_force_samples,
             self.max_active_wind_force_fields,
@@ -560,13 +563,14 @@ impl EvalMetricsSummary {
         let json = json.replacen(&min_target_distance_key, &pose_readability_metrics, 1);
         let terrain_surface_key = format!("{indent}  \"min_island_terrain_surface_count\"");
         let wind_visual_metrics = format!(
-            "{indent}  \"max_updraft_guide_visual_count\": {},\n{indent}  \"max_updraft_ribbon_visual_count\": {},\n{indent}  \"max_crosswind_guide_visual_count\": {},\n{indent}  \"max_crosswind_ribbon_visual_count\": {},\n{indent}  \"max_updraft_visual_motion_m\": {},\n{indent}  \"max_updraft_visual_rise_m\": {},\n{indent}  \"max_crosswind_visual_motion_m\": {},\n{indent}  \"max_crosswind_guide_flow_displacement_m\": {},\n{indent}  \"max_crosswind_ribbon_flow_displacement_m\": {},\n{}",
+            "{indent}  \"max_updraft_guide_visual_count\": {},\n{indent}  \"max_updraft_ribbon_visual_count\": {},\n{indent}  \"max_crosswind_guide_visual_count\": {},\n{indent}  \"max_crosswind_ribbon_visual_count\": {},\n{indent}  \"max_updraft_visual_motion_m\": {},\n{indent}  \"max_updraft_visual_rise_m\": {},\n{indent}  \"max_updraft_visual_swirl_displacement_m\": {},\n{indent}  \"max_crosswind_visual_motion_m\": {},\n{indent}  \"max_crosswind_guide_flow_displacement_m\": {},\n{indent}  \"max_crosswind_ribbon_flow_displacement_m\": {},\n{}",
             self.max_updraft_guide_visual_count,
             self.max_updraft_ribbon_visual_count,
             self.max_crosswind_guide_visual_count,
             self.max_crosswind_ribbon_visual_count,
             json_number(self.max_updraft_visual_motion_m),
             json_number(self.max_updraft_visual_rise_m),
+            json_number(self.max_updraft_visual_swirl_displacement_m),
             json_number(self.max_crosswind_visual_motion_m),
             json_number(self.max_crosswind_guide_flow_displacement_m),
             json_number(self.max_crosswind_ribbon_flow_displacement_m),

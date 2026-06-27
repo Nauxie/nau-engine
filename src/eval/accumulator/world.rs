@@ -1,5 +1,8 @@
 use super::{EvalAccumulator, EvalSample};
-use crate::eval::thresholds::MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M;
+use crate::eval::thresholds::{
+    MIN_CROSSWIND_FORCE_DELTA_MPS, MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS,
+    MIN_WIND_FORCE_VARIATION, MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M,
+};
 
 pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_visible_wind_fields = accumulator
@@ -16,6 +19,12 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
         .max(sample.max_wind_flow_variation);
     if sample.active_wind_force_fields > 0 {
         accumulator.wind_force_samples += 1;
+        let meaningful_delta = sample.max_wind_force_delta_mps >= MIN_WIND_FORCE_DELTA_MPS
+            || sample.max_crosswind_force_delta_mps >= MIN_CROSSWIND_FORCE_DELTA_MPS
+            || sample.max_updraft_swirl_force_delta_mps >= MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS;
+        if meaningful_delta && sample.max_wind_force_variation >= MIN_WIND_FORCE_VARIATION {
+            accumulator.meaningful_wind_force_samples += 1;
+        }
     }
     if sample.crosswind_force_fields > 0 {
         accumulator.crosswind_force_samples += 1;
@@ -134,6 +143,9 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_updraft_visual_rise_m = accumulator
         .max_updraft_visual_rise_m
         .max(sample.max_updraft_visual_rise_m);
+    accumulator.max_updraft_visual_swirl_displacement_m = accumulator
+        .max_updraft_visual_swirl_displacement_m
+        .max(sample.max_updraft_visual_swirl_displacement_m);
     accumulator.max_crosswind_visual_motion_m = accumulator
         .max_crosswind_visual_motion_m
         .max(sample.max_crosswind_visual_motion_m);

@@ -541,6 +541,7 @@ pub(crate) fn collect_eval_metrics(
         wind_guide_metrics.crosswind_ribbon_count,
         wind_guide_metrics.max_updraft_visual_motion_m,
         wind_guide_metrics.max_updraft_visual_rise_m,
+        wind_guide_metrics.max_updraft_visual_swirl_displacement_m,
         wind_guide_metrics.max_crosswind_visual_motion_m,
         wind_guide_metrics.max_crosswind_guide_flow_displacement_m,
         wind_guide_metrics.max_crosswind_ribbon_flow_displacement_m,

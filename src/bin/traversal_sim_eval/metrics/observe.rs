@@ -1,6 +1,9 @@
 use bevy::prelude::Vec2;
 use nau_engine::animation::MIN_KEY_POSE_READABILITY_SCORE;
-use nau_engine::eval::{CAMERA_STRAFE_STABILITY, EvalScenario};
+use nau_engine::eval::{
+    CAMERA_STRAFE_STABILITY, EvalScenario, MIN_CROSSWIND_FORCE_DELTA_MPS,
+    MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_VARIATION,
+};
 
 use super::super::{
     AIR_CONTROL_RESPONSE_THRESHOLD_MPS, AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES, SimSample,
@@ -196,6 +199,12 @@ impl SimMetrics {
             .max(sample.max_wind_flow_variation);
         if sample.active_wind_force_fields > 0 {
             self.wind_force_samples += 1;
+            let meaningful_delta = sample.max_wind_force_delta_mps >= MIN_WIND_FORCE_DELTA_MPS
+                || sample.max_crosswind_force_delta_mps >= MIN_CROSSWIND_FORCE_DELTA_MPS
+                || sample.max_updraft_swirl_force_delta_mps >= MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS;
+            if meaningful_delta && sample.max_wind_force_variation >= MIN_WIND_FORCE_VARIATION {
+                self.meaningful_wind_force_samples += 1;
+            }
         }
         if sample.crosswind_force_fields > 0 {
             self.crosswind_force_samples += 1;

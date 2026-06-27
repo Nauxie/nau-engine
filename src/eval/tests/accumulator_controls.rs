@@ -1948,6 +1948,7 @@ fn accumulator_gates_wind_force_response_metrics() {
 
     for check_name in [
         "wind_force_samples",
+        "meaningful_wind_force_samples",
         "active_wind_force_fields",
         "wind_force_delta",
         "wind_force_flow_speed",
@@ -1961,6 +1962,36 @@ fn accumulator_gates_wind_force_response_metrics() {
             "{check_name} should pass with current wind response metrics"
         );
     }
+}
+
+#[test]
+fn accumulator_requires_sustained_meaningful_wind_force_samples() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(content_metric_sample(scenario, 0, 12, 0, 96));
+
+    let mut weak_sample = content_metric_sample(scenario, 1, 12, 0, 96);
+    weak_sample.max_wind_force_delta_mps = MIN_WIND_FORCE_DELTA_MPS * 0.5;
+    weak_sample.max_crosswind_force_delta_mps = MIN_CROSSWIND_FORCE_DELTA_MPS * 0.5;
+    weak_sample.max_updraft_swirl_force_delta_mps = MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS * 0.5;
+    weak_sample.max_wind_force_variation = MIN_WIND_FORCE_VARIATION * 0.5;
+    accumulator.observe(weak_sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert!(named_check(&summary, "wind_force_samples").passed);
+    assert!(named_check(&summary, "wind_force_delta").passed);
+    assert!(named_check(&summary, "wind_force_variation").passed);
+    assert!(!named_check(&summary, "meaningful_wind_force_samples").passed);
 }
 
 #[test]
@@ -1991,6 +2022,7 @@ fn accumulator_rejects_missing_wind_force_response_metrics() {
 
     for check_name in [
         "wind_force_samples",
+        "meaningful_wind_force_samples",
         "active_wind_force_fields",
         "wind_force_delta",
         "wind_force_flow_speed",
@@ -2019,6 +2051,7 @@ fn accumulator_gates_wind_guide_visual_presence_and_motion() {
         0.0,
         0.0,
         0.0,
+        0.0,
     );
     let mut accumulator = EvalAccumulator::default();
     accumulator.observe(sample);
@@ -2041,6 +2074,7 @@ fn accumulator_gates_wind_guide_visual_presence_and_motion() {
         "crosswind_ribbon_visual_count",
         "updraft_visual_motion",
         "updraft_visual_rise",
+        "updraft_visual_swirl_displacement",
         "crosswind_visual_motion",
         "crosswind_guide_flow_displacement",
         "crosswind_ribbon_flow_displacement",
@@ -2061,6 +2095,7 @@ fn accumulator_gates_wind_guide_visual_flow_direction() {
         MIN_CROSSWIND_GUIDE_VISUAL_COUNT,
         MIN_CROSSWIND_RIBBON_VISUAL_COUNT,
         MIN_UPDRAFT_VISUAL_MOTION_M,
+        0.0,
         0.0,
         MIN_CROSSWIND_VISUAL_MOTION_M,
         0.0,
@@ -2083,6 +2118,7 @@ fn accumulator_gates_wind_guide_visual_flow_direction() {
     assert!(named_check(&summary, "updraft_visual_motion").passed);
     assert!(named_check(&summary, "crosswind_visual_motion").passed);
     assert!(!named_check(&summary, "updraft_visual_rise").passed);
+    assert!(!named_check(&summary, "updraft_visual_swirl_displacement").passed);
     assert!(!named_check(&summary, "crosswind_guide_flow_displacement").passed);
     assert!(!named_check(&summary, "crosswind_ribbon_flow_displacement").passed);
 }
@@ -2097,6 +2133,7 @@ fn accumulator_gates_crosswind_ribbon_flow_separately_from_guides() {
         MIN_CROSSWIND_RIBBON_VISUAL_COUNT,
         MIN_UPDRAFT_VISUAL_MOTION_M,
         MIN_UPDRAFT_VISUAL_RISE_M,
+        MIN_UPDRAFT_VISUAL_SWIRL_DISPLACEMENT_M,
         MIN_CROSSWIND_VISUAL_MOTION_M,
         MIN_CROSSWIND_GUIDE_FLOW_DISPLACEMENT_M,
         0.0,

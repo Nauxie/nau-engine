@@ -65,29 +65,42 @@ impl WindField {
 
         let local = self.normalized_local_position(position);
         let time = elapsed_secs.max(0.0);
-        let phase = local.dot(Vec3::new(1.7, 0.83, -1.19));
-        let primary_wave = (time * 0.74 + phase).sin();
-        let secondary_wave = (time * 1.37 + phase * 1.9).cos();
+        let field_phase = self.field_phase();
+        let traveling_wave =
+            (time * 0.86 - local.x * 2.35 + local.y * 0.62 - local.z * 1.18 + field_phase).sin();
+        let lane_wave = (time * 1.43 + local.z * 2.1 - local.y * 1.34 + field_phase * 0.7).cos();
+        let pulse_wave =
+            (time * 2.18 + local.x * 3.0 + local.y * 1.6 + local.z * 0.9 + field_phase * 1.3).sin();
         let variation =
-            (0.18 + primary_wave.abs() * 0.24 + secondary_wave.abs() * 0.10).clamp(0.0, 1.0);
-        let gust_strength = (0.78 + primary_wave * 0.16 + secondary_wave * 0.08).clamp(0.45, 1.25);
+            (0.2 + traveling_wave.abs() * 0.28 + lane_wave.abs() * 0.14 + pulse_wave.abs() * 0.08)
+                .clamp(0.0, 1.0);
+        let gust_strength =
+            (0.82 + traveling_wave * 0.18 + lane_wave * 0.1 + pulse_wave * 0.05).clamp(0.48, 1.28);
         let edge_falloff = (1.0 - local.abs().max_element() * 0.22).clamp(0.48, 1.0);
         let speed = self.visual_speed * gust_strength * edge_falloff;
         let vector = match self.kind {
             WindFieldKind::Crosswind => {
                 let lateral =
                     Vec3::new(-self.direction.z, 0.0, self.direction.x).normalize_or_zero();
-                self.direction * speed + lateral * (speed * 0.08 * secondary_wave)
+                let downwind_channel = (1.0 + local.x * 0.05).clamp(0.9, 1.08);
+                let shear = lane_wave * 0.11 + pulse_wave * 0.045;
+                self.direction * (speed * downwind_channel) + lateral * (speed * shear)
             }
             WindFieldKind::Updraft => {
                 let radial = Vec3::new(local.x, 0.0, local.z);
-                let tangent = if radial.length_squared() > DIRECTION_EPSILON {
-                    Vec3::new(-radial.z, 0.0, radial.x).normalize()
+                let fallback_angle = time * 0.74 + local.y * 1.45 + field_phase + lane_wave * 0.28;
+                let fallback_radial = Vec3::new(fallback_angle.cos(), 0.0, fallback_angle.sin());
+                let radial_axis = if radial.length_squared() > DIRECTION_EPSILON {
+                    let wobble = fallback_radial * (0.12 + lane_wave.abs() * 0.1);
+                    (radial.normalize() + wobble).normalize_or_zero()
                 } else {
-                    Vec3::X
+                    fallback_radial
                 };
-                let swirl = tangent * (speed * (0.16 + variation * 0.12));
-                let breath = radial.normalize_or_zero() * (speed * 0.04 * secondary_wave);
+                let tangent = Vec3::new(-radial_axis.z, 0.0, radial_axis.x).normalize_or_zero();
+                let curl_pulse =
+                    0.82 + (time * 1.18 + local.y * 1.8 + field_phase * 0.5).sin() * 0.18;
+                let swirl = tangent * (speed * (0.2 + variation * 0.16) * curl_pulse);
+                let breath = radial_axis * (speed * 0.055 * lane_wave);
                 Vec3::Y * speed + swirl + breath
             }
         };
@@ -138,6 +151,11 @@ impl WindField {
     fn normalized_local_position(self, position: Vec3) -> Vec3 {
         let safe_extents = self.half_extents.max(Vec3::splat(0.1));
         self.local_offset(position) / safe_extents
+    }
+
+    fn field_phase(self) -> f32 {
+        (self.center.dot(Vec3::new(0.071, 0.113, -0.053)) + self.visual_speed * 0.137)
+            .rem_euclid(std::f32::consts::TAU)
     }
 }
 
@@ -709,15 +727,34 @@ mod tests {
         assert!(early.speed_mps > 6.0);
         assert!(early.variation > 0.15);
         assert!(early.vector.distance(later.vector) > 0.1);
+        assert!(early.vector.normalize().dot(field.direction) > 0.97);
+        assert!(
+            (early.vector.z - later.vector.z).abs() > 0.2,
+            "expected crosswind lane shear to vary over time, early={early:?}, later={later:?}"
+        );
     }
 
     #[test]
     fn updraft_dynamic_flow_keeps_upward_bias_and_swirl() {
         let field = WindField::updraft(Vec3::ZERO, Vec3::new(8.0, 16.0, 8.0), 12.0);
-        let flow = field.flow_at(Vec3::new(3.0, 0.0, 2.0), 0.7).unwrap();
+        let position = Vec3::new(3.0, 0.0, 2.0);
+        let flow = field.flow_at(position, 0.7).unwrap();
+        let later = field.flow_at(position + Vec3::Y * 5.0, 2.1).unwrap();
+        let radial = Vec3::new(position.x, 0.0, position.z).normalize();
+        let tangent = Vec3::new(-radial.z, 0.0, radial.x).normalize();
 
         assert!(flow.vector.y > 7.0);
-        assert!(flow.vector.xz().length() > 0.8);
+        assert!(flow.vector.y > flow.vector.xz().length() * 2.0);
+        assert!(flow.vector.xz().length() > 1.6);
+        assert!(flow.vector.dot(tangent) > 1.4);
+        assert!(
+            flow.vector
+                .xz()
+                .normalize()
+                .dot(later.vector.xz().normalize())
+                < 0.995,
+            "expected updraft curl direction to evolve with time/height, flow={flow:?}, later={later:?}"
+        );
         assert!(flow.variation > 0.15);
     }
 

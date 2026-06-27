@@ -137,6 +137,12 @@ impl SimMetrics {
                 "samples",
             ));
             checks.push(SimCheck::at_least(
+                "meaningful_wind_force_samples",
+                self.meaningful_wind_force_samples as f32,
+                MIN_WIND_FORCE_SAMPLE_COUNT as f32,
+                "samples",
+            ));
+            checks.push(SimCheck::at_least(
                 "active_wind_force_fields",
                 self.max_active_wind_force_fields as f32,
                 1.0,

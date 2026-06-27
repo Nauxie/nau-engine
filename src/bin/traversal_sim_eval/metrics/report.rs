@@ -96,6 +96,7 @@ impl SimMetrics {
             "max_wind_flow_variation": self.max_wind_flow_variation,
             "max_wind_flow_variation_range": self.max_wind_flow_variation_range,
             "wind_force_samples": self.wind_force_samples,
+            "meaningful_wind_force_samples": self.meaningful_wind_force_samples,
             "crosswind_force_samples": self.crosswind_force_samples,
             "updraft_swirl_force_samples": self.updraft_swirl_force_samples,
             "max_active_wind_force_fields": self.max_active_wind_force_fields,

@@ -77,6 +77,7 @@ fn baseline_simulation_writes_windowless_artifacts() {
     }
     for check_name in [
         "wind_force_samples",
+        "meaningful_wind_force_samples",
         "active_wind_force_fields",
         "wind_force_delta",
         "wind_force_flow_speed",
@@ -222,6 +223,7 @@ fn updraft_simulation_uses_readable_lift() {
         "max_wind_flow_variation",
         "max_wind_flow_variation_range",
         "wind_force_samples",
+        "meaningful_wind_force_samples",
         "active_wind_force_fields",
         "wind_force_delta",
         "wind_force_flow_speed",
