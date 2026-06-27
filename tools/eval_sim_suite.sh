@@ -86,6 +86,7 @@ if command -v jq >/dev/null 2>&1; then
           pose_landing_recovery_samples: .metrics.pose_landing_recovery_samples,
           max_pose_landing_crouch_m: .metrics.max_pose_landing_crouch_m,
           max_pose_landing_foot_forward_m: .metrics.max_pose_landing_foot_forward_m,
+          max_pose_landing_foot_split_m: .metrics.max_pose_landing_foot_split_m,
           max_pose_landing_flare_degrees: .metrics.max_pose_landing_flare_degrees,
           max_pose_landing_recovery_flip_degrees: .metrics.max_pose_landing_recovery_flip_degrees,
           unreadable_key_pose_samples: .metrics.unreadable_key_pose_samples,

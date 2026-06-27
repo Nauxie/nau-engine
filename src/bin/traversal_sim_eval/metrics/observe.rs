@@ -201,6 +201,9 @@ impl SimMetrics {
         self.max_pose_landing_foot_forward_m = self
             .max_pose_landing_foot_forward_m
             .max(sample.pose_landing_foot_forward_m);
+        self.max_pose_landing_foot_split_m = self
+            .max_pose_landing_foot_split_m
+            .max(sample.pose_landing_foot_split_m);
         if sample.pose_intent_label == "landing_anticipation" {
             self.max_pose_landing_flare_degrees = self
                 .max_pose_landing_flare_degrees

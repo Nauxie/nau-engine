@@ -119,6 +119,7 @@ pub(super) fn build_metrics_summary(
             .max_grounded_run_stride_leg_opposition_degrees,
         max_pose_landing_crouch_m: acc.max_pose_landing_crouch_m,
         max_pose_landing_foot_forward_m: acc.max_pose_landing_foot_forward_m,
+        max_pose_landing_foot_split_m: acc.max_pose_landing_foot_split_m,
         max_pose_landing_flare_degrees: acc.max_pose_landing_flare_degrees,
         max_pose_landing_recovery_flip_degrees: acc.max_pose_landing_recovery_flip_degrees,
         max_pose_wing_airflow_strength: acc.max_pose_wing_airflow_strength,

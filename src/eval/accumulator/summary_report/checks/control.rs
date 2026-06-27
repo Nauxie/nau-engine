@@ -131,6 +131,12 @@ pub(super) fn append_scenario_checks(
             "m",
         ));
         checks.push(EvalCheck::at_least(
+            "pose_landing_foot_split",
+            acc.max_pose_landing_foot_split_m,
+            LANDING_MIN_POSE_FOOT_SPLIT_M,
+            "m",
+        ));
+        checks.push(EvalCheck::at_least(
             "pose_landing_flare",
             acc.max_pose_landing_flare_degrees,
             LANDING_MIN_POSE_FLARE_DEGREES,
@@ -1082,6 +1088,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             "pose_state_landing_foot_forward",
             acc.max_pose_landing_foot_forward_m,
             LANDING_MIN_POSE_FOOT_FORWARD_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "pose_state_landing_foot_split",
+            acc.max_pose_landing_foot_split_m,
+            LANDING_MIN_POSE_FOOT_SPLIT_M,
             "m",
         ),
         EvalCheck::at_least(
