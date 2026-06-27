@@ -3591,7 +3591,10 @@ fn accumulator_gates_wind_guide_visual_presence_and_motion() {
             0.0,
             0.0,
         )
-        .with_wind_guide_depth_metrics(0.0, 0.0, 0.0, 0.0);
+        .with_wind_guide_depth_metrics(0.0, 0.0, 0.0, 0.0)
+        .with_observed_wind_visual_motion_metrics(
+            0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        );
     let mut accumulator = EvalAccumulator::default();
     accumulator.observe(sample);
 
@@ -3621,6 +3624,18 @@ fn accumulator_gates_wind_guide_visual_presence_and_motion() {
         "crosswind_ribbon_flow_displacement",
         "crosswind_visual_lane_depth_span",
         "crosswind_visual_scale_pulse",
+        "observed_updraft_flow_coherent_visual_count",
+        "observed_crosswind_flow_coherent_visual_count",
+        "observed_crosswind_ribbon_flow_coherent_sample_count",
+        "observed_updraft_visual_frame_motion",
+        "observed_updraft_visual_frame_rise",
+        "observed_updraft_visual_frame_swirl_displacement",
+        "observed_crosswind_visual_frame_motion",
+        "observed_crosswind_guide_frame_flow_displacement",
+        "observed_crosswind_ribbon_frame_flow_displacement",
+        "observed_updraft_visual_flow_alignment",
+        "observed_crosswind_visual_flow_alignment",
+        "observed_crosswind_ribbon_visual_flow_alignment",
     ] {
         assert!(
             !named_check(&summary, check_name).passed,

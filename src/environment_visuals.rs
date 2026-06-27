@@ -161,6 +161,22 @@ pub(crate) struct WindGuideVisualMetrics {
     pub(crate) max_crosswind_ribbon_visual_flow_alignment: f32,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct ObservedWindVisualMotionMetrics {
+    pub(crate) observed_updraft_flow_coherent_visual_count: usize,
+    pub(crate) observed_crosswind_flow_coherent_visual_count: usize,
+    pub(crate) observed_crosswind_ribbon_flow_coherent_sample_count: usize,
+    pub(crate) max_observed_updraft_visual_frame_motion_m: f32,
+    pub(crate) max_observed_updraft_visual_frame_rise_m: f32,
+    pub(crate) max_observed_updraft_visual_frame_swirl_displacement_m: f32,
+    pub(crate) max_observed_crosswind_visual_frame_motion_m: f32,
+    pub(crate) max_observed_crosswind_guide_frame_flow_displacement_m: f32,
+    pub(crate) max_observed_crosswind_ribbon_frame_flow_displacement_m: f32,
+    pub(crate) max_observed_updraft_visual_flow_alignment: f32,
+    pub(crate) max_observed_crosswind_visual_flow_alignment: f32,
+    pub(crate) max_observed_crosswind_ribbon_visual_flow_alignment: f32,
+}
+
 pub(crate) fn spawn_updraft_guide(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -1296,6 +1312,196 @@ fn record_crosswind_ribbon_advected_flow_coherence(
     coherent_samples >= 2
 }
 
+pub(crate) fn observe_updraft_guide_frame_motion(
+    metrics: &mut ObservedWindVisualMotionMetrics,
+    guide: &UpdraftGuide,
+    previous: &Transform,
+    current: &Transform,
+    elapsed_secs: f32,
+    dt_secs: f32,
+) {
+    record_observed_updraft_frame_motion(
+        metrics,
+        guide.field,
+        previous.translation,
+        current.translation,
+        elapsed_secs,
+        dt_secs,
+        |displacement| updraft_swirl_displacement(guide.field, previous.translation, displacement),
+    );
+}
+
+pub(crate) fn observe_updraft_ribbon_frame_motion(
+    metrics: &mut ObservedWindVisualMotionMetrics,
+    ribbon: &UpdraftRibbon,
+    previous: &Transform,
+    current: &Transform,
+    elapsed_secs: f32,
+    dt_secs: f32,
+) {
+    record_observed_updraft_frame_motion(
+        metrics,
+        ribbon.field,
+        previous.translation,
+        current.translation,
+        elapsed_secs,
+        dt_secs,
+        |displacement| {
+            updraft_swirl_displacement_on_axis(updraft_ribbon_swirl_axis(ribbon), displacement)
+        },
+    );
+}
+
+pub(crate) fn observe_crosswind_guide_frame_motion(
+    metrics: &mut ObservedWindVisualMotionMetrics,
+    guide: &CrosswindGuide,
+    previous: &Transform,
+    current: &Transform,
+    elapsed_secs: f32,
+    dt_secs: f32,
+) {
+    record_observed_crosswind_frame_motion(
+        metrics,
+        guide.field,
+        previous.translation,
+        current.translation,
+        elapsed_secs,
+        dt_secs,
+        false,
+    );
+}
+
+pub(crate) fn observe_crosswind_ribbon_frame_motion(
+    metrics: &mut ObservedWindVisualMotionMetrics,
+    ribbon: &CrosswindRibbon,
+    previous: &Transform,
+    current: &Transform,
+    elapsed_secs: f32,
+    dt_secs: f32,
+) {
+    record_observed_crosswind_frame_motion(
+        metrics,
+        ribbon.field,
+        previous.translation,
+        current.translation,
+        elapsed_secs,
+        dt_secs,
+        true,
+    );
+    for (previous_sample, current_sample) in
+        crosswind_ribbon_scene_sample_positions(ribbon, previous)
+            .into_iter()
+            .zip(crosswind_ribbon_scene_sample_positions(ribbon, current))
+    {
+        let Some(alignment) = observed_visual_flow_alignment(
+            ribbon.field,
+            previous_sample,
+            current_sample,
+            elapsed_secs,
+            false,
+            dt_secs,
+        ) else {
+            continue;
+        };
+
+        metrics.max_observed_crosswind_ribbon_visual_flow_alignment = metrics
+            .max_observed_crosswind_ribbon_visual_flow_alignment
+            .max(alignment);
+        if alignment >= WIND_VISUAL_ALIGNMENT_MIN_DOT {
+            metrics.observed_crosswind_ribbon_flow_coherent_sample_count += 1;
+        }
+    }
+}
+
+fn record_observed_updraft_frame_motion(
+    metrics: &mut ObservedWindVisualMotionMetrics,
+    field: WindField,
+    previous: Vec3,
+    current: Vec3,
+    elapsed_secs: f32,
+    dt_secs: f32,
+    swirl_displacement: impl FnOnce(Vec3) -> f32,
+) {
+    let displacement = current - previous;
+    let Some(alignment) =
+        observed_visual_flow_alignment(field, previous, current, elapsed_secs, true, dt_secs)
+    else {
+        return;
+    };
+
+    metrics.max_observed_updraft_visual_frame_motion_m = metrics
+        .max_observed_updraft_visual_frame_motion_m
+        .max(displacement.length());
+    metrics.max_observed_updraft_visual_frame_rise_m = metrics
+        .max_observed_updraft_visual_frame_rise_m
+        .max(displacement.y.max(0.0));
+    metrics.max_observed_updraft_visual_frame_swirl_displacement_m = metrics
+        .max_observed_updraft_visual_frame_swirl_displacement_m
+        .max(swirl_displacement(displacement));
+    metrics.max_observed_updraft_visual_flow_alignment = metrics
+        .max_observed_updraft_visual_flow_alignment
+        .max(alignment);
+    if alignment >= WIND_VISUAL_ALIGNMENT_MIN_DOT {
+        metrics.observed_updraft_flow_coherent_visual_count += 1;
+    }
+}
+
+fn record_observed_crosswind_frame_motion(
+    metrics: &mut ObservedWindVisualMotionMetrics,
+    field: WindField,
+    previous: Vec3,
+    current: Vec3,
+    elapsed_secs: f32,
+    dt_secs: f32,
+    ribbon: bool,
+) {
+    let displacement = current - previous;
+    let Some(alignment) =
+        observed_visual_flow_alignment(field, previous, current, elapsed_secs, false, dt_secs)
+    else {
+        return;
+    };
+
+    metrics.max_observed_crosswind_visual_frame_motion_m = metrics
+        .max_observed_crosswind_visual_frame_motion_m
+        .max(displacement.length());
+    let flow_displacement_m = displacement.dot(field.direction).max(0.0);
+    if ribbon {
+        metrics.max_observed_crosswind_ribbon_frame_flow_displacement_m = metrics
+            .max_observed_crosswind_ribbon_frame_flow_displacement_m
+            .max(flow_displacement_m);
+    } else {
+        metrics.max_observed_crosswind_guide_frame_flow_displacement_m = metrics
+            .max_observed_crosswind_guide_frame_flow_displacement_m
+            .max(flow_displacement_m);
+    }
+    metrics.max_observed_crosswind_visual_flow_alignment = metrics
+        .max_observed_crosswind_visual_flow_alignment
+        .max(alignment);
+    if alignment >= WIND_VISUAL_ALIGNMENT_MIN_DOT {
+        metrics.observed_crosswind_flow_coherent_visual_count += 1;
+    }
+}
+
+fn observed_visual_flow_alignment(
+    field: WindField,
+    current: Vec3,
+    next: Vec3,
+    elapsed_secs: f32,
+    include_vertical: bool,
+    dt_secs: f32,
+) -> Option<f32> {
+    let displacement = next - current;
+    let dt = dt_secs.clamp(1.0 / 240.0, 0.25);
+    let plausible_step = (field.visual_speed.max(1.0) * dt * 8.0 + 0.4)
+        .min(field.half_extents.max_element().max(1.0) * 0.25);
+    if displacement.length() > plausible_step {
+        return None;
+    }
+
+    visual_flow_alignment(field, current, next, elapsed_secs, include_vertical, false)
+}
+
 fn visual_flow_alignment(
     field: WindField,
     current: Vec3,
@@ -1583,6 +1789,72 @@ mod tests {
     }
 
     #[test]
+    fn observed_updraft_frame_motion_requires_actual_transform_delta() {
+        let guide = test_updraft_guide();
+        let elapsed = 2.0;
+        let previous = Transform::from_translation(updraft_guide_position(&guide, elapsed));
+        let current =
+            Transform::from_translation(updraft_guide_position(&guide, elapsed + 1.0 / 60.0));
+        let mut moving_metrics = ObservedWindVisualMotionMetrics::default();
+        observe_updraft_guide_frame_motion(
+            &mut moving_metrics,
+            &guide,
+            &previous,
+            &current,
+            elapsed,
+            1.0 / 60.0,
+        );
+
+        assert_eq!(
+            moving_metrics.observed_updraft_flow_coherent_visual_count, 1,
+            "expected observed in-field updraft motion to count as flow coherent"
+        );
+        assert!(moving_metrics.max_observed_updraft_visual_frame_motion_m > 0.02);
+        assert!(moving_metrics.max_observed_updraft_visual_frame_rise_m > 0.005);
+        assert!(moving_metrics.max_observed_updraft_visual_flow_alignment > 0.55);
+
+        let mut frozen_metrics = ObservedWindVisualMotionMetrics::default();
+        observe_updraft_guide_frame_motion(
+            &mut frozen_metrics,
+            &guide,
+            &previous,
+            &previous,
+            elapsed,
+            1.0 / 60.0,
+        );
+        assert_eq!(
+            frozen_metrics.observed_updraft_flow_coherent_visual_count,
+            0
+        );
+        assert_eq!(
+            frozen_metrics.max_observed_updraft_visual_frame_motion_m,
+            0.0
+        );
+    }
+
+    #[test]
+    fn observed_updraft_frame_motion_rejects_off_field_fallbacks() {
+        let guide = test_updraft_guide();
+        let outside = guide.field.center + Vec3::new(guide.field.half_extents.x + 4.0, 0.0, 0.0);
+        let previous = Transform::from_translation(outside);
+        let current = Transform::from_translation(outside + Vec3::Y * 0.2);
+        let mut metrics = ObservedWindVisualMotionMetrics::default();
+
+        observe_updraft_guide_frame_motion(
+            &mut metrics,
+            &guide,
+            &previous,
+            &current,
+            1.0,
+            1.0 / 60.0,
+        );
+
+        assert_eq!(metrics.observed_updraft_flow_coherent_visual_count, 0);
+        assert_eq!(metrics.max_observed_updraft_visual_flow_alignment, 0.0);
+        assert_eq!(metrics.max_observed_updraft_visual_frame_motion_m, 0.0);
+    }
+
+    #[test]
     fn updraft_guide_scale_pulses_with_sampled_flow() {
         let guide = test_updraft_guide();
         let start = updraft_guide_position(&guide, 0.0);
@@ -1836,6 +2108,44 @@ mod tests {
             "expected crosswind guide to stay flow coherent, metrics={metrics:?}"
         );
         assert!(metrics.max_crosswind_visual_flow_alignment > 0.55);
+    }
+
+    #[test]
+    fn observed_crosswind_ribbon_motion_uses_real_scene_sample_delta() {
+        let field = WindField::crosswind(
+            Vec3::ZERO,
+            Vec3::new(18.0, 8.0, 8.0),
+            Vec3::new(-1.0, 0.0, 0.35),
+            10.0,
+        );
+        let ribbon = CrosswindRibbon {
+            field,
+            base_translation: field.center,
+            phase: 0.18,
+        };
+        let elapsed = 2.0;
+        let previous = crosswind_ribbon_transform(&ribbon, elapsed);
+        let current = crosswind_ribbon_transform(&ribbon, elapsed + 1.0 / 60.0);
+        let mut metrics = ObservedWindVisualMotionMetrics::default();
+
+        observe_crosswind_ribbon_frame_motion(
+            &mut metrics,
+            &ribbon,
+            &previous,
+            &current,
+            elapsed,
+            1.0 / 60.0,
+        );
+
+        assert_eq!(metrics.observed_crosswind_flow_coherent_visual_count, 1);
+        assert!(
+            metrics.observed_crosswind_ribbon_flow_coherent_sample_count >= 2,
+            "expected ribbon scene samples to move coherently with the field"
+        );
+        assert!(metrics.max_observed_crosswind_visual_frame_motion_m > 0.02);
+        assert!(metrics.max_observed_crosswind_ribbon_frame_flow_displacement_m > 0.01);
+        assert!(metrics.max_observed_crosswind_visual_flow_alignment > 0.55);
+        assert!(metrics.max_observed_crosswind_ribbon_visual_flow_alignment > 0.55);
     }
 
     #[test]

@@ -4,7 +4,12 @@ use crate::authored_assets::{
     authored_player_clip_for_pose_intent_with_input,
 };
 use crate::camera_runtime::CAMERA_PLAYER_FOCUS_HEIGHT;
-use crate::environment_visuals::{wind_guide_visual_metrics, wind_responsive_visual_metrics};
+use crate::environment_visuals::{
+    CrosswindGuide, CrosswindRibbon, ObservedWindVisualMotionMetrics, UpdraftGuide, UpdraftRibbon,
+    observe_crosswind_guide_frame_motion, observe_crosswind_ribbon_frame_motion,
+    observe_updraft_guide_frame_motion, observe_updraft_ribbon_frame_motion,
+    wind_guide_visual_metrics, wind_responsive_visual_metrics,
+};
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
 use crate::player_runtime::AuthoredGliderPose;
 use crate::{grounded_visual_foot_gap_m, movement_facing};
@@ -33,6 +38,7 @@ use nau_engine::movement::{
     desired_heading_alignment_speed, desired_planar_movement_direction,
     desired_planar_travel_heading_error_degrees, lateral_response_speed,
 };
+use std::collections::HashMap;
 
 pub(super) const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
 const BODY_TRAVEL_HEADING_MIN_PLANAR_SPEED_MPS: f32 = 6.0;
@@ -123,6 +129,136 @@ impl VisiblePoseTemporalState {
         self.pending_max_pose_part_rotation_delta_degrees = 0.0;
         self.pending_max_pose_part_translation_delta_m = 0.0;
         metrics
+    }
+}
+
+#[derive(Resource, Default)]
+pub(crate) struct ObservedWindVisualMotionState {
+    previous: HashMap<Entity, WindVisualFrameSnapshot>,
+    pending: ObservedWindVisualMotionMetrics,
+}
+
+impl ObservedWindVisualMotionState {
+    fn observe_frame<'a>(
+        &mut self,
+        frame: u32,
+        elapsed_secs: f32,
+        updraft_guides: impl Iterator<Item = (Entity, &'a UpdraftGuide, &'a Transform)>,
+        updraft_ribbons: impl Iterator<Item = (Entity, &'a UpdraftRibbon, &'a Transform)>,
+        crosswind_guides: impl Iterator<Item = (Entity, &'a CrosswindGuide, &'a Transform)>,
+        crosswind_ribbons: impl Iterator<Item = (Entity, &'a CrosswindRibbon, &'a Transform)>,
+    ) {
+        let previous = std::mem::take(&mut self.previous);
+        let mut current = HashMap::with_capacity(previous.len());
+
+        for (entity, guide, transform) in updraft_guides {
+            if let Some(snapshot) = previous
+                .get(&entity)
+                .filter(|snapshot| snapshot.frame < frame)
+            {
+                let dt_secs = elapsed_secs - snapshot.elapsed_secs;
+                observe_updraft_guide_frame_motion(
+                    &mut self.pending,
+                    guide,
+                    &snapshot.transform,
+                    transform,
+                    snapshot.elapsed_secs,
+                    dt_secs,
+                );
+            }
+            current.insert(
+                entity,
+                WindVisualFrameSnapshot::new(frame, elapsed_secs, transform),
+            );
+        }
+
+        for (entity, ribbon, transform) in updraft_ribbons {
+            if let Some(snapshot) = previous
+                .get(&entity)
+                .filter(|snapshot| snapshot.frame < frame)
+            {
+                let dt_secs = elapsed_secs - snapshot.elapsed_secs;
+                observe_updraft_ribbon_frame_motion(
+                    &mut self.pending,
+                    ribbon,
+                    &snapshot.transform,
+                    transform,
+                    snapshot.elapsed_secs,
+                    dt_secs,
+                );
+            }
+            current.insert(
+                entity,
+                WindVisualFrameSnapshot::new(frame, elapsed_secs, transform),
+            );
+        }
+
+        for (entity, guide, transform) in crosswind_guides {
+            if let Some(snapshot) = previous
+                .get(&entity)
+                .filter(|snapshot| snapshot.frame < frame)
+            {
+                let dt_secs = elapsed_secs - snapshot.elapsed_secs;
+                observe_crosswind_guide_frame_motion(
+                    &mut self.pending,
+                    guide,
+                    &snapshot.transform,
+                    transform,
+                    snapshot.elapsed_secs,
+                    dt_secs,
+                );
+            }
+            current.insert(
+                entity,
+                WindVisualFrameSnapshot::new(frame, elapsed_secs, transform),
+            );
+        }
+
+        for (entity, ribbon, transform) in crosswind_ribbons {
+            if let Some(snapshot) = previous
+                .get(&entity)
+                .filter(|snapshot| snapshot.frame < frame)
+            {
+                let dt_secs = elapsed_secs - snapshot.elapsed_secs;
+                observe_crosswind_ribbon_frame_motion(
+                    &mut self.pending,
+                    ribbon,
+                    &snapshot.transform,
+                    transform,
+                    snapshot.elapsed_secs,
+                    dt_secs,
+                );
+            }
+            current.insert(
+                entity,
+                WindVisualFrameSnapshot::new(frame, elapsed_secs, transform),
+            );
+        }
+
+        self.previous = current;
+    }
+
+    fn take_sample_metrics(&mut self) -> ObservedWindVisualMotionMetrics {
+        let metrics = self.pending;
+        self.pending = ObservedWindVisualMotionMetrics::default();
+        metrics
+    }
+}
+
+#[derive(Clone, Debug)]
+struct WindVisualFrameSnapshot {
+    frame: u32,
+    elapsed_secs: f32,
+    transform: Transform,
+}
+
+impl WindVisualFrameSnapshot {
+    fn new(frame: u32, elapsed_secs: f32, transform: &Transform) -> Self {
+        Self {
+            frame,
+            elapsed_secs,
+            transform: *transform,
+        }
     }
 }
 
@@ -277,6 +413,7 @@ pub(crate) fn collect_eval_metrics(
     camera_control: Res<CameraControlState>,
     movement_basis: Res<EvalMovementBasis>,
     mut pose_temporal_state: ResMut<VisiblePoseTemporalState>,
+    mut observed_wind_visual_motion_state: ResMut<ObservedWindVisualMotionState>,
     authored_animation_diagnostics: Option<Res<AuthoredAnimationDiagnostics>>,
     scene: EvalScene,
 ) {
@@ -363,12 +500,32 @@ pub(crate) fn collect_eval_metrics(
     let content_metrics = *scene.content_diagnostics;
     let (environment_motion_visuals, max_environment_motion_offset_m) =
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
-    let wind_guide_metrics = wind_guide_visual_metrics(
+    observed_wind_visual_motion_state.observe_frame(
+        run.frame,
         elapsed_secs,
         scene.updraft_guides.iter(),
         scene.updraft_ribbons.iter(),
         scene.crosswind_guides.iter(),
         scene.crosswind_ribbons.iter(),
+    );
+    let wind_guide_metrics = wind_guide_visual_metrics(
+        elapsed_secs,
+        scene
+            .updraft_guides
+            .iter()
+            .map(|(_, guide, transform)| (guide, transform)),
+        scene
+            .updraft_ribbons
+            .iter()
+            .map(|(_, ribbon, transform)| (ribbon, transform)),
+        scene
+            .crosswind_guides
+            .iter()
+            .map(|(_, guide, transform)| (guide, transform)),
+        scene
+            .crosswind_ribbons
+            .iter()
+            .map(|(_, ribbon, transform)| (ribbon, transform)),
     );
     let movement_input = scripted_input(run.scenario, run.frame);
     let pose_intent_label = animation.pose_intent.label();
@@ -400,6 +557,7 @@ pub(crate) fn collect_eval_metrics(
     }
 
     let pose_temporal = pose_temporal_state.take_sample_metrics();
+    let observed_wind_visual_motion = observed_wind_visual_motion_state.take_sample_metrics();
     let pose_readability = visible_pose_parts
         .readability_metrics(pose_context)
         .unwrap_or_else(|| {
@@ -601,6 +759,20 @@ pub(crate) fn collect_eval_metrics(
     .with_crosswind_ribbon_flow_coherence_metrics(
         wind_guide_metrics.crosswind_ribbon_flow_coherent_sample_count,
         wind_guide_metrics.max_crosswind_ribbon_visual_flow_alignment,
+    )
+    .with_observed_wind_visual_motion_metrics(
+        observed_wind_visual_motion.observed_updraft_flow_coherent_visual_count,
+        observed_wind_visual_motion.observed_crosswind_flow_coherent_visual_count,
+        observed_wind_visual_motion.observed_crosswind_ribbon_flow_coherent_sample_count,
+        observed_wind_visual_motion.max_observed_updraft_visual_frame_motion_m,
+        observed_wind_visual_motion.max_observed_updraft_visual_frame_rise_m,
+        observed_wind_visual_motion.max_observed_updraft_visual_frame_swirl_displacement_m,
+        observed_wind_visual_motion.max_observed_crosswind_visual_frame_motion_m,
+        observed_wind_visual_motion.max_observed_crosswind_guide_frame_flow_displacement_m,
+        observed_wind_visual_motion.max_observed_crosswind_ribbon_frame_flow_displacement_m,
+        observed_wind_visual_motion.max_observed_updraft_visual_flow_alignment,
+        observed_wind_visual_motion.max_observed_crosswind_visual_flow_alignment,
+        observed_wind_visual_motion.max_observed_crosswind_ribbon_visual_flow_alignment,
     )
     .with_wind_field_visual_coverage_metrics(
         wind_guide_metrics.updraft_field_count,

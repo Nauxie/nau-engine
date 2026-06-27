@@ -289,9 +289,15 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"max_updraft_field_count\": 2"));
     assert!(summary_json.contains("\"max_updraft_fields_with_guides_and_ribbons_count\": 2"));
     assert!(summary_json.contains("\"max_updraft_flow_coherent_field_count\": 2"));
-    assert!(summary_json.contains("\"max_crosswind_field_count\": 3"));
-    assert!(summary_json.contains("\"max_crosswind_fields_with_guides_and_ribbons_count\": 3"));
-    assert!(summary_json.contains("\"max_crosswind_flow_coherent_field_count\": 3"));
+    assert!(summary_json.contains(&format!(
+        "\"max_crosswind_field_count\": {VISUAL_CROSSWIND_FIELD_COUNT}"
+    )));
+    assert!(summary_json.contains(&format!(
+        "\"max_crosswind_fields_with_guides_and_ribbons_count\": {VISUAL_CROSSWIND_FIELD_COUNT}"
+    )));
+    assert!(summary_json.contains(&format!(
+        "\"max_crosswind_flow_coherent_field_count\": {VISUAL_CROSSWIND_FIELD_COUNT}"
+    )));
     assert!(summary_json.contains("\"max_updraft_visual_rise_m\": 18.0000"));
     assert!(summary_json.contains("\"max_updraft_visual_swirl_displacement_m\": 6.0000"));
     assert!(summary_json.contains("\"max_updraft_visual_depth_span_m\": 80.0000"));
@@ -307,6 +313,29 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"max_updraft_visual_flow_alignment\": 0.5500"));
     assert!(summary_json.contains("\"max_crosswind_visual_flow_alignment\": 0.5500"));
     assert!(summary_json.contains("\"max_crosswind_ribbon_visual_flow_alignment\": 0.5500"));
+    assert!(summary_json.contains("\"max_observed_updraft_flow_coherent_visual_count\": 126"));
+    assert!(summary_json.contains("\"max_observed_crosswind_flow_coherent_visual_count\": 180"));
+    assert!(
+        summary_json.contains("\"max_observed_crosswind_ribbon_flow_coherent_sample_count\": 30")
+    );
+    assert!(summary_json.contains("\"max_observed_updraft_visual_frame_motion_m\": 0.0200"));
+    assert!(summary_json.contains("\"max_observed_updraft_visual_frame_rise_m\": 0.0050"));
+    assert!(
+        summary_json.contains("\"max_observed_updraft_visual_frame_swirl_displacement_m\": 0.0030")
+    );
+    assert!(summary_json.contains("\"max_observed_crosswind_visual_frame_motion_m\": 0.0200"));
+    assert!(
+        summary_json.contains("\"max_observed_crosswind_guide_frame_flow_displacement_m\": 0.0100")
+    );
+    assert!(
+        summary_json
+            .contains("\"max_observed_crosswind_ribbon_frame_flow_displacement_m\": 0.0100")
+    );
+    assert!(summary_json.contains("\"max_observed_updraft_visual_flow_alignment\": 0.5500"));
+    assert!(summary_json.contains("\"max_observed_crosswind_visual_flow_alignment\": 0.5500"));
+    assert!(
+        summary_json.contains("\"max_observed_crosswind_ribbon_visual_flow_alignment\": 0.5500")
+    );
     assert!(summary_json.contains("\"sustained_wind_visual_flow_samples\": 1"));
     assert!(summary_json.contains("\"sustained_updraft_visual_flow_samples\": 1"));
     assert!(summary_json.contains("\"sustained_crosswind_visual_flow_samples\": 1"));
@@ -924,9 +953,15 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"updraft_field_count\":2"));
     assert!(sample_json.contains("\"updraft_fields_with_guides_and_ribbons_count\":2"));
     assert!(sample_json.contains("\"updraft_flow_coherent_field_count\":2"));
-    assert!(sample_json.contains("\"crosswind_field_count\":3"));
-    assert!(sample_json.contains("\"crosswind_fields_with_guides_and_ribbons_count\":3"));
-    assert!(sample_json.contains("\"crosswind_flow_coherent_field_count\":3"));
+    assert!(sample_json.contains(&format!(
+        "\"crosswind_field_count\":{VISUAL_CROSSWIND_FIELD_COUNT}"
+    )));
+    assert!(sample_json.contains(&format!(
+        "\"crosswind_fields_with_guides_and_ribbons_count\":{VISUAL_CROSSWIND_FIELD_COUNT}"
+    )));
+    assert!(sample_json.contains(&format!(
+        "\"crosswind_flow_coherent_field_count\":{VISUAL_CROSSWIND_FIELD_COUNT}"
+    )));
     assert!(sample_json.contains("\"max_updraft_visual_motion_m\":30.0000"));
     assert!(sample_json.contains("\"max_updraft_visual_rise_m\":18.0000"));
     assert!(sample_json.contains("\"max_updraft_visual_swirl_displacement_m\":6.0000"));
@@ -943,6 +978,24 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"max_updraft_visual_flow_alignment\":0.5500"));
     assert!(sample_json.contains("\"max_crosswind_visual_flow_alignment\":0.5500"));
     assert!(sample_json.contains("\"max_crosswind_ribbon_visual_flow_alignment\":0.5500"));
+    assert!(sample_json.contains("\"observed_updraft_flow_coherent_visual_count\":126"));
+    assert!(sample_json.contains("\"observed_crosswind_flow_coherent_visual_count\":180"));
+    assert!(sample_json.contains("\"observed_crosswind_ribbon_flow_coherent_sample_count\":30"));
+    assert!(sample_json.contains("\"max_observed_updraft_visual_frame_motion_m\":0.0200"));
+    assert!(sample_json.contains("\"max_observed_updraft_visual_frame_rise_m\":0.0050"));
+    assert!(
+        sample_json.contains("\"max_observed_updraft_visual_frame_swirl_displacement_m\":0.0030")
+    );
+    assert!(sample_json.contains("\"max_observed_crosswind_visual_frame_motion_m\":0.0200"));
+    assert!(
+        sample_json.contains("\"max_observed_crosswind_guide_frame_flow_displacement_m\":0.0100")
+    );
+    assert!(
+        sample_json.contains("\"max_observed_crosswind_ribbon_frame_flow_displacement_m\":0.0100")
+    );
+    assert!(sample_json.contains("\"max_observed_updraft_visual_flow_alignment\":0.5500"));
+    assert!(sample_json.contains("\"max_observed_crosswind_visual_flow_alignment\":0.5500"));
+    assert!(sample_json.contains("\"max_observed_crosswind_ribbon_visual_flow_alignment\":0.5500"));
     assert!(sample_json.contains("\"active_wind_force_fields\":1"));
     assert!(sample_json.contains("\"crosswind_force_fields\":1"));
     assert!(sample_json.contains("\"updraft_swirl_force_fields\":1"));
@@ -982,7 +1035,10 @@ fn accumulator_fails_when_wind_guide_visuals_are_missing_or_static() {
     accumulator.observe(
         content_metric_sample(scenario, 0, 12, 0, 96)
             .with_wind_guide_visual_metrics(0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-            .with_wind_guide_depth_metrics(0.0, 0.0, 0.0, 0.0),
+            .with_wind_guide_depth_metrics(0.0, 0.0, 0.0, 0.0)
+            .with_observed_wind_visual_motion_metrics(
+                0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            ),
     );
 
     let summary = accumulator.summary(
@@ -1011,6 +1067,18 @@ fn accumulator_fails_when_wind_guide_visuals_are_missing_or_static() {
         "crosswind_ribbon_flow_displacement",
         "crosswind_visual_lane_depth_span",
         "crosswind_visual_scale_pulse",
+        "observed_updraft_flow_coherent_visual_count",
+        "observed_crosswind_flow_coherent_visual_count",
+        "observed_crosswind_ribbon_flow_coherent_sample_count",
+        "observed_updraft_visual_frame_motion",
+        "observed_updraft_visual_frame_rise",
+        "observed_updraft_visual_frame_swirl_displacement",
+        "observed_crosswind_visual_frame_motion",
+        "observed_crosswind_guide_frame_flow_displacement",
+        "observed_crosswind_ribbon_frame_flow_displacement",
+        "observed_updraft_visual_flow_alignment",
+        "observed_crosswind_visual_flow_alignment",
+        "observed_crosswind_ribbon_visual_flow_alignment",
     ] {
         let check = named_check(&summary, check_name);
         assert!(!check.passed, "{check_name} should fail");
@@ -1432,6 +1500,20 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
             )
             .with_crosswind_ribbon_flow_coherence_metrics(
                 MIN_CROSSWIND_RIBBON_FLOW_COHERENT_SAMPLE_COUNT,
+                MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+            )
+            .with_observed_wind_visual_motion_metrics(
+                MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT,
+                MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT,
+                MIN_CROSSWIND_RIBBON_FLOW_COHERENT_SAMPLE_COUNT,
+                MIN_OBSERVED_UPDRAFT_VISUAL_FRAME_MOTION_M,
+                MIN_OBSERVED_UPDRAFT_VISUAL_FRAME_RISE_M,
+                MIN_OBSERVED_UPDRAFT_VISUAL_FRAME_SWIRL_DISPLACEMENT_M,
+                MIN_OBSERVED_CROSSWIND_VISUAL_FRAME_MOTION_M,
+                MIN_OBSERVED_CROSSWIND_GUIDE_FRAME_FLOW_DISPLACEMENT_M,
+                MIN_OBSERVED_CROSSWIND_RIBBON_FRAME_FLOW_DISPLACEMENT_M,
+                MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+                MIN_WIND_VISUAL_FLOW_ALIGNMENT,
                 MIN_WIND_VISUAL_FLOW_ALIGNMENT,
             )
             .with_wind_field_visual_coverage_metrics(

@@ -228,6 +228,18 @@ impl EvalSample {
             max_updraft_visual_flow_alignment: 0.0,
             max_crosswind_visual_flow_alignment: 0.0,
             max_crosswind_ribbon_visual_flow_alignment: 0.0,
+            observed_updraft_flow_coherent_visual_count: 0,
+            observed_crosswind_flow_coherent_visual_count: 0,
+            observed_crosswind_ribbon_flow_coherent_sample_count: 0,
+            max_observed_updraft_visual_frame_motion_m: 0.0,
+            max_observed_updraft_visual_frame_rise_m: 0.0,
+            max_observed_updraft_visual_frame_swirl_displacement_m: 0.0,
+            max_observed_crosswind_visual_frame_motion_m: 0.0,
+            max_observed_crosswind_guide_frame_flow_displacement_m: 0.0,
+            max_observed_crosswind_ribbon_frame_flow_displacement_m: 0.0,
+            max_observed_updraft_visual_flow_alignment: 0.0,
+            max_observed_crosswind_visual_flow_alignment: 0.0,
+            max_observed_crosswind_ribbon_visual_flow_alignment: 0.0,
             world_collision_proxy_count: 0,
             terrain_rim_collision_proxy_count: 0,
             terrain_body_collision_proxy_count: 0,
@@ -566,6 +578,47 @@ impl EvalSample {
     ) -> Self {
         self.crosswind_ribbon_flow_coherent_sample_count = coherent_sample_count;
         self.max_crosswind_ribbon_visual_flow_alignment = max_flow_alignment.clamp(0.0, 1.0);
+        self
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_observed_wind_visual_motion_metrics(
+        mut self,
+        observed_updraft_coherent_visual_count: usize,
+        observed_crosswind_coherent_visual_count: usize,
+        observed_crosswind_ribbon_coherent_sample_count: usize,
+        max_observed_updraft_frame_motion_m: f32,
+        max_observed_updraft_frame_rise_m: f32,
+        max_observed_updraft_frame_swirl_displacement_m: f32,
+        max_observed_crosswind_frame_motion_m: f32,
+        max_observed_crosswind_guide_frame_flow_displacement_m: f32,
+        max_observed_crosswind_ribbon_frame_flow_displacement_m: f32,
+        max_observed_updraft_flow_alignment: f32,
+        max_observed_crosswind_flow_alignment: f32,
+        max_observed_crosswind_ribbon_flow_alignment: f32,
+    ) -> Self {
+        self.observed_updraft_flow_coherent_visual_count = observed_updraft_coherent_visual_count;
+        self.observed_crosswind_flow_coherent_visual_count =
+            observed_crosswind_coherent_visual_count;
+        self.observed_crosswind_ribbon_flow_coherent_sample_count =
+            observed_crosswind_ribbon_coherent_sample_count;
+        self.max_observed_updraft_visual_frame_motion_m =
+            max_observed_updraft_frame_motion_m.max(0.0);
+        self.max_observed_updraft_visual_frame_rise_m = max_observed_updraft_frame_rise_m.max(0.0);
+        self.max_observed_updraft_visual_frame_swirl_displacement_m =
+            max_observed_updraft_frame_swirl_displacement_m.max(0.0);
+        self.max_observed_crosswind_visual_frame_motion_m =
+            max_observed_crosswind_frame_motion_m.max(0.0);
+        self.max_observed_crosswind_guide_frame_flow_displacement_m =
+            max_observed_crosswind_guide_frame_flow_displacement_m.max(0.0);
+        self.max_observed_crosswind_ribbon_frame_flow_displacement_m =
+            max_observed_crosswind_ribbon_frame_flow_displacement_m.max(0.0);
+        self.max_observed_updraft_visual_flow_alignment =
+            max_observed_updraft_flow_alignment.clamp(0.0, 1.0);
+        self.max_observed_crosswind_visual_flow_alignment =
+            max_observed_crosswind_flow_alignment.clamp(0.0, 1.0);
+        self.max_observed_crosswind_ribbon_visual_flow_alignment =
+            max_observed_crosswind_ribbon_flow_alignment.clamp(0.0, 1.0);
         self
     }
 
