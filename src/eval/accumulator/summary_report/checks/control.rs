@@ -16,6 +16,7 @@ use crate::{
 
 const POSE_STATE_MIN_WALK_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_RUN_SAMPLES: f32 = 8.0;
+const POSE_STATE_MIN_IDLE_SAMPLES: f32 = 3.0;
 const POSE_STATE_MIN_LAUNCH_SAMPLES: f32 = 3.0;
 const POSE_STATE_MIN_FALLING_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_GLIDING_POSE_SAMPLES: f32 = 18.0;
@@ -965,6 +966,12 @@ fn append_air_control_checks(
 fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccumulator) {
     checks.extend([
         EvalCheck::at_least(
+            "pose_state_grounded_idle_samples",
+            acc.pose_grounded_idle_samples as f32,
+            POSE_STATE_MIN_IDLE_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
             "pose_state_grounded_walk_samples",
             acc.pose_grounded_walk_samples as f32,
             POSE_STATE_MIN_WALK_SAMPLES,
@@ -1001,9 +1008,21 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             "deg",
         ),
         EvalCheck::at_least(
-            "pose_state_authored_jog_clip_samples",
-            acc.authored_jog_clip_samples as f32,
-            POSE_STATE_MIN_WALK_SAMPLES + POSE_STATE_MIN_RUN_SAMPLES,
+            "pose_state_authored_grounded_idle_clip_samples",
+            acc.authored_grounded_idle_clip_samples as f32,
+            POSE_STATE_MIN_IDLE_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_authored_grounded_walk_clip_samples",
+            acc.authored_grounded_walk_clip_samples as f32,
+            POSE_STATE_MIN_WALK_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_authored_grounded_run_clip_samples",
+            acc.authored_grounded_run_clip_samples as f32,
+            POSE_STATE_MIN_RUN_SAMPLES,
             "samples",
         ),
         EvalCheck::at_least(

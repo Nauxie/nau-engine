@@ -188,6 +188,8 @@ fn pose_state_coverage_script_exercises_full_traversal_pose_chain() {
     assert!(scripted_input(scenario, 290).backward);
     assert!(scripted_input(scenario, 315).right);
     assert!(scripted_input(scenario, 360).dive);
+    assert!(!scripted_input(scenario, 500).forward);
+    assert!(scripted_input(scenario, 510).forward);
     assert!(scripted_input(scenario, 540).forward);
     assert!(!scripted_input(scenario, 650).forward);
     assert_eq!(scripted_camera_input(scenario, 360), CameraInput::default());

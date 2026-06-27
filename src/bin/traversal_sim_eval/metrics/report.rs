@@ -168,6 +168,7 @@ impl SimMetrics {
             "max_key_pose_readability_score": round4(self.max_key_pose_readability_score),
             "unreadable_key_pose_samples": self.unreadable_key_pose_samples,
             "key_pose_transition_grace_samples": self.key_pose_transition_grace_samples,
+            "pose_grounded_idle_samples": self.pose_grounded_idle_samples,
             "pose_grounded_walk_samples": self.pose_grounded_walk_samples,
             "pose_grounded_run_samples": self.pose_grounded_run_samples,
             "pose_launching_samples": self.pose_launching_samples,

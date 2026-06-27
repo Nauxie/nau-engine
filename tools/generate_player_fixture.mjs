@@ -359,11 +359,20 @@ const animations = [
     { node: 3, path: "rotation", times: loopTimes, values: [rotZ(-0.04), rotZ(0.04), rotZ(-0.04)] },
     { node: 2, path: "translation", times: loopTimes, values: [[0, 1.08, 0], [0, 1.1, 0], [0, 1.08, 0]] },
   ]),
-  animation("Jog_Fwd_Loop", [
-    { node: 4, path: "rotation", times: loopTimes, values: [rotX(-0.45), rotX(0.45), rotX(-0.45)] },
-    { node: 5, path: "rotation", times: loopTimes, values: [rotX(0.45), rotX(-0.45), rotX(0.45)] },
-    { node: 6, path: "rotation", times: loopTimes, values: [rotX(0.5), rotX(-0.5), rotX(0.5)] },
-    { node: 7, path: "rotation", times: loopTimes, values: [rotX(-0.5), rotX(0.5), rotX(-0.5)] },
+  animation("Walk_Fwd_Loop", [
+    { node: 2, path: "translation", times: loopTimes, values: [[0, 1.08, 0], [0, 1.095, 0], [0, 1.08, 0]] },
+    { node: 4, path: "rotation", times: loopTimes, values: [rotX(-0.26), rotX(0.26), rotX(-0.26)] },
+    { node: 5, path: "rotation", times: loopTimes, values: [rotX(0.26), rotX(-0.26), rotX(0.26)] },
+    { node: 6, path: "rotation", times: loopTimes, values: [rotX(0.3), rotX(-0.3), rotX(0.3)] },
+    { node: 7, path: "rotation", times: loopTimes, values: [rotX(-0.3), rotX(0.3), rotX(-0.3)] },
+  ]),
+  animation("Run_Fwd_Loop", [
+    { node: 2, path: "translation", times: loopTimes, values: [[0, 1.06, 0], [0, 1.12, 0], [0, 1.06, 0]] },
+    { node: 3, path: "rotation", times: loopTimes, values: [rotX(-0.08), rotX(0.12), rotX(-0.08)] },
+    { node: 4, path: "rotation", times: loopTimes, values: [rotX(-0.62), rotX(0.62), rotX(-0.62)] },
+    { node: 5, path: "rotation", times: loopTimes, values: [rotX(0.62), rotX(-0.62), rotX(0.62)] },
+    { node: 6, path: "rotation", times: loopTimes, values: [rotX(0.7), rotX(-0.7), rotX(0.7)] },
+    { node: 7, path: "rotation", times: loopTimes, values: [rotX(-0.7), rotX(0.7), rotX(-0.7)] },
   ]),
   animation("Launch_Start", [
     { node: 0, path: "translation", times: shortTimes, values: [[0, 0, 0], [0, 0.16, 0], [0, 0.04, 0]] },

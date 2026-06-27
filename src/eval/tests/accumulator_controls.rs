@@ -2595,6 +2595,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
         &mut accumulator,
         scenario,
         &[
+            ("grounded_idle", FlightMode::Grounded.label(), 3),
             ("grounded_walk", FlightMode::Grounded.label(), 8),
             ("grounded_run", FlightMode::Grounded.label(), 8),
             ("launching", FlightMode::Launching.label(), 3),
@@ -2619,6 +2620,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
         },
     );
 
+    assert_eq!(summary.metrics.pose_grounded_idle_samples, 3);
     assert_eq!(summary.metrics.pose_grounded_walk_samples, 8);
     assert_eq!(summary.metrics.pose_grounded_run_samples, 8);
     assert!(
@@ -2643,7 +2645,9 @@ fn accumulator_gates_pose_state_coverage_samples() {
     );
     assert_eq!(summary.metrics.pose_launching_samples, 3);
     assert_eq!(summary.metrics.pose_falling_samples, 8);
-    assert_eq!(summary.metrics.authored_jog_clip_samples, 16);
+    assert_eq!(summary.metrics.authored_grounded_idle_clip_samples, 3);
+    assert_eq!(summary.metrics.authored_grounded_walk_clip_samples, 8);
+    assert_eq!(summary.metrics.authored_grounded_run_clip_samples, 8);
     assert_eq!(summary.metrics.authored_fall_clip_samples, 8);
     assert_eq!(summary.metrics.pose_gliding_samples, 18);
     assert_eq!(summary.metrics.pose_air_turn_samples, 10);
@@ -2661,20 +2665,29 @@ fn accumulator_gates_pose_state_coverage_samples() {
     assert_eq!(summary.metrics.pose_landing_anticipation_samples, 1);
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 1);
     assert_eq!(summary.metrics.unreadable_key_pose_samples, 0);
+    assert!(summary.to_json().contains("\"pose_grounded_idle_samples\""));
     assert!(summary.to_json().contains("\"pose_grounded_walk_samples\""));
+    assert!(
+        summary
+            .to_json()
+            .contains("\"authored_grounded_idle_clip_samples\": 3")
+    );
     assert!(
         summary
             .to_json()
             .contains("\"authored_fall_clip_samples\": 8")
     );
     for name in [
+        "pose_state_grounded_idle_samples",
         "pose_state_grounded_walk_samples",
         "pose_state_grounded_run_samples",
         "pose_state_walk_stride_foot_travel",
         "pose_state_run_stride_foot_travel",
         "pose_state_walk_stride_leg_opposition",
         "pose_state_run_stride_leg_opposition",
-        "pose_state_authored_jog_clip_samples",
+        "pose_state_authored_grounded_idle_clip_samples",
+        "pose_state_authored_grounded_walk_clip_samples",
+        "pose_state_authored_grounded_run_clip_samples",
         "pose_state_launching_samples",
         "pose_state_falling_samples",
         "pose_state_authored_fall_clip_samples",
@@ -2715,6 +2728,7 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
         &mut accumulator,
         scenario,
         &[
+            ("grounded_idle", FlightMode::Grounded.label(), 2),
             ("grounded_walk", FlightMode::Grounded.label(), 7),
             ("grounded_run", FlightMode::Grounded.label(), 7),
             ("launching", FlightMode::Launching.label(), 2),
@@ -2737,9 +2751,12 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
     );
 
     for name in [
+        "pose_state_grounded_idle_samples",
         "pose_state_grounded_walk_samples",
         "pose_state_grounded_run_samples",
-        "pose_state_authored_jog_clip_samples",
+        "pose_state_authored_grounded_idle_clip_samples",
+        "pose_state_authored_grounded_walk_clip_samples",
+        "pose_state_authored_grounded_run_clip_samples",
         "pose_state_launching_samples",
         "pose_state_falling_samples",
         "pose_state_authored_fall_clip_samples",
@@ -2799,6 +2816,7 @@ fn accumulator_rejects_static_grounded_pose_state_stride() {
         &mut accumulator,
         scenario,
         &[
+            ("grounded_idle", FlightMode::Grounded.label(), 3),
             ("grounded_walk", FlightMode::Grounded.label(), 8),
             ("grounded_run", FlightMode::Grounded.label(), 8),
             ("launching", FlightMode::Launching.label(), 3),
@@ -2824,9 +2842,12 @@ fn accumulator_rejects_static_grounded_pose_state_stride() {
         },
     );
 
+    assert!(named_check(&summary, "pose_state_grounded_idle_samples").passed);
     assert!(named_check(&summary, "pose_state_grounded_walk_samples").passed);
     assert!(named_check(&summary, "pose_state_grounded_run_samples").passed);
-    assert!(named_check(&summary, "pose_state_authored_jog_clip_samples").passed);
+    assert!(named_check(&summary, "pose_state_authored_grounded_idle_clip_samples").passed);
+    assert!(named_check(&summary, "pose_state_authored_grounded_walk_clip_samples").passed);
+    assert!(named_check(&summary, "pose_state_authored_grounded_run_clip_samples").passed);
     for name in [
         "pose_state_walk_stride_foot_travel",
         "pose_state_run_stride_foot_travel",
@@ -2846,6 +2867,7 @@ fn accumulator_gates_missing_authored_fall_clip_samples() {
         &mut accumulator,
         scenario,
         &[
+            ("grounded_idle", FlightMode::Grounded.label(), 3),
             ("grounded_walk", FlightMode::Grounded.label(), 8),
             ("grounded_run", FlightMode::Grounded.label(), 8),
             ("launching", FlightMode::Launching.label(), 3),
@@ -2877,6 +2899,56 @@ fn accumulator_gates_missing_authored_fall_clip_samples() {
     assert_eq!(summary.metrics.authored_fall_clip_samples, 0);
     assert!(named_check(&summary, "pose_state_falling_samples").passed);
     assert!(!named_check(&summary, "pose_state_authored_fall_clip_samples").passed);
+}
+
+#[test]
+fn accumulator_gates_missing_authored_grounded_pose_clip_samples() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for (pose_intent_label, clip_label, count) in [
+        ("grounded_idle", "walk", 3),
+        ("grounded_walk", "walk", 8),
+        ("grounded_run", "walk", 8),
+    ] {
+        for frame_offset in 0..count {
+            let mut sample = content_metric_sample(scenario, 400 + frame_offset, 20, 0, 96);
+            sample.mode = FlightMode::Grounded.label();
+            sample.pose_intent_label = pose_intent_label;
+            sample.key_pose_readability_score = 1.0;
+            if pose_intent_label == "grounded_walk" {
+                sample.pose_grounded_stride_foot_travel_m =
+                    GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M + 0.04;
+                sample.pose_grounded_stride_leg_opposition_degrees =
+                    GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES + 6.0;
+            } else if pose_intent_label == "grounded_run" {
+                sample.pose_grounded_stride_foot_travel_m =
+                    GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M + 0.04;
+                sample.pose_grounded_stride_leg_opposition_degrees =
+                    GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES + 6.0;
+            }
+            accumulator
+                .observe(sample.with_authored_animation_metrics(clip_label, clip_label, 1, 140));
+        }
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert!(named_check(&summary, "pose_state_grounded_idle_samples").passed);
+    assert!(named_check(&summary, "pose_state_grounded_walk_samples").passed);
+    assert!(named_check(&summary, "pose_state_grounded_run_samples").passed);
+    assert!(!named_check(&summary, "pose_state_authored_grounded_idle_clip_samples").passed);
+    assert!(named_check(&summary, "pose_state_authored_grounded_walk_clip_samples").passed);
+    assert!(!named_check(&summary, "pose_state_authored_grounded_run_clip_samples").passed);
 }
 
 fn observe_pose_state_samples(

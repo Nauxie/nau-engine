@@ -457,6 +457,7 @@ impl SimMetrics {
 
     fn observe_pose_intent_counts(&mut self, sample: &SimSample) {
         match sample.pose_intent_label {
+            "grounded_idle" => self.pose_grounded_idle_samples += 1,
             "grounded_walk" => self.pose_grounded_walk_samples += 1,
             "grounded_run" => self.pose_grounded_run_samples += 1,
             _ => {}

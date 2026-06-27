@@ -17,7 +17,7 @@ use nau_engine::movement::{FlightInput, Velocity};
 
 use super::types::{PendingAuthoredAnimationLink, VisualAssetRegistry};
 
-const AUTHORED_PLAYER_CLIP_COUNT: usize = 10;
+const AUTHORED_PLAYER_CLIP_COUNT: usize = 11;
 
 #[derive(Debug)]
 pub(crate) struct NamedAnimationClipResolution {
@@ -39,7 +39,8 @@ impl NamedAnimationClipResolution {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AuthoredPlayerClip {
     Idle,
-    Jog,
+    Walk,
+    Run,
     Launch,
     Fall,
     Glide,
@@ -54,22 +55,24 @@ impl AuthoredPlayerClip {
     pub(crate) fn index(self) -> usize {
         match self {
             Self::Idle => 0,
-            Self::Jog => 1,
-            Self::Launch => 2,
-            Self::Fall => 3,
-            Self::Glide => 4,
-            Self::BankLeft => 5,
-            Self::BankRight => 6,
-            Self::Dive => 7,
-            Self::AirBrake => 8,
-            Self::Land => 9,
+            Self::Walk => 1,
+            Self::Run => 2,
+            Self::Launch => 3,
+            Self::Fall => 4,
+            Self::Glide => 5,
+            Self::BankLeft => 6,
+            Self::BankRight => 7,
+            Self::Dive => 8,
+            Self::AirBrake => 9,
+            Self::Land => 10,
         }
     }
 
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Idle => "idle",
-            Self::Jog => "jog",
+            Self::Walk => "walk",
+            Self::Run => "run",
             Self::Launch => "launch",
             Self::Fall => "fall",
             Self::Glide => "glide",
@@ -382,7 +385,8 @@ pub(crate) fn authored_player_clip_for_state(
     speed_mps: f32,
 ) -> AuthoredPlayerClip {
     match mode {
-        FlightMode::Grounded if speed_mps > 0.8 => AuthoredPlayerClip::Jog,
+        FlightMode::Grounded if speed_mps > 6.0 => AuthoredPlayerClip::Run,
+        FlightMode::Grounded if speed_mps > 1.0 => AuthoredPlayerClip::Walk,
         FlightMode::Grounded => AuthoredPlayerClip::Idle,
         FlightMode::Launching => AuthoredPlayerClip::Launch,
         FlightMode::Gliding => AuthoredPlayerClip::Glide,
@@ -405,9 +409,8 @@ pub(crate) fn authored_player_clip_for_pose_intent_with_input(
 ) -> AuthoredPlayerClip {
     match intent {
         PlayerPoseIntent::GroundedIdle => AuthoredPlayerClip::Idle,
-        PlayerPoseIntent::GroundedStride
-        | PlayerPoseIntent::GroundedWalk
-        | PlayerPoseIntent::GroundedRun => AuthoredPlayerClip::Jog,
+        PlayerPoseIntent::GroundedWalk => AuthoredPlayerClip::Walk,
+        PlayerPoseIntent::GroundedStride | PlayerPoseIntent::GroundedRun => AuthoredPlayerClip::Run,
         PlayerPoseIntent::Launching => AuthoredPlayerClip::Launch,
         PlayerPoseIntent::Gliding => AuthoredPlayerClip::Glide,
         PlayerPoseIntent::AirTurn => authored_player_air_turn_clip(input),
@@ -516,7 +519,11 @@ mod tests {
     #[test]
     fn authored_player_clip_labels_match_debug_contract() {
         assert_eq!(AuthoredPlayerClip::Idle.label(), "idle");
-        assert_eq!(AuthoredPlayerClip::Fall.index(), 3);
+        assert_eq!(AuthoredPlayerClip::Walk.index(), 1);
+        assert_eq!(AuthoredPlayerClip::Walk.label(), "walk");
+        assert_eq!(AuthoredPlayerClip::Run.index(), 2);
+        assert_eq!(AuthoredPlayerClip::Run.label(), "run");
+        assert_eq!(AuthoredPlayerClip::Fall.index(), 4);
         assert_eq!(AuthoredPlayerClip::Fall.label(), "fall");
         assert_eq!(AuthoredPlayerClip::BankLeft.label(), "bank_left");
         assert_eq!(AuthoredPlayerClip::BankRight.label(), "bank_right");
@@ -535,6 +542,18 @@ mod tests {
 
     #[test]
     fn authored_player_pose_intent_maps_falling_to_fall_clip() {
+        assert_eq!(
+            authored_player_clip_for_pose_intent(PlayerPoseIntent::GroundedWalk, 2.0),
+            AuthoredPlayerClip::Walk
+        );
+        assert_eq!(
+            authored_player_clip_for_pose_intent(PlayerPoseIntent::GroundedStride, 4.0),
+            AuthoredPlayerClip::Run
+        );
+        assert_eq!(
+            authored_player_clip_for_pose_intent(PlayerPoseIntent::GroundedRun, 6.0),
+            AuthoredPlayerClip::Run
+        );
         assert_eq!(
             authored_player_clip_for_pose_intent(PlayerPoseIntent::Falling, 2.0),
             AuthoredPlayerClip::Fall

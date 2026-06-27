@@ -551,14 +551,17 @@ fn observe_authored_clip_coverage(accumulator: &mut EvalAccumulator, sample: &Ev
         .max_authored_transition_duration_ms
         .max(sample.authored_transition_duration_ms);
 
-    if matches!(
-        sample.pose_intent_label,
-        "grounded_walk" | "grounded_run" | "grounded_stride"
-    ) && sample.authored_player_count > 0
-        && sample.authored_player_current_clip_label == "jog"
-        && sample.authored_player_desired_clip_label == "jog"
-    {
-        accumulator.authored_jog_clip_samples += 1;
+    match sample.pose_intent_label {
+        "grounded_idle" if authored_clip_matches(sample, "idle") => {
+            accumulator.authored_grounded_idle_clip_samples += 1;
+        }
+        "grounded_walk" if authored_clip_matches(sample, "walk") => {
+            accumulator.authored_grounded_walk_clip_samples += 1;
+        }
+        "grounded_run" | "grounded_stride" if authored_clip_matches(sample, "run") => {
+            accumulator.authored_grounded_run_clip_samples += 1;
+        }
+        _ => {}
     }
 
     if !key_pose_intent_label(sample.pose_intent_label) {
@@ -594,6 +597,12 @@ fn observe_authored_clip_coverage(accumulator: &mut EvalAccumulator, sample: &Ev
     }
 }
 
+fn authored_clip_matches(sample: &EvalSample, clip_label: &str) -> bool {
+    sample.authored_player_count > 0
+        && sample.authored_player_current_clip_label == clip_label
+        && sample.authored_player_desired_clip_label == clip_label
+}
+
 fn observe_mode_counts(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     match sample.mode {
         "gliding" => accumulator.gliding_samples += 1,
@@ -605,6 +614,7 @@ fn observe_mode_counts(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
 
 fn observe_pose_intent_counts(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     match sample.pose_intent_label {
+        "grounded_idle" => accumulator.pose_grounded_idle_samples += 1,
         "grounded_walk" => accumulator.pose_grounded_walk_samples += 1,
         "grounded_run" => accumulator.pose_grounded_run_samples += 1,
         _ => {}

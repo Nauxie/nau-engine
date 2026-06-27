@@ -145,7 +145,9 @@ pub struct EvalMetricsSummary {
     pub authored_clip_mismatch_samples: u32,
     pub authored_bank_left_clip_samples: u32,
     pub authored_bank_right_clip_samples: u32,
-    pub authored_jog_clip_samples: u32,
+    pub authored_grounded_idle_clip_samples: u32,
+    pub authored_grounded_walk_clip_samples: u32,
+    pub authored_grounded_run_clip_samples: u32,
     pub authored_fall_clip_samples: u32,
     pub authored_dive_clip_samples: u32,
     pub authored_air_brake_clip_samples: u32,
@@ -360,6 +362,7 @@ pub struct EvalMetricsSummary {
     pub readable_lift_samples: u32,
     pub unreadable_lift_samples: u32,
     pub dynamic_readable_lift_samples: u32,
+    pub pose_grounded_idle_samples: u32,
     pub pose_grounded_walk_samples: u32,
     pub pose_grounded_run_samples: u32,
     pub pose_launching_samples: u32,
@@ -572,7 +575,8 @@ impl EvalMetricsSummary {
             self.pose_gliding_samples
         );
         let pose_turn_sample_metrics = format!(
-            "{indent}  \"pose_grounded_walk_samples\": {},\n{indent}  \"pose_grounded_run_samples\": {},\n{indent}  \"pose_launching_samples\": {},\n{indent}  \"pose_falling_samples\": {},\n{pose_gliding_samples_key},\n{indent}  \"pose_air_turn_samples\": {},\n{indent}  \"right_pose_air_turn_samples\": {},\n{indent}  \"left_pose_air_turn_samples\": {}",
+            "{indent}  \"pose_grounded_idle_samples\": {},\n{indent}  \"pose_grounded_walk_samples\": {},\n{indent}  \"pose_grounded_run_samples\": {},\n{indent}  \"pose_launching_samples\": {},\n{indent}  \"pose_falling_samples\": {},\n{pose_gliding_samples_key},\n{indent}  \"pose_air_turn_samples\": {},\n{indent}  \"right_pose_air_turn_samples\": {},\n{indent}  \"left_pose_air_turn_samples\": {}",
+            self.pose_grounded_idle_samples,
             self.pose_grounded_walk_samples,
             self.pose_grounded_run_samples,
             self.pose_launching_samples,
@@ -672,7 +676,7 @@ impl EvalMetricsSummary {
         let json = json.replacen(&post_brake_key, &planar_brake_metrics, 1);
         let min_target_distance_key = format!("{indent}  \"min_target_distance_m\"");
         let pose_readability_metrics = format!(
-            "{indent}  \"max_pose_torso_pitch_degrees\": {},\n{indent}  \"max_pose_arm_spread_degrees\": {},\n{indent}  \"max_pose_leg_tuck_degrees\": {},\n{indent}  \"max_pose_lateral_lean_degrees\": {},\n{indent}  \"max_right_pose_lateral_lean_degrees\": {},\n{indent}  \"max_left_pose_lateral_lean_degrees\": {},\n{indent}  \"max_grounded_walk_stride_foot_travel_m\": {},\n{indent}  \"max_grounded_run_stride_foot_travel_m\": {},\n{indent}  \"max_grounded_walk_stride_leg_opposition_degrees\": {},\n{indent}  \"max_grounded_run_stride_leg_opposition_degrees\": {},\n{indent}  \"max_pose_landing_crouch_m\": {},\n{indent}  \"max_pose_landing_foot_forward_m\": {},\n{indent}  \"max_pose_landing_foot_split_m\": {},\n{indent}  \"max_pose_landing_flare_degrees\": {},\n{indent}  \"max_pose_landing_recovery_flip_degrees\": {},\n{indent}  \"max_pose_wing_airflow_strength\": {},\n{indent}  \"max_pose_scarf_stream_m\": {},\n{indent}  \"max_pose_scarf_lateral_sway_m\": {},\n{indent}  \"max_pose_scarf_tail_flex_degrees\": {},\n{indent}  \"max_authored_glider_response_degrees\": {},\n{indent}  \"max_authored_glider_motion_m\": {},\n{indent}  \"gliding_dive_samples\": {},\n{indent}  \"max_authored_glider_dive_response_degrees\": {},\n{indent}  \"max_authored_glider_dive_motion_m\": {},\n{indent}  \"authored_clip_match_samples\": {},\n{indent}  \"authored_clip_mismatch_samples\": {},\n{indent}  \"authored_bank_left_clip_samples\": {},\n{indent}  \"authored_bank_right_clip_samples\": {},\n{indent}  \"authored_jog_clip_samples\": {},\n{indent}  \"authored_fall_clip_samples\": {},\n{indent}  \"authored_dive_clip_samples\": {},\n{indent}  \"authored_air_brake_clip_samples\": {},\n{indent}  \"authored_land_clip_samples\": {},\n{indent}  \"max_authored_transition_duration_ms\": {},\n{indent}  \"min_key_pose_readability_score\": {},\n{indent}  \"max_key_pose_readability_score\": {},\n{indent}  \"unreadable_key_pose_samples\": {},\n{indent}  \"key_pose_transition_grace_samples\": {},\n{indent}  \"max_visible_pose_part_count\": {},\n{indent}  \"pose_temporal_stability_samples\": {},\n{indent}  \"max_pose_part_rotation_delta_degrees\": {},\n{indent}  \"max_pose_part_translation_delta_m\": {},\n{indent}  \"landing_pose_temporal_stability_samples\": {},\n{indent}  \"max_landing_pose_part_rotation_delta_degrees\": {},\n{indent}  \"max_landing_pose_part_translation_delta_m\": {},\n{}",
+            "{indent}  \"max_pose_torso_pitch_degrees\": {},\n{indent}  \"max_pose_arm_spread_degrees\": {},\n{indent}  \"max_pose_leg_tuck_degrees\": {},\n{indent}  \"max_pose_lateral_lean_degrees\": {},\n{indent}  \"max_right_pose_lateral_lean_degrees\": {},\n{indent}  \"max_left_pose_lateral_lean_degrees\": {},\n{indent}  \"max_grounded_walk_stride_foot_travel_m\": {},\n{indent}  \"max_grounded_run_stride_foot_travel_m\": {},\n{indent}  \"max_grounded_walk_stride_leg_opposition_degrees\": {},\n{indent}  \"max_grounded_run_stride_leg_opposition_degrees\": {},\n{indent}  \"max_pose_landing_crouch_m\": {},\n{indent}  \"max_pose_landing_foot_forward_m\": {},\n{indent}  \"max_pose_landing_foot_split_m\": {},\n{indent}  \"max_pose_landing_flare_degrees\": {},\n{indent}  \"max_pose_landing_recovery_flip_degrees\": {},\n{indent}  \"max_pose_wing_airflow_strength\": {},\n{indent}  \"max_pose_scarf_stream_m\": {},\n{indent}  \"max_pose_scarf_lateral_sway_m\": {},\n{indent}  \"max_pose_scarf_tail_flex_degrees\": {},\n{indent}  \"max_authored_glider_response_degrees\": {},\n{indent}  \"max_authored_glider_motion_m\": {},\n{indent}  \"gliding_dive_samples\": {},\n{indent}  \"max_authored_glider_dive_response_degrees\": {},\n{indent}  \"max_authored_glider_dive_motion_m\": {},\n{indent}  \"authored_clip_match_samples\": {},\n{indent}  \"authored_clip_mismatch_samples\": {},\n{indent}  \"authored_bank_left_clip_samples\": {},\n{indent}  \"authored_bank_right_clip_samples\": {},\n{indent}  \"authored_grounded_idle_clip_samples\": {},\n{indent}  \"authored_grounded_walk_clip_samples\": {},\n{indent}  \"authored_grounded_run_clip_samples\": {},\n{indent}  \"authored_fall_clip_samples\": {},\n{indent}  \"authored_dive_clip_samples\": {},\n{indent}  \"authored_air_brake_clip_samples\": {},\n{indent}  \"authored_land_clip_samples\": {},\n{indent}  \"max_authored_transition_duration_ms\": {},\n{indent}  \"min_key_pose_readability_score\": {},\n{indent}  \"max_key_pose_readability_score\": {},\n{indent}  \"unreadable_key_pose_samples\": {},\n{indent}  \"key_pose_transition_grace_samples\": {},\n{indent}  \"max_visible_pose_part_count\": {},\n{indent}  \"pose_temporal_stability_samples\": {},\n{indent}  \"max_pose_part_rotation_delta_degrees\": {},\n{indent}  \"max_pose_part_translation_delta_m\": {},\n{indent}  \"landing_pose_temporal_stability_samples\": {},\n{indent}  \"max_landing_pose_part_rotation_delta_degrees\": {},\n{indent}  \"max_landing_pose_part_translation_delta_m\": {},\n{}",
             json_number(self.max_pose_torso_pitch_degrees),
             json_number(self.max_pose_arm_spread_degrees),
             json_number(self.max_pose_leg_tuck_degrees),
@@ -701,7 +705,9 @@ impl EvalMetricsSummary {
             self.authored_clip_mismatch_samples,
             self.authored_bank_left_clip_samples,
             self.authored_bank_right_clip_samples,
-            self.authored_jog_clip_samples,
+            self.authored_grounded_idle_clip_samples,
+            self.authored_grounded_walk_clip_samples,
+            self.authored_grounded_run_clip_samples,
             self.authored_fall_clip_samples,
             self.authored_dive_clip_samples,
             self.authored_air_brake_clip_samples,
