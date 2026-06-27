@@ -376,7 +376,7 @@ fn accumulator_gates_air_control_body_heading_spikes() {
         scenario,
         90,
         Vec3::new(20.0, -2.0, -18.0),
-        Vec2::new(1.0, 0.0),
+        Vec2::new(0.0, 1.0),
         20.0,
         18.0,
         90.0,
@@ -411,6 +411,45 @@ fn accumulator_gates_air_control_body_heading_spikes() {
         summary.metrics.max_body_yaw_error_step_degrees
     );
     assert!(!step_check.passed);
+}
+
+#[test]
+fn accumulator_ignores_body_yaw_intent_changes_for_oscillation_metrics() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for (frame, movement_axis, yaw_error_degrees) in [
+        (10, Vec2::new(1.0, 0.0), 18.0),
+        (20, Vec2::new(-1.0, 0.0), -18.0),
+        (30, Vec2::new(-1.0, 0.0), -4.0),
+        (40, Vec2::new(1.0, 0.0), 18.0),
+    ] {
+        accumulator.observe(air_control_metric_sample(
+            scenario,
+            frame,
+            Vec3::new(movement_axis.x * 18.0, -2.0, -18.0),
+            movement_axis,
+            18.0,
+            18.0,
+            yaw_error_degrees,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.max_body_yaw_error_step_degrees, 14.0);
+    assert_eq!(summary.metrics.body_yaw_oscillation_count, 0);
+    assert!(named_check(&summary, "air_control_max_body_yaw_error_step").passed);
+    assert!(named_check(&summary, "air_control_body_yaw_oscillation_count").passed);
 }
 
 #[test]
