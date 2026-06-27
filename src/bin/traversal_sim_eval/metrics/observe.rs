@@ -370,6 +370,32 @@ impl SimMetrics {
                 .max_wind_load_glider_response_degrees
                 .max(sample.wind_load_glider_response_degrees);
         }
+        self.max_paired_visual_lift_fields = self
+            .max_paired_visual_lift_fields
+            .max(sample.paired_visual_lift_fields);
+        self.max_dynamic_lift_fields = self.max_dynamic_lift_fields.max(sample.dynamic_lift_fields);
+        if sample.active_lift_fields > 0
+            && sample.paired_visual_lift_fields > 0
+            && sample.dynamic_lift_fields > 0
+            && sample.lift_applied_delta_mps > 0.001
+        {
+            self.dynamic_lift_samples += 1;
+            self.max_lift_applied_delta_mps = self
+                .max_lift_applied_delta_mps
+                .max(sample.lift_applied_delta_mps);
+            self.max_dynamic_lift_multiplier = self
+                .max_dynamic_lift_multiplier
+                .max(sample.max_lift_multiplier);
+            let min_multiplier = self
+                .min_dynamic_lift_multiplier
+                .map_or(sample.min_lift_multiplier, |current| {
+                    current.min(sample.min_lift_multiplier)
+                });
+            self.min_dynamic_lift_multiplier = Some(min_multiplier);
+            self.max_dynamic_lift_multiplier_range = self
+                .max_dynamic_lift_multiplier_range
+                .max(self.max_dynamic_lift_multiplier - min_multiplier);
+        }
         self.max_active_chunk_count = self.max_active_chunk_count.max(sample.active_chunk_count);
         self.max_active_island_count = self.max_active_island_count.max(sample.active_island_count);
         self.max_near_lod_islands = self.max_near_lod_islands.max(sample.near_lod_islands);

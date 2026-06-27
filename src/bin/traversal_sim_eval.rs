@@ -1,4 +1,4 @@
-#![recursion_limit = "512"]
+#![recursion_limit = "1024"]
 
 #[path = "traversal_sim_eval/cli.rs"]
 mod cli;

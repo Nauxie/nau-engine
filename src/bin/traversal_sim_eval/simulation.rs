@@ -18,8 +18,9 @@ use nau_engine::{
         step_camera_with_direction, update_follow_direction_state,
     },
     environment::{
-        AERIAL_POWER_UP_ROUTE, GAMEPLAY_LIFT_ROUTE, LiftField, WindField, WindForceApplication,
-        apply_aerial_power_up, apply_lift_fields, apply_wind_fields, visual_wind_fields,
+        AERIAL_POWER_UP_ROUTE, GAMEPLAY_LIFT_ROUTE, LiftApplication, LiftField, WindField,
+        WindForceApplication, apply_aerial_power_up, apply_lift_fields, apply_wind_fields,
+        visual_wind_fields,
     },
     eval::{EvalScenario, scripted_camera_input, scripted_input},
     movement::{
@@ -198,6 +199,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
                 &route,
                 &lift_fields,
                 &visual_fields,
+                world_step.lift,
                 world_step.wind,
                 &objective,
                 &power_ups,
@@ -259,6 +261,7 @@ fn step_flight_with_world(
     let state = route.resolve_ground_contact_after_step(next, was_grounded);
     SimWorldStep {
         state,
+        lift,
         wind: wind.for_airborne_diagnostics(state.controller.mode != FlightMode::Grounded),
     }
 }
@@ -266,6 +269,7 @@ fn step_flight_with_world(
 #[derive(Clone, Copy, Debug)]
 struct SimWorldStep {
     state: FlightState,
+    lift: LiftApplication,
     wind: WindForceApplication,
 }
 
