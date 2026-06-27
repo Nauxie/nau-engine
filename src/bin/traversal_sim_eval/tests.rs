@@ -10,6 +10,7 @@ use nau_engine::{
     animation::{
         GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
         GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+        PlayerPoseIntent,
     },
     environment::WindForceApplication,
     eval::{
@@ -165,7 +166,7 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
     assert!(result.metrics.pose_launching_samples >= 3);
     assert!(result.metrics.pose_falling_samples >= 8);
     assert!(result.metrics.pose_gliding_samples >= 18);
-    assert!(result.metrics.pose_air_turn_samples >= 4);
+    assert!(result.metrics.pose_air_turn_samples >= 6);
     assert!(result.metrics.right_pose_air_turn_samples >= 3);
     assert!(result.metrics.left_pose_air_turn_samples >= 3);
     assert!(result.metrics.pose_air_brake_samples >= 4);
@@ -660,6 +661,25 @@ fn air_control_simulation_measures_backward_diagonal_response() {
 }
 
 #[test]
+fn air_control_simulation_keeps_pose_direction_through_short_input_gap() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let result = run_simulation(scenario);
+
+    let held_turn_sample = result
+        .samples
+        .iter()
+        .find(|sample| {
+            sample.pose_intent_label == "air_turn"
+                && sample.movement_input_lateral_axis.abs() <= f32::EPSILON
+                && sample.pose_signed_lateral_lean_degrees.abs() >= 8.0
+        })
+        .expect("held air-turn pose should retain signed lean after input release");
+
+    assert_eq!(held_turn_sample.movement_input_lateral_axis, 0.0);
+    assert!(held_turn_sample.key_pose_readability_score >= 0.9);
+}
+
+#[test]
 fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
     let result = run_simulation(scenario);
@@ -842,8 +862,10 @@ fn sim_sample_measures_pure_backward_body_heading_intent() {
         state,
         player_rotation,
         0.0,
+        PlayerPoseIntent::AirBrake,
         nau_engine::camera::CameraOrbit::default(),
         camera,
+        input,
         input,
         Facing::new(Vec3::Z, Vec3::X),
         &route,
@@ -856,6 +878,71 @@ fn sim_sample_measures_pure_backward_body_heading_intent() {
 
     assert!(sample.desired_body_heading_error_degrees > 170.0);
     assert!(sample.desired_heading_alignment_mps < -20.0);
+}
+
+#[test]
+fn sim_sample_uses_resolved_pose_input_without_relabeling_movement_axis() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let state = FlightState::new(
+        START_POSITION + Vec3::new(0.0, 80.0, 0.0),
+        Vec3::new(0.0, -2.0, -32.0),
+        FlightController {
+            mode: FlightMode::Gliding,
+            ..Default::default()
+        },
+    );
+    let player_rotation = Transform::from_translation(Vec3::ZERO)
+        .looking_to(Vec3::Z, Vec3::Y)
+        .rotation;
+    let camera = CameraDiagnosticsSample {
+        distance_m: 14.0,
+        surface_clearance_m: 5.0,
+        player_angle_degrees: 0.0,
+        pitch_degrees: -18.0,
+        step_distance_m: 0.0,
+        rotation_delta_degrees: 0.0,
+        orbit_alignment_degrees: 0.0,
+        follow_direction_error_degrees: 0.0,
+        view_yaw_degrees: 0.0,
+        world_yaw_degrees: 0.0,
+        obstruction_adjustment_m: 0.0,
+        obstruction_hits: 0,
+    };
+    let objective = ObjectiveState::for_route(&route, scenario.target_island_name);
+    let raw_input = FlightInput {
+        glide: true,
+        ..Default::default()
+    };
+    let held_pose_input = FlightInput {
+        right: true,
+        glide: true,
+        ..Default::default()
+    };
+
+    let sample = SimSample::new(
+        scenario,
+        90,
+        state,
+        player_rotation,
+        0.0,
+        PlayerPoseIntent::AirTurn,
+        nau_engine::camera::CameraOrbit::default(),
+        camera,
+        raw_input,
+        held_pose_input,
+        Facing::new(Vec3::Z, Vec3::X),
+        &route,
+        &[],
+        &[],
+        WindForceApplication::default(),
+        &objective,
+        &SimPowerUps::default(),
+    );
+
+    assert_eq!(sample.pose_intent_label, "air_turn");
+    assert_eq!(sample.movement_input_lateral_axis, 0.0);
+    assert!(sample.pose_signed_lateral_lean_degrees < -8.0);
 }
 
 #[test]
@@ -1292,6 +1379,11 @@ fn sim_roll_sample(
     };
     let objective = ObjectiveState::for_route(route, scenario.target_island_name);
     let power_ups = SimPowerUps::default();
+    let pose_intent = if mode == FlightMode::Gliding && lateral_axis.abs() > 0.0 {
+        PlayerPoseIntent::AirTurn
+    } else {
+        PlayerPoseIntent::Gliding
+    };
 
     SimSample::new(
         scenario,
@@ -1299,8 +1391,10 @@ fn sim_roll_sample(
         state,
         player_rotation,
         0.0,
+        pose_intent,
         nau_engine::camera::CameraOrbit::default(),
         camera,
+        input,
         input,
         Facing::new(Vec3::Z, Vec3::X),
         route,
