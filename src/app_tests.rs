@@ -594,6 +594,20 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         );
     }
 
+    let coverage = audit_island_collision_coverage(&catalog, &route);
+    assert!(
+        coverage.passed,
+        "island visual collision coverage should pass:\n{}",
+        coverage.failures.join("\n")
+    );
+    assert!(coverage.checked_visual_count > 0);
+    assert!(coverage.solid_visual_count >= 60);
+    assert_eq!(
+        coverage.terrain_rim_proxy_count,
+        route.islands().len() * nau_engine::world::TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND
+    );
+    assert!(coverage.camera_only_allowance_count >= route.islands().len());
+
     let mut world = World::new();
     {
         let mut commands = world.commands();

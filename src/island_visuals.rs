@@ -1,8 +1,12 @@
+#[cfg(test)]
+mod collision_audit;
 mod details;
 mod queue;
 mod streaming;
 mod types;
 
+#[cfg(test)]
+pub(crate) use collision_audit::audit_island_collision_coverage;
 pub(crate) use queue::queue_sky_island;
 pub(crate) use streaming::{spawn_initial_island_visuals, update_island_stream_visibility};
 #[allow(unused_imports)]
