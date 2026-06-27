@@ -23,7 +23,7 @@ use nau_engine::world::SkyIsland;
 
 const UPDRAFT_RIBBONS_PER_FIELD: usize = 6;
 const UPDRAFT_GUIDE_RING_LEVELS: [f32; 7] = [-0.86, -0.56, -0.24, 0.08, 0.4, 0.72, 0.94];
-const UPDRAFT_GUIDES_PER_RING: usize = 9;
+const UPDRAFT_GUIDES_PER_RING: usize = 15;
 const CROSSWIND_RIBBONS_PER_FIELD: usize = 7;
 const CROSSWIND_GUIDES_PER_FIELD: usize = 60;
 const WIND_VISUAL_COHERENCE_DT: f32 = 0.2;
