@@ -185,6 +185,10 @@ pub(crate) fn export_visual_content_inspection(
             .iter()
             .filter(|summary| summary.kind == "pond_surface")
             .count(),
+        obstruction_spire_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "obstruction_spire")
+            .count(),
         min_ground_cover_mesh_vertices: ground_cover
             .iter()
             .map(|summary| summary.mesh.vertex_count)
@@ -301,6 +305,27 @@ pub(crate) fn export_visual_content_inspection(
         ),
         min_pond_surface_mesh_vertices: min_landmark_vertices(&landmarks, "pond_surface"),
         min_pond_surface_vertical_span_m: min_landmark_vertical_span(&landmarks, "pond_surface"),
+        min_obstruction_spire_mesh_vertices: min_landmark_vertices(&landmarks, "obstruction_spire"),
+        min_obstruction_spire_triangle_count: min_landmark_triangles(
+            &landmarks,
+            "obstruction_spire",
+        ),
+        min_obstruction_spire_vertical_span_m: min_landmark_vertical_span(
+            &landmarks,
+            "obstruction_spire",
+        ),
+        min_obstruction_spire_height_band_count: min_landmark_height_bands(
+            &landmarks,
+            "obstruction_spire",
+        ),
+        min_obstruction_spire_radius_band_count: min_landmark_radius_bands(
+            &landmarks,
+            "obstruction_spire",
+        ),
+        min_obstruction_spire_normal_slope_band_count: min_landmark_normal_slope_bands(
+            &landmarks,
+            "obstruction_spire",
+        ),
         terrain_biome_palette_count,
         foliage_palette_count,
         stone_palette_count,
@@ -324,6 +349,15 @@ fn min_landmark_vertices(landmarks: &[super::types::VisualLandmarkSummary], kind
         .unwrap_or(0)
 }
 
+fn min_landmark_triangles(landmarks: &[super::types::VisualLandmarkSummary], kind: &str) -> usize {
+    landmarks
+        .iter()
+        .filter(|summary| summary.kind == kind)
+        .map(|summary| summary.mesh.triangle_count)
+        .min()
+        .unwrap_or(0)
+}
+
 fn min_landmark_vertical_span(
     landmarks: &[super::types::VisualLandmarkSummary],
     kind: &str,
@@ -334,4 +368,40 @@ fn min_landmark_vertical_span(
             .filter(|summary| summary.kind == kind)
             .map(|summary| summary.mesh.vertical_span_m),
     )
+}
+
+fn min_landmark_height_bands(
+    landmarks: &[super::types::VisualLandmarkSummary],
+    kind: &str,
+) -> usize {
+    landmarks
+        .iter()
+        .filter(|summary| summary.kind == kind)
+        .map(|summary| summary.height_band_count)
+        .min()
+        .unwrap_or(0)
+}
+
+fn min_landmark_radius_bands(
+    landmarks: &[super::types::VisualLandmarkSummary],
+    kind: &str,
+) -> usize {
+    landmarks
+        .iter()
+        .filter(|summary| summary.kind == kind)
+        .map(|summary| summary.radius_band_count)
+        .min()
+        .unwrap_or(0)
+}
+
+fn min_landmark_normal_slope_bands(
+    landmarks: &[super::types::VisualLandmarkSummary],
+    kind: &str,
+) -> usize {
+    landmarks
+        .iter()
+        .filter(|summary| summary.kind == kind)
+        .map(|summary| summary.normal_slope_band_count)
+        .min()
+        .unwrap_or(0)
 }

@@ -23,7 +23,7 @@ use nau_engine::{
         Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning,
         face_flight_direction,
     },
-    world::{START_POSITION, SkyRoute},
+    world::{START_POSITION, SkyRoute, route_obstruction_spires},
 };
 
 pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
@@ -36,7 +36,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
         .map(|node| node.lift_field())
         .collect::<Vec<_>>();
     let visual_fields = visual_wind_fields();
-    let obstructions = camera_obstructions();
+    let obstructions = camera_obstructions(&route);
     let mut power_ups = SimPowerUps::default();
     let mut objective = ObjectiveState::for_route(&route, scenario.target_island_name);
     let mut state = FlightState::new(START_POSITION, Vec3::ZERO, FlightController::default());
@@ -284,14 +284,9 @@ fn step_camera_frame(
     }
 }
 
-fn camera_obstructions() -> Vec<CameraObstruction> {
-    (-5..=5)
-        .enumerate()
-        .map(|(index, x)| {
-            let height = 5.0 + (index as f32 % 4.0) * 4.0;
-            let z = if index % 2 == 0 { -28.0 } else { 34.0 };
-            let center = Vec3::new(x as f32 * 20.0, height * 0.5, z);
-            CameraObstruction::new(center, Vec3::new(2.5, height * 0.5, 2.5))
-        })
+fn camera_obstructions(route: &SkyRoute) -> Vec<CameraObstruction> {
+    route_obstruction_spires(route)
+        .into_iter()
+        .map(|spire| CameraObstruction::new(spire.center, spire.half_extents))
         .collect()
 }

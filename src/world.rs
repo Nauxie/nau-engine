@@ -1,6 +1,7 @@
 mod collision;
 mod island;
 mod objectives;
+mod obstruction_spires;
 mod route;
 mod streaming;
 mod surface;
@@ -16,6 +17,10 @@ pub use collision::{
 };
 pub use island::{IslandTerrainArchetype, SkyIsland};
 pub use objectives::{RouteObjective, RouteObjectiveKind, is_recovery_branch_island};
+pub use obstruction_spires::{
+    ROUTE_OBSTRUCTION_SPIRES_PER_ISLAND, RouteObstructionSpire, route_obstruction_spire,
+    route_obstruction_spires,
+};
 pub use route::{SKY_ROUTE_ISLAND_COUNT, SkyRoute};
 pub use streaming::{LodBand, StreamActivation, StreamChunkCoord, StreamingLodStats};
 pub use surface::GroundSurface;

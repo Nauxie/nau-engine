@@ -52,7 +52,8 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Aerial power-up gates are one-time route pickups that apply a small capped forward/upward boost while airborne, then disappear.
 - Diving adds downward acceleration.
 - The floor clamp prevents the player from ending below the floor or retaining downward velocity after collision.
-- Generated tree trunks, rocks, route cairns, launch beacons, recovery masts, and target markers expose simple world-collision proxies; player movement resolves horizontally out of those proxies and clears velocity into the collision normal.
+- Generated tree trunks, rocks, route cairns, launch beacons, recovery masts, target markers, and route-integrated obstruction spires expose simple world-collision proxies; player movement resolves horizontally out of those proxies and clears velocity into the collision normal.
+- Route-integrated obstruction spires also expose camera-obstruction bounds so camera avoidance is tested against generated world objects rather than standalone cuboid blockers.
 - Player facing follows desired airborne steering direction with exponential smoothing and bank response, falling back to horizontal velocity when no steering input is active.
 
 ## Forbidden Behaviors
@@ -128,7 +129,7 @@ Current tests cover:
 - visual field bounds and stream origins are deterministic
 - smoothing factors do not overshoot
 - camera ignores vertical-only launch velocity and sideways/backward movement for automatic follow-heading changes
-- camera mouse X/Y input, pitch clamps, pitch/distance/framing helpers, surface-clearance lift, obstruction avoidance, and a bounded post-obstruction camera step so blockers cannot pull the camera into a one-frame snap
+- camera mouse X/Y input, pitch clamps, pitch/distance/framing helpers, surface-clearance lift, obstruction avoidance, route-spire obstruction exercise, and a bounded post-obstruction camera step so blockers cannot pull the camera into a one-frame snap
 - camera follow direction smoothing limits rapid turn snaps
 - lateral air input steers velocity toward the camera-relative plane
 - pure backward air input brakes planar drift, while backward plus lateral input steers into rear-diagonal glide control
@@ -138,14 +139,14 @@ Current tests cover:
 - idle breathing and glide/dive airflow micro-motion are phase-driven and covered by pose unit tests
 - wing visibility tracks glide mode
 - `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, unreadable lift samples, dynamic readable lift samples, wind-flow speed/variation/range, wind-guide depth/pulse/coherence, and wind-force response so active lift must overlap a paired visible updraft with changing flow, layered aligned visual airflow, and lateral current
-- `camera_mouse_control` eval tracks yaw/pitch offsets and obstruction adjustment without player movement
+- `camera_mouse_control` eval tracks yaw/pitch offsets and route-spire obstruction adjustment without player movement in both app and simulation coverage
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
 - `camera_strafe_stability` eval tracks right/left lateral movement without camera auto-orbit, including view-yaw and world-yaw drift
 - `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking while the scripted forward input stays active long enough to make the distance gate non-vacuous
 - `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, stronger total/planar backward braking, pure-backward and diagonal body-heading intent, readable right/left air-turn plus dive/air-brake key-pose coverage, authored dive/air-brake clip coverage, visible pose part count, bounded key-pose part rotation/translation deltas, torso pitch, arm spread, leg tuck, unsigned and signed lateral lean, wing-airflow strength, visible authored glider response/motion, zero key-pose samples below the readability floor, post-brake recovery, desired heading and aggregate plus right/left/backward-right/backward-left desired-travel alignment, average/p95/max body-heading error, tighter right/left and backward-right/backward-left body/travel heading samples and error, max body-yaw error step, body-yaw oscillation, left/right body-bank response, body-roll step smoothness, follow-direction error distribution, view-yaw/world-yaw drift, and movement-input camera non-coupling
 - `pose_state_coverage` eval tracks grounded walk/run samples plus readable launch, fall, and glide key-pose samples in both the app and windowless sim harnesses
 - `long_glide_visibility` eval tracks sustained archipelago traversal, aerial power-up collection/effect samples, and content-scale signals
-- app evals track `world_collision_proxy_count`, `solid_world_collision_proxy_count`, `tree_world_collision_proxy_count`, `rock_world_collision_proxy_count`, `landmark_world_collision_proxy_count`, `world_collision_resolved_samples`, `world_collision_contact_samples`, `max_world_collision_push_m`, `terrain_rim_collision_proxy_count`, `terrain_rim_collision_contact_samples`, and `max_terrain_rim_collision_push_m`, with proxy-count gates so collidable props, per-kind solid asset distribution, and terrain rim rails cannot silently disappear; `world_collision_contact` must sustain launch-mesa obstacle contact, `terrain_rim_collision_contact` must sustain launch-mesa rim contact, and `ground_taxi_control` must stay free of terrain-rim contact
+- app evals track `world_collision_proxy_count`, `solid_world_collision_proxy_count`, `tree_world_collision_proxy_count`, `rock_world_collision_proxy_count`, `landmark_world_collision_proxy_count`, `world_collision_resolved_samples`, `world_collision_contact_samples`, `max_world_collision_push_m`, `terrain_rim_collision_proxy_count`, `terrain_rim_collision_contact_samples`, and `max_terrain_rim_collision_push_m`, with proxy-count gates so collidable props, route obstruction spires, per-kind solid asset distribution, and terrain rim rails cannot silently disappear; `world_collision_contact` must sustain launch-mesa obstacle contact, `terrain_rim_collision_contact` must sustain launch-mesa rim contact, and `ground_taxi_control` must stay free of terrain-rim contact
 - landing-required evals track landing anticipation, landing flare, feet-forward landing tuck, post-contact landing recovery, landing crouch depth, zero unreadable key-pose samples across both key landing poses, landing-only visible-pose temporal samples, and bounded landing pose-part rotation/translation deltas
 
 Future tests should cover:

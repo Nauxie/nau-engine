@@ -130,6 +130,12 @@ pub(super) fn append_checks(
             "deg",
         ),
         SimCheck::at_least(
+            "camera_obstruction_adjustment",
+            metrics.max_camera_obstruction_adjustment_m,
+            thresholds.min_camera_obstruction_adjustment_m,
+            "m",
+        ),
+        SimCheck::at_least(
             "camera_yaw_input",
             metrics.max_abs_camera_yaw_offset_degrees,
             thresholds.min_abs_camera_yaw_degrees,

@@ -396,6 +396,11 @@ fn camera_mouse_simulation_exercises_yaw_and_pitch_axes() {
     assert!(result.metrics.max_abs_camera_yaw_offset_degrees >= 25.0);
     assert!(result.metrics.min_camera_pitch_offset_degrees <= -10.0);
     assert!(result.metrics.max_camera_pitch_offset_degrees >= 10.0);
+    assert!(
+        result.metrics.max_camera_obstruction_adjustment_m
+            >= scenario.thresholds.min_camera_obstruction_adjustment_m
+    );
+    assert!(result.metrics.max_camera_obstruction_hits > 0);
 }
 
 #[test]

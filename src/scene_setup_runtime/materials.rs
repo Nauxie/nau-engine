@@ -26,7 +26,6 @@ pub(super) struct SceneMaterials {
     pub(super) flower: Handle<StandardMaterial>,
     pub(super) water: Handle<StandardMaterial>,
     pub(super) ground: Handle<StandardMaterial>,
-    pub(super) pillar: Handle<StandardMaterial>,
     pub(super) cloud: Handle<StandardMaterial>,
     pub(super) cloud_veil: Handle<StandardMaterial>,
     pub(super) updraft_column: Handle<StandardMaterial>,
@@ -192,16 +191,6 @@ pub(super) fn prepare_scene_materials(
         0.96,
         0.18,
     );
-    let pillar = textured_material(
-        images,
-        materials,
-        [106, 94, 74, 255],
-        [66, 58, 52, 255],
-        [152, 134, 100, 255],
-        73,
-        0.98,
-        0.16,
-    );
     let cloud = cloud_surface_material(materials);
     let cloud_veil = cloud_veil_material(materials);
     let updraft_column = updraft_column_material(materials);
@@ -255,7 +244,6 @@ pub(super) fn prepare_scene_materials(
         flower,
         water,
         ground,
-        pillar,
         cloud,
         cloud_veil,
         updraft_column,

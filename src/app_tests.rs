@@ -404,12 +404,13 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     let launch_beacon = output_dir.join("visuals/00_launch_mesa_launch_beacon.obj");
     let midpoint_cairn = output_dir.join("visuals/01_midpoint_shelf_route_cairn.obj");
     let launch_pond = output_dir.join("visuals/00_launch_mesa_pond_surface.obj");
+    let launch_spire = output_dir.join("visuals/00_launch_mesa_obstruction_spire.obj");
     let landing_marker = output_dir.join("visuals/02_landing_garden_landing_garden_marker_0.obj");
     let island_count = SkyRoute::default().islands().len();
     let generated_tree_count = island_count * 3;
     let weather_veil_count = island_count.div_ceil(2) * 3;
     let route_cairn_count = island_count - 2;
-    let landmark_count = island_count + route_cairn_count + 1 + 4;
+    let landmark_count = island_count * 2 + route_cairn_count + 1 + 4;
 
     assert_eq!(report.ground_cover_count, island_count);
     assert_eq!(
@@ -433,6 +434,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.launch_beacon_count, 1);
     assert_eq!(report.landing_garden_marker_count, 4);
     assert_eq!(report.pond_surface_count, island_count);
+    assert_eq!(report.obstruction_spire_count, island_count);
     assert_eq!(
         report.mesh_count,
         report.ground_cover_count
@@ -472,6 +474,12 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_landing_garden_marker_vertical_span_m >= 0.12);
     assert!(report.min_pond_surface_mesh_vertices >= 65);
     assert!(report.min_pond_surface_vertical_span_m >= 0.015);
+    assert!(report.min_obstruction_spire_mesh_vertices >= 300);
+    assert!(report.min_obstruction_spire_triangle_count >= 500);
+    assert!(report.min_obstruction_spire_vertical_span_m >= 3.0);
+    assert!(report.min_obstruction_spire_height_band_count >= 6);
+    assert!(report.min_obstruction_spire_radius_band_count >= 5);
+    assert!(report.min_obstruction_spire_normal_slope_band_count >= 5);
     assert_eq!(
         report.terrain_biome_palette_count,
         TERRAIN_BIOME_PALETTE_COUNT
@@ -484,6 +492,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(launch_beacon.exists());
     assert!(midpoint_cairn.exists());
     assert!(launch_pond.exists());
+    assert!(launch_spire.exists());
     assert!(landing_marker.exists());
     assert!(manifest.contains("\"schema\": \"nau_visual_content_export.v1\""));
     assert!(manifest.contains("\"ground_cover_blade_height_range_m\""));
@@ -503,10 +512,14 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"launch_beacon_count\": 1"));
     assert!(manifest.contains("\"landing_garden_marker_count\": 4"));
     assert!(manifest.contains(&format!("\"pond_surface_count\": {island_count}")));
+    assert!(manifest.contains(&format!("\"obstruction_spire_count\": {island_count}")));
     assert!(manifest.contains("\"route_cairn_vertical_span_m\""));
     assert!(manifest.contains("\"launch_beacon_vertical_span_m\""));
     assert!(manifest.contains("\"landing_garden_marker_vertical_span_m\""));
     assert!(manifest.contains("\"pond_surface_vertical_span_m\""));
+    assert!(manifest.contains("\"obstruction_spire_height_band_count\""));
+    assert!(manifest.contains("\"obstruction_spire_radius_band_count\""));
+    assert!(manifest.contains("\"obstruction_spire_normal_slope_band_count\""));
     assert!(manifest.contains("\"terrain_biome_palette_count\": 5"));
 
     remove_existing_dir(&output_dir).expect("visual content export test dir should be removable");
@@ -963,6 +976,30 @@ fn landmark_meshes_replace_basic_cylinders_and_boxes() {
         mesh_y_range(&pond) > 0.015,
         "pond surface should carry subtle ripple variation"
     );
+
+    let spire = obstruction_spire_mesh(1.0, 5.2, 18_123);
+    let spire_positions = positions(&spire);
+    let spire_indices = u32_indices(&spire);
+    assert_eq!(
+        spire.count_vertices(),
+        OBSTRUCTION_SPIRE_RINGS * OBSTRUCTION_SPIRE_SEGMENTS + 2 + OBSTRUCTION_SPIRE_RIB_COUNT * 8
+    );
+    assert_eq!(
+        spire_indices.len(),
+        OBSTRUCTION_SPIRE_SEGMENTS * 6
+            + (OBSTRUCTION_SPIRE_RINGS - 1) * OBSTRUCTION_SPIRE_SEGMENTS * 6
+            + OBSTRUCTION_SPIRE_RIB_COUNT * 12
+    );
+    assert!(
+        mesh_y_range(&spire) > 5.0,
+        "obstruction spires should read as tall terrain-integrated blockers"
+    );
+    assert!(
+        radial_range(spire_positions) > 1.0,
+        "obstruction spires should have roots/ribs instead of a box footprint"
+    );
+    assert!(mesh_vertical_band_count(&spire) >= 6);
+    assert!(mesh_normal_slope_band_count(&spire) >= 5);
 }
 
 #[test]

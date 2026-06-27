@@ -11,15 +11,16 @@ use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::environment_visuals::{
     CinematicSun, spawn_crosswind_guide, spawn_updraft_guide, spawn_weather_layers,
 };
-use crate::generated_content::TERRAIN_BIOME_PALETTE_COUNT;
+use crate::generated_content::{TERRAIN_BIOME_PALETTE_COUNT, obstruction_spire_mesh};
 use crate::island_visuals::{IslandVisualCatalog, queue_sky_island, spawn_initial_island_visuals};
 use crate::power_up_runtime::spawn_power_up_guides;
 use crate::scene_setup_runtime::constants::{PLAYER_START, WORLD_RADIUS};
 use crate::scene_setup_runtime::materials::SceneMaterials;
+use crate::world_collision_runtime::{WorldCollisionProxy, WorldCollisionProxyKind};
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::CameraObstruction;
 use nau_engine::environment::{GAMEPLAY_LIFT_ROUTE, visual_crosswind_fields};
-use nau_engine::world::SkyRoute;
+use nau_engine::world::{SkyRoute, route_obstruction_spires};
 
 pub(super) fn spawn_world_runtime(
     commands: &mut Commands,
@@ -31,7 +32,7 @@ pub(super) fn spawn_world_runtime(
     spawn_sun(commands);
     spawn_ground(commands, meshes, scene_materials);
     spawn_island_visuals(commands, route, meshes, scene_materials);
-    spawn_camera_obstacles(commands, meshes, scene_materials);
+    spawn_camera_obstacles(commands, route, meshes, scene_materials);
     spawn_environment_volumes(commands, meshes, scene_materials);
     spawn_authored_world_fixtures(commands, route, visual_asset_registry)
 }
@@ -132,22 +133,30 @@ fn spawn_island_visuals(
 
 fn spawn_camera_obstacles(
     commands: &mut Commands,
+    route: &SkyRoute,
     meshes: &mut Assets<Mesh>,
     scene_materials: &SceneMaterials,
 ) {
-    for (index, x) in (-5..=5).enumerate() {
-        let height = 5.0 + (index as f32 % 4.0) * 4.0;
-        let z = if index % 2 == 0 { -28.0 } else { 34.0 };
-
-        let center = Vec3::new(x as f32 * 20.0, height * 0.5, z);
+    for spire in route_obstruction_spires(route) {
         commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(5.0, height, 5.0))),
-            MeshMaterial3d(scene_materials.pillar.clone()),
-            Transform::from_translation(center),
-            CameraObstacle(CameraObstruction::new(
-                center,
-                Vec3::new(2.5, height * 0.5, 2.5),
-            )),
+            Mesh3d(meshes.add(obstruction_spire_mesh(
+                spire.radius_m,
+                spire.height_m,
+                spire.seed,
+            ))),
+            MeshMaterial3d(
+                scene_materials.biome_detail_sets[spire.island_index % TERRAIN_BIOME_PALETTE_COUNT]
+                    .stone
+                    .clone(),
+            ),
+            Transform::from_translation(spire.base_position),
+            CameraObstacle(CameraObstruction::new(spire.center, spire.half_extents)),
+            WorldCollisionProxy::new(
+                spire.center,
+                spire.half_extents,
+                WorldCollisionProxyKind::Landmark,
+            ),
+            Name::new(format!("{} obstruction spire", spire.island_name)),
         ));
     }
 }
@@ -231,10 +240,40 @@ fn spawn_authored_world_fixtures(
 mod tests {
     use super::*;
     use crate::authored_assets::VisualAssetSlot;
+    use crate::scene_setup_runtime::prepare_scene_materials;
     use crate::world_collision_runtime::WorldCollisionProxy;
     use nau_engine::asset_pipeline::{
         VISUAL_ASSET_SPECS, VisualAssetKind, VisualAssetLoadAdmission,
     };
+    use nau_engine::world::ROUTE_OBSTRUCTION_SPIRES_PER_ISLAND;
+
+    #[test]
+    fn route_obstruction_spires_spawn_camera_and_collision_blockers() {
+        let route = SkyRoute::default();
+        let mut world = World::new();
+        let mut meshes = Assets::<Mesh>::default();
+        let mut images = Assets::<Image>::default();
+        let mut materials = Assets::<StandardMaterial>::default();
+        let scene_materials = prepare_scene_materials(&mut images, &mut materials);
+
+        {
+            let mut commands = world.commands();
+            spawn_camera_obstacles(&mut commands, &route, &mut meshes, &scene_materials);
+        }
+        world.flush();
+
+        let expected_count = route.islands().len() * ROUTE_OBSTRUCTION_SPIRES_PER_ISLAND;
+        let mut query = world.query::<(&Name, &CameraObstacle, &WorldCollisionProxy)>();
+        let mut spire_count = 0;
+        for (name, _camera_obstacle, collision_proxy) in query.iter(&world) {
+            if name.as_str().contains("obstruction spire") {
+                spire_count += 1;
+                assert_eq!(collision_proxy.kind, WorldCollisionProxyKind::Landmark);
+            }
+        }
+
+        assert_eq!(spire_count, expected_count);
+    }
 
     #[test]
     fn authored_world_fixture_spawn_attaches_collision_to_solid_fixtures() {
