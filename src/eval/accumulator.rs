@@ -17,6 +17,8 @@ mod summary_report;
 #[path = "accumulator/world.rs"]
 mod world;
 
+use bevy::prelude::Vec2;
+
 use super::sample::EvalSample;
 
 #[derive(Default, Clone, Debug)]
@@ -52,6 +54,7 @@ pub struct EvalAccumulator {
     max_desired_body_heading_error_degrees: f32,
     previous_desired_body_yaw_error_degrees: Option<f32>,
     max_body_yaw_error_step_degrees: f32,
+    previous_body_yaw_intent_axis: Option<Vec2>,
     previous_body_yaw_error_sign: Option<f32>,
     body_yaw_oscillation_count: u32,
     previous_body_roll_degrees: Option<f32>,

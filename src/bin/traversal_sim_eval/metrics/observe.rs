@@ -14,6 +14,9 @@ use super::{
     util::{backward_diagonal_rear_response_mps, horizontal_distance},
 };
 
+const BODY_YAW_INTENT_AXIS_EPSILON: f32 = 0.05;
+const BODY_YAW_INTENT_CHANGE_DOT: f32 = 0.98;
+
 impl SimMetrics {
     pub(crate) fn observe(&mut self, sample: &SimSample, scenario: EvalScenario) {
         self.sample_count += 1;
@@ -72,6 +75,15 @@ impl SimMetrics {
             .max(sample.camera_pitch_offset_degrees);
 
         if sample.desired_body_yaw_error_degrees.is_finite() {
+            let current_intent_axis = body_yaw_intent_axis(sample);
+            let intent_changed =
+                body_yaw_intent_changed(self.previous_body_yaw_intent_axis, current_intent_axis);
+            if intent_changed {
+                self.previous_desired_body_yaw_error_degrees = None;
+                self.previous_body_yaw_error_sign = None;
+            }
+            self.previous_body_yaw_intent_axis = current_intent_axis;
+
             self.desired_body_heading_error_sum_degrees +=
                 sample.desired_body_heading_error_degrees;
             self.desired_body_heading_samples += 1;
@@ -99,6 +111,10 @@ impl SimMetrics {
                 }
                 self.previous_body_yaw_error_sign = Some(sign);
             }
+        } else {
+            self.previous_desired_body_yaw_error_degrees = None;
+            self.previous_body_yaw_intent_axis = None;
+            self.previous_body_yaw_error_sign = None;
         }
         if !sample.body_roll_degrees.is_finite() || sample.mode == "grounded" {
             self.previous_body_roll_degrees = None;
@@ -646,6 +662,22 @@ impl SimMetrics {
         ) {
             self.max_air_brake_planar_speed_drop_mps = (start - minimum).max(0.0);
         }
+    }
+}
+
+fn body_yaw_intent_axis(sample: &SimSample) -> Option<Vec2> {
+    let axis = Vec2::new(
+        sample.movement_input_lateral_axis,
+        sample.movement_input_forward_axis,
+    );
+    (axis.length_squared() >= BODY_YAW_INTENT_AXIS_EPSILON.powi(2)).then(|| axis.normalize())
+}
+
+fn body_yaw_intent_changed(previous: Option<Vec2>, current: Option<Vec2>) -> bool {
+    match (previous, current) {
+        (Some(previous), Some(current)) => previous.dot(current) < BODY_YAW_INTENT_CHANGE_DOT,
+        (Some(_), None) | (None, Some(_)) => true,
+        (None, None) => false,
     }
 }
 

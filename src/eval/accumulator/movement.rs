@@ -10,6 +10,9 @@ use crate::{
 
 use super::{EvalAccumulator, EvalSample};
 
+const BODY_YAW_INTENT_AXIS_EPSILON: f32 = 0.05;
+const BODY_YAW_INTENT_CHANGE_DOT: f32 = 0.98;
+
 pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_altitude_m = accumulator.max_altitude_m.max(sample.altitude_m);
     accumulator.min_altitude_m = accumulator.min_altitude_m.min(sample.altitude_m);
@@ -39,8 +42,22 @@ fn observe_grounded_visual_footing(accumulator: &mut EvalAccumulator, sample: &E
 
 fn observe_body_heading(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     if !sample.desired_body_yaw_error_degrees.is_finite() {
+        accumulator.previous_desired_body_yaw_error_degrees = None;
+        accumulator.previous_body_yaw_intent_axis = None;
+        accumulator.previous_body_yaw_error_sign = None;
         return;
     }
+
+    let current_intent_axis = body_yaw_intent_axis(sample);
+    let intent_changed = body_yaw_intent_changed(
+        accumulator.previous_body_yaw_intent_axis,
+        current_intent_axis,
+    );
+    if intent_changed {
+        accumulator.previous_desired_body_yaw_error_degrees = None;
+        accumulator.previous_body_yaw_error_sign = None;
+    }
+    accumulator.previous_body_yaw_intent_axis = current_intent_axis;
 
     let heading_error = sample.desired_body_heading_error_degrees;
     accumulator.desired_body_heading_error_sum_degrees += heading_error;
@@ -69,6 +86,22 @@ fn observe_body_heading(accumulator: &mut EvalAccumulator, sample: &EvalSample) 
             accumulator.body_yaw_oscillation_count += 1;
         }
         accumulator.previous_body_yaw_error_sign = Some(sign);
+    }
+}
+
+fn body_yaw_intent_axis(sample: &EvalSample) -> Option<Vec2> {
+    let axis = Vec2::new(
+        sample.movement_input_lateral_axis,
+        sample.movement_input_forward_axis,
+    );
+    (axis.length_squared() >= BODY_YAW_INTENT_AXIS_EPSILON.powi(2)).then(|| axis.normalize())
+}
+
+fn body_yaw_intent_changed(previous: Option<Vec2>, current: Option<Vec2>) -> bool {
+    match (previous, current) {
+        (Some(previous), Some(current)) => previous.dot(current) < BODY_YAW_INTENT_CHANGE_DOT,
+        (Some(_), None) | (None, Some(_)) => true,
+        (None, None) => false,
     }
 }
 

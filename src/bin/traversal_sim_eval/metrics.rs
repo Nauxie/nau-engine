@@ -7,7 +7,7 @@ mod report;
 #[path = "metrics/util.rs"]
 mod util;
 
-use bevy::prelude::Vec3;
+use bevy::prelude::{Vec2, Vec3};
 use nau_engine::{
     environment::AERIAL_POWER_UP_ROUTE,
     world::{START_POSITION, SkyRoute},
@@ -46,6 +46,7 @@ pub(crate) struct SimMetrics {
     pub(crate) max_desired_body_heading_error_degrees: f32,
     pub(crate) previous_desired_body_yaw_error_degrees: Option<f32>,
     pub(crate) max_body_yaw_error_step_degrees: f32,
+    pub(crate) previous_body_yaw_intent_axis: Option<Vec2>,
     pub(crate) previous_body_yaw_error_sign: Option<f32>,
     pub(crate) body_yaw_oscillation_count: u32,
     pub(crate) previous_body_roll_degrees: Option<f32>,
@@ -221,6 +222,7 @@ impl SimMetrics {
             max_desired_body_heading_error_degrees: 0.0,
             previous_desired_body_yaw_error_degrees: None,
             max_body_yaw_error_step_degrees: 0.0,
+            previous_body_yaw_intent_axis: None,
             previous_body_yaw_error_sign: None,
             body_yaw_oscillation_count: 0,
             previous_body_roll_degrees: None,

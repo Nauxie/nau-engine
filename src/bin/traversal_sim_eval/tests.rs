@@ -784,6 +784,47 @@ fn sim_metrics_fail_lateral_body_travel_heading_misalignment() {
 }
 
 #[test]
+fn sim_metrics_ignore_body_yaw_intent_changes_for_oscillation_metrics() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    for (frame, lateral_axis, yaw_error_degrees) in [
+        (10, 1.0, 18.0),
+        (20, -1.0, -18.0),
+        (30, -1.0, -4.0),
+        (40, 1.0, 18.0),
+    ] {
+        let mut sample = sim_roll_sample(
+            &route,
+            scenario,
+            frame,
+            FlightMode::Gliding,
+            0.0,
+            lateral_axis,
+        );
+        sample.desired_body_yaw_error_degrees = yaw_error_degrees;
+        sample.desired_body_heading_error_degrees = yaw_error_degrees.abs();
+        metrics.observe(&sample, scenario);
+    }
+
+    let checks = metrics.checks(scenario);
+    let step = checks
+        .iter()
+        .find(|check| check.name == "air_control_max_body_yaw_error_step")
+        .expect("yaw-step check");
+    let oscillations = checks
+        .iter()
+        .find(|check| check.name == "air_control_body_yaw_oscillation_count")
+        .expect("yaw-oscillation check");
+
+    assert_eq!(metrics.max_body_yaw_error_step_degrees, 14.0);
+    assert_eq!(metrics.body_yaw_oscillation_count, 0);
+    assert!(step.passed);
+    assert!(oscillations.passed);
+}
+
+#[test]
 fn sim_metrics_fail_missing_body_travel_heading_samples() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
     let route = SkyRoute::default();
