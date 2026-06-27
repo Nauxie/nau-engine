@@ -2,8 +2,8 @@ pub(crate) const TERRAIN_UV_TILES_PER_METER: f32 = 1.0 / 12.0;
 pub(crate) const TERRAIN_BIOME_PALETTE_COUNT: usize = 5;
 pub(crate) const GROUND_COVER_PATCHES: usize = 44;
 pub(crate) const GROUND_COVER_BLADES_PER_PATCH: usize = 5;
-pub(crate) const VERTICES_PER_GROUND_BLADE: usize = 5;
-pub(crate) const INDICES_PER_GROUND_BLADE: usize = 9;
+pub(crate) const VERTICES_PER_GROUND_BLADE: usize = 6;
+pub(crate) const INDICES_PER_GROUND_BLADE: usize = 12;
 
 #[cfg(test)]
 pub(crate) const ISLAND_TERRAIN_COLOR_BANDS: usize = 5;

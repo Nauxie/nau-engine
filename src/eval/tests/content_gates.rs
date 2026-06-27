@@ -267,7 +267,7 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_island_body_mesh_vertices\": 1633"));
     assert!(summary_json.contains("\"min_generated_ground_cover_patch_count\": 800"));
     assert!(summary_json.contains("\"min_ground_cover_blade_count\": 220"));
-    assert!(summary_json.contains("\"min_ground_cover_mesh_vertices\": 1100"));
+    assert!(summary_json.contains("\"min_ground_cover_mesh_vertices\": 1320"));
     assert!(summary_json.contains("\"min_tree_canopy_mesh_vertices\": 412"));
     assert!(summary_json.contains("\"min_detail_biome_palette_count\": 5"));
     assert!(summary_json.contains("\"min_generated_rock_count\": 90"));
@@ -775,13 +775,13 @@ fn accumulator_fails_generated_visual_shape_regression() {
     let mut accumulator = EvalAccumulator::default();
     accumulator.observe(
         content_metric_sample(scenario, 0, 12, 0, 96).with_generated_visual_shape_metrics(
-            528, 220, 1100, 12, 12, 62, 316, 5, 48, 74, 27, 10, 1, 4, 12, 39, 12, 12, 6.2, 9, 18,
+            528, 220, 1320, 12, 12, 62, 316, 5, 48, 74, 27, 10, 1, 4, 12, 39, 12, 12, 6.2, 9, 18,
             1458, 27,
         ),
     );
     accumulator.observe(
         content_metric_sample(scenario, 10, 12, 0, 96).with_generated_visual_shape_metrics(
-            10, 12, 60, 0, 0, 8, 45, 1, 1, 12, 0, 0, 0, 0, 0, 8, 0, 0, 0.4, 1, 1, 45, 0,
+            10, 12, 72, 0, 0, 8, 45, 1, 1, 12, 0, 0, 0, 0, 0, 8, 0, 0, 0.4, 1, 1, 45, 0,
         ),
     );
 
@@ -822,7 +822,7 @@ fn accumulator_fails_generated_visual_shape_regression() {
     assert!(!ground_blade_check.passed);
     assert_eq!(ground_blade_check.value, 12.0);
     assert!(!ground_vertex_check.passed);
-    assert_eq!(ground_vertex_check.value, 60.0);
+    assert_eq!(ground_vertex_check.value, 72.0);
     assert!(!tree_count_check.passed);
     assert_eq!(tree_count_check.value, 0.0);
     assert!(!canopy_vertex_check.passed);
@@ -1258,7 +1258,7 @@ fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample
             .with_generated_visual_shape_metrics(
                 MIN_GENERATED_GROUND_COVER_PATCH_COUNT,
                 220,
-                1100,
+                1320,
                 MIN_GENERATED_TREE_TRUNK_COUNT,
                 MIN_GENERATED_TREE_CANOPY_COUNT,
                 196,

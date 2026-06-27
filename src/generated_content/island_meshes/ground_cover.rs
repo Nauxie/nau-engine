@@ -78,11 +78,18 @@ pub(crate) fn push_ground_cover_blade(
     patch: usize,
 ) {
     let right = Vec3::new(angle.cos(), 0.0, angle.sin());
+    let cross = Vec3::new(-angle.sin(), 0.0, angle.cos());
     let side = right * (width * 0.5);
     let mid_side = right * (width * 0.26);
     let mid = origin + Vec3::Y * (height * 0.54) + lean * 0.42;
     let tip = origin + Vec3::Y * height + lean;
+    let leaflet_sign = if patch.is_multiple_of(2) { 1.0 } else { -1.0 };
+    let leaflet = mid
+        + cross * (leaflet_sign * width * 0.95)
+        + right * (width * 0.10)
+        + Vec3::Y * (height * 0.08);
     let blade_normal = Vec3::new(right.z * 0.35, 0.8, -right.x * 0.35).normalize();
+    let leaflet_normal = (blade_normal + cross * (leaflet_sign * 0.18)).normalize();
     let start = positions.len() as u32;
 
     positions.extend([
@@ -91,8 +98,16 @@ pub(crate) fn push_ground_cover_blade(
         (mid - mid_side).to_array(),
         (mid + mid_side).to_array(),
         tip.to_array(),
+        leaflet.to_array(),
     ]);
-    normals.extend([blade_normal.to_array(); VERTICES_PER_GROUND_BLADE]);
+    normals.extend([
+        blade_normal.to_array(),
+        blade_normal.to_array(),
+        blade_normal.to_array(),
+        blade_normal.to_array(),
+        blade_normal.to_array(),
+        leaflet_normal.to_array(),
+    ]);
     let uv_offset = if patch.is_multiple_of(2) { 0.0 } else { 0.5 };
     uvs.extend([
         [uv_offset, 1.0],
@@ -100,6 +115,7 @@ pub(crate) fn push_ground_cover_blade(
         [uv_offset + 0.10, 0.46],
         [uv_offset + 0.32, 0.46],
         [uv_offset + 0.21, 0.0],
+        [uv_offset + 0.44, 0.34],
     ]);
     indices.extend([
         start,
@@ -111,5 +127,8 @@ pub(crate) fn push_ground_cover_blade(
         start + 2,
         start + 3,
         start + 4,
+        start + 2,
+        start + 3,
+        start + 5,
     ]);
 }
