@@ -276,7 +276,7 @@ fn lateral_air_input_steers_velocity_toward_desired_plane() {
         ..default()
     };
 
-    for _ in 0..60 {
+    for _ in 0..30 {
         state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
     }
 
@@ -286,15 +286,15 @@ fn lateral_air_input_steers_velocity_toward_desired_plane() {
     let desired_travel_error =
         desired_planar_travel_heading_error_degrees(state.velocity, desired_direction, 6.0);
     assert!(
-        side_speed > 14.0,
+        side_speed > 24.0,
         "expected right input to build meaningful planar side speed, got {side_speed}"
     );
     assert!(
-        forward_speed < 28.0,
+        forward_speed < 14.0,
         "expected steering to rotate velocity away from pure forward drift, got {forward_speed}"
     );
     assert!(
-        desired_travel_error < 28.0,
+        desired_travel_error < 18.0,
         "expected right input to align travel with desired side heading, got {desired_travel_error} deg"
     );
 }
@@ -318,13 +318,13 @@ fn lateral_air_input_reverses_side_velocity_before_it_feels_stuck() {
         ..default()
     };
 
-    for _ in 0..15 {
+    for _ in 0..12 {
         state = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
     }
 
     let left_response = horizontal(state.velocity).dot(-facing.right);
     assert!(
-        left_response > 4.0,
+        left_response > 8.0,
         "expected left reversal to recover promptly, got {left_response}"
     );
 }

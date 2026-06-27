@@ -42,9 +42,9 @@ fn accumulator_requires_both_air_control_lateral_phases() {
     accumulator.observe(air_control_metric_sample(
         scenario,
         90,
-        Vec3::new(20.0, -2.0, -18.0),
+        Vec3::new(24.0, -2.0, -18.0),
         Vec2::new(1.0, 0.0),
-        20.0,
+        24.0,
         18.0,
         4.0,
     ));
@@ -90,7 +90,7 @@ fn accumulator_requires_both_air_control_lateral_phases() {
 
     assert!(right_check.passed);
     assert!(!left_check.passed);
-    assert_eq!(summary.metrics.max_right_lateral_response_mps, 20.0);
+    assert_eq!(summary.metrics.max_right_lateral_response_mps, 24.0);
     assert_eq!(summary.metrics.max_left_lateral_response_mps, 2.0);
 }
 
@@ -414,18 +414,20 @@ fn accumulator_gates_air_control_body_travel_heading_misalignment() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
     let mut accumulator = EvalAccumulator::default();
 
-    accumulator.observe(
-        air_control_metric_sample(
-            scenario,
-            90,
-            Vec3::new(20.0, -2.0, -18.0),
-            Vec2::new(1.0, 0.0),
-            20.0,
-            18.0,
-            3.0,
-        )
-        .with_body_travel_heading_error_degrees(90.0),
-    );
+    for frame in [90, 100, 110, 120] {
+        accumulator.observe(
+            air_control_metric_sample(
+                scenario,
+                frame,
+                Vec3::new(20.0, -2.0, -18.0),
+                Vec2::new(1.0, 0.0),
+                20.0,
+                18.0,
+                3.0,
+            )
+            .with_body_travel_heading_error_degrees(90.0),
+        );
+    }
 
     let summary = accumulator.summary(
         scenario,
@@ -450,12 +452,12 @@ fn accumulator_gates_air_control_body_travel_heading_misalignment() {
     let right_sample_count_check =
         named_check(&summary, "air_control_right_body_travel_heading_samples");
 
-    assert_eq!(summary.metrics.lateral_body_travel_heading_sample_count, 1);
+    assert_eq!(summary.metrics.lateral_body_travel_heading_sample_count, 4);
     assert_eq!(
         summary
             .metrics
             .right_lateral_body_travel_heading_sample_count,
-        1
+        4
     );
     assert_eq!(
         summary
@@ -469,9 +471,9 @@ fn accumulator_gates_air_control_body_travel_heading_misalignment() {
             .max_lateral_body_travel_heading_error_degrees,
         90.0
     );
-    assert_eq!(sample_count_check.value, 1.0);
+    assert_eq!(sample_count_check.value, 4.0);
     assert!(sample_count_check.passed);
-    assert_eq!(right_sample_count_check.value, 1.0);
+    assert_eq!(right_sample_count_check.value, 4.0);
     assert!(right_sample_count_check.passed);
     assert_eq!(p95_check.value, 90.0);
     assert_eq!(max_check.value, 90.0);
@@ -479,8 +481,8 @@ fn accumulator_gates_air_control_body_travel_heading_misalignment() {
     assert!(!max_check.passed);
 
     let summary_json = summary.to_json();
-    assert!(summary_json.contains("\"lateral_body_travel_heading_sample_count\": 1"));
-    assert!(summary_json.contains("\"right_lateral_body_travel_heading_sample_count\": 1"));
+    assert!(summary_json.contains("\"lateral_body_travel_heading_sample_count\": 4"));
+    assert!(summary_json.contains("\"right_lateral_body_travel_heading_sample_count\": 4"));
     assert!(summary_json.contains("\"left_lateral_body_travel_heading_sample_count\": 0"));
     assert!(summary_json.contains("\"p95_lateral_body_travel_heading_error_degrees\""));
     assert!(summary_json.contains("\"max_lateral_body_travel_heading_error_degrees\""));
@@ -812,18 +814,20 @@ fn accumulator_gates_air_control_backward_diagonal_body_travel_heading_misalignm
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
     let mut accumulator = EvalAccumulator::default();
 
-    accumulator.observe(
-        air_control_metric_sample(
-            scenario,
-            250,
-            Vec3::new(12.0, -2.0, 14.0),
-            Vec2::new(1.0, -1.0),
-            12.0,
-            18.0,
-            3.0,
-        )
-        .with_body_travel_heading_error_degrees(70.0),
-    );
+    for frame in [250, 260, 270, 280] {
+        accumulator.observe(
+            air_control_metric_sample(
+                scenario,
+                frame,
+                Vec3::new(12.0, -2.0, 14.0),
+                Vec2::new(1.0, -1.0),
+                12.0,
+                18.0,
+                3.0,
+            )
+            .with_body_travel_heading_error_degrees(70.0),
+        );
+    }
 
     let summary = accumulator.summary(
         scenario,
@@ -856,7 +860,7 @@ fn accumulator_gates_air_control_backward_diagonal_body_travel_heading_misalignm
         summary
             .metrics
             .backward_diagonal_body_travel_heading_sample_count,
-        1
+        4
     );
     assert_eq!(
         summary
@@ -864,9 +868,9 @@ fn accumulator_gates_air_control_backward_diagonal_body_travel_heading_misalignm
             .max_backward_diagonal_body_travel_heading_error_degrees,
         70.0
     );
-    assert_eq!(sample_count_check.value, 1.0);
+    assert_eq!(sample_count_check.value, 4.0);
     assert!(sample_count_check.passed);
-    assert_eq!(backward_right_sample_count_check.value, 1.0);
+    assert_eq!(backward_right_sample_count_check.value, 4.0);
     assert!(backward_right_sample_count_check.passed);
     assert_eq!(p95_check.value, 70.0);
     assert_eq!(max_check.value, 70.0);
@@ -1615,8 +1619,12 @@ fn accumulator_counts_bidirectional_air_control_turn_pose_samples() {
     for (frame, input, velocity) in [
         (0, Vec2::new(1.0, 0.0), Vec3::new(16.0, -2.0, -18.0)),
         (30, Vec2::new(1.0, 0.0), Vec3::new(16.0, -2.0, -18.0)),
-        (60, Vec2::new(-1.0, 0.0), Vec3::new(-16.0, -2.0, -18.0)),
-        (90, Vec2::new(-1.0, 0.0), Vec3::new(-16.0, -2.0, -18.0)),
+        (60, Vec2::new(1.0, 0.0), Vec3::new(16.0, -2.0, -18.0)),
+        (90, Vec2::new(1.0, 0.0), Vec3::new(16.0, -2.0, -18.0)),
+        (120, Vec2::new(-1.0, 0.0), Vec3::new(-16.0, -2.0, -18.0)),
+        (150, Vec2::new(-1.0, 0.0), Vec3::new(-16.0, -2.0, -18.0)),
+        (180, Vec2::new(-1.0, 0.0), Vec3::new(-16.0, -2.0, -18.0)),
+        (210, Vec2::new(-1.0, 0.0), Vec3::new(-16.0, -2.0, -18.0)),
     ] {
         accumulator.observe(air_control_metric_sample(
             scenario, frame, velocity, input, 16.0, 18.0, 4.0,
@@ -1636,15 +1644,15 @@ fn accumulator_counts_bidirectional_air_control_turn_pose_samples() {
     let summary_json: serde_json::Value =
         serde_json::from_str(&summary.to_json()).expect("summary json parses");
 
-    assert_eq!(summary.metrics.pose_air_turn_samples, 4);
-    assert_eq!(summary.metrics.right_pose_air_turn_samples, 2);
-    assert_eq!(summary.metrics.left_pose_air_turn_samples, 2);
+    assert_eq!(summary.metrics.pose_air_turn_samples, 8);
+    assert_eq!(summary.metrics.right_pose_air_turn_samples, 4);
+    assert_eq!(summary.metrics.left_pose_air_turn_samples, 4);
     assert!(named_check(&summary, "air_control_pose_air_turn_samples").passed);
     assert!(named_check(&summary, "air_control_right_pose_air_turn_samples").passed);
     assert!(named_check(&summary, "air_control_left_pose_air_turn_samples").passed);
-    assert_eq!(summary_json["metrics"]["pose_air_turn_samples"], 4);
-    assert_eq!(summary_json["metrics"]["right_pose_air_turn_samples"], 2);
-    assert_eq!(summary_json["metrics"]["left_pose_air_turn_samples"], 2);
+    assert_eq!(summary_json["metrics"]["pose_air_turn_samples"], 8);
+    assert_eq!(summary_json["metrics"]["right_pose_air_turn_samples"], 4);
+    assert_eq!(summary_json["metrics"]["left_pose_air_turn_samples"], 4);
 }
 
 #[test]
