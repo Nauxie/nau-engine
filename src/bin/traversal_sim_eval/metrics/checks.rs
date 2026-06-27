@@ -11,8 +11,9 @@ use nau_engine::eval::{
     LONG_GLIDE_VISIBILITY, MIN_CROSSWIND_FORCE_DELTA_MPS, MIN_CROSSWIND_FORCE_SAMPLE_COUNT,
     MIN_DYNAMIC_WIND_FLOW_SPEED_MPS, MIN_DYNAMIC_WIND_FLOW_VARIATION,
     MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE, MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
-    MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_SPEED_MPS, MIN_WIND_FORCE_SAMPLE_COUNT,
-    MIN_WIND_FORCE_VARIATION, POSE_STATE_COVERAGE, UPDRAFT_ROUTE,
+    MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT,
+    MIN_WIND_FORCE_FLOW_SPEED_MPS, MIN_WIND_FORCE_SAMPLE_COUNT, MIN_WIND_FORCE_VARIATION,
+    POSE_STATE_COVERAGE, UPDRAFT_ROUTE,
 };
 use serde_json::{Value, json};
 
@@ -155,6 +156,12 @@ impl SimMetrics {
                 "samples",
             ));
             checks.push(SimCheck::at_least(
+                "aligned_wind_force_samples",
+                self.aligned_wind_force_samples as f32,
+                MIN_WIND_FORCE_SAMPLE_COUNT as f32,
+                "samples",
+            ));
+            checks.push(SimCheck::at_least(
                 "active_wind_force_fields",
                 self.max_active_wind_force_fields as f32,
                 1.0,
@@ -178,12 +185,30 @@ impl SimMetrics {
                 MIN_WIND_FORCE_VARIATION,
                 "ratio",
             ));
+            checks.push(SimCheck::at_least(
+                "wind_force_flow_alignment",
+                self.max_wind_force_flow_alignment,
+                MIN_WIND_FORCE_FLOW_ALIGNMENT,
+                "dot",
+            ));
+            checks.push(SimCheck::at_least(
+                "wind_force_aligned_delta",
+                self.max_wind_force_aligned_delta_mps,
+                MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
+                "m/s",
+            ));
         }
 
         if crosswind_force_scenario(scenario) {
             checks.push(SimCheck::at_least(
                 "crosswind_force_samples",
                 self.crosswind_force_samples as f32,
+                MIN_CROSSWIND_FORCE_SAMPLE_COUNT as f32,
+                "samples",
+            ));
+            checks.push(SimCheck::at_least(
+                "aligned_crosswind_force_samples",
+                self.aligned_crosswind_force_samples as f32,
                 MIN_CROSSWIND_FORCE_SAMPLE_COUNT as f32,
                 "samples",
             ));
@@ -199,12 +224,30 @@ impl SimMetrics {
                 MIN_CROSSWIND_FORCE_DELTA_MPS,
                 "m/s",
             ));
+            checks.push(SimCheck::at_least(
+                "crosswind_force_flow_alignment",
+                self.max_crosswind_force_flow_alignment,
+                MIN_WIND_FORCE_FLOW_ALIGNMENT,
+                "dot",
+            ));
+            checks.push(SimCheck::at_least(
+                "crosswind_force_aligned_delta",
+                self.max_crosswind_force_aligned_delta_mps,
+                MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
+                "m/s",
+            ));
         }
 
         if scenario.thresholds.min_lifted_samples > 0 {
             checks.push(SimCheck::at_least(
                 "updraft_swirl_force_samples",
                 self.updraft_swirl_force_samples as f32,
+                scenario.thresholds.min_lifted_samples as f32,
+                "samples",
+            ));
+            checks.push(SimCheck::at_least(
+                "aligned_updraft_swirl_force_samples",
+                self.aligned_updraft_swirl_force_samples as f32,
                 scenario.thresholds.min_lifted_samples as f32,
                 "samples",
             ));
@@ -218,6 +261,18 @@ impl SimMetrics {
                 "updraft_swirl_force_delta",
                 self.max_updraft_swirl_force_delta_mps,
                 MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+                "m/s",
+            ));
+            checks.push(SimCheck::at_least(
+                "updraft_swirl_force_flow_alignment",
+                self.max_updraft_swirl_force_flow_alignment,
+                MIN_WIND_FORCE_FLOW_ALIGNMENT,
+                "dot",
+            ));
+            checks.push(SimCheck::at_least(
+                "updraft_swirl_force_aligned_delta",
+                self.max_updraft_swirl_force_aligned_delta_mps,
+                MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
                 "m/s",
             ));
         }

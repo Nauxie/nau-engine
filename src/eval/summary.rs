@@ -142,8 +142,11 @@ pub struct EvalMetricsSummary {
     pub max_wind_flow_variation_range: f32,
     pub wind_force_samples: u32,
     pub meaningful_wind_force_samples: u32,
+    pub aligned_wind_force_samples: u32,
     pub crosswind_force_samples: u32,
+    pub aligned_crosswind_force_samples: u32,
     pub updraft_swirl_force_samples: u32,
+    pub aligned_updraft_swirl_force_samples: u32,
     pub max_active_wind_force_fields: usize,
     pub max_crosswind_force_fields: usize,
     pub max_updraft_swirl_force_fields: usize,
@@ -152,6 +155,12 @@ pub struct EvalMetricsSummary {
     pub max_updraft_swirl_force_delta_mps: f32,
     pub max_wind_force_flow_speed_mps: f32,
     pub max_wind_force_variation: f32,
+    pub max_wind_force_flow_alignment: f32,
+    pub max_crosswind_force_flow_alignment: f32,
+    pub max_updraft_swirl_force_flow_alignment: f32,
+    pub max_wind_force_aligned_delta_mps: f32,
+    pub max_crosswind_force_aligned_delta_mps: f32,
+    pub max_updraft_swirl_force_aligned_delta_mps: f32,
     pub max_active_lift_fields: usize,
     pub max_readable_lift_fields: usize,
     pub max_sky_island_count: usize,
@@ -537,11 +546,14 @@ impl EvalMetricsSummary {
         );
         let max_active_lift_fields_key = format!("{indent}  \"max_active_lift_fields\"");
         let wind_force_metrics = format!(
-            "{indent}  \"wind_force_samples\": {},\n{indent}  \"meaningful_wind_force_samples\": {},\n{indent}  \"crosswind_force_samples\": {},\n{indent}  \"updraft_swirl_force_samples\": {},\n{indent}  \"max_active_wind_force_fields\": {},\n{indent}  \"max_crosswind_force_fields\": {},\n{indent}  \"max_updraft_swirl_force_fields\": {},\n{indent}  \"max_wind_force_delta_mps\": {},\n{indent}  \"max_crosswind_force_delta_mps\": {},\n{indent}  \"max_updraft_swirl_force_delta_mps\": {},\n{indent}  \"max_wind_force_flow_speed_mps\": {},\n{indent}  \"max_wind_force_variation\": {},\n{}",
+            "{indent}  \"wind_force_samples\": {},\n{indent}  \"meaningful_wind_force_samples\": {},\n{indent}  \"aligned_wind_force_samples\": {},\n{indent}  \"crosswind_force_samples\": {},\n{indent}  \"aligned_crosswind_force_samples\": {},\n{indent}  \"updraft_swirl_force_samples\": {},\n{indent}  \"aligned_updraft_swirl_force_samples\": {},\n{indent}  \"max_active_wind_force_fields\": {},\n{indent}  \"max_crosswind_force_fields\": {},\n{indent}  \"max_updraft_swirl_force_fields\": {},\n{indent}  \"max_wind_force_delta_mps\": {},\n{indent}  \"max_crosswind_force_delta_mps\": {},\n{indent}  \"max_updraft_swirl_force_delta_mps\": {},\n{indent}  \"max_wind_force_flow_speed_mps\": {},\n{indent}  \"max_wind_force_variation\": {},\n{indent}  \"max_wind_force_flow_alignment\": {},\n{indent}  \"max_crosswind_force_flow_alignment\": {},\n{indent}  \"max_updraft_swirl_force_flow_alignment\": {},\n{indent}  \"max_wind_force_aligned_delta_mps\": {},\n{indent}  \"max_crosswind_force_aligned_delta_mps\": {},\n{indent}  \"max_updraft_swirl_force_aligned_delta_mps\": {},\n{}",
             self.wind_force_samples,
             self.meaningful_wind_force_samples,
+            self.aligned_wind_force_samples,
             self.crosswind_force_samples,
+            self.aligned_crosswind_force_samples,
             self.updraft_swirl_force_samples,
+            self.aligned_updraft_swirl_force_samples,
             self.max_active_wind_force_fields,
             self.max_crosswind_force_fields,
             self.max_updraft_swirl_force_fields,
@@ -550,6 +562,12 @@ impl EvalMetricsSummary {
             json_number(self.max_updraft_swirl_force_delta_mps),
             json_number(self.max_wind_force_flow_speed_mps),
             json_number(self.max_wind_force_variation),
+            json_number(self.max_wind_force_flow_alignment),
+            json_number(self.max_crosswind_force_flow_alignment),
+            json_number(self.max_updraft_swirl_force_flow_alignment),
+            json_number(self.max_wind_force_aligned_delta_mps),
+            json_number(self.max_crosswind_force_aligned_delta_mps),
+            json_number(self.max_updraft_swirl_force_aligned_delta_mps),
             max_active_lift_fields_key
         );
         let json = json.replacen(&max_active_lift_fields_key, &wind_force_metrics, 1);

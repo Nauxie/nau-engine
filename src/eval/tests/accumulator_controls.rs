@@ -2111,8 +2111,11 @@ fn accumulator_gates_dynamic_wind_flow_for_lift_routes() {
     assert!(named_check(&summary, "max_wind_flow_variation").passed);
     assert!(named_check(&summary, "max_wind_flow_variation_range").passed);
     assert!(named_check(&summary, "updraft_swirl_force_samples").passed);
+    assert!(named_check(&summary, "aligned_updraft_swirl_force_samples").passed);
     assert!(named_check(&summary, "updraft_swirl_force_fields").passed);
     assert!(named_check(&summary, "updraft_swirl_force_delta").passed);
+    assert!(named_check(&summary, "updraft_swirl_force_flow_alignment").passed);
+    assert!(named_check(&summary, "updraft_swirl_force_aligned_delta").passed);
 }
 
 #[test]
@@ -2136,6 +2139,8 @@ fn accumulator_rejects_missing_updraft_swirl_force_metrics_for_lift_routes() {
         sample.max_wind_flow_speed_mps = 10.0;
         sample.max_wind_flow_variation = 0.16 + frame as f32 * 0.02;
         sample.updraft_swirl_force_fields = 0;
+        sample.max_updraft_swirl_force_flow_alignment = 0.0;
+        sample.max_updraft_swirl_force_aligned_delta_mps = 0.0;
         sample.max_updraft_swirl_force_delta_mps = 0.0;
         accumulator.observe(sample);
     }
@@ -2153,8 +2158,11 @@ fn accumulator_rejects_missing_updraft_swirl_force_metrics_for_lift_routes() {
 
     assert!(named_check(&summary, "dynamic_readable_lift_samples").passed);
     assert!(!named_check(&summary, "updraft_swirl_force_samples").passed);
+    assert!(!named_check(&summary, "aligned_updraft_swirl_force_samples").passed);
     assert!(!named_check(&summary, "updraft_swirl_force_fields").passed);
     assert!(!named_check(&summary, "updraft_swirl_force_delta").passed);
+    assert!(!named_check(&summary, "updraft_swirl_force_flow_alignment").passed);
+    assert!(!named_check(&summary, "updraft_swirl_force_aligned_delta").passed);
 }
 
 #[test]
@@ -2180,13 +2188,19 @@ fn accumulator_gates_wind_force_response_metrics() {
     for check_name in [
         "wind_force_samples",
         "meaningful_wind_force_samples",
+        "aligned_wind_force_samples",
         "active_wind_force_fields",
         "wind_force_delta",
         "wind_force_flow_speed",
         "wind_force_variation",
+        "wind_force_flow_alignment",
+        "wind_force_aligned_delta",
         "crosswind_force_samples",
+        "aligned_crosswind_force_samples",
         "crosswind_force_fields",
         "crosswind_force_delta",
+        "crosswind_force_flow_alignment",
+        "crosswind_force_aligned_delta",
     ] {
         assert!(
             named_check(&summary, check_name).passed,
@@ -2206,6 +2220,12 @@ fn accumulator_requires_sustained_meaningful_wind_force_samples() {
     weak_sample.max_crosswind_force_delta_mps = MIN_CROSSWIND_FORCE_DELTA_MPS * 0.5;
     weak_sample.max_updraft_swirl_force_delta_mps = MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS * 0.5;
     weak_sample.max_wind_force_variation = MIN_WIND_FORCE_VARIATION * 0.5;
+    weak_sample.max_wind_force_flow_alignment = MIN_WIND_FORCE_FLOW_ALIGNMENT * 0.5;
+    weak_sample.max_crosswind_force_flow_alignment = MIN_WIND_FORCE_FLOW_ALIGNMENT * 0.5;
+    weak_sample.max_updraft_swirl_force_flow_alignment = MIN_WIND_FORCE_FLOW_ALIGNMENT * 0.5;
+    weak_sample.max_wind_force_aligned_delta_mps = MIN_WIND_FORCE_ALIGNED_DELTA_MPS * 0.5;
+    weak_sample.max_crosswind_force_aligned_delta_mps = MIN_WIND_FORCE_ALIGNED_DELTA_MPS * 0.5;
+    weak_sample.max_updraft_swirl_force_aligned_delta_mps = MIN_WIND_FORCE_ALIGNED_DELTA_MPS * 0.5;
     accumulator.observe(weak_sample);
 
     let summary = accumulator.summary(
@@ -2223,6 +2243,8 @@ fn accumulator_requires_sustained_meaningful_wind_force_samples() {
     assert!(named_check(&summary, "wind_force_delta").passed);
     assert!(named_check(&summary, "wind_force_variation").passed);
     assert!(!named_check(&summary, "meaningful_wind_force_samples").passed);
+    assert!(!named_check(&summary, "aligned_wind_force_samples").passed);
+    assert!(!named_check(&summary, "aligned_crosswind_force_samples").passed);
 }
 
 #[test]
@@ -2238,6 +2260,12 @@ fn accumulator_rejects_missing_wind_force_response_metrics() {
     sample.max_updraft_swirl_force_delta_mps = 0.0;
     sample.max_wind_force_flow_speed_mps = 0.0;
     sample.max_wind_force_variation = 0.0;
+    sample.max_wind_force_flow_alignment = 0.0;
+    sample.max_crosswind_force_flow_alignment = 0.0;
+    sample.max_updraft_swirl_force_flow_alignment = 0.0;
+    sample.max_wind_force_aligned_delta_mps = 0.0;
+    sample.max_crosswind_force_aligned_delta_mps = 0.0;
+    sample.max_updraft_swirl_force_aligned_delta_mps = 0.0;
     accumulator.observe(sample);
 
     let summary = accumulator.summary(
@@ -2254,13 +2282,19 @@ fn accumulator_rejects_missing_wind_force_response_metrics() {
     for check_name in [
         "wind_force_samples",
         "meaningful_wind_force_samples",
+        "aligned_wind_force_samples",
         "active_wind_force_fields",
         "wind_force_delta",
         "wind_force_flow_speed",
         "wind_force_variation",
+        "wind_force_flow_alignment",
+        "wind_force_aligned_delta",
         "crosswind_force_samples",
+        "aligned_crosswind_force_samples",
         "crosswind_force_fields",
         "crosswind_force_delta",
+        "crosswind_force_flow_alignment",
+        "crosswind_force_aligned_delta",
     ] {
         assert!(
             !named_check(&summary, check_name).passed,

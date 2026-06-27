@@ -2,7 +2,8 @@ use bevy::prelude::Vec2;
 use nau_engine::animation::MIN_KEY_POSE_READABILITY_SCORE;
 use nau_engine::eval::{
     CAMERA_STRAFE_STABILITY, EvalScenario, MIN_CROSSWIND_FORCE_DELTA_MPS,
-    MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_VARIATION,
+    MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS, MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS,
+    MIN_WIND_FORCE_FLOW_ALIGNMENT, MIN_WIND_FORCE_VARIATION,
 };
 
 use super::super::{
@@ -208,12 +209,28 @@ impl SimMetrics {
             if meaningful_delta && sample.max_wind_force_variation >= MIN_WIND_FORCE_VARIATION {
                 self.meaningful_wind_force_samples += 1;
             }
+            if sample.max_wind_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
+                && sample.max_wind_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+            {
+                self.aligned_wind_force_samples += 1;
+            }
         }
         if sample.crosswind_force_fields > 0 {
             self.crosswind_force_samples += 1;
+            if sample.max_crosswind_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
+                && sample.max_crosswind_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+            {
+                self.aligned_crosswind_force_samples += 1;
+            }
         }
         if sample.updraft_swirl_force_fields > 0 {
             self.updraft_swirl_force_samples += 1;
+            if sample.max_updraft_swirl_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
+                && sample.max_updraft_swirl_force_aligned_delta_mps
+                    >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+            {
+                self.aligned_updraft_swirl_force_samples += 1;
+            }
         }
         self.max_active_wind_force_fields = self
             .max_active_wind_force_fields
@@ -239,6 +256,24 @@ impl SimMetrics {
         self.max_wind_force_variation = self
             .max_wind_force_variation
             .max(sample.max_wind_force_variation);
+        self.max_wind_force_flow_alignment = self
+            .max_wind_force_flow_alignment
+            .max(sample.max_wind_force_flow_alignment);
+        self.max_crosswind_force_flow_alignment = self
+            .max_crosswind_force_flow_alignment
+            .max(sample.max_crosswind_force_flow_alignment);
+        self.max_updraft_swirl_force_flow_alignment = self
+            .max_updraft_swirl_force_flow_alignment
+            .max(sample.max_updraft_swirl_force_flow_alignment);
+        self.max_wind_force_aligned_delta_mps = self
+            .max_wind_force_aligned_delta_mps
+            .max(sample.max_wind_force_aligned_delta_mps);
+        self.max_crosswind_force_aligned_delta_mps = self
+            .max_crosswind_force_aligned_delta_mps
+            .max(sample.max_crosswind_force_aligned_delta_mps);
+        self.max_updraft_swirl_force_aligned_delta_mps = self
+            .max_updraft_swirl_force_aligned_delta_mps
+            .max(sample.max_updraft_swirl_force_aligned_delta_mps);
         self.max_active_chunk_count = self.max_active_chunk_count.max(sample.active_chunk_count);
         self.max_active_island_count = self.max_active_island_count.max(sample.active_island_count);
         self.max_near_lod_islands = self.max_near_lod_islands.max(sample.near_lod_islands);

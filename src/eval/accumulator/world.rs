@@ -1,6 +1,7 @@
 use super::{EvalAccumulator, EvalSample};
 use crate::eval::thresholds::{
-    MIN_CROSSWIND_FORCE_DELTA_MPS, MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS,
+    MIN_CROSSWIND_FORCE_DELTA_MPS, MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+    MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT,
     MIN_WIND_FORCE_VARIATION, MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M,
 };
 
@@ -25,12 +26,27 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
         if meaningful_delta && sample.max_wind_force_variation >= MIN_WIND_FORCE_VARIATION {
             accumulator.meaningful_wind_force_samples += 1;
         }
+        if sample.max_wind_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
+            && sample.max_wind_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+        {
+            accumulator.aligned_wind_force_samples += 1;
+        }
     }
     if sample.crosswind_force_fields > 0 {
         accumulator.crosswind_force_samples += 1;
+        if sample.max_crosswind_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
+            && sample.max_crosswind_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+        {
+            accumulator.aligned_crosswind_force_samples += 1;
+        }
     }
     if sample.updraft_swirl_force_fields > 0 {
         accumulator.updraft_swirl_force_samples += 1;
+        if sample.max_updraft_swirl_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
+            && sample.max_updraft_swirl_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+        {
+            accumulator.aligned_updraft_swirl_force_samples += 1;
+        }
     }
     accumulator.max_active_wind_force_fields = accumulator
         .max_active_wind_force_fields
@@ -56,6 +72,24 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_wind_force_variation = accumulator
         .max_wind_force_variation
         .max(sample.max_wind_force_variation);
+    accumulator.max_wind_force_flow_alignment = accumulator
+        .max_wind_force_flow_alignment
+        .max(sample.max_wind_force_flow_alignment);
+    accumulator.max_crosswind_force_flow_alignment = accumulator
+        .max_crosswind_force_flow_alignment
+        .max(sample.max_crosswind_force_flow_alignment);
+    accumulator.max_updraft_swirl_force_flow_alignment = accumulator
+        .max_updraft_swirl_force_flow_alignment
+        .max(sample.max_updraft_swirl_force_flow_alignment);
+    accumulator.max_wind_force_aligned_delta_mps = accumulator
+        .max_wind_force_aligned_delta_mps
+        .max(sample.max_wind_force_aligned_delta_mps);
+    accumulator.max_crosswind_force_aligned_delta_mps = accumulator
+        .max_crosswind_force_aligned_delta_mps
+        .max(sample.max_crosswind_force_aligned_delta_mps);
+    accumulator.max_updraft_swirl_force_aligned_delta_mps = accumulator
+        .max_updraft_swirl_force_aligned_delta_mps
+        .max(sample.max_updraft_swirl_force_aligned_delta_mps);
     accumulator.max_active_lift_fields = accumulator
         .max_active_lift_fields
         .max(sample.active_lift_fields);

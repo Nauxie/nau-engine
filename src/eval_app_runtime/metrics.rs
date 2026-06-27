@@ -575,6 +575,18 @@ pub(crate) fn collect_eval_metrics(
         scene.wind_force_diagnostics.updraft_swirl_delta_mps,
         scene.wind_force_diagnostics.max_flow_speed_mps,
         scene.wind_force_diagnostics.max_variation,
+        scene.wind_force_diagnostics.max_flow_alignment,
+        scene.wind_force_diagnostics.max_crosswind_flow_alignment,
+        scene
+            .wind_force_diagnostics
+            .max_updraft_swirl_flow_alignment,
+        scene.wind_force_diagnostics.max_flow_aligned_delta_mps,
+        scene
+            .wind_force_diagnostics
+            .max_crosswind_flow_aligned_delta_mps,
+        scene
+            .wind_force_diagnostics
+            .max_updraft_swirl_flow_aligned_delta_mps,
     )
     .with_world_collision_metrics(
         scene.collision_diagnostics.proxy_count,

@@ -3,7 +3,8 @@ use crate::authored_assets::VisualAssetRegistry;
 use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::generated_content::{
     CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, cloud_cluster_mesh, cloud_filament_ribbon_detail_count,
-    mesh_y_range, mix_color, updraft_ribbon_mesh,
+    crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh, mesh_y_range, mix_color,
+    updraft_ribbon_mesh,
 };
 use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
 use bevy::light::VolumetricFog;
@@ -227,12 +228,15 @@ pub(crate) fn spawn_crosswind_guide(
     label: &str,
 ) {
     let ribbon_length = (field.half_extents.x * 1.28).max(3.0);
-    let ribbon_mesh = meshes.add(Cuboid::new(ribbon_length, 0.09, 0.18));
     let marker_mesh = meshes.add(Cuboid::new(0.74, 0.07, 0.14));
     let base_rotation = rotation_from_x_to_direction(field.direction);
 
     for ribbon_index in 0..CROSSWIND_RIBBONS_PER_FIELD {
         let phase = ribbon_index as f32 / CROSSWIND_RIBBONS_PER_FIELD as f32;
+        let ribbon_mesh = meshes.add(crosswind_flow_ribbon_mesh(
+            ribbon_length,
+            phase * std::f32::consts::TAU,
+        ));
         let origin = field.stream_origin(ribbon_index, CROSSWIND_RIBBONS_PER_FIELD);
         let base_translation = origin + field.direction * (field.half_extents.x * 0.62);
         commands.spawn((
@@ -691,12 +695,18 @@ pub(crate) fn crosswind_ribbon_scene_sample_positions(
     ribbon: &CrosswindRibbon,
     transform: &Transform,
 ) -> [Vec3; 3] {
-    let half_length = (ribbon.field.half_extents.x * 1.28 * 0.5).max(1.5);
-    [
-        transform_local_point(transform, Vec3::new(-half_length * 0.68, 0.0, 0.0)),
-        transform_local_point(transform, Vec3::ZERO),
-        transform_local_point(transform, Vec3::new(half_length * 0.68, 0.0, 0.0)),
-    ]
+    const STOPS: [f32; 3] = [0.16, 0.5, 0.84];
+
+    let length = (ribbon.field.half_extents.x * 1.28).max(3.0);
+    STOPS.map(|t| {
+        let x = (t - 0.5) * length;
+        let curve = crosswind_flow_ribbon_centerline_offset(
+            length,
+            ribbon.phase * std::f32::consts::TAU,
+            t,
+        );
+        transform_local_point(transform, Vec3::X * x + curve)
+    })
 }
 
 fn transform_local_point(transform: &Transform, local_position: Vec3) -> Vec3 {
@@ -1426,15 +1436,19 @@ mod tests {
         let ribbon = CrosswindRibbon {
             field,
             base_translation: Vec3::ZERO,
-            phase: 0.0,
+            phase: 0.17,
         };
         let transform = Transform::from_translation(Vec3::new(10.0, 4.0, -2.0));
 
         let samples = crosswind_ribbon_scene_sample_positions(&ribbon, &transform);
         assert_eq!(samples.len(), 3);
         assert!(samples[0].x < transform.translation.x);
-        assert_eq!(samples[1], transform.translation);
         assert!(samples[2].x > transform.translation.x);
+        let straight_midpoint = (samples[0] + samples[2]) * 0.5;
+        assert!(
+            samples[1].distance(straight_midpoint) > 0.45,
+            "expected curved crosswind ribbon samples to leave the straight centerline"
+        );
     }
 
     #[test]

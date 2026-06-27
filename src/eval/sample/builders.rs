@@ -160,6 +160,12 @@ impl EvalSample {
             max_updraft_swirl_force_delta_mps: 0.0,
             max_wind_force_flow_speed_mps: 0.0,
             max_wind_force_variation: 0.0,
+            max_wind_force_flow_alignment: 0.0,
+            max_crosswind_force_flow_alignment: 0.0,
+            max_updraft_swirl_force_flow_alignment: 0.0,
+            max_wind_force_aligned_delta_mps: 0.0,
+            max_crosswind_force_aligned_delta_mps: 0.0,
+            max_updraft_swirl_force_aligned_delta_mps: 0.0,
             active_lift_fields,
             readable_lift_fields,
             lift_field_count,
@@ -437,6 +443,12 @@ impl EvalSample {
         max_updraft_swirl_force_delta_mps: f32,
         max_flow_speed_mps: f32,
         max_variation: f32,
+        max_flow_alignment: f32,
+        max_crosswind_flow_alignment: f32,
+        max_updraft_swirl_flow_alignment: f32,
+        max_flow_aligned_delta_mps: f32,
+        max_crosswind_flow_aligned_delta_mps: f32,
+        max_updraft_swirl_flow_aligned_delta_mps: f32,
     ) -> Self {
         self.active_wind_force_fields = active_field_count;
         self.crosswind_force_fields = crosswind_field_count;
@@ -446,6 +458,14 @@ impl EvalSample {
         self.max_updraft_swirl_force_delta_mps = max_updraft_swirl_force_delta_mps.max(0.0);
         self.max_wind_force_flow_speed_mps = max_flow_speed_mps.max(0.0);
         self.max_wind_force_variation = max_variation.max(0.0);
+        self.max_wind_force_flow_alignment = max_flow_alignment.clamp(-1.0, 1.0);
+        self.max_crosswind_force_flow_alignment = max_crosswind_flow_alignment.clamp(-1.0, 1.0);
+        self.max_updraft_swirl_force_flow_alignment =
+            max_updraft_swirl_flow_alignment.clamp(-1.0, 1.0);
+        self.max_wind_force_aligned_delta_mps = max_flow_aligned_delta_mps.max(0.0);
+        self.max_crosswind_force_aligned_delta_mps = max_crosswind_flow_aligned_delta_mps.max(0.0);
+        self.max_updraft_swirl_force_aligned_delta_mps =
+            max_updraft_swirl_flow_aligned_delta_mps.max(0.0);
         self
     }
 

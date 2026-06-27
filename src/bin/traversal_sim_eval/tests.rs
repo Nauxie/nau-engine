@@ -75,6 +75,12 @@ fn baseline_simulation_writes_windowless_artifacts() {
         "max_updraft_swirl_force_delta_mps",
         "max_wind_force_flow_speed_mps",
         "max_wind_force_variation",
+        "max_wind_force_flow_alignment",
+        "max_crosswind_force_flow_alignment",
+        "max_updraft_swirl_force_flow_alignment",
+        "max_wind_force_aligned_delta_mps",
+        "max_crosswind_force_aligned_delta_mps",
+        "max_updraft_swirl_force_aligned_delta_mps",
     ] {
         assert!(
             last_sample_json.get(key).is_some(),
@@ -84,13 +90,19 @@ fn baseline_simulation_writes_windowless_artifacts() {
     for check_name in [
         "wind_force_samples",
         "meaningful_wind_force_samples",
+        "aligned_wind_force_samples",
         "active_wind_force_fields",
         "wind_force_delta",
         "wind_force_flow_speed",
         "wind_force_variation",
+        "wind_force_flow_alignment",
+        "wind_force_aligned_delta",
         "crosswind_force_samples",
+        "aligned_crosswind_force_samples",
         "crosswind_force_fields",
         "crosswind_force_delta",
+        "crosswind_force_flow_alignment",
+        "crosswind_force_aligned_delta",
     ] {
         let check = result
             .checks
@@ -303,13 +315,19 @@ fn updraft_simulation_uses_readable_lift() {
         "max_wind_flow_variation_range",
         "wind_force_samples",
         "meaningful_wind_force_samples",
+        "aligned_wind_force_samples",
         "active_wind_force_fields",
         "wind_force_delta",
         "wind_force_flow_speed",
         "wind_force_variation",
+        "wind_force_flow_alignment",
+        "wind_force_aligned_delta",
         "updraft_swirl_force_samples",
+        "aligned_updraft_swirl_force_samples",
         "updraft_swirl_force_fields",
         "updraft_swirl_force_delta",
+        "updraft_swirl_force_flow_alignment",
+        "updraft_swirl_force_aligned_delta",
     ] {
         let check = result
             .checks
