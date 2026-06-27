@@ -14,7 +14,9 @@ use nau_engine::{
     eval::{
         AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario,
         ISLAND_LAUNCH_TO_LANDING, LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES, LONG_GLIDE_VISIBILITY,
-        POSE_STATE_COVERAGE, UPDRAFT_ROUTE, scenario_named,
+        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
+        MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
+        UPDRAFT_ROUTE, scenario_named,
     },
     movement::{Facing, FlightController, FlightInput, FlightMode, FlightState},
     world::{START_POSITION, SkyRoute},
@@ -87,6 +89,8 @@ fn baseline_simulation_writes_windowless_artifacts() {
         "max_wind_force_aligned_delta_mps",
         "max_crosswind_force_aligned_delta_mps",
         "max_updraft_swirl_force_aligned_delta_mps",
+        "wind_lateral_load",
+        "wind_load_glider_response_degrees",
     ] {
         assert!(
             last_sample_json.get(key).is_some(),
@@ -453,6 +457,16 @@ fn updraft_simulation_uses_readable_lift() {
     assert!(result.metrics.crosswind_updraft_overlap_samples >= 2);
     assert!(result.metrics.aligned_crosswind_updraft_overlap_samples >= 2);
     assert!(result.metrics.max_layered_wind_force_fields >= 2);
+    assert!(
+        result.metrics.wind_load_response_samples >= MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT,
+        "updraft route should include neutral crosswind-load reaction samples"
+    );
+    assert!(result.metrics.max_wind_load_lateral_load >= MIN_WIND_LOAD_LATERAL_LOAD);
+    assert!(result.metrics.max_wind_load_pose_lean_degrees >= MIN_WIND_LOAD_POSE_LEAN_DEGREES);
+    assert!(
+        result.metrics.max_wind_load_glider_response_degrees
+            >= MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES
+    );
     for check_name in [
         "dynamic_readable_lift_samples",
         "max_wind_flow_speed",
@@ -482,6 +496,10 @@ fn updraft_simulation_uses_readable_lift() {
         "layered_wind_force_delta",
         "layered_wind_force_flow_alignment",
         "layered_wind_force_aligned_delta",
+        "wind_load_response_samples",
+        "wind_load_lateral_load",
+        "wind_load_pose_lean",
+        "wind_load_glider_response",
     ] {
         let check = result
             .checks

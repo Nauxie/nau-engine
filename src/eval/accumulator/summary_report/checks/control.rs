@@ -344,6 +344,32 @@ pub(super) fn append_scenario_checks(
             "m/s",
         ));
     }
+    if wind_load_response_scenario(scenario) {
+        checks.push(EvalCheck::at_least(
+            "wind_load_response_samples",
+            acc.wind_load_response_samples as f32,
+            MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT as f32,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
+            "wind_load_lateral_load",
+            acc.max_wind_load_lateral_load,
+            MIN_WIND_LOAD_LATERAL_LOAD,
+            "normalized",
+        ));
+        checks.push(EvalCheck::at_least(
+            "wind_load_pose_lean",
+            acc.max_wind_load_pose_lean_degrees,
+            MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+            "deg",
+        ));
+        checks.push(EvalCheck::at_least(
+            "wind_load_glider_response",
+            acc.max_wind_load_glider_response_degrees,
+            MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+            "deg",
+        ));
+    }
     if scenario.name == AIR_CONTROL_RESPONSE {
         append_air_control_checks(checks, acc, derived);
     }
@@ -367,6 +393,10 @@ fn crosswind_force_scenario(scenario: EvalScenario) -> bool {
 }
 
 fn layered_wind_force_scenario(scenario: EvalScenario) -> bool {
+    scenario.name == UPDRAFT_ROUTE
+}
+
+fn wind_load_response_scenario(scenario: EvalScenario) -> bool {
     scenario.name == UPDRAFT_ROUTE
 }
 

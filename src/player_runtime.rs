@@ -15,7 +15,7 @@ use crate::world_collision_runtime::{
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartPose, PartVisibility, PlayerPoseContext,
     advance_phase, body_local_pose_velocity, glider_traversal_pose, part_pose_with_context,
-    pose_blend_for_intent,
+    pose_blend_for_intent, wind_lateral_load_from_delta,
 };
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::{
@@ -118,10 +118,11 @@ pub(crate) struct WindForceDiagnostics {
     pub(crate) max_flow_aligned_delta_mps: f32,
     pub(crate) max_crosswind_flow_aligned_delta_mps: f32,
     pub(crate) max_updraft_swirl_flow_aligned_delta_mps: f32,
+    pub(crate) wind_lateral_load: f32,
 }
 
 impl WindForceDiagnostics {
-    fn from_application(application: WindForceApplication) -> Self {
+    fn from_application(application: WindForceApplication, wind_lateral_load: f32) -> Self {
         Self {
             active_fields: application.active_fields,
             crosswind_fields: application.crosswind_fields,
@@ -138,6 +139,7 @@ impl WindForceDiagnostics {
             max_crosswind_flow_aligned_delta_mps: application.max_crosswind_flow_aligned_delta_mps,
             max_updraft_swirl_flow_aligned_delta_mps: application
                 .max_updraft_swirl_flow_aligned_delta_mps,
+            wind_lateral_load,
         }
     }
 }
@@ -299,6 +301,7 @@ pub(crate) fn fly_player(
         &transform,
         &velocity,
         &controller,
+        world.wind_diagnostics.wind_lateral_load,
     );
 }
 
@@ -383,6 +386,7 @@ pub(crate) fn eval_fly_player(
         &transform,
         &velocity,
         &controller,
+        world.wind_diagnostics.wind_lateral_load,
     );
 }
 
@@ -436,9 +440,6 @@ fn step_player(
         .resolve_ground_contact_after_step(next, was_grounded);
     let collision = resolve_world_collisions(next, context.collision_proxies.iter().copied());
     let next = collision.state;
-    *context.wind_diagnostics = WindForceDiagnostics::from_application(
-        wind.for_airborne_diagnostics(next.controller.mode != FlightMode::Grounded),
-    );
     let mut tree_proxy_count = 0;
     let mut rock_proxy_count = 0;
     let mut landmark_proxy_count = 0;
@@ -475,6 +476,10 @@ fn step_player(
         &tuning,
         dt,
     );
+    let wind = wind.for_airborne_diagnostics(player.controller.mode != FlightMode::Grounded);
+    let wind_lateral_load =
+        wind_lateral_load_from_delta(wind.crosswind_delta, player.transform.rotation);
+    *context.wind_diagnostics = WindForceDiagnostics::from_application(wind, wind_lateral_load);
 }
 
 fn record_animation_context(
@@ -484,8 +489,10 @@ fn record_animation_context(
     transform: &Transform,
     velocity: &Velocity,
     controller: &FlightController,
+    wind_lateral_load: f32,
 ) {
     animation.last_input = input;
+    animation.wind_lateral_load = wind_lateral_load;
     animation.height_above_ground_m =
         (transform.translation.y - route.ground_at(transform.translation).floor_y).max(0.0);
     let pose_velocity = body_local_pose_velocity(velocity.0, transform.rotation);
@@ -495,6 +502,7 @@ fn record_animation_context(
         input,
         animation.height_above_ground_m,
     )
+    .with_wind_lateral_load(animation.wind_lateral_load)
     .with_landing_recovery(
         controller.landing_recovery_timer,
         controller.landing_impact_speed_mps,
@@ -556,6 +564,7 @@ pub(crate) fn animate_character(
         animation.last_input,
         animation.height_above_ground_m,
     )
+    .with_wind_lateral_load(animation.wind_lateral_load)
     .with_landing_recovery(
         controller.landing_recovery_timer,
         controller.landing_impact_speed_mps,
@@ -626,6 +635,7 @@ pub(crate) fn apply_authored_player_pose_nodes(
         animation.last_input,
         animation.height_above_ground_m,
     )
+    .with_wind_lateral_load(animation.wind_lateral_load)
     .with_landing_recovery(
         controller.landing_recovery_timer,
         controller.landing_impact_speed_mps,
@@ -656,6 +666,7 @@ pub(crate) fn apply_authored_glider_pose(
         animation.last_input,
         animation.height_above_ground_m,
     )
+    .with_wind_lateral_load(animation.wind_lateral_load)
     .with_landing_recovery(
         controller.landing_recovery_timer,
         controller.landing_impact_speed_mps,

@@ -37,6 +37,7 @@ if command -v jq >/dev/null 2>&1; then
       schema: "nau_sim_suite.v1",
       passed: all(.[]; .passed == true),
       scenario_count: length,
+      native_window_created_any: any(.[]; .metrics.native_window_created == true),
       scenarios: map({
         scenario,
         passed,
@@ -88,12 +89,16 @@ if command -v jq >/dev/null 2>&1; then
           max_crosswind_force_aligned_delta_mps: .metrics.max_crosswind_force_aligned_delta_mps,
           max_updraft_swirl_force_aligned_delta_mps: .metrics.max_updraft_swirl_force_aligned_delta_mps,
           max_layered_wind_force_aligned_delta_mps: .metrics.max_layered_wind_force_aligned_delta_mps,
+          wind_load_response_samples: .metrics.wind_load_response_samples,
+          max_wind_load_lateral_load: .metrics.max_wind_load_lateral_load,
+          max_wind_load_pose_lean_degrees: .metrics.max_wind_load_pose_lean_degrees,
+          max_wind_load_glider_response_degrees: .metrics.max_wind_load_glider_response_degrees,
           native_window_created: .metrics.native_window_created
         }
       })
     }
   ' "${summary_paths[@]}" > "${output_root}/summary.json"
-  jq '{passed, scenario_count, scenarios}' "${output_root}/summary.json"
+  jq '{passed, scenario_count, native_window_created_any, scenarios}' "${output_root}/summary.json"
 else
   printf 'wrote simulation summaries under %s\n' "${output_root}"
 fi

@@ -13,7 +13,9 @@ use nau_engine::eval::{
     MIN_DYNAMIC_WIND_FLOW_VARIATION, MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE,
     MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS, MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS,
     MIN_WIND_FORCE_FLOW_ALIGNMENT, MIN_WIND_FORCE_FLOW_SPEED_MPS, MIN_WIND_FORCE_SAMPLE_COUNT,
-    MIN_WIND_FORCE_VARIATION, POSE_STATE_COVERAGE, UPDRAFT_ROUTE,
+    MIN_WIND_FORCE_VARIATION, MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
+    MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
+    UPDRAFT_ROUTE,
 };
 use serde_json::{Value, json};
 
@@ -344,6 +346,33 @@ impl SimMetrics {
             ));
         }
 
+        if wind_load_response_scenario(scenario) {
+            checks.push(SimCheck::at_least(
+                "wind_load_response_samples",
+                self.wind_load_response_samples as f32,
+                MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT as f32,
+                "samples",
+            ));
+            checks.push(SimCheck::at_least(
+                "wind_load_lateral_load",
+                self.max_wind_load_lateral_load,
+                MIN_WIND_LOAD_LATERAL_LOAD,
+                "normalized",
+            ));
+            checks.push(SimCheck::at_least(
+                "wind_load_pose_lean",
+                self.max_wind_load_pose_lean_degrees,
+                MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+                "deg",
+            ));
+            checks.push(SimCheck::at_least(
+                "wind_load_glider_response",
+                self.max_wind_load_glider_response_degrees,
+                MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+                "deg",
+            ));
+        }
+
         if scenario.name == CAMERA_STRAFE_STABILITY {
             camera_strafe::append_checks(&mut checks, self);
         }
@@ -437,5 +466,9 @@ fn crosswind_force_scenario(scenario: EvalScenario) -> bool {
 }
 
 fn layered_wind_force_scenario(scenario: EvalScenario) -> bool {
+    scenario.name == UPDRAFT_ROUTE
+}
+
+fn wind_load_response_scenario(scenario: EvalScenario) -> bool {
     scenario.name == UPDRAFT_ROUTE
 }

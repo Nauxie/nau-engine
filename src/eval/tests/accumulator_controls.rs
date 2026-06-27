@@ -2840,6 +2840,128 @@ fn accumulator_rejects_missing_wind_force_response_metrics() {
 }
 
 #[test]
+fn accumulator_gates_wind_load_response_metrics() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT {
+        accumulator.observe(wind_load_metric_sample(
+            scenario,
+            frame,
+            MIN_WIND_LOAD_LATERAL_LOAD,
+            MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+            MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for check_name in [
+        "wind_load_response_samples",
+        "wind_load_lateral_load",
+        "wind_load_pose_lean",
+        "wind_load_glider_response",
+    ] {
+        assert!(
+            named_check(&summary, check_name).passed,
+            "{check_name} should pass with readable neutral crosswind load"
+        );
+    }
+    assert_eq!(
+        summary.metrics.wind_load_response_samples,
+        MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT
+    );
+    assert_eq!(
+        summary.metrics.max_wind_load_lateral_load,
+        MIN_WIND_LOAD_LATERAL_LOAD
+    );
+    assert_eq!(
+        summary.metrics.max_wind_load_pose_lean_degrees,
+        MIN_WIND_LOAD_POSE_LEAN_DEGREES
+    );
+    assert_eq!(
+        summary.metrics.max_wind_load_glider_response_degrees,
+        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES
+    );
+}
+
+#[test]
+fn accumulator_rejects_missing_wind_load_response() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT {
+        accumulator.observe(wind_load_metric_sample(scenario, frame, 0.0, 0.0, 0.0));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for check_name in [
+        "wind_load_response_samples",
+        "wind_load_lateral_load",
+        "wind_load_pose_lean",
+        "wind_load_glider_response",
+    ] {
+        assert!(
+            !named_check(&summary, check_name).passed,
+            "{check_name} should fail without wind-driven pose/glider response"
+        );
+    }
+}
+
+fn wind_load_metric_sample(
+    scenario: EvalScenario,
+    frame: u32,
+    lateral_load: f32,
+    pose_lean_degrees: f32,
+    glider_response_degrees: f32,
+) -> EvalSample {
+    air_control_metric_sample(
+        scenario,
+        frame,
+        Vec3::new(0.0, -2.0, -18.0),
+        Vec2::new(0.0, 1.0),
+        0.0,
+        18.0,
+        0.0,
+    )
+    .with_wind_lateral_load(lateral_load)
+    .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: 10.0,
+        arm_spread_degrees: 30.0,
+        leg_tuck_degrees: 0.0,
+        lateral_lean_degrees: pose_lean_degrees,
+        signed_lateral_lean_degrees: -pose_lean_degrees,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
+        landing_crouch_m: 0.0,
+        landing_foot_forward_m: 0.0,
+        landing_recovery_flip_degrees: 0.0,
+        wing_airflow_strength: 1.0,
+        key_pose_readability_score: 1.0,
+    })
+    .with_authored_glider_metrics(glider_response_degrees, 0.08)
+}
+
+#[test]
 fn accumulator_gates_wind_guide_visual_presence_and_motion() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
     let sample = content_metric_sample(scenario, 0, 12, 0, 96)

@@ -335,6 +335,10 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"max_crosswind_force_aligned_delta_mps\": 0.0300"));
     assert!(summary_json.contains("\"max_updraft_swirl_force_aligned_delta_mps\": 0.0300"));
     assert!(summary_json.contains("\"max_layered_wind_force_aligned_delta_mps\": 0.0000"));
+    assert!(summary_json.contains("\"wind_load_response_samples\": 0"));
+    assert!(summary_json.contains("\"max_wind_load_lateral_load\": 0.0000"));
+    assert!(summary_json.contains("\"max_wind_load_pose_lean_degrees\": 0.0000"));
+    assert!(summary_json.contains("\"max_wind_load_glider_response_degrees\": 0.0000"));
     assert!(summary_json.contains("\"max_world_collision_proxy_count\": 24"));
     assert!(summary_json.contains("\"max_terrain_rim_collision_proxy_count\": 4"));
     assert!(summary_json.contains("\"max_solid_world_collision_proxy_count\": 60"));
@@ -716,6 +720,7 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"max_wind_force_aligned_delta_mps\":0.0300"));
     assert!(sample_json.contains("\"max_crosswind_force_aligned_delta_mps\":0.0300"));
     assert!(sample_json.contains("\"max_updraft_swirl_force_aligned_delta_mps\":0.0300"));
+    assert!(sample_json.contains("\"wind_lateral_load\":0.0000"));
     assert!(sample_json.contains("\"terrain_rim_collision_proxy_count\":4"));
     assert!(sample_json.contains("\"solid_world_collision_proxy_count\":60"));
     assert!(sample_json.contains("\"tree_world_collision_proxy_count\":10"));
