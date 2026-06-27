@@ -616,6 +616,24 @@ fn append_air_control_checks(
             "ratio",
         ),
         EvalCheck::at_least(
+            "air_control_pose_scarf_stream",
+            acc.max_pose_scarf_stream_m,
+            MIN_POSE_SCARF_STREAM_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "air_control_pose_scarf_lateral_sway",
+            acc.max_pose_scarf_lateral_sway_m,
+            MIN_POSE_SCARF_LATERAL_SWAY_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "air_control_pose_scarf_tail_flex",
+            acc.max_pose_scarf_tail_flex_degrees,
+            MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
             "air_control_authored_glider_response",
             acc.max_authored_glider_response_degrees,
             AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES,
@@ -985,6 +1003,24 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             "pose_state_landing_recovery_flip",
             acc.max_pose_landing_recovery_flip_degrees,
             LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "pose_state_scarf_stream",
+            acc.max_pose_scarf_stream_m,
+            MIN_POSE_SCARF_STREAM_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "pose_state_scarf_lateral_sway",
+            acc.max_pose_scarf_lateral_sway_m,
+            MIN_POSE_SCARF_LATERAL_SWAY_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "pose_state_scarf_tail_flex",
+            acc.max_pose_scarf_tail_flex_degrees,
+            MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
             "deg",
         ),
         EvalCheck::at_most(
