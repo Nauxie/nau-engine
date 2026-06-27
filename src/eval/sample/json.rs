@@ -200,8 +200,13 @@ impl EvalSample {
         let json = json.replacen(wind_force_key, &wind_force_metrics, 1);
         let collision_resolved_key = "\"world_collision_resolved_count\"";
         let terrain_rim_collision_metrics = format!(
-            "\"terrain_rim_collision_proxy_count\":{},{}",
-            self.terrain_rim_collision_proxy_count, collision_resolved_key
+            "\"terrain_rim_collision_proxy_count\":{},\"solid_world_collision_proxy_count\":{},\"tree_world_collision_proxy_count\":{},\"rock_world_collision_proxy_count\":{},\"landmark_world_collision_proxy_count\":{},{}",
+            self.terrain_rim_collision_proxy_count,
+            self.solid_world_collision_proxy_count,
+            self.tree_world_collision_proxy_count,
+            self.rock_world_collision_proxy_count,
+            self.landmark_world_collision_proxy_count,
+            collision_resolved_key
         );
         let json = json.replacen(collision_resolved_key, &terrain_rim_collision_metrics, 1);
         let collision_push_key = "\"max_world_collision_push_m\"";

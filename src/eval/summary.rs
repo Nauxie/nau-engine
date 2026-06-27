@@ -189,6 +189,10 @@ pub struct EvalMetricsSummary {
     pub max_crosswind_visual_flow_alignment: f32,
     pub max_world_collision_proxy_count: usize,
     pub max_terrain_rim_collision_proxy_count: usize,
+    pub max_solid_world_collision_proxy_count: usize,
+    pub max_tree_world_collision_proxy_count: usize,
+    pub max_rock_world_collision_proxy_count: usize,
+    pub max_landmark_world_collision_proxy_count: usize,
     pub world_collision_resolved_samples: u32,
     pub world_collision_contact_samples: u32,
     pub terrain_rim_collision_resolved_samples: u32,
@@ -622,9 +626,13 @@ impl EvalMetricsSummary {
         );
         let json = json.replacen(&terrain_surface_key, &wind_visual_metrics, 1);
         let collision_metrics = format!(
-            "{indent}  \"max_world_collision_proxy_count\": {},\n{indent}  \"max_terrain_rim_collision_proxy_count\": {},\n{indent}  \"world_collision_resolved_samples\": {},\n{indent}  \"world_collision_contact_samples\": {},\n{indent}  \"terrain_rim_collision_resolved_samples\": {},\n{indent}  \"terrain_rim_collision_contact_samples\": {},\n{indent}  \"max_world_collision_push_m\": {},\n{indent}  \"max_terrain_rim_collision_push_m\": {},\n{}",
+            "{indent}  \"max_world_collision_proxy_count\": {},\n{indent}  \"max_terrain_rim_collision_proxy_count\": {},\n{indent}  \"max_solid_world_collision_proxy_count\": {},\n{indent}  \"max_tree_world_collision_proxy_count\": {},\n{indent}  \"max_rock_world_collision_proxy_count\": {},\n{indent}  \"max_landmark_world_collision_proxy_count\": {},\n{indent}  \"world_collision_resolved_samples\": {},\n{indent}  \"world_collision_contact_samples\": {},\n{indent}  \"terrain_rim_collision_resolved_samples\": {},\n{indent}  \"terrain_rim_collision_contact_samples\": {},\n{indent}  \"max_world_collision_push_m\": {},\n{indent}  \"max_terrain_rim_collision_push_m\": {},\n{}",
             self.max_world_collision_proxy_count,
             self.max_terrain_rim_collision_proxy_count,
+            self.max_solid_world_collision_proxy_count,
+            self.max_tree_world_collision_proxy_count,
+            self.max_rock_world_collision_proxy_count,
+            self.max_landmark_world_collision_proxy_count,
             self.world_collision_resolved_samples,
             self.world_collision_contact_samples,
             self.terrain_rim_collision_resolved_samples,

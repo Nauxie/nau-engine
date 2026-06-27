@@ -9,6 +9,10 @@ pub(crate) use nau_engine::world::{
 pub(crate) struct WorldCollisionDiagnostics {
     pub(crate) proxy_count: usize,
     pub(crate) terrain_rim_proxy_count: usize,
+    pub(crate) solid_proxy_count: usize,
+    pub(crate) tree_proxy_count: usize,
+    pub(crate) rock_proxy_count: usize,
+    pub(crate) landmark_proxy_count: usize,
     pub(crate) resolved_count: usize,
     pub(crate) terrain_rim_resolved_count: usize,
     pub(crate) max_push_m: f32,

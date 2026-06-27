@@ -304,7 +304,7 @@ pub(crate) fn queue_sky_island(
     let ridge_surface = island_visual_surface_position(island, Vec2::new(0.28, -0.24));
     let ridge_center = ridge_surface + Vec3::Y * 0.375;
     let ridge_half_extents = Vec3::new(ridge_width * 0.5, 0.375, island.half_extents.y * 0.09);
-    queue_island_visual(
+    queue_collidable_island_visual(
         entries,
         &mut visual_index,
         island,
@@ -316,6 +316,11 @@ pub(crate) fn queue_sky_island(
             ridge_center,
             ridge_half_extents,
         ))),
+        WorldCollisionProxy::new(
+            ridge_center,
+            ridge_half_extents,
+            WorldCollisionProxyKind::Landmark,
+        ),
         "island ridge",
     );
 
@@ -415,19 +420,29 @@ fn queue_recovery_branch_marker(
         ),
     ] {
         let surface_y = island.mesh_top_y_at(island.center + Vec3::new(offset.x, 0.0, offset.z));
-        queue_island_visual(
+        let ring_center = Vec3::new(
+            island.center.x + offset.x,
+            surface_y + offset.y,
+            island.center.z + offset.z,
+        );
+        let ring_half_extents = scale * 0.5;
+        queue_collidable_island_visual(
             entries,
             visual_index,
             island,
             IslandVisualLayer::Beacon,
             meshes.add(Cuboid::new(scale.x, scale.y, scale.z)),
             marker_material.clone(),
-            Transform::from_xyz(
-                island.center.x + offset.x,
-                surface_y + offset.y,
-                island.center.z + offset.z,
+            Transform::from_translation(ring_center),
+            Some(CameraObstacle(CameraObstruction::new(
+                ring_center,
+                ring_half_extents,
+            ))),
+            WorldCollisionProxy::new(
+                ring_center,
+                ring_half_extents,
+                WorldCollisionProxyKind::Landmark,
             ),
-            None,
             "recovery branch ring",
         );
     }

@@ -280,6 +280,30 @@ pub(super) fn build_checks(
             MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT as f32,
             "proxies",
         ),
+        EvalCheck::at_least(
+            "solid_world_collision_proxy_count",
+            acc.max_solid_world_collision_proxy_count as f32,
+            MIN_SOLID_WORLD_COLLISION_PROXY_COUNT as f32,
+            "proxies",
+        ),
+        EvalCheck::at_least(
+            "tree_world_collision_proxy_count",
+            acc.max_tree_world_collision_proxy_count as f32,
+            MIN_TREE_WORLD_COLLISION_PROXY_COUNT as f32,
+            "proxies",
+        ),
+        EvalCheck::at_least(
+            "rock_world_collision_proxy_count",
+            acc.max_rock_world_collision_proxy_count as f32,
+            MIN_ROCK_WORLD_COLLISION_PROXY_COUNT as f32,
+            "proxies",
+        ),
+        EvalCheck::at_least(
+            "landmark_world_collision_proxy_count",
+            acc.max_landmark_world_collision_proxy_count as f32,
+            MIN_LANDMARK_WORLD_COLLISION_PROXY_COUNT as f32,
+            "proxies",
+        ),
     ];
 
     if scenario.name == WORLD_COLLISION_CONTACT {
