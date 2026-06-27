@@ -221,6 +221,30 @@ pub(super) fn build_checks(
             "m",
         ),
         EvalCheck::at_least(
+            "updraft_flow_coherent_visual_count",
+            acc.max_updraft_flow_coherent_visual_count as f32,
+            MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT as f32,
+            "entities",
+        ),
+        EvalCheck::at_least(
+            "crosswind_flow_coherent_visual_count",
+            acc.max_crosswind_flow_coherent_visual_count as f32,
+            MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT as f32,
+            "entities",
+        ),
+        EvalCheck::at_least(
+            "updraft_visual_flow_alignment",
+            acc.max_updraft_visual_flow_alignment,
+            MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+            "dot",
+        ),
+        EvalCheck::at_least(
+            "crosswind_visual_flow_alignment",
+            acc.max_crosswind_visual_flow_alignment,
+            MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+            "dot",
+        ),
+        EvalCheck::at_least(
             "world_collision_proxy_count",
             acc.max_world_collision_proxy_count as f32,
             MIN_WORLD_COLLISION_PROXY_COUNT as f32,

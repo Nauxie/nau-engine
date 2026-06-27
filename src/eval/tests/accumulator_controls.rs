@@ -2271,6 +2271,43 @@ fn accumulator_gates_wind_guide_visual_flow_direction() {
 }
 
 #[test]
+fn accumulator_gates_wind_guide_visual_flow_coherence() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let sample = content_metric_sample(scenario, 0, 12, 0, 96)
+        .with_wind_guide_flow_coherence_metrics(
+            MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT - 1,
+            MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT - 1,
+            MIN_WIND_VISUAL_FLOW_ALIGNMENT - 0.01,
+            MIN_WIND_VISUAL_FLOW_ALIGNMENT - 0.01,
+        );
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for check_name in [
+        "updraft_flow_coherent_visual_count",
+        "crosswind_flow_coherent_visual_count",
+        "updraft_visual_flow_alignment",
+        "crosswind_visual_flow_alignment",
+    ] {
+        assert!(
+            !named_check(&summary, check_name).passed,
+            "{check_name} should fail without flow-coherent wind guide visuals"
+        );
+    }
+}
+
+#[test]
 fn accumulator_gates_crosswind_ribbon_flow_separately_from_guides() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
     let sample = content_metric_sample(scenario, 0, 12, 0, 96).with_wind_guide_visual_metrics(

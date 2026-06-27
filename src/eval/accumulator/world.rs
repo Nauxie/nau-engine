@@ -155,6 +155,18 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_crosswind_ribbon_flow_displacement_m = accumulator
         .max_crosswind_ribbon_flow_displacement_m
         .max(sample.max_crosswind_ribbon_flow_displacement_m);
+    accumulator.max_updraft_flow_coherent_visual_count = accumulator
+        .max_updraft_flow_coherent_visual_count
+        .max(sample.updraft_flow_coherent_visual_count);
+    accumulator.max_crosswind_flow_coherent_visual_count = accumulator
+        .max_crosswind_flow_coherent_visual_count
+        .max(sample.crosswind_flow_coherent_visual_count);
+    accumulator.max_updraft_visual_flow_alignment = accumulator
+        .max_updraft_visual_flow_alignment
+        .max(sample.max_updraft_visual_flow_alignment);
+    accumulator.max_crosswind_visual_flow_alignment = accumulator
+        .max_crosswind_visual_flow_alignment
+        .max(sample.max_crosswind_visual_flow_alignment);
     accumulator.max_world_collision_proxy_count = accumulator
         .max_world_collision_proxy_count
         .max(sample.world_collision_proxy_count);

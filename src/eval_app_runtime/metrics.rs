@@ -290,9 +290,10 @@ pub(crate) fn collect_eval_metrics(
         .unwrap_or_default();
     let visible_wind_fields =
         visible_fields_at(transform.translation, scene.wind_fields.iter().copied());
+    let elapsed_secs = run.frame as f32 * run.scenario.fixed_dt;
     let wind_flow = wind_flow_metrics_at(
         transform.translation,
-        run.frame as f32 * run.scenario.fixed_dt,
+        elapsed_secs,
         scene.wind_fields.iter().copied(),
     );
     let active_lift_fields =
@@ -334,6 +335,7 @@ pub(crate) fn collect_eval_metrics(
     let (environment_motion_visuals, max_environment_motion_offset_m) =
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
     let wind_guide_metrics = wind_guide_visual_metrics(
+        elapsed_secs,
         scene.updraft_guides.iter(),
         scene.updraft_ribbons.iter(),
         scene.crosswind_guides.iter(),
@@ -551,6 +553,12 @@ pub(crate) fn collect_eval_metrics(
         wind_guide_metrics.max_crosswind_visual_motion_m,
         wind_guide_metrics.max_crosswind_guide_flow_displacement_m,
         wind_guide_metrics.max_crosswind_ribbon_flow_displacement_m,
+    )
+    .with_wind_guide_flow_coherence_metrics(
+        wind_guide_metrics.updraft_flow_coherent_visual_count,
+        wind_guide_metrics.crosswind_flow_coherent_visual_count,
+        wind_guide_metrics.max_updraft_visual_flow_alignment,
+        wind_guide_metrics.max_crosswind_visual_flow_alignment,
     )
     .with_wind_force_metrics(
         scene.wind_force_diagnostics.active_fields,
