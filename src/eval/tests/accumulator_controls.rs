@@ -3253,6 +3253,121 @@ fn accumulator_requires_sustained_wind_visual_flow_samples() {
 }
 
 #[test]
+fn accumulator_rejects_weak_sustained_wind_visual_flow_samples() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let weak_visual_ratio = SUSTAINED_WIND_VISUAL_FLOW_FLOOR_RATIO - 0.05;
+    for frame in 0..MIN_SUSTAINED_WIND_VISUAL_FLOW_SAMPLES {
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 12, 0, 96)
+                .with_wind_guide_visual_metrics(
+                    MIN_UPDRAFT_GUIDE_VISUAL_COUNT,
+                    MIN_UPDRAFT_RIBBON_VISUAL_COUNT,
+                    MIN_CROSSWIND_GUIDE_VISUAL_COUNT,
+                    MIN_CROSSWIND_RIBBON_VISUAL_COUNT,
+                    MIN_UPDRAFT_VISUAL_MOTION_M * weak_visual_ratio,
+                    MIN_UPDRAFT_VISUAL_RISE_M * weak_visual_ratio,
+                    MIN_UPDRAFT_VISUAL_SWIRL_DISPLACEMENT_M * weak_visual_ratio,
+                    MIN_CROSSWIND_VISUAL_MOTION_M * weak_visual_ratio,
+                    MIN_CROSSWIND_GUIDE_FLOW_DISPLACEMENT_M * weak_visual_ratio,
+                    MIN_CROSSWIND_RIBBON_FLOW_DISPLACEMENT_M * weak_visual_ratio,
+                )
+                .with_wind_guide_depth_metrics(
+                    MIN_UPDRAFT_VISUAL_DEPTH_SPAN_M * weak_visual_ratio,
+                    MIN_UPDRAFT_VISUAL_SCALE_PULSE * weak_visual_ratio,
+                    MIN_CROSSWIND_VISUAL_LANE_DEPTH_SPAN_M * weak_visual_ratio,
+                    MIN_CROSSWIND_VISUAL_SCALE_PULSE * weak_visual_ratio,
+                )
+                .with_wind_guide_flow_coherence_metrics(
+                    MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT,
+                    MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT,
+                    MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+                    MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+                ),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.sustained_wind_visual_flow_samples, 0);
+    assert_eq!(summary.metrics.sustained_updraft_visual_flow_samples, 0);
+    assert_eq!(summary.metrics.sustained_crosswind_visual_flow_samples, 0);
+    assert!(!named_check(&summary, "sustained_wind_visual_flow_samples").passed);
+    assert!(!named_check(&summary, "sustained_updraft_visual_flow_samples").passed);
+    assert!(!named_check(&summary, "sustained_crosswind_visual_flow_samples").passed);
+}
+
+#[test]
+fn accumulator_rejects_weak_sustained_wind_visual_count_and_alignment_samples() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let weak_updraft_count = ((MIN_UPDRAFT_GUIDE_VISUAL_COUNT as f32)
+        * SUSTAINED_WIND_VISUAL_FLOW_FLOOR_RATIO)
+        .ceil() as usize
+        - 1;
+    let weak_crosswind_count = ((MIN_CROSSWIND_GUIDE_VISUAL_COUNT as f32)
+        * SUSTAINED_WIND_VISUAL_FLOW_FLOOR_RATIO)
+        .ceil() as usize
+        - 1;
+    for frame in 0..MIN_SUSTAINED_WIND_VISUAL_FLOW_SAMPLES {
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 12, 0, 96)
+                .with_wind_guide_visual_metrics(
+                    weak_updraft_count,
+                    MIN_UPDRAFT_RIBBON_VISUAL_COUNT,
+                    weak_crosswind_count,
+                    MIN_CROSSWIND_RIBBON_VISUAL_COUNT,
+                    MIN_UPDRAFT_VISUAL_MOTION_M,
+                    MIN_UPDRAFT_VISUAL_RISE_M,
+                    MIN_UPDRAFT_VISUAL_SWIRL_DISPLACEMENT_M,
+                    MIN_CROSSWIND_VISUAL_MOTION_M,
+                    MIN_CROSSWIND_GUIDE_FLOW_DISPLACEMENT_M,
+                    MIN_CROSSWIND_RIBBON_FLOW_DISPLACEMENT_M,
+                )
+                .with_wind_guide_depth_metrics(
+                    MIN_UPDRAFT_VISUAL_DEPTH_SPAN_M,
+                    MIN_UPDRAFT_VISUAL_SCALE_PULSE,
+                    MIN_CROSSWIND_VISUAL_LANE_DEPTH_SPAN_M,
+                    MIN_CROSSWIND_VISUAL_SCALE_PULSE,
+                )
+                .with_wind_guide_flow_coherence_metrics(
+                    MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT,
+                    MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT,
+                    MIN_WIND_VISUAL_FLOW_ALIGNMENT - 0.01,
+                    MIN_WIND_VISUAL_FLOW_ALIGNMENT - 0.01,
+                ),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.sustained_wind_visual_flow_samples, 0);
+    assert_eq!(summary.metrics.sustained_updraft_visual_flow_samples, 0);
+    assert_eq!(summary.metrics.sustained_crosswind_visual_flow_samples, 0);
+    assert!(!named_check(&summary, "sustained_wind_visual_flow_samples").passed);
+    assert!(!named_check(&summary, "sustained_updraft_visual_flow_samples").passed);
+    assert!(!named_check(&summary, "sustained_crosswind_visual_flow_samples").passed);
+}
+
+#[test]
 fn accumulator_gates_crosswind_ribbon_flow_separately_from_guides() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
     let sample = content_metric_sample(scenario, 0, 12, 0, 96).with_wind_guide_visual_metrics(
