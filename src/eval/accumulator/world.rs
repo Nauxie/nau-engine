@@ -185,6 +185,18 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_terrain_rim_collision_proxy_count = accumulator
         .max_terrain_rim_collision_proxy_count
         .max(sample.terrain_rim_collision_proxy_count);
+    accumulator.max_solid_world_collision_proxy_count = accumulator
+        .max_solid_world_collision_proxy_count
+        .max(sample.solid_world_collision_proxy_count);
+    accumulator.max_tree_world_collision_proxy_count = accumulator
+        .max_tree_world_collision_proxy_count
+        .max(sample.tree_world_collision_proxy_count);
+    accumulator.max_rock_world_collision_proxy_count = accumulator
+        .max_rock_world_collision_proxy_count
+        .max(sample.rock_world_collision_proxy_count);
+    accumulator.max_landmark_world_collision_proxy_count = accumulator
+        .max_landmark_world_collision_proxy_count
+        .max(sample.landmark_world_collision_proxy_count);
     if sample.world_collision_resolved_count > 0 {
         accumulator.world_collision_resolved_samples += 1;
         if sample.max_world_collision_push_m >= MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M {

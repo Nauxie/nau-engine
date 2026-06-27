@@ -426,12 +426,25 @@ fn step_player(
     *context.wind_diagnostics = WindForceDiagnostics::from_application(
         wind.for_airborne_diagnostics(next.controller.mode != FlightMode::Grounded),
     );
+    let mut tree_proxy_count = 0;
+    let mut rock_proxy_count = 0;
+    let mut landmark_proxy_count = 0;
+    let mut terrain_rim_proxy_count = 0;
+    for proxy in context.collision_proxies {
+        match proxy.kind {
+            WorldCollisionProxyKind::Tree => tree_proxy_count += 1,
+            WorldCollisionProxyKind::Rock => rock_proxy_count += 1,
+            WorldCollisionProxyKind::Landmark => landmark_proxy_count += 1,
+            WorldCollisionProxyKind::TerrainRim => terrain_rim_proxy_count += 1,
+        }
+    }
     context.collision_diagnostics.proxy_count = context.collision_proxies.len();
-    context.collision_diagnostics.terrain_rim_proxy_count = context
-        .collision_proxies
-        .iter()
-        .filter(|proxy| proxy.kind == WorldCollisionProxyKind::TerrainRim)
-        .count();
+    context.collision_diagnostics.terrain_rim_proxy_count = terrain_rim_proxy_count;
+    context.collision_diagnostics.solid_proxy_count =
+        tree_proxy_count + rock_proxy_count + landmark_proxy_count;
+    context.collision_diagnostics.tree_proxy_count = tree_proxy_count;
+    context.collision_diagnostics.rock_proxy_count = rock_proxy_count;
+    context.collision_diagnostics.landmark_proxy_count = landmark_proxy_count;
     context.collision_diagnostics.resolved_count = collision.hit_count;
     context.collision_diagnostics.terrain_rim_resolved_count = collision.terrain_rim_hit_count;
     context.collision_diagnostics.max_push_m = collision.max_push_m;
@@ -910,6 +923,10 @@ mod tests {
         assert_eq!(collision_diagnostics.proxy_count, 1);
         assert_eq!(collision_diagnostics.resolved_count, 1);
         assert_eq!(collision_diagnostics.terrain_rim_proxy_count, 0);
+        assert_eq!(collision_diagnostics.solid_proxy_count, 1);
+        assert_eq!(collision_diagnostics.tree_proxy_count, 1);
+        assert_eq!(collision_diagnostics.rock_proxy_count, 0);
+        assert_eq!(collision_diagnostics.landmark_proxy_count, 0);
         assert_eq!(collision_diagnostics.terrain_rim_resolved_count, 0);
         assert_eq!(collision_diagnostics.max_terrain_rim_push_m, 0.0);
         assert!(collision_diagnostics.max_push_m > 0.0);

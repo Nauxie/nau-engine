@@ -58,6 +58,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 - `ground_taxi_control` eval proves pre-launch camera-relative WASD moves the player across the launch island without leaving grounded mode.
 - `world_collision_contact` eval proves a grounded route sustains meaningful pushed contact with a generated launch-mesa obstacle, so collidable asset props must affect movement instead of only existing as counted entities.
 - `terrain_rim_collision_contact` eval proves near-LOD islands spawn four invisible terrain-rim collision rails each, a grounded route can be blocked by the launch-mesa rim, and normal `ground_taxi_control` movement does not report false terrain-rim contact.
+- Collision diagnostics split aggregate proxies into terrain-rim rails plus solid tree/rock/landmark counts, and the procedural island ridge plus recovery ring pieces now use AABB blockers/camera obstacles instead of being ghost geometry.
 - `camera_mouse_control` eval proves scripted mouse X/Y deltas exercise yaw and both pitch directions without hiding camera regressions behind player movement.
 - `camera_yaw_stability` eval proves a small yaw impulse does not keep rotating after mouse input stops.
 - `camera_strafe_stability` eval proves `A`/`D` movement does not auto-orbit the camera by bounding movement-only view-yaw/world-yaw drift while requiring measurable right and left strafe response.

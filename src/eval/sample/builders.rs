@@ -201,6 +201,10 @@ impl EvalSample {
             max_crosswind_visual_flow_alignment: 0.0,
             world_collision_proxy_count: 0,
             terrain_rim_collision_proxy_count: 0,
+            solid_world_collision_proxy_count: 0,
+            tree_world_collision_proxy_count: 0,
+            rock_world_collision_proxy_count: 0,
+            landmark_world_collision_proxy_count: 0,
             world_collision_resolved_count: 0,
             terrain_rim_collision_resolved_count: 0,
             max_world_collision_push_m: 0.0,
@@ -521,6 +525,20 @@ impl EvalSample {
         self.terrain_rim_collision_proxy_count = proxy_count;
         self.terrain_rim_collision_resolved_count = resolved_count;
         self.max_terrain_rim_collision_push_m = max_push_m.max(0.0);
+        self
+    }
+
+    pub fn with_world_collision_kind_metrics(
+        mut self,
+        solid_proxy_count: usize,
+        tree_proxy_count: usize,
+        rock_proxy_count: usize,
+        landmark_proxy_count: usize,
+    ) -> Self {
+        self.solid_world_collision_proxy_count = solid_proxy_count;
+        self.tree_world_collision_proxy_count = tree_proxy_count;
+        self.rock_world_collision_proxy_count = rock_proxy_count;
+        self.landmark_world_collision_proxy_count = landmark_proxy_count;
         self
     }
 

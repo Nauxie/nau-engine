@@ -311,6 +311,10 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"max_wind_force_variation\": 0.1200"));
     assert!(summary_json.contains("\"max_world_collision_proxy_count\": 24"));
     assert!(summary_json.contains("\"max_terrain_rim_collision_proxy_count\": 4"));
+    assert!(summary_json.contains("\"max_solid_world_collision_proxy_count\": 60"));
+    assert!(summary_json.contains("\"max_tree_world_collision_proxy_count\": 10"));
+    assert!(summary_json.contains("\"max_rock_world_collision_proxy_count\": 16"));
+    assert!(summary_json.contains("\"max_landmark_world_collision_proxy_count\": 40"));
 }
 
 #[test]
@@ -359,6 +363,38 @@ fn accumulator_fails_when_terrain_rim_collision_proxies_are_missing() {
 
     assert!(!collision_check.passed);
     assert_eq!(collision_check.value, 0.0);
+}
+
+#[test]
+fn accumulator_fails_when_solid_world_collision_proxy_kinds_are_missing() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(
+        content_metric_sample(scenario, 0, 12, 0, 96)
+            .with_world_collision_metrics(MIN_WORLD_COLLISION_PROXY_COUNT, 0, 0.0)
+            .with_terrain_rim_collision_metrics(MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT, 0, 0.0)
+            .with_world_collision_kind_metrics(0, 0, 0, 0),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for check_name in [
+        "solid_world_collision_proxy_count",
+        "tree_world_collision_proxy_count",
+        "rock_world_collision_proxy_count",
+        "landmark_world_collision_proxy_count",
+    ] {
+        assert!(!named_check(&summary, check_name).passed);
+    }
 }
 
 #[test]
@@ -643,6 +679,10 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"max_wind_force_flow_speed_mps\":6.0000"));
     assert!(sample_json.contains("\"max_wind_force_variation\":0.1200"));
     assert!(sample_json.contains("\"terrain_rim_collision_proxy_count\":4"));
+    assert!(sample_json.contains("\"solid_world_collision_proxy_count\":60"));
+    assert!(sample_json.contains("\"tree_world_collision_proxy_count\":10"));
+    assert!(sample_json.contains("\"rock_world_collision_proxy_count\":16"));
+    assert!(sample_json.contains("\"landmark_world_collision_proxy_count\":40"));
     assert!(sample_json.contains("\"terrain_rim_collision_resolved_count\":0"));
     assert!(sample_json.contains("\"max_terrain_rim_collision_push_m\":0.0000"));
     assert!(sample_json.contains("\"island_terrain_archetype_count\":19"));
@@ -1180,6 +1220,12 @@ fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample
             )
             .with_world_collision_metrics(MIN_WORLD_COLLISION_PROXY_COUNT, 0, 0.0)
             .with_terrain_rim_collision_metrics(MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT, 0, 0.0)
+            .with_world_collision_kind_metrics(
+                MIN_SOLID_WORLD_COLLISION_PROXY_COUNT,
+                MIN_TREE_WORLD_COLLISION_PROXY_COUNT,
+                MIN_ROCK_WORLD_COLLISION_PROXY_COUNT,
+                MIN_LANDMARK_WORLD_COLLISION_PROXY_COUNT,
+            )
             .with_visible_authored_world_fixture_count(MIN_VISIBLE_AUTHORED_WORLD_FIXTURE_COUNT),
     );
 }

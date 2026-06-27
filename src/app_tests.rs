@@ -558,7 +558,7 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         .iter()
         .filter(|proxy| proxy.kind == WorldCollisionProxyKind::TerrainRim)
         .count();
-    let expected_spawned_terrain_rim_proxy_count = route
+    let expected_spawned_near_island_count = route
         .islands()
         .iter()
         .filter(|island| {
@@ -568,10 +568,28 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
                 && island.lod_band(nau_engine::world::START_POSITION)
                     == nau_engine::world::LodBand::Near
         })
-        .count()
+        .count();
+    let expected_spawned_terrain_rim_proxy_count = expected_spawned_near_island_count
         * nau_engine::world::TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND;
+    let tree_proxy_count = proxies
+        .iter()
+        .filter(|proxy| proxy.kind == WorldCollisionProxyKind::Tree)
+        .count();
+    let rock_proxy_count = proxies
+        .iter()
+        .filter(|proxy| proxy.kind == WorldCollisionProxyKind::Rock)
+        .count();
+    let landmark_proxy_count = proxies
+        .iter()
+        .filter(|proxy| proxy.kind == WorldCollisionProxyKind::Landmark)
+        .count();
+    let solid_proxy_count = tree_proxy_count + rock_proxy_count + landmark_proxy_count;
 
     assert!(proxies.len() >= 24);
+    assert!(solid_proxy_count >= 60);
+    assert!(tree_proxy_count >= 10);
+    assert!(rock_proxy_count >= 12);
+    assert!(landmark_proxy_count >= 40);
     assert_eq!(
         terrain_rim_proxy_count,
         expected_spawned_terrain_rim_proxy_count
@@ -600,6 +618,18 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
             })
             .count()
             >= 4
+    );
+    assert!(
+        proxies
+            .iter()
+            .filter(|proxy| {
+                proxy.kind == WorldCollisionProxyKind::Landmark
+                    && proxy.half_extents.y <= 0.4
+                    && proxy.half_extents.x > 2.0
+                    && proxy.half_extents.z > 1.0
+            })
+            .count()
+            >= expected_spawned_near_island_count
     );
 }
 
