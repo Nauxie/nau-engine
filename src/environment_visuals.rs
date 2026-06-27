@@ -208,10 +208,15 @@ pub(crate) fn spawn_updraft_guide(
                 phase,
                 angular_speed: 0.26 + level_index as f32 * 0.035,
             };
+            let translation = updraft_guide_position(&guide, 0.0);
             commands.spawn((
                 Mesh3d(marker_mesh.clone()),
                 MeshMaterial3d(marker_material.clone()),
-                Transform::from_translation(updraft_guide_position(&guide, 0.0)),
+                Transform {
+                    translation,
+                    scale: updraft_guide_scale(&guide, translation, 0.0),
+                    ..default()
+                },
                 guide,
                 Name::new(format!("{} guide mote", lift.name)),
             ));
@@ -561,8 +566,10 @@ pub(crate) fn update_updraft_guides(
     let elapsed = time.elapsed_secs();
 
     for (guide, mut transform) in &mut guides {
-        transform.translation = updraft_guide_position(guide, elapsed);
+        let translation = updraft_guide_position(guide, elapsed);
+        transform.translation = translation;
         transform.rotation = Quat::from_rotation_y(guide.phase + elapsed * guide.angular_speed);
+        transform.scale = updraft_guide_scale(guide, translation, elapsed);
     }
 }
 
@@ -610,9 +617,13 @@ fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> Transform {
         .unwrap_or_else(|| ribbon.field.flow_at(ribbon.field.center, elapsed).unwrap());
     let phase = ribbon.phase * std::f32::consts::TAU;
     let field_height = (ribbon.field.half_extents.y * 2.0).max(1.0);
-    let progress =
-        (ribbon.phase + elapsed * ribbon.field.visual_speed.max(1.0) / field_height * 0.44).fract();
-    let vertical_scroll = (progress - 0.5) * ribbon.field.half_extents.y * 0.34;
+    let vertical_ratio = (flow.vector.y.max(0.0) / ribbon.field.visual_speed.max(1.0)).min(1.4);
+    let progress = (ribbon.phase
+        + elapsed * ribbon.field.visual_speed.max(1.0) / field_height
+            * (0.48 + vertical_ratio * 0.08))
+        .fract();
+    let vertical_scroll =
+        (progress - 0.5) * ribbon.field.half_extents.y * (0.38 + vertical_ratio * 0.08);
     let horizontal_flow = Vec3::new(flow.vector.x, 0.0, flow.vector.z);
     let radial_axis = horizontal_or(
         horizontal_flow,
@@ -620,22 +631,22 @@ fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> Transform {
     );
     let breathing = (elapsed * 1.18 + phase).sin();
     let scale_wave = (elapsed * 1.64 + phase * 0.7).sin();
-    let radial_breath = radial_axis * (flow.variation * 0.52 + breathing * 0.28);
-    let horizontal_drift = horizontal_flow * 0.115;
+    let radial_breath = radial_axis * (flow.variation * 0.74 + breathing * 0.36);
+    let horizontal_drift = horizontal_flow * 0.16;
     let flow_pulse = 0.78 + flow.gust_strength * 0.42;
 
     Transform {
         translation: ribbon.base_translation
             + horizontal_drift
-            + Vec3::Y * vertical_scroll
+            + Vec3::Y * (vertical_scroll + flow.variation * 0.42)
             + radial_breath,
         rotation: ribbon.base_rotation
             * Quat::from_rotation_y(elapsed * ribbon.spin_speed * flow_pulse)
-            * Quat::from_rotation_z(breathing * flow.variation * 0.11),
+            * Quat::from_rotation_z(breathing * flow.variation * 0.15),
         scale: Vec3::new(
-            1.0 + flow.variation * 0.11 + scale_wave * 0.065,
-            1.0 + flow.gust_strength * 0.075 + scale_wave.abs() * 0.035,
-            1.0 + flow.variation * 0.08 - scale_wave * 0.045,
+            1.0 + flow.variation * 0.14 + scale_wave * 0.08,
+            1.0 + flow.gust_strength * 0.09 + vertical_ratio * 0.07 + scale_wave.abs() * 0.045,
+            1.0 + flow.variation * 0.1 - scale_wave * 0.055,
         ),
     }
 }
@@ -649,22 +660,28 @@ fn crosswind_ribbon_transform(ribbon: &CrosswindRibbon, elapsed: f32) -> Transfo
     let phase = ribbon.phase * std::f32::consts::TAU;
     let directional_half_extent = ribbon.field.half_extents.x.max(1.0);
     let path_length = (directional_half_extent * 2.0).max(1.0);
-    let progress = (ribbon.phase + elapsed * flow.speed_mps.max(1.0) / path_length * 0.78).fract();
+    let stream_variation = 0.88 + ribbon.phase * 0.24;
+    let progress = (ribbon.phase
+        + elapsed * flow.speed_mps.max(1.0) / path_length * 0.84 * stream_variation)
+        .fract();
     let advected = (progress - 0.5) * directional_half_extent * 1.18;
     let wave = (elapsed * 0.82 + phase).sin();
     let lift_wave = (elapsed * 1.16 + ribbon.phase * 4.1).cos();
     let flow_axis = horizontal_or(flow.vector, ribbon.field.direction);
-    let length_pulse = (0.82 + flow.gust_strength * 0.32 + flow.variation * 0.18).clamp(1.0, 1.38);
-    let width_pulse = (0.74 + flow.variation * 0.48 + wave.abs() * 0.05).clamp(0.82, 1.16);
+    let gust_front = ((elapsed * 1.95 + phase * 0.63).sin()).max(0.0);
+    let length_pulse =
+        (0.78 + flow.gust_strength * 0.42 + flow.variation * 0.22 + gust_front * 0.1)
+            .clamp(1.0, 1.55);
+    let width_pulse = (0.72 + flow.variation * 0.56 + wave.abs() * 0.08).clamp(0.82, 1.24);
 
     Transform {
         translation: ribbon.base_translation
-            + ribbon.field.direction * advected
-            + lateral * (flow.variation * 0.72 + wave * 0.34)
-            + Vec3::Y * (lift_wave * 0.18 + flow.variation * 0.18),
+            + flow_axis * (advected + gust_front * flow.variation * 0.76)
+            + lateral * (flow.variation * 0.9 + wave * 0.42)
+            + Vec3::Y * (lift_wave * 0.24 + flow.variation * 0.24),
         rotation: rotation_from_x_to_direction(flow_axis)
             * Quat::from_rotation_x(phase + elapsed * 0.6)
-            * Quat::from_rotation_z(wave * 0.16),
+            * Quat::from_rotation_z(wave * 0.2),
         scale: Vec3::new(length_pulse, width_pulse, width_pulse),
     }
 }
@@ -821,6 +838,9 @@ pub(crate) fn wind_guide_visual_metrics<'a>(
         metrics.max_updraft_visual_motion_m = metrics
             .max_updraft_visual_motion_m
             .max(displacement.length());
+        metrics.max_updraft_visual_scale_pulse = metrics.max_updraft_visual_scale_pulse.max(
+            scale_delta(transform.scale, updraft_guide_scale(guide, baseline, 0.0)),
+        );
         metrics.max_updraft_visual_rise_m = metrics
             .max_updraft_visual_rise_m
             .max(displacement.y.max(0.0));
@@ -1011,7 +1031,7 @@ fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
     let field = guide.field;
     let height_span = (field.half_extents.y * 1.84).max(1.0);
     let base_progress = (guide.height_offset / height_span + 0.5).clamp(0.0, 1.0);
-    let rise_speed = field.visual_speed.max(1.0) / height_span * 0.6;
+    let rise_speed = field.visual_speed.max(1.0) / height_span * 0.68;
     let progress = (base_progress + guide.phase * 0.037 + elapsed * rise_speed).fract();
     let height_offset = (progress - 0.5) * height_span;
     let flow_probe = guide.center + Vec3::Y * height_offset;
@@ -1019,28 +1039,48 @@ fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
     let variation = flow.map_or(0.0, |sample| sample.variation);
     let gust = flow.map_or(1.0, |sample| sample.gust_strength);
     let angle = guide.phase
-        + elapsed * guide.angular_speed * (0.84 + gust * 0.72)
+        + elapsed * guide.angular_speed * (0.72 + gust * 1.02)
         + progress * std::f32::consts::TAU * 0.92;
     let radius = guide.radius
-        * (0.8 + variation * 0.42 + (elapsed * 0.9 + guide.phase).sin() * 0.08).clamp(0.7, 1.28);
+        * (0.74 + variation * 0.54 + gust * 0.08 + (elapsed * 0.9 + guide.phase).sin() * 0.11)
+            .clamp(0.7, 1.36);
     let base = guide.center
         + Vec3::new(
             angle.cos() * radius,
-            height_offset + (elapsed * 1.4 + guide.phase).sin() * 0.26,
+            height_offset + (elapsed * 1.4 + guide.phase).sin() * 0.34,
             angle.sin() * radius,
         );
     let flow_offset = flow.map_or(Vec3::ZERO, |sample| {
-        Vec3::new(sample.vector.x, 0.0, sample.vector.z) * 0.13 + Vec3::Y * sample.variation * 0.52
+        Vec3::new(sample.vector.x, 0.0, sample.vector.z) * 0.22
+            + Vec3::Y * (sample.vector.y.max(0.0) * 0.035 + sample.variation * 0.62)
     });
 
     base + flow_offset
 }
 
+fn updraft_guide_scale(guide: &UpdraftGuide, position: Vec3, elapsed: f32) -> Vec3 {
+    let flow = guide
+        .field
+        .flow_at(position, elapsed)
+        .unwrap_or_else(|| guide.field.flow_at(guide.field.center, elapsed).unwrap());
+    let vertical_ratio = (flow.vector.y.max(0.0) / guide.field.visual_speed.max(1.0)).min(1.4);
+    let phase = guide.phase + flow.variation * 1.7;
+    let pulse = (elapsed * 2.4 + phase).sin();
+    let core =
+        (0.72 + flow.gust_strength * 0.25 + flow.variation * 0.24 + pulse * 0.1).clamp(0.78, 1.42);
+    let stretch = (0.72 + vertical_ratio * 0.32 + flow.variation * 0.2 + pulse.max(0.0) * 0.08)
+        .clamp(0.82, 1.48);
+
+    Vec3::new(core, stretch, core)
+}
+
 fn crosswind_guide_position(guide: &CrosswindGuide, elapsed: f32) -> Vec3 {
     let field = guide.field;
     let path_length = (field.half_extents.x * 2.0).max(1.0);
-    let progress =
-        (guide.phase + elapsed * field.visual_speed.max(1.0) / path_length * 0.86).fract();
+    let stream_variation = 0.86 + (guide.stream_index % 7) as f32 * 0.035;
+    let progress = (guide.phase
+        + elapsed * field.visual_speed.max(1.0) / path_length * 0.9 * stream_variation)
+        .fract();
     let lane_origin = field.stream_origin(guide.stream_index, guide.stream_count);
     let base = lane_origin + field.direction * (progress * path_length);
     let flow = field
@@ -1048,8 +1088,14 @@ fn crosswind_guide_position(guide: &CrosswindGuide, elapsed: f32) -> Vec3 {
         .unwrap_or_else(|| field.flow_at(field.center, elapsed).unwrap());
     let lateral = wind_lateral_axis(field.direction);
     let phase = guide.phase * std::f32::consts::TAU;
-    base + lateral * ((elapsed * 1.34 + phase).sin() * 0.42 + flow.variation * 0.36)
-        + Vec3::Y * ((elapsed * 1.7 + phase).cos() * 0.24 + flow.variation * 0.08)
+    let flow_axis = horizontal_or(flow.vector, field.direction);
+    let shear = (flow_axis - field.direction) * (field.half_extents.x * 0.08);
+    let gust_front = ((elapsed * 2.05 + phase).sin()).max(0.0);
+
+    base + shear
+        + flow_axis * (gust_front * flow.variation * 0.86)
+        + lateral * ((elapsed * 1.34 + phase).sin() * 0.56 + flow.variation * 0.52)
+        + Vec3::Y * ((elapsed * 1.7 + phase).cos() * 0.34 + flow.variation * 0.16)
 }
 
 fn crosswind_guide_scale(guide: &CrosswindGuide, position: Vec3, elapsed: f32) -> Vec3 {
@@ -1058,10 +1104,11 @@ fn crosswind_guide_scale(guide: &CrosswindGuide, position: Vec3, elapsed: f32) -
         .flow_at(position, elapsed)
         .unwrap_or_else(|| guide.field.flow_at(guide.field.center, elapsed).unwrap());
     let phase = guide.phase * std::f32::consts::TAU;
-    let pulse = (elapsed * 1.52 + phase).sin();
+    let pulse = (elapsed * 1.78 + phase + flow.variation * 1.4).sin();
     let length_pulse =
-        (0.76 + flow.gust_strength * 0.42 + flow.variation * 0.28 + pulse * 0.1).clamp(1.02, 1.55);
-    let width_pulse = (0.68 + flow.variation * 0.5 - pulse * 0.055).clamp(0.78, 1.16);
+        (0.72 + flow.gust_strength * 0.48 + flow.variation * 0.34 + pulse.max(0.0) * 0.14)
+            .clamp(1.04, 1.72);
+    let width_pulse = (0.66 + flow.variation * 0.58 - pulse * 0.07).clamp(0.78, 1.24);
 
     Vec3::new(length_pulse, width_pulse, width_pulse)
 }
@@ -1142,9 +1189,28 @@ mod tests {
     }
 
     #[test]
+    fn updraft_guide_scale_pulses_with_sampled_flow() {
+        let guide = test_updraft_guide();
+        let start = updraft_guide_position(&guide, 0.0);
+        let later = updraft_guide_position(&guide, 1.7);
+        let start_scale = updraft_guide_scale(&guide, start, 0.0);
+        let later_scale = updraft_guide_scale(&guide, later, 1.7);
+
+        assert!(
+            scale_delta(later_scale, start_scale) > 0.08,
+            "expected updraft motes to visibly pulse with sampled flow, start={start_scale:?}, later={later_scale:?}"
+        );
+    }
+
+    #[test]
     fn wind_guide_metrics_capture_updraft_streamline_motion() {
         let guide = test_updraft_guide();
-        let transform = Transform::from_translation(updraft_guide_position(&guide, 2.0));
+        let translation = updraft_guide_position(&guide, 2.0);
+        let transform = Transform {
+            translation,
+            scale: updraft_guide_scale(&guide, translation, 2.0),
+            ..default()
+        };
         let metrics = wind_guide_visual_metrics(
             2.0,
             [(&guide, &transform)].into_iter(),
@@ -1157,6 +1223,7 @@ mod tests {
         assert!(metrics.max_updraft_visual_motion_m > 3.0);
         assert!(metrics.max_updraft_visual_rise_m > 3.0);
         assert!(metrics.max_updraft_visual_swirl_displacement_m > 0.2);
+        assert!(metrics.max_updraft_visual_scale_pulse > 0.08);
         assert_eq!(metrics.updraft_flow_coherent_visual_count, 1);
         assert!(metrics.max_updraft_visual_flow_alignment > 0.55);
     }
@@ -1189,6 +1256,38 @@ mod tests {
         assert!(metrics.max_crosswind_guide_flow_displacement_m > 3.0);
         assert_eq!(metrics.crosswind_flow_coherent_visual_count, 1);
         assert!(metrics.max_crosswind_visual_flow_alignment > 0.55);
+    }
+
+    #[test]
+    fn crosswind_guides_vary_by_stream_without_losing_downwind_flow() {
+        let field = WindField::crosswind(Vec3::ZERO, Vec3::new(18.0, 8.0, 10.0), Vec3::X, 14.0);
+        let leading = CrosswindGuide {
+            field,
+            stream_index: 1,
+            stream_count: 16,
+            phase: 0.07,
+        };
+        let trailing = CrosswindGuide {
+            field,
+            stream_index: 11,
+            stream_count: 16,
+            phase: 0.63,
+        };
+        let elapsed = 0.6;
+        let leading_displacement =
+            crosswind_guide_position(&leading, elapsed) - crosswind_guide_position(&leading, 0.0);
+        let trailing_displacement =
+            crosswind_guide_position(&trailing, elapsed) - crosswind_guide_position(&trailing, 0.0);
+
+        assert!(
+            leading_displacement.dot(field.direction) > 1.0
+                && trailing_displacement.dot(field.direction) > 1.0,
+            "expected both streams to keep moving downwind, leading={leading_displacement:?}, trailing={trailing_displacement:?}"
+        );
+        assert!(
+            (leading_displacement.length() - trailing_displacement.length()).abs() > 0.3,
+            "expected stream-specific motion variation, leading={leading_displacement:?}, trailing={trailing_displacement:?}"
+        );
     }
 
     #[test]
@@ -1299,6 +1398,13 @@ mod tests {
     #[test]
     fn wind_guide_metrics_ignore_ribbon_initial_phase_offsets() {
         let updraft_field = WindField::updraft(Vec3::ZERO, Vec3::new(8.0, 16.0, 8.0), 12.0);
+        let updraft_guide = test_updraft_guide();
+        let updraft_guide_translation = updraft_guide_position(&updraft_guide, 0.0);
+        let updraft_guide_transform = Transform {
+            translation: updraft_guide_translation,
+            scale: updraft_guide_scale(&updraft_guide, updraft_guide_translation, 0.0),
+            ..default()
+        };
         let updraft_ribbon = UpdraftRibbon {
             field: updraft_field,
             spin_speed: 0.05,
@@ -1308,6 +1414,18 @@ mod tests {
         };
         let crosswind_field =
             WindField::crosswind(Vec3::ZERO, Vec3::new(12.0, 6.0, 8.0), Vec3::X, 10.0);
+        let crosswind_guide = CrosswindGuide {
+            field: crosswind_field,
+            stream_index: 4,
+            stream_count: 16,
+            phase: 0.12,
+        };
+        let crosswind_guide_translation = crosswind_guide_position(&crosswind_guide, 0.0);
+        let crosswind_guide_transform = Transform {
+            translation: crosswind_guide_translation,
+            scale: crosswind_guide_scale(&crosswind_guide, crosswind_guide_translation, 0.0),
+            ..default()
+        };
         let crosswind_ribbon = CrosswindRibbon {
             field: crosswind_field,
             base_translation: Vec3::ZERO,
@@ -1317,17 +1435,19 @@ mod tests {
         let crosswind_transform = crosswind_ribbon_transform(&crosswind_ribbon, 0.0);
         let metrics = wind_guide_visual_metrics(
             0.0,
-            std::iter::empty::<(&UpdraftGuide, &Transform)>(),
+            [(&updraft_guide, &updraft_guide_transform)].into_iter(),
             [(&updraft_ribbon, &updraft_transform)].into_iter(),
-            std::iter::empty::<(&CrosswindGuide, &Transform)>(),
+            [(&crosswind_guide, &crosswind_guide_transform)].into_iter(),
             [(&crosswind_ribbon, &crosswind_transform)].into_iter(),
         );
 
         assert_eq!(metrics.max_updraft_visual_motion_m, 0.0);
         assert_eq!(metrics.max_updraft_visual_rise_m, 0.0);
         assert_eq!(metrics.max_updraft_visual_swirl_displacement_m, 0.0);
+        assert_eq!(metrics.max_updraft_visual_scale_pulse, 0.0);
         assert_eq!(metrics.max_crosswind_visual_motion_m, 0.0);
         assert_eq!(metrics.max_crosswind_ribbon_flow_displacement_m, 0.0);
+        assert_eq!(metrics.max_crosswind_visual_scale_pulse, 0.0);
     }
 
     #[test]
@@ -1355,7 +1475,12 @@ mod tests {
             start.rotation.angle_between(later.rotation) > 0.1,
             "expected ribbon orientation to flutter with dynamic flow"
         );
-        assert!(later.scale.x > 1.0);
+        assert!(
+            scale_delta(later.scale, start.scale) > 0.06,
+            "expected ribbon to visibly pulse while advecting, start={:?}, later={:?}",
+            start.scale,
+            later.scale
+        );
     }
 
     #[test]
@@ -1400,10 +1525,15 @@ mod tests {
             "expected ribbon to visibly scroll through the updraft, displacement={displacement:?}"
         );
         assert!(
-            Vec2::new(displacement.x, displacement.z).length() > 0.1,
+            Vec2::new(displacement.x, displacement.z).length() > 0.2,
             "expected ribbon to breathe laterally with updraft swirl, displacement={displacement:?}"
         );
-        assert!(later.scale.y > 1.0);
+        assert!(
+            scale_delta(later.scale, start.scale) > 0.06,
+            "expected updraft ribbon to pulse with sampled flow, start={:?}, later={:?}",
+            start.scale,
+            later.scale
+        );
     }
 
     #[test]
