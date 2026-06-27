@@ -24,6 +24,7 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     observe_desired_travel_heading_alignment(accumulator, sample);
     observe_air_brake(accumulator, sample);
     observe_pose_readability(accumulator, sample);
+    observe_authored_clip_coverage(accumulator, sample);
     observe_pose_intent_counts(accumulator, sample);
     observe_mode_counts(accumulator, sample);
 }
@@ -425,6 +426,37 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
                     .max(sample.max_pose_part_translation_delta_m);
             }
         }
+    }
+}
+
+fn observe_authored_clip_coverage(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
+    accumulator.max_authored_transition_duration_ms = accumulator
+        .max_authored_transition_duration_ms
+        .max(sample.authored_transition_duration_ms);
+
+    if !key_pose_intent_label(sample.pose_intent_label) {
+        return;
+    }
+
+    if sample.authored_player_count == 0 {
+        accumulator.authored_clip_mismatch_samples += 1;
+        return;
+    }
+
+    let current_clip = sample.authored_player_current_clip_label;
+    if current_clip != sample.authored_player_desired_clip_label || current_clip == "none" {
+        accumulator.authored_clip_mismatch_samples += 1;
+        return;
+    }
+
+    accumulator.authored_clip_match_samples += 1;
+    match (sample.pose_intent_label, current_clip) {
+        ("diving", "dive") => accumulator.authored_dive_clip_samples += 1,
+        ("air_brake", "air_brake") => accumulator.authored_air_brake_clip_samples += 1,
+        ("landing_anticipation" | "landing_recovery", "land") => {
+            accumulator.authored_land_clip_samples += 1;
+        }
+        _ => {}
     }
 }
 

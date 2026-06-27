@@ -1155,6 +1155,8 @@ fn accumulator_summarizes_pose_intent_samples() {
         key_pose_readability_score: 1.0,
     });
     landing_anticipation_sample.pose_intent_label = "landing_anticipation";
+    landing_anticipation_sample =
+        landing_anticipation_sample.with_authored_animation_metrics("land", "land", 1, 140);
     accumulator.observe(landing_anticipation_sample);
     let mut landing_recovery_sample = air_control_metric_sample(
         scenario,
@@ -1166,6 +1168,8 @@ fn accumulator_summarizes_pose_intent_samples() {
         0.0,
     );
     landing_recovery_sample.pose_intent_label = "landing_recovery";
+    landing_recovery_sample =
+        landing_recovery_sample.with_authored_animation_metrics("land", "land", 1, 140);
     accumulator.observe(landing_recovery_sample);
     let mut unreadable_landing_recovery_sample = air_control_metric_sample(
         scenario,
@@ -1187,6 +1191,8 @@ fn accumulator_summarizes_pose_intent_samples() {
         key_pose_readability_score: 0.25,
     });
     unreadable_landing_recovery_sample.pose_intent_label = "landing_recovery";
+    unreadable_landing_recovery_sample =
+        unreadable_landing_recovery_sample.with_authored_animation_metrics("land", "land", 1, 140);
     accumulator.observe(unreadable_landing_recovery_sample);
 
     let summary = accumulator.summary(
@@ -1209,6 +1215,12 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert_eq!(summary.metrics.pose_air_brake_samples, 1);
     assert_eq!(summary.metrics.pose_landing_anticipation_samples, 1);
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 1);
+    assert_eq!(summary.metrics.authored_clip_match_samples, 7);
+    assert_eq!(summary.metrics.authored_clip_mismatch_samples, 0);
+    assert_eq!(summary.metrics.authored_dive_clip_samples, 1);
+    assert_eq!(summary.metrics.authored_air_brake_clip_samples, 1);
+    assert_eq!(summary.metrics.authored_land_clip_samples, 3);
+    assert_eq!(summary.metrics.max_authored_transition_duration_ms, 140);
     assert_eq!(summary.metrics.max_pose_torso_pitch_degrees, 64.0);
     assert_eq!(summary.metrics.max_pose_landing_flare_degrees, 37.0);
     assert_eq!(summary.metrics.unreadable_key_pose_samples, 1);
@@ -1219,6 +1231,12 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert!(summary_json.contains("\"pose_air_brake_samples\": 1"));
     assert!(summary_json.contains("\"pose_landing_anticipation_samples\": 1"));
     assert!(summary_json.contains("\"pose_landing_recovery_samples\": 1"));
+    assert!(summary_json.contains("\"authored_clip_match_samples\": 7"));
+    assert!(summary_json.contains("\"authored_clip_mismatch_samples\": 0"));
+    assert!(summary_json.contains("\"authored_dive_clip_samples\": 1"));
+    assert!(summary_json.contains("\"authored_air_brake_clip_samples\": 1"));
+    assert!(summary_json.contains("\"authored_land_clip_samples\": 3"));
+    assert!(summary_json.contains("\"max_authored_transition_duration_ms\": 140"));
 }
 
 #[test]
@@ -1245,6 +1263,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         key_pose_readability_score: 1.0,
     });
     sample.pose_intent_label = "landing_anticipation";
+    sample = sample.with_authored_animation_metrics("land", "land", 1, 140);
     sample.target_distance_m = 0.0;
     sample.on_landing_target = true;
     accumulator.observe(sample);
@@ -1261,12 +1280,17 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     );
     let landing_recovery_check = named_check(&summary, "pose_landing_recovery_samples");
     let landing_flare_check = named_check(&summary, "pose_landing_flare");
+    let authored_land_check = named_check(&summary, "authored_landing_clip_samples");
 
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 0);
+    assert_eq!(summary.metrics.authored_land_clip_samples, 1);
     assert_eq!(summary.metrics.max_pose_landing_flare_degrees, 0.0);
     assert_eq!(landing_recovery_check.value, 0.0);
     assert_eq!(landing_recovery_check.threshold, 1.0);
     assert!(!landing_recovery_check.passed);
+    assert_eq!(authored_land_check.value, 1.0);
+    assert_eq!(authored_land_check.threshold, 2.0);
+    assert!(!authored_land_check.passed);
     assert_eq!(landing_flare_check.value, 0.0);
     assert_eq!(landing_flare_check.threshold, 48.0);
     assert!(!landing_flare_check.passed);
@@ -1319,6 +1343,7 @@ fn accumulator_gates_target_landing_pose_temporal_samples() {
             max_pose_part_translation_delta_m: f32::NAN,
         });
         sample.pose_intent_label = pose_intent_label;
+        sample = sample.with_authored_animation_metrics("land", "land", 1, 140);
         sample.target_distance_m = 0.0;
         sample.on_landing_target = true;
         accumulator.observe(sample);
@@ -1372,6 +1397,7 @@ fn accumulator_gates_target_landing_pose_temporal_jank() {
         max_pose_part_translation_delta_m: 0.56,
     });
     sample.pose_intent_label = "landing_anticipation";
+    sample = sample.with_authored_animation_metrics("land", "land", 1, 140);
     sample.target_distance_m = 0.0;
     sample.on_landing_target = true;
     accumulator.observe(sample);
@@ -1513,13 +1539,20 @@ fn accumulator_gates_air_control_pose_readability() {
     let air_brake_check = named_check(&summary, "air_control_pose_air_brake_samples");
     let air_turn_check = named_check(&summary, "air_control_pose_air_turn_samples");
     let dive_check = named_check(&summary, "air_control_pose_diving_samples");
+    let authored_air_brake_check =
+        named_check(&summary, "air_control_authored_air_brake_clip_samples");
+    let authored_dive_check = named_check(&summary, "air_control_authored_dive_clip_samples");
 
     assert_eq!(air_turn_check.value, 4.0);
     assert!(air_turn_check.passed);
     assert_eq!(air_brake_check.value, 0.0);
     assert_eq!(dive_check.value, 0.0);
+    assert_eq!(authored_air_brake_check.value, 0.0);
+    assert_eq!(authored_dive_check.value, 0.0);
     assert!(!air_brake_check.passed);
     assert!(!dive_check.passed);
+    assert!(!authored_air_brake_check.passed);
+    assert!(!authored_dive_check.passed);
     for name in [
         "air_control_pose_torso_pitch",
         "air_control_pose_arm_spread",
@@ -1533,6 +1566,42 @@ fn accumulator_gates_air_control_pose_readability() {
         assert_eq!(check.value, 0.0);
         assert!(!check.passed, "expected {name} to fail");
     }
+}
+
+#[test]
+fn accumulator_gates_authored_clip_mismatch_for_air_control() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut sample = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, -18.0, -26.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    );
+    sample = sample.with_authored_animation_metrics("glide", "dive", 1, 140);
+
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let mismatch_check = named_check(&summary, "air_control_authored_clip_mismatch_samples");
+
+    assert_eq!(summary.metrics.authored_clip_match_samples, 0);
+    assert_eq!(summary.metrics.authored_clip_mismatch_samples, 1);
+    assert_eq!(summary.metrics.authored_dive_clip_samples, 0);
+    assert_eq!(mismatch_check.value, 1.0);
+    assert!(!mismatch_check.passed);
 }
 
 #[test]

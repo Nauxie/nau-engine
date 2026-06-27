@@ -13,6 +13,9 @@ const POSE_STATE_MIN_RUN_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_LAUNCH_SAMPLES: f32 = 3.0;
 const POSE_STATE_MIN_FALLING_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_GLIDING_POSE_SAMPLES: f32 = 18.0;
+const AIR_CONTROL_MIN_AUTHORED_DIVE_CLIP_SAMPLES: f32 = 1.0;
+const AIR_CONTROL_MIN_AUTHORED_AIR_BRAKE_CLIP_SAMPLES: f32 = 4.0;
+const TARGET_LANDING_MIN_AUTHORED_LAND_CLIP_SAMPLES: f32 = 2.0;
 
 pub(super) fn append_scenario_checks(
     checks: &mut Vec<EvalCheck>,
@@ -82,6 +85,18 @@ pub(super) fn append_scenario_checks(
             "pose_landing_recovery_samples",
             acc.pose_landing_recovery_samples as f32,
             1.0,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_least(
+            "authored_landing_clip_samples",
+            acc.authored_land_clip_samples as f32,
+            TARGET_LANDING_MIN_AUTHORED_LAND_CLIP_SAMPLES,
+            "samples",
+        ));
+        checks.push(EvalCheck::at_most(
+            "authored_clip_mismatch_samples",
+            acc.authored_clip_mismatch_samples as f32,
+            0.0,
             "samples",
         ));
         checks.push(EvalCheck::at_least(
@@ -351,6 +366,24 @@ fn append_air_control_checks(
             "air_control_pose_diving_samples",
             acc.pose_diving_samples as f32,
             1.0,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_authored_dive_clip_samples",
+            acc.authored_dive_clip_samples as f32,
+            AIR_CONTROL_MIN_AUTHORED_DIVE_CLIP_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_authored_air_brake_clip_samples",
+            acc.authored_air_brake_clip_samples as f32,
+            AIR_CONTROL_MIN_AUTHORED_AIR_BRAKE_CLIP_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "air_control_authored_clip_mismatch_samples",
+            acc.authored_clip_mismatch_samples as f32,
+            0.0,
             "samples",
         ),
         EvalCheck::at_least(
