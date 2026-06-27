@@ -67,6 +67,12 @@ pub(crate) struct SimMetrics {
     pub(crate) backward_right_desired_travel_heading_samples: u32,
     pub(crate) backward_left_desired_travel_heading_samples: u32,
     pub(crate) max_desired_travel_heading_error_degrees: f32,
+    pub(crate) pure_air_turn_sideways_body_travel_heading_error_values_degrees: Vec<f32>,
+    pub(crate) max_pure_air_turn_sideways_body_travel_heading_error_degrees: f32,
+    pub(crate) pure_air_turn_sideways_desired_travel_heading_error_values_degrees: Vec<f32>,
+    pub(crate) max_pure_air_turn_sideways_desired_travel_heading_error_degrees: f32,
+    pub(crate) right_pure_air_turn_sideways_samples: u32,
+    pub(crate) left_pure_air_turn_sideways_samples: u32,
     pub(crate) max_desired_heading_alignment_mps: f32,
     pub(crate) max_lateral_response_mps: f32,
     pub(crate) first_lateral_input_time_secs: Option<f32>,
@@ -263,6 +269,12 @@ impl SimMetrics {
             backward_right_desired_travel_heading_samples: 0,
             backward_left_desired_travel_heading_samples: 0,
             max_desired_travel_heading_error_degrees: 0.0,
+            pure_air_turn_sideways_body_travel_heading_error_values_degrees: Vec::new(),
+            max_pure_air_turn_sideways_body_travel_heading_error_degrees: 0.0,
+            pure_air_turn_sideways_desired_travel_heading_error_values_degrees: Vec::new(),
+            max_pure_air_turn_sideways_desired_travel_heading_error_degrees: 0.0,
+            right_pure_air_turn_sideways_samples: 0,
+            left_pure_air_turn_sideways_samples: 0,
             max_desired_heading_alignment_mps: 0.0,
             max_lateral_response_mps: 0.0,
             first_lateral_input_time_secs: None,
@@ -420,5 +432,19 @@ impl SimMetrics {
 
     pub(crate) fn p95_desired_travel_heading_error_degrees(&self) -> f32 {
         util::percentile(&self.desired_travel_heading_error_values_degrees, 0.95)
+    }
+
+    pub(crate) fn p95_pure_air_turn_sideways_body_travel_heading_error_degrees(&self) -> f32 {
+        util::percentile(
+            &self.pure_air_turn_sideways_body_travel_heading_error_values_degrees,
+            0.95,
+        )
+    }
+
+    pub(crate) fn p95_pure_air_turn_sideways_desired_travel_heading_error_degrees(&self) -> f32 {
+        util::percentile(
+            &self.pure_air_turn_sideways_desired_travel_heading_error_values_degrees,
+            0.95,
+        )
     }
 }

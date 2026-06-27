@@ -67,6 +67,19 @@ pub(super) fn build_metrics_summary(
             .backward_left_desired_travel_heading_samples,
         p95_desired_travel_heading_error_degrees: derived.p95_desired_travel_heading_error_degrees,
         max_desired_travel_heading_error_degrees: acc.max_desired_travel_heading_error_degrees,
+        pure_air_turn_sideways_sample_count: acc
+            .pure_air_turn_sideways_body_travel_heading_error_values_degrees
+            .len() as u32,
+        right_pure_air_turn_sideways_sample_count: acc.right_pure_air_turn_sideways_samples,
+        left_pure_air_turn_sideways_sample_count: acc.left_pure_air_turn_sideways_samples,
+        p95_pure_air_turn_sideways_body_travel_heading_error_degrees: derived
+            .p95_pure_air_turn_sideways_body_travel_heading_error_degrees,
+        max_pure_air_turn_sideways_body_travel_heading_error_degrees: acc
+            .max_pure_air_turn_sideways_body_travel_heading_error_degrees,
+        p95_pure_air_turn_sideways_desired_travel_heading_error_degrees: derived
+            .p95_pure_air_turn_sideways_desired_travel_heading_error_degrees,
+        max_pure_air_turn_sideways_desired_travel_heading_error_degrees: acc
+            .max_pure_air_turn_sideways_desired_travel_heading_error_degrees,
         max_body_yaw_error_step_degrees: acc.max_body_yaw_error_step_degrees,
         body_yaw_oscillation_count: acc.body_yaw_oscillation_count,
         max_body_roll_step_degrees: acc.max_body_roll_step_degrees,
