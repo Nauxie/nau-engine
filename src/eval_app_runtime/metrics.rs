@@ -11,7 +11,7 @@ use crate::{grounded_visual_foot_gap_m, movement_facing};
 use bevy::prelude::*;
 use nau_engine::animation::{
     CharacterPart, CharacterPartRole, MIN_KEY_POSE_READABILITY_SCORE, PlayerPoseContext,
-    PlayerPoseIntent, PoseReadabilityMetrics, PoseReadabilityPartTransforms, Side,
+    PlayerPoseIntent, PoseReadabilityMetrics, PoseReadabilityPartTransforms, ScarfSegment, Side,
     body_local_pose_velocity, key_pose_readability_score, pose_readability_metrics,
     pose_readability_metrics_from_part_transforms,
 };
@@ -150,6 +150,8 @@ struct VisiblePosePartSet {
     right_arm: Option<VisiblePosePartTransform>,
     left_leg: Option<VisiblePosePartTransform>,
     right_leg: Option<VisiblePosePartTransform>,
+    scarf_anchor: Option<VisiblePosePartTransform>,
+    scarf_tail: Option<VisiblePosePartTransform>,
 }
 
 impl VisiblePosePartSet {
@@ -178,7 +180,7 @@ impl VisiblePosePartSet {
 
     fn readability_metrics(self, context: PlayerPoseContext) -> Option<PoseReadabilityMetrics> {
         self.complete()
-            .map(|parts| parts.readability_metrics(context))
+            .map(|parts| parts.readability_metrics(context, self.scarf_anchor, self.scarf_tail))
     }
 }
 
@@ -192,8 +194,13 @@ struct VisiblePosePartTransforms {
 }
 
 impl VisiblePosePartTransforms {
-    fn readability_metrics(self, context: PlayerPoseContext) -> PoseReadabilityMetrics {
-        pose_readability_metrics_from_part_transforms(
+    fn readability_metrics(
+        self,
+        context: PlayerPoseContext,
+        scarf_anchor: Option<VisiblePosePartTransform>,
+        scarf_tail: Option<VisiblePosePartTransform>,
+    ) -> PoseReadabilityMetrics {
+        let mut metrics = pose_readability_metrics_from_part_transforms(
             context,
             PoseReadabilityPartTransforms {
                 torso_rotation: self.torso.rotation,
@@ -204,7 +211,26 @@ impl VisiblePosePartTransforms {
                 left_leg_translation: self.left_leg.base_delta,
                 right_leg_translation: self.right_leg.base_delta,
             },
-        )
+        );
+        if let Some(scarf_tail) = scarf_tail {
+            metrics.scarf_stream_m = scarf_tail.base_delta.z.max(0.0);
+            metrics.scarf_lateral_sway_m = scarf_tail.base_delta.x.abs();
+            metrics.scarf_tail_flex_degrees = scarf_anchor.map_or_else(
+                || {
+                    scarf_tail
+                        .rotation
+                        .angle_between(Quat::IDENTITY)
+                        .to_degrees()
+                },
+                |scarf_anchor| {
+                    scarf_tail
+                        .rotation
+                        .angle_between(scarf_anchor.rotation)
+                        .to_degrees()
+                },
+            );
+        }
+        metrics
     }
 
     fn max_rotation_delta_degrees(self, previous: Self) -> f32 {
@@ -636,6 +662,11 @@ pub(crate) fn collect_eval_metrics(
         wing_airflow_strength: pose_readability.wing_airflow_strength,
         key_pose_readability_score: pose_readability.key_pose_readability_score,
     })
+    .with_scarf_pose_metrics(
+        pose_readability.scarf_stream_m,
+        pose_readability.scarf_lateral_sway_m,
+        pose_readability.scarf_tail_flex_degrees,
+    )
     .with_key_pose_transition_grace(transition_pose_readability.used_transition_grace)
     .with_pose_temporal_metrics(pose_temporal)
     .with_content_metrics(
@@ -798,7 +829,11 @@ fn visible_generated_pose_part_set<'a>(
             CharacterPartRole::Arm(Side::Right) => parts_set.right_arm = Some(pose_part),
             CharacterPartRole::Leg(Side::Left) => parts_set.left_leg = Some(pose_part),
             CharacterPartRole::Leg(Side::Right) => parts_set.right_leg = Some(pose_part),
-            CharacterPartRole::Head | CharacterPartRole::Wing(_) | CharacterPartRole::Scarf(_) => {}
+            CharacterPartRole::Scarf(ScarfSegment::Anchor) => {
+                parts_set.scarf_anchor = Some(pose_part);
+            }
+            CharacterPartRole::Scarf(ScarfSegment::Trail) => parts_set.scarf_tail = Some(pose_part),
+            CharacterPartRole::Head | CharacterPartRole::Wing(_) => {}
         }
     }
 
@@ -842,7 +877,11 @@ fn visible_authored_pose_part_set<'a>(
             CharacterPartRole::Arm(Side::Right) => parts_set.right_arm = Some(pose_part),
             CharacterPartRole::Leg(Side::Left) => parts_set.left_leg = Some(pose_part),
             CharacterPartRole::Leg(Side::Right) => parts_set.right_leg = Some(pose_part),
-            CharacterPartRole::Head | CharacterPartRole::Wing(_) | CharacterPartRole::Scarf(_) => {}
+            CharacterPartRole::Scarf(ScarfSegment::Anchor) => {
+                parts_set.scarf_anchor = Some(pose_part);
+            }
+            CharacterPartRole::Scarf(ScarfSegment::Trail) => parts_set.scarf_tail = Some(pose_part),
+            CharacterPartRole::Head | CharacterPartRole::Wing(_) => {}
         }
     }
 
@@ -1160,6 +1199,138 @@ mod tests {
     }
 
     #[test]
+    fn visible_generated_pose_metrics_include_scarf_motion_without_core_count() {
+        let context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(8.0, -8.0, -34.0),
+            FlightInput::default(),
+            30.0,
+        );
+        let scarf_anchor_base = Vec3::new(0.0, 1.25, 0.02);
+        let scarf_tail_base = Vec3::new(0.0, 1.08, 0.05);
+        let parts = [
+            (
+                CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY),
+                Transform::from_rotation(Quat::from_rotation_x(-0.32)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Arm(Side::Left),
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                ),
+                Transform::from_rotation(Quat::from_rotation_z(1.08)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Arm(Side::Right),
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                ),
+                Transform::from_rotation(Quat::from_rotation_z(-1.08)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Leg(Side::Left),
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                ),
+                Transform::from_rotation(Quat::from_rotation_x(0.2)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Leg(Side::Right),
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                ),
+                Transform::from_rotation(Quat::from_rotation_x(0.2)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Scarf(ScarfSegment::Anchor),
+                    scarf_anchor_base,
+                    Quat::IDENTITY,
+                ),
+                Transform {
+                    translation: scarf_anchor_base + Vec3::new(0.01, 0.0, 0.04),
+                    rotation: Quat::from_rotation_x(0.04),
+                    ..default()
+                },
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Scarf(ScarfSegment::Trail),
+                    scarf_tail_base,
+                    Quat::IDENTITY,
+                ),
+                Transform {
+                    translation: scarf_tail_base + Vec3::new(-0.09, 0.0, 0.38),
+                    rotation: Quat::from_rotation_x(0.32),
+                    ..default()
+                },
+                Visibility::Inherited,
+            ),
+        ];
+
+        let part_set = visible_generated_pose_part_set(
+            parts
+                .iter()
+                .map(|(part, transform, visibility)| (part, transform, visibility)),
+        );
+        let metrics = part_set
+            .readability_metrics(context)
+            .expect("visible generated pose metrics");
+
+        assert_eq!(part_set.part_count(), 5);
+        assert!(metrics.key_pose_readability_score > 0.9);
+        assert!(metrics.scarf_stream_m > 0.37);
+        assert!(metrics.scarf_lateral_sway_m > 0.08);
+        assert!(metrics.scarf_tail_flex_degrees > 15.0);
+    }
+
+    #[test]
+    fn visible_scarf_without_core_parts_does_not_satisfy_pose_metrics() {
+        let scarf_tail_base = Vec3::new(0.0, 1.08, 0.05);
+        let parts = [(
+            CharacterPart::new(
+                CharacterPartRole::Scarf(ScarfSegment::Trail),
+                scarf_tail_base,
+                Quat::IDENTITY,
+            ),
+            Transform {
+                translation: scarf_tail_base + Vec3::new(0.12, 0.0, 0.4),
+                rotation: Quat::from_rotation_x(0.35),
+                ..default()
+            },
+            Visibility::Inherited,
+        )];
+
+        let part_set = visible_generated_pose_part_set(
+            parts
+                .iter()
+                .map(|(part, transform, visibility)| (part, transform, visibility)),
+        );
+
+        assert_eq!(part_set.part_count(), 0);
+        assert!(
+            part_set
+                .readability_metrics(PlayerPoseContext::new(
+                    FlightMode::Gliding,
+                    Vec3::NEG_Z,
+                    FlightInput::default(),
+                    10.0,
+                ))
+                .is_none()
+        );
+    }
+
+    #[test]
     fn hidden_generated_parts_do_not_satisfy_visible_pose_metrics() {
         let context = PlayerPoseContext::new(
             FlightMode::Gliding,
@@ -1268,6 +1439,8 @@ mod tests {
         );
         let left_leg_base = Vec3::new(-0.17, 0.30, 0.01);
         let right_leg_base = Vec3::new(0.17, 0.30, 0.01);
+        let scarf_anchor_base = Vec3::new(0.0, 1.24, 0.04);
+        let scarf_tail_base = Vec3::new(0.0, 1.08, 0.03);
         let nodes = [
             (
                 AuthoredPlayerPoseNode::new(CharacterPart::new(
@@ -1317,6 +1490,30 @@ mod tests {
                     ..default()
                 },
             ),
+            (
+                AuthoredPlayerPoseNode::new(CharacterPart::new(
+                    CharacterPartRole::Scarf(ScarfSegment::Anchor),
+                    scarf_anchor_base,
+                    Quat::IDENTITY,
+                )),
+                Transform {
+                    translation: scarf_anchor_base,
+                    rotation: Quat::from_rotation_z(0.02),
+                    ..default()
+                },
+            ),
+            (
+                AuthoredPlayerPoseNode::new(CharacterPart::new(
+                    CharacterPartRole::Scarf(ScarfSegment::Trail),
+                    scarf_tail_base,
+                    Quat::IDENTITY,
+                )),
+                Transform {
+                    translation: scarf_tail_base + Vec3::new(0.07, 0.0, 0.36),
+                    rotation: Quat::from_rotation_x(0.31),
+                    ..default()
+                },
+            ),
         ];
 
         let metrics = visible_authored_pose_readability_metrics(
@@ -1330,6 +1527,9 @@ mod tests {
         assert!(metrics.torso_pitch_degrees > 16.0);
         assert!(metrics.arm_spread_degrees > 120.0);
         assert!(metrics.key_pose_readability_score > 0.9);
+        assert!(metrics.scarf_stream_m > 0.35);
+        assert!(metrics.scarf_lateral_sway_m > 0.06);
+        assert!(metrics.scarf_tail_flex_degrees > 15.0);
     }
 
     #[test]
@@ -1422,6 +1622,7 @@ mod tests {
                 0.0,
                 0.0,
             ),
+            ..default()
         };
 
         let adjusted = transition_aware_pose_readability(
@@ -1456,6 +1657,7 @@ mod tests {
             landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.5,
             key_pose_readability_score: 1.0,
+            ..default()
         };
 
         let adjusted = transition_aware_pose_readability(
@@ -1496,6 +1698,7 @@ mod tests {
                 0.0,
                 0.0,
             ),
+            ..default()
         };
 
         let adjusted = transition_aware_pose_readability(
@@ -1530,6 +1733,7 @@ mod tests {
             landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.0,
             key_pose_readability_score: 0.1,
+            ..default()
         };
 
         let adjusted = transition_aware_pose_readability(
@@ -1563,6 +1767,7 @@ mod tests {
             landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.4,
             key_pose_readability_score: 0.72,
+            ..default()
         };
 
         let adjusted = transition_aware_pose_readability(
@@ -1606,6 +1811,7 @@ mod tests {
                 0.0,
                 0.0,
             ),
+            ..default()
         };
 
         let adjusted = transition_aware_pose_readability(
@@ -1650,6 +1856,7 @@ mod tests {
                 0.0,
                 0.0,
             ),
+            ..default()
         };
 
         let adjusted = transition_aware_pose_readability(
@@ -1694,6 +1901,7 @@ mod tests {
                 0.159,
                 0.40,
             ),
+            ..default()
         };
 
         let adjusted = transition_aware_pose_readability(
@@ -1738,6 +1946,7 @@ mod tests {
                 0.159,
                 0.40,
             ),
+            ..default()
         };
 
         let adjusted = transition_aware_pose_readability(
@@ -1778,6 +1987,7 @@ mod tests {
                 0.0,
                 0.0,
             ),
+            ..default()
         };
 
         let adjusted = transition_aware_pose_readability(
@@ -1822,6 +2032,7 @@ mod tests {
                 0.0,
                 0.0,
             ),
+            ..default()
         };
 
         let adjusted = transition_aware_pose_readability(
@@ -1855,6 +2066,7 @@ mod tests {
             landing_recovery_flip_degrees: 0.0,
             wing_airflow_strength: 0.4,
             key_pose_readability_score: 0.72,
+            ..default()
         };
 
         let adjusted = transition_aware_pose_readability(
@@ -2023,6 +2235,8 @@ mod tests {
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),
+            scarf_anchor: None,
+            scarf_tail: None,
         }
     }
 }
