@@ -135,7 +135,7 @@ Current tests cover:
 - camera mouse X/Y input, pitch clamps, pitch/distance/framing helpers, surface-clearance lift, obstruction avoidance, route-spire obstruction exercise, and a bounded post-obstruction camera step so blockers cannot pull the camera into a one-frame snap
 - camera follow direction smoothing limits rapid turn snaps
 - lateral air input steers velocity toward the camera-relative plane
-- pure backward air input brakes planar drift, while backward plus lateral input steers into rear-diagonal glide control
+- pure backward air input brakes planar drift, while backward plus lateral input steers into rear-diagonal glide control with a directional skid/cupped-limb air-brake pose
 - flight body yaw tracks lateral input direction, bounds the first-frame reversal spike, and recovers quickly after lateral input reversals
 - frame-time diagnostics avoid invalid values
 - animation phase advances from delta time
