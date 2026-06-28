@@ -24,6 +24,10 @@ use serde_json::{Value, json};
 
 use super::{super::round4, SimMetrics};
 use crate::{
+    AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+    AIR_CONTROL_MAX_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+    AIR_CONTROL_MAX_P95_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+    AIR_CONTROL_MAX_P95_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES,
     AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES, AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES,
     AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES, AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES,
@@ -547,6 +551,30 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             metrics.left_pure_air_turn_sideways_samples as f32,
             AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES as f32,
             "samples",
+        ),
+        SimCheck::at_most(
+            "pose_state_p95_pure_air_turn_sideways_body_travel_heading_error",
+            metrics.p95_pure_air_turn_sideways_body_travel_heading_error_degrees(),
+            AIR_CONTROL_MAX_P95_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_most(
+            "pose_state_max_pure_air_turn_sideways_body_travel_heading_error",
+            metrics.max_pure_air_turn_sideways_body_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_most(
+            "pose_state_p95_pure_air_turn_sideways_desired_travel_heading_error",
+            metrics.p95_pure_air_turn_sideways_desired_travel_heading_error_degrees(),
+            AIR_CONTROL_MAX_P95_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_most(
+            "pose_state_max_pure_air_turn_sideways_desired_travel_heading_error",
+            metrics.max_pure_air_turn_sideways_desired_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
         ),
         SimCheck::at_least(
             "pose_state_air_brake_samples",
