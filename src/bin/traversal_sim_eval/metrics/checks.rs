@@ -27,16 +27,18 @@ use serde_json::{Value, json};
 use super::{super::round4, SimMetrics};
 use crate::{
     AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+    AIR_CONTROL_MAX_DIVE_POSE_ARM_SPREAD_DEGREES,
     AIR_CONTROL_MAX_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MAX_P95_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MAX_P95_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES,
-    AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES, AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES,
-    AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES, AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES,
+    AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES, AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
+    AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES,
     AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES, GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M,
     GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES, GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M,
     GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES, LANDING_MIN_POSE_CROUCH_M,
-    MIN_POSE_SCARF_LATERAL_SWAY_M, MIN_POSE_SCARF_STREAM_M, MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
+    MIN_POSE_LIMB_CLEARANCE_M, MIN_POSE_SCARF_LATERAL_SWAY_M, MIN_POSE_SCARF_STREAM_M,
+    MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
 };
 
 const POSE_STATE_MIN_IDLE_SAMPLES: f32 = 3.0;
@@ -473,6 +475,15 @@ impl SimMetrics {
 }
 
 fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
+    let max_dive_pose_arm_spread_degrees = if metrics.gliding_dive_samples > 0 {
+        metrics.max_dive_pose_arm_spread_degrees
+    } else {
+        f32::INFINITY
+    };
+    let min_pose_limb_clearance_m = metrics
+        .min_pose_limb_clearance_m
+        .unwrap_or(f32::NEG_INFINITY);
+
     checks.extend([
         SimCheck::at_least(
             "pose_state_grounded_idle_samples",
@@ -652,10 +663,10 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
             "deg",
         ),
-        SimCheck::at_least(
+        SimCheck::at_most(
             "pose_state_dive_pose_arm_spread",
-            metrics.max_dive_pose_arm_spread_degrees,
-            AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES,
+            max_dive_pose_arm_spread_degrees,
+            AIR_CONTROL_MAX_DIVE_POSE_ARM_SPREAD_DEGREES,
             "deg",
         ),
         SimCheck::at_least(
@@ -735,6 +746,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             metrics.key_pose_transition_grace_samples as f32,
             POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32,
             "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_min_pose_limb_clearance",
+            min_pose_limb_clearance_m,
+            MIN_POSE_LIMB_CLEARANCE_M,
+            "m",
         ),
     ]);
 }
