@@ -104,6 +104,7 @@ impl SimMetrics {
             "max_pose_scarf_stream_m": round4(self.max_pose_scarf_stream_m),
             "max_pose_scarf_lateral_sway_m": round4(self.max_pose_scarf_lateral_sway_m),
             "max_pose_scarf_tail_flex_degrees": round4(self.max_pose_scarf_tail_flex_degrees),
+            "min_pose_limb_clearance_m": self.min_pose_limb_clearance_m.map(round4),
             "min_target_distance_m": round4(self.min_target_distance_m),
             "final_target_distance_m": round4(self.final_target_distance_m),
             "objective_total_count": self.objective_total_count,
