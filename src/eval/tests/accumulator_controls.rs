@@ -1156,15 +1156,32 @@ fn accumulator_summarizes_pose_intent_samples() {
             key_pose_readability_score: 1.0,
         }),
     );
-    accumulator.observe(air_control_metric_sample(
-        scenario,
-        1,
-        Vec3::new(0.0, -18.0, -26.0),
-        Vec2::ZERO,
-        0.0,
-        18.0,
-        0.0,
-    ));
+    accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            1,
+            Vec3::new(0.0, -18.0, -26.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        )
+        .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+            torso_pitch_degrees: 62.0,
+            arm_spread_degrees: 170.0,
+            leg_tuck_degrees: 58.0,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
+            landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
+            landing_foot_split_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
+            wing_airflow_strength: 0.0,
+            key_pose_readability_score: 1.0,
+        }),
+    );
     accumulator.observe(air_control_metric_sample(
         scenario,
         2,
@@ -1301,6 +1318,9 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert_eq!(summary.metrics.authored_transition_active_samples, 0);
     assert_eq!(summary.metrics.max_authored_transition_duration_ms, 140);
     assert_eq!(summary.metrics.max_pose_torso_pitch_degrees, 64.0);
+    assert_eq!(summary.metrics.max_dive_pose_torso_pitch_degrees, 62.0);
+    assert_eq!(summary.metrics.max_dive_pose_arm_spread_degrees, 170.0);
+    assert_eq!(summary.metrics.max_dive_pose_leg_tuck_degrees, 58.0);
     assert_eq!(summary.metrics.max_pose_landing_flare_degrees, 37.0);
     assert_eq!(
         summary.metrics.max_authored_glider_dive_response_degrees,
@@ -1309,6 +1329,9 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert_eq!(summary.metrics.max_authored_glider_dive_motion_m, 0.08);
     assert_eq!(summary.metrics.unreadable_key_pose_samples, 1);
     assert!(summary_json.contains("\"max_pose_landing_foot_forward_m\""));
+    assert!(summary_json.contains("\"max_dive_pose_torso_pitch_degrees\": 62"));
+    assert!(summary_json.contains("\"max_dive_pose_arm_spread_degrees\": 170"));
+    assert!(summary_json.contains("\"max_dive_pose_leg_tuck_degrees\": 58"));
     assert!(summary_json.contains("\"max_pose_landing_flare_degrees\": 37"));
     assert!(summary_json.contains("\"pose_air_turn_samples\": 1"));
     assert!(summary_json.contains("\"right_pose_air_turn_samples\": 1"));
@@ -1801,6 +1824,9 @@ fn accumulator_gates_air_control_pose_readability() {
         "air_control_pose_torso_pitch",
         "air_control_pose_arm_spread",
         "air_control_pose_leg_tuck",
+        "air_control_dive_pose_torso_pitch",
+        "air_control_dive_pose_arm_spread",
+        "air_control_dive_pose_leg_tuck",
         "air_control_pose_lateral_lean",
         "air_control_right_pose_lateral_lean",
         "air_control_left_pose_lateral_lean",
@@ -1810,6 +1836,93 @@ fn accumulator_gates_air_control_pose_readability() {
         assert_eq!(check.value, 0.0);
         assert!(!check.passed, "expected {name} to fail");
     }
+}
+
+#[test]
+fn accumulator_counts_gliding_air_control_dive_pose_readability() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    let mut airborne_dive = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, -18.0, -26.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    )
+    .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: 80.0,
+        arm_spread_degrees: 180.0,
+        leg_tuck_degrees: 72.0,
+        lateral_lean_degrees: 0.0,
+        signed_lateral_lean_degrees: 0.0,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
+        landing_crouch_m: 0.0,
+        landing_foot_forward_m: 0.0,
+        landing_foot_split_m: 0.0,
+        landing_recovery_flip_degrees: 0.0,
+        wing_airflow_strength: 0.0,
+        key_pose_readability_score: 1.0,
+    });
+    airborne_dive.mode = FlightMode::Airborne.label();
+    accumulator.observe(airborne_dive);
+
+    accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            30,
+            Vec3::new(0.0, -18.0, -26.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        )
+        .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+            torso_pitch_degrees: AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
+            arm_spread_degrees: AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES,
+            leg_tuck_degrees: AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
+            landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
+            landing_foot_split_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
+            wing_airflow_strength: 0.0,
+            key_pose_readability_score: 1.0,
+        }),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(
+        summary.metrics.max_dive_pose_torso_pitch_degrees,
+        AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES
+    );
+    assert_eq!(
+        summary.metrics.max_dive_pose_arm_spread_degrees,
+        AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES
+    );
+    assert_eq!(
+        summary.metrics.max_dive_pose_leg_tuck_degrees,
+        AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES
+    );
+    assert!(named_check(&summary, "air_control_dive_pose_torso_pitch").passed);
+    assert!(named_check(&summary, "air_control_dive_pose_arm_spread").passed);
+    assert!(named_check(&summary, "air_control_dive_pose_leg_tuck").passed);
 }
 
 #[test]
@@ -2764,6 +2877,9 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_backward_left_diagonal_body_travel_heading_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
+        "pose_state_dive_pose_torso_pitch",
+        "pose_state_dive_pose_arm_spread",
+        "pose_state_dive_pose_leg_tuck",
         "pose_state_landing_anticipation_samples",
         "pose_state_landing_recovery_samples",
         "pose_state_authored_land_clip_samples",
@@ -2842,6 +2958,9 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
         "pose_state_backward_left_diagonal_body_travel_heading_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
+        "pose_state_dive_pose_torso_pitch",
+        "pose_state_dive_pose_arm_spread",
+        "pose_state_dive_pose_leg_tuck",
         "pose_state_landing_anticipation_samples",
         "pose_state_landing_recovery_samples",
         "pose_state_authored_land_clip_samples",
@@ -3132,6 +3251,11 @@ fn pose_state_readability_metrics_for_label(pose_intent_label: &str) -> EvalPose
             metrics.landing_crouch_m = LANDING_MIN_POSE_CROUCH_M;
             metrics.landing_foot_split_m = LANDING_MIN_POSE_FOOT_SPLIT_M;
             metrics.landing_recovery_flip_degrees = LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES;
+        }
+        "diving" => {
+            metrics.torso_pitch_degrees = AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES;
+            metrics.arm_spread_degrees = AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES;
+            metrics.leg_tuck_degrees = AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES;
         }
         _ => {}
     }

@@ -260,6 +260,9 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         "pose_state_backward_left_diagonal_body_travel_heading_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
+        "pose_state_dive_pose_torso_pitch",
+        "pose_state_dive_pose_arm_spread",
+        "pose_state_dive_pose_leg_tuck",
         "pose_state_landing_anticipation_samples",
         "pose_state_landing_recovery_samples",
         "pose_state_landing_crouch",
@@ -315,6 +318,9 @@ fn pose_state_coverage_sim_checks_reject_thin_samples() {
         "pose_state_backward_left_diagonal_body_travel_heading_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
+        "pose_state_dive_pose_torso_pitch",
+        "pose_state_dive_pose_arm_spread",
+        "pose_state_dive_pose_leg_tuck",
         "pose_state_landing_anticipation_samples",
         "pose_state_landing_recovery_samples",
     ] {
@@ -450,6 +456,7 @@ fn sim_metrics_track_landing_flare_and_foot_split_from_landing_pose() {
     metrics.observe(&landing_sample, scenario);
 
     assert_eq!(metrics.max_pose_torso_pitch_degrees, 72.0);
+    assert_eq!(metrics.max_dive_pose_torso_pitch_degrees, 0.0);
     assert_eq!(metrics.max_pose_landing_flare_degrees, 34.0);
     assert_eq!(metrics.max_pose_landing_foot_forward_m, 0.41);
     assert_eq!(metrics.max_pose_landing_foot_split_m, 0.25);
@@ -939,6 +946,9 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_pose_torso_pitch",
         "air_control_pose_arm_spread",
         "air_control_pose_leg_tuck",
+        "air_control_dive_pose_torso_pitch",
+        "air_control_dive_pose_arm_spread",
+        "air_control_dive_pose_leg_tuck",
         "air_control_pose_lateral_lean",
         "air_control_right_pose_lateral_lean",
         "air_control_left_pose_lateral_lean",

@@ -18,6 +18,8 @@ use crate::{
     AIR_CONTROL_MIN_BACKWARD_DIAGONAL_REAR_RESPONSE_MPS,
     AIR_CONTROL_MIN_BACKWARD_LATERAL_RESPONSE_MPS, AIR_CONTROL_MIN_BODY_BANK_RESPONSE_DEGREES,
     AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS, AIR_CONTROL_MIN_DESIRED_TRAVEL_HEADING_SAMPLES,
+    AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES, AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES,
+    AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
     AIR_CONTROL_MIN_LATERAL_BODY_TRAVEL_HEADING_SAMPLES, AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS,
     AIR_CONTROL_MIN_POSE_AIR_TURN_SAMPLES, AIR_CONTROL_MIN_POSE_ARM_SPREAD_DEGREES,
     AIR_CONTROL_MIN_POSE_LATERAL_LEAN_DEGREES, AIR_CONTROL_MIN_POSE_LEG_TUCK_DEGREES,
@@ -408,6 +410,24 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             "air_control_pose_leg_tuck",
             metrics.max_pose_leg_tuck_degrees,
             AIR_CONTROL_MIN_POSE_LEG_TUCK_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "air_control_dive_pose_torso_pitch",
+            metrics.max_dive_pose_torso_pitch_degrees,
+            AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "air_control_dive_pose_arm_spread",
+            metrics.max_dive_pose_arm_spread_degrees,
+            AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "air_control_dive_pose_leg_tuck",
+            metrics.max_dive_pose_leg_tuck_degrees,
+            AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES,
             "deg",
         ),
         SimCheck::at_least(

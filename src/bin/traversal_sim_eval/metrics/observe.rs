@@ -164,6 +164,17 @@ impl SimMetrics {
         self.max_pose_leg_tuck_degrees = self
             .max_pose_leg_tuck_degrees
             .max(sample.pose_leg_tuck_degrees);
+        if sample.mode == "gliding" && sample.pose_intent_label == "diving" {
+            self.max_dive_pose_torso_pitch_degrees = self
+                .max_dive_pose_torso_pitch_degrees
+                .max(sample.pose_torso_pitch_degrees);
+            self.max_dive_pose_arm_spread_degrees = self
+                .max_dive_pose_arm_spread_degrees
+                .max(sample.pose_arm_spread_degrees);
+            self.max_dive_pose_leg_tuck_degrees = self
+                .max_dive_pose_leg_tuck_degrees
+                .max(sample.pose_leg_tuck_degrees);
+        }
         self.max_pose_lateral_lean_degrees = self
             .max_pose_lateral_lean_degrees
             .max(sample.pose_lateral_lean_degrees);

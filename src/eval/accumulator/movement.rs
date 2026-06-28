@@ -426,6 +426,17 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
     accumulator.max_pose_leg_tuck_degrees = accumulator
         .max_pose_leg_tuck_degrees
         .max(sample.pose_leg_tuck_degrees);
+    if sample.mode == FlightMode::Gliding.label() && sample.pose_intent_label == "diving" {
+        accumulator.max_dive_pose_torso_pitch_degrees = accumulator
+            .max_dive_pose_torso_pitch_degrees
+            .max(sample.pose_torso_pitch_degrees);
+        accumulator.max_dive_pose_arm_spread_degrees = accumulator
+            .max_dive_pose_arm_spread_degrees
+            .max(sample.pose_arm_spread_degrees);
+        accumulator.max_dive_pose_leg_tuck_degrees = accumulator
+            .max_dive_pose_leg_tuck_degrees
+            .max(sample.pose_leg_tuck_degrees);
+    }
     accumulator.max_pose_lateral_lean_degrees = accumulator
         .max_pose_lateral_lean_degrees
         .max(sample.pose_lateral_lean_degrees);
