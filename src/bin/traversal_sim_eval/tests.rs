@@ -242,6 +242,18 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
     assert!(
         result
             .metrics
+            .max_backward_right_air_brake_pose_lateral_lean_degrees
+            >= 8.0
+    );
+    assert!(
+        result
+            .metrics
+            .max_backward_left_air_brake_pose_lateral_lean_degrees
+            >= 8.0
+    );
+    assert!(
+        result
+            .metrics
             .backward_right_diagonal_body_travel_heading_samples
             >= AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES
     );
@@ -287,6 +299,8 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         "pose_state_p95_pure_air_turn_sideways_desired_travel_heading_error",
         "pose_state_max_pure_air_turn_sideways_desired_travel_heading_error",
         "pose_state_air_brake_samples",
+        "pose_state_backward_right_air_brake_pose_lateral_lean",
+        "pose_state_backward_left_air_brake_pose_lateral_lean",
         "pose_state_backward_diagonal_body_travel_heading_samples",
         "pose_state_backward_right_diagonal_body_travel_heading_samples",
         "pose_state_backward_left_diagonal_body_travel_heading_samples",
@@ -345,6 +359,8 @@ fn pose_state_coverage_sim_checks_reject_thin_samples() {
         "pose_state_right_pure_air_turn_sideways_samples",
         "pose_state_left_pure_air_turn_sideways_samples",
         "pose_state_air_brake_samples",
+        "pose_state_backward_right_air_brake_pose_lateral_lean",
+        "pose_state_backward_left_air_brake_pose_lateral_lean",
         "pose_state_backward_diagonal_body_travel_heading_samples",
         "pose_state_backward_right_diagonal_body_travel_heading_samples",
         "pose_state_backward_left_diagonal_body_travel_heading_samples",
@@ -965,6 +981,18 @@ fn air_control_simulation_measures_backward_diagonal_response() {
     assert!(result.metrics.left_pose_air_brake_samples > 0);
     assert!(result.metrics.backward_right_pose_air_brake_samples > 0);
     assert!(result.metrics.backward_left_pose_air_brake_samples > 0);
+    assert!(
+        result
+            .metrics
+            .max_backward_right_air_brake_pose_lateral_lean_degrees
+            >= 8.0
+    );
+    assert!(
+        result
+            .metrics
+            .max_backward_left_air_brake_pose_lateral_lean_degrees
+            >= 8.0
+    );
     assert!(result.metrics.pose_diving_samples > 0);
     assert!(result.metrics.gliding_dive_samples > 0);
 }
@@ -1016,6 +1044,8 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_pose_lateral_lean",
         "air_control_right_pose_lateral_lean",
         "air_control_left_pose_lateral_lean",
+        "air_control_backward_right_air_brake_pose_lateral_lean",
+        "air_control_backward_left_air_brake_pose_lateral_lean",
         "air_control_pose_wing_airflow",
         "air_control_unreadable_key_pose_samples",
         "air_control_key_pose_transition_grace_samples",
@@ -1067,6 +1097,8 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
     assert!(summary.contains("\"backward_left_lateral_response_latency_secs\""));
     assert!(summary.contains("\"max_right_pose_lateral_lean_degrees\""));
     assert!(summary.contains("\"max_left_pose_lateral_lean_degrees\""));
+    assert!(summary.contains("\"max_backward_right_air_brake_pose_lateral_lean_degrees\""));
+    assert!(summary.contains("\"max_backward_left_air_brake_pose_lateral_lean_degrees\""));
     assert!(summary.contains("\"pose_air_turn_samples\""));
     assert!(summary.contains("\"right_pose_air_turn_samples\""));
     assert!(summary.contains("\"left_pose_air_turn_samples\""));
@@ -1147,6 +1179,18 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
             .expect("max desired travel heading error is numeric")
             <= 65.0
     );
+    for key in [
+        "max_backward_right_air_brake_pose_lateral_lean_degrees",
+        "max_backward_left_air_brake_pose_lateral_lean_degrees",
+    ] {
+        assert!(
+            summary_json["metrics"][key]
+                .as_f64()
+                .unwrap_or_else(|| panic!("{key} is numeric"))
+                >= 8.0,
+            "{key} should have signed air-brake lean coverage"
+        );
+    }
     assert!(
         summary_json["final_sample"]
             .as_object()
@@ -1525,6 +1569,47 @@ fn sim_metrics_track_signed_pose_lateral_lean_by_lateral_input_direction() {
 }
 
 #[test]
+fn sim_metrics_track_signed_backward_air_brake_pose_lateral_lean() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    let mut right_wrong_sign = sim_roll_sample(&route, scenario, 30, FlightMode::Gliding, 0.0, 1.0);
+    right_wrong_sign.pose_intent_label = "air_brake";
+    right_wrong_sign.movement_input_forward_axis = -1.0;
+    right_wrong_sign.pose_signed_lateral_lean_degrees = 30.0;
+    metrics.observe(&right_wrong_sign, scenario);
+
+    let mut left_wrong_sign = sim_roll_sample(&route, scenario, 60, FlightMode::Gliding, 0.0, -1.0);
+    left_wrong_sign.pose_intent_label = "air_brake";
+    left_wrong_sign.movement_input_forward_axis = -1.0;
+    left_wrong_sign.pose_signed_lateral_lean_degrees = -30.0;
+    metrics.observe(&left_wrong_sign, scenario);
+
+    let mut forward_right_sample = right_wrong_sign.clone();
+    forward_right_sample.movement_input_forward_axis = 1.0;
+    forward_right_sample.pose_signed_lateral_lean_degrees = -45.0;
+    metrics.observe(&forward_right_sample, scenario);
+
+    let mut right_sample = right_wrong_sign.clone();
+    right_sample.pose_signed_lateral_lean_degrees = -9.0;
+    metrics.observe(&right_sample, scenario);
+
+    let mut left_sample = left_wrong_sign.clone();
+    left_sample.pose_signed_lateral_lean_degrees = 11.0;
+    metrics.observe(&left_sample, scenario);
+
+    assert_eq!(
+        metrics.max_backward_right_air_brake_pose_lateral_lean_degrees,
+        9.0
+    );
+    assert_eq!(
+        metrics.max_backward_left_air_brake_pose_lateral_lean_degrees,
+        11.0
+    );
+}
+
+#[test]
 fn sim_metrics_count_readable_directional_air_brake_pose_samples() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
     let route = SkyRoute::default();
@@ -1830,6 +1915,50 @@ fn sim_metrics_fail_one_sided_air_brake_pose_samples() {
             .find(|check| check.name == check_name)
             .unwrap_or_else(|| panic!("missing sim check {check_name}"));
         assert!(!check.passed, "{check_name} coverage should fail");
+        assert_eq!(check.value, 0.0);
+    }
+}
+
+#[test]
+fn sim_metrics_fail_wrong_signed_backward_air_brake_pose_lean() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    let mut right_sample = sim_roll_sample(&route, scenario, 240, FlightMode::Gliding, 0.0, 1.0);
+    right_sample.pose_intent_label = "air_brake";
+    right_sample.movement_input_forward_axis = -1.0;
+    right_sample.pose_signed_lateral_lean_degrees = 30.0;
+    metrics.observe(&right_sample, scenario);
+
+    let mut left_sample = sim_roll_sample(&route, scenario, 270, FlightMode::Gliding, 0.0, -1.0);
+    left_sample.pose_intent_label = "air_brake";
+    left_sample.movement_input_forward_axis = -1.0;
+    left_sample.pose_signed_lateral_lean_degrees = -30.0;
+    metrics.observe(&left_sample, scenario);
+
+    assert_eq!(
+        metrics.max_backward_right_air_brake_pose_lateral_lean_degrees,
+        0.0
+    );
+    assert_eq!(
+        metrics.max_backward_left_air_brake_pose_lateral_lean_degrees,
+        0.0
+    );
+
+    let checks = metrics.checks(scenario);
+    for check_name in [
+        "air_control_backward_right_air_brake_pose_lateral_lean",
+        "air_control_backward_left_air_brake_pose_lateral_lean",
+    ] {
+        let check = checks
+            .iter()
+            .find(|check| check.name == check_name)
+            .unwrap_or_else(|| panic!("missing sim check {check_name}"));
+        assert!(
+            !check.passed,
+            "{check_name} should fail for wrong lean sign"
+        );
         assert_eq!(check.value, 0.0);
     }
 }
