@@ -493,7 +493,7 @@ fn step_player(
     );
     let wind = wind.for_airborne_diagnostics(player.controller.mode != FlightMode::Grounded);
     let wind_lateral_load =
-        wind_lateral_load_from_delta(wind.crosswind_delta, player.transform.rotation);
+        wind_lateral_load_from_delta(wind.applied_delta, player.transform.rotation);
     *context.wind_diagnostics = WindForceDiagnostics::from_application(wind, wind_lateral_load);
 }
 

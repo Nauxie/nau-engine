@@ -244,7 +244,7 @@ impl SimSample {
             (state.position.y - route.ground_at(state.position).floor_y).max(0.0);
         let time_secs = frame as f32 * scenario.fixed_dt;
         let wind_lateral_load =
-            wind_lateral_load_from_delta(wind_force.crosswind_delta, player_rotation);
+            wind_lateral_load_from_delta(wind_force.applied_delta, player_rotation);
         let pose_context = PlayerPoseContext::new(
             state.controller.mode,
             body_local_pose_velocity(state.velocity, player_rotation),
