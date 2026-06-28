@@ -1,6 +1,7 @@
 use crate::Player;
 use crate::authored_assets::VisualAssetRegistry;
 use crate::content_diagnostics::IslandContentDiagnostics;
+use crate::eval_runtime::EvalRun;
 use crate::generated_content::{
     CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, cloud_cluster_mesh, cloud_filament_ribbon_detail_count,
     crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh, mesh_y_range, mix_color,
@@ -34,6 +35,22 @@ const WIND_FIELD_METRIC_EPSILON: f32 = 0.001;
 
 #[derive(Component)]
 pub(crate) struct CinematicSun;
+
+fn wind_visual_elapsed_secs(time: &Time, eval_run: Option<&EvalRun>) -> f32 {
+    eval_wind_visual_elapsed_secs(
+        time.elapsed_secs(),
+        eval_run.map(|run| (run.frame, run.scenario.fixed_dt)),
+    )
+}
+
+fn eval_wind_visual_elapsed_secs(
+    wall_clock_elapsed_secs: f32,
+    eval_frame_and_dt: Option<(u32, f32)>,
+) -> f32 {
+    eval_frame_and_dt
+        .map(|(frame, fixed_dt)| frame as f32 * fixed_dt)
+        .unwrap_or(wall_clock_elapsed_secs)
+}
 
 #[derive(Resource, Clone, Copy, Debug)]
 pub(crate) struct CinematicWeather {
@@ -572,9 +589,10 @@ pub(crate) fn update_wind_responsive_visuals(
 
 pub(crate) fn update_updraft_columns(
     time: Res<Time>,
+    eval_run: Option<Res<EvalRun>>,
     mut columns: Query<(&UpdraftColumn, &mut Transform)>,
 ) {
-    let elapsed = time.elapsed_secs();
+    let elapsed = wind_visual_elapsed_secs(&time, eval_run.as_deref());
 
     for (column, mut transform) in &mut columns {
         let flow = column
@@ -598,9 +616,10 @@ pub(crate) fn update_updraft_columns(
 
 pub(crate) fn update_updraft_guides(
     time: Res<Time>,
+    eval_run: Option<Res<EvalRun>>,
     mut guides: Query<(&UpdraftGuide, &mut Transform)>,
 ) {
-    let elapsed = time.elapsed_secs();
+    let elapsed = wind_visual_elapsed_secs(&time, eval_run.as_deref());
 
     for (guide, mut transform) in &mut guides {
         let translation = updraft_guide_position(guide, elapsed);
@@ -612,9 +631,10 @@ pub(crate) fn update_updraft_guides(
 
 pub(crate) fn update_updraft_ribbons(
     time: Res<Time>,
+    eval_run: Option<Res<EvalRun>>,
     mut ribbons: Query<(&UpdraftRibbon, &mut Transform)>,
 ) {
-    let elapsed = time.elapsed_secs();
+    let elapsed = wind_visual_elapsed_secs(&time, eval_run.as_deref());
 
     for (ribbon, mut transform) in &mut ribbons {
         *transform = updraft_ribbon_transform(ribbon, elapsed);
@@ -623,9 +643,10 @@ pub(crate) fn update_updraft_ribbons(
 
 pub(crate) fn update_crosswind_guides(
     time: Res<Time>,
+    eval_run: Option<Res<EvalRun>>,
     mut guides: Query<(&CrosswindGuide, &mut Transform)>,
 ) {
-    let elapsed = time.elapsed_secs();
+    let elapsed = wind_visual_elapsed_secs(&time, eval_run.as_deref());
 
     for (guide, mut transform) in &mut guides {
         let translation = crosswind_guide_position(guide, elapsed);
@@ -637,9 +658,10 @@ pub(crate) fn update_crosswind_guides(
 
 pub(crate) fn update_crosswind_ribbons(
     time: Res<Time>,
+    eval_run: Option<Res<EvalRun>>,
     mut ribbons: Query<(&CrosswindRibbon, &mut Transform)>,
 ) {
-    let elapsed = time.elapsed_secs();
+    let elapsed = wind_visual_elapsed_secs(&time, eval_run.as_deref());
 
     for (ribbon, mut transform) in &mut ribbons {
         *transform = crosswind_ribbon_transform(ribbon, elapsed);
@@ -1794,6 +1816,13 @@ fn horizontal_or(v: Vec3, fallback: Vec3) -> Vec3 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wind_visual_eval_clock_ignores_wall_clock_elapsed_time() {
+        let elapsed = eval_wind_visual_elapsed_secs(99.0, Some((24, 1.0 / 60.0)));
+        assert!((elapsed - 0.4).abs() < 0.0001);
+        assert_eq!(eval_wind_visual_elapsed_secs(2.5, None), 2.5);
+    }
 
     fn test_updraft_guide() -> UpdraftGuide {
         UpdraftGuide {
