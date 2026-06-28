@@ -109,6 +109,12 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 4. Replace the deepened temporary visible environment fixture scenes and faceted player fixture with authored or compatible production-quality glTF assets that satisfy the declared scene, visible world-fixture, and player animation clip readiness metrics.
 5. Add stricter terrain screenshot review for exact world semantics, occlusion accuracy, and art direction once the generated substrate or imported assets are stable enough for less tolerant classifiers.
 
+## Next Goal Draft
+
+Use this as the next long-run `/goal` seed when continuing toward the north-star traversal slice:
+
+Tighten NAU's airborne character, wind-current, and near-obstruction quality in PR-sized loops from clean latest `main`. Start with the leftover wind-quality work: audit fast/janky wind trails in the app and background export, add runtime/export metrics and gates for visual speed, acceleration, wrap/jump artifacts, flow alignment, and horizontal crosswind gameplay drift, and verify vertical lift still comes only from paired `LiftField` volumes. Then improve player fidelity: audit the current self-authored player model and pose pipeline for limb clipping, self-intersection risk, silhouette readability, transition pops, and temporal jitter; make normal fall read as a full-body belly-down skydiver posture, make explicit dive read as a head-down streamlined drop, and preserve smooth glide/air-brake/landing transitions with focused pose metrics, tests, and app/sim evals. Then improve camera obstruction near collidable trees/props so avoidance does not collapse player framing; add or extend a prop/tree obstruction route with camera distance, framing, obstruction-adjustment, and fixed checkpoint screenshot evidence. Each feature should be verified with the relevant unit tests, export audits, sim/app evals, source scan for proprietary references, `review naux` when the branch is nontrivial, `pr naux`, merge, and clean latest `main naux` before starting the next feature.
+
 ## Read First
 
 - `docs/ARCHITECTURE.md`
