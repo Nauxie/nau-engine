@@ -688,10 +688,16 @@ fn wind_visual_export_writes_motion_tracks_and_manifest() {
         Some(0)
     );
     assert!(
+        manifest_json["motion"]["total"]["off_field_track_count"]
+            .as_u64()
+            .expect("off-field track count should be present")
+            <= 8
+    );
+    assert!(
         manifest_json["motion"]["total"]["coherent_track_count"]
             .as_u64()
             .expect("coherent track count should be present")
-            > 950
+            >= 1040
     );
 
     remove_existing_dir(&output_dir).expect("wind visual export test dir should be removable");

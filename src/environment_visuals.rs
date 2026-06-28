@@ -26,6 +26,8 @@ pub(crate) const UPDRAFT_GUIDE_RING_LEVELS: [f32; 7] = [-0.86, -0.56, -0.24, 0.0
 pub(crate) const UPDRAFT_GUIDES_PER_RING: usize = 15;
 pub(crate) const CROSSWIND_RIBBONS_PER_FIELD: usize = 7;
 pub(crate) const CROSSWIND_GUIDES_PER_FIELD: usize = 60;
+pub(crate) const CROSSWIND_RIBBON_LENGTH_SCALE: f32 = 0.92;
+pub(crate) const CROSSWIND_RIBBON_CENTER_ADVANCE: f32 = 0.95;
 pub(crate) const WIND_VISUAL_COHERENCE_DT: f32 = 0.2;
 pub(crate) const WIND_VISUAL_ALIGNMENT_MIN_DOT: f32 = 0.55;
 const WIND_FIELD_METRIC_EPSILON: f32 = 0.001;
@@ -266,7 +268,7 @@ pub(crate) fn spawn_crosswind_guide(
     field: WindField,
     label: &str,
 ) {
-    let ribbon_length = (field.half_extents.x * 1.28).max(3.0);
+    let ribbon_length = (field.half_extents.x * CROSSWIND_RIBBON_LENGTH_SCALE).max(3.0);
     let marker_mesh = meshes.add(Cuboid::new(0.74, 0.07, 0.14));
     let base_rotation = rotation_from_x_to_direction(field.direction);
 
@@ -277,7 +279,8 @@ pub(crate) fn spawn_crosswind_guide(
             phase * std::f32::consts::TAU,
         ));
         let origin = field.stream_origin(ribbon_index, CROSSWIND_RIBBONS_PER_FIELD);
-        let base_translation = origin + field.direction * (field.half_extents.x * 0.62);
+        let base_translation =
+            origin + field.direction * (field.half_extents.x * CROSSWIND_RIBBON_CENTER_ADVANCE);
         commands.spawn((
             Mesh3d(ribbon_mesh.clone()),
             MeshMaterial3d(ribbon_material.clone()),
@@ -847,7 +850,7 @@ pub(crate) fn updraft_ribbon_scene_sample_positions(
     transform: &Transform,
 ) -> [Vec3; 3] {
     const STRANDS: f32 = 1.45;
-    const STOPS: [f32; 3] = [0.62, 0.78, 0.90];
+    const STOPS: [f32; 3] = [0.56, 0.68, 0.80];
 
     let radius = ribbon.field.half_extents.x.min(ribbon.field.half_extents.z);
     let height = ribbon.field.half_extents.y * 2.0;
@@ -868,9 +871,9 @@ pub(crate) fn crosswind_ribbon_scene_sample_positions(
     ribbon: &CrosswindRibbon,
     transform: &Transform,
 ) -> [Vec3; 3] {
-    const STOPS: [f32; 3] = [0.16, 0.5, 0.84];
+    const STOPS: [f32; 3] = [0.28, 0.5, 0.72];
 
-    let length = (ribbon.field.half_extents.x * 1.28).max(3.0);
+    let length = (ribbon.field.half_extents.x * CROSSWIND_RIBBON_LENGTH_SCALE).max(3.0);
     STOPS.map(|t| {
         let x = (t - 0.5) * length;
         let curve = crosswind_flow_ribbon_centerline_offset(
