@@ -21,7 +21,9 @@ use bevy::window::CompositeAlphaMode;
 use camera_runtime::*;
 #[cfg(test)]
 use content_export::mesh_uv0;
-use content_export::{export_terrain_inspection, export_visual_content_inspection};
+use content_export::{
+    export_terrain_inspection, export_visual_content_inspection, export_wind_visual_inspection,
+};
 use debug_readout_runtime::*;
 use debug_visuals::*;
 use environment_visuals::*;
@@ -103,6 +105,22 @@ fn main() -> AppExit {
                 }
                 Err(error) => {
                     eprintln!("visual content export failed: {error}");
+                    AppExit::from_code(1)
+                }
+            };
+        }
+        CliAction::ExportWindVisuals { output_dir } => {
+            return match export_wind_visual_inspection(&output_dir) {
+                Ok(report) => {
+                    println!(
+                        "exported {} wind visual tracks to {}",
+                        report.track_count,
+                        path_string(&report.manifest_path)
+                    );
+                    AppExit::Success
+                }
+                Err(error) => {
+                    eprintln!("wind visual export failed: {error}");
                     AppExit::from_code(1)
                 }
             };

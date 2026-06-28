@@ -21,13 +21,13 @@ use nau_engine::environment::{
 use nau_engine::movement::{FlightController, Velocity};
 use nau_engine::world::SkyIsland;
 
-const UPDRAFT_RIBBONS_PER_FIELD: usize = 6;
-const UPDRAFT_GUIDE_RING_LEVELS: [f32; 7] = [-0.86, -0.56, -0.24, 0.08, 0.4, 0.72, 0.94];
-const UPDRAFT_GUIDES_PER_RING: usize = 15;
-const CROSSWIND_RIBBONS_PER_FIELD: usize = 7;
-const CROSSWIND_GUIDES_PER_FIELD: usize = 60;
-const WIND_VISUAL_COHERENCE_DT: f32 = 0.2;
-const WIND_VISUAL_ALIGNMENT_MIN_DOT: f32 = 0.55;
+pub(crate) const UPDRAFT_RIBBONS_PER_FIELD: usize = 6;
+pub(crate) const UPDRAFT_GUIDE_RING_LEVELS: [f32; 7] = [-0.86, -0.56, -0.24, 0.08, 0.4, 0.72, 0.94];
+pub(crate) const UPDRAFT_GUIDES_PER_RING: usize = 15;
+pub(crate) const CROSSWIND_RIBBONS_PER_FIELD: usize = 7;
+pub(crate) const CROSSWIND_GUIDES_PER_FIELD: usize = 60;
+pub(crate) const WIND_VISUAL_COHERENCE_DT: f32 = 0.2;
+pub(crate) const WIND_VISUAL_ALIGNMENT_MIN_DOT: f32 = 0.55;
 const WIND_FIELD_METRIC_EPSILON: f32 = 0.001;
 
 #[derive(Component)]
@@ -95,36 +95,36 @@ pub(crate) struct UpdraftColumn {
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct UpdraftGuide {
-    field: WindField,
-    center: Vec3,
-    radius: f32,
-    height_offset: f32,
-    phase: f32,
-    angular_speed: f32,
+    pub(crate) field: WindField,
+    pub(crate) center: Vec3,
+    pub(crate) radius: f32,
+    pub(crate) height_offset: f32,
+    pub(crate) phase: f32,
+    pub(crate) angular_speed: f32,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct UpdraftRibbon {
-    field: WindField,
-    spin_speed: f32,
-    base_translation: Vec3,
-    base_rotation: Quat,
-    phase: f32,
+    pub(crate) field: WindField,
+    pub(crate) spin_speed: f32,
+    pub(crate) base_translation: Vec3,
+    pub(crate) base_rotation: Quat,
+    pub(crate) phase: f32,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct CrosswindGuide {
-    field: WindField,
-    stream_index: usize,
-    stream_count: usize,
-    phase: f32,
+    pub(crate) field: WindField,
+    pub(crate) stream_index: usize,
+    pub(crate) stream_count: usize,
+    pub(crate) phase: f32,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct CrosswindRibbon {
-    field: WindField,
-    base_translation: Vec3,
-    phase: f32,
+    pub(crate) field: WindField,
+    pub(crate) base_translation: Vec3,
+    pub(crate) phase: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -643,7 +643,7 @@ pub(crate) fn update_crosswind_ribbons(
     }
 }
 
-fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> Transform {
+pub(crate) fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> Transform {
     let sample = updraft_ribbon_flow_sample(ribbon, elapsed);
     debug_assert!(ribbon.field.contains(sample.probe_position));
     let flow = sample.flow;
@@ -757,7 +757,7 @@ fn updraft_ribbon_flow_sample(ribbon: &UpdraftRibbon, elapsed: f32) -> UpdraftRi
     }
 }
 
-fn crosswind_ribbon_transform(ribbon: &CrosswindRibbon, elapsed: f32) -> Transform {
+pub(crate) fn crosswind_ribbon_transform(ribbon: &CrosswindRibbon, elapsed: f32) -> Transform {
     let base_flow = ribbon
         .field
         .flow_at(ribbon.base_translation, elapsed)
@@ -1535,7 +1535,7 @@ fn observed_visual_flow_alignment(
     visual_flow_alignment(field, current, next, elapsed_secs, include_vertical, false)
 }
 
-fn visual_flow_alignment(
+pub(crate) fn visual_flow_alignment(
     field: WindField,
     current: Vec3,
     next: Vec3,
@@ -1580,7 +1580,7 @@ fn visual_flow_alignment(
     )
 }
 
-fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
+pub(crate) fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
     let field = guide.field;
     let height_span = (field.half_extents.y * 1.84).max(1.0);
     let base_progress = (guide.height_offset / height_span + 0.5).clamp(0.0, 1.0);
@@ -1653,7 +1653,7 @@ fn updraft_guide_scale(guide: &UpdraftGuide, position: Vec3, elapsed: f32) -> Ve
     Vec3::new(core, stretch, core)
 }
 
-fn crosswind_guide_position(guide: &CrosswindGuide, elapsed: f32) -> Vec3 {
+pub(crate) fn crosswind_guide_position(guide: &CrosswindGuide, elapsed: f32) -> Vec3 {
     let field = guide.field;
     let path_length = (field.half_extents.x * 2.0).max(1.0);
     let stream_variation = 0.86 + (guide.stream_index % 7) as f32 * 0.035;

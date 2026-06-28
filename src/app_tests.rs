@@ -278,6 +278,23 @@ fn parse_cli_args_accepts_visual_content_export() {
 }
 
 #[test]
+fn parse_cli_args_accepts_wind_visual_export() {
+    let action = parse_cli_args(
+        ["--export-wind-visuals", "target/wind_visual_export"]
+            .into_iter()
+            .map(str::to_string),
+    )
+    .expect("wind visual export args should parse");
+
+    match action {
+        CliAction::ExportWindVisuals { output_dir } => {
+            assert_eq!(output_dir, PathBuf::from("target/wind_visual_export"));
+        }
+        _ => panic!("expected wind visual export action"),
+    }
+}
+
+#[test]
 fn parse_cli_args_rejects_eval_and_terrain_export_together() {
     let error = parse_cli_args(
         [
@@ -312,6 +329,23 @@ fn parse_cli_args_rejects_eval_and_visual_content_export_together() {
 }
 
 #[test]
+fn parse_cli_args_rejects_eval_and_wind_visual_export_together() {
+    let error = parse_cli_args(
+        [
+            "--eval",
+            "baseline_route",
+            "--export-wind-visuals",
+            "target/wind_visual_export",
+        ]
+        .into_iter()
+        .map(str::to_string),
+    )
+    .expect_err("eval and wind visual export should be mutually exclusive");
+
+    assert!(error.contains("cannot be combined"));
+}
+
+#[test]
 fn parse_cli_args_rejects_both_export_paths_together() {
     let error = parse_cli_args(
         [
@@ -319,6 +353,8 @@ fn parse_cli_args_rejects_both_export_paths_together() {
             "target/terrain_export",
             "--export-visual-content",
             "target/visual_content_export",
+            "--export-wind-visuals",
+            "target/wind_visual_export",
         ]
         .into_iter()
         .map(str::to_string),
@@ -576,6 +612,89 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"terrain_biome_palette_count\": 5"));
 
     remove_existing_dir(&output_dir).expect("visual content export test dir should be removable");
+}
+
+#[test]
+fn wind_visual_export_writes_motion_tracks_and_manifest() {
+    let output_dir = std::env::temp_dir().join(format!(
+        "nau-wind-visual-export-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos()
+    ));
+    remove_existing_dir(&output_dir).expect("stale wind visual export dir should be removable");
+
+    let report =
+        export_wind_visual_inspection(&output_dir).expect("wind visual export should succeed");
+    let manifest = fs::read_to_string(&report.manifest_path).expect("manifest should be readable");
+    let manifest_json: serde_json::Value =
+        serde_json::from_str(&manifest).expect("manifest should be valid json");
+    let track_obj = output_dir.join("wind_tracks/wind_visual_tracks.obj");
+    let track_ndjson = output_dir.join("wind_tracks/wind_visual_tracks.ndjson");
+    let track_lines = fs::read_to_string(&track_ndjson).expect("track ndjson should be readable");
+    let updraft_field_count = nau_engine::environment::GAMEPLAY_LIFT_ROUTE.len();
+    let crosswind_field_count = nau_engine::environment::VISUAL_CROSSWIND_FIELD_COUNT;
+    let updraft_guide_count =
+        updraft_field_count * UPDRAFT_GUIDE_RING_LEVELS.len() * UPDRAFT_GUIDES_PER_RING;
+    let updraft_ribbon_count = updraft_field_count * UPDRAFT_RIBBONS_PER_FIELD;
+    let crosswind_guide_count = crosswind_field_count * CROSSWIND_GUIDES_PER_FIELD;
+    let crosswind_ribbon_count = crosswind_field_count * CROSSWIND_RIBBONS_PER_FIELD;
+    let expected_tracks = updraft_guide_count * 2
+        + updraft_ribbon_count * 2 * 4
+        + crosswind_guide_count * 2
+        + crosswind_ribbon_count * 2 * 3;
+
+    assert_eq!(report.track_count, expected_tracks);
+    assert!(track_obj.exists());
+    assert!(track_ndjson.exists());
+    assert_eq!(track_lines.lines().count(), expected_tracks);
+    assert!(track_lines.contains("\"family\":\"updraft_guide\""));
+    assert!(track_lines.contains("\"family\":\"updraft_ribbon\""));
+    assert!(track_lines.contains("\"family\":\"crosswind_guide\""));
+    assert!(track_lines.contains("\"family\":\"crosswind_ribbon\""));
+    assert!(manifest.contains("\"schema\": \"nau_wind_visual_export.v1\""));
+    assert_eq!(
+        manifest_json["counts"]["updraft_field_count"].as_u64(),
+        Some(updraft_field_count as u64)
+    );
+    assert_eq!(
+        manifest_json["counts"]["crosswind_field_count"].as_u64(),
+        Some(crosswind_field_count as u64)
+    );
+    assert_eq!(
+        manifest_json["counts"]["updraft_guide_count"].as_u64(),
+        Some(updraft_guide_count as u64)
+    );
+    assert_eq!(
+        manifest_json["counts"]["updraft_ribbon_count"].as_u64(),
+        Some(updraft_ribbon_count as u64)
+    );
+    assert_eq!(
+        manifest_json["counts"]["crosswind_guide_count"].as_u64(),
+        Some(crosswind_guide_count as u64)
+    );
+    assert_eq!(
+        manifest_json["counts"]["crosswind_ribbon_count"].as_u64(),
+        Some(crosswind_ribbon_count as u64)
+    );
+    assert_eq!(
+        manifest_json["counts"]["track_count"].as_u64(),
+        Some(expected_tracks as u64)
+    );
+    assert_eq!(
+        manifest_json["motion"]["total"]["static_track_count"].as_u64(),
+        Some(0)
+    );
+    assert!(
+        manifest_json["motion"]["total"]["coherent_track_count"]
+            .as_u64()
+            .expect("coherent track count should be present")
+            > 950
+    );
+
+    remove_existing_dir(&output_dir).expect("wind visual export test dir should be removable");
 }
 
 #[test]

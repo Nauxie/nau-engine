@@ -1,6 +1,7 @@
 mod shared;
 mod terrain;
 mod visual;
+mod wind;
 
 #[cfg(test)]
 pub(crate) use shared::mesh_uv0;
@@ -9,3 +10,4 @@ pub(crate) use shared::{
 };
 pub(crate) use terrain::export_terrain_inspection;
 pub(crate) use visual::export_visual_content_inspection;
+pub(crate) use wind::export_wind_visual_inspection;
