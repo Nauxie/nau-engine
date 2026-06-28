@@ -24,6 +24,7 @@ pub(crate) enum CliAction {
     Run { eval: Option<Box<EvalOptions>> },
     ExportTerrain { output_dir: PathBuf },
     ExportVisualContent { output_dir: PathBuf },
+    ExportWindVisuals { output_dir: PathBuf },
     Help,
 }
 
@@ -154,6 +155,7 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
     let mut eval_output = None;
     let mut export_terrain_output = None;
     let mut export_visual_content_output = None;
+    let mut export_wind_visuals_output = None;
     let mut capture_screenshot = true;
     let mut saw_eval = false;
     let mut args = args.into_iter();
@@ -192,13 +194,27 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
             })?));
         } else if let Some(value) = arg.strip_prefix("--export-visual-content=") {
             export_visual_content_output = Some(PathBuf::from(value));
+        } else if arg == "--export-wind-visuals" {
+            export_wind_visuals_output = Some(PathBuf::from(args.next().ok_or_else(|| {
+                "--export-wind-visuals requires an output directory".to_string()
+            })?));
+        } else if let Some(value) = arg.strip_prefix("--export-wind-visuals=") {
+            export_wind_visuals_output = Some(PathBuf::from(value));
         } else {
             return Err(format!("unknown argument: {arg}"));
         }
     }
 
-    if export_terrain_output.is_some() && export_visual_content_output.is_some() {
-        return Err("--export-terrain cannot be combined with --export-visual-content".to_string());
+    let export_path_count = [
+        export_terrain_output.is_some(),
+        export_visual_content_output.is_some(),
+        export_wind_visuals_output.is_some(),
+    ]
+    .into_iter()
+    .filter(|selected| *selected)
+    .count();
+    if export_path_count > 1 {
+        return Err("export paths cannot be combined".to_string());
     }
 
     if let Some(output_dir) = export_terrain_output {
@@ -212,6 +228,12 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
             return Err("--export-visual-content cannot be combined with --eval".to_string());
         }
         return Ok(CliAction::ExportVisualContent { output_dir });
+    }
+    if let Some(output_dir) = export_wind_visuals_output {
+        if saw_eval {
+            return Err("--export-wind-visuals cannot be combined with --eval".to_string());
+        }
+        return Ok(CliAction::ExportWindVisuals { output_dir });
     }
 
     let eval = if saw_eval {
@@ -238,7 +260,7 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
 
 pub(crate) fn usage() -> String {
     format!(
-        "Usage:\n  cargo run\n  cargo run -- --eval <scenario> [--eval-output <dir>] [--eval-no-screenshot]\n  cargo run -- --export-terrain <dir>\n  cargo run -- --export-visual-content <dir>\n\nScenarios: {}",
+        "Usage:\n  cargo run\n  cargo run -- --eval <scenario> [--eval-output <dir>] [--eval-no-screenshot]\n  cargo run -- --export-terrain <dir>\n  cargo run -- --export-visual-content <dir>\n  cargo run -- --export-wind-visuals <dir>\n\nScenarios: {}",
         SCENARIO_NAMES.join(", ")
     )
 }
