@@ -2806,6 +2806,8 @@ fn accumulator_gates_pose_state_coverage_samples() {
     assert_eq!(summary.metrics.pose_gliding_samples, 18);
     assert_eq!(summary.metrics.pose_air_turn_samples, 10);
     assert_eq!(summary.metrics.pure_air_turn_sideways_sample_count, 10);
+    assert_eq!(summary.metrics.authored_bank_right_clip_samples, 5);
+    assert_eq!(summary.metrics.authored_bank_left_clip_samples, 5);
     assert_eq!(
         summary.metrics.right_pose_air_turn_samples,
         POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES as u32
@@ -2868,6 +2870,8 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_air_turn_samples",
         "pose_state_right_air_turn_samples",
         "pose_state_left_air_turn_samples",
+        "pose_state_authored_bank_right_clip_samples",
+        "pose_state_authored_bank_left_clip_samples",
         "pose_state_pure_air_turn_sideways_samples",
         "pose_state_right_pure_air_turn_sideways_samples",
         "pose_state_left_pure_air_turn_sideways_samples",
@@ -2900,6 +2904,39 @@ fn accumulator_gates_pose_state_coverage_samples() {
         named_check(&summary, "pose_state_left_air_turn_samples").threshold,
         POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES
     );
+}
+
+#[test]
+fn accumulator_gates_pose_state_authored_bank_clip_samples() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    let mut right_bank = content_metric_sample(scenario, 10, 20, 0, 96);
+    right_bank.mode = FlightMode::Gliding.label();
+    right_bank.pose_intent_label = "air_turn";
+    right_bank.movement_input_lateral_axis = 1.0;
+    right_bank.key_pose_readability_score = 1.0;
+    right_bank = right_bank.with_authored_animation_metrics("bank_right", "bank_right", 1, 80);
+    accumulator.observe(right_bank);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    let right_bank_check = named_check(&summary, "pose_state_authored_bank_right_clip_samples");
+    let left_bank_check = named_check(&summary, "pose_state_authored_bank_left_clip_samples");
+
+    assert_eq!(summary.metrics.authored_bank_right_clip_samples, 1);
+    assert_eq!(summary.metrics.authored_bank_left_clip_samples, 0);
+    assert!(right_bank_check.passed);
+    assert!(!left_bank_check.passed);
 }
 
 #[test]
