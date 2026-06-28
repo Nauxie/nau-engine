@@ -7,6 +7,7 @@ use crate::{
     AIR_CONTROL_MAX_CAMERA_ROTATION_DELTA_DEGREES, AIR_CONTROL_MAX_CAMERA_VIEW_YAW_DRIFT_DEGREES,
     AIR_CONTROL_MAX_CAMERA_YAW_OFFSET_DEGREES,
     AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+    AIR_CONTROL_MAX_DIVE_POSE_ARM_SPREAD_DEGREES,
     AIR_CONTROL_MAX_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MAX_LATERAL_RESPONSE_LATENCY_SECS,
     AIR_CONTROL_MAX_P95_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
@@ -18,15 +19,14 @@ use crate::{
     AIR_CONTROL_MIN_BACKWARD_DIAGONAL_REAR_RESPONSE_MPS,
     AIR_CONTROL_MIN_BACKWARD_LATERAL_RESPONSE_MPS, AIR_CONTROL_MIN_BODY_BANK_RESPONSE_DEGREES,
     AIR_CONTROL_MIN_DESIRED_ALIGNMENT_MPS, AIR_CONTROL_MIN_DESIRED_TRAVEL_HEADING_SAMPLES,
-    AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES, AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES,
-    AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
+    AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES, AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
     AIR_CONTROL_MIN_LATERAL_BODY_TRAVEL_HEADING_SAMPLES, AIR_CONTROL_MIN_LATERAL_RESPONSE_MPS,
     AIR_CONTROL_MIN_POSE_AIR_TURN_SAMPLES, AIR_CONTROL_MIN_POSE_ARM_SPREAD_DEGREES,
     AIR_CONTROL_MIN_POSE_LATERAL_LEAN_DEGREES, AIR_CONTROL_MIN_POSE_LEG_TUCK_DEGREES,
     AIR_CONTROL_MIN_POSE_TORSO_PITCH_DEGREES, AIR_CONTROL_MIN_POSE_WING_AIRFLOW_STRENGTH,
     AIR_CONTROL_MIN_POST_BRAKE_ALIGNMENT_MPS, AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
-    MIN_POSE_SCARF_LATERAL_SWAY_M, MIN_POSE_SCARF_STREAM_M, MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
-    MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES,
+    MIN_POSE_LIMB_CLEARANCE_M, MIN_POSE_SCARF_LATERAL_SWAY_M, MIN_POSE_SCARF_STREAM_M,
+    MIN_POSE_SCARF_TAIL_FLEX_DEGREES, MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES,
 };
 use nau_engine::eval::AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES;
 
@@ -38,6 +38,15 @@ const AIR_CONTROL_MIN_DIRECTIONAL_COVERAGE_SAMPLES: f32 = 4.0;
 const AIR_CONTROL_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 
 pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
+    let max_dive_pose_arm_spread_degrees = if metrics.gliding_dive_samples > 0 {
+        metrics.max_dive_pose_arm_spread_degrees
+    } else {
+        f32::INFINITY
+    };
+    let min_pose_limb_clearance_m = metrics
+        .min_pose_limb_clearance_m
+        .unwrap_or(f32::NEG_INFINITY);
+
     let lateral_response_latency_secs = response_latency_secs(
         metrics.first_lateral_input_time_secs,
         metrics.first_lateral_response_time_secs,
@@ -418,10 +427,10 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
             "deg",
         ),
-        SimCheck::at_least(
+        SimCheck::at_most(
             "air_control_dive_pose_arm_spread",
-            metrics.max_dive_pose_arm_spread_degrees,
-            AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES,
+            max_dive_pose_arm_spread_degrees,
+            AIR_CONTROL_MAX_DIVE_POSE_ARM_SPREAD_DEGREES,
             "deg",
         ),
         SimCheck::at_least(
@@ -495,6 +504,12 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             metrics.key_pose_transition_grace_samples as f32,
             AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32,
             "samples",
+        ),
+        SimCheck::at_least(
+            "air_control_min_pose_limb_clearance",
+            min_pose_limb_clearance_m,
+            MIN_POSE_LIMB_CLEARANCE_M,
+            "m",
         ),
         SimCheck::at_least(
             "air_control_pose_air_turn_samples",
