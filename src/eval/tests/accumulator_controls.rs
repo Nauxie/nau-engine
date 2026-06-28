@@ -4094,6 +4094,174 @@ fn accumulator_gates_wind_load_response_metrics() {
     let mut accumulator = EvalAccumulator::default();
 
     for frame in 0..MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT {
+        let sample = wind_load_metric_sample(
+            scenario,
+            frame,
+            MIN_WIND_LOAD_LATERAL_LOAD,
+            MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+            MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+        );
+        accumulator.observe(sample);
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for check_name in [
+        "wind_load_response_samples",
+        "wind_load_lateral_load",
+        "wind_load_pose_lean",
+        "wind_load_glider_response",
+        "crosswind_neutral_drift_samples",
+        "crosswind_neutral_horizontal_drift",
+        "crosswind_neutral_horizontal_step",
+    ] {
+        assert!(
+            named_check(&summary, check_name).passed,
+            "{check_name} should pass with gust-synchronized wind-current load"
+        );
+    }
+    assert_eq!(
+        summary.metrics.wind_load_response_samples,
+        MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT
+    );
+    assert_eq!(
+        summary.metrics.max_wind_load_lateral_load,
+        MIN_WIND_LOAD_LATERAL_LOAD
+    );
+    assert_eq!(
+        summary.metrics.max_wind_load_pose_lean_degrees,
+        MIN_WIND_LOAD_POSE_LEAN_DEGREES
+    );
+    assert_eq!(
+        summary.metrics.max_wind_load_glider_response_degrees,
+        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES
+    );
+    assert_eq!(
+        summary.metrics.crosswind_neutral_drift_samples,
+        MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT
+    );
+    assert!(
+        summary.metrics.crosswind_neutral_horizontal_drift_m
+            >= MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M
+    );
+    assert!(
+        summary.metrics.max_crosswind_neutral_horizontal_step_m
+            <= MAX_CROSSWIND_NEUTRAL_HORIZONTAL_STEP_M
+    );
+}
+
+#[test]
+fn accumulator_counts_only_wind_aligned_crosswind_neutral_drift() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT {
+        let mut sample = wind_load_metric_sample(
+            scenario,
+            frame,
+            MIN_WIND_LOAD_LATERAL_LOAD,
+            MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+            MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+        );
+        sample.crosswind_force_delta = [-MIN_CROSSWIND_FORCE_DELTA_MPS, 0.0, 0.0];
+        accumulator.observe(sample);
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(
+        summary.metrics.crosswind_neutral_drift_samples,
+        MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT
+    );
+    assert_eq!(summary.metrics.crosswind_neutral_horizontal_drift_m, 0.0);
+    assert!(
+        !named_check(&summary, "crosswind_neutral_horizontal_drift").passed,
+        "anti-wind travel should not satisfy the neutral crosswind drift floor"
+    );
+}
+
+#[test]
+fn accumulator_resets_crosswind_neutral_drift_across_nonqualifying_samples() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(wind_load_metric_sample(
+        scenario,
+        0,
+        MIN_WIND_LOAD_LATERAL_LOAD,
+        MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+    ));
+
+    let mut nonqualifying = wind_load_metric_sample(
+        scenario,
+        200,
+        MIN_WIND_LOAD_LATERAL_LOAD,
+        MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+    );
+    nonqualifying.crosswind_force_fields = 0;
+    nonqualifying.max_crosswind_force_delta_mps = 0.0;
+    nonqualifying.max_crosswind_force_flow_alignment = 0.0;
+    nonqualifying.max_crosswind_force_aligned_delta_mps = 0.0;
+    accumulator.observe(nonqualifying);
+
+    for frame in [201, 202, 203] {
+        accumulator.observe(wind_load_metric_sample(
+            scenario,
+            frame,
+            MIN_WIND_LOAD_LATERAL_LOAD,
+            MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+            MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.crosswind_neutral_drift_samples, 4);
+    assert!(
+        summary.metrics.crosswind_neutral_horizontal_drift_m <= 1.0,
+        "drift should ignore the large transition into the crosswind field"
+    );
+    assert!(
+        summary.metrics.max_crosswind_neutral_horizontal_step_m <= 0.5,
+        "max step should come only from consecutive qualifying crosswind samples"
+    );
+}
+
+#[test]
+fn accumulator_rejects_wind_load_without_crosswind_force_evidence() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT {
         let mut sample = wind_load_metric_sample(
             scenario,
             frame,
@@ -4119,6 +4287,8 @@ fn accumulator_gates_wind_load_response_metrics() {
         },
     );
 
+    assert_eq!(summary.metrics.wind_load_response_samples, 0);
+    assert_eq!(summary.metrics.crosswind_neutral_drift_samples, 0);
     for check_name in [
         "wind_load_response_samples",
         "wind_load_lateral_load",
@@ -4126,26 +4296,10 @@ fn accumulator_gates_wind_load_response_metrics() {
         "wind_load_glider_response",
     ] {
         assert!(
-            named_check(&summary, check_name).passed,
-            "{check_name} should pass with gust-synchronized wind-current load"
+            !named_check(&summary, check_name).passed,
+            "{check_name} should fail without crosswind force evidence"
         );
     }
-    assert_eq!(
-        summary.metrics.wind_load_response_samples,
-        MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT
-    );
-    assert_eq!(
-        summary.metrics.max_wind_load_lateral_load,
-        MIN_WIND_LOAD_LATERAL_LOAD
-    );
-    assert_eq!(
-        summary.metrics.max_wind_load_pose_lean_degrees,
-        MIN_WIND_LOAD_POSE_LEAN_DEGREES
-    );
-    assert_eq!(
-        summary.metrics.max_wind_load_glider_response_degrees,
-        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES
-    );
 }
 
 #[test]
@@ -4323,6 +4477,43 @@ fn accumulator_gates_wind_guide_visual_presence_and_motion() {
         assert!(
             !named_check(&summary, check_name).passed,
             "{check_name} should fail without animated wind guide visuals"
+        );
+    }
+}
+
+#[test]
+fn accumulator_gates_observed_wind_visual_motion_quality() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let sample = content_metric_sample(scenario, 0, 12, 0, 96)
+        .with_observed_wind_visual_quality_metrics(
+            MAX_OBSERVED_UPDRAFT_VISUAL_SPEED_MPS + 1.0,
+            MAX_OBSERVED_CROSSWIND_VISUAL_SPEED_MPS + 1.0,
+            MAX_OBSERVED_WIND_VISUAL_ACCELERATION_MPS2 + 1.0,
+            MAX_OBSERVED_WIND_VISUAL_JUMP_COUNT + 1,
+        );
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    for check_name in [
+        "observed_updraft_visual_speed",
+        "observed_crosswind_visual_speed",
+        "observed_wind_visual_acceleration",
+        "observed_wind_visual_jump_count",
+    ] {
+        assert!(
+            !named_check(&summary, check_name).passed,
+            "{check_name} should fail for fast or discontinuous wind visuals"
         );
     }
 }

@@ -213,6 +213,9 @@ pub(super) fn build_metrics_summary(
         max_wind_load_lateral_load: acc.max_wind_load_lateral_load,
         max_wind_load_pose_lean_degrees: acc.max_wind_load_pose_lean_degrees,
         max_wind_load_glider_response_degrees: acc.max_wind_load_glider_response_degrees,
+        crosswind_neutral_drift_samples: acc.crosswind_neutral_drift_samples,
+        crosswind_neutral_horizontal_drift_m: acc.crosswind_neutral_horizontal_drift_m,
+        max_crosswind_neutral_horizontal_step_m: acc.max_crosswind_neutral_horizontal_step_m,
         max_active_lift_fields: acc.max_active_lift_fields,
         max_readable_lift_fields: acc.max_readable_lift_fields,
         max_sky_island_count: acc.max_sky_island_count,
@@ -268,6 +271,10 @@ pub(super) fn build_metrics_summary(
             .max_observed_crosswind_guide_frame_flow_displacement_m,
         max_observed_crosswind_ribbon_frame_flow_displacement_m: acc
             .max_observed_crosswind_ribbon_frame_flow_displacement_m,
+        max_observed_updraft_visual_speed_mps: acc.max_observed_updraft_visual_speed_mps,
+        max_observed_crosswind_visual_speed_mps: acc.max_observed_crosswind_visual_speed_mps,
+        max_observed_wind_visual_acceleration_mps2: acc.max_observed_wind_visual_acceleration_mps2,
+        observed_wind_visual_jump_count: acc.observed_wind_visual_jump_count,
         max_observed_updraft_visual_flow_alignment: acc.max_observed_updraft_visual_flow_alignment,
         max_observed_crosswind_visual_flow_alignment: acc
             .max_observed_crosswind_visual_flow_alignment,

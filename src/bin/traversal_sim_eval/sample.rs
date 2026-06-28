@@ -152,6 +152,7 @@ pub(crate) struct SimSample {
     pub(crate) updraft_swirl_force_fields: usize,
     pub(crate) max_wind_force_delta_mps: f32,
     pub(crate) max_crosswind_force_delta_mps: f32,
+    pub(crate) crosswind_force_delta: Vec3,
     pub(crate) max_updraft_swirl_force_delta_mps: f32,
     pub(crate) max_wind_force_flow_speed_mps: f32,
     pub(crate) max_wind_force_variation: f32,
@@ -327,6 +328,7 @@ impl SimSample {
             updraft_swirl_force_fields: wind_force.updraft_swirl_fields,
             max_wind_force_delta_mps: wind_force.applied_delta_mps(),
             max_crosswind_force_delta_mps: wind_force.crosswind_delta_mps(),
+            crosswind_force_delta: wind_force.crosswind_delta,
             max_updraft_swirl_force_delta_mps: wind_force.updraft_swirl_delta_mps(),
             max_wind_force_flow_speed_mps: wind_force.max_flow_speed_mps,
             max_wind_force_variation: wind_force.max_variation,
@@ -435,6 +437,11 @@ impl SimSample {
             "updraft_swirl_force_fields": self.updraft_swirl_force_fields,
             "max_wind_force_delta_mps": round4(self.max_wind_force_delta_mps),
             "max_crosswind_force_delta_mps": round4(self.max_crosswind_force_delta_mps),
+            "crosswind_force_delta": [
+                round4(self.crosswind_force_delta.x),
+                round4(self.crosswind_force_delta.y),
+                round4(self.crosswind_force_delta.z)
+            ],
             "max_updraft_swirl_force_delta_mps": round4(self.max_updraft_swirl_force_delta_mps),
             "max_wind_force_flow_speed_mps": round4(self.max_wind_force_flow_speed_mps),
             "max_wind_force_variation": round4(self.max_wind_force_variation),

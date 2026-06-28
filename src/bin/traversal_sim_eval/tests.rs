@@ -23,7 +23,8 @@ use nau_engine::{
         BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario, ISLAND_LAUNCH_TO_LANDING,
         LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M,
         LANDING_MIN_POSE_FOOT_SPLIT_M, LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
-        LONG_GLIDE_VISIBILITY, MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS,
+        LONG_GLIDE_VISIBILITY, MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT,
+        MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M, MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS,
         MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE, MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES,
         MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
         MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
@@ -731,6 +732,13 @@ fn updraft_simulation_uses_readable_lift() {
         result.metrics.max_wind_load_glider_response_degrees
             >= MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES
     );
+    assert!(
+        result.metrics.crosswind_neutral_drift_samples >= MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT
+    );
+    assert!(
+        result.metrics.crosswind_neutral_horizontal_drift_m
+            >= MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M
+    );
     for check_name in [
         "dynamic_readable_lift_samples",
         "max_wind_flow_speed",
@@ -765,6 +773,9 @@ fn updraft_simulation_uses_readable_lift() {
         "wind_load_lateral_load",
         "wind_load_pose_lean",
         "wind_load_glider_response",
+        "crosswind_neutral_drift_samples",
+        "crosswind_neutral_horizontal_drift",
+        "crosswind_neutral_horizontal_step",
         "dynamic_lift_samples",
         "paired_visual_lift_fields",
         "dynamic_lift_fields",
@@ -834,6 +845,59 @@ fn updraft_simulation_uses_readable_lift() {
             >= MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS as f64
     );
     assert!(result.metrics.max_altitude_m >= scenario.thresholds.min_max_altitude_m);
+}
+
+#[test]
+fn sim_crosswind_neutral_drift_counts_only_wind_aligned_motion() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    for (frame, x) in [(0, 0.0), (10, 1.0), (20, 2.0)] {
+        metrics.observe(
+            &crosswind_neutral_sim_sample(&route, scenario, frame, x, Vec3::NEG_X),
+            scenario,
+        );
+    }
+
+    assert_eq!(metrics.crosswind_neutral_drift_samples, 3);
+    assert_eq!(metrics.crosswind_neutral_horizontal_drift_m, 0.0);
+    assert_eq!(metrics.max_crosswind_neutral_horizontal_step_m, 0.0);
+}
+
+#[test]
+fn sim_crosswind_neutral_drift_resets_across_nonqualifying_samples() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    metrics.observe(
+        &crosswind_neutral_sim_sample(&route, scenario, 0, 0.0, Vec3::X),
+        scenario,
+    );
+    let mut nonqualifying = crosswind_neutral_sim_sample(&route, scenario, 10, 100.0, Vec3::X);
+    nonqualifying.crosswind_force_fields = 0;
+    nonqualifying.max_crosswind_force_delta_mps = 0.0;
+    nonqualifying.max_crosswind_force_flow_alignment = 0.0;
+    nonqualifying.max_crosswind_force_aligned_delta_mps = 0.0;
+    metrics.observe(&nonqualifying, scenario);
+
+    for (frame, x) in [(20, 100.5), (30, 101.0), (40, 101.5)] {
+        metrics.observe(
+            &crosswind_neutral_sim_sample(&route, scenario, frame, x, Vec3::X),
+            scenario,
+        );
+    }
+
+    assert_eq!(metrics.crosswind_neutral_drift_samples, 4);
+    assert!(
+        metrics.crosswind_neutral_horizontal_drift_m <= 1.0,
+        "drift should ignore the large transition into the crosswind field"
+    );
+    assert!(
+        metrics.max_crosswind_neutral_horizontal_step_m <= 0.5,
+        "max step should come only from consecutive qualifying crosswind samples"
+    );
 }
 
 #[test]
@@ -2035,6 +2099,24 @@ fn pose_state_sim_checks_reject_excess_transition_grace_samples() {
         POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32
     );
     assert!(!check.passed);
+}
+
+fn crosswind_neutral_sim_sample(
+    route: &SkyRoute,
+    scenario: EvalScenario,
+    frame: u32,
+    x: f32,
+    crosswind_direction: Vec3,
+) -> SimSample {
+    let mut sample = sim_roll_sample(route, scenario, frame, FlightMode::Gliding, 0.0, 0.0);
+    sample.position.x = x;
+    sample.active_wind_force_fields = 1;
+    sample.crosswind_force_fields = 1;
+    sample.max_crosswind_force_delta_mps = 1.0;
+    sample.crosswind_force_delta = crosswind_direction.normalize_or_zero();
+    sample.max_crosswind_force_flow_alignment = 1.0;
+    sample.max_crosswind_force_aligned_delta_mps = 1.0;
+    sample
 }
 
 fn sim_roll_sample(

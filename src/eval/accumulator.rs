@@ -17,7 +17,7 @@ mod summary_report;
 #[path = "accumulator/world.rs"]
 mod world;
 
-use bevy::prelude::Vec2;
+use bevy::prelude::{Vec2, Vec3};
 
 use super::sample::EvalSample;
 
@@ -220,6 +220,10 @@ pub struct EvalAccumulator {
     max_wind_load_lateral_load: f32,
     max_wind_load_pose_lean_degrees: f32,
     max_wind_load_glider_response_degrees: f32,
+    crosswind_neutral_previous_position: Option<Vec3>,
+    crosswind_neutral_drift_samples: u32,
+    crosswind_neutral_horizontal_drift_m: f32,
+    max_crosswind_neutral_horizontal_step_m: f32,
     max_active_lift_fields: usize,
     max_readable_lift_fields: usize,
     max_sky_island_count: usize,
@@ -267,6 +271,10 @@ pub struct EvalAccumulator {
     max_observed_crosswind_visual_frame_motion_m: f32,
     max_observed_crosswind_guide_frame_flow_displacement_m: f32,
     max_observed_crosswind_ribbon_frame_flow_displacement_m: f32,
+    max_observed_updraft_visual_speed_mps: f32,
+    max_observed_crosswind_visual_speed_mps: f32,
+    max_observed_wind_visual_acceleration_mps2: f32,
+    observed_wind_visual_jump_count: u32,
     max_observed_updraft_visual_flow_alignment: f32,
     max_observed_crosswind_visual_flow_alignment: f32,
     max_observed_crosswind_ribbon_visual_flow_alignment: f32,

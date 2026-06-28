@@ -229,6 +229,7 @@ fn air_control_metric_sample(
         MIN_WIND_VISUAL_FLOW_ALIGNMENT,
         MIN_WIND_VISUAL_FLOW_ALIGNMENT,
     )
+    .with_observed_wind_visual_quality_metrics(12.0, 16.0, 48.0, 0)
     .with_wind_field_visual_coverage_metrics(
         GAMEPLAY_LIFT_ROUTE.len(),
         GAMEPLAY_LIFT_ROUTE.len(),

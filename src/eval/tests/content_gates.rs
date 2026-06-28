@@ -331,6 +331,10 @@ fn summary_json_exposes_terrain_detail_thresholds() {
         summary_json
             .contains("\"max_observed_crosswind_ribbon_frame_flow_displacement_m\": 0.0100")
     );
+    assert!(summary_json.contains("\"max_observed_updraft_visual_speed_mps\": 12.0000"));
+    assert!(summary_json.contains("\"max_observed_crosswind_visual_speed_mps\": 16.0000"));
+    assert!(summary_json.contains("\"max_observed_wind_visual_acceleration_mps2\": 48.0000"));
+    assert!(summary_json.contains("\"observed_wind_visual_jump_count\": 0"));
     assert!(summary_json.contains("\"max_observed_updraft_visual_flow_alignment\": 0.5500"));
     assert!(summary_json.contains("\"max_observed_crosswind_visual_flow_alignment\": 0.5500"));
     assert!(
@@ -993,6 +997,10 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(
         sample_json.contains("\"max_observed_crosswind_ribbon_frame_flow_displacement_m\":0.0100")
     );
+    assert!(sample_json.contains("\"max_observed_updraft_visual_speed_mps\":12.0000"));
+    assert!(sample_json.contains("\"max_observed_crosswind_visual_speed_mps\":16.0000"));
+    assert!(sample_json.contains("\"max_observed_wind_visual_acceleration_mps2\":48.0000"));
+    assert!(sample_json.contains("\"observed_wind_visual_jump_count\":0"));
     assert!(sample_json.contains("\"max_observed_updraft_visual_flow_alignment\":0.5500"));
     assert!(sample_json.contains("\"max_observed_crosswind_visual_flow_alignment\":0.5500"));
     assert!(sample_json.contains("\"max_observed_crosswind_ribbon_visual_flow_alignment\":0.5500"));
