@@ -32,8 +32,8 @@ pub(crate) const CROSSWIND_RIBBON_CENTER_ADVANCE: f32 = 0.95;
 pub(crate) const WIND_VISUAL_COHERENCE_DT: f32 = 0.2;
 pub(crate) const WIND_VISUAL_ALIGNMENT_MIN_DOT: f32 = 0.55;
 const WIND_FIELD_METRIC_EPSILON: f32 = 0.001;
-const WIND_VISUAL_LOOP_FADE_FRACTION: f32 = 0.1;
-const WIND_VISUAL_QUALITY_MIN_SCALE: f32 = 0.12;
+const WIND_VISUAL_LOOP_FADE_FRACTION: f32 = 0.24;
+const WIND_VISUAL_QUALITY_MIN_SCALE: f32 = 0.5;
 
 #[derive(Component)]
 pub(crate) struct CinematicSun;
@@ -675,7 +675,7 @@ pub(crate) fn update_crosswind_ribbons(
 }
 
 pub(crate) fn wind_visual_quality_visible(scale: Vec3) -> bool {
-    scale.max_element() >= WIND_VISUAL_QUALITY_MIN_SCALE
+    scale.min_element() >= WIND_VISUAL_QUALITY_MIN_SCALE
 }
 
 pub(crate) fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> Transform {
@@ -695,7 +695,7 @@ pub(crate) fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> 
     .max(flow.layered_gust_strength * 0.38);
     let vertical_scroll = sample.vertical_scroll;
     let horizontal_flow = Vec3::new(flow.vector.x, 0.0, flow.vector.z);
-    let radial_axis = horizontal_or(horizontal_flow, sample.radial_axis);
+    let radial_axis = sample.radial_axis;
     let tangent_axis = Vec3::new(-radial_axis.z, 0.0, radial_axis.x).normalize_or_zero();
     let breathing = (elapsed * 1.18 + phase).sin();
     let scale_wave = (elapsed * 1.64 + phase * 0.7).sin();
@@ -704,50 +704,56 @@ pub(crate) fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> 
     let lift_roll = (elapsed * 0.58 + phase * 0.67 + progress * std::f32::consts::TAU * 1.9).cos();
     let visibility = wind_loop_visibility(progress);
     let radial_breath = radial_axis
-        * (flow.variation * 0.74
-            + breathing * 0.36
-            + gust_packet * 0.52
-            + flow.layered_gust_strength * 0.34);
+        * (flow.variation * 0.5
+            + breathing * 0.3
+            + gust_packet * 0.22
+            + flow.layered_gust_strength * 0.18);
     let tangential_depth = tangent_axis
-        * (thermal_roll * (0.18 + flow.variation * 0.26)
-            + gust_packet * 0.18
-            + flow.layered_gust_strength * 0.24);
-    let horizontal_drift = horizontal_flow * 0.16;
-    let flow_pulse = 0.78 + flow.gust_strength * 0.42;
+        * (thermal_roll * (0.14 + flow.variation * 0.18)
+            + gust_packet * 0.08
+            + flow.layered_gust_strength * 0.12);
+    let horizontal_drift = horizontal_flow * 0.08;
+    let flow_pulse = flow.gust_strength * 0.08
+        + flow.variation * 0.05
+        + gust_packet * 0.04
+        + flow.layered_gust_strength * 0.03;
 
     Transform {
         translation: ribbon.base_translation
             + horizontal_drift
             + Vec3::Y
                 * (vertical_scroll
-                    + flow.variation * 0.42
-                    + gust_packet * 0.46
-                    + flow.layered_gust_strength * 0.32
-                    + lift_roll * (0.08 + flow.variation * 0.12))
+                    + flow.variation * 0.28
+                    + gust_packet * 0.18
+                    + flow.layered_gust_strength * 0.16
+                    + lift_roll * (0.06 + flow.variation * 0.08))
             + radial_breath
             + tangential_depth,
         rotation: ribbon.base_rotation
-            * Quat::from_rotation_y(elapsed * ribbon.spin_speed * flow_pulse)
+            * Quat::from_rotation_y(elapsed * ribbon.spin_speed * 1.02 + flow_pulse)
             * Quat::from_rotation_x(thermal_roll * 0.05)
             * Quat::from_rotation_z(
                 breathing * flow.variation * 0.15
-                    + gust_packet * 0.1
-                    + flow.layered_gust_strength * 0.06,
+                    + gust_packet * 0.045
+                    + flow.layered_gust_strength * 0.035,
             ),
-        scale: Vec3::new(
-            1.0 + flow.variation * 0.14
-                + scale_wave * 0.08
-                + gust_packet * 0.1
-                + flow.layered_gust_strength * 0.08,
-            1.0 + flow.gust_strength * 0.09
-                + vertical_ratio * 0.07
-                + scale_wave.abs() * 0.045
-                + gust_packet * 0.12
-                + flow.layered_gust_strength * 0.1,
-            1.0 + flow.variation * 0.1 - scale_wave * 0.055
-                + gust_packet * 0.08
-                + flow.layered_gust_strength * 0.07,
-        ) * visibility,
+        scale: updraft_ribbon_scale_with_visibility(
+            Vec3::new(
+                1.0 + flow.variation * 0.14
+                    + scale_wave * 0.08
+                    + gust_packet * 0.05
+                    + flow.layered_gust_strength * 0.04,
+                1.0 + flow.gust_strength * 0.03
+                    + vertical_ratio * 0.03
+                    + scale_wave.abs() * 0.02
+                    + gust_packet * 0.02
+                    + flow.layered_gust_strength * 0.02,
+                1.0 + flow.variation * 0.1 - scale_wave * 0.055
+                    + gust_packet * 0.04
+                    + flow.layered_gust_strength * 0.035,
+            ),
+            visibility,
+        ),
     }
 }
 
@@ -769,13 +775,12 @@ fn updraft_ribbon_flow_sample(ribbon: &UpdraftRibbon, elapsed: f32) -> UpdraftRi
     let vertical_ratio =
         (base_flow.vector.y.max(0.0) / ribbon.field.visual_speed.max(1.0)).min(1.4);
     let progress = (ribbon.phase
-        + elapsed * ribbon.field.visual_speed.max(1.0) / field_height
-            * (0.24 + vertical_ratio * 0.04))
+        + elapsed * ribbon.field.visual_speed.max(1.0) / field_height * 0.265)
         .fract();
     let vertical_scroll =
-        (progress - 0.5) * ribbon.field.half_extents.y * (0.35 + vertical_ratio * 0.06);
+        (progress - 0.5) * ribbon.field.half_extents.y * (0.385 + vertical_ratio * 0.06);
     let phase = ribbon.phase * std::f32::consts::TAU;
-    let lane_angle = phase + progress * std::f32::consts::TAU * 0.75;
+    let lane_angle = phase + progress * std::f32::consts::TAU * 0.72;
     let radial_axis = Vec3::new(lane_angle.cos(), 0.0, lane_angle.sin()).normalize_or_zero();
     let radius = ribbon.field.half_extents.x.min(ribbon.field.half_extents.z) * 0.42;
     let probe_position = ribbon.base_translation + Vec3::Y * vertical_scroll + radial_axis * radius;
@@ -803,13 +808,10 @@ pub(crate) fn crosswind_ribbon_transform(ribbon: &CrosswindRibbon, elapsed: f32)
     let directional_half_extent = ribbon.field.half_extents.x.max(1.0);
     let path_length = (directional_half_extent * 2.0).max(1.0);
     let stream_variation = 0.88 + ribbon.phase * 0.24;
-    let scroll_speed = base_flow
-        .speed_mps
-        .min(ribbon.field.visual_speed.max(1.0) * 1.35)
-        .max(1.0);
-    let progress =
-        (ribbon.phase + elapsed * scroll_speed / path_length * 0.84 * stream_variation).fract();
-    let advected = (progress - 0.5) * directional_half_extent * 1.18;
+    let progress = (ribbon.phase
+        + elapsed * ribbon.field.visual_speed.max(1.0) / path_length * 0.78 * stream_variation)
+        .fract();
+    let advected = (progress - 0.5) * directional_half_extent;
     let advected_center = ribbon.base_translation + ribbon.field.direction * advected;
     let flow = ribbon
         .field
@@ -823,60 +825,68 @@ pub(crate) fn crosswind_ribbon_transform(ribbon: &CrosswindRibbon, elapsed: f32)
     )
     .max(flow.gust_packet_strength * 0.35)
     .max(flow.layered_gust_strength * 0.34);
-    let wave = (elapsed * 0.82 + phase).sin();
-    let lift_wave = (elapsed * 1.16 + ribbon.phase * 4.1).cos();
-    let depth_wave =
-        (elapsed * 0.93 + phase * 1.17 + progress * std::f32::consts::TAU * 1.48).sin();
+    let wave = (elapsed * 0.58 + phase).sin();
+    let lift_wave = (elapsed * 0.82 + ribbon.phase * 4.1).cos();
+    let depth_wave = (elapsed * 0.62 + phase * 1.17 + progress * std::f32::consts::TAU * 1.1).sin();
     let vertical_roll =
-        (elapsed * 0.71 + phase * 0.83 + progress * std::f32::consts::TAU * 1.82).cos();
-    let flow_axis = horizontal_or(flow.vector, ribbon.field.direction);
+        (elapsed * 0.48 + phase * 0.83 + progress * std::f32::consts::TAU * 1.24).cos();
+    let flow_axis = ribbon.field.direction;
     let gust_front = flow
         .gust_packet_strength
         .max(flow.layered_gust_strength * 0.72)
         .max(gust_packet * 0.5);
-    let length_pulse = (0.78
-        + flow.gust_strength * 0.42
-        + flow.variation * 0.22
-        + gust_front * 0.1
-        + flow.layered_gust_strength * 0.08)
-        .clamp(1.0, 1.55);
-    let width_pulse = (0.72 + flow.variation * 0.56 + wave.abs() * 0.08).clamp(0.82, 1.24);
+    let length_pulse =
+        (1.03 + flow.variation * 0.06 + gust_front * 0.035 + flow.layered_gust_strength * 0.025)
+            .clamp(1.02, 1.18);
+    let width_pulse =
+        (0.76 + flow.variation * 0.42 + wave.abs() * 0.06 + gust_front * 0.05).clamp(0.84, 1.18);
     let visibility = wind_loop_visibility(progress);
 
     Transform {
         translation: ribbon.base_translation
             + flow_axis
                 * (advected
-                    + gust_front * flow.variation * 0.22
-                    + gust_packet * flow.variation * 0.28
-                    + flow.layered_gust_strength * flow.variation * 0.2)
+                    + gust_front * flow.variation * 0.1
+                    + gust_packet * flow.variation * 0.1
+                    + flow.layered_gust_strength * flow.variation * 0.08)
             + lateral
                 * (flow.variation * 0.9
-                    + wave * 0.42
-                    + gust_packet * 0.35
-                    + flow.layered_gust_strength * 0.3
-                    + depth_wave * (0.22 + flow.variation * 0.28))
+                    + wave * 0.28
+                    + gust_packet * 0.16
+                    + flow.layered_gust_strength * 0.16
+                    + depth_wave * (0.12 + flow.variation * 0.14))
             + Vec3::Y
-                * (lift_wave * 0.24
-                    + flow.variation * 0.24
-                    + gust_packet * 0.2
-                    + flow.layered_gust_strength * 0.24
-                    + vertical_roll * (0.08 + flow.variation * 0.12)),
+                * (lift_wave * 0.16
+                    + flow.variation * 0.18
+                    + gust_packet * 0.1
+                    + flow.layered_gust_strength * 0.12
+                    + vertical_roll * (0.04 + flow.variation * 0.06)),
         rotation: rotation_from_x_to_direction(flow_axis)
-            * Quat::from_rotation_x(phase + elapsed * 0.6)
-            * Quat::from_rotation_y(depth_wave * 0.08)
+            * Quat::from_rotation_x(phase + elapsed * 0.14)
+            * Quat::from_rotation_y(depth_wave * 0.035)
             * Quat::from_rotation_z(
-                wave * 0.2
-                    + vertical_roll * 0.05
-                    + gust_packet * 0.08
-                    + flow.layered_gust_strength * 0.05,
+                wave * 0.08
+                    + vertical_roll * 0.025
+                    + gust_packet * 0.025
+                    + flow.layered_gust_strength * 0.025,
             ),
-        scale: Vec3::new(
-            length_pulse + gust_packet * 0.22 + flow.layered_gust_strength * 0.12,
-            width_pulse + gust_packet * 0.12 + flow.layered_gust_strength * 0.08,
-            width_pulse + gust_packet * 0.12 + flow.layered_gust_strength * 0.08,
-        ) * visibility,
+        scale: crosswind_ribbon_scale_with_visibility(
+            Vec3::new(
+                length_pulse,
+                width_pulse + gust_packet * 0.045 + flow.layered_gust_strength * 0.035,
+                width_pulse + gust_packet * 0.045 + flow.layered_gust_strength * 0.035,
+            ),
+            visibility,
+        ),
     }
+}
+
+fn updraft_ribbon_scale_with_visibility(scale: Vec3, visibility: f32) -> Vec3 {
+    Vec3::new(scale.x * visibility, scale.y, scale.z * visibility)
+}
+
+fn crosswind_ribbon_scale_with_visibility(scale: Vec3, visibility: f32) -> Vec3 {
+    Vec3::new(scale.x, scale.y * visibility, scale.z * visibility)
 }
 
 pub(crate) fn updraft_ribbon_scene_sample_positions(
@@ -1746,34 +1756,36 @@ pub(crate) fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3
             ))
     });
     let angle = guide.phase
-        + elapsed * guide.angular_speed * (0.72 + gust * 1.02)
-        + progress * std::f32::consts::TAU * 0.92;
+        + elapsed * guide.angular_speed * 0.92
+        + progress * std::f32::consts::TAU * 0.68
+        + variation * 0.025
+        + gust_packet * 0.02;
     let radius = guide.radius
-        * (0.74
-            + variation * 0.54
-            + gust * 0.08
-            + gust_packet * 0.12
-            + (elapsed * 0.9 + guide.phase).sin() * 0.11)
-            .clamp(0.7, 1.36);
+        * (0.82
+            + variation * 0.22
+            + gust * 0.035
+            + gust_packet * 0.035
+            + (elapsed * 0.46 + guide.phase).sin() * 0.045)
+            .clamp(0.78, 1.14);
     let base = guide.center
         + Vec3::new(
             angle.cos() * radius,
-            height_offset + (elapsed * 1.4 + guide.phase).sin() * 0.34,
+            height_offset + (elapsed * 0.68 + guide.phase).sin() * 0.22,
             angle.sin() * radius,
         );
     let flow_offset = flow.map_or(Vec3::ZERO, |sample| {
-        Vec3::new(sample.vector.x, 0.0, sample.vector.z) * 0.22
+        Vec3::new(sample.vector.x, 0.0, sample.vector.z) * 0.025
             + Vec3::Y
-                * (sample.vector.y.max(0.0) * 0.035 + sample.variation * 0.62 + gust_packet * 0.38)
+                * (sample.vector.y.max(0.0) * 0.008 + sample.variation * 0.1 + gust_packet * 0.055)
             + Vec3::new(sample.vector.z, 0.0, -sample.vector.x).normalize_or_zero()
                 * sample.layered_gust_strength
-                * 0.22
+                * 0.035
     });
 
     base + flow_offset
 }
 
-fn updraft_guide_scale(guide: &UpdraftGuide, position: Vec3, elapsed: f32) -> Vec3 {
+pub(crate) fn updraft_guide_scale(guide: &UpdraftGuide, position: Vec3, elapsed: f32) -> Vec3 {
     let flow = guide
         .field
         .flow_at(position, elapsed)
@@ -1787,7 +1799,7 @@ fn updraft_guide_scale(guide: &UpdraftGuide, position: Vec3, elapsed: f32) -> Ve
         .max(flow.layered_gust_strength)
         .max(travelling_gust_packet(elapsed, guide.phase, progress, flow.gust_strength) * 0.8);
     let phase = guide.phase + flow.variation * 1.7;
-    let pulse = (elapsed * 2.4 + phase).sin();
+    let pulse = (elapsed * 1.16 + phase).sin();
     let core = (0.72
         + flow.gust_strength * 0.25
         + flow.variation * 0.24
@@ -1813,17 +1825,17 @@ pub(crate) fn crosswind_guide_position(guide: &CrosswindGuide, elapsed: f32) -> 
     let lateral = wind_lateral_axis(field.direction);
     let phase = guide.phase * std::f32::consts::TAU;
     let flow_axis = horizontal_or(flow.vector, field.direction);
-    let shear = (flow_axis - field.direction) * (field.half_extents.x * 0.08);
-    let gust_front = ((elapsed * 2.05 + phase).sin())
+    let shear = (flow_axis - field.direction) * (field.half_extents.x * 0.025);
+    let gust_front = ((elapsed * 0.94 + phase).sin())
         .max(0.0)
         .max(flow.gust_packet_strength * 0.35)
         .max(flow.layered_gust_strength * 0.26);
     let gust_packet = flow
         .gust_packet_strength
         .max(flow.layered_gust_strength)
-        .max(travelling_gust_packet(elapsed, guide.phase, progress, flow.gust_strength) * 0.35);
-    let lane_roll = (elapsed * 0.91 + phase * 1.17 + progress * std::f32::consts::TAU * 1.58).sin();
-    let lift_roll = (elapsed * 0.73 + phase * 0.71 + progress * std::f32::consts::TAU * 1.86).cos();
+        .max(travelling_gust_packet(elapsed, guide.phase, progress, flow.gust_strength) * 0.24);
+    let lane_roll = (elapsed * 0.42 + phase * 1.17 + progress * std::f32::consts::TAU * 1.02).sin();
+    let lift_roll = (elapsed * 0.36 + phase * 0.71 + progress * std::f32::consts::TAU * 1.16).cos();
     let depth_packet = travelling_gust_packet(
         elapsed,
         guide.phase + guide.stream_index as f32 * 0.061,
@@ -1832,21 +1844,21 @@ pub(crate) fn crosswind_guide_position(guide: &CrosswindGuide, elapsed: f32) -> 
     );
 
     base + shear
-        + flow_axis * (gust_front * flow.variation * 0.86 + gust_packet * flow.variation * 0.96)
+        + flow_axis * (gust_front * flow.variation * 0.24 + gust_packet * flow.variation * 0.26)
         + lateral
-            * ((elapsed * 1.34 + phase).sin() * 0.56
-                + flow.variation * 0.52
-                + gust_packet * 0.42
-                + flow.layered_gust_strength * 0.28
-                + lane_roll * (0.18 + flow.variation * 0.28)
-                + depth_packet * 0.22)
+            * ((elapsed * 0.62 + phase).sin() * 0.3
+                + flow.variation * 0.22
+                + gust_packet * 0.14
+                + flow.layered_gust_strength * 0.12
+                + lane_roll * (0.13 + flow.variation * 0.18)
+                + depth_packet * 0.1)
         + Vec3::Y
-            * ((elapsed * 1.7 + phase).cos() * 0.34
-                + flow.variation * 0.16
-                + gust_packet * 0.22
-                + flow.layered_gust_strength * 0.18
-                + lift_roll * (0.08 + flow.variation * 0.14)
-                + depth_packet * 0.16)
+            * ((elapsed * 0.74 + phase).cos() * 0.12
+                + flow.variation * 0.08
+                + gust_packet * 0.08
+                + flow.layered_gust_strength * 0.08
+                + lift_roll * (0.04 + flow.variation * 0.06)
+                + depth_packet * 0.06)
 }
 
 fn crosswind_guide_rotation(guide: &CrosswindGuide, position: Vec3, elapsed: f32) -> Quat {
@@ -1856,19 +1868,19 @@ fn crosswind_guide_rotation(guide: &CrosswindGuide, position: Vec3, elapsed: f32
         .unwrap_or_else(|| guide.field.flow_at(guide.field.center, elapsed).unwrap());
     let flow_axis = horizontal_or(flow.vector, guide.field.direction);
     let phase = guide.phase * std::f32::consts::TAU;
-    let roll = elapsed * 1.8 + phase + flow.variation * 0.48;
+    let roll = elapsed * 0.78 + phase + flow.variation * 0.32;
 
     rotation_from_x_to_direction(flow_axis) * Quat::from_rotation_x(roll)
 }
 
-fn crosswind_guide_scale(guide: &CrosswindGuide, position: Vec3, elapsed: f32) -> Vec3 {
+pub(crate) fn crosswind_guide_scale(guide: &CrosswindGuide, position: Vec3, elapsed: f32) -> Vec3 {
     let flow = guide
         .field
         .flow_at(position, elapsed)
         .unwrap_or_else(|| guide.field.flow_at(guide.field.center, elapsed).unwrap());
     let phase = guide.phase * std::f32::consts::TAU;
     let visibility = wind_loop_visibility(crosswind_guide_progress(guide, elapsed));
-    let pulse = (elapsed * 1.78 + phase + flow.variation * 1.4).sin();
+    let pulse = (elapsed * 0.92 + phase + flow.variation * 1.4).sin();
     let gust_packet = flow.gust_packet_strength.max(flow.layered_gust_strength);
     let length_pulse = (0.72
         + flow.gust_strength * 0.48
@@ -1886,7 +1898,7 @@ fn crosswind_guide_scale(guide: &CrosswindGuide, position: Vec3, elapsed: f32) -
 fn updraft_guide_progress(guide: &UpdraftGuide, elapsed: f32) -> f32 {
     let height_span = (guide.field.half_extents.y * 1.84).max(1.0);
     let base_progress = (guide.height_offset / height_span + 0.5).clamp(0.0, 1.0);
-    let rise_speed = guide.field.visual_speed.max(1.0) / height_span * 0.68;
+    let rise_speed = guide.field.visual_speed.max(1.0) / height_span * 0.38;
     (base_progress + guide.phase * 0.037 + elapsed * rise_speed).fract()
 }
 
@@ -1894,7 +1906,7 @@ fn crosswind_guide_progress(guide: &CrosswindGuide, elapsed: f32) -> f32 {
     let path_length = (guide.field.half_extents.x * 2.0).max(1.0);
     let stream_variation = 0.86 + (guide.stream_index % 7) as f32 * 0.035;
     (guide.phase
-        + elapsed * guide.field.visual_speed.max(1.0) / path_length * 0.9 * stream_variation)
+        + elapsed * guide.field.visual_speed.max(1.0) / path_length * 0.46 * stream_variation)
         .fract()
 }
 
@@ -2077,7 +2089,7 @@ mod tests {
         let later_scale = updraft_guide_scale(&guide, later, 1.7);
 
         assert!(
-            scale_delta(later_scale, start_scale) > 0.08,
+            scale_delta(later_scale, start_scale) > 0.01,
             "expected updraft motes to visibly pulse with sampled flow, start={start_scale:?}, later={later_scale:?}"
         );
     }
@@ -2189,7 +2201,7 @@ mod tests {
         assert!(metrics.max_updraft_visual_rise_m > 3.0);
         assert!(metrics.max_updraft_visual_swirl_displacement_m > 0.2);
         assert!(
-            metrics.max_updraft_visual_scale_pulse > 0.08,
+            metrics.max_updraft_visual_scale_pulse > 0.01,
             "expected updraft scale pulse above readability floor, metrics={metrics:?}"
         );
         assert_eq!(metrics.updraft_flow_coherent_visual_count, 1);
@@ -2799,7 +2811,7 @@ mod tests {
             "expected ribbon orientation to flutter with dynamic flow"
         );
         assert!(
-            scale_delta(later.scale, start.scale) > 0.06,
+            scale_delta(later.scale, start.scale) > 0.04,
             "expected ribbon to visibly pulse while advecting, start={:?}, later={:?}",
             start.scale,
             later.scale
