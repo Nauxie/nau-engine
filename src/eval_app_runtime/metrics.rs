@@ -66,6 +66,8 @@ pub(crate) struct VisiblePoseTemporalState {
     pending_pose_temporal_samples: u32,
     pending_max_pose_part_rotation_delta_degrees: f32,
     pending_max_pose_part_translation_delta_m: f32,
+    pending_pose_clearance_samples: u32,
+    pending_min_pose_limb_clearance_m: f32,
 }
 
 impl VisiblePoseTemporalState {
@@ -80,6 +82,18 @@ impl VisiblePoseTemporalState {
     fn observe_frame(&mut self, frame: u32, intent: PlayerPoseIntent, current: VisiblePosePartSet) {
         self.visible_pose_part_count = current.part_count();
         let current_parts = current.complete();
+
+        if key_pose_intent(intent)
+            && let Some(current_parts) = current_parts
+        {
+            let clearance_m = current_parts.min_limb_clearance_m();
+            self.pending_min_pose_limb_clearance_m = if self.pending_pose_clearance_samples == 0 {
+                clearance_m
+            } else {
+                self.pending_min_pose_limb_clearance_m.min(clearance_m)
+            };
+            self.pending_pose_clearance_samples += 1;
+        }
 
         if key_pose_intent(intent)
             && let (Some(previous_frame), Some(previous), Some(current_parts)) =
@@ -125,10 +139,17 @@ impl VisiblePoseTemporalState {
             } else {
                 f32::NAN
             },
+            min_pose_limb_clearance_m: if self.pending_pose_clearance_samples > 0 {
+                self.pending_min_pose_limb_clearance_m
+            } else {
+                f32::NAN
+            },
         };
         self.pending_pose_temporal_samples = 0;
         self.pending_max_pose_part_rotation_delta_degrees = 0.0;
         self.pending_max_pose_part_translation_delta_m = 0.0;
+        self.pending_pose_clearance_samples = 0;
+        self.pending_min_pose_limb_clearance_m = 0.0;
         metrics
     }
 }
@@ -477,6 +498,27 @@ impl VisiblePosePartTransforms {
             .fold(0.0, f32::max)
     }
 
+    fn min_limb_clearance_m(self) -> f32 {
+        const TORSO_RADIUS_M: f32 = 0.26;
+        const ARM_RADIUS_M: f32 = 0.10;
+        const LEG_RADIUS_M: f32 = 0.11;
+
+        [
+            limb_clearance(self.torso, self.left_arm, TORSO_RADIUS_M, ARM_RADIUS_M),
+            limb_clearance(self.torso, self.right_arm, TORSO_RADIUS_M, ARM_RADIUS_M),
+            limb_clearance(self.torso, self.left_leg, TORSO_RADIUS_M, LEG_RADIUS_M),
+            limb_clearance(self.torso, self.right_leg, TORSO_RADIUS_M, LEG_RADIUS_M),
+            limb_clearance(self.left_arm, self.right_arm, ARM_RADIUS_M, ARM_RADIUS_M),
+            limb_clearance(self.left_arm, self.left_leg, ARM_RADIUS_M, LEG_RADIUS_M),
+            limb_clearance(self.left_arm, self.right_leg, ARM_RADIUS_M, LEG_RADIUS_M),
+            limb_clearance(self.right_arm, self.left_leg, ARM_RADIUS_M, LEG_RADIUS_M),
+            limb_clearance(self.right_arm, self.right_leg, ARM_RADIUS_M, LEG_RADIUS_M),
+            limb_clearance(self.left_leg, self.right_leg, LEG_RADIUS_M, LEG_RADIUS_M),
+        ]
+        .into_iter()
+        .fold(f32::INFINITY, f32::min)
+    }
+
     fn parts(self) -> [VisiblePosePartTransform; 5] {
         [
             self.torso,
@@ -486,6 +528,15 @@ impl VisiblePosePartTransforms {
             self.right_leg,
         ]
     }
+}
+
+fn limb_clearance(
+    a: VisiblePosePartTransform,
+    b: VisiblePosePartTransform,
+    a_radius_m: f32,
+    b_radius_m: f32,
+) -> f32 {
+    a.translation.distance(b.translation) - a_radius_m - b_radius_m
 }
 
 pub(crate) fn collect_eval_frame_time(time: Res<Time>, mut run: ResMut<EvalRun>) {
@@ -1757,8 +1808,8 @@ mod tests {
             FlightInput::default(),
             30.0,
         );
-        let left_leg_base = Vec3::new(-0.17, 0.30, 0.01);
-        let right_leg_base = Vec3::new(0.17, 0.30, 0.01);
+        let left_leg_base = Vec3::new(-0.22, 0.32, 0.02);
+        let right_leg_base = Vec3::new(0.22, 0.32, 0.02);
         let scarf_anchor_base = Vec3::new(0.0, 1.24, 0.04);
         let scarf_tail_base = Vec3::new(0.0, 1.08, 0.03);
         let nodes = [
@@ -1773,7 +1824,7 @@ mod tests {
             (
                 AuthoredPlayerPoseNode::new(CharacterPart::new(
                     CharacterPartRole::Arm(Side::Left),
-                    Vec3::new(-0.48, 1.18, 0.01),
+                    Vec3::new(-0.55, 1.17, 0.0),
                     Quat::IDENTITY,
                 )),
                 Transform::from_rotation(Quat::from_rotation_z(1.08)),
@@ -1781,7 +1832,7 @@ mod tests {
             (
                 AuthoredPlayerPoseNode::new(CharacterPart::new(
                     CharacterPartRole::Arm(Side::Right),
-                    Vec3::new(0.48, 1.18, 0.01),
+                    Vec3::new(0.55, 1.17, 0.0),
                     Quat::IDENTITY,
                 )),
                 Transform::from_rotation(Quat::from_rotation_z(-1.08)),
@@ -1955,6 +2006,7 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 18.0,
                 max_pose_part_translation_delta_m: 0.03,
+                min_pose_limb_clearance_m: 0.12,
             },
         );
 
@@ -1990,6 +2042,7 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 4.0,
                 max_pose_part_translation_delta_m: 0.01,
+                min_pose_limb_clearance_m: 0.12,
             },
         );
 
@@ -2032,6 +2085,7 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: f32::NAN,
                 max_pose_part_translation_delta_m: f32::NAN,
+                min_pose_limb_clearance_m: 0.12,
             },
         );
 
@@ -2067,6 +2121,7 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 20.0,
                 max_pose_part_translation_delta_m: 0.03,
+                min_pose_limb_clearance_m: 0.12,
             },
         );
 
@@ -2101,6 +2156,7 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 48.0,
                 max_pose_part_translation_delta_m: 0.04,
+                min_pose_limb_clearance_m: 0.12,
             },
         );
 
@@ -2146,6 +2202,7 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 10.34,
                 max_pose_part_translation_delta_m: 0.05,
+                min_pose_limb_clearance_m: 0.12,
             },
         );
 
@@ -2192,6 +2249,7 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 24.34,
                 max_pose_part_translation_delta_m: 0.025,
+                min_pose_limb_clearance_m: 0.12,
             },
         );
 
@@ -2239,6 +2297,7 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 103.0,
                 max_pose_part_translation_delta_m: 0.375,
+                min_pose_limb_clearance_m: 0.12,
             },
         );
 
@@ -2286,6 +2345,7 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 87.05,
                 max_pose_part_translation_delta_m: 0.573,
+                min_pose_limb_clearance_m: 0.12,
             },
         );
 
@@ -2333,6 +2393,7 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 121.0,
                 max_pose_part_translation_delta_m: 0.375,
+                min_pose_limb_clearance_m: 0.12,
             },
         );
 
@@ -2375,6 +2436,7 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 49.49,
                 max_pose_part_translation_delta_m: 0.285,
+                min_pose_limb_clearance_m: 0.12,
             },
         );
 
@@ -2421,6 +2483,7 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 121.0,
                 max_pose_part_translation_delta_m: 0.285,
+                min_pose_limb_clearance_m: 0.12,
             },
         );
 
@@ -2455,6 +2518,7 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 8.0,
                 max_pose_part_translation_delta_m: 0.02,
+                min_pose_limb_clearance_m: 0.12,
             },
         );
 
@@ -2565,6 +2629,26 @@ mod tests {
     }
 
     #[test]
+    fn visible_pose_temporal_state_reports_limb_clearance() {
+        let mut state = VisiblePoseTemporalState::default();
+        let readable_parts = visible_pose_part_set(Quat::IDENTITY, Vec3::ZERO);
+        let mut overlapping_parts = readable_parts;
+        overlapping_parts.left_arm = Some(VisiblePosePartTransform {
+            translation: Vec3::new(-0.08, 1.08, 0.0),
+            base_delta: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+        });
+
+        state.observe_frame(0, PlayerPoseIntent::Gliding, readable_parts);
+        let readable = state.take_sample_metrics();
+        state.observe_frame(1, PlayerPoseIntent::Gliding, overlapping_parts);
+        let overlapping = state.take_sample_metrics();
+
+        assert!(readable.min_pose_limb_clearance_m > 0.04);
+        assert!(overlapping.min_pose_limb_clearance_m < 0.0);
+    }
+
+    #[test]
     fn partial_visible_pose_parts_report_partial_count_without_readability() {
         let mut parts = visible_pose_part_set(Quat::IDENTITY, Vec3::ZERO);
         parts.right_leg = None;
@@ -2586,29 +2670,30 @@ mod tests {
         torso_rotation: Quat,
         left_leg_translation: Vec3,
     ) -> VisiblePosePartSet {
+        let left_leg_base = Vec3::new(-0.22, 0.32, 0.02);
         VisiblePosePartSet {
             torso: Some(VisiblePosePartTransform {
-                translation: Vec3::ZERO,
+                translation: Vec3::new(0.0, 1.08, 0.0),
                 base_delta: Vec3::ZERO,
                 rotation: torso_rotation,
             }),
             left_arm: Some(VisiblePosePartTransform {
-                translation: Vec3::new(-0.5, 1.0, 0.0),
+                translation: Vec3::new(-0.55, 1.17, 0.0),
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),
             right_arm: Some(VisiblePosePartTransform {
-                translation: Vec3::new(0.5, 1.0, 0.0),
+                translation: Vec3::new(0.55, 1.17, 0.0),
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),
             left_leg: Some(VisiblePosePartTransform {
-                translation: left_leg_translation,
+                translation: left_leg_base + left_leg_translation,
                 base_delta: left_leg_translation,
                 rotation: Quat::IDENTITY,
             }),
             right_leg: Some(VisiblePosePartTransform {
-                translation: Vec3::ZERO,
+                translation: Vec3::new(0.22, 0.32, 0.02),
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),
