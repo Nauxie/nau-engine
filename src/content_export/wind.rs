@@ -3,10 +3,10 @@ use crate::{
         CROSSWIND_GUIDES_PER_FIELD, CROSSWIND_RIBBON_CENTER_ADVANCE, CROSSWIND_RIBBONS_PER_FIELD,
         CrosswindGuide, CrosswindRibbon, UPDRAFT_GUIDE_RING_LEVELS, UPDRAFT_GUIDES_PER_RING,
         UPDRAFT_RIBBONS_PER_FIELD, UpdraftGuide, UpdraftRibbon, WIND_VISUAL_ALIGNMENT_MIN_DOT,
-        WIND_VISUAL_COHERENCE_DT, crosswind_guide_position,
+        WIND_VISUAL_COHERENCE_DT, crosswind_guide_position, crosswind_guide_scale,
         crosswind_ribbon_scene_sample_positions, crosswind_ribbon_transform,
-        updraft_guide_position, updraft_ribbon_scene_sample_positions, updraft_ribbon_transform,
-        visual_flow_alignment,
+        updraft_guide_position, updraft_guide_scale, updraft_ribbon_scene_sample_positions,
+        updraft_ribbon_transform, visual_flow_alignment, wind_visual_quality_visible,
     },
     eval_runtime::{path_string, remove_existing_dir},
 };
@@ -21,11 +21,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const TRACK_TIMES_SECS: [f32; 3] = [
-    0.0,
-    WIND_VISUAL_COHERENCE_DT,
-    WIND_VISUAL_COHERENCE_DT * 2.0,
-];
+const TRACK_WINDOW_DURATION_SECS: f32 = 1.0 / 60.0;
+const TRACK_WINDOW_STRIDE_SECS: f32 = 0.25;
+const TRACK_WINDOW_END_SECS: f32 = 13.0;
 const MIN_TRACK_DISPLACEMENT_M: f32 = 0.01;
 
 #[derive(Debug)]
@@ -46,6 +44,8 @@ struct WindVisualTrack {
     next_elapsed_secs: f32,
     current: Vec3,
     next: Vec3,
+    current_quality_visible: bool,
+    next_quality_visible: bool,
     displacement_m: f32,
     alignment: Option<f32>,
     current_inside_field: bool,
@@ -62,6 +62,9 @@ struct FamilyMetrics {
     low_alignment_track_count: usize,
     max_displacement_m: f32,
     max_speed_mps: f32,
+    quality_visible_track_count: usize,
+    max_quality_visible_speed_mps: f32,
+    max_quality_visible_acceleration_mps2: f32,
     max_acceleration_mps2: f32,
     max_continuity_gap_m: f32,
     min_alignment: f32,
@@ -86,6 +89,18 @@ struct TrackSpec {
     field: WindField,
     include_vertical: bool,
     allow_center_fallback: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TrackSegment {
+    sample_index: usize,
+    interval_index: usize,
+    elapsed_secs: f32,
+    next_elapsed_secs: f32,
+    current: Vec3,
+    next: Vec3,
+    current_quality_visible: bool,
+    next_quality_visible: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -173,7 +188,7 @@ fn wind_visual_tracks() -> Vec<WindVisualTrack> {
                 base_rotation: Quat::from_rotation_y(mesh_phase * 0.35),
                 phase,
             };
-            push_transform_tracks(
+            push_transform_state_tracks(
                 &mut tracks,
                 TrackSpec {
                     family: "updraft_ribbon",
@@ -184,9 +199,15 @@ fn wind_visual_tracks() -> Vec<WindVisualTrack> {
                     include_vertical: true,
                     allow_center_fallback: true,
                 },
-                |elapsed| updraft_ribbon_transform(&ribbon, elapsed).translation,
+                |elapsed| {
+                    let transform = updraft_ribbon_transform(&ribbon, elapsed);
+                    (
+                        transform.translation,
+                        wind_visual_quality_visible(transform.scale),
+                    )
+                },
             );
-            push_sampled_transform_tracks(
+            push_sampled_transform_tracks_with_visibility(
                 &mut tracks,
                 TrackSpec {
                     family: "updraft_ribbon",
@@ -199,7 +220,10 @@ fn wind_visual_tracks() -> Vec<WindVisualTrack> {
                 },
                 |elapsed| {
                     let transform = updraft_ribbon_transform(&ribbon, elapsed);
-                    updraft_ribbon_scene_sample_positions(&ribbon, &transform)
+                    (
+                        updraft_ribbon_scene_sample_positions(&ribbon, &transform),
+                        wind_visual_quality_visible(transform.scale),
+                    )
                 },
             );
         }
@@ -218,7 +242,7 @@ fn wind_visual_tracks() -> Vec<WindVisualTrack> {
                     angular_speed: 0.26 + level_index as f32 * 0.035,
                 };
                 let visual_index = level_index * UPDRAFT_GUIDES_PER_RING + marker_index;
-                push_transform_tracks(
+                push_transform_state_tracks(
                     &mut tracks,
                     TrackSpec {
                         family: "updraft_guide",
@@ -229,7 +253,15 @@ fn wind_visual_tracks() -> Vec<WindVisualTrack> {
                         include_vertical: true,
                         allow_center_fallback: true,
                     },
-                    |elapsed| updraft_guide_position(&guide, elapsed),
+                    |elapsed| {
+                        let position = updraft_guide_position(&guide, elapsed);
+                        (
+                            position,
+                            wind_visual_quality_visible(updraft_guide_scale(
+                                &guide, position, elapsed,
+                            )),
+                        )
+                    },
                 );
             }
         }
@@ -245,7 +277,7 @@ fn wind_visual_tracks() -> Vec<WindVisualTrack> {
                     + field.direction * (field.half_extents.x * CROSSWIND_RIBBON_CENTER_ADVANCE),
                 phase,
             };
-            push_sampled_transform_tracks(
+            push_sampled_transform_tracks_with_visibility(
                 &mut tracks,
                 TrackSpec {
                     family: "crosswind_ribbon",
@@ -258,7 +290,10 @@ fn wind_visual_tracks() -> Vec<WindVisualTrack> {
                 },
                 |elapsed| {
                     let transform = crosswind_ribbon_transform(&ribbon, elapsed);
-                    crosswind_ribbon_scene_sample_positions(&ribbon, &transform)
+                    (
+                        crosswind_ribbon_scene_sample_positions(&ribbon, &transform),
+                        wind_visual_quality_visible(transform.scale),
+                    )
                 },
             );
         }
@@ -270,7 +305,7 @@ fn wind_visual_tracks() -> Vec<WindVisualTrack> {
                 stream_count: CROSSWIND_GUIDES_PER_FIELD,
                 phase: (stream_index as f32 * 0.381_966).fract(),
             };
-            push_transform_tracks(
+            push_transform_state_tracks(
                 &mut tracks,
                 TrackSpec {
                     family: "crosswind_guide",
@@ -281,7 +316,15 @@ fn wind_visual_tracks() -> Vec<WindVisualTrack> {
                     include_vertical: false,
                     allow_center_fallback: true,
                 },
-                |elapsed| crosswind_guide_position(&guide, elapsed),
+                |elapsed| {
+                    let position = crosswind_guide_position(&guide, elapsed);
+                    (
+                        position,
+                        wind_visual_quality_visible(crosswind_guide_scale(
+                            &guide, position, elapsed,
+                        )),
+                    )
+                },
             );
         }
     }
@@ -289,36 +332,42 @@ fn wind_visual_tracks() -> Vec<WindVisualTrack> {
     tracks
 }
 
-fn push_transform_tracks(
+fn push_transform_state_tracks(
     tracks: &mut Vec<WindVisualTrack>,
     spec: TrackSpec,
-    position_at: impl Fn(f32) -> Vec3,
+    state_at: impl Fn(f32) -> (Vec3, bool),
 ) {
-    for interval_index in 0..TRACK_TIMES_SECS.len() - 1 {
-        let elapsed_secs = TRACK_TIMES_SECS[interval_index];
-        let next_elapsed_secs = TRACK_TIMES_SECS[interval_index + 1];
+    for (interval_index, (elapsed_secs, next_elapsed_secs)) in
+        track_windows_secs().into_iter().enumerate()
+    {
+        let (current, current_quality_visible) = state_at(elapsed_secs);
+        let (next, next_quality_visible) = state_at(next_elapsed_secs);
         tracks.push(make_track(
             spec,
-            0,
-            interval_index,
-            elapsed_secs,
-            next_elapsed_secs,
-            position_at(elapsed_secs),
-            position_at(next_elapsed_secs),
+            TrackSegment {
+                sample_index: 0,
+                interval_index,
+                elapsed_secs,
+                next_elapsed_secs,
+                current,
+                next,
+                current_quality_visible,
+                next_quality_visible,
+            },
         ));
     }
 }
 
-fn push_sampled_transform_tracks(
+fn push_sampled_transform_tracks_with_visibility(
     tracks: &mut Vec<WindVisualTrack>,
     spec: TrackSpec,
-    positions_at: impl Fn(f32) -> [Vec3; 3],
+    positions_at: impl Fn(f32) -> ([Vec3; 3], bool),
 ) {
-    for interval_index in 0..TRACK_TIMES_SECS.len() - 1 {
-        let elapsed_secs = TRACK_TIMES_SECS[interval_index];
-        let next_elapsed_secs = TRACK_TIMES_SECS[interval_index + 1];
-        let current_positions = positions_at(elapsed_secs);
-        let next_positions = positions_at(next_elapsed_secs);
+    for (interval_index, (elapsed_secs, next_elapsed_secs)) in
+        track_windows_secs().into_iter().enumerate()
+    {
+        let (current_positions, current_quality_visible) = positions_at(elapsed_secs);
+        let (next_positions, next_quality_visible) = positions_at(next_elapsed_secs);
         for (sample_index, (current, next)) in current_positions
             .into_iter()
             .zip(next_positions)
@@ -326,31 +375,48 @@ fn push_sampled_transform_tracks(
         {
             tracks.push(make_track(
                 spec,
-                sample_index,
-                interval_index,
-                elapsed_secs,
-                next_elapsed_secs,
-                current,
-                next,
+                TrackSegment {
+                    sample_index,
+                    interval_index,
+                    elapsed_secs,
+                    next_elapsed_secs,
+                    current,
+                    next,
+                    current_quality_visible,
+                    next_quality_visible,
+                },
             ));
         }
     }
 }
 
-fn make_track(
-    spec: TrackSpec,
-    sample_index: usize,
-    interval_index: usize,
-    elapsed_secs: f32,
-    next_elapsed_secs: f32,
-    current: Vec3,
-    next: Vec3,
-) -> WindVisualTrack {
+fn track_windows_secs() -> Vec<(f32, f32)> {
+    let mut windows = Vec::new();
+    let mut elapsed_secs = 0.0;
+    while elapsed_secs <= TRACK_WINDOW_END_SECS + f32::EPSILON {
+        windows.push((elapsed_secs, elapsed_secs + TRACK_WINDOW_DURATION_SECS));
+        windows.push((
+            elapsed_secs + TRACK_WINDOW_DURATION_SECS,
+            elapsed_secs + TRACK_WINDOW_DURATION_SECS * 2.0,
+        ));
+        elapsed_secs += TRACK_WINDOW_STRIDE_SECS;
+    }
+    windows
+}
+
+fn track_windows_json() -> Vec<Value> {
+    track_windows_secs()
+        .into_iter()
+        .map(|(start, end)| json!([start, end]))
+        .collect()
+}
+
+fn make_track(spec: TrackSpec, segment: TrackSegment) -> WindVisualTrack {
     let alignment = visual_flow_alignment(
         spec.field,
-        current,
-        next,
-        elapsed_secs,
+        segment.current,
+        segment.next,
+        segment.elapsed_secs,
         spec.include_vertical,
         spec.allow_center_fallback,
     );
@@ -359,16 +425,18 @@ fn make_track(
         sample_kind: spec.sample_kind,
         field_index: spec.field_index,
         visual_index: spec.visual_index,
-        sample_index,
-        interval_index,
-        elapsed_secs,
-        next_elapsed_secs,
-        current,
-        next,
-        displacement_m: current.distance(next),
+        sample_index: segment.sample_index,
+        interval_index: segment.interval_index,
+        elapsed_secs: segment.elapsed_secs,
+        next_elapsed_secs: segment.next_elapsed_secs,
+        current: segment.current,
+        next: segment.next,
+        current_quality_visible: segment.current_quality_visible,
+        next_quality_visible: segment.next_quality_visible,
+        displacement_m: segment.current.distance(segment.next),
         alignment,
-        current_inside_field: spec.field.contains(current),
-        next_inside_field: spec.field.contains(next),
+        current_inside_field: spec.field.contains(segment.current),
+        next_inside_field: spec.field.contains(segment.next),
         coherent: alignment.is_some_and(|value| value >= WIND_VISUAL_ALIGNMENT_MIN_DOT),
     }
 }
@@ -393,6 +461,7 @@ fn summarize_tracks(tracks: &[WindVisualTrack]) -> MotionSummary {
         let current = pair[1];
         if !same_visual_sample(previous, current)
             || current.interval_index != previous.interval_index + 1
+            || (current.elapsed_secs - previous.next_elapsed_secs).abs() > f32::EPSILON
         {
             continue;
         }
@@ -400,22 +469,32 @@ fn summarize_tracks(tracks: &[WindVisualTrack]) -> MotionSummary {
         let continuity_gap_m = previous.next.distance(current.current);
         let acceleration_mps2 = (current.velocity_mps() - previous.velocity_mps()).length()
             / ((previous.dt_secs() + current.dt_secs()) * 0.5).max(f32::EPSILON);
+        let quality_visible_pair =
+            previous.quality_visible_motion() && current.quality_visible_motion();
         summary
             .total
-            .observe_pair(continuity_gap_m, acceleration_mps2);
+            .observe_pair(continuity_gap_m, acceleration_mps2, quality_visible_pair);
         match current.family {
-            "updraft_guide" => summary
-                .updraft_guide
-                .observe_pair(continuity_gap_m, acceleration_mps2),
-            "updraft_ribbon" => summary
-                .updraft_ribbon
-                .observe_pair(continuity_gap_m, acceleration_mps2),
-            "crosswind_guide" => summary
-                .crosswind_guide
-                .observe_pair(continuity_gap_m, acceleration_mps2),
-            "crosswind_ribbon" => summary
-                .crosswind_ribbon
-                .observe_pair(continuity_gap_m, acceleration_mps2),
+            "updraft_guide" => summary.updraft_guide.observe_pair(
+                continuity_gap_m,
+                acceleration_mps2,
+                quality_visible_pair,
+            ),
+            "updraft_ribbon" => summary.updraft_ribbon.observe_pair(
+                continuity_gap_m,
+                acceleration_mps2,
+                quality_visible_pair,
+            ),
+            "crosswind_guide" => summary.crosswind_guide.observe_pair(
+                continuity_gap_m,
+                acceleration_mps2,
+                quality_visible_pair,
+            ),
+            "crosswind_ribbon" => summary.crosswind_ribbon.observe_pair(
+                continuity_gap_m,
+                acceleration_mps2,
+                quality_visible_pair,
+            ),
             _ => {}
         }
     }
@@ -428,6 +507,11 @@ impl FamilyMetrics {
         self.track_count += 1;
         self.max_displacement_m = self.max_displacement_m.max(track.displacement_m);
         self.max_speed_mps = self.max_speed_mps.max(track.speed_mps());
+        if track.quality_visible_motion() {
+            self.quality_visible_track_count += 1;
+            self.max_quality_visible_speed_mps =
+                self.max_quality_visible_speed_mps.max(track.speed_mps());
+        }
         if track.displacement_m < MIN_TRACK_DISPLACEMENT_M {
             self.static_track_count += 1;
         }
@@ -450,9 +534,19 @@ impl FamilyMetrics {
         }
     }
 
-    fn observe_pair(&mut self, continuity_gap_m: f32, acceleration_mps2: f32) {
+    fn observe_pair(
+        &mut self,
+        continuity_gap_m: f32,
+        acceleration_mps2: f32,
+        quality_visible_pair: bool,
+    ) {
         self.max_continuity_gap_m = self.max_continuity_gap_m.max(continuity_gap_m);
         self.max_acceleration_mps2 = self.max_acceleration_mps2.max(acceleration_mps2);
+        if quality_visible_pair {
+            self.max_quality_visible_acceleration_mps2 = self
+                .max_quality_visible_acceleration_mps2
+                .max(acceleration_mps2);
+        }
     }
 }
 
@@ -483,9 +577,12 @@ fn wind_visual_manifest(input: WindVisualManifestInput<'_>) -> Value {
             "track_obj": path_string(input.track_obj_relative),
             "track_ndjson": path_string(input.track_ndjson_relative),
         },
-        "sample_times_secs": TRACK_TIMES_SECS,
+        "sample_windows_secs": track_windows_json(),
         "thresholds": {
             "coherence_dt_secs": WIND_VISUAL_COHERENCE_DT,
+            "track_window_duration_secs": TRACK_WINDOW_DURATION_SECS,
+            "track_window_stride_secs": TRACK_WINDOW_STRIDE_SECS,
+            "track_window_end_secs": TRACK_WINDOW_END_SECS,
             "alignment_min_dot": WIND_VISUAL_ALIGNMENT_MIN_DOT,
             "min_track_displacement_m": MIN_TRACK_DISPLACEMENT_M,
         },
@@ -529,6 +626,9 @@ fn family_metrics_json(metrics: FamilyMetrics) -> Value {
         "low_alignment_track_count": metrics.low_alignment_track_count,
         "max_displacement_m": metrics.max_displacement_m,
         "max_speed_mps": metrics.max_speed_mps,
+        "quality_visible_track_count": metrics.quality_visible_track_count,
+        "max_quality_visible_speed_mps": metrics.max_quality_visible_speed_mps,
+        "max_quality_visible_acceleration_mps2": metrics.max_quality_visible_acceleration_mps2,
         "max_acceleration_mps2": metrics.max_acceleration_mps2,
         "max_continuity_gap_m": metrics.max_continuity_gap_m,
         "min_alignment": metrics.min_alignment,
@@ -584,6 +684,10 @@ impl WindVisualTrack {
         (self.next - self.current) / self.dt_secs()
     }
 
+    fn quality_visible_motion(self) -> bool {
+        self.current_quality_visible && self.next_quality_visible
+    }
+
     fn to_json(self) -> Value {
         json!({
             "family": self.family,
@@ -596,6 +700,8 @@ impl WindVisualTrack {
             "next_elapsed_secs": self.next_elapsed_secs,
             "current": vec3_json(self.current),
             "next": vec3_json(self.next),
+            "current_quality_visible": self.current_quality_visible,
+            "next_quality_visible": self.next_quality_visible,
             "displacement_m": self.displacement_m,
             "alignment": self.alignment,
             "current_inside_field": self.current_inside_field,
@@ -617,14 +723,24 @@ mod tests {
     fn wind_visual_tracks_stay_within_audit_motion_quality_envelope() {
         let summary = summarize_tracks(&wind_visual_tracks());
 
-        assert!(summary.updraft_guide.max_speed_mps <= 420.0);
-        assert!(summary.updraft_ribbon.max_speed_mps <= 16.0);
-        assert!(summary.crosswind_guide.max_speed_mps <= 460.0);
-        assert!(summary.crosswind_ribbon.max_speed_mps <= 18.0);
-        assert!(summary.updraft_guide.max_acceleration_mps2 <= 2200.0);
-        assert!(summary.updraft_ribbon.max_acceleration_mps2 <= 80.0);
-        assert!(summary.crosswind_guide.max_acceleration_mps2 <= 2400.0);
-        assert!(summary.crosswind_ribbon.max_acceleration_mps2 <= 60.0);
+        assert!(summary.updraft_guide.max_quality_visible_speed_mps <= 25.0);
+        assert!(summary.updraft_ribbon.max_quality_visible_speed_mps <= 13.0);
+        assert!(summary.crosswind_guide.max_quality_visible_speed_mps <= 15.0);
+        assert!(summary.crosswind_ribbon.max_quality_visible_speed_mps <= 17.0);
+        assert!(summary.updraft_guide.max_quality_visible_acceleration_mps2 <= 110.0);
+        assert!(summary.updraft_ribbon.max_quality_visible_acceleration_mps2 <= 160.0);
+        assert!(
+            summary
+                .crosswind_guide
+                .max_quality_visible_acceleration_mps2
+                <= 55.0
+        );
+        assert!(
+            summary
+                .crosswind_ribbon
+                .max_quality_visible_acceleration_mps2
+                <= 45.0
+        );
         assert!(summary.total.max_continuity_gap_m <= 0.001);
     }
 }
