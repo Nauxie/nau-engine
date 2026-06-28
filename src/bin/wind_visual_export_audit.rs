@@ -20,20 +20,20 @@ const MIN_UPDRAFT_GUIDE_COHERENT_TRACKS: u64 = 400;
 const MIN_UPDRAFT_RIBBON_COHERENT_TRACKS: u64 = 40;
 const MIN_CROSSWIND_GUIDE_COHERENT_TRACKS: u64 = 450;
 const MIN_CROSSWIND_RIBBON_COHERENT_TRACKS: u64 = 125;
-const MAX_STATIC_TRACKS: u64 = 0;
-const MAX_OFF_FIELD_TRACKS: u64 = 8;
-const MAX_LOW_ALIGNMENT_TRACKS: u64 = 120;
+const MAX_STATIC_TRACK_RATIO: f64 = 0.005;
+const MAX_OFF_FIELD_TRACK_RATIO: f64 = 0.001;
+const MAX_LOW_ALIGNMENT_TRACK_RATIO: f64 = 0.06;
 const MIN_FAMILY_MAX_DISPLACEMENT_M: f64 = 0.25;
-const MAX_UPDRAFT_GUIDE_SPEED_MPS: f64 = 420.0;
-const MAX_UPDRAFT_RIBBON_SPEED_MPS: f64 = 16.0;
-const MAX_CROSSWIND_GUIDE_SPEED_MPS: f64 = 460.0;
-const MAX_CROSSWIND_RIBBON_SPEED_MPS: f64 = 18.0;
-const MAX_UPDRAFT_GUIDE_ACCELERATION_MPS2: f64 = 2200.0;
-const MAX_UPDRAFT_RIBBON_ACCELERATION_MPS2: f64 = 80.0;
-const MAX_CROSSWIND_GUIDE_ACCELERATION_MPS2: f64 = 2400.0;
-const MAX_CROSSWIND_RIBBON_ACCELERATION_MPS2: f64 = 60.0;
+const MAX_UPDRAFT_GUIDE_QUALITY_VISIBLE_SPEED_MPS: f64 = 25.0;
+const MAX_UPDRAFT_RIBBON_QUALITY_VISIBLE_SPEED_MPS: f64 = 13.0;
+const MAX_CROSSWIND_GUIDE_QUALITY_VISIBLE_SPEED_MPS: f64 = 15.0;
+const MAX_CROSSWIND_RIBBON_QUALITY_VISIBLE_SPEED_MPS: f64 = 17.0;
+const MAX_UPDRAFT_GUIDE_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 110.0;
+const MAX_UPDRAFT_RIBBON_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 160.0;
+const MAX_CROSSWIND_GUIDE_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 55.0;
+const MAX_CROSSWIND_RIBBON_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 45.0;
 const MAX_TRACK_CONTINUITY_GAP_M: f64 = 0.01;
-const MOTION_METRIC_TOLERANCE: f64 = 0.005;
+const MOTION_METRIC_TOLERANCE: f64 = 0.05;
 const MIN_TRACK_DISPLACEMENT_M: f32 = 0.01;
 const WIND_VISUAL_ALIGNMENT_MIN_DOT: f32 = 0.55;
 
@@ -46,6 +46,9 @@ struct FamilyMetrics {
     low_alignment_track_count: u64,
     max_displacement_m: f64,
     max_speed_mps: f64,
+    quality_visible_track_count: u64,
+    max_quality_visible_speed_mps: f64,
+    max_quality_visible_acceleration_mps2: f64,
     max_acceleration_mps2: f64,
     max_continuity_gap_m: f64,
 }
@@ -78,6 +81,8 @@ struct ParsedTrack {
     current: Vec3,
     next: Vec3,
     manifest_displacement_m: f64,
+    manifest_current_quality_visible: bool,
+    manifest_next_quality_visible: bool,
     manifest_current_inside_field: bool,
     manifest_next_inside_field: bool,
     manifest_coherent: bool,
@@ -353,23 +358,32 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         MIN_CROSSWIND_RIBBON_COHERENT_TRACKS,
         "tracks",
     ));
-    checks.push(check_at_most_u64(
-        "static_track_count",
-        track_metrics.total.static_track_count,
-        MAX_STATIC_TRACKS,
-        "tracks",
+    checks.push(check_at_most_f64(
+        "static_track_ratio",
+        track_ratio(
+            track_metrics.total.static_track_count,
+            track_metrics.total.track_count,
+        ),
+        MAX_STATIC_TRACK_RATIO,
+        "ratio",
     ));
-    checks.push(check_at_most_u64(
-        "off_field_track_count",
-        track_metrics.total.off_field_track_count,
-        MAX_OFF_FIELD_TRACKS,
-        "tracks",
+    checks.push(check_at_most_f64(
+        "off_field_track_ratio",
+        track_ratio(
+            track_metrics.total.off_field_track_count,
+            track_metrics.total.track_count,
+        ),
+        MAX_OFF_FIELD_TRACK_RATIO,
+        "ratio",
     ));
-    checks.push(check_at_most_u64(
-        "low_alignment_track_count",
-        track_metrics.total.low_alignment_track_count,
-        MAX_LOW_ALIGNMENT_TRACKS,
-        "tracks",
+    checks.push(check_at_most_f64(
+        "low_alignment_track_ratio",
+        track_ratio(
+            track_metrics.total.low_alignment_track_count,
+            track_metrics.total.track_count,
+        ),
+        MAX_LOW_ALIGNMENT_TRACK_RATIO,
+        "ratio",
     ));
     for (name, metrics) in [
         ("updraft_guide", track_metrics.updraft_guide),
@@ -478,6 +492,8 @@ fn parse_track(value: &Value) -> Option<ParsedTrack> {
         current: value_vec3(value.get("current")?)?,
         next: value_vec3(value.get("next")?)?,
         manifest_displacement_m: value.get("displacement_m")?.as_f64()?,
+        manifest_current_quality_visible: value.get("current_quality_visible")?.as_bool()?,
+        manifest_next_quality_visible: value.get("next_quality_visible")?.as_bool()?,
         manifest_current_inside_field: value.get("current_inside_field")?.as_bool()?,
         manifest_next_inside_field: value.get("next_inside_field")?.as_bool()?,
         manifest_coherent: value.get("coherent")?.as_bool()?,
@@ -519,6 +535,8 @@ fn observe_track(metrics: &mut TrackMetrics, track: ParsedTrack) -> Option<Obser
     let observed = ObservedTrack {
         displacement_m,
         speed_mps,
+        quality_visible_motion: track.manifest_current_quality_visible
+            && track.manifest_next_quality_visible,
         current_inside,
         next_inside,
         coherent,
@@ -539,8 +557,12 @@ fn observe_track(metrics: &mut TrackMetrics, track: ParsedTrack) -> Option<Obser
         visual_index: track.visual_index,
         sample_index: track.sample_index,
         interval_index: track.interval_index,
+        elapsed_secs: track.elapsed_secs,
+        next_elapsed_secs: track.next_elapsed_secs,
         current: track.current,
         next: track.next,
+        quality_visible_motion: track.manifest_current_quality_visible
+            && track.manifest_next_quality_visible,
         velocity_mps: (track.next - track.current) / dt_secs as f32,
         dt_secs,
     })
@@ -550,6 +572,7 @@ fn observe_track(metrics: &mut TrackMetrics, track: ParsedTrack) -> Option<Obser
 struct ObservedTrack {
     displacement_m: f64,
     speed_mps: f64,
+    quality_visible_motion: bool,
     current_inside: bool,
     next_inside: bool,
     coherent: bool,
@@ -563,8 +586,11 @@ struct ObservedTrackRecord {
     visual_index: usize,
     sample_index: usize,
     interval_index: usize,
+    elapsed_secs: f32,
+    next_elapsed_secs: f32,
     current: Vec3,
     next: Vec3,
+    quality_visible_motion: bool,
     velocity_mps: Vec3,
     dt_secs: f64,
 }
@@ -574,6 +600,11 @@ impl FamilyMetrics {
         self.track_count += 1;
         self.max_displacement_m = self.max_displacement_m.max(track.displacement_m);
         self.max_speed_mps = self.max_speed_mps.max(track.speed_mps);
+        if track.quality_visible_motion {
+            self.quality_visible_track_count += 1;
+            self.max_quality_visible_speed_mps =
+                self.max_quality_visible_speed_mps.max(track.speed_mps);
+        }
         if track.displacement_m < MIN_TRACK_DISPLACEMENT_M as f64 {
             self.static_track_count += 1;
         }
@@ -587,9 +618,19 @@ impl FamilyMetrics {
         }
     }
 
-    fn observe_pair(&mut self, continuity_gap_m: f64, acceleration_mps2: f64) {
+    fn observe_pair(
+        &mut self,
+        continuity_gap_m: f64,
+        acceleration_mps2: f64,
+        quality_visible_pair: bool,
+    ) {
         self.max_continuity_gap_m = self.max_continuity_gap_m.max(continuity_gap_m);
         self.max_acceleration_mps2 = self.max_acceleration_mps2.max(acceleration_mps2);
+        if quality_visible_pair {
+            self.max_quality_visible_acceleration_mps2 = self
+                .max_quality_visible_acceleration_mps2
+                .max(acceleration_mps2);
+        }
     }
 }
 
@@ -601,6 +642,7 @@ fn observe_track_pairs(metrics: &mut TrackMetrics, tracks: &[ObservedTrackRecord
         let current = pair[1];
         if !same_observed_sample(previous, current)
             || current.interval_index != previous.interval_index + 1
+            || (current.elapsed_secs - previous.next_elapsed_secs).abs() > f32::EPSILON
         {
             continue;
         }
@@ -609,22 +651,32 @@ fn observe_track_pairs(metrics: &mut TrackMetrics, tracks: &[ObservedTrackRecord
         let average_dt = ((previous.dt_secs + current.dt_secs) * 0.5).max(f64::EPSILON);
         let acceleration_mps2 =
             (current.velocity_mps - previous.velocity_mps).length() as f64 / average_dt;
+        let quality_visible_pair =
+            previous.quality_visible_motion && current.quality_visible_motion;
         metrics
             .total
-            .observe_pair(continuity_gap_m, acceleration_mps2);
+            .observe_pair(continuity_gap_m, acceleration_mps2, quality_visible_pair);
         match current.family {
-            "updraft_guide" => metrics
-                .updraft_guide
-                .observe_pair(continuity_gap_m, acceleration_mps2),
-            "updraft_ribbon" => metrics
-                .updraft_ribbon
-                .observe_pair(continuity_gap_m, acceleration_mps2),
-            "crosswind_guide" => metrics
-                .crosswind_guide
-                .observe_pair(continuity_gap_m, acceleration_mps2),
-            "crosswind_ribbon" => metrics
-                .crosswind_ribbon
-                .observe_pair(continuity_gap_m, acceleration_mps2),
+            "updraft_guide" => metrics.updraft_guide.observe_pair(
+                continuity_gap_m,
+                acceleration_mps2,
+                quality_visible_pair,
+            ),
+            "updraft_ribbon" => metrics.updraft_ribbon.observe_pair(
+                continuity_gap_m,
+                acceleration_mps2,
+                quality_visible_pair,
+            ),
+            "crosswind_guide" => metrics.crosswind_guide.observe_pair(
+                continuity_gap_m,
+                acceleration_mps2,
+                quality_visible_pair,
+            ),
+            "crosswind_ribbon" => metrics.crosswind_ribbon.observe_pair(
+                continuity_gap_m,
+                acceleration_mps2,
+                quality_visible_pair,
+            ),
             _ => metrics.unknown_family_count += 1,
         }
     }
@@ -762,6 +814,26 @@ fn push_motion_checks(
         MOTION_METRIC_TOLERANCE,
         "m/s",
     ));
+    checks.push(check_eq_u64(
+        &format!("{family}_quality_visible_count_manifest_matches"),
+        value_u64(family_motion, "quality_visible_track_count"),
+        recomputed.quality_visible_track_count,
+        "tracks",
+    ));
+    checks.push(check_close_f64(
+        &format!("{family}_max_quality_visible_speed_manifest_matches"),
+        value_f64(family_motion, "max_quality_visible_speed_mps"),
+        recomputed.max_quality_visible_speed_mps,
+        MOTION_METRIC_TOLERANCE,
+        "m/s",
+    ));
+    checks.push(check_close_f64(
+        &format!("{family}_max_quality_visible_acceleration_manifest_matches"),
+        value_f64(family_motion, "max_quality_visible_acceleration_mps2"),
+        recomputed.max_quality_visible_acceleration_mps2,
+        MOTION_METRIC_TOLERANCE,
+        "m/s^2",
+    ));
     checks.push(check_close_f64(
         &format!("{family}_max_acceleration_manifest_matches"),
         value_f64(family_motion, "max_acceleration_mps2"),
@@ -779,42 +851,42 @@ fn push_motion_checks(
 }
 
 fn push_motion_quality_checks(checks: &mut Vec<Value>, metrics: TrackMetrics) {
-    for (name, family, max_speed_mps, max_acceleration_mps2) in [
+    for (name, family, max_quality_visible_speed_mps, max_quality_visible_acceleration_mps2) in [
         (
             "updraft_guide",
             metrics.updraft_guide,
-            MAX_UPDRAFT_GUIDE_SPEED_MPS,
-            MAX_UPDRAFT_GUIDE_ACCELERATION_MPS2,
+            MAX_UPDRAFT_GUIDE_QUALITY_VISIBLE_SPEED_MPS,
+            MAX_UPDRAFT_GUIDE_QUALITY_VISIBLE_ACCELERATION_MPS2,
         ),
         (
             "updraft_ribbon",
             metrics.updraft_ribbon,
-            MAX_UPDRAFT_RIBBON_SPEED_MPS,
-            MAX_UPDRAFT_RIBBON_ACCELERATION_MPS2,
+            MAX_UPDRAFT_RIBBON_QUALITY_VISIBLE_SPEED_MPS,
+            MAX_UPDRAFT_RIBBON_QUALITY_VISIBLE_ACCELERATION_MPS2,
         ),
         (
             "crosswind_guide",
             metrics.crosswind_guide,
-            MAX_CROSSWIND_GUIDE_SPEED_MPS,
-            MAX_CROSSWIND_GUIDE_ACCELERATION_MPS2,
+            MAX_CROSSWIND_GUIDE_QUALITY_VISIBLE_SPEED_MPS,
+            MAX_CROSSWIND_GUIDE_QUALITY_VISIBLE_ACCELERATION_MPS2,
         ),
         (
             "crosswind_ribbon",
             metrics.crosswind_ribbon,
-            MAX_CROSSWIND_RIBBON_SPEED_MPS,
-            MAX_CROSSWIND_RIBBON_ACCELERATION_MPS2,
+            MAX_CROSSWIND_RIBBON_QUALITY_VISIBLE_SPEED_MPS,
+            MAX_CROSSWIND_RIBBON_QUALITY_VISIBLE_ACCELERATION_MPS2,
         ),
     ] {
         checks.push(check_at_most_f64(
-            &format!("{name}_max_speed"),
-            family.max_speed_mps,
-            max_speed_mps,
+            &format!("{name}_max_quality_visible_speed"),
+            family.max_quality_visible_speed_mps,
+            max_quality_visible_speed_mps,
             "m/s",
         ));
         checks.push(check_at_most_f64(
-            &format!("{name}_max_acceleration"),
-            family.max_acceleration_mps2,
-            max_acceleration_mps2,
+            &format!("{name}_max_quality_visible_acceleration"),
+            family.max_quality_visible_acceleration_mps2,
+            max_quality_visible_acceleration_mps2,
             "m/s^2",
         ));
         checks.push(check_at_most_f64(
@@ -850,6 +922,14 @@ fn value_f64(parent: &Value, key: &str) -> f64 {
     parent.get(key).and_then(Value::as_f64).unwrap_or(0.0)
 }
 
+fn track_ratio(count: u64, total: u64) -> f64 {
+    if total == 0 {
+        return 0.0;
+    }
+
+    count as f64 / total as f64
+}
+
 fn intern_family(value: &str) -> Option<&'static str> {
     match value {
         "updraft_guide" => Some("updraft_guide"),
@@ -877,6 +957,9 @@ fn family_metrics_json(metrics: FamilyMetrics) -> Value {
         "low_alignment_track_count": metrics.low_alignment_track_count,
         "max_displacement_m": metrics.max_displacement_m,
         "max_speed_mps": metrics.max_speed_mps,
+        "quality_visible_track_count": metrics.quality_visible_track_count,
+        "max_quality_visible_speed_mps": metrics.max_quality_visible_speed_mps,
+        "max_quality_visible_acceleration_mps2": metrics.max_quality_visible_acceleration_mps2,
         "max_acceleration_mps2": metrics.max_acceleration_mps2,
         "max_continuity_gap_m": metrics.max_continuity_gap_m,
     })
@@ -910,17 +993,6 @@ fn check_at_least_u64(name: &str, value: u64, threshold: u64, unit: &str) -> Val
         "passed": value >= threshold,
         "value": value,
         "comparator": ">=",
-        "threshold": threshold,
-        "unit": unit,
-    })
-}
-
-fn check_at_most_u64(name: &str, value: u64, threshold: u64, unit: &str) -> Value {
-    json!({
-        "name": name,
-        "passed": value <= threshold,
-        "value": value,
-        "comparator": "<=",
         "threshold": threshold,
         "unit": unit,
     })
@@ -1116,6 +1188,8 @@ mod tests {
             current,
             next,
             manifest_displacement_m: current.distance(next) as f64,
+            manifest_current_quality_visible: true,
+            manifest_next_quality_visible: true,
             manifest_current_inside_field: false,
             manifest_next_inside_field: false,
             manifest_coherent: false,

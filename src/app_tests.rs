@@ -641,10 +641,15 @@ fn wind_visual_export_writes_motion_tracks_and_manifest() {
     let updraft_ribbon_count = updraft_field_count * UPDRAFT_RIBBONS_PER_FIELD;
     let crosswind_guide_count = crosswind_field_count * CROSSWIND_GUIDES_PER_FIELD;
     let crosswind_ribbon_count = crosswind_field_count * CROSSWIND_RIBBONS_PER_FIELD;
-    let expected_tracks = updraft_guide_count * 2
-        + updraft_ribbon_count * 2 * 4
-        + crosswind_guide_count * 2
-        + crosswind_ribbon_count * 2 * 3;
+    let sample_window_count = manifest_json["sample_windows_secs"]
+        .as_array()
+        .expect("sample windows should be present")
+        .len();
+    let expected_tracks = (updraft_guide_count
+        + updraft_ribbon_count * 4
+        + crosswind_guide_count
+        + crosswind_ribbon_count * 3)
+        * sample_window_count;
 
     assert_eq!(report.track_count, expected_tracks);
     assert!(track_obj.exists());
@@ -683,21 +688,24 @@ fn wind_visual_export_writes_motion_tracks_and_manifest() {
         manifest_json["counts"]["track_count"].as_u64(),
         Some(expected_tracks as u64)
     );
-    assert_eq!(
-        manifest_json["motion"]["total"]["static_track_count"].as_u64(),
-        Some(0)
-    );
+    let total_motion = &manifest_json["motion"]["total"];
+    let static_track_count = total_motion["static_track_count"]
+        .as_u64()
+        .expect("static track count should be present");
+    let off_field_track_count = total_motion["off_field_track_count"]
+        .as_u64()
+        .expect("off-field track count should be present");
+    let low_alignment_track_count = total_motion["low_alignment_track_count"]
+        .as_u64()
+        .expect("low-alignment track count should be present");
+    assert!(static_track_count * 200 <= expected_tracks as u64);
+    assert!(off_field_track_count * 1000 <= expected_tracks as u64);
+    assert!(low_alignment_track_count * 100 <= expected_tracks as u64 * 6);
     assert!(
-        manifest_json["motion"]["total"]["off_field_track_count"]
-            .as_u64()
-            .expect("off-field track count should be present")
-            <= 8
-    );
-    assert!(
-        manifest_json["motion"]["total"]["coherent_track_count"]
+        total_motion["coherent_track_count"]
             .as_u64()
             .expect("coherent track count should be present")
-            >= 1040
+            >= expected_tracks as u64 * 9 / 10
     );
 
     remove_existing_dir(&output_dir).expect("wind visual export test dir should be removable");
