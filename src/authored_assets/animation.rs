@@ -651,7 +651,11 @@ fn authored_player_transition_profile(
     }
 
     if bank_clip(current) && bank_clip(desired) {
-        return AuthoredTransitionProfile::new(120, "bank_reversal");
+        return AuthoredTransitionProfile::new(70, "bank_reversal");
+    }
+
+    if bank_clip(desired) {
+        return AuthoredTransitionProfile::new(80, "air_turn_snap");
     }
 
     if traversal_clip(current) && traversal_clip(desired) {
@@ -724,7 +728,7 @@ mod tests {
             desired_clip: Some(AuthoredPlayerClip::BankRight),
             transition_from_clip: Some(AuthoredPlayerClip::Glide),
             transition_to_clip: Some(AuthoredPlayerClip::BankRight),
-            transition_duration_ms: 120,
+            transition_duration_ms: 70,
             transition_class_label: "bank_reversal",
             ..default()
         };
@@ -768,6 +772,32 @@ mod tests {
     }
 
     #[test]
+    fn authored_player_pose_intent_maps_air_turn_input_to_directional_bank_clip() {
+        assert_eq!(
+            authored_player_clip_for_pose_intent_with_input(
+                PlayerPoseIntent::AirTurn,
+                18.0,
+                FlightInput {
+                    left: true,
+                    ..default()
+                },
+            ),
+            AuthoredPlayerClip::BankLeft
+        );
+        assert_eq!(
+            authored_player_clip_for_pose_intent_with_input(
+                PlayerPoseIntent::AirTurn,
+                18.0,
+                FlightInput {
+                    right: true,
+                    ..default()
+                },
+            ),
+            AuthoredPlayerClip::BankRight
+        );
+    }
+
+    #[test]
     fn authored_player_transition_duration_is_zero_for_same_clip() {
         assert_eq!(
             authored_player_transition_duration(
@@ -782,6 +812,13 @@ mod tests {
                 AuthoredPlayerClip::Dive
             ),
             Duration::from_millis(90)
+        );
+        assert_eq!(
+            authored_player_transition_duration(
+                AuthoredPlayerClip::Glide,
+                AuthoredPlayerClip::BankRight
+            ),
+            Duration::from_millis(80)
         );
     }
 
@@ -803,7 +840,14 @@ mod tests {
                 AuthoredPlayerClip::BankLeft,
                 AuthoredPlayerClip::BankRight
             ),
-            AuthoredTransitionProfile::new(120, "bank_reversal")
+            AuthoredTransitionProfile::new(70, "bank_reversal")
+        );
+        assert_eq!(
+            authored_player_transition_profile(
+                AuthoredPlayerClip::Glide,
+                AuthoredPlayerClip::BankRight
+            ),
+            AuthoredTransitionProfile::new(80, "air_turn_snap")
         );
         assert_eq!(
             authored_player_transition_profile(AuthoredPlayerClip::Glide, AuthoredPlayerClip::Dive),
