@@ -428,6 +428,13 @@ fn append_air_control_checks(
     acc: &EvalAccumulator,
     derived: &SummaryDerivedMetrics,
 ) {
+    let max_dive_pose_arm_spread_degrees = if acc.gliding_dive_samples > 0 {
+        acc.max_dive_pose_arm_spread_degrees
+    } else {
+        f32::INFINITY
+    };
+    let min_pose_limb_clearance_m = acc.min_pose_limb_clearance_m.unwrap_or(f32::NEG_INFINITY);
+
     checks.extend([
         EvalCheck::at_most(
             "air_control_lateral_response_latency",
@@ -639,10 +646,10 @@ fn append_air_control_checks(
             AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
             "deg",
         ),
-        EvalCheck::at_least(
+        EvalCheck::at_most(
             "air_control_dive_pose_arm_spread",
-            acc.max_dive_pose_arm_spread_degrees,
-            AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES,
+            max_dive_pose_arm_spread_degrees,
+            AIR_CONTROL_MAX_DIVE_POSE_ARM_SPREAD_DEGREES,
             "deg",
         ),
         EvalCheck::at_least(
@@ -751,6 +758,12 @@ fn append_air_control_checks(
             "air_control_max_pose_part_translation_delta",
             acc.max_pose_part_translation_delta_m,
             MAX_POSE_PART_TRANSLATION_DELTA_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "air_control_min_pose_limb_clearance",
+            min_pose_limb_clearance_m,
+            MIN_POSE_LIMB_CLEARANCE_M,
             "m",
         ),
         EvalCheck::at_least(
@@ -1003,6 +1016,13 @@ fn append_pose_state_coverage_checks(
     acc: &EvalAccumulator,
     derived: &SummaryDerivedMetrics,
 ) {
+    let max_dive_pose_arm_spread_degrees = if acc.gliding_dive_samples > 0 {
+        acc.max_dive_pose_arm_spread_degrees
+    } else {
+        f32::INFINITY
+    };
+    let min_pose_limb_clearance_m = acc.min_pose_limb_clearance_m.unwrap_or(f32::NEG_INFINITY);
+
     checks.extend([
         EvalCheck::at_least(
             "pose_state_grounded_idle_samples",
@@ -1240,10 +1260,10 @@ fn append_pose_state_coverage_checks(
             AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
             "deg",
         ),
-        EvalCheck::at_least(
+        EvalCheck::at_most(
             "pose_state_dive_pose_arm_spread",
-            acc.max_dive_pose_arm_spread_degrees,
-            AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES,
+            max_dive_pose_arm_spread_degrees,
+            AIR_CONTROL_MAX_DIVE_POSE_ARM_SPREAD_DEGREES,
             "deg",
         ),
         EvalCheck::at_least(
@@ -1335,6 +1355,12 @@ fn append_pose_state_coverage_checks(
             acc.key_pose_transition_grace_samples as f32,
             POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32,
             "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_min_pose_limb_clearance",
+            min_pose_limb_clearance_m,
+            MIN_POSE_LIMB_CLEARANCE_M,
+            "m",
         ),
     ]);
 }

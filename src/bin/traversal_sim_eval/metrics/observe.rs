@@ -165,6 +165,14 @@ impl SimMetrics {
         self.max_pose_leg_tuck_degrees = self
             .max_pose_leg_tuck_degrees
             .max(sample.pose_leg_tuck_degrees);
+        if sample.min_pose_limb_clearance_m.is_finite() {
+            self.min_pose_limb_clearance_m = Some(
+                self.min_pose_limb_clearance_m
+                    .map_or(sample.min_pose_limb_clearance_m, |current| {
+                        current.min(sample.min_pose_limb_clearance_m)
+                    }),
+            );
+        }
         if sample.mode == "gliding" && sample.pose_intent_label == "diving" {
             self.max_dive_pose_torso_pitch_degrees = self
                 .max_dive_pose_torso_pitch_degrees

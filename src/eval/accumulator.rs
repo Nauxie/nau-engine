@@ -148,6 +148,7 @@ pub struct EvalAccumulator {
     pose_temporal_stability_samples: u32,
     max_pose_part_rotation_delta_degrees: f32,
     max_pose_part_translation_delta_m: f32,
+    min_pose_limb_clearance_m: Option<f32>,
     landing_pose_temporal_stability_samples: u32,
     max_landing_pose_part_rotation_delta_degrees: f32,
     max_landing_pose_part_translation_delta_m: f32,

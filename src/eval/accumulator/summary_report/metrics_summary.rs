@@ -146,6 +146,7 @@ pub(super) fn build_metrics_summary(
         pose_temporal_stability_samples: acc.pose_temporal_stability_samples,
         max_pose_part_rotation_delta_degrees: acc.max_pose_part_rotation_delta_degrees,
         max_pose_part_translation_delta_m: acc.max_pose_part_translation_delta_m,
+        min_pose_limb_clearance_m: acc.min_pose_limb_clearance_m.unwrap_or(f32::NAN),
         landing_pose_temporal_stability_samples: acc.landing_pose_temporal_stability_samples,
         max_landing_pose_part_rotation_delta_degrees: acc
             .max_landing_pose_part_rotation_delta_degrees,

@@ -23,7 +23,7 @@ struct Requirement {
 
 const PLAYER_NAME_FRAGMENTS: &[&str] = &[
     "suit", "skin", "accent", "helmet", "shoulder", "scarf", "boot", "face", "eye", "belt",
-    "gauntlet", "knee", "hand", "finger", "toe",
+    "gauntlet", "knee", "hand", "finger", "toe", "neck", "elbow", "ankle",
 ];
 const GLIDER_NAME_FRAGMENTS: &[&str] = &["cloth panel", "spar", "rib", "tether", "grip"];
 const TERRAIN_NAME_FRAGMENTS: &[&str] = &[
@@ -75,11 +75,11 @@ const IMPOSTOR_NAME_FRAGMENTS: &[&str] = &[
 const REQUIREMENTS: &[Requirement] = &[
     Requirement {
         kind: VisualAssetKind::PlayerCharacter,
-        min_nodes: 38,
-        min_meshes: 22,
+        min_nodes: 44,
+        min_meshes: 25,
         min_materials: 8,
-        min_vertices: 700,
-        min_triangles: 1140,
+        min_vertices: 1100,
+        min_triangles: 1800,
         required_name_fragments: PLAYER_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: true,
@@ -384,6 +384,25 @@ fn audit_fixture(
         ));
     }
     if requirement.require_player_clips {
+        checks.push(check_at_least_f64(
+            "player_rest_arm_half_width",
+            symmetric_node_half_width_m(&gltf, "Nau Left Arm", "Nau Right Arm").unwrap_or(0.0),
+            0.52,
+            "m",
+        ));
+        checks.push(check_at_least_f64(
+            "player_rest_leg_half_width",
+            symmetric_node_half_width_m(&gltf, "Nau Left Leg", "Nau Right Leg").unwrap_or(0.0),
+            0.20,
+            "m",
+        ));
+        checks.push(check_at_least_f64(
+            "player_scarf_back_offset",
+            node_translation(&gltf, "Nau Wind Scarf Accent")
+                .map_or(0.0, |translation| translation[2]),
+            0.30,
+            "m",
+        ));
         checks.push(check_eq_u64(
             "player_named_clip_count",
             ready_player_clip_count,
@@ -650,6 +669,32 @@ fn array_len(value: &Value, key: &str) -> u64 {
         .map_or(0, |values| values.len() as u64)
 }
 
+fn symmetric_node_half_width_m(gltf: &Value, left_name: &str, right_name: &str) -> Option<f64> {
+    let left_x = node_translation(gltf, left_name)?[0];
+    let right_x = node_translation(gltf, right_name)?[0];
+
+    if left_x < 0.0 && right_x > 0.0 {
+        Some((-left_x).min(right_x))
+    } else {
+        None
+    }
+}
+
+fn node_translation(gltf: &Value, node_name: &str) -> Option<[f64; 3]> {
+    let translation = gltf
+        .get("nodes")?
+        .as_array()?
+        .iter()
+        .find(|node| node.get("name").and_then(Value::as_str) == Some(node_name))?
+        .get("translation")?
+        .as_array()?;
+    Some([
+        translation.first()?.as_f64()?,
+        translation.get(1)?.as_f64()?,
+        translation.get(2)?.as_f64()?,
+    ])
+}
+
 fn checks_passed(checks: &[Value]) -> bool {
     checks.iter().all(|check| {
         check
@@ -671,6 +716,17 @@ fn check_bool(name: &'static str, passed: bool, unit: &'static str) -> Value {
 }
 
 fn check_at_least_u64(name: &'static str, value: u64, threshold: u64, unit: &'static str) -> Value {
+    json!({
+        "name": name,
+        "passed": value >= threshold,
+        "value": value,
+        "comparator": ">=",
+        "threshold": threshold,
+        "unit": unit,
+    })
+}
+
+fn check_at_least_f64(name: &'static str, value: f64, threshold: f64, unit: &'static str) -> Value {
     json!({
         "name": name,
         "passed": value >= threshold,

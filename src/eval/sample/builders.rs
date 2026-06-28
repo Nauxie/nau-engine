@@ -131,6 +131,7 @@ impl EvalSample {
             visible_pose_part_count: 0,
             max_pose_part_rotation_delta_degrees: f32::NAN,
             max_pose_part_translation_delta_m: f32::NAN,
+            min_pose_limb_clearance_m: f32::NAN,
             desired_body_yaw_error_degrees: f32::NAN,
             desired_body_heading_error_degrees: f32::NAN,
             body_travel_heading_error_degrees: f32::NAN,
@@ -476,6 +477,7 @@ impl EvalSample {
             finite_nonnegative_or_nan(metrics.max_pose_part_rotation_delta_degrees);
         self.max_pose_part_translation_delta_m =
             finite_nonnegative_or_nan(metrics.max_pose_part_translation_delta_m);
+        self.min_pose_limb_clearance_m = finite_or_nan(metrics.min_pose_limb_clearance_m);
         self
     }
 
@@ -898,4 +900,8 @@ fn finite_nonnegative_or_nan(value: f32) -> f32 {
     } else {
         f32::NAN
     }
+}
+
+fn finite_or_nan(value: f32) -> f32 {
+    if value.is_finite() { value } else { f32::NAN }
 }

@@ -69,6 +69,7 @@ pub struct EvalPoseTemporalMetrics {
     pub visible_pose_part_count: u32,
     pub max_pose_part_rotation_delta_degrees: f32,
     pub max_pose_part_translation_delta_m: f32,
+    pub min_pose_limb_clearance_m: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -101,6 +102,7 @@ pub struct EvalSample {
     pub visible_pose_part_count: u32,
     pub max_pose_part_rotation_delta_degrees: f32,
     pub max_pose_part_translation_delta_m: f32,
+    pub min_pose_limb_clearance_m: f32,
     pub desired_body_yaw_error_degrees: f32,
     pub desired_body_heading_error_degrees: f32,
     pub body_travel_heading_error_degrees: f32,

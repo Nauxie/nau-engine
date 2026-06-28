@@ -305,22 +305,22 @@ pub(crate) fn authored_player_pose_node_for_name(name: &str) -> Option<AuthoredP
         ),
         "Nau Left Arm" => CharacterPart::new(
             CharacterPartRole::Arm(Side::Left),
-            Vec3::new(-0.48, 1.18, 0.01),
+            Vec3::new(-0.55, 1.17, 0.0),
             Quat::IDENTITY,
         ),
         "Nau Right Arm" => CharacterPart::new(
             CharacterPartRole::Arm(Side::Right),
-            Vec3::new(0.48, 1.18, 0.01),
+            Vec3::new(0.55, 1.17, 0.0),
             Quat::IDENTITY,
         ),
         "Nau Left Leg" => CharacterPart::new(
             CharacterPartRole::Leg(Side::Left),
-            Vec3::new(-0.17, 0.30, 0.01),
+            Vec3::new(-0.22, 0.32, 0.02),
             Quat::IDENTITY,
         ),
         "Nau Right Leg" => CharacterPart::new(
             CharacterPartRole::Leg(Side::Right),
-            Vec3::new(0.17, 0.30, 0.01),
+            Vec3::new(0.22, 0.32, 0.02),
             Quat::IDENTITY,
         ),
         "Nau Back Scarf Anchor Accent" => CharacterPart::new(
@@ -330,7 +330,7 @@ pub(crate) fn authored_player_pose_node_for_name(name: &str) -> Option<AuthoredP
         ),
         "Nau Wind Scarf Accent" => CharacterPart::new(
             CharacterPartRole::Scarf(ScarfSegment::Trail),
-            Vec3::new(0.24, 1.18, 0.26),
+            Vec3::new(0.24, 1.18, 0.31),
             Quat::IDENTITY,
         ),
         _ => return None,
@@ -700,7 +700,7 @@ mod tests {
         assert_eq!(torso.part.role, CharacterPartRole::Torso);
         assert_eq!(torso.part.base_translation, Vec3::new(0.0, 1.08, 0.0));
         assert_eq!(left_arm.part.role, CharacterPartRole::Arm(Side::Left));
-        assert_eq!(left_arm.part.base_translation, Vec3::new(-0.48, 1.18, 0.01));
+        assert_eq!(left_arm.part.base_translation, Vec3::new(-0.55, 1.17, 0.0));
         assert_eq!(right_leg.part.role, CharacterPartRole::Leg(Side::Right));
         assert_eq!(
             scarf.part.role,
