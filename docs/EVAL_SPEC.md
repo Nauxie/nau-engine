@@ -342,6 +342,7 @@ Every sample includes:
 - `visible_pose_part_count`
 - `max_pose_part_rotation_delta_degrees`
 - `max_pose_part_translation_delta_m`
+- `min_pose_limb_clearance_m`
 - `desired_body_yaw_error_degrees`
 - `desired_body_heading_error_degrees`
 - `body_travel_heading_error_degrees`
