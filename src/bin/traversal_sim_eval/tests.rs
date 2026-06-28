@@ -643,7 +643,7 @@ fn updraft_simulation_uses_readable_lift() {
     assert!(result.metrics.max_layered_wind_force_fields >= 2);
     assert!(
         result.metrics.wind_load_response_samples >= MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT,
-        "updraft route should include neutral crosswind-load reaction samples"
+        "updraft route should include gust-synchronized wind-current load reaction samples"
     );
     assert!(result.metrics.max_wind_load_lateral_load >= MIN_WIND_LOAD_LATERAL_LOAD);
     assert!(result.metrics.max_wind_load_pose_lean_degrees >= MIN_WIND_LOAD_POSE_LEAN_DEGREES);

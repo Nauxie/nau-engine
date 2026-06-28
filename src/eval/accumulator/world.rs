@@ -447,8 +447,9 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
 fn wind_load_response_sample(sample: &EvalSample) -> bool {
     matches!(sample.mode, "airborne" | "gliding")
         && sample.movement_input_lateral_axis.abs() < 0.25
-        && sample.crosswind_force_fields > 0
-        && sample.max_crosswind_force_delta_mps >= MIN_CROSSWIND_FORCE_DELTA_MPS
+        && sample.active_wind_force_fields > 0
+        && sample.max_wind_force_delta_mps >= MIN_WIND_FORCE_DELTA_MPS
+        && sample.max_wind_force_variation >= MIN_WIND_FORCE_VARIATION
         && sample.wind_lateral_load.abs() >= MIN_WIND_LOAD_LATERAL_LOAD
 }
 

@@ -3696,13 +3696,18 @@ fn accumulator_gates_wind_load_response_metrics() {
     let mut accumulator = EvalAccumulator::default();
 
     for frame in 0..MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT {
-        accumulator.observe(wind_load_metric_sample(
+        let mut sample = wind_load_metric_sample(
             scenario,
             frame,
             MIN_WIND_LOAD_LATERAL_LOAD,
             MIN_WIND_LOAD_POSE_LEAN_DEGREES,
             MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
-        ));
+        );
+        sample.crosswind_force_fields = 0;
+        sample.max_crosswind_force_delta_mps = 0.0;
+        sample.max_crosswind_force_flow_alignment = 0.0;
+        sample.max_crosswind_force_aligned_delta_mps = 0.0;
+        accumulator.observe(sample);
     }
 
     let summary = accumulator.summary(
@@ -3724,7 +3729,7 @@ fn accumulator_gates_wind_load_response_metrics() {
     ] {
         assert!(
             named_check(&summary, check_name).passed,
-            "{check_name} should pass with readable neutral crosswind load"
+            "{check_name} should pass with gust-synchronized wind-current load"
         );
     }
     assert_eq!(
@@ -3743,6 +3748,48 @@ fn accumulator_gates_wind_load_response_metrics() {
         summary.metrics.max_wind_load_glider_response_degrees,
         MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES
     );
+}
+
+#[test]
+fn accumulator_rejects_low_variation_wind_load_response() {
+    let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT {
+        let mut sample = wind_load_metric_sample(
+            scenario,
+            frame,
+            MIN_WIND_LOAD_LATERAL_LOAD,
+            MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+            MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+        );
+        sample.max_wind_force_variation = MIN_WIND_FORCE_VARIATION * 0.5;
+        accumulator.observe(sample);
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.wind_load_response_samples, 0);
+    for check_name in [
+        "wind_load_response_samples",
+        "wind_load_lateral_load",
+        "wind_load_pose_lean",
+        "wind_load_glider_response",
+    ] {
+        assert!(
+            !named_check(&summary, check_name).passed,
+            "{check_name} should fail when wind-current load lacks gust variation"
+        );
+    }
 }
 
 #[test]

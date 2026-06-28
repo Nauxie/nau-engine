@@ -271,14 +271,14 @@ pub fn wing_airflow_strength(mode: FlightMode, velocity: Vec3) -> f32 {
     (speed_pressure + sink_pressure).clamp(0.0, 1.0)
 }
 
-pub fn wind_lateral_load_from_delta(crosswind_delta: Vec3, player_rotation: Quat) -> f32 {
+pub fn wind_lateral_load_from_delta(wind_delta: Vec3, player_rotation: Quat) -> f32 {
     let forward = body_forward(player_rotation);
     let right = forward.cross(Vec3::Y).normalize_or_zero();
     if right.length_squared() <= f32::EPSILON {
         return 0.0;
     }
 
-    (crosswind_delta.dot(right) / WIND_LOAD_FULL_RESPONSE_DELTA_MPS).clamp(-1.0, 1.0)
+    (wind_delta.dot(right) / WIND_LOAD_FULL_RESPONSE_DELTA_MPS).clamp(-1.0, 1.0)
 }
 
 #[derive(Clone, Copy, Debug)]
