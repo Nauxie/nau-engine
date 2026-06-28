@@ -1,4 +1,4 @@
-use bevy::prelude::Vec2;
+use bevy::prelude::{Vec2, Vec3};
 use nau_engine::animation::MIN_KEY_POSE_READABILITY_SCORE;
 use nau_engine::eval::{
     CAMERA_STRAFE_STABILITY, EvalScenario, MIN_CROSSWIND_FORCE_DELTA_MPS,
@@ -401,6 +401,7 @@ impl SimMetrics {
                 .max_wind_load_glider_response_degrees
                 .max(sample.wind_load_glider_response_degrees);
         }
+        self.observe_crosswind_neutral_drift(sample);
         self.max_paired_visual_lift_fields = self
             .max_paired_visual_lift_fields
             .max(sample.paired_visual_lift_fields);
@@ -480,6 +481,32 @@ impl SimMetrics {
         if scenario.name == CAMERA_STRAFE_STABILITY {
             self.max_camera_obstruction_adjustment_m = 0.0;
         }
+    }
+
+    fn observe_crosswind_neutral_drift(&mut self, sample: &SimSample) {
+        if !crosswind_neutral_response_sample(sample) {
+            self.crosswind_neutral_previous_position = None;
+            return;
+        }
+
+        self.crosswind_neutral_drift_samples += 1;
+        let current_position = Vec3::new(sample.position.x, 0.0, sample.position.z);
+        let Some(previous_position) = self
+            .crosswind_neutral_previous_position
+            .replace(current_position)
+        else {
+            return;
+        };
+
+        let Some(direction) = crosswind_horizontal_direction(sample) else {
+            return;
+        };
+        let step = (current_position - previous_position)
+            .dot(direction)
+            .max(0.0);
+        self.crosswind_neutral_horizontal_drift_m += step;
+        self.max_crosswind_neutral_horizontal_step_m =
+            self.max_crosswind_neutral_horizontal_step_m.max(step);
     }
 
     fn observe_pose_intent_counts(&mut self, sample: &SimSample) {
@@ -815,10 +842,42 @@ impl SimMetrics {
 fn wind_load_response_sample(sample: &SimSample) -> bool {
     matches!(sample.mode, "airborne" | "gliding")
         && sample.movement_input_lateral_axis.abs() < 0.25
-        && sample.active_wind_force_fields > 0
-        && sample.max_wind_force_delta_mps >= MIN_WIND_FORCE_DELTA_MPS
+        && sample.crosswind_force_fields > 0
+        && sample.max_crosswind_force_delta_mps >= MIN_CROSSWIND_FORCE_DELTA_MPS
         && sample.max_wind_force_variation >= MIN_WIND_FORCE_VARIATION
+        && sample.max_crosswind_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
+        && sample.max_crosswind_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
         && sample.wind_lateral_load.abs() >= MIN_WIND_LOAD_LATERAL_LOAD
+}
+
+fn crosswind_neutral_response_sample(sample: &SimSample) -> bool {
+    matches!(sample.mode, "airborne" | "gliding")
+        && sample.movement_input_lateral_axis.abs() < 0.25
+        && sample.crosswind_force_fields > 0
+        && sample.max_crosswind_force_delta_mps >= MIN_CROSSWIND_FORCE_DELTA_MPS
+        && sample.max_crosswind_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
+        && sample.max_crosswind_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+}
+
+fn crosswind_horizontal_direction(sample: &SimSample) -> Option<Vec3> {
+    let direction = Vec3::new(
+        sample.crosswind_force_delta.x,
+        0.0,
+        sample.crosswind_force_delta.z,
+    );
+    if direction.length_squared() > f32::EPSILON {
+        Some(dominant_horizontal_axis(direction))
+    } else {
+        (sample.max_crosswind_force_delta_mps > f32::EPSILON).then_some(Vec3::X)
+    }
+}
+
+fn dominant_horizontal_axis(direction: Vec3) -> Vec3 {
+    if direction.x.abs() >= direction.z.abs() {
+        Vec3::X * direction.x.signum()
+    } else {
+        Vec3::Z * direction.z.signum()
+    }
 }
 
 fn body_yaw_intent_axis(sample: &SimSample) -> Option<Vec2> {

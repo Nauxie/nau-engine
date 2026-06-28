@@ -1,3 +1,5 @@
+use bevy::prelude::Vec3;
+
 use super::{EvalAccumulator, EvalSample};
 use crate::eval::thresholds::{
     MIN_CROSSWIND_FLOW_COHERENT_VISUAL_COUNT, MIN_CROSSWIND_FORCE_DELTA_MPS,
@@ -152,6 +154,7 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
             .max_wind_load_glider_response_degrees
             .max(sample.authored_glider_response_degrees);
     }
+    observe_crosswind_neutral_drift(accumulator, sample);
     accumulator.max_active_lift_fields = accumulator
         .max_active_lift_fields
         .max(sample.active_lift_fields);
@@ -308,6 +311,16 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_observed_crosswind_ribbon_frame_flow_displacement_m = accumulator
         .max_observed_crosswind_ribbon_frame_flow_displacement_m
         .max(sample.max_observed_crosswind_ribbon_frame_flow_displacement_m);
+    accumulator.max_observed_updraft_visual_speed_mps = accumulator
+        .max_observed_updraft_visual_speed_mps
+        .max(sample.max_observed_updraft_visual_speed_mps);
+    accumulator.max_observed_crosswind_visual_speed_mps = accumulator
+        .max_observed_crosswind_visual_speed_mps
+        .max(sample.max_observed_crosswind_visual_speed_mps);
+    accumulator.max_observed_wind_visual_acceleration_mps2 = accumulator
+        .max_observed_wind_visual_acceleration_mps2
+        .max(sample.max_observed_wind_visual_acceleration_mps2);
+    accumulator.observed_wind_visual_jump_count += sample.observed_wind_visual_jump_count;
     accumulator.max_observed_updraft_visual_flow_alignment = accumulator
         .max_observed_updraft_visual_flow_alignment
         .max(sample.max_observed_updraft_visual_flow_alignment);
@@ -447,10 +460,73 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
 fn wind_load_response_sample(sample: &EvalSample) -> bool {
     matches!(sample.mode, "airborne" | "gliding")
         && sample.movement_input_lateral_axis.abs() < 0.25
-        && sample.active_wind_force_fields > 0
-        && sample.max_wind_force_delta_mps >= MIN_WIND_FORCE_DELTA_MPS
+        && sample.crosswind_force_fields > 0
+        && sample.max_crosswind_force_delta_mps >= MIN_CROSSWIND_FORCE_DELTA_MPS
         && sample.max_wind_force_variation >= MIN_WIND_FORCE_VARIATION
+        && sample.max_crosswind_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
+        && sample.max_crosswind_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
         && sample.wind_lateral_load.abs() >= MIN_WIND_LOAD_LATERAL_LOAD
+}
+
+fn observe_crosswind_neutral_drift(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
+    if !crosswind_neutral_response_sample(sample) {
+        accumulator.crosswind_neutral_previous_position = None;
+        return;
+    }
+
+    accumulator.crosswind_neutral_drift_samples += 1;
+    let current_position = horizontal_position(sample);
+    let Some(previous_position) = accumulator
+        .crosswind_neutral_previous_position
+        .replace(current_position)
+    else {
+        return;
+    };
+
+    let Some(direction) = crosswind_horizontal_direction(sample) else {
+        return;
+    };
+    let step = (current_position - previous_position)
+        .dot(direction)
+        .max(0.0);
+    accumulator.crosswind_neutral_horizontal_drift_m += step;
+    accumulator.max_crosswind_neutral_horizontal_step_m = accumulator
+        .max_crosswind_neutral_horizontal_step_m
+        .max(step);
+}
+
+fn crosswind_neutral_response_sample(sample: &EvalSample) -> bool {
+    matches!(sample.mode, "airborne" | "gliding")
+        && sample.movement_input_lateral_axis.abs() < 0.25
+        && sample.crosswind_force_fields > 0
+        && sample.max_crosswind_force_delta_mps >= MIN_CROSSWIND_FORCE_DELTA_MPS
+        && sample.max_crosswind_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
+        && sample.max_crosswind_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+}
+
+fn horizontal_position(sample: &EvalSample) -> Vec3 {
+    Vec3::new(sample.position[0], 0.0, sample.position[2])
+}
+
+fn crosswind_horizontal_direction(sample: &EvalSample) -> Option<Vec3> {
+    let direction = Vec3::new(
+        sample.crosswind_force_delta[0],
+        0.0,
+        sample.crosswind_force_delta[2],
+    );
+    if direction.length_squared() > f32::EPSILON {
+        Some(dominant_horizontal_axis(direction))
+    } else {
+        (sample.max_crosswind_force_delta_mps > f32::EPSILON).then_some(Vec3::X)
+    }
+}
+
+fn dominant_horizontal_axis(direction: Vec3) -> Vec3 {
+    if direction.x.abs() >= direction.z.abs() {
+        Vec3::X * direction.x.signum()
+    } else {
+        Vec3::Z * direction.z.signum()
+    }
 }
 
 fn has_sustained_updraft_visual_flow(sample: &EvalSample) -> bool {

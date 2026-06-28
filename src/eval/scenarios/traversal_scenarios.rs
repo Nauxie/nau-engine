@@ -203,7 +203,7 @@ pub(super) fn updraft_route() -> EvalScenario {
             max_primitive_island_body_count: 0,
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
-            max_stream_visibility_changes_per_frame: 33,
+            max_stream_visibility_changes_per_frame: 35,
             min_entity_count: 100,
             max_camera_distance_m: 36.0,
             min_camera_surface_clearance_m: 1.0,

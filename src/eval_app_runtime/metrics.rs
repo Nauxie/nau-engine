@@ -8,7 +8,8 @@ use crate::environment_visuals::{
     CrosswindGuide, CrosswindRibbon, ObservedWindVisualMotionMetrics, UpdraftGuide, UpdraftRibbon,
     observe_crosswind_guide_frame_motion, observe_crosswind_ribbon_frame_motion,
     observe_updraft_guide_frame_motion, observe_updraft_ribbon_frame_motion,
-    wind_guide_visual_metrics, wind_responsive_visual_metrics,
+    observed_wind_visual_velocity, wind_guide_visual_metrics, wind_responsive_visual_metrics,
+    wind_visual_quality_visible,
 };
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
 use crate::player_runtime::AuthoredGliderPose;
@@ -152,9 +153,11 @@ impl ObservedWindVisualMotionState {
         let mut current = HashMap::with_capacity(previous.len());
 
         for (entity, guide, transform) in updraft_guides {
+            let quality_visible = wind_visual_quality_visible(transform.scale);
             if let Some(snapshot) = previous
                 .get(&entity)
                 .filter(|snapshot| snapshot.frame < frame)
+                .filter(|snapshot| snapshot.quality_visible && quality_visible)
             {
                 let dt_secs = elapsed_secs - snapshot.elapsed_secs;
                 observe_updraft_guide_frame_motion(
@@ -164,18 +167,37 @@ impl ObservedWindVisualMotionState {
                     transform,
                     snapshot.elapsed_secs,
                     dt_secs,
+                    snapshot.velocity,
                 );
             }
+            let velocity = previous
+                .get(&entity)
+                .filter(|snapshot| snapshot.quality_visible && quality_visible)
+                .and_then(|snapshot| {
+                    observed_wind_visual_velocity(
+                        snapshot.transform.translation,
+                        transform.translation,
+                        elapsed_secs - snapshot.elapsed_secs,
+                    )
+                });
             current.insert(
                 entity,
-                WindVisualFrameSnapshot::new(frame, elapsed_secs, transform),
+                WindVisualFrameSnapshot::new(
+                    frame,
+                    elapsed_secs,
+                    transform,
+                    velocity,
+                    quality_visible,
+                ),
             );
         }
 
         for (entity, ribbon, transform) in updraft_ribbons {
+            let quality_visible = wind_visual_quality_visible(transform.scale);
             if let Some(snapshot) = previous
                 .get(&entity)
                 .filter(|snapshot| snapshot.frame < frame)
+                .filter(|snapshot| snapshot.quality_visible && quality_visible)
             {
                 let dt_secs = elapsed_secs - snapshot.elapsed_secs;
                 observe_updraft_ribbon_frame_motion(
@@ -185,18 +207,37 @@ impl ObservedWindVisualMotionState {
                     transform,
                     snapshot.elapsed_secs,
                     dt_secs,
+                    snapshot.velocity,
                 );
             }
+            let velocity = previous
+                .get(&entity)
+                .filter(|snapshot| snapshot.quality_visible && quality_visible)
+                .and_then(|snapshot| {
+                    observed_wind_visual_velocity(
+                        snapshot.transform.translation,
+                        transform.translation,
+                        elapsed_secs - snapshot.elapsed_secs,
+                    )
+                });
             current.insert(
                 entity,
-                WindVisualFrameSnapshot::new(frame, elapsed_secs, transform),
+                WindVisualFrameSnapshot::new(
+                    frame,
+                    elapsed_secs,
+                    transform,
+                    velocity,
+                    quality_visible,
+                ),
             );
         }
 
         for (entity, guide, transform) in crosswind_guides {
+            let quality_visible = wind_visual_quality_visible(transform.scale);
             if let Some(snapshot) = previous
                 .get(&entity)
                 .filter(|snapshot| snapshot.frame < frame)
+                .filter(|snapshot| snapshot.quality_visible && quality_visible)
             {
                 let dt_secs = elapsed_secs - snapshot.elapsed_secs;
                 observe_crosswind_guide_frame_motion(
@@ -206,18 +247,37 @@ impl ObservedWindVisualMotionState {
                     transform,
                     snapshot.elapsed_secs,
                     dt_secs,
+                    snapshot.velocity,
                 );
             }
+            let velocity = previous
+                .get(&entity)
+                .filter(|snapshot| snapshot.quality_visible && quality_visible)
+                .and_then(|snapshot| {
+                    observed_wind_visual_velocity(
+                        snapshot.transform.translation,
+                        transform.translation,
+                        elapsed_secs - snapshot.elapsed_secs,
+                    )
+                });
             current.insert(
                 entity,
-                WindVisualFrameSnapshot::new(frame, elapsed_secs, transform),
+                WindVisualFrameSnapshot::new(
+                    frame,
+                    elapsed_secs,
+                    transform,
+                    velocity,
+                    quality_visible,
+                ),
             );
         }
 
         for (entity, ribbon, transform) in crosswind_ribbons {
+            let quality_visible = wind_visual_quality_visible(transform.scale);
             if let Some(snapshot) = previous
                 .get(&entity)
                 .filter(|snapshot| snapshot.frame < frame)
+                .filter(|snapshot| snapshot.quality_visible && quality_visible)
             {
                 let dt_secs = elapsed_secs - snapshot.elapsed_secs;
                 observe_crosswind_ribbon_frame_motion(
@@ -227,11 +287,28 @@ impl ObservedWindVisualMotionState {
                     transform,
                     snapshot.elapsed_secs,
                     dt_secs,
+                    snapshot.velocity,
                 );
             }
+            let velocity = previous
+                .get(&entity)
+                .filter(|snapshot| snapshot.quality_visible && quality_visible)
+                .and_then(|snapshot| {
+                    observed_wind_visual_velocity(
+                        snapshot.transform.translation,
+                        transform.translation,
+                        elapsed_secs - snapshot.elapsed_secs,
+                    )
+                });
             current.insert(
                 entity,
-                WindVisualFrameSnapshot::new(frame, elapsed_secs, transform),
+                WindVisualFrameSnapshot::new(
+                    frame,
+                    elapsed_secs,
+                    transform,
+                    velocity,
+                    quality_visible,
+                ),
             );
         }
 
@@ -250,14 +327,24 @@ struct WindVisualFrameSnapshot {
     frame: u32,
     elapsed_secs: f32,
     transform: Transform,
+    velocity: Option<Vec3>,
+    quality_visible: bool,
 }
 
 impl WindVisualFrameSnapshot {
-    fn new(frame: u32, elapsed_secs: f32, transform: &Transform) -> Self {
+    fn new(
+        frame: u32,
+        elapsed_secs: f32,
+        transform: &Transform,
+        velocity: Option<Vec3>,
+        quality_visible: bool,
+    ) -> Self {
         Self {
             frame,
             elapsed_secs,
             transform: *transform,
+            velocity,
+            quality_visible,
         }
     }
 }
@@ -782,6 +869,12 @@ pub(crate) fn collect_eval_metrics(
         observed_wind_visual_motion.max_observed_crosswind_visual_flow_alignment,
         observed_wind_visual_motion.max_observed_crosswind_ribbon_visual_flow_alignment,
     )
+    .with_observed_wind_visual_quality_metrics(
+        observed_wind_visual_motion.max_observed_updraft_visual_speed_mps,
+        observed_wind_visual_motion.max_observed_crosswind_visual_speed_mps,
+        observed_wind_visual_motion.max_observed_wind_visual_acceleration_mps2,
+        observed_wind_visual_motion.observed_wind_visual_jump_count,
+    )
     .with_wind_field_visual_coverage_metrics(
         wind_guide_metrics.updraft_field_count,
         wind_guide_metrics.updraft_fields_with_guides_count,
@@ -816,6 +909,7 @@ pub(crate) fn collect_eval_metrics(
             .wind_force_diagnostics
             .max_updraft_swirl_flow_aligned_delta_mps,
     )
+    .with_crosswind_force_delta(scene.wind_force_diagnostics.crosswind_delta)
     .with_wind_lateral_load(scene.wind_force_diagnostics.wind_lateral_load)
     .with_world_collision_metrics(
         scene.collision_diagnostics.proxy_count,

@@ -24,6 +24,16 @@ const MAX_STATIC_TRACKS: u64 = 0;
 const MAX_OFF_FIELD_TRACKS: u64 = 8;
 const MAX_LOW_ALIGNMENT_TRACKS: u64 = 120;
 const MIN_FAMILY_MAX_DISPLACEMENT_M: f64 = 0.25;
+const MAX_UPDRAFT_GUIDE_SPEED_MPS: f64 = 420.0;
+const MAX_UPDRAFT_RIBBON_SPEED_MPS: f64 = 16.0;
+const MAX_CROSSWIND_GUIDE_SPEED_MPS: f64 = 460.0;
+const MAX_CROSSWIND_RIBBON_SPEED_MPS: f64 = 18.0;
+const MAX_UPDRAFT_GUIDE_ACCELERATION_MPS2: f64 = 2200.0;
+const MAX_UPDRAFT_RIBBON_ACCELERATION_MPS2: f64 = 80.0;
+const MAX_CROSSWIND_GUIDE_ACCELERATION_MPS2: f64 = 2400.0;
+const MAX_CROSSWIND_RIBBON_ACCELERATION_MPS2: f64 = 60.0;
+const MAX_TRACK_CONTINUITY_GAP_M: f64 = 0.01;
+const MOTION_METRIC_TOLERANCE: f64 = 0.005;
 const MIN_TRACK_DISPLACEMENT_M: f32 = 0.01;
 const WIND_VISUAL_ALIGNMENT_MIN_DOT: f32 = 0.55;
 
@@ -35,6 +45,9 @@ struct FamilyMetrics {
     off_field_track_count: u64,
     low_alignment_track_count: u64,
     max_displacement_m: f64,
+    max_speed_mps: f64,
+    max_acceleration_mps2: f64,
+    max_continuity_gap_m: f64,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -57,7 +70,11 @@ struct ParsedTrack {
     family: &'static str,
     sample_kind: &'static str,
     field_index: usize,
+    visual_index: usize,
+    sample_index: usize,
+    interval_index: usize,
     elapsed_secs: f32,
+    next_elapsed_secs: f32,
     current: Vec3,
     next: Vec3,
     manifest_displacement_m: f64,
@@ -304,6 +321,7 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "crosswind_ribbon",
         track_metrics.crosswind_ribbon,
     );
+    push_motion_quality_checks(&mut checks, track_metrics);
 
     checks.push(check_at_least_u64(
         "total_coherent_tracks",
@@ -420,6 +438,7 @@ fn audit_track_ndjson(path: &Path) -> Result<(TrackMetrics, u64), String> {
     let text = fs::read_to_string(path)
         .map_err(|error| format!("could not read {}: {error}", path.display()))?;
     let mut metrics = TrackMetrics::default();
+    let mut observed_tracks = Vec::new();
     let mut line_count = 0;
 
     for line in text.lines() {
@@ -435,8 +454,11 @@ fn audit_track_ndjson(path: &Path) -> Result<(TrackMetrics, u64), String> {
             metrics.malformed_track_count += 1;
             continue;
         };
-        observe_track(&mut metrics, track);
+        if let Some(observed) = observe_track(&mut metrics, track) {
+            observed_tracks.push(observed);
+        }
     }
+    observe_track_pairs(&mut metrics, &observed_tracks);
 
     Ok((metrics, line_count))
 }
@@ -448,7 +470,11 @@ fn parse_track(value: &Value) -> Option<ParsedTrack> {
         family,
         sample_kind,
         field_index: value.get("field_index")?.as_u64()? as usize,
+        visual_index: value.get("visual_index")?.as_u64()? as usize,
+        sample_index: value.get("sample_index")?.as_u64()? as usize,
+        interval_index: value.get("interval_index")?.as_u64()? as usize,
         elapsed_secs: value.get("elapsed_secs")?.as_f64()? as f32,
+        next_elapsed_secs: value.get("next_elapsed_secs")?.as_f64()? as f32,
         current: value_vec3(value.get("current")?)?,
         next: value_vec3(value.get("next")?)?,
         manifest_displacement_m: value.get("displacement_m")?.as_f64()?,
@@ -458,12 +484,14 @@ fn parse_track(value: &Value) -> Option<ParsedTrack> {
     })
 }
 
-fn observe_track(metrics: &mut TrackMetrics, track: ParsedTrack) {
+fn observe_track(metrics: &mut TrackMetrics, track: ParsedTrack) -> Option<ObservedTrackRecord> {
     let Some((field, include_vertical, allow_center_fallback)) = track_field(track) else {
         metrics.missing_field_count += 1;
-        return;
+        return None;
     };
     let displacement_m = track.current.distance(track.next) as f64;
+    let dt_secs = (track.next_elapsed_secs - track.elapsed_secs).max(f32::EPSILON) as f64;
+    let speed_mps = displacement_m / dt_secs;
     let current_inside = field.contains(track.current);
     let next_inside = field.contains(track.next);
     let alignment = visual_flow_alignment(
@@ -490,6 +518,7 @@ fn observe_track(metrics: &mut TrackMetrics, track: ParsedTrack) {
 
     let observed = ObservedTrack {
         displacement_m,
+        speed_mps,
         current_inside,
         next_inside,
         coherent,
@@ -502,20 +531,49 @@ fn observe_track(metrics: &mut TrackMetrics, track: ParsedTrack) {
         "crosswind_ribbon" => metrics.crosswind_ribbon.observe(observed),
         _ => metrics.unknown_family_count += 1,
     }
+
+    Some(ObservedTrackRecord {
+        family: track.family,
+        sample_kind: track.sample_kind,
+        field_index: track.field_index,
+        visual_index: track.visual_index,
+        sample_index: track.sample_index,
+        interval_index: track.interval_index,
+        current: track.current,
+        next: track.next,
+        velocity_mps: (track.next - track.current) / dt_secs as f32,
+        dt_secs,
+    })
 }
 
 #[derive(Clone, Copy)]
 struct ObservedTrack {
     displacement_m: f64,
+    speed_mps: f64,
     current_inside: bool,
     next_inside: bool,
     coherent: bool,
+}
+
+#[derive(Clone, Copy)]
+struct ObservedTrackRecord {
+    family: &'static str,
+    sample_kind: &'static str,
+    field_index: usize,
+    visual_index: usize,
+    sample_index: usize,
+    interval_index: usize,
+    current: Vec3,
+    next: Vec3,
+    velocity_mps: Vec3,
+    dt_secs: f64,
 }
 
 impl FamilyMetrics {
     fn observe(&mut self, track: ObservedTrack) {
         self.track_count += 1;
         self.max_displacement_m = self.max_displacement_m.max(track.displacement_m);
+        self.max_speed_mps = self.max_speed_mps.max(track.speed_mps);
         if track.displacement_m < MIN_TRACK_DISPLACEMENT_M as f64 {
             self.static_track_count += 1;
         }
@@ -528,6 +586,69 @@ impl FamilyMetrics {
             self.low_alignment_track_count += 1;
         }
     }
+
+    fn observe_pair(&mut self, continuity_gap_m: f64, acceleration_mps2: f64) {
+        self.max_continuity_gap_m = self.max_continuity_gap_m.max(continuity_gap_m);
+        self.max_acceleration_mps2 = self.max_acceleration_mps2.max(acceleration_mps2);
+    }
+}
+
+fn observe_track_pairs(metrics: &mut TrackMetrics, tracks: &[ObservedTrackRecord]) {
+    let mut ordered = tracks.to_vec();
+    ordered.sort_by(compare_observed_track_key);
+    for pair in ordered.windows(2) {
+        let previous = pair[0];
+        let current = pair[1];
+        if !same_observed_sample(previous, current)
+            || current.interval_index != previous.interval_index + 1
+        {
+            continue;
+        }
+
+        let continuity_gap_m = previous.next.distance(current.current) as f64;
+        let average_dt = ((previous.dt_secs + current.dt_secs) * 0.5).max(f64::EPSILON);
+        let acceleration_mps2 =
+            (current.velocity_mps - previous.velocity_mps).length() as f64 / average_dt;
+        metrics
+            .total
+            .observe_pair(continuity_gap_m, acceleration_mps2);
+        match current.family {
+            "updraft_guide" => metrics
+                .updraft_guide
+                .observe_pair(continuity_gap_m, acceleration_mps2),
+            "updraft_ribbon" => metrics
+                .updraft_ribbon
+                .observe_pair(continuity_gap_m, acceleration_mps2),
+            "crosswind_guide" => metrics
+                .crosswind_guide
+                .observe_pair(continuity_gap_m, acceleration_mps2),
+            "crosswind_ribbon" => metrics
+                .crosswind_ribbon
+                .observe_pair(continuity_gap_m, acceleration_mps2),
+            _ => metrics.unknown_family_count += 1,
+        }
+    }
+}
+
+fn compare_observed_track_key(
+    a: &ObservedTrackRecord,
+    b: &ObservedTrackRecord,
+) -> std::cmp::Ordering {
+    a.family
+        .cmp(b.family)
+        .then(a.sample_kind.cmp(b.sample_kind))
+        .then(a.field_index.cmp(&b.field_index))
+        .then(a.visual_index.cmp(&b.visual_index))
+        .then(a.sample_index.cmp(&b.sample_index))
+        .then(a.interval_index.cmp(&b.interval_index))
+}
+
+fn same_observed_sample(a: ObservedTrackRecord, b: ObservedTrackRecord) -> bool {
+    a.family == b.family
+        && a.sample_kind == b.sample_kind
+        && a.field_index == b.field_index
+        && a.visual_index == b.visual_index
+        && a.sample_index == b.sample_index
 }
 
 fn track_field(track: ParsedTrack) -> Option<(WindField, bool, bool)> {
@@ -634,6 +755,75 @@ fn push_motion_checks(
         recomputed.off_field_track_count,
         "tracks",
     ));
+    checks.push(check_close_f64(
+        &format!("{family}_max_speed_manifest_matches"),
+        value_f64(family_motion, "max_speed_mps"),
+        recomputed.max_speed_mps,
+        MOTION_METRIC_TOLERANCE,
+        "m/s",
+    ));
+    checks.push(check_close_f64(
+        &format!("{family}_max_acceleration_manifest_matches"),
+        value_f64(family_motion, "max_acceleration_mps2"),
+        recomputed.max_acceleration_mps2,
+        MOTION_METRIC_TOLERANCE,
+        "m/s^2",
+    ));
+    checks.push(check_close_f64(
+        &format!("{family}_max_continuity_gap_manifest_matches"),
+        value_f64(family_motion, "max_continuity_gap_m"),
+        recomputed.max_continuity_gap_m,
+        MOTION_METRIC_TOLERANCE,
+        "m",
+    ));
+}
+
+fn push_motion_quality_checks(checks: &mut Vec<Value>, metrics: TrackMetrics) {
+    for (name, family, max_speed_mps, max_acceleration_mps2) in [
+        (
+            "updraft_guide",
+            metrics.updraft_guide,
+            MAX_UPDRAFT_GUIDE_SPEED_MPS,
+            MAX_UPDRAFT_GUIDE_ACCELERATION_MPS2,
+        ),
+        (
+            "updraft_ribbon",
+            metrics.updraft_ribbon,
+            MAX_UPDRAFT_RIBBON_SPEED_MPS,
+            MAX_UPDRAFT_RIBBON_ACCELERATION_MPS2,
+        ),
+        (
+            "crosswind_guide",
+            metrics.crosswind_guide,
+            MAX_CROSSWIND_GUIDE_SPEED_MPS,
+            MAX_CROSSWIND_GUIDE_ACCELERATION_MPS2,
+        ),
+        (
+            "crosswind_ribbon",
+            metrics.crosswind_ribbon,
+            MAX_CROSSWIND_RIBBON_SPEED_MPS,
+            MAX_CROSSWIND_RIBBON_ACCELERATION_MPS2,
+        ),
+    ] {
+        checks.push(check_at_most_f64(
+            &format!("{name}_max_speed"),
+            family.max_speed_mps,
+            max_speed_mps,
+            "m/s",
+        ));
+        checks.push(check_at_most_f64(
+            &format!("{name}_max_acceleration"),
+            family.max_acceleration_mps2,
+            max_acceleration_mps2,
+            "m/s^2",
+        ));
+        checks.push(check_at_most_f64(
+            &format!("{name}_max_continuity_gap"),
+            family.max_continuity_gap_m,
+            MAX_TRACK_CONTINUITY_GAP_M,
+            "m",
+        ));
+    }
 }
 
 fn value_vec3(value: &Value) -> Option<Vec3> {
@@ -654,6 +844,10 @@ fn relative_path(parent: &Value, key: &str) -> Option<PathBuf> {
 
 fn value_u64(parent: &Value, key: &str) -> u64 {
     parent.get(key).and_then(Value::as_u64).unwrap_or(0)
+}
+
+fn value_f64(parent: &Value, key: &str) -> f64 {
+    parent.get(key).and_then(Value::as_f64).unwrap_or(0.0)
 }
 
 fn intern_family(value: &str) -> Option<&'static str> {
@@ -682,6 +876,9 @@ fn family_metrics_json(metrics: FamilyMetrics) -> Value {
         "off_field_track_count": metrics.off_field_track_count,
         "low_alignment_track_count": metrics.low_alignment_track_count,
         "max_displacement_m": metrics.max_displacement_m,
+        "max_speed_mps": metrics.max_speed_mps,
+        "max_acceleration_mps2": metrics.max_acceleration_mps2,
+        "max_continuity_gap_m": metrics.max_continuity_gap_m,
     })
 }
 
@@ -740,6 +937,29 @@ fn check_at_least_f64(name: &str, value: f64, threshold: f64, unit: &str) -> Val
     })
 }
 
+fn check_at_most_f64(name: &str, value: f64, threshold: f64, unit: &str) -> Value {
+    json!({
+        "name": name,
+        "passed": value <= threshold,
+        "value": value,
+        "comparator": "<=",
+        "threshold": threshold,
+        "unit": unit,
+    })
+}
+
+fn check_close_f64(name: &str, value: f64, expected: f64, tolerance: f64, unit: &str) -> Value {
+    json!({
+        "name": name,
+        "passed": (value - expected).abs() <= tolerance,
+        "value": value,
+        "comparator": "~=",
+        "threshold": expected,
+        "tolerance": tolerance,
+        "unit": unit,
+    })
+}
+
 fn check_bool(name: &str, value: bool, unit: &str) -> Value {
     json!({
         "name": name,
@@ -790,5 +1010,162 @@ mod tests {
         let report = audit_manifest(&manifest, Path::new("."), "missing.json");
 
         assert!(!report.get("passed").and_then(Value::as_bool).unwrap());
+    }
+
+    #[test]
+    fn normal_motion_quality_tracks_pass_audit_gate() {
+        let mut tracks = Vec::new();
+        push_normal_pair(&mut tracks, "updraft_guide", "center", 0, 0, 0);
+        push_normal_pair(&mut tracks, "updraft_ribbon", "center", 0, 1, 0);
+        push_normal_pair(&mut tracks, "crosswind_guide", "center", 0, 0, 0);
+        push_normal_pair(&mut tracks, "crosswind_ribbon", "mesh", 0, 1, 0);
+
+        let metrics = metrics_for_tracks(&tracks);
+        let checks = motion_quality_checks(metrics);
+
+        assert!(checks.iter().all(check_passed));
+        assert_eq!(metrics.total.max_continuity_gap_m, 0.0);
+    }
+
+    #[test]
+    fn artificial_jump_speed_and_acceleration_regression_fails_motion_quality_gate() {
+        let field = crosswind_field(0).expect("test crosswind field should exist");
+        let axis = field.direction;
+        let start = field.center - axis * 4.0;
+        let id = TestTrackId {
+            family: "crosswind_ribbon",
+            sample_kind: "mesh",
+            field_index: 0,
+            visual_index: 0,
+            sample_index: 0,
+        };
+        let tracks = [
+            parsed_track(id, 0, 0.0, start, start + axis),
+            parsed_track(id, 1, 0.2, start + axis * 3.0, start + axis * 8.0),
+        ];
+
+        let metrics = metrics_for_tracks(&tracks);
+        let checks = motion_quality_checks(metrics);
+
+        assert!(!named_check_passed(&checks, "crosswind_ribbon_max_speed"));
+        assert!(!named_check_passed(
+            &checks,
+            "crosswind_ribbon_max_acceleration"
+        ));
+        assert!(!named_check_passed(
+            &checks,
+            "crosswind_ribbon_max_continuity_gap"
+        ));
+    }
+
+    fn push_normal_pair(
+        tracks: &mut Vec<ParsedTrack>,
+        family: &'static str,
+        sample_kind: &'static str,
+        field_index: usize,
+        visual_index: usize,
+        sample_index: usize,
+    ) {
+        let field = if family.starts_with("updraft") {
+            updraft_field(field_index).expect("test updraft field should exist")
+        } else {
+            crosswind_field(field_index).expect("test crosswind field should exist")
+        };
+        let axis = if family.starts_with("updraft") {
+            Vec3::Y
+        } else {
+            field.direction
+        };
+        let id = TestTrackId {
+            family,
+            sample_kind,
+            field_index,
+            visual_index,
+            sample_index,
+        };
+        let start = field.center - axis * 0.5;
+        tracks.push(parsed_track(id, 0, 0.0, start, start + axis));
+        tracks.push(parsed_track(id, 1, 0.2, start + axis, start + axis * 2.0));
+    }
+
+    #[derive(Clone, Copy)]
+    struct TestTrackId {
+        family: &'static str,
+        sample_kind: &'static str,
+        field_index: usize,
+        visual_index: usize,
+        sample_index: usize,
+    }
+
+    fn parsed_track(
+        id: TestTrackId,
+        interval_index: usize,
+        elapsed_secs: f32,
+        current: Vec3,
+        next: Vec3,
+    ) -> ParsedTrack {
+        let mut track = ParsedTrack {
+            family: id.family,
+            sample_kind: id.sample_kind,
+            field_index: id.field_index,
+            visual_index: id.visual_index,
+            sample_index: id.sample_index,
+            interval_index,
+            elapsed_secs,
+            next_elapsed_secs: elapsed_secs + 0.2,
+            current,
+            next,
+            manifest_displacement_m: current.distance(next) as f64,
+            manifest_current_inside_field: false,
+            manifest_next_inside_field: false,
+            manifest_coherent: false,
+        };
+        let (field, include_vertical, allow_center_fallback) =
+            track_field(track).expect("test track should map to a field");
+        track.manifest_current_inside_field = field.contains(current);
+        track.manifest_next_inside_field = field.contains(next);
+        track.manifest_coherent = visual_flow_alignment(
+            field,
+            current,
+            next,
+            elapsed_secs,
+            include_vertical,
+            allow_center_fallback,
+        )
+        .is_some_and(|value| value >= WIND_VISUAL_ALIGNMENT_MIN_DOT);
+        track
+    }
+
+    fn metrics_for_tracks(tracks: &[ParsedTrack]) -> TrackMetrics {
+        let mut metrics = TrackMetrics::default();
+        let mut observed = Vec::new();
+        for track in tracks {
+            if let Some(observed_track) = observe_track(&mut metrics, *track) {
+                observed.push(observed_track);
+            }
+        }
+        observe_track_pairs(&mut metrics, &observed);
+        metrics
+    }
+
+    fn motion_quality_checks(metrics: TrackMetrics) -> Vec<Value> {
+        let mut checks = Vec::new();
+        push_motion_quality_checks(&mut checks, metrics);
+        checks
+    }
+
+    fn named_check_passed(checks: &[Value], name: &str) -> bool {
+        checks
+            .iter()
+            .find(|check| check.get("name").and_then(Value::as_str) == Some(name))
+            .and_then(|check| check.get("passed").and_then(Value::as_bool))
+            .unwrap_or(false)
+    }
+
+    fn check_passed(check: &Value) -> bool {
+        check
+            .get("passed")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
     }
 }

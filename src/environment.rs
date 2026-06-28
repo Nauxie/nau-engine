@@ -649,7 +649,7 @@ pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
         WindField::crosswind(
             GAMEPLAY_LIFT_ROUTE[0].center,
             Vec3::new(34.0, 30.0, 30.0),
-            Vec3::new(0.7, 0.0, -0.4),
+            Vec3::X,
             8.0,
         ),
         WindField::crosswind(

@@ -61,6 +61,9 @@ struct FamilyMetrics {
     off_field_track_count: usize,
     low_alignment_track_count: usize,
     max_displacement_m: f32,
+    max_speed_mps: f32,
+    max_acceleration_mps2: f32,
+    max_continuity_gap_m: f32,
     min_alignment: f32,
     max_alignment: f32,
 }
@@ -382,6 +385,41 @@ fn summarize_tracks(tracks: &[WindVisualTrack]) -> MotionSummary {
             _ => {}
         }
     }
+
+    let mut ordered = tracks.to_vec();
+    ordered.sort_by(compare_track_motion_key);
+    for pair in ordered.windows(2) {
+        let previous = pair[0];
+        let current = pair[1];
+        if !same_visual_sample(previous, current)
+            || current.interval_index != previous.interval_index + 1
+        {
+            continue;
+        }
+
+        let continuity_gap_m = previous.next.distance(current.current);
+        let acceleration_mps2 = (current.velocity_mps() - previous.velocity_mps()).length()
+            / ((previous.dt_secs() + current.dt_secs()) * 0.5).max(f32::EPSILON);
+        summary
+            .total
+            .observe_pair(continuity_gap_m, acceleration_mps2);
+        match current.family {
+            "updraft_guide" => summary
+                .updraft_guide
+                .observe_pair(continuity_gap_m, acceleration_mps2),
+            "updraft_ribbon" => summary
+                .updraft_ribbon
+                .observe_pair(continuity_gap_m, acceleration_mps2),
+            "crosswind_guide" => summary
+                .crosswind_guide
+                .observe_pair(continuity_gap_m, acceleration_mps2),
+            "crosswind_ribbon" => summary
+                .crosswind_ribbon
+                .observe_pair(continuity_gap_m, acceleration_mps2),
+            _ => {}
+        }
+    }
+
     summary
 }
 
@@ -389,6 +427,7 @@ impl FamilyMetrics {
     fn observe(&mut self, track: &WindVisualTrack) {
         self.track_count += 1;
         self.max_displacement_m = self.max_displacement_m.max(track.displacement_m);
+        self.max_speed_mps = self.max_speed_mps.max(track.speed_mps());
         if track.displacement_m < MIN_TRACK_DISPLACEMENT_M {
             self.static_track_count += 1;
         }
@@ -410,6 +449,29 @@ impl FamilyMetrics {
             }
         }
     }
+
+    fn observe_pair(&mut self, continuity_gap_m: f32, acceleration_mps2: f32) {
+        self.max_continuity_gap_m = self.max_continuity_gap_m.max(continuity_gap_m);
+        self.max_acceleration_mps2 = self.max_acceleration_mps2.max(acceleration_mps2);
+    }
+}
+
+fn compare_track_motion_key(a: &WindVisualTrack, b: &WindVisualTrack) -> std::cmp::Ordering {
+    a.family
+        .cmp(b.family)
+        .then(a.sample_kind.cmp(b.sample_kind))
+        .then(a.field_index.cmp(&b.field_index))
+        .then(a.visual_index.cmp(&b.visual_index))
+        .then(a.sample_index.cmp(&b.sample_index))
+        .then(a.interval_index.cmp(&b.interval_index))
+}
+
+fn same_visual_sample(a: WindVisualTrack, b: WindVisualTrack) -> bool {
+    a.family == b.family
+        && a.sample_kind == b.sample_kind
+        && a.field_index == b.field_index
+        && a.visual_index == b.visual_index
+        && a.sample_index == b.sample_index
 }
 
 fn wind_visual_manifest(input: WindVisualManifestInput<'_>) -> Value {
@@ -466,6 +528,9 @@ fn family_metrics_json(metrics: FamilyMetrics) -> Value {
         "off_field_track_count": metrics.off_field_track_count,
         "low_alignment_track_count": metrics.low_alignment_track_count,
         "max_displacement_m": metrics.max_displacement_m,
+        "max_speed_mps": metrics.max_speed_mps,
+        "max_acceleration_mps2": metrics.max_acceleration_mps2,
+        "max_continuity_gap_m": metrics.max_continuity_gap_m,
         "min_alignment": metrics.min_alignment,
         "max_alignment": metrics.max_alignment,
     })
@@ -507,6 +572,18 @@ fn write_track_ndjson(path: &Path, tracks: &[WindVisualTrack]) -> std::io::Resul
 }
 
 impl WindVisualTrack {
+    fn dt_secs(self) -> f32 {
+        (self.next_elapsed_secs - self.elapsed_secs).max(f32::EPSILON)
+    }
+
+    fn speed_mps(self) -> f32 {
+        self.displacement_m / self.dt_secs()
+    }
+
+    fn velocity_mps(self) -> Vec3 {
+        (self.next - self.current) / self.dt_secs()
+    }
+
     fn to_json(self) -> Value {
         json!({
             "family": self.family,
@@ -530,4 +607,24 @@ impl WindVisualTrack {
 
 fn vec3_json(value: Vec3) -> Value {
     json!([value.x, value.y, value.z])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wind_visual_tracks_stay_within_audit_motion_quality_envelope() {
+        let summary = summarize_tracks(&wind_visual_tracks());
+
+        assert!(summary.updraft_guide.max_speed_mps <= 420.0);
+        assert!(summary.updraft_ribbon.max_speed_mps <= 16.0);
+        assert!(summary.crosswind_guide.max_speed_mps <= 460.0);
+        assert!(summary.crosswind_ribbon.max_speed_mps <= 18.0);
+        assert!(summary.updraft_guide.max_acceleration_mps2 <= 2200.0);
+        assert!(summary.updraft_ribbon.max_acceleration_mps2 <= 80.0);
+        assert!(summary.crosswind_guide.max_acceleration_mps2 <= 2400.0);
+        assert!(summary.crosswind_ribbon.max_acceleration_mps2 <= 60.0);
+        assert!(summary.total.max_continuity_gap_m <= 0.001);
+    }
 }

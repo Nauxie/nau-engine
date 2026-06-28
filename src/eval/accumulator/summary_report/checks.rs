@@ -12,7 +12,7 @@ use crate::{
     eval::{
         scenarios::{
             EvalScenario, GROUND_TAXI_CONTROL, TERRAIN_BODY_COLLISION_CONTACT,
-            TERRAIN_RIM_COLLISION_CONTACT, WORLD_COLLISION_CONTACT,
+            TERRAIN_RIM_COLLISION_CONTACT, UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
         },
         summary::EvalCheck,
         thresholds::*,
@@ -398,6 +398,30 @@ pub(super) fn build_checks(
             MIN_OBSERVED_CROSSWIND_RIBBON_FRAME_FLOW_DISPLACEMENT_M,
             "m",
         ),
+        EvalCheck::at_most(
+            "observed_updraft_visual_speed",
+            acc.max_observed_updraft_visual_speed_mps,
+            MAX_OBSERVED_UPDRAFT_VISUAL_SPEED_MPS,
+            "m/s",
+        ),
+        EvalCheck::at_most(
+            "observed_crosswind_visual_speed",
+            acc.max_observed_crosswind_visual_speed_mps,
+            MAX_OBSERVED_CROSSWIND_VISUAL_SPEED_MPS,
+            "m/s",
+        ),
+        EvalCheck::at_most(
+            "observed_wind_visual_acceleration",
+            acc.max_observed_wind_visual_acceleration_mps2,
+            MAX_OBSERVED_WIND_VISUAL_ACCELERATION_MPS2,
+            "m/s^2",
+        ),
+        EvalCheck::at_most(
+            "observed_wind_visual_jump_count",
+            acc.observed_wind_visual_jump_count as f32,
+            MAX_OBSERVED_WIND_VISUAL_JUMP_COUNT as f32,
+            "jumps",
+        ),
         EvalCheck::at_least(
             "observed_updraft_visual_flow_alignment",
             acc.max_observed_updraft_visual_flow_alignment,
@@ -483,6 +507,29 @@ pub(super) fn build_checks(
             "proxies",
         ),
     ];
+
+    if scenario.name == UPDRAFT_ROUTE {
+        checks.extend([
+            EvalCheck::at_least(
+                "crosswind_neutral_drift_samples",
+                acc.crosswind_neutral_drift_samples as f32,
+                MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT as f32,
+                "samples",
+            ),
+            EvalCheck::at_least(
+                "crosswind_neutral_horizontal_drift",
+                acc.crosswind_neutral_horizontal_drift_m,
+                MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M,
+                "m",
+            ),
+            EvalCheck::at_most(
+                "crosswind_neutral_horizontal_step",
+                acc.max_crosswind_neutral_horizontal_step_m,
+                MAX_CROSSWIND_NEUTRAL_HORIZONTAL_STEP_M,
+                "m/sample",
+            ),
+        ]);
+    }
 
     if scenario.name == WORLD_COLLISION_CONTACT {
         checks.extend([

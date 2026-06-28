@@ -32,6 +32,8 @@ pub(crate) const CROSSWIND_RIBBON_CENTER_ADVANCE: f32 = 0.95;
 pub(crate) const WIND_VISUAL_COHERENCE_DT: f32 = 0.2;
 pub(crate) const WIND_VISUAL_ALIGNMENT_MIN_DOT: f32 = 0.55;
 const WIND_FIELD_METRIC_EPSILON: f32 = 0.001;
+const WIND_VISUAL_LOOP_FADE_FRACTION: f32 = 0.1;
+const WIND_VISUAL_QUALITY_MIN_SCALE: f32 = 0.12;
 
 #[derive(Component)]
 pub(crate) struct CinematicSun;
@@ -191,6 +193,10 @@ pub(crate) struct ObservedWindVisualMotionMetrics {
     pub(crate) max_observed_crosswind_visual_frame_motion_m: f32,
     pub(crate) max_observed_crosswind_guide_frame_flow_displacement_m: f32,
     pub(crate) max_observed_crosswind_ribbon_frame_flow_displacement_m: f32,
+    pub(crate) max_observed_updraft_visual_speed_mps: f32,
+    pub(crate) max_observed_crosswind_visual_speed_mps: f32,
+    pub(crate) max_observed_wind_visual_acceleration_mps2: f32,
+    pub(crate) observed_wind_visual_jump_count: u32,
     pub(crate) max_observed_updraft_visual_flow_alignment: f32,
     pub(crate) max_observed_crosswind_visual_flow_alignment: f32,
     pub(crate) max_observed_crosswind_ribbon_visual_flow_alignment: f32,
@@ -668,6 +674,10 @@ pub(crate) fn update_crosswind_ribbons(
     }
 }
 
+pub(crate) fn wind_visual_quality_visible(scale: Vec3) -> bool {
+    scale.max_element() >= WIND_VISUAL_QUALITY_MIN_SCALE
+}
+
 pub(crate) fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> Transform {
     let sample = updraft_ribbon_flow_sample(ribbon, elapsed);
     debug_assert!(ribbon.field.contains(sample.probe_position));
@@ -692,6 +702,7 @@ pub(crate) fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> 
     let thermal_roll =
         (elapsed * 0.76 + phase * 1.21 + progress * std::f32::consts::TAU * 1.64).sin();
     let lift_roll = (elapsed * 0.58 + phase * 0.67 + progress * std::f32::consts::TAU * 1.9).cos();
+    let visibility = wind_loop_visibility(progress);
     let radial_breath = radial_axis
         * (flow.variation * 0.74
             + breathing * 0.36
@@ -736,7 +747,7 @@ pub(crate) fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> 
             1.0 + flow.variation * 0.1 - scale_wave * 0.055
                 + gust_packet * 0.08
                 + flow.layered_gust_strength * 0.07,
-        ),
+        ) * visibility,
     }
 }
 
@@ -759,12 +770,12 @@ fn updraft_ribbon_flow_sample(ribbon: &UpdraftRibbon, elapsed: f32) -> UpdraftRi
         (base_flow.vector.y.max(0.0) / ribbon.field.visual_speed.max(1.0)).min(1.4);
     let progress = (ribbon.phase
         + elapsed * ribbon.field.visual_speed.max(1.0) / field_height
-            * (0.48 + vertical_ratio * 0.08))
+            * (0.24 + vertical_ratio * 0.04))
         .fract();
     let vertical_scroll =
-        (progress - 0.5) * ribbon.field.half_extents.y * (0.38 + vertical_ratio * 0.08);
+        (progress - 0.5) * ribbon.field.half_extents.y * (0.35 + vertical_ratio * 0.06);
     let phase = ribbon.phase * std::f32::consts::TAU;
-    let lane_angle = phase + progress * std::f32::consts::TAU * 1.45;
+    let lane_angle = phase + progress * std::f32::consts::TAU * 0.75;
     let radial_axis = Vec3::new(lane_angle.cos(), 0.0, lane_angle.sin()).normalize_or_zero();
     let radius = ribbon.field.half_extents.x.min(ribbon.field.half_extents.z) * 0.42;
     let probe_position = ribbon.base_translation + Vec3::Y * vertical_scroll + radial_axis * radius;
@@ -830,6 +841,7 @@ pub(crate) fn crosswind_ribbon_transform(ribbon: &CrosswindRibbon, elapsed: f32)
         + flow.layered_gust_strength * 0.08)
         .clamp(1.0, 1.55);
     let width_pulse = (0.72 + flow.variation * 0.56 + wave.abs() * 0.08).clamp(0.82, 1.24);
+    let visibility = wind_loop_visibility(progress);
 
     Transform {
         translation: ribbon.base_translation
@@ -863,7 +875,7 @@ pub(crate) fn crosswind_ribbon_transform(ribbon: &CrosswindRibbon, elapsed: f32)
             length_pulse + gust_packet * 0.22 + flow.layered_gust_strength * 0.12,
             width_pulse + gust_packet * 0.12 + flow.layered_gust_strength * 0.08,
             width_pulse + gust_packet * 0.12 + flow.layered_gust_strength * 0.08,
-        ),
+        ) * visibility,
     }
 }
 
@@ -1377,16 +1389,19 @@ pub(crate) fn observe_updraft_guide_frame_motion(
     current: &Transform,
     elapsed_secs: f32,
     dt_secs: f32,
+    previous_velocity: Option<Vec3>,
 ) {
-    record_observed_updraft_frame_motion(
-        metrics,
+    let frame_motion = ObservedFrameMotion::new(
         guide.field,
         previous.translation,
         current.translation,
         elapsed_secs,
         dt_secs,
-        |displacement| updraft_swirl_displacement(guide.field, previous.translation, displacement),
+        previous_velocity,
     );
+    record_observed_updraft_frame_motion(metrics, frame_motion, |displacement| {
+        updraft_swirl_displacement(guide.field, previous.translation, displacement)
+    });
 }
 
 pub(crate) fn observe_updraft_ribbon_frame_motion(
@@ -1396,18 +1411,19 @@ pub(crate) fn observe_updraft_ribbon_frame_motion(
     current: &Transform,
     elapsed_secs: f32,
     dt_secs: f32,
+    previous_velocity: Option<Vec3>,
 ) {
-    record_observed_updraft_frame_motion(
-        metrics,
+    let frame_motion = ObservedFrameMotion::new(
         ribbon.field,
         previous.translation,
         current.translation,
         elapsed_secs,
         dt_secs,
-        |displacement| {
-            updraft_swirl_displacement_on_axis(updraft_ribbon_swirl_axis(ribbon), displacement)
-        },
+        previous_velocity,
     );
+    record_observed_updraft_frame_motion(metrics, frame_motion, |displacement| {
+        updraft_swirl_displacement_on_axis(updraft_ribbon_swirl_axis(ribbon), displacement)
+    });
 }
 
 pub(crate) fn observe_crosswind_guide_frame_motion(
@@ -1417,16 +1433,17 @@ pub(crate) fn observe_crosswind_guide_frame_motion(
     current: &Transform,
     elapsed_secs: f32,
     dt_secs: f32,
+    previous_velocity: Option<Vec3>,
 ) {
-    record_observed_crosswind_frame_motion(
-        metrics,
+    let frame_motion = ObservedFrameMotion::new(
         guide.field,
         previous.translation,
         current.translation,
         elapsed_secs,
         dt_secs,
-        false,
+        previous_velocity,
     );
+    record_observed_crosswind_frame_motion(metrics, frame_motion, false);
 }
 
 pub(crate) fn observe_crosswind_ribbon_frame_motion(
@@ -1436,16 +1453,17 @@ pub(crate) fn observe_crosswind_ribbon_frame_motion(
     current: &Transform,
     elapsed_secs: f32,
     dt_secs: f32,
+    previous_velocity: Option<Vec3>,
 ) {
-    record_observed_crosswind_frame_motion(
-        metrics,
+    let frame_motion = ObservedFrameMotion::new(
         ribbon.field,
         previous.translation,
         current.translation,
         elapsed_secs,
         dt_secs,
-        true,
+        previous_velocity,
     );
+    record_observed_crosswind_frame_motion(metrics, frame_motion, true);
     for (previous_sample, current_sample) in
         crosswind_ribbon_scene_sample_positions(ribbon, previous)
             .into_iter()
@@ -1471,19 +1489,62 @@ pub(crate) fn observe_crosswind_ribbon_frame_motion(
     }
 }
 
-fn record_observed_updraft_frame_motion(
-    metrics: &mut ObservedWindVisualMotionMetrics,
+#[derive(Clone, Copy, Debug)]
+struct ObservedFrameMotion {
     field: WindField,
     previous: Vec3,
     current: Vec3,
     elapsed_secs: f32,
     dt_secs: f32,
+    previous_velocity: Option<Vec3>,
+}
+
+impl ObservedFrameMotion {
+    fn new(
+        field: WindField,
+        previous: Vec3,
+        current: Vec3,
+        elapsed_secs: f32,
+        dt_secs: f32,
+        previous_velocity: Option<Vec3>,
+    ) -> Self {
+        Self {
+            field,
+            previous,
+            current,
+            elapsed_secs,
+            dt_secs,
+            previous_velocity,
+        }
+    }
+
+    fn displacement(self) -> Vec3 {
+        self.current - self.previous
+    }
+}
+
+fn record_observed_updraft_frame_motion(
+    metrics: &mut ObservedWindVisualMotionMetrics,
+    frame_motion: ObservedFrameMotion,
     swirl_displacement: impl FnOnce(Vec3) -> f32,
 ) {
-    let displacement = current - previous;
-    let Some(alignment) =
-        observed_visual_flow_alignment(field, previous, current, elapsed_secs, true, dt_secs)
-    else {
+    let displacement = frame_motion.displacement();
+    record_observed_visual_quality(
+        metrics,
+        frame_motion.field,
+        displacement,
+        frame_motion.dt_secs,
+        frame_motion.previous_velocity,
+        true,
+    );
+    let Some(alignment) = observed_visual_flow_alignment(
+        frame_motion.field,
+        frame_motion.previous,
+        frame_motion.current,
+        frame_motion.elapsed_secs,
+        true,
+        frame_motion.dt_secs,
+    ) else {
         return;
     };
 
@@ -1506,24 +1567,33 @@ fn record_observed_updraft_frame_motion(
 
 fn record_observed_crosswind_frame_motion(
     metrics: &mut ObservedWindVisualMotionMetrics,
-    field: WindField,
-    previous: Vec3,
-    current: Vec3,
-    elapsed_secs: f32,
-    dt_secs: f32,
+    frame_motion: ObservedFrameMotion,
     ribbon: bool,
 ) {
-    let displacement = current - previous;
-    let Some(alignment) =
-        observed_visual_flow_alignment(field, previous, current, elapsed_secs, false, dt_secs)
-    else {
+    let displacement = frame_motion.displacement();
+    record_observed_visual_quality(
+        metrics,
+        frame_motion.field,
+        displacement,
+        frame_motion.dt_secs,
+        frame_motion.previous_velocity,
+        false,
+    );
+    let Some(alignment) = observed_visual_flow_alignment(
+        frame_motion.field,
+        frame_motion.previous,
+        frame_motion.current,
+        frame_motion.elapsed_secs,
+        false,
+        frame_motion.dt_secs,
+    ) else {
         return;
     };
 
     metrics.max_observed_crosswind_visual_frame_motion_m = metrics
         .max_observed_crosswind_visual_frame_motion_m
         .max(displacement.length());
-    let flow_displacement_m = displacement.dot(field.direction).max(0.0);
+    let flow_displacement_m = displacement.dot(frame_motion.field.direction).max(0.0);
     if ribbon {
         metrics.max_observed_crosswind_ribbon_frame_flow_displacement_m = metrics
             .max_observed_crosswind_ribbon_frame_flow_displacement_m
@@ -1541,6 +1611,49 @@ fn record_observed_crosswind_frame_motion(
     }
 }
 
+pub(crate) fn observed_wind_visual_velocity(
+    previous: Vec3,
+    current: Vec3,
+    dt_secs: f32,
+) -> Option<Vec3> {
+    let dt = observed_visual_dt(dt_secs);
+    (dt > 0.0).then_some((current - previous) / dt)
+}
+
+fn record_observed_visual_quality(
+    metrics: &mut ObservedWindVisualMotionMetrics,
+    field: WindField,
+    displacement: Vec3,
+    dt_secs: f32,
+    previous_velocity: Option<Vec3>,
+    updraft: bool,
+) {
+    let dt = observed_visual_dt(dt_secs);
+    if dt <= 0.0 {
+        return;
+    }
+
+    let velocity = displacement / dt;
+    let speed = velocity.length();
+    if updraft {
+        metrics.max_observed_updraft_visual_speed_mps =
+            metrics.max_observed_updraft_visual_speed_mps.max(speed);
+    } else {
+        metrics.max_observed_crosswind_visual_speed_mps =
+            metrics.max_observed_crosswind_visual_speed_mps.max(speed);
+    }
+
+    if let Some(previous_velocity) = previous_velocity {
+        metrics.max_observed_wind_visual_acceleration_mps2 = metrics
+            .max_observed_wind_visual_acceleration_mps2
+            .max((velocity - previous_velocity).length() / dt);
+    }
+
+    if observed_visual_step_is_jump(field, displacement, dt_secs) {
+        metrics.observed_wind_visual_jump_count += 1;
+    }
+}
+
 fn observed_visual_flow_alignment(
     field: WindField,
     current: Vec3,
@@ -1550,14 +1663,25 @@ fn observed_visual_flow_alignment(
     dt_secs: f32,
 ) -> Option<f32> {
     let displacement = next - current;
-    let dt = dt_secs.clamp(1.0 / 240.0, 0.25);
-    let plausible_step = (field.visual_speed.max(1.0) * dt * 8.0 + 0.4)
-        .min(field.half_extents.max_element().max(1.0) * 0.25);
-    if displacement.length() > plausible_step {
+    if observed_visual_step_is_jump(field, displacement, dt_secs) {
         return None;
     }
 
     visual_flow_alignment(field, current, next, elapsed_secs, include_vertical, false)
+}
+
+fn observed_visual_step_is_jump(field: WindField, displacement: Vec3, dt_secs: f32) -> bool {
+    displacement.length() > observed_visual_plausible_step(field, dt_secs)
+}
+
+fn observed_visual_plausible_step(field: WindField, dt_secs: f32) -> f32 {
+    let dt = observed_visual_dt(dt_secs);
+    (field.visual_speed.max(1.0) * dt * 8.0 + 0.4)
+        .min(field.half_extents.max_element().max(1.0) * 0.25)
+}
+
+fn observed_visual_dt(dt_secs: f32) -> f32 {
+    dt_secs.clamp(1.0 / 240.0, 0.25)
 }
 
 pub(crate) fn visual_flow_alignment(
@@ -1608,9 +1732,7 @@ pub(crate) fn visual_flow_alignment(
 pub(crate) fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3 {
     let field = guide.field;
     let height_span = (field.half_extents.y * 1.84).max(1.0);
-    let base_progress = (guide.height_offset / height_span + 0.5).clamp(0.0, 1.0);
-    let rise_speed = field.visual_speed.max(1.0) / height_span * 0.68;
-    let progress = (base_progress + guide.phase * 0.037 + elapsed * rise_speed).fract();
+    let progress = updraft_guide_progress(guide, elapsed);
     let height_offset = (progress - 0.5) * height_span;
     let flow_probe = guide.center + Vec3::Y * height_offset;
     let flow = guide.field.flow_at(flow_probe, elapsed);
@@ -1659,6 +1781,7 @@ fn updraft_guide_scale(guide: &UpdraftGuide, position: Vec3, elapsed: f32) -> Ve
     let vertical_ratio = (flow.vector.y.max(0.0) / guide.field.visual_speed.max(1.0)).min(1.4);
     let height_span = (guide.field.half_extents.y * 1.84).max(1.0);
     let progress = ((position.y - guide.center.y) / height_span + 0.5).clamp(0.0, 1.0);
+    let visibility = wind_loop_visibility(updraft_guide_progress(guide, elapsed));
     let gust_packet = flow
         .gust_packet_strength
         .max(flow.layered_gust_strength)
@@ -1675,16 +1798,13 @@ fn updraft_guide_scale(guide: &UpdraftGuide, position: Vec3, elapsed: f32) -> Ve
         + gust_packet * 0.14;
     let stretch = stretch.clamp(0.82, 1.48);
 
-    Vec3::new(core, stretch, core)
+    Vec3::new(core, stretch, core) * visibility
 }
 
 pub(crate) fn crosswind_guide_position(guide: &CrosswindGuide, elapsed: f32) -> Vec3 {
     let field = guide.field;
     let path_length = (field.half_extents.x * 2.0).max(1.0);
-    let stream_variation = 0.86 + (guide.stream_index % 7) as f32 * 0.035;
-    let progress = (guide.phase
-        + elapsed * field.visual_speed.max(1.0) / path_length * 0.9 * stream_variation)
-        .fract();
+    let progress = crosswind_guide_progress(guide, elapsed);
     let lane_origin = field.stream_origin(guide.stream_index, guide.stream_count);
     let base = lane_origin + field.direction * (progress * path_length);
     let flow = field
@@ -1747,6 +1867,7 @@ fn crosswind_guide_scale(guide: &CrosswindGuide, position: Vec3, elapsed: f32) -
         .flow_at(position, elapsed)
         .unwrap_or_else(|| guide.field.flow_at(guide.field.center, elapsed).unwrap());
     let phase = guide.phase * std::f32::consts::TAU;
+    let visibility = wind_loop_visibility(crosswind_guide_progress(guide, elapsed));
     let pulse = (elapsed * 1.78 + phase + flow.variation * 1.4).sin();
     let gust_packet = flow.gust_packet_strength.max(flow.layered_gust_strength);
     let length_pulse = (0.72
@@ -1759,7 +1880,32 @@ fn crosswind_guide_scale(guide: &CrosswindGuide, position: Vec3, elapsed: f32) -
     let width_pulse =
         (0.66 + flow.variation * 0.58 - pulse * 0.07 + gust_packet * 0.12).clamp(0.78, 1.36);
 
-    Vec3::new(length_pulse, width_pulse, width_pulse)
+    Vec3::new(length_pulse, width_pulse, width_pulse) * visibility
+}
+
+fn updraft_guide_progress(guide: &UpdraftGuide, elapsed: f32) -> f32 {
+    let height_span = (guide.field.half_extents.y * 1.84).max(1.0);
+    let base_progress = (guide.height_offset / height_span + 0.5).clamp(0.0, 1.0);
+    let rise_speed = guide.field.visual_speed.max(1.0) / height_span * 0.68;
+    (base_progress + guide.phase * 0.037 + elapsed * rise_speed).fract()
+}
+
+fn crosswind_guide_progress(guide: &CrosswindGuide, elapsed: f32) -> f32 {
+    let path_length = (guide.field.half_extents.x * 2.0).max(1.0);
+    let stream_variation = 0.86 + (guide.stream_index % 7) as f32 * 0.035;
+    (guide.phase
+        + elapsed * guide.field.visual_speed.max(1.0) / path_length * 0.9 * stream_variation)
+        .fract()
+}
+
+fn wind_loop_visibility(progress: f32) -> f32 {
+    let wrapped = progress.rem_euclid(1.0);
+    let edge = wrapped.min(1.0 - wrapped);
+    smooth_unit((edge / WIND_VISUAL_LOOP_FADE_FRACTION).clamp(0.0, 1.0))
+}
+
+fn smooth_unit(value: f32) -> f32 {
+    value * value * (3.0 - 2.0 * value)
 }
 
 #[cfg(test)]
@@ -1868,6 +2014,7 @@ mod tests {
             &current,
             elapsed,
             1.0 / 60.0,
+            None,
         );
 
         assert_eq!(
@@ -1886,6 +2033,7 @@ mod tests {
             &previous,
             elapsed,
             1.0 / 60.0,
+            None,
         );
         assert_eq!(
             frozen_metrics.observed_updraft_flow_coherent_visual_count,
@@ -1912,6 +2060,7 @@ mod tests {
             &current,
             1.0,
             1.0 / 60.0,
+            None,
         );
 
         assert_eq!(metrics.observed_updraft_flow_coherent_visual_count, 0);
@@ -2200,6 +2349,7 @@ mod tests {
             &current,
             elapsed,
             1.0 / 60.0,
+            None,
         );
 
         assert_eq!(metrics.observed_crosswind_flow_coherent_visual_count, 1);

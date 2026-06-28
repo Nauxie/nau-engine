@@ -166,6 +166,7 @@ impl EvalSample {
             updraft_swirl_force_fields: 0,
             max_wind_force_delta_mps: 0.0,
             max_crosswind_force_delta_mps: 0.0,
+            crosswind_force_delta: [0.0; 3],
             max_updraft_swirl_force_delta_mps: 0.0,
             max_wind_force_flow_speed_mps: 0.0,
             max_wind_force_variation: 0.0,
@@ -237,6 +238,10 @@ impl EvalSample {
             max_observed_crosswind_visual_frame_motion_m: 0.0,
             max_observed_crosswind_guide_frame_flow_displacement_m: 0.0,
             max_observed_crosswind_ribbon_frame_flow_displacement_m: 0.0,
+            max_observed_updraft_visual_speed_mps: 0.0,
+            max_observed_crosswind_visual_speed_mps: 0.0,
+            max_observed_wind_visual_acceleration_mps2: 0.0,
+            observed_wind_visual_jump_count: 0,
             max_observed_updraft_visual_flow_alignment: 0.0,
             max_observed_crosswind_visual_flow_alignment: 0.0,
             max_observed_crosswind_ribbon_visual_flow_alignment: 0.0,
@@ -533,6 +538,7 @@ impl EvalSample {
         self.updraft_swirl_force_fields = updraft_swirl_field_count;
         self.max_wind_force_delta_mps = max_force_delta_mps.max(0.0);
         self.max_crosswind_force_delta_mps = max_crosswind_force_delta_mps.max(0.0);
+        self.crosswind_force_delta = vec3_array(Vec3::X * self.max_crosswind_force_delta_mps);
         self.max_updraft_swirl_force_delta_mps = max_updraft_swirl_force_delta_mps.max(0.0);
         self.max_wind_force_flow_speed_mps = max_flow_speed_mps.max(0.0);
         self.max_wind_force_variation = max_variation.max(0.0);
@@ -544,6 +550,11 @@ impl EvalSample {
         self.max_crosswind_force_aligned_delta_mps = max_crosswind_flow_aligned_delta_mps.max(0.0);
         self.max_updraft_swirl_force_aligned_delta_mps =
             max_updraft_swirl_flow_aligned_delta_mps.max(0.0);
+        self
+    }
+
+    pub fn with_crosswind_force_delta(mut self, crosswind_force_delta: Vec3) -> Self {
+        self.crosswind_force_delta = vec3_array(crosswind_force_delta);
         self
     }
 
@@ -643,6 +654,22 @@ impl EvalSample {
             max_observed_crosswind_flow_alignment.clamp(0.0, 1.0);
         self.max_observed_crosswind_ribbon_visual_flow_alignment =
             max_observed_crosswind_ribbon_flow_alignment.clamp(0.0, 1.0);
+        self
+    }
+
+    pub fn with_observed_wind_visual_quality_metrics(
+        mut self,
+        max_observed_updraft_visual_speed_mps: f32,
+        max_observed_crosswind_visual_speed_mps: f32,
+        max_observed_wind_visual_acceleration_mps2: f32,
+        observed_wind_visual_jump_count: u32,
+    ) -> Self {
+        self.max_observed_updraft_visual_speed_mps = max_observed_updraft_visual_speed_mps.max(0.0);
+        self.max_observed_crosswind_visual_speed_mps =
+            max_observed_crosswind_visual_speed_mps.max(0.0);
+        self.max_observed_wind_visual_acceleration_mps2 =
+            max_observed_wind_visual_acceleration_mps2.max(0.0);
+        self.observed_wind_visual_jump_count = observed_wind_visual_jump_count;
         self
     }
 
