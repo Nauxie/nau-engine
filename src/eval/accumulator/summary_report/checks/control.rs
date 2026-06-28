@@ -28,6 +28,7 @@ const POSE_STATE_MIN_DIVING_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_LANDING_POSE_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_AUTHORED_LAND_CLIP_SAMPLES: f32 = 1.0;
+const POSE_STATE_MIN_LANDING_FLARE_DEGREES: f32 = 55.0;
 const AIR_CONTROL_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 const AIR_CONTROL_MIN_AUTHORED_DIVE_CLIP_SAMPLES: f32 = 1.0;
 const AIR_CONTROL_MIN_AUTHORED_AIR_BRAKE_CLIP_SAMPLES: f32 = 4.0;
@@ -1083,9 +1084,47 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             "samples",
         ),
         EvalCheck::at_least(
+            "pose_state_pure_air_turn_sideways_samples",
+            acc.pure_air_turn_sideways_body_travel_heading_error_values_degrees
+                .len() as f32,
+            AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_right_pure_air_turn_sideways_samples",
+            acc.right_pure_air_turn_sideways_samples as f32,
+            AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_left_pure_air_turn_sideways_samples",
+            acc.left_pure_air_turn_sideways_samples as f32,
+            AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
             "pose_state_air_brake_samples",
             acc.pose_air_brake_samples as f32,
             POSE_STATE_MIN_AIR_BRAKE_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_backward_diagonal_body_travel_heading_samples",
+            acc.backward_diagonal_body_travel_heading_error_values_degrees
+                .len() as f32,
+            AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_backward_right_diagonal_body_travel_heading_samples",
+            acc.backward_right_diagonal_body_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_backward_left_diagonal_body_travel_heading_samples",
+            acc.backward_left_diagonal_body_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES as f32,
             "samples",
         ),
         EvalCheck::at_least(
@@ -1139,7 +1178,7 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
         EvalCheck::at_least(
             "pose_state_landing_flare",
             acc.max_pose_landing_flare_degrees,
-            LANDING_MIN_POSE_FLARE_DEGREES,
+            POSE_STATE_MIN_LANDING_FLARE_DEGREES,
             "deg",
         ),
         EvalCheck::at_least(

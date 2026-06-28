@@ -2641,7 +2641,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
             ("falling", FlightMode::Airborne.label(), 8),
             ("gliding", FlightMode::Gliding.label(), 18),
             ("air_turn", FlightMode::Gliding.label(), 10),
-            ("air_brake", FlightMode::Gliding.label(), 4),
+            ("air_brake", FlightMode::Gliding.label(), 8),
             ("diving", FlightMode::Gliding.label(), 1),
             ("landing_anticipation", FlightMode::Gliding.label(), 1),
             ("landing_recovery", FlightMode::Grounded.label(), 1),
@@ -2692,6 +2692,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
     assert_eq!(summary.metrics.authored_fall_clip_samples, 8);
     assert_eq!(summary.metrics.pose_gliding_samples, 18);
     assert_eq!(summary.metrics.pose_air_turn_samples, 10);
+    assert_eq!(summary.metrics.pure_air_turn_sideways_sample_count, 10);
     assert_eq!(
         summary.metrics.right_pose_air_turn_samples,
         POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES as u32
@@ -2700,7 +2701,13 @@ fn accumulator_gates_pose_state_coverage_samples() {
         summary.metrics.left_pose_air_turn_samples,
         POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES as u32
     );
-    assert_eq!(summary.metrics.pose_air_brake_samples, 4);
+    assert_eq!(summary.metrics.pose_air_brake_samples, 8);
+    assert_eq!(
+        summary
+            .metrics
+            .backward_diagonal_body_travel_heading_sample_count,
+        8
+    );
     assert_eq!(summary.metrics.pose_diving_samples, 1);
     assert_eq!(summary.metrics.gliding_dive_samples, 1);
     assert_eq!(summary.metrics.pose_landing_anticipation_samples, 1);
@@ -2748,7 +2755,13 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_air_turn_samples",
         "pose_state_right_air_turn_samples",
         "pose_state_left_air_turn_samples",
+        "pose_state_pure_air_turn_sideways_samples",
+        "pose_state_right_pure_air_turn_sideways_samples",
+        "pose_state_left_pure_air_turn_sideways_samples",
         "pose_state_air_brake_samples",
+        "pose_state_backward_diagonal_body_travel_heading_samples",
+        "pose_state_backward_right_diagonal_body_travel_heading_samples",
+        "pose_state_backward_left_diagonal_body_travel_heading_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
         "pose_state_landing_anticipation_samples",
@@ -2820,7 +2833,13 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
         "pose_state_air_turn_samples",
         "pose_state_right_air_turn_samples",
         "pose_state_left_air_turn_samples",
+        "pose_state_pure_air_turn_sideways_samples",
+        "pose_state_right_pure_air_turn_sideways_samples",
+        "pose_state_left_pure_air_turn_sideways_samples",
         "pose_state_air_brake_samples",
+        "pose_state_backward_diagonal_body_travel_heading_samples",
+        "pose_state_backward_right_diagonal_body_travel_heading_samples",
+        "pose_state_backward_left_diagonal_body_travel_heading_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
         "pose_state_landing_anticipation_samples",
@@ -3078,7 +3097,8 @@ fn pose_state_movement_axis_for_label(pose_intent_label: &str, sample_index: u32
     match pose_intent_label {
         "air_turn" if sample_index.is_multiple_of(2) => Vec2::new(1.0, 0.0),
         "air_turn" => Vec2::new(-1.0, 0.0),
-        "air_brake" => Vec2::new(0.0, -1.0),
+        "air_brake" if sample_index.is_multiple_of(2) => Vec2::new(1.0, -1.0),
+        "air_brake" => Vec2::new(-1.0, -1.0),
         "diving" => Vec2::new(0.0, 1.0),
         _ => Vec2::ZERO,
     }

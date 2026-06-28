@@ -646,6 +646,10 @@ fn authored_player_transition_profile(
         return AuthoredTransitionProfile::new(100, "launch_settle");
     }
 
+    if desired == AuthoredPlayerClip::Dive {
+        return AuthoredTransitionProfile::new(90, "urgent_air_pose");
+    }
+
     if bank_clip(current) && bank_clip(desired) {
         return AuthoredTransitionProfile::new(120, "bank_reversal");
     }
@@ -777,7 +781,7 @@ mod tests {
                 AuthoredPlayerClip::Glide,
                 AuthoredPlayerClip::Dive
             ),
-            Duration::from_millis(190)
+            Duration::from_millis(90)
         );
     }
 
@@ -803,7 +807,7 @@ mod tests {
         );
         assert_eq!(
             authored_player_transition_profile(AuthoredPlayerClip::Glide, AuthoredPlayerClip::Dive),
-            AuthoredTransitionProfile::new(190, "traversal_blend")
+            AuthoredTransitionProfile::new(90, "urgent_air_pose")
         );
         assert_eq!(
             authored_player_transition_profile(AuthoredPlayerClip::Run, AuthoredPlayerClip::Walk),

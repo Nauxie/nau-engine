@@ -34,17 +34,21 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
         };
     }
     if scenario.name == POSE_STATE_COVERAGE {
-        let route_forward = (0.05..=7.05).contains(&t);
-        let post_landing_idle_hold_end = 8.45;
-        let post_landing_stride = (post_landing_idle_hold_end..=10.75).contains(&t);
+        let pure_left_air_turn = (3.1..=4.2).contains(&t);
+        let backward_left_air_brake = (4.65..=5.05).contains(&t);
+        let backward_right_air_brake = (5.1..=5.52).contains(&t);
+        let pure_right_air_turn = (5.55..=5.82).contains(&t);
+        let route_forward = (0.05..=3.0).contains(&t) || (5.85..=7.8).contains(&t);
+        let post_landing_idle_hold_end = 9.0;
+        let post_landing_stride = (post_landing_idle_hold_end..=11.5).contains(&t);
         return FlightInput {
             forward: route_forward || post_landing_stride,
-            right: (5.1..=5.55).contains(&t),
-            left: (3.1..=4.2).contains(&t),
-            backward: (4.65..=5.05).contains(&t),
+            right: backward_right_air_brake || pure_right_air_turn,
+            left: pure_left_air_turn || backward_left_air_brake,
+            backward: backward_left_air_brake || backward_right_air_brake,
             launch: frame == 1,
             glide: (1.15..=8.0).contains(&t),
-            dive: (4.25..=4.45).contains(&t) || (5.8..=6.7).contains(&t),
+            dive: (4.38..=4.58).contains(&t),
         };
     }
     if scenario.name == GROUND_TAXI_CONTROL {

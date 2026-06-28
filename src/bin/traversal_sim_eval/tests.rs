@@ -1,5 +1,6 @@
 use super::{
-    LANDING_MIN_POSE_CROUCH_M,
+    AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES,
+    AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES, LANDING_MIN_POSE_CROUCH_M,
     metrics::{SimMetrics, SimResult},
     sample::{CameraDiagnosticsSample, SimSample},
     simulation::run_simulation,
@@ -201,7 +202,27 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         result.metrics.left_pose_air_turn_samples
             >= POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES as u32
     );
+    assert!(
+        result.metrics.right_pure_air_turn_sideways_samples
+            >= AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES
+    );
+    assert!(
+        result.metrics.left_pure_air_turn_sideways_samples
+            >= AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES
+    );
     assert!(result.metrics.pose_air_brake_samples >= 4);
+    assert!(
+        result
+            .metrics
+            .backward_right_diagonal_body_travel_heading_samples
+            >= AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES
+    );
+    assert!(
+        result
+            .metrics
+            .backward_left_diagonal_body_travel_heading_samples
+            >= AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES
+    );
     assert!(result.metrics.pose_diving_samples >= 1);
     assert!(result.metrics.gliding_dive_samples >= 1);
     assert!(result.metrics.pose_landing_anticipation_samples >= 1);
@@ -230,7 +251,13 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         "pose_state_air_turn_samples",
         "pose_state_right_air_turn_samples",
         "pose_state_left_air_turn_samples",
+        "pose_state_pure_air_turn_sideways_samples",
+        "pose_state_right_pure_air_turn_sideways_samples",
+        "pose_state_left_pure_air_turn_sideways_samples",
         "pose_state_air_brake_samples",
+        "pose_state_backward_diagonal_body_travel_heading_samples",
+        "pose_state_backward_right_diagonal_body_travel_heading_samples",
+        "pose_state_backward_left_diagonal_body_travel_heading_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
         "pose_state_landing_anticipation_samples",
@@ -279,7 +306,13 @@ fn pose_state_coverage_sim_checks_reject_thin_samples() {
         "pose_state_air_turn_samples",
         "pose_state_right_air_turn_samples",
         "pose_state_left_air_turn_samples",
+        "pose_state_pure_air_turn_sideways_samples",
+        "pose_state_right_pure_air_turn_sideways_samples",
+        "pose_state_left_pure_air_turn_sideways_samples",
         "pose_state_air_brake_samples",
+        "pose_state_backward_diagonal_body_travel_heading_samples",
+        "pose_state_backward_right_diagonal_body_travel_heading_samples",
+        "pose_state_backward_left_diagonal_body_travel_heading_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
         "pose_state_landing_anticipation_samples",
