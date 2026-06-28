@@ -15,7 +15,7 @@ use nau_engine::asset_pipeline::VisualAssetKind;
 #[cfg(test)]
 use nau_engine::environment::wind_gust_front_progress;
 use nau_engine::environment::{
-    GAMEPLAY_LIFT_ROUTE, LiftRouteNode, WindField, visual_crosswind_fields,
+    GAMEPLAY_LIFT_ROUTE, LiftRouteNode, WindField, WindFlowSample, visual_crosswind_fields,
     wind_gust_packet_strength, wind_sway_motion,
 };
 use nau_engine::movement::{FlightController, Velocity};
@@ -644,17 +644,12 @@ pub(crate) fn update_crosswind_ribbons(
 }
 
 fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> Transform {
-    let flow = ribbon
-        .field
-        .flow_at(ribbon.base_translation, elapsed)
-        .unwrap_or_else(|| ribbon.field.flow_at(ribbon.field.center, elapsed).unwrap());
+    let sample = updraft_ribbon_flow_sample(ribbon, elapsed);
+    debug_assert!(ribbon.field.contains(sample.probe_position));
+    let flow = sample.flow;
     let phase = ribbon.phase * std::f32::consts::TAU;
-    let field_height = (ribbon.field.half_extents.y * 2.0).max(1.0);
     let vertical_ratio = (flow.vector.y.max(0.0) / ribbon.field.visual_speed.max(1.0)).min(1.4);
-    let progress = (ribbon.phase
-        + elapsed * ribbon.field.visual_speed.max(1.0) / field_height
-            * (0.48 + vertical_ratio * 0.08))
-        .fract();
+    let progress = sample.progress;
     let gust_packet = travelling_gust_packet(
         elapsed,
         ribbon.phase + flow.variation * 0.21,
@@ -663,13 +658,9 @@ fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> Transform {
     )
     .max(flow.gust_packet_strength * 0.45)
     .max(flow.layered_gust_strength * 0.38);
-    let vertical_scroll =
-        (progress - 0.5) * ribbon.field.half_extents.y * (0.38 + vertical_ratio * 0.08);
+    let vertical_scroll = sample.vertical_scroll;
     let horizontal_flow = Vec3::new(flow.vector.x, 0.0, flow.vector.z);
-    let radial_axis = horizontal_or(
-        horizontal_flow,
-        Vec3::new(phase.cos(), 0.0, phase.sin()).normalize_or_zero(),
-    );
+    let radial_axis = horizontal_or(horizontal_flow, sample.radial_axis);
     let tangent_axis = Vec3::new(-radial_axis.z, 0.0, radial_axis.x).normalize_or_zero();
     let breathing = (elapsed * 1.18 + phase).sin();
     let scale_wave = (elapsed * 1.64 + phase * 0.7).sin();
@@ -721,6 +712,48 @@ fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> Transform {
                 + gust_packet * 0.08
                 + flow.layered_gust_strength * 0.07,
         ),
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct UpdraftRibbonFlowSample {
+    flow: WindFlowSample,
+    progress: f32,
+    vertical_scroll: f32,
+    radial_axis: Vec3,
+    probe_position: Vec3,
+}
+
+fn updraft_ribbon_flow_sample(ribbon: &UpdraftRibbon, elapsed: f32) -> UpdraftRibbonFlowSample {
+    let base_flow = ribbon
+        .field
+        .flow_at(ribbon.base_translation, elapsed)
+        .unwrap_or_else(|| ribbon.field.flow_at(ribbon.field.center, elapsed).unwrap());
+    let field_height = (ribbon.field.half_extents.y * 2.0).max(1.0);
+    let vertical_ratio =
+        (base_flow.vector.y.max(0.0) / ribbon.field.visual_speed.max(1.0)).min(1.4);
+    let progress = (ribbon.phase
+        + elapsed * ribbon.field.visual_speed.max(1.0) / field_height
+            * (0.48 + vertical_ratio * 0.08))
+        .fract();
+    let vertical_scroll =
+        (progress - 0.5) * ribbon.field.half_extents.y * (0.38 + vertical_ratio * 0.08);
+    let phase = ribbon.phase * std::f32::consts::TAU;
+    let lane_angle = phase + progress * std::f32::consts::TAU * 1.45;
+    let radial_axis = Vec3::new(lane_angle.cos(), 0.0, lane_angle.sin()).normalize_or_zero();
+    let radius = ribbon.field.half_extents.x.min(ribbon.field.half_extents.z) * 0.42;
+    let probe_position = ribbon.base_translation + Vec3::Y * vertical_scroll + radial_axis * radius;
+    let flow = ribbon
+        .field
+        .flow_at(probe_position, elapsed)
+        .unwrap_or(base_flow);
+
+    UpdraftRibbonFlowSample {
+        flow,
+        progress,
+        vertical_scroll,
+        radial_axis,
+        probe_position,
     }
 }
 
@@ -2641,6 +2674,48 @@ mod tests {
             "expected updraft ribbon to pulse with sampled flow, start={:?}, later={:?}",
             start.scale,
             later.scale
+        );
+    }
+
+    #[test]
+    fn updraft_ribbon_samples_visible_thermal_lane_instead_of_center_only() {
+        let field = WindField::updraft(Vec3::ZERO, Vec3::new(12.0, 30.0, 10.0), 18.0);
+        let mut max_layer_delta = 0.0_f32;
+        let mut strongest_sample = None;
+
+        for phase in [0.04, 0.18, 0.33, 0.52, 0.71, 0.89] {
+            let ribbon = UpdraftRibbon {
+                field,
+                spin_speed: 0.05,
+                base_translation: Vec3::ZERO,
+                base_rotation: Quat::IDENTITY,
+                phase,
+            };
+
+            for elapsed in [0.4, 1.15, 1.9, 2.65] {
+                let center_flow = field.flow_at(ribbon.base_translation, elapsed).unwrap();
+                let sample = updraft_ribbon_flow_sample(&ribbon, elapsed);
+                assert!(field.contains(sample.probe_position));
+
+                let layer_delta = (sample.flow.gust_packet_strength
+                    - center_flow.gust_packet_strength)
+                    .abs()
+                    + (sample.flow.layered_gust_strength - center_flow.layered_gust_strength).abs()
+                    + (sample.flow.variation - center_flow.variation).abs();
+                if layer_delta > max_layer_delta {
+                    max_layer_delta = layer_delta;
+                    strongest_sample = Some((sample, center_flow));
+                }
+            }
+        }
+
+        let (sample, center_flow) =
+            strongest_sample.expect("expected at least one ribbon flow sample");
+        assert!(
+            max_layer_delta > 0.16,
+            "expected updraft ribbons to sample distinct visible thermal layers, center={center_flow:?}, sampled={:?}, probe={:?}",
+            sample.flow,
+            sample.probe_position
         );
     }
 
