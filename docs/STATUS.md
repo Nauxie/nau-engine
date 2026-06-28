@@ -29,6 +29,16 @@ Use this section for milestone handoffs, not routine worktree changes.
 - Active branch: none on `main`
 - Open PRs: consult GitHub
 
+## Current Course Correction
+
+Use these notes to steer the next long `/goal` run. They are product-quality feedback, not all immediate implementation work.
+
+- Player animation is now meaningfully closer to the desired airborne traversal feel, but the character still needs a fidelity audit. Limbs can clip or read strangely during transitions, turns, and braking; future work should add metrics or screenshot/sidecar checks for limb spacing, self-intersection risk, temporal pose smoothness, and readable silhouette continuity before making the model more complex.
+- Falling and diving need more distinct full-body silhouettes. Normal fall should rotate the whole body into a flat, belly-down skydiver posture rather than only raising the arms. Explicit dive should become a head-down, streamlined, near-cylindrical drop posture with clear torso/head alignment, leg trail, and smooth entry/exit blends. The eval surface should distinguish glide, fall, and dive by body orientation, limb spread/tuck, and transition smoothness.
+- Wind visuals need a runtime/eval audit before adding more effects. The current wind ribbons/motes can look too fast, jumpy, or visually detached even when static summary metrics pass. App evals currently show sustained wind-visual flow sample failures on `air_control_response` and `pose_state_coverage` despite strong observed motion counts, so the next run should reconcile the sustained-flow gates with real app samples, add visual-speed/acceleration/wrap-jump checks, and verify horizontal wind produces perceptible, bounded gameplay drift aligned with the visible crosswind field.
+- Camera collision near collidable trees and props needs a readability pass. The current obstruction avoidance can push the camera very close to Nau when near a tree, which technically avoids clipping but can destroy player framing. Future camera work should preserve a minimum readable player framing or use a deliberate blocker-handling policy, then prove it with a prop/tree obstruction route, camera-distance/framing metrics, and fixed checkpoint screenshots.
+- Avoid project references to proprietary game names, assets, maps, or designs. Use neutral terms such as "large-world sky-island traversal", "commercial open-world traversal reference", or "the north-star traversal feel" in code and docs.
+
 ## What Works
 
 - Native macOS Bevy app launches on Apple M4 Max through wgpu/Metal.
@@ -81,6 +91,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 
 ## Known Issues
 
+- App-backed `air_control_response` and `pose_state_coverage` currently exercise the new signed backward air-brake pose-lean checks successfully, but fail older sustained wind-visual flow checks. Windowless sim evals pass those routes. Treat this as the next eval/runtime mismatch to fix before trusting app wind visual quality gates as fully green.
 - The character now has a self-authored animated glTF fixture with faceted body meshes, readable face/eye lenses, belt hardware, gauntlet cuffs, knee guards, boots with toe caps, hand/finger grip pieces, shoulder guards, scarf pieces, side tunic flaps, and named clip coverage, but it is still not a rigged production character.
 - Limb posing has grounded walk/run stride, readable launch/fall, airborne banking, glide, dive, air-brake, landing-anticipation feet-forward posture, post-touchdown recovery flip/crouch, landing crouch, turn-readable lean, and speed-responsive wing flex for generated fallback and named authored player nodes; authored nodes now capture their scene rest transforms once and apply procedural offsets relative to that rest pose, while the authored fixture proves retryable named-clip validation, graph readiness, distinct `fall` and directional `bank_left`/`bank_right` clip coverage, runtime bank transitions, and procedural pose parity. It is still approximate non-skeletal animation.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep.
@@ -92,9 +103,11 @@ Use this section for milestone handoffs, not routine worktree changes.
 
 ## Next Tasks
 
-1. Replace the deepened temporary visible environment fixture scenes and faceted player fixture with authored or compatible production-quality glTF assets that satisfy the declared scene, visible world-fixture, and player animation clip readiness metrics.
-2. Add stricter terrain screenshot review for exact world semantics, occlusion accuracy, and art direction once the generated substrate or imported assets are stable enough for less tolerant classifiers.
-3. Add asynchronous asset-loading policy and budget checks once real imported scenes exist.
+1. Fix the app-side sustained wind-visual flow mismatch and audit wind trail speed/jank plus horizontal crosswind gameplay response.
+2. Audit and improve player pose/model fidelity: limb clipping, fall belly-down posture, dive head-down streamlined posture, and smooth pose blends.
+3. Improve camera obstruction behavior near collidable trees/props so collision avoidance preserves readable player framing.
+4. Replace the deepened temporary visible environment fixture scenes and faceted player fixture with authored or compatible production-quality glTF assets that satisfy the declared scene, visible world-fixture, and player animation clip readiness metrics.
+5. Add stricter terrain screenshot review for exact world semantics, occlusion accuracy, and art direction once the generated substrate or imported assets are stable enough for less tolerant classifiers.
 
 ## Read First
 

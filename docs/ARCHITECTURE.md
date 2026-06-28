@@ -212,7 +212,7 @@ Landing pose evals now treat landing anticipation and post-contact recovery as d
 
 ## Scale Strategy
 
-The route to Zelda-scale is incremental:
+The route to large-world sky-island scale is incremental:
 
 1. One stable island slice.
 2. Multiple adjacent streamed chunks.

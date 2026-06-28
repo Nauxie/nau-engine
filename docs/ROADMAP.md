@@ -95,7 +95,7 @@ Exit criteria:
 
 ## Horizon 5: Scale
 
-Goal: support Zelda-level traversal distances without pretending the whole world is active.
+Goal: support large-world sky-island traversal distances without pretending the whole world is active.
 
 Work:
 

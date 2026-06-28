@@ -111,4 +111,4 @@ Patterns to reject or replace:
 - Foxtrot code is `MIT OR Apache-2.0 OR CC0-1.0`, but its asset credits include Dark Mod assets under `CC BY-NC-SA 3.0`. Treat Foxtrot assets as non-importable unless a specific asset has separate compatible provenance.
 - `bevy_new_3d_rpg` has conflicting license signals: `Cargo.toml` says `MIT OR Apache-2.0`, while `README.md` says "CC4 licence" and the clone did not expose a top-level license file. Treat code and assets as reference-only unless this is clarified.
 - `bevy_generative` is `MIT OR Apache-2.0`.
-- NAU must not import proprietary Zelda/TOTK assets, names, maps, or designs. References are for traversal quality and Bevy implementation patterns only.
+- NAU must not import proprietary commercial-game assets, names, maps, or designs. External references are for traversal quality and Bevy implementation patterns only.
