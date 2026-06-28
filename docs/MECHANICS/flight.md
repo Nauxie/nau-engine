@@ -86,11 +86,17 @@ Glide:
 - altitude is a resource
 - speed and dive can be used to extend route choices, but not create free climbing
 
+Fall:
+
+- should rotate the whole body into a belly-down skydiver posture, not only lift the arms
+- should keep limbs spread enough to read cleanly at gameplay camera distance without obvious clipping
+- should transition into glide, air brake, or dive without a one-frame silhouette pop
+
 Dive:
 
 - commits the player downward
 - increases urgency and speed
-- should read as a flattened human dive silhouette with arms extended into the airflow, trailing legs, and deployed glider wings pitching/sweeping under dive pressure when the glider is out
+- should read as a head-down streamlined drop with torso/head alignment, narrow limb profile, trailing legs, and deployed glider wings pitching/sweeping under dive pressure when the glider is out
 - should be reversible only with enough altitude, wind, or later abilities
 
 Landing:
