@@ -24,10 +24,11 @@ use serde_json::{Value, json};
 
 use super::{super::round4, SimMetrics};
 use crate::{
-    GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
-    GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
-    LANDING_MIN_POSE_CROUCH_M, MIN_POSE_SCARF_LATERAL_SWAY_M, MIN_POSE_SCARF_STREAM_M,
-    MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
+    AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES,
+    AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES, GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M,
+    GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES, GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M,
+    GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES, LANDING_MIN_POSE_CROUCH_M,
+    MIN_POSE_SCARF_LATERAL_SWAY_M, MIN_POSE_SCARF_STREAM_M, MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
 };
 
 const POSE_STATE_MIN_IDLE_SAMPLES: f32 = 3.0;
@@ -41,6 +42,7 @@ const POSE_STATE_MIN_AIR_BRAKE_SAMPLES: f32 = 4.0;
 const POSE_STATE_MIN_DIVING_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_LANDING_POSE_SAMPLES: f32 = 1.0;
+const POSE_STATE_MIN_LANDING_FLARE_DEGREES: f32 = 55.0;
 
 #[derive(Clone, Debug)]
 pub(crate) struct SimCheck {
@@ -525,9 +527,49 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             "samples",
         ),
         SimCheck::at_least(
+            "pose_state_pure_air_turn_sideways_samples",
+            metrics
+                .pure_air_turn_sideways_body_travel_heading_error_values_degrees
+                .len() as f32,
+            AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES as f32,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_right_pure_air_turn_sideways_samples",
+            metrics.right_pure_air_turn_sideways_samples as f32,
+            AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES as f32,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_left_pure_air_turn_sideways_samples",
+            metrics.left_pure_air_turn_sideways_samples as f32,
+            AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES as f32,
+            "samples",
+        ),
+        SimCheck::at_least(
             "pose_state_air_brake_samples",
             metrics.pose_air_brake_samples as f32,
             POSE_STATE_MIN_AIR_BRAKE_SAMPLES,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_backward_diagonal_body_travel_heading_samples",
+            metrics
+                .backward_diagonal_body_travel_heading_error_values_degrees
+                .len() as f32,
+            AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_backward_right_diagonal_body_travel_heading_samples",
+            metrics.backward_right_diagonal_body_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_backward_left_diagonal_body_travel_heading_samples",
+            metrics.backward_left_diagonal_body_travel_heading_samples as f32,
+            AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES as f32,
             "samples",
         ),
         SimCheck::at_least(
@@ -575,7 +617,7 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
         SimCheck::at_least(
             "pose_state_landing_flare",
             metrics.max_pose_landing_flare_degrees,
-            LANDING_MIN_POSE_FLARE_DEGREES,
+            POSE_STATE_MIN_LANDING_FLARE_DEGREES,
             "deg",
         ),
         SimCheck::at_least(

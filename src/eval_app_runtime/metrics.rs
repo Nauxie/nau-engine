@@ -52,7 +52,7 @@ const KEY_POSE_EXTENDED_TRANSITION_GRACE_FRAMES: u32 = 8;
 const KEY_POSE_TRANSITION_MAX_ROTATION_DELTA_DEGREES: f32 = 60.0;
 const KEY_POSE_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.15;
 const KEY_POSE_RELAXED_TRANSITION_MAX_ROTATION_DELTA_DEGREES: f32 = 120.0;
-const KEY_POSE_RELAXED_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.55;
+const KEY_POSE_RELAXED_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.6;
 
 #[derive(Resource, Default)]
 pub(crate) struct VisiblePoseTemporalState {
@@ -1251,7 +1251,10 @@ fn landing_flip_transition(
     previous_intent: Option<PlayerPoseIntent>,
 ) -> bool {
     current_intent == PlayerPoseIntent::LandingAnticipation
-        && previous_intent == Some(PlayerPoseIntent::Diving)
+        && matches!(
+            previous_intent,
+            Some(PlayerPoseIntent::Diving | PlayerPoseIntent::Gliding)
+        )
 }
 
 fn landing_release_transition(
@@ -2142,6 +2145,53 @@ mod tests {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 103.0,
                 max_pose_part_translation_delta_m: 0.375,
+            },
+        );
+
+        assert!(raw.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert_eq!(
+            adjusted.metrics.key_pose_readability_score,
+            MIN_KEY_POSE_READABILITY_SCORE
+        );
+        assert!(adjusted.used_transition_grace);
+    }
+
+    #[test]
+    fn transition_aware_pose_readability_accepts_bounded_glide_to_landing_flip() {
+        let raw = PoseReadabilityMetrics {
+            torso_pitch_degrees: 28.25,
+            arm_spread_degrees: 149.72,
+            leg_tuck_degrees: 62.27,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
+            landing_crouch_m: 0.192,
+            landing_foot_forward_m: 0.49,
+            landing_foot_split_m: 0.344,
+            landing_recovery_flip_degrees: 0.0,
+            wing_airflow_strength: 0.0,
+            key_pose_readability_score: key_pose_readability_score(
+                PlayerPoseIntent::LandingAnticipation,
+                28.25,
+                149.72,
+                62.27,
+                0.192,
+                0.49,
+                0.344,
+            ),
+            ..default()
+        };
+
+        let adjusted = transition_aware_pose_readability(
+            raw,
+            PlayerPoseIntent::LandingAnticipation,
+            Some(PlayerPoseIntent::Gliding),
+            1,
+            &EvalPoseTemporalMetrics {
+                visible_pose_part_count: 5,
+                max_pose_part_rotation_delta_degrees: 87.05,
+                max_pose_part_translation_delta_m: 0.573,
             },
         );
 
