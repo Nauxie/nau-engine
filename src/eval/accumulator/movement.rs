@@ -445,7 +445,10 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
     accumulator.max_pose_leg_tuck_degrees = accumulator
         .max_pose_leg_tuck_degrees
         .max(sample.pose_leg_tuck_degrees);
-    if sample.mode == FlightMode::Gliding.label() && sample.pose_intent_label == "diving" {
+    if sample.mode == FlightMode::Gliding.label()
+        && sample.pose_intent_label == "diving"
+        && !sample.key_pose_transition_grace
+    {
         accumulator.max_dive_pose_torso_pitch_degrees = accumulator
             .max_dive_pose_torso_pitch_degrees
             .max(sample.pose_torso_pitch_degrees);
@@ -567,6 +570,15 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
         }
         if sample.key_pose_transition_grace {
             accumulator.key_pose_transition_grace_samples += 1;
+        }
+        if sample.min_pose_limb_clearance_m.is_finite() {
+            accumulator.min_pose_limb_clearance_m = Some(
+                accumulator
+                    .min_pose_limb_clearance_m
+                    .map_or(sample.min_pose_limb_clearance_m, |current| {
+                        current.min(sample.min_pose_limb_clearance_m)
+                    }),
+            );
         }
         let has_pose_temporal_metrics = sample.max_pose_part_rotation_delta_degrees.is_finite()
             && sample.max_pose_part_translation_delta_m.is_finite();
