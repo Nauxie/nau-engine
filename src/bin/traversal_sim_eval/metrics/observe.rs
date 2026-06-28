@@ -7,7 +7,8 @@ use nau_engine::eval::{
 };
 
 use super::super::{
-    AIR_CONTROL_RESPONSE_THRESHOLD_MPS, AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES, SimSample,
+    AIR_CONTROL_PURE_AIR_TURN_SIDEWAYS_SETTLE_SECS, AIR_CONTROL_RESPONSE_THRESHOLD_MPS,
+    AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES, SimSample,
 };
 use super::{
     SimMetrics,
@@ -715,6 +716,26 @@ impl SimMetrics {
 
     fn observe_pure_air_turn_sideways_alignment(&mut self, sample: &SimSample) {
         if !pure_air_turn_sideways_alignment_sample(sample) {
+            self.pure_air_turn_sideways_segment_axis = None;
+            self.pure_air_turn_sideways_segment_start_time_secs = None;
+            return;
+        }
+
+        let lateral_axis = sample.movement_input_lateral_axis.signum();
+        if self
+            .pure_air_turn_sideways_segment_axis
+            .is_none_or(|previous| previous != lateral_axis)
+        {
+            self.pure_air_turn_sideways_segment_axis = Some(lateral_axis);
+            self.pure_air_turn_sideways_segment_start_time_secs = Some(sample.time_secs);
+        }
+
+        let segment_start_time_secs = self
+            .pure_air_turn_sideways_segment_start_time_secs
+            .unwrap_or(sample.time_secs);
+        if sample.time_secs
+            < segment_start_time_secs + AIR_CONTROL_PURE_AIR_TURN_SIDEWAYS_SETTLE_SECS
+        {
             return;
         }
 

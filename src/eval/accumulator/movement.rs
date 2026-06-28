@@ -3,7 +3,8 @@ use bevy::prelude::Vec2;
 use crate::{
     animation::MIN_KEY_POSE_READABILITY_SCORE,
     eval::thresholds::{
-        AIR_CONTROL_RESPONSE_THRESHOLD_MPS, AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES,
+        AIR_CONTROL_PURE_AIR_TURN_SIDEWAYS_SETTLE_SECS, AIR_CONTROL_RESPONSE_THRESHOLD_MPS,
+        AIR_CONTROL_YAW_OSCILLATION_DEADZONE_DEGREES,
     },
     movement::FlightMode,
 };
@@ -386,6 +387,24 @@ fn observe_pure_air_turn_sideways_alignment(
     sample: &EvalSample,
 ) {
     if !pure_air_turn_sideways_alignment_sample(sample) {
+        accumulator.pure_air_turn_sideways_segment_axis = None;
+        accumulator.pure_air_turn_sideways_segment_start_time_secs = None;
+        return;
+    }
+
+    let lateral_axis = sample.movement_input_lateral_axis.signum();
+    if accumulator
+        .pure_air_turn_sideways_segment_axis
+        .is_none_or(|previous| previous != lateral_axis)
+    {
+        accumulator.pure_air_turn_sideways_segment_axis = Some(lateral_axis);
+        accumulator.pure_air_turn_sideways_segment_start_time_secs = Some(sample.time_secs);
+    }
+
+    let segment_start_time_secs = accumulator
+        .pure_air_turn_sideways_segment_start_time_secs
+        .unwrap_or(sample.time_secs);
+    if sample.time_secs < segment_start_time_secs + AIR_CONTROL_PURE_AIR_TURN_SIDEWAYS_SETTLE_SECS {
         return;
     }
 

@@ -2286,12 +2286,7 @@ fn accumulator_counts_pure_air_turn_sideways_alignment_samples() {
         (30, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0), 4.0),
         (60, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0), 4.0),
         (90, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0), 4.0),
-        (
-            120,
-            Vec2::new(-1.0, 0.0),
-            Vec3::new(-18.0, -2.0, -18.0),
-            -4.0,
-        ),
+        (120, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0), 4.0),
         (
             150,
             Vec2::new(-1.0, 0.0),
@@ -2306,6 +2301,18 @@ fn accumulator_counts_pure_air_turn_sideways_alignment_samples() {
         ),
         (
             210,
+            Vec2::new(-1.0, 0.0),
+            Vec3::new(-18.0, -2.0, -18.0),
+            -4.0,
+        ),
+        (
+            240,
+            Vec2::new(-1.0, 0.0),
+            Vec3::new(-18.0, -2.0, -18.0),
+            -4.0,
+        ),
+        (
+            270,
             Vec2::new(-1.0, 0.0),
             Vec3::new(-18.0, -2.0, -18.0),
             -4.0,
@@ -2413,10 +2420,12 @@ fn accumulator_gates_pure_air_turn_sideways_misalignment() {
         (30, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0)),
         (60, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0)),
         (90, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0)),
-        (120, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
+        (120, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0)),
         (150, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
         (180, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
         (210, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
+        (240, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
+        (270, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
     ] {
         accumulator.observe(air_control_metric_sample(
             scenario, frame, velocity, input, 18.0, 18.0, 48.0,
@@ -2753,7 +2762,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
             ("launching", FlightMode::Launching.label(), 3),
             ("falling", FlightMode::Airborne.label(), 8),
             ("gliding", FlightMode::Gliding.label(), 18),
-            ("air_turn", FlightMode::Gliding.label(), 10),
+            ("air_turn", FlightMode::Gliding.label(), 12),
             ("air_brake", FlightMode::Gliding.label(), 8),
             ("diving", FlightMode::Gliding.label(), 1),
             ("landing_anticipation", FlightMode::Gliding.label(), 1),
@@ -2804,19 +2813,14 @@ fn accumulator_gates_pose_state_coverage_samples() {
     assert_eq!(summary.metrics.authored_glide_clip_samples, 18);
     assert_eq!(summary.metrics.authored_fall_clip_samples, 8);
     assert_eq!(summary.metrics.pose_gliding_samples, 18);
-    assert_eq!(summary.metrics.pose_air_turn_samples, 10);
-    assert_eq!(summary.metrics.pure_air_turn_sideways_sample_count, 10);
-    assert_eq!(summary.metrics.authored_bank_right_clip_samples, 5);
-    assert_eq!(summary.metrics.authored_bank_left_clip_samples, 5);
-    assert_eq!(
-        summary.metrics.right_pose_air_turn_samples,
-        POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES as u32
-    );
-    assert_eq!(
-        summary.metrics.left_pose_air_turn_samples,
-        POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES as u32
-    );
+    assert_eq!(summary.metrics.pose_air_turn_samples, 12);
+    assert_eq!(summary.metrics.pure_air_turn_sideways_sample_count, 8);
+    assert_eq!(summary.metrics.authored_bank_right_clip_samples, 6);
+    assert_eq!(summary.metrics.authored_bank_left_clip_samples, 6);
+    assert_eq!(summary.metrics.right_pose_air_turn_samples, 6);
+    assert_eq!(summary.metrics.left_pose_air_turn_samples, 6);
     assert_eq!(summary.metrics.pose_air_brake_samples, 8);
+    assert_eq!(summary.metrics.authored_air_brake_clip_samples, 8);
     assert_eq!(
         summary
             .metrics
@@ -2825,6 +2829,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
     );
     assert_eq!(summary.metrics.pose_diving_samples, 1);
     assert_eq!(summary.metrics.gliding_dive_samples, 1);
+    assert_eq!(summary.metrics.authored_dive_clip_samples, 1);
     assert_eq!(summary.metrics.pose_landing_anticipation_samples, 1);
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 1);
     assert_eq!(summary.metrics.unreadable_key_pose_samples, 0);
@@ -2875,12 +2880,18 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_pure_air_turn_sideways_samples",
         "pose_state_right_pure_air_turn_sideways_samples",
         "pose_state_left_pure_air_turn_sideways_samples",
+        "pose_state_p95_pure_air_turn_sideways_body_travel_heading_error",
+        "pose_state_max_pure_air_turn_sideways_body_travel_heading_error",
+        "pose_state_p95_pure_air_turn_sideways_desired_travel_heading_error",
+        "pose_state_max_pure_air_turn_sideways_desired_travel_heading_error",
         "pose_state_air_brake_samples",
+        "pose_state_authored_air_brake_clip_samples",
         "pose_state_backward_diagonal_body_travel_heading_samples",
         "pose_state_backward_right_diagonal_body_travel_heading_samples",
         "pose_state_backward_left_diagonal_body_travel_heading_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
+        "pose_state_authored_dive_clip_samples",
         "pose_state_dive_pose_torso_pitch",
         "pose_state_dive_pose_arm_spread",
         "pose_state_dive_pose_leg_tuck",
@@ -2889,6 +2900,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_authored_land_clip_samples",
         "pose_state_landing_crouch",
         "pose_state_landing_foot_forward",
+        "pose_state_landing_foot_split",
         "pose_state_landing_flare",
         "pose_state_landing_recovery_flip",
         "pose_state_unreadable_key_pose_samples",
@@ -2937,6 +2949,96 @@ fn accumulator_gates_pose_state_authored_bank_clip_samples() {
     assert_eq!(summary.metrics.authored_bank_left_clip_samples, 0);
     assert!(right_bank_check.passed);
     assert!(!left_bank_check.passed);
+}
+
+#[test]
+fn accumulator_gates_pose_state_authored_dive_and_air_brake_clip_samples() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..4 {
+        let mut sample = content_metric_sample(scenario, 40 + frame, 20, 0, 96);
+        sample.mode = FlightMode::Gliding.label();
+        sample.pose_intent_label = "air_brake";
+        sample.movement_input_lateral_axis = if frame.is_multiple_of(2) { 1.0 } else { -1.0 };
+        sample.movement_input_forward_axis = -1.0;
+        sample.key_pose_readability_score = 1.0;
+        sample = sample.with_authored_animation_metrics("glide", "glide", 1, 140);
+        accumulator.observe(sample);
+    }
+
+    let mut dive = content_metric_sample(scenario, 80, 20, 0, 96);
+    dive.mode = FlightMode::Gliding.label();
+    dive.pose_intent_label = "diving";
+    dive.key_pose_readability_score = 1.0;
+    dive = dive
+        .with_pose_readability_metrics(pose_state_readability_metrics_for_label("diving"))
+        .with_authored_animation_metrics("glide", "glide", 1, 140);
+    accumulator.observe(dive);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.pose_air_brake_samples, 4);
+    assert_eq!(summary.metrics.authored_air_brake_clip_samples, 0);
+    assert_eq!(summary.metrics.pose_diving_samples, 1);
+    assert_eq!(summary.metrics.authored_dive_clip_samples, 0);
+    assert!(named_check(&summary, "pose_state_air_brake_samples").passed);
+    assert!(!named_check(&summary, "pose_state_authored_air_brake_clip_samples").passed);
+    assert!(named_check(&summary, "pose_state_diving_samples").passed);
+    assert!(!named_check(&summary, "pose_state_authored_dive_clip_samples").passed);
+}
+
+#[test]
+fn accumulator_gates_pose_state_sideways_air_turn_misalignment() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for (frame, input, velocity) in [
+        (0, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0)),
+        (30, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0)),
+        (60, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0)),
+        (90, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0)),
+        (120, Vec2::new(1.0, 0.0), Vec3::new(18.0, -2.0, -18.0)),
+        (150, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
+        (180, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
+        (210, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
+        (240, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
+        (270, Vec2::new(-1.0, 0.0), Vec3::new(-18.0, -2.0, -18.0)),
+    ] {
+        accumulator.observe(air_control_metric_sample(
+            scenario, frame, velocity, input, 18.0, 18.0, 48.0,
+        ));
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.pure_air_turn_sideways_sample_count, 8);
+    for name in [
+        "pose_state_p95_pure_air_turn_sideways_body_travel_heading_error",
+        "pose_state_max_pure_air_turn_sideways_body_travel_heading_error",
+        "pose_state_p95_pure_air_turn_sideways_desired_travel_heading_error",
+        "pose_state_max_pure_air_turn_sideways_desired_travel_heading_error",
+    ] {
+        assert!(!named_check(&summary, name).passed, "{name} should fail");
+    }
 }
 
 #[test]
@@ -2990,11 +3092,13 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
         "pose_state_right_pure_air_turn_sideways_samples",
         "pose_state_left_pure_air_turn_sideways_samples",
         "pose_state_air_brake_samples",
+        "pose_state_authored_air_brake_clip_samples",
         "pose_state_backward_diagonal_body_travel_heading_samples",
         "pose_state_backward_right_diagonal_body_travel_heading_samples",
         "pose_state_backward_left_diagonal_body_travel_heading_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
+        "pose_state_authored_dive_clip_samples",
         "pose_state_dive_pose_torso_pitch",
         "pose_state_dive_pose_arm_spread",
         "pose_state_dive_pose_leg_tuck",
@@ -3204,7 +3308,8 @@ fn observe_pose_state_samples_with_grounded_stride(
             sample.mode = mode;
             sample.pose_intent_label = pose_intent_label;
             sample.key_pose_readability_score = 1.0;
-            let movement_axis = pose_state_movement_axis_for_label(pose_intent_label, sample_index);
+            let movement_axis =
+                pose_state_movement_axis_for_label(pose_intent_label, sample_index, count);
             sample.movement_input_lateral_axis = movement_axis.x;
             sample.movement_input_forward_axis = movement_axis.y;
             sample.lateral_input_active = movement_axis.x.abs() > f32::EPSILON;
@@ -3249,9 +3354,13 @@ fn observe_pose_state_samples_with_grounded_stride(
     }
 }
 
-fn pose_state_movement_axis_for_label(pose_intent_label: &str, sample_index: u32) -> Vec2 {
+fn pose_state_movement_axis_for_label(
+    pose_intent_label: &str,
+    sample_index: u32,
+    sample_count: u32,
+) -> Vec2 {
     match pose_intent_label {
-        "air_turn" if sample_index.is_multiple_of(2) => Vec2::new(1.0, 0.0),
+        "air_turn" if sample_index < sample_count / 2 => Vec2::new(1.0, 0.0),
         "air_turn" => Vec2::new(-1.0, 0.0),
         "air_brake" if sample_index.is_multiple_of(2) => Vec2::new(1.0, -1.0),
         "air_brake" => Vec2::new(-1.0, -1.0),

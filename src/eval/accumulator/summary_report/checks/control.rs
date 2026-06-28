@@ -397,7 +397,7 @@ pub(super) fn append_scenario_checks(
         append_air_control_checks(checks, acc, derived);
     }
     if scenario.name == POSE_STATE_COVERAGE {
-        append_pose_state_coverage_checks(checks, acc);
+        append_pose_state_coverage_checks(checks, acc, derived);
     }
     if scenario.name == CAMERA_STRAFE_STABILITY {
         append_camera_strafe_checks(checks, acc);
@@ -986,7 +986,11 @@ fn append_air_control_checks(
     ]);
 }
 
-fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccumulator) {
+fn append_pose_state_coverage_checks(
+    checks: &mut Vec<EvalCheck>,
+    acc: &EvalAccumulator,
+    derived: &SummaryDerivedMetrics,
+) {
     checks.extend([
         EvalCheck::at_least(
             "pose_state_grounded_idle_samples",
@@ -1133,10 +1137,40 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES as f32,
             "samples",
         ),
+        EvalCheck::at_most(
+            "pose_state_p95_pure_air_turn_sideways_body_travel_heading_error",
+            derived.p95_pure_air_turn_sideways_body_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_P95_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "pose_state_max_pure_air_turn_sideways_body_travel_heading_error",
+            acc.max_pure_air_turn_sideways_body_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "pose_state_p95_pure_air_turn_sideways_desired_travel_heading_error",
+            derived.p95_pure_air_turn_sideways_desired_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_P95_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "pose_state_max_pure_air_turn_sideways_desired_travel_heading_error",
+            acc.max_pure_air_turn_sideways_desired_travel_heading_error_degrees,
+            AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
         EvalCheck::at_least(
             "pose_state_air_brake_samples",
             acc.pose_air_brake_samples as f32,
             POSE_STATE_MIN_AIR_BRAKE_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_authored_air_brake_clip_samples",
+            acc.authored_air_brake_clip_samples as f32,
+            AIR_CONTROL_MIN_AUTHORED_AIR_BRAKE_CLIP_SAMPLES,
             "samples",
         ),
         EvalCheck::at_least(
@@ -1168,6 +1202,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             "pose_state_gliding_dive_samples",
             acc.gliding_dive_samples as f32,
             POSE_STATE_MIN_GLIDING_DIVE_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_authored_dive_clip_samples",
+            acc.authored_dive_clip_samples as f32,
+            AIR_CONTROL_MIN_AUTHORED_DIVE_CLIP_SAMPLES,
             "samples",
         ),
         EvalCheck::at_least(

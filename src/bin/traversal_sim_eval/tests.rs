@@ -1,4 +1,8 @@
 use super::{
+    AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+    AIR_CONTROL_MAX_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+    AIR_CONTROL_MAX_P95_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
+    AIR_CONTROL_MAX_P95_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES,
     AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES, LANDING_MIN_POSE_CROUCH_M,
     metrics::{SimMetrics, SimResult},
@@ -210,6 +214,30 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         result.metrics.left_pure_air_turn_sideways_samples
             >= AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES
     );
+    assert!(
+        result
+            .metrics
+            .p95_pure_air_turn_sideways_body_travel_heading_error_degrees()
+            <= AIR_CONTROL_MAX_P95_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES
+    );
+    assert!(
+        result
+            .metrics
+            .max_pure_air_turn_sideways_body_travel_heading_error_degrees
+            <= AIR_CONTROL_MAX_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES
+    );
+    assert!(
+        result
+            .metrics
+            .p95_pure_air_turn_sideways_desired_travel_heading_error_degrees()
+            <= AIR_CONTROL_MAX_P95_DESIRED_TRAVEL_HEADING_ERROR_DEGREES
+    );
+    assert!(
+        result
+            .metrics
+            .max_pure_air_turn_sideways_desired_travel_heading_error_degrees
+            <= AIR_CONTROL_MAX_DESIRED_TRAVEL_HEADING_ERROR_DEGREES
+    );
     assert!(result.metrics.pose_air_brake_samples >= 4);
     assert!(
         result
@@ -254,6 +282,10 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         "pose_state_pure_air_turn_sideways_samples",
         "pose_state_right_pure_air_turn_sideways_samples",
         "pose_state_left_pure_air_turn_sideways_samples",
+        "pose_state_p95_pure_air_turn_sideways_body_travel_heading_error",
+        "pose_state_max_pure_air_turn_sideways_body_travel_heading_error",
+        "pose_state_p95_pure_air_turn_sideways_desired_travel_heading_error",
+        "pose_state_max_pure_air_turn_sideways_desired_travel_heading_error",
         "pose_state_air_brake_samples",
         "pose_state_backward_diagonal_body_travel_heading_samples",
         "pose_state_backward_right_diagonal_body_travel_heading_samples",
@@ -329,6 +361,38 @@ fn pose_state_coverage_sim_checks_reject_thin_samples() {
             .find(|check| check.name == name)
             .unwrap_or_else(|| panic!("missing sim check {name}"));
         assert!(!check.passed, "expected {name} to fail: {check:?}");
+    }
+}
+
+#[test]
+fn pose_state_coverage_sim_checks_reject_sideways_air_turn_misalignment() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+    metrics
+        .pure_air_turn_sideways_body_travel_heading_error_values_degrees
+        .extend([48.0; 8]);
+    metrics.max_pure_air_turn_sideways_body_travel_heading_error_degrees = 48.0;
+    metrics
+        .pure_air_turn_sideways_desired_travel_heading_error_values_degrees
+        .extend([48.0; 8]);
+    metrics.max_pure_air_turn_sideways_desired_travel_heading_error_degrees = 48.0;
+    metrics.right_pure_air_turn_sideways_samples = 4;
+    metrics.left_pure_air_turn_sideways_samples = 4;
+
+    let checks = metrics.checks(scenario);
+    for name in [
+        "pose_state_p95_pure_air_turn_sideways_body_travel_heading_error",
+        "pose_state_max_pure_air_turn_sideways_body_travel_heading_error",
+        "pose_state_p95_pure_air_turn_sideways_desired_travel_heading_error",
+        "pose_state_max_pure_air_turn_sideways_desired_travel_heading_error",
+    ] {
+        let check = checks
+            .iter()
+            .find(|check| check.name == name)
+            .unwrap_or_else(|| panic!("missing sim check {name}"));
+        assert!(!check.passed, "expected {name} to fail: {check:?}");
+        assert!(check.value > check.threshold);
     }
 }
 
@@ -1549,10 +1613,12 @@ fn sim_metrics_count_pure_air_turn_sideways_alignment_samples() {
         (60, 1.0),
         (90, 1.0),
         (120, 1.0),
-        (150, -1.0),
+        (150, 1.0),
         (180, -1.0),
         (210, -1.0),
         (240, -1.0),
+        (270, -1.0),
+        (300, -1.0),
     ] {
         let mut sample = sim_roll_sample(
             &route,
@@ -1614,10 +1680,12 @@ fn sim_metrics_require_air_turn_sideways_alignment_in_same_samples() {
         (60, 1.0),
         (90, 1.0),
         (120, 1.0),
-        (150, -1.0),
+        (150, 1.0),
         (180, -1.0),
         (210, -1.0),
         (240, -1.0),
+        (270, -1.0),
+        (300, -1.0),
     ] {
         let mut sample = sim_roll_sample(
             &route,
@@ -1634,14 +1702,17 @@ fn sim_metrics_require_air_turn_sideways_alignment_in_same_samples() {
         metrics.observe(&sample, scenario);
     }
 
-    assert_eq!(metrics.pose_air_turn_samples, 8);
+    assert_eq!(metrics.pose_air_turn_samples, 10);
     assert_eq!(
         metrics
             .lateral_body_travel_heading_error_values_degrees
             .len(),
-        8
+        10
     );
-    assert_eq!(metrics.desired_travel_heading_error_values_degrees.len(), 8);
+    assert_eq!(
+        metrics.desired_travel_heading_error_values_degrees.len(),
+        10
+    );
     assert_eq!(
         metrics
             .pure_air_turn_sideways_body_travel_heading_error_values_degrees
@@ -1678,10 +1749,12 @@ fn sim_metrics_fail_pure_air_turn_sideways_misalignment() {
         (60, 1.0),
         (90, 1.0),
         (120, 1.0),
-        (150, -1.0),
+        (150, 1.0),
         (180, -1.0),
         (210, -1.0),
         (240, -1.0),
+        (270, -1.0),
+        (300, -1.0),
     ] {
         let mut sample = sim_roll_sample(
             &route,

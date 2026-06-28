@@ -81,6 +81,8 @@ pub struct EvalAccumulator {
     max_pure_air_turn_sideways_desired_travel_heading_error_degrees: f32,
     right_pure_air_turn_sideways_samples: u32,
     left_pure_air_turn_sideways_samples: u32,
+    pure_air_turn_sideways_segment_axis: Option<f32>,
+    pure_air_turn_sideways_segment_start_time_secs: Option<f32>,
     max_desired_heading_alignment_mps: f32,
     max_lateral_response_mps: f32,
     first_lateral_input_time_secs: Option<f32>,
