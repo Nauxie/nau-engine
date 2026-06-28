@@ -5,6 +5,7 @@ use super::{
     AIR_CONTROL_MAX_P95_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES,
     AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES, LANDING_MIN_POSE_CROUCH_M,
+    MIN_POSE_LIMB_CLEARANCE_M,
     metrics::{SimMetrics, SimResult},
     sample::{CameraDiagnosticsSample, SimSample},
     simulation::run_simulation,
@@ -62,6 +63,7 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"max_pose_landing_flare_degrees\""));
     assert!(summary.contains("\"max_pose_landing_recovery_flip_degrees\""));
     assert!(summary.contains("\"key_pose_transition_grace_samples\""));
+    assert!(summary.contains("\"min_pose_limb_clearance_m\""));
     assert!(
         result
             .samples
@@ -96,6 +98,15 @@ fn baseline_simulation_writes_windowless_artifacts() {
             .unwrap()
             .to_json()
             .get("key_pose_transition_grace")
+            .is_some()
+    );
+    assert!(
+        result
+            .samples
+            .last()
+            .unwrap()
+            .to_json()
+            .get("min_pose_limb_clearance_m")
             .is_some()
     );
     assert!(
@@ -277,6 +288,13 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
             >= LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES
     );
     assert_eq!(result.metrics.unreadable_key_pose_samples, 0);
+    assert!(
+        result
+            .metrics
+            .min_pose_limb_clearance_m
+            .expect("limb clearance")
+            >= MIN_POSE_LIMB_CLEARANCE_M
+    );
 
     for name in [
         "pose_state_grounded_walk_samples",
@@ -319,6 +337,7 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         "pose_state_landing_recovery_flip",
         "pose_state_unreadable_key_pose_samples",
         "pose_state_key_pose_transition_grace_samples",
+        "pose_state_min_pose_limb_clearance",
     ] {
         let check = result
             .checks
@@ -372,6 +391,7 @@ fn pose_state_coverage_sim_checks_reject_thin_samples() {
         "pose_state_dive_pose_leg_tuck",
         "pose_state_landing_anticipation_samples",
         "pose_state_landing_recovery_samples",
+        "pose_state_min_pose_limb_clearance",
     ] {
         let check = checks
             .iter()
@@ -1113,6 +1133,7 @@ fn air_control_simulation_gates_directional_strafe_and_camera_drift() {
         "air_control_pose_wing_airflow",
         "air_control_unreadable_key_pose_samples",
         "air_control_key_pose_transition_grace_samples",
+        "air_control_min_pose_limb_clearance",
         "air_control_pose_air_turn_samples",
         "air_control_right_pose_air_turn_samples",
         "air_control_left_pose_air_turn_samples",
@@ -2099,6 +2120,29 @@ fn pose_state_sim_checks_reject_excess_transition_grace_samples() {
         POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32
     );
     assert!(!check.passed);
+}
+
+#[test]
+fn sim_checks_reject_pose_limb_clipping() {
+    let route = SkyRoute::default();
+
+    for (scenario_name, check_name) in [
+        (AIR_CONTROL_RESPONSE, "air_control_min_pose_limb_clearance"),
+        (POSE_STATE_COVERAGE, "pose_state_min_pose_limb_clearance"),
+    ] {
+        let scenario = scenario_named(scenario_name).expect("scenario");
+        let mut metrics = SimMetrics::new(&route);
+        metrics.min_pose_limb_clearance_m = Some(-0.02);
+
+        let checks = metrics.checks(scenario);
+        let check = checks
+            .iter()
+            .find(|check| check.name == check_name)
+            .unwrap_or_else(|| panic!("missing sim check {check_name}"));
+
+        assert_eq!(check.threshold, MIN_POSE_LIMB_CLEARANCE_M);
+        assert!(!check.passed, "{check_name} should fail on clipping");
+    }
 }
 
 fn crosswind_neutral_sim_sample(
