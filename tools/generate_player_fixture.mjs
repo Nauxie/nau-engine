@@ -261,10 +261,14 @@ addMesh("Nau Belt Sash Band", taperedCylinderMesh([0.43, 0.25], [0.42, 0.24], 16
 addMesh("Nau Belt Buckle Plate", crystalMesh(), 7);
 addMesh("Nau Leather Gauntlet Cuff", taperedCylinderMesh([0.11, 0.095], [0.105, 0.09], 12), 3);
 addMesh("Nau Accent Knee Guard", ellipsoidMesh([0.12, 0.055, 0.085], 10, 5), 4);
+addMesh("Nau Leather Hand Palm", ellipsoidMesh([0.09, 0.065, 0.08], 10, 5), 3);
+addMesh("Nau Leather Finger Grip", taperedCylinderMesh([0.024, 0.018], [0.019, 0.014], 8), 3);
+addMesh("Nau Leather Boot Toe Cap", ellipsoidMesh([0.13, 0.045, 0.18], 10, 4), 3);
+addMesh("Nau Accent Side Tunic Flap", panelMesh(0.12, 0.24, 0.52, -0.02), 4);
 
 const nodes = [
   { name: "Nau Self Authored Animated Player Root", children: [1, 2, 3, 4, 5, 6, 7, 8, 13, 14, 18] },
-  { name: "Nau Hips", mesh: 0, translation: [0, 0.54, 0], scale: [1.0, 0.76, 1.0], children: [23, 24] },
+  { name: "Nau Hips", mesh: 0, translation: [0, 0.54, 0], scale: [1.0, 0.76, 1.0], children: [23, 24, 37, 38] },
   { name: "Nau Torso", mesh: 1, translation: [0, 1.08, 0], scale: [1.0, 0.94, 1.0], children: [15, 16, 19] },
   { name: "Nau Head", mesh: 3, translation: [0, 1.68, 0], children: [17, 20, 21, 22] },
   { name: "Nau Left Arm", mesh: 5, translation: [-0.48, 1.18, 0.01], scale: [1.0, 0.62, 1.0], children: [9] },
@@ -272,10 +276,10 @@ const nodes = [
   { name: "Nau Left Leg", mesh: 7, translation: [-0.17, 0.30, 0.01], scale: [1.0, 0.68, 1.0], children: [11, 27] },
   { name: "Nau Right Leg", mesh: 7, translation: [0.17, 0.30, 0.01], scale: [1.0, 0.68, 1.0], children: [12, 28] },
   { name: "Nau Chest Focus", mesh: 9, translation: [0, 1.15, -0.24], scale: [0.35, 0.24, 0.6] },
-  { name: "Nau Left Forearm", mesh: 6, translation: [0, -0.44, 0.02], scale: [1.0, 0.52, 1.0], children: [25] },
-  { name: "Nau Right Forearm", mesh: 6, translation: [0, -0.44, 0.02], scale: [1.0, 0.52, 1.0], children: [26] },
-  { name: "Nau Left Boot", mesh: 8, translation: [0, -0.46, -0.01], scale: [1.0, 0.36, 1.0] },
-  { name: "Nau Right Boot", mesh: 8, translation: [0, -0.46, -0.01], scale: [1.0, 0.36, 1.0] },
+  { name: "Nau Left Forearm", mesh: 6, translation: [0, -0.44, 0.02], scale: [1.0, 0.52, 1.0], children: [25, 29] },
+  { name: "Nau Right Forearm", mesh: 6, translation: [0, -0.44, 0.02], scale: [1.0, 0.52, 1.0], children: [26, 30] },
+  { name: "Nau Left Boot", mesh: 8, translation: [0, -0.46, -0.01], scale: [1.0, 0.36, 1.0], children: [35] },
+  { name: "Nau Right Boot", mesh: 8, translation: [0, -0.46, -0.01], scale: [1.0, 0.36, 1.0], children: [36] },
   { name: "Nau Front Accent Tunic", mesh: 2, translation: [0, 0.78, -0.24], scale: [1.0, 1.0, 1.0] },
   { name: "Nau Rear Accent Tunic", mesh: 2, translation: [0, 0.78, 0.21], rotation: [0, 1, 0, 0], scale: [0.82, 0.9, 1.0] },
   { name: "Nau Left Shoulder Accent", mesh: 10, translation: [-0.35, 0.22, -0.01], rotation: rotZ(-0.24) },
@@ -292,6 +296,16 @@ const nodes = [
   { name: "Nau Right Leather Gauntlet Cuff", mesh: 16, translation: [0, -0.13, 0.01], scale: [1.0, 0.20, 1.0] },
   { name: "Nau Left Accent Knee Guard", mesh: 17, translation: [0, -0.19, -0.10], rotation: rotX(0.08), scale: [1.0, 1.0, 1.0] },
   { name: "Nau Right Accent Knee Guard", mesh: 17, translation: [0, -0.19, -0.10], rotation: rotX(0.08), scale: [1.0, 1.0, 1.0] },
+  { name: "Nau Left Leather Hand Palm", mesh: 18, translation: [0, -0.34, -0.005], rotation: rotX(0.08), scale: [0.88, 0.9, 0.9], children: [31, 33] },
+  { name: "Nau Right Leather Hand Palm", mesh: 18, translation: [0, -0.34, -0.005], rotation: rotX(0.08), scale: [0.88, 0.9, 0.9], children: [32, 34] },
+  { name: "Nau Left Leather Finger Grip", mesh: 19, translation: [-0.035, -0.075, -0.045], rotation: rotX(0.22), scale: [1.0, 1.35, 1.0] },
+  { name: "Nau Right Leather Finger Grip", mesh: 19, translation: [0.035, -0.075, -0.045], rotation: rotX(0.22), scale: [1.0, 1.35, 1.0] },
+  { name: "Nau Left Leather Thumb Grip", mesh: 19, translation: [0.055, -0.025, -0.025], rotation: rotZ(-0.76), scale: [0.9, 0.95, 0.9] },
+  { name: "Nau Right Leather Thumb Grip", mesh: 19, translation: [-0.055, -0.025, -0.025], rotation: rotZ(0.76), scale: [0.9, 0.95, 0.9] },
+  { name: "Nau Left Leather Boot Toe Cap", mesh: 20, translation: [0, -0.12, -0.14], rotation: rotX(0.08), scale: [1.0, 1.0, 1.0] },
+  { name: "Nau Right Leather Boot Toe Cap", mesh: 20, translation: [0, -0.12, -0.14], rotation: rotX(0.08), scale: [1.0, 1.0, 1.0] },
+  { name: "Nau Left Accent Side Tunic Flap", mesh: 21, translation: [-0.31, 0.02, -0.02], rotation: rotZ(0.28), scale: [1.0, 0.95, 1.0] },
+  { name: "Nau Right Accent Side Tunic Flap", mesh: 21, translation: [0.31, 0.02, -0.02], rotation: rotZ(-0.28), scale: [1.0, 0.95, 1.0] },
 ];
 
 function quat(axis, radians) {
@@ -358,6 +372,8 @@ const animations = [
   animation("Idle_Loop", [
     { node: 3, path: "rotation", times: loopTimes, values: [rotZ(-0.04), rotZ(0.04), rotZ(-0.04)] },
     { node: 2, path: "translation", times: loopTimes, values: [[0, 1.08, 0], [0, 1.1, 0], [0, 1.08, 0]] },
+    { node: 37, path: "rotation", times: loopTimes, values: [rotZ(0.24), rotZ(0.32), rotZ(0.24)] },
+    { node: 38, path: "rotation", times: loopTimes, values: [rotZ(-0.24), rotZ(-0.32), rotZ(-0.24)] },
   ]),
   animation("Walk_Fwd_Loop", [
     { node: 2, path: "translation", times: loopTimes, values: [[0, 1.08, 0], [0, 1.095, 0], [0, 1.08, 0]] },
@@ -365,6 +381,10 @@ const animations = [
     { node: 5, path: "rotation", times: loopTimes, values: [rotX(0.26), rotX(-0.26), rotX(0.26)] },
     { node: 6, path: "rotation", times: loopTimes, values: [rotX(0.3), rotX(-0.3), rotX(0.3)] },
     { node: 7, path: "rotation", times: loopTimes, values: [rotX(-0.3), rotX(0.3), rotX(-0.3)] },
+    { node: 35, path: "rotation", times: loopTimes, values: [rotX(-0.10), rotX(0.08), rotX(-0.10)] },
+    { node: 36, path: "rotation", times: loopTimes, values: [rotX(0.08), rotX(-0.10), rotX(0.08)] },
+    { node: 37, path: "rotation", times: loopTimes, values: [rotZ(0.18), rotZ(0.36), rotZ(0.18)] },
+    { node: 38, path: "rotation", times: loopTimes, values: [rotZ(-0.36), rotZ(-0.18), rotZ(-0.36)] },
   ]),
   animation("Run_Fwd_Loop", [
     { node: 2, path: "translation", times: loopTimes, values: [[0, 1.06, 0], [0, 1.12, 0], [0, 1.06, 0]] },
@@ -373,6 +393,10 @@ const animations = [
     { node: 5, path: "rotation", times: loopTimes, values: [rotX(0.62), rotX(-0.62), rotX(0.62)] },
     { node: 6, path: "rotation", times: loopTimes, values: [rotX(0.7), rotX(-0.7), rotX(0.7)] },
     { node: 7, path: "rotation", times: loopTimes, values: [rotX(-0.7), rotX(0.7), rotX(-0.7)] },
+    { node: 35, path: "rotation", times: loopTimes, values: [rotX(-0.18), rotX(0.16), rotX(-0.18)] },
+    { node: 36, path: "rotation", times: loopTimes, values: [rotX(0.16), rotX(-0.18), rotX(0.16)] },
+    { node: 37, path: "rotation", times: loopTimes, values: [rotZ(0.12), rotZ(0.42), rotZ(0.12)] },
+    { node: 38, path: "rotation", times: loopTimes, values: [rotZ(-0.42), rotZ(-0.12), rotZ(-0.42)] },
   ]),
   animation("Launch_Start", [
     { node: 0, path: "translation", times: shortTimes, values: [[0, 0, 0], [0, 0.16, 0], [0, 0.04, 0]] },
@@ -391,6 +415,10 @@ const animations = [
     { node: 4, path: "rotation", times: loopTimes, values: [rotZ(1.08), rotZ(1.18), rotZ(1.08)] },
     { node: 5, path: "rotation", times: loopTimes, values: [rotZ(-1.08), rotZ(-1.18), rotZ(-1.08)] },
     { node: 2, path: "rotation", times: loopTimes, values: [rotX(0.08), rotX(0.14), rotX(0.08)] },
+    { node: 31, path: "rotation", times: loopTimes, values: [rotX(0.14), rotX(0.24), rotX(0.14)] },
+    { node: 32, path: "rotation", times: loopTimes, values: [rotX(0.14), rotX(0.24), rotX(0.14)] },
+    { node: 37, path: "rotation", times: loopTimes, values: [rotZ(0.42), rotZ(0.54), rotZ(0.42)] },
+    { node: 38, path: "rotation", times: loopTimes, values: [rotZ(-0.42), rotZ(-0.54), rotZ(-0.42)] },
   ]),
   animation("Bank_Left", [
     { node: 2, path: "rotation", times: loopTimes, values: [rotZ(0.22), rotZ(0.34), rotZ(0.22)] },
@@ -415,16 +443,24 @@ const animations = [
     { node: 5, path: "rotation", times: loopTimes, values: [rotZ(-1.34), rotZ(-1.42), rotZ(-1.34)] },
     { node: 6, path: "rotation", times: loopTimes, values: [rotX(0.78), rotX(0.86), rotX(0.78)] },
     { node: 7, path: "rotation", times: loopTimes, values: [rotX(0.78), rotX(0.86), rotX(0.78)] },
+    { node: 29, path: "rotation", times: loopTimes, values: [rotX(0.22), rotX(0.34), rotX(0.22)] },
+    { node: 30, path: "rotation", times: loopTimes, values: [rotX(0.22), rotX(0.34), rotX(0.22)] },
+    { node: 37, path: "rotation", times: loopTimes, values: [rotZ(0.56), rotZ(0.68), rotZ(0.56)] },
+    { node: 38, path: "rotation", times: loopTimes, values: [rotZ(-0.56), rotZ(-0.68), rotZ(-0.56)] },
   ]),
   animation("Air_Brake", [
     { node: 2, path: "rotation", times: shortTimes, values: [rotX(0.0), rotX(-0.24), rotX(-0.16)] },
     { node: 4, path: "rotation", times: shortTimes, values: [rotZ(0.55), rotZ(0.92), rotZ(0.72)] },
     { node: 5, path: "rotation", times: shortTimes, values: [rotZ(-0.55), rotZ(-0.92), rotZ(-0.72)] },
+    { node: 31, path: "rotation", times: shortTimes, values: [rotX(0.05), rotX(-0.18), rotX(-0.10)] },
+    { node: 32, path: "rotation", times: shortTimes, values: [rotX(0.05), rotX(-0.18), rotX(-0.10)] },
   ]),
   animation("Land", [
     { node: 0, path: "translation", times: shortTimes, values: [[0, 0.09, 0], [0, 0.02, 0], [0, 0, 0]] },
     { node: 6, path: "rotation", times: shortTimes, values: [rotX(-0.15), rotX(0.24), rotX(0)] },
     { node: 7, path: "rotation", times: shortTimes, values: [rotX(-0.15), rotX(0.24), rotX(0)] },
+    { node: 35, path: "rotation", times: shortTimes, values: [rotX(-0.12), rotX(0.22), rotX(0)] },
+    { node: 36, path: "rotation", times: shortTimes, values: [rotX(-0.12), rotX(0.22), rotX(0)] },
   ]),
 ];
 
