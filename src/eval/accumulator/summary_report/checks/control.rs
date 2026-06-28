@@ -633,6 +633,24 @@ fn append_air_control_checks(
             "deg",
         ),
         EvalCheck::at_least(
+            "air_control_dive_pose_torso_pitch",
+            acc.max_dive_pose_torso_pitch_degrees,
+            AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "air_control_dive_pose_arm_spread",
+            acc.max_dive_pose_arm_spread_degrees,
+            AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "air_control_dive_pose_leg_tuck",
+            acc.max_dive_pose_leg_tuck_degrees,
+            AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
             "air_control_pose_lateral_lean",
             acc.max_pose_lateral_lean_degrees,
             AIR_CONTROL_MIN_POSE_LATERAL_LEAN_DEGREES,
@@ -1138,6 +1156,24 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccu
             acc.gliding_dive_samples as f32,
             POSE_STATE_MIN_GLIDING_DIVE_SAMPLES,
             "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_dive_pose_torso_pitch",
+            acc.max_dive_pose_torso_pitch_degrees,
+            AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "pose_state_dive_pose_arm_spread",
+            acc.max_dive_pose_arm_spread_degrees,
+            AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "pose_state_dive_pose_leg_tuck",
+            acc.max_dive_pose_leg_tuck_degrees,
+            AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES,
+            "deg",
         ),
         EvalCheck::at_least(
             "pose_state_landing_anticipation_samples",

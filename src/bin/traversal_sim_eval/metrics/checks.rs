@@ -25,10 +25,12 @@ use serde_json::{Value, json};
 use super::{super::round4, SimMetrics};
 use crate::{
     AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES,
-    AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES, GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M,
-    GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES, GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M,
-    GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES, LANDING_MIN_POSE_CROUCH_M,
-    MIN_POSE_SCARF_LATERAL_SWAY_M, MIN_POSE_SCARF_STREAM_M, MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
+    AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES, AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES,
+    AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES, AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES,
+    GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+    GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+    LANDING_MIN_POSE_CROUCH_M, MIN_POSE_SCARF_LATERAL_SWAY_M, MIN_POSE_SCARF_STREAM_M,
+    MIN_POSE_SCARF_TAIL_FLEX_DEGREES,
 };
 
 const POSE_STATE_MIN_IDLE_SAMPLES: f32 = 3.0;
@@ -583,6 +585,24 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             metrics.gliding_dive_samples as f32,
             POSE_STATE_MIN_GLIDING_DIVE_SAMPLES,
             "samples",
+        ),
+        SimCheck::at_least(
+            "pose_state_dive_pose_torso_pitch",
+            metrics.max_dive_pose_torso_pitch_degrees,
+            AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "pose_state_dive_pose_arm_spread",
+            metrics.max_dive_pose_arm_spread_degrees,
+            AIR_CONTROL_MIN_DIVE_POSE_ARM_SPREAD_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "pose_state_dive_pose_leg_tuck",
+            metrics.max_dive_pose_leg_tuck_degrees,
+            AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES,
+            "deg",
         ),
         SimCheck::at_least(
             "pose_state_landing_anticipation_samples",
