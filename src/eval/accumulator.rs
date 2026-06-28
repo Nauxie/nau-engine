@@ -120,6 +120,8 @@ pub struct EvalAccumulator {
     max_pose_lateral_lean_degrees: f32,
     max_right_pose_lateral_lean_degrees: f32,
     max_left_pose_lateral_lean_degrees: f32,
+    max_backward_right_air_brake_pose_lateral_lean_degrees: f32,
+    max_backward_left_air_brake_pose_lateral_lean_degrees: f32,
     max_grounded_walk_stride_foot_travel_m: f32,
     max_grounded_run_stride_foot_travel_m: f32,
     max_grounded_walk_stride_leg_opposition_degrees: f32,

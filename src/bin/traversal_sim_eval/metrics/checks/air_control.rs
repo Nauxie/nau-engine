@@ -449,6 +449,18 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             "deg",
         ),
         SimCheck::at_least(
+            "air_control_backward_right_air_brake_pose_lateral_lean",
+            metrics.max_backward_right_air_brake_pose_lateral_lean_degrees,
+            AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "air_control_backward_left_air_brake_pose_lateral_lean",
+            metrics.max_backward_left_air_brake_pose_lateral_lean_degrees,
+            AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
             "air_control_pose_wing_airflow",
             metrics.max_pose_wing_airflow_strength,
             AIR_CONTROL_MIN_POSE_WING_AIRFLOW_STRENGTH,

@@ -2537,6 +2537,286 @@ fn accumulator_counts_bidirectional_air_control_air_brake_pose_samples() {
 }
 
 #[test]
+fn accumulator_gates_directional_air_control_air_brake_pose_lateral_lean() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut matching_accumulator = EvalAccumulator::default();
+    let mut wrong_signed_accumulator = EvalAccumulator::default();
+
+    observe_directional_air_brake_pose_lean_samples(&mut matching_accumulator, scenario, -8.0, 8.0);
+    observe_directional_air_brake_pose_lean_samples(
+        &mut wrong_signed_accumulator,
+        scenario,
+        8.0,
+        -8.0,
+    );
+
+    let matching_summary = matching_accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let wrong_signed_summary = wrong_signed_accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let matching_json: serde_json::Value =
+        serde_json::from_str(&matching_summary.to_json()).expect("summary json parses");
+
+    assert_eq!(
+        matching_summary
+            .metrics
+            .max_backward_right_air_brake_pose_lateral_lean_degrees,
+        8.0
+    );
+    assert_eq!(
+        matching_summary
+            .metrics
+            .max_backward_left_air_brake_pose_lateral_lean_degrees,
+        8.0
+    );
+    assert!(
+        named_check(
+            &matching_summary,
+            "air_control_backward_right_pose_air_brake_samples"
+        )
+        .passed
+    );
+    assert!(
+        named_check(
+            &matching_summary,
+            "air_control_backward_left_pose_air_brake_samples"
+        )
+        .passed
+    );
+    assert!(
+        named_check(
+            &matching_summary,
+            "air_control_backward_right_air_brake_pose_lateral_lean"
+        )
+        .passed
+    );
+    assert!(
+        named_check(
+            &matching_summary,
+            "air_control_backward_left_air_brake_pose_lateral_lean"
+        )
+        .passed
+    );
+    assert_eq!(
+        matching_json["metrics"]["max_backward_right_air_brake_pose_lateral_lean_degrees"].as_f64(),
+        Some(8.0)
+    );
+    assert_eq!(
+        matching_json["metrics"]["max_backward_left_air_brake_pose_lateral_lean_degrees"].as_f64(),
+        Some(8.0)
+    );
+    assert_eq!(
+        wrong_signed_summary
+            .metrics
+            .max_backward_right_air_brake_pose_lateral_lean_degrees,
+        0.0
+    );
+    assert_eq!(
+        wrong_signed_summary
+            .metrics
+            .max_backward_left_air_brake_pose_lateral_lean_degrees,
+        0.0
+    );
+    assert!(
+        named_check(
+            &wrong_signed_summary,
+            "air_control_backward_right_pose_air_brake_samples"
+        )
+        .passed
+    );
+    assert!(
+        named_check(
+            &wrong_signed_summary,
+            "air_control_backward_left_pose_air_brake_samples"
+        )
+        .passed
+    );
+    assert!(
+        !named_check(
+            &wrong_signed_summary,
+            "air_control_backward_right_air_brake_pose_lateral_lean"
+        )
+        .passed
+    );
+    assert!(
+        !named_check(
+            &wrong_signed_summary,
+            "air_control_backward_left_air_brake_pose_lateral_lean"
+        )
+        .passed
+    );
+}
+
+#[test]
+fn accumulator_gates_pose_state_directional_air_brake_pose_lateral_lean() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
+    let mut matching_accumulator = EvalAccumulator::default();
+    let mut wrong_signed_accumulator = EvalAccumulator::default();
+
+    observe_directional_air_brake_pose_lean_samples(&mut matching_accumulator, scenario, -8.0, 8.0);
+    observe_directional_air_brake_pose_lean_samples(
+        &mut wrong_signed_accumulator,
+        scenario,
+        8.0,
+        -8.0,
+    );
+
+    let matching_summary = matching_accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let wrong_signed_summary = wrong_signed_accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert!(
+        named_check(
+            &matching_summary,
+            "pose_state_backward_right_diagonal_body_travel_heading_samples"
+        )
+        .passed
+    );
+    assert!(
+        named_check(
+            &matching_summary,
+            "pose_state_backward_left_diagonal_body_travel_heading_samples"
+        )
+        .passed
+    );
+    assert!(
+        named_check(
+            &matching_summary,
+            "pose_state_backward_right_air_brake_pose_lateral_lean"
+        )
+        .passed
+    );
+    assert!(
+        named_check(
+            &matching_summary,
+            "pose_state_backward_left_air_brake_pose_lateral_lean"
+        )
+        .passed
+    );
+    assert!(
+        named_check(
+            &wrong_signed_summary,
+            "pose_state_backward_right_diagonal_body_travel_heading_samples"
+        )
+        .passed
+    );
+    assert!(
+        named_check(
+            &wrong_signed_summary,
+            "pose_state_backward_left_diagonal_body_travel_heading_samples"
+        )
+        .passed
+    );
+    assert!(
+        !named_check(
+            &wrong_signed_summary,
+            "pose_state_backward_right_air_brake_pose_lateral_lean"
+        )
+        .passed
+    );
+    assert!(
+        !named_check(
+            &wrong_signed_summary,
+            "pose_state_backward_left_air_brake_pose_lateral_lean"
+        )
+        .passed
+    );
+}
+
+fn observe_directional_air_brake_pose_lean_samples(
+    accumulator: &mut EvalAccumulator,
+    scenario: EvalScenario,
+    right_signed_lean_degrees: f32,
+    left_signed_lean_degrees: f32,
+) {
+    for sample_index in 0..4 {
+        accumulator.observe(
+            air_control_metric_sample(
+                scenario,
+                sample_index * 30,
+                Vec3::new(16.0, -2.0, -18.0),
+                Vec2::new(1.0, -1.0),
+                16.0,
+                18.0,
+                4.0,
+            )
+            .with_pose_readability_metrics(air_brake_pose_readability_metrics(
+                right_signed_lean_degrees,
+            )),
+        );
+    }
+    for sample_index in 0..4 {
+        accumulator.observe(
+            air_control_metric_sample(
+                scenario,
+                120 + sample_index * 30,
+                Vec3::new(-16.0, -2.0, -18.0),
+                Vec2::new(-1.0, -1.0),
+                16.0,
+                18.0,
+                4.0,
+            )
+            .with_pose_readability_metrics(air_brake_pose_readability_metrics(
+                left_signed_lean_degrees,
+            )),
+        );
+    }
+}
+
+fn air_brake_pose_readability_metrics(
+    signed_lateral_lean_degrees: f32,
+) -> EvalPoseReadabilityMetrics {
+    EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: 30.0,
+        arm_spread_degrees: 120.0,
+        leg_tuck_degrees: 40.0,
+        lateral_lean_degrees: signed_lateral_lean_degrees.abs(),
+        signed_lateral_lean_degrees,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
+        landing_crouch_m: 0.0,
+        landing_foot_forward_m: 0.0,
+        landing_foot_split_m: 0.0,
+        landing_recovery_flip_degrees: 0.0,
+        wing_airflow_strength: 0.35,
+        key_pose_readability_score: 1.0,
+    }
+}
+
+#[test]
 fn accumulator_rejects_unreadable_air_control_turn_pose_samples() {
     let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
     let mut accumulator = EvalAccumulator::default();
@@ -2889,6 +3169,8 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_backward_diagonal_body_travel_heading_samples",
         "pose_state_backward_right_diagonal_body_travel_heading_samples",
         "pose_state_backward_left_diagonal_body_travel_heading_samples",
+        "pose_state_backward_right_air_brake_pose_lateral_lean",
+        "pose_state_backward_left_air_brake_pose_lateral_lean",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
         "pose_state_authored_dive_clip_samples",
@@ -3315,9 +3597,16 @@ fn observe_pose_state_samples_with_grounded_stride(
             sample.lateral_input_active = movement_axis.x.abs() > f32::EPSILON;
             sample.body_roll_degrees = -movement_axis.x.signum() * 12.0;
             sample.lateral_response_mps = movement_axis.x.abs() * 18.0;
-            sample = sample.with_pose_readability_metrics(
-                pose_state_readability_metrics_for_label(pose_intent_label),
-            );
+            let mut readability_metrics =
+                pose_state_readability_metrics_for_label(pose_intent_label);
+            if movement_axis.x.abs() > f32::EPSILON {
+                readability_metrics.lateral_lean_degrees = readability_metrics
+                    .lateral_lean_degrees
+                    .max(AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES);
+                readability_metrics.signed_lateral_lean_degrees =
+                    -movement_axis.x.signum() * AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES;
+            }
+            sample = sample.with_pose_readability_metrics(readability_metrics);
             if include_grounded_stride_metrics
                 && matches!(pose_intent_label, "grounded_walk" | "grounded_run")
             {

@@ -670,6 +670,18 @@ fn append_air_control_checks(
             "deg",
         ),
         EvalCheck::at_least(
+            "air_control_backward_right_air_brake_pose_lateral_lean",
+            acc.max_backward_right_air_brake_pose_lateral_lean_degrees,
+            AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "air_control_backward_left_air_brake_pose_lateral_lean",
+            acc.max_backward_left_air_brake_pose_lateral_lean_degrees,
+            AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
             "air_control_pose_wing_airflow",
             acc.max_pose_wing_airflow_strength,
             AIR_CONTROL_MIN_POSE_WING_AIRFLOW_STRENGTH,
@@ -1191,6 +1203,18 @@ fn append_pose_state_coverage_checks(
             acc.backward_left_diagonal_body_travel_heading_samples as f32,
             AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES as f32,
             "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_backward_right_air_brake_pose_lateral_lean",
+            acc.max_backward_right_air_brake_pose_lateral_lean_degrees,
+            AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "pose_state_backward_left_air_brake_pose_lateral_lean",
+            acc.max_backward_left_air_brake_pose_lateral_lean_degrees,
+            AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES,
+            "deg",
         ),
         EvalCheck::at_least(
             "pose_state_diving_samples",

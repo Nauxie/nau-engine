@@ -468,6 +468,21 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
             .max_left_pose_lateral_lean_degrees
             .max(sample.pose_signed_lateral_lean_degrees.max(0.0));
     }
+    if sample.pose_intent_label == "air_brake"
+        && sample.movement_input_forward_axis < -0.25
+        && sample.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE
+        && !sample.key_pose_transition_grace
+    {
+        if sample.movement_input_lateral_axis > 0.25 {
+            accumulator.max_backward_right_air_brake_pose_lateral_lean_degrees = accumulator
+                .max_backward_right_air_brake_pose_lateral_lean_degrees
+                .max((-sample.pose_signed_lateral_lean_degrees).max(0.0));
+        } else if sample.movement_input_lateral_axis < -0.25 {
+            accumulator.max_backward_left_air_brake_pose_lateral_lean_degrees = accumulator
+                .max_backward_left_air_brake_pose_lateral_lean_degrees
+                .max(sample.pose_signed_lateral_lean_degrees.max(0.0));
+        }
+    }
     match sample.pose_intent_label {
         "grounded_walk" => {
             accumulator.max_grounded_walk_stride_foot_travel_m = accumulator

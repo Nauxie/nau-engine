@@ -591,6 +591,8 @@ fn pose_lateral_lean_radians(context: PlayerPoseContext) -> f32 {
     let intent = context.intent();
     let max_lean = if intent == PlayerPoseIntent::AirTurn {
         0.30
+    } else if intent == PlayerPoseIntent::AirBrake {
+        0.26
     } else if airborne_pose_intent(intent) {
         0.22
     } else {
@@ -3028,8 +3030,8 @@ mod tests {
 
         assert_eq!(right_context.intent(), PlayerPoseIntent::AirBrake);
         assert!(neutral_metrics.lateral_lean_degrees < 0.5);
-        assert!(right_metrics.signed_lateral_lean_degrees < -7.0);
-        assert!(left_metrics.signed_lateral_lean_degrees > 7.0);
+        assert!(right_metrics.signed_lateral_lean_degrees < -9.0);
+        assert!(left_metrics.signed_lateral_lean_degrees > 9.0);
         assert!(right_brake_right_arm.translation.y > right_brake_left_arm.translation.y + 0.08);
         assert!(right_brake_right_arm.translation.x > right_brake_left_arm.translation.x + 0.05);
         assert!(right_brake_right_leg.translation.z > right_brake_left_leg.translation.z + 0.05);

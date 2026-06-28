@@ -89,6 +89,8 @@ impl SimMetrics {
             "max_pose_lateral_lean_degrees": round4(self.max_pose_lateral_lean_degrees),
             "max_right_pose_lateral_lean_degrees": round4(self.max_right_pose_lateral_lean_degrees),
             "max_left_pose_lateral_lean_degrees": round4(self.max_left_pose_lateral_lean_degrees),
+            "max_backward_right_air_brake_pose_lateral_lean_degrees": round4(self.max_backward_right_air_brake_pose_lateral_lean_degrees),
+            "max_backward_left_air_brake_pose_lateral_lean_degrees": round4(self.max_backward_left_air_brake_pose_lateral_lean_degrees),
             "max_grounded_walk_stride_foot_travel_m": round4(self.max_grounded_walk_stride_foot_travel_m),
             "max_grounded_run_stride_foot_travel_m": round4(self.max_grounded_run_stride_foot_travel_m),
             "max_grounded_walk_stride_leg_opposition_degrees": round4(self.max_grounded_walk_stride_leg_opposition_degrees),
