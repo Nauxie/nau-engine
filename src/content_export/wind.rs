@@ -1,11 +1,12 @@
 use crate::{
     environment_visuals::{
-        CROSSWIND_GUIDES_PER_FIELD, CROSSWIND_RIBBONS_PER_FIELD, CrosswindGuide, CrosswindRibbon,
-        UPDRAFT_GUIDE_RING_LEVELS, UPDRAFT_GUIDES_PER_RING, UPDRAFT_RIBBONS_PER_FIELD,
-        UpdraftGuide, UpdraftRibbon, WIND_VISUAL_ALIGNMENT_MIN_DOT, WIND_VISUAL_COHERENCE_DT,
-        crosswind_guide_position, crosswind_ribbon_scene_sample_positions,
-        crosswind_ribbon_transform, updraft_guide_position, updraft_ribbon_scene_sample_positions,
-        updraft_ribbon_transform, visual_flow_alignment,
+        CROSSWIND_GUIDES_PER_FIELD, CROSSWIND_RIBBON_CENTER_ADVANCE, CROSSWIND_RIBBONS_PER_FIELD,
+        CrosswindGuide, CrosswindRibbon, UPDRAFT_GUIDE_RING_LEVELS, UPDRAFT_GUIDES_PER_RING,
+        UPDRAFT_RIBBONS_PER_FIELD, UpdraftGuide, UpdraftRibbon, WIND_VISUAL_ALIGNMENT_MIN_DOT,
+        WIND_VISUAL_COHERENCE_DT, crosswind_guide_position,
+        crosswind_ribbon_scene_sample_positions, crosswind_ribbon_transform,
+        updraft_guide_position, updraft_ribbon_scene_sample_positions, updraft_ribbon_transform,
+        visual_flow_alignment,
     },
     eval_runtime::{path_string, remove_existing_dir},
 };
@@ -237,7 +238,8 @@ fn wind_visual_tracks() -> Vec<WindVisualTrack> {
             let origin = field.stream_origin(ribbon_index, CROSSWIND_RIBBONS_PER_FIELD);
             let ribbon = CrosswindRibbon {
                 field,
-                base_translation: origin + field.direction * (field.half_extents.x * 0.62),
+                base_translation: origin
+                    + field.direction * (field.half_extents.x * CROSSWIND_RIBBON_CENTER_ADVANCE),
                 phase,
             };
             push_sampled_transform_tracks(
