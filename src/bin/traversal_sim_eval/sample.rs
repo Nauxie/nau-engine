@@ -5,7 +5,8 @@ use super::{
 use bevy::prelude::{Quat, Transform, Vec3};
 use nau_engine::{
     animation::{
-        PlayerPoseContext, PlayerPoseIntent, body_local_pose_velocity, glider_traversal_pose,
+        CharacterPart, CharacterPartRole, PlayerPoseContext, PlayerPoseIntent, Side,
+        body_local_pose_velocity, glider_traversal_pose, part_pose_with_context,
         pose_readability_metrics, wind_lateral_load_from_delta,
     },
     camera::{
@@ -117,6 +118,7 @@ pub(crate) struct SimSample {
     pub(crate) pose_scarf_tail_flex_degrees: f32,
     pub(crate) key_pose_readability_score: f32,
     pub(crate) key_pose_transition_grace: bool,
+    pub(crate) min_pose_limb_clearance_m: f32,
     pub(crate) desired_body_yaw_error_degrees: f32,
     pub(crate) desired_body_heading_error_degrees: f32,
     pub(crate) body_travel_heading_error_degrees: f32,
@@ -260,6 +262,7 @@ impl SimSample {
         .with_resolved_intent(pose_intent);
         let pose_intent_label = pose_context.intent().label();
         let pose_readability = pose_readability_metrics(pose_context, pose_phase);
+        let min_pose_limb_clearance_m = generated_pose_limb_clearance_m(pose_context, pose_phase);
         let wind_load_glider_response_degrees =
             glider_traversal_pose(pose_context, pose_phase).response_degrees();
         let streaming_lod = route.streaming_lod_stats(state.position);
@@ -293,6 +296,7 @@ impl SimSample {
             pose_scarf_tail_flex_degrees: pose_readability.scarf_tail_flex_degrees,
             key_pose_readability_score: pose_readability.key_pose_readability_score,
             key_pose_transition_grace: false,
+            min_pose_limb_clearance_m,
             desired_body_yaw_error_degrees,
             desired_body_heading_error_degrees: desired_body_yaw_error_degrees.abs(),
             body_travel_heading_error_degrees,
@@ -402,6 +406,7 @@ impl SimSample {
             "pose_scarf_tail_flex_degrees": round4(self.pose_scarf_tail_flex_degrees),
             "key_pose_readability_score": round4(self.key_pose_readability_score),
             "key_pose_transition_grace": self.key_pose_transition_grace,
+            "min_pose_limb_clearance_m": round4(self.min_pose_limb_clearance_m),
             "desired_body_yaw_error_degrees": finite_json(self.desired_body_yaw_error_degrees),
             "desired_body_heading_error_degrees": finite_json(self.desired_body_heading_error_degrees),
             "body_travel_heading_error_degrees": finite_json(self.body_travel_heading_error_degrees),
@@ -485,6 +490,76 @@ impl SimSample {
             "visual_foot_gap_m": GROUND_VISUAL_FOOT_GAP_M,
         })
     }
+}
+
+fn generated_pose_limb_clearance_m(context: PlayerPoseContext, phase: f32) -> f32 {
+    const TORSO_RADIUS_M: f32 = 0.26;
+    const ARM_RADIUS_M: f32 = 0.10;
+    const LEG_RADIUS_M: f32 = 0.11;
+
+    let torso = generated_part_translation(
+        CharacterPartRole::Torso,
+        Vec3::new(0.0, 1.08, 0.0),
+        context,
+        phase,
+    );
+    let left_arm = generated_part_translation(
+        CharacterPartRole::Arm(Side::Left),
+        Vec3::new(-0.55, 1.17, 0.0),
+        context,
+        phase,
+    );
+    let right_arm = generated_part_translation(
+        CharacterPartRole::Arm(Side::Right),
+        Vec3::new(0.55, 1.17, 0.0),
+        context,
+        phase,
+    );
+    let left_leg = generated_part_translation(
+        CharacterPartRole::Leg(Side::Left),
+        Vec3::new(-0.22, 0.32, 0.02),
+        context,
+        phase,
+    );
+    let right_leg = generated_part_translation(
+        CharacterPartRole::Leg(Side::Right),
+        Vec3::new(0.22, 0.32, 0.02),
+        context,
+        phase,
+    );
+
+    [
+        limb_clearance(torso, left_arm, TORSO_RADIUS_M, ARM_RADIUS_M),
+        limb_clearance(torso, right_arm, TORSO_RADIUS_M, ARM_RADIUS_M),
+        limb_clearance(torso, left_leg, TORSO_RADIUS_M, LEG_RADIUS_M),
+        limb_clearance(torso, right_leg, TORSO_RADIUS_M, LEG_RADIUS_M),
+        limb_clearance(left_arm, right_arm, ARM_RADIUS_M, ARM_RADIUS_M),
+        limb_clearance(left_arm, left_leg, ARM_RADIUS_M, LEG_RADIUS_M),
+        limb_clearance(left_arm, right_leg, ARM_RADIUS_M, LEG_RADIUS_M),
+        limb_clearance(right_arm, left_leg, ARM_RADIUS_M, LEG_RADIUS_M),
+        limb_clearance(right_arm, right_leg, ARM_RADIUS_M, LEG_RADIUS_M),
+        limb_clearance(left_leg, right_leg, LEG_RADIUS_M, LEG_RADIUS_M),
+    ]
+    .into_iter()
+    .fold(f32::INFINITY, f32::min)
+}
+
+fn generated_part_translation(
+    role: CharacterPartRole,
+    base_translation: Vec3,
+    context: PlayerPoseContext,
+    phase: f32,
+) -> Vec3 {
+    part_pose_with_context(
+        &CharacterPart::new(role, base_translation, Quat::IDENTITY),
+        context,
+        phase,
+    )
+    .translation
+}
+
+fn limb_clearance(a: Vec3, b: Vec3, a_radius_m: f32, b_radius_m: f32) -> f32 {
+    a.distance(b) - a_radius_m - b_radius_m
 }
 
 pub(crate) fn vec3_json(value: Vec3) -> Value {
