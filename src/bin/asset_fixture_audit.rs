@@ -39,8 +39,8 @@ const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_PAIR_COUNT: f64 = 26.0;
-const PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT: f64 = 14.0;
-const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 65.0;
+const PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT: f64 = 24.0;
+const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 75.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT: f64 = 9.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT: f64 = 4.0;
 const PLAYER_MESH_SILHOUETTE_EXPECTED_POSE_COUNT: f64 = 10.0;
@@ -59,7 +59,7 @@ const PLAYER_POSE_MIN_DIVE_LEG_TUCK_DEGREES: f64 = 68.0;
 const PLAYER_MIN_FINGER_GRIP_LENGTH_M: f64 = 0.10;
 const PLAYER_MAX_FINGER_GRIP_LENGTH_M: f64 = 0.22;
 const PLAYER_MIN_BOOT_SOLE_LENGTH_M: f64 = 0.32;
-const PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT: f64 = 24.0;
+const PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT: f64 = 36.0;
 const PLAYER_MIN_LIMB_ANATOMY_MAJOR_EXTENT_M: f64 = 0.15;
 const PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT: f64 = 0.45;
 const PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT: f64 = 0.70;
@@ -4680,7 +4680,7 @@ fn player_surface_contact_pairs() -> Vec<PlayerSurfaceContactPair> {
     pairs
 }
 
-fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 14] {
+fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 24] {
     [
         (
             "Nau Left Shoulder Joint Cover",
@@ -4708,6 +4708,22 @@ fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 14] {
         ),
         ("Nau Left Shoulder Accent", "Nau Suit Shoulder Yoke Plate"),
         ("Nau Right Shoulder Accent", "Nau Suit Shoulder Yoke Plate"),
+        (
+            "Nau Left Suit Shoulder Chest Blend",
+            "Nau Suit Shoulder Yoke Plate",
+        ),
+        (
+            "Nau Right Suit Shoulder Chest Blend",
+            "Nau Suit Shoulder Yoke Plate",
+        ),
+        (
+            "Nau Left Suit Shoulder Root Blend",
+            "Nau Left Suit Upper Arm",
+        ),
+        (
+            "Nau Right Suit Shoulder Root Blend",
+            "Nau Right Suit Upper Arm",
+        ),
         ("Nau Left Hip Joint Cover", "Nau Suit Pelvis Hip Yoke"),
         ("Nau Right Hip Joint Cover", "Nau Suit Pelvis Hip Yoke"),
         (
@@ -4720,6 +4736,27 @@ fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 14] {
         ),
         ("Nau Left Suit Thigh Guard", "Nau Suit Pelvis Hip Yoke"),
         ("Nau Right Suit Thigh Guard", "Nau Suit Pelvis Hip Yoke"),
+        ("Nau Left Suit Hip Root Blend", "Nau Left Suit Thigh Guard"),
+        (
+            "Nau Right Suit Hip Root Blend",
+            "Nau Right Suit Thigh Guard",
+        ),
+        (
+            "Nau Left Leather Wrist Palm Gusset",
+            "Nau Left Leather Hand Palm",
+        ),
+        (
+            "Nau Right Leather Wrist Palm Gusset",
+            "Nau Right Leather Hand Palm",
+        ),
+        (
+            "Nau Left Leather Ankle Boot Tongue",
+            "Nau Left Leather Boot Shell",
+        ),
+        (
+            "Nau Right Leather Ankle Boot Tongue",
+            "Nau Right Leather Boot Shell",
+        ),
     ]
 }
 
@@ -5328,14 +5365,24 @@ fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {
         "Nau Right Leather Forearm Tendon Strap",
         "Nau Left Leather Finger Web Bridge",
         "Nau Right Leather Finger Web Bridge",
+        "Nau Left Suit Shoulder Root Blend",
+        "Nau Right Suit Shoulder Root Blend",
+        "Nau Left Suit Shoulder Chest Blend",
+        "Nau Right Suit Shoulder Chest Blend",
         "Nau Left Suit Outer Thigh Sweep",
         "Nau Right Suit Outer Thigh Sweep",
         "Nau Left Suit Inner Thigh Sweep",
         "Nau Right Suit Inner Thigh Sweep",
+        "Nau Left Suit Hip Root Blend",
+        "Nau Right Suit Hip Root Blend",
         "Nau Left Suit Calf Volume",
         "Nau Right Suit Calf Volume",
         "Nau Left Suit Shin Ridge",
         "Nau Right Suit Shin Ridge",
+        "Nau Left Suit Knee Tendon Strap",
+        "Nau Right Suit Knee Tendon Strap",
+        "Nau Left Leather Wrist Palm Gusset",
+        "Nau Right Leather Wrist Palm Gusset",
         "Nau Left Leather Heel Tendon Guard",
         "Nau Right Leather Heel Tendon Guard",
         "Nau Left Leather Boot Instep Plate",
@@ -5344,6 +5391,8 @@ fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {
         "Nau Right Leather Lace Cross Strap A",
         "Nau Left Leather Lace Cross Strap B",
         "Nau Right Leather Lace Cross Strap B",
+        "Nau Left Leather Ankle Boot Tongue",
+        "Nau Right Leather Ankle Boot Tongue",
     ]
 }
 
@@ -6895,11 +6944,17 @@ mod tests {
         );
         for expected in [
             "Nau Left Suit Bicep Volume",
+            "Nau Left Suit Shoulder Root Blend",
+            "Nau Right Suit Shoulder Chest Blend",
+            "Nau Left Suit Hip Root Blend",
             "Nau Right Suit Tricep Sweep",
             "Nau Left Leather Finger Web Bridge",
             "Nau Right Suit Calf Volume",
+            "Nau Left Suit Knee Tendon Strap",
             "Nau Left Suit Shin Ridge",
+            "Nau Left Leather Wrist Palm Gusset",
             "Nau Right Leather Boot Instep Plate",
+            "Nau Right Leather Ankle Boot Tongue",
             "Nau Left Leather Lace Cross Strap A",
         ] {
             assert!(
