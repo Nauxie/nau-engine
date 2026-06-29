@@ -705,12 +705,16 @@ fn player_pose_preview_specs() -> Vec<PlayerPosePreviewSpec> {
 fn player_transition_pose_preview_specs() -> Vec<PlayerTransitionPosePreviewSpec> {
     player_pose_transition_contact_transitions()
         .into_iter()
-        .map(|transition| PlayerTransitionPosePreviewSpec {
-            label: transition.label,
-            title: transition.label,
-            transition,
-            phase: 0.75,
-            blend: 0.5,
+        .flat_map(|transition| {
+            player_pose_transition_contact_blends().map(move |blend| {
+                PlayerTransitionPosePreviewSpec {
+                    label: transition.label,
+                    title: transition.label,
+                    transition,
+                    phase: 0.75,
+                    blend,
+                }
+            })
         })
         .collect()
 }
@@ -1223,6 +1227,7 @@ fn render_player_pose_preview_view(
         .expect("writing to string should not fail");
     }
     render_player_pose_contact_overlay(svg, shapes, view, origin_x, origin_y, scale);
+    render_player_pose_overlap_overlay(svg, shapes, view, origin_x, origin_y, scale);
 }
 
 fn render_glider_pose_preview_view(
@@ -1443,6 +1448,145 @@ fn render_player_pose_contact_overlay(
         )
         .expect("writing to string should not fail");
     }
+}
+
+fn render_player_pose_overlap_overlay(
+    svg: &mut String,
+    shapes: &[PlayerPosePreviewShape],
+    view: PlayerPosePreviewView,
+    origin_x: f32,
+    origin_y: f32,
+    scale: f32,
+) {
+    let transform = PosePreviewTransform {
+        origin_x,
+        origin_y,
+        scale,
+    };
+    for (left, right) in player_joint_cover_mesh_pairs() {
+        render_player_pose_overlap_marker(
+            svg,
+            shapes,
+            view,
+            transform,
+            PlayerPoseOverlapRule {
+                category: "joint cover mesh overlap",
+                left,
+                right,
+                warn_threshold_m: PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M * 0.85,
+                fail_threshold_m: PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M,
+            },
+        );
+    }
+    for (left, right) in player_joint_bridge_mesh_pairs() {
+        render_player_pose_overlap_marker(
+            svg,
+            shapes,
+            view,
+            transform,
+            PlayerPoseOverlapRule {
+                category: "joint bridge mesh overlap",
+                left,
+                right,
+                warn_threshold_m: PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M * 0.85,
+                fail_threshold_m: PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M,
+            },
+        );
+    }
+    for (left, right) in player_rest_non_adjacent_mesh_overlap_pairs() {
+        render_player_pose_overlap_marker(
+            svg,
+            shapes,
+            view,
+            transform,
+            PlayerPoseOverlapRule {
+                category: "non-adjacent mesh overlap",
+                left,
+                right,
+                warn_threshold_m: PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
+                fail_threshold_m: PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
+            },
+        );
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PosePreviewTransform {
+    origin_x: f32,
+    origin_y: f32,
+    scale: f32,
+}
+
+#[derive(Clone, Copy)]
+struct PlayerPoseOverlapRule {
+    category: &'static str,
+    left: &'static str,
+    right: &'static str,
+    warn_threshold_m: f64,
+    fail_threshold_m: f64,
+}
+
+fn render_player_pose_overlap_marker(
+    svg: &mut String,
+    shapes: &[PlayerPosePreviewShape],
+    view: PlayerPosePreviewView,
+    transform: PosePreviewTransform,
+    rule: PlayerPoseOverlapRule,
+) {
+    let Some(left) = shapes.iter().find(|shape| shape.node_name == rule.left) else {
+        return;
+    };
+    let Some(right) = shapes.iter().find(|shape| shape.node_name == rule.right) else {
+        return;
+    };
+    let overlap_m = left.bounds.overlap_depth_m(right.bounds);
+    if overlap_m <= rule.warn_threshold_m {
+        return;
+    }
+    let Some((min_u, max_u, min_v, max_v)) =
+        projected_aabb_overlap_rect(left.bounds, right.bounds, view)
+    else {
+        return;
+    };
+    let x = transform.origin_x + min_u * transform.scale;
+    let y = transform.origin_y - max_v * transform.scale;
+    let width = (max_u - min_u) * transform.scale;
+    let height = (max_v - min_v) * transform.scale;
+    if width < 0.7 || height < 0.7 {
+        return;
+    }
+    let color = if overlap_m > rule.fail_threshold_m {
+        "#ff5364"
+    } else {
+        "#ffb84d"
+    };
+    writeln!(
+        svg,
+        "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{width:.2}\" height=\"{height:.2}\" fill=\"{color}\" fill-opacity=\"0.18\" stroke=\"{color}\" stroke-opacity=\"0.92\" stroke-width=\"1.0\"><title>{}: {} into {} overlap {:.3} m</title></rect>",
+        escape_xml(rule.category),
+        escape_xml(rule.left),
+        escape_xml(rule.right),
+        overlap_m
+    )
+    .expect("writing to string should not fail");
+}
+
+fn projected_aabb_overlap_rect(
+    left: Aabb3,
+    right: Aabb3,
+    view: PlayerPosePreviewView,
+) -> Option<(f32, f32, f32, f32)> {
+    let min = left.min.max(right.min);
+    let max = left.max.min(right.max);
+    if min.x >= max.x || min.y >= max.y || min.z >= max.z {
+        return None;
+    }
+    let (min_u, max_u, min_v, max_v) = match view {
+        PlayerPosePreviewView::Front => (min.x, max.x, min.y, max.y),
+        PlayerPosePreviewView::Side => (min.z, max.z, min.y, max.y),
+        PlayerPosePreviewView::Top => (min.x, max.x, min.z, max.z),
+    };
+    Some((min_u, max_u, min_v, max_v))
 }
 
 fn preview_depth(bounds: Aabb3, view: PlayerPosePreviewView) -> f32 {
@@ -5636,12 +5780,16 @@ mod tests {
         assert_eq!(
             specs.len() as f64,
             PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT
+                * PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT
         );
         assert!(sheet.contains("player fixture transition pose preview"));
         assert!(sheet.contains("gliding_to_diving"));
         assert!(sheet.contains("landing_anticipation_to_landing_recovery"));
-        assert!(sheet.contains("blend: 50%"));
+        for expected in ["blend: 20%", "blend: 40%", "blend: 60%", "blend: 80%"] {
+            assert!(sheet.contains(expected));
+        }
         assert!(sheet.contains("surface distance"));
+        assert!(sheet.contains("mesh overlap"));
     }
 
     #[test]
