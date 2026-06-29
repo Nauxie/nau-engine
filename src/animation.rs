@@ -324,6 +324,15 @@ impl GliderTraversalPose {
 }
 
 pub fn glider_traversal_pose(context: PlayerPoseContext, phase: f32) -> GliderTraversalPose {
+    if context.mode == FlightMode::Launching {
+        let unfurl = (phase * 1.7).sin() * 0.010;
+        return GliderTraversalPose {
+            translation_offset: Vec3::new(0.0, 0.085 + unfurl, 0.180),
+            rotation_offset: Quat::from_rotation_x(-0.18 + unfurl * 0.8)
+                * Quat::from_rotation_z(0.045),
+        };
+    }
+
     if context.mode != FlightMode::Gliding {
         return GliderTraversalPose::default();
     }
@@ -1034,7 +1043,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedStride => -0.04 * gait_weight,
                 PlayerPoseIntent::GroundedWalk => -0.035 * walk_weight,
                 PlayerPoseIntent::GroundedRun => -0.08 - run_weight * 0.07,
-                PlayerPoseIntent::Falling => -1.14 + vertical_pitch * 0.14,
+                PlayerPoseIntent::Falling => -1.30 + vertical_pitch * 0.12,
                 PlayerPoseIntent::Gliding => -0.30 + vertical_pitch * 0.5,
                 PlayerPoseIntent::AirTurn => -0.34 + vertical_pitch * 0.45,
                 PlayerPoseIntent::Diving => {
@@ -1127,7 +1136,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedStride => 0.08 + gait.abs() * 0.06 * gait_weight,
                 PlayerPoseIntent::GroundedWalk => 0.10 + gait.abs() * 0.08 * walk_weight,
                 PlayerPoseIntent::GroundedRun => 0.16 + gait.abs() * 0.14,
-                PlayerPoseIntent::Falling => 1.34 + airflow * 0.018,
+                PlayerPoseIntent::Falling => 1.43 + airflow * 0.018,
                 PlayerPoseIntent::Gliding => 1.22 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => 1.18 + airflow * 0.040,
                 PlayerPoseIntent::Diving => 0.18 + dive_extension * 0.05 + airflow * 0.012,
@@ -1156,7 +1165,7 @@ pub fn part_pose_with_context(
                 }
                 PlayerPoseIntent::LandingRecovery => 0.70 + recovery_strength * 0.40,
                 PlayerPoseIntent::Launching => -0.36,
-                PlayerPoseIntent::Falling => -0.38 + airflow * 0.018,
+                PlayerPoseIntent::Falling => -0.50 + airflow * 0.018,
             };
             translation.z += gait * 0.08 * gait_weight;
             translation.y += match context.mode {
@@ -1752,6 +1761,32 @@ mod tests {
 
         assert_eq!(pose.motion_m(), 0.0);
         assert_eq!(pose.response_degrees(), 0.0);
+    }
+
+    #[test]
+    fn glider_traversal_pose_has_launch_takeout_motion() {
+        let launch_pose = glider_traversal_pose(
+            PlayerPoseContext::new(
+                FlightMode::Launching,
+                Vec3::new(0.0, 8.0, -20.0),
+                FlightInput::default(),
+                80.0,
+            ),
+            0.0,
+        );
+        let glide_pose = glider_traversal_pose(
+            PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -4.0, -36.0),
+                FlightInput::default(),
+                80.0,
+            ),
+            0.0,
+        );
+
+        assert!(launch_pose.motion_m() > 0.18);
+        assert!(launch_pose.response_degrees() > 8.0);
+        assert!(launch_pose.motion_m() > glide_pose.motion_m() + 0.08);
     }
 
     #[test]
@@ -2744,13 +2779,50 @@ mod tests {
         let right_dive_arm = part_pose_with_context(&right_arm, dive_context, 0.0);
 
         assert_eq!(dive_context.intent(), PlayerPoseIntent::Diving);
-        assert!(falling_metrics.torso_pitch_degrees > 36.0);
+        assert!(falling_metrics.torso_pitch_degrees > 72.0);
+        assert!(falling_metrics.arm_spread_degrees > 150.0);
         assert!(dive_metrics.torso_pitch_degrees > DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES);
         assert!(dive_metrics.arm_spread_degrees < DIVE_MAX_ARM_SPREAD_READABILITY_DEGREES);
+        assert!(dive_metrics.torso_pitch_degrees > falling_metrics.torso_pitch_degrees + 20.0);
         assert!(dive_metrics.leg_tuck_degrees > falling_metrics.leg_tuck_degrees + 30.0);
         assert!(left_dive_arm.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
         assert!(right_dive_arm.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
         assert!(dive_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
+    }
+
+    #[test]
+    fn falling_to_dive_pose_blend_is_bounded_and_directional() {
+        let torso = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+        let falling_context = PlayerPoseContext::new(
+            FlightMode::Airborne,
+            Vec3::new(0.0, -18.0, -24.0),
+            FlightInput::default(),
+            80.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::Falling);
+        let dive_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -30.0, -42.0),
+            FlightInput {
+                dive: true,
+                ..default()
+            },
+            80.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::Diving);
+        let mut smoothed = part_pose_with_context(&torso, falling_context, 0.0).rotation;
+        let dive_target = part_pose_with_context(&torso, dive_context, 0.0).rotation;
+        let blend = pose_blend_for_intent(PlayerPoseIntent::Diving, 1.0 / 60.0);
+        let mut max_step_degrees: f32 = 0.0;
+
+        for _ in 0..6 {
+            let previous = smoothed;
+            smoothed = smoothed.slerp(dive_target, blend);
+            max_step_degrees = max_step_degrees.max(previous.angle_between(smoothed).to_degrees());
+        }
+
+        assert!(max_step_degrees < 18.0);
+        assert!(smoothed.angle_between(dive_target).to_degrees() < 8.0);
     }
 
     #[test]

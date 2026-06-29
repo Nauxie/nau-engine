@@ -1040,12 +1040,21 @@ mod tests {
         let base = authored_glider_scene_transform();
         let mut glider = AuthoredGliderPose::new(&base);
         let mut transform = base;
+        let launch_pose = glider_traversal_pose(
+            PlayerPoseContext::new(
+                FlightMode::Launching,
+                Vec3::new(0.0, 8.0, -20.0),
+                FlightInput::default(),
+                80.0,
+            ),
+            0.0,
+        );
 
         apply_authored_glider_pose_smoothing(
             &mut glider,
             &mut transform,
-            Vec3::ZERO,
-            Quat::IDENTITY,
+            launch_pose.translation_offset,
+            launch_pose.rotation_offset,
             authored_glider_deployment(FlightMode::Launching),
             0.0,
             1.0,
@@ -1053,6 +1062,8 @@ mod tests {
 
         assert!(authored_glider_deployment(FlightMode::Launching) > 0.0);
         assert!(authored_glider_deployment(FlightMode::Launching) < 1.0);
+        assert!(launch_pose.motion_m() > 0.18);
+        assert!(launch_pose.response_degrees() > 8.0);
         assert!(glider.motion_m(&transform) > 0.25);
         assert!(glider.response_degrees(&transform) > 20.0);
     }
