@@ -8,6 +8,7 @@ repository = "https://github.com/Nauxie/nau-engine"
 default-run = "nau-engine"
 
 [dependencies]
+base64 = "0.22"
 bevy = "0.18.1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde_json = "1.0.150"
