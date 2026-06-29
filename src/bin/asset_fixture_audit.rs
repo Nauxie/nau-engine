@@ -29,7 +29,9 @@ const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M: f64 = 0.072;
 const PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M: f64 = 0.008;
 const PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M: f64 = 0.004;
 const PLAYER_POSE_MAX_JOINT_SEAM_MESH_OVERLAP_M: f64 = 0.120;
-const PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M: f64 = 0.035;
+const PLAYER_POSE_MAX_PROXIMAL_CONTACT_MESH_OVERLAP_M: f64 = 0.160;
+const PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M: f64 = 0.065;
+const PLAYER_POSE_MAX_PROJECTED_CONTACT_GAP_M: f64 = 0.018;
 const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.001;
 const PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT: f64 = 10.0;
 const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 8.0;
@@ -37,7 +39,8 @@ const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_PAIR_COUNT: f64 = 26.0;
-const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 51.0;
+const PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT: f64 = 14.0;
+const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 65.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT: f64 = 9.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT: f64 = 4.0;
 const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 72.0;
@@ -484,12 +487,20 @@ struct ClosestSurfacePoints {
     right: Vec3,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum PlayerPosePreviewView {
     Front,
+    Rear,
     Side,
     Top,
 }
+
+const PLAYER_POSE_PREVIEW_VIEWS: [PlayerPosePreviewView; 4] = [
+    PlayerPosePreviewView::Front,
+    PlayerPosePreviewView::Rear,
+    PlayerPosePreviewView::Side,
+    PlayerPosePreviewView::Top,
+];
 
 #[derive(Clone, Copy)]
 struct PosePreviewPanel {
@@ -540,7 +551,10 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "pose_count": specs.len(),
         "transition_pose_count": transition_specs.len(),
         "glider_pose_count": glider_specs.len(),
-        "views": ["front", "side", "top"],
+        "views": PLAYER_POSE_PREVIEW_VIEWS
+            .iter()
+            .map(|view| view.key())
+            .collect::<Vec<_>>(),
         "phase_samples": specs.iter().map(|spec| spec.phase).collect::<Vec<_>>(),
         "poses": specs.iter().map(|spec| json!({
             "label": spec.label,
@@ -861,7 +875,7 @@ fn render_player_pose_preview_sheet(
     const HEADER_HEIGHT: f32 = 58.0;
     const PADDING: f32 = 18.0;
 
-    let width = LABEL_WIDTH + VIEW_WIDTH * 3.0 + PADDING * 2.0;
+    let width = LABEL_WIDTH + VIEW_WIDTH * PLAYER_POSE_PREVIEW_VIEWS.len() as f32 + PADDING * 2.0;
     let height = HEADER_HEIGHT + ROW_HEIGHT * specs.len() as f32 + PADDING;
     let mut svg = String::new();
     writeln!(
@@ -871,14 +885,7 @@ fn render_player_pose_preview_sheet(
     .expect("writing to string should not fail");
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#10151f\"/>\n");
     svg.push_str("<text x=\"18\" y=\"24\" fill=\"#dbe7f3\" font-family=\"Menlo, monospace\" font-size=\"16\">NAU player fixture pose preview</text>\n");
-    for (index, view) in [
-        PlayerPosePreviewView::Front,
-        PlayerPosePreviewView::Side,
-        PlayerPosePreviewView::Top,
-    ]
-    .iter()
-    .enumerate()
-    {
+    for (index, view) in PLAYER_POSE_PREVIEW_VIEWS.iter().enumerate() {
         let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * index as f32 + VIEW_WIDTH * 0.5;
         writeln!(
             svg,
@@ -909,14 +916,7 @@ fn render_player_pose_preview_sheet(
         )
         .expect("writing to string should not fail");
 
-        for (column, view) in [
-            PlayerPosePreviewView::Front,
-            PlayerPosePreviewView::Side,
-            PlayerPosePreviewView::Top,
-        ]
-        .iter()
-        .enumerate()
-        {
+        for (column, view) in PLAYER_POSE_PREVIEW_VIEWS.iter().enumerate() {
             let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * column as f32;
             render_player_pose_preview_view(
                 &mut svg,
@@ -944,7 +944,7 @@ fn render_player_transition_pose_preview_sheet(
     const HEADER_HEIGHT: f32 = 58.0;
     const PADDING: f32 = 18.0;
 
-    let width = LABEL_WIDTH + VIEW_WIDTH * 3.0 + PADDING * 2.0;
+    let width = LABEL_WIDTH + VIEW_WIDTH * PLAYER_POSE_PREVIEW_VIEWS.len() as f32 + PADDING * 2.0;
     let height = HEADER_HEIGHT + ROW_HEIGHT * specs.len() as f32 + PADDING;
     let mut svg = String::new();
     writeln!(
@@ -954,14 +954,7 @@ fn render_player_transition_pose_preview_sheet(
     .expect("writing to string should not fail");
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#10151f\"/>\n");
     svg.push_str("<text x=\"18\" y=\"24\" fill=\"#dbe7f3\" font-family=\"Menlo, monospace\" font-size=\"16\">NAU player fixture transition pose preview</text>\n");
-    for (index, view) in [
-        PlayerPosePreviewView::Front,
-        PlayerPosePreviewView::Side,
-        PlayerPosePreviewView::Top,
-    ]
-    .iter()
-    .enumerate()
-    {
+    for (index, view) in PLAYER_POSE_PREVIEW_VIEWS.iter().enumerate() {
         let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * index as f32 + VIEW_WIDTH * 0.5;
         writeln!(
             svg,
@@ -1011,14 +1004,7 @@ fn render_player_transition_pose_preview_sheet(
         )
         .expect("writing to string should not fail");
 
-        for (column, view) in [
-            PlayerPosePreviewView::Front,
-            PlayerPosePreviewView::Side,
-            PlayerPosePreviewView::Top,
-        ]
-        .iter()
-        .enumerate()
-        {
+        for (column, view) in PLAYER_POSE_PREVIEW_VIEWS.iter().enumerate() {
             let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * column as f32;
             render_player_pose_preview_view(
                 &mut svg,
@@ -1046,7 +1032,7 @@ fn render_glider_pose_preview_sheet(
     const HEADER_HEIGHT: f32 = 58.0;
     const PADDING: f32 = 18.0;
 
-    let width = LABEL_WIDTH + VIEW_WIDTH * 3.0 + PADDING * 2.0;
+    let width = LABEL_WIDTH + VIEW_WIDTH * PLAYER_POSE_PREVIEW_VIEWS.len() as f32 + PADDING * 2.0;
     let height = HEADER_HEIGHT + ROW_HEIGHT * specs.len() as f32 + PADDING;
     let mut svg = String::new();
     writeln!(
@@ -1056,11 +1042,7 @@ fn render_glider_pose_preview_sheet(
     .expect("writing to string should not fail");
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#10151f\"/>\n");
     svg.push_str("<text x=\"18\" y=\"24\" fill=\"#dbe7f3\" font-family=\"Menlo, monospace\" font-size=\"16\">NAU glider deployment pose preview</text>\n");
-    let views = [
-        PlayerPosePreviewView::Front,
-        PlayerPosePreviewView::Side,
-        PlayerPosePreviewView::Top,
-    ];
+    let views = PLAYER_POSE_PREVIEW_VIEWS;
     for (index, view) in views.iter().enumerate() {
         let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * index as f32 + VIEW_WIDTH * 0.5;
         writeln!(
@@ -1437,6 +1419,7 @@ fn preview_cross(origin: Vec2, left: Vec2, right: Vec2) -> f32 {
 fn project_preview_point(vertex: Vec3, view: PlayerPosePreviewView) -> Vec2 {
     match view {
         PlayerPosePreviewView::Front => Vec2::new(vertex.x, vertex.y),
+        PlayerPosePreviewView::Rear => Vec2::new(-vertex.x, vertex.y),
         PlayerPosePreviewView::Side => Vec2::new(vertex.z, vertex.y),
         PlayerPosePreviewView::Top => Vec2::new(vertex.x, vertex.z),
     }
@@ -1622,6 +1605,7 @@ fn projected_aabb_overlap_rect(
     }
     let (min_u, max_u, min_v, max_v) = match view {
         PlayerPosePreviewView::Front => (min.x, max.x, min.y, max.y),
+        PlayerPosePreviewView::Rear => (-max.x, -min.x, min.y, max.y),
         PlayerPosePreviewView::Side => (min.z, max.z, min.y, max.y),
         PlayerPosePreviewView::Top => (min.x, max.x, min.z, max.z),
     };
@@ -1631,6 +1615,7 @@ fn projected_aabb_overlap_rect(
 fn preview_depth(bounds: Aabb3, view: PlayerPosePreviewView) -> f32 {
     match view {
         PlayerPosePreviewView::Front => (bounds.min.z + bounds.max.z) * 0.5,
+        PlayerPosePreviewView::Rear => -(bounds.min.z + bounds.max.z) * 0.5,
         PlayerPosePreviewView::Side => (bounds.min.x + bounds.max.x) * 0.5,
         PlayerPosePreviewView::Top => (bounds.min.y + bounds.max.y) * 0.5,
     }
@@ -1856,9 +1841,19 @@ fn aabb_from_points(points: &[Vec3]) -> Option<Aabb3> {
 }
 
 impl PlayerPosePreviewView {
+    fn key(self) -> &'static str {
+        match self {
+            Self::Front => "front",
+            Self::Rear => "rear",
+            Self::Side => "side",
+            Self::Top => "top",
+        }
+    }
+
     fn label(self) -> &'static str {
         match self {
             Self::Front => "front mesh silhouette",
+            Self::Rear => "rear mesh silhouette",
             Self::Side => "side mesh silhouette",
             Self::Top => "top mesh footprint",
         }
@@ -2020,6 +2015,10 @@ fn audit_fixture(
     let player_joint_bridge_contact_audit = requirement
         .require_player_clips
         .then(|| player_joint_bridge_contact_audit(&gltf))
+        .flatten();
+    let player_proximal_contact_audit = requirement
+        .require_player_clips
+        .then(|| player_proximal_contact_audit(&gltf))
         .flatten();
     let player_joint_seam_contact_audit = requirement
         .require_player_clips
@@ -2284,6 +2283,33 @@ fn audit_fixture(
             0.0,
             "breaches",
         ));
+        let proximal_contact = player_proximal_contact_audit
+            .as_ref()
+            .expect("player proximal contact audit should be present for player fixture");
+        checks.push(check_eq_f64(
+            "player_proximal_contact_pair_count",
+            number_field(proximal_contact, "pair_count"),
+            PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT,
+            "pairs",
+        ));
+        checks.push(check_at_most_f64(
+            "player_proximal_contact_gap_max",
+            number_field(proximal_contact, "max_gap_m"),
+            PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_proximal_contact_overlap_max",
+            number_field(proximal_contact, "max_overlap_m"),
+            PLAYER_POSE_MAX_PROXIMAL_CONTACT_MESH_OVERLAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_proximal_contact_breach_count",
+            number_field(proximal_contact, "breach_count"),
+            0.0,
+            "breaches",
+        ));
         let seam_contact = player_joint_seam_contact_audit
             .as_ref()
             .expect("player joint seam contact audit should be present for player fixture");
@@ -2336,6 +2362,12 @@ fn audit_fixture(
             "player_pose_surface_contact_distance_max",
             number_field(surface_contact, "max_distance_m"),
             PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_surface_contact_projected_gap_max",
+            number_field(surface_contact, "max_projected_gap_m"),
+            PLAYER_POSE_MAX_PROJECTED_CONTACT_GAP_M,
             "m",
         ));
         checks.push(check_at_most_f64(
@@ -2602,6 +2634,7 @@ fn audit_fixture(
         "player_pose_joint_cover_mesh_overlap_max_m": player_pose_joint_cover_mesh_overlap_max_m(&gltf),
         "player_pose_joint_cover_mesh_overlap_worst_pair": player_pose_joint_cover_mesh_overlap_report(&gltf).map(|report| report.to_json()),
         "player_joint_bridge_contact_audit": player_joint_bridge_contact_audit,
+        "player_proximal_contact_audit": player_proximal_contact_audit,
         "player_joint_seam_contact_audit": player_joint_seam_contact_audit,
         "player_pose_contact_audit": player_pose_contact_audit,
         "player_pose_transition_contact_audit": player_pose_transition_contact_audit,
@@ -2976,6 +3009,62 @@ impl SurfaceContactDistanceReport {
     fn to_json(self) -> Value {
         json!({
             "max_distance_m": self.max_distance_m,
+            "category": self.category,
+            "left_node": self.left_node,
+            "right_node": self.right_node,
+            "pose_intent": self.pose_intent,
+            "phase": self.phase,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ProjectedContactGapReport {
+    max_gap_m: f64,
+    view: PlayerPosePreviewView,
+    category: &'static str,
+    left_node: &'static str,
+    right_node: &'static str,
+    pose_intent: &'static str,
+    phase: f32,
+}
+
+impl ProjectedContactGapReport {
+    fn zero() -> Self {
+        Self {
+            max_gap_m: 0.0,
+            view: PlayerPosePreviewView::Front,
+            category: "",
+            left_node: "",
+            right_node: "",
+            pose_intent: "none",
+            phase: 0.0,
+        }
+    }
+
+    fn observe_label(
+        &mut self,
+        gap_m: f64,
+        view: PlayerPosePreviewView,
+        pair: PlayerSurfaceContactPair,
+        pose_label: &'static str,
+        phase: f32,
+    ) {
+        if gap_m > self.max_gap_m {
+            self.max_gap_m = gap_m;
+            self.view = view;
+            self.category = pair.category;
+            self.left_node = pair.left;
+            self.right_node = pair.right;
+            self.pose_intent = pose_label;
+            self.phase = phase;
+        }
+    }
+
+    fn to_json(self) -> Value {
+        json!({
+            "max_gap_m": self.max_gap_m,
+            "view": self.view.key(),
             "category": self.category,
             "left_node": self.left_node,
             "right_node": self.right_node,
@@ -3946,7 +4035,57 @@ fn player_surface_contact_pairs() -> Vec<PlayerSurfaceContactPair> {
             right,
         });
     }
+    for (left, right) in player_proximal_contact_mesh_pairs() {
+        pairs.push(PlayerSurfaceContactPair {
+            category: "proximal",
+            left,
+            right,
+        });
+    }
     pairs
+}
+
+fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 14] {
+    [
+        (
+            "Nau Left Shoulder Joint Cover",
+            "Nau Suit Shoulder Yoke Plate",
+        ),
+        (
+            "Nau Right Shoulder Joint Cover",
+            "Nau Suit Shoulder Yoke Plate",
+        ),
+        (
+            "Nau Left Shoulder Bridge Sleeve",
+            "Nau Suit Shoulder Yoke Plate",
+        ),
+        (
+            "Nau Right Shoulder Bridge Sleeve",
+            "Nau Suit Shoulder Yoke Plate",
+        ),
+        (
+            "Nau Left Suit Deltoid Filler",
+            "Nau Suit Shoulder Yoke Plate",
+        ),
+        (
+            "Nau Right Suit Deltoid Filler",
+            "Nau Suit Shoulder Yoke Plate",
+        ),
+        ("Nau Left Shoulder Accent", "Nau Suit Shoulder Yoke Plate"),
+        ("Nau Right Shoulder Accent", "Nau Suit Shoulder Yoke Plate"),
+        ("Nau Left Hip Joint Cover", "Nau Suit Pelvis Hip Yoke"),
+        ("Nau Right Hip Joint Cover", "Nau Suit Pelvis Hip Yoke"),
+        (
+            "Nau Left Seamless Hip Flex Cover",
+            "Nau Suit Pelvis Hip Yoke",
+        ),
+        (
+            "Nau Right Seamless Hip Flex Cover",
+            "Nau Suit Pelvis Hip Yoke",
+        ),
+        ("Nau Left Suit Thigh Guard", "Nau Suit Pelvis Hip Yoke"),
+        ("Nau Right Suit Thigh Guard", "Nau Suit Pelvis Hip Yoke"),
+    ]
 }
 
 fn player_joint_bridge_contact_audit(gltf: &Value) -> Option<Value> {
@@ -4022,6 +4161,129 @@ fn player_joint_bridge_contact_audit(gltf: &Value) -> Option<Value> {
         "worst_overlap_pair": overall_overlap.to_json(),
         "pairs": bridge_reports,
     }))
+}
+
+fn player_proximal_contact_audit(gltf: &Value) -> Option<Value> {
+    let phases = player_pose_contact_phases();
+    let contexts = player_pose_mesh_overlap_contexts();
+    let transitions = player_pose_transition_contact_transitions();
+    let blends = player_pose_transition_contact_blends();
+    let mut pair_reports = Vec::new();
+    let mut overall_gap = MeshGapReport::zero();
+    let mut overall_overlap = MeshOverlapReport::zero();
+    let mut breach_count = 0_u64;
+    let samples_per_pair =
+        contexts.len() * phases.len() + transitions.len() * phases.len() * blends.len();
+
+    for (left, right) in player_proximal_contact_mesh_pairs() {
+        let mut pair_gap = MeshGapReport::zero();
+        let mut pair_overlap = MeshOverlapReport::zero();
+
+        for context in contexts {
+            for phase in phases {
+                let overrides = player_pose_node_overrides(gltf, context, phase)?;
+                observe_proximal_contact_sample(
+                    gltf,
+                    left,
+                    right,
+                    &overrides,
+                    context.intent().label(),
+                    phase,
+                    &mut pair_gap,
+                    &mut pair_overlap,
+                    &mut overall_gap,
+                    &mut overall_overlap,
+                )?;
+            }
+        }
+
+        for transition in transitions {
+            for phase in phases {
+                for blend in blends {
+                    let overrides = player_pose_transition_node_overrides(
+                        gltf,
+                        transition.from,
+                        transition.to,
+                        phase,
+                        blend,
+                    )?;
+                    observe_proximal_contact_sample(
+                        gltf,
+                        left,
+                        right,
+                        &overrides,
+                        transition.label,
+                        phase,
+                        &mut pair_gap,
+                        &mut pair_overlap,
+                        &mut overall_gap,
+                        &mut overall_overlap,
+                    )?;
+                }
+            }
+        }
+
+        let within_threshold = pair_gap.max_gap_m <= PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M
+            && pair_overlap.max_overlap_m <= PLAYER_POSE_MAX_PROXIMAL_CONTACT_MESH_OVERLAP_M;
+        if !within_threshold {
+            breach_count += 1;
+        }
+        pair_reports.push(json!({
+            "left_node": left,
+            "right_node": right,
+            "max_gap_m": pair_gap.max_gap_m,
+            "max_overlap_m": pair_overlap.max_overlap_m,
+            "within_threshold": within_threshold,
+            "worst_gap_pair": pair_gap.to_json(),
+            "worst_overlap_pair": pair_overlap.to_json(),
+        }));
+    }
+
+    Some(json!({
+        "schema": "nau_player_proximal_contact_audit.v1",
+        "pair_count": pair_reports.len(),
+        "pose_count": contexts.len(),
+        "phase_count": phases.len(),
+        "transition_count": transitions.len(),
+        "blend_count": blends.len(),
+        "samples_per_pair": samples_per_pair,
+        "max_gap_m": overall_gap.max_gap_m,
+        "max_overlap_m": overall_overlap.max_overlap_m,
+        "breach_count": breach_count,
+        "thresholds": {
+            "proximal_contact_gap_max_m": PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M,
+            "proximal_contact_overlap_max_m": PLAYER_POSE_MAX_PROXIMAL_CONTACT_MESH_OVERLAP_M,
+        },
+        "worst_gap_pair": overall_gap.to_json(),
+        "worst_overlap_pair": overall_overlap.to_json(),
+        "pairs": pair_reports,
+    }))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn observe_proximal_contact_sample(
+    gltf: &Value,
+    left: &'static str,
+    right: &'static str,
+    overrides: &[PoseNodeOverride],
+    label: &'static str,
+    phase: f32,
+    pair_gap: &mut MeshGapReport,
+    pair_overlap: &mut MeshOverlapReport,
+    overall_gap: &mut MeshGapReport,
+    overall_overlap: &mut MeshOverlapReport,
+) -> Option<()> {
+    let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, overrides)?;
+    let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, overrides)?;
+    let gap = left_bounds.separation_m(right_bounds);
+    pair_gap.observe_label(gap, left, right, label, phase);
+    overall_gap.observe_label(gap, left, right, label, phase);
+    let overlap_axes_m = left_bounds.overlap_axes_m(right_bounds);
+    let overlap_m = node_world_mesh_obb_with_pose(gltf, left, overrides)?
+        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, right, overrides)?);
+    pair_overlap.observe_label(overlap_m, overlap_axes_m, left, right, label, phase);
+    overall_overlap.observe_label(overlap_m, overlap_axes_m, left, right, label, phase);
+    Some(())
 }
 
 fn player_joint_seam_contact_audit(gltf: &Value) -> Option<Value> {
@@ -4175,10 +4437,12 @@ fn player_pose_surface_contact_audit(gltf: &Value) -> Option<Value> {
         contexts.len() * phases.len() + transitions.len() * phases.len() * blends.len();
     let mut pair_reports = Vec::new();
     let mut overall = SurfaceContactDistanceReport::zero();
+    let mut overall_projected_gap = ProjectedContactGapReport::zero();
     let mut breach_count = 0_u64;
 
     for pair in pairs.iter().copied() {
         let mut pair_report = SurfaceContactDistanceReport::zero();
+        let mut pair_projected_gap = ProjectedContactGapReport::zero();
 
         for context in contexts.iter().copied() {
             for phase in phases {
@@ -4191,6 +4455,15 @@ fn player_pose_surface_contact_audit(gltf: &Value) -> Option<Value> {
                     phase,
                 );
                 overall.observe_label(contact.distance_m, pair, context.intent().label(), phase);
+                observe_projected_contact_gap(
+                    gltf,
+                    pair,
+                    &overrides,
+                    context.intent().label(),
+                    phase,
+                    &mut pair_projected_gap,
+                    &mut overall_projected_gap,
+                )?;
             }
         }
 
@@ -4208,12 +4481,22 @@ fn player_pose_surface_contact_audit(gltf: &Value) -> Option<Value> {
                         player_pose_surface_contact_sample(gltf, pair, &overrides, &buffers)?;
                     pair_report.observe_label(contact.distance_m, pair, transition.label, phase);
                     overall.observe_label(contact.distance_m, pair, transition.label, phase);
+                    observe_projected_contact_gap(
+                        gltf,
+                        pair,
+                        &overrides,
+                        transition.label,
+                        phase,
+                        &mut pair_projected_gap,
+                        &mut overall_projected_gap,
+                    )?;
                 }
             }
         }
 
-        let within_threshold =
-            pair_report.max_distance_m <= PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M;
+        let within_threshold = pair_report.max_distance_m
+            <= PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M
+            && pair_projected_gap.max_gap_m <= PLAYER_POSE_MAX_PROJECTED_CONTACT_GAP_M;
         if !within_threshold {
             breach_count += 1;
         }
@@ -4222,8 +4505,10 @@ fn player_pose_surface_contact_audit(gltf: &Value) -> Option<Value> {
             "left_node": pair.left,
             "right_node": pair.right,
             "max_distance_m": pair_report.max_distance_m,
+            "max_projected_gap_m": pair_projected_gap.max_gap_m,
             "within_threshold": within_threshold,
             "worst_sample": pair_report.to_json(),
+            "worst_projected_gap": pair_projected_gap.to_json(),
         }));
     }
 
@@ -4237,13 +4522,74 @@ fn player_pose_surface_contact_audit(gltf: &Value) -> Option<Value> {
         "samples_per_pair": samples_per_pair,
         "sample_points_per_mesh_limit": PLAYER_SURFACE_CONTACT_SAMPLE_LIMIT,
         "max_distance_m": overall.max_distance_m,
+        "max_projected_gap_m": overall_projected_gap.max_gap_m,
         "breach_count": breach_count,
         "thresholds": {
             "surface_contact_distance_max_m": PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M,
+            "projected_contact_gap_max_m": PLAYER_POSE_MAX_PROJECTED_CONTACT_GAP_M,
         },
         "worst_pair": overall.to_json(),
+        "worst_projected_gap": overall_projected_gap.to_json(),
         "pairs": pair_reports,
     }))
+}
+
+fn observe_projected_contact_gap(
+    gltf: &Value,
+    pair: PlayerSurfaceContactPair,
+    overrides: &[PoseNodeOverride],
+    label: &'static str,
+    phase: f32,
+    pair_report: &mut ProjectedContactGapReport,
+    overall_report: &mut ProjectedContactGapReport,
+) -> Option<()> {
+    let left_bounds = node_world_mesh_aabb_with_pose(gltf, pair.left, overrides)?;
+    let right_bounds = node_world_mesh_aabb_with_pose(gltf, pair.right, overrides)?;
+    let (gap_m, view) = projected_contact_gap_m(left_bounds, right_bounds);
+    pair_report.observe_label(gap_m, view, pair, label, phase);
+    overall_report.observe_label(gap_m, view, pair, label, phase);
+    Some(())
+}
+
+fn projected_contact_gap_m(left: Aabb3, right: Aabb3) -> (f64, PlayerPosePreviewView) {
+    [
+        (
+            projected_rect_gap_m(left, right, PlayerPosePreviewView::Front),
+            PlayerPosePreviewView::Front,
+        ),
+        (
+            projected_rect_gap_m(left, right, PlayerPosePreviewView::Side),
+            PlayerPosePreviewView::Side,
+        ),
+        (
+            projected_rect_gap_m(left, right, PlayerPosePreviewView::Top),
+            PlayerPosePreviewView::Top,
+        ),
+    ]
+    .into_iter()
+    .max_by(|left, right| {
+        left.0
+            .partial_cmp(&right.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    })
+    .expect("projected contact gap views should not be empty")
+}
+
+fn projected_rect_gap_m(left: Aabb3, right: Aabb3, view: PlayerPosePreviewView) -> f64 {
+    let (left_min_u, left_max_u, left_min_v, left_max_v) = projected_aabb_rect(left, view);
+    let (right_min_u, right_max_u, right_min_v, right_max_v) = projected_aabb_rect(right, view);
+    let gap_u = axis_separation_m(left_min_u, left_max_u, right_min_u, right_max_u);
+    let gap_v = axis_separation_m(left_min_v, left_max_v, right_min_v, right_max_v);
+    Vec2::new(gap_u, gap_v).length() as f64
+}
+
+fn projected_aabb_rect(bounds: Aabb3, view: PlayerPosePreviewView) -> (f32, f32, f32, f32) {
+    match view {
+        PlayerPosePreviewView::Front => (bounds.min.x, bounds.max.x, bounds.min.y, bounds.max.y),
+        PlayerPosePreviewView::Rear => (-bounds.max.x, -bounds.min.x, bounds.min.y, bounds.max.y),
+        PlayerPosePreviewView::Side => (bounds.min.z, bounds.max.z, bounds.min.y, bounds.max.y),
+        PlayerPosePreviewView::Top => (bounds.min.x, bounds.max.x, bounds.min.z, bounds.max.z),
+    }
 }
 
 fn player_pose_surface_contact_sample(
@@ -4252,15 +4598,6 @@ fn player_pose_surface_contact_sample(
     overrides: &[PoseNodeOverride],
     buffers: &[Vec<u8>],
 ) -> Option<ClosestSurfacePoints> {
-    let left_obb = node_world_mesh_obb_with_pose(gltf, pair.left, overrides)?;
-    let right_obb = node_world_mesh_obb_with_pose(gltf, pair.right, overrides)?;
-    if left_obb.overlap_depth_m(right_obb) > 0.0005 {
-        return Some(ClosestSurfacePoints {
-            distance_m: 0.0,
-            left: Vec3::ZERO,
-            right: Vec3::ZERO,
-        });
-    }
     let left = node_world_surface_points_with_pose(gltf, pair.left, overrides, buffers)?;
     let right = node_world_surface_points_with_pose(gltf, pair.right, overrides, buffers)?;
     closest_surface_points(&left, &right)
@@ -5724,6 +6061,24 @@ mod tests {
     }
 
     #[test]
+    fn player_proximal_contact_audit_reports_connected_shoulders_and_hips() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let audit = player_proximal_contact_audit(&gltf).expect("proximal contact audit");
+
+        assert_eq!(
+            number_field(&audit, "pair_count"),
+            PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT
+        );
+        assert_eq!(number_field(&audit, "breach_count"), 0.0);
+        assert!(number_field(&audit, "max_gap_m") <= PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M);
+        assert!(
+            number_field(&audit, "max_overlap_m")
+                <= PLAYER_POSE_MAX_PROXIMAL_CONTACT_MESH_OVERLAP_M
+        );
+    }
+
+    #[test]
     fn player_pose_surface_contact_audit_reports_mesh_sample_distances() {
         let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
         let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
@@ -5753,7 +6108,9 @@ mod tests {
         assert!(
             number_field(&audit, "max_distance_m") <= PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M
         );
-        assert!(number_field(&audit, "max_distance_m") <= 0.020);
+        assert!(
+            number_field(&audit, "max_projected_gap_m") <= PLAYER_POSE_MAX_PROJECTED_CONTACT_GAP_M
+        );
 
         let hip_contact = audit
             .get("pairs")
@@ -5767,7 +6124,14 @@ mod tests {
                 })
             })
             .expect("hip flex contact pair");
-        assert_eq!(number_field(hip_contact, "max_distance_m"), 0.0);
+        assert!(
+            number_field(hip_contact, "max_distance_m")
+                <= PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M
+        );
+        assert!(
+            number_field(hip_contact, "max_projected_gap_m")
+                <= PLAYER_POSE_MAX_PROJECTED_CONTACT_GAP_M
+        );
     }
 
     #[test]
@@ -5888,6 +6252,7 @@ mod tests {
 
         let sheet = render_player_pose_preview_sheet(&gltf, &specs).expect("preview sheet");
         assert!(sheet.contains("front mesh silhouette"));
+        assert!(sheet.contains("rear mesh silhouette"));
         assert!(sheet.contains("<path d=\""));
         assert!(sheet.contains("surface distance"));
         assert!(sheet.contains("Nau Left Leather Pinky Finger Grip"));
@@ -5917,6 +6282,7 @@ mod tests {
         }
         assert!(sheet.contains("surface distance"));
         assert!(sheet.contains("mesh overlap"));
+        assert!(sheet.contains("rear mesh silhouette"));
     }
 
     #[test]
@@ -5951,6 +6317,7 @@ mod tests {
         assert!(sheet.contains("<path d=\""));
         assert!(sheet.contains("Nau Glider Left Cloth Panel"));
         assert!(sheet.contains("Nau Glider Handle Bar"));
+        assert!(sheet.contains("rear mesh silhouette"));
     }
 
     #[test]

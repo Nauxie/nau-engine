@@ -321,58 +321,58 @@ function crystalMesh() {
   };
 }
 
-addMesh("Nau Suit Tapered Hips", taperedCylinderMesh([0.32, 0.22], [0.27, 0.18], 40), 0);
-addMesh("Nau Suit Armored Torso", taperedCylinderMesh([0.40, 0.23], [0.31, 0.18], 40), 0);
+addMesh("Nau Suit Tapered Hips", taperedCylinderMesh([0.29, 0.205], [0.245, 0.165], 44), 0);
+addMesh("Nau Suit Armored Torso", taperedCylinderMesh([0.36, 0.205], [0.285, 0.165], 44), 0);
 addMesh("Nau Accent Split Tunic Panel", panelMesh(0.34, 0.52, 0.58, -0.04), 4);
-addMesh("Nau Skin Rounded Head", ellipsoidMesh([0.235, 0.285, 0.215], 40, 18), 1);
-addMesh("Nau Accent Helmet Crest", taperedCylinderMesh([0.18, 0.105], [0.09, 0.055], 28), 5);
-addMesh("Nau Suit Upper Arm", roundedTaperedCylinderMesh([0.126, 0.106], [0.096, 0.084], 44, 12), 0);
-addMesh("Nau Leather Forearm Wrap", roundedTaperedCylinderMesh([0.106, 0.088], [0.076, 0.066], 44, 12), 3);
-addMesh("Nau Suit Thigh Guard", roundedTaperedCylinderMesh([0.152, 0.130], [0.110, 0.098], 44, 12), 0);
-addMesh("Nau Leather Boot", roundedTaperedCylinderMesh([0.142, 0.146], [0.110, 0.108], 36, 8), 3);
+addMesh("Nau Skin Rounded Head", ellipsoidMesh([0.205, 0.255, 0.190], 42, 18), 1);
+addMesh("Nau Accent Helmet Crest", taperedCylinderMesh([0.135, 0.078], [0.070, 0.042], 28), 5);
+addMesh("Nau Suit Upper Arm", roundedTaperedCylinderMesh([0.112, 0.094], [0.088, 0.076], 46, 13), 0);
+addMesh("Nau Leather Forearm Wrap", roundedTaperedCylinderMesh([0.096, 0.080], [0.070, 0.060], 46, 13), 3);
+addMesh("Nau Suit Thigh Guard", roundedTaperedCylinderMesh([0.136, 0.118], [0.102, 0.090], 46, 13), 0);
+addMesh("Nau Leather Boot", roundedTaperedCylinderMesh([0.122, 0.128], [0.098, 0.098], 38, 9), 3);
 addMesh("Nau Chest Focus Crystal", crystalMesh(), 2);
-addMesh("Nau Accent Shoulder Guard", ellipsoidMesh([0.18, 0.07, 0.12], 28, 10), 4);
+addMesh("Nau Accent Shoulder Guard", ellipsoidMesh([0.142, 0.048, 0.096], 30, 10), 4);
 addMesh("Nau Accent Scarf Trail", panelMesh(0.14, 0.30, 0.80, 0.025), 4);
 addMesh("Nau Face Mask Panel", panelMesh(0.19, 0.26, 0.14, -0.02), 5);
 addMesh("Nau Amber Eye Lens", ellipsoidMesh([0.045, 0.024, 0.017], 20, 8), 6);
 addMesh("Nau Belt Sash Band", taperedCylinderMesh([0.41, 0.235], [0.40, 0.225], 40), 7);
 addMesh("Nau Belt Buckle Plate", crystalMesh(), 7);
-addMesh("Nau Leather Gauntlet Cuff", taperedCylinderMesh([0.096, 0.082], [0.088, 0.076], 28), 3);
-addMesh("Nau Accent Knee Guard", ellipsoidMesh([0.105, 0.048, 0.075], 28, 10), 4);
-addMesh("Nau Leather Hand Palm", ellipsoidMesh([0.098, 0.070, 0.090], 30, 12), 3);
+addMesh("Nau Leather Gauntlet Cuff", taperedCylinderMesh([0.084, 0.072], [0.078, 0.068], 30), 3);
+addMesh("Nau Accent Knee Guard", ellipsoidMesh([0.088, 0.038, 0.064], 30, 10), 4);
+addMesh("Nau Leather Hand Palm", ellipsoidMesh([0.086, 0.060, 0.080], 32, 12), 3);
 addMesh("Nau Leather Finger Grip", roundedTaperedCylinderMesh([0.027, 0.020], [0.021, 0.015], 14, 5), 3);
 addMesh("Nau Leather Finger Tip Pad", ellipsoidMesh([0.025, 0.017, 0.020], 16, 7), 3);
-addMesh("Nau Leather Boot Toe Cap", ellipsoidMesh([0.128, 0.044, 0.122], 30, 12), 3);
+addMesh("Nau Leather Boot Toe Cap", ellipsoidMesh([0.112, 0.038, 0.112], 30, 12), 3);
 addMesh("Nau Leather Boot Toe Lug", ellipsoidMesh([0.044, 0.020, 0.060], 18, 7), 3);
 addMesh("Nau Accent Side Tunic Flap", panelMesh(0.12, 0.24, 0.52, -0.02), 4);
 addMesh("Nau Suit Neck Gasket", taperedCylinderMesh([0.15, 0.105], [0.13, 0.092], 28), 0);
 addMesh("Nau Accent Elbow Guard", ellipsoidMesh([0.085, 0.036, 0.060], 26, 9), 4);
 addMesh("Nau Leather Ankle Wrap", taperedCylinderMesh([0.112, 0.12], [0.102, 0.108], 28), 3);
-addMesh("Nau Suit Lower Leg Greave", roundedTaperedCylinderMesh([0.106, 0.112], [0.082, 0.094], 36, 9), 0);
+addMesh("Nau Suit Lower Leg Greave", roundedTaperedCylinderMesh([0.094, 0.100], [0.074, 0.084], 38, 10), 0);
 addMesh("Nau Joint Shoulder Socket", ellipsoidMesh([0.138, 0.088, 0.120], 34, 12), 4);
 addMesh("Nau Joint Hip Socket", ellipsoidMesh([0.120, 0.082, 0.110], 34, 12), 4);
 addMesh("Nau Joint Knee Sleeve", taperedCylinderMesh([0.108, 0.084], [0.102, 0.080], 28), 3);
 addMesh("Nau Joint Wrist Sleeve", taperedCylinderMesh([0.080, 0.066], [0.074, 0.060], 28), 3);
 addMesh("Nau Cloth Harness Strap", panelMesh(0.070, 0.090, 0.76, -0.01), 7);
-addMesh("Nau Suit Shoulder Bridge Sleeve", roundedTaperedCylinderMesh([0.088, 0.070], [0.080, 0.062], 36, 8), 0);
+addMesh("Nau Suit Shoulder Bridge Sleeve", roundedTaperedCylinderMesh([0.096, 0.078], [0.084, 0.066], 38, 9), 0);
 addMesh("Nau Suit Elbow Bridge Sleeve", roundedTaperedCylinderMesh([0.070, 0.055], [0.060, 0.048], 36, 8), 0);
 addMesh("Nau Leather Wrist Bridge Sleeve", roundedTaperedCylinderMesh([0.041, 0.034], [0.036, 0.030], 32, 7), 3);
 addMesh("Nau Suit Hip Bridge Sleeve", roundedTaperedCylinderMesh([0.088, 0.070], [0.078, 0.060], 36, 8), 0);
 addMesh("Nau Suit Knee Bridge Sleeve", roundedTaperedCylinderMesh([0.072, 0.056], [0.062, 0.050], 36, 8), 0);
 addMesh("Nau Leather Ankle Bridge Sleeve", roundedTaperedCylinderMesh([0.042, 0.036], [0.036, 0.032], 28, 5), 3);
-addMesh("Nau Suit Shoulder Yoke Plate", ellipsoidMesh([0.48, 0.052, 0.128], 34, 10), 0);
+addMesh("Nau Suit Shoulder Yoke Plate", ellipsoidMesh([0.52, 0.064, 0.148], 38, 11), 0);
 addMesh("Nau Suit Collarbone Plate", ellipsoidMesh([0.16, 0.030, 0.045], 24, 8), 7);
-addMesh("Nau Suit Pelvis Hip Yoke", ellipsoidMesh([0.34, 0.055, 0.145], 32, 9), 0);
+addMesh("Nau Suit Pelvis Hip Yoke", ellipsoidMesh([0.305, 0.044, 0.126], 34, 10), 0);
 addMesh("Nau Leather Knuckle Pad", ellipsoidMesh([0.026, 0.014, 0.018], 14, 6), 3);
 addMesh("Nau Leather Boot Sole", boxMesh(0.24, 0.036, 0.34), 3);
 addMesh("Nau Leather Boot Heel", boxMesh(0.20, 0.078, 0.14), 3);
-addMesh("Nau Suit Deltoid Filler", ellipsoidMesh([0.125, 0.060, 0.092], 26, 9), 0);
+addMesh("Nau Suit Deltoid Filler", ellipsoidMesh([0.142, 0.074, 0.106], 30, 10), 0);
 addMesh("Nau Suit Pelvis Side Plate", ellipsoidMesh([0.105, 0.040, 0.095], 24, 8), 7);
 addMesh("Nau Leather Palm Heel Pad", ellipsoidMesh([0.052, 0.020, 0.040], 18, 7), 3);
-addMesh("Nau Seamless Shoulder Flex Cover", ellipsoidMesh([0.118, 0.060, 0.104], 38, 14), 0);
+addMesh("Nau Seamless Shoulder Flex Cover", ellipsoidMesh([0.132, 0.074, 0.118], 40, 14), 0);
 addMesh("Nau Seamless Elbow Flex Cover", ellipsoidMesh([0.086, 0.058, 0.072], 36, 12), 0);
 addMesh("Nau Seamless Wrist Flex Cover", ellipsoidMesh([0.070, 0.046, 0.062], 34, 11), 3);
-addMesh("Nau Seamless Hip Flex Cover", ellipsoidMesh([0.130, 0.078, 0.116], 38, 14), 0);
+addMesh("Nau Seamless Hip Flex Cover", ellipsoidMesh([0.108, 0.052, 0.096], 40, 14), 0);
 addMesh("Nau Seamless Knee Flex Cover", ellipsoidMesh([0.080, 0.034, 0.068], 36, 12), 0);
 addMesh("Nau Seamless Ankle Flex Cover", ellipsoidMesh([0.086, 0.054, 0.078], 34, 11), 3);
 
@@ -411,8 +411,8 @@ addMeshChild(nodeIds.hips, "Nau Suit Tapered Hips Shell", meshIndex("Nau Suit Ta
   scale: [1.0, 0.34, 1.0],
 });
 addMeshChild(nodeIds.hips, "Nau Suit Pelvis Hip Yoke", meshIndex("Nau Suit Pelvis Hip Yoke"), {
-  translation: [0.0, -0.105, -0.005],
-  scale: [1.0, 0.90, 1.0],
+  translation: [0.0, -0.130, -0.005],
+  scale: [1.0, 0.78, 1.0],
 });
 addMeshChild(nodeIds.hips, "Nau Belt Sash Band", meshIndex("Nau Belt Sash Band"), {
   translation: [0.0, 0.10, -0.005],
@@ -427,10 +427,10 @@ addMeshChild(nodeIds.hips, "Nau Belt Buckle Plate", meshIndex("Nau Belt Buckle P
 nodeIds.torso = addChild(nodeIds.hips, "Nau Torso", { translation: [0.0, 0.39, 0.0] });
 addMeshChild(nodeIds.torso, "Nau Suit Armored Torso Shell", meshIndex("Nau Suit Armored Torso"), {
   translation: [0.0, 0.20, -0.005],
-  scale: [1.0, 0.74, 1.0],
+  scale: [1.0, 0.78, 1.0],
 });
 addMeshChild(nodeIds.torso, "Nau Suit Shoulder Yoke Plate", meshIndex("Nau Suit Shoulder Yoke Plate"), {
-  translation: [0.0, 0.53, -0.018],
+  translation: [0.0, 0.515, -0.018],
   scale: [1.0, 1.0, 1.0],
 });
 addMeshChild(nodeIds.torso, "Nau Left Suit Collarbone Plate", meshIndex("Nau Suit Collarbone Plate"), {
@@ -466,15 +466,15 @@ nodeIds.neckSocket = addChild(nodeIds.torso, "Nau Neck Socket", {
   translation: [0.0, 0.78, -0.02],
 });
 addMeshChild(nodeIds.neckSocket, "Nau Neck Joint Cover", meshIndex("Nau Suit Neck Gasket"), {
-  translation: [0.0, -0.258, 0.01],
-  scale: [0.51, 0.074, 0.51],
+  translation: [0.0, -0.230, 0.01],
+  scale: [0.50, 0.095, 0.50],
 });
 nodeIds.head = addChild(nodeIds.torso, "Nau Head", { translation: [0.0, 0.78, -0.02] });
 addMeshChild(nodeIds.head, "Nau Skin Rounded Head", meshIndex("Nau Skin Rounded Head"), {
   translation: [0.0, 0.06, -0.02],
 });
 addMeshChild(nodeIds.head, "Nau Helmet Accent Crest", meshIndex("Nau Accent Helmet Crest"), {
-  translation: [0.0, 0.28, -0.02],
+  translation: [0.0, 0.250, -0.02],
   rotation: rotX(0.16),
   scale: [1.0, 0.32, 1.0],
 });
@@ -499,9 +499,9 @@ for (const side of [
     translation: [sign * 0.54, 0.57, -0.02],
   });
   addMeshChild(socket, `Nau ${label} Shoulder Joint Cover`, meshIndex("Nau Joint Shoulder Socket"), {
-    translation: [sign * -0.02, -0.015, 0.0],
+    translation: [sign * -0.02, -0.020, 0.0],
     rotation: rotZ(sign * 0.14),
-    scale: [0.30, 0.145, 0.32],
+    scale: [0.26, 0.140, 0.28],
   });
   nodeIds[`${lower}ShoulderSocket`] = socket;
   const arm = addChild(nodeIds.torso, `Nau ${label} Arm`, {
@@ -509,24 +509,25 @@ for (const side of [
   });
   nodeIds[`${lower}Arm`] = arm;
   addMeshChild(arm, `Nau ${label} Shoulder Bridge Sleeve`, meshIndex("Nau Suit Shoulder Bridge Sleeve"), {
-    translation: [sign * -0.02, -0.012, 0.0],
+    translation: [sign * -0.02, -0.010, 0.0],
     rotation: rotZ(sign * 0.10),
-    scale: [0.96, 0.098, 0.96],
+    scale: [0.88, 0.070, 0.88],
   });
   addMeshChild(arm, `Nau ${label} Seamless Shoulder Flex Cover`, meshIndex("Nau Seamless Shoulder Flex Cover"), {
-    translation: [sign * -0.010, -0.034, 0.0],
+    translation: [sign * -0.012, -0.032, 0.0],
     rotation: rotZ(sign * 0.10),
+    scale: [0.82, 0.70, 0.82],
   });
   addMeshChild(arm, `Nau ${label} Suit Upper Arm`, meshIndex("Nau Suit Upper Arm"), {
-    translation: [0.0, -0.275, 0.0],
-    scale: [1.0, 0.55, 1.0],
+    translation: [0.0, -0.315, 0.0],
+    scale: [1.0, 0.62, 1.0],
   });
   addMeshChild(arm, `Nau ${label} Shoulder Accent`, meshIndex("Nau Accent Shoulder Guard"), {
-    translation: [sign * 0.015, -0.04, -0.015],
+    translation: [sign * 0.032, -0.035, -0.014],
     rotation: rotZ(sign * 0.20),
   });
   addMeshChild(arm, `Nau ${label} Suit Deltoid Filler`, meshIndex("Nau Suit Deltoid Filler"), {
-    translation: [sign * 0.020, -0.082, 0.0],
+    translation: [sign * 0.010, -0.052, 0.0],
     rotation: rotZ(sign * 0.16),
   });
   const elbowSocket = addChild(arm, `Nau ${label} Elbow Socket`, {
@@ -534,7 +535,7 @@ for (const side of [
   });
   addMeshChild(elbowSocket, `Nau ${label} Elbow Joint Cover`, meshIndex("Nau Joint Wrist Sleeve"), {
     translation: [0.0, 0.0, 0.0],
-    scale: [0.76, 0.058, 0.76],
+    scale: [0.74, 0.058, 0.74],
   });
   const forearm = addChild(arm, `Nau ${label} Forearm`, {
     translation: [0.0, -0.54, 0.018],
@@ -542,15 +543,15 @@ for (const side of [
   nodeIds[`${lower}Forearm`] = forearm;
   addMeshChild(forearm, `Nau ${label} Elbow Bridge Sleeve`, meshIndex("Nau Suit Elbow Bridge Sleeve"), {
     translation: [0.0, 0.026, 0.0],
-    scale: [0.88, 0.090, 0.88],
+    scale: [0.90, 0.120, 0.90],
   });
   addMeshChild(forearm, `Nau ${label} Seamless Elbow Flex Cover`, meshIndex("Nau Seamless Elbow Flex Cover"), {
     translation: [0.0, 0.020, 0.0],
     scale: [0.94, 0.94, 0.94],
   });
   addMeshChild(forearm, `Nau ${label} Leather Forearm Wrap`, meshIndex("Nau Leather Forearm Wrap"), {
-    translation: [0.0, -0.230, 0.0],
-    scale: [1.0, 0.46, 1.0],
+    translation: [0.0, -0.240, 0.0],
+    scale: [1.0, 0.50, 1.0],
   });
   addMeshChild(forearm, `Nau ${label} Accent Elbow Guard`, meshIndex("Nau Accent Elbow Guard"), {
     translation: [0.0, 0.03, -0.055],
@@ -565,7 +566,7 @@ for (const side of [
   });
   addMeshChild(wristSocket, `Nau ${label} Wrist Joint Cover`, meshIndex("Nau Joint Wrist Sleeve"), {
     translation: [0.0, 0.046, 0.0],
-    scale: [0.34, 0.026, 0.34],
+    scale: [0.40, 0.078, 0.40],
   });
   const hand = addChild(forearm, `Nau ${label} Leather Hand Palm`, {
     mesh: meshIndex("Nau Leather Hand Palm"),
@@ -663,21 +664,21 @@ for (const side of [
   addMeshChild(leg, `Nau ${label} Hip Joint Cover`, meshIndex("Nau Joint Hip Socket"), {
     translation: [sign * 0.005, 0.002, 0.0],
     rotation: rotZ(sign * 0.10),
-    scale: [0.56, 0.40, 0.58],
+    scale: [0.42, 0.24, 0.44],
   });
   addMeshChild(leg, `Nau ${label} Hip Bridge Sleeve`, meshIndex("Nau Suit Hip Bridge Sleeve"), {
-    translation: [sign * 0.006, 0.026, 0.0],
+    translation: [sign * 0.006, 0.006, 0.0],
     rotation: rotZ(sign * 0.08),
-    scale: [1.08, 0.14, 1.08],
+    scale: [0.98, 0.11, 0.98],
   });
   addMeshChild(leg, `Nau ${label} Seamless Hip Flex Cover`, meshIndex("Nau Seamless Hip Flex Cover"), {
-    translation: [sign * 0.010, 0.016, 0.0],
+    translation: [sign * 0.008, -0.032, 0.0],
     rotation: rotZ(sign * 0.08),
-    scale: [1.08, 1.02, 1.08],
+    scale: [0.86, 0.82, 0.86],
   });
   addMeshChild(leg, `Nau ${label} Suit Thigh Guard`, meshIndex("Nau Suit Thigh Guard"), {
-    translation: [0.0, -0.218, 0.0],
-    scale: [1.02, 0.44, 1.02],
+    translation: [0.0, -0.240, 0.0],
+    scale: [1.0, 0.50, 1.0],
   });
   const kneeSocket = addChild(leg, `Nau ${label} Knee Socket`, {
     translation: [0.0, -0.43, 0.01],
