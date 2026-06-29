@@ -60,8 +60,10 @@ pub(crate) fn grounded_visual_foot_gap_m(
 pub(crate) struct AuthoredGliderPose {
     base_translation: Vec3,
     base_rotation: Quat,
+    base_scale: Vec3,
     smoothed_translation: Vec3,
     smoothed_rotation: Quat,
+    smoothed_scale: Vec3,
     smoothing_initialized: bool,
     last_smoothed_time_secs: Option<f32>,
 }
@@ -71,8 +73,10 @@ impl AuthoredGliderPose {
         Self {
             base_translation: base_transform.translation,
             base_rotation: base_transform.rotation,
+            base_scale: base_transform.scale,
             smoothed_translation: base_transform.translation,
             smoothed_rotation: base_transform.rotation,
+            smoothed_scale: base_transform.scale,
             smoothing_initialized: false,
             last_smoothed_time_secs: None,
         }
@@ -803,14 +807,18 @@ fn apply_authored_glider_pose_smoothing(
     let stowed_rotation = glider.base_rotation * authored_glider_stowed_rotation_offset();
     let deployed_rotation = glider.base_rotation * rotation_offset;
     let target_rotation = stowed_rotation.slerp(deployed_rotation, deployment);
+    let target_scale =
+        authored_glider_stowed_scale(glider.base_scale).lerp(glider.base_scale, deployment);
     if !glider.smoothing_initialized {
         glider.smoothed_translation = target_translation;
         glider.smoothed_rotation = target_rotation;
+        glider.smoothed_scale = target_scale;
         glider.smoothing_initialized = true;
         glider.last_smoothed_time_secs = Some(pose_time_secs);
     } else if glider.last_smoothed_time_secs != Some(pose_time_secs) {
         glider.smoothed_translation = glider.smoothed_translation.lerp(target_translation, blend);
         glider.smoothed_rotation = glider.smoothed_rotation.slerp(target_rotation, blend);
+        glider.smoothed_scale = glider.smoothed_scale.lerp(target_scale, blend);
         glider.last_smoothed_time_secs = Some(pose_time_secs);
     }
     reapply_smoothed_authored_glider_pose(glider, transform);
@@ -819,6 +827,7 @@ fn apply_authored_glider_pose_smoothing(
 fn reapply_smoothed_authored_glider_pose(glider: &AuthoredGliderPose, transform: &mut Transform) {
     transform.translation = glider.smoothed_translation;
     transform.rotation = glider.smoothed_rotation;
+    transform.scale = glider.smoothed_scale;
 }
 
 fn authored_glider_deployment(mode: FlightMode) -> f32 {
@@ -831,6 +840,10 @@ fn authored_glider_stowed_translation_offset() -> Vec3 {
 
 fn authored_glider_stowed_rotation_offset() -> Quat {
     Quat::from_rotation_x(-1.08) * Quat::from_rotation_z(0.10)
+}
+
+fn authored_glider_stowed_scale(base_scale: Vec3) -> Vec3 {
+    base_scale * Vec3::new(0.18, 0.72, 0.58)
 }
 
 fn authored_glider_scene_visible(authored_glider_ready: bool, mode: FlightMode) -> bool {
@@ -1023,6 +1036,7 @@ mod tests {
                 .abs_diff_eq(once_per_frame_translation, 0.0001)
         );
         assert!((transform.rotation.dot(once_per_frame_rotation).abs() - 1.0).abs() < 0.0001);
+        assert!(transform.scale.abs_diff_eq(Vec3::ONE, 0.0001));
         assert!(glider.response_degrees(&transform) > 10.0);
         assert!(glider.motion_m(&transform) > 0.05);
     }
@@ -1066,6 +1080,9 @@ mod tests {
         assert!(launch_pose.response_degrees() > 8.0);
         assert!(glider.motion_m(&transform) > 0.25);
         assert!(glider.response_degrees(&transform) > 20.0);
+        assert!(transform.scale.x > 0.50);
+        assert!(transform.scale.x < 0.70);
+        assert!(transform.scale.y > 0.85);
     }
 
     #[test]
