@@ -4,8 +4,8 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bevy::prelude::{Mat4, Quat, Vec2, Vec3};
 use nau_engine::animation::{
     CharacterPart, CharacterPartRole, MIN_KEY_POSE_READABILITY_SCORE, PartPose, PlayerPoseContext,
-    PlayerPoseIntent, Side, glider_deployment_for_mode, glider_traversal_pose,
-    part_pose_with_context, pose_readability_metrics,
+    PlayerPoseIntent, Side, glider_deployment_for_context, glider_deployment_for_mode,
+    glider_traversal_pose, part_pose_with_context, pose_readability_metrics,
 };
 use nau_engine::asset_pipeline::{
     PLAYER_ANIMATION_CLIP_NAMES, VISUAL_ASSET_SPECS, VisualAssetKind, VisualAssetResidency,
@@ -70,6 +70,8 @@ const PLAYER_GLIDER_MIN_LAUNCH_RESPONSE_DEGREES: f64 = 8.0;
 const PLAYER_GLIDER_MIN_LAUNCH_MOTION_M: f64 = 0.18;
 const PLAYER_GLIDER_MIN_DIVE_RESPONSE_DEGREES: f64 = 4.0;
 const PLAYER_GLIDER_MIN_DIVE_MOTION_M: f64 = 0.16;
+const PLAYER_GLIDER_MIN_DIVE_RELEASE_DEPLOYMENT: f64 = 0.28;
+const PLAYER_GLIDER_MAX_DIVE_RELEASE_DEPLOYMENT: f64 = 0.58;
 const PLAYER_GLIDER_HAND_GRIP_EXPECTED_SAMPLE_COUNT: f64 = 6.0;
 const PLAYER_GLIDER_MAX_HAND_GRIP_DISTANCE_M: f64 = 0.28;
 const PLAYER_GLIDER_MAX_HAND_GRIP_PROJECTED_GAP_M: f64 = 0.10;
@@ -544,6 +546,14 @@ struct PosePreviewPanel {
     height: f32,
 }
 
+#[derive(Clone, Copy)]
+struct GliderAttachmentPreviewRow<'a> {
+    player_shapes: &'a [PlayerPosePreviewShape],
+    glider_shapes: &'a [PlayerPosePreviewShape],
+    combined_shapes: &'a [PlayerPosePreviewShape],
+    requires_hand_grip: bool,
+}
+
 fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
     let path = Path::new("assets/models/player/player.gltf");
     let text =
@@ -903,11 +913,11 @@ fn glider_pose_preview_specs() -> Vec<GliderPosePreviewSpec> {
             deployment: glider_deployment_for_mode(FlightMode::Gliding),
         },
         GliderPosePreviewSpec {
-            label: "dive_loaded",
-            title: "Dive Loaded",
+            label: "dive_release",
+            title: "Dive Release",
             context: dive_context,
             phase: 0.75,
-            deployment: glider_deployment_for_mode(FlightMode::Gliding),
+            deployment: glider_deployment_for_context(dive_context),
         },
         GliderPosePreviewSpec {
             label: "air_brake_cupped",
@@ -929,13 +939,12 @@ fn player_glider_attachment_preview_specs() -> Vec<GliderPosePreviewSpec> {
 fn player_glider_attachment_audit_specs() -> Vec<GliderPosePreviewSpec> {
     glider_pose_preview_specs()
         .into_iter()
-        .filter(|spec| {
-            matches!(
-                spec.label,
-                "takeout_ready" | "glide_open" | "air_brake_cupped"
-            )
-        })
+        .filter(|spec| glider_pose_requires_hand_grip(spec.label))
         .collect()
+}
+
+fn glider_pose_requires_hand_grip(label: &str) -> bool {
+    matches!(label, "takeout_ready" | "glide_open" | "air_brake_cupped")
 }
 
 fn render_player_pose_preview_sheet(
@@ -1252,11 +1261,15 @@ fn render_player_glider_attachment_preview_sheet(
 
         for (column, view) in PLAYER_POSE_PREVIEW_VIEWS.iter().enumerate() {
             let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * column as f32;
-            render_player_glider_attachment_preview_view(
-                &mut svg,
+            let preview_row = GliderAttachmentPreviewRow {
                 player_shapes,
                 glider_shapes,
                 combined_shapes,
+                requires_hand_grip: glider_pose_requires_hand_grip(spec.label),
+            };
+            render_player_glider_attachment_preview_view(
+                &mut svg,
+                preview_row,
                 *view,
                 view_extents[column],
                 PosePreviewPanel {
@@ -1513,9 +1526,7 @@ fn render_glider_pose_preview_view(
 
 fn render_player_glider_attachment_preview_view(
     svg: &mut String,
-    player_shapes: &[PlayerPosePreviewShape],
-    glider_shapes: &[PlayerPosePreviewShape],
-    combined_shapes: &[PlayerPosePreviewShape],
+    preview_row: GliderAttachmentPreviewRow<'_>,
     view: PlayerPosePreviewView,
     extent: Option<(f32, f32, f32, f32)>,
     panel: PosePreviewPanel,
@@ -1540,7 +1551,7 @@ fn render_player_glider_attachment_preview_view(
     let origin_x = x + width * 0.5 - (min_u + max_u) * 0.5 * scale;
     let origin_y = y + height * 0.5 + (min_v + max_v) * 0.5 * scale;
 
-    let mut ordered = combined_shapes.iter().collect::<Vec<_>>();
+    let mut ordered = preview_row.combined_shapes.iter().collect::<Vec<_>>();
     ordered.sort_by(|left, right| {
         preview_depth(left.bounds, view)
             .partial_cmp(&preview_depth(right.bounds, view))
@@ -1573,11 +1584,9 @@ fn render_player_glider_attachment_preview_view(
     }
     render_player_glider_attachment_overlay(
         svg,
-        player_shapes,
-        glider_shapes,
+        preview_row,
         view,
-        origin_x,
-        origin_y,
+        Vec2::new(origin_x, origin_y),
         scale,
     );
 }
@@ -1850,25 +1859,29 @@ fn render_player_pose_contact_overlay(
 
 fn render_player_glider_attachment_overlay(
     svg: &mut String,
-    player_shapes: &[PlayerPosePreviewShape],
-    glider_shapes: &[PlayerPosePreviewShape],
+    preview_row: GliderAttachmentPreviewRow<'_>,
     view: PlayerPosePreviewView,
-    origin_x: f32,
-    origin_y: f32,
+    origin: Vec2,
     scale: f32,
 ) {
+    if !preview_row.requires_hand_grip {
+        return;
+    }
+
     for side in [Side::Left, Side::Right] {
-        let Some(contact) =
-            player_glider_hand_grip_contact_from_shapes(player_shapes, glider_shapes, side)
-        else {
+        let Some(contact) = player_glider_hand_grip_contact_from_shapes(
+            preview_row.player_shapes,
+            preview_row.glider_shapes,
+            side,
+        ) else {
             continue;
         };
         let left = project_preview_point(contact.left, view);
         let right = project_preview_point(contact.right, view);
-        let x1 = origin_x + left.x * scale;
-        let y1 = origin_y - left.y * scale;
-        let x2 = origin_x + right.x * scale;
-        let y2 = origin_y - right.y * scale;
+        let x1 = origin.x + left.x * scale;
+        let y1 = origin.y - left.y * scale;
+        let x2 = origin.x + right.x * scale;
+        let y2 = origin.y - right.y * scale;
         let color = if contact.distance_m > PLAYER_GLIDER_MAX_HAND_GRIP_DISTANCE_M {
             "#ff5364"
         } else if contact.distance_m > PLAYER_GLIDER_MAX_HAND_GRIP_DISTANCE_M * 0.78 {
@@ -3230,6 +3243,18 @@ fn audit_fixture(
             "player_glider_stowed_grounded_deployment",
             number_field(pose_shape, "glider_grounded_deployment"),
             0.0,
+            "ratio",
+        ));
+        checks.push(check_at_least_f64(
+            "player_glider_dive_release_deployment",
+            number_field(pose_shape, "glider_dive_release_deployment"),
+            PLAYER_GLIDER_MIN_DIVE_RELEASE_DEPLOYMENT,
+            "ratio",
+        ));
+        checks.push(check_at_most_f64(
+            "player_glider_dive_release_not_full_deployment",
+            number_field(pose_shape, "glider_dive_release_deployment"),
+            PLAYER_GLIDER_MAX_DIVE_RELEASE_DEPLOYMENT,
             "ratio",
         ));
         checks.push(check_at_least_f64(
@@ -5944,6 +5969,7 @@ fn player_pose_shape_audit() -> Value {
         "glider_launch_motion_m": glider_launch.motion_m(),
         "glider_glide_deployment": glider_deployment_for_mode(FlightMode::Gliding),
         "glider_grounded_deployment": glider_deployment_for_mode(FlightMode::Grounded),
+        "glider_dive_release_deployment": glider_deployment_for_context(dive_context),
         "glider_dive_response_degrees": glider_dive.response_degrees(),
         "glider_dive_motion_m": glider_dive.motion_m(),
     })
@@ -7229,6 +7255,7 @@ mod tests {
         assert!(sheet.contains("NAU glider deployment pose preview"));
         assert!(sheet.contains("Takeout 35%"));
         assert!(sheet.contains("Launch Takeout"));
+        assert!(sheet.contains("Dive Release"));
         assert!(sheet.contains("deploy: 52%"));
         assert!(sheet.contains("<path d=\""));
         assert!(sheet.contains("Nau Glider Left Cloth Panel"));
@@ -7251,6 +7278,7 @@ mod tests {
 
         assert!(sheet.contains("player/glider attachment preview"));
         assert!(sheet.contains("Launch Takeout"));
+        assert!(sheet.contains("Dive Release"));
         assert!(sheet.contains("hand grip distance"));
         assert!(sheet.contains("Nau Glider Left Grip"));
         assert!(sheet.contains("Nau Left Leather Hand Palm"));
