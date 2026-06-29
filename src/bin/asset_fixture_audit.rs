@@ -41,6 +41,7 @@ const PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT: f64 = 9.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT: f64 = 4.0;
 const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 72.0;
 const PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES: f64 = 150.0;
+const PLAYER_POSE_MIN_LAUNCH_OVERHEAD_ARM_SCORE: f64 = 0.60;
 const PLAYER_POSE_MIN_DIVE_TORSO_PITCH_DEGREES: f64 = 82.0;
 const PLAYER_POSE_MAX_DIVE_ARM_SPREAD_DEGREES: f64 = 74.0;
 const PLAYER_POSE_MIN_DIVE_LEG_TUCK_DEGREES: f64 = 68.0;
@@ -2441,6 +2442,12 @@ fn audit_fixture(
             "m",
         ));
         checks.push(check_at_least_f64(
+            "player_pose_launch_overhead_arm_score",
+            number_field(pose_shape, "launch_overhead_arm_score"),
+            PLAYER_POSE_MIN_LAUNCH_OVERHEAD_ARM_SCORE,
+            "score",
+        ));
+        checks.push(check_at_least_f64(
             "player_glider_launch_takeout_deployment",
             number_field(pose_shape, "glider_launch_deployment"),
             PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT,
@@ -4668,6 +4675,7 @@ fn player_pose_shape_audit() -> Value {
     .with_resolved_intent(PlayerPoseIntent::LandingRecovery);
 
     let falling = pose_readability_metrics(falling_context, 0.0);
+    let launch = pose_readability_metrics(launch_context, 0.0);
     let dive = pose_readability_metrics(dive_context, 0.0);
     let landing_recovery = pose_readability_metrics(landing_recovery_context, 0.0);
     let glider_launch = glider_traversal_pose(launch_context, 0.0);
@@ -4692,6 +4700,8 @@ fn player_pose_shape_audit() -> Value {
         "landing_recovery_key_pose_readability_score": landing_recovery.key_pose_readability_score,
         "landing_recovery_flip_degrees": landing_recovery.landing_recovery_flip_degrees,
         "max_connected_limb_translation_m": max_connected_limb_translation_m,
+        "launch_key_pose_readability_score": launch.key_pose_readability_score,
+        "launch_overhead_arm_score": launch.launch_overhead_arm_score,
         "glider_launch_deployment": glider_deployment_for_mode(FlightMode::Launching),
         "glider_launch_response_degrees": glider_launch.response_degrees(),
         "glider_launch_motion_m": glider_launch.motion_m(),
