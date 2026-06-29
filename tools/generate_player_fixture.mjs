@@ -501,7 +501,7 @@ for (const side of [
   addMeshChild(socket, `Nau ${label} Shoulder Joint Cover`, meshIndex("Nau Joint Shoulder Socket"), {
     translation: [sign * -0.02, -0.015, 0.0],
     rotation: rotZ(sign * 0.14),
-    scale: [0.38, 0.215, 0.40],
+    scale: [0.30, 0.145, 0.32],
   });
   nodeIds[`${lower}ShoulderSocket`] = socket;
   const arm = addChild(nodeIds.torso, `Nau ${label} Arm`, {

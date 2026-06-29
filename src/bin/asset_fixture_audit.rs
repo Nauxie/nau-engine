@@ -30,7 +30,7 @@ const PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M: f64 = 0.008;
 const PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M: f64 = 0.004;
 const PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M: f64 = 0.035;
 const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.001;
-const PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT: f64 = 6.0;
+const PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT: f64 = 10.0;
 const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 4.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 12.0;
@@ -601,6 +601,30 @@ fn player_pose_preview_specs() -> Vec<PlayerPosePreviewSpec> {
             )
             .with_resolved_intent(PlayerPoseIntent::GroundedIdle),
             phase: 0.75,
+        },
+        PlayerPosePreviewSpec {
+            label: "grounded_walk",
+            title: "Grounded Walk",
+            context: PlayerPoseContext::new(
+                FlightMode::Grounded,
+                Vec3::new(0.0, 0.0, -4.5),
+                FlightInput::default(),
+                0.0,
+            )
+            .with_resolved_intent(PlayerPoseIntent::GroundedWalk),
+            phase: 0.75,
+        },
+        PlayerPosePreviewSpec {
+            label: "grounded_run",
+            title: "Grounded Run",
+            context: PlayerPoseContext::new(
+                FlightMode::Grounded,
+                Vec3::new(0.0, 0.0, -10.0),
+                FlightInput::default(),
+                0.0,
+            )
+            .with_resolved_intent(PlayerPoseIntent::GroundedRun),
+            phase: 1.5,
         },
         PlayerPosePreviewSpec {
             label: "launch_takeout",
@@ -3313,6 +3337,14 @@ fn player_pose_transition_contact_blends() -> [f32; 4] {
     [0.2, 0.4, 0.6, 0.8]
 }
 
+#[cfg(test)]
+fn player_pose_contact_samples_per_pair() -> f64 {
+    (player_pose_mesh_overlap_contexts().len() * player_pose_contact_phases().len()
+        + player_pose_transition_contact_transitions().len()
+            * player_pose_transition_contact_blends().len()
+            * player_pose_contact_phases().len()) as f64
+}
+
 fn player_pose_contact_audit(gltf: &Value) -> Option<Value> {
     let phases = player_pose_contact_phases();
     let non_adjacent_pairs = player_rest_non_adjacent_mesh_overlap_pairs();
@@ -4356,8 +4388,36 @@ fn mesh_overlap_max_m(gltf: &Value, pairs: &[(&'static str, &'static str)]) -> O
         .map(|overlaps| overlaps.into_iter().fold(0.0, f64::max))
 }
 
-fn player_pose_mesh_overlap_contexts() -> [PlayerPoseContext; 6] {
+fn player_pose_mesh_overlap_contexts() -> [PlayerPoseContext; 10] {
     [
+        PlayerPoseContext::new(
+            FlightMode::Grounded,
+            Vec3::ZERO,
+            FlightInput::default(),
+            0.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::GroundedIdle),
+        PlayerPoseContext::new(
+            FlightMode::Grounded,
+            Vec3::new(0.0, 0.0, -4.5),
+            FlightInput::default(),
+            0.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::GroundedWalk),
+        PlayerPoseContext::new(
+            FlightMode::Grounded,
+            Vec3::new(0.0, 0.0, -10.0),
+            FlightInput::default(),
+            0.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::GroundedRun),
+        PlayerPoseContext::new(
+            FlightMode::Launching,
+            Vec3::new(0.0, 24.0, -18.0),
+            FlightInput::default(),
+            80.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::Launching),
         PlayerPoseContext::new(
             FlightMode::Airborne,
             Vec3::new(0.0, -22.0, -24.0),
@@ -4412,6 +4472,10 @@ fn player_pose_mesh_overlap_contexts() -> [PlayerPoseContext; 6] {
 
 fn player_pose_transition_contact_transitions() -> [PlayerPoseTransition; 9] {
     let [
+        _grounded_idle,
+        _grounded_walk,
+        _grounded_run,
+        launching,
         falling,
         gliding,
         diving,
@@ -4419,13 +4483,6 @@ fn player_pose_transition_contact_transitions() -> [PlayerPoseTransition; 9] {
         landing_anticipation,
         landing_recovery,
     ] = player_pose_mesh_overlap_contexts();
-    let launching = PlayerPoseContext::new(
-        FlightMode::Launching,
-        Vec3::new(0.0, 24.0, -18.0),
-        FlightInput::default(),
-        80.0,
-    )
-    .with_resolved_intent(PlayerPoseIntent::Launching);
 
     [
         PlayerPoseTransition {
@@ -5612,7 +5669,10 @@ mod tests {
         assert!(number_field(&audit, "max_gap_m") <= PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M);
         assert!(number_field(&audit, "min_overlap_m") >= PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M);
         assert_eq!(number_field(&audit, "transition_count"), 9.0);
-        assert_eq!(number_field(&audit, "samples_per_pair"), 168.0);
+        assert_eq!(
+            number_field(&audit, "samples_per_pair"),
+            player_pose_contact_samples_per_pair()
+        );
     }
 
     #[test]
@@ -5637,7 +5697,10 @@ mod tests {
             number_field(&audit, "blend_count"),
             PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT
         );
-        assert_eq!(number_field(&audit, "samples_per_pair"), 168.0);
+        assert_eq!(
+            number_field(&audit, "samples_per_pair"),
+            player_pose_contact_samples_per_pair()
+        );
         assert_eq!(number_field(&audit, "breach_count"), 0.0);
         assert!(
             number_field(&audit, "max_distance_m") <= PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M
@@ -5694,6 +5757,10 @@ mod tests {
         );
         assert_eq!(number_field(&audit, "breach_count"), 0.0);
         for expected in [
+            "grounded_idle",
+            "grounded_walk",
+            "grounded_run",
+            "launching",
             "falling",
             "gliding",
             "diving",
@@ -5777,6 +5844,8 @@ mod tests {
         assert!(sheet.contains("surface distance"));
         assert!(sheet.contains("Nau Left Leather Pinky Finger Grip"));
         assert!(sheet.contains("Nau Left Leather Outer Toe Lug"));
+        assert!(sheet.contains("Grounded Walk"));
+        assert!(sheet.contains("Grounded Run"));
     }
 
     #[test]
