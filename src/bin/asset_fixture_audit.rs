@@ -28,10 +28,11 @@ const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M: f64 = 0.012;
 const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M: f64 = 0.072;
 const PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M: f64 = 0.008;
 const PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M: f64 = 0.004;
+const PLAYER_POSE_MAX_JOINT_SEAM_MESH_OVERLAP_M: f64 = 0.120;
 const PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M: f64 = 0.035;
 const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.001;
 const PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT: f64 = 10.0;
-const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 4.0;
+const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 8.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_NODE_COUNT: f64 = 12.0;
@@ -532,6 +533,10 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "renderer": "mesh_projected_convex_hull_surface_contact_overlay.v1",
         "source": path,
         "glider_source": glider_path,
+        "source_bytes": text.len(),
+        "source_hash_fnv1a64": fnv1a64_hex(text.as_bytes()),
+        "glider_source_bytes": glider_text.len(),
+        "glider_source_hash_fnv1a64": fnv1a64_hex(glider_text.as_bytes()),
         "pose_count": specs.len(),
         "transition_pose_count": transition_specs.len(),
         "glider_pose_count": glider_specs.len(),
@@ -586,6 +591,15 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "transition_pose_count": transition_specs.len(),
         "glider_pose_count": glider_specs.len(),
     }))
+}
+
+fn fnv1a64_hex(bytes: &[u8]) -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
 }
 
 fn player_pose_preview_specs() -> Vec<PlayerPosePreviewSpec> {
@@ -2298,6 +2312,12 @@ fn audit_fixture(
             "m",
         ));
         checks.push(check_at_most_f64(
+            "player_pose_joint_seam_mesh_overlap_max",
+            number_field(seam_contact, "max_overlap_m"),
+            PLAYER_POSE_MAX_JOINT_SEAM_MESH_OVERLAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
             "player_joint_seam_contact_breach_count",
             number_field(seam_contact, "breach_count"),
             0.0,
@@ -3329,8 +3349,18 @@ fn player_pose_articulated_joint_gap_max_m(gltf: &Value) -> Option<f64> {
     player_pose_articulated_joint_gap_report(gltf).map(|report| report.max_gap_m)
 }
 
-fn player_pose_contact_phases() -> [f32; 4] {
-    [0.0, 0.75, 1.5, 2.25]
+fn player_pose_contact_phases() -> [f32; 8] {
+    let step = std::f32::consts::TAU / 8.0;
+    [
+        0.0,
+        step,
+        step * 2.0,
+        step * 3.0,
+        step * 4.0,
+        step * 5.0,
+        step * 6.0,
+        step * 7.0,
+    ]
 }
 
 fn player_pose_transition_contact_blends() -> [f32; 4] {
@@ -4002,6 +4032,7 @@ fn player_joint_seam_contact_audit(gltf: &Value) -> Option<Value> {
     let mut seam_reports = Vec::new();
     let mut overall_gap = MeshGapReport::zero();
     let mut overall_min_overlap = MeshMinOverlapReport::zero();
+    let mut overall_max_overlap = MeshOverlapReport::zero();
     let mut breach_count = 0_u64;
     let samples_per_pair =
         contexts.len() * phases.len() + transitions.len() * phases.len() * blends.len();
@@ -4009,6 +4040,7 @@ fn player_joint_seam_contact_audit(gltf: &Value) -> Option<Value> {
     for (seam, contact) in player_joint_seam_mesh_pairs() {
         let mut pair_gap = MeshGapReport::zero();
         let mut pair_min_overlap = MeshMinOverlapReport::zero();
+        let mut pair_max_overlap = MeshOverlapReport::zero();
 
         for context in contexts {
             for phase in phases {
@@ -4022,8 +4054,10 @@ fn player_joint_seam_contact_audit(gltf: &Value) -> Option<Value> {
                     phase,
                     &mut pair_gap,
                     &mut pair_min_overlap,
+                    &mut pair_max_overlap,
                     &mut overall_gap,
                     &mut overall_min_overlap,
+                    &mut overall_max_overlap,
                 )?;
             }
         }
@@ -4047,15 +4081,18 @@ fn player_joint_seam_contact_audit(gltf: &Value) -> Option<Value> {
                         phase,
                         &mut pair_gap,
                         &mut pair_min_overlap,
+                        &mut pair_max_overlap,
                         &mut overall_gap,
                         &mut overall_min_overlap,
+                        &mut overall_max_overlap,
                     )?;
                 }
             }
         }
 
         let within_threshold = pair_gap.max_gap_m <= PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M
-            && pair_min_overlap.value() >= PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M;
+            && pair_min_overlap.value() >= PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M
+            && pair_max_overlap.max_overlap_m <= PLAYER_POSE_MAX_JOINT_SEAM_MESH_OVERLAP_M;
         if !within_threshold {
             breach_count += 1;
         }
@@ -4064,9 +4101,11 @@ fn player_joint_seam_contact_audit(gltf: &Value) -> Option<Value> {
             "contact_node": contact,
             "max_gap_m": pair_gap.max_gap_m,
             "min_overlap_m": pair_min_overlap.value(),
+            "max_overlap_m": pair_max_overlap.max_overlap_m,
             "within_threshold": within_threshold,
             "worst_gap_pair": pair_gap.to_json(),
-            "worst_overlap_pair": pair_min_overlap.to_json(),
+            "worst_min_overlap_pair": pair_min_overlap.to_json(),
+            "worst_max_overlap_pair": pair_max_overlap.to_json(),
         }));
     }
 
@@ -4081,13 +4120,16 @@ fn player_joint_seam_contact_audit(gltf: &Value) -> Option<Value> {
         "samples_per_pair": samples_per_pair,
         "max_gap_m": overall_gap.max_gap_m,
         "min_overlap_m": overall_min_overlap.value(),
+        "max_overlap_m": overall_max_overlap.max_overlap_m,
         "breach_count": breach_count,
         "thresholds": {
             "joint_seam_mesh_gap_max_m": PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M,
             "joint_seam_mesh_overlap_min_m": PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M,
+            "joint_seam_mesh_overlap_max_m": PLAYER_POSE_MAX_JOINT_SEAM_MESH_OVERLAP_M,
         },
         "worst_gap_pair": overall_gap.to_json(),
-        "worst_overlap_pair": overall_min_overlap.to_json(),
+        "worst_min_overlap_pair": overall_min_overlap.to_json(),
+        "worst_max_overlap_pair": overall_max_overlap.to_json(),
         "pairs": seam_reports,
     }))
 }
@@ -4102,18 +4144,23 @@ fn observe_joint_seam_sample(
     phase: f32,
     pair_gap: &mut MeshGapReport,
     pair_min_overlap: &mut MeshMinOverlapReport,
+    pair_max_overlap: &mut MeshOverlapReport,
     overall_gap: &mut MeshGapReport,
     overall_min_overlap: &mut MeshMinOverlapReport,
+    overall_max_overlap: &mut MeshOverlapReport,
 ) -> Option<()> {
     let seam_bounds = node_world_mesh_aabb_with_pose(gltf, seam, overrides)?;
     let contact_bounds = node_world_mesh_aabb_with_pose(gltf, contact, overrides)?;
     let gap = seam_bounds.separation_m(contact_bounds);
     pair_gap.observe_label(gap, seam, contact, label, phase);
     overall_gap.observe_label(gap, seam, contact, label, phase);
+    let overlap_axes_m = seam_bounds.overlap_axes_m(contact_bounds);
     let overlap_m = node_world_mesh_obb_with_pose(gltf, seam, overrides)?
         .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, contact, overrides)?);
     pair_min_overlap.observe_label(overlap_m, seam, contact, label, phase);
     overall_min_overlap.observe_label(overlap_m, seam, contact, label, phase);
+    pair_max_overlap.observe_label(overlap_m, overlap_axes_m, seam, contact, label, phase);
+    overall_max_overlap.observe_label(overlap_m, overlap_axes_m, seam, contact, label, phase);
     Some(())
 }
 
@@ -5668,6 +5715,7 @@ mod tests {
         assert_eq!(number_field(&audit, "breach_count"), 0.0);
         assert!(number_field(&audit, "max_gap_m") <= PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M);
         assert!(number_field(&audit, "min_overlap_m") >= PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M);
+        assert!(number_field(&audit, "max_overlap_m") <= PLAYER_POSE_MAX_JOINT_SEAM_MESH_OVERLAP_M);
         assert_eq!(number_field(&audit, "transition_count"), 9.0);
         assert_eq!(
             number_field(&audit, "samples_per_pair"),
