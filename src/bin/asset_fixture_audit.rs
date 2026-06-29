@@ -52,6 +52,8 @@ const PLAYER_POSE_MIN_DIVE_LEG_TUCK_DEGREES: f64 = 68.0;
 const PLAYER_MIN_FINGER_GRIP_LENGTH_M: f64 = 0.10;
 const PLAYER_MAX_FINGER_GRIP_LENGTH_M: f64 = 0.22;
 const PLAYER_MIN_BOOT_SOLE_LENGTH_M: f64 = 0.32;
+const PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT: f64 = 24.0;
+const PLAYER_MIN_LIMB_ANATOMY_MAJOR_EXTENT_M: f64 = 0.15;
 const PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT: f64 = 0.45;
 const PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT: f64 = 0.70;
 const PLAYER_GLIDER_MIN_LAUNCH_RESPONSE_DEGREES: f64 = 8.0;
@@ -237,7 +239,16 @@ const PLAYER_NAME_FRAGMENTS: &[&str] = &[
     "collarbone",
     "pelvis",
     "deltoid",
+    "bicep",
+    "tricep",
     "knuckle",
+    "web",
+    "tendon",
+    "thigh",
+    "calf",
+    "shin",
+    "instep",
+    "lace",
     "sole",
     "heel",
     "seamless",
@@ -293,11 +304,11 @@ const IMPOSTOR_NAME_FRAGMENTS: &[&str] = &[
 const REQUIREMENTS: &[Requirement] = &[
     Requirement {
         kind: VisualAssetKind::PlayerCharacter,
-        min_nodes: 155,
-        min_meshes: 52,
+        min_nodes: 190,
+        min_meshes: 62,
         min_materials: 8,
-        min_vertices: 8400,
-        min_triangles: 15000,
+        min_vertices: 15000,
+        min_triangles: 28000,
         required_name_fragments: PLAYER_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: true,
@@ -598,6 +609,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
             "pose_intent": spec.context.intent().label(),
         })).collect::<Vec<_>>(),
         "joint_seam_contact_audit": player_joint_seam_contact_audit(&gltf),
+        "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit(&gltf),
         "surface_contact_audit": player_pose_surface_contact_audit(&gltf),
         "player_glider_attachment_audit": player_glider_attachment_audit(&gltf, &glider_gltf),
         "artifacts": {
@@ -2467,6 +2479,10 @@ fn audit_fixture(
         .require_player_clips
         .then(|| player_joint_seam_contact_audit(&gltf))
         .flatten();
+    let player_limb_anatomy_detail_audit = requirement
+        .require_player_clips
+        .then(|| player_limb_anatomy_detail_audit(&gltf))
+        .flatten();
 
     let mut checks = vec![
         check_bool("present", true, "file"),
@@ -2598,6 +2614,27 @@ fn audit_fixture(
             player_boot_sole_length_min_m(&gltf).unwrap_or(0.0),
             PLAYER_MIN_BOOT_SOLE_LENGTH_M,
             "m",
+        ));
+        let limb_anatomy = player_limb_anatomy_detail_audit
+            .as_ref()
+            .expect("player limb anatomy detail audit should be present for player fixture");
+        checks.push(check_eq_f64(
+            "player_limb_anatomy_detail_node_count",
+            number_field(limb_anatomy, "present_node_count"),
+            PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT,
+            "nodes",
+        ));
+        checks.push(check_at_least_f64(
+            "player_limb_anatomy_detail_major_extent_min",
+            number_field(limb_anatomy, "min_major_extent_m"),
+            PLAYER_MIN_LIMB_ANATOMY_MAJOR_EXTENT_M,
+            "m",
+        ));
+        checks.push(check_eq_f64(
+            "player_limb_anatomy_detail_missing_count",
+            number_field(limb_anatomy, "missing_count"),
+            0.0,
+            "nodes",
         ));
         checks.push(check_eq_u64(
             "player_named_clip_count",
@@ -3066,6 +3103,7 @@ fn audit_fixture(
         "player_rest_articulated_joint_gap_max_m": player_rest_articulated_joint_gap_max_m(&gltf),
         "player_finger_grip_length_range_m": player_finger_grip_length_range_m(&gltf).map(|(min, max)| json!({"min": min, "max": max})),
         "player_boot_sole_length_min_m": player_boot_sole_length_min_m(&gltf),
+        "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit,
         "player_rest_non_adjacent_mesh_overlap_max_m": player_rest_non_adjacent_mesh_overlap_max_m(&gltf),
         "player_rest_shoulder_mesh_overlap_max_m": player_rest_shoulder_mesh_overlap_max_m(&gltf),
         "player_pose_non_adjacent_mesh_overlap_max_m": player_pose_non_adjacent_mesh_overlap_max_m(&gltf),
@@ -5126,6 +5164,78 @@ fn player_rest_shoulder_mesh_overlap_max_m(gltf: &Value) -> Option<f64> {
     )
 }
 
+fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {
+    &[
+        "Nau Left Suit Bicep Volume",
+        "Nau Right Suit Bicep Volume",
+        "Nau Left Suit Tricep Sweep",
+        "Nau Right Suit Tricep Sweep",
+        "Nau Left Leather Forearm Tendon Strap",
+        "Nau Right Leather Forearm Tendon Strap",
+        "Nau Left Leather Finger Web Bridge",
+        "Nau Right Leather Finger Web Bridge",
+        "Nau Left Suit Outer Thigh Sweep",
+        "Nau Right Suit Outer Thigh Sweep",
+        "Nau Left Suit Inner Thigh Sweep",
+        "Nau Right Suit Inner Thigh Sweep",
+        "Nau Left Suit Calf Volume",
+        "Nau Right Suit Calf Volume",
+        "Nau Left Suit Shin Ridge",
+        "Nau Right Suit Shin Ridge",
+        "Nau Left Leather Heel Tendon Guard",
+        "Nau Right Leather Heel Tendon Guard",
+        "Nau Left Leather Boot Instep Plate",
+        "Nau Right Leather Boot Instep Plate",
+        "Nau Left Leather Lace Cross Strap A",
+        "Nau Right Leather Lace Cross Strap A",
+        "Nau Left Leather Lace Cross Strap B",
+        "Nau Right Leather Lace Cross Strap B",
+    ]
+}
+
+fn player_limb_anatomy_detail_audit(gltf: &Value) -> Option<Value> {
+    let mut samples = Vec::new();
+    let mut missing = Vec::new();
+    let mut min_major_extent_m = f64::INFINITY;
+    let mut present_node_count = 0_u64;
+
+    for node in player_limb_anatomy_detail_node_names() {
+        let Some(bounds) = node_world_mesh_obb_with_pose(gltf, node, &[]) else {
+            missing.push(*node);
+            continue;
+        };
+        let major_extent_m = (bounds.half_extents.x as f64)
+            .max(bounds.half_extents.y as f64)
+            .max(bounds.half_extents.z as f64)
+            * 2.0;
+        min_major_extent_m = min_major_extent_m.min(major_extent_m);
+        present_node_count += 1;
+        samples.push(json!({
+            "node": node,
+            "major_extent_m": major_extent_m,
+            "half_extents_m": [
+                bounds.half_extents.x,
+                bounds.half_extents.y,
+                bounds.half_extents.z,
+            ],
+        }));
+    }
+
+    Some(json!({
+        "schema": "nau_player_limb_anatomy_detail_audit.v1",
+        "expected_node_count": player_limb_anatomy_detail_node_names().len(),
+        "present_node_count": present_node_count,
+        "missing_count": missing.len(),
+        "missing": missing,
+        "min_major_extent_m": if min_major_extent_m.is_finite() {
+            min_major_extent_m
+        } else {
+            0.0
+        },
+        "samples": samples,
+    }))
+}
+
 fn player_finger_grip_node_names() -> [&'static str; 10] {
     [
         "Nau Left Leather Index Finger Grip",
@@ -6613,6 +6723,42 @@ mod tests {
             player_boot_sole_length_min_m(&gltf).expect("boot sole length")
                 >= PLAYER_MIN_BOOT_SOLE_LENGTH_M
         );
+    }
+
+    #[test]
+    fn player_limb_anatomy_detail_audit_requires_extremity_shape_nodes() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let audit = player_limb_anatomy_detail_audit(&gltf).expect("limb anatomy detail audit");
+
+        assert_eq!(
+            number_field(&audit, "present_node_count"),
+            PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT
+        );
+        assert_eq!(number_field(&audit, "missing_count"), 0.0);
+        assert!(
+            number_field(&audit, "min_major_extent_m") >= PLAYER_MIN_LIMB_ANATOMY_MAJOR_EXTENT_M
+        );
+        for expected in [
+            "Nau Left Suit Bicep Volume",
+            "Nau Right Suit Tricep Sweep",
+            "Nau Left Leather Finger Web Bridge",
+            "Nau Right Suit Calf Volume",
+            "Nau Left Suit Shin Ridge",
+            "Nau Right Leather Boot Instep Plate",
+            "Nau Left Leather Lace Cross Strap A",
+        ] {
+            assert!(
+                audit
+                    .get("samples")
+                    .and_then(Value::as_array)
+                    .is_some_and(|samples| {
+                        samples.iter().any(|sample| {
+                            sample.get("node").and_then(Value::as_str) == Some(expected)
+                        })
+                    })
+            );
+        }
     }
 
     #[test]
