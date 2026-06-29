@@ -297,6 +297,14 @@ pub fn glider_deployment_for_mode(mode: FlightMode) -> f32 {
     }
 }
 
+pub fn glider_deployment_for_context(context: PlayerPoseContext) -> f32 {
+    if context.mode == FlightMode::Gliding && context.intent() == PlayerPoseIntent::Diving {
+        0.42
+    } else {
+        glider_deployment_for_mode(context.mode)
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct GliderTraversalPose {
     pub translation_offset: Vec3,
@@ -1795,6 +1803,31 @@ mod tests {
 
         assert_eq!(pose.motion_m(), 0.0);
         assert_eq!(pose.response_degrees(), 0.0);
+    }
+
+    #[test]
+    fn glider_deployment_releases_for_head_down_dive() {
+        let glide_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -5.0, -34.0),
+            FlightInput::default(),
+            80.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::Gliding);
+        let dive_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -28.0, -42.0),
+            FlightInput {
+                dive: true,
+                ..default()
+            },
+            80.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::Diving);
+
+        assert_eq!(glider_deployment_for_context(glide_context), 1.0);
+        assert!(glider_deployment_for_context(dive_context) > 0.25);
+        assert!(glider_deployment_for_context(dive_context) < 0.60);
     }
 
     #[test]
