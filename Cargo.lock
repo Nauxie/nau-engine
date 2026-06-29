@@ -3276,6 +3276,7 @@ dependencies = [
 name = "nau-engine"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "bevy",
  "image",
  "serde_json",
