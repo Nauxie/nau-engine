@@ -1555,6 +1555,9 @@ fn accumulator_gates_target_landing_pose_temporal_samples() {
         max_pose_part_rotation_delta_degrees: 24.0,
         max_pose_part_translation_delta_m: 0.12,
         min_pose_limb_clearance_m: 0.12,
+        max_pose_limb_penetration_m: 0.0,
+        max_pose_joint_gap_m: 0.0,
+        pose_joint_gap_samples: 1,
     });
     non_landing_temporal_sample.pose_intent_label = "gliding";
     accumulator.observe(non_landing_temporal_sample);
@@ -1589,6 +1592,9 @@ fn accumulator_gates_target_landing_pose_temporal_samples() {
             max_pose_part_rotation_delta_degrees: f32::NAN,
             max_pose_part_translation_delta_m: f32::NAN,
             min_pose_limb_clearance_m: 0.12,
+            max_pose_limb_penetration_m: 0.0,
+            max_pose_joint_gap_m: 0.0,
+            pose_joint_gap_samples: 1,
         });
         sample.pose_intent_label = pose_intent_label;
         sample = sample.with_authored_animation_metrics("land", "land", 1, 140);
@@ -1649,6 +1655,9 @@ fn accumulator_gates_target_landing_pose_temporal_jank() {
         max_pose_part_rotation_delta_degrees: 121.0,
         max_pose_part_translation_delta_m: 0.56,
         min_pose_limb_clearance_m: 0.12,
+        max_pose_limb_penetration_m: 0.0,
+        max_pose_joint_gap_m: 0.0,
+        pose_joint_gap_samples: 1,
     });
     sample.pose_intent_label = "landing_anticipation";
     sample = sample.with_authored_animation_metrics("land", "land", 1, 140);
@@ -1703,6 +1712,9 @@ fn accumulator_ignores_non_landing_pose_jank_for_landing_temporal_gates() {
         max_pose_part_rotation_delta_degrees: 150.0,
         max_pose_part_translation_delta_m: 0.8,
         min_pose_limb_clearance_m: 0.12,
+        max_pose_limb_penetration_m: 0.0,
+        max_pose_joint_gap_m: 0.0,
+        pose_joint_gap_samples: 1,
     });
     gliding_jank_sample.pose_intent_label = "gliding";
     accumulator.observe(gliding_jank_sample);
@@ -1737,6 +1749,9 @@ fn accumulator_ignores_non_landing_pose_jank_for_landing_temporal_gates() {
             max_pose_part_rotation_delta_degrees: 20.0,
             max_pose_part_translation_delta_m: 0.1,
             min_pose_limb_clearance_m: 0.12,
+            max_pose_limb_penetration_m: 0.0,
+            max_pose_joint_gap_m: 0.0,
+            pose_joint_gap_samples: 1,
         });
         sample.pose_intent_label = pose_intent_label;
         sample.target_distance_m = 0.0;
@@ -3122,6 +3137,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
     assert_eq!(summary.metrics.pose_landing_anticipation_samples, 1);
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 1);
     assert_eq!(summary.metrics.unreadable_key_pose_samples, 0);
+    assert!(summary.metrics.pose_joint_gap_samples > 0);
     assert!(summary.to_json().contains("\"pose_grounded_idle_samples\""));
     assert!(summary.to_json().contains("\"pose_grounded_walk_samples\""));
     assert!(
@@ -3196,6 +3212,10 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_landing_recovery_flip",
         "pose_state_unreadable_key_pose_samples",
         "pose_state_key_pose_transition_grace_samples",
+        "pose_state_min_pose_limb_clearance",
+        "pose_state_max_pose_limb_penetration",
+        "pose_state_pose_joint_gap_samples",
+        "pose_state_max_pose_joint_gap",
     ] {
         assert!(named_check(&summary, name).passed, "{name} should pass");
     }
@@ -3616,6 +3636,15 @@ fn observe_pose_state_samples_with_grounded_stride(
                     -movement_axis.x.signum() * AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES;
             }
             sample = sample.with_pose_readability_metrics(readability_metrics);
+            sample = sample.with_pose_temporal_metrics(EvalPoseTemporalMetrics {
+                visible_pose_part_count: 5,
+                max_pose_part_rotation_delta_degrees: 8.0,
+                max_pose_part_translation_delta_m: 0.02,
+                min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
+            });
             if include_grounded_stride_metrics
                 && matches!(pose_intent_label, "grounded_walk" | "grounded_run")
             {
@@ -3726,6 +3755,9 @@ fn accumulator_gates_visible_pose_temporal_jank() {
             max_pose_part_rotation_delta_degrees: 150.0,
             max_pose_part_translation_delta_m: 0.8,
             min_pose_limb_clearance_m: 0.12,
+            max_pose_limb_penetration_m: 0.0,
+            max_pose_joint_gap_m: 0.0,
+            pose_joint_gap_samples: 1,
         }),
     );
 
@@ -3776,6 +3808,9 @@ fn accumulator_gates_visible_pose_limb_clearance() {
             max_pose_part_rotation_delta_degrees: 20.0,
             max_pose_part_translation_delta_m: 0.08,
             min_pose_limb_clearance_m: -0.02,
+            max_pose_limb_penetration_m: 0.02,
+            max_pose_joint_gap_m: 0.0,
+            pose_joint_gap_samples: 1,
         }),
     );
 
@@ -3790,9 +3825,87 @@ fn accumulator_gates_visible_pose_limb_clearance() {
         },
     );
     let clearance_check = named_check(&summary, "air_control_min_pose_limb_clearance");
+    let penetration_check = named_check(&summary, "air_control_max_pose_limb_penetration");
 
     assert_eq!(summary.metrics.min_pose_limb_clearance_m, -0.02);
     assert!(!clearance_check.passed);
+    assert_eq!(summary.metrics.max_pose_limb_penetration_m, 0.02);
+    assert!(!penetration_check.passed);
+}
+
+#[test]
+fn accumulator_gates_visible_pose_joint_gap_samples_and_distance() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let mut missing_sample_accumulator = EvalAccumulator::default();
+    missing_sample_accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            120,
+            Vec3::new(0.0, -18.0, -26.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        )
+        .with_pose_temporal_metrics(EvalPoseTemporalMetrics {
+            visible_pose_part_count: 5,
+            max_pose_part_rotation_delta_degrees: 20.0,
+            max_pose_part_translation_delta_m: 0.08,
+            min_pose_limb_clearance_m: 0.12,
+            max_pose_limb_penetration_m: 0.0,
+            max_pose_joint_gap_m: f32::NAN,
+            pose_joint_gap_samples: 0,
+        }),
+    );
+    let missing_summary = missing_sample_accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(missing_summary.metrics.pose_joint_gap_samples, 0);
+    assert!(!named_check(&missing_summary, "air_control_pose_joint_gap_samples").passed);
+
+    let mut gapped_accumulator = EvalAccumulator::default();
+    gapped_accumulator.observe(
+        air_control_metric_sample(
+            scenario,
+            120,
+            Vec3::new(0.0, -18.0, -26.0),
+            Vec2::ZERO,
+            0.0,
+            18.0,
+            0.0,
+        )
+        .with_pose_temporal_metrics(EvalPoseTemporalMetrics {
+            visible_pose_part_count: 5,
+            max_pose_part_rotation_delta_degrees: 20.0,
+            max_pose_part_translation_delta_m: 0.08,
+            min_pose_limb_clearance_m: 0.12,
+            max_pose_limb_penetration_m: 0.0,
+            max_pose_joint_gap_m: 0.14,
+            pose_joint_gap_samples: 1,
+        }),
+    );
+    let gapped_summary = gapped_accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(gapped_summary.metrics.max_pose_joint_gap_m, 0.14);
+    assert!(named_check(&gapped_summary, "air_control_pose_joint_gap_samples").passed);
+    assert!(!named_check(&gapped_summary, "air_control_max_pose_joint_gap").passed);
 }
 
 #[test]
@@ -3814,6 +3927,9 @@ fn accumulator_gates_missing_visible_pose_temporal_samples() {
             max_pose_part_rotation_delta_degrees: f32::NAN,
             max_pose_part_translation_delta_m: f32::NAN,
             min_pose_limb_clearance_m: 0.12,
+            max_pose_limb_penetration_m: 0.0,
+            max_pose_joint_gap_m: 0.0,
+            pose_joint_gap_samples: 1,
         }),
     );
 

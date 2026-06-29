@@ -580,6 +580,19 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
                     }),
             );
         }
+        if sample.max_pose_limb_penetration_m.is_finite() {
+            accumulator.max_pose_limb_penetration_m = accumulator
+                .max_pose_limb_penetration_m
+                .max(sample.max_pose_limb_penetration_m);
+        }
+        if sample.max_pose_joint_gap_m.is_finite() {
+            accumulator.max_pose_joint_gap_m = accumulator
+                .max_pose_joint_gap_m
+                .max(sample.max_pose_joint_gap_m);
+        }
+        accumulator.pose_joint_gap_samples = accumulator
+            .pose_joint_gap_samples
+            .saturating_add(sample.pose_joint_gap_samples);
         let has_pose_temporal_metrics = sample.max_pose_part_rotation_delta_degrees.is_finite()
             && sample.max_pose_part_translation_delta_m.is_finite();
         if has_pose_temporal_metrics {

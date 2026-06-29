@@ -132,6 +132,9 @@ impl EvalSample {
             max_pose_part_rotation_delta_degrees: f32::NAN,
             max_pose_part_translation_delta_m: f32::NAN,
             min_pose_limb_clearance_m: f32::NAN,
+            max_pose_limb_penetration_m: f32::NAN,
+            max_pose_joint_gap_m: f32::NAN,
+            pose_joint_gap_samples: 0,
             desired_body_yaw_error_degrees: f32::NAN,
             desired_body_heading_error_degrees: f32::NAN,
             body_travel_heading_error_degrees: f32::NAN,
@@ -478,6 +481,10 @@ impl EvalSample {
         self.max_pose_part_translation_delta_m =
             finite_nonnegative_or_nan(metrics.max_pose_part_translation_delta_m);
         self.min_pose_limb_clearance_m = finite_or_nan(metrics.min_pose_limb_clearance_m);
+        self.max_pose_limb_penetration_m =
+            finite_nonnegative_or_nan(metrics.max_pose_limb_penetration_m);
+        self.max_pose_joint_gap_m = finite_nonnegative_or_nan(metrics.max_pose_joint_gap_m);
+        self.pose_joint_gap_samples = metrics.pose_joint_gap_samples;
         self
     }
 
