@@ -30,6 +30,8 @@ const PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT: f64 = 6.0;
 const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 4.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 12.0;
+const PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT: f64 = 9.0;
+const PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT: f64 = 4.0;
 const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 72.0;
 const PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES: f64 = 150.0;
 const PLAYER_POSE_MIN_DIVE_TORSO_PITCH_DEGREES: f64 = 82.0;
@@ -421,6 +423,10 @@ fn audit_fixture(
         .require_player_clips
         .then(|| player_pose_contact_audit(&gltf))
         .flatten();
+    let player_pose_transition_contact_audit = requirement
+        .require_player_clips
+        .then(|| player_pose_transition_contact_audit(&gltf))
+        .flatten();
     let player_joint_bridge_contact_audit = requirement
         .require_player_clips
         .then(|| player_joint_bridge_contact_audit(&gltf))
@@ -680,6 +686,69 @@ fn audit_fixture(
             0.0,
             "breaches",
         ));
+        let transition_contact = player_pose_transition_contact_audit
+            .as_ref()
+            .expect("player pose transition contact audit should be present for player fixture");
+        checks.push(check_eq_f64(
+            "player_pose_transition_contact_report_transition_count",
+            number_field(transition_contact, "transition_count"),
+            PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT,
+            "transitions",
+        ));
+        checks.push(check_eq_f64(
+            "player_pose_transition_contact_report_blend_count",
+            number_field(transition_contact, "blend_count"),
+            PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT,
+            "blends",
+        ));
+        checks.push(check_eq_f64(
+            "player_pose_transition_contact_report_phase_count",
+            number_field(transition_contact, "phase_count"),
+            PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT,
+            "phases",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_transition_contact_report_breach_count",
+            number_field(transition_contact, "breach_count"),
+            0.0,
+            "breaches",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_transition_articulated_joint_gap_max",
+            number_field(transition_contact, "articulated_joint_gap_max_m"),
+            PLAYER_POSE_MAX_ARTICULATED_JOINT_GAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_transition_joint_cover_mesh_gap_max",
+            number_field(transition_contact, "joint_cover_mesh_gap_max_m"),
+            PLAYER_POSE_MAX_JOINT_COVER_MESH_GAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_transition_joint_cover_mesh_overlap_max",
+            number_field(transition_contact, "joint_cover_mesh_overlap_max_m"),
+            PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_transition_joint_bridge_mesh_gap_max",
+            number_field(transition_contact, "joint_bridge_mesh_gap_max_m"),
+            PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_transition_joint_bridge_mesh_overlap_max",
+            number_field(transition_contact, "joint_bridge_mesh_overlap_max_m"),
+            PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_transition_non_adjacent_mesh_overlap_max",
+            number_field(transition_contact, "non_adjacent_mesh_overlap_max_m"),
+            PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
+            "m",
+        ));
         let pose_shape = player_pose_shape_audit
             .as_ref()
             .expect("player pose shape audit should be present for player fixture");
@@ -846,6 +915,7 @@ fn audit_fixture(
         "player_pose_joint_cover_mesh_overlap_worst_pair": player_pose_joint_cover_mesh_overlap_report(&gltf).map(|report| report.to_json()),
         "player_joint_bridge_contact_audit": player_joint_bridge_contact_audit,
         "player_pose_contact_audit": player_pose_contact_audit,
+        "player_pose_transition_contact_audit": player_pose_transition_contact_audit,
         "player_bank_clip_motion_distinct": player_bank_clip_motion_is_distinct(&gltf),
         "player_launch_glide_land_clip_motion_distinct": player_launch_glide_land_clip_motion_is_distinct(&gltf),
         "player_grounded_locomotion_clip_motion_distinct": player_grounded_locomotion_clip_motion_is_distinct(&gltf),
@@ -908,6 +978,13 @@ struct PoseNodeOverride {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct PlayerPoseTransition {
+    label: &'static str,
+    from: PlayerPoseContext,
+    to: PlayerPoseContext,
+}
+
+#[derive(Clone, Copy, Debug)]
 struct MeshOverlapReport {
     max_overlap_m: f64,
     overlap_axes_m: [f64; 3],
@@ -944,6 +1021,25 @@ impl MeshOverlapReport {
             self.left_node = left_node;
             self.right_node = right_node;
             self.pose_intent = pose_intent.label();
+            self.phase = phase;
+        }
+    }
+
+    fn observe_label(
+        &mut self,
+        overlap_m: f64,
+        overlap_axes_m: [f64; 3],
+        left_node: &'static str,
+        right_node: &'static str,
+        pose_label: &'static str,
+        phase: f32,
+    ) {
+        if overlap_m > self.max_overlap_m {
+            self.max_overlap_m = overlap_m;
+            self.overlap_axes_m = overlap_axes_m;
+            self.left_node = left_node;
+            self.right_node = right_node;
+            self.pose_intent = pose_label;
             self.phase = phase;
         }
     }
@@ -999,6 +1095,23 @@ impl JointGapReport {
         }
     }
 
+    fn observe_label(
+        &mut self,
+        gap_m: f64,
+        socket_node: &'static str,
+        joint_node: &'static str,
+        pose_label: &'static str,
+        phase: f32,
+    ) {
+        if gap_m > self.max_gap_m {
+            self.max_gap_m = gap_m;
+            self.socket_node = socket_node;
+            self.joint_node = joint_node;
+            self.pose_intent = pose_label;
+            self.phase = phase;
+        }
+    }
+
     fn to_json(self) -> Value {
         json!({
             "max_gap_m": self.max_gap_m,
@@ -1043,6 +1156,23 @@ impl MeshGapReport {
             self.left_node = left_node;
             self.right_node = right_node;
             self.pose_intent = pose_intent.label();
+            self.phase = phase;
+        }
+    }
+
+    fn observe_label(
+        &mut self,
+        gap_m: f64,
+        left_node: &'static str,
+        right_node: &'static str,
+        pose_label: &'static str,
+        phase: f32,
+    ) {
+        if gap_m > self.max_gap_m {
+            self.max_gap_m = gap_m;
+            self.left_node = left_node;
+            self.right_node = right_node;
+            self.pose_intent = pose_label;
             self.phase = phase;
         }
     }
@@ -1420,6 +1550,10 @@ fn player_pose_contact_phases() -> [f32; 4] {
     [0.0, 0.75, 1.5, 2.25]
 }
 
+fn player_pose_transition_contact_blends() -> [f32; 4] {
+    [0.2, 0.4, 0.6, 0.8]
+}
+
 fn player_pose_contact_audit(gltf: &Value) -> Option<Value> {
     let phases = player_pose_contact_phases();
     let non_adjacent_pairs = player_rest_non_adjacent_mesh_overlap_pairs();
@@ -1520,6 +1654,209 @@ fn player_pose_contact_audit(gltf: &Value) -> Option<Value> {
             "non_adjacent_mesh_overlap_max_m": PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
         },
         "poses": pose_reports,
+    }))
+}
+
+fn player_pose_transition_contact_audit(gltf: &Value) -> Option<Value> {
+    let phases = player_pose_contact_phases();
+    let blends = player_pose_transition_contact_blends();
+    let transitions = player_pose_transition_contact_transitions();
+    let non_adjacent_pairs = player_rest_non_adjacent_mesh_overlap_pairs();
+    let mut transition_reports = Vec::new();
+    let mut breach_count = 0_u64;
+    let mut overall_articulated_gap = JointGapReport::zero();
+    let mut overall_joint_cover_gap = MeshGapReport::zero();
+    let mut overall_joint_cover_overlap = MeshOverlapReport::zero();
+    let mut overall_joint_bridge_gap = MeshGapReport::zero();
+    let mut overall_joint_bridge_overlap = MeshOverlapReport::zero();
+    let mut overall_non_adjacent_overlap = MeshOverlapReport::zero();
+
+    for transition in transitions {
+        let mut articulated_gap = JointGapReport::zero();
+        let mut joint_cover_gap = MeshGapReport::zero();
+        let mut joint_cover_overlap = MeshOverlapReport::zero();
+        let mut joint_bridge_gap = MeshGapReport::zero();
+        let mut joint_bridge_overlap = MeshOverlapReport::zero();
+        let mut non_adjacent_overlap = MeshOverlapReport::zero();
+
+        for phase in phases {
+            for blend in blends {
+                let overrides = player_pose_transition_node_overrides(
+                    gltf,
+                    transition.from,
+                    transition.to,
+                    phase,
+                    blend,
+                )?;
+
+                for (socket, joint) in player_articulated_joint_gap_pairs() {
+                    let socket_translation =
+                        world_node_translation_with_pose(gltf, socket, &overrides)?;
+                    let joint_translation =
+                        world_node_translation_with_pose(gltf, joint, &overrides)?;
+                    let gap = distance3(socket_translation, joint_translation);
+                    articulated_gap.observe_label(gap, socket, joint, transition.label, phase);
+                    overall_articulated_gap.observe_label(
+                        gap,
+                        socket,
+                        joint,
+                        transition.label,
+                        phase,
+                    );
+                }
+
+                for (left, right) in player_joint_cover_mesh_pairs() {
+                    let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, &overrides)?;
+                    let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, &overrides)?;
+                    let gap = left_bounds.separation_m(right_bounds);
+                    joint_cover_gap.observe_label(gap, left, right, transition.label, phase);
+                    overall_joint_cover_gap.observe_label(
+                        gap,
+                        left,
+                        right,
+                        transition.label,
+                        phase,
+                    );
+                    let overlap_axes_m = left_bounds.overlap_axes_m(right_bounds);
+                    let overlap_m = node_world_mesh_obb_with_pose(gltf, left, &overrides)?
+                        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, right, &overrides)?);
+                    joint_cover_overlap.observe_label(
+                        overlap_m,
+                        overlap_axes_m,
+                        left,
+                        right,
+                        transition.label,
+                        phase,
+                    );
+                    overall_joint_cover_overlap.observe_label(
+                        overlap_m,
+                        overlap_axes_m,
+                        left,
+                        right,
+                        transition.label,
+                        phase,
+                    );
+                }
+
+                for (bridge, contact) in player_joint_bridge_mesh_pairs() {
+                    let bridge_bounds = node_world_mesh_aabb_with_pose(gltf, bridge, &overrides)?;
+                    let contact_bounds = node_world_mesh_aabb_with_pose(gltf, contact, &overrides)?;
+                    let gap = bridge_bounds.separation_m(contact_bounds);
+                    joint_bridge_gap.observe_label(gap, bridge, contact, transition.label, phase);
+                    overall_joint_bridge_gap.observe_label(
+                        gap,
+                        bridge,
+                        contact,
+                        transition.label,
+                        phase,
+                    );
+                    let overlap_axes_m = bridge_bounds.overlap_axes_m(contact_bounds);
+                    let overlap_m = node_world_mesh_obb_with_pose(gltf, bridge, &overrides)?
+                        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, contact, &overrides)?);
+                    joint_bridge_overlap.observe_label(
+                        overlap_m,
+                        overlap_axes_m,
+                        bridge,
+                        contact,
+                        transition.label,
+                        phase,
+                    );
+                    overall_joint_bridge_overlap.observe_label(
+                        overlap_m,
+                        overlap_axes_m,
+                        bridge,
+                        contact,
+                        transition.label,
+                        phase,
+                    );
+                }
+
+                for (left, right) in non_adjacent_pairs.iter().copied() {
+                    let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, &overrides)?;
+                    let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, &overrides)?;
+                    let overlap_axes_m = left_bounds.overlap_axes_m(right_bounds);
+                    let overlap_m = node_world_mesh_obb_with_pose(gltf, left, &overrides)?
+                        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, right, &overrides)?);
+                    non_adjacent_overlap.observe_label(
+                        overlap_m,
+                        overlap_axes_m,
+                        left,
+                        right,
+                        transition.label,
+                        phase,
+                    );
+                    overall_non_adjacent_overlap.observe_label(
+                        overlap_m,
+                        overlap_axes_m,
+                        left,
+                        right,
+                        transition.label,
+                        phase,
+                    );
+                }
+            }
+        }
+
+        let within_thresholds = articulated_gap.max_gap_m
+            <= PLAYER_POSE_MAX_ARTICULATED_JOINT_GAP_M
+            && joint_cover_gap.max_gap_m <= PLAYER_POSE_MAX_JOINT_COVER_MESH_GAP_M
+            && joint_cover_overlap.max_overlap_m <= PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M
+            && joint_bridge_gap.max_gap_m <= PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M
+            && joint_bridge_overlap.max_overlap_m <= PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M
+            && non_adjacent_overlap.max_overlap_m <= PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M;
+        if !within_thresholds {
+            breach_count += 1;
+        }
+
+        transition_reports.push(json!({
+            "transition": transition.label,
+            "from_pose_intent": transition.from.intent().label(),
+            "to_pose_intent": transition.to.intent().label(),
+            "phase_count": phases.len(),
+            "blend_count": blends.len(),
+            "within_thresholds": within_thresholds,
+            "articulated_joint_gap_max_m": articulated_gap.max_gap_m,
+            "joint_cover_mesh_gap_max_m": joint_cover_gap.max_gap_m,
+            "joint_cover_mesh_overlap_max_m": joint_cover_overlap.max_overlap_m,
+            "joint_bridge_mesh_gap_max_m": joint_bridge_gap.max_gap_m,
+            "joint_bridge_mesh_overlap_max_m": joint_bridge_overlap.max_overlap_m,
+            "non_adjacent_mesh_overlap_max_m": non_adjacent_overlap.max_overlap_m,
+            "articulated_joint_gap_worst_pair": articulated_gap.to_json(),
+            "joint_cover_mesh_gap_worst_pair": joint_cover_gap.to_json(),
+            "joint_cover_mesh_overlap_worst_pair": joint_cover_overlap.to_json(),
+            "joint_bridge_mesh_gap_worst_pair": joint_bridge_gap.to_json(),
+            "joint_bridge_mesh_overlap_worst_pair": joint_bridge_overlap.to_json(),
+            "non_adjacent_mesh_overlap_worst_pair": non_adjacent_overlap.to_json(),
+        }));
+    }
+
+    Some(json!({
+        "schema": "nau_player_pose_transition_contact_audit.v1",
+        "transition_count": transition_reports.len(),
+        "phase_count": phases.len(),
+        "blend_count": blends.len(),
+        "breach_count": breach_count,
+        "articulated_joint_gap_max_m": overall_articulated_gap.max_gap_m,
+        "joint_cover_mesh_gap_max_m": overall_joint_cover_gap.max_gap_m,
+        "joint_cover_mesh_overlap_max_m": overall_joint_cover_overlap.max_overlap_m,
+        "joint_bridge_mesh_gap_max_m": overall_joint_bridge_gap.max_gap_m,
+        "joint_bridge_mesh_overlap_max_m": overall_joint_bridge_overlap.max_overlap_m,
+        "non_adjacent_mesh_overlap_max_m": overall_non_adjacent_overlap.max_overlap_m,
+        "thresholds": {
+            "articulated_joint_gap_max_m": PLAYER_POSE_MAX_ARTICULATED_JOINT_GAP_M,
+            "joint_cover_mesh_gap_max_m": PLAYER_POSE_MAX_JOINT_COVER_MESH_GAP_M,
+            "joint_cover_mesh_overlap_max_m": PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M,
+            "joint_bridge_mesh_gap_max_m": PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M,
+            "joint_bridge_mesh_overlap_max_m": PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M,
+            "non_adjacent_mesh_overlap_max_m": PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
+        },
+        "articulated_joint_gap_worst_pair": overall_articulated_gap.to_json(),
+        "joint_cover_mesh_gap_worst_pair": overall_joint_cover_gap.to_json(),
+        "joint_cover_mesh_overlap_worst_pair": overall_joint_cover_overlap.to_json(),
+        "joint_bridge_mesh_gap_worst_pair": overall_joint_bridge_gap.to_json(),
+        "joint_bridge_mesh_overlap_worst_pair": overall_joint_bridge_overlap.to_json(),
+        "non_adjacent_mesh_overlap_worst_pair": overall_non_adjacent_overlap.to_json(),
+        "transitions": transition_reports,
     }))
 }
 
@@ -1885,6 +2222,72 @@ fn player_pose_mesh_overlap_contexts() -> [PlayerPoseContext; 6] {
     ]
 }
 
+fn player_pose_transition_contact_transitions() -> [PlayerPoseTransition; 9] {
+    let [
+        falling,
+        gliding,
+        diving,
+        air_brake,
+        landing_anticipation,
+        landing_recovery,
+    ] = player_pose_mesh_overlap_contexts();
+    let launching = PlayerPoseContext::new(
+        FlightMode::Launching,
+        Vec3::new(0.0, 24.0, -18.0),
+        FlightInput::default(),
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Launching);
+
+    [
+        PlayerPoseTransition {
+            label: "launching_to_gliding",
+            from: launching,
+            to: gliding,
+        },
+        PlayerPoseTransition {
+            label: "falling_to_gliding",
+            from: falling,
+            to: gliding,
+        },
+        PlayerPoseTransition {
+            label: "gliding_to_falling",
+            from: gliding,
+            to: falling,
+        },
+        PlayerPoseTransition {
+            label: "gliding_to_diving",
+            from: gliding,
+            to: diving,
+        },
+        PlayerPoseTransition {
+            label: "diving_to_gliding",
+            from: diving,
+            to: gliding,
+        },
+        PlayerPoseTransition {
+            label: "gliding_to_air_brake",
+            from: gliding,
+            to: air_brake,
+        },
+        PlayerPoseTransition {
+            label: "air_brake_to_gliding",
+            from: air_brake,
+            to: gliding,
+        },
+        PlayerPoseTransition {
+            label: "gliding_to_landing_anticipation",
+            from: gliding,
+            to: landing_anticipation,
+        },
+        PlayerPoseTransition {
+            label: "landing_anticipation_to_landing_recovery",
+            from: landing_anticipation,
+            to: landing_recovery,
+        },
+    ]
+}
+
 fn player_pose_node_overrides(
     gltf: &Value,
     context: PlayerPoseContext,
@@ -1900,6 +2303,40 @@ fn player_pose_node_overrides(
             })
         })
         .collect()
+}
+
+fn player_pose_transition_node_overrides(
+    gltf: &Value,
+    from: PlayerPoseContext,
+    to: PlayerPoseContext,
+    phase: f32,
+    blend: f32,
+) -> Option<Vec<PoseNodeOverride>> {
+    PLAYER_RUNTIME_POSE_NODE_ROLES
+        .iter()
+        .map(|(node_name, role)| {
+            let part = character_part_from_node(gltf, node_name, *role)?;
+            let from_pose = part_pose_with_context(&part, from, phase);
+            let to_pose = part_pose_with_context(&part, to, phase);
+            Some(PoseNodeOverride {
+                node_name,
+                pose: blend_part_pose(from_pose, to_pose, blend),
+            })
+        })
+        .collect()
+}
+
+fn blend_part_pose(from: PartPose, to: PartPose, blend: f32) -> PartPose {
+    let blend = blend.clamp(0.0, 1.0);
+    PartPose {
+        translation: from.translation.lerp(to.translation, blend),
+        rotation: from.rotation.slerp(to.rotation, blend),
+        visibility: if blend < 0.5 {
+            from.visibility
+        } else {
+            to.visibility
+        },
+    }
 }
 
 fn character_part_from_node(
@@ -2996,6 +3433,51 @@ mod tests {
             assert!(poses.iter().any(|pose| {
                 pose.get("pose_intent").and_then(Value::as_str) == Some(expected)
                     && pose
+                        .get("within_thresholds")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+            }));
+        }
+    }
+
+    #[test]
+    fn player_pose_transition_contact_audit_reports_in_between_samples() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let audit =
+            player_pose_transition_contact_audit(&gltf).expect("pose transition contact audit");
+        let transitions = audit
+            .get("transitions")
+            .and_then(Value::as_array)
+            .expect("transition rows");
+
+        assert_eq!(
+            number_field(&audit, "transition_count"),
+            PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT
+        );
+        assert_eq!(
+            number_field(&audit, "blend_count"),
+            PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT
+        );
+        assert_eq!(
+            number_field(&audit, "phase_count"),
+            PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT
+        );
+        assert_eq!(number_field(&audit, "breach_count"), 0.0);
+        assert!(
+            number_field(&audit, "joint_bridge_mesh_overlap_max_m")
+                <= PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M
+        );
+        for expected in [
+            "launching_to_gliding",
+            "falling_to_gliding",
+            "gliding_to_diving",
+            "diving_to_gliding",
+            "gliding_to_landing_anticipation",
+        ] {
+            assert!(transitions.iter().any(|transition| {
+                transition.get("transition").and_then(Value::as_str) == Some(expected)
+                    && transition
                         .get("within_thresholds")
                         .and_then(Value::as_bool)
                         .unwrap_or(false)
