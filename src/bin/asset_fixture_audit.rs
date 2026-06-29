@@ -23,12 +23,12 @@ const PLAYER_REST_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.005;
 const PLAYER_REST_MAX_SHOULDER_MESH_OVERLAP_M: f64 = 0.015;
 const PLAYER_POSE_MAX_ARTICULATED_JOINT_GAP_M: f64 = 0.018;
 const PLAYER_POSE_MAX_JOINT_COVER_MESH_GAP_M: f64 = 0.035;
-const PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M: f64 = 0.09;
+const PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M: f64 = 0.078;
 const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M: f64 = 0.012;
-const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M: f64 = 0.08;
+const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M: f64 = 0.072;
 const PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M: f64 = 0.008;
 const PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M: f64 = 0.004;
-const PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M: f64 = 0.045;
+const PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M: f64 = 0.035;
 const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.001;
 const PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT: f64 = 6.0;
 const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 4.0;
@@ -1473,7 +1473,7 @@ fn render_player_pose_overlap_overlay(
                 category: "joint cover mesh overlap",
                 left,
                 right,
-                warn_threshold_m: PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M * 0.85,
+                warn_threshold_m: PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M * 0.95,
                 fail_threshold_m: PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M,
             },
         );
@@ -1488,7 +1488,7 @@ fn render_player_pose_overlap_overlay(
                 category: "joint bridge mesh overlap",
                 left,
                 right,
-                warn_threshold_m: PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M * 0.85,
+                warn_threshold_m: PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M * 0.95,
                 fail_threshold_m: PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M,
             },
         );
