@@ -251,7 +251,7 @@ addMesh("Nau Accent Helmet Crest", taperedCylinderMesh([0.18, 0.105], [0.09, 0.0
 addMesh("Nau Suit Upper Arm", taperedCylinderMesh([0.112, 0.100], [0.092, 0.082], 22), 0);
 addMesh("Nau Leather Forearm Wrap", taperedCylinderMesh([0.094, 0.082], [0.074, 0.066], 22), 3);
 addMesh("Nau Suit Thigh Guard", taperedCylinderMesh([0.132, 0.120], [0.102, 0.096], 22), 0);
-addMesh("Nau Leather Boot", taperedCylinderMesh([0.128, 0.16], [0.102, 0.12], 22), 3);
+addMesh("Nau Leather Boot", taperedCylinderMesh([0.126, 0.128], [0.100, 0.096], 22), 3);
 addMesh("Nau Chest Focus Crystal", crystalMesh(), 2);
 addMesh("Nau Accent Shoulder Guard", ellipsoidMesh([0.18, 0.07, 0.12], 20, 8), 4);
 addMesh("Nau Accent Scarf Trail", panelMesh(0.14, 0.30, 0.80, 0.025), 4);
@@ -263,7 +263,7 @@ addMesh("Nau Leather Gauntlet Cuff", taperedCylinderMesh([0.096, 0.082], [0.088,
 addMesh("Nau Accent Knee Guard", ellipsoidMesh([0.105, 0.048, 0.075], 20, 8), 4);
 addMesh("Nau Leather Hand Palm", ellipsoidMesh([0.082, 0.060, 0.074], 18, 8), 3);
 addMesh("Nau Leather Finger Grip", taperedCylinderMesh([0.024, 0.018], [0.019, 0.014], 8), 3);
-addMesh("Nau Leather Boot Toe Cap", ellipsoidMesh([0.118, 0.042, 0.162], 18, 7), 3);
+addMesh("Nau Leather Boot Toe Cap", ellipsoidMesh([0.096, 0.032, 0.088], 18, 7), 3);
 addMesh("Nau Accent Side Tunic Flap", panelMesh(0.12, 0.24, 0.52, -0.02), 4);
 addMesh("Nau Suit Neck Gasket", taperedCylinderMesh([0.15, 0.105], [0.13, 0.092], 20), 0);
 addMesh("Nau Accent Elbow Guard", ellipsoidMesh([0.085, 0.036, 0.060], 18, 7), 4);
@@ -474,7 +474,7 @@ for (const side of [
   const boot = addChild(lowerLeg, `Nau ${label} Boot`, {
     mesh: 8,
     translation: [0.0, -0.32, -0.012],
-    scale: [1.0, 0.28, 1.0],
+    scale: [1.0, 0.28, 0.92],
   });
   nodeIds[`${lower}Boot`] = boot;
   addMeshChild(boot, `Nau ${label} Leather Ankle Wrap`, 24, {
@@ -482,7 +482,7 @@ for (const side of [
     scale: [1.0, 0.18, 1.0],
   });
   addMeshChild(boot, `Nau ${label} Leather Boot Toe Cap`, 20, {
-    translation: [0.0, -0.10, -0.14],
+    translation: [0.0, -0.10, -0.072],
     rotation: rotX(0.08),
   });
   addMeshChild(nodeIds.hips, `Nau ${label} Accent Side Tunic Flap`, 21, {

@@ -622,8 +622,8 @@ fn dive_pose_pressure(context: PlayerPoseContext, intent: PlayerPoseIntent) -> f
     }
 
     let sink_pressure = ((-context.velocity.y - 6.0) / 18.0).clamp(0.0, 1.0);
-    let input_pressure = if context.input.dive { 0.30 } else { 0.0 };
-    (0.30 + input_pressure + sink_pressure * 0.48).clamp(0.0, 1.0)
+    let input_pressure = if context.input.dive { 0.26 } else { 0.0 };
+    (0.28 + input_pressure + sink_pressure * 0.52).clamp(0.0, 1.0)
 }
 
 fn air_brake_pose_pressure(context: PlayerPoseContext, intent: PlayerPoseIntent) -> f32 {
@@ -1333,7 +1333,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => 0.50 + cycle * 0.04 + airflow * 0.025,
                 PlayerPoseIntent::AirTurn => 0.54 + cycle * 0.04 + airflow * 0.025,
                 PlayerPoseIntent::Diving => {
-                    1.18 + dive_pressure * 0.44 + cycle * 0.012 + airflow * 0.010
+                    1.02 + dive_pressure * 0.36 + cycle * 0.010 + airflow * 0.008
                 }
                 PlayerPoseIntent::AirBrake => {
                     -0.30
@@ -1370,9 +1370,9 @@ pub fn part_pose_with_context(
                 translation.y += 0.05;
             }
             if intent == PlayerPoseIntent::Diving {
-                translation.z += dive_pressure * 0.42;
+                translation.z += dive_pressure * 0.14;
                 translation.x += sign * dive_side_flutter * 0.010;
-                translation.y -= dive_pressure * 0.035;
+                translation.y -= dive_pressure * 0.025;
                 translation.y += dive_side_flutter * 0.006;
                 translation.z += dive_side_flutter * 0.010;
             } else if intent == PlayerPoseIntent::AirBrake {
@@ -1432,7 +1432,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Falling => 0.24 + airflow * 0.040,
                 PlayerPoseIntent::Gliding => 0.18 + airflow * 0.030,
                 PlayerPoseIntent::AirTurn => 0.22 + same_side_turn * 0.10 + airflow * 0.035,
-                PlayerPoseIntent::Diving => 0.36 + dive_pressure * 0.16 + dive_side_flutter * 0.045,
+                PlayerPoseIntent::Diving => 0.26 + dive_pressure * 0.12 + dive_side_flutter * 0.030,
                 PlayerPoseIntent::AirBrake => {
                     -0.36 - brake_pressure * 0.10 - rearward_brake_pressure * 0.18
                 }
@@ -1448,9 +1448,16 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::LandingAnticipation => 0.012 + landing_flip * 0.010,
                 _ => 0.0,
             };
+            let lower_leg_roll = match intent {
+                PlayerPoseIntent::LandingAnticipation => {
+                    0.36 + landing_strength * 0.14 + landing_flip * 0.10
+                }
+                PlayerPoseIntent::LandingRecovery => 0.22 + recovery_strength * 0.10,
+                _ => 0.035 + same_side_turn * 0.050,
+            };
             rotation *= Quat::from_rotation_x(knee_pitch)
                 * Quat::from_rotation_y(sign * (turn_weight * 0.035 + dive_side_flutter * 0.040))
-                * Quat::from_rotation_z(sign * (0.035 + same_side_turn * 0.050));
+                * Quat::from_rotation_z(sign * lower_leg_roll);
         }
         CharacterPartRole::Foot(side) => {
             let sign = side.sign();
@@ -1471,7 +1478,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => -0.04 + airflow * 0.030,
                 PlayerPoseIntent::AirTurn => -0.06 + airflow * 0.035,
                 PlayerPoseIntent::Diving => {
-                    0.20 + dive_extension * 0.12 + dive_side_flutter * 0.035
+                    0.04 + dive_extension * 0.04 + dive_side_flutter * 0.020
                 }
                 PlayerPoseIntent::AirBrake => 0.18 + rearward_brake_pressure * 0.18,
                 PlayerPoseIntent::LandingAnticipation => {
@@ -1481,7 +1488,7 @@ pub fn part_pose_with_context(
             };
             translation.x += sign * turn_reach * 0.004;
             translation.z += match intent {
-                PlayerPoseIntent::Diving => 0.010,
+                PlayerPoseIntent::Diving => 0.002,
                 PlayerPoseIntent::LandingAnticipation => 0.018 + landing_flip * 0.016,
                 _ => 0.0,
             };
