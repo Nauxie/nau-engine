@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use bevy::prelude::{Mat4, Quat, Vec3};
 use nau_engine::animation::{
     CharacterPart, CharacterPartRole, MIN_KEY_POSE_READABILITY_SCORE, PartPose, PlayerPoseContext,
@@ -21,9 +23,13 @@ const PLAYER_REST_MAX_SHOULDER_MESH_OVERLAP_M: f64 = 0.015;
 const PLAYER_POSE_MAX_ARTICULATED_JOINT_GAP_M: f64 = 0.018;
 const PLAYER_POSE_MAX_JOINT_COVER_MESH_GAP_M: f64 = 0.035;
 const PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M: f64 = 0.11;
+const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M: f64 = 0.012;
+const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M: f64 = 0.08;
 const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.001;
 const PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT: f64 = 6.0;
 const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 4.0;
+const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
+const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 12.0;
 const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 72.0;
 const PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES: f64 = 150.0;
 const PLAYER_POSE_MIN_DIVE_TORSO_PITCH_DEGREES: f64 = 82.0;
@@ -44,26 +50,34 @@ const PLAYER_REST_LEFT_ARM_MESH_NODES: &[&str] = &[
     "Nau Left Suit Upper Arm",
     "Nau Left Leather Forearm Wrap",
     "Nau Left Leather Hand Palm",
+    "Nau Left Leather Index Finger Grip",
     "Nau Left Leather Finger Grip",
+    "Nau Left Leather Ring Finger Grip",
     "Nau Left Leather Thumb Grip",
 ];
 const PLAYER_REST_RIGHT_ARM_MESH_NODES: &[&str] = &[
     "Nau Right Suit Upper Arm",
     "Nau Right Leather Forearm Wrap",
     "Nau Right Leather Hand Palm",
+    "Nau Right Leather Index Finger Grip",
     "Nau Right Leather Finger Grip",
+    "Nau Right Leather Ring Finger Grip",
     "Nau Right Leather Thumb Grip",
 ];
 const PLAYER_REST_LEFT_DISTAL_ARM_MESH_NODES: &[&str] = &[
     "Nau Left Leather Forearm Wrap",
     "Nau Left Leather Hand Palm",
+    "Nau Left Leather Index Finger Grip",
     "Nau Left Leather Finger Grip",
+    "Nau Left Leather Ring Finger Grip",
     "Nau Left Leather Thumb Grip",
 ];
 const PLAYER_REST_RIGHT_DISTAL_ARM_MESH_NODES: &[&str] = &[
     "Nau Right Leather Forearm Wrap",
     "Nau Right Leather Hand Palm",
+    "Nau Right Leather Index Finger Grip",
     "Nau Right Leather Finger Grip",
+    "Nau Right Leather Ring Finger Grip",
     "Nau Right Leather Thumb Grip",
 ];
 const PLAYER_REST_LEFT_LEG_MESH_NODES: &[&str] = &[
@@ -132,7 +146,7 @@ struct Requirement {
 
 const PLAYER_NAME_FRAGMENTS: &[&str] = &[
     "suit", "skin", "accent", "helmet", "shoulder", "scarf", "boot", "face", "eye", "belt",
-    "gauntlet", "knee", "hand", "finger", "toe", "neck", "elbow", "ankle",
+    "gauntlet", "knee", "hand", "finger", "toe", "neck", "elbow", "ankle", "bridge", "sleeve",
 ];
 const GLIDER_NAME_FRAGMENTS: &[&str] = &["cloth panel", "spar", "rib", "tether", "grip"];
 const TERRAIN_NAME_FRAGMENTS: &[&str] = &[
@@ -184,11 +198,11 @@ const IMPOSTOR_NAME_FRAGMENTS: &[&str] = &[
 const REQUIREMENTS: &[Requirement] = &[
     Requirement {
         kind: VisualAssetKind::PlayerCharacter,
-        min_nodes: 44,
-        min_meshes: 25,
+        min_nodes: 116,
+        min_meshes: 37,
         min_materials: 8,
-        min_vertices: 3400,
-        min_triangles: 6000,
+        min_vertices: 4500,
+        min_triangles: 8200,
         required_name_fragments: PLAYER_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: true,
@@ -407,6 +421,10 @@ fn audit_fixture(
         .require_player_clips
         .then(|| player_pose_contact_audit(&gltf))
         .flatten();
+    let player_joint_bridge_contact_audit = requirement
+        .require_player_clips
+        .then(|| player_joint_bridge_contact_audit(&gltf))
+        .flatten();
 
     let mut checks = vec![
         check_bool("present", true, "file"),
@@ -536,6 +554,11 @@ fn audit_fixture(
             "nodes",
         ));
         checks.push(check_bool(
+            "player_joint_bridge_nodes_present",
+            player_joint_bridge_nodes_present(&gltf),
+            "nodes",
+        ));
+        checks.push(check_bool(
             "player_rest_limb_attachment_hierarchy",
             player_rest_limb_attachment_hierarchy_valid(&gltf),
             "nodes",
@@ -602,6 +625,39 @@ fn audit_fixture(
             player_pose_joint_cover_mesh_overlap_max_m(&gltf).unwrap_or(f64::INFINITY),
             PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M,
             "m",
+        ));
+        let bridge_contact = player_joint_bridge_contact_audit
+            .as_ref()
+            .expect("player joint bridge contact audit should be present for player fixture");
+        checks.push(check_at_least_f64(
+            "player_joint_bridge_contact_node_count",
+            number_field(bridge_contact, "bridge_node_count"),
+            PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT,
+            "nodes",
+        ));
+        checks.push(check_eq_f64(
+            "player_joint_bridge_contact_pair_count",
+            number_field(bridge_contact, "pair_count"),
+            PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT,
+            "pairs",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_joint_bridge_mesh_gap_max",
+            number_field(bridge_contact, "max_gap_m"),
+            PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_joint_bridge_mesh_overlap_max",
+            number_field(bridge_contact, "max_overlap_m"),
+            PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_joint_bridge_contact_breach_count",
+            number_field(bridge_contact, "breach_count"),
+            0.0,
+            "breaches",
         ));
         let pose_contact = player_pose_contact_audit
             .as_ref()
@@ -771,6 +827,7 @@ fn audit_fixture(
         "player_named_clip_count": ready_player_clip_count,
         "player_core_pose_nodes_present": player_core_pose_nodes_present(&gltf),
         "player_articulated_pose_nodes_present": player_articulated_pose_nodes_present(&gltf),
+        "player_joint_bridge_nodes_present": player_joint_bridge_nodes_present(&gltf),
         "player_rest_limb_attachment_hierarchy": player_rest_limb_attachment_hierarchy_valid(&gltf),
         "player_rest_mesh_bounds_present": player_rest_mesh_bounds_present(&gltf),
         "player_animation_channels_cover_core_signals": player_animation_channels_cover_core_signals(&gltf),
@@ -787,6 +844,7 @@ fn audit_fixture(
         "player_pose_joint_cover_mesh_gap_worst_pair": player_pose_joint_cover_mesh_gap_report(&gltf).map(|report| report.to_json()),
         "player_pose_joint_cover_mesh_overlap_max_m": player_pose_joint_cover_mesh_overlap_max_m(&gltf),
         "player_pose_joint_cover_mesh_overlap_worst_pair": player_pose_joint_cover_mesh_overlap_report(&gltf).map(|report| report.to_json()),
+        "player_joint_bridge_contact_audit": player_joint_bridge_contact_audit,
         "player_pose_contact_audit": player_pose_contact_audit,
         "player_bank_clip_motion_distinct": player_bank_clip_motion_is_distinct(&gltf),
         "player_launch_glide_land_clip_motion_distinct": player_launch_glide_land_clip_motion_is_distinct(&gltf),
@@ -1239,6 +1297,12 @@ fn player_articulated_pose_nodes_present(gltf: &Value) -> bool {
     .all(|name| node_index(gltf, name).is_some())
 }
 
+fn player_joint_bridge_nodes_present(gltf: &Value) -> bool {
+    player_joint_bridge_node_names()
+        .into_iter()
+        .all(|name| node_index(gltf, name).is_some())
+}
+
 fn player_rest_limb_attachment_hierarchy_valid(gltf: &Value) -> bool {
     [
         ("Nau Torso", "Nau Head"),
@@ -1512,6 +1576,133 @@ fn player_joint_cover_mesh_pairs() -> [(&'static str, &'static str); 13] {
         ("Nau Left Ankle Joint Cover", "Nau Left Boot"),
         ("Nau Right Ankle Joint Cover", "Nau Right Boot"),
     ]
+}
+
+fn player_joint_bridge_node_names() -> [&'static str; 12] {
+    [
+        "Nau Left Shoulder Bridge Sleeve",
+        "Nau Right Shoulder Bridge Sleeve",
+        "Nau Left Elbow Bridge Sleeve",
+        "Nau Right Elbow Bridge Sleeve",
+        "Nau Left Wrist Bridge Sleeve",
+        "Nau Right Wrist Bridge Sleeve",
+        "Nau Left Hip Bridge Sleeve",
+        "Nau Right Hip Bridge Sleeve",
+        "Nau Left Knee Bridge Sleeve",
+        "Nau Right Knee Bridge Sleeve",
+        "Nau Left Ankle Bridge Sleeve",
+        "Nau Right Ankle Bridge Sleeve",
+    ]
+}
+
+fn player_joint_bridge_mesh_pairs() -> [(&'static str, &'static str); 12] {
+    [
+        ("Nau Left Shoulder Bridge Sleeve", "Nau Left Suit Upper Arm"),
+        (
+            "Nau Right Shoulder Bridge Sleeve",
+            "Nau Right Suit Upper Arm",
+        ),
+        (
+            "Nau Left Elbow Bridge Sleeve",
+            "Nau Left Leather Forearm Wrap",
+        ),
+        (
+            "Nau Right Elbow Bridge Sleeve",
+            "Nau Right Leather Forearm Wrap",
+        ),
+        ("Nau Left Wrist Bridge Sleeve", "Nau Left Leather Hand Palm"),
+        (
+            "Nau Right Wrist Bridge Sleeve",
+            "Nau Right Leather Hand Palm",
+        ),
+        ("Nau Left Hip Bridge Sleeve", "Nau Left Suit Thigh Guard"),
+        ("Nau Right Hip Bridge Sleeve", "Nau Right Suit Thigh Guard"),
+        (
+            "Nau Left Knee Bridge Sleeve",
+            "Nau Left Suit Lower Leg Greave",
+        ),
+        (
+            "Nau Right Knee Bridge Sleeve",
+            "Nau Right Suit Lower Leg Greave",
+        ),
+        ("Nau Left Ankle Bridge Sleeve", "Nau Left Boot"),
+        ("Nau Right Ankle Bridge Sleeve", "Nau Right Boot"),
+    ]
+}
+
+fn player_joint_bridge_contact_audit(gltf: &Value) -> Option<Value> {
+    let phases = player_pose_contact_phases();
+    let contexts = player_pose_mesh_overlap_contexts();
+    let mut bridge_reports = Vec::new();
+    let mut overall_gap = MeshGapReport::zero();
+    let mut overall_overlap = MeshOverlapReport::zero();
+    let mut breach_count = 0_u64;
+
+    for (bridge, contact) in player_joint_bridge_mesh_pairs() {
+        let mut pair_gap = MeshGapReport::zero();
+        let mut pair_overlap = MeshOverlapReport::zero();
+        for context in contexts {
+            for phase in phases {
+                let overrides = player_pose_node_overrides(gltf, context, phase)?;
+                let bridge_bounds = node_world_mesh_aabb_with_pose(gltf, bridge, &overrides)?;
+                let contact_bounds = node_world_mesh_aabb_with_pose(gltf, contact, &overrides)?;
+                let gap = bridge_bounds.separation_m(contact_bounds);
+                pair_gap.observe(gap, bridge, contact, context.intent(), phase);
+                overall_gap.observe(gap, bridge, contact, context.intent(), phase);
+                let overlap_axes_m = bridge_bounds.overlap_axes_m(contact_bounds);
+                let overlap_m = node_world_mesh_obb_with_pose(gltf, bridge, &overrides)?
+                    .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, contact, &overrides)?);
+                pair_overlap.observe(
+                    overlap_m,
+                    overlap_axes_m,
+                    bridge,
+                    contact,
+                    context.intent(),
+                    phase,
+                );
+                overall_overlap.observe(
+                    overlap_m,
+                    overlap_axes_m,
+                    bridge,
+                    contact,
+                    context.intent(),
+                    phase,
+                );
+            }
+        }
+        let within_threshold = pair_gap.max_gap_m <= PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M
+            && pair_overlap.max_overlap_m <= PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M;
+        if !within_threshold {
+            breach_count += 1;
+        }
+        bridge_reports.push(json!({
+            "bridge_node": bridge,
+            "contact_node": contact,
+            "max_gap_m": pair_gap.max_gap_m,
+            "max_overlap_m": pair_overlap.max_overlap_m,
+            "within_threshold": within_threshold,
+            "worst_gap_pair": pair_gap.to_json(),
+            "worst_overlap_pair": pair_overlap.to_json(),
+        }));
+    }
+
+    Some(json!({
+        "schema": "nau_player_joint_bridge_contact_audit.v1",
+        "bridge_node_count": player_joint_bridge_node_names().len(),
+        "pair_count": bridge_reports.len(),
+        "pose_count": contexts.len(),
+        "phase_count": phases.len(),
+        "max_gap_m": overall_gap.max_gap_m,
+        "max_overlap_m": overall_overlap.max_overlap_m,
+        "breach_count": breach_count,
+        "thresholds": {
+            "joint_bridge_mesh_gap_max_m": PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M,
+            "joint_bridge_mesh_overlap_max_m": PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M,
+        },
+        "worst_gap_pair": overall_gap.to_json(),
+        "worst_overlap_pair": overall_overlap.to_json(),
+        "pairs": bridge_reports,
+    }))
 }
 
 fn player_pose_joint_cover_mesh_gap_max_m(gltf: &Value) -> Option<f64> {
@@ -2494,6 +2685,17 @@ fn check_at_most_f64(name: &'static str, value: f64, threshold: f64, unit: &'sta
     })
 }
 
+fn check_eq_f64(name: &'static str, value: f64, threshold: f64, unit: &'static str) -> Value {
+    json!({
+        "name": name,
+        "passed": (value - threshold).abs() <= f64::EPSILON,
+        "value": value,
+        "comparator": "==",
+        "threshold": threshold,
+        "unit": unit,
+    })
+}
+
 fn check_eq_u64(name: &'static str, value: u64, threshold: u64, unit: &'static str) -> Value {
     json!({
         "name": name,
@@ -2722,6 +2924,45 @@ mod tests {
             pairs
                 .iter()
                 .all(|(left, _right)| !left.ends_with(" Socket"))
+        );
+    }
+
+    #[test]
+    fn joint_bridge_mesh_pairs_cover_each_bridge_to_two_surfaces() {
+        let bridges = player_joint_bridge_node_names();
+        let pairs = player_joint_bridge_mesh_pairs();
+
+        assert_eq!(
+            bridges.len() as f64,
+            PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT
+        );
+        assert_eq!(pairs.len() as f64, PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT);
+        for bridge in bridges {
+            assert_eq!(
+                pairs
+                    .iter()
+                    .filter(|(candidate, _contact)| *candidate == bridge)
+                    .count(),
+                1,
+                "{bridge} should stay attached to its animated distal fixture surface"
+            );
+        }
+    }
+
+    #[test]
+    fn player_joint_bridge_contact_audit_reports_connected_bridges() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let audit = player_joint_bridge_contact_audit(&gltf).expect("bridge contact audit");
+
+        assert_eq!(
+            number_field(&audit, "bridge_node_count"),
+            PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT
+        );
+        assert_eq!(number_field(&audit, "breach_count"), 0.0);
+        assert!(number_field(&audit, "max_gap_m") <= PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M);
+        assert!(
+            number_field(&audit, "max_overlap_m") <= PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M
         );
     }
 
