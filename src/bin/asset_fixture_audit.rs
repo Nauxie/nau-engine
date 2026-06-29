@@ -50,6 +50,9 @@ const PLAYER_MESH_SILHOUETTE_MIN_FALL_TOP_WIDTH_M: f64 = 2.40;
 const PLAYER_MESH_SILHOUETTE_MIN_FALL_TOP_DEPTH_M: f64 = 1.20;
 const PLAYER_MESH_SILHOUETTE_MIN_GLIDE_FRONT_WIDTH_M: f64 = 2.50;
 const PLAYER_MESH_SILHOUETTE_MAX_DIVE_FRONT_TO_FALL_FRONT_WIDTH_RATIO: f64 = 0.65;
+const PLAYER_MESH_SILHOUETTE_MIN_DIVE_FRONT_HEIGHT_M: f64 = 2.10;
+const PLAYER_MESH_SILHOUETTE_MAX_DIVE_FRONT_WIDTH_TO_HEIGHT_RATIO: f64 = 0.72;
+const PLAYER_MESH_SILHOUETTE_MAX_DIVE_SIDE_WIDTH_TO_HEIGHT_RATIO: f64 = 0.68;
 const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 72.0;
 const PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES: f64 = 150.0;
 const PLAYER_POSE_MIN_LAUNCH_OVERHEAD_ARM_SCORE: f64 = 0.60;
@@ -1671,7 +1674,18 @@ fn player_mesh_silhouette_audit(gltf: &Value) -> Option<Value> {
     let dive_front_width_m =
         mesh_silhouette_sample_value(&samples, "diving_head_down", PlayerPosePreviewView::Front)
             .map(|sample| sample.width_m)?;
+    let dive_front_height_m =
+        mesh_silhouette_sample_value(&samples, "diving_head_down", PlayerPosePreviewView::Front)
+            .map(|sample| sample.height_m)?;
+    let dive_side_width_m =
+        mesh_silhouette_sample_value(&samples, "diving_head_down", PlayerPosePreviewView::Side)
+            .map(|sample| sample.width_m)?;
+    let dive_side_height_m =
+        mesh_silhouette_sample_value(&samples, "diving_head_down", PlayerPosePreviewView::Side)
+            .map(|sample| sample.height_m)?;
     let dive_front_to_fall_front_width_ratio = dive_front_width_m / fall_front_width_m.max(0.001);
+    let dive_front_width_to_height_ratio = dive_front_width_m / dive_front_height_m.max(0.001);
+    let dive_side_width_to_height_ratio = dive_side_width_m / dive_side_height_m.max(0.001);
 
     Some(json!({
         "schema": "nau_player_mesh_silhouette_audit.v1",
@@ -1688,6 +1702,11 @@ fn player_mesh_silhouette_audit(gltf: &Value) -> Option<Value> {
         "fall_front_width_m": fall_front_width_m,
         "glide_front_width_m": glide_front_width_m,
         "dive_front_width_m": dive_front_width_m,
+        "dive_front_height_m": dive_front_height_m,
+        "dive_front_width_to_height_ratio": dive_front_width_to_height_ratio,
+        "dive_side_width_m": dive_side_width_m,
+        "dive_side_height_m": dive_side_height_m,
+        "dive_side_width_to_height_ratio": dive_side_width_to_height_ratio,
         "dive_front_to_fall_front_width_ratio": dive_front_to_fall_front_width_ratio,
         "thresholds": {
             "projected_span_min_m": PLAYER_MESH_SILHOUETTE_MIN_PROJECTED_SPAN_M,
@@ -1695,6 +1714,9 @@ fn player_mesh_silhouette_audit(gltf: &Value) -> Option<Value> {
             "fall_top_depth_min_m": PLAYER_MESH_SILHOUETTE_MIN_FALL_TOP_DEPTH_M,
             "glide_front_width_min_m": PLAYER_MESH_SILHOUETTE_MIN_GLIDE_FRONT_WIDTH_M,
             "dive_front_to_fall_front_width_ratio_max": PLAYER_MESH_SILHOUETTE_MAX_DIVE_FRONT_TO_FALL_FRONT_WIDTH_RATIO,
+            "dive_front_height_min_m": PLAYER_MESH_SILHOUETTE_MIN_DIVE_FRONT_HEIGHT_M,
+            "dive_front_width_to_height_ratio_max": PLAYER_MESH_SILHOUETTE_MAX_DIVE_FRONT_WIDTH_TO_HEIGHT_RATIO,
+            "dive_side_width_to_height_ratio_max": PLAYER_MESH_SILHOUETTE_MAX_DIVE_SIDE_WIDTH_TO_HEIGHT_RATIO,
         },
         "samples": samples.iter().map(|sample| json!({
             "label": sample.label,
@@ -2787,6 +2809,24 @@ fn audit_fixture(
             "player_mesh_silhouette_dive_front_to_fall_front_width_ratio",
             number_field(mesh_silhouette, "dive_front_to_fall_front_width_ratio"),
             PLAYER_MESH_SILHOUETTE_MAX_DIVE_FRONT_TO_FALL_FRONT_WIDTH_RATIO,
+            "ratio",
+        ));
+        checks.push(check_at_least_f64(
+            "player_mesh_silhouette_dive_front_height",
+            number_field(mesh_silhouette, "dive_front_height_m"),
+            PLAYER_MESH_SILHOUETTE_MIN_DIVE_FRONT_HEIGHT_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_mesh_silhouette_dive_front_width_to_height_ratio",
+            number_field(mesh_silhouette, "dive_front_width_to_height_ratio"),
+            PLAYER_MESH_SILHOUETTE_MAX_DIVE_FRONT_WIDTH_TO_HEIGHT_RATIO,
+            "ratio",
+        ));
+        checks.push(check_at_most_f64(
+            "player_mesh_silhouette_dive_side_width_to_height_ratio",
+            number_field(mesh_silhouette, "dive_side_width_to_height_ratio"),
+            PLAYER_MESH_SILHOUETTE_MAX_DIVE_SIDE_WIDTH_TO_HEIGHT_RATIO,
             "ratio",
         ));
         checks.push(check_eq_u64(
@@ -7001,6 +7041,18 @@ mod tests {
         assert!(
             number_field(&audit, "dive_front_to_fall_front_width_ratio")
                 <= PLAYER_MESH_SILHOUETTE_MAX_DIVE_FRONT_TO_FALL_FRONT_WIDTH_RATIO
+        );
+        assert!(
+            number_field(&audit, "dive_front_height_m")
+                >= PLAYER_MESH_SILHOUETTE_MIN_DIVE_FRONT_HEIGHT_M
+        );
+        assert!(
+            number_field(&audit, "dive_front_width_to_height_ratio")
+                <= PLAYER_MESH_SILHOUETTE_MAX_DIVE_FRONT_WIDTH_TO_HEIGHT_RATIO
+        );
+        assert!(
+            number_field(&audit, "dive_side_width_to_height_ratio")
+                <= PLAYER_MESH_SILHOUETTE_MAX_DIVE_SIDE_WIDTH_TO_HEIGHT_RATIO
         );
         assert!(
             audit
