@@ -25,11 +25,15 @@ const PLAYER_POSE_MAX_JOINT_COVER_MESH_GAP_M: f64 = 0.035;
 const PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M: f64 = 0.11;
 const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M: f64 = 0.012;
 const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M: f64 = 0.08;
+const PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M: f64 = 0.008;
+const PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M: f64 = 0.004;
 const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.001;
 const PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT: f64 = 6.0;
 const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 4.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 12.0;
+const PLAYER_JOINT_SEAM_EXPECTED_NODE_COUNT: f64 = 12.0;
+const PLAYER_JOINT_SEAM_EXPECTED_PAIR_COUNT: f64 = 26.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT: f64 = 9.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT: f64 = 4.0;
 const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 72.0;
@@ -113,7 +117,7 @@ const PLAYER_REST_RIGHT_DISTAL_ARM_MESH_NODES: &[&str] = &[
 const PLAYER_REST_LEFT_LEG_MESH_NODES: &[&str] = &[
     "Nau Left Suit Thigh Guard",
     "Nau Left Suit Lower Leg Greave",
-    "Nau Left Boot",
+    "Nau Left Leather Boot Shell",
     "Nau Left Leather Boot Toe Cap",
     "Nau Left Leather Boot Sole",
     "Nau Left Leather Boot Heel",
@@ -121,21 +125,21 @@ const PLAYER_REST_LEFT_LEG_MESH_NODES: &[&str] = &[
 const PLAYER_REST_RIGHT_LEG_MESH_NODES: &[&str] = &[
     "Nau Right Suit Thigh Guard",
     "Nau Right Suit Lower Leg Greave",
-    "Nau Right Boot",
+    "Nau Right Leather Boot Shell",
     "Nau Right Leather Boot Toe Cap",
     "Nau Right Leather Boot Sole",
     "Nau Right Leather Boot Heel",
 ];
 const PLAYER_REST_LEFT_DISTAL_LEG_MESH_NODES: &[&str] = &[
     "Nau Left Suit Lower Leg Greave",
-    "Nau Left Boot",
+    "Nau Left Leather Boot Shell",
     "Nau Left Leather Boot Toe Cap",
     "Nau Left Leather Boot Sole",
     "Nau Left Leather Boot Heel",
 ];
 const PLAYER_REST_RIGHT_DISTAL_LEG_MESH_NODES: &[&str] = &[
     "Nau Right Suit Lower Leg Greave",
-    "Nau Right Boot",
+    "Nau Right Leather Boot Shell",
     "Nau Right Leather Boot Toe Cap",
     "Nau Right Leather Boot Sole",
     "Nau Right Leather Boot Heel",
@@ -210,6 +214,8 @@ const PLAYER_NAME_FRAGMENTS: &[&str] = &[
     "knuckle",
     "sole",
     "heel",
+    "seamless",
+    "flex",
 ];
 const GLIDER_NAME_FRAGMENTS: &[&str] = &["cloth panel", "spar", "rib", "tether", "grip"];
 const TERRAIN_NAME_FRAGMENTS: &[&str] = &[
@@ -261,11 +267,11 @@ const IMPOSTOR_NAME_FRAGMENTS: &[&str] = &[
 const REQUIREMENTS: &[Requirement] = &[
     Requirement {
         kind: VisualAssetKind::PlayerCharacter,
-        min_nodes: 136,
-        min_meshes: 46,
+        min_nodes: 155,
+        min_meshes: 52,
         min_materials: 8,
-        min_vertices: 6000,
-        min_triangles: 10800,
+        min_vertices: 8400,
+        min_triangles: 15000,
         required_name_fragments: PLAYER_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: true,
@@ -457,6 +463,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
             "phase": spec.phase,
             "pose_intent": spec.context.intent().label(),
         })).collect::<Vec<_>>(),
+        "joint_seam_contact_audit": player_joint_seam_contact_audit(&gltf),
         "artifacts": {
             "pose_sheet_svg": sheet_path,
         },
@@ -919,6 +926,10 @@ fn audit_fixture(
         .require_player_clips
         .then(|| player_joint_bridge_contact_audit(&gltf))
         .flatten();
+    let player_joint_seam_contact_audit = requirement
+        .require_player_clips
+        .then(|| player_joint_seam_contact_audit(&gltf))
+        .flatten();
 
     let mut checks = vec![
         check_bool("present", true, "file"),
@@ -1053,6 +1064,11 @@ fn audit_fixture(
             "nodes",
         ));
         checks.push(check_bool(
+            "player_joint_seam_nodes_present",
+            player_joint_seam_nodes_present(&gltf),
+            "nodes",
+        ));
+        checks.push(check_bool(
             "player_rest_limb_attachment_hierarchy",
             player_rest_limb_attachment_hierarchy_valid(&gltf),
             "nodes",
@@ -1150,6 +1166,39 @@ fn audit_fixture(
         checks.push(check_at_most_f64(
             "player_joint_bridge_contact_breach_count",
             number_field(bridge_contact, "breach_count"),
+            0.0,
+            "breaches",
+        ));
+        let seam_contact = player_joint_seam_contact_audit
+            .as_ref()
+            .expect("player joint seam contact audit should be present for player fixture");
+        checks.push(check_at_least_f64(
+            "player_joint_seam_contact_node_count",
+            number_field(seam_contact, "seam_node_count"),
+            PLAYER_JOINT_SEAM_EXPECTED_NODE_COUNT,
+            "nodes",
+        ));
+        checks.push(check_eq_f64(
+            "player_joint_seam_contact_pair_count",
+            number_field(seam_contact, "pair_count"),
+            PLAYER_JOINT_SEAM_EXPECTED_PAIR_COUNT,
+            "pairs",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_joint_seam_mesh_gap_max",
+            number_field(seam_contact, "max_gap_m"),
+            PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M,
+            "m",
+        ));
+        checks.push(check_at_least_f64(
+            "player_pose_joint_seam_mesh_overlap_min",
+            number_field(seam_contact, "min_overlap_m"),
+            PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_joint_seam_contact_breach_count",
+            number_field(seam_contact, "breach_count"),
             0.0,
             "breaches",
         ));
@@ -1385,6 +1434,7 @@ fn audit_fixture(
         "player_core_pose_nodes_present": player_core_pose_nodes_present(&gltf),
         "player_articulated_pose_nodes_present": player_articulated_pose_nodes_present(&gltf),
         "player_joint_bridge_nodes_present": player_joint_bridge_nodes_present(&gltf),
+        "player_joint_seam_nodes_present": player_joint_seam_nodes_present(&gltf),
         "player_rest_limb_attachment_hierarchy": player_rest_limb_attachment_hierarchy_valid(&gltf),
         "player_rest_mesh_bounds_present": player_rest_mesh_bounds_present(&gltf),
         "player_animation_channels_cover_core_signals": player_animation_channels_cover_core_signals(&gltf),
@@ -1402,6 +1452,7 @@ fn audit_fixture(
         "player_pose_joint_cover_mesh_overlap_max_m": player_pose_joint_cover_mesh_overlap_max_m(&gltf),
         "player_pose_joint_cover_mesh_overlap_worst_pair": player_pose_joint_cover_mesh_overlap_report(&gltf).map(|report| report.to_json()),
         "player_joint_bridge_contact_audit": player_joint_bridge_contact_audit,
+        "player_joint_seam_contact_audit": player_joint_seam_contact_audit,
         "player_pose_contact_audit": player_pose_contact_audit,
         "player_pose_transition_contact_audit": player_pose_transition_contact_audit,
         "player_bank_clip_motion_distinct": player_bank_clip_motion_is_distinct(&gltf),
@@ -1676,6 +1727,62 @@ impl MeshGapReport {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct MeshMinOverlapReport {
+    min_overlap_m: f64,
+    left_node: &'static str,
+    right_node: &'static str,
+    pose_intent: &'static str,
+    phase: f32,
+}
+
+impl MeshMinOverlapReport {
+    fn zero() -> Self {
+        Self {
+            min_overlap_m: f64::INFINITY,
+            left_node: "",
+            right_node: "",
+            pose_intent: "none",
+            phase: 0.0,
+        }
+    }
+
+    fn observe_label(
+        &mut self,
+        overlap_m: f64,
+        left_node: &'static str,
+        right_node: &'static str,
+        pose_label: &'static str,
+        phase: f32,
+    ) {
+        if overlap_m < self.min_overlap_m {
+            self.min_overlap_m = overlap_m;
+            self.left_node = left_node;
+            self.right_node = right_node;
+            self.pose_intent = pose_label;
+            self.phase = phase;
+        }
+    }
+
+    fn value(self) -> f64 {
+        if self.min_overlap_m.is_finite() {
+            self.min_overlap_m
+        } else {
+            0.0
+        }
+    }
+
+    fn to_json(self) -> Value {
+        json!({
+            "min_overlap_m": self.value(),
+            "left_node": self.left_node,
+            "right_node": self.right_node,
+            "pose_intent": self.pose_intent,
+            "phase": self.phase,
+        })
+    }
+}
+
 impl Aabb3 {
     fn from_min_max(min: Vec3, max: Vec3) -> Self {
         Self { min, max }
@@ -1917,6 +2024,12 @@ fn player_articulated_pose_nodes_present(gltf: &Value) -> bool {
 
 fn player_joint_bridge_nodes_present(gltf: &Value) -> bool {
     player_joint_bridge_node_names()
+        .into_iter()
+        .all(|name| node_index(gltf, name).is_some())
+}
+
+fn player_joint_seam_nodes_present(gltf: &Value) -> bool {
+    player_joint_seam_node_names()
         .into_iter()
         .all(|name| node_index(gltf, name).is_some())
 }
@@ -2398,8 +2511,11 @@ fn player_joint_cover_mesh_pairs() -> [(&'static str, &'static str); 13] {
             "Nau Right Knee Joint Cover",
             "Nau Right Suit Lower Leg Greave",
         ),
-        ("Nau Left Ankle Joint Cover", "Nau Left Boot"),
-        ("Nau Right Ankle Joint Cover", "Nau Right Boot"),
+        ("Nau Left Ankle Joint Cover", "Nau Left Leather Boot Shell"),
+        (
+            "Nau Right Ankle Joint Cover",
+            "Nau Right Leather Boot Shell",
+        ),
     ]
 }
 
@@ -2450,8 +2566,140 @@ fn player_joint_bridge_mesh_pairs() -> [(&'static str, &'static str); 12] {
             "Nau Right Knee Bridge Sleeve",
             "Nau Right Suit Lower Leg Greave",
         ),
-        ("Nau Left Ankle Bridge Sleeve", "Nau Left Boot"),
-        ("Nau Right Ankle Bridge Sleeve", "Nau Right Boot"),
+        (
+            "Nau Left Ankle Bridge Sleeve",
+            "Nau Left Leather Boot Shell",
+        ),
+        (
+            "Nau Right Ankle Bridge Sleeve",
+            "Nau Right Leather Boot Shell",
+        ),
+    ]
+}
+
+fn player_joint_seam_node_names() -> [&'static str; 12] {
+    [
+        "Nau Left Seamless Shoulder Flex Cover",
+        "Nau Right Seamless Shoulder Flex Cover",
+        "Nau Left Seamless Elbow Flex Cover",
+        "Nau Right Seamless Elbow Flex Cover",
+        "Nau Left Seamless Wrist Flex Cover",
+        "Nau Right Seamless Wrist Flex Cover",
+        "Nau Left Seamless Hip Flex Cover",
+        "Nau Right Seamless Hip Flex Cover",
+        "Nau Left Seamless Knee Flex Cover",
+        "Nau Right Seamless Knee Flex Cover",
+        "Nau Left Seamless Ankle Flex Cover",
+        "Nau Right Seamless Ankle Flex Cover",
+    ]
+}
+
+fn player_joint_seam_mesh_pairs() -> [(&'static str, &'static str); 26] {
+    [
+        (
+            "Nau Left Seamless Shoulder Flex Cover",
+            "Nau Left Shoulder Joint Cover",
+        ),
+        (
+            "Nau Left Seamless Shoulder Flex Cover",
+            "Nau Left Suit Upper Arm",
+        ),
+        (
+            "Nau Left Seamless Shoulder Flex Cover",
+            "Nau Left Suit Deltoid Filler",
+        ),
+        (
+            "Nau Right Seamless Shoulder Flex Cover",
+            "Nau Right Shoulder Joint Cover",
+        ),
+        (
+            "Nau Right Seamless Shoulder Flex Cover",
+            "Nau Right Suit Upper Arm",
+        ),
+        (
+            "Nau Right Seamless Shoulder Flex Cover",
+            "Nau Right Suit Deltoid Filler",
+        ),
+        (
+            "Nau Left Seamless Elbow Flex Cover",
+            "Nau Left Elbow Joint Cover",
+        ),
+        (
+            "Nau Left Seamless Elbow Flex Cover",
+            "Nau Left Leather Forearm Wrap",
+        ),
+        (
+            "Nau Right Seamless Elbow Flex Cover",
+            "Nau Right Elbow Joint Cover",
+        ),
+        (
+            "Nau Right Seamless Elbow Flex Cover",
+            "Nau Right Leather Forearm Wrap",
+        ),
+        (
+            "Nau Left Seamless Wrist Flex Cover",
+            "Nau Left Wrist Joint Cover",
+        ),
+        (
+            "Nau Left Seamless Wrist Flex Cover",
+            "Nau Left Leather Hand Palm",
+        ),
+        (
+            "Nau Right Seamless Wrist Flex Cover",
+            "Nau Right Wrist Joint Cover",
+        ),
+        (
+            "Nau Right Seamless Wrist Flex Cover",
+            "Nau Right Leather Hand Palm",
+        ),
+        (
+            "Nau Left Seamless Hip Flex Cover",
+            "Nau Left Hip Joint Cover",
+        ),
+        (
+            "Nau Left Seamless Hip Flex Cover",
+            "Nau Left Suit Thigh Guard",
+        ),
+        (
+            "Nau Right Seamless Hip Flex Cover",
+            "Nau Right Hip Joint Cover",
+        ),
+        (
+            "Nau Right Seamless Hip Flex Cover",
+            "Nau Right Suit Thigh Guard",
+        ),
+        (
+            "Nau Left Seamless Knee Flex Cover",
+            "Nau Left Knee Joint Cover",
+        ),
+        (
+            "Nau Left Seamless Knee Flex Cover",
+            "Nau Left Suit Lower Leg Greave",
+        ),
+        (
+            "Nau Right Seamless Knee Flex Cover",
+            "Nau Right Knee Joint Cover",
+        ),
+        (
+            "Nau Right Seamless Knee Flex Cover",
+            "Nau Right Suit Lower Leg Greave",
+        ),
+        (
+            "Nau Left Seamless Ankle Flex Cover",
+            "Nau Left Ankle Joint Cover",
+        ),
+        (
+            "Nau Left Seamless Ankle Flex Cover",
+            "Nau Left Leather Boot Shell",
+        ),
+        (
+            "Nau Right Seamless Ankle Flex Cover",
+            "Nau Right Ankle Joint Cover",
+        ),
+        (
+            "Nau Right Seamless Ankle Flex Cover",
+            "Nau Right Leather Boot Shell",
+        ),
     ]
 }
 
@@ -2528,6 +2776,129 @@ fn player_joint_bridge_contact_audit(gltf: &Value) -> Option<Value> {
         "worst_overlap_pair": overall_overlap.to_json(),
         "pairs": bridge_reports,
     }))
+}
+
+fn player_joint_seam_contact_audit(gltf: &Value) -> Option<Value> {
+    let phases = player_pose_contact_phases();
+    let contexts = player_pose_mesh_overlap_contexts();
+    let transitions = player_pose_transition_contact_transitions();
+    let blends = player_pose_transition_contact_blends();
+    let mut seam_reports = Vec::new();
+    let mut overall_gap = MeshGapReport::zero();
+    let mut overall_min_overlap = MeshMinOverlapReport::zero();
+    let mut breach_count = 0_u64;
+    let samples_per_pair =
+        contexts.len() * phases.len() + transitions.len() * phases.len() * blends.len();
+
+    for (seam, contact) in player_joint_seam_mesh_pairs() {
+        let mut pair_gap = MeshGapReport::zero();
+        let mut pair_min_overlap = MeshMinOverlapReport::zero();
+
+        for context in contexts {
+            for phase in phases {
+                let overrides = player_pose_node_overrides(gltf, context, phase)?;
+                observe_joint_seam_sample(
+                    gltf,
+                    seam,
+                    contact,
+                    &overrides,
+                    context.intent().label(),
+                    phase,
+                    &mut pair_gap,
+                    &mut pair_min_overlap,
+                    &mut overall_gap,
+                    &mut overall_min_overlap,
+                )?;
+            }
+        }
+
+        for transition in transitions {
+            for phase in phases {
+                for blend in blends {
+                    let overrides = player_pose_transition_node_overrides(
+                        gltf,
+                        transition.from,
+                        transition.to,
+                        phase,
+                        blend,
+                    )?;
+                    observe_joint_seam_sample(
+                        gltf,
+                        seam,
+                        contact,
+                        &overrides,
+                        transition.label,
+                        phase,
+                        &mut pair_gap,
+                        &mut pair_min_overlap,
+                        &mut overall_gap,
+                        &mut overall_min_overlap,
+                    )?;
+                }
+            }
+        }
+
+        let within_threshold = pair_gap.max_gap_m <= PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M
+            && pair_min_overlap.value() >= PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M;
+        if !within_threshold {
+            breach_count += 1;
+        }
+        seam_reports.push(json!({
+            "seam_node": seam,
+            "contact_node": contact,
+            "max_gap_m": pair_gap.max_gap_m,
+            "min_overlap_m": pair_min_overlap.value(),
+            "within_threshold": within_threshold,
+            "worst_gap_pair": pair_gap.to_json(),
+            "worst_overlap_pair": pair_min_overlap.to_json(),
+        }));
+    }
+
+    Some(json!({
+        "schema": "nau_player_joint_seam_contact_audit.v1",
+        "seam_node_count": player_joint_seam_node_names().len(),
+        "pair_count": seam_reports.len(),
+        "pose_count": contexts.len(),
+        "phase_count": phases.len(),
+        "transition_count": transitions.len(),
+        "blend_count": blends.len(),
+        "samples_per_pair": samples_per_pair,
+        "max_gap_m": overall_gap.max_gap_m,
+        "min_overlap_m": overall_min_overlap.value(),
+        "breach_count": breach_count,
+        "thresholds": {
+            "joint_seam_mesh_gap_max_m": PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M,
+            "joint_seam_mesh_overlap_min_m": PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M,
+        },
+        "worst_gap_pair": overall_gap.to_json(),
+        "worst_overlap_pair": overall_min_overlap.to_json(),
+        "pairs": seam_reports,
+    }))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn observe_joint_seam_sample(
+    gltf: &Value,
+    seam: &'static str,
+    contact: &'static str,
+    overrides: &[PoseNodeOverride],
+    label: &'static str,
+    phase: f32,
+    pair_gap: &mut MeshGapReport,
+    pair_min_overlap: &mut MeshMinOverlapReport,
+    overall_gap: &mut MeshGapReport,
+    overall_min_overlap: &mut MeshMinOverlapReport,
+) -> Option<()> {
+    let seam_bounds = node_world_mesh_aabb_with_pose(gltf, seam, overrides)?;
+    let contact_bounds = node_world_mesh_aabb_with_pose(gltf, contact, overrides)?;
+    let gap = seam_bounds.separation_m(contact_bounds);
+    pair_gap.observe_label(gap, seam, contact, label, phase);
+    overall_gap.observe_label(gap, seam, contact, label, phase);
+    let overlap_m = node_world_mesh_obb_with_pose(gltf, seam, overrides)?
+        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, contact, overrides)?);
+    pair_min_overlap.observe_label(overlap_m, seam, contact, label, phase);
+    overall_min_overlap.observe_label(overlap_m, seam, contact, label, phase);
+    Some(())
 }
 
 fn player_pose_joint_cover_mesh_gap_max_m(gltf: &Value) -> Option<f64> {
@@ -3889,6 +4260,27 @@ mod tests {
         assert!(
             number_field(&audit, "max_overlap_m") <= PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M
         );
+    }
+
+    #[test]
+    fn player_joint_seam_contact_audit_reports_transition_safe_flex_covers() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let audit = player_joint_seam_contact_audit(&gltf).expect("seam contact audit");
+
+        assert_eq!(
+            number_field(&audit, "seam_node_count"),
+            PLAYER_JOINT_SEAM_EXPECTED_NODE_COUNT
+        );
+        assert_eq!(
+            number_field(&audit, "pair_count"),
+            PLAYER_JOINT_SEAM_EXPECTED_PAIR_COUNT
+        );
+        assert_eq!(number_field(&audit, "breach_count"), 0.0);
+        assert!(number_field(&audit, "max_gap_m") <= PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M);
+        assert!(number_field(&audit, "min_overlap_m") >= PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M);
+        assert_eq!(number_field(&audit, "transition_count"), 9.0);
+        assert_eq!(number_field(&audit, "samples_per_pair"), 168.0);
     }
 
     #[test]
