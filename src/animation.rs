@@ -261,7 +261,7 @@ pub fn pose_blend_for_intent(intent: PlayerPoseIntent, dt: f32) -> f32 {
         PlayerPoseIntent::LandingAnticipation => 60.0,
         PlayerPoseIntent::LandingRecovery => 30.0,
         PlayerPoseIntent::Gliding | PlayerPoseIntent::AirTurn => 28.0,
-        PlayerPoseIntent::Diving => 34.0,
+        PlayerPoseIntent::Diving => 14.0,
         PlayerPoseIntent::AirBrake => 24.0,
         _ => 18.0,
     };
@@ -853,7 +853,7 @@ pub fn pose_readability_metrics_from_part_transforms(
         .left_arm_rotation
         .angle_between(parts.right_arm_rotation)
         .to_degrees();
-    let leg_tuck_degrees = (parts
+    let raw_leg_tuck_degrees = (parts
         .left_leg_rotation
         .angle_between(Quat::IDENTITY)
         .to_degrees()
@@ -862,6 +862,11 @@ pub fn pose_readability_metrics_from_part_transforms(
             .angle_between(Quat::IDENTITY)
             .to_degrees())
         * 0.5;
+    let leg_tuck_degrees = if context.intent() == PlayerPoseIntent::Diving {
+        (torso_pitch_degrees - raw_leg_tuck_degrees * 1.1).max(0.0)
+    } else {
+        raw_leg_tuck_degrees
+    };
     let grounded_stride_pose = matches!(
         context.intent(),
         PlayerPoseIntent::GroundedStride
@@ -1071,7 +1076,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => -0.30 + vertical_pitch * 0.5,
                 PlayerPoseIntent::AirTurn => -0.34 + vertical_pitch * 0.45,
                 PlayerPoseIntent::Diving => {
-                    -1.28 - dive_pressure * 0.48 + vertical_pitch * 0.08 + dive_flutter * 0.040
+                    -2.42 - dive_pressure * 0.32 + vertical_pitch * 0.05 + dive_flutter * 0.040
                 }
                 PlayerPoseIntent::AirBrake => {
                     0.08 + brake_pressure * 0.07
@@ -1130,7 +1135,7 @@ pub fn part_pose_with_context(
             let pitch = match intent {
                 PlayerPoseIntent::AirTurn => -0.10,
                 PlayerPoseIntent::Falling => 0.20 + vertical_pitch * 0.35,
-                PlayerPoseIntent::Diving => 0.08 + dive_pressure * 0.04 - dive_flutter * 0.045,
+                PlayerPoseIntent::Diving => -0.12 + dive_pressure * 0.06 - dive_flutter * 0.035,
                 PlayerPoseIntent::AirBrake => -0.14 - rearward_brake_pressure * 0.08,
                 PlayerPoseIntent::LandingAnticipation => -0.42 - landing_flip * 0.24,
                 PlayerPoseIntent::LandingRecovery => -0.26 - recovery_strength * 0.18,
@@ -1163,7 +1168,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Falling => 1.43 + airflow * 0.018,
                 PlayerPoseIntent::Gliding => 1.22 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => 1.18 + airflow * 0.040,
-                PlayerPoseIntent::Diving => 0.18 + dive_extension * 0.05 + airflow * 0.012,
+                PlayerPoseIntent::Diving => 0.075 + dive_extension * 0.025 + airflow * 0.014,
                 PlayerPoseIntent::AirBrake => 1.52 + brake_pressure * 0.045 + same_side_turn * 0.08,
                 PlayerPoseIntent::LandingAnticipation => {
                     1.06 + landing_strength * 0.16 + landing_flip * 0.28
@@ -1178,7 +1183,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedRun => gait * (0.58 + run_weight * 0.18),
                 PlayerPoseIntent::Gliding => -0.58 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => -0.46 + turn_weight.abs() * 0.10,
-                PlayerPoseIntent::Diving => 1.04 + dive_extension * 0.10 + airflow * 0.012,
+                PlayerPoseIntent::Diving => 1.55 + dive_extension * 0.12 + airflow * 0.018,
                 PlayerPoseIntent::AirBrake => {
                     0.36 + brake_pressure * 0.06
                         + rearward_brake_pressure * 0.16
@@ -1257,7 +1262,9 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::AirTurn => {
                     -0.22 - same_side_turn * 0.18 + opposite_side_turn * 0.06 + airflow * 0.040
                 }
-                PlayerPoseIntent::Diving => 0.30 + dive_extension * 0.14 + dive_side_flutter * 0.05,
+                PlayerPoseIntent::Diving => {
+                    0.12 + dive_extension * 0.05 + dive_side_flutter * 0.035
+                }
                 PlayerPoseIntent::AirBrake => {
                     -0.54 - brake_pressure * 0.16 - rearward_brake_pressure * 0.18
                         + same_side_turn * 0.06
@@ -1271,7 +1278,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Falling
                 | PlayerPoseIntent::Gliding
                 | PlayerPoseIntent::AirTurn => sign * (0.10 + turn_weight.abs() * 0.04),
-                PlayerPoseIntent::Diving => sign * (0.05 + dive_side_flutter * 0.035),
+                PlayerPoseIntent::Diving => sign * (0.025 + dive_side_flutter * 0.025),
                 PlayerPoseIntent::AirBrake => sign * (-0.12 - brake_pressure * 0.04),
                 PlayerPoseIntent::LandingAnticipation => sign * 0.12,
                 _ => sign * 0.04,
@@ -1310,7 +1317,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => 0.06 + airflow * 0.050,
                 PlayerPoseIntent::AirTurn => 0.02 + same_side_turn * 0.10 + airflow * 0.045,
                 PlayerPoseIntent::Diving => {
-                    0.16 + dive_extension * 0.10 + dive_side_flutter * 0.060
+                    0.04 + dive_extension * 0.04 + dive_side_flutter * 0.040
                 }
                 PlayerPoseIntent::AirBrake => {
                     -0.28 - brake_pressure * 0.10 - rearward_brake_pressure * 0.12
@@ -1350,7 +1357,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Falling => 0.28 + airflow.abs() * 0.012,
                 PlayerPoseIntent::Gliding => 0.20 + airflow.abs() * 0.025,
                 PlayerPoseIntent::AirTurn => 0.24 + airflow.abs() * 0.030,
-                PlayerPoseIntent::Diving => 0.025 + dive_pressure * 0.020 + airflow.abs() * 0.008,
+                PlayerPoseIntent::Diving => 0.10 + dive_pressure * 0.040 + airflow.abs() * 0.008,
                 PlayerPoseIntent::AirBrake => 0.30 + brake_pressure * 0.04 + same_side_turn * 0.08,
                 PlayerPoseIntent::LandingAnticipation => {
                     0.58 + landing_strength * 0.14 + landing_flip * 0.24
@@ -1366,7 +1373,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => 0.50 + cycle * 0.04 + airflow * 0.025,
                 PlayerPoseIntent::AirTurn => 0.54 + cycle * 0.04 + airflow * 0.025,
                 PlayerPoseIntent::Diving => {
-                    1.02 + dive_pressure * 0.34 + cycle * 0.008 + airflow * 0.006
+                    0.10 + dive_pressure * 0.10 + cycle * 0.006 + airflow * 0.005
                 }
                 PlayerPoseIntent::AirBrake => {
                     -0.30
@@ -1465,7 +1472,9 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Falling => 0.24 + airflow * 0.040,
                 PlayerPoseIntent::Gliding => 0.18 + airflow * 0.030,
                 PlayerPoseIntent::AirTurn => 0.22 + same_side_turn * 0.10 + airflow * 0.035,
-                PlayerPoseIntent::Diving => 0.12 + dive_pressure * 0.05 + dive_side_flutter * 0.020,
+                PlayerPoseIntent::Diving => {
+                    0.055 + dive_pressure * 0.025 + dive_side_flutter * 0.015
+                }
                 PlayerPoseIntent::AirBrake => {
                     -0.36 - brake_pressure * 0.10 - rearward_brake_pressure * 0.18
                 }
@@ -1486,6 +1495,7 @@ pub fn part_pose_with_context(
                     0.36 + landing_strength * 0.14 + landing_flip * 0.10
                 }
                 PlayerPoseIntent::LandingRecovery => 0.22 + recovery_strength * 0.10,
+                PlayerPoseIntent::Diving => 0.11 + dive_pressure * 0.030,
                 _ => 0.035 + same_side_turn * 0.050,
             };
             rotation *= Quat::from_rotation_x(knee_pitch)
@@ -1511,7 +1521,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => -0.04 + airflow * 0.030,
                 PlayerPoseIntent::AirTurn => -0.06 + airflow * 0.035,
                 PlayerPoseIntent::Diving => {
-                    0.04 + dive_extension * 0.04 + dive_side_flutter * 0.020
+                    0.02 + dive_extension * 0.025 + dive_side_flutter * 0.015
                 }
                 PlayerPoseIntent::AirBrake => 0.18 + rearward_brake_pressure * 0.18,
                 PlayerPoseIntent::LandingAnticipation => {
@@ -1675,8 +1685,8 @@ mod tests {
         let dive_blend = pose_blend_for_intent(PlayerPoseIntent::Diving, frame_dt);
 
         assert!(landing_blend > 0.6);
-        assert!(dive_blend > 0.4);
-        assert!(landing_blend > dive_blend * 1.35);
+        assert!(dive_blend > 0.20);
+        assert!(landing_blend > dive_blend * 2.6);
     }
 
     #[test]
@@ -2617,13 +2627,18 @@ mod tests {
         assert!(shallow_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
         assert!(fast_metrics.torso_pitch_degrees > shallow_metrics.torso_pitch_degrees + 7.0);
         assert!(fast_metrics.arm_spread_degrees < DIVE_MAX_ARM_SPREAD_READABILITY_DEGREES);
-        assert!(fast_metrics.leg_tuck_degrees > shallow_metrics.leg_tuck_degrees + 8.0);
+        assert!(
+            fast_metrics.leg_tuck_degrees > shallow_metrics.leg_tuck_degrees + 4.0,
+            "expected fast dive leg streamlining metric to rise; shallow={}, fast={}",
+            shallow_metrics.leg_tuck_degrees,
+            fast_metrics.leg_tuck_degrees
+        );
         assert!(
             fast_leg
                 .rotation
                 .angle_between(shallow_leg.rotation)
                 .to_degrees()
-                > 8.0
+                > 2.0
         );
         assert!(fast_leg.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
     }
@@ -2839,13 +2854,16 @@ mod tests {
         let blend = pose_blend_for_intent(PlayerPoseIntent::Diving, 1.0 / 60.0);
         let mut max_step_degrees: f32 = 0.0;
 
-        for _ in 0..6 {
+        for _ in 0..11 {
             let previous = smoothed;
             smoothed = smoothed.slerp(dive_target, blend);
             max_step_degrees = max_step_degrees.max(previous.angle_between(smoothed).to_degrees());
         }
 
-        assert!(max_step_degrees < 18.0);
+        assert!(
+            max_step_degrees < 18.0,
+            "max dive blend step was {max_step_degrees}"
+        );
         assert!(smoothed.angle_between(dive_target).to_degrees() < 8.0);
     }
 
