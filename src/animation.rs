@@ -111,6 +111,7 @@ pub struct PoseReadabilityMetrics {
     pub scarf_stream_m: f32,
     pub scarf_lateral_sway_m: f32,
     pub scarf_tail_flex_degrees: f32,
+    pub launch_overhead_arm_score: f32,
     pub key_pose_readability_score: f32,
 }
 
@@ -778,6 +779,20 @@ fn torso_lateral_lean_degrees(rotation: Quat) -> f32 {
     torso_signed_lateral_lean_degrees(rotation).abs()
 }
 
+fn launch_overhead_arm_score(
+    intent: PlayerPoseIntent,
+    left_arm_rotation: Quat,
+    right_arm_rotation: Quat,
+) -> f32 {
+    if intent != PlayerPoseIntent::Launching {
+        return 0.0;
+    }
+
+    let left_raise = (left_arm_rotation * Vec3::NEG_Y).y;
+    let right_raise = (right_arm_rotation * Vec3::NEG_Y).y;
+    ((left_raise + right_raise) * 0.5).clamp(0.0, 1.0)
+}
+
 pub fn pose_readability_metrics_from_part_transforms(
     context: PlayerPoseContext,
     parts: PoseReadabilityPartTransforms,
@@ -883,6 +898,11 @@ pub fn pose_readability_metrics_from_part_transforms(
         scarf_stream_m: 0.0,
         scarf_lateral_sway_m: 0.0,
         scarf_tail_flex_degrees: 0.0,
+        launch_overhead_arm_score: launch_overhead_arm_score(
+            context.intent(),
+            parts.left_arm_rotation,
+            parts.right_arm_rotation,
+        ),
         key_pose_readability_score: key_pose_readability_score(
             context.intent(),
             torso_pitch_degrees,
@@ -1145,7 +1165,7 @@ pub fn part_pose_with_context(
                     1.06 + landing_strength * 0.16 + landing_flip * 0.28
                 }
                 PlayerPoseIntent::LandingRecovery => 0.88 + recovery_strength * 0.34,
-                PlayerPoseIntent::Launching => 0.36 + run_weight * 0.08,
+                PlayerPoseIntent::Launching => 2.52 + run_weight * 0.02,
             };
             let sweep = match intent {
                 PlayerPoseIntent::GroundedIdle => cycle * 0.025,
@@ -1164,7 +1184,7 @@ pub fn part_pose_with_context(
                     1.22 + landing_strength * 0.24 + landing_flip * 0.32
                 }
                 PlayerPoseIntent::LandingRecovery => 0.70 + recovery_strength * 0.40,
-                PlayerPoseIntent::Launching => -0.36,
+                PlayerPoseIntent::Launching => -0.72,
                 PlayerPoseIntent::Falling => -0.50 + airflow * 0.018,
             };
             translation.z += gait * 0.08 * gait_weight;
@@ -1227,7 +1247,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedStride => gait * 0.18 * gait_weight,
                 PlayerPoseIntent::GroundedWalk => gait * 0.20 * walk_weight,
                 PlayerPoseIntent::GroundedRun => gait * (0.28 + run_weight * 0.10),
-                PlayerPoseIntent::Launching => -0.46,
+                PlayerPoseIntent::Launching => -0.26,
                 PlayerPoseIntent::Falling => -0.28 + airflow * 0.035,
                 PlayerPoseIntent::Gliding => -0.18 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => {
@@ -1281,7 +1301,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedStride => -side_cycle(phase, side) * 0.10 * gait_weight,
                 PlayerPoseIntent::GroundedWalk => -side_cycle(phase, side) * 0.12 * walk_weight,
                 PlayerPoseIntent::GroundedRun => -side_cycle(phase, side) * 0.18,
-                PlayerPoseIntent::Launching => -0.16,
+                PlayerPoseIntent::Launching => 0.12,
                 PlayerPoseIntent::Falling => -0.10 + airflow * 0.045,
                 PlayerPoseIntent::Gliding => 0.06 + airflow * 0.050,
                 PlayerPoseIntent::AirTurn => 0.02 + same_side_turn * 0.10 + airflow * 0.045,
@@ -2905,10 +2925,42 @@ mod tests {
         assert!(launch_metrics.torso_pitch_degrees >= 16.0);
         assert!(launch_metrics.arm_spread_degrees >= 28.0);
         assert!(launch_metrics.leg_tuck_degrees >= 18.0);
+        assert!(launch_metrics.launch_overhead_arm_score >= 0.60);
         assert!(launch_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
         assert!(falling_metrics.torso_pitch_degrees >= 8.0);
         assert!(falling_metrics.arm_spread_degrees >= 64.0);
         assert!(falling_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
+    }
+
+    #[test]
+    fn launch_takeout_pose_lifts_both_arms_overhead() {
+        let left_arm = CharacterPart::new(
+            CharacterPartRole::Arm(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let right_arm = CharacterPart::new(
+            CharacterPartRole::Arm(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let context = PlayerPoseContext::new(
+            FlightMode::Launching,
+            Vec3::new(0.0, 24.0, -18.0),
+            FlightInput::default(),
+            80.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::Launching);
+
+        let metrics = pose_readability_metrics(context, 0.75);
+        let left_pose = part_pose_with_context(&left_arm, context, 0.75);
+        let right_pose = part_pose_with_context(&right_arm, context, 0.75);
+        let left_arm_raise = (left_pose.rotation * Vec3::NEG_Y).y;
+        let right_arm_raise = (right_pose.rotation * Vec3::NEG_Y).y;
+
+        assert!(metrics.launch_overhead_arm_score >= 0.60);
+        assert!(left_arm_raise >= 0.60);
+        assert!(right_arm_raise >= 0.60);
     }
 
     #[test]
