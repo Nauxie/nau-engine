@@ -369,11 +369,11 @@ addMesh("Nau Leather Boot Heel", boxMesh(0.20, 0.078, 0.14), 3);
 addMesh("Nau Suit Deltoid Filler", ellipsoidMesh([0.125, 0.060, 0.092], 26, 9), 0);
 addMesh("Nau Suit Pelvis Side Plate", ellipsoidMesh([0.105, 0.040, 0.095], 24, 8), 7);
 addMesh("Nau Leather Palm Heel Pad", ellipsoidMesh([0.052, 0.020, 0.040], 18, 7), 3);
-addMesh("Nau Seamless Shoulder Flex Cover", ellipsoidMesh([0.150, 0.108, 0.132], 38, 14), 0);
+addMesh("Nau Seamless Shoulder Flex Cover", ellipsoidMesh([0.118, 0.060, 0.104], 38, 14), 0);
 addMesh("Nau Seamless Elbow Flex Cover", ellipsoidMesh([0.086, 0.058, 0.072], 36, 12), 0);
 addMesh("Nau Seamless Wrist Flex Cover", ellipsoidMesh([0.070, 0.046, 0.062], 34, 11), 3);
-addMesh("Nau Seamless Hip Flex Cover", ellipsoidMesh([0.150, 0.102, 0.134], 38, 14), 0);
-addMesh("Nau Seamless Knee Flex Cover", ellipsoidMesh([0.102, 0.070, 0.086], 36, 12), 0);
+addMesh("Nau Seamless Hip Flex Cover", ellipsoidMesh([0.130, 0.078, 0.116], 38, 14), 0);
+addMesh("Nau Seamless Knee Flex Cover", ellipsoidMesh([0.080, 0.034, 0.068], 36, 12), 0);
 addMesh("Nau Seamless Ankle Flex Cover", ellipsoidMesh([0.086, 0.054, 0.078], 34, 11), 3);
 
 function meshIndex(name) {
@@ -514,7 +514,7 @@ for (const side of [
     scale: [0.96, 0.098, 0.96],
   });
   addMeshChild(arm, `Nau ${label} Seamless Shoulder Flex Cover`, meshIndex("Nau Seamless Shoulder Flex Cover"), {
-    translation: [sign * -0.010, -0.048, 0.0],
+    translation: [sign * -0.010, -0.034, 0.0],
     rotation: rotZ(sign * 0.10),
   });
   addMeshChild(arm, `Nau ${label} Suit Upper Arm`, meshIndex("Nau Suit Upper Arm"), {
@@ -695,7 +695,7 @@ for (const side of [
     scale: [1.0, 0.11, 1.0],
   });
   addMeshChild(lowerLeg, `Nau ${label} Seamless Knee Flex Cover`, meshIndex("Nau Seamless Knee Flex Cover"), {
-    translation: [0.0, -0.004, 0.0],
+    translation: [0.0, -0.026, 0.0],
   });
   addMeshChild(lowerLeg, `Nau ${label} Suit Lower Leg Greave`, meshIndex("Nau Suit Lower Leg Greave"), {
     translation: [0.0, -0.220, 0.0],
