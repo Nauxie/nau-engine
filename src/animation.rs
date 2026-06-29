@@ -1389,7 +1389,7 @@ pub fn part_pose_with_context(
                 translation.y += rearward_brake_pressure * 0.035;
             }
             if intent == PlayerPoseIntent::LandingAnticipation {
-                translation.z += 0.34
+                translation.z += 0.42
                     + landing_strength * 0.16
                     + landing_flip * 0.34
                     + landing_lead * (0.20 + landing_strength * 0.06 + landing_flip * 0.12)
@@ -1454,7 +1454,7 @@ pub fn part_pose_with_context(
             translation.y += airflow * 0.005;
             translation.z += match intent {
                 PlayerPoseIntent::Diving => 0.014 + dive_side_flutter.abs() * 0.004,
-                PlayerPoseIntent::LandingAnticipation => 0.012 + landing_flip * 0.010,
+                PlayerPoseIntent::LandingAnticipation => 0.040 + landing_flip * 0.016,
                 _ => 0.0,
             };
             let lower_leg_roll = match intent {
