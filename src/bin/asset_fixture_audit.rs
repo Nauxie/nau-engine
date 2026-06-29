@@ -21,7 +21,9 @@ const PLAYER_REST_MAX_SHOULDER_MESH_OVERLAP_M: f64 = 0.015;
 const PLAYER_POSE_MAX_ARTICULATED_JOINT_GAP_M: f64 = 0.018;
 const PLAYER_POSE_MAX_JOINT_COVER_MESH_GAP_M: f64 = 0.035;
 const PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M: f64 = 0.11;
-const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.018;
+const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.001;
+const PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT: f64 = 6.0;
+const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 4.0;
 const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 72.0;
 const PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES: f64 = 150.0;
 const PLAYER_POSE_MIN_DIVE_TORSO_PITCH_DEGREES: f64 = 82.0;
@@ -401,6 +403,10 @@ fn audit_fixture(
     let player_pose_shape_audit = requirement
         .require_player_clips
         .then(player_pose_shape_audit);
+    let player_pose_contact_audit = requirement
+        .require_player_clips
+        .then(|| player_pose_contact_audit(&gltf))
+        .flatten();
 
     let mut checks = vec![
         check_bool("present", true, "file"),
@@ -597,6 +603,27 @@ fn audit_fixture(
             PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M,
             "m",
         ));
+        let pose_contact = player_pose_contact_audit
+            .as_ref()
+            .expect("player pose contact audit should be present for player fixture");
+        checks.push(check_at_least_f64(
+            "player_pose_contact_report_pose_count",
+            number_field(pose_contact, "pose_count"),
+            PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT,
+            "poses",
+        ));
+        checks.push(check_at_least_f64(
+            "player_pose_contact_report_phase_count",
+            number_field(pose_contact, "phase_count"),
+            PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT,
+            "phases",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_contact_report_breach_count",
+            number_field(pose_contact, "breach_count"),
+            0.0,
+            "breaches",
+        ));
         let pose_shape = player_pose_shape_audit
             .as_ref()
             .expect("player pose shape audit should be present for player fixture");
@@ -760,6 +787,7 @@ fn audit_fixture(
         "player_pose_joint_cover_mesh_gap_worst_pair": player_pose_joint_cover_mesh_gap_report(&gltf).map(|report| report.to_json()),
         "player_pose_joint_cover_mesh_overlap_max_m": player_pose_joint_cover_mesh_overlap_max_m(&gltf),
         "player_pose_joint_cover_mesh_overlap_worst_pair": player_pose_joint_cover_mesh_overlap_report(&gltf).map(|report| report.to_json()),
+        "player_pose_contact_audit": player_pose_contact_audit,
         "player_bank_clip_motion_distinct": player_bank_clip_motion_is_distinct(&gltf),
         "player_launch_glide_land_clip_motion_distinct": player_launch_glide_land_clip_motion_is_distinct(&gltf),
         "player_grounded_locomotion_clip_motion_distinct": player_grounded_locomotion_clip_motion_is_distinct(&gltf),
@@ -1324,8 +1352,115 @@ fn player_pose_articulated_joint_gap_max_m(gltf: &Value) -> Option<f64> {
     player_pose_articulated_joint_gap_report(gltf).map(|report| report.max_gap_m)
 }
 
+fn player_pose_contact_phases() -> [f32; 4] {
+    [0.0, 0.75, 1.5, 2.25]
+}
+
+fn player_pose_contact_audit(gltf: &Value) -> Option<Value> {
+    let phases = player_pose_contact_phases();
+    let non_adjacent_pairs = player_rest_non_adjacent_mesh_overlap_pairs();
+    let mut pose_reports = Vec::new();
+    let mut breach_count = 0_u64;
+
+    for context in player_pose_mesh_overlap_contexts() {
+        let mut articulated_gap = JointGapReport::zero();
+        let mut joint_cover_gap = MeshGapReport::zero();
+        let mut joint_cover_overlap = MeshOverlapReport::zero();
+        let mut non_adjacent_overlap = MeshOverlapReport::zero();
+
+        for phase in phases {
+            let overrides = player_pose_node_overrides(gltf, context, phase)?;
+
+            for (socket, joint) in player_articulated_joint_gap_pairs() {
+                let socket_translation =
+                    world_node_translation_with_pose(gltf, socket, &overrides)?;
+                let joint_translation = world_node_translation_with_pose(gltf, joint, &overrides)?;
+                articulated_gap.observe(
+                    distance3(socket_translation, joint_translation),
+                    socket,
+                    joint,
+                    context.intent(),
+                    phase,
+                );
+            }
+
+            for (left, right) in player_joint_cover_mesh_pairs() {
+                let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, &overrides)?;
+                let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, &overrides)?;
+                joint_cover_gap.observe(
+                    left_bounds.separation_m(right_bounds),
+                    left,
+                    right,
+                    context.intent(),
+                    phase,
+                );
+                joint_cover_overlap.observe(
+                    node_world_mesh_obb_with_pose(gltf, left, &overrides)?
+                        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, right, &overrides)?),
+                    left_bounds.overlap_axes_m(right_bounds),
+                    left,
+                    right,
+                    context.intent(),
+                    phase,
+                );
+            }
+
+            for (left, right) in non_adjacent_pairs.iter().copied() {
+                let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, &overrides)?;
+                let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, &overrides)?;
+                non_adjacent_overlap.observe(
+                    node_world_mesh_obb_with_pose(gltf, left, &overrides)?
+                        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, right, &overrides)?),
+                    left_bounds.overlap_axes_m(right_bounds),
+                    left,
+                    right,
+                    context.intent(),
+                    phase,
+                );
+            }
+        }
+
+        let within_thresholds = articulated_gap.max_gap_m
+            <= PLAYER_POSE_MAX_ARTICULATED_JOINT_GAP_M
+            && joint_cover_gap.max_gap_m <= PLAYER_POSE_MAX_JOINT_COVER_MESH_GAP_M
+            && joint_cover_overlap.max_overlap_m <= PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M
+            && non_adjacent_overlap.max_overlap_m <= PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M;
+        if !within_thresholds {
+            breach_count += 1;
+        }
+
+        pose_reports.push(json!({
+            "pose_intent": context.intent().label(),
+            "phase_count": phases.len(),
+            "within_thresholds": within_thresholds,
+            "articulated_joint_gap_max_m": articulated_gap.max_gap_m,
+            "joint_cover_mesh_gap_max_m": joint_cover_gap.max_gap_m,
+            "joint_cover_mesh_overlap_max_m": joint_cover_overlap.max_overlap_m,
+            "non_adjacent_mesh_overlap_max_m": non_adjacent_overlap.max_overlap_m,
+            "articulated_joint_gap_worst_pair": articulated_gap.to_json(),
+            "joint_cover_mesh_gap_worst_pair": joint_cover_gap.to_json(),
+            "joint_cover_mesh_overlap_worst_pair": joint_cover_overlap.to_json(),
+            "non_adjacent_mesh_overlap_worst_pair": non_adjacent_overlap.to_json(),
+        }));
+    }
+
+    Some(json!({
+        "schema": "nau_player_pose_contact_audit.v1",
+        "pose_count": pose_reports.len(),
+        "phase_count": phases.len(),
+        "breach_count": breach_count,
+        "thresholds": {
+            "articulated_joint_gap_max_m": PLAYER_POSE_MAX_ARTICULATED_JOINT_GAP_M,
+            "joint_cover_mesh_gap_max_m": PLAYER_POSE_MAX_JOINT_COVER_MESH_GAP_M,
+            "joint_cover_mesh_overlap_max_m": PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M,
+            "non_adjacent_mesh_overlap_max_m": PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
+        },
+        "poses": pose_reports,
+    }))
+}
+
 fn player_pose_articulated_joint_gap_report(gltf: &Value) -> Option<JointGapReport> {
-    let phases = [0.0, 0.75, 1.5, 2.25];
+    let phases = player_pose_contact_phases();
     let mut report = JointGapReport::zero();
 
     for context in player_pose_mesh_overlap_contexts() {
@@ -1384,7 +1519,7 @@ fn player_pose_joint_cover_mesh_gap_max_m(gltf: &Value) -> Option<f64> {
 }
 
 fn player_pose_joint_cover_mesh_gap_report(gltf: &Value) -> Option<MeshGapReport> {
-    let phases = [0.0, 0.75, 1.5, 2.25];
+    let phases = player_pose_contact_phases();
     let mut report = MeshGapReport::zero();
 
     for context in player_pose_mesh_overlap_contexts() {
@@ -1412,7 +1547,7 @@ fn player_pose_joint_cover_mesh_overlap_max_m(gltf: &Value) -> Option<f64> {
 }
 
 fn player_pose_joint_cover_mesh_overlap_report(gltf: &Value) -> Option<MeshOverlapReport> {
-    let phases = [0.0, 0.75, 1.5, 2.25];
+    let phases = player_pose_contact_phases();
     let mut report = MeshOverlapReport::zero();
 
     for context in player_pose_mesh_overlap_contexts() {
@@ -1465,7 +1600,7 @@ fn player_pose_non_adjacent_mesh_overlap_max_m(gltf: &Value) -> Option<f64> {
 
 fn player_pose_non_adjacent_mesh_overlap_report(gltf: &Value) -> Option<MeshOverlapReport> {
     let pairs = player_rest_non_adjacent_mesh_overlap_pairs();
-    let phases = [0.0, 0.75, 1.5, 2.25];
+    let phases = player_pose_contact_phases();
     let mut report = MeshOverlapReport::zero();
 
     for context in player_pose_mesh_overlap_contexts() {
@@ -2588,6 +2723,43 @@ mod tests {
                 .iter()
                 .all(|(left, _right)| !left.ends_with(" Socket"))
         );
+    }
+
+    #[test]
+    fn player_pose_contact_audit_reports_each_sampled_pose() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let audit = player_pose_contact_audit(&gltf).expect("pose contact audit");
+        let poses = audit
+            .get("poses")
+            .and_then(Value::as_array)
+            .expect("pose rows");
+
+        assert_eq!(
+            number_field(&audit, "pose_count"),
+            PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT
+        );
+        assert_eq!(
+            number_field(&audit, "phase_count"),
+            PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT
+        );
+        assert_eq!(number_field(&audit, "breach_count"), 0.0);
+        for expected in [
+            "falling",
+            "gliding",
+            "diving",
+            "air_brake",
+            "landing_anticipation",
+            "landing_recovery",
+        ] {
+            assert!(poses.iter().any(|pose| {
+                pose.get("pose_intent").and_then(Value::as_str) == Some(expected)
+                    && pose
+                        .get("within_thresholds")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+            }));
+        }
     }
 
     #[test]

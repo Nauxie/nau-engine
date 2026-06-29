@@ -1342,7 +1342,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => 0.50 + cycle * 0.04 + airflow * 0.025,
                 PlayerPoseIntent::AirTurn => 0.54 + cycle * 0.04 + airflow * 0.025,
                 PlayerPoseIntent::Diving => {
-                    1.02 + dive_pressure * 0.36 + cycle * 0.010 + airflow * 0.008
+                    1.02 + dive_pressure * 0.334 + cycle * 0.010 + airflow * 0.008
                 }
                 PlayerPoseIntent::AirBrake => {
                     -0.30
