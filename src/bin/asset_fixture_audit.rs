@@ -12,7 +12,7 @@ use nau_engine::asset_pipeline::{
 };
 use nau_engine::movement::{FlightInput, FlightMode};
 use serde_json::{Value, json};
-use std::{fs, path::Path, process};
+use std::{env, fmt::Write as _, fs, path::Path, process};
 
 const NAU_FIXTURE_SCHEMA: &str = "nau_visual_asset_fixture.v1";
 const NAU_FIXTURE_LICENSE: &str = "self_authored_no_third_party";
@@ -46,63 +46,99 @@ const PLAYER_GLIDER_MIN_DIVE_MOTION_M: f64 = 0.16;
 const PLAYER_REST_TORSO_BLOCKING_MESH_NODES: &[&str] = &[
     "Nau Suit Armored Torso Shell",
     "Nau Suit Tapered Hips Shell",
+    "Nau Suit Shoulder Yoke Plate",
+    "Nau Left Suit Collarbone Plate",
+    "Nau Right Suit Collarbone Plate",
+    "Nau Suit Pelvis Hip Yoke",
+    "Nau Left Suit Pelvis Side Plate",
+    "Nau Right Suit Pelvis Side Plate",
     "Nau Skin Rounded Head",
 ];
 const PLAYER_REST_LEFT_ARM_MESH_NODES: &[&str] = &[
     "Nau Left Suit Upper Arm",
+    "Nau Left Suit Deltoid Filler",
     "Nau Left Leather Forearm Wrap",
     "Nau Left Leather Hand Palm",
+    "Nau Left Leather Palm Heel Pad",
     "Nau Left Leather Index Finger Grip",
     "Nau Left Leather Finger Grip",
     "Nau Left Leather Ring Finger Grip",
     "Nau Left Leather Thumb Grip",
+    "Nau Left Leather Index Knuckle Pad",
+    "Nau Left Leather Middle Knuckle Pad",
+    "Nau Left Leather Ring Knuckle Pad",
+    "Nau Left Leather Pinky Knuckle Pad",
 ];
 const PLAYER_REST_RIGHT_ARM_MESH_NODES: &[&str] = &[
     "Nau Right Suit Upper Arm",
+    "Nau Right Suit Deltoid Filler",
     "Nau Right Leather Forearm Wrap",
     "Nau Right Leather Hand Palm",
+    "Nau Right Leather Palm Heel Pad",
     "Nau Right Leather Index Finger Grip",
     "Nau Right Leather Finger Grip",
     "Nau Right Leather Ring Finger Grip",
     "Nau Right Leather Thumb Grip",
+    "Nau Right Leather Index Knuckle Pad",
+    "Nau Right Leather Middle Knuckle Pad",
+    "Nau Right Leather Ring Knuckle Pad",
+    "Nau Right Leather Pinky Knuckle Pad",
 ];
 const PLAYER_REST_LEFT_DISTAL_ARM_MESH_NODES: &[&str] = &[
     "Nau Left Leather Forearm Wrap",
     "Nau Left Leather Hand Palm",
+    "Nau Left Leather Palm Heel Pad",
     "Nau Left Leather Index Finger Grip",
     "Nau Left Leather Finger Grip",
     "Nau Left Leather Ring Finger Grip",
     "Nau Left Leather Thumb Grip",
+    "Nau Left Leather Index Knuckle Pad",
+    "Nau Left Leather Middle Knuckle Pad",
+    "Nau Left Leather Ring Knuckle Pad",
+    "Nau Left Leather Pinky Knuckle Pad",
 ];
 const PLAYER_REST_RIGHT_DISTAL_ARM_MESH_NODES: &[&str] = &[
     "Nau Right Leather Forearm Wrap",
     "Nau Right Leather Hand Palm",
+    "Nau Right Leather Palm Heel Pad",
     "Nau Right Leather Index Finger Grip",
     "Nau Right Leather Finger Grip",
     "Nau Right Leather Ring Finger Grip",
     "Nau Right Leather Thumb Grip",
+    "Nau Right Leather Index Knuckle Pad",
+    "Nau Right Leather Middle Knuckle Pad",
+    "Nau Right Leather Ring Knuckle Pad",
+    "Nau Right Leather Pinky Knuckle Pad",
 ];
 const PLAYER_REST_LEFT_LEG_MESH_NODES: &[&str] = &[
     "Nau Left Suit Thigh Guard",
     "Nau Left Suit Lower Leg Greave",
     "Nau Left Boot",
     "Nau Left Leather Boot Toe Cap",
+    "Nau Left Leather Boot Sole",
+    "Nau Left Leather Boot Heel",
 ];
 const PLAYER_REST_RIGHT_LEG_MESH_NODES: &[&str] = &[
     "Nau Right Suit Thigh Guard",
     "Nau Right Suit Lower Leg Greave",
     "Nau Right Boot",
     "Nau Right Leather Boot Toe Cap",
+    "Nau Right Leather Boot Sole",
+    "Nau Right Leather Boot Heel",
 ];
 const PLAYER_REST_LEFT_DISTAL_LEG_MESH_NODES: &[&str] = &[
     "Nau Left Suit Lower Leg Greave",
     "Nau Left Boot",
     "Nau Left Leather Boot Toe Cap",
+    "Nau Left Leather Boot Sole",
+    "Nau Left Leather Boot Heel",
 ];
 const PLAYER_REST_RIGHT_DISTAL_LEG_MESH_NODES: &[&str] = &[
     "Nau Right Suit Lower Leg Greave",
     "Nau Right Boot",
     "Nau Right Leather Boot Toe Cap",
+    "Nau Right Leather Boot Sole",
+    "Nau Right Leather Boot Heel",
 ];
 const PLAYER_RUNTIME_POSE_NODE_ROLES: &[(&str, CharacterPartRole)] = &[
     ("Nau Torso", CharacterPartRole::Torso),
@@ -147,8 +183,33 @@ struct Requirement {
 }
 
 const PLAYER_NAME_FRAGMENTS: &[&str] = &[
-    "suit", "skin", "accent", "helmet", "shoulder", "scarf", "boot", "face", "eye", "belt",
-    "gauntlet", "knee", "hand", "finger", "toe", "neck", "elbow", "ankle", "bridge", "sleeve",
+    "suit",
+    "skin",
+    "accent",
+    "helmet",
+    "shoulder",
+    "scarf",
+    "boot",
+    "face",
+    "eye",
+    "belt",
+    "gauntlet",
+    "knee",
+    "hand",
+    "finger",
+    "toe",
+    "neck",
+    "elbow",
+    "ankle",
+    "bridge",
+    "sleeve",
+    "yoke",
+    "collarbone",
+    "pelvis",
+    "deltoid",
+    "knuckle",
+    "sole",
+    "heel",
 ];
 const GLIDER_NAME_FRAGMENTS: &[&str] = &["cloth panel", "spar", "rib", "tether", "grip"];
 const TERRAIN_NAME_FRAGMENTS: &[&str] = &[
@@ -200,11 +261,11 @@ const IMPOSTOR_NAME_FRAGMENTS: &[&str] = &[
 const REQUIREMENTS: &[Requirement] = &[
     Requirement {
         kind: VisualAssetKind::PlayerCharacter,
-        min_nodes: 116,
-        min_meshes: 37,
+        min_nodes: 136,
+        min_meshes: 46,
         min_materials: 8,
-        min_vertices: 4500,
-        min_triangles: 8200,
+        min_vertices: 6000,
+        min_triangles: 10800,
         required_name_fragments: PLAYER_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: true,
@@ -300,6 +361,33 @@ const REQUIREMENTS: &[Requirement] = &[
 ];
 
 fn main() {
+    let args = env::args().skip(1).collect::<Vec<_>>();
+    if let Some(command) = args.first() {
+        if command == "--export-player-pose-preview" {
+            let output_dir = args
+                .get(1)
+                .map(Path::new)
+                .unwrap_or_else(|| Path::new("target/player_pose_previews"));
+            match export_player_pose_preview(output_dir) {
+                Ok(report) => {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report)
+                            .expect("preview report should serialize")
+                    );
+                }
+                Err(error) => {
+                    eprintln!("player pose preview export failed: {error}");
+                    process::exit(2);
+                }
+            }
+            return;
+        }
+
+        eprintln!("unknown asset fixture audit command: {command}");
+        process::exit(2);
+    }
+
     match audit_all_fixtures() {
         Ok(report) => {
             let passed = report
@@ -319,6 +407,406 @@ fn main() {
             process::exit(2);
         }
     }
+}
+
+#[derive(Clone, Copy)]
+struct PlayerPosePreviewSpec {
+    label: &'static str,
+    title: &'static str,
+    context: PlayerPoseContext,
+    phase: f32,
+}
+
+#[derive(Clone, Debug)]
+struct PlayerPosePreviewShape {
+    node_name: String,
+    bounds: Aabb3,
+    color: &'static str,
+}
+
+#[derive(Clone, Copy)]
+enum PlayerPosePreviewView {
+    Front,
+    Side,
+    Top,
+}
+
+fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
+    let path = Path::new("assets/models/player/player.gltf");
+    let text =
+        fs::read_to_string(path).map_err(|error| format!("failed to read {path:?}: {error}"))?;
+    let gltf = serde_json::from_str::<Value>(&text)
+        .map_err(|error| format!("invalid glTF JSON: {error}"))?;
+    let specs = player_pose_preview_specs();
+    let svg = render_player_pose_preview_sheet(&gltf, &specs)?;
+    fs::create_dir_all(output_dir)
+        .map_err(|error| format!("failed to create {output_dir:?}: {error}"))?;
+    let sheet_path = output_dir.join("player_pose_sheet.svg");
+    fs::write(&sheet_path, svg)
+        .map_err(|error| format!("failed to write {sheet_path:?}: {error}"))?;
+
+    let manifest = json!({
+        "schema": "nau_player_pose_preview.v1",
+        "source": path,
+        "pose_count": specs.len(),
+        "views": ["front", "side", "top"],
+        "phase_samples": specs.iter().map(|spec| spec.phase).collect::<Vec<_>>(),
+        "poses": specs.iter().map(|spec| json!({
+            "label": spec.label,
+            "title": spec.title,
+            "phase": spec.phase,
+            "pose_intent": spec.context.intent().label(),
+        })).collect::<Vec<_>>(),
+        "artifacts": {
+            "pose_sheet_svg": sheet_path,
+        },
+    });
+    let manifest_path = output_dir.join("manifest.json");
+    fs::write(
+        &manifest_path,
+        serde_json::to_string_pretty(&manifest).expect("preview manifest should serialize"),
+    )
+    .map_err(|error| format!("failed to write {manifest_path:?}: {error}"))?;
+
+    Ok(json!({
+        "passed": true,
+        "manifest": manifest_path,
+        "pose_sheet_svg": sheet_path,
+        "pose_count": specs.len(),
+    }))
+}
+
+fn player_pose_preview_specs() -> Vec<PlayerPosePreviewSpec> {
+    vec![
+        PlayerPosePreviewSpec {
+            label: "grounded_idle",
+            title: "Grounded Idle",
+            context: PlayerPoseContext::new(
+                FlightMode::Grounded,
+                Vec3::ZERO,
+                FlightInput::default(),
+                0.0,
+            )
+            .with_resolved_intent(PlayerPoseIntent::GroundedIdle),
+            phase: 0.75,
+        },
+        PlayerPosePreviewSpec {
+            label: "launch_takeout",
+            title: "Launch Takeout",
+            context: PlayerPoseContext::new(
+                FlightMode::Launching,
+                Vec3::new(0.0, 24.0, -18.0),
+                FlightInput::default(),
+                80.0,
+            )
+            .with_resolved_intent(PlayerPoseIntent::Launching),
+            phase: 0.75,
+        },
+        PlayerPosePreviewSpec {
+            label: "falling_belly_down",
+            title: "Belly-Down Fall",
+            context: PlayerPoseContext::new(
+                FlightMode::Airborne,
+                Vec3::new(0.0, -22.0, -24.0),
+                FlightInput::default(),
+                80.0,
+            )
+            .with_resolved_intent(PlayerPoseIntent::Falling),
+            phase: 0.75,
+        },
+        PlayerPosePreviewSpec {
+            label: "gliding",
+            title: "Glide",
+            context: PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -4.0, -30.0),
+                FlightInput {
+                    glide: true,
+                    ..FlightInput::default()
+                },
+                80.0,
+            )
+            .with_resolved_intent(PlayerPoseIntent::Gliding),
+            phase: 0.75,
+        },
+        PlayerPosePreviewSpec {
+            label: "diving_head_down",
+            title: "Head-Down Dive",
+            context: PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -34.0, -36.0),
+                FlightInput {
+                    glide: true,
+                    dive: true,
+                    ..FlightInput::default()
+                },
+                120.0,
+            )
+            .with_resolved_intent(PlayerPoseIntent::Diving),
+            phase: 0.75,
+        },
+        PlayerPosePreviewSpec {
+            label: "air_brake",
+            title: "Air Brake",
+            context: PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(0.0, -8.0, -24.0),
+                FlightInput {
+                    glide: true,
+                    backward: true,
+                    ..FlightInput::default()
+                },
+                80.0,
+            )
+            .with_resolved_intent(PlayerPoseIntent::AirBrake),
+            phase: 0.75,
+        },
+        PlayerPosePreviewSpec {
+            label: "landing_anticipation",
+            title: "Landing Anticipation",
+            context: PlayerPoseContext::new(
+                FlightMode::Gliding,
+                Vec3::new(3.0, -20.0, -22.0),
+                FlightInput {
+                    glide: true,
+                    ..FlightInput::default()
+                },
+                1.5,
+            )
+            .with_resolved_intent(PlayerPoseIntent::LandingAnticipation),
+            phase: 0.75,
+        },
+        PlayerPosePreviewSpec {
+            label: "landing_recovery",
+            title: "Landing Recovery",
+            context: PlayerPoseContext::new(
+                FlightMode::Grounded,
+                Vec3::new(2.0, 0.0, -7.0),
+                FlightInput::default(),
+                0.0,
+            )
+            .with_resolved_intent(PlayerPoseIntent::LandingRecovery),
+            phase: 0.75,
+        },
+    ]
+}
+
+fn render_player_pose_preview_sheet(
+    gltf: &Value,
+    specs: &[PlayerPosePreviewSpec],
+) -> Result<String, String> {
+    const ROW_HEIGHT: f32 = 210.0;
+    const LABEL_WIDTH: f32 = 150.0;
+    const VIEW_WIDTH: f32 = 250.0;
+    const HEADER_HEIGHT: f32 = 58.0;
+    const PADDING: f32 = 18.0;
+
+    let width = LABEL_WIDTH + VIEW_WIDTH * 3.0 + PADDING * 2.0;
+    let height = HEADER_HEIGHT + ROW_HEIGHT * specs.len() as f32 + PADDING;
+    let mut svg = String::new();
+    writeln!(
+        svg,
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" viewBox=\"0 0 {width:.0} {height:.0}\">"
+    )
+    .expect("writing to string should not fail");
+    svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#10151f\"/>\n");
+    svg.push_str("<text x=\"18\" y=\"24\" fill=\"#dbe7f3\" font-family=\"Menlo, monospace\" font-size=\"16\">NAU player fixture pose preview</text>\n");
+    for (index, view) in [
+        PlayerPosePreviewView::Front,
+        PlayerPosePreviewView::Side,
+        PlayerPosePreviewView::Top,
+    ]
+    .iter()
+    .enumerate()
+    {
+        let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * index as f32 + VIEW_WIDTH * 0.5;
+        writeln!(
+            svg,
+            "<text x=\"{x:.1}\" y=\"44\" fill=\"#8fb1c9\" text-anchor=\"middle\" font-family=\"Menlo, monospace\" font-size=\"12\">{}</text>",
+            view.label()
+        )
+        .expect("writing to string should not fail");
+    }
+
+    for (row, spec) in specs.iter().enumerate() {
+        let y = HEADER_HEIGHT + ROW_HEIGHT * row as f32;
+        let overrides = player_pose_node_overrides(gltf, spec.context, spec.phase)
+            .ok_or_else(|| format!("failed to compute pose overrides for {}", spec.label))?;
+        let shapes = player_pose_preview_shapes(gltf, &overrides)
+            .ok_or_else(|| format!("failed to compute preview shapes for {}", spec.label))?;
+        writeln!(
+            svg,
+            "<text x=\"18\" y=\"{:.1}\" fill=\"#edf5ff\" font-family=\"Menlo, monospace\" font-size=\"13\">{}</text>",
+            y + 28.0,
+            escape_xml(spec.title)
+        )
+        .expect("writing to string should not fail");
+        writeln!(
+            svg,
+            "<text x=\"18\" y=\"{:.1}\" fill=\"#7f95a7\" font-family=\"Menlo, monospace\" font-size=\"10\">intent: {}</text>",
+            y + 46.0,
+            spec.context.intent().label()
+        )
+        .expect("writing to string should not fail");
+
+        for (column, view) in [
+            PlayerPosePreviewView::Front,
+            PlayerPosePreviewView::Side,
+            PlayerPosePreviewView::Top,
+        ]
+        .iter()
+        .enumerate()
+        {
+            let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * column as f32;
+            render_player_pose_preview_view(
+                &mut svg,
+                &shapes,
+                *view,
+                x,
+                y + 12.0,
+                VIEW_WIDTH - 12.0,
+                ROW_HEIGHT - 20.0,
+            );
+        }
+    }
+
+    svg.push_str("</svg>\n");
+    Ok(svg)
+}
+
+fn player_pose_preview_shapes(
+    gltf: &Value,
+    overrides: &[PoseNodeOverride],
+) -> Option<Vec<PlayerPosePreviewShape>> {
+    let nodes = gltf.get("nodes")?.as_array()?;
+    let mut shapes = Vec::new();
+    for node in nodes {
+        let node_name = node.get("name").and_then(Value::as_str)?;
+        if node.get("mesh").is_none() {
+            continue;
+        }
+        let bounds = node_world_mesh_aabb_with_pose(gltf, node_name, overrides)?;
+        shapes.push(PlayerPosePreviewShape {
+            node_name: node_name.to_string(),
+            bounds,
+            color: player_pose_preview_color(node_name),
+        });
+    }
+    Some(shapes)
+}
+
+fn render_player_pose_preview_view(
+    svg: &mut String,
+    shapes: &[PlayerPosePreviewShape],
+    view: PlayerPosePreviewView,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+) {
+    writeln!(
+        svg,
+        "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{width:.1}\" height=\"{height:.1}\" rx=\"4\" fill=\"#151d29\" stroke=\"#263749\" stroke-width=\"1\"/>"
+    )
+    .expect("writing to string should not fail");
+    let Some((min_u, max_u, min_v, max_v)) = preview_projected_extent(shapes, view) else {
+        return;
+    };
+    let span_u = (max_u - min_u).max(0.01);
+    let span_v = (max_v - min_v).max(0.01);
+    let scale = ((width - 28.0) / span_u).min((height - 28.0) / span_v);
+    let origin_x = x + width * 0.5 - (min_u + max_u) * 0.5 * scale;
+    let origin_y = y + height * 0.5 + (min_v + max_v) * 0.5 * scale;
+
+    let mut ordered = shapes.iter().collect::<Vec<_>>();
+    ordered.sort_by(|left, right| {
+        preview_depth(left.bounds, view)
+            .partial_cmp(&preview_depth(right.bounds, view))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    for shape in ordered {
+        let (shape_min_u, shape_max_u, shape_min_v, shape_max_v) =
+            project_preview_bounds(shape.bounds, view);
+        let rect_x = origin_x + shape_min_u * scale;
+        let rect_y = origin_y - shape_max_v * scale;
+        let rect_width = (shape_max_u - shape_min_u).max(0.004) * scale;
+        let rect_height = (shape_max_v - shape_min_v).max(0.004) * scale;
+        writeln!(
+            svg,
+            "<rect x=\"{rect_x:.2}\" y=\"{rect_y:.2}\" width=\"{rect_width:.2}\" height=\"{rect_height:.2}\" rx=\"2\" fill=\"{}\" fill-opacity=\"0.68\" stroke=\"#e6eef7\" stroke-opacity=\"0.35\" stroke-width=\"0.5\"><title>{}</title></rect>",
+            shape.color,
+            escape_xml(&shape.node_name)
+        )
+        .expect("writing to string should not fail");
+    }
+}
+
+fn preview_projected_extent(
+    shapes: &[PlayerPosePreviewShape],
+    view: PlayerPosePreviewView,
+) -> Option<(f32, f32, f32, f32)> {
+    shapes
+        .iter()
+        .map(|shape| project_preview_bounds(shape.bounds, view))
+        .reduce(|accumulator, bounds| {
+            (
+                accumulator.0.min(bounds.0),
+                accumulator.1.max(bounds.1),
+                accumulator.2.min(bounds.2),
+                accumulator.3.max(bounds.3),
+            )
+        })
+}
+
+fn project_preview_bounds(bounds: Aabb3, view: PlayerPosePreviewView) -> (f32, f32, f32, f32) {
+    match view {
+        PlayerPosePreviewView::Front => (bounds.min.x, bounds.max.x, bounds.min.y, bounds.max.y),
+        PlayerPosePreviewView::Side => (bounds.min.z, bounds.max.z, bounds.min.y, bounds.max.y),
+        PlayerPosePreviewView::Top => (bounds.min.x, bounds.max.x, bounds.min.z, bounds.max.z),
+    }
+}
+
+fn preview_depth(bounds: Aabb3, view: PlayerPosePreviewView) -> f32 {
+    match view {
+        PlayerPosePreviewView::Front => (bounds.min.z + bounds.max.z) * 0.5,
+        PlayerPosePreviewView::Side => (bounds.min.x + bounds.max.x) * 0.5,
+        PlayerPosePreviewView::Top => (bounds.min.y + bounds.max.y) * 0.5,
+    }
+}
+
+impl PlayerPosePreviewView {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Front => "front silhouette",
+            Self::Side => "side silhouette",
+            Self::Top => "top footprint",
+        }
+    }
+}
+
+fn player_pose_preview_color(node_name: &str) -> &'static str {
+    let name = node_name.to_ascii_lowercase();
+    if name.contains("skin") || name.contains("face") {
+        "#c98a62"
+    } else if name.contains("eye") || name.contains("focus") {
+        "#ff9d2d"
+    } else if name.contains("accent") || name.contains("scarf") || name.contains("tunic") {
+        "#168894"
+    } else if name.contains("belt") || name.contains("collarbone") || name.contains("pelvis side") {
+        "#b88738"
+    } else if name.contains("leather") || name.contains("boot") {
+        "#3d281f"
+    } else {
+        "#26384f"
+    }
+}
+
+fn escape_xml(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn audit_all_fixtures() -> Result<Value, String> {

@@ -68,6 +68,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ./tools/eval_sim_suite.sh target/eval/sim_suite
 ./tools/terrain_export.sh target/terrain_export
 ./tools/visual_content_export.sh target/visual_content_export
+./tools/player_pose_preview.sh target/player_pose_preview
 ```
 
 Collision evals gate aggregate proxy counts, 16-segment terrain-rim contours, four-panel terrain-body cliff collision, and solid non-rim proxy distribution across trees, rocks, and landmarks so decorative island detail cannot silently lose physical blockers while terrain-rim proxies keep the aggregate count green.
@@ -77,6 +78,8 @@ Collision evals gate aggregate proxy counts, 16-segment terrain-rim contours, fo
 `./tools/terrain_export.sh target/terrain_export` does not open the native window. It writes `manifest.json`, per-island OBJ meshes, `*_terrain_material_weights.csv` files, and `audit.json` so terrain shape, color variation, topology counts, material-weight coverage, texture-detail and local edge-frequency floors, manifest and OBJ height-band/normal-slope-band floors, derived material-region coverage, per-island material-region presence, and aggregate base/transition/highland/exposed region distribution can be checked outside the live app. The underlying export can also be run directly with `cargo run -- --export-terrain target/terrain_export`.
 
 `./tools/visual_content_export.sh target/visual_content_export` also runs without opening the native window. It writes a visual-content `manifest.json`, OBJ artifacts, and `audit.json` for generated ground cover, trees, clouds, route/launch/landing/pond/obstruction-spire landmarks, and biome detail palettes. The audit checks artifact presence plus OBJ vertex/face counts, blade density/height variance, multi-ring trunk mesh floors, trunk taper, branch reach/count, root-flare count, canopy lobe/card structure, tree height/canopy-radius variation, cloud veil plus lobe/wisp/filament/depth-span floors, generated landmark mesh/count/span floors, obstruction-spire count/vertex/triangle/vertical-span and height/radius/normal-slope band floors, and palette diversity so high-vertex blobs, stick-like trees, cuboid blockers, or primitive route props cannot silently replace the current generated visual substrate.
+
+`./tools/player_pose_preview.sh target/player_pose_preview` runs without opening the native window. It writes `manifest.json` and `player_pose_sheet.svg`, a human-review pose sheet generated from the current player glTF plus the same runtime pose math used by the fixture audit. The sheet shows front, side, and top silhouettes for grounded idle, launch takeout, belly-down fall, glide, head-down dive, air-brake, landing anticipation, and landing recovery, so fixture wiring and silhouette regressions can be reviewed visually alongside numeric gates.
 
 ## Controls
 
