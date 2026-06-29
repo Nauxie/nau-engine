@@ -62,7 +62,7 @@ const PLAYER_POSE_MIN_DIVE_LEG_TUCK_DEGREES: f64 = 68.0;
 const PLAYER_MIN_FINGER_GRIP_LENGTH_M: f64 = 0.10;
 const PLAYER_MAX_FINGER_GRIP_LENGTH_M: f64 = 0.22;
 const PLAYER_MIN_BOOT_SOLE_LENGTH_M: f64 = 0.32;
-const PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT: f64 = 36.0;
+const PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT: f64 = 44.0;
 const PLAYER_MIN_LIMB_ANATOMY_MAJOR_EXTENT_M: f64 = 0.15;
 const PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT: f64 = 0.45;
 const PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT: f64 = 0.70;
@@ -482,6 +482,16 @@ struct PlayerTransitionPosePreviewSpec {
 }
 
 #[derive(Clone, Copy)]
+struct PlayerAnatomyReviewSpec {
+    label: &'static str,
+    title: &'static str,
+    context: PlayerPoseContext,
+    phase: f32,
+    view: PlayerPosePreviewView,
+    nodes: &'static [&'static str],
+}
+
+#[derive(Clone, Copy)]
 struct GliderPosePreviewSpec {
     label: &'static str,
     title: &'static str,
@@ -567,6 +577,8 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         .map_err(|error| format!("invalid glider glTF JSON: {error}"))?;
     let specs = player_pose_preview_specs();
     let svg = render_player_pose_preview_sheet(&gltf, &specs)?;
+    let anatomy_specs = player_anatomy_review_specs();
+    let anatomy_svg = render_player_anatomy_review_sheet(&gltf, &anatomy_specs)?;
     let transition_specs = player_transition_pose_preview_specs();
     let transition_svg = render_player_transition_pose_preview_sheet(&gltf, &transition_specs)?;
     let glider_specs = glider_pose_preview_specs();
@@ -579,6 +591,9 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
     let sheet_path = output_dir.join("player_pose_sheet.svg");
     fs::write(&sheet_path, svg)
         .map_err(|error| format!("failed to write {sheet_path:?}: {error}"))?;
+    let anatomy_sheet_path = output_dir.join("player_anatomy_review_sheet.svg");
+    fs::write(&anatomy_sheet_path, anatomy_svg)
+        .map_err(|error| format!("failed to write {anatomy_sheet_path:?}: {error}"))?;
     let transition_sheet_path = output_dir.join("player_transition_pose_sheet.svg");
     fs::write(&transition_sheet_path, transition_svg)
         .map_err(|error| format!("failed to write {transition_sheet_path:?}: {error}"))?;
@@ -599,6 +614,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "glider_source_bytes": glider_text.len(),
         "glider_source_hash_fnv1a64": fnv1a64_hex(glider_text.as_bytes()),
         "pose_count": specs.len(),
+        "anatomy_review_panel_count": anatomy_specs.len(),
         "transition_pose_count": transition_specs.len(),
         "glider_pose_count": glider_specs.len(),
         "attachment_pose_count": attachment_specs.len(),
@@ -612,6 +628,14 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
             "title": spec.title,
             "phase": spec.phase,
             "pose_intent": spec.context.intent().label(),
+        })).collect::<Vec<_>>(),
+        "anatomy_review_panels": anatomy_specs.iter().map(|spec| json!({
+            "label": spec.label,
+            "title": spec.title,
+            "phase": spec.phase,
+            "pose_intent": spec.context.intent().label(),
+            "view": spec.view.key(),
+            "node_count": spec.nodes.len(),
         })).collect::<Vec<_>>(),
         "transition_poses": transition_specs.iter().map(|spec| json!({
             "label": spec.label,
@@ -645,9 +669,15 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "player_glider_attachment_audit": player_glider_attachment_audit(&gltf, &glider_gltf),
         "artifacts": {
             "pose_sheet_svg": sheet_path,
+            "pose_sheet_png": output_dir.join("player_pose_sheet.png"),
+            "anatomy_review_sheet_svg": anatomy_sheet_path,
+            "anatomy_review_sheet_png": output_dir.join("player_anatomy_review_sheet.png"),
             "transition_pose_sheet_svg": transition_sheet_path,
+            "transition_pose_sheet_png": output_dir.join("player_transition_pose_sheet.png"),
             "glider_pose_sheet_svg": glider_sheet_path,
+            "glider_pose_sheet_png": output_dir.join("glider_pose_sheet.png"),
             "player_glider_attachment_sheet_svg": attachment_sheet_path,
+            "player_glider_attachment_sheet_png": output_dir.join("player_glider_attachment_sheet.png"),
         },
     });
     let manifest_path = output_dir.join("manifest.json");
@@ -661,10 +691,17 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "passed": true,
         "manifest": manifest_path,
         "pose_sheet_svg": sheet_path,
+        "pose_sheet_png": output_dir.join("player_pose_sheet.png"),
+        "anatomy_review_sheet_svg": anatomy_sheet_path,
+        "anatomy_review_sheet_png": output_dir.join("player_anatomy_review_sheet.png"),
         "transition_pose_sheet_svg": transition_sheet_path,
+        "transition_pose_sheet_png": output_dir.join("player_transition_pose_sheet.png"),
         "glider_pose_sheet_svg": glider_sheet_path,
+        "glider_pose_sheet_png": output_dir.join("glider_pose_sheet.png"),
         "player_glider_attachment_sheet_svg": attachment_sheet_path,
+        "player_glider_attachment_sheet_png": output_dir.join("player_glider_attachment_sheet.png"),
         "pose_count": specs.len(),
+        "anatomy_review_panel_count": anatomy_specs.len(),
         "transition_pose_count": transition_specs.len(),
         "glider_pose_count": glider_specs.len(),
         "attachment_pose_count": attachment_specs.len(),
@@ -945,6 +982,315 @@ fn player_glider_attachment_audit_specs() -> Vec<GliderPosePreviewSpec> {
 
 fn glider_pose_requires_hand_grip(label: &str) -> bool {
     matches!(label, "takeout_ready" | "glide_open" | "air_brake_cupped")
+}
+
+const PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES: &[&str] = &[];
+const PLAYER_ANATOMY_SHOULDER_REVIEW_NODES: &[&str] = &[
+    "Nau Suit Armored Torso Shell",
+    "Nau Suit Shoulder Yoke Plate",
+    "Nau Left Suit Collarbone Plate",
+    "Nau Right Suit Collarbone Plate",
+    "Nau Left Suit Shoulder Chest Blend",
+    "Nau Right Suit Shoulder Chest Blend",
+    "Nau Left Suit Axilla Blend",
+    "Nau Right Suit Axilla Blend",
+    "Nau Left Shoulder Joint Cover",
+    "Nau Right Shoulder Joint Cover",
+    "Nau Left Suit Shoulder Root Blend",
+    "Nau Right Suit Shoulder Root Blend",
+    "Nau Left Shoulder Bridge Sleeve",
+    "Nau Right Shoulder Bridge Sleeve",
+    "Nau Left Seamless Shoulder Flex Cover",
+    "Nau Right Seamless Shoulder Flex Cover",
+    "Nau Left Suit Upper Arm",
+    "Nau Right Suit Upper Arm",
+    "Nau Left Suit Deltoid Filler",
+    "Nau Right Suit Deltoid Filler",
+];
+const PLAYER_ANATOMY_HIP_REVIEW_NODES: &[&str] = &[
+    "Nau Suit Tapered Hips Shell",
+    "Nau Suit Pelvis Hip Yoke",
+    "Nau Left Suit Pelvis Side Plate",
+    "Nau Right Suit Pelvis Side Plate",
+    "Nau Left Suit Hip Inguinal Blend",
+    "Nau Right Suit Hip Inguinal Blend",
+    "Nau Left Hip Joint Cover",
+    "Nau Right Hip Joint Cover",
+    "Nau Left Hip Bridge Sleeve",
+    "Nau Right Hip Bridge Sleeve",
+    "Nau Left Seamless Hip Flex Cover",
+    "Nau Right Seamless Hip Flex Cover",
+    "Nau Left Suit Hip Root Blend",
+    "Nau Right Suit Hip Root Blend",
+    "Nau Left Suit Thigh Guard",
+    "Nau Right Suit Thigh Guard",
+];
+const PLAYER_ANATOMY_HAND_REVIEW_NODES: &[&str] = &[
+    "Nau Left Wrist Bridge Sleeve",
+    "Nau Left Seamless Wrist Flex Cover",
+    "Nau Left Leather Wrist Palm Gusset",
+    "Nau Left Leather Hand Palm",
+    "Nau Left Leather Outer Palm Edge Pad",
+    "Nau Left Leather Inner Palm Edge Pad",
+    "Nau Left Leather Thumb Web Pad",
+    "Nau Left Leather Index Finger Grip",
+    "Nau Left Leather Finger Grip",
+    "Nau Left Leather Ring Finger Grip",
+    "Nau Left Leather Pinky Finger Grip",
+    "Nau Left Leather Thumb Grip",
+    "Nau Left Leather Index Finger Tip Pad",
+    "Nau Left Leather Middle Finger Tip Pad",
+    "Nau Left Leather Ring Finger Tip Pad",
+    "Nau Left Leather Pinky Finger Tip Pad",
+    "Nau Left Leather Thumb Tip Pad",
+    "Nau Left Leather Palm Heel Pad",
+    "Nau Left Leather Finger Web Bridge",
+    "Nau Left Leather Index Knuckle Pad",
+    "Nau Left Leather Middle Knuckle Pad",
+    "Nau Left Leather Ring Knuckle Pad",
+    "Nau Left Leather Pinky Knuckle Pad",
+];
+const PLAYER_ANATOMY_BOOT_REVIEW_NODES: &[&str] = &[
+    "Nau Left Leather Boot Shell",
+    "Nau Left Ankle Bridge Sleeve",
+    "Nau Left Seamless Ankle Flex Cover",
+    "Nau Left Leather Ankle Wrap",
+    "Nau Left Leather Heel Tendon Guard",
+    "Nau Left Leather Boot Instep Plate",
+    "Nau Left Leather Outer Boot Side Guard",
+    "Nau Left Leather Inner Boot Side Guard",
+    "Nau Left Leather Boot Arch Rib",
+    "Nau Left Leather Ankle Boot Tongue",
+    "Nau Left Leather Lace Cross Strap A",
+    "Nau Left Leather Lace Cross Strap B",
+    "Nau Left Leather Boot Toe Cap",
+    "Nau Left Leather Outer Toe Lug",
+    "Nau Left Leather Inner Toe Lug",
+    "Nau Left Leather Boot Sole",
+    "Nau Left Leather Boot Heel",
+];
+
+fn player_anatomy_review_specs() -> Vec<PlayerAnatomyReviewSpec> {
+    let grounded_context = PlayerPoseContext::new(
+        FlightMode::Grounded,
+        Vec3::ZERO,
+        FlightInput::default(),
+        0.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::GroundedIdle);
+    let fall_context = PlayerPoseContext::new(
+        FlightMode::Airborne,
+        Vec3::new(0.0, -22.0, -24.0),
+        FlightInput::default(),
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Falling);
+    let dive_context = PlayerPoseContext::new(
+        FlightMode::Gliding,
+        Vec3::new(0.0, -34.0, -36.0),
+        FlightInput {
+            glide: true,
+            dive: true,
+            ..FlightInput::default()
+        },
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Diving);
+
+    vec![
+        PlayerAnatomyReviewSpec {
+            label: "full_front",
+            title: "Full Body Front",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "full_side",
+            title: "Full Body Side",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "fall_top",
+            title: "Belly-Down Footprint",
+            context: fall_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Top,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "dive_side",
+            title: "Dive Side Stack",
+            context: dive_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "shoulder_front",
+            title: "Shoulders Front",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_SHOULDER_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "shoulder_side",
+            title: "Shoulders Side",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_SHOULDER_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "hip_front",
+            title: "Hips Front",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_HIP_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "hip_side",
+            title: "Hips Side",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_HIP_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "hand_front",
+            title: "Left Hand Front",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_HAND_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "hand_top",
+            title: "Left Hand Top",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Top,
+            nodes: PLAYER_ANATOMY_HAND_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "boot_side",
+            title: "Left Boot Side",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_BOOT_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "boot_top",
+            title: "Left Boot Top",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Top,
+            nodes: PLAYER_ANATOMY_BOOT_REVIEW_NODES,
+        },
+    ]
+}
+
+fn render_player_anatomy_review_sheet(
+    gltf: &Value,
+    specs: &[PlayerAnatomyReviewSpec],
+) -> Result<String, String> {
+    const COLUMNS: usize = 4;
+    const PANEL_WIDTH: f32 = 282.0;
+    const PANEL_HEIGHT: f32 = 262.0;
+    const HEADER_HEIGHT: f32 = 56.0;
+    const PADDING: f32 = 18.0;
+    const LABEL_HEIGHT: f32 = 38.0;
+
+    let rows = specs.len().div_ceil(COLUMNS);
+    let width = PANEL_WIDTH * COLUMNS as f32 + PADDING * 2.0;
+    let height = HEADER_HEIGHT + (PANEL_HEIGHT + LABEL_HEIGHT) * rows as f32 + PADDING;
+    let mut svg = String::new();
+    writeln!(
+        svg,
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" viewBox=\"0 0 {width:.0} {height:.0}\">"
+    )
+    .expect("writing to string should not fail");
+    svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#10151f\"/>\n");
+    svg.push_str("<text x=\"18\" y=\"24\" fill=\"#dbe7f3\" font-family=\"Menlo, monospace\" font-size=\"16\">NAU player anatomy review sheet</text>\n");
+    svg.push_str("<text x=\"18\" y=\"42\" fill=\"#7f95a7\" font-family=\"Menlo, monospace\" font-size=\"10\">large panels for human review of proportions, connectors, hands, and boots</text>\n");
+
+    for (index, spec) in specs.iter().enumerate() {
+        let column = index % COLUMNS;
+        let row = index / COLUMNS;
+        let x = PADDING + PANEL_WIDTH * column as f32;
+        let y = HEADER_HEIGHT + (PANEL_HEIGHT + LABEL_HEIGHT) * row as f32;
+        let overrides =
+            player_pose_node_overrides(gltf, spec.context, spec.phase).ok_or_else(|| {
+                format!(
+                    "failed to compute anatomy pose overrides for {}",
+                    spec.label
+                )
+            })?;
+        let shapes = player_pose_preview_shapes(gltf, &overrides).ok_or_else(|| {
+            format!(
+                "failed to compute anatomy preview shapes for {}",
+                spec.label
+            )
+        })?;
+        let review_shapes = filter_player_pose_preview_shapes(&shapes, spec.nodes);
+        if review_shapes.is_empty() {
+            return Err(format!("anatomy review panel {} has no shapes", spec.label));
+        }
+
+        writeln!(
+            svg,
+            "<text x=\"{x:.1}\" y=\"{:.1}\" fill=\"#edf5ff\" font-family=\"Menlo, monospace\" font-size=\"13\">{}</text>",
+            y + 16.0,
+            escape_xml(spec.title)
+        )
+        .expect("writing to string should not fail");
+        writeln!(
+            svg,
+            "<text x=\"{x:.1}\" y=\"{:.1}\" fill=\"#8fb1c9\" font-family=\"Menlo, monospace\" font-size=\"10\">{} / {} nodes</text>",
+            y + 32.0,
+            spec.view.key(),
+            review_shapes.len()
+        )
+        .expect("writing to string should not fail");
+        render_player_pose_preview_view(
+            &mut svg,
+            &review_shapes,
+            spec.view,
+            x,
+            y + LABEL_HEIGHT,
+            PANEL_WIDTH - 12.0,
+            PANEL_HEIGHT - 12.0,
+        );
+    }
+
+    svg.push_str("</svg>\n");
+    Ok(svg)
+}
+
+fn filter_player_pose_preview_shapes(
+    shapes: &[PlayerPosePreviewShape],
+    node_names: &[&str],
+) -> Vec<PlayerPosePreviewShape> {
+    if node_names.is_empty() {
+        return shapes.to_vec();
+    }
+
+    shapes
+        .iter()
+        .filter(|shape| {
+            node_names
+                .iter()
+                .any(|node_name| shape.node_name == *node_name)
+        })
+        .cloned()
+        .collect()
 }
 
 fn render_player_pose_preview_sheet(
@@ -5434,12 +5780,16 @@ fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {
         "Nau Right Suit Shoulder Root Blend",
         "Nau Left Suit Shoulder Chest Blend",
         "Nau Right Suit Shoulder Chest Blend",
+        "Nau Left Suit Axilla Blend",
+        "Nau Right Suit Axilla Blend",
         "Nau Left Suit Outer Thigh Sweep",
         "Nau Right Suit Outer Thigh Sweep",
         "Nau Left Suit Inner Thigh Sweep",
         "Nau Right Suit Inner Thigh Sweep",
         "Nau Left Suit Hip Root Blend",
         "Nau Right Suit Hip Root Blend",
+        "Nau Left Suit Hip Inguinal Blend",
+        "Nau Right Suit Hip Inguinal Blend",
         "Nau Left Suit Calf Volume",
         "Nau Right Suit Calf Volume",
         "Nau Left Suit Shin Ridge",
@@ -5452,6 +5802,10 @@ fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {
         "Nau Right Leather Heel Tendon Guard",
         "Nau Left Leather Boot Instep Plate",
         "Nau Right Leather Boot Instep Plate",
+        "Nau Left Leather Outer Boot Side Guard",
+        "Nau Right Leather Outer Boot Side Guard",
+        "Nau Left Leather Boot Arch Rib",
+        "Nau Right Leather Boot Arch Rib",
         "Nau Left Leather Lace Cross Strap A",
         "Nau Right Leather Lace Cross Strap A",
         "Nau Left Leather Lace Cross Strap B",
@@ -7012,7 +7366,9 @@ mod tests {
             "Nau Left Suit Bicep Volume",
             "Nau Left Suit Shoulder Root Blend",
             "Nau Right Suit Shoulder Chest Blend",
+            "Nau Left Suit Axilla Blend",
             "Nau Left Suit Hip Root Blend",
+            "Nau Right Suit Hip Inguinal Blend",
             "Nau Right Suit Tricep Sweep",
             "Nau Left Leather Finger Web Bridge",
             "Nau Right Suit Calf Volume",
@@ -7020,6 +7376,8 @@ mod tests {
             "Nau Left Suit Shin Ridge",
             "Nau Left Leather Wrist Palm Gusset",
             "Nau Right Leather Boot Instep Plate",
+            "Nau Left Leather Outer Boot Side Guard",
+            "Nau Right Leather Boot Arch Rib",
             "Nau Right Leather Ankle Boot Tongue",
             "Nau Left Leather Lace Cross Strap A",
         ] {
@@ -7201,6 +7559,23 @@ mod tests {
         assert!(sheet.contains("Nau Left Leather Outer Toe Lug"));
         assert!(sheet.contains("Grounded Walk"));
         assert!(sheet.contains("Grounded Run"));
+    }
+
+    #[test]
+    fn player_anatomy_review_preview_renders_closeup_panels() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let specs = player_anatomy_review_specs();
+        let sheet = render_player_anatomy_review_sheet(&gltf, &specs).expect("anatomy sheet");
+
+        assert_eq!(specs.len(), 12);
+        assert!(sheet.contains("player anatomy review sheet"));
+        assert!(sheet.contains("Shoulders Front"));
+        assert!(sheet.contains("Left Hand Top"));
+        assert!(sheet.contains("Left Boot Side"));
+        assert!(sheet.contains("Nau Left Suit Axilla Blend"));
+        assert!(sheet.contains("Nau Left Leather Thumb Web Pad"));
+        assert!(sheet.contains("Nau Left Leather Boot Arch Rib"));
     }
 
     #[test]
