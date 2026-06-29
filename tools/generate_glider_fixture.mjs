@@ -296,11 +296,11 @@ addMesh("Nau Glider Rear Spar", prismBetween([-2.22, -0.05, 0.34], [2.22, -0.05,
 addMesh("Nau Glider Center Keel", prismBetween([0.0, 0.05, -0.82], [0.0, -0.20, 1.04], 0.03), 2);
 addMesh("Nau Glider Left Rib", prismBetween([-0.1, 0.09, -0.63], [-2.08, -0.03, 0.20], 0.022), 2);
 addMesh("Nau Glider Right Rib", prismBetween([0.1, 0.09, -0.63], [2.08, -0.03, 0.20], 0.022), 2);
-addMesh("Nau Glider Left Tether", prismBetween([-0.5, -0.55, 0.38], [-1.42, -0.02, 0.15], 0.014), 3);
-addMesh("Nau Glider Right Tether", prismBetween([0.5, -0.55, 0.38], [1.42, -0.02, 0.15], 0.014), 3);
-addMesh("Nau Glider Handle Bar", prismBetween([-0.44, -0.62, 0.42], [0.44, -0.62, 0.42], 0.034), 4);
-addMesh("Nau Glider Left Grip", prismBetween([-0.52, -0.70, 0.43], [-0.52, -0.48, 0.43], 0.03), 4);
-addMesh("Nau Glider Right Grip", prismBetween([0.52, -0.70, 0.43], [0.52, -0.48, 0.43], 0.03), 4);
+addMesh("Nau Glider Left Tether", prismBetween([-1.30, -0.55, 0.38], [-1.88, -0.02, 0.15], 0.014), 3);
+addMesh("Nau Glider Right Tether", prismBetween([1.30, -0.55, 0.38], [1.88, -0.02, 0.15], 0.014), 3);
+addMesh("Nau Glider Handle Bar", prismBetween([-1.28, -0.62, 0.42], [1.28, -0.62, 0.42], 0.034), 4);
+addMesh("Nau Glider Left Grip", prismBetween([-1.40, -0.70, 0.43], [-1.40, -0.48, 0.43], 0.03), 4);
+addMesh("Nau Glider Right Grip", prismBetween([1.40, -0.70, 0.43], [1.40, -0.48, 0.43], 0.03), 4);
 
 const nodes = [
   {
