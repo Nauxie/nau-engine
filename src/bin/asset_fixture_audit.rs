@@ -43,6 +43,13 @@ const PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT: f64 = 14.0;
 const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 65.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT: f64 = 9.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT: f64 = 4.0;
+const PLAYER_MESH_SILHOUETTE_EXPECTED_POSE_COUNT: f64 = 10.0;
+const PLAYER_MESH_SILHOUETTE_EXPECTED_SAMPLE_COUNT: f64 = 40.0;
+const PLAYER_MESH_SILHOUETTE_MIN_PROJECTED_SPAN_M: f64 = 0.70;
+const PLAYER_MESH_SILHOUETTE_MIN_FALL_TOP_WIDTH_M: f64 = 2.40;
+const PLAYER_MESH_SILHOUETTE_MIN_FALL_TOP_DEPTH_M: f64 = 1.20;
+const PLAYER_MESH_SILHOUETTE_MIN_GLIDE_FRONT_WIDTH_M: f64 = 2.50;
+const PLAYER_MESH_SILHOUETTE_MAX_DIVE_FRONT_TO_FALL_FRONT_WIDTH_RATIO: f64 = 0.65;
 const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 72.0;
 const PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES: f64 = 150.0;
 const PLAYER_POSE_MIN_LAUNCH_OVERHEAD_ARM_SCORE: f64 = 0.60;
@@ -501,7 +508,17 @@ struct ClosestSurfacePoints {
     right: Vec3,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
+struct PlayerMeshSilhouetteSample {
+    label: &'static str,
+    title: &'static str,
+    pose_intent: &'static str,
+    view: PlayerPosePreviewView,
+    width_m: f64,
+    height_m: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PlayerPosePreviewView {
     Front,
     Rear,
@@ -610,6 +627,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         })).collect::<Vec<_>>(),
         "joint_seam_contact_audit": player_joint_seam_contact_audit(&gltf),
         "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit(&gltf),
+        "player_mesh_silhouette_audit": player_mesh_silhouette_audit(&gltf),
         "surface_contact_audit": player_pose_surface_contact_audit(&gltf),
         "player_glider_attachment_audit": player_glider_attachment_audit(&gltf, &glider_gltf),
         "artifacts": {
@@ -1614,6 +1632,92 @@ fn preview_vertex_extent(
         })
 }
 
+fn player_mesh_silhouette_audit(gltf: &Value) -> Option<Value> {
+    let specs = player_pose_preview_specs();
+    let mut samples = Vec::new();
+    let mut min_projected_span_m = f64::INFINITY;
+
+    for spec in &specs {
+        let overrides = player_pose_node_overrides(gltf, spec.context, spec.phase)?;
+        let shapes = player_pose_preview_shapes(gltf, &overrides)?;
+        for view in PLAYER_POSE_PREVIEW_VIEWS {
+            let (min_u, max_u, min_v, max_v) = preview_projected_extent(&shapes, view)?;
+            let width_m = f64::from(max_u - min_u);
+            let height_m = f64::from(max_v - min_v);
+            min_projected_span_m = min_projected_span_m.min(width_m).min(height_m);
+            samples.push(PlayerMeshSilhouetteSample {
+                label: spec.label,
+                title: spec.title,
+                pose_intent: spec.context.intent().label(),
+                view,
+                width_m,
+                height_m,
+            });
+        }
+    }
+
+    let fall_top_width_m =
+        mesh_silhouette_sample_value(&samples, "falling_belly_down", PlayerPosePreviewView::Top)
+            .map(|sample| sample.width_m)?;
+    let fall_top_depth_m =
+        mesh_silhouette_sample_value(&samples, "falling_belly_down", PlayerPosePreviewView::Top)
+            .map(|sample| sample.height_m)?;
+    let fall_front_width_m =
+        mesh_silhouette_sample_value(&samples, "falling_belly_down", PlayerPosePreviewView::Front)
+            .map(|sample| sample.width_m)?;
+    let glide_front_width_m =
+        mesh_silhouette_sample_value(&samples, "gliding", PlayerPosePreviewView::Front)
+            .map(|sample| sample.width_m)?;
+    let dive_front_width_m =
+        mesh_silhouette_sample_value(&samples, "diving_head_down", PlayerPosePreviewView::Front)
+            .map(|sample| sample.width_m)?;
+    let dive_front_to_fall_front_width_ratio = dive_front_width_m / fall_front_width_m.max(0.001);
+
+    Some(json!({
+        "schema": "nau_player_mesh_silhouette_audit.v1",
+        "pose_count": specs.len(),
+        "view_count": PLAYER_POSE_PREVIEW_VIEWS.len(),
+        "sample_count": samples.len(),
+        "min_projected_span_m": if min_projected_span_m.is_finite() {
+            min_projected_span_m
+        } else {
+            0.0
+        },
+        "fall_top_width_m": fall_top_width_m,
+        "fall_top_depth_m": fall_top_depth_m,
+        "fall_front_width_m": fall_front_width_m,
+        "glide_front_width_m": glide_front_width_m,
+        "dive_front_width_m": dive_front_width_m,
+        "dive_front_to_fall_front_width_ratio": dive_front_to_fall_front_width_ratio,
+        "thresholds": {
+            "projected_span_min_m": PLAYER_MESH_SILHOUETTE_MIN_PROJECTED_SPAN_M,
+            "fall_top_width_min_m": PLAYER_MESH_SILHOUETTE_MIN_FALL_TOP_WIDTH_M,
+            "fall_top_depth_min_m": PLAYER_MESH_SILHOUETTE_MIN_FALL_TOP_DEPTH_M,
+            "glide_front_width_min_m": PLAYER_MESH_SILHOUETTE_MIN_GLIDE_FRONT_WIDTH_M,
+            "dive_front_to_fall_front_width_ratio_max": PLAYER_MESH_SILHOUETTE_MAX_DIVE_FRONT_TO_FALL_FRONT_WIDTH_RATIO,
+        },
+        "samples": samples.iter().map(|sample| json!({
+            "label": sample.label,
+            "title": sample.title,
+            "pose_intent": sample.pose_intent,
+            "view": sample.view.key(),
+            "width_m": sample.width_m,
+            "height_m": sample.height_m,
+            "aspect_width_over_height": sample.width_m / sample.height_m.max(0.001),
+        })).collect::<Vec<_>>(),
+    }))
+}
+
+fn mesh_silhouette_sample_value<'a>(
+    samples: &'a [PlayerMeshSilhouetteSample],
+    label: &str,
+    view: PlayerPosePreviewView,
+) -> Option<&'a PlayerMeshSilhouetteSample> {
+    samples
+        .iter()
+        .find(|sample| sample.label == label && sample.view == view)
+}
+
 fn preview_projected_hull(vertices: &[Vec3], view: PlayerPosePreviewView) -> Vec<Vec2> {
     let mut points = vertices
         .iter()
@@ -2483,6 +2587,10 @@ fn audit_fixture(
         .require_player_clips
         .then(|| player_limb_anatomy_detail_audit(&gltf))
         .flatten();
+    let player_mesh_silhouette_audit = requirement
+        .require_player_clips
+        .then(|| player_mesh_silhouette_audit(&gltf))
+        .flatten();
 
     let mut checks = vec![
         check_bool("present", true, "file"),
@@ -2635,6 +2743,51 @@ fn audit_fixture(
             number_field(limb_anatomy, "missing_count"),
             0.0,
             "nodes",
+        ));
+        let mesh_silhouette = player_mesh_silhouette_audit
+            .as_ref()
+            .expect("player mesh silhouette audit should be present for player fixture");
+        checks.push(check_eq_f64(
+            "player_mesh_silhouette_pose_count",
+            number_field(mesh_silhouette, "pose_count"),
+            PLAYER_MESH_SILHOUETTE_EXPECTED_POSE_COUNT,
+            "poses",
+        ));
+        checks.push(check_eq_f64(
+            "player_mesh_silhouette_sample_count",
+            number_field(mesh_silhouette, "sample_count"),
+            PLAYER_MESH_SILHOUETTE_EXPECTED_SAMPLE_COUNT,
+            "samples",
+        ));
+        checks.push(check_at_least_f64(
+            "player_mesh_silhouette_projected_span_min",
+            number_field(mesh_silhouette, "min_projected_span_m"),
+            PLAYER_MESH_SILHOUETTE_MIN_PROJECTED_SPAN_M,
+            "m",
+        ));
+        checks.push(check_at_least_f64(
+            "player_mesh_silhouette_fall_top_width",
+            number_field(mesh_silhouette, "fall_top_width_m"),
+            PLAYER_MESH_SILHOUETTE_MIN_FALL_TOP_WIDTH_M,
+            "m",
+        ));
+        checks.push(check_at_least_f64(
+            "player_mesh_silhouette_fall_top_depth",
+            number_field(mesh_silhouette, "fall_top_depth_m"),
+            PLAYER_MESH_SILHOUETTE_MIN_FALL_TOP_DEPTH_M,
+            "m",
+        ));
+        checks.push(check_at_least_f64(
+            "player_mesh_silhouette_glide_front_width",
+            number_field(mesh_silhouette, "glide_front_width_m"),
+            PLAYER_MESH_SILHOUETTE_MIN_GLIDE_FRONT_WIDTH_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_mesh_silhouette_dive_front_to_fall_front_width_ratio",
+            number_field(mesh_silhouette, "dive_front_to_fall_front_width_ratio"),
+            PLAYER_MESH_SILHOUETTE_MAX_DIVE_FRONT_TO_FALL_FRONT_WIDTH_RATIO,
+            "ratio",
         ));
         checks.push(check_eq_u64(
             "player_named_clip_count",
@@ -3104,6 +3257,7 @@ fn audit_fixture(
         "player_finger_grip_length_range_m": player_finger_grip_length_range_m(&gltf).map(|(min, max)| json!({"min": min, "max": max})),
         "player_boot_sole_length_min_m": player_boot_sole_length_min_m(&gltf),
         "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit,
+        "player_mesh_silhouette_audit": player_mesh_silhouette_audit,
         "player_rest_non_adjacent_mesh_overlap_max_m": player_rest_non_adjacent_mesh_overlap_max_m(&gltf),
         "player_rest_shoulder_mesh_overlap_max_m": player_rest_shoulder_mesh_overlap_max_m(&gltf),
         "player_pose_non_adjacent_mesh_overlap_max_m": player_pose_non_adjacent_mesh_overlap_max_m(&gltf),
@@ -6759,6 +6913,49 @@ mod tests {
                     })
             );
         }
+    }
+
+    #[test]
+    fn player_mesh_silhouette_audit_measures_actual_pose_hulls() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let audit = player_mesh_silhouette_audit(&gltf).expect("mesh silhouette audit");
+
+        assert_eq!(
+            number_field(&audit, "pose_count"),
+            PLAYER_MESH_SILHOUETTE_EXPECTED_POSE_COUNT
+        );
+        assert_eq!(
+            number_field(&audit, "sample_count"),
+            PLAYER_MESH_SILHOUETTE_EXPECTED_SAMPLE_COUNT
+        );
+        assert!(
+            number_field(&audit, "min_projected_span_m")
+                >= PLAYER_MESH_SILHOUETTE_MIN_PROJECTED_SPAN_M
+        );
+        assert!(
+            number_field(&audit, "fall_top_width_m") >= PLAYER_MESH_SILHOUETTE_MIN_FALL_TOP_WIDTH_M
+        );
+        assert!(
+            number_field(&audit, "fall_top_depth_m") >= PLAYER_MESH_SILHOUETTE_MIN_FALL_TOP_DEPTH_M
+        );
+        assert!(
+            number_field(&audit, "glide_front_width_m")
+                >= PLAYER_MESH_SILHOUETTE_MIN_GLIDE_FRONT_WIDTH_M
+        );
+        assert!(
+            number_field(&audit, "dive_front_to_fall_front_width_ratio")
+                <= PLAYER_MESH_SILHOUETTE_MAX_DIVE_FRONT_TO_FALL_FRONT_WIDTH_RATIO
+        );
+        assert!(
+            audit
+                .get("samples")
+                .and_then(Value::as_array)
+                .is_some_and(|samples| samples.iter().any(|sample| {
+                    sample.get("label").and_then(Value::as_str) == Some("diving_head_down")
+                        && sample.get("view").and_then(Value::as_str) == Some("front")
+                }))
+        );
     }
 
     #[test]
