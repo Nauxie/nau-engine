@@ -58,6 +58,9 @@ const PLAYER_GLIDER_MIN_LAUNCH_RESPONSE_DEGREES: f64 = 8.0;
 const PLAYER_GLIDER_MIN_LAUNCH_MOTION_M: f64 = 0.18;
 const PLAYER_GLIDER_MIN_DIVE_RESPONSE_DEGREES: f64 = 4.0;
 const PLAYER_GLIDER_MIN_DIVE_MOTION_M: f64 = 0.16;
+const PLAYER_GLIDER_HAND_GRIP_EXPECTED_SAMPLE_COUNT: f64 = 6.0;
+const PLAYER_GLIDER_MAX_HAND_GRIP_DISTANCE_M: f64 = 0.28;
+const PLAYER_GLIDER_MAX_HAND_GRIP_PROJECTED_GAP_M: f64 = 0.10;
 const PLAYER_REST_TORSO_BLOCKING_MESH_NODES: &[&str] = &[
     "Nau Suit Armored Torso Shell",
     "Nau Suit Tapered Hips Shell",
@@ -527,6 +530,9 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
     let transition_svg = render_player_transition_pose_preview_sheet(&gltf, &transition_specs)?;
     let glider_specs = glider_pose_preview_specs();
     let glider_svg = render_glider_pose_preview_sheet(&glider_gltf, &glider_specs)?;
+    let attachment_specs = player_glider_attachment_preview_specs();
+    let attachment_svg =
+        render_player_glider_attachment_preview_sheet(&gltf, &glider_gltf, &attachment_specs)?;
     fs::create_dir_all(output_dir)
         .map_err(|error| format!("failed to create {output_dir:?}: {error}"))?;
     let sheet_path = output_dir.join("player_pose_sheet.svg");
@@ -538,6 +544,9 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
     let glider_sheet_path = output_dir.join("glider_pose_sheet.svg");
     fs::write(&glider_sheet_path, glider_svg)
         .map_err(|error| format!("failed to write {glider_sheet_path:?}: {error}"))?;
+    let attachment_sheet_path = output_dir.join("player_glider_attachment_sheet.svg");
+    fs::write(&attachment_sheet_path, attachment_svg)
+        .map_err(|error| format!("failed to write {attachment_sheet_path:?}: {error}"))?;
 
     let manifest = json!({
         "schema": "nau_player_pose_preview.v1",
@@ -551,6 +560,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "pose_count": specs.len(),
         "transition_pose_count": transition_specs.len(),
         "glider_pose_count": glider_specs.len(),
+        "attachment_pose_count": attachment_specs.len(),
         "views": PLAYER_POSE_PREVIEW_VIEWS
             .iter()
             .map(|view| view.key())
@@ -580,12 +590,21 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
             "response_degrees": glider_traversal_pose(spec.context, spec.phase).response_degrees(),
             "motion_m": glider_traversal_pose(spec.context, spec.phase).motion_m(),
         })).collect::<Vec<_>>(),
+        "attachment_poses": attachment_specs.iter().map(|spec| json!({
+            "label": spec.label,
+            "title": spec.title,
+            "phase": spec.phase,
+            "deployment": spec.deployment,
+            "pose_intent": spec.context.intent().label(),
+        })).collect::<Vec<_>>(),
         "joint_seam_contact_audit": player_joint_seam_contact_audit(&gltf),
         "surface_contact_audit": player_pose_surface_contact_audit(&gltf),
+        "player_glider_attachment_audit": player_glider_attachment_audit(&gltf, &glider_gltf),
         "artifacts": {
             "pose_sheet_svg": sheet_path,
             "transition_pose_sheet_svg": transition_sheet_path,
             "glider_pose_sheet_svg": glider_sheet_path,
+            "player_glider_attachment_sheet_svg": attachment_sheet_path,
         },
     });
     let manifest_path = output_dir.join("manifest.json");
@@ -601,9 +620,11 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "pose_sheet_svg": sheet_path,
         "transition_pose_sheet_svg": transition_sheet_path,
         "glider_pose_sheet_svg": glider_sheet_path,
+        "player_glider_attachment_sheet_svg": attachment_sheet_path,
         "pose_count": specs.len(),
         "transition_pose_count": transition_specs.len(),
         "glider_pose_count": glider_specs.len(),
+        "attachment_pose_count": attachment_specs.len(),
     }))
 }
 
@@ -865,6 +886,25 @@ fn glider_pose_preview_specs() -> Vec<GliderPosePreviewSpec> {
     ]
 }
 
+fn player_glider_attachment_preview_specs() -> Vec<GliderPosePreviewSpec> {
+    glider_pose_preview_specs()
+        .into_iter()
+        .filter(|spec| spec.deployment > 0.0)
+        .collect()
+}
+
+fn player_glider_attachment_audit_specs() -> Vec<GliderPosePreviewSpec> {
+    glider_pose_preview_specs()
+        .into_iter()
+        .filter(|spec| {
+            matches!(
+                spec.label,
+                "takeout_ready" | "glide_open" | "air_brake_cupped"
+            )
+        })
+        .collect()
+}
+
 fn render_player_pose_preview_sheet(
     gltf: &Value,
     specs: &[PlayerPosePreviewSpec],
@@ -1101,6 +1141,105 @@ fn render_glider_pose_preview_sheet(
     Ok(svg)
 }
 
+fn render_player_glider_attachment_preview_sheet(
+    player_gltf: &Value,
+    glider_gltf: &Value,
+    specs: &[GliderPosePreviewSpec],
+) -> Result<String, String> {
+    const ROW_HEIGHT: f32 = 230.0;
+    const LABEL_WIDTH: f32 = 190.0;
+    const VIEW_WIDTH: f32 = 270.0;
+    const HEADER_HEIGHT: f32 = 58.0;
+    const PADDING: f32 = 18.0;
+
+    let width = LABEL_WIDTH + VIEW_WIDTH * PLAYER_POSE_PREVIEW_VIEWS.len() as f32 + PADDING * 2.0;
+    let height = HEADER_HEIGHT + ROW_HEIGHT * specs.len() as f32 + PADDING;
+    let mut svg = String::new();
+    writeln!(
+        svg,
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" viewBox=\"0 0 {width:.0} {height:.0}\">"
+    )
+    .expect("writing to string should not fail");
+    svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#10151f\"/>\n");
+    svg.push_str("<text x=\"18\" y=\"24\" fill=\"#dbe7f3\" font-family=\"Menlo, monospace\" font-size=\"16\">NAU player/glider attachment preview</text>\n");
+    for (index, view) in PLAYER_POSE_PREVIEW_VIEWS.iter().enumerate() {
+        let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * index as f32 + VIEW_WIDTH * 0.5;
+        writeln!(
+            svg,
+            "<text x=\"{x:.1}\" y=\"44\" fill=\"#8fb1c9\" text-anchor=\"middle\" font-family=\"Menlo, monospace\" font-size=\"12\">{}</text>",
+            view.label()
+        )
+        .expect("writing to string should not fail");
+    }
+
+    let shape_rows = specs
+        .iter()
+        .map(|spec| {
+            let (player_shapes, glider_shapes) =
+                player_glider_attachment_preview_shapes(player_gltf, glider_gltf, *spec)
+                    .ok_or_else(|| {
+                        format!(
+                            "failed to compute player/glider attachment preview shapes for {}",
+                            spec.label
+                        )
+                    })?;
+            let combined = player_shapes
+                .iter()
+                .chain(glider_shapes.iter())
+                .cloned()
+                .collect::<Vec<_>>();
+            Ok((player_shapes, glider_shapes, combined))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let combined_rows = shape_rows
+        .iter()
+        .map(|(_player_shapes, _glider_shapes, combined)| combined.clone())
+        .collect::<Vec<_>>();
+    let view_extents = PLAYER_POSE_PREVIEW_VIEWS
+        .map(|view| preview_shape_rows_projected_extent(&combined_rows, view));
+
+    for (row, (spec, (player_shapes, glider_shapes, combined_shapes))) in
+        specs.iter().zip(shape_rows.iter()).enumerate()
+    {
+        let y = HEADER_HEIGHT + ROW_HEIGHT * row as f32;
+        writeln!(
+            svg,
+            "<text x=\"18\" y=\"{:.1}\" fill=\"#edf5ff\" font-family=\"Menlo, monospace\" font-size=\"13\">{}</text>",
+            y + 28.0,
+            escape_xml(spec.title)
+        )
+        .expect("writing to string should not fail");
+        writeln!(
+            svg,
+            "<text x=\"18\" y=\"{:.1}\" fill=\"#7f95a7\" font-family=\"Menlo, monospace\" font-size=\"10\">deploy: {:.0}%</text>",
+            y + 46.0,
+            spec.deployment * 100.0
+        )
+        .expect("writing to string should not fail");
+
+        for (column, view) in PLAYER_POSE_PREVIEW_VIEWS.iter().enumerate() {
+            let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * column as f32;
+            render_player_glider_attachment_preview_view(
+                &mut svg,
+                player_shapes,
+                glider_shapes,
+                combined_shapes,
+                *view,
+                view_extents[column],
+                PosePreviewPanel {
+                    x,
+                    y: y + 12.0,
+                    width: VIEW_WIDTH - 12.0,
+                    height: ROW_HEIGHT - 20.0,
+                },
+            );
+        }
+    }
+
+    svg.push_str("</svg>\n");
+    Ok(svg)
+}
+
 fn player_pose_preview_shapes(
     gltf: &Value,
     overrides: &[PoseNodeOverride],
@@ -1139,9 +1278,29 @@ fn glider_pose_preview_shapes(
     gltf: &Value,
     spec: GliderPosePreviewSpec,
 ) -> Option<Vec<PlayerPosePreviewShape>> {
+    glider_pose_preview_shapes_with_transform(gltf, glider_pose_preview_transform(spec))
+}
+
+fn player_glider_attachment_preview_shapes(
+    player_gltf: &Value,
+    glider_gltf: &Value,
+    spec: GliderPosePreviewSpec,
+) -> Option<(Vec<PlayerPosePreviewShape>, Vec<PlayerPosePreviewShape>)> {
+    let overrides = player_pose_node_overrides(player_gltf, spec.context, spec.phase)?;
+    let player_shapes = player_pose_preview_shapes(player_gltf, &overrides)?;
+    let glider_shapes = glider_pose_preview_shapes_with_transform(
+        glider_gltf,
+        player_aligned_glider_transform(spec),
+    )?;
+    Some((player_shapes, glider_shapes))
+}
+
+fn glider_pose_preview_shapes_with_transform(
+    gltf: &Value,
+    pose_transform: Mat4,
+) -> Option<Vec<PlayerPosePreviewShape>> {
     let nodes = gltf.get("nodes")?.as_array()?;
     let buffers = embedded_gltf_buffers(gltf)?;
-    let pose_transform = glider_pose_preview_transform(spec);
     let mut shapes = Vec::new();
     for node in nodes {
         let node_name = node.get("name").and_then(Value::as_str)?;
@@ -1170,6 +1329,10 @@ fn glider_pose_preview_shapes(
     Some(shapes)
 }
 
+fn player_aligned_glider_transform(spec: GliderPosePreviewSpec) -> Mat4 {
+    preview_glider_player_anchor_transform() * glider_pose_preview_transform(spec)
+}
+
 fn glider_pose_preview_transform(spec: GliderPosePreviewSpec) -> Mat4 {
     let deployment = spec.deployment.clamp(0.0, 1.0);
     let pose = glider_traversal_pose(spec.context, spec.phase);
@@ -1179,6 +1342,10 @@ fn glider_pose_preview_transform(spec: GliderPosePreviewSpec) -> Mat4 {
     let scale = preview_glider_stowed_scale().lerp(Vec3::ONE, deployment);
 
     Mat4::from_scale_rotation_translation(scale, rotation, translation)
+}
+
+fn preview_glider_player_anchor_transform() -> Mat4 {
+    Mat4::from_translation(Vec3::new(0.0, 1.35, -0.45))
 }
 
 fn preview_glider_stowed_translation_offset() -> Vec3 {
@@ -1309,6 +1476,77 @@ fn render_glider_pose_preview_view(
         )
         .expect("writing to string should not fail");
     }
+}
+
+fn render_player_glider_attachment_preview_view(
+    svg: &mut String,
+    player_shapes: &[PlayerPosePreviewShape],
+    glider_shapes: &[PlayerPosePreviewShape],
+    combined_shapes: &[PlayerPosePreviewShape],
+    view: PlayerPosePreviewView,
+    extent: Option<(f32, f32, f32, f32)>,
+    panel: PosePreviewPanel,
+) {
+    let PosePreviewPanel {
+        x,
+        y,
+        width,
+        height,
+    } = panel;
+    writeln!(
+        svg,
+        "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{width:.1}\" height=\"{height:.1}\" rx=\"4\" fill=\"#121923\" stroke=\"#294150\" stroke-width=\"1\"/>"
+    )
+    .expect("writing to string should not fail");
+    let Some((min_u, max_u, min_v, max_v)) = extent else {
+        return;
+    };
+    let span_u = (max_u - min_u).max(0.01);
+    let span_v = (max_v - min_v).max(0.01);
+    let scale = ((width - 34.0) / span_u).min((height - 34.0) / span_v);
+    let origin_x = x + width * 0.5 - (min_u + max_u) * 0.5 * scale;
+    let origin_y = y + height * 0.5 + (min_v + max_v) * 0.5 * scale;
+
+    let mut ordered = combined_shapes.iter().collect::<Vec<_>>();
+    ordered.sort_by(|left, right| {
+        preview_depth(left.bounds, view)
+            .partial_cmp(&preview_depth(right.bounds, view))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    for shape in ordered {
+        let hull = preview_projected_hull(&shape.vertices, view);
+        if hull.len() < 3 {
+            continue;
+        }
+        let mut path = String::new();
+        for (index, point) in hull.iter().enumerate() {
+            let x = origin_x + point.x * scale;
+            let y = origin_y - point.y * scale;
+            if index == 0 {
+                write!(path, "M {x:.2} {y:.2}").expect("writing to string should not fail");
+            } else {
+                write!(path, " L {x:.2} {y:.2}").expect("writing to string should not fail");
+            }
+        }
+        path.push_str(" Z");
+        writeln!(
+            svg,
+            "<path d=\"{}\" fill=\"{}\" fill-opacity=\"0.64\" stroke=\"#f1f8ff\" stroke-opacity=\"0.40\" stroke-width=\"0.55\"><title>{}</title></path>",
+            path,
+            shape.color,
+            escape_xml(&shape.node_name)
+        )
+        .expect("writing to string should not fail");
+    }
+    render_player_glider_attachment_overlay(
+        svg,
+        player_shapes,
+        glider_shapes,
+        view,
+        origin_x,
+        origin_y,
+        scale,
+    );
 }
 
 fn preview_shape_rows_projected_extent(
@@ -1470,6 +1708,170 @@ fn render_player_pose_contact_overlay(
         )
         .expect("writing to string should not fail");
     }
+}
+
+fn render_player_glider_attachment_overlay(
+    svg: &mut String,
+    player_shapes: &[PlayerPosePreviewShape],
+    glider_shapes: &[PlayerPosePreviewShape],
+    view: PlayerPosePreviewView,
+    origin_x: f32,
+    origin_y: f32,
+    scale: f32,
+) {
+    for side in [Side::Left, Side::Right] {
+        let Some(contact) =
+            player_glider_hand_grip_contact_from_shapes(player_shapes, glider_shapes, side)
+        else {
+            continue;
+        };
+        let left = project_preview_point(contact.left, view);
+        let right = project_preview_point(contact.right, view);
+        let x1 = origin_x + left.x * scale;
+        let y1 = origin_y - left.y * scale;
+        let x2 = origin_x + right.x * scale;
+        let y2 = origin_y - right.y * scale;
+        let color = if contact.distance_m > PLAYER_GLIDER_MAX_HAND_GRIP_DISTANCE_M {
+            "#ff5364"
+        } else if contact.distance_m > PLAYER_GLIDER_MAX_HAND_GRIP_DISTANCE_M * 0.78 {
+            "#ffb84d"
+        } else {
+            "#68d391"
+        };
+        writeln!(
+            svg,
+            "<line x1=\"{x1:.2}\" y1=\"{y1:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"{color}\" stroke-opacity=\"0.86\" stroke-width=\"1.2\" stroke-dasharray=\"4 3\"><title>{} hand grip distance {:.3} m</title></line>",
+            side_label(side),
+            contact.distance_m
+        )
+        .expect("writing to string should not fail");
+    }
+}
+
+fn player_glider_hand_grip_contact_from_shapes(
+    player_shapes: &[PlayerPosePreviewShape],
+    glider_shapes: &[PlayerPosePreviewShape],
+    side: Side,
+) -> Option<ClosestSurfacePoints> {
+    let player_points = shape_surface_points(player_shapes, player_hand_attachment_nodes(side));
+    let glider_points = shape_surface_points(glider_shapes, glider_grip_attachment_nodes(side));
+    closest_surface_points(&player_points, &glider_points)
+}
+
+fn shape_surface_points(shapes: &[PlayerPosePreviewShape], names: &[&str]) -> Vec<Vec3> {
+    shapes
+        .iter()
+        .filter(|shape| names.iter().any(|name| *name == shape.node_name))
+        .flat_map(|shape| shape.surface_points.iter().copied())
+        .collect()
+}
+
+fn player_hand_attachment_nodes(side: Side) -> &'static [&'static str] {
+    match side {
+        Side::Left => &[
+            "Nau Left Leather Hand Palm",
+            "Nau Left Leather Index Finger Grip",
+            "Nau Left Leather Finger Grip",
+            "Nau Left Leather Ring Finger Grip",
+            "Nau Left Leather Pinky Finger Grip",
+            "Nau Left Leather Thumb Grip",
+        ],
+        Side::Right => &[
+            "Nau Right Leather Hand Palm",
+            "Nau Right Leather Index Finger Grip",
+            "Nau Right Leather Finger Grip",
+            "Nau Right Leather Ring Finger Grip",
+            "Nau Right Leather Pinky Finger Grip",
+            "Nau Right Leather Thumb Grip",
+        ],
+    }
+}
+
+fn glider_grip_attachment_nodes(side: Side) -> &'static [&'static str] {
+    match side {
+        Side::Left => &["Nau Glider Left Grip"],
+        Side::Right => &["Nau Glider Right Grip"],
+    }
+}
+
+fn side_label(side: Side) -> &'static str {
+    match side {
+        Side::Left => "left",
+        Side::Right => "right",
+    }
+}
+
+fn player_glider_attachment_audit(player_gltf: &Value, glider_gltf: &Value) -> Option<Value> {
+    let specs = player_glider_attachment_audit_specs();
+    let mut samples = Vec::new();
+    let mut max_distance_m = 0.0_f64;
+    let mut max_projected_gap_m = 0.0_f64;
+    let mut breach_count = 0_u64;
+    let mut worst_sample = Value::Null;
+
+    for spec in specs {
+        let (player_shapes, glider_shapes) =
+            player_glider_attachment_preview_shapes(player_gltf, glider_gltf, spec)?;
+        for side in [Side::Left, Side::Right] {
+            let contact =
+                player_glider_hand_grip_contact_from_shapes(&player_shapes, &glider_shapes, side)?;
+            let player_bounds = shapes_aabb(&player_shapes, player_hand_attachment_nodes(side))?;
+            let glider_bounds = shapes_aabb(&glider_shapes, glider_grip_attachment_nodes(side))?;
+            let (projected_gap_m, projected_gap_view) =
+                projected_contact_gap_m(player_bounds, glider_bounds);
+            let within_threshold = contact.distance_m <= PLAYER_GLIDER_MAX_HAND_GRIP_DISTANCE_M
+                && projected_gap_m <= PLAYER_GLIDER_MAX_HAND_GRIP_PROJECTED_GAP_M;
+            if !within_threshold {
+                breach_count += 1;
+            }
+            max_distance_m = max_distance_m.max(contact.distance_m);
+            max_projected_gap_m = max_projected_gap_m.max(projected_gap_m);
+            let sample = json!({
+                "label": spec.label,
+                "title": spec.title,
+                "side": side_label(side),
+                "phase": spec.phase,
+                "deployment": spec.deployment,
+                "pose_intent": spec.context.intent().label(),
+                "distance_m": contact.distance_m,
+                "projected_gap_m": projected_gap_m,
+                "projected_gap_view": projected_gap_view.key(),
+                "within_threshold": within_threshold,
+                "player_contact": [contact.left.x, contact.left.y, contact.left.z],
+                "glider_contact": [contact.right.x, contact.right.y, contact.right.z],
+            });
+            if worst_sample.is_null() || contact.distance_m >= max_distance_m {
+                worst_sample = sample.clone();
+            }
+            samples.push(sample);
+        }
+    }
+
+    Some(json!({
+        "schema": "nau_player_glider_attachment_audit.v1",
+        "sample_count": samples.len(),
+        "pose_count": player_glider_attachment_audit_specs().len(),
+        "max_distance_m": max_distance_m,
+        "max_projected_gap_m": max_projected_gap_m,
+        "breach_count": breach_count,
+        "thresholds": {
+            "hand_grip_distance_max_m": PLAYER_GLIDER_MAX_HAND_GRIP_DISTANCE_M,
+            "hand_grip_projected_gap_max_m": PLAYER_GLIDER_MAX_HAND_GRIP_PROJECTED_GAP_M,
+        },
+        "worst_sample": worst_sample,
+        "samples": samples,
+    }))
+}
+
+fn shapes_aabb(shapes: &[PlayerPosePreviewShape], names: &[&str]) -> Option<Aabb3> {
+    shapes
+        .iter()
+        .filter(|shape| names.iter().any(|name| *name == shape.node_name))
+        .map(|shape| shape.bounds)
+        .reduce(|mut aggregate, bounds| {
+            aggregate.include_aabb(bounds);
+            aggregate
+        })
 }
 
 fn render_player_pose_overlap_overlay(
@@ -1933,6 +2335,31 @@ fn audit_all_fixtures() -> Result<Value, String> {
         fixtures.push(fixture);
     }
 
+    let player_glider_attachment_audit = player_glider_attachment_audit_from_assets()?;
+    checks.push(check_eq_f64(
+        "player_glider_attachment_sample_count",
+        number_field(&player_glider_attachment_audit, "sample_count"),
+        PLAYER_GLIDER_HAND_GRIP_EXPECTED_SAMPLE_COUNT,
+        "samples",
+    ));
+    checks.push(check_at_most_f64(
+        "player_glider_attachment_hand_grip_distance_max",
+        number_field(&player_glider_attachment_audit, "max_distance_m"),
+        PLAYER_GLIDER_MAX_HAND_GRIP_DISTANCE_M,
+        "m",
+    ));
+    checks.push(check_at_most_f64(
+        "player_glider_attachment_projected_gap_max",
+        number_field(&player_glider_attachment_audit, "max_projected_gap_m"),
+        PLAYER_GLIDER_MAX_HAND_GRIP_PROJECTED_GAP_M,
+        "m",
+    ));
+    checks.push(check_at_most_f64(
+        "player_glider_attachment_breach_count",
+        number_field(&player_glider_attachment_audit, "breach_count"),
+        0.0,
+        "breaches",
+    ));
     checks.push(check_eq_u64(
         "fixture_count",
         fixtures.len() as u64,
@@ -1946,7 +2373,23 @@ fn audit_all_fixtures() -> Result<Value, String> {
         "fixture_count": fixtures.len(),
         "checks": checks,
         "fixtures": fixtures,
+        "player_glider_attachment_audit": player_glider_attachment_audit,
     }))
+}
+
+fn player_glider_attachment_audit_from_assets() -> Result<Value, String> {
+    let player_path = Path::new("assets/models/player/player.gltf");
+    let glider_path = Path::new("assets/models/player/glider.gltf");
+    let player_text = fs::read_to_string(player_path)
+        .map_err(|error| format!("failed to read {player_path:?}: {error}"))?;
+    let glider_text = fs::read_to_string(glider_path)
+        .map_err(|error| format!("failed to read {glider_path:?}: {error}"))?;
+    let player_gltf = serde_json::from_str::<Value>(&player_text)
+        .map_err(|error| format!("invalid player glTF JSON: {error}"))?;
+    let glider_gltf = serde_json::from_str::<Value>(&glider_text)
+        .map_err(|error| format!("invalid glider glTF JSON: {error}"))?;
+    player_glider_attachment_audit(&player_gltf, &glider_gltf)
+        .ok_or_else(|| "failed to compute player/glider attachment audit".to_string())
 }
 
 fn audit_fixture(
@@ -6135,6 +6578,29 @@ mod tests {
     }
 
     #[test]
+    fn player_glider_attachment_audit_reports_hands_on_grips() {
+        let player_text =
+            fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let player_gltf = serde_json::from_str::<Value>(&player_text).expect("player gltf");
+        let glider_text =
+            fs::read_to_string("assets/models/player/glider.gltf").expect("glider fixture");
+        let glider_gltf = serde_json::from_str::<Value>(&glider_text).expect("glider gltf");
+        let audit = player_glider_attachment_audit(&player_gltf, &glider_gltf)
+            .expect("player glider attachment audit");
+
+        assert_eq!(
+            number_field(&audit, "sample_count"),
+            PLAYER_GLIDER_HAND_GRIP_EXPECTED_SAMPLE_COUNT
+        );
+        assert_eq!(number_field(&audit, "breach_count"), 0.0);
+        assert!(number_field(&audit, "max_distance_m") <= PLAYER_GLIDER_MAX_HAND_GRIP_DISTANCE_M);
+        assert!(
+            number_field(&audit, "max_projected_gap_m")
+                <= PLAYER_GLIDER_MAX_HAND_GRIP_PROJECTED_GAP_M
+        );
+    }
+
+    #[test]
     fn player_hand_and_boot_silhouette_audit_rejects_marker_rod_proportions() {
         let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
         let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
@@ -6318,6 +6784,26 @@ mod tests {
         assert!(sheet.contains("Nau Glider Left Cloth Panel"));
         assert!(sheet.contains("Nau Glider Handle Bar"));
         assert!(sheet.contains("rear mesh silhouette"));
+    }
+
+    #[test]
+    fn player_glider_attachment_preview_renders_combined_pose_sheet() {
+        let player_text =
+            fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let player_gltf = serde_json::from_str::<Value>(&player_text).expect("player gltf");
+        let glider_text =
+            fs::read_to_string("assets/models/player/glider.gltf").expect("glider fixture");
+        let glider_gltf = serde_json::from_str::<Value>(&glider_text).expect("glider gltf");
+        let specs = player_glider_attachment_preview_specs();
+        let sheet =
+            render_player_glider_attachment_preview_sheet(&player_gltf, &glider_gltf, &specs)
+                .expect("attachment preview sheet");
+
+        assert!(sheet.contains("player/glider attachment preview"));
+        assert!(sheet.contains("Launch Takeout"));
+        assert!(sheet.contains("hand grip distance"));
+        assert!(sheet.contains("Nau Glider Left Grip"));
+        assert!(sheet.contains("Nau Left Leather Hand Palm"));
     }
 
     #[test]
