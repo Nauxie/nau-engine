@@ -28,6 +28,7 @@ const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M: f64 = 0.012;
 const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M: f64 = 0.08;
 const PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M: f64 = 0.008;
 const PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M: f64 = 0.004;
+const PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M: f64 = 0.095;
 const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.001;
 const PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT: f64 = 6.0;
 const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 4.0;
@@ -35,6 +36,7 @@ const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_PAIR_COUNT: f64 = 26.0;
+const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 51.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT: f64 = 9.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT: f64 = 4.0;
 const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 72.0;
@@ -42,6 +44,9 @@ const PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES: f64 = 150.0;
 const PLAYER_POSE_MIN_DIVE_TORSO_PITCH_DEGREES: f64 = 82.0;
 const PLAYER_POSE_MAX_DIVE_ARM_SPREAD_DEGREES: f64 = 74.0;
 const PLAYER_POSE_MIN_DIVE_LEG_TUCK_DEGREES: f64 = 68.0;
+const PLAYER_MIN_FINGER_GRIP_LENGTH_M: f64 = 0.10;
+const PLAYER_MAX_FINGER_GRIP_LENGTH_M: f64 = 0.22;
+const PLAYER_MIN_BOOT_SOLE_LENGTH_M: f64 = 0.32;
 const PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT: f64 = 0.45;
 const PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT: f64 = 0.70;
 const PLAYER_GLIDER_MIN_LAUNCH_RESPONSE_DEGREES: f64 = 8.0;
@@ -440,8 +445,23 @@ struct PlayerPosePreviewSpec {
 struct PlayerPosePreviewShape {
     node_name: String,
     vertices: Vec<Vec3>,
+    surface_points: Vec<Vec3>,
     bounds: Aabb3,
     color: &'static str,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PlayerSurfaceContactPair {
+    category: &'static str,
+    left: &'static str,
+    right: &'static str,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ClosestSurfacePoints {
+    distance_m: f64,
+    left: Vec3,
+    right: Vec3,
 }
 
 #[derive(Clone, Copy)]
@@ -467,7 +487,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
 
     let manifest = json!({
         "schema": "nau_player_pose_preview.v1",
-        "renderer": "mesh_projected_convex_hull.v1",
+        "renderer": "mesh_projected_convex_hull_surface_contact_overlay.v1",
         "source": path,
         "pose_count": specs.len(),
         "views": ["front", "side", "top"],
@@ -479,6 +499,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
             "pose_intent": spec.context.intent().label(),
         })).collect::<Vec<_>>(),
         "joint_seam_contact_audit": player_joint_seam_contact_audit(&gltf),
+        "surface_contact_audit": player_pose_surface_contact_audit(&gltf),
         "artifacts": {
             "pose_sheet_svg": sheet_path,
         },
@@ -714,7 +735,7 @@ fn player_pose_preview_shapes(
         };
         let mesh = gltf.get("meshes")?.as_array()?.get(mesh_index)?;
         let transform = world_node_transform_with_pose(gltf, node_name, overrides)?;
-        let vertices = mesh_world_vertices(gltf, mesh, transform, &buffers)?;
+        let (vertices, surface_points) = mesh_world_geometry(gltf, mesh, transform, &buffers)?;
         if vertices.is_empty() {
             continue;
         }
@@ -722,6 +743,7 @@ fn player_pose_preview_shapes(
         shapes.push(PlayerPosePreviewShape {
             node_name: node_name.to_string(),
             vertices,
+            surface_points,
             bounds,
             color: player_pose_preview_color(node_name),
         });
@@ -783,6 +805,7 @@ fn render_player_pose_preview_view(
         )
         .expect("writing to string should not fail");
     }
+    render_player_pose_contact_overlay(svg, shapes, view, origin_x, origin_y, scale);
 }
 
 fn preview_projected_extent(
@@ -880,6 +903,53 @@ fn project_preview_point(vertex: Vec3, view: PlayerPosePreviewView) -> Vec2 {
     }
 }
 
+fn render_player_pose_contact_overlay(
+    svg: &mut String,
+    shapes: &[PlayerPosePreviewShape],
+    view: PlayerPosePreviewView,
+    origin_x: f32,
+    origin_y: f32,
+    scale: f32,
+) {
+    for pair in player_surface_contact_pairs() {
+        let Some(left) = shapes.iter().find(|shape| shape.node_name == pair.left) else {
+            continue;
+        };
+        let Some(right) = shapes.iter().find(|shape| shape.node_name == pair.right) else {
+            continue;
+        };
+        let Some(contact) = closest_surface_points(&left.surface_points, &right.surface_points)
+        else {
+            continue;
+        };
+        if contact.distance_m <= 0.012 {
+            continue;
+        }
+        let left = project_preview_point(contact.left, view);
+        let right = project_preview_point(contact.right, view);
+        let x1 = origin_x + left.x * scale;
+        let y1 = origin_y - left.y * scale;
+        let x2 = origin_x + right.x * scale;
+        let y2 = origin_y - right.y * scale;
+        let color = if contact.distance_m > PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M {
+            "#ff5364"
+        } else if contact.distance_m > 0.040 {
+            "#ffb84d"
+        } else {
+            "#68d391"
+        };
+        writeln!(
+            svg,
+            "<line x1=\"{x1:.2}\" y1=\"{y1:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"{color}\" stroke-opacity=\"0.58\" stroke-width=\"0.9\" stroke-dasharray=\"3 3\"><title>{}: {} to {} surface distance {:.3} m</title></line>",
+            pair.category,
+            escape_xml(pair.left),
+            escape_xml(pair.right),
+            contact.distance_m
+        )
+        .expect("writing to string should not fail");
+    }
+}
+
 fn preview_depth(bounds: Aabb3, view: PlayerPosePreviewView) -> f32 {
     match view {
         PlayerPosePreviewView::Front => (bounds.min.z + bounds.max.z) * 0.5,
@@ -900,26 +970,156 @@ fn embedded_gltf_buffers(gltf: &Value) -> Option<Vec<Vec<u8>>> {
         .collect()
 }
 
-fn mesh_world_vertices(
+fn mesh_world_geometry(
     gltf: &Value,
     mesh: &Value,
     transform: Mat4,
     buffers: &[Vec<u8>],
-) -> Option<Vec<Vec3>> {
+) -> Option<(Vec<Vec3>, Vec<Vec3>)> {
     let primitives = mesh.get("primitives")?.as_array()?;
     let mut vertices = Vec::new();
+    let mut surface_points = Vec::new();
     for primitive in primitives {
         let position_accessor_index = primitive
             .get("attributes")?
             .get("POSITION")
             .and_then(Value::as_u64)? as usize;
-        vertices.extend(
-            read_vec3_accessor(gltf, position_accessor_index, buffers)?
-                .into_iter()
-                .map(|vertex| transform.transform_point3(vertex)),
-        );
+        let local_vertices = read_vec3_accessor(gltf, position_accessor_index, buffers)?;
+        let transformed_vertices = local_vertices
+            .iter()
+            .map(|vertex| transform.transform_point3(*vertex))
+            .collect::<Vec<_>>();
+        surface_points.extend(transformed_vertices.iter().copied());
+        if let Some(indices) = primitive
+            .get("indices")
+            .and_then(Value::as_u64)
+            .and_then(|index| read_index_accessor(gltf, index as usize, buffers))
+        {
+            for triangle in indices.chunks_exact(3) {
+                let Some(a) = transformed_vertices.get(triangle[0]).copied() else {
+                    continue;
+                };
+                let Some(b) = transformed_vertices.get(triangle[1]).copied() else {
+                    continue;
+                };
+                let Some(c) = transformed_vertices.get(triangle[2]).copied() else {
+                    continue;
+                };
+                surface_points.push((a + b + c) / 3.0);
+            }
+        }
+        vertices.extend(transformed_vertices);
     }
-    Some(vertices)
+    Some((
+        vertices,
+        reduce_surface_points(surface_points, PLAYER_SURFACE_CONTACT_SAMPLE_LIMIT),
+    ))
+}
+
+fn reduce_surface_points(points: Vec<Vec3>, limit: usize) -> Vec<Vec3> {
+    if points.len() <= limit || limit == 0 {
+        return points;
+    }
+    (0..limit)
+        .filter_map(|index| points.get(index * points.len() / limit).copied())
+        .collect()
+}
+
+const PLAYER_SURFACE_CONTACT_SAMPLE_LIMIT: usize = 96;
+
+fn read_index_accessor(
+    gltf: &Value,
+    accessor_index: usize,
+    buffers: &[Vec<u8>],
+) -> Option<Vec<usize>> {
+    let accessors = gltf.get("accessors")?.as_array()?;
+    let buffer_views = gltf.get("bufferViews")?.as_array()?;
+    let accessor = accessors.get(accessor_index)?;
+    if accessor.get("type").and_then(Value::as_str)? != "SCALAR" {
+        return None;
+    }
+    let component_type = accessor.get("componentType").and_then(Value::as_u64)?;
+    let component_size = match component_type {
+        5121 => 1,
+        5123 => 2,
+        5125 => 4,
+        _ => return None,
+    };
+    let count = accessor.get("count").and_then(Value::as_u64)? as usize;
+    let view_index = accessor.get("bufferView").and_then(Value::as_u64)? as usize;
+    let view = buffer_views.get(view_index)?;
+    let buffer_index = view.get("buffer").and_then(Value::as_u64)? as usize;
+    let buffer = buffers.get(buffer_index)?;
+    let view_offset = view.get("byteOffset").and_then(Value::as_u64).unwrap_or(0) as usize;
+    let accessor_offset = accessor
+        .get("byteOffset")
+        .and_then(Value::as_u64)
+        .unwrap_or(0) as usize;
+    let stride = view
+        .get("byteStride")
+        .and_then(Value::as_u64)
+        .unwrap_or(component_size) as usize;
+    let start = view_offset + accessor_offset;
+
+    (0..count)
+        .map(|index| {
+            let offset = start + index * stride;
+            match component_type {
+                5121 => buffer.get(offset).map(|value| *value as usize),
+                5123 => read_u16_le(buffer, offset).map(|value| value as usize),
+                5125 => read_u32_le(buffer, offset).map(|value| value as usize),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+fn read_u16_le(buffer: &[u8], offset: usize) -> Option<u16> {
+    let bytes = buffer.get(offset..offset + 2)?;
+    Some(u16::from_le_bytes(bytes.try_into().ok()?))
+}
+
+fn read_u32_le(buffer: &[u8], offset: usize) -> Option<u32> {
+    let bytes = buffer.get(offset..offset + 4)?;
+    Some(u32::from_le_bytes(bytes.try_into().ok()?))
+}
+
+fn node_world_surface_points_with_pose(
+    gltf: &Value,
+    node_name: &str,
+    overrides: &[PoseNodeOverride],
+    buffers: &[Vec<u8>],
+) -> Option<Vec<Vec3>> {
+    let node = gltf
+        .get("nodes")?
+        .as_array()?
+        .iter()
+        .find(|node| node.get("name").and_then(Value::as_str) == Some(node_name))?;
+    let mesh_index = node.get("mesh").and_then(Value::as_u64)? as usize;
+    let mesh = gltf.get("meshes")?.as_array()?.get(mesh_index)?;
+    let transform = world_node_transform_with_pose(gltf, node_name, overrides)?;
+    Some(mesh_world_geometry(gltf, mesh, transform, buffers)?.1)
+}
+
+fn closest_surface_points(left: &[Vec3], right: &[Vec3]) -> Option<ClosestSurfacePoints> {
+    let mut best = ClosestSurfacePoints {
+        distance_m: f64::INFINITY,
+        left: Vec3::ZERO,
+        right: Vec3::ZERO,
+    };
+    for left_point in left {
+        for right_point in right {
+            let distance_m = left_point.distance(*right_point) as f64;
+            if distance_m < best.distance_m {
+                best = ClosestSurfacePoints {
+                    distance_m,
+                    left: *left_point,
+                    right: *right_point,
+                };
+            }
+        }
+    }
+    best.distance_m.is_finite().then_some(best)
 }
 
 fn read_vec3_accessor(
@@ -1118,6 +1318,10 @@ fn audit_fixture(
         .require_player_clips
         .then(|| player_pose_transition_contact_audit(&gltf))
         .flatten();
+    let player_pose_surface_contact_audit = requirement
+        .require_player_clips
+        .then(|| player_pose_surface_contact_audit(&gltf))
+        .flatten();
     let player_joint_bridge_contact_audit = requirement
         .require_player_clips
         .then(|| player_joint_bridge_contact_audit(&gltf))
@@ -1236,6 +1440,26 @@ fn audit_fixture(
             world_node_translation(&gltf, "Nau Wind Scarf Accent")
                 .map_or(0.0, |translation| translation[2]),
             0.30,
+            "m",
+        ));
+        let (finger_grip_length_min_m, finger_grip_length_max_m) =
+            player_finger_grip_length_range_m(&gltf).unwrap_or((0.0, f64::INFINITY));
+        checks.push(check_at_least_f64(
+            "player_finger_grip_length_min",
+            finger_grip_length_min_m,
+            PLAYER_MIN_FINGER_GRIP_LENGTH_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_finger_grip_length_max",
+            finger_grip_length_max_m,
+            PLAYER_MAX_FINGER_GRIP_LENGTH_M,
+            "m",
+        ));
+        checks.push(check_at_least_f64(
+            "player_boot_sole_length_min",
+            player_boot_sole_length_min_m(&gltf).unwrap_or(0.0),
+            PLAYER_MIN_BOOT_SOLE_LENGTH_M,
             "m",
         ));
         checks.push(check_eq_u64(
@@ -1395,6 +1619,27 @@ fn audit_fixture(
         checks.push(check_at_most_f64(
             "player_joint_seam_contact_breach_count",
             number_field(seam_contact, "breach_count"),
+            0.0,
+            "breaches",
+        ));
+        let surface_contact = player_pose_surface_contact_audit
+            .as_ref()
+            .expect("player pose surface contact audit should be present for player fixture");
+        checks.push(check_eq_f64(
+            "player_pose_surface_contact_pair_count",
+            number_field(surface_contact, "pair_count"),
+            PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT,
+            "pairs",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_surface_contact_distance_max",
+            number_field(surface_contact, "max_distance_m"),
+            PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_surface_contact_breach_count",
+            number_field(surface_contact, "breach_count"),
             0.0,
             "breaches",
         ));
@@ -1637,6 +1882,8 @@ fn audit_fixture(
         "player_animation_channels_avoid_runtime_pose_nodes": player_animation_channels_avoid_runtime_pose_nodes(&gltf),
         "player_rest_joint_gap_max_m": player_rest_joint_gap_max_m(&gltf),
         "player_rest_articulated_joint_gap_max_m": player_rest_articulated_joint_gap_max_m(&gltf),
+        "player_finger_grip_length_range_m": player_finger_grip_length_range_m(&gltf).map(|(min, max)| json!({"min": min, "max": max})),
+        "player_boot_sole_length_min_m": player_boot_sole_length_min_m(&gltf),
         "player_rest_non_adjacent_mesh_overlap_max_m": player_rest_non_adjacent_mesh_overlap_max_m(&gltf),
         "player_rest_shoulder_mesh_overlap_max_m": player_rest_shoulder_mesh_overlap_max_m(&gltf),
         "player_pose_non_adjacent_mesh_overlap_max_m": player_pose_non_adjacent_mesh_overlap_max_m(&gltf),
@@ -1651,6 +1898,7 @@ fn audit_fixture(
         "player_joint_seam_contact_audit": player_joint_seam_contact_audit,
         "player_pose_contact_audit": player_pose_contact_audit,
         "player_pose_transition_contact_audit": player_pose_transition_contact_audit,
+        "player_pose_surface_contact_audit": player_pose_surface_contact_audit,
         "player_bank_clip_motion_distinct": player_bank_clip_motion_is_distinct(&gltf),
         "player_launch_glide_land_clip_motion_distinct": player_launch_glide_land_clip_motion_is_distinct(&gltf),
         "player_grounded_locomotion_clip_motion_distinct": player_grounded_locomotion_clip_motion_is_distinct(&gltf),
@@ -1971,6 +2219,57 @@ impl MeshMinOverlapReport {
     fn to_json(self) -> Value {
         json!({
             "min_overlap_m": self.value(),
+            "left_node": self.left_node,
+            "right_node": self.right_node,
+            "pose_intent": self.pose_intent,
+            "phase": self.phase,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SurfaceContactDistanceReport {
+    max_distance_m: f64,
+    category: &'static str,
+    left_node: &'static str,
+    right_node: &'static str,
+    pose_intent: &'static str,
+    phase: f32,
+}
+
+impl SurfaceContactDistanceReport {
+    fn zero() -> Self {
+        Self {
+            max_distance_m: 0.0,
+            category: "",
+            left_node: "",
+            right_node: "",
+            pose_intent: "none",
+            phase: 0.0,
+        }
+    }
+
+    fn observe_label(
+        &mut self,
+        distance_m: f64,
+        pair: PlayerSurfaceContactPair,
+        pose_label: &'static str,
+        phase: f32,
+    ) {
+        if distance_m > self.max_distance_m {
+            self.max_distance_m = distance_m;
+            self.category = pair.category;
+            self.left_node = pair.left;
+            self.right_node = pair.right;
+            self.pose_intent = pose_label;
+            self.phase = phase;
+        }
+    }
+
+    fn to_json(self) -> Value {
+        json!({
+            "max_distance_m": self.max_distance_m,
+            "category": self.category,
             "left_node": self.left_node,
             "right_node": self.right_node,
             "pose_intent": self.pose_intent,
@@ -2899,6 +3198,32 @@ fn player_joint_seam_mesh_pairs() -> [(&'static str, &'static str); 26] {
     ]
 }
 
+fn player_surface_contact_pairs() -> Vec<PlayerSurfaceContactPair> {
+    let mut pairs = Vec::with_capacity(PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT as usize);
+    for (left, right) in player_joint_cover_mesh_pairs() {
+        pairs.push(PlayerSurfaceContactPair {
+            category: "cover",
+            left,
+            right,
+        });
+    }
+    for (left, right) in player_joint_bridge_mesh_pairs() {
+        pairs.push(PlayerSurfaceContactPair {
+            category: "bridge",
+            left,
+            right,
+        });
+    }
+    for (left, right) in player_joint_seam_mesh_pairs() {
+        pairs.push(PlayerSurfaceContactPair {
+            category: "seam",
+            left,
+            right,
+        });
+    }
+    pairs
+}
+
 fn player_joint_bridge_contact_audit(gltf: &Value) -> Option<Value> {
     let phases = player_pose_contact_phases();
     let contexts = player_pose_mesh_overlap_contexts();
@@ -3097,6 +3422,99 @@ fn observe_joint_seam_sample(
     Some(())
 }
 
+fn player_pose_surface_contact_audit(gltf: &Value) -> Option<Value> {
+    let phases = player_pose_contact_phases();
+    let contexts = player_pose_mesh_overlap_contexts();
+    let transitions = player_pose_transition_contact_transitions();
+    let blends = player_pose_transition_contact_blends();
+    let pairs = player_surface_contact_pairs();
+    let buffers = embedded_gltf_buffers(gltf)?;
+    let samples_per_pair =
+        contexts.len() * phases.len() + transitions.len() * phases.len() * blends.len();
+    let mut pair_reports = Vec::new();
+    let mut overall = SurfaceContactDistanceReport::zero();
+    let mut breach_count = 0_u64;
+
+    for pair in pairs.iter().copied() {
+        let mut pair_report = SurfaceContactDistanceReport::zero();
+
+        for context in contexts.iter().copied() {
+            for phase in phases {
+                let overrides = player_pose_node_overrides(gltf, context, phase)?;
+                let contact = player_pose_surface_contact_sample(gltf, pair, &overrides, &buffers)?;
+                pair_report.observe_label(
+                    contact.distance_m,
+                    pair,
+                    context.intent().label(),
+                    phase,
+                );
+                overall.observe_label(contact.distance_m, pair, context.intent().label(), phase);
+            }
+        }
+
+        for transition in transitions.iter().copied() {
+            for phase in phases {
+                for blend in blends {
+                    let overrides = player_pose_transition_node_overrides(
+                        gltf,
+                        transition.from,
+                        transition.to,
+                        phase,
+                        blend,
+                    )?;
+                    let contact =
+                        player_pose_surface_contact_sample(gltf, pair, &overrides, &buffers)?;
+                    pair_report.observe_label(contact.distance_m, pair, transition.label, phase);
+                    overall.observe_label(contact.distance_m, pair, transition.label, phase);
+                }
+            }
+        }
+
+        let within_threshold =
+            pair_report.max_distance_m <= PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M;
+        if !within_threshold {
+            breach_count += 1;
+        }
+        pair_reports.push(json!({
+            "category": pair.category,
+            "left_node": pair.left,
+            "right_node": pair.right,
+            "max_distance_m": pair_report.max_distance_m,
+            "within_threshold": within_threshold,
+            "worst_sample": pair_report.to_json(),
+        }));
+    }
+
+    Some(json!({
+        "schema": "nau_player_pose_surface_contact_audit.v1",
+        "pair_count": pair_reports.len(),
+        "pose_count": contexts.len(),
+        "phase_count": phases.len(),
+        "transition_count": transitions.len(),
+        "blend_count": blends.len(),
+        "samples_per_pair": samples_per_pair,
+        "sample_points_per_mesh_limit": PLAYER_SURFACE_CONTACT_SAMPLE_LIMIT,
+        "max_distance_m": overall.max_distance_m,
+        "breach_count": breach_count,
+        "thresholds": {
+            "surface_contact_distance_max_m": PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M,
+        },
+        "worst_pair": overall.to_json(),
+        "pairs": pair_reports,
+    }))
+}
+
+fn player_pose_surface_contact_sample(
+    gltf: &Value,
+    pair: PlayerSurfaceContactPair,
+    overrides: &[PoseNodeOverride],
+    buffers: &[Vec<u8>],
+) -> Option<ClosestSurfacePoints> {
+    let left = node_world_surface_points_with_pose(gltf, pair.left, overrides, buffers)?;
+    let right = node_world_surface_points_with_pose(gltf, pair.right, overrides, buffers)?;
+    closest_surface_points(&left, &right)
+}
+
 fn player_pose_joint_cover_mesh_gap_max_m(gltf: &Value) -> Option<f64> {
     player_pose_joint_cover_mesh_gap_report(gltf).map(|report| report.max_gap_m)
 }
@@ -3175,6 +3593,49 @@ fn player_rest_shoulder_mesh_overlap_max_m(gltf: &Value) -> Option<f64> {
             ("Nau Right Suit Upper Arm", "Nau Suit Armored Torso Shell"),
         ],
     )
+}
+
+fn player_finger_grip_node_names() -> [&'static str; 10] {
+    [
+        "Nau Left Leather Index Finger Grip",
+        "Nau Left Leather Finger Grip",
+        "Nau Left Leather Ring Finger Grip",
+        "Nau Left Leather Pinky Finger Grip",
+        "Nau Left Leather Thumb Grip",
+        "Nau Right Leather Index Finger Grip",
+        "Nau Right Leather Finger Grip",
+        "Nau Right Leather Ring Finger Grip",
+        "Nau Right Leather Pinky Finger Grip",
+        "Nau Right Leather Thumb Grip",
+    ]
+}
+
+fn player_finger_grip_length_range_m(gltf: &Value) -> Option<(f64, f64)> {
+    player_finger_grip_node_names()
+        .into_iter()
+        .map(|node| {
+            let bounds = node_world_mesh_obb_with_pose(gltf, node, &[])?;
+            Some(bounds.half_extents.y as f64 * 2.0)
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|lengths| {
+            lengths
+                .into_iter()
+                .fold((f64::INFINITY, 0.0_f64), |(min, max), length| {
+                    (min.min(length), max.max(length))
+                })
+        })
+}
+
+fn player_boot_sole_length_min_m(gltf: &Value) -> Option<f64> {
+    ["Nau Left Leather Boot Sole", "Nau Right Leather Boot Sole"]
+        .into_iter()
+        .map(|node| {
+            let bounds = node_world_mesh_obb_with_pose(gltf, node, &[])?;
+            Some(bounds.half_extents.z as f64 * 2.0)
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|lengths| lengths.into_iter().fold(f64::INFINITY, f64::min))
 }
 
 fn player_pose_non_adjacent_mesh_overlap_max_m(gltf: &Value) -> Option<f64> {
@@ -4480,6 +4941,50 @@ mod tests {
     }
 
     #[test]
+    fn player_pose_surface_contact_audit_reports_mesh_sample_distances() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let audit = player_pose_surface_contact_audit(&gltf).expect("surface contact audit");
+
+        assert_eq!(
+            number_field(&audit, "pair_count"),
+            PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT
+        );
+        assert_eq!(
+            number_field(&audit, "phase_count"),
+            PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT
+        );
+        assert_eq!(
+            number_field(&audit, "transition_count"),
+            PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT
+        );
+        assert_eq!(
+            number_field(&audit, "blend_count"),
+            PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT
+        );
+        assert_eq!(number_field(&audit, "samples_per_pair"), 168.0);
+        assert_eq!(number_field(&audit, "breach_count"), 0.0);
+        assert!(
+            number_field(&audit, "max_distance_m") <= PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M
+        );
+    }
+
+    #[test]
+    fn player_hand_and_boot_silhouette_audit_rejects_marker_rod_proportions() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let (finger_min, finger_max) =
+            player_finger_grip_length_range_m(&gltf).expect("finger grip length range");
+
+        assert!(finger_min >= PLAYER_MIN_FINGER_GRIP_LENGTH_M);
+        assert!(finger_max <= PLAYER_MAX_FINGER_GRIP_LENGTH_M);
+        assert!(
+            player_boot_sole_length_min_m(&gltf).expect("boot sole length")
+                >= PLAYER_MIN_BOOT_SOLE_LENGTH_M
+        );
+    }
+
+    #[test]
     fn player_pose_contact_audit_reports_each_sampled_pose() {
         let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
         let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
@@ -4579,6 +5084,7 @@ mod tests {
         let sheet = render_player_pose_preview_sheet(&gltf, &specs).expect("preview sheet");
         assert!(sheet.contains("front mesh silhouette"));
         assert!(sheet.contains("<path d=\""));
+        assert!(sheet.contains("surface distance"));
         assert!(sheet.contains("Nau Left Leather Pinky Finger Grip"));
         assert!(sheet.contains("Nau Left Leather Outer Toe Lug"));
     }
