@@ -18,6 +18,9 @@ const PLAYER_POSE_MAX_CONNECTED_LIMB_TRANSLATION_M: f64 = 0.02;
 const PLAYER_REST_MAX_ARTICULATED_JOINT_GAP_M: f64 = 0.015;
 const PLAYER_REST_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.005;
 const PLAYER_REST_MAX_SHOULDER_MESH_OVERLAP_M: f64 = 0.015;
+const PLAYER_POSE_MAX_ARTICULATED_JOINT_GAP_M: f64 = 0.025;
+const PLAYER_POSE_MAX_JOINT_COVER_MESH_GAP_M: f64 = 0.035;
+const PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M: f64 = 0.16;
 const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.025;
 const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 58.0;
 const PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES: f64 = 136.0;
@@ -180,8 +183,8 @@ const REQUIREMENTS: &[Requirement] = &[
         min_nodes: 44,
         min_meshes: 25,
         min_materials: 8,
-        min_vertices: 1100,
-        min_triangles: 1800,
+        min_vertices: 3400,
+        min_triangles: 6000,
         required_name_fragments: PLAYER_NAME_FRAGMENTS,
         require_blend_material: false,
         require_player_clips: true,
@@ -574,6 +577,24 @@ fn audit_fixture(
             PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
             "m",
         ));
+        checks.push(check_at_most_f64(
+            "player_pose_articulated_joint_gap_max",
+            player_pose_articulated_joint_gap_max_m(&gltf).unwrap_or(f64::INFINITY),
+            PLAYER_POSE_MAX_ARTICULATED_JOINT_GAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_joint_cover_mesh_gap_max",
+            player_pose_joint_cover_mesh_gap_max_m(&gltf).unwrap_or(f64::INFINITY),
+            PLAYER_POSE_MAX_JOINT_COVER_MESH_GAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_joint_cover_mesh_overlap_max",
+            player_pose_joint_cover_mesh_overlap_max_m(&gltf).unwrap_or(f64::INFINITY),
+            PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M,
+            "m",
+        ));
         let pose_shape = player_pose_shape_audit
             .as_ref()
             .expect("player pose shape audit should be present for player fixture");
@@ -719,6 +740,12 @@ fn audit_fixture(
         "player_rest_shoulder_mesh_overlap_max_m": player_rest_shoulder_mesh_overlap_max_m(&gltf),
         "player_pose_non_adjacent_mesh_overlap_max_m": player_pose_non_adjacent_mesh_overlap_max_m(&gltf),
         "player_pose_non_adjacent_mesh_overlap_worst_pair": player_pose_non_adjacent_mesh_overlap_report(&gltf).map(|report| report.to_json()),
+        "player_pose_articulated_joint_gap_max_m": player_pose_articulated_joint_gap_max_m(&gltf),
+        "player_pose_articulated_joint_gap_worst_pair": player_pose_articulated_joint_gap_report(&gltf).map(|report| report.to_json()),
+        "player_pose_joint_cover_mesh_gap_max_m": player_pose_joint_cover_mesh_gap_max_m(&gltf),
+        "player_pose_joint_cover_mesh_gap_worst_pair": player_pose_joint_cover_mesh_gap_report(&gltf).map(|report| report.to_json()),
+        "player_pose_joint_cover_mesh_overlap_max_m": player_pose_joint_cover_mesh_overlap_max_m(&gltf),
+        "player_pose_joint_cover_mesh_overlap_worst_pair": player_pose_joint_cover_mesh_overlap_report(&gltf).map(|report| report.to_json()),
         "player_bank_clip_motion_distinct": player_bank_clip_motion_is_distinct(&gltf),
         "player_launch_glide_land_clip_motion_distinct": player_launch_glide_land_clip_motion_is_distinct(&gltf),
         "player_grounded_locomotion_clip_motion_distinct": player_grounded_locomotion_clip_motion_is_distinct(&gltf),
@@ -835,6 +862,102 @@ impl MeshOverlapReport {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct JointGapReport {
+    max_gap_m: f64,
+    socket_node: &'static str,
+    joint_node: &'static str,
+    pose_intent: &'static str,
+    phase: f32,
+}
+
+impl JointGapReport {
+    fn zero() -> Self {
+        Self {
+            max_gap_m: 0.0,
+            socket_node: "",
+            joint_node: "",
+            pose_intent: "none",
+            phase: 0.0,
+        }
+    }
+
+    fn observe(
+        &mut self,
+        gap_m: f64,
+        socket_node: &'static str,
+        joint_node: &'static str,
+        pose_intent: PlayerPoseIntent,
+        phase: f32,
+    ) {
+        if gap_m > self.max_gap_m {
+            self.max_gap_m = gap_m;
+            self.socket_node = socket_node;
+            self.joint_node = joint_node;
+            self.pose_intent = pose_intent.label();
+            self.phase = phase;
+        }
+    }
+
+    fn to_json(self) -> Value {
+        json!({
+            "max_gap_m": self.max_gap_m,
+            "socket_node": self.socket_node,
+            "joint_node": self.joint_node,
+            "pose_intent": self.pose_intent,
+            "phase": self.phase,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct MeshGapReport {
+    max_gap_m: f64,
+    left_node: &'static str,
+    right_node: &'static str,
+    pose_intent: &'static str,
+    phase: f32,
+}
+
+impl MeshGapReport {
+    fn zero() -> Self {
+        Self {
+            max_gap_m: 0.0,
+            left_node: "",
+            right_node: "",
+            pose_intent: "none",
+            phase: 0.0,
+        }
+    }
+
+    fn observe(
+        &mut self,
+        gap_m: f64,
+        left_node: &'static str,
+        right_node: &'static str,
+        pose_intent: PlayerPoseIntent,
+        phase: f32,
+    ) {
+        if gap_m > self.max_gap_m {
+            self.max_gap_m = gap_m;
+            self.left_node = left_node;
+            self.right_node = right_node;
+            self.pose_intent = pose_intent.label();
+            self.phase = phase;
+        }
+    }
+
+    fn to_json(self) -> Value {
+        json!({
+            "max_gap_m": self.max_gap_m,
+            "left_node": self.left_node,
+            "right_node": self.right_node,
+            "pose_intent": self.pose_intent,
+            "phase": self.phase,
+        })
+    }
+}
+
 impl Aabb3 {
     fn from_min_max(min: Vec3, max: Vec3) -> Self {
         Self { min, max }
@@ -900,6 +1023,25 @@ impl Aabb3 {
             self.max.z.min(other.max.z) - self.min.z.max(other.min.z),
         ]
         .map(|depth| depth.max(0.0) as f64)
+    }
+
+    fn separation_m(self, other: Self) -> f64 {
+        let gap = Vec3::new(
+            axis_separation_m(self.min.x, self.max.x, other.min.x, other.max.x),
+            axis_separation_m(self.min.y, self.max.y, other.min.y, other.max.y),
+            axis_separation_m(self.min.z, self.max.z, other.min.z, other.max.z),
+        );
+        gap.length() as f64
+    }
+}
+
+fn axis_separation_m(left_min: f32, left_max: f32, right_min: f32, right_max: f32) -> f32 {
+    if left_max < right_min {
+        right_min - left_max
+    } else if right_max < left_min {
+        left_min - right_max
+    } else {
+        0.0
     }
 }
 
@@ -1140,17 +1282,7 @@ fn player_rest_joint_gap_max_m(gltf: &Value) -> Option<f64> {
 }
 
 fn player_rest_articulated_joint_gap_max_m(gltf: &Value) -> Option<f64> {
-    let pairs = [
-        ("Nau Left Elbow Socket", "Nau Left Forearm"),
-        ("Nau Right Elbow Socket", "Nau Right Forearm"),
-        ("Nau Left Wrist Socket", "Nau Left Leather Hand Palm"),
-        ("Nau Right Wrist Socket", "Nau Right Leather Hand Palm"),
-        ("Nau Left Knee Socket", "Nau Left Lower Leg"),
-        ("Nau Right Knee Socket", "Nau Right Lower Leg"),
-        ("Nau Left Ankle Socket", "Nau Left Boot"),
-        ("Nau Right Ankle Socket", "Nau Right Boot"),
-    ];
-    pairs
+    player_articulated_joint_gap_pairs()
         .into_iter()
         .map(|(socket, joint)| {
             let socket = world_node_translation(gltf, socket)?;
@@ -1159,6 +1291,138 @@ fn player_rest_articulated_joint_gap_max_m(gltf: &Value) -> Option<f64> {
         })
         .collect::<Option<Vec<_>>>()
         .map(|gaps| gaps.into_iter().fold(0.0, f64::max))
+}
+
+fn player_articulated_joint_gap_pairs() -> [(&'static str, &'static str); 8] {
+    [
+        ("Nau Left Elbow Socket", "Nau Left Forearm"),
+        ("Nau Right Elbow Socket", "Nau Right Forearm"),
+        ("Nau Left Wrist Socket", "Nau Left Leather Hand Palm"),
+        ("Nau Right Wrist Socket", "Nau Right Leather Hand Palm"),
+        ("Nau Left Knee Socket", "Nau Left Lower Leg"),
+        ("Nau Right Knee Socket", "Nau Right Lower Leg"),
+        ("Nau Left Ankle Socket", "Nau Left Boot"),
+        ("Nau Right Ankle Socket", "Nau Right Boot"),
+    ]
+}
+
+fn player_pose_articulated_joint_gap_max_m(gltf: &Value) -> Option<f64> {
+    player_pose_articulated_joint_gap_report(gltf).map(|report| report.max_gap_m)
+}
+
+fn player_pose_articulated_joint_gap_report(gltf: &Value) -> Option<JointGapReport> {
+    let phases = [0.0, 0.75, 1.5, 2.25];
+    let mut report = JointGapReport::zero();
+
+    for context in player_pose_mesh_overlap_contexts() {
+        for phase in phases {
+            let overrides = player_pose_node_overrides(gltf, context, phase)?;
+            for (socket, joint) in player_articulated_joint_gap_pairs() {
+                let socket_translation =
+                    world_node_translation_with_pose(gltf, socket, &overrides)?;
+                let joint_translation = world_node_translation_with_pose(gltf, joint, &overrides)?;
+                report.observe(
+                    distance3(socket_translation, joint_translation),
+                    socket,
+                    joint,
+                    context.intent(),
+                    phase,
+                );
+            }
+        }
+    }
+
+    Some(report)
+}
+
+fn player_joint_cover_mesh_pairs() -> [(&'static str, &'static str); 13] {
+    [
+        ("Nau Neck Joint Cover", "Nau Skin Rounded Head"),
+        ("Nau Left Shoulder Joint Cover", "Nau Left Suit Upper Arm"),
+        ("Nau Right Shoulder Joint Cover", "Nau Right Suit Upper Arm"),
+        (
+            "Nau Left Elbow Joint Cover",
+            "Nau Left Leather Forearm Wrap",
+        ),
+        (
+            "Nau Right Elbow Joint Cover",
+            "Nau Right Leather Forearm Wrap",
+        ),
+        ("Nau Left Wrist Joint Cover", "Nau Left Leather Hand Palm"),
+        ("Nau Right Wrist Joint Cover", "Nau Right Leather Hand Palm"),
+        ("Nau Left Hip Joint Cover", "Nau Left Suit Thigh Guard"),
+        ("Nau Right Hip Joint Cover", "Nau Right Suit Thigh Guard"),
+        (
+            "Nau Left Knee Joint Cover",
+            "Nau Left Suit Lower Leg Greave",
+        ),
+        (
+            "Nau Right Knee Joint Cover",
+            "Nau Right Suit Lower Leg Greave",
+        ),
+        ("Nau Left Ankle Joint Cover", "Nau Left Boot"),
+        ("Nau Right Ankle Joint Cover", "Nau Right Boot"),
+    ]
+}
+
+fn player_pose_joint_cover_mesh_gap_max_m(gltf: &Value) -> Option<f64> {
+    player_pose_joint_cover_mesh_gap_report(gltf).map(|report| report.max_gap_m)
+}
+
+fn player_pose_joint_cover_mesh_gap_report(gltf: &Value) -> Option<MeshGapReport> {
+    let phases = [0.0, 0.75, 1.5, 2.25];
+    let mut report = MeshGapReport::zero();
+
+    for context in player_pose_mesh_overlap_contexts() {
+        for phase in phases {
+            let overrides = player_pose_node_overrides(gltf, context, phase)?;
+            for (left, right) in player_joint_cover_mesh_pairs() {
+                let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, &overrides)?;
+                let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, &overrides)?;
+                report.observe(
+                    left_bounds.separation_m(right_bounds),
+                    left,
+                    right,
+                    context.intent(),
+                    phase,
+                );
+            }
+        }
+    }
+
+    Some(report)
+}
+
+fn player_pose_joint_cover_mesh_overlap_max_m(gltf: &Value) -> Option<f64> {
+    player_pose_joint_cover_mesh_overlap_report(gltf).map(|report| report.max_overlap_m)
+}
+
+fn player_pose_joint_cover_mesh_overlap_report(gltf: &Value) -> Option<MeshOverlapReport> {
+    let phases = [0.0, 0.75, 1.5, 2.25];
+    let mut report = MeshOverlapReport::zero();
+
+    for context in player_pose_mesh_overlap_contexts() {
+        for phase in phases {
+            let overrides = player_pose_node_overrides(gltf, context, phase)?;
+            for (left, right) in player_joint_cover_mesh_pairs() {
+                let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, &overrides)?;
+                let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, &overrides)?;
+                let overlap_axes_m = left_bounds.overlap_axes_m(right_bounds);
+                let overlap_m = node_world_mesh_obb_with_pose(gltf, left, &overrides)?
+                    .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, right, &overrides)?);
+                report.observe(
+                    overlap_m,
+                    overlap_axes_m,
+                    left,
+                    right,
+                    context.intent(),
+                    phase,
+                );
+            }
+        }
+    }
+
+    Some(report)
 }
 
 fn player_rest_mesh_bounds_present(gltf: &Value) -> bool {
@@ -1693,6 +1957,20 @@ fn symmetric_node_half_width_m(gltf: &Value, left_name: &str, right_name: &str) 
 
 fn world_node_translation(gltf: &Value, node_name: &str) -> Option<[f64; 3]> {
     let translation = world_node_transform(gltf, node_name)?.transform_point3(Vec3::ZERO);
+    Some([
+        translation.x as f64,
+        translation.y as f64,
+        translation.z as f64,
+    ])
+}
+
+fn world_node_translation_with_pose(
+    gltf: &Value,
+    node_name: &str,
+    overrides: &[PoseNodeOverride],
+) -> Option<[f64; 3]> {
+    let translation =
+        world_node_transform_with_pose(gltf, node_name, overrides)?.transform_point3(Vec3::ZERO);
     Some([
         translation.x as f64,
         translation.y as f64,
@@ -2260,6 +2538,32 @@ mod tests {
 
         assert!((left.overlap_depth_m(right) - 0.25).abs() < 0.0001);
         assert_eq!(left.overlap_depth_m(separated), 0.0);
+    }
+
+    #[test]
+    fn aabb_separation_reports_surface_gap() {
+        let left = Aabb3::from_min_max(Vec3::ZERO, Vec3::new(1.0, 1.0, 1.0));
+        let touching = Aabb3::from_min_max(Vec3::new(1.0, 0.25, 0.25), Vec3::new(2.0, 0.75, 0.75));
+        let separated = Aabb3::from_min_max(Vec3::new(1.03, 1.04, 0.25), Vec3::new(2.0, 2.0, 0.75));
+
+        assert_eq!(left.separation_m(touching), 0.0);
+        assert!((left.separation_m(separated) - 0.05).abs() < 0.0001);
+    }
+
+    #[test]
+    fn joint_cover_mesh_pairs_use_visible_cover_nodes() {
+        let pairs = player_joint_cover_mesh_pairs();
+
+        assert!(
+            pairs
+                .iter()
+                .any(|(left, _right)| *left == "Nau Neck Joint Cover")
+        );
+        assert!(
+            pairs
+                .iter()
+                .all(|(left, _right)| !left.ends_with(" Socket"))
+        );
     }
 
     #[test]
