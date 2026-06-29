@@ -316,7 +316,7 @@ pub(crate) fn authored_player_pose_node_for_name(name: &str) -> Option<AuthoredP
         ),
         "Nau Left Arm" => CharacterPart::new(
             CharacterPartRole::Arm(Side::Left),
-            Vec3::new(-0.46, 0.54, -0.02),
+            Vec3::new(-0.52, 0.54, -0.02),
             Quat::IDENTITY,
         ),
         "Nau Left Forearm" => CharacterPart::new(
@@ -331,7 +331,7 @@ pub(crate) fn authored_player_pose_node_for_name(name: &str) -> Option<AuthoredP
         ),
         "Nau Right Arm" => CharacterPart::new(
             CharacterPartRole::Arm(Side::Right),
-            Vec3::new(0.46, 0.54, -0.02),
+            Vec3::new(0.52, 0.54, -0.02),
             Quat::IDENTITY,
         ),
         "Nau Right Forearm" => CharacterPart::new(
@@ -781,7 +781,7 @@ mod tests {
         assert_eq!(left_arm.part.role, CharacterPartRole::Arm(Side::Left));
         assert_eq!(
             left_arm.part.base_translation,
-            Vec3::new(-0.46, 0.54, -0.02)
+            Vec3::new(-0.52, 0.54, -0.02)
         );
         assert_eq!(right_leg.part.role, CharacterPartRole::Leg(Side::Right));
         assert_eq!(

@@ -16,6 +16,8 @@ const NAU_FIXTURE_SCHEMA: &str = "nau_visual_asset_fixture.v1";
 const NAU_FIXTURE_LICENSE: &str = "self_authored_no_third_party";
 const PLAYER_POSE_MAX_CONNECTED_LIMB_TRANSLATION_M: f64 = 0.02;
 const PLAYER_REST_MAX_ARTICULATED_JOINT_GAP_M: f64 = 0.015;
+const PLAYER_REST_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.005;
+const PLAYER_REST_MAX_SHOULDER_MESH_OVERLAP_M: f64 = 0.015;
 const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 58.0;
 const PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES: f64 = 136.0;
 const PLAYER_POSE_MIN_DIVE_TORSO_PITCH_DEGREES: f64 = 82.0;
@@ -25,6 +27,59 @@ const PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT: f64 = 0.45;
 const PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT: f64 = 0.70;
 const PLAYER_GLIDER_MIN_DIVE_RESPONSE_DEGREES: f64 = 4.0;
 const PLAYER_GLIDER_MIN_DIVE_MOTION_M: f64 = 0.16;
+const PLAYER_REST_TORSO_BLOCKING_MESH_NODES: &[&str] = &[
+    "Nau Suit Armored Torso Shell",
+    "Nau Suit Tapered Hips Shell",
+    "Nau Skin Rounded Head",
+];
+const PLAYER_REST_LEFT_ARM_MESH_NODES: &[&str] = &[
+    "Nau Left Suit Upper Arm",
+    "Nau Left Leather Forearm Wrap",
+    "Nau Left Leather Hand Palm",
+    "Nau Left Leather Finger Grip",
+    "Nau Left Leather Thumb Grip",
+];
+const PLAYER_REST_RIGHT_ARM_MESH_NODES: &[&str] = &[
+    "Nau Right Suit Upper Arm",
+    "Nau Right Leather Forearm Wrap",
+    "Nau Right Leather Hand Palm",
+    "Nau Right Leather Finger Grip",
+    "Nau Right Leather Thumb Grip",
+];
+const PLAYER_REST_LEFT_DISTAL_ARM_MESH_NODES: &[&str] = &[
+    "Nau Left Leather Forearm Wrap",
+    "Nau Left Leather Hand Palm",
+    "Nau Left Leather Finger Grip",
+    "Nau Left Leather Thumb Grip",
+];
+const PLAYER_REST_RIGHT_DISTAL_ARM_MESH_NODES: &[&str] = &[
+    "Nau Right Leather Forearm Wrap",
+    "Nau Right Leather Hand Palm",
+    "Nau Right Leather Finger Grip",
+    "Nau Right Leather Thumb Grip",
+];
+const PLAYER_REST_LEFT_LEG_MESH_NODES: &[&str] = &[
+    "Nau Left Suit Thigh Guard",
+    "Nau Left Suit Lower Leg Greave",
+    "Nau Left Boot",
+    "Nau Left Leather Boot Toe Cap",
+];
+const PLAYER_REST_RIGHT_LEG_MESH_NODES: &[&str] = &[
+    "Nau Right Suit Thigh Guard",
+    "Nau Right Suit Lower Leg Greave",
+    "Nau Right Boot",
+    "Nau Right Leather Boot Toe Cap",
+];
+const PLAYER_REST_LEFT_DISTAL_LEG_MESH_NODES: &[&str] = &[
+    "Nau Left Suit Lower Leg Greave",
+    "Nau Left Boot",
+    "Nau Left Leather Boot Toe Cap",
+];
+const PLAYER_REST_RIGHT_DISTAL_LEG_MESH_NODES: &[&str] = &[
+    "Nau Right Suit Lower Leg Greave",
+    "Nau Right Boot",
+    "Nau Right Leather Boot Toe Cap",
+];
 
 #[derive(Clone, Copy)]
 struct Requirement {
@@ -446,6 +501,11 @@ fn audit_fixture(
             "nodes",
         ));
         checks.push(check_bool(
+            "player_rest_mesh_bounds_present",
+            player_rest_mesh_bounds_present(&gltf),
+            "mesh_bounds",
+        ));
+        checks.push(check_bool(
             "player_animation_channels_cover_core_signals",
             player_animation_channels_cover_core_signals(&gltf),
             "clips",
@@ -465,6 +525,18 @@ fn audit_fixture(
             "player_rest_articulated_joint_gap_max",
             player_rest_articulated_joint_gap_max_m(&gltf).unwrap_or(f64::INFINITY),
             PLAYER_REST_MAX_ARTICULATED_JOINT_GAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_rest_non_adjacent_mesh_overlap_max",
+            player_rest_non_adjacent_mesh_overlap_max_m(&gltf).unwrap_or(f64::INFINITY),
+            PLAYER_REST_MAX_NON_ADJACENT_MESH_OVERLAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_rest_shoulder_mesh_overlap_max",
+            player_rest_shoulder_mesh_overlap_max_m(&gltf).unwrap_or(f64::INFINITY),
+            PLAYER_REST_MAX_SHOULDER_MESH_OVERLAP_M,
             "m",
         ));
         let pose_shape = player_pose_shape_audit
@@ -603,10 +675,13 @@ fn audit_fixture(
         "player_core_pose_nodes_present": player_core_pose_nodes_present(&gltf),
         "player_articulated_pose_nodes_present": player_articulated_pose_nodes_present(&gltf),
         "player_rest_limb_attachment_hierarchy": player_rest_limb_attachment_hierarchy_valid(&gltf),
+        "player_rest_mesh_bounds_present": player_rest_mesh_bounds_present(&gltf),
         "player_animation_channels_cover_core_signals": player_animation_channels_cover_core_signals(&gltf),
         "player_animation_channels_avoid_runtime_pose_nodes": player_animation_channels_avoid_runtime_pose_nodes(&gltf),
         "player_rest_joint_gap_max_m": player_rest_joint_gap_max_m(&gltf),
         "player_rest_articulated_joint_gap_max_m": player_rest_articulated_joint_gap_max_m(&gltf),
+        "player_rest_non_adjacent_mesh_overlap_max_m": player_rest_non_adjacent_mesh_overlap_max_m(&gltf),
+        "player_rest_shoulder_mesh_overlap_max_m": player_rest_shoulder_mesh_overlap_max_m(&gltf),
         "player_bank_clip_motion_distinct": player_bank_clip_motion_is_distinct(&gltf),
         "player_launch_glide_land_clip_motion_distinct": player_launch_glide_land_clip_motion_is_distinct(&gltf),
         "player_grounded_locomotion_clip_motion_distinct": player_grounded_locomotion_clip_motion_is_distinct(&gltf),
@@ -647,6 +722,56 @@ struct GeometryMetrics {
     indexed_triangles: u64,
     missing_normals: u64,
     missing_uvs: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Aabb3 {
+    min: Vec3,
+    max: Vec3,
+}
+
+impl Aabb3 {
+    fn from_min_max(min: Vec3, max: Vec3) -> Self {
+        Self { min, max }
+    }
+
+    fn include_aabb(&mut self, bounds: Self) {
+        self.min = self.min.min(bounds.min);
+        self.max = self.max.max(bounds.max);
+    }
+
+    fn include_point(&mut self, point: Vec3) {
+        self.min = self.min.min(point);
+        self.max = self.max.max(point);
+    }
+
+    fn transformed(self, transform: Mat4) -> Self {
+        let mut transformed = Self::from_min_max(
+            transform.transform_point3(Vec3::new(self.min.x, self.min.y, self.min.z)),
+            transform.transform_point3(Vec3::new(self.min.x, self.min.y, self.min.z)),
+        );
+        for x in [self.min.x, self.max.x] {
+            for y in [self.min.y, self.max.y] {
+                for z in [self.min.z, self.max.z] {
+                    transformed.include_point(transform.transform_point3(Vec3::new(x, y, z)));
+                }
+            }
+        }
+        transformed
+    }
+
+    fn overlap_depth_m(self, other: Self) -> f64 {
+        let overlap = [
+            self.max.x.min(other.max.x) - self.min.x.max(other.min.x),
+            self.max.y.min(other.max.y) - self.min.y.max(other.min.y),
+            self.max.z.min(other.max.z) - self.min.z.max(other.min.z),
+        ];
+        if overlap.iter().all(|depth| *depth > 0.0) {
+            overlap.into_iter().fold(f32::INFINITY, f32::min) as f64
+        } else {
+            0.0
+        }
+    }
 }
 
 fn geometry_metrics(gltf: &Value) -> GeometryMetrics {
@@ -859,6 +984,117 @@ fn player_rest_articulated_joint_gap_max_m(gltf: &Value) -> Option<f64> {
         })
         .collect::<Option<Vec<_>>>()
         .map(|gaps| gaps.into_iter().fold(0.0, f64::max))
+}
+
+fn player_rest_mesh_bounds_present(gltf: &Value) -> bool {
+    player_rest_mesh_overlap_node_names()
+        .into_iter()
+        .all(|node_name| node_world_mesh_aabb(gltf, node_name).is_some())
+}
+
+fn player_rest_non_adjacent_mesh_overlap_max_m(gltf: &Value) -> Option<f64> {
+    mesh_overlap_max_m(gltf, &player_rest_non_adjacent_mesh_overlap_pairs())
+}
+
+fn player_rest_shoulder_mesh_overlap_max_m(gltf: &Value) -> Option<f64> {
+    mesh_overlap_max_m(
+        gltf,
+        &[
+            ("Nau Left Suit Upper Arm", "Nau Suit Armored Torso Shell"),
+            ("Nau Right Suit Upper Arm", "Nau Suit Armored Torso Shell"),
+        ],
+    )
+}
+
+fn mesh_overlap_max_m(gltf: &Value, pairs: &[(&'static str, &'static str)]) -> Option<f64> {
+    pairs
+        .iter()
+        .map(|(left, right)| {
+            Some(
+                node_world_mesh_aabb(gltf, left)?
+                    .overlap_depth_m(node_world_mesh_aabb(gltf, right)?),
+            )
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|overlaps| overlaps.into_iter().fold(0.0, f64::max))
+}
+
+fn player_rest_mesh_overlap_node_names() -> Vec<&'static str> {
+    let mut names = Vec::new();
+    names.extend_from_slice(PLAYER_REST_TORSO_BLOCKING_MESH_NODES);
+    names.extend_from_slice(PLAYER_REST_LEFT_ARM_MESH_NODES);
+    names.extend_from_slice(PLAYER_REST_RIGHT_ARM_MESH_NODES);
+    names.extend_from_slice(PLAYER_REST_LEFT_LEG_MESH_NODES);
+    names.extend_from_slice(PLAYER_REST_RIGHT_LEG_MESH_NODES);
+    names.sort_unstable();
+    names.dedup();
+    names
+}
+
+fn player_rest_non_adjacent_mesh_overlap_pairs() -> Vec<(&'static str, &'static str)> {
+    let mut pairs = Vec::new();
+    append_cross_pairs(
+        &mut pairs,
+        PLAYER_REST_LEFT_DISTAL_ARM_MESH_NODES,
+        PLAYER_REST_TORSO_BLOCKING_MESH_NODES,
+    );
+    append_cross_pairs(
+        &mut pairs,
+        PLAYER_REST_RIGHT_DISTAL_ARM_MESH_NODES,
+        PLAYER_REST_TORSO_BLOCKING_MESH_NODES,
+    );
+    append_cross_pairs(
+        &mut pairs,
+        PLAYER_REST_LEFT_DISTAL_LEG_MESH_NODES,
+        PLAYER_REST_TORSO_BLOCKING_MESH_NODES,
+    );
+    append_cross_pairs(
+        &mut pairs,
+        PLAYER_REST_RIGHT_DISTAL_LEG_MESH_NODES,
+        PLAYER_REST_TORSO_BLOCKING_MESH_NODES,
+    );
+    append_cross_pairs(
+        &mut pairs,
+        PLAYER_REST_LEFT_ARM_MESH_NODES,
+        PLAYER_REST_RIGHT_ARM_MESH_NODES,
+    );
+    append_cross_pairs(
+        &mut pairs,
+        PLAYER_REST_LEFT_LEG_MESH_NODES,
+        PLAYER_REST_RIGHT_LEG_MESH_NODES,
+    );
+    append_cross_pairs(
+        &mut pairs,
+        PLAYER_REST_LEFT_ARM_MESH_NODES,
+        PLAYER_REST_LEFT_LEG_MESH_NODES,
+    );
+    append_cross_pairs(
+        &mut pairs,
+        PLAYER_REST_RIGHT_ARM_MESH_NODES,
+        PLAYER_REST_RIGHT_LEG_MESH_NODES,
+    );
+    append_cross_pairs(
+        &mut pairs,
+        PLAYER_REST_LEFT_ARM_MESH_NODES,
+        PLAYER_REST_RIGHT_LEG_MESH_NODES,
+    );
+    append_cross_pairs(
+        &mut pairs,
+        PLAYER_REST_RIGHT_ARM_MESH_NODES,
+        PLAYER_REST_LEFT_LEG_MESH_NODES,
+    );
+    pairs
+}
+
+fn append_cross_pairs(
+    pairs: &mut Vec<(&'static str, &'static str)>,
+    left: &'static [&'static str],
+    right: &'static [&'static str],
+) {
+    pairs.extend(
+        left.iter()
+            .flat_map(|left| right.iter().map(move |right| (*left, *right))),
+    );
 }
 
 fn player_pose_shape_audit() -> Value {
@@ -1192,6 +1428,53 @@ fn world_node_transform(gltf: &Value, node_name: &str) -> Option<Mat4> {
         })
 }
 
+fn node_world_mesh_aabb(gltf: &Value, node_name: &str) -> Option<Aabb3> {
+    let nodes = gltf.get("nodes")?.as_array()?;
+    let node_index = node_index(gltf, node_name)?;
+    let mesh_index = nodes.get(node_index)?.get("mesh").and_then(Value::as_u64)? as usize;
+    let mesh = gltf.get("meshes")?.as_array()?.get(mesh_index)?;
+    Some(mesh_local_aabb(gltf, mesh)?.transformed(world_node_transform(gltf, node_name)?))
+}
+
+fn mesh_local_aabb(gltf: &Value, mesh: &Value) -> Option<Aabb3> {
+    let accessors = gltf.get("accessors")?.as_array()?;
+    let primitives = mesh.get("primitives")?.as_array()?;
+    primitives
+        .iter()
+        .map(|primitive| {
+            let position_accessor_index = primitive
+                .get("attributes")?
+                .get("POSITION")
+                .and_then(Value::as_u64)? as usize;
+            accessor_aabb(accessors.get(position_accessor_index)?)
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|bounds| {
+            bounds
+                .into_iter()
+                .reduce(|mut aggregate, bounds| {
+                    aggregate.include_aabb(bounds);
+                    aggregate
+                })
+                .expect("mesh with primitives should have at least one bounds")
+        })
+}
+
+fn accessor_aabb(accessor: &Value) -> Option<Aabb3> {
+    let min = vec3_field(accessor.get("min")?)?;
+    let max = vec3_field(accessor.get("max")?)?;
+    Some(Aabb3::from_min_max(min, max))
+}
+
+fn vec3_field(value: &Value) -> Option<Vec3> {
+    let values = value.as_array()?;
+    Some(Vec3::new(
+        values.first()?.as_f64()? as f32,
+        values.get(1)?.as_f64()? as f32,
+        values.get(2)?.as_f64()? as f32,
+    ))
+}
+
 fn node_local_transform_by_index(nodes: &[Value], index: usize) -> Option<Mat4> {
     let node = nodes.get(index)?;
     if let Some(matrix) = node.get("matrix").and_then(Value::as_array) {
@@ -1495,6 +1778,41 @@ mod tests {
         assert!((translation[0] - 3.0).abs() < 0.0001);
         assert!((translation[1] - 3.0).abs() < 0.0001);
         assert!((translation[2] - 4.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn node_world_mesh_aabb_uses_accessor_bounds_and_node_transform() {
+        let gltf = json!({
+            "nodes": [
+                {"name": "root", "translation": [1.0, 0.0, 0.0], "children": [1]},
+                {"name": "box", "mesh": 0, "translation": [0.0, 2.0, 0.0], "scale": [2.0, 1.0, 1.0]}
+            ],
+            "meshes": [
+                {"primitives": [{"attributes": {"POSITION": 0}}]}
+            ],
+            "accessors": [
+                {"min": [-1.0, -0.5, -0.25], "max": [1.0, 0.5, 0.25]}
+            ]
+        });
+
+        let bounds = node_world_mesh_aabb(&gltf, "box").expect("world mesh bounds");
+
+        assert!((bounds.min.x + 1.0).abs() < 0.0001);
+        assert!((bounds.max.x - 3.0).abs() < 0.0001);
+        assert!((bounds.min.y - 1.5).abs() < 0.0001);
+        assert!((bounds.max.y - 2.5).abs() < 0.0001);
+        assert!((bounds.min.z + 0.25).abs() < 0.0001);
+        assert!((bounds.max.z - 0.25).abs() < 0.0001);
+    }
+
+    #[test]
+    fn aabb_overlap_depth_reports_smallest_axis_penetration() {
+        let left = Aabb3::from_min_max(Vec3::ZERO, Vec3::new(1.0, 2.0, 3.0));
+        let right = Aabb3::from_min_max(Vec3::new(0.75, -1.0, 1.0), Vec3::new(2.0, 1.0, 2.0));
+        let separated = Aabb3::from_min_max(Vec3::new(2.0, 0.0, 0.0), Vec3::new(3.0, 1.0, 1.0));
+
+        assert!((left.overlap_depth_m(right) - 0.25).abs() < 0.0001);
+        assert_eq!(left.overlap_depth_m(separated), 0.0);
     }
 
     #[test]

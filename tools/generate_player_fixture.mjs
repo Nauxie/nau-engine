@@ -368,13 +368,13 @@ for (const side of [
   const [label, sign] = side;
   const lower = label.toLowerCase();
   const socket = addMeshChild(nodeIds.torso, `Nau ${label} Shoulder Socket`, 26, {
-    translation: [sign * 0.46, 0.54, -0.02],
+    translation: [sign * 0.52, 0.54, -0.02],
     rotation: rotZ(sign * 0.14),
     scale: [1.0, 1.0, 1.0],
   });
   nodeIds[`${lower}ShoulderSocket`] = socket;
   const arm = addChild(nodeIds.torso, `Nau ${label} Arm`, {
-    translation: [sign * 0.46, 0.54, -0.02],
+    translation: [sign * 0.52, 0.54, -0.02],
   });
   nodeIds[`${lower}Arm`] = arm;
   addMeshChild(arm, `Nau ${label} Suit Upper Arm`, 5, {
@@ -422,9 +422,9 @@ for (const side of [
     scale: [1.0, 1.35, 1.0],
   });
   addMeshChild(hand, `Nau ${label} Leather Thumb Grip`, 19, {
-    translation: [sign * 0.055, -0.025, -0.025],
-    rotation: rotZ(sign * -0.76),
-    scale: [0.9, 0.95, 0.9],
+    translation: [sign * 0.095, -0.135, -0.025],
+    rotation: rotZ(sign * -0.48),
+    scale: [0.78, 0.86, 0.82],
   });
 }
 
