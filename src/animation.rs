@@ -124,6 +124,7 @@ pub const LANDING_MIN_FOOT_SPLIT_READABILITY_M: f32 = 0.14;
 const DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES: f32 = 82.0;
 const DIVE_MAX_ARM_SPREAD_READABILITY_DEGREES: f32 = 74.0;
 const DIVE_MIN_LEG_TUCK_READABILITY_DEGREES: f32 = 68.0;
+const CONNECTED_LIMB_MAX_TRANSLATION_M: f32 = 0.035;
 const LANDING_ANTICIPATION_BASE_HEIGHT_M: f32 = 6.0;
 const LANDING_ANTICIPATION_MAX_HEIGHT_M: f32 = 36.0;
 const LANDING_ANTICIPATION_SINK_LOOKAHEAD_SECS: f32 = 0.95;
@@ -1417,7 +1418,7 @@ fn connected_limb_translation_limit_m(
             | PlayerPoseIntent::LandingAnticipation
             | PlayerPoseIntent::LandingRecovery
     ) {
-        Some(0.052)
+        Some(CONNECTED_LIMB_MAX_TRANSLATION_M)
     } else {
         None
     }
@@ -1662,8 +1663,8 @@ mod tests {
         assert!(rearward_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
         assert!(rearward_arm.rotation.angle_between(forward_arm.rotation) > 0.10);
         assert!(rearward_leg.rotation.angle_between(forward_leg.rotation) > 0.12);
-        assert!(rearward_arm.translation.length() <= 0.053);
-        assert!(rearward_leg.translation.length() <= 0.053);
+        assert!(rearward_arm.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
+        assert!(rearward_leg.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
         assert!(rearward_glider.translation_offset.z < forward_glider.translation_offset.z - 0.035);
         assert!(rearward_glider.response_degrees() > forward_glider.response_degrees() + 2.5);
     }
@@ -1781,7 +1782,7 @@ mod tests {
         let leg_b = part_pose_with_context(&left_leg, context, 1.0);
 
         assert!(arm_a.rotation.angle_between(arm_b.rotation) > 0.02);
-        assert!((arm_a.translation.z - arm_b.translation.z).abs() > 0.02);
+        assert!((arm_a.translation.z - arm_b.translation.z).abs() > 0.01);
         assert!(leg_a.rotation.angle_between(leg_b.rotation) > 0.02);
     }
 
@@ -2319,7 +2320,7 @@ mod tests {
                 > gliding_torso.rotation.angle_between(Quat::IDENTITY) + 0.45
         );
         assert!(diving_arm.rotation.angle_between(gliding_arm.rotation) > 0.20);
-        assert!(diving_arm.translation.length() <= 0.053);
+        assert!(diving_arm.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
     }
 
     #[test]
@@ -2366,7 +2367,7 @@ mod tests {
                 .to_degrees()
                 > 8.0
         );
-        assert!(fast_leg.translation.length() <= 0.053);
+        assert!(fast_leg.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
     }
 
     #[test]
@@ -2548,8 +2549,8 @@ mod tests {
         assert!(dive_metrics.torso_pitch_degrees > DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES);
         assert!(dive_metrics.arm_spread_degrees < DIVE_MAX_ARM_SPREAD_READABILITY_DEGREES);
         assert!(dive_metrics.leg_tuck_degrees > falling_metrics.leg_tuck_degrees + 30.0);
-        assert!(left_dive_arm.translation.length() <= 0.053);
-        assert!(right_dive_arm.translation.length() <= 0.053);
+        assert!(left_dive_arm.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
+        assert!(right_dive_arm.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
         assert!(dive_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
     }
 
@@ -2588,10 +2589,10 @@ mod tests {
         let metrics = pose_readability_metrics(context, 1.1);
 
         assert_eq!(context.intent(), PlayerPoseIntent::Diving);
-        assert!(arm_a.translation.length() <= 0.053);
-        assert!(arm_b.translation.length() <= 0.053);
-        assert!(leg_a.translation.length() <= 0.053);
-        assert!(leg_b.translation.length() <= 0.053);
+        assert!(arm_a.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
+        assert!(arm_b.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
+        assert!(leg_a.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
+        assert!(leg_b.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
         assert!(arm_a.rotation.angle_between(arm_b.rotation).to_degrees() > 3.0);
         assert!(leg_a.rotation.angle_between(leg_b.rotation).to_degrees() > 2.0);
         assert!(
@@ -2674,8 +2675,8 @@ mod tests {
         assert!(landing_metrics.torso_pitch_degrees > 32.0);
         assert!(falling_metrics.torso_pitch_degrees > 36.0);
         assert!(landing_metrics.torso_pitch_degrees > gliding_metrics.torso_pitch_degrees + 12.0);
-        assert!(landing.translation.length() <= 0.053);
-        assert!(falling.translation.length() <= 0.053);
+        assert!(landing.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
+        assert!(falling.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
         assert!(landing.rotation.angle_between(falling.rotation) > 1.0);
     }
 
@@ -2816,7 +2817,7 @@ mod tests {
 
         assert!(recovery_torso.translation.y < stride_torso.translation.y - 0.06);
         assert!(recovery_leg.rotation.angle_between(stride_leg.rotation) > 0.55);
-        assert!(recovery_leg.translation.length() <= 0.053);
+        assert!(recovery_leg.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
         assert!(recovery_metrics.landing_recovery_flip_degrees > 48.0);
         assert!(recovery_metrics.landing_foot_split_m >= LANDING_MIN_FOOT_SPLIT_READABILITY_M);
         assert!(recovery_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
@@ -3072,8 +3073,12 @@ mod tests {
                 .to_degrees()
                 > 4.0
         );
-        assert!(right_turn_right_arm.translation.length() <= 0.053);
-        assert!(right_turn_right_leg.translation.length() <= 0.053);
+        assert!(
+            right_turn_right_arm.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001
+        );
+        assert!(
+            right_turn_right_leg.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001
+        );
     }
 
     #[test]
@@ -3154,8 +3159,12 @@ mod tests {
                 .to_degrees()
                 > 4.0
         );
-        assert!(right_brake_right_arm.translation.length() <= 0.053);
-        assert!(right_brake_right_leg.translation.length() <= 0.053);
+        assert!(
+            right_brake_right_arm.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001
+        );
+        assert!(
+            right_brake_right_leg.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001
+        );
         assert!(right_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
     }
 
