@@ -14,7 +14,7 @@ use crate::world_collision_runtime::{
 };
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartPose, PartVisibility, PlayerPoseContext,
-    advance_phase, body_local_pose_velocity, glider_deployment_for_mode, glider_traversal_pose,
+    advance_phase, body_local_pose_velocity, glider_deployment_for_context, glider_traversal_pose,
     part_pose_with_context, pose_blend_for_intent, resolve_pose_input, resolve_pose_intent,
     wind_lateral_load_from_delta,
 };
@@ -743,7 +743,7 @@ pub(crate) fn apply_authored_glider_pose(
             &mut transform,
             pose.translation_offset,
             pose.rotation_offset,
-            authored_glider_deployment(controller.mode),
+            authored_glider_deployment(pose_context),
             pose_time_secs,
             blend,
         );
@@ -830,8 +830,8 @@ fn reapply_smoothed_authored_glider_pose(glider: &AuthoredGliderPose, transform:
     transform.scale = glider.smoothed_scale;
 }
 
-fn authored_glider_deployment(mode: FlightMode) -> f32 {
-    glider_deployment_for_mode(mode)
+fn authored_glider_deployment(context: PlayerPoseContext) -> f32 {
+    glider_deployment_for_context(context)
 }
 
 fn authored_glider_stowed_translation_offset() -> Vec3 {
@@ -1054,28 +1054,26 @@ mod tests {
         let base = authored_glider_scene_transform();
         let mut glider = AuthoredGliderPose::new(&base);
         let mut transform = base;
-        let launch_pose = glider_traversal_pose(
-            PlayerPoseContext::new(
-                FlightMode::Launching,
-                Vec3::new(0.0, 8.0, -20.0),
-                FlightInput::default(),
-                80.0,
-            ),
-            0.0,
+        let launch_context = PlayerPoseContext::new(
+            FlightMode::Launching,
+            Vec3::new(0.0, 8.0, -20.0),
+            FlightInput::default(),
+            80.0,
         );
+        let launch_pose = glider_traversal_pose(launch_context, 0.0);
 
         apply_authored_glider_pose_smoothing(
             &mut glider,
             &mut transform,
             launch_pose.translation_offset,
             launch_pose.rotation_offset,
-            authored_glider_deployment(FlightMode::Launching),
+            authored_glider_deployment(launch_context),
             0.0,
             1.0,
         );
 
-        assert!(authored_glider_deployment(FlightMode::Launching) > 0.0);
-        assert!(authored_glider_deployment(FlightMode::Launching) < 1.0);
+        assert!(authored_glider_deployment(launch_context) > 0.0);
+        assert!(authored_glider_deployment(launch_context) < 1.0);
         assert!(launch_pose.motion_m() > 0.18);
         assert!(launch_pose.response_degrees() > 8.0);
         assert!(glider.motion_m(&transform) > 0.25);
