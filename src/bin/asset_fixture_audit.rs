@@ -23,12 +23,12 @@ const PLAYER_REST_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.005;
 const PLAYER_REST_MAX_SHOULDER_MESH_OVERLAP_M: f64 = 0.015;
 const PLAYER_POSE_MAX_ARTICULATED_JOINT_GAP_M: f64 = 0.018;
 const PLAYER_POSE_MAX_JOINT_COVER_MESH_GAP_M: f64 = 0.035;
-const PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M: f64 = 0.11;
+const PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M: f64 = 0.09;
 const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M: f64 = 0.012;
 const PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M: f64 = 0.08;
 const PLAYER_POSE_MAX_JOINT_SEAM_MESH_GAP_M: f64 = 0.008;
 const PLAYER_POSE_MIN_JOINT_SEAM_MESH_OVERLAP_M: f64 = 0.004;
-const PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M: f64 = 0.095;
+const PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M: f64 = 0.045;
 const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.001;
 const PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT: f64 = 6.0;
 const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 4.0;
@@ -3880,6 +3880,15 @@ fn player_pose_surface_contact_sample(
     overrides: &[PoseNodeOverride],
     buffers: &[Vec<u8>],
 ) -> Option<ClosestSurfacePoints> {
+    let left_obb = node_world_mesh_obb_with_pose(gltf, pair.left, overrides)?;
+    let right_obb = node_world_mesh_obb_with_pose(gltf, pair.right, overrides)?;
+    if left_obb.overlap_depth_m(right_obb) > 0.0005 {
+        return Some(ClosestSurfacePoints {
+            distance_m: 0.0,
+            left: Vec3::ZERO,
+            right: Vec3::ZERO,
+        });
+    }
     let left = node_world_surface_points_with_pose(gltf, pair.left, overrides, buffers)?;
     let right = node_world_surface_points_with_pose(gltf, pair.right, overrides, buffers)?;
     closest_surface_points(&left, &right)
@@ -5337,6 +5346,21 @@ mod tests {
         assert!(
             number_field(&audit, "max_distance_m") <= PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M
         );
+        assert!(number_field(&audit, "max_distance_m") <= 0.020);
+
+        let hip_contact = audit
+            .get("pairs")
+            .and_then(Value::as_array)
+            .and_then(|pairs| {
+                pairs.iter().find(|pair| {
+                    pair.get("left_node").and_then(Value::as_str)
+                        == Some("Nau Left Seamless Hip Flex Cover")
+                        && pair.get("right_node").and_then(Value::as_str)
+                            == Some("Nau Left Hip Joint Cover")
+                })
+            })
+            .expect("hip flex contact pair");
+        assert_eq!(number_field(hip_contact, "max_distance_m"), 0.0);
     }
 
     #[test]

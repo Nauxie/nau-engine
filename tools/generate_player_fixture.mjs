@@ -466,8 +466,8 @@ nodeIds.neckSocket = addChild(nodeIds.torso, "Nau Neck Socket", {
   translation: [0.0, 0.78, -0.02],
 });
 addMeshChild(nodeIds.neckSocket, "Nau Neck Joint Cover", meshIndex("Nau Suit Neck Gasket"), {
-  translation: [0.0, -0.27, 0.01],
-  scale: [0.50, 0.06, 0.50],
+  translation: [0.0, -0.255, 0.01],
+  scale: [0.54, 0.078, 0.54],
 });
 nodeIds.head = addChild(nodeIds.torso, "Nau Head", { translation: [0.0, 0.78, -0.02] });
 addMeshChild(nodeIds.head, "Nau Skin Rounded Head", meshIndex("Nau Skin Rounded Head"), {
@@ -501,7 +501,7 @@ for (const side of [
   addMeshChild(socket, `Nau ${label} Shoulder Joint Cover`, meshIndex("Nau Joint Shoulder Socket"), {
     translation: [sign * -0.02, -0.015, 0.0],
     rotation: rotZ(sign * 0.14),
-    scale: [0.50, 0.34, 0.52],
+    scale: [0.41, 0.24, 0.43],
   });
   nodeIds[`${lower}ShoulderSocket`] = socket;
   const arm = addChild(nodeIds.torso, `Nau ${label} Arm`, {
@@ -534,7 +534,7 @@ for (const side of [
   });
   addMeshChild(elbowSocket, `Nau ${label} Elbow Joint Cover`, meshIndex("Nau Joint Wrist Sleeve"), {
     translation: [0.0, 0.0, 0.0],
-    scale: [1.02, 0.10, 1.02],
+    scale: [0.88, 0.074, 0.88],
   });
   const forearm = addChild(arm, `Nau ${label} Forearm`, {
     translation: [0.0, -0.54, 0.018],
@@ -563,8 +563,8 @@ for (const side of [
     translation: [0.0, -0.49, -0.005],
   });
   addMeshChild(wristSocket, `Nau ${label} Wrist Joint Cover`, meshIndex("Nau Joint Wrist Sleeve"), {
-    translation: [0.0, 0.012, 0.0],
-    scale: [0.50, 0.052, 0.50],
+    translation: [0.0, 0.024, 0.0],
+    scale: [0.44, 0.034, 0.44],
   });
   const hand = addChild(forearm, `Nau ${label} Leather Hand Palm`, {
     mesh: meshIndex("Nau Leather Hand Palm"),
@@ -574,56 +574,57 @@ for (const side of [
   });
   nodeIds[`${lower}Hand`] = hand;
   addMeshChild(hand, `Nau ${label} Wrist Bridge Sleeve`, meshIndex("Nau Leather Wrist Bridge Sleeve"), {
-    translation: [0.0, 0.020, 0.0],
-    scale: [1.0, 0.07, 1.0],
+    translation: [0.0, 0.028, 0.0],
+    scale: [1.04, 0.082, 1.04],
   });
   addMeshChild(hand, `Nau ${label} Seamless Wrist Flex Cover`, meshIndex("Nau Seamless Wrist Flex Cover"), {
-    translation: [0.0, 0.024, 0.0],
+    translation: [0.0, 0.034, 0.0],
+    scale: [1.08, 1.08, 1.08],
   });
   addMeshChild(hand, `Nau ${label} Leather Index Finger Grip`, meshIndex("Nau Leather Finger Grip"), {
-    translation: [sign * -0.060, -0.128, -0.050],
+    translation: [sign * -0.068, -0.138, -0.052],
     rotation: rotX(0.24),
-    scale: [0.88, 0.155, 0.92],
+    scale: [0.88, 0.168, 0.92],
   });
   addMeshChild(hand, `Nau ${label} Leather Finger Grip`, meshIndex("Nau Leather Finger Grip"), {
-    translation: [0.0, -0.136, -0.058],
+    translation: [0.0, -0.148, -0.060],
     rotation: rotX(0.24),
-    scale: [1.0, 0.165, 1.0],
+    scale: [1.0, 0.178, 1.0],
   });
   addMeshChild(hand, `Nau ${label} Leather Ring Finger Grip`, meshIndex("Nau Leather Finger Grip"), {
-    translation: [sign * 0.054, -0.126, -0.050],
+    translation: [sign * 0.060, -0.136, -0.052],
     rotation: rotX(0.22),
-    scale: [0.84, 0.148, 0.88],
+    scale: [0.84, 0.160, 0.88],
   });
   addMeshChild(hand, `Nau ${label} Leather Pinky Finger Grip`, meshIndex("Nau Leather Finger Grip"), {
-    translation: [sign * 0.096, -0.114, -0.042],
+    translation: [sign * 0.106, -0.122, -0.044],
     rotation: rotX(0.20),
-    scale: [0.68, 0.118, 0.76],
+    scale: [0.68, 0.128, 0.76],
   });
   addMeshChild(hand, `Nau ${label} Leather Thumb Grip`, meshIndex("Nau Leather Finger Grip"), {
-    translation: [sign * 0.128, -0.090, -0.018],
+    translation: [sign * 0.140, -0.096, -0.018],
     rotation: rotZ(sign * -0.56),
-    scale: [0.78, 0.118, 0.84],
+    scale: [0.78, 0.130, 0.84],
   });
   addMeshChild(hand, `Nau ${label} Leather Index Finger Tip Pad`, meshIndex("Nau Leather Finger Tip Pad"), {
-    translation: [sign * -0.060, -0.214, -0.032],
+    translation: [sign * -0.068, -0.232, -0.034],
     rotation: rotX(0.24),
   });
   addMeshChild(hand, `Nau ${label} Leather Middle Finger Tip Pad`, meshIndex("Nau Leather Finger Tip Pad"), {
-    translation: [0.0, -0.228, -0.038],
+    translation: [0.0, -0.250, -0.040],
     rotation: rotX(0.24),
   });
   addMeshChild(hand, `Nau ${label} Leather Ring Finger Tip Pad`, meshIndex("Nau Leather Finger Tip Pad"), {
-    translation: [sign * 0.054, -0.210, -0.033],
+    translation: [sign * 0.060, -0.228, -0.035],
     rotation: rotX(0.22),
   });
   addMeshChild(hand, `Nau ${label} Leather Pinky Finger Tip Pad`, meshIndex("Nau Leather Finger Tip Pad"), {
-    translation: [sign * 0.096, -0.182, -0.028],
+    translation: [sign * 0.106, -0.198, -0.030],
     rotation: rotX(0.20),
     scale: [0.82, 0.82, 0.86],
   });
   addMeshChild(hand, `Nau ${label} Leather Thumb Tip Pad`, meshIndex("Nau Leather Finger Tip Pad"), {
-    translation: [sign * 0.176, -0.126, -0.016],
+    translation: [sign * 0.194, -0.138, -0.016],
     rotation: rotZ(sign * -0.56),
     scale: [0.84, 0.84, 0.90],
   });
@@ -653,28 +654,29 @@ for (const side of [
   const hipSocket = addChild(nodeIds.hips, `Nau ${label} Hip Socket`, {
     translation: [sign * 0.25, -0.17, 0.02],
   });
-  addMeshChild(hipSocket, `Nau ${label} Hip Joint Cover`, meshIndex("Nau Joint Hip Socket"), {
-    translation: [sign * 0.005, 0.0, 0.0],
-    rotation: rotZ(sign * 0.10),
-    scale: [0.56, 0.42, 0.56],
-  });
   nodeIds[`${lower}HipSocket`] = hipSocket;
   const leg = addChild(nodeIds.hips, `Nau ${label} Leg`, {
     translation: [sign * 0.25, -0.17, 0.02],
   });
   nodeIds[`${lower}Leg`] = leg;
+  addMeshChild(leg, `Nau ${label} Hip Joint Cover`, meshIndex("Nau Joint Hip Socket"), {
+    translation: [sign * 0.005, 0.002, 0.0],
+    rotation: rotZ(sign * 0.10),
+    scale: [0.56, 0.40, 0.58],
+  });
   addMeshChild(leg, `Nau ${label} Hip Bridge Sleeve`, meshIndex("Nau Suit Hip Bridge Sleeve"), {
-    translation: [sign * 0.002, 0.018, 0.0],
+    translation: [sign * 0.006, 0.026, 0.0],
     rotation: rotZ(sign * 0.08),
-    scale: [1.08, 0.16, 1.08],
+    scale: [1.08, 0.14, 1.08],
   });
   addMeshChild(leg, `Nau ${label} Seamless Hip Flex Cover`, meshIndex("Nau Seamless Hip Flex Cover"), {
-    translation: [sign * 0.004, -0.002, 0.0],
+    translation: [sign * 0.010, 0.016, 0.0],
     rotation: rotZ(sign * 0.08),
+    scale: [1.08, 1.02, 1.08],
   });
   addMeshChild(leg, `Nau ${label} Suit Thigh Guard`, meshIndex("Nau Suit Thigh Guard"), {
-    translation: [0.0, -0.215, 0.0],
-    scale: [1.0, 0.44, 1.0],
+    translation: [0.0, -0.218, 0.0],
+    scale: [1.02, 0.44, 1.02],
   });
   const kneeSocket = addChild(leg, `Nau ${label} Knee Socket`, {
     translation: [0.0, -0.43, 0.01],
@@ -732,24 +734,26 @@ for (const side of [
     scale: [1.0, 0.18, 1.0],
   });
   addMeshChild(boot, `Nau ${label} Leather Boot Toe Cap`, meshIndex("Nau Leather Boot Toe Cap"), {
-    translation: [0.0, -0.134, -0.118],
+    translation: [0.0, -0.136, -0.122],
     rotation: rotX(0.08),
     scale: [1.08, 1.0, 1.22],
   });
   addMeshChild(boot, `Nau ${label} Leather Outer Toe Lug`, meshIndex("Nau Leather Boot Toe Lug"), {
-    translation: [sign * 0.084, -0.142, -0.164],
+    translation: [sign * 0.086, -0.144, -0.166],
     rotation: rotX(0.08),
   });
   addMeshChild(boot, `Nau ${label} Leather Inner Toe Lug`, meshIndex("Nau Leather Boot Toe Lug"), {
-    translation: [sign * -0.054, -0.140, -0.160],
+    translation: [sign * -0.056, -0.142, -0.162],
     rotation: rotX(0.08),
     scale: [0.88, 0.88, 1.0],
   });
   addMeshChild(boot, `Nau ${label} Leather Boot Sole`, meshIndex("Nau Leather Boot Sole"), {
     translation: [0.0, -0.238, 0.006],
+    scale: [1.06, 1.0, 1.12],
   });
   addMeshChild(boot, `Nau ${label} Leather Boot Heel`, meshIndex("Nau Leather Boot Heel"), {
     translation: [0.0, -0.196, 0.116],
+    scale: [1.04, 1.0, 1.04],
   });
   addMeshChild(nodeIds.hips, `Nau ${label} Suit Pelvis Side Plate`, meshIndex("Nau Suit Pelvis Side Plate"), {
     translation: [sign * 0.29, -0.06, -0.005],
