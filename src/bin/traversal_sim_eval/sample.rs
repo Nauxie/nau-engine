@@ -495,67 +495,307 @@ impl SimSample {
 fn generated_pose_limb_clearance_m(context: PlayerPoseContext, phase: f32) -> f32 {
     const TORSO_RADIUS_M: f32 = 0.26;
     const ARM_RADIUS_M: f32 = 0.10;
+    const FOREARM_RADIUS_M: f32 = 0.055;
+    const HAND_RADIUS_M: f32 = 0.047;
     const LEG_RADIUS_M: f32 = 0.11;
+    const LOWER_LEG_RADIUS_M: f32 = 0.067;
+    const FOOT_RADIUS_M: f32 = 0.059;
 
-    let torso = generated_part_translation(
+    let torso = generated_part_transform(
         CharacterPartRole::Torso,
         Vec3::new(0.0, 1.08, 0.0),
         context,
         phase,
     );
-    let left_arm = generated_part_translation(
+    let left_arm = generated_part_transform(
         CharacterPartRole::Arm(Side::Left),
         Vec3::new(-0.55, 1.17, 0.0),
         context,
         phase,
     );
-    let right_arm = generated_part_translation(
+    let right_arm = generated_part_transform(
         CharacterPartRole::Arm(Side::Right),
         Vec3::new(0.55, 1.17, 0.0),
         context,
         phase,
     );
-    let left_leg = generated_part_translation(
+    let left_forearm = left_arm.compose_child(generated_part_transform(
+        CharacterPartRole::Forearm(Side::Left),
+        Vec3::new(0.0, -0.44, 0.018),
+        context,
+        phase,
+    ));
+    let right_forearm = right_arm.compose_child(generated_part_transform(
+        CharacterPartRole::Forearm(Side::Right),
+        Vec3::new(0.0, -0.44, 0.018),
+        context,
+        phase,
+    ));
+    let left_hand = left_forearm.compose_child(generated_part_transform(
+        CharacterPartRole::Hand(Side::Left),
+        Vec3::new(0.0, -0.39, -0.005),
+        context,
+        phase,
+    ));
+    let right_hand = right_forearm.compose_child(generated_part_transform(
+        CharacterPartRole::Hand(Side::Right),
+        Vec3::new(0.0, -0.39, -0.005),
+        context,
+        phase,
+    ));
+    let left_leg = generated_part_transform(
         CharacterPartRole::Leg(Side::Left),
         Vec3::new(-0.22, 0.32, 0.02),
         context,
         phase,
     );
-    let right_leg = generated_part_translation(
+    let right_leg = generated_part_transform(
         CharacterPartRole::Leg(Side::Right),
         Vec3::new(0.22, 0.32, 0.02),
         context,
         phase,
     );
+    let left_lower_leg = left_leg.compose_child(generated_part_transform(
+        CharacterPartRole::LowerLeg(Side::Left),
+        Vec3::new(0.0, -0.34, 0.01),
+        context,
+        phase,
+    ));
+    let right_lower_leg = right_leg.compose_child(generated_part_transform(
+        CharacterPartRole::LowerLeg(Side::Right),
+        Vec3::new(0.0, -0.34, 0.01),
+        context,
+        phase,
+    ));
+    let left_foot = left_lower_leg.compose_child(generated_part_transform(
+        CharacterPartRole::Foot(Side::Left),
+        Vec3::new(0.0, -0.32, -0.012),
+        context,
+        phase,
+    ));
+    let right_foot = right_lower_leg.compose_child(generated_part_transform(
+        CharacterPartRole::Foot(Side::Right),
+        Vec3::new(0.0, -0.32, -0.012),
+        context,
+        phase,
+    ));
 
     [
-        limb_clearance(torso, left_arm, TORSO_RADIUS_M, ARM_RADIUS_M),
-        limb_clearance(torso, right_arm, TORSO_RADIUS_M, ARM_RADIUS_M),
-        limb_clearance(torso, left_leg, TORSO_RADIUS_M, LEG_RADIUS_M),
-        limb_clearance(torso, right_leg, TORSO_RADIUS_M, LEG_RADIUS_M),
-        limb_clearance(left_arm, right_arm, ARM_RADIUS_M, ARM_RADIUS_M),
-        limb_clearance(left_arm, left_leg, ARM_RADIUS_M, LEG_RADIUS_M),
-        limb_clearance(left_arm, right_leg, ARM_RADIUS_M, LEG_RADIUS_M),
-        limb_clearance(right_arm, left_leg, ARM_RADIUS_M, LEG_RADIUS_M),
-        limb_clearance(right_arm, right_leg, ARM_RADIUS_M, LEG_RADIUS_M),
-        limb_clearance(left_leg, right_leg, LEG_RADIUS_M, LEG_RADIUS_M),
+        limb_clearance(
+            torso.translation,
+            left_arm.translation,
+            TORSO_RADIUS_M,
+            ARM_RADIUS_M,
+        ),
+        limb_clearance(
+            torso.translation,
+            right_arm.translation,
+            TORSO_RADIUS_M,
+            ARM_RADIUS_M,
+        ),
+        limb_clearance(
+            torso.translation,
+            left_forearm.translation,
+            TORSO_RADIUS_M,
+            FOREARM_RADIUS_M,
+        ),
+        limb_clearance(
+            torso.translation,
+            right_forearm.translation,
+            TORSO_RADIUS_M,
+            FOREARM_RADIUS_M,
+        ),
+        limb_clearance(
+            torso.translation,
+            left_hand.translation,
+            TORSO_RADIUS_M,
+            HAND_RADIUS_M,
+        ),
+        limb_clearance(
+            torso.translation,
+            right_hand.translation,
+            TORSO_RADIUS_M,
+            HAND_RADIUS_M,
+        ),
+        limb_clearance(
+            torso.translation,
+            left_leg.translation,
+            TORSO_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            torso.translation,
+            right_leg.translation,
+            TORSO_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            torso.translation,
+            left_lower_leg.translation,
+            TORSO_RADIUS_M,
+            LOWER_LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            torso.translation,
+            right_lower_leg.translation,
+            TORSO_RADIUS_M,
+            LOWER_LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            torso.translation,
+            left_foot.translation,
+            TORSO_RADIUS_M,
+            FOOT_RADIUS_M,
+        ),
+        limb_clearance(
+            torso.translation,
+            right_foot.translation,
+            TORSO_RADIUS_M,
+            FOOT_RADIUS_M,
+        ),
+        limb_clearance(
+            left_arm.translation,
+            right_arm.translation,
+            ARM_RADIUS_M,
+            ARM_RADIUS_M,
+        ),
+        limb_clearance(
+            left_forearm.translation,
+            right_forearm.translation,
+            FOREARM_RADIUS_M,
+            FOREARM_RADIUS_M,
+        ),
+        limb_clearance(
+            left_hand.translation,
+            right_hand.translation,
+            HAND_RADIUS_M,
+            HAND_RADIUS_M,
+        ),
+        limb_clearance(
+            left_arm.translation,
+            left_leg.translation,
+            ARM_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            left_arm.translation,
+            right_leg.translation,
+            ARM_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            left_forearm.translation,
+            left_leg.translation,
+            FOREARM_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            left_forearm.translation,
+            right_leg.translation,
+            FOREARM_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            right_forearm.translation,
+            left_leg.translation,
+            FOREARM_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            right_forearm.translation,
+            right_leg.translation,
+            FOREARM_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            left_hand.translation,
+            left_leg.translation,
+            HAND_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            left_hand.translation,
+            right_leg.translation,
+            HAND_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            right_hand.translation,
+            left_leg.translation,
+            HAND_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            right_hand.translation,
+            right_leg.translation,
+            HAND_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            right_arm.translation,
+            left_leg.translation,
+            ARM_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            right_arm.translation,
+            right_leg.translation,
+            ARM_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            left_leg.translation,
+            right_leg.translation,
+            LEG_RADIUS_M,
+            LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            left_lower_leg.translation,
+            right_lower_leg.translation,
+            LOWER_LEG_RADIUS_M,
+            LOWER_LEG_RADIUS_M,
+        ),
+        limb_clearance(
+            left_foot.translation,
+            right_foot.translation,
+            FOOT_RADIUS_M,
+            FOOT_RADIUS_M,
+        ),
     ]
     .into_iter()
     .fold(f32::INFINITY, f32::min)
 }
 
-fn generated_part_translation(
+#[derive(Clone, Copy)]
+struct GeneratedPartTransform {
+    translation: Vec3,
+    rotation: Quat,
+}
+
+impl GeneratedPartTransform {
+    fn compose_child(self, child: Self) -> Self {
+        Self {
+            translation: self.translation + self.rotation * child.translation,
+            rotation: self.rotation * child.rotation,
+        }
+    }
+}
+
+fn generated_part_transform(
     role: CharacterPartRole,
     base_translation: Vec3,
     context: PlayerPoseContext,
     phase: f32,
-) -> Vec3 {
-    part_pose_with_context(
+) -> GeneratedPartTransform {
+    let pose = part_pose_with_context(
         &CharacterPart::new(role, base_translation, Quat::IDENTITY),
         context,
         phase,
-    )
-    .translation
+    );
+    GeneratedPartTransform {
+        translation: pose.translation,
+        rotation: pose.rotation,
+    }
 }
 
 fn limb_clearance(a: Vec3, b: Vec3, a_radius_m: f32, b_radius_m: f32) -> f32 {

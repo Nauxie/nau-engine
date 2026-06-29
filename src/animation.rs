@@ -50,7 +50,11 @@ pub enum CharacterPartRole {
     Torso,
     Head,
     Arm(Side),
+    Forearm(Side),
+    Hand(Side),
     Leg(Side),
+    LowerLeg(Side),
+    Foot(Side),
     Wing(Side),
     Scarf(ScarfSegment),
 }
@@ -124,7 +128,7 @@ pub const LANDING_MIN_FOOT_SPLIT_READABILITY_M: f32 = 0.14;
 const DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES: f32 = 82.0;
 const DIVE_MAX_ARM_SPREAD_READABILITY_DEGREES: f32 = 74.0;
 const DIVE_MIN_LEG_TUCK_READABILITY_DEGREES: f32 = 68.0;
-const CONNECTED_LIMB_MAX_TRANSLATION_M: f32 = 0.035;
+const CONNECTED_LIMB_MAX_TRANSLATION_M: f32 = 0.015;
 const LANDING_ANTICIPATION_BASE_HEIGHT_M: f32 = 6.0;
 const LANDING_ANTICIPATION_MAX_HEIGHT_M: f32 = 36.0;
 const LANDING_ANTICIPATION_SINK_LOOKAHEAD_SECS: f32 = 0.95;
@@ -618,8 +622,8 @@ fn dive_pose_pressure(context: PlayerPoseContext, intent: PlayerPoseIntent) -> f
     }
 
     let sink_pressure = ((-context.velocity.y - 6.0) / 18.0).clamp(0.0, 1.0);
-    let input_pressure = if context.input.dive { 0.30 } else { 0.0 };
-    (0.30 + input_pressure + sink_pressure * 0.48).clamp(0.0, 1.0)
+    let input_pressure = if context.input.dive { 0.26 } else { 0.0 };
+    (0.28 + input_pressure + sink_pressure * 0.52).clamp(0.0, 1.0)
 }
 
 fn air_brake_pose_pressure(context: PlayerPoseContext, intent: PlayerPoseIntent) -> f32 {
@@ -1198,6 +1202,100 @@ pub fn part_pose_with_context(
                         + sign * dive_side_flutter * 0.05,
                 );
         }
+        CharacterPartRole::Forearm(side) => {
+            let sign = side.sign();
+            let same_side_turn = (sign * turn_weight).max(0.0);
+            let opposite_side_turn = (-sign * turn_weight).max(0.0);
+            let gait = -side_cycle(phase, side);
+            let airflow = airflow_micro_cycle(phase + 0.45, side);
+            let dive_side_flutter = if intent == PlayerPoseIntent::Diving {
+                airflow * dive_pressure
+            } else {
+                0.0
+            };
+            let elbow_pitch = match intent {
+                PlayerPoseIntent::GroundedIdle => -0.08 + breath * 0.020,
+                PlayerPoseIntent::GroundedStride => gait * 0.18 * gait_weight,
+                PlayerPoseIntent::GroundedWalk => gait * 0.20 * walk_weight,
+                PlayerPoseIntent::GroundedRun => gait * (0.28 + run_weight * 0.10),
+                PlayerPoseIntent::Launching => -0.46,
+                PlayerPoseIntent::Falling => -0.28 + airflow * 0.035,
+                PlayerPoseIntent::Gliding => -0.18 + airflow * 0.035,
+                PlayerPoseIntent::AirTurn => {
+                    -0.22 - same_side_turn * 0.18 + opposite_side_turn * 0.06 + airflow * 0.040
+                }
+                PlayerPoseIntent::Diving => 0.30 + dive_extension * 0.14 + dive_side_flutter * 0.05,
+                PlayerPoseIntent::AirBrake => {
+                    -0.54 - brake_pressure * 0.16 - rearward_brake_pressure * 0.18
+                        + same_side_turn * 0.06
+                }
+                PlayerPoseIntent::LandingAnticipation => {
+                    -0.76 - landing_strength * 0.14 - landing_flip * 0.20
+                }
+                PlayerPoseIntent::LandingRecovery => -0.54 - recovery_strength * 0.18,
+            };
+            let elbow_roll = match intent {
+                PlayerPoseIntent::Falling
+                | PlayerPoseIntent::Gliding
+                | PlayerPoseIntent::AirTurn => sign * (0.10 + turn_weight.abs() * 0.04),
+                PlayerPoseIntent::Diving => sign * (0.05 + dive_side_flutter * 0.035),
+                PlayerPoseIntent::AirBrake => sign * (-0.12 - brake_pressure * 0.04),
+                PlayerPoseIntent::LandingAnticipation => sign * 0.12,
+                _ => sign * 0.04,
+            };
+            translation.x += sign * turn_reach * 0.012;
+            translation.y += airflow * 0.006;
+            translation.z += match intent {
+                PlayerPoseIntent::Diving => {
+                    dive_extension * 0.020 + dive_side_flutter.abs() * 0.006
+                }
+                PlayerPoseIntent::AirBrake => rearward_brake_pressure * 0.018,
+                _ => airflow * 0.006,
+            };
+            rotation *= Quat::from_rotation_x(elbow_pitch)
+                * Quat::from_rotation_y(
+                    sign * turn_weight * 0.050 + sign * dive_side_flutter * 0.040,
+                )
+                * Quat::from_rotation_z(elbow_roll);
+        }
+        CharacterPartRole::Hand(side) => {
+            let sign = side.sign();
+            let same_side_turn = (sign * turn_weight).max(0.0);
+            let airflow = airflow_micro_cycle(phase + 1.1, side);
+            let dive_side_flutter = if intent == PlayerPoseIntent::Diving {
+                airflow * dive_pressure
+            } else {
+                0.0
+            };
+            let wrist_pitch = match intent {
+                PlayerPoseIntent::GroundedIdle => 0.04 + breath * 0.018,
+                PlayerPoseIntent::GroundedStride => -side_cycle(phase, side) * 0.10 * gait_weight,
+                PlayerPoseIntent::GroundedWalk => -side_cycle(phase, side) * 0.12 * walk_weight,
+                PlayerPoseIntent::GroundedRun => -side_cycle(phase, side) * 0.18,
+                PlayerPoseIntent::Launching => -0.16,
+                PlayerPoseIntent::Falling => -0.10 + airflow * 0.045,
+                PlayerPoseIntent::Gliding => 0.06 + airflow * 0.050,
+                PlayerPoseIntent::AirTurn => 0.02 + same_side_turn * 0.10 + airflow * 0.045,
+                PlayerPoseIntent::Diving => {
+                    0.16 + dive_extension * 0.10 + dive_side_flutter * 0.060
+                }
+                PlayerPoseIntent::AirBrake => {
+                    -0.28 - brake_pressure * 0.10 - rearward_brake_pressure * 0.12
+                }
+                PlayerPoseIntent::LandingAnticipation => -0.34 - landing_strength * 0.10,
+                PlayerPoseIntent::LandingRecovery => -0.22 - recovery_strength * 0.10,
+            };
+            translation.x += sign * turn_reach * 0.008 + sign * dive_side_flutter * 0.004;
+            translation.y += airflow * 0.006;
+            translation.z += match intent {
+                PlayerPoseIntent::Diving => 0.012 + dive_side_flutter.abs() * 0.006,
+                PlayerPoseIntent::AirBrake => rearward_brake_pressure * 0.012,
+                _ => 0.0,
+            };
+            rotation *= Quat::from_rotation_x(wrist_pitch)
+                * Quat::from_rotation_y(sign * (0.08 + turn_weight * 0.035))
+                * Quat::from_rotation_z(sign * (0.08 + airflow * 0.030));
+        }
         CharacterPartRole::Leg(side) => {
             let sign = side.sign();
             let same_side_turn = (sign * turn_weight).max(0.0);
@@ -1235,7 +1333,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => 0.50 + cycle * 0.04 + airflow * 0.025,
                 PlayerPoseIntent::AirTurn => 0.54 + cycle * 0.04 + airflow * 0.025,
                 PlayerPoseIntent::Diving => {
-                    1.18 + dive_pressure * 0.44 + cycle * 0.012 + airflow * 0.010
+                    1.02 + dive_pressure * 0.36 + cycle * 0.010 + airflow * 0.008
                 }
                 PlayerPoseIntent::AirBrake => {
                     -0.30
@@ -1272,9 +1370,9 @@ pub fn part_pose_with_context(
                 translation.y += 0.05;
             }
             if intent == PlayerPoseIntent::Diving {
-                translation.z += dive_pressure * 0.42;
+                translation.z += dive_pressure * 0.14;
                 translation.x += sign * dive_side_flutter * 0.010;
-                translation.y -= dive_pressure * 0.035;
+                translation.y -= dive_pressure * 0.025;
                 translation.y += dive_side_flutter * 0.006;
                 translation.z += dive_side_flutter * 0.010;
             } else if intent == PlayerPoseIntent::AirBrake {
@@ -1314,6 +1412,89 @@ pub fn part_pose_with_context(
                         + same_side_turn * 0.08
                         + sign * dive_side_flutter * 0.065,
                 );
+        }
+        CharacterPartRole::LowerLeg(side) => {
+            let sign = side.sign();
+            let same_side_turn = (sign * turn_weight).max(0.0);
+            let gait = side_cycle(phase, side);
+            let airflow = airflow_micro_cycle(phase + 1.4, side);
+            let dive_side_flutter = if intent == PlayerPoseIntent::Diving {
+                airflow * dive_pressure
+            } else {
+                0.0
+            };
+            let knee_pitch = match intent {
+                PlayerPoseIntent::GroundedIdle => 0.08 + breath * 0.014,
+                PlayerPoseIntent::GroundedStride => -gait * 0.30 * gait_weight,
+                PlayerPoseIntent::GroundedWalk => -gait * 0.34 * walk_weight,
+                PlayerPoseIntent::GroundedRun => -gait * (0.48 + run_weight * 0.18),
+                PlayerPoseIntent::Launching => 0.24,
+                PlayerPoseIntent::Falling => 0.24 + airflow * 0.040,
+                PlayerPoseIntent::Gliding => 0.18 + airflow * 0.030,
+                PlayerPoseIntent::AirTurn => 0.22 + same_side_turn * 0.10 + airflow * 0.035,
+                PlayerPoseIntent::Diving => 0.26 + dive_pressure * 0.12 + dive_side_flutter * 0.030,
+                PlayerPoseIntent::AirBrake => {
+                    -0.36 - brake_pressure * 0.10 - rearward_brake_pressure * 0.18
+                }
+                PlayerPoseIntent::LandingAnticipation => {
+                    0.62 + landing_strength * 0.22 + landing_flip * 0.26
+                }
+                PlayerPoseIntent::LandingRecovery => 0.44 + recovery_strength * 0.26,
+            };
+            translation.x += sign * turn_reach * 0.006 + sign * dive_side_flutter * 0.004;
+            translation.y += airflow * 0.005;
+            translation.z += match intent {
+                PlayerPoseIntent::Diving => 0.014 + dive_side_flutter.abs() * 0.004,
+                PlayerPoseIntent::LandingAnticipation => 0.012 + landing_flip * 0.010,
+                _ => 0.0,
+            };
+            let lower_leg_roll = match intent {
+                PlayerPoseIntent::LandingAnticipation => {
+                    0.36 + landing_strength * 0.14 + landing_flip * 0.10
+                }
+                PlayerPoseIntent::LandingRecovery => 0.22 + recovery_strength * 0.10,
+                _ => 0.035 + same_side_turn * 0.050,
+            };
+            rotation *= Quat::from_rotation_x(knee_pitch)
+                * Quat::from_rotation_y(sign * (turn_weight * 0.035 + dive_side_flutter * 0.040))
+                * Quat::from_rotation_z(sign * lower_leg_roll);
+        }
+        CharacterPartRole::Foot(side) => {
+            let sign = side.sign();
+            let gait = side_cycle(phase, side);
+            let airflow = airflow_micro_cycle(phase + 1.9, side);
+            let dive_side_flutter = if intent == PlayerPoseIntent::Diving {
+                airflow * dive_pressure
+            } else {
+                0.0
+            };
+            let ankle_pitch = match intent {
+                PlayerPoseIntent::GroundedIdle => -0.03 + breath * 0.010,
+                PlayerPoseIntent::GroundedStride => -0.10 + gait * 0.20 * gait_weight,
+                PlayerPoseIntent::GroundedWalk => -0.08 + gait * 0.22 * walk_weight,
+                PlayerPoseIntent::GroundedRun => -0.12 + gait * (0.30 + run_weight * 0.08),
+                PlayerPoseIntent::Launching => -0.18,
+                PlayerPoseIntent::Falling => -0.08 + airflow * 0.030,
+                PlayerPoseIntent::Gliding => -0.04 + airflow * 0.030,
+                PlayerPoseIntent::AirTurn => -0.06 + airflow * 0.035,
+                PlayerPoseIntent::Diving => {
+                    0.04 + dive_extension * 0.04 + dive_side_flutter * 0.020
+                }
+                PlayerPoseIntent::AirBrake => 0.18 + rearward_brake_pressure * 0.18,
+                PlayerPoseIntent::LandingAnticipation => {
+                    -0.34 - landing_strength * 0.12 - landing_flip * 0.18
+                }
+                PlayerPoseIntent::LandingRecovery => -0.18 - recovery_strength * 0.16,
+            };
+            translation.x += sign * turn_reach * 0.004;
+            translation.z += match intent {
+                PlayerPoseIntent::Diving => 0.002,
+                PlayerPoseIntent::LandingAnticipation => 0.018 + landing_flip * 0.016,
+                _ => 0.0,
+            };
+            rotation *= Quat::from_rotation_x(ankle_pitch)
+                * Quat::from_rotation_y(sign * (0.030 + turn_weight * 0.025))
+                * Quat::from_rotation_z(sign * airflow * 0.030);
         }
         CharacterPartRole::Wing(side) => {
             visibility = if context.mode == FlightMode::Gliding {
@@ -1411,7 +1592,16 @@ fn connected_limb_translation_limit_m(
     role: CharacterPartRole,
     intent: PlayerPoseIntent,
 ) -> Option<f32> {
-    if !matches!(role, CharacterPartRole::Arm(_) | CharacterPartRole::Leg(_)) {
+    if !matches!(
+        role,
+        CharacterPartRole::Head
+            | CharacterPartRole::Arm(_)
+            | CharacterPartRole::Forearm(_)
+            | CharacterPartRole::Hand(_)
+            | CharacterPartRole::Leg(_)
+            | CharacterPartRole::LowerLeg(_)
+            | CharacterPartRole::Foot(_)
+    ) {
         return None;
     }
 
@@ -1790,7 +1980,8 @@ mod tests {
         let leg_b = part_pose_with_context(&left_leg, context, 1.0);
 
         assert!(arm_a.rotation.angle_between(arm_b.rotation) > 0.02);
-        assert!((arm_a.translation.z - arm_b.translation.z).abs() > 0.01);
+        assert!(arm_a.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
+        assert!(arm_b.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
         assert!(leg_a.rotation.angle_between(leg_b.rotation) > 0.02);
     }
 
