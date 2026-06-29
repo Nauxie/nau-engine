@@ -14,8 +14,9 @@ use crate::world_collision_runtime::{
 };
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartPose, PartVisibility, PlayerPoseContext,
-    advance_phase, body_local_pose_velocity, glider_traversal_pose, part_pose_with_context,
-    pose_blend_for_intent, resolve_pose_input, resolve_pose_intent, wind_lateral_load_from_delta,
+    advance_phase, body_local_pose_velocity, glider_deployment_for_mode, glider_traversal_pose,
+    part_pose_with_context, pose_blend_for_intent, resolve_pose_input, resolve_pose_intent,
+    wind_lateral_load_from_delta,
 };
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::{
@@ -821,11 +822,7 @@ fn reapply_smoothed_authored_glider_pose(glider: &AuthoredGliderPose, transform:
 }
 
 fn authored_glider_deployment(mode: FlightMode) -> f32 {
-    match mode {
-        FlightMode::Launching => 0.52,
-        FlightMode::Gliding => 1.0,
-        _ => 0.0,
-    }
+    glider_deployment_for_mode(mode)
 }
 
 fn authored_glider_stowed_translation_offset() -> Vec3 {

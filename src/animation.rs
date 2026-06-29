@@ -284,6 +284,14 @@ pub fn wind_lateral_load_from_delta(wind_delta: Vec3, player_rotation: Quat) -> 
     (wind_delta.dot(right) / WIND_LOAD_FULL_RESPONSE_DELTA_MPS).clamp(-1.0, 1.0)
 }
 
+pub fn glider_deployment_for_mode(mode: FlightMode) -> f32 {
+    match mode {
+        FlightMode::Launching => 0.52,
+        FlightMode::Gliding => 1.0,
+        _ => 0.0,
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct GliderTraversalPose {
     pub translation_offset: Vec3,

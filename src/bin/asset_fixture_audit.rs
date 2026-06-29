@@ -1,12 +1,29 @@
+use bevy::prelude::{Quat, Vec3};
+use nau_engine::animation::{
+    CharacterPart, CharacterPartRole, MIN_KEY_POSE_READABILITY_SCORE, PlayerPoseContext,
+    PlayerPoseIntent, Side, glider_deployment_for_mode, glider_traversal_pose,
+    part_pose_with_context, pose_readability_metrics,
+};
 use nau_engine::asset_pipeline::{
     PLAYER_ANIMATION_CLIP_NAMES, VISUAL_ASSET_SPECS, VisualAssetKind, VisualAssetResidency,
     VisualAssetSpec,
 };
+use nau_engine::movement::{FlightInput, FlightMode};
 use serde_json::{Value, json};
 use std::{fs, path::Path, process};
 
 const NAU_FIXTURE_SCHEMA: &str = "nau_visual_asset_fixture.v1";
 const NAU_FIXTURE_LICENSE: &str = "self_authored_no_third_party";
+const PLAYER_POSE_MAX_CONNECTED_LIMB_TRANSLATION_M: f64 = 0.04;
+const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 58.0;
+const PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES: f64 = 136.0;
+const PLAYER_POSE_MIN_DIVE_TORSO_PITCH_DEGREES: f64 = 82.0;
+const PLAYER_POSE_MAX_DIVE_ARM_SPREAD_DEGREES: f64 = 74.0;
+const PLAYER_POSE_MIN_DIVE_LEG_TUCK_DEGREES: f64 = 68.0;
+const PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT: f64 = 0.45;
+const PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT: f64 = 0.70;
+const PLAYER_GLIDER_MIN_DIVE_RESPONSE_DEGREES: f64 = 4.0;
+const PLAYER_GLIDER_MIN_DIVE_MOTION_M: f64 = 0.16;
 
 #[derive(Clone, Copy)]
 struct Requirement {
@@ -291,6 +308,9 @@ fn audit_fixture(
     } else {
         0
     };
+    let player_pose_shape_audit = requirement
+        .require_player_clips
+        .then(player_pose_shape_audit);
 
     let mut checks = vec![
         check_bool("present", true, "file"),
@@ -430,6 +450,99 @@ fn audit_fixture(
             0.03,
             "m",
         ));
+        let pose_shape = player_pose_shape_audit
+            .as_ref()
+            .expect("player pose shape audit should be present for player fixture");
+        checks.push(check_at_least_f64(
+            "player_pose_falling_belly_down_readability",
+            number_field(pose_shape, "falling_key_pose_readability_score"),
+            MIN_KEY_POSE_READABILITY_SCORE as f64,
+            "score",
+        ));
+        checks.push(check_at_least_f64(
+            "player_pose_falling_torso_pitch",
+            number_field(pose_shape, "falling_torso_pitch_degrees"),
+            PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES,
+            "deg",
+        ));
+        checks.push(check_at_least_f64(
+            "player_pose_falling_arm_spread",
+            number_field(pose_shape, "falling_arm_spread_degrees"),
+            PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES,
+            "deg",
+        ));
+        checks.push(check_at_least_f64(
+            "player_pose_dive_streamline_readability",
+            number_field(pose_shape, "dive_key_pose_readability_score"),
+            MIN_KEY_POSE_READABILITY_SCORE as f64,
+            "score",
+        ));
+        checks.push(check_at_least_f64(
+            "player_pose_dive_torso_pitch",
+            number_field(pose_shape, "dive_torso_pitch_degrees"),
+            PLAYER_POSE_MIN_DIVE_TORSO_PITCH_DEGREES,
+            "deg",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_dive_arm_spread",
+            number_field(pose_shape, "dive_arm_spread_degrees"),
+            PLAYER_POSE_MAX_DIVE_ARM_SPREAD_DEGREES,
+            "deg",
+        ));
+        checks.push(check_at_least_f64(
+            "player_pose_dive_leg_tuck",
+            number_field(pose_shape, "dive_leg_tuck_degrees"),
+            PLAYER_POSE_MIN_DIVE_LEG_TUCK_DEGREES,
+            "deg",
+        ));
+        checks.push(check_at_least_f64(
+            "player_pose_landing_recovery_readability",
+            number_field(pose_shape, "landing_recovery_key_pose_readability_score"),
+            MIN_KEY_POSE_READABILITY_SCORE as f64,
+            "score",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_connected_limb_root_translation",
+            number_field(pose_shape, "max_connected_limb_translation_m"),
+            PLAYER_POSE_MAX_CONNECTED_LIMB_TRANSLATION_M,
+            "m",
+        ));
+        checks.push(check_at_least_f64(
+            "player_glider_launch_takeout_deployment",
+            number_field(pose_shape, "glider_launch_deployment"),
+            PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT,
+            "ratio",
+        ));
+        checks.push(check_at_most_f64(
+            "player_glider_launch_takeout_not_full_deployment",
+            number_field(pose_shape, "glider_launch_deployment"),
+            PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT,
+            "ratio",
+        ));
+        checks.push(check_at_least_f64(
+            "player_glider_glide_full_deployment",
+            number_field(pose_shape, "glider_glide_deployment"),
+            1.0,
+            "ratio",
+        ));
+        checks.push(check_at_most_f64(
+            "player_glider_stowed_grounded_deployment",
+            number_field(pose_shape, "glider_grounded_deployment"),
+            0.0,
+            "ratio",
+        ));
+        checks.push(check_at_least_f64(
+            "player_glider_dive_response",
+            number_field(pose_shape, "glider_dive_response_degrees"),
+            PLAYER_GLIDER_MIN_DIVE_RESPONSE_DEGREES,
+            "deg",
+        ));
+        checks.push(check_at_least_f64(
+            "player_glider_dive_motion",
+            number_field(pose_shape, "glider_dive_motion_m"),
+            PLAYER_GLIDER_MIN_DIVE_MOTION_M,
+            "m",
+        ));
         checks.push(check_bool(
             "player_bank_clip_motion_distinct",
             player_bank_clip_motion_is_distinct(&gltf),
@@ -478,6 +591,7 @@ fn audit_fixture(
         "player_launch_glide_land_clip_motion_distinct": player_launch_glide_land_clip_motion_is_distinct(&gltf),
         "player_grounded_locomotion_clip_motion_distinct": player_grounded_locomotion_clip_motion_is_distinct(&gltf),
         "player_fall_clip_motion_distinct": player_fall_clip_motion_is_distinct(&gltf),
+        "player_pose_shape_audit": player_pose_shape_audit,
         "checks": checks,
     }))
 }
@@ -652,6 +766,124 @@ fn player_rest_joint_gap_max_m(gltf: &Value) -> Option<f64> {
         })
         .collect::<Option<Vec<_>>>()
         .map(|gaps| gaps.into_iter().fold(0.0, f64::max))
+}
+
+fn player_pose_shape_audit() -> Value {
+    let falling_context = PlayerPoseContext::new(
+        FlightMode::Airborne,
+        Vec3::new(0.0, -22.0, -24.0),
+        FlightInput::default(),
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Falling);
+    let gliding_context = PlayerPoseContext::new(
+        FlightMode::Gliding,
+        Vec3::new(0.0, -4.0, -38.0),
+        FlightInput::default(),
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Gliding);
+    let dive_context = PlayerPoseContext::new(
+        FlightMode::Gliding,
+        Vec3::new(0.0, -28.0, -42.0),
+        FlightInput {
+            dive: true,
+            ..Default::default()
+        },
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Diving);
+    let air_brake_context = PlayerPoseContext::new(
+        FlightMode::Gliding,
+        Vec3::new(0.0, -5.0, 16.0),
+        FlightInput {
+            backward: true,
+            ..Default::default()
+        },
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::AirBrake);
+    let landing_context = PlayerPoseContext::new(
+        FlightMode::Gliding,
+        Vec3::new(0.0, -18.0, -24.0),
+        FlightInput::default(),
+        5.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::LandingAnticipation);
+    let landing_recovery_context = PlayerPoseContext::new(
+        FlightMode::Grounded,
+        Vec3::new(0.0, 0.0, -8.0),
+        FlightInput::default(),
+        0.0,
+    )
+    .with_landing_recovery(0.36, 16.0)
+    .with_resolved_intent(PlayerPoseIntent::LandingRecovery);
+
+    let falling = pose_readability_metrics(falling_context, 0.0);
+    let dive = pose_readability_metrics(dive_context, 0.0);
+    let landing_recovery = pose_readability_metrics(landing_recovery_context, 0.0);
+    let glider_dive = glider_traversal_pose(dive_context, 0.0);
+    let max_connected_limb_translation_m = max_connected_limb_translation_m(&[
+        falling_context,
+        gliding_context,
+        dive_context,
+        air_brake_context,
+        landing_context,
+        landing_recovery_context,
+    ]);
+
+    json!({
+        "falling_key_pose_readability_score": falling.key_pose_readability_score,
+        "falling_torso_pitch_degrees": falling.torso_pitch_degrees,
+        "falling_arm_spread_degrees": falling.arm_spread_degrees,
+        "dive_key_pose_readability_score": dive.key_pose_readability_score,
+        "dive_torso_pitch_degrees": dive.torso_pitch_degrees,
+        "dive_arm_spread_degrees": dive.arm_spread_degrees,
+        "dive_leg_tuck_degrees": dive.leg_tuck_degrees,
+        "landing_recovery_key_pose_readability_score": landing_recovery.key_pose_readability_score,
+        "landing_recovery_flip_degrees": landing_recovery.landing_recovery_flip_degrees,
+        "max_connected_limb_translation_m": max_connected_limb_translation_m,
+        "glider_launch_deployment": glider_deployment_for_mode(FlightMode::Launching),
+        "glider_glide_deployment": glider_deployment_for_mode(FlightMode::Gliding),
+        "glider_grounded_deployment": glider_deployment_for_mode(FlightMode::Grounded),
+        "glider_dive_response_degrees": glider_dive.response_degrees(),
+        "glider_dive_motion_m": glider_dive.motion_m(),
+    })
+}
+
+fn max_connected_limb_translation_m(contexts: &[PlayerPoseContext]) -> f64 {
+    let limbs = [
+        CharacterPart::new(
+            CharacterPartRole::Arm(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        ),
+        CharacterPart::new(
+            CharacterPartRole::Arm(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        ),
+        CharacterPart::new(
+            CharacterPartRole::Leg(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        ),
+        CharacterPart::new(
+            CharacterPartRole::Leg(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        ),
+    ];
+
+    contexts
+        .iter()
+        .flat_map(|context| {
+            limbs
+                .iter()
+                .map(|limb| part_pose_with_context(limb, *context, 0.0))
+        })
+        .map(|pose| pose.translation.length() as f64)
+        .fold(0.0, f64::max)
 }
 
 fn player_bank_clip_motion_is_distinct(gltf: &Value) -> bool {
@@ -892,6 +1124,10 @@ fn checks_passed(checks: &[Value]) -> bool {
             .and_then(Value::as_bool)
             .unwrap_or(false)
     })
+}
+
+fn number_field(value: &Value, key: &str) -> f64 {
+    value.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN)
 }
 
 fn check_bool(name: &'static str, passed: bool, unit: &'static str) -> Value {
