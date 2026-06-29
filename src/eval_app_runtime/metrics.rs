@@ -58,7 +58,7 @@ const KEY_POSE_RELAXED_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.6;
 #[derive(Resource, Default)]
 pub(crate) struct VisiblePoseTemporalState {
     previous_frame: Option<u32>,
-    previous_parts: Option<VisiblePosePartTransforms>,
+    previous_parts: Option<VisiblePosePartSet>,
     previous_key_intent: Option<PlayerPoseIntent>,
     transition_from_key_intent: Option<PlayerPoseIntent>,
     key_intent_age_frames: u32,
@@ -94,8 +94,8 @@ impl VisiblePoseTemporalState {
 
         if key_pose_intent(intent)
             && let Some(current_parts) = current_parts
+            && let Some(clearance_m) = current.min_limb_clearance_m()
         {
-            let clearance_m = current_parts.min_limb_clearance_m();
             self.pending_min_pose_limb_clearance_m = if self.pending_pose_clearance_samples == 0 {
                 clearance_m
             } else {
@@ -106,7 +106,9 @@ impl VisiblePoseTemporalState {
                 .max((-clearance_m).max(0.0));
             self.pending_pose_clearance_samples += 1;
 
-            if let Some(joint_gap_m) = current_parts.max_joint_gap_m(current.head, attachments) {
+            if let Some(joint_gap_m) =
+                current_parts.max_joint_gap_m(current, current.head, attachments)
+            {
                 self.pending_max_pose_joint_gap_m =
                     self.pending_max_pose_joint_gap_m.max(joint_gap_m);
                 self.pending_pose_attachment_samples += 1;
@@ -114,21 +116,21 @@ impl VisiblePoseTemporalState {
         }
 
         if key_pose_intent(intent)
-            && let (Some(previous_frame), Some(previous), Some(current_parts)) =
+            && let (Some(previous_frame), Some(previous), Some(_current_parts)) =
                 (self.previous_frame, self.previous_parts, current_parts)
             && previous_frame < frame
         {
             self.pending_pose_temporal_samples += 1;
             self.pending_max_pose_part_rotation_delta_degrees = self
                 .pending_max_pose_part_rotation_delta_degrees
-                .max(current_parts.max_rotation_delta_degrees(previous));
+                .max(current.max_rotation_delta_degrees(previous));
             self.pending_max_pose_part_translation_delta_m = self
                 .pending_max_pose_part_translation_delta_m
-                .max(current_parts.max_translation_delta_m(previous));
+                .max(current.max_translation_delta_m(previous));
         }
 
         self.previous_frame = Some(frame);
-        self.previous_parts = current_parts;
+        self.previous_parts = Some(current);
         if key_pose_intent(intent) {
             if self.previous_key_intent == Some(intent) {
                 self.key_intent_age_frames = self.key_intent_age_frames.saturating_add(1);
@@ -427,8 +429,16 @@ struct VisiblePosePartSet {
     head: Option<VisiblePosePartTransform>,
     left_arm: Option<VisiblePosePartTransform>,
     right_arm: Option<VisiblePosePartTransform>,
+    left_forearm: Option<VisiblePosePartTransform>,
+    right_forearm: Option<VisiblePosePartTransform>,
+    left_hand: Option<VisiblePosePartTransform>,
+    right_hand: Option<VisiblePosePartTransform>,
     left_leg: Option<VisiblePosePartTransform>,
     right_leg: Option<VisiblePosePartTransform>,
+    left_lower_leg: Option<VisiblePosePartTransform>,
+    right_lower_leg: Option<VisiblePosePartTransform>,
+    left_foot: Option<VisiblePosePartTransform>,
+    right_foot: Option<VisiblePosePartTransform>,
     scarf_anchor: Option<VisiblePosePartTransform>,
     scarf_tail: Option<VisiblePosePartTransform>,
 }
@@ -461,6 +471,84 @@ impl VisiblePosePartSet {
         self.complete()
             .map(|parts| parts.readability_metrics(context, self.scarf_anchor, self.scarf_tail))
     }
+
+    fn articulated_parts(self) -> [Option<VisiblePosePartTransform>; 14] {
+        [
+            self.torso,
+            self.head,
+            self.left_arm,
+            self.right_arm,
+            self.left_forearm,
+            self.right_forearm,
+            self.left_hand,
+            self.right_hand,
+            self.left_leg,
+            self.right_leg,
+            self.left_lower_leg,
+            self.right_lower_leg,
+            self.left_foot,
+            self.right_foot,
+        ]
+    }
+
+    fn max_rotation_delta_degrees(self, previous: Self) -> f32 {
+        self.articulated_parts()
+            .into_iter()
+            .zip(previous.articulated_parts())
+            .filter_map(|(current, previous)| Some((current?, previous?)))
+            .map(|(current, previous)| {
+                current
+                    .rotation
+                    .angle_between(previous.rotation)
+                    .to_degrees()
+            })
+            .fold(0.0, f32::max)
+    }
+
+    fn max_translation_delta_m(self, previous: Self) -> f32 {
+        self.articulated_parts()
+            .into_iter()
+            .zip(previous.articulated_parts())
+            .filter_map(|(current, previous)| Some((current?, previous?)))
+            .map(|(current, previous)| current.translation.distance(previous.translation))
+            .fold(0.0, f32::max)
+    }
+
+    fn min_limb_clearance_m(self) -> Option<f32> {
+        const TORSO_RADIUS_M: f32 = 0.26;
+        const ARM_RADIUS_M: f32 = 0.10;
+        const FOREARM_RADIUS_M: f32 = 0.055;
+        const HAND_RADIUS_M: f32 = 0.047;
+        const LEG_RADIUS_M: f32 = 0.11;
+        const LOWER_LEG_RADIUS_M: f32 = 0.067;
+        const FOOT_RADIUS_M: f32 = 0.059;
+
+        let parts = [
+            self.torso.map(|part| (part, TORSO_RADIUS_M)),
+            self.left_arm.map(|part| (part, ARM_RADIUS_M)),
+            self.right_arm.map(|part| (part, ARM_RADIUS_M)),
+            self.left_forearm.map(|part| (part, FOREARM_RADIUS_M)),
+            self.right_forearm.map(|part| (part, FOREARM_RADIUS_M)),
+            self.left_hand.map(|part| (part, HAND_RADIUS_M)),
+            self.right_hand.map(|part| (part, HAND_RADIUS_M)),
+            self.left_leg.map(|part| (part, LEG_RADIUS_M)),
+            self.right_leg.map(|part| (part, LEG_RADIUS_M)),
+            self.left_lower_leg.map(|part| (part, LOWER_LEG_RADIUS_M)),
+            self.right_lower_leg.map(|part| (part, LOWER_LEG_RADIUS_M)),
+            self.left_foot.map(|part| (part, FOOT_RADIUS_M)),
+            self.right_foot.map(|part| (part, FOOT_RADIUS_M)),
+        ];
+        let present = parts.into_iter().flatten().collect::<Vec<_>>();
+        let mut min_clearance = f32::INFINITY;
+        for index in 0..present.len() {
+            for other_index in (index + 1)..present.len() {
+                let (a, a_radius_m) = present[index];
+                let (b, b_radius_m) = present[other_index];
+                min_clearance = min_clearance.min(limb_clearance(a, b, a_radius_m, b_radius_m));
+            }
+        }
+        min_clearance.is_finite().then_some(min_clearance)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -468,8 +556,16 @@ struct VisiblePoseAttachmentSet {
     neck: Option<Vec3>,
     left_shoulder: Option<Vec3>,
     right_shoulder: Option<Vec3>,
+    left_elbow: Option<Vec3>,
+    right_elbow: Option<Vec3>,
+    left_wrist: Option<Vec3>,
+    right_wrist: Option<Vec3>,
     left_hip: Option<Vec3>,
     right_hip: Option<Vec3>,
+    left_knee: Option<Vec3>,
+    right_knee: Option<Vec3>,
+    left_ankle: Option<Vec3>,
+    right_ankle: Option<Vec3>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -521,50 +617,9 @@ impl VisiblePosePartTransforms {
         metrics
     }
 
-    fn max_rotation_delta_degrees(self, previous: Self) -> f32 {
-        self.parts()
-            .into_iter()
-            .zip(previous.parts())
-            .map(|(current, previous)| {
-                current
-                    .rotation
-                    .angle_between(previous.rotation)
-                    .to_degrees()
-            })
-            .fold(0.0, f32::max)
-    }
-
-    fn max_translation_delta_m(self, previous: Self) -> f32 {
-        self.parts()
-            .into_iter()
-            .zip(previous.parts())
-            .map(|(current, previous)| current.translation.distance(previous.translation))
-            .fold(0.0, f32::max)
-    }
-
-    fn min_limb_clearance_m(self) -> f32 {
-        const TORSO_RADIUS_M: f32 = 0.26;
-        const ARM_RADIUS_M: f32 = 0.10;
-        const LEG_RADIUS_M: f32 = 0.11;
-
-        [
-            limb_clearance(self.torso, self.left_arm, TORSO_RADIUS_M, ARM_RADIUS_M),
-            limb_clearance(self.torso, self.right_arm, TORSO_RADIUS_M, ARM_RADIUS_M),
-            limb_clearance(self.torso, self.left_leg, TORSO_RADIUS_M, LEG_RADIUS_M),
-            limb_clearance(self.torso, self.right_leg, TORSO_RADIUS_M, LEG_RADIUS_M),
-            limb_clearance(self.left_arm, self.right_arm, ARM_RADIUS_M, ARM_RADIUS_M),
-            limb_clearance(self.left_arm, self.left_leg, ARM_RADIUS_M, LEG_RADIUS_M),
-            limb_clearance(self.left_arm, self.right_leg, ARM_RADIUS_M, LEG_RADIUS_M),
-            limb_clearance(self.right_arm, self.left_leg, ARM_RADIUS_M, LEG_RADIUS_M),
-            limb_clearance(self.right_arm, self.right_leg, ARM_RADIUS_M, LEG_RADIUS_M),
-            limb_clearance(self.left_leg, self.right_leg, LEG_RADIUS_M, LEG_RADIUS_M),
-        ]
-        .into_iter()
-        .fold(f32::INFINITY, f32::min)
-    }
-
     fn max_joint_gap_m(
         self,
+        parts: VisiblePosePartSet,
         head: Option<VisiblePosePartTransform>,
         attachments: VisiblePoseAttachmentSet,
     ) -> Option<f32> {
@@ -577,27 +632,65 @@ impl VisiblePosePartTransforms {
                 self.right_arm
                     .global_translation
                     .distance(attachments.right_shoulder?),
+                parts
+                    .left_forearm
+                    .zip(attachments.left_elbow)
+                    .map_or(0.0, |(part, marker)| {
+                        part.global_translation.distance(marker)
+                    }),
+                parts
+                    .right_forearm
+                    .zip(attachments.right_elbow)
+                    .map_or(0.0, |(part, marker)| {
+                        part.global_translation.distance(marker)
+                    }),
+                parts
+                    .left_hand
+                    .zip(attachments.left_wrist)
+                    .map_or(0.0, |(part, marker)| {
+                        part.global_translation.distance(marker)
+                    }),
+                parts
+                    .right_hand
+                    .zip(attachments.right_wrist)
+                    .map_or(0.0, |(part, marker)| {
+                        part.global_translation.distance(marker)
+                    }),
                 self.left_leg
                     .global_translation
                     .distance(attachments.left_hip?),
                 self.right_leg
                     .global_translation
                     .distance(attachments.right_hip?),
+                parts
+                    .left_lower_leg
+                    .zip(attachments.left_knee)
+                    .map_or(0.0, |(part, marker)| {
+                        part.global_translation.distance(marker)
+                    }),
+                parts
+                    .right_lower_leg
+                    .zip(attachments.right_knee)
+                    .map_or(0.0, |(part, marker)| {
+                        part.global_translation.distance(marker)
+                    }),
+                parts
+                    .left_foot
+                    .zip(attachments.left_ankle)
+                    .map_or(0.0, |(part, marker)| {
+                        part.global_translation.distance(marker)
+                    }),
+                parts
+                    .right_foot
+                    .zip(attachments.right_ankle)
+                    .map_or(0.0, |(part, marker)| {
+                        part.global_translation.distance(marker)
+                    }),
                 head.global_translation.distance(attachments.neck?),
             ]
             .into_iter()
             .fold(0.0, f32::max),
         )
-    }
-
-    fn parts(self) -> [VisiblePosePartTransform; 5] {
-        [
-            self.torso,
-            self.left_arm,
-            self.right_arm,
-            self.left_leg,
-            self.right_leg,
-        ]
     }
 }
 
@@ -1255,8 +1348,18 @@ fn visible_generated_pose_part_set<'a>(
             CharacterPartRole::Head => parts_set.head = Some(pose_part),
             CharacterPartRole::Arm(Side::Left) => parts_set.left_arm = Some(pose_part),
             CharacterPartRole::Arm(Side::Right) => parts_set.right_arm = Some(pose_part),
+            CharacterPartRole::Forearm(Side::Left) => parts_set.left_forearm = Some(pose_part),
+            CharacterPartRole::Forearm(Side::Right) => parts_set.right_forearm = Some(pose_part),
+            CharacterPartRole::Hand(Side::Left) => parts_set.left_hand = Some(pose_part),
+            CharacterPartRole::Hand(Side::Right) => parts_set.right_hand = Some(pose_part),
             CharacterPartRole::Leg(Side::Left) => parts_set.left_leg = Some(pose_part),
             CharacterPartRole::Leg(Side::Right) => parts_set.right_leg = Some(pose_part),
+            CharacterPartRole::LowerLeg(Side::Left) => parts_set.left_lower_leg = Some(pose_part),
+            CharacterPartRole::LowerLeg(Side::Right) => {
+                parts_set.right_lower_leg = Some(pose_part);
+            }
+            CharacterPartRole::Foot(Side::Left) => parts_set.left_foot = Some(pose_part),
+            CharacterPartRole::Foot(Side::Right) => parts_set.right_foot = Some(pose_part),
             CharacterPartRole::Scarf(ScarfSegment::Anchor) => {
                 parts_set.scarf_anchor = Some(pose_part);
             }
@@ -1310,8 +1413,18 @@ fn visible_authored_pose_part_set<'a>(
             CharacterPartRole::Head => parts_set.head = Some(pose_part),
             CharacterPartRole::Arm(Side::Left) => parts_set.left_arm = Some(pose_part),
             CharacterPartRole::Arm(Side::Right) => parts_set.right_arm = Some(pose_part),
+            CharacterPartRole::Forearm(Side::Left) => parts_set.left_forearm = Some(pose_part),
+            CharacterPartRole::Forearm(Side::Right) => parts_set.right_forearm = Some(pose_part),
+            CharacterPartRole::Hand(Side::Left) => parts_set.left_hand = Some(pose_part),
+            CharacterPartRole::Hand(Side::Right) => parts_set.right_hand = Some(pose_part),
             CharacterPartRole::Leg(Side::Left) => parts_set.left_leg = Some(pose_part),
             CharacterPartRole::Leg(Side::Right) => parts_set.right_leg = Some(pose_part),
+            CharacterPartRole::LowerLeg(Side::Left) => parts_set.left_lower_leg = Some(pose_part),
+            CharacterPartRole::LowerLeg(Side::Right) => {
+                parts_set.right_lower_leg = Some(pose_part);
+            }
+            CharacterPartRole::Foot(Side::Left) => parts_set.left_foot = Some(pose_part),
+            CharacterPartRole::Foot(Side::Right) => parts_set.right_foot = Some(pose_part),
             CharacterPartRole::Scarf(ScarfSegment::Anchor) => {
                 parts_set.scarf_anchor = Some(pose_part);
             }
@@ -1348,11 +1461,35 @@ fn visible_authored_pose_attachment_set<'a>(
             AuthoredPlayerAttachmentMarker::Shoulder(Side::Right) => {
                 attachments.right_shoulder = Some(translation);
             }
+            AuthoredPlayerAttachmentMarker::Elbow(Side::Left) => {
+                attachments.left_elbow = Some(translation);
+            }
+            AuthoredPlayerAttachmentMarker::Elbow(Side::Right) => {
+                attachments.right_elbow = Some(translation);
+            }
+            AuthoredPlayerAttachmentMarker::Wrist(Side::Left) => {
+                attachments.left_wrist = Some(translation);
+            }
+            AuthoredPlayerAttachmentMarker::Wrist(Side::Right) => {
+                attachments.right_wrist = Some(translation);
+            }
             AuthoredPlayerAttachmentMarker::Hip(Side::Left) => {
                 attachments.left_hip = Some(translation);
             }
             AuthoredPlayerAttachmentMarker::Hip(Side::Right) => {
                 attachments.right_hip = Some(translation);
+            }
+            AuthoredPlayerAttachmentMarker::Knee(Side::Left) => {
+                attachments.left_knee = Some(translation);
+            }
+            AuthoredPlayerAttachmentMarker::Knee(Side::Right) => {
+                attachments.right_knee = Some(translation);
+            }
+            AuthoredPlayerAttachmentMarker::Ankle(Side::Left) => {
+                attachments.left_ankle = Some(translation);
+            }
+            AuthoredPlayerAttachmentMarker::Ankle(Side::Right) => {
+                attachments.right_ankle = Some(translation);
             }
         }
     }
@@ -2889,6 +3026,7 @@ mod tests {
             right_shoulder: Some(Vec3::new(0.55, 1.17, 0.0)),
             left_hip: Some(Vec3::new(-0.22, 0.32, 0.02)),
             right_hip: Some(Vec3::new(0.22, 0.32, 0.02)),
+            ..default()
         };
         state.observe_frame(0, PlayerPoseIntent::Gliding, parts, attachments);
         let connected = state.take_sample_metrics();
@@ -2966,6 +3104,7 @@ mod tests {
             }),
             scarf_anchor: None,
             scarf_tail: None,
+            ..default()
         }
     }
 }

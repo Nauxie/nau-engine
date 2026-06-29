@@ -271,7 +271,11 @@ pub(crate) struct AuthoredPlayerPoseNode {
 pub(crate) enum AuthoredPlayerAttachmentMarker {
     Neck,
     Shoulder(Side),
+    Elbow(Side),
+    Wrist(Side),
     Hip(Side),
+    Knee(Side),
+    Ankle(Side),
 }
 
 impl AuthoredPlayerPoseNode {
@@ -315,9 +319,29 @@ pub(crate) fn authored_player_pose_node_for_name(name: &str) -> Option<AuthoredP
             Vec3::new(-0.46, 0.54, -0.02),
             Quat::IDENTITY,
         ),
+        "Nau Left Forearm" => CharacterPart::new(
+            CharacterPartRole::Forearm(Side::Left),
+            Vec3::new(0.0, -0.44, 0.018),
+            Quat::IDENTITY,
+        ),
+        "Nau Left Leather Hand Palm" => CharacterPart::new(
+            CharacterPartRole::Hand(Side::Left),
+            Vec3::new(0.0, -0.39, -0.005),
+            Quat::IDENTITY,
+        ),
         "Nau Right Arm" => CharacterPart::new(
             CharacterPartRole::Arm(Side::Right),
             Vec3::new(0.46, 0.54, -0.02),
+            Quat::IDENTITY,
+        ),
+        "Nau Right Forearm" => CharacterPart::new(
+            CharacterPartRole::Forearm(Side::Right),
+            Vec3::new(0.0, -0.44, 0.018),
+            Quat::IDENTITY,
+        ),
+        "Nau Right Leather Hand Palm" => CharacterPart::new(
+            CharacterPartRole::Hand(Side::Right),
+            Vec3::new(0.0, -0.39, -0.005),
             Quat::IDENTITY,
         ),
         "Nau Left Leg" => CharacterPart::new(
@@ -325,9 +349,29 @@ pub(crate) fn authored_player_pose_node_for_name(name: &str) -> Option<AuthoredP
             Vec3::new(-0.20, -0.15, 0.02),
             Quat::IDENTITY,
         ),
+        "Nau Left Lower Leg" => CharacterPart::new(
+            CharacterPartRole::LowerLeg(Side::Left),
+            Vec3::new(0.0, -0.34, 0.01),
+            Quat::IDENTITY,
+        ),
+        "Nau Left Boot" => CharacterPart::new(
+            CharacterPartRole::Foot(Side::Left),
+            Vec3::new(0.0, -0.32, -0.012),
+            Quat::IDENTITY,
+        ),
         "Nau Right Leg" => CharacterPart::new(
             CharacterPartRole::Leg(Side::Right),
             Vec3::new(0.20, -0.15, 0.02),
+            Quat::IDENTITY,
+        ),
+        "Nau Right Lower Leg" => CharacterPart::new(
+            CharacterPartRole::LowerLeg(Side::Right),
+            Vec3::new(0.0, -0.34, 0.01),
+            Quat::IDENTITY,
+        ),
+        "Nau Right Boot" => CharacterPart::new(
+            CharacterPartRole::Foot(Side::Right),
+            Vec3::new(0.0, -0.32, -0.012),
             Quat::IDENTITY,
         ),
         "Nau Back Scarf Anchor Accent" => CharacterPart::new(
@@ -353,8 +397,16 @@ fn authored_player_attachment_marker_for_name(
         "Nau Neck Socket" => Some(AuthoredPlayerAttachmentMarker::Neck),
         "Nau Left Shoulder Socket" => Some(AuthoredPlayerAttachmentMarker::Shoulder(Side::Left)),
         "Nau Right Shoulder Socket" => Some(AuthoredPlayerAttachmentMarker::Shoulder(Side::Right)),
+        "Nau Left Elbow Socket" => Some(AuthoredPlayerAttachmentMarker::Elbow(Side::Left)),
+        "Nau Right Elbow Socket" => Some(AuthoredPlayerAttachmentMarker::Elbow(Side::Right)),
+        "Nau Left Wrist Socket" => Some(AuthoredPlayerAttachmentMarker::Wrist(Side::Left)),
+        "Nau Right Wrist Socket" => Some(AuthoredPlayerAttachmentMarker::Wrist(Side::Right)),
         "Nau Left Hip Socket" => Some(AuthoredPlayerAttachmentMarker::Hip(Side::Left)),
         "Nau Right Hip Socket" => Some(AuthoredPlayerAttachmentMarker::Hip(Side::Right)),
+        "Nau Left Knee Socket" => Some(AuthoredPlayerAttachmentMarker::Knee(Side::Left)),
+        "Nau Right Knee Socket" => Some(AuthoredPlayerAttachmentMarker::Knee(Side::Right)),
+        "Nau Left Ankle Socket" => Some(AuthoredPlayerAttachmentMarker::Ankle(Side::Left)),
+        "Nau Right Ankle Socket" => Some(AuthoredPlayerAttachmentMarker::Ankle(Side::Right)),
         _ => None,
     }
 }

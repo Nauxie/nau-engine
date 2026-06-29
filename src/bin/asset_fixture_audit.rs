@@ -1,4 +1,4 @@
-use bevy::prelude::{Quat, Vec3};
+use bevy::prelude::{Mat4, Quat, Vec3};
 use nau_engine::animation::{
     CharacterPart, CharacterPartRole, MIN_KEY_POSE_READABILITY_SCORE, PlayerPoseContext,
     PlayerPoseIntent, Side, glider_deployment_for_mode, glider_traversal_pose,
@@ -14,7 +14,8 @@ use std::{fs, path::Path, process};
 
 const NAU_FIXTURE_SCHEMA: &str = "nau_visual_asset_fixture.v1";
 const NAU_FIXTURE_LICENSE: &str = "self_authored_no_third_party";
-const PLAYER_POSE_MAX_CONNECTED_LIMB_TRANSLATION_M: f64 = 0.04;
+const PLAYER_POSE_MAX_CONNECTED_LIMB_TRANSLATION_M: f64 = 0.02;
+const PLAYER_REST_MAX_ARTICULATED_JOINT_GAP_M: f64 = 0.015;
 const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 58.0;
 const PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES: f64 = 136.0;
 const PLAYER_POSE_MIN_DIVE_TORSO_PITCH_DEGREES: f64 = 82.0;
@@ -418,7 +419,7 @@ fn audit_fixture(
         ));
         checks.push(check_at_least_f64(
             "player_scarf_back_offset",
-            node_translation(&gltf, "Nau Wind Scarf Accent")
+            world_node_translation(&gltf, "Nau Wind Scarf Accent")
                 .map_or(0.0, |translation| translation[2]),
             0.30,
             "m",
@@ -435,6 +436,16 @@ fn audit_fixture(
             "nodes",
         ));
         checks.push(check_bool(
+            "player_articulated_pose_nodes_present",
+            player_articulated_pose_nodes_present(&gltf),
+            "nodes",
+        ));
+        checks.push(check_bool(
+            "player_rest_limb_attachment_hierarchy",
+            player_rest_limb_attachment_hierarchy_valid(&gltf),
+            "nodes",
+        ));
+        checks.push(check_bool(
             "player_animation_channels_cover_core_signals",
             player_animation_channels_cover_core_signals(&gltf),
             "clips",
@@ -448,6 +459,12 @@ fn audit_fixture(
             "player_rest_joint_gap_max",
             player_rest_joint_gap_max_m(&gltf).unwrap_or(f64::INFINITY),
             0.03,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_rest_articulated_joint_gap_max",
+            player_rest_articulated_joint_gap_max_m(&gltf).unwrap_or(f64::INFINITY),
+            PLAYER_REST_MAX_ARTICULATED_JOINT_GAP_M,
             "m",
         ));
         let pose_shape = player_pose_shape_audit
@@ -584,9 +601,12 @@ fn audit_fixture(
         "blend_material_count": blend_material_count,
         "player_named_clip_count": ready_player_clip_count,
         "player_core_pose_nodes_present": player_core_pose_nodes_present(&gltf),
+        "player_articulated_pose_nodes_present": player_articulated_pose_nodes_present(&gltf),
+        "player_rest_limb_attachment_hierarchy": player_rest_limb_attachment_hierarchy_valid(&gltf),
         "player_animation_channels_cover_core_signals": player_animation_channels_cover_core_signals(&gltf),
         "player_animation_channels_avoid_runtime_pose_nodes": player_animation_channels_avoid_runtime_pose_nodes(&gltf),
         "player_rest_joint_gap_max_m": player_rest_joint_gap_max_m(&gltf),
+        "player_rest_articulated_joint_gap_max_m": player_rest_articulated_joint_gap_max_m(&gltf),
         "player_bank_clip_motion_distinct": player_bank_clip_motion_is_distinct(&gltf),
         "player_launch_glide_land_clip_motion_distinct": player_launch_glide_land_clip_motion_is_distinct(&gltf),
         "player_grounded_locomotion_clip_motion_distinct": player_grounded_locomotion_clip_motion_is_distinct(&gltf),
@@ -712,6 +732,49 @@ fn player_core_pose_nodes_present(gltf: &Value) -> bool {
     .all(|name| node_index(gltf, name).is_some())
 }
 
+fn player_articulated_pose_nodes_present(gltf: &Value) -> bool {
+    [
+        "Nau Left Forearm",
+        "Nau Right Forearm",
+        "Nau Left Leather Hand Palm",
+        "Nau Right Leather Hand Palm",
+        "Nau Left Lower Leg",
+        "Nau Right Lower Leg",
+        "Nau Left Boot",
+        "Nau Right Boot",
+        "Nau Left Elbow Socket",
+        "Nau Right Elbow Socket",
+        "Nau Left Wrist Socket",
+        "Nau Right Wrist Socket",
+        "Nau Left Knee Socket",
+        "Nau Right Knee Socket",
+        "Nau Left Ankle Socket",
+        "Nau Right Ankle Socket",
+    ]
+    .into_iter()
+    .all(|name| node_index(gltf, name).is_some())
+}
+
+fn player_rest_limb_attachment_hierarchy_valid(gltf: &Value) -> bool {
+    [
+        ("Nau Torso", "Nau Head"),
+        ("Nau Torso", "Nau Left Arm"),
+        ("Nau Torso", "Nau Right Arm"),
+        ("Nau Left Arm", "Nau Left Forearm"),
+        ("Nau Right Arm", "Nau Right Forearm"),
+        ("Nau Left Forearm", "Nau Left Leather Hand Palm"),
+        ("Nau Right Forearm", "Nau Right Leather Hand Palm"),
+        ("Nau Hips", "Nau Left Leg"),
+        ("Nau Hips", "Nau Right Leg"),
+        ("Nau Left Leg", "Nau Left Lower Leg"),
+        ("Nau Right Leg", "Nau Right Lower Leg"),
+        ("Nau Left Lower Leg", "Nau Left Boot"),
+        ("Nau Right Lower Leg", "Nau Right Boot"),
+    ]
+    .into_iter()
+    .all(|(parent, child)| node_is_direct_child(gltf, parent, child))
+}
+
 fn player_animation_channels_cover_core_signals(gltf: &Value) -> bool {
     PLAYER_ANIMATION_CLIP_NAMES.iter().all(|clip_name| {
         let Some(targets) = animation_target_node_names(gltf, clip_name) else {
@@ -735,8 +798,16 @@ fn player_animation_channels_avoid_runtime_pose_nodes(gltf: &Value) -> bool {
         "Nau Head",
         "Nau Left Arm",
         "Nau Right Arm",
+        "Nau Left Forearm",
+        "Nau Right Forearm",
+        "Nau Left Leather Hand Palm",
+        "Nau Right Leather Hand Palm",
         "Nau Left Leg",
         "Nau Right Leg",
+        "Nau Left Lower Leg",
+        "Nau Right Lower Leg",
+        "Nau Left Boot",
+        "Nau Right Boot",
         "Nau Back Scarf Anchor Accent",
         "Nau Wind Scarf Accent",
     ];
@@ -756,6 +827,28 @@ fn player_rest_joint_gap_max_m(gltf: &Value) -> Option<f64> {
         ("Nau Right Shoulder Socket", "Nau Right Arm"),
         ("Nau Left Hip Socket", "Nau Left Leg"),
         ("Nau Right Hip Socket", "Nau Right Leg"),
+    ];
+    pairs
+        .into_iter()
+        .map(|(socket, joint)| {
+            let socket = world_node_translation(gltf, socket)?;
+            let joint = world_node_translation(gltf, joint)?;
+            Some(distance3(socket, joint))
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|gaps| gaps.into_iter().fold(0.0, f64::max))
+}
+
+fn player_rest_articulated_joint_gap_max_m(gltf: &Value) -> Option<f64> {
+    let pairs = [
+        ("Nau Left Elbow Socket", "Nau Left Forearm"),
+        ("Nau Right Elbow Socket", "Nau Right Forearm"),
+        ("Nau Left Wrist Socket", "Nau Left Leather Hand Palm"),
+        ("Nau Right Wrist Socket", "Nau Right Leather Hand Palm"),
+        ("Nau Left Knee Socket", "Nau Left Lower Leg"),
+        ("Nau Right Knee Socket", "Nau Right Lower Leg"),
+        ("Nau Left Ankle Socket", "Nau Left Boot"),
+        ("Nau Right Ankle Socket", "Nau Right Boot"),
     ];
     pairs
         .into_iter()
@@ -864,12 +957,52 @@ fn max_connected_limb_translation_m(contexts: &[PlayerPoseContext]) -> f64 {
             Quat::IDENTITY,
         ),
         CharacterPart::new(
+            CharacterPartRole::Forearm(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        ),
+        CharacterPart::new(
+            CharacterPartRole::Forearm(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        ),
+        CharacterPart::new(
+            CharacterPartRole::Hand(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        ),
+        CharacterPart::new(
+            CharacterPartRole::Hand(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        ),
+        CharacterPart::new(
             CharacterPartRole::Leg(Side::Left),
             Vec3::ZERO,
             Quat::IDENTITY,
         ),
         CharacterPart::new(
             CharacterPartRole::Leg(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        ),
+        CharacterPart::new(
+            CharacterPartRole::LowerLeg(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        ),
+        CharacterPart::new(
+            CharacterPartRole::LowerLeg(Side::Right),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        ),
+        CharacterPart::new(
+            CharacterPartRole::Foot(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        ),
+        CharacterPart::new(
+            CharacterPartRole::Foot(Side::Right),
             Vec3::ZERO,
             Quat::IDENTITY,
         ),
@@ -1022,8 +1155,8 @@ fn array_len(value: &Value, key: &str) -> u64 {
 }
 
 fn symmetric_node_half_width_m(gltf: &Value, left_name: &str, right_name: &str) -> Option<f64> {
-    let left_x = node_translation(gltf, left_name)?[0];
-    let right_x = node_translation(gltf, right_name)?[0];
+    let left_x = world_node_translation(gltf, left_name)?[0];
+    let right_x = world_node_translation(gltf, right_name)?[0];
 
     if left_x < 0.0 && right_x > 0.0 {
         Some((-left_x).min(right_x))
@@ -1033,45 +1166,79 @@ fn symmetric_node_half_width_m(gltf: &Value, left_name: &str, right_name: &str) 
 }
 
 fn world_node_translation(gltf: &Value, node_name: &str) -> Option<[f64; 3]> {
+    let translation = world_node_transform(gltf, node_name)?.transform_point3(Vec3::ZERO);
+    Some([
+        translation.x as f64,
+        translation.y as f64,
+        translation.z as f64,
+    ])
+}
+
+fn world_node_transform(gltf: &Value, node_name: &str) -> Option<Mat4> {
     let nodes = gltf.get("nodes")?.as_array()?;
     let index = node_index(gltf, node_name)?;
     let parents = parent_indices(nodes);
     let mut cursor = Some(index);
-    let mut translation = [0.0, 0.0, 0.0];
+    let mut chain = Vec::new();
     while let Some(node_index) = cursor {
-        translation = add3(translation, node_translation_by_index(nodes, node_index)?);
+        chain.push(node_index);
         cursor = parents[node_index];
     }
-    Some(translation)
+    chain
+        .into_iter()
+        .rev()
+        .try_fold(Mat4::IDENTITY, |transform, node_index| {
+            Some(transform * node_local_transform_by_index(nodes, node_index)?)
+        })
 }
 
-fn node_translation(gltf: &Value, node_name: &str) -> Option<[f64; 3]> {
-    let nodes = gltf.get("nodes")?.as_array()?;
-    let translation = nodes
-        .iter()
-        .find(|node| node.get("name").and_then(Value::as_str) == Some(node_name))?
-        .get("translation")?
-        .as_array()?;
-    Some([
-        translation.first()?.as_f64()?,
-        translation.get(1)?.as_f64()?,
-        translation.get(2)?.as_f64()?,
-    ])
-}
+fn node_local_transform_by_index(nodes: &[Value], index: usize) -> Option<Mat4> {
+    let node = nodes.get(index)?;
+    if let Some(matrix) = node.get("matrix").and_then(Value::as_array) {
+        let matrix = <[f32; 16]>::try_from(
+            matrix
+                .iter()
+                .map(|value| value.as_f64().map(|value| value as f32))
+                .collect::<Option<Vec<_>>>()?,
+        )
+        .ok()?;
+        return Some(Mat4::from_cols_array(&matrix));
+    }
 
-fn node_translation_by_index(nodes: &[Value], index: usize) -> Option<[f64; 3]> {
-    let Some(translation) = nodes
-        .get(index)
-        .and_then(|node| node.get("translation"))
-        .and_then(Value::as_array)
-    else {
-        return Some([0.0, 0.0, 0.0]);
+    let translation = if let Some(translation) = node.get("translation").and_then(Value::as_array) {
+        Vec3::new(
+            translation.first()?.as_f64()? as f32,
+            translation.get(1)?.as_f64()? as f32,
+            translation.get(2)?.as_f64()? as f32,
+        )
+    } else {
+        Vec3::ZERO
     };
-    Some([
-        translation.first()?.as_f64()?,
-        translation.get(1)?.as_f64()?,
-        translation.get(2)?.as_f64()?,
-    ])
+    let rotation = if let Some(rotation) = node.get("rotation").and_then(Value::as_array) {
+        Quat::from_xyzw(
+            rotation.first()?.as_f64()? as f32,
+            rotation.get(1)?.as_f64()? as f32,
+            rotation.get(2)?.as_f64()? as f32,
+            rotation.get(3)?.as_f64()? as f32,
+        )
+    } else {
+        Quat::IDENTITY
+    };
+    let scale = if let Some(scale) = node.get("scale").and_then(Value::as_array) {
+        Vec3::new(
+            scale.first()?.as_f64()? as f32,
+            scale.get(1)?.as_f64()? as f32,
+            scale.get(2)?.as_f64()? as f32,
+        )
+    } else {
+        Vec3::ONE
+    };
+
+    Some(Mat4::from_scale_rotation_translation(
+        scale,
+        rotation,
+        translation,
+    ))
 }
 
 fn node_index(gltf: &Value, node_name: &str) -> Option<usize> {
@@ -1089,6 +1256,27 @@ fn node_name(gltf: &Value, index: usize) -> Option<&str> {
         .and_then(Value::as_str)
 }
 
+fn node_is_direct_child(gltf: &Value, parent_name: &str, child_name: &str) -> bool {
+    let Some(nodes) = gltf.get("nodes").and_then(Value::as_array) else {
+        return false;
+    };
+    let Some(parent) = node_index(gltf, parent_name) else {
+        return false;
+    };
+    let Some(child) = node_index(gltf, child_name) else {
+        return false;
+    };
+    nodes
+        .get(parent)
+        .and_then(|node| node.get("children"))
+        .and_then(Value::as_array)
+        .is_some_and(|children| {
+            children
+                .iter()
+                .any(|candidate| candidate.as_u64() == Some(child as u64))
+        })
+}
+
 fn parent_indices(nodes: &[Value]) -> Vec<Option<usize>> {
     let mut parents = vec![None; nodes.len()];
     for (parent, node) in nodes.iter().enumerate() {
@@ -1104,10 +1292,6 @@ fn parent_indices(nodes: &[Value]) -> Vec<Option<usize>> {
         }
     }
     parents
-}
-
-fn add3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 
 fn distance3(a: [f64; 3], b: [f64; 3]) -> f64 {
@@ -1263,6 +1447,54 @@ mod tests {
             residency_name(VisualAssetResidency::StreamWindow),
             nau_metadata_str(&metadata, "residency")
         );
+    }
+
+    #[test]
+    fn world_node_transform_applies_parent_rotation() {
+        let rotation = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2).to_array();
+        let gltf = json!({
+            "nodes": [
+                {"name": "root", "rotation": rotation, "children": [1]},
+                {"name": "child", "translation": [1.0, 0.0, 0.0]}
+            ]
+        });
+
+        let translation = world_node_translation(&gltf, "child").expect("child translation");
+
+        assert!(translation[0].abs() < 0.0001);
+        assert!((translation[1] - 1.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn world_node_transform_applies_parent_scale() {
+        let gltf = json!({
+            "nodes": [
+                {"name": "root", "scale": [2.0, 3.0, 4.0], "children": [1]},
+                {"name": "child", "translation": [1.0, 0.0, 0.0]}
+            ]
+        });
+
+        let translation = world_node_translation(&gltf, "child").expect("child translation");
+
+        assert!((translation[0] - 2.0).abs() < 0.0001);
+        assert!(translation[1].abs() < 0.0001);
+    }
+
+    #[test]
+    fn world_node_transform_reads_matrix_nodes() {
+        let matrix = Mat4::from_translation(Vec3::new(2.0, 3.0, 4.0)).to_cols_array();
+        let gltf = json!({
+            "nodes": [
+                {"name": "root", "matrix": matrix, "children": [1]},
+                {"name": "child", "translation": [1.0, 0.0, 0.0]}
+            ]
+        });
+
+        let translation = world_node_translation(&gltf, "child").expect("child translation");
+
+        assert!((translation[0] - 3.0).abs() < 0.0001);
+        assert!((translation[1] - 3.0).abs() < 0.0001);
+        assert!((translation[2] - 4.0).abs() < 0.0001);
     }
 
     #[test]
