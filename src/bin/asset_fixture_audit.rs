@@ -1,6 +1,7 @@
 #![recursion_limit = "256"]
 
-use bevy::prelude::{Mat4, Quat, Vec3};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use bevy::prelude::{Mat4, Quat, Vec2, Vec3};
 use nau_engine::animation::{
     CharacterPart, CharacterPartRole, MIN_KEY_POSE_READABILITY_SCORE, PartPose, PlayerPoseContext,
     PlayerPoseIntent, Side, glider_deployment_for_mode, glider_traversal_pose,
@@ -67,6 +68,7 @@ const PLAYER_REST_LEFT_ARM_MESH_NODES: &[&str] = &[
     "Nau Left Leather Index Finger Grip",
     "Nau Left Leather Finger Grip",
     "Nau Left Leather Ring Finger Grip",
+    "Nau Left Leather Pinky Finger Grip",
     "Nau Left Leather Thumb Grip",
     "Nau Left Leather Index Knuckle Pad",
     "Nau Left Leather Middle Knuckle Pad",
@@ -82,6 +84,7 @@ const PLAYER_REST_RIGHT_ARM_MESH_NODES: &[&str] = &[
     "Nau Right Leather Index Finger Grip",
     "Nau Right Leather Finger Grip",
     "Nau Right Leather Ring Finger Grip",
+    "Nau Right Leather Pinky Finger Grip",
     "Nau Right Leather Thumb Grip",
     "Nau Right Leather Index Knuckle Pad",
     "Nau Right Leather Middle Knuckle Pad",
@@ -95,6 +98,7 @@ const PLAYER_REST_LEFT_DISTAL_ARM_MESH_NODES: &[&str] = &[
     "Nau Left Leather Index Finger Grip",
     "Nau Left Leather Finger Grip",
     "Nau Left Leather Ring Finger Grip",
+    "Nau Left Leather Pinky Finger Grip",
     "Nau Left Leather Thumb Grip",
     "Nau Left Leather Index Knuckle Pad",
     "Nau Left Leather Middle Knuckle Pad",
@@ -108,6 +112,7 @@ const PLAYER_REST_RIGHT_DISTAL_ARM_MESH_NODES: &[&str] = &[
     "Nau Right Leather Index Finger Grip",
     "Nau Right Leather Finger Grip",
     "Nau Right Leather Ring Finger Grip",
+    "Nau Right Leather Pinky Finger Grip",
     "Nau Right Leather Thumb Grip",
     "Nau Right Leather Index Knuckle Pad",
     "Nau Right Leather Middle Knuckle Pad",
@@ -119,6 +124,8 @@ const PLAYER_REST_LEFT_LEG_MESH_NODES: &[&str] = &[
     "Nau Left Suit Lower Leg Greave",
     "Nau Left Leather Boot Shell",
     "Nau Left Leather Boot Toe Cap",
+    "Nau Left Leather Outer Toe Lug",
+    "Nau Left Leather Inner Toe Lug",
     "Nau Left Leather Boot Sole",
     "Nau Left Leather Boot Heel",
 ];
@@ -127,6 +134,8 @@ const PLAYER_REST_RIGHT_LEG_MESH_NODES: &[&str] = &[
     "Nau Right Suit Lower Leg Greave",
     "Nau Right Leather Boot Shell",
     "Nau Right Leather Boot Toe Cap",
+    "Nau Right Leather Outer Toe Lug",
+    "Nau Right Leather Inner Toe Lug",
     "Nau Right Leather Boot Sole",
     "Nau Right Leather Boot Heel",
 ];
@@ -134,6 +143,8 @@ const PLAYER_REST_LEFT_DISTAL_LEG_MESH_NODES: &[&str] = &[
     "Nau Left Suit Lower Leg Greave",
     "Nau Left Leather Boot Shell",
     "Nau Left Leather Boot Toe Cap",
+    "Nau Left Leather Outer Toe Lug",
+    "Nau Left Leather Inner Toe Lug",
     "Nau Left Leather Boot Sole",
     "Nau Left Leather Boot Heel",
 ];
@@ -141,6 +152,8 @@ const PLAYER_REST_RIGHT_DISTAL_LEG_MESH_NODES: &[&str] = &[
     "Nau Right Suit Lower Leg Greave",
     "Nau Right Leather Boot Shell",
     "Nau Right Leather Boot Toe Cap",
+    "Nau Right Leather Outer Toe Lug",
+    "Nau Right Leather Inner Toe Lug",
     "Nau Right Leather Boot Sole",
     "Nau Right Leather Boot Heel",
 ];
@@ -426,6 +439,7 @@ struct PlayerPosePreviewSpec {
 #[derive(Clone, Debug)]
 struct PlayerPosePreviewShape {
     node_name: String,
+    vertices: Vec<Vec3>,
     bounds: Aabb3,
     color: &'static str,
 }
@@ -453,6 +467,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
 
     let manifest = json!({
         "schema": "nau_player_pose_preview.v1",
+        "renderer": "mesh_projected_convex_hull.v1",
         "source": path,
         "pose_count": specs.len(),
         "views": ["front", "side", "top"],
@@ -603,7 +618,7 @@ fn render_player_pose_preview_sheet(
     specs: &[PlayerPosePreviewSpec],
 ) -> Result<String, String> {
     const ROW_HEIGHT: f32 = 210.0;
-    const LABEL_WIDTH: f32 = 150.0;
+    const LABEL_WIDTH: f32 = 180.0;
     const VIEW_WIDTH: f32 = 250.0;
     const HEADER_HEIGHT: f32 = 58.0;
     const PADDING: f32 = 18.0;
@@ -686,15 +701,27 @@ fn player_pose_preview_shapes(
     overrides: &[PoseNodeOverride],
 ) -> Option<Vec<PlayerPosePreviewShape>> {
     let nodes = gltf.get("nodes")?.as_array()?;
+    let buffers = embedded_gltf_buffers(gltf)?;
     let mut shapes = Vec::new();
     for node in nodes {
         let node_name = node.get("name").and_then(Value::as_str)?;
-        if node.get("mesh").is_none() {
+        let Some(mesh_index) = node
+            .get("mesh")
+            .and_then(Value::as_u64)
+            .map(|mesh| mesh as usize)
+        else {
+            continue;
+        };
+        let mesh = gltf.get("meshes")?.as_array()?.get(mesh_index)?;
+        let transform = world_node_transform_with_pose(gltf, node_name, overrides)?;
+        let vertices = mesh_world_vertices(gltf, mesh, transform, &buffers)?;
+        if vertices.is_empty() {
             continue;
         }
-        let bounds = node_world_mesh_aabb_with_pose(gltf, node_name, overrides)?;
+        let bounds = aabb_from_points(&vertices)?;
         shapes.push(PlayerPosePreviewShape {
             node_name: node_name.to_string(),
+            vertices,
             bounds,
             color: player_pose_preview_color(node_name),
         });
@@ -732,15 +759,25 @@ fn render_player_pose_preview_view(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     for shape in ordered {
-        let (shape_min_u, shape_max_u, shape_min_v, shape_max_v) =
-            project_preview_bounds(shape.bounds, view);
-        let rect_x = origin_x + shape_min_u * scale;
-        let rect_y = origin_y - shape_max_v * scale;
-        let rect_width = (shape_max_u - shape_min_u).max(0.004) * scale;
-        let rect_height = (shape_max_v - shape_min_v).max(0.004) * scale;
+        let hull = preview_projected_hull(&shape.vertices, view);
+        if hull.len() < 3 {
+            continue;
+        }
+        let mut path = String::new();
+        for (index, point) in hull.iter().enumerate() {
+            let x = origin_x + point.x * scale;
+            let y = origin_y - point.y * scale;
+            if index == 0 {
+                write!(path, "M {x:.2} {y:.2}").expect("writing to string should not fail");
+            } else {
+                write!(path, " L {x:.2} {y:.2}").expect("writing to string should not fail");
+            }
+        }
+        path.push_str(" Z");
         writeln!(
             svg,
-            "<rect x=\"{rect_x:.2}\" y=\"{rect_y:.2}\" width=\"{rect_width:.2}\" height=\"{rect_height:.2}\" rx=\"2\" fill=\"{}\" fill-opacity=\"0.68\" stroke=\"#e6eef7\" stroke-opacity=\"0.35\" stroke-width=\"0.5\"><title>{}</title></rect>",
+            "<path d=\"{}\" fill=\"{}\" fill-opacity=\"0.68\" stroke=\"#e6eef7\" stroke-opacity=\"0.38\" stroke-width=\"0.55\"><title>{}</title></path>",
+            path,
             shape.color,
             escape_xml(&shape.node_name)
         )
@@ -754,7 +791,7 @@ fn preview_projected_extent(
 ) -> Option<(f32, f32, f32, f32)> {
     shapes
         .iter()
-        .map(|shape| project_preview_bounds(shape.bounds, view))
+        .filter_map(|shape| preview_vertex_extent(&shape.vertices, view))
         .reduce(|accumulator, bounds| {
             (
                 accumulator.0.min(bounds.0),
@@ -765,11 +802,81 @@ fn preview_projected_extent(
         })
 }
 
-fn project_preview_bounds(bounds: Aabb3, view: PlayerPosePreviewView) -> (f32, f32, f32, f32) {
+fn preview_vertex_extent(
+    vertices: &[Vec3],
+    view: PlayerPosePreviewView,
+) -> Option<(f32, f32, f32, f32)> {
+    vertices
+        .iter()
+        .map(|vertex| project_preview_point(*vertex, view))
+        .map(|point| (point.x, point.x, point.y, point.y))
+        .reduce(|accumulator, bounds| {
+            (
+                accumulator.0.min(bounds.0),
+                accumulator.1.max(bounds.1),
+                accumulator.2.min(bounds.2),
+                accumulator.3.max(bounds.3),
+            )
+        })
+}
+
+fn preview_projected_hull(vertices: &[Vec3], view: PlayerPosePreviewView) -> Vec<Vec2> {
+    let mut points = vertices
+        .iter()
+        .map(|vertex| project_preview_point(*vertex, view))
+        .collect::<Vec<_>>();
+    points.sort_by(|left, right| {
+        left.x
+            .partial_cmp(&right.x)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                left.y
+                    .partial_cmp(&right.y)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    });
+    points.dedup_by(|left, right| {
+        (left.x - right.x).abs() <= 0.0001 && (left.y - right.y).abs() <= 0.0001
+    });
+    if points.len() <= 2 {
+        return points;
+    }
+
+    let mut lower = Vec::new();
+    for point in points.iter().copied() {
+        while lower.len() >= 2
+            && preview_cross(lower[lower.len() - 2], lower[lower.len() - 1], point) <= 0.0
+        {
+            lower.pop();
+        }
+        lower.push(point);
+    }
+
+    let mut upper = Vec::new();
+    for point in points.iter().rev().copied() {
+        while upper.len() >= 2
+            && preview_cross(upper[upper.len() - 2], upper[upper.len() - 1], point) <= 0.0
+        {
+            upper.pop();
+        }
+        upper.push(point);
+    }
+
+    lower.pop();
+    upper.pop();
+    lower.extend(upper);
+    lower
+}
+
+fn preview_cross(origin: Vec2, left: Vec2, right: Vec2) -> f32 {
+    (left.x - origin.x) * (right.y - origin.y) - (left.y - origin.y) * (right.x - origin.x)
+}
+
+fn project_preview_point(vertex: Vec3, view: PlayerPosePreviewView) -> Vec2 {
     match view {
-        PlayerPosePreviewView::Front => (bounds.min.x, bounds.max.x, bounds.min.y, bounds.max.y),
-        PlayerPosePreviewView::Side => (bounds.min.z, bounds.max.z, bounds.min.y, bounds.max.y),
-        PlayerPosePreviewView::Top => (bounds.min.x, bounds.max.x, bounds.min.z, bounds.max.z),
+        PlayerPosePreviewView::Front => Vec2::new(vertex.x, vertex.y),
+        PlayerPosePreviewView::Side => Vec2::new(vertex.z, vertex.y),
+        PlayerPosePreviewView::Top => Vec2::new(vertex.x, vertex.z),
     }
 }
 
@@ -781,12 +888,101 @@ fn preview_depth(bounds: Aabb3, view: PlayerPosePreviewView) -> f32 {
     }
 }
 
+fn embedded_gltf_buffers(gltf: &Value) -> Option<Vec<Vec<u8>>> {
+    gltf.get("buffers")?
+        .as_array()?
+        .iter()
+        .map(|buffer| {
+            let uri = buffer.get("uri").and_then(Value::as_str)?;
+            let encoded = uri.strip_prefix("data:application/octet-stream;base64,")?;
+            STANDARD.decode(encoded).ok()
+        })
+        .collect()
+}
+
+fn mesh_world_vertices(
+    gltf: &Value,
+    mesh: &Value,
+    transform: Mat4,
+    buffers: &[Vec<u8>],
+) -> Option<Vec<Vec3>> {
+    let primitives = mesh.get("primitives")?.as_array()?;
+    let mut vertices = Vec::new();
+    for primitive in primitives {
+        let position_accessor_index = primitive
+            .get("attributes")?
+            .get("POSITION")
+            .and_then(Value::as_u64)? as usize;
+        vertices.extend(
+            read_vec3_accessor(gltf, position_accessor_index, buffers)?
+                .into_iter()
+                .map(|vertex| transform.transform_point3(vertex)),
+        );
+    }
+    Some(vertices)
+}
+
+fn read_vec3_accessor(
+    gltf: &Value,
+    accessor_index: usize,
+    buffers: &[Vec<u8>],
+) -> Option<Vec<Vec3>> {
+    let accessors = gltf.get("accessors")?.as_array()?;
+    let buffer_views = gltf.get("bufferViews")?.as_array()?;
+    let accessor = accessors.get(accessor_index)?;
+    if accessor.get("componentType").and_then(Value::as_u64)? != 5126 {
+        return None;
+    }
+    if accessor.get("type").and_then(Value::as_str)? != "VEC3" {
+        return None;
+    }
+
+    let count = accessor.get("count").and_then(Value::as_u64)? as usize;
+    let view_index = accessor.get("bufferView").and_then(Value::as_u64)? as usize;
+    let view = buffer_views.get(view_index)?;
+    let buffer_index = view.get("buffer").and_then(Value::as_u64)? as usize;
+    let buffer = buffers.get(buffer_index)?;
+    let view_offset = view.get("byteOffset").and_then(Value::as_u64).unwrap_or(0) as usize;
+    let accessor_offset = accessor
+        .get("byteOffset")
+        .and_then(Value::as_u64)
+        .unwrap_or(0) as usize;
+    let stride = view.get("byteStride").and_then(Value::as_u64).unwrap_or(12) as usize;
+    let start = view_offset + accessor_offset;
+
+    (0..count)
+        .map(|index| {
+            let offset = start + index * stride;
+            Some(Vec3::new(
+                read_f32_le(buffer, offset)?,
+                read_f32_le(buffer, offset + 4)?,
+                read_f32_le(buffer, offset + 8)?,
+            ))
+        })
+        .collect()
+}
+
+fn read_f32_le(buffer: &[u8], offset: usize) -> Option<f32> {
+    let bytes = buffer.get(offset..offset + 4)?;
+    Some(f32::from_le_bytes(bytes.try_into().ok()?))
+}
+
+fn aabb_from_points(points: &[Vec3]) -> Option<Aabb3> {
+    let mut iter = points.iter().copied();
+    let first = iter.next()?;
+    let mut bounds = Aabb3::from_min_max(first, first);
+    for point in iter {
+        bounds.include_point(point);
+    }
+    Some(bounds)
+}
+
 impl PlayerPosePreviewView {
     fn label(self) -> &'static str {
         match self {
-            Self::Front => "front silhouette",
-            Self::Side => "side silhouette",
-            Self::Top => "top footprint",
+            Self::Front => "front mesh silhouette",
+            Self::Side => "side mesh silhouette",
+            Self::Top => "top mesh footprint",
         }
     }
 }
@@ -4363,6 +4559,28 @@ mod tests {
                         .unwrap_or(false)
             }));
         }
+    }
+
+    #[test]
+    fn player_pose_preview_renders_mesh_hulls_for_fixture_details() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let specs = player_pose_preview_specs();
+        let overrides = player_pose_node_overrides(&gltf, specs[0].context, specs[0].phase)
+            .expect("pose overrides");
+        let shapes = player_pose_preview_shapes(&gltf, &overrides).expect("preview shapes");
+        let pinky = shapes
+            .iter()
+            .find(|shape| shape.node_name == "Nau Left Leather Pinky Finger Grip")
+            .expect("pinky finger shape");
+
+        assert!(pinky.vertices.len() > 12);
+
+        let sheet = render_player_pose_preview_sheet(&gltf, &specs).expect("preview sheet");
+        assert!(sheet.contains("front mesh silhouette"));
+        assert!(sheet.contains("<path d=\""));
+        assert!(sheet.contains("Nau Left Leather Pinky Finger Grip"));
+        assert!(sheet.contains("Nau Left Leather Outer Toe Lug"));
     }
 
     #[test]
