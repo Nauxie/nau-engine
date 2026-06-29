@@ -442,6 +442,15 @@ struct PlayerPosePreviewSpec {
 }
 
 #[derive(Clone, Copy)]
+struct PlayerTransitionPosePreviewSpec {
+    label: &'static str,
+    title: &'static str,
+    transition: PlayerPoseTransition,
+    phase: f32,
+    blend: f32,
+}
+
+#[derive(Clone, Copy)]
 struct GliderPosePreviewSpec {
     label: &'static str,
     title: &'static str,
@@ -501,6 +510,8 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         .map_err(|error| format!("invalid glider glTF JSON: {error}"))?;
     let specs = player_pose_preview_specs();
     let svg = render_player_pose_preview_sheet(&gltf, &specs)?;
+    let transition_specs = player_transition_pose_preview_specs();
+    let transition_svg = render_player_transition_pose_preview_sheet(&gltf, &transition_specs)?;
     let glider_specs = glider_pose_preview_specs();
     let glider_svg = render_glider_pose_preview_sheet(&glider_gltf, &glider_specs)?;
     fs::create_dir_all(output_dir)
@@ -508,6 +519,9 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
     let sheet_path = output_dir.join("player_pose_sheet.svg");
     fs::write(&sheet_path, svg)
         .map_err(|error| format!("failed to write {sheet_path:?}: {error}"))?;
+    let transition_sheet_path = output_dir.join("player_transition_pose_sheet.svg");
+    fs::write(&transition_sheet_path, transition_svg)
+        .map_err(|error| format!("failed to write {transition_sheet_path:?}: {error}"))?;
     let glider_sheet_path = output_dir.join("glider_pose_sheet.svg");
     fs::write(&glider_sheet_path, glider_svg)
         .map_err(|error| format!("failed to write {glider_sheet_path:?}: {error}"))?;
@@ -518,6 +532,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "source": path,
         "glider_source": glider_path,
         "pose_count": specs.len(),
+        "transition_pose_count": transition_specs.len(),
         "glider_pose_count": glider_specs.len(),
         "views": ["front", "side", "top"],
         "phase_samples": specs.iter().map(|spec| spec.phase).collect::<Vec<_>>(),
@@ -526,6 +541,15 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
             "title": spec.title,
             "phase": spec.phase,
             "pose_intent": spec.context.intent().label(),
+        })).collect::<Vec<_>>(),
+        "transition_poses": transition_specs.iter().map(|spec| json!({
+            "label": spec.label,
+            "title": spec.title,
+            "transition": spec.transition.label,
+            "from_pose_intent": spec.transition.from.intent().label(),
+            "to_pose_intent": spec.transition.to.intent().label(),
+            "phase": spec.phase,
+            "blend": spec.blend,
         })).collect::<Vec<_>>(),
         "glider_poses": glider_specs.iter().map(|spec| json!({
             "label": spec.label,
@@ -540,6 +564,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "surface_contact_audit": player_pose_surface_contact_audit(&gltf),
         "artifacts": {
             "pose_sheet_svg": sheet_path,
+            "transition_pose_sheet_svg": transition_sheet_path,
             "glider_pose_sheet_svg": glider_sheet_path,
         },
     });
@@ -554,8 +579,10 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "passed": true,
         "manifest": manifest_path,
         "pose_sheet_svg": sheet_path,
+        "transition_pose_sheet_svg": transition_sheet_path,
         "glider_pose_sheet_svg": glider_sheet_path,
         "pose_count": specs.len(),
+        "transition_pose_count": transition_specs.len(),
         "glider_pose_count": glider_specs.len(),
     }))
 }
@@ -673,6 +700,19 @@ fn player_pose_preview_specs() -> Vec<PlayerPosePreviewSpec> {
             phase: 0.75,
         },
     ]
+}
+
+fn player_transition_pose_preview_specs() -> Vec<PlayerTransitionPosePreviewSpec> {
+    player_pose_transition_contact_transitions()
+        .into_iter()
+        .map(|transition| PlayerTransitionPosePreviewSpec {
+            label: transition.label,
+            title: transition.label,
+            transition,
+            phase: 0.75,
+            blend: 0.5,
+        })
+        .collect()
 }
 
 fn glider_pose_preview_specs() -> Vec<GliderPosePreviewSpec> {
@@ -823,6 +863,108 @@ fn render_player_pose_preview_sheet(
             "<text x=\"18\" y=\"{:.1}\" fill=\"#7f95a7\" font-family=\"Menlo, monospace\" font-size=\"10\">intent: {}</text>",
             y + 46.0,
             spec.context.intent().label()
+        )
+        .expect("writing to string should not fail");
+
+        for (column, view) in [
+            PlayerPosePreviewView::Front,
+            PlayerPosePreviewView::Side,
+            PlayerPosePreviewView::Top,
+        ]
+        .iter()
+        .enumerate()
+        {
+            let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * column as f32;
+            render_player_pose_preview_view(
+                &mut svg,
+                &shapes,
+                *view,
+                x,
+                y + 12.0,
+                VIEW_WIDTH - 12.0,
+                ROW_HEIGHT - 20.0,
+            );
+        }
+    }
+
+    svg.push_str("</svg>\n");
+    Ok(svg)
+}
+
+fn render_player_transition_pose_preview_sheet(
+    gltf: &Value,
+    specs: &[PlayerTransitionPosePreviewSpec],
+) -> Result<String, String> {
+    const ROW_HEIGHT: f32 = 210.0;
+    const LABEL_WIDTH: f32 = 235.0;
+    const VIEW_WIDTH: f32 = 250.0;
+    const HEADER_HEIGHT: f32 = 58.0;
+    const PADDING: f32 = 18.0;
+
+    let width = LABEL_WIDTH + VIEW_WIDTH * 3.0 + PADDING * 2.0;
+    let height = HEADER_HEIGHT + ROW_HEIGHT * specs.len() as f32 + PADDING;
+    let mut svg = String::new();
+    writeln!(
+        svg,
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" viewBox=\"0 0 {width:.0} {height:.0}\">"
+    )
+    .expect("writing to string should not fail");
+    svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#10151f\"/>\n");
+    svg.push_str("<text x=\"18\" y=\"24\" fill=\"#dbe7f3\" font-family=\"Menlo, monospace\" font-size=\"16\">NAU player fixture transition pose preview</text>\n");
+    for (index, view) in [
+        PlayerPosePreviewView::Front,
+        PlayerPosePreviewView::Side,
+        PlayerPosePreviewView::Top,
+    ]
+    .iter()
+    .enumerate()
+    {
+        let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * index as f32 + VIEW_WIDTH * 0.5;
+        writeln!(
+            svg,
+            "<text x=\"{x:.1}\" y=\"44\" fill=\"#8fb1c9\" text-anchor=\"middle\" font-family=\"Menlo, monospace\" font-size=\"12\">{}</text>",
+            view.label()
+        )
+        .expect("writing to string should not fail");
+    }
+
+    for (row, spec) in specs.iter().enumerate() {
+        let y = HEADER_HEIGHT + ROW_HEIGHT * row as f32;
+        let overrides = player_pose_transition_node_overrides(
+            gltf,
+            spec.transition.from,
+            spec.transition.to,
+            spec.phase,
+            spec.blend,
+        )
+        .ok_or_else(|| format!("failed to compute transition overrides for {}", spec.label))?;
+        let shapes = player_pose_preview_shapes(gltf, &overrides).ok_or_else(|| {
+            format!(
+                "failed to compute transition preview shapes for {}",
+                spec.label
+            )
+        })?;
+        writeln!(
+            svg,
+            "<text x=\"18\" y=\"{:.1}\" fill=\"#edf5ff\" font-family=\"Menlo, monospace\" font-size=\"12\">{}</text>",
+            y + 28.0,
+            escape_xml(spec.title)
+        )
+        .expect("writing to string should not fail");
+        writeln!(
+            svg,
+            "<text x=\"18\" y=\"{:.1}\" fill=\"#7f95a7\" font-family=\"Menlo, monospace\" font-size=\"10\">{} -> {}</text>",
+            y + 46.0,
+            spec.transition.from.intent().label(),
+            spec.transition.to.intent().label()
+        )
+        .expect("writing to string should not fail");
+        writeln!(
+            svg,
+            "<text x=\"18\" y=\"{:.1}\" fill=\"#7f95a7\" font-family=\"Menlo, monospace\" font-size=\"10\">blend: {:.0}% phase: {:.2}</text>",
+            y + 62.0,
+            spec.blend * 100.0,
+            spec.phase
         )
         .expect("writing to string should not fail");
 
@@ -5481,6 +5623,25 @@ mod tests {
         assert!(sheet.contains("surface distance"));
         assert!(sheet.contains("Nau Left Leather Pinky Finger Grip"));
         assert!(sheet.contains("Nau Left Leather Outer Toe Lug"));
+    }
+
+    #[test]
+    fn player_transition_pose_preview_renders_blend_frames() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let specs = player_transition_pose_preview_specs();
+        let sheet =
+            render_player_transition_pose_preview_sheet(&gltf, &specs).expect("transition sheet");
+
+        assert_eq!(
+            specs.len() as f64,
+            PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT
+        );
+        assert!(sheet.contains("player fixture transition pose preview"));
+        assert!(sheet.contains("gliding_to_diving"));
+        assert!(sheet.contains("landing_anticipation_to_landing_recovery"));
+        assert!(sheet.contains("blend: 50%"));
+        assert!(sheet.contains("surface distance"));
     }
 
     #[test]
