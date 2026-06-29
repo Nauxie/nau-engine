@@ -22,13 +22,15 @@ const PLAYER_POSE_MAX_ARTICULATED_JOINT_GAP_M: f64 = 0.025;
 const PLAYER_POSE_MAX_JOINT_COVER_MESH_GAP_M: f64 = 0.035;
 const PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M: f64 = 0.16;
 const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.025;
-const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 58.0;
-const PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES: f64 = 136.0;
+const PLAYER_POSE_MIN_FALLING_TORSO_PITCH_DEGREES: f64 = 72.0;
+const PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES: f64 = 150.0;
 const PLAYER_POSE_MIN_DIVE_TORSO_PITCH_DEGREES: f64 = 82.0;
 const PLAYER_POSE_MAX_DIVE_ARM_SPREAD_DEGREES: f64 = 74.0;
 const PLAYER_POSE_MIN_DIVE_LEG_TUCK_DEGREES: f64 = 68.0;
 const PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT: f64 = 0.45;
 const PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT: f64 = 0.70;
+const PLAYER_GLIDER_MIN_LAUNCH_RESPONSE_DEGREES: f64 = 8.0;
+const PLAYER_GLIDER_MIN_LAUNCH_MOTION_M: f64 = 0.18;
 const PLAYER_GLIDER_MIN_DIVE_RESPONSE_DEGREES: f64 = 4.0;
 const PLAYER_GLIDER_MIN_DIVE_MOTION_M: f64 = 0.16;
 const PLAYER_REST_TORSO_BLOCKING_MESH_NODES: &[&str] = &[
@@ -663,6 +665,18 @@ fn audit_fixture(
             number_field(pose_shape, "glider_launch_deployment"),
             PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT,
             "ratio",
+        ));
+        checks.push(check_at_least_f64(
+            "player_glider_launch_takeout_response",
+            number_field(pose_shape, "glider_launch_response_degrees"),
+            PLAYER_GLIDER_MIN_LAUNCH_RESPONSE_DEGREES,
+            "deg",
+        ));
+        checks.push(check_at_least_f64(
+            "player_glider_launch_takeout_motion",
+            number_field(pose_shape, "glider_launch_motion_m"),
+            PLAYER_GLIDER_MIN_LAUNCH_MOTION_M,
+            "m",
         ));
         checks.push(check_at_least_f64(
             "player_glider_glide_full_deployment",
@@ -1666,6 +1680,13 @@ fn player_pose_shape_audit() -> Value {
         80.0,
     )
     .with_resolved_intent(PlayerPoseIntent::Gliding);
+    let launch_context = PlayerPoseContext::new(
+        FlightMode::Launching,
+        Vec3::new(0.0, 8.0, -20.0),
+        FlightInput::default(),
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Launching);
     let dive_context = PlayerPoseContext::new(
         FlightMode::Gliding,
         Vec3::new(0.0, -28.0, -42.0),
@@ -1705,6 +1726,7 @@ fn player_pose_shape_audit() -> Value {
     let falling = pose_readability_metrics(falling_context, 0.0);
     let dive = pose_readability_metrics(dive_context, 0.0);
     let landing_recovery = pose_readability_metrics(landing_recovery_context, 0.0);
+    let glider_launch = glider_traversal_pose(launch_context, 0.0);
     let glider_dive = glider_traversal_pose(dive_context, 0.0);
     let max_connected_limb_translation_m = max_connected_limb_translation_m(&[
         falling_context,
@@ -1727,6 +1749,8 @@ fn player_pose_shape_audit() -> Value {
         "landing_recovery_flip_degrees": landing_recovery.landing_recovery_flip_degrees,
         "max_connected_limb_translation_m": max_connected_limb_translation_m,
         "glider_launch_deployment": glider_deployment_for_mode(FlightMode::Launching),
+        "glider_launch_response_degrees": glider_launch.response_degrees(),
+        "glider_launch_motion_m": glider_launch.motion_m(),
         "glider_glide_deployment": glider_deployment_for_mode(FlightMode::Gliding),
         "glider_grounded_deployment": glider_deployment_for_mode(FlightMode::Grounded),
         "glider_dive_response_degrees": glider_dive.response_degrees(),
