@@ -341,7 +341,7 @@ nodeIds.neckSocket = addChild(nodeIds.torso, "Nau Neck Socket", {
   translation: [0.0, 0.72, -0.02],
 });
 addMeshChild(nodeIds.neckSocket, "Nau Neck Joint Cover", 22, {
-  translation: [0.0, -0.18, 0.01],
+  translation: [0.0, -0.24, 0.01],
   scale: [0.50, 0.06, 0.50],
 });
 nodeIds.head = addChild(nodeIds.torso, "Nau Head", { translation: [0.0, 0.72, -0.02] });
@@ -376,7 +376,7 @@ for (const side of [
   addMeshChild(socket, `Nau ${label} Shoulder Joint Cover`, 26, {
     translation: [sign * -0.02, -0.015, 0.0],
     rotation: rotZ(sign * 0.14),
-    scale: [0.62, 0.45, 0.62],
+    scale: [0.52, 0.36, 0.52],
   });
   nodeIds[`${lower}ShoulderSocket`] = socket;
   const arm = addChild(nodeIds.torso, `Nau ${label} Arm`, {
@@ -419,7 +419,7 @@ for (const side of [
   });
   addMeshChild(wristSocket, `Nau ${label} Wrist Joint Cover`, 29, {
     translation: [0.0, 0.012, 0.0],
-    scale: [0.76, 0.09, 0.76],
+    scale: [0.62, 0.07, 0.62],
   });
   const hand = addChild(forearm, `Nau ${label} Leather Hand Palm`, {
     mesh: 18,
@@ -452,7 +452,7 @@ for (const side of [
   addMeshChild(hipSocket, `Nau ${label} Hip Joint Cover`, 27, {
     translation: [sign * 0.005, 0.0, 0.0],
     rotation: rotZ(sign * 0.10),
-    scale: [0.88, 0.72, 0.88],
+    scale: [0.56, 0.44, 0.56],
   });
   nodeIds[`${lower}HipSocket`] = hipSocket;
   const leg = addChild(nodeIds.hips, `Nau ${label} Leg`, {
@@ -468,15 +468,15 @@ for (const side of [
   });
   addMeshChild(kneeSocket, `Nau ${label} Knee Joint Cover`, 28, {
     translation: [0.0, 0.0, 0.0],
-    scale: [0.92, 0.10, 0.92],
+    scale: [0.62, 0.07, 0.62],
   });
   const lowerLeg = addChild(leg, `Nau ${label} Lower Leg`, {
     translation: [0.0, -0.34, 0.01],
   });
   nodeIds[`${lower}LowerLeg`] = lowerLeg;
   addMeshChild(lowerLeg, `Nau ${label} Suit Lower Leg Greave`, 25, {
-    translation: [0.0, -0.15, 0.0],
-    scale: [1.0, 0.30, 1.0],
+    translation: [0.0, -0.17, 0.0],
+    scale: [1.0, 0.26, 1.0],
   });
   addMeshChild(lowerLeg, `Nau ${label} Accent Knee Guard`, 17, {
     translation: [0.0, 0.02, -0.10],
@@ -490,7 +490,7 @@ for (const side of [
     translation: [0.0, -0.32, -0.012],
   });
   addMeshChild(ankleSocket, `Nau ${label} Ankle Joint Cover`, 24, {
-    translation: [0.0, 0.10, 0.0],
+    translation: [0.0, 0.14, 0.0],
     scale: [0.58, 0.06, 0.58],
   });
   const boot = addChild(lowerLeg, `Nau ${label} Boot`, {
