@@ -267,6 +267,13 @@ pub(crate) struct AuthoredPlayerPoseNode {
     pub(crate) last_smoothed_time_secs: Option<f32>,
 }
 
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AuthoredPlayerAttachmentMarker {
+    Neck,
+    Shoulder(Side),
+    Hip(Side),
+}
+
 impl AuthoredPlayerPoseNode {
     pub(crate) fn new(part: CharacterPart) -> Self {
         Self {
@@ -295,42 +302,42 @@ pub(crate) fn authored_player_pose_node_for_name(name: &str) -> Option<AuthoredP
     let part = match name {
         "Nau Torso" => CharacterPart::new(
             CharacterPartRole::Torso,
-            Vec3::new(0.0, 1.08, 0.0),
+            Vec3::new(0.0, 0.36, 0.0),
             Quat::IDENTITY,
         ),
         "Nau Head" => CharacterPart::new(
             CharacterPartRole::Head,
-            Vec3::new(0.0, 1.68, 0.0),
+            Vec3::new(0.0, 0.72, -0.02),
             Quat::IDENTITY,
         ),
         "Nau Left Arm" => CharacterPart::new(
             CharacterPartRole::Arm(Side::Left),
-            Vec3::new(-0.55, 1.17, 0.0),
+            Vec3::new(-0.46, 0.54, -0.02),
             Quat::IDENTITY,
         ),
         "Nau Right Arm" => CharacterPart::new(
             CharacterPartRole::Arm(Side::Right),
-            Vec3::new(0.55, 1.17, 0.0),
+            Vec3::new(0.46, 0.54, -0.02),
             Quat::IDENTITY,
         ),
         "Nau Left Leg" => CharacterPart::new(
             CharacterPartRole::Leg(Side::Left),
-            Vec3::new(-0.22, 0.32, 0.02),
+            Vec3::new(-0.20, -0.15, 0.02),
             Quat::IDENTITY,
         ),
         "Nau Right Leg" => CharacterPart::new(
             CharacterPartRole::Leg(Side::Right),
-            Vec3::new(0.22, 0.32, 0.02),
+            Vec3::new(0.20, -0.15, 0.02),
             Quat::IDENTITY,
         ),
         "Nau Back Scarf Anchor Accent" => CharacterPart::new(
             CharacterPartRole::Scarf(ScarfSegment::Anchor),
-            Vec3::new(0.0, 0.0, 0.25),
+            Vec3::new(0.0, 0.42, 0.25),
             Quat::IDENTITY,
         ),
         "Nau Wind Scarf Accent" => CharacterPart::new(
             CharacterPartRole::Scarf(ScarfSegment::Trail),
-            Vec3::new(0.24, 1.18, 0.31),
+            Vec3::new(0.20, 0.32, 0.36),
             Quat::IDENTITY,
         ),
         _ => return None,
@@ -339,12 +346,26 @@ pub(crate) fn authored_player_pose_node_for_name(name: &str) -> Option<AuthoredP
     Some(AuthoredPlayerPoseNode::new(part))
 }
 
+fn authored_player_attachment_marker_for_name(
+    name: &str,
+) -> Option<AuthoredPlayerAttachmentMarker> {
+    match name {
+        "Nau Neck Socket" => Some(AuthoredPlayerAttachmentMarker::Neck),
+        "Nau Left Shoulder Socket" => Some(AuthoredPlayerAttachmentMarker::Shoulder(Side::Left)),
+        "Nau Right Shoulder Socket" => Some(AuthoredPlayerAttachmentMarker::Shoulder(Side::Right)),
+        "Nau Left Hip Socket" => Some(AuthoredPlayerAttachmentMarker::Hip(Side::Left)),
+        "Nau Right Hip Socket" => Some(AuthoredPlayerAttachmentMarker::Hip(Side::Right)),
+        _ => None,
+    }
+}
+
 pub(crate) fn tag_authored_player_pose_nodes(
     mut commands: Commands,
     children: Query<&Children>,
     authored_scenes: Query<(Entity, &AuthoredVisualScene)>,
     names: Query<&Name>,
     pose_nodes: Query<(), With<AuthoredPlayerPoseNode>>,
+    attachment_markers: Query<(), With<AuthoredPlayerAttachmentMarker>>,
 ) {
     for (scene_entity, scene) in &authored_scenes {
         if scene.role != AuthoredVisualSceneRole::PlayerRuntime {
@@ -360,6 +381,12 @@ pub(crate) fn tag_authored_player_pose_nodes(
             };
             if let Some(node) = authored_player_pose_node_for_name(name.as_str()) {
                 commands.entity(descendant).insert(node);
+            }
+            if attachment_markers.get(descendant).is_ok() {
+                continue;
+            }
+            if let Some(marker) = authored_player_attachment_marker_for_name(name.as_str()) {
+                commands.entity(descendant).insert(marker);
             }
         }
     }
@@ -698,15 +725,38 @@ mod tests {
             authored_player_pose_node_for_name("Nau Wind Scarf Accent").expect("scarf node");
 
         assert_eq!(torso.part.role, CharacterPartRole::Torso);
-        assert_eq!(torso.part.base_translation, Vec3::new(0.0, 1.08, 0.0));
+        assert_eq!(torso.part.base_translation, Vec3::new(0.0, 0.36, 0.0));
         assert_eq!(left_arm.part.role, CharacterPartRole::Arm(Side::Left));
-        assert_eq!(left_arm.part.base_translation, Vec3::new(-0.55, 1.17, 0.0));
+        assert_eq!(
+            left_arm.part.base_translation,
+            Vec3::new(-0.46, 0.54, -0.02)
+        );
         assert_eq!(right_leg.part.role, CharacterPartRole::Leg(Side::Right));
         assert_eq!(
             scarf.part.role,
             CharacterPartRole::Scarf(ScarfSegment::Trail)
         );
         assert!(authored_player_pose_node_for_name("Nau Belt Buckle Plate").is_none());
+    }
+
+    #[test]
+    fn authored_player_attachment_marker_names_map_core_joints() {
+        assert_eq!(
+            authored_player_attachment_marker_for_name("Nau Left Shoulder Socket"),
+            Some(AuthoredPlayerAttachmentMarker::Shoulder(Side::Left))
+        );
+        assert_eq!(
+            authored_player_attachment_marker_for_name("Nau Right Hip Socket"),
+            Some(AuthoredPlayerAttachmentMarker::Hip(Side::Right))
+        );
+        assert_eq!(
+            authored_player_attachment_marker_for_name("Nau Neck Socket"),
+            Some(AuthoredPlayerAttachmentMarker::Neck)
+        );
+        assert_eq!(
+            authored_player_attachment_marker_for_name("Nau Left Arm"),
+            None
+        );
     }
 
     #[test]

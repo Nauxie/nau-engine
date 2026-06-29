@@ -738,6 +738,7 @@ pub(crate) fn apply_authored_glider_pose(
             &mut transform,
             pose.translation_offset,
             pose.rotation_offset,
+            authored_glider_deployment(controller.mode),
             pose_time_secs,
             blend,
         );
@@ -790,11 +791,17 @@ fn apply_authored_glider_pose_smoothing(
     transform: &mut Transform,
     translation_offset: Vec3,
     rotation_offset: Quat,
+    deployment: f32,
     pose_time_secs: f32,
     blend: f32,
 ) {
-    let target_translation = glider.base_translation + translation_offset;
-    let target_rotation = glider.base_rotation * rotation_offset;
+    let deployment = deployment.clamp(0.0, 1.0);
+    let stowed_translation = glider.base_translation + authored_glider_stowed_translation_offset();
+    let deployed_translation = glider.base_translation + translation_offset;
+    let target_translation = stowed_translation.lerp(deployed_translation, deployment);
+    let stowed_rotation = glider.base_rotation * authored_glider_stowed_rotation_offset();
+    let deployed_rotation = glider.base_rotation * rotation_offset;
+    let target_rotation = stowed_rotation.slerp(deployed_rotation, deployment);
     if !glider.smoothing_initialized {
         glider.smoothed_translation = target_translation;
         glider.smoothed_rotation = target_rotation;
@@ -813,8 +820,24 @@ fn reapply_smoothed_authored_glider_pose(glider: &AuthoredGliderPose, transform:
     transform.rotation = glider.smoothed_rotation;
 }
 
+fn authored_glider_deployment(mode: FlightMode) -> f32 {
+    match mode {
+        FlightMode::Launching => 0.52,
+        FlightMode::Gliding => 1.0,
+        _ => 0.0,
+    }
+}
+
+fn authored_glider_stowed_translation_offset() -> Vec3 {
+    Vec3::new(0.0, -0.58, 0.64)
+}
+
+fn authored_glider_stowed_rotation_offset() -> Quat {
+    Quat::from_rotation_x(-1.08) * Quat::from_rotation_z(0.10)
+}
+
 fn authored_glider_scene_visible(authored_glider_ready: bool, mode: FlightMode) -> bool {
-    authored_glider_ready && mode == FlightMode::Gliding
+    authored_glider_ready && matches!(mode, FlightMode::Launching | FlightMode::Gliding)
 }
 
 fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
@@ -971,6 +994,7 @@ mod tests {
             &mut transform,
             Vec3::new(0.0, 0.04, 0.08),
             Quat::from_rotation_z(-0.12),
+            1.0,
             0.0,
             1.0,
         );
@@ -979,6 +1003,7 @@ mod tests {
             &mut transform,
             Vec3::new(0.0, 0.12, 0.24),
             Quat::from_rotation_z(-0.32),
+            1.0,
             1.0,
             0.5,
         );
@@ -990,6 +1015,7 @@ mod tests {
             &mut transform,
             Vec3::new(4.0, 9.0, -7.0),
             Quat::from_rotation_y(1.4),
+            1.0,
             1.0,
             1.0,
         );
@@ -1007,8 +1033,31 @@ mod tests {
     #[test]
     fn authored_glider_scene_visibility_tracks_deployed_glide_mode() {
         assert!(authored_glider_scene_visible(true, FlightMode::Gliding));
+        assert!(authored_glider_scene_visible(true, FlightMode::Launching));
         assert!(!authored_glider_scene_visible(true, FlightMode::Airborne));
         assert!(!authored_glider_scene_visible(false, FlightMode::Gliding));
+    }
+
+    #[test]
+    fn authored_glider_launch_deployment_reads_as_take_out_pose() {
+        let base = authored_glider_scene_transform();
+        let mut glider = AuthoredGliderPose::new(&base);
+        let mut transform = base;
+
+        apply_authored_glider_pose_smoothing(
+            &mut glider,
+            &mut transform,
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            authored_glider_deployment(FlightMode::Launching),
+            0.0,
+            1.0,
+        );
+
+        assert!(authored_glider_deployment(FlightMode::Launching) > 0.0);
+        assert!(authored_glider_deployment(FlightMode::Launching) < 1.0);
+        assert!(glider.motion_m(&transform) > 0.25);
+        assert!(glider.response_degrees(&transform) > 20.0);
     }
 
     #[test]

@@ -263,6 +263,9 @@ fn air_control_metric_sample(
         max_pose_part_rotation_delta_degrees: 8.0,
         max_pose_part_translation_delta_m: 0.04,
         min_pose_limb_clearance_m: 0.12,
+        max_pose_limb_penetration_m: 0.0,
+        max_pose_joint_gap_m: 0.0,
+        pose_joint_gap_samples: 1,
     })
     .with_authored_glider_metrics(AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES, 0.08)
     .with_authored_animation_metrics(authored_clip_label, authored_clip_label, 1, 140)

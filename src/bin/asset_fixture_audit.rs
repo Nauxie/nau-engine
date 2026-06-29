@@ -387,7 +387,7 @@ fn audit_fixture(
         checks.push(check_at_least_f64(
             "player_rest_arm_half_width",
             symmetric_node_half_width_m(&gltf, "Nau Left Arm", "Nau Right Arm").unwrap_or(0.0),
-            0.52,
+            0.42,
             "m",
         ));
         checks.push(check_at_least_f64(
@@ -408,6 +408,27 @@ fn audit_fixture(
             ready_player_clip_count,
             PLAYER_ANIMATION_CLIP_NAMES.len() as u64,
             "clips",
+        ));
+        checks.push(check_bool(
+            "player_core_pose_nodes_present",
+            player_core_pose_nodes_present(&gltf),
+            "nodes",
+        ));
+        checks.push(check_bool(
+            "player_animation_channels_cover_core_signals",
+            player_animation_channels_cover_core_signals(&gltf),
+            "clips",
+        ));
+        checks.push(check_bool(
+            "player_animation_channels_avoid_runtime_pose_nodes",
+            player_animation_channels_avoid_runtime_pose_nodes(&gltf),
+            "clips",
+        ));
+        checks.push(check_at_most_f64(
+            "player_rest_joint_gap_max",
+            player_rest_joint_gap_max_m(&gltf).unwrap_or(f64::INFINITY),
+            0.03,
+            "m",
         ));
         checks.push(check_bool(
             "player_bank_clip_motion_distinct",
@@ -449,6 +470,10 @@ fn audit_fixture(
         "missing_uv_primitives": metrics.missing_uvs,
         "blend_material_count": blend_material_count,
         "player_named_clip_count": ready_player_clip_count,
+        "player_core_pose_nodes_present": player_core_pose_nodes_present(&gltf),
+        "player_animation_channels_cover_core_signals": player_animation_channels_cover_core_signals(&gltf),
+        "player_animation_channels_avoid_runtime_pose_nodes": player_animation_channels_avoid_runtime_pose_nodes(&gltf),
+        "player_rest_joint_gap_max_m": player_rest_joint_gap_max_m(&gltf),
         "player_bank_clip_motion_distinct": player_bank_clip_motion_is_distinct(&gltf),
         "player_launch_glide_land_clip_motion_distinct": player_launch_glide_land_clip_motion_is_distinct(&gltf),
         "player_grounded_locomotion_clip_motion_distinct": player_grounded_locomotion_clip_motion_is_distinct(&gltf),
@@ -555,6 +580,80 @@ fn player_clip_count(gltf: &Value) -> u64 {
         .count() as u64
 }
 
+fn player_core_pose_nodes_present(gltf: &Value) -> bool {
+    [
+        "Nau Torso",
+        "Nau Head",
+        "Nau Left Arm",
+        "Nau Right Arm",
+        "Nau Left Leg",
+        "Nau Right Leg",
+        "Nau Neck Socket",
+        "Nau Left Shoulder Socket",
+        "Nau Right Shoulder Socket",
+        "Nau Left Hip Socket",
+        "Nau Right Hip Socket",
+    ]
+    .into_iter()
+    .all(|name| node_index(gltf, name).is_some())
+}
+
+fn player_animation_channels_cover_core_signals(gltf: &Value) -> bool {
+    PLAYER_ANIMATION_CLIP_NAMES.iter().all(|clip_name| {
+        let Some(targets) = animation_target_node_names(gltf, clip_name) else {
+            return false;
+        };
+        [
+            "Nau Animation Signal Torso",
+            "Nau Animation Signal Left Arm",
+            "Nau Animation Signal Right Arm",
+            "Nau Animation Signal Left Leg",
+            "Nau Animation Signal Right Leg",
+        ]
+        .into_iter()
+        .all(|required| targets.iter().any(|target| target == required))
+    })
+}
+
+fn player_animation_channels_avoid_runtime_pose_nodes(gltf: &Value) -> bool {
+    let runtime_pose_nodes = [
+        "Nau Torso",
+        "Nau Head",
+        "Nau Left Arm",
+        "Nau Right Arm",
+        "Nau Left Leg",
+        "Nau Right Leg",
+        "Nau Back Scarf Anchor Accent",
+        "Nau Wind Scarf Accent",
+    ];
+    PLAYER_ANIMATION_CLIP_NAMES.iter().all(|clip_name| {
+        animation_target_node_names(gltf, clip_name).is_some_and(|targets| {
+            targets
+                .iter()
+                .all(|target| !runtime_pose_nodes.contains(&target.as_str()))
+        })
+    })
+}
+
+fn player_rest_joint_gap_max_m(gltf: &Value) -> Option<f64> {
+    let pairs = [
+        ("Nau Neck Socket", "Nau Head"),
+        ("Nau Left Shoulder Socket", "Nau Left Arm"),
+        ("Nau Right Shoulder Socket", "Nau Right Arm"),
+        ("Nau Left Hip Socket", "Nau Left Leg"),
+        ("Nau Right Hip Socket", "Nau Right Leg"),
+    ];
+    pairs
+        .into_iter()
+        .map(|(socket, joint)| {
+            let socket = world_node_translation(gltf, socket)?;
+            let joint = world_node_translation(gltf, joint)?;
+            Some(distance3(socket, joint))
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|gaps| gaps.into_iter().fold(0.0, f64::max))
+}
+
 fn player_bank_clip_motion_is_distinct(gltf: &Value) -> bool {
     let Some(glide) = animation_signature(gltf, "Glide_Loop") else {
         return false;
@@ -628,6 +727,27 @@ fn player_fall_clip_motion_is_distinct(gltf: &Value) -> bool {
     fall.len() >= 4 && fall != glide && fall != air_brake && fall != land
 }
 
+fn animation_target_node_names(gltf: &Value, animation_name: &str) -> Option<Vec<String>> {
+    let animation = gltf
+        .get("animations")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|animation| {
+            animation
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| name == animation_name)
+        })?;
+    let channels = animation.get("channels").and_then(Value::as_array)?;
+    channels
+        .iter()
+        .map(|channel| {
+            let node = channel.get("target")?.get("node").and_then(Value::as_u64)? as usize;
+            node_name(gltf, node).map(str::to_owned)
+        })
+        .collect()
+}
+
 fn animation_signature(gltf: &Value, animation_name: &str) -> Option<Vec<String>> {
     let accessors = gltf.get("accessors").and_then(Value::as_array)?;
     let animation = gltf
@@ -680,10 +800,22 @@ fn symmetric_node_half_width_m(gltf: &Value, left_name: &str, right_name: &str) 
     }
 }
 
+fn world_node_translation(gltf: &Value, node_name: &str) -> Option<[f64; 3]> {
+    let nodes = gltf.get("nodes")?.as_array()?;
+    let index = node_index(gltf, node_name)?;
+    let parents = parent_indices(nodes);
+    let mut cursor = Some(index);
+    let mut translation = [0.0, 0.0, 0.0];
+    while let Some(node_index) = cursor {
+        translation = add3(translation, node_translation_by_index(nodes, node_index)?);
+        cursor = parents[node_index];
+    }
+    Some(translation)
+}
+
 fn node_translation(gltf: &Value, node_name: &str) -> Option<[f64; 3]> {
-    let translation = gltf
-        .get("nodes")?
-        .as_array()?
+    let nodes = gltf.get("nodes")?.as_array()?;
+    let translation = nodes
         .iter()
         .find(|node| node.get("name").and_then(Value::as_str) == Some(node_name))?
         .get("translation")?
@@ -693,6 +825,64 @@ fn node_translation(gltf: &Value, node_name: &str) -> Option<[f64; 3]> {
         translation.get(1)?.as_f64()?,
         translation.get(2)?.as_f64()?,
     ])
+}
+
+fn node_translation_by_index(nodes: &[Value], index: usize) -> Option<[f64; 3]> {
+    let Some(translation) = nodes
+        .get(index)
+        .and_then(|node| node.get("translation"))
+        .and_then(Value::as_array)
+    else {
+        return Some([0.0, 0.0, 0.0]);
+    };
+    Some([
+        translation.first()?.as_f64()?,
+        translation.get(1)?.as_f64()?,
+        translation.get(2)?.as_f64()?,
+    ])
+}
+
+fn node_index(gltf: &Value, node_name: &str) -> Option<usize> {
+    gltf.get("nodes")?
+        .as_array()?
+        .iter()
+        .position(|node| node.get("name").and_then(Value::as_str) == Some(node_name))
+}
+
+fn node_name(gltf: &Value, index: usize) -> Option<&str> {
+    gltf.get("nodes")?
+        .as_array()?
+        .get(index)?
+        .get("name")
+        .and_then(Value::as_str)
+}
+
+fn parent_indices(nodes: &[Value]) -> Vec<Option<usize>> {
+    let mut parents = vec![None; nodes.len()];
+    for (parent, node) in nodes.iter().enumerate() {
+        let Some(children) = node.get("children").and_then(Value::as_array) else {
+            continue;
+        };
+        for child in children {
+            if let Some(child) = child.as_u64().map(|child| child as usize)
+                && child < parents.len()
+            {
+                parents[child] = Some(parent);
+            }
+        }
+    }
+    parents
+}
+
+fn add3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
+fn distance3(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let dx = a[0] - b[0];
+    let dy = a[1] - b[1];
+    let dz = a[2] - b[2];
+    (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
 fn checks_passed(checks: &[Value]) -> bool {
@@ -732,6 +922,17 @@ fn check_at_least_f64(name: &'static str, value: f64, threshold: f64, unit: &'st
         "passed": value >= threshold,
         "value": value,
         "comparator": ">=",
+        "threshold": threshold,
+        "unit": unit,
+    })
+}
+
+fn check_at_most_f64(name: &'static str, value: f64, threshold: f64, unit: &'static str) -> Value {
+    json!({
+        "name": name,
+        "passed": value <= threshold,
+        "value": value,
+        "comparator": "<=",
         "threshold": threshold,
         "unit": unit,
     })

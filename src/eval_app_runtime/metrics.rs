@@ -1,7 +1,7 @@
 use super::scene::EvalScene;
 use crate::authored_assets::{
-    AuthoredAnimationDiagnostics, AuthoredPlayerAnimation, AuthoredPlayerPoseNode,
-    authored_player_clip_for_pose_intent_with_input,
+    AuthoredAnimationDiagnostics, AuthoredPlayerAnimation, AuthoredPlayerAttachmentMarker,
+    AuthoredPlayerPoseNode, authored_player_clip_for_pose_intent_with_input,
 };
 use crate::camera_runtime::CAMERA_PLAYER_FOCUS_HEIGHT;
 use crate::environment_visuals::{
@@ -68,6 +68,9 @@ pub(crate) struct VisiblePoseTemporalState {
     pending_max_pose_part_translation_delta_m: f32,
     pending_pose_clearance_samples: u32,
     pending_min_pose_limb_clearance_m: f32,
+    pending_max_pose_limb_penetration_m: f32,
+    pending_pose_attachment_samples: u32,
+    pending_max_pose_joint_gap_m: f32,
 }
 
 impl VisiblePoseTemporalState {
@@ -79,7 +82,13 @@ impl VisiblePoseTemporalState {
         self.key_intent_age_frames
     }
 
-    fn observe_frame(&mut self, frame: u32, intent: PlayerPoseIntent, current: VisiblePosePartSet) {
+    fn observe_frame(
+        &mut self,
+        frame: u32,
+        intent: PlayerPoseIntent,
+        current: VisiblePosePartSet,
+        attachments: VisiblePoseAttachmentSet,
+    ) {
         self.visible_pose_part_count = current.part_count();
         let current_parts = current.complete();
 
@@ -92,7 +101,16 @@ impl VisiblePoseTemporalState {
             } else {
                 self.pending_min_pose_limb_clearance_m.min(clearance_m)
             };
+            self.pending_max_pose_limb_penetration_m = self
+                .pending_max_pose_limb_penetration_m
+                .max((-clearance_m).max(0.0));
             self.pending_pose_clearance_samples += 1;
+
+            if let Some(joint_gap_m) = current_parts.max_joint_gap_m(current.head, attachments) {
+                self.pending_max_pose_joint_gap_m =
+                    self.pending_max_pose_joint_gap_m.max(joint_gap_m);
+                self.pending_pose_attachment_samples += 1;
+            }
         }
 
         if key_pose_intent(intent)
@@ -144,12 +162,26 @@ impl VisiblePoseTemporalState {
             } else {
                 f32::NAN
             },
+            max_pose_limb_penetration_m: if self.pending_pose_clearance_samples > 0 {
+                self.pending_max_pose_limb_penetration_m
+            } else {
+                f32::NAN
+            },
+            max_pose_joint_gap_m: if self.pending_pose_attachment_samples > 0 {
+                self.pending_max_pose_joint_gap_m
+            } else {
+                f32::NAN
+            },
+            pose_joint_gap_samples: self.pending_pose_attachment_samples,
         };
         self.pending_pose_temporal_samples = 0;
         self.pending_max_pose_part_rotation_delta_degrees = 0.0;
         self.pending_max_pose_part_translation_delta_m = 0.0;
         self.pending_pose_clearance_samples = 0;
         self.pending_min_pose_limb_clearance_m = 0.0;
+        self.pending_max_pose_limb_penetration_m = 0.0;
+        self.pending_pose_attachment_samples = 0;
+        self.pending_max_pose_joint_gap_m = 0.0;
         metrics
     }
 }
@@ -373,14 +405,16 @@ impl WindVisualFrameSnapshot {
 #[derive(Clone, Copy, Debug)]
 struct VisiblePosePartTransform {
     translation: Vec3,
+    global_translation: Vec3,
     base_delta: Vec3,
     rotation: Quat,
 }
 
 impl VisiblePosePartTransform {
-    fn from_part(part: &CharacterPart, transform: &Transform) -> Self {
+    fn from_part(part: &CharacterPart, transform: &Transform, global_translation: Vec3) -> Self {
         Self {
             translation: transform.translation,
+            global_translation,
             base_delta: transform.translation - part.base_translation,
             rotation: transform.rotation,
         }
@@ -390,6 +424,7 @@ impl VisiblePosePartTransform {
 #[derive(Clone, Copy, Debug, Default)]
 struct VisiblePosePartSet {
     torso: Option<VisiblePosePartTransform>,
+    head: Option<VisiblePosePartTransform>,
     left_arm: Option<VisiblePosePartTransform>,
     right_arm: Option<VisiblePosePartTransform>,
     left_leg: Option<VisiblePosePartTransform>,
@@ -426,6 +461,15 @@ impl VisiblePosePartSet {
         self.complete()
             .map(|parts| parts.readability_metrics(context, self.scarf_anchor, self.scarf_tail))
     }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct VisiblePoseAttachmentSet {
+    neck: Option<Vec3>,
+    left_shoulder: Option<Vec3>,
+    right_shoulder: Option<Vec3>,
+    left_hip: Option<Vec3>,
+    right_hip: Option<Vec3>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -519,6 +563,33 @@ impl VisiblePosePartTransforms {
         .fold(f32::INFINITY, f32::min)
     }
 
+    fn max_joint_gap_m(
+        self,
+        head: Option<VisiblePosePartTransform>,
+        attachments: VisiblePoseAttachmentSet,
+    ) -> Option<f32> {
+        let head = head?;
+        Some(
+            [
+                self.left_arm
+                    .global_translation
+                    .distance(attachments.left_shoulder?),
+                self.right_arm
+                    .global_translation
+                    .distance(attachments.right_shoulder?),
+                self.left_leg
+                    .global_translation
+                    .distance(attachments.left_hip?),
+                self.right_leg
+                    .global_translation
+                    .distance(attachments.right_hip?),
+                head.global_translation.distance(attachments.neck?),
+            ]
+            .into_iter()
+            .fold(0.0, f32::max),
+        )
+    }
+
     fn parts(self) -> [VisiblePosePartTransform; 5] {
         [
             self.torso,
@@ -536,7 +607,7 @@ fn limb_clearance(
     a_radius_m: f32,
     b_radius_m: f32,
 ) -> f32 {
-    a.translation.distance(b.translation) - a_radius_m - b_radius_m
+    a.global_translation.distance(b.global_translation) - a_radius_m - b_radius_m
 }
 
 pub(crate) fn collect_eval_frame_time(time: Res<Time>, mut run: ResMut<EvalRun>) {
@@ -686,7 +757,14 @@ pub(crate) fn collect_eval_metrics(
     } else {
         visible_authored_pose_part_set(scene.authored_player_pose_nodes.iter())
     };
-    pose_temporal_state.observe_frame(run.frame, pose_context.intent(), visible_pose_parts);
+    let visible_pose_attachments =
+        visible_authored_pose_attachment_set(scene.authored_player_attachment_markers.iter());
+    pose_temporal_state.observe_frame(
+        run.frame,
+        pose_context.intent(),
+        visible_pose_parts,
+        visible_pose_attachments,
+    );
     let transition_from_key_intent = pose_temporal_state.transition_from_key_intent();
     let key_intent_age_frames = pose_temporal_state.key_intent_age_frames();
 
@@ -1171,9 +1249,10 @@ fn visible_generated_pose_part_set<'a>(
             continue;
         }
 
-        let pose_part = VisiblePosePartTransform::from_part(part, transform);
+        let pose_part = VisiblePosePartTransform::from_part(part, transform, transform.translation);
         match part.role {
             CharacterPartRole::Torso => parts_set.torso = Some(pose_part),
+            CharacterPartRole::Head => parts_set.head = Some(pose_part),
             CharacterPartRole::Arm(Side::Left) => parts_set.left_arm = Some(pose_part),
             CharacterPartRole::Arm(Side::Right) => parts_set.right_arm = Some(pose_part),
             CharacterPartRole::Leg(Side::Left) => parts_set.left_leg = Some(pose_part),
@@ -1182,7 +1261,7 @@ fn visible_generated_pose_part_set<'a>(
                 parts_set.scarf_anchor = Some(pose_part);
             }
             CharacterPartRole::Scarf(ScarfSegment::Trail) => parts_set.scarf_tail = Some(pose_part),
-            CharacterPartRole::Head | CharacterPartRole::Wing(_) => {}
+            CharacterPartRole::Wing(_) => {}
         }
     }
 
@@ -1194,6 +1273,7 @@ fn visible_authored_pose_readability_metrics<'a>(
         Item = (
             &'a AuthoredPlayerPoseNode,
             &'a Transform,
+            &'a GlobalTransform,
             Option<&'a Visibility>,
             Option<&'a InheritedVisibility>,
         ),
@@ -1208,6 +1288,7 @@ fn visible_authored_pose_part_set<'a>(
         Item = (
             &'a AuthoredPlayerPoseNode,
             &'a Transform,
+            &'a GlobalTransform,
             Option<&'a Visibility>,
             Option<&'a InheritedVisibility>,
         ),
@@ -1215,13 +1296,18 @@ fn visible_authored_pose_part_set<'a>(
 ) -> VisiblePosePartSet {
     let mut parts_set = VisiblePosePartSet::default();
 
-    for (node, transform, visibility, inherited_visibility) in nodes {
+    for (node, transform, global_transform, visibility, inherited_visibility) in nodes {
         if !authored_pose_part_visible(visibility, inherited_visibility) {
             continue;
         }
-        let pose_part = VisiblePosePartTransform::from_part(&node.part, transform);
+        let pose_part = VisiblePosePartTransform::from_part(
+            &node.part,
+            transform,
+            global_transform.translation(),
+        );
         match node.part.role {
             CharacterPartRole::Torso => parts_set.torso = Some(pose_part),
+            CharacterPartRole::Head => parts_set.head = Some(pose_part),
             CharacterPartRole::Arm(Side::Left) => parts_set.left_arm = Some(pose_part),
             CharacterPartRole::Arm(Side::Right) => parts_set.right_arm = Some(pose_part),
             CharacterPartRole::Leg(Side::Left) => parts_set.left_leg = Some(pose_part),
@@ -1230,11 +1316,48 @@ fn visible_authored_pose_part_set<'a>(
                 parts_set.scarf_anchor = Some(pose_part);
             }
             CharacterPartRole::Scarf(ScarfSegment::Trail) => parts_set.scarf_tail = Some(pose_part),
-            CharacterPartRole::Head | CharacterPartRole::Wing(_) => {}
+            CharacterPartRole::Wing(_) => {}
         }
     }
 
     parts_set
+}
+
+fn visible_authored_pose_attachment_set<'a>(
+    markers: impl Iterator<
+        Item = (
+            &'a AuthoredPlayerAttachmentMarker,
+            &'a GlobalTransform,
+            Option<&'a Visibility>,
+            Option<&'a InheritedVisibility>,
+        ),
+    >,
+) -> VisiblePoseAttachmentSet {
+    let mut attachments = VisiblePoseAttachmentSet::default();
+
+    for (marker, global_transform, visibility, inherited_visibility) in markers {
+        if !authored_pose_part_visible(visibility, inherited_visibility) {
+            continue;
+        }
+        let translation = global_transform.translation();
+        match *marker {
+            AuthoredPlayerAttachmentMarker::Neck => attachments.neck = Some(translation),
+            AuthoredPlayerAttachmentMarker::Shoulder(Side::Left) => {
+                attachments.left_shoulder = Some(translation);
+            }
+            AuthoredPlayerAttachmentMarker::Shoulder(Side::Right) => {
+                attachments.right_shoulder = Some(translation);
+            }
+            AuthoredPlayerAttachmentMarker::Hip(Side::Left) => {
+                attachments.left_hip = Some(translation);
+            }
+            AuthoredPlayerAttachmentMarker::Hip(Side::Right) => {
+                attachments.right_hip = Some(translation);
+            }
+        }
+    }
+
+    attachments
 }
 
 fn authored_pose_part_visible(
@@ -1727,7 +1850,7 @@ mod tests {
     }
 
     #[test]
-    fn generated_landing_crouch_uses_pose_delta_not_leg_base_height() {
+    fn generated_landing_crouch_uses_pose_delta_and_rotation_not_leg_base_height() {
         let context = PlayerPoseContext::new(
             FlightMode::Gliding,
             Vec3::new(0.0, -4.0, -18.0),
@@ -1796,7 +1919,8 @@ mod tests {
         )
         .expect("visible generated pose metrics");
 
-        assert_eq!(metrics.landing_crouch_m, 0.0);
+        assert!(metrics.landing_crouch_m > 0.07);
+        assert!(metrics.landing_crouch_m < 0.08);
         assert!(metrics.key_pose_readability_score < 0.1);
     }
 
@@ -1886,11 +2010,17 @@ mod tests {
                 },
             ),
         ];
+        let global_transforms = nodes
+            .iter()
+            .map(|(_, transform)| GlobalTransform::from(*transform))
+            .collect::<Vec<_>>();
 
         let metrics = visible_authored_pose_readability_metrics(
-            nodes
-                .iter()
-                .map(|(node, transform)| (node, transform, None, None)),
+            nodes.iter().zip(global_transforms.iter()).map(
+                |((node, transform), global_transform)| {
+                    (node, transform, global_transform, None, None)
+                },
+            ),
             context,
         )
         .expect("visible authored pose metrics");
@@ -1911,12 +2041,14 @@ mod tests {
             Quat::IDENTITY,
         ));
         let transform = Transform::default();
+        let global_transform = GlobalTransform::from(transform);
         let visibility = Visibility::Inherited;
         let inherited_visibility = InheritedVisibility::HIDDEN;
 
         let parts = visible_authored_pose_part_set(std::iter::once((
             &node,
             &transform,
+            &global_transform,
             Some(&visibility),
             Some(&inherited_visibility),
         )));
@@ -2007,6 +2139,9 @@ mod tests {
                 max_pose_part_rotation_delta_degrees: 18.0,
                 max_pose_part_translation_delta_m: 0.03,
                 min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
             },
         );
 
@@ -2043,6 +2178,9 @@ mod tests {
                 max_pose_part_rotation_delta_degrees: 4.0,
                 max_pose_part_translation_delta_m: 0.01,
                 min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
             },
         );
 
@@ -2086,6 +2224,9 @@ mod tests {
                 max_pose_part_rotation_delta_degrees: f32::NAN,
                 max_pose_part_translation_delta_m: f32::NAN,
                 min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
             },
         );
 
@@ -2122,6 +2263,9 @@ mod tests {
                 max_pose_part_rotation_delta_degrees: 20.0,
                 max_pose_part_translation_delta_m: 0.03,
                 min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
             },
         );
 
@@ -2157,6 +2301,9 @@ mod tests {
                 max_pose_part_rotation_delta_degrees: 48.0,
                 max_pose_part_translation_delta_m: 0.04,
                 min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
             },
         );
 
@@ -2203,6 +2350,9 @@ mod tests {
                 max_pose_part_rotation_delta_degrees: 10.34,
                 max_pose_part_translation_delta_m: 0.05,
                 min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
             },
         );
 
@@ -2250,6 +2400,9 @@ mod tests {
                 max_pose_part_rotation_delta_degrees: 24.34,
                 max_pose_part_translation_delta_m: 0.025,
                 min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
             },
         );
 
@@ -2298,6 +2451,9 @@ mod tests {
                 max_pose_part_rotation_delta_degrees: 103.0,
                 max_pose_part_translation_delta_m: 0.375,
                 min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
             },
         );
 
@@ -2346,6 +2502,9 @@ mod tests {
                 max_pose_part_rotation_delta_degrees: 87.05,
                 max_pose_part_translation_delta_m: 0.573,
                 min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
             },
         );
 
@@ -2394,6 +2553,9 @@ mod tests {
                 max_pose_part_rotation_delta_degrees: 121.0,
                 max_pose_part_translation_delta_m: 0.375,
                 min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
             },
         );
 
@@ -2437,6 +2599,9 @@ mod tests {
                 max_pose_part_rotation_delta_degrees: 49.49,
                 max_pose_part_translation_delta_m: 0.285,
                 min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
             },
         );
 
@@ -2484,6 +2649,9 @@ mod tests {
                 max_pose_part_rotation_delta_degrees: 121.0,
                 max_pose_part_translation_delta_m: 0.285,
                 min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
             },
         );
 
@@ -2519,6 +2687,9 @@ mod tests {
                 max_pose_part_rotation_delta_degrees: 8.0,
                 max_pose_part_translation_delta_m: 0.02,
                 min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
             },
         );
 
@@ -2533,9 +2704,19 @@ mod tests {
         let second =
             visible_pose_part_set(Quat::from_rotation_z(std::f32::consts::PI), Vec3::Y * 0.7);
 
-        state.observe_frame(0, PlayerPoseIntent::Gliding, first);
+        state.observe_frame(
+            0,
+            PlayerPoseIntent::Gliding,
+            first,
+            VisiblePoseAttachmentSet::default(),
+        );
         let initial = state.take_sample_metrics();
-        state.observe_frame(5, PlayerPoseIntent::Gliding, second);
+        state.observe_frame(
+            5,
+            PlayerPoseIntent::Gliding,
+            second,
+            VisiblePoseAttachmentSet::default(),
+        );
         let changed = state.take_sample_metrics();
 
         assert_eq!(initial.visible_pose_part_count, 5);
@@ -2550,10 +2731,20 @@ mod tests {
         let mut state = VisiblePoseTemporalState::default();
         let parts = visible_pose_part_set(Quat::IDENTITY, Vec3::ZERO);
 
-        state.observe_frame(0, PlayerPoseIntent::AirBrake, parts);
+        state.observe_frame(
+            0,
+            PlayerPoseIntent::AirBrake,
+            parts,
+            VisiblePoseAttachmentSet::default(),
+        );
         assert_eq!(state.transition_from_key_intent(), None);
 
-        state.observe_frame(1, PlayerPoseIntent::Gliding, parts);
+        state.observe_frame(
+            1,
+            PlayerPoseIntent::Gliding,
+            parts,
+            VisiblePoseAttachmentSet::default(),
+        );
         assert_eq!(
             state.transition_from_key_intent(),
             Some(PlayerPoseIntent::AirBrake)
@@ -2561,7 +2752,12 @@ mod tests {
         assert_eq!(state.key_intent_age_frames(), 1);
 
         for frame in 2..=5 {
-            state.observe_frame(frame, PlayerPoseIntent::Gliding, parts);
+            state.observe_frame(
+                frame,
+                PlayerPoseIntent::Gliding,
+                parts,
+                VisiblePoseAttachmentSet::default(),
+            );
         }
         assert_eq!(
             state.transition_from_key_intent(),
@@ -2576,8 +2772,18 @@ mod tests {
         let first = visible_pose_part_set(Quat::IDENTITY, Vec3::ZERO);
         let second = visible_pose_part_set(Quat::from_rotation_z(std::f32::consts::PI), Vec3::Y);
 
-        state.observe_frame(0, PlayerPoseIntent::GroundedStride, first);
-        state.observe_frame(5, PlayerPoseIntent::GroundedStride, second);
+        state.observe_frame(
+            0,
+            PlayerPoseIntent::GroundedStride,
+            first,
+            VisiblePoseAttachmentSet::default(),
+        );
+        state.observe_frame(
+            5,
+            PlayerPoseIntent::GroundedStride,
+            second,
+            VisiblePoseAttachmentSet::default(),
+        );
         let changed = state.take_sample_metrics();
 
         assert_eq!(changed.visible_pose_part_count, 5);
@@ -2592,9 +2798,19 @@ mod tests {
         let second =
             visible_pose_part_set(Quat::from_rotation_z(std::f32::consts::PI), Vec3::Y * 0.7);
 
-        state.observe_frame(0, PlayerPoseIntent::AirTurn, first);
+        state.observe_frame(
+            0,
+            PlayerPoseIntent::AirTurn,
+            first,
+            VisiblePoseAttachmentSet::default(),
+        );
         state.take_sample_metrics();
-        state.observe_frame(5, PlayerPoseIntent::AirTurn, second);
+        state.observe_frame(
+            5,
+            PlayerPoseIntent::AirTurn,
+            second,
+            VisiblePoseAttachmentSet::default(),
+        );
         let changed = state.take_sample_metrics();
 
         assert_eq!(changed.visible_pose_part_count, 5);
@@ -2610,16 +2826,19 @@ mod tests {
             0,
             PlayerPoseIntent::Gliding,
             visible_pose_part_set(Quat::IDENTITY, Vec3::ZERO),
+            VisiblePoseAttachmentSet::default(),
         );
         state.observe_frame(
             1,
             PlayerPoseIntent::Gliding,
             visible_pose_part_set(Quat::from_rotation_z(std::f32::consts::PI), Vec3::Y),
+            VisiblePoseAttachmentSet::default(),
         );
         state.observe_frame(
             2,
             PlayerPoseIntent::Gliding,
             visible_pose_part_set(Quat::from_rotation_z(0.05), Vec3::ZERO),
+            VisiblePoseAttachmentSet::default(),
         );
 
         let metrics = state.take_sample_metrics();
@@ -2635,17 +2854,54 @@ mod tests {
         let mut overlapping_parts = readable_parts;
         overlapping_parts.left_arm = Some(VisiblePosePartTransform {
             translation: Vec3::new(-0.08, 1.08, 0.0),
+            global_translation: Vec3::new(-0.08, 1.08, 0.0),
             base_delta: Vec3::ZERO,
             rotation: Quat::IDENTITY,
         });
 
-        state.observe_frame(0, PlayerPoseIntent::Gliding, readable_parts);
+        state.observe_frame(
+            0,
+            PlayerPoseIntent::Gliding,
+            readable_parts,
+            VisiblePoseAttachmentSet::default(),
+        );
         let readable = state.take_sample_metrics();
-        state.observe_frame(1, PlayerPoseIntent::Gliding, overlapping_parts);
+        state.observe_frame(
+            1,
+            PlayerPoseIntent::Gliding,
+            overlapping_parts,
+            VisiblePoseAttachmentSet::default(),
+        );
         let overlapping = state.take_sample_metrics();
 
         assert!(readable.min_pose_limb_clearance_m > 0.04);
         assert!(overlapping.min_pose_limb_clearance_m < 0.0);
+        assert!(overlapping.max_pose_limb_penetration_m > 0.0);
+    }
+
+    #[test]
+    fn visible_pose_temporal_state_reports_joint_gaps_from_markers() {
+        let mut state = VisiblePoseTemporalState::default();
+        let parts = visible_pose_part_set(Quat::IDENTITY, Vec3::ZERO);
+        let attachments = VisiblePoseAttachmentSet {
+            neck: Some(Vec3::new(0.0, 1.80, -0.02)),
+            left_shoulder: Some(Vec3::new(-0.55, 1.17, 0.0)),
+            right_shoulder: Some(Vec3::new(0.55, 1.17, 0.0)),
+            left_hip: Some(Vec3::new(-0.22, 0.32, 0.02)),
+            right_hip: Some(Vec3::new(0.22, 0.32, 0.02)),
+        };
+        state.observe_frame(0, PlayerPoseIntent::Gliding, parts, attachments);
+        let connected = state.take_sample_metrics();
+
+        let detached = VisiblePoseAttachmentSet {
+            left_shoulder: Some(Vec3::new(-0.10, 1.17, 0.0)),
+            ..attachments
+        };
+        state.observe_frame(1, PlayerPoseIntent::Gliding, parts, detached);
+        let gapped = state.take_sample_metrics();
+
+        assert!(connected.max_pose_joint_gap_m < 0.001);
+        assert!(gapped.max_pose_joint_gap_m > 0.40);
     }
 
     #[test]
@@ -2674,26 +2930,37 @@ mod tests {
         VisiblePosePartSet {
             torso: Some(VisiblePosePartTransform {
                 translation: Vec3::new(0.0, 1.08, 0.0),
+                global_translation: Vec3::new(0.0, 1.08, 0.0),
                 base_delta: Vec3::ZERO,
                 rotation: torso_rotation,
             }),
+            head: Some(VisiblePosePartTransform {
+                translation: Vec3::new(0.0, 1.80, -0.02),
+                global_translation: Vec3::new(0.0, 1.80, -0.02),
+                base_delta: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+            }),
             left_arm: Some(VisiblePosePartTransform {
                 translation: Vec3::new(-0.55, 1.17, 0.0),
+                global_translation: Vec3::new(-0.55, 1.17, 0.0),
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),
             right_arm: Some(VisiblePosePartTransform {
                 translation: Vec3::new(0.55, 1.17, 0.0),
+                global_translation: Vec3::new(0.55, 1.17, 0.0),
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),
             left_leg: Some(VisiblePosePartTransform {
                 translation: left_leg_base + left_leg_translation,
+                global_translation: left_leg_base + left_leg_translation,
                 base_delta: left_leg_translation,
                 rotation: Quat::IDENTITY,
             }),
             right_leg: Some(VisiblePosePartTransform {
                 translation: Vec3::new(0.22, 0.32, 0.02),
+                global_translation: Vec3::new(0.22, 0.32, 0.02),
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),

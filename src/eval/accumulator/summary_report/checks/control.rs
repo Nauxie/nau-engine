@@ -766,6 +766,24 @@ fn append_air_control_checks(
             MIN_POSE_LIMB_CLEARANCE_M,
             "m",
         ),
+        EvalCheck::at_most(
+            "air_control_max_pose_limb_penetration",
+            acc.max_pose_limb_penetration_m,
+            MAX_POSE_LIMB_PENETRATION_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "air_control_pose_joint_gap_samples",
+            acc.pose_joint_gap_samples as f32,
+            MIN_POSE_JOINT_GAP_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "air_control_max_pose_joint_gap",
+            acc.max_pose_joint_gap_m,
+            MAX_POSE_JOINT_GAP_M,
+            "m",
+        ),
         EvalCheck::at_least(
             "air_control_post_brake_forward_alignment",
             acc.max_post_brake_forward_alignment_mps,
@@ -1360,6 +1378,24 @@ fn append_pose_state_coverage_checks(
             "pose_state_min_pose_limb_clearance",
             min_pose_limb_clearance_m,
             MIN_POSE_LIMB_CLEARANCE_M,
+            "m",
+        ),
+        EvalCheck::at_most(
+            "pose_state_max_pose_limb_penetration",
+            acc.max_pose_limb_penetration_m,
+            MAX_POSE_LIMB_PENETRATION_M,
+            "m",
+        ),
+        EvalCheck::at_least(
+            "pose_state_pose_joint_gap_samples",
+            acc.pose_joint_gap_samples as f32,
+            MIN_POSE_JOINT_GAP_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "pose_state_max_pose_joint_gap",
+            acc.max_pose_joint_gap_m,
+            MAX_POSE_JOINT_GAP_M,
             "m",
         ),
     ]);
