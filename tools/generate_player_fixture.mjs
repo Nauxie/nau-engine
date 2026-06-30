@@ -401,6 +401,10 @@ addMesh("Nau Seamless Wrist Flex Cover", ellipsoidMesh([0.070, 0.046, 0.062], 34
 addMesh("Nau Seamless Hip Flex Cover", ellipsoidMesh([0.116, 0.056, 0.102], 40, 14), 0);
 addMesh("Nau Seamless Knee Flex Cover", ellipsoidMesh([0.080, 0.034, 0.068], 36, 12), 0);
 addMesh("Nau Seamless Ankle Flex Cover", ellipsoidMesh([0.086, 0.054, 0.078], 34, 11), 3);
+addMesh("Nau Suit Shoulder Motion Cowl", ellipsoidMesh([0.168, 0.074, 0.126], 42, 14), 0);
+addMesh("Nau Suit Elbow Motion Cowl", ellipsoidMesh([0.096, 0.052, 0.074], 38, 12), 0);
+addMesh("Nau Suit Hip Motion Cowl", ellipsoidMesh([0.136, 0.066, 0.112], 42, 14), 0);
+addMesh("Nau Suit Knee Motion Cowl", ellipsoidMesh([0.092, 0.046, 0.076], 38, 12), 0);
 addMesh("Nau Suit Axilla Blend", ellipsoidMesh([0.118, 0.046, 0.082], 30, 10), 0);
 addMesh("Nau Suit Hip Inguinal Blend", ellipsoidMesh([0.104, 0.040, 0.086], 30, 10), 0);
 addMesh("Nau Suit Shoulder Web Capsule", ellipsoidMesh([0.178, 0.070, 0.118], 38, 12), 0);
@@ -581,6 +585,11 @@ for (const side of [
     rotation: rotZ(sign * 0.24),
     scale: [1.12, 1.06, 1.12],
   });
+  addMeshChild(nodeIds.torso, `Nau ${label} Suit Shoulder Torso Motion Cowl`, meshIndex("Nau Suit Shoulder Motion Cowl"), {
+    translation: [sign * 0.492, 0.524, -0.006],
+    rotation: rotZ(sign * 0.22),
+    scale: [1.08, 0.88, 1.08],
+  });
   addMeshChild(nodeIds.hips, `Nau ${label} Suit Oblique Flex Connector`, meshIndex("Nau Suit Oblique Flex Connector"), {
     translation: [sign * 0.282, 0.232, -0.020],
     rotation: rotZ(sign * 0.18),
@@ -619,6 +628,11 @@ for (const side of [
     rotation: rotZ(sign * 0.10),
     scale: [0.92, 0.74, 0.92],
   });
+  addMeshChild(arm, `Nau ${label} Suit Shoulder Arm Motion Cowl`, meshIndex("Nau Suit Shoulder Motion Cowl"), {
+    translation: [sign * -0.028, -0.076, -0.004],
+    rotation: rotZ(sign * 0.12),
+    scale: [0.92, 0.82, 0.94],
+  });
   addMeshChild(arm, `Nau ${label} Suit Upper Arm`, meshIndex("Nau Suit Upper Arm"), {
     translation: [0.0, -0.315, 0.0],
     scale: [1.0, 0.62, 1.0],
@@ -647,6 +661,10 @@ for (const side of [
     translation: [0.0, 0.0, 0.0],
     scale: [0.70, 0.052, 0.70],
   });
+  addMeshChild(arm, `Nau ${label} Suit Elbow Upper Motion Cowl`, meshIndex("Nau Suit Elbow Motion Cowl"), {
+    translation: [0.0, -0.500, 0.018],
+    scale: [0.92, 0.78, 0.94],
+  });
   const forearm = addChild(arm, `Nau ${label} Forearm`, {
     translation: [0.0, -0.54, 0.018],
   });
@@ -658,6 +676,10 @@ for (const side of [
   addMeshChild(forearm, `Nau ${label} Seamless Elbow Flex Cover`, meshIndex("Nau Seamless Elbow Flex Cover"), {
     translation: [0.0, 0.020, 0.0],
     scale: [1.04, 1.02, 1.04],
+  });
+  addMeshChild(forearm, `Nau ${label} Suit Elbow Forearm Motion Cowl`, meshIndex("Nau Suit Elbow Motion Cowl"), {
+    translation: [0.0, 0.010, 0.0],
+    scale: [0.86, 0.84, 0.88],
   });
   addMeshChild(forearm, `Nau ${label} Leather Forearm Wrap`, meshIndex("Nau Leather Forearm Wrap"), {
     translation: [0.0, -0.240, 0.0],
@@ -802,6 +824,11 @@ for (const side of [
     rotation: rotZ(sign * 0.10),
     scale: [1.12, 1.04, 1.10],
   });
+  addMeshChild(nodeIds.hips, `Nau ${label} Suit Hip Pelvis Motion Cowl`, meshIndex("Nau Suit Hip Motion Cowl"), {
+    translation: [sign * 0.252, -0.184, 0.010],
+    rotation: rotZ(sign * 0.10),
+    scale: [1.02, 0.92, 1.02],
+  });
   const leg = addChild(nodeIds.hips, `Nau ${label} Leg`, {
     translation: [sign * 0.250, -0.170, 0.020],
   });
@@ -820,6 +847,11 @@ for (const side of [
     translation: [sign * 0.008, -0.032, 0.0],
     rotation: rotZ(sign * 0.08),
     scale: [0.98, 0.90, 0.98],
+  });
+  addMeshChild(leg, `Nau ${label} Suit Hip Thigh Motion Cowl`, meshIndex("Nau Suit Hip Motion Cowl"), {
+    translation: [sign * 0.002, -0.058, 0.002],
+    rotation: rotZ(sign * 0.08),
+    scale: [0.92, 0.86, 0.94],
   });
   addMeshChild(leg, `Nau ${label} Suit Hip Root Blend`, meshIndex("Nau Suit Hip Root Blend"), {
     translation: [sign * -0.010, -0.042, -0.002],
@@ -856,6 +888,10 @@ for (const side of [
     translation: [0.0, 0.0, 0.0],
     scale: [0.58, 0.060, 0.58],
   });
+  addMeshChild(leg, `Nau ${label} Suit Knee Thigh Motion Cowl`, meshIndex("Nau Suit Knee Motion Cowl"), {
+    translation: [0.0, -0.400, 0.010],
+    scale: [0.94, 0.82, 0.96],
+  });
   const lowerLeg = addChild(leg, `Nau ${label} Lower Leg`, {
     translation: [0.0, -0.43, 0.01],
   });
@@ -867,6 +903,10 @@ for (const side of [
   addMeshChild(lowerLeg, `Nau ${label} Seamless Knee Flex Cover`, meshIndex("Nau Seamless Knee Flex Cover"), {
     translation: [0.0, -0.026, 0.0],
     scale: [1.08, 1.06, 1.08],
+  });
+  addMeshChild(lowerLeg, `Nau ${label} Suit Knee Lower Motion Cowl`, meshIndex("Nau Suit Knee Motion Cowl"), {
+    translation: [0.0, -0.028, 0.0],
+    scale: [0.88, 0.86, 0.90],
   });
   addMeshChild(lowerLeg, `Nau ${label} Suit Lower Leg Greave`, meshIndex("Nau Suit Lower Leg Greave"), {
     translation: [0.0, -0.220, 0.0],

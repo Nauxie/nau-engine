@@ -39,8 +39,8 @@ const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_PAIR_COUNT: f64 = 26.0;
-const PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT: f64 = 62.0;
-const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 113.0;
+const PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT: f64 = 94.0;
+const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 145.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT: f64 = 9.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT: f64 = 4.0;
 const PLAYER_MOTION_INTEGRITY_REVIEW_EXPECTED_PANEL_COUNT: f64 = 15.0;
@@ -68,7 +68,7 @@ const PLAYER_POSE_MAX_DIVE_TORSO_LOCAL_PITCH_DEGREES: f64 = 42.0;
 const PLAYER_MIN_FINGER_GRIP_LENGTH_M: f64 = 0.10;
 const PLAYER_MAX_FINGER_GRIP_LENGTH_M: f64 = 0.22;
 const PLAYER_MIN_BOOT_SOLE_LENGTH_M: f64 = 0.32;
-const PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT: f64 = 66.0;
+const PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT: f64 = 82.0;
 const PLAYER_MIN_LIMB_ANATOMY_MAJOR_EXTENT_M: f64 = 0.15;
 const PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT: f64 = 0.45;
 const PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT: f64 = 0.70;
@@ -5870,7 +5870,7 @@ fn player_surface_contact_pairs() -> Vec<PlayerSurfaceContactPair> {
     pairs
 }
 
-fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 62] {
+fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 94] {
     [
         ("Nau Skin Neck Column", "Nau Skin Rounded Head"),
         ("Nau Skin Neck Column", "Nau Neck Joint Cover"),
@@ -5982,6 +5982,70 @@ fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 62] {
             "Nau Right Suit Lat Shoulder Connector",
             "Nau Right Suit Upper Arm",
         ),
+        (
+            "Nau Left Suit Shoulder Torso Motion Cowl",
+            "Nau Suit Shoulder Yoke Plate",
+        ),
+        (
+            "Nau Right Suit Shoulder Torso Motion Cowl",
+            "Nau Suit Shoulder Yoke Plate",
+        ),
+        (
+            "Nau Left Suit Shoulder Torso Motion Cowl",
+            "Nau Left Shoulder Joint Cover",
+        ),
+        (
+            "Nau Right Suit Shoulder Torso Motion Cowl",
+            "Nau Right Shoulder Joint Cover",
+        ),
+        (
+            "Nau Left Suit Shoulder Arm Motion Cowl",
+            "Nau Left Seamless Shoulder Flex Cover",
+        ),
+        (
+            "Nau Right Suit Shoulder Arm Motion Cowl",
+            "Nau Right Seamless Shoulder Flex Cover",
+        ),
+        (
+            "Nau Left Suit Shoulder Arm Motion Cowl",
+            "Nau Left Suit Upper Arm",
+        ),
+        (
+            "Nau Right Suit Shoulder Arm Motion Cowl",
+            "Nau Right Suit Upper Arm",
+        ),
+        (
+            "Nau Left Suit Elbow Upper Motion Cowl",
+            "Nau Left Suit Upper Arm",
+        ),
+        (
+            "Nau Right Suit Elbow Upper Motion Cowl",
+            "Nau Right Suit Upper Arm",
+        ),
+        (
+            "Nau Left Suit Elbow Upper Motion Cowl",
+            "Nau Left Elbow Joint Cover",
+        ),
+        (
+            "Nau Right Suit Elbow Upper Motion Cowl",
+            "Nau Right Elbow Joint Cover",
+        ),
+        (
+            "Nau Left Suit Elbow Forearm Motion Cowl",
+            "Nau Left Leather Forearm Wrap",
+        ),
+        (
+            "Nau Right Suit Elbow Forearm Motion Cowl",
+            "Nau Right Leather Forearm Wrap",
+        ),
+        (
+            "Nau Left Suit Elbow Forearm Motion Cowl",
+            "Nau Left Seamless Elbow Flex Cover",
+        ),
+        (
+            "Nau Right Suit Elbow Forearm Motion Cowl",
+            "Nau Right Seamless Elbow Flex Cover",
+        ),
         ("Nau Left Hip Joint Cover", "Nau Suit Pelvis Hip Yoke"),
         ("Nau Right Hip Joint Cover", "Nau Suit Pelvis Hip Yoke"),
         (
@@ -6030,6 +6094,70 @@ fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 62] {
         (
             "Nau Right Suit Hip Thigh Fairing",
             "Nau Right Seamless Hip Flex Cover",
+        ),
+        (
+            "Nau Left Suit Hip Pelvis Motion Cowl",
+            "Nau Suit Pelvis Hip Yoke",
+        ),
+        (
+            "Nau Right Suit Hip Pelvis Motion Cowl",
+            "Nau Suit Pelvis Hip Yoke",
+        ),
+        (
+            "Nau Left Suit Hip Pelvis Motion Cowl",
+            "Nau Left Suit Hip Web Capsule",
+        ),
+        (
+            "Nau Right Suit Hip Pelvis Motion Cowl",
+            "Nau Right Suit Hip Web Capsule",
+        ),
+        (
+            "Nau Left Suit Hip Thigh Motion Cowl",
+            "Nau Left Suit Thigh Guard",
+        ),
+        (
+            "Nau Right Suit Hip Thigh Motion Cowl",
+            "Nau Right Suit Thigh Guard",
+        ),
+        (
+            "Nau Left Suit Hip Thigh Motion Cowl",
+            "Nau Left Seamless Hip Flex Cover",
+        ),
+        (
+            "Nau Right Suit Hip Thigh Motion Cowl",
+            "Nau Right Seamless Hip Flex Cover",
+        ),
+        (
+            "Nau Left Suit Knee Thigh Motion Cowl",
+            "Nau Left Suit Thigh Guard",
+        ),
+        (
+            "Nau Right Suit Knee Thigh Motion Cowl",
+            "Nau Right Suit Thigh Guard",
+        ),
+        (
+            "Nau Left Suit Knee Thigh Motion Cowl",
+            "Nau Left Knee Joint Cover",
+        ),
+        (
+            "Nau Right Suit Knee Thigh Motion Cowl",
+            "Nau Right Knee Joint Cover",
+        ),
+        (
+            "Nau Left Suit Knee Lower Motion Cowl",
+            "Nau Left Suit Lower Leg Greave",
+        ),
+        (
+            "Nau Right Suit Knee Lower Motion Cowl",
+            "Nau Right Suit Lower Leg Greave",
+        ),
+        (
+            "Nau Left Suit Knee Lower Motion Cowl",
+            "Nau Left Seamless Knee Flex Cover",
+        ),
+        (
+            "Nau Right Suit Knee Lower Motion Cowl",
+            "Nau Right Seamless Knee Flex Cover",
         ),
         (
             "Nau Left Leather Wrist Palm Gusset",
@@ -6717,6 +6845,14 @@ fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {
         "Nau Right Suit Shoulder Web Capsule",
         "Nau Left Suit Lat Shoulder Connector",
         "Nau Right Suit Lat Shoulder Connector",
+        "Nau Left Suit Shoulder Torso Motion Cowl",
+        "Nau Right Suit Shoulder Torso Motion Cowl",
+        "Nau Left Suit Shoulder Arm Motion Cowl",
+        "Nau Right Suit Shoulder Arm Motion Cowl",
+        "Nau Left Suit Elbow Upper Motion Cowl",
+        "Nau Right Suit Elbow Upper Motion Cowl",
+        "Nau Left Suit Elbow Forearm Motion Cowl",
+        "Nau Right Suit Elbow Forearm Motion Cowl",
         "Nau Left Suit Outer Thigh Sweep",
         "Nau Right Suit Outer Thigh Sweep",
         "Nau Left Suit Inner Thigh Sweep",
@@ -6731,12 +6867,20 @@ fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {
         "Nau Right Suit Glute Hip Connector",
         "Nau Left Suit Hip Thigh Fairing",
         "Nau Right Suit Hip Thigh Fairing",
+        "Nau Left Suit Hip Pelvis Motion Cowl",
+        "Nau Right Suit Hip Pelvis Motion Cowl",
+        "Nau Left Suit Hip Thigh Motion Cowl",
+        "Nau Right Suit Hip Thigh Motion Cowl",
         "Nau Left Suit Calf Volume",
         "Nau Right Suit Calf Volume",
         "Nau Left Suit Shin Ridge",
         "Nau Right Suit Shin Ridge",
         "Nau Left Suit Knee Tendon Strap",
         "Nau Right Suit Knee Tendon Strap",
+        "Nau Left Suit Knee Thigh Motion Cowl",
+        "Nau Right Suit Knee Thigh Motion Cowl",
+        "Nau Left Suit Knee Lower Motion Cowl",
+        "Nau Right Suit Knee Lower Motion Cowl",
         "Nau Left Leather Wrist Palm Gusset",
         "Nau Right Leather Wrist Palm Gusset",
         "Nau Left Leather Heel Tendon Guard",
