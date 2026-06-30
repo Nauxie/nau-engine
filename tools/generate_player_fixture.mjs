@@ -514,10 +514,17 @@ addMesh("Nau Suit Oblique Flex Connector", ellipsoidMesh([0.104, 0.092, 0.074], 
 addMesh("Nau Suit Pectoral Soft Volume", ellipsoidMesh([0.170, 0.052, 0.070], 34, 10), 0);
 addMesh("Nau Suit Scapula Soft Volume", ellipsoidMesh([0.122, 0.044, 0.066], 30, 9), 0);
 addMesh("Nau Accent Split Tunic Panel", panelMesh(0.34, 0.52, 0.58, -0.04), 4);
-addMesh("Nau Skin Rounded Head", ellipsoidMesh([0.205, 0.255, 0.190], 42, 18), 1);
+addMesh("Nau Skin Rounded Head", superellipsoidMesh([0.200, 0.246, 0.178], 50, 20, 0.68), 1);
 addMesh("Nau Skin Neck Column", roundedTaperedCylinderMesh([0.082, 0.068], [0.074, 0.060], 30, 7), 1);
 addMesh("Nau Suit Neck Collar Pad", ellipsoidMesh([0.178, 0.052, 0.132], 32, 10), 0);
 addMesh("Nau Accent Helmet Crest", taperedCylinderMesh([0.135, 0.078], [0.070, 0.042], 28), 5);
+addMesh("Nau Suit Brow Guard", superellipsoidMesh([0.158, 0.026, 0.030], 34, 10, 0.44), 5);
+addMesh("Nau Skin Nose Bridge", superellipsoidMesh([0.026, 0.064, 0.020], 24, 10, 0.48), 1);
+addMesh("Nau Skin Jaw Plane", superellipsoidMesh([0.122, 0.042, 0.034], 28, 10, 0.50), 1);
+addMesh("Nau Skin Cheek Plane", superellipsoidMesh([0.054, 0.040, 0.022], 22, 8, 0.50), 1);
+addMesh("Nau Suit Temple Guard", superellipsoidMesh([0.044, 0.078, 0.030], 24, 9, 0.50), 5);
+addMesh("Nau Suit Rear Head Cap", superellipsoidMesh([0.164, 0.074, 0.036], 32, 10, 0.54), 5);
+addMesh("Nau Amber Eye Glint", ellipsoidMesh([0.012, 0.007, 0.005], 12, 6), 6);
 addMesh("Nau Suit Upper Arm", organicLimbMesh([0.110, 0.094], [0.112, 0.096], [0.086, 0.074], 58, 18, {
   frontBias: 0.004,
   rearBias: 0.006,
@@ -764,7 +771,7 @@ addMeshChild(nodeIds.neckSocket, "Nau Suit Neck Collar Pad", meshIndex("Nau Suit
 });
 nodeIds.head = addChild(nodeIds.torso, "Nau Head", { translation: [0.0, 0.78, -0.02] });
 addMeshChild(nodeIds.head, "Nau Skin Rounded Head", meshIndex("Nau Skin Rounded Head"), {
-  translation: [0.0, 0.06, -0.02],
+  translation: [0.0, 0.047, -0.02],
 });
 addMeshChild(nodeIds.head, "Nau Helmet Accent Crest", meshIndex("Nau Accent Helmet Crest"), {
   translation: [0.0, 0.250, -0.02],
@@ -780,6 +787,44 @@ addMeshChild(nodeIds.head, "Nau Left Amber Eye Lens", meshIndex("Nau Amber Eye L
 });
 addMeshChild(nodeIds.head, "Nau Right Amber Eye Lens", meshIndex("Nau Amber Eye Lens"), {
   translation: [0.075, 0.075, -0.275],
+});
+addMeshChild(nodeIds.head, "Nau Head Brow Guard", meshIndex("Nau Suit Brow Guard"), {
+  translation: [0.0, 0.125, -0.274],
+  rotation: rotX(-0.04),
+});
+addMeshChild(nodeIds.head, "Nau Nose Bridge", meshIndex("Nau Skin Nose Bridge"), {
+  translation: [0.0, 0.030, -0.294],
+  rotation: rotX(0.04),
+});
+addMeshChild(nodeIds.head, "Nau Jaw Plane", meshIndex("Nau Skin Jaw Plane"), {
+  translation: [0.0, -0.118, -0.245],
+  rotation: rotX(-0.18),
+});
+addMeshChild(nodeIds.head, "Nau Left Cheek Plane", meshIndex("Nau Skin Cheek Plane"), {
+  translation: [-0.114, -0.035, -0.250],
+  rotation: rotY(-0.28),
+});
+addMeshChild(nodeIds.head, "Nau Right Cheek Plane", meshIndex("Nau Skin Cheek Plane"), {
+  translation: [0.114, -0.035, -0.250],
+  rotation: rotY(0.28),
+});
+addMeshChild(nodeIds.head, "Nau Left Temple Guard", meshIndex("Nau Suit Temple Guard"), {
+  translation: [-0.202, 0.060, -0.040],
+  rotation: rotZ(0.10),
+});
+addMeshChild(nodeIds.head, "Nau Right Temple Guard", meshIndex("Nau Suit Temple Guard"), {
+  translation: [0.202, 0.060, -0.040],
+  rotation: rotZ(-0.10),
+});
+addMeshChild(nodeIds.head, "Nau Rear Head Cap", meshIndex("Nau Suit Rear Head Cap"), {
+  translation: [0.0, 0.060, 0.174],
+  rotation: rotX(0.10),
+});
+addMeshChild(nodeIds.head, "Nau Left Eye Glint", meshIndex("Nau Amber Eye Glint"), {
+  translation: [-0.060, 0.086, -0.292],
+});
+addMeshChild(nodeIds.head, "Nau Right Eye Glint", meshIndex("Nau Amber Eye Glint"), {
+  translation: [0.060, 0.086, -0.292],
 });
 
 for (const side of [
