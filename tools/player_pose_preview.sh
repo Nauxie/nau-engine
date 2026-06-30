@@ -13,6 +13,15 @@ render_timeout_secs="${NAU_PREVIEW_RENDER_TIMEOUT_SECS:-90}"
 
 if [[ -n "${chrome_bin}" && -x "${chrome_bin}" ]]; then
   abs_output_dir="$(cd "${output_dir}" && pwd -P)"
+  sheets=(
+    player_pose_sheet
+    player_anatomy_review_sheet
+    player_rig_stress_review_sheet
+    player_motion_integrity_review_sheet
+    player_transition_pose_sheet
+    glider_pose_sheet
+    player_glider_attachment_sheet
+  )
 
   render_sheet_png() {
     local sheet="$1"
@@ -54,7 +63,7 @@ if [[ -n "${chrome_bin}" && -x "${chrome_bin}" ]]; then
           stable_size_ticks=0
           previous_size="${current_size}"
         fi
-        if (( stable_size_ticks >= 1 )); then
+        if (( elapsed_secs >= 2 && stable_size_ticks >= 2 )); then
           kill "${render_pid}" 2> /dev/null || true
           wait "${render_pid}" 2> /dev/null || true
           rm -rf "${chrome_profile}"
@@ -70,16 +79,18 @@ if [[ -n "${chrome_bin}" && -x "${chrome_bin}" ]]; then
       sleep 1
       elapsed_secs=$((elapsed_secs + 1))
     done
-    wait "${render_pid}"
-    local status="$?"
+    local status=0
+    wait "${render_pid}" || status="$?"
     rm -rf "${chrome_profile}"
     return "${status}"
   }
 
-  for sheet in player_pose_sheet player_anatomy_review_sheet player_rig_stress_review_sheet player_motion_integrity_review_sheet player_transition_pose_sheet glider_pose_sheet player_glider_attachment_sheet; do
+  for sheet in "${sheets[@]}"; do
     render_sheet_png "${sheet}"
     test -s "${abs_output_dir}/${sheet}.png"
   done
+  cargo run --quiet --bin player_pose_preview_audit -- "${abs_output_dir}" \
+    > "${abs_output_dir}/preview_audit.json"
 elif [[ "${NAU_REQUIRE_PREVIEW_PNG:-0}" == "1" ]]; then
   echo "CHROME_BIN must point to a Chrome executable when NAU_REQUIRE_PREVIEW_PNG=1" >&2
   exit 1
@@ -114,3 +125,6 @@ if [[ -f "${output_dir}/player_glider_attachment_sheet.png" ]]; then
   echo "player/glider attachment preview screenshot: ${output_dir}/player_glider_attachment_sheet.png"
 fi
 echo "player pose preview manifest: ${output_dir}/manifest.json"
+if [[ -f "${output_dir}/preview_audit.json" ]]; then
+  echo "player pose preview audit: ${output_dir}/preview_audit.json"
+fi
