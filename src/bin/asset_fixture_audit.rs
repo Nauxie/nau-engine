@@ -106,6 +106,10 @@ const PLAYER_TOPOLOGY_MAX_BILATERAL_DELTA_M: f64 = 0.015;
 const PLAYER_TOPOLOGY_MAX_HEAD_CENTER_OFFSET_M: f64 = 0.04;
 const PLAYER_TOPOLOGY_MIN_NECK_TO_SHOULDER_RISE_M: f64 = 0.12;
 const PLAYER_TOPOLOGY_MAX_NECK_TO_SHOULDER_RISE_M: f64 = 0.32;
+const PLAYER_HEAD_DETAIL_EXPECTED_NODE_COUNT: f64 = 14.0;
+const PLAYER_HEAD_DETAIL_EXPECTED_MESH_COUNT: f64 = 8.0;
+const PLAYER_HEAD_DETAIL_MIN_MESH_VERTEX_COUNT: f64 = 80.0;
+const PLAYER_HEAD_DETAIL_MIN_MESH_TRIANGLE_COUNT: f64 = 100.0;
 const PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT: f64 = 0.45;
 const PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT: f64 = 0.70;
 const PLAYER_GLIDER_MIN_LAUNCH_RESPONSE_DEGREES: f64 = 8.0;
@@ -844,6 +848,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
             "pose_intent": spec.context.intent().label(),
         })).collect::<Vec<_>>(),
         "joint_seam_contact_audit": player_joint_seam_contact_audit(&gltf),
+        "player_head_detail_audit": player_head_detail_audit(&gltf),
         "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit(&gltf),
         "player_organic_limb_volume_audit": player_organic_limb_volume_audit(&gltf),
         "player_extremity_volume_audit": player_extremity_volume_audit(&gltf),
@@ -3895,6 +3900,10 @@ fn audit_fixture(
         .require_player_clips
         .then(|| player_human_topology_audit(&gltf))
         .flatten();
+    let player_head_detail_audit = requirement
+        .require_player_clips
+        .then(|| player_head_detail_audit(&gltf))
+        .flatten();
     let player_mesh_silhouette_audit = requirement
         .require_player_clips
         .then(|| player_mesh_silhouette_audit(&gltf))
@@ -4208,6 +4217,45 @@ fn audit_fixture(
             number_field(human_topology, "breach_count"),
             0.0,
             "breaches",
+        ));
+        let head_detail = player_head_detail_audit
+            .as_ref()
+            .expect("player head detail audit should be present for player fixture");
+        checks.push(check_eq_f64(
+            "player_head_detail_missing_nodes",
+            number_field(head_detail, "missing_node_count"),
+            0.0,
+            "nodes",
+        ));
+        checks.push(check_eq_f64(
+            "player_head_detail_missing_meshes",
+            number_field(head_detail, "missing_mesh_count"),
+            0.0,
+            "meshes",
+        ));
+        checks.push(check_at_least_f64(
+            "player_head_detail_node_count",
+            number_field(head_detail, "present_node_count"),
+            PLAYER_HEAD_DETAIL_EXPECTED_NODE_COUNT,
+            "nodes",
+        ));
+        checks.push(check_at_least_f64(
+            "player_head_detail_mesh_count",
+            number_field(head_detail, "present_mesh_count"),
+            PLAYER_HEAD_DETAIL_EXPECTED_MESH_COUNT,
+            "meshes",
+        ));
+        checks.push(check_at_least_f64(
+            "player_head_detail_vertex_count_min",
+            number_field(head_detail, "min_mesh_vertex_count"),
+            PLAYER_HEAD_DETAIL_MIN_MESH_VERTEX_COUNT,
+            "vertices",
+        ));
+        checks.push(check_at_least_f64(
+            "player_head_detail_triangle_count_min",
+            number_field(head_detail, "min_mesh_triangle_count"),
+            PLAYER_HEAD_DETAIL_MIN_MESH_TRIANGLE_COUNT,
+            "triangles",
         ));
         let mesh_silhouette = player_mesh_silhouette_audit
             .as_ref()
@@ -4873,6 +4921,7 @@ fn audit_fixture(
         "player_organic_limb_volume_audit": player_organic_limb_volume_audit,
         "player_extremity_volume_audit": player_extremity_volume_audit,
         "player_human_topology_audit": player_human_topology_audit,
+        "player_head_detail_audit": player_head_detail_audit,
         "player_mesh_silhouette_audit": player_mesh_silhouette_audit,
         "player_motion_integrity_overlay_warning_audit": player_motion_integrity_overlay_warning_audit,
         "player_rest_non_adjacent_mesh_overlap_max_m": player_rest_non_adjacent_mesh_overlap_max_m(&gltf),
@@ -7681,6 +7730,104 @@ fn player_rest_shoulder_mesh_overlap_report(gltf: &Value) -> Option<MeshOverlapR
             ("Nau Right Suit Upper Arm", "Nau Suit Armored Torso Shell"),
         ],
     )
+}
+
+fn player_head_detail_node_names() -> &'static [&'static str] {
+    &[
+        "Nau Helmet Accent Crest",
+        "Nau Face Mask Panel",
+        "Nau Left Amber Eye Lens",
+        "Nau Right Amber Eye Lens",
+        "Nau Head Brow Guard",
+        "Nau Nose Bridge",
+        "Nau Jaw Plane",
+        "Nau Left Cheek Plane",
+        "Nau Right Cheek Plane",
+        "Nau Left Temple Guard",
+        "Nau Right Temple Guard",
+        "Nau Rear Head Cap",
+        "Nau Left Eye Glint",
+        "Nau Right Eye Glint",
+    ]
+}
+
+fn player_head_detail_mesh_names() -> &'static [&'static str] {
+    &[
+        "Nau Skin Rounded Head",
+        "Nau Suit Brow Guard",
+        "Nau Skin Nose Bridge",
+        "Nau Skin Jaw Plane",
+        "Nau Skin Cheek Plane",
+        "Nau Suit Temple Guard",
+        "Nau Suit Rear Head Cap",
+        "Nau Amber Eye Glint",
+    ]
+}
+
+fn player_head_detail_audit(gltf: &Value) -> Option<Value> {
+    let mut node_samples = Vec::new();
+    let mut missing_nodes = Vec::new();
+    let mut present_node_count = 0_u64;
+
+    for node in player_head_detail_node_names() {
+        let Some(bounds) = node_world_mesh_obb_with_pose(gltf, node, &[]) else {
+            missing_nodes.push(*node);
+            continue;
+        };
+        present_node_count += 1;
+        node_samples.push(json!({
+            "node": node,
+            "half_extents_m": [
+                bounds.half_extents.x,
+                bounds.half_extents.y,
+                bounds.half_extents.z,
+            ],
+        }));
+    }
+
+    let mut mesh_samples = Vec::new();
+    let mut missing_meshes = Vec::new();
+    let mut present_mesh_count = 0_u64;
+    let mut min_mesh_vertex_count = u64::MAX;
+    let mut min_mesh_triangle_count = u64::MAX;
+
+    for mesh in player_head_detail_mesh_names() {
+        let Some((vertex_count, triangle_count)) = named_mesh_vertex_triangle_counts(gltf, mesh)
+        else {
+            missing_meshes.push(*mesh);
+            continue;
+        };
+        present_mesh_count += 1;
+        min_mesh_vertex_count = min_mesh_vertex_count.min(vertex_count);
+        min_mesh_triangle_count = min_mesh_triangle_count.min(triangle_count);
+        mesh_samples.push(json!({
+            "mesh": mesh,
+            "vertex_count": vertex_count,
+            "triangle_count": triangle_count,
+        }));
+    }
+
+    Some(json!({
+        "schema": "nau_player_head_detail_audit.v1",
+        "expected_node_count": player_head_detail_node_names().len(),
+        "present_node_count": present_node_count,
+        "missing_node_count": missing_nodes.len(),
+        "missing_nodes": missing_nodes,
+        "expected_mesh_count": player_head_detail_mesh_names().len(),
+        "present_mesh_count": present_mesh_count,
+        "missing_mesh_count": missing_meshes.len(),
+        "missing_meshes": missing_meshes,
+        "min_mesh_vertex_count": if min_mesh_vertex_count == u64::MAX { 0 } else { min_mesh_vertex_count },
+        "min_mesh_triangle_count": if min_mesh_triangle_count == u64::MAX { 0 } else { min_mesh_triangle_count },
+        "thresholds": {
+            "node_count": PLAYER_HEAD_DETAIL_EXPECTED_NODE_COUNT,
+            "mesh_count": PLAYER_HEAD_DETAIL_EXPECTED_MESH_COUNT,
+            "mesh_vertex_count_min": PLAYER_HEAD_DETAIL_MIN_MESH_VERTEX_COUNT,
+            "mesh_triangle_count_min": PLAYER_HEAD_DETAIL_MIN_MESH_TRIANGLE_COUNT,
+        },
+        "node_samples": node_samples,
+        "mesh_samples": mesh_samples,
+    }))
 }
 
 fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {

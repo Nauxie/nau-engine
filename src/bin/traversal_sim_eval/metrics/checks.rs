@@ -7,8 +7,8 @@ mod core;
 
 use nau_engine::eval::{
     AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
-    EvalScenario, LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M,
-    LANDING_MIN_POSE_FOOT_SPLIT_M, LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES, LONG_GLIDE_VISIBILITY,
+    EvalScenario, LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES, LANDING_MIN_POSE_FLARE_DEGREES,
+    LANDING_MIN_POSE_FOOT_FORWARD_M, LANDING_MIN_POSE_FOOT_SPLIT_M, LONG_GLIDE_VISIBILITY,
     MAX_CROSSWIND_NEUTRAL_HORIZONTAL_STEP_M, MIN_CROSSWIND_FORCE_DELTA_MPS,
     MIN_CROSSWIND_FORCE_SAMPLE_COUNT, MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT,
     MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M, MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS,
@@ -141,10 +141,10 @@ impl SimMetrics {
                 LANDING_MIN_POSE_FLARE_DEGREES,
                 "deg",
             ));
-            checks.push(SimCheck::at_least(
-                "pose_landing_recovery_flip",
+            checks.push(SimCheck::at_most(
+                "pose_landing_recovery_backbend",
                 self.max_pose_landing_recovery_flip_degrees,
-                LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+                LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
                 "deg",
             ));
             checks.push(SimCheck::at_most(
@@ -539,6 +539,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             POSE_STATE_MIN_FALLING_SAMPLES,
             "samples",
         ),
+        SimCheck::at_most(
+            "pose_state_falling_upward_velocity_samples",
+            metrics.falling_upward_velocity_samples as f32,
+            0.0,
+            "samples",
+        ),
         SimCheck::at_least(
             "pose_state_gliding_samples",
             metrics.pose_gliding_samples as f32,
@@ -657,6 +663,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             POSE_STATE_MIN_GLIDING_DIVE_SAMPLES,
             "samples",
         ),
+        SimCheck::at_most(
+            "pose_state_dive_without_dive_input_samples",
+            metrics.dive_without_dive_input_samples as f32,
+            0.0,
+            "samples",
+        ),
         SimCheck::at_least(
             "pose_state_dive_pose_torso_pitch",
             metrics.max_dive_pose_torso_pitch_degrees,
@@ -711,10 +723,10 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             POSE_STATE_MIN_LANDING_FLARE_DEGREES,
             "deg",
         ),
-        SimCheck::at_least(
-            "pose_state_landing_recovery_flip",
+        SimCheck::at_most(
+            "pose_state_landing_recovery_backbend",
             metrics.max_pose_landing_recovery_flip_degrees,
-            LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+            LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
             "deg",
         ),
         SimCheck::at_least(

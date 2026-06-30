@@ -17,6 +17,7 @@ use super::{
 
 const BODY_YAW_INTENT_AXIS_EPSILON: f32 = 0.05;
 const BODY_YAW_INTENT_CHANGE_DOT: f32 = 0.98;
+const FALL_POSE_MAX_UPWARD_VELOCITY_MPS: f32 = 0.75;
 
 impl SimMetrics {
     pub(crate) fn observe(&mut self, sample: &SimSample, scenario: EvalScenario) {
@@ -523,6 +524,15 @@ impl SimMetrics {
             "grounded_walk" => self.pose_grounded_walk_samples += 1,
             "grounded_run" => self.pose_grounded_run_samples += 1,
             _ => {}
+        }
+
+        if sample.pose_intent_label == "falling"
+            && sample.velocity.y > FALL_POSE_MAX_UPWARD_VELOCITY_MPS
+        {
+            self.falling_upward_velocity_samples += 1;
+        }
+        if sample.pose_intent_label == "diving" && !sample.dive_input_active {
+            self.dive_without_dive_input_samples += 1;
         }
 
         if !key_pose_intent_label(sample.pose_intent_label) {
