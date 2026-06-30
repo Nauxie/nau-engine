@@ -128,7 +128,7 @@ pub const WIND_LOAD_FULL_RESPONSE_DELTA_MPS: f32 = 0.10;
 pub const LANDING_MIN_FOOT_FORWARD_READABILITY_M: f32 = 0.32;
 pub const LANDING_MIN_FOOT_SPLIT_READABILITY_M: f32 = 0.14;
 const DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES: f32 = 82.0;
-const DIVE_MAX_ARM_SPREAD_READABILITY_DEGREES: f32 = 74.0;
+const DIVE_MAX_ARM_SPREAD_READABILITY_DEGREES: f32 = 48.0;
 const DIVE_MIN_LEG_TUCK_READABILITY_DEGREES: f32 = 68.0;
 const CONNECTED_LIMB_MAX_TRANSLATION_M: f32 = 0.015;
 const LANDING_ANTICIPATION_BASE_HEIGHT_M: f32 = 6.0;
@@ -1234,7 +1234,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedRun => gait * (0.58 + run_weight * 0.18),
                 PlayerPoseIntent::Gliding => -0.58 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => -0.46 + turn_weight.abs() * 0.10,
-                PlayerPoseIntent::Diving => 0.08 + dive_extension * 0.06 + airflow * 0.012,
+                PlayerPoseIntent::Diving => 0.045 + dive_extension * 0.018 + airflow * 0.010,
                 PlayerPoseIntent::AirBrake => {
                     0.36 + brake_pressure * 0.06
                         + rearward_brake_pressure * 0.16
@@ -1314,7 +1314,7 @@ pub fn part_pose_with_context(
                     -0.22 - same_side_turn * 0.18 + opposite_side_turn * 0.06 + airflow * 0.040
                 }
                 PlayerPoseIntent::Diving => {
-                    0.12 + dive_extension * 0.05 + dive_side_flutter * 0.035
+                    0.08 + dive_extension * 0.030 + dive_side_flutter * 0.025
                 }
                 PlayerPoseIntent::AirBrake => {
                     -0.54 - brake_pressure * 0.16 - rearward_brake_pressure * 0.18
@@ -1329,7 +1329,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Falling
                 | PlayerPoseIntent::Gliding
                 | PlayerPoseIntent::AirTurn => sign * (0.10 + turn_weight.abs() * 0.04),
-                PlayerPoseIntent::Diving => sign * (0.025 + dive_side_flutter * 0.025),
+                PlayerPoseIntent::Diving => sign * (0.012 + dive_side_flutter * 0.018),
                 PlayerPoseIntent::AirBrake => sign * (-0.12 - brake_pressure * 0.04),
                 PlayerPoseIntent::LandingAnticipation => sign * 0.12,
                 _ => sign * 0.04,
@@ -1408,7 +1408,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Falling => 0.24 + airflow.abs() * 0.010,
                 PlayerPoseIntent::Gliding => 0.20 + airflow.abs() * 0.025,
                 PlayerPoseIntent::AirTurn => 0.24 + airflow.abs() * 0.030,
-                PlayerPoseIntent::Diving => 0.10 + dive_pressure * 0.040 + airflow.abs() * 0.008,
+                PlayerPoseIntent::Diving => 0.045 + dive_pressure * 0.020 + airflow.abs() * 0.006,
                 PlayerPoseIntent::AirBrake => 0.30 + brake_pressure * 0.04 + same_side_turn * 0.08,
                 PlayerPoseIntent::LandingAnticipation => {
                     0.58 + landing_strength * 0.14 + landing_flip * 0.24
@@ -1546,7 +1546,7 @@ pub fn part_pose_with_context(
                     0.36 + landing_strength * 0.14 + landing_flip * 0.10
                 }
                 PlayerPoseIntent::LandingRecovery => 0.22 + recovery_strength * 0.10,
-                PlayerPoseIntent::Diving => 0.11 + dive_pressure * 0.030,
+                PlayerPoseIntent::Diving => 0.045 + dive_pressure * 0.015,
                 _ => 0.035 + same_side_turn * 0.050,
             };
             rotation *= Quat::from_rotation_x(knee_pitch)
@@ -1586,8 +1586,13 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::LandingAnticipation => 0.018 + landing_flip * 0.016,
                 _ => 0.0,
             };
+            let ankle_yaw = if intent == PlayerPoseIntent::Diving {
+                0.010 + turn_weight * 0.012
+            } else {
+                0.030 + turn_weight * 0.025
+            };
             rotation *= Quat::from_rotation_x(ankle_pitch)
-                * Quat::from_rotation_y(sign * (0.030 + turn_weight * 0.025))
+                * Quat::from_rotation_y(sign * ankle_yaw)
                 * Quat::from_rotation_z(sign * airflow * 0.030);
         }
         CharacterPartRole::Wing(side) => {
