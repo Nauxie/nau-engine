@@ -730,20 +730,22 @@ for (const side of [
     translation: [0.0, 0.040, 0.0],
     scale: [0.42, 0.070, 0.42],
   });
-  const hand = addChild(forearm, `Nau ${label} Leather Hand Palm`, {
-    mesh: meshIndex("Nau Leather Hand Palm"),
+  const hand = addChild(forearm, `Nau ${label} Hand`, {
     translation: [0.0, -0.49, -0.005],
     rotation: rotX(0.08),
-    scale: [1.02, 0.94, 1.04],
   });
   nodeIds[`${lower}Hand`] = hand;
+  addMeshChild(hand, `Nau ${label} Leather Hand Palm`, meshIndex("Nau Leather Hand Palm"), {
+    translation: [0.0, -0.072, 0.002],
+    scale: [1.02, 0.94, 1.04],
+  });
   addMeshChild(hand, `Nau ${label} Wrist Bridge Sleeve`, meshIndex("Nau Leather Wrist Bridge Sleeve"), {
-    translation: [0.0, 0.052, 0.0],
-    scale: [0.90, 0.060, 0.90],
+    translation: [0.0, 0.034, 0.0],
+    scale: [0.90, 0.090, 0.90],
   });
   addMeshChild(hand, `Nau ${label} Seamless Wrist Flex Cover`, meshIndex("Nau Seamless Wrist Flex Cover"), {
-    translation: [0.0, 0.054, 0.0],
-    scale: [1.04, 1.02, 1.04],
+    translation: [0.0, 0.030, 0.0],
+    scale: [1.04, 1.30, 1.04],
   });
   addMeshChild(hand, `Nau ${label} Leather Wrist Palm Gusset`, meshIndex("Nau Leather Wrist Palm Gusset"), {
     translation: [0.0, 0.006, -0.045],

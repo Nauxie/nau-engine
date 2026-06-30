@@ -13,7 +13,14 @@ use nau_engine::asset_pipeline::{
 };
 use nau_engine::movement::{FlightInput, FlightMode};
 use serde_json::{Value, json};
-use std::{env, fmt::Write as _, fs, path::Path, process};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    env,
+    fmt::Write as _,
+    fs,
+    path::Path,
+    process,
+};
 
 const NAU_FIXTURE_SCHEMA: &str = "nau_visual_asset_fixture.v1";
 const NAU_FIXTURE_LICENSE: &str = "self_authored_no_third_party";
@@ -39,6 +46,10 @@ const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 24.0;
 const PLAYER_JOINT_SEAM_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_PAIR_COUNT: f64 = 26.0;
+const PLAYER_HAND_PIVOT_EXPECTED_NODE_COUNT: f64 = 2.0;
+const PLAYER_HAND_PIVOT_MAX_WRIST_SOCKET_GAP_M: f64 = 0.015;
+const PLAYER_HAND_PALM_MIN_DISTAL_OFFSET_M: f64 = 0.060;
+const PLAYER_HAND_PALM_MAX_DISTAL_OFFSET_M: f64 = 0.130;
 const PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT: f64 = 110.0;
 const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 173.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT: f64 = 9.0;
@@ -213,14 +224,8 @@ const PLAYER_RUNTIME_POSE_NODE_ROLES: &[(&str, CharacterPartRole)] = &[
     ("Nau Right Arm", CharacterPartRole::Arm(Side::Right)),
     ("Nau Left Forearm", CharacterPartRole::Forearm(Side::Left)),
     ("Nau Right Forearm", CharacterPartRole::Forearm(Side::Right)),
-    (
-        "Nau Left Leather Hand Palm",
-        CharacterPartRole::Hand(Side::Left),
-    ),
-    (
-        "Nau Right Leather Hand Palm",
-        CharacterPartRole::Hand(Side::Right),
-    ),
+    ("Nau Left Hand", CharacterPartRole::Hand(Side::Left)),
+    ("Nau Right Hand", CharacterPartRole::Hand(Side::Right)),
     ("Nau Left Leg", CharacterPartRole::Leg(Side::Left)),
     ("Nau Right Leg", CharacterPartRole::Leg(Side::Right)),
     (
@@ -544,6 +549,113 @@ struct ClosestSurfacePoints {
     distance_m: f64,
     left: Vec3,
     right: Vec3,
+}
+
+#[derive(Clone, Debug)]
+struct MeshLocalGeometry {
+    vertices: Vec<Vec3>,
+    surface_points: Vec<Vec3>,
+}
+
+struct MeshGeometryCache {
+    buffers: Vec<Vec<u8>>,
+    meshes: HashMap<usize, MeshLocalGeometry>,
+}
+
+impl MeshGeometryCache {
+    fn new(buffers: Vec<Vec<u8>>) -> Self {
+        Self {
+            buffers,
+            meshes: HashMap::new(),
+        }
+    }
+
+    fn local_geometry(
+        &mut self,
+        gltf: &Value,
+        mesh_index: usize,
+        mesh: &Value,
+    ) -> Option<&MeshLocalGeometry> {
+        let buffers = &self.buffers;
+        match self.meshes.entry(mesh_index) {
+            Entry::Occupied(entry) => Some(entry.into_mut()),
+            Entry::Vacant(entry) => {
+                let geometry = mesh_local_geometry(gltf, mesh, buffers)?;
+                Some(entry.insert(geometry))
+            }
+        }
+    }
+}
+
+struct PoseBoundsCache<'a> {
+    gltf: &'a Value,
+    overrides: &'a [PoseNodeOverride],
+    transforms: HashMap<&'static str, Mat4>,
+    translations: HashMap<&'static str, [f64; 3]>,
+    aabbs: HashMap<&'static str, Aabb3>,
+    obbs: HashMap<&'static str, Obb3>,
+}
+
+impl<'a> PoseBoundsCache<'a> {
+    fn new(gltf: &'a Value, overrides: &'a [PoseNodeOverride]) -> Self {
+        Self {
+            gltf,
+            overrides,
+            transforms: HashMap::new(),
+            translations: HashMap::new(),
+            aabbs: HashMap::new(),
+            obbs: HashMap::new(),
+        }
+    }
+
+    fn transform(&mut self, node_name: &'static str) -> Option<Mat4> {
+        if let Some(transform) = self.transforms.get(node_name) {
+            return Some(*transform);
+        }
+        let transform = world_node_transform_with_pose(self.gltf, node_name, self.overrides)?;
+        self.transforms.insert(node_name, transform);
+        Some(transform)
+    }
+
+    fn translation(&mut self, node_name: &'static str) -> Option<[f64; 3]> {
+        if let Some(translation) = self.translations.get(node_name) {
+            return Some(*translation);
+        }
+        let point = self.transform(node_name)?.transform_point3(Vec3::ZERO);
+        let translation = [point.x as f64, point.y as f64, point.z as f64];
+        self.translations.insert(node_name, translation);
+        Some(translation)
+    }
+
+    fn aabb(&mut self, node_name: &'static str) -> Option<Aabb3> {
+        if let Some(bounds) = self.aabbs.get(node_name) {
+            return Some(*bounds);
+        }
+        let local_bounds = self.mesh_local_aabb(node_name)?;
+        let transform = self.transform(node_name)?;
+        let bounds = local_bounds.transformed(transform);
+        self.aabbs.insert(node_name, bounds);
+        Some(bounds)
+    }
+
+    fn obb(&mut self, node_name: &'static str) -> Option<Obb3> {
+        if let Some(bounds) = self.obbs.get(node_name) {
+            return Some(*bounds);
+        }
+        let local_bounds = self.mesh_local_aabb(node_name)?;
+        let transform = self.transform(node_name)?;
+        let bounds = local_bounds.transformed_obb(transform);
+        self.obbs.insert(node_name, bounds);
+        Some(bounds)
+    }
+
+    fn mesh_local_aabb(&self, node_name: &str) -> Option<Aabb3> {
+        let nodes = self.gltf.get("nodes")?.as_array()?;
+        let node_index = node_index(self.gltf, node_name)?;
+        let mesh_index = nodes.get(node_index)?.get("mesh").and_then(Value::as_u64)? as usize;
+        let mesh = self.gltf.get("meshes")?.as_array()?.get(mesh_index)?;
+        mesh_local_aabb(self.gltf, mesh)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -2936,6 +3048,11 @@ fn player_hand_attachment_nodes(side: Side) -> &'static [&'static str] {
             "Nau Left Leather Ring Finger Grip",
             "Nau Left Leather Pinky Finger Grip",
             "Nau Left Leather Thumb Grip",
+            "Nau Left Leather Index Finger Tip Pad",
+            "Nau Left Leather Middle Finger Tip Pad",
+            "Nau Left Leather Ring Finger Tip Pad",
+            "Nau Left Leather Pinky Finger Tip Pad",
+            "Nau Left Leather Thumb Tip Pad",
         ],
         Side::Right => &[
             "Nau Right Leather Hand Palm",
@@ -2944,6 +3061,11 @@ fn player_hand_attachment_nodes(side: Side) -> &'static [&'static str] {
             "Nau Right Leather Ring Finger Grip",
             "Nau Right Leather Pinky Finger Grip",
             "Nau Right Leather Thumb Grip",
+            "Nau Right Leather Index Finger Tip Pad",
+            "Nau Right Leather Middle Finger Tip Pad",
+            "Nau Right Leather Ring Finger Tip Pad",
+            "Nau Right Leather Pinky Finger Tip Pad",
+            "Nau Right Leather Thumb Tip Pad",
         ],
     }
 }
@@ -3289,6 +3411,18 @@ fn mesh_world_geometry(
     transform: Mat4,
     buffers: &[Vec<u8>],
 ) -> Option<(Vec<Vec3>, Vec<Vec3>)> {
+    let geometry = mesh_local_geometry(gltf, mesh, buffers)?;
+    Some((
+        transform_points(&geometry.vertices, transform),
+        transform_points(&geometry.surface_points, transform),
+    ))
+}
+
+fn mesh_local_geometry(
+    gltf: &Value,
+    mesh: &Value,
+    buffers: &[Vec<u8>],
+) -> Option<MeshLocalGeometry> {
     let primitives = mesh.get("primitives")?.as_array()?;
     let mut vertices = Vec::new();
     let mut surface_points = Vec::new();
@@ -3298,35 +3432,38 @@ fn mesh_world_geometry(
             .get("POSITION")
             .and_then(Value::as_u64)? as usize;
         let local_vertices = read_vec3_accessor(gltf, position_accessor_index, buffers)?;
-        let transformed_vertices = local_vertices
-            .iter()
-            .map(|vertex| transform.transform_point3(*vertex))
-            .collect::<Vec<_>>();
-        surface_points.extend(transformed_vertices.iter().copied());
+        surface_points.extend(local_vertices.iter().copied());
         if let Some(indices) = primitive
             .get("indices")
             .and_then(Value::as_u64)
             .and_then(|index| read_index_accessor(gltf, index as usize, buffers))
         {
             for triangle in indices.chunks_exact(3) {
-                let Some(a) = transformed_vertices.get(triangle[0]).copied() else {
+                let Some(a) = local_vertices.get(triangle[0]).copied() else {
                     continue;
                 };
-                let Some(b) = transformed_vertices.get(triangle[1]).copied() else {
+                let Some(b) = local_vertices.get(triangle[1]).copied() else {
                     continue;
                 };
-                let Some(c) = transformed_vertices.get(triangle[2]).copied() else {
+                let Some(c) = local_vertices.get(triangle[2]).copied() else {
                     continue;
                 };
                 surface_points.push((a + b + c) / 3.0);
             }
         }
-        vertices.extend(transformed_vertices);
+        vertices.extend(local_vertices);
     }
-    Some((
+    Some(MeshLocalGeometry {
         vertices,
-        reduce_surface_points(surface_points, PLAYER_SURFACE_CONTACT_SAMPLE_LIMIT),
-    ))
+        surface_points: reduce_surface_points(surface_points, PLAYER_SURFACE_CONTACT_SAMPLE_LIMIT),
+    })
+}
+
+fn transform_points(points: &[Vec3], transform: Mat4) -> Vec<Vec3> {
+    points
+        .iter()
+        .map(|point| transform.transform_point3(*point))
+        .collect()
 }
 
 fn reduce_surface_points(points: Vec<Vec3>, limit: usize) -> Vec<Vec3> {
@@ -3401,7 +3538,7 @@ fn node_world_surface_points_with_pose(
     gltf: &Value,
     node_name: &str,
     overrides: &[PoseNodeOverride],
-    buffers: &[Vec<u8>],
+    geometry_cache: &mut MeshGeometryCache,
 ) -> Option<Vec<Vec3>> {
     let node = gltf
         .get("nodes")?
@@ -3411,7 +3548,8 @@ fn node_world_surface_points_with_pose(
     let mesh_index = node.get("mesh").and_then(Value::as_u64)? as usize;
     let mesh = gltf.get("meshes")?.as_array()?.get(mesh_index)?;
     let transform = world_node_transform_with_pose(gltf, node_name, overrides)?;
-    Some(mesh_world_geometry(gltf, mesh, transform, buffers)?.1)
+    let geometry = geometry_cache.local_geometry(gltf, mesh_index, mesh)?;
+    Some(transform_points(&geometry.surface_points, transform))
 }
 
 fn closest_surface_points(left: &[Vec3], right: &[Vec3]) -> Option<ClosestSurfacePoints> {
@@ -3714,6 +3852,10 @@ fn audit_fixture(
     let player_joint_seam_contact_audit = requirement
         .require_player_clips
         .then(|| player_joint_seam_contact_audit(&gltf))
+        .flatten();
+    let player_hand_pivot_wiring_audit = requirement
+        .require_player_clips
+        .then(|| player_hand_pivot_wiring_audit(&gltf))
         .flatten();
     let player_limb_anatomy_detail_audit = requirement
         .require_player_clips
@@ -4076,6 +4218,39 @@ fn audit_fixture(
             "player_rest_limb_attachment_hierarchy",
             player_rest_limb_attachment_hierarchy_valid(&gltf),
             "nodes",
+        ));
+        let hand_pivot = player_hand_pivot_wiring_audit
+            .as_ref()
+            .expect("player hand pivot wiring audit should be present for player fixture");
+        checks.push(check_eq_f64(
+            "player_hand_pivot_node_count",
+            number_field(hand_pivot, "hand_pivot_node_count"),
+            PLAYER_HAND_PIVOT_EXPECTED_NODE_COUNT,
+            "nodes",
+        ));
+        checks.push(check_at_most_f64(
+            "player_hand_pivot_wrist_socket_gap_max",
+            number_field(hand_pivot, "max_wrist_socket_gap_m"),
+            PLAYER_HAND_PIVOT_MAX_WRIST_SOCKET_GAP_M,
+            "m",
+        ));
+        checks.push(check_at_least_f64(
+            "player_hand_palm_distal_offset_min",
+            number_field(hand_pivot, "min_palm_distal_offset_m"),
+            PLAYER_HAND_PALM_MIN_DISTAL_OFFSET_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_hand_palm_distal_offset_max",
+            number_field(hand_pivot, "max_palm_distal_offset_m"),
+            PLAYER_HAND_PALM_MAX_DISTAL_OFFSET_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_hand_pivot_wiring_fail_count",
+            number_field(hand_pivot, "fail_count"),
+            0.0,
+            "failures",
         ));
         checks.push(check_bool(
             "player_rest_mesh_bounds_present",
@@ -4563,6 +4738,7 @@ fn audit_fixture(
         "player_joint_bridge_nodes_present": player_joint_bridge_nodes_present(&gltf),
         "player_joint_seam_nodes_present": player_joint_seam_nodes_present(&gltf),
         "player_rest_limb_attachment_hierarchy": player_rest_limb_attachment_hierarchy_valid(&gltf),
+        "player_hand_pivot_wiring_audit": player_hand_pivot_wiring_audit,
         "player_rest_mesh_bounds_present": player_rest_mesh_bounds_present(&gltf),
         "player_animation_channels_cover_core_signals": player_animation_channels_cover_core_signals(&gltf),
         "player_animation_channels_avoid_runtime_pose_nodes": player_animation_channels_avoid_runtime_pose_nodes(&gltf),
@@ -5246,6 +5422,8 @@ fn player_articulated_pose_nodes_present(gltf: &Value) -> bool {
     [
         "Nau Left Forearm",
         "Nau Right Forearm",
+        "Nau Left Hand",
+        "Nau Right Hand",
         "Nau Left Leather Hand Palm",
         "Nau Right Leather Hand Palm",
         "Nau Left Lower Leg",
@@ -5284,8 +5462,10 @@ fn player_rest_limb_attachment_hierarchy_valid(gltf: &Value) -> bool {
         ("Nau Torso", "Nau Right Arm"),
         ("Nau Left Arm", "Nau Left Forearm"),
         ("Nau Right Arm", "Nau Right Forearm"),
-        ("Nau Left Forearm", "Nau Left Leather Hand Palm"),
-        ("Nau Right Forearm", "Nau Right Leather Hand Palm"),
+        ("Nau Left Forearm", "Nau Left Hand"),
+        ("Nau Right Forearm", "Nau Right Hand"),
+        ("Nau Left Hand", "Nau Left Leather Hand Palm"),
+        ("Nau Right Hand", "Nau Right Leather Hand Palm"),
         ("Nau Hips", "Nau Left Leg"),
         ("Nau Hips", "Nau Right Leg"),
         ("Nau Left Leg", "Nau Left Lower Leg"),
@@ -5324,8 +5504,8 @@ fn player_animation_channels_avoid_runtime_pose_nodes(gltf: &Value) -> bool {
         "Nau Right Arm",
         "Nau Left Forearm",
         "Nau Right Forearm",
-        "Nau Left Leather Hand Palm",
-        "Nau Right Leather Hand Palm",
+        "Nau Left Hand",
+        "Nau Right Hand",
         "Nau Left Leg",
         "Nau Right Leg",
         "Nau Left Lower Leg",
@@ -5379,13 +5559,104 @@ fn player_articulated_joint_gap_pairs() -> [(&'static str, &'static str); 8] {
     [
         ("Nau Left Elbow Socket", "Nau Left Forearm"),
         ("Nau Right Elbow Socket", "Nau Right Forearm"),
-        ("Nau Left Wrist Socket", "Nau Left Leather Hand Palm"),
-        ("Nau Right Wrist Socket", "Nau Right Leather Hand Palm"),
+        ("Nau Left Wrist Socket", "Nau Left Hand"),
+        ("Nau Right Wrist Socket", "Nau Right Hand"),
         ("Nau Left Knee Socket", "Nau Left Lower Leg"),
         ("Nau Right Knee Socket", "Nau Right Lower Leg"),
         ("Nau Left Ankle Socket", "Nau Left Boot"),
         ("Nau Right Ankle Socket", "Nau Right Boot"),
     ]
+}
+
+#[derive(Clone, Copy)]
+struct PlayerHandPivotSpec {
+    side: &'static str,
+    forearm_node: &'static str,
+    wrist_socket_node: &'static str,
+    hand_pivot_node: &'static str,
+    palm_mesh_node: &'static str,
+}
+
+fn player_hand_pivot_specs() -> [PlayerHandPivotSpec; 2] {
+    [
+        PlayerHandPivotSpec {
+            side: "left",
+            forearm_node: "Nau Left Forearm",
+            wrist_socket_node: "Nau Left Wrist Socket",
+            hand_pivot_node: "Nau Left Hand",
+            palm_mesh_node: "Nau Left Leather Hand Palm",
+        },
+        PlayerHandPivotSpec {
+            side: "right",
+            forearm_node: "Nau Right Forearm",
+            wrist_socket_node: "Nau Right Wrist Socket",
+            hand_pivot_node: "Nau Right Hand",
+            palm_mesh_node: "Nau Right Leather Hand Palm",
+        },
+    ]
+}
+
+fn player_hand_pivot_wiring_audit(gltf: &Value) -> Option<Value> {
+    let mut reports = Vec::new();
+    let mut fail_count = 0_u64;
+    let mut max_wrist_socket_gap_m = 0.0_f64;
+    let mut min_palm_distal_offset_m = f64::INFINITY;
+    let mut max_palm_distal_offset_m = 0.0_f64;
+
+    for spec in player_hand_pivot_specs() {
+        let wrist = world_node_translation(gltf, spec.wrist_socket_node)?;
+        let pivot = world_node_translation(gltf, spec.hand_pivot_node)?;
+        let palm = world_node_translation(gltf, spec.palm_mesh_node)?;
+        let local_palm = node_local_translation(gltf, spec.palm_mesh_node)?;
+        let wrist_socket_gap_m = distance3(wrist, pivot);
+        let palm_distal_offset_m = distance3(pivot, palm);
+        let local_distal_y_m = -(local_palm.y as f64);
+        let pivot_child_of_forearm =
+            node_is_direct_child(gltf, spec.forearm_node, spec.hand_pivot_node);
+        let palm_child_of_pivot =
+            node_is_direct_child(gltf, spec.hand_pivot_node, spec.palm_mesh_node);
+        let within_thresholds = pivot_child_of_forearm
+            && palm_child_of_pivot
+            && wrist_socket_gap_m <= PLAYER_HAND_PIVOT_MAX_WRIST_SOCKET_GAP_M
+            && (PLAYER_HAND_PALM_MIN_DISTAL_OFFSET_M..=PLAYER_HAND_PALM_MAX_DISTAL_OFFSET_M)
+                .contains(&local_distal_y_m);
+
+        if !within_thresholds {
+            fail_count += 1;
+        }
+        max_wrist_socket_gap_m = max_wrist_socket_gap_m.max(wrist_socket_gap_m);
+        min_palm_distal_offset_m = min_palm_distal_offset_m.min(local_distal_y_m);
+        max_palm_distal_offset_m = max_palm_distal_offset_m.max(local_distal_y_m);
+        reports.push(json!({
+            "side": spec.side,
+            "forearm_node": spec.forearm_node,
+            "wrist_socket_node": spec.wrist_socket_node,
+            "hand_pivot_node": spec.hand_pivot_node,
+            "palm_mesh_node": spec.palm_mesh_node,
+            "pivot_child_of_forearm": pivot_child_of_forearm,
+            "palm_child_of_pivot": palm_child_of_pivot,
+            "wrist_socket_gap_m": wrist_socket_gap_m,
+            "palm_pivot_distance_m": palm_distal_offset_m,
+            "palm_distal_offset_m": local_distal_y_m,
+            "within_thresholds": within_thresholds,
+        }));
+    }
+
+    Some(json!({
+        "schema": "nau_player_hand_pivot_wiring_audit.v1",
+        "hand_pivot_node_count": player_hand_pivot_specs().len(),
+        "fail_count": fail_count,
+        "max_wrist_socket_gap_m": max_wrist_socket_gap_m,
+        "min_palm_distal_offset_m": min_palm_distal_offset_m,
+        "max_palm_distal_offset_m": max_palm_distal_offset_m,
+        "thresholds": {
+            "hand_pivot_node_count": PLAYER_HAND_PIVOT_EXPECTED_NODE_COUNT,
+            "wrist_socket_gap_max_m": PLAYER_HAND_PIVOT_MAX_WRIST_SOCKET_GAP_M,
+            "palm_distal_offset_min_m": PLAYER_HAND_PALM_MIN_DISTAL_OFFSET_M,
+            "palm_distal_offset_max_m": PLAYER_HAND_PALM_MAX_DISTAL_OFFSET_M,
+        },
+        "hands": reports,
+    }))
 }
 
 fn player_pose_articulated_joint_gap_max_m(gltf: &Value) -> Option<f64> {
@@ -5423,11 +5694,11 @@ fn player_pose_contact_audit(gltf: &Value) -> Option<Value> {
 
         for phase in phases {
             let overrides = player_pose_node_overrides(gltf, context, phase)?;
+            let mut pose_cache = PoseBoundsCache::new(gltf, &overrides);
 
             for (socket, joint) in player_articulated_joint_gap_pairs() {
-                let socket_translation =
-                    world_node_translation_with_pose(gltf, socket, &overrides)?;
-                let joint_translation = world_node_translation_with_pose(gltf, joint, &overrides)?;
+                let socket_translation = pose_cache.translation(socket)?;
+                let joint_translation = pose_cache.translation(joint)?;
                 articulated_gap.observe(
                     distance3(socket_translation, joint_translation),
                     socket,
@@ -5438,8 +5709,8 @@ fn player_pose_contact_audit(gltf: &Value) -> Option<Value> {
             }
 
             for (left, right) in player_joint_cover_mesh_pairs() {
-                let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, &overrides)?;
-                let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, &overrides)?;
+                let left_bounds = pose_cache.aabb(left)?;
+                let right_bounds = pose_cache.aabb(right)?;
                 joint_cover_gap.observe(
                     left_bounds.separation_m(right_bounds),
                     left,
@@ -5448,8 +5719,9 @@ fn player_pose_contact_audit(gltf: &Value) -> Option<Value> {
                     phase,
                 );
                 joint_cover_overlap.observe(
-                    node_world_mesh_obb_with_pose(gltf, left, &overrides)?
-                        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, right, &overrides)?),
+                    pose_cache
+                        .obb(left)?
+                        .overlap_depth_m(pose_cache.obb(right)?),
                     left_bounds.overlap_axes_m(right_bounds),
                     left,
                     right,
@@ -5459,11 +5731,12 @@ fn player_pose_contact_audit(gltf: &Value) -> Option<Value> {
             }
 
             for (left, right) in non_adjacent_pairs.iter().copied() {
-                let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, &overrides)?;
-                let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, &overrides)?;
+                let left_bounds = pose_cache.aabb(left)?;
+                let right_bounds = pose_cache.aabb(right)?;
                 non_adjacent_overlap.observe(
-                    node_world_mesh_obb_with_pose(gltf, left, &overrides)?
-                        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, right, &overrides)?),
+                    pose_cache
+                        .obb(left)?
+                        .overlap_depth_m(pose_cache.obb(right)?),
                     left_bounds.overlap_axes_m(right_bounds),
                     left,
                     right,
@@ -5543,12 +5816,11 @@ fn player_pose_transition_contact_audit(gltf: &Value) -> Option<Value> {
                     phase,
                     blend,
                 )?;
+                let mut pose_cache = PoseBoundsCache::new(gltf, &overrides);
 
                 for (socket, joint) in player_articulated_joint_gap_pairs() {
-                    let socket_translation =
-                        world_node_translation_with_pose(gltf, socket, &overrides)?;
-                    let joint_translation =
-                        world_node_translation_with_pose(gltf, joint, &overrides)?;
+                    let socket_translation = pose_cache.translation(socket)?;
+                    let joint_translation = pose_cache.translation(joint)?;
                     let gap = distance3(socket_translation, joint_translation);
                     articulated_gap.observe_label(gap, socket, joint, transition.label, phase);
                     overall_articulated_gap.observe_label(
@@ -5561,8 +5833,8 @@ fn player_pose_transition_contact_audit(gltf: &Value) -> Option<Value> {
                 }
 
                 for (left, right) in player_joint_cover_mesh_pairs() {
-                    let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, &overrides)?;
-                    let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, &overrides)?;
+                    let left_bounds = pose_cache.aabb(left)?;
+                    let right_bounds = pose_cache.aabb(right)?;
                     let gap = left_bounds.separation_m(right_bounds);
                     joint_cover_gap.observe_label(gap, left, right, transition.label, phase);
                     overall_joint_cover_gap.observe_label(
@@ -5573,8 +5845,9 @@ fn player_pose_transition_contact_audit(gltf: &Value) -> Option<Value> {
                         phase,
                     );
                     let overlap_axes_m = left_bounds.overlap_axes_m(right_bounds);
-                    let overlap_m = node_world_mesh_obb_with_pose(gltf, left, &overrides)?
-                        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, right, &overrides)?);
+                    let overlap_m = pose_cache
+                        .obb(left)?
+                        .overlap_depth_m(pose_cache.obb(right)?);
                     joint_cover_overlap.observe_label(
                         overlap_m,
                         overlap_axes_m,
@@ -5594,8 +5867,8 @@ fn player_pose_transition_contact_audit(gltf: &Value) -> Option<Value> {
                 }
 
                 for (bridge, contact) in player_joint_bridge_mesh_pairs() {
-                    let bridge_bounds = node_world_mesh_aabb_with_pose(gltf, bridge, &overrides)?;
-                    let contact_bounds = node_world_mesh_aabb_with_pose(gltf, contact, &overrides)?;
+                    let bridge_bounds = pose_cache.aabb(bridge)?;
+                    let contact_bounds = pose_cache.aabb(contact)?;
                     let gap = bridge_bounds.separation_m(contact_bounds);
                     joint_bridge_gap.observe_label(gap, bridge, contact, transition.label, phase);
                     overall_joint_bridge_gap.observe_label(
@@ -5606,8 +5879,9 @@ fn player_pose_transition_contact_audit(gltf: &Value) -> Option<Value> {
                         phase,
                     );
                     let overlap_axes_m = bridge_bounds.overlap_axes_m(contact_bounds);
-                    let overlap_m = node_world_mesh_obb_with_pose(gltf, bridge, &overrides)?
-                        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, contact, &overrides)?);
+                    let overlap_m = pose_cache
+                        .obb(bridge)?
+                        .overlap_depth_m(pose_cache.obb(contact)?);
                     joint_bridge_overlap.observe_label(
                         overlap_m,
                         overlap_axes_m,
@@ -5627,11 +5901,12 @@ fn player_pose_transition_contact_audit(gltf: &Value) -> Option<Value> {
                 }
 
                 for (left, right) in non_adjacent_pairs.iter().copied() {
-                    let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, &overrides)?;
-                    let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, &overrides)?;
+                    let left_bounds = pose_cache.aabb(left)?;
+                    let right_bounds = pose_cache.aabb(right)?;
                     let overlap_axes_m = left_bounds.overlap_axes_m(right_bounds);
-                    let overlap_m = node_world_mesh_obb_with_pose(gltf, left, &overrides)?
-                        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, right, &overrides)?);
+                    let overlap_m = pose_cache
+                        .obb(left)?
+                        .overlap_depth_m(pose_cache.obb(right)?);
                     non_adjacent_overlap.observe_label(
                         overlap_m,
                         overlap_axes_m,
@@ -6443,14 +6718,16 @@ fn player_joint_bridge_contact_audit(gltf: &Value) -> Option<Value> {
         for context in contexts {
             for phase in phases {
                 let overrides = player_pose_node_overrides(gltf, context, phase)?;
-                let bridge_bounds = node_world_mesh_aabb_with_pose(gltf, bridge, &overrides)?;
-                let contact_bounds = node_world_mesh_aabb_with_pose(gltf, contact, &overrides)?;
+                let mut pose_cache = PoseBoundsCache::new(gltf, &overrides);
+                let bridge_bounds = pose_cache.aabb(bridge)?;
+                let contact_bounds = pose_cache.aabb(contact)?;
                 let gap = bridge_bounds.separation_m(contact_bounds);
                 pair_gap.observe(gap, bridge, contact, context.intent(), phase);
                 overall_gap.observe(gap, bridge, contact, context.intent(), phase);
                 let overlap_axes_m = bridge_bounds.overlap_axes_m(contact_bounds);
-                let overlap_m = node_world_mesh_obb_with_pose(gltf, bridge, &overrides)?
-                    .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, contact, &overrides)?);
+                let bridge_obb = pose_cache.obb(bridge)?;
+                let contact_obb = pose_cache.obb(contact)?;
+                let overlap_m = bridge_obb.overlap_depth_m(contact_obb);
                 pair_overlap.observe(
                     overlap_m,
                     overlap_axes_m,
@@ -6614,14 +6891,16 @@ fn observe_proximal_contact_sample(
     overall_gap: &mut MeshGapReport,
     overall_overlap: &mut MeshOverlapReport,
 ) -> Option<()> {
-    let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, overrides)?;
-    let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, overrides)?;
+    let mut pose_cache = PoseBoundsCache::new(gltf, overrides);
+    let left_bounds = pose_cache.aabb(left)?;
+    let right_bounds = pose_cache.aabb(right)?;
     let gap = left_bounds.separation_m(right_bounds);
     pair_gap.observe_label(gap, left, right, label, phase);
     overall_gap.observe_label(gap, left, right, label, phase);
     let overlap_axes_m = left_bounds.overlap_axes_m(right_bounds);
-    let overlap_m = node_world_mesh_obb_with_pose(gltf, left, overrides)?
-        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, right, overrides)?);
+    let left_obb = pose_cache.obb(left)?;
+    let right_obb = pose_cache.obb(right)?;
+    let overlap_m = left_obb.overlap_depth_m(right_obb);
     pair_overlap.observe_label(overlap_m, overlap_axes_m, left, right, label, phase);
     overall_overlap.observe_label(overlap_m, overlap_axes_m, left, right, label, phase);
     Some(())
@@ -6752,14 +7031,16 @@ fn observe_joint_seam_sample(
     overall_min_overlap: &mut MeshMinOverlapReport,
     overall_max_overlap: &mut MeshOverlapReport,
 ) -> Option<()> {
-    let seam_bounds = node_world_mesh_aabb_with_pose(gltf, seam, overrides)?;
-    let contact_bounds = node_world_mesh_aabb_with_pose(gltf, contact, overrides)?;
+    let mut pose_cache = PoseBoundsCache::new(gltf, overrides);
+    let seam_bounds = pose_cache.aabb(seam)?;
+    let contact_bounds = pose_cache.aabb(contact)?;
     let gap = seam_bounds.separation_m(contact_bounds);
     pair_gap.observe_label(gap, seam, contact, label, phase);
     overall_gap.observe_label(gap, seam, contact, label, phase);
     let overlap_axes_m = seam_bounds.overlap_axes_m(contact_bounds);
-    let overlap_m = node_world_mesh_obb_with_pose(gltf, seam, overrides)?
-        .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, contact, overrides)?);
+    let seam_obb = pose_cache.obb(seam)?;
+    let contact_obb = pose_cache.obb(contact)?;
+    let overlap_m = seam_obb.overlap_depth_m(contact_obb);
     pair_min_overlap.observe_label(overlap_m, seam, contact, label, phase);
     overall_min_overlap.observe_label(overlap_m, seam, contact, label, phase);
     pair_max_overlap.observe_label(overlap_m, overlap_axes_m, seam, contact, label, phase);
@@ -6773,7 +7054,7 @@ fn player_pose_surface_contact_audit(gltf: &Value) -> Option<Value> {
     let transitions = player_pose_transition_contact_transitions();
     let blends = player_pose_transition_contact_blends();
     let pairs = player_surface_contact_pairs();
-    let buffers = embedded_gltf_buffers(gltf)?;
+    let mut geometry_cache = MeshGeometryCache::new(embedded_gltf_buffers(gltf)?);
     let samples_per_pair =
         contexts.len() * phases.len() + transitions.len() * phases.len() * blends.len();
     let mut pair_reports = Vec::new();
@@ -6788,7 +7069,12 @@ fn player_pose_surface_contact_audit(gltf: &Value) -> Option<Value> {
         for context in contexts.iter().copied() {
             for phase in phases {
                 let overrides = player_pose_node_overrides(gltf, context, phase)?;
-                let contact = player_pose_surface_contact_sample(gltf, pair, &overrides, &buffers)?;
+                let contact = player_pose_surface_contact_sample(
+                    gltf,
+                    pair,
+                    &overrides,
+                    &mut geometry_cache,
+                )?;
                 pair_report.observe_label(
                     contact.distance_m,
                     pair,
@@ -6818,8 +7104,12 @@ fn player_pose_surface_contact_audit(gltf: &Value) -> Option<Value> {
                         phase,
                         blend,
                     )?;
-                    let contact =
-                        player_pose_surface_contact_sample(gltf, pair, &overrides, &buffers)?;
+                    let contact = player_pose_surface_contact_sample(
+                        gltf,
+                        pair,
+                        &overrides,
+                        &mut geometry_cache,
+                    )?;
                     pair_report.observe_label(contact.distance_m, pair, transition.label, phase);
                     overall.observe_label(contact.distance_m, pair, transition.label, phase);
                     observe_projected_contact_gap(
@@ -6937,10 +7227,10 @@ fn player_pose_surface_contact_sample(
     gltf: &Value,
     pair: PlayerSurfaceContactPair,
     overrides: &[PoseNodeOverride],
-    buffers: &[Vec<u8>],
+    geometry_cache: &mut MeshGeometryCache,
 ) -> Option<ClosestSurfacePoints> {
-    let left = node_world_surface_points_with_pose(gltf, pair.left, overrides, buffers)?;
-    let right = node_world_surface_points_with_pose(gltf, pair.right, overrides, buffers)?;
+    let left = node_world_surface_points_with_pose(gltf, pair.left, overrides, geometry_cache)?;
+    let right = node_world_surface_points_with_pose(gltf, pair.right, overrides, geometry_cache)?;
     closest_surface_points(&left, &right)
 }
 
@@ -6955,9 +7245,10 @@ fn player_pose_joint_cover_mesh_gap_report(gltf: &Value) -> Option<MeshGapReport
     for context in player_pose_mesh_overlap_contexts() {
         for phase in phases {
             let overrides = player_pose_node_overrides(gltf, context, phase)?;
+            let mut pose_cache = PoseBoundsCache::new(gltf, &overrides);
             for (left, right) in player_joint_cover_mesh_pairs() {
-                let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, &overrides)?;
-                let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, &overrides)?;
+                let left_bounds = pose_cache.aabb(left)?;
+                let right_bounds = pose_cache.aabb(right)?;
                 report.observe(
                     left_bounds.separation_m(right_bounds),
                     left,
@@ -6983,12 +7274,14 @@ fn player_pose_joint_cover_mesh_overlap_report(gltf: &Value) -> Option<MeshOverl
     for context in player_pose_mesh_overlap_contexts() {
         for phase in phases {
             let overrides = player_pose_node_overrides(gltf, context, phase)?;
+            let mut pose_cache = PoseBoundsCache::new(gltf, &overrides);
             for (left, right) in player_joint_cover_mesh_pairs() {
-                let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, &overrides)?;
-                let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, &overrides)?;
+                let left_bounds = pose_cache.aabb(left)?;
+                let right_bounds = pose_cache.aabb(right)?;
                 let overlap_axes_m = left_bounds.overlap_axes_m(right_bounds);
-                let overlap_m = node_world_mesh_obb_with_pose(gltf, left, &overrides)?
-                    .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, right, &overrides)?);
+                let left_obb = pose_cache.obb(left)?;
+                let right_obb = pose_cache.obb(right)?;
+                let overlap_m = left_obb.overlap_depth_m(right_obb);
                 report.observe(
                     overlap_m,
                     overlap_axes_m,
@@ -7469,12 +7762,14 @@ fn player_pose_non_adjacent_mesh_overlap_report(gltf: &Value) -> Option<MeshOver
     for context in player_pose_mesh_overlap_contexts() {
         for phase in phases {
             let overrides = player_pose_node_overrides(gltf, context, phase)?;
+            let mut pose_cache = PoseBoundsCache::new(gltf, &overrides);
             for (left, right) in pairs.iter().copied() {
-                let left_bounds = node_world_mesh_aabb_with_pose(gltf, left, &overrides)?;
-                let right_bounds = node_world_mesh_aabb_with_pose(gltf, right, &overrides)?;
+                let left_bounds = pose_cache.aabb(left)?;
+                let right_bounds = pose_cache.aabb(right)?;
                 let overlap_axes_m = left_bounds.overlap_axes_m(right_bounds);
-                let overlap_m = node_world_mesh_obb_with_pose(gltf, left, &overrides)?
-                    .overlap_depth_m(node_world_mesh_obb_with_pose(gltf, right, &overrides)?);
+                let left_obb = pose_cache.obb(left)?;
+                let right_obb = pose_cache.obb(right)?;
+                let overlap_m = left_obb.overlap_depth_m(right_obb);
                 report.observe(
                     overlap_m,
                     overlap_axes_m,
@@ -8139,6 +8434,12 @@ fn world_node_translation_with_pose(
     ])
 }
 
+fn node_local_translation(gltf: &Value, node_name: &str) -> Option<Vec3> {
+    let nodes = gltf.get("nodes")?.as_array()?;
+    let index = node_index(gltf, node_name)?;
+    Some(node_local_translation_rotation_by_index(nodes, index)?.0)
+}
+
 fn world_node_transform(gltf: &Value, node_name: &str) -> Option<Mat4> {
     let nodes = gltf.get("nodes")?.as_array()?;
     let index = node_index(gltf, node_name)?;
@@ -8796,6 +9097,31 @@ mod tests {
         assert!(number_field(&audit, "max_gap_m") <= PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_GAP_M);
         assert!(
             number_field(&audit, "max_overlap_m") <= PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M
+        );
+    }
+
+    #[test]
+    fn player_hand_pivot_wiring_audit_reports_distal_palm_pivots() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let audit = player_hand_pivot_wiring_audit(&gltf).expect("hand pivot audit");
+
+        assert_eq!(
+            number_field(&audit, "hand_pivot_node_count"),
+            PLAYER_HAND_PIVOT_EXPECTED_NODE_COUNT
+        );
+        assert_eq!(number_field(&audit, "fail_count"), 0.0);
+        assert!(
+            number_field(&audit, "max_wrist_socket_gap_m")
+                <= PLAYER_HAND_PIVOT_MAX_WRIST_SOCKET_GAP_M
+        );
+        assert!(
+            number_field(&audit, "min_palm_distal_offset_m")
+                >= PLAYER_HAND_PALM_MIN_DISTAL_OFFSET_M
+        );
+        assert!(
+            number_field(&audit, "max_palm_distal_offset_m")
+                <= PLAYER_HAND_PALM_MAX_DISTAL_OFFSET_M
         );
     }
 

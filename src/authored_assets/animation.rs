@@ -329,9 +329,9 @@ pub(crate) fn authored_player_pose_node_for_name(name: &str) -> Option<AuthoredP
             Vec3::new(0.0, -0.44, 0.018),
             Quat::IDENTITY,
         ),
-        "Nau Left Leather Hand Palm" => CharacterPart::new(
+        "Nau Left Hand" => CharacterPart::new(
             CharacterPartRole::Hand(Side::Left),
-            Vec3::new(0.0, -0.39, -0.005),
+            Vec3::new(0.0, -0.49, -0.005),
             Quat::IDENTITY,
         ),
         "Nau Right Arm" => CharacterPart::new(
@@ -344,9 +344,9 @@ pub(crate) fn authored_player_pose_node_for_name(name: &str) -> Option<AuthoredP
             Vec3::new(0.0, -0.44, 0.018),
             Quat::IDENTITY,
         ),
-        "Nau Right Leather Hand Palm" => CharacterPart::new(
+        "Nau Right Hand" => CharacterPart::new(
             CharacterPartRole::Hand(Side::Right),
-            Vec3::new(0.0, -0.39, -0.005),
+            Vec3::new(0.0, -0.49, -0.005),
             Quat::IDENTITY,
         ),
         "Nau Left Leg" => CharacterPart::new(

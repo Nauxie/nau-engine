@@ -337,7 +337,7 @@ pub fn glider_traversal_pose(context: PlayerPoseContext, phase: f32) -> GliderTr
     if context.mode == FlightMode::Launching {
         let unfurl = (phase * 1.7).sin() * 0.010;
         return GliderTraversalPose {
-            translation_offset: Vec3::new(0.0, 2.950 + unfurl, -0.260),
+            translation_offset: Vec3::new(0.0, 3.065 + unfurl, -0.260),
             rotation_offset: Quat::from_rotation_x(-0.18 + unfurl * 0.8)
                 * Quat::from_rotation_z(0.045),
         };
