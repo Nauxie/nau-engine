@@ -1405,7 +1405,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     let landing_foot_forward_check = named_check(&summary, "pose_landing_foot_forward");
     let landing_foot_split_check = named_check(&summary, "pose_landing_foot_split");
     let landing_flare_check = named_check(&summary, "pose_landing_flare");
-    let landing_recovery_flip_check = named_check(&summary, "pose_landing_recovery_flip");
+    let landing_recovery_backbend_check = named_check(&summary, "pose_landing_recovery_backbend");
     let authored_land_check = named_check(&summary, "authored_landing_clip_samples");
 
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 0);
@@ -1435,12 +1435,12 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         LANDING_MIN_POSE_FLARE_DEGREES
     );
     assert!(!landing_flare_check.passed);
-    assert_eq!(landing_recovery_flip_check.value, 0.0);
+    assert_eq!(landing_recovery_backbend_check.value, 0.0);
     assert_eq!(
-        landing_recovery_flip_check.threshold,
-        LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES
+        landing_recovery_backbend_check.threshold,
+        LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES
     );
-    assert!(!landing_recovery_flip_check.passed);
+    assert!(landing_recovery_backbend_check.passed);
 
     let mut passing_accumulator = EvalAccumulator::default();
     let mut passing_anticipation = air_control_metric_sample(
@@ -1484,7 +1484,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         0.0,
     )
     .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
-        torso_pitch_degrees: LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+        torso_pitch_degrees: LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
         arm_spread_degrees: 0.0,
         leg_tuck_degrees: 42.0,
         lateral_lean_degrees: 0.0,
@@ -1494,7 +1494,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         landing_crouch_m: 0.09,
         landing_foot_forward_m: 0.0,
         landing_foot_split_m: LANDING_MIN_POSE_FOOT_SPLIT_M,
-        landing_recovery_flip_degrees: LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+        landing_recovery_flip_degrees: LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 1.0,
     });
@@ -1514,7 +1514,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     );
 
     assert!(named_check(&passing_summary, "pose_landing_foot_split").passed);
-    assert!(named_check(&passing_summary, "pose_landing_recovery_flip").passed);
+    assert!(named_check(&passing_summary, "pose_landing_recovery_backbend").passed);
     assert_eq!(
         passing_summary.metrics.max_pose_landing_foot_split_m,
         LANDING_MIN_POSE_FOOT_SPLIT_M
@@ -1523,7 +1523,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         passing_summary
             .metrics
             .max_pose_landing_recovery_flip_degrees,
-        LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES
+        LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES
     );
     assert!(
         passing_summary
@@ -3212,7 +3212,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_landing_foot_forward",
         "pose_state_landing_foot_split",
         "pose_state_landing_flare",
-        "pose_state_landing_recovery_flip",
+        "pose_state_landing_recovery_backbend",
         "pose_state_unreadable_key_pose_samples",
         "pose_state_key_pose_transition_grace_samples",
         "pose_state_visible_pose_part_count",
@@ -3761,7 +3761,7 @@ fn pose_state_readability_metrics_for_label(pose_intent_label: &str) -> EvalPose
         "landing_recovery" => {
             metrics.landing_crouch_m = LANDING_MIN_POSE_CROUCH_M;
             metrics.landing_foot_split_m = LANDING_MIN_POSE_FOOT_SPLIT_M;
-            metrics.landing_recovery_flip_degrees = LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES;
+            metrics.landing_recovery_flip_degrees = LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES;
         }
         "diving" => {
             metrics.torso_pitch_degrees = AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES;
