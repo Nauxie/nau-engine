@@ -3173,6 +3173,9 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_authored_grounded_run_clip_samples",
         "pose_state_launching_samples",
         "pose_state_authored_launch_clip_samples",
+        "pose_state_authored_glider_launch_samples",
+        "pose_state_authored_glider_launch_response",
+        "pose_state_authored_glider_launch_motion",
         "pose_state_falling_samples",
         "pose_state_authored_fall_clip_samples",
         "pose_state_gliding_samples",
@@ -3228,6 +3231,38 @@ fn accumulator_gates_pose_state_coverage_samples() {
         named_check(&summary, "pose_state_left_air_turn_samples").threshold,
         POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES
     );
+}
+
+#[test]
+fn accumulator_gates_pose_state_launch_glider_takeout() {
+    let scenario = scenario_named(POSE_STATE_COVERAGE).expect("pose state route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..3 {
+        let mut sample = content_metric_sample(scenario, frame, 20, 0, 96);
+        sample.mode = FlightMode::Launching.label();
+        sample.pose_intent_label = "launching";
+        sample.key_pose_readability_score = 1.0;
+        sample = sample.with_authored_animation_metrics("launch", "launch", 1, 140);
+        accumulator.observe(sample);
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert!(named_check(&summary, "pose_state_launching_samples").passed);
+    assert!(named_check(&summary, "pose_state_authored_launch_clip_samples").passed);
+    assert!(named_check(&summary, "pose_state_authored_glider_launch_samples").passed);
+    assert!(!named_check(&summary, "pose_state_authored_glider_launch_response").passed);
+    assert!(!named_check(&summary, "pose_state_authored_glider_launch_motion").passed);
 }
 
 #[test]
@@ -3667,6 +3702,8 @@ fn observe_pose_state_samples_with_grounded_stride(
                     AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES,
                     0.08,
                 );
+            } else if pose_intent_label == "launching" {
+                sample = sample.with_authored_glider_metrics(28.0, 0.62);
             }
             let authored_clip_label =
                 authored_clip_label_for_pose_intent_label(pose_intent_label, movement_axis);
