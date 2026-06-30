@@ -22,13 +22,13 @@ use nau_engine::{
     eval::{
         AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES, AIR_CONTROL_RESPONSE,
         BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario, ISLAND_LAUNCH_TO_LANDING,
-        LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M,
-        LANDING_MIN_POSE_FOOT_SPLIT_M, LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
-        LONG_GLIDE_VISIBILITY, MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT,
-        MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M, MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS,
-        MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE, MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES,
-        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
-        MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
+        LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES, LANDING_MIN_POSE_FLARE_DEGREES,
+        LANDING_MIN_POSE_FOOT_FORWARD_M, LANDING_MIN_POSE_FOOT_SPLIT_M, LONG_GLIDE_VISIBILITY,
+        MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT, MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M,
+        MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS, MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE,
+        MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES, MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+        MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+        MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
         POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES,
         POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES, UPDRAFT_ROUTE, scenario_named,
     },
@@ -285,8 +285,10 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
     assert!(result.metrics.max_pose_landing_flare_degrees >= LANDING_MIN_POSE_FLARE_DEGREES);
     assert!(
         result.metrics.max_pose_landing_recovery_flip_degrees
-            >= LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES
+            <= LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES
     );
+    assert_eq!(result.metrics.falling_upward_velocity_samples, 0);
+    assert_eq!(result.metrics.dive_without_dive_input_samples, 0);
     assert_eq!(result.metrics.unreadable_key_pose_samples, 0);
     assert!(
         result
@@ -306,6 +308,7 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         "pose_state_run_stride_leg_opposition",
         "pose_state_launching_samples",
         "pose_state_falling_samples",
+        "pose_state_falling_upward_velocity_samples",
         "pose_state_gliding_samples",
         "pose_state_air_turn_samples",
         "pose_state_right_air_turn_samples",
@@ -325,6 +328,7 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         "pose_state_backward_left_diagonal_body_travel_heading_samples",
         "pose_state_diving_samples",
         "pose_state_gliding_dive_samples",
+        "pose_state_dive_without_dive_input_samples",
         "pose_state_dive_pose_torso_pitch",
         "pose_state_dive_pose_arm_spread",
         "pose_state_dive_pose_leg_tuck",
@@ -334,7 +338,7 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         "pose_state_landing_foot_forward",
         "pose_state_landing_foot_split",
         "pose_state_landing_flare",
-        "pose_state_landing_recovery_flip",
+        "pose_state_landing_recovery_backbend",
         "pose_state_unreadable_key_pose_samples",
         "pose_state_key_pose_transition_grace_samples",
         "pose_state_min_pose_limb_clearance",
@@ -453,7 +457,7 @@ fn pose_state_coverage_sim_checks_reject_static_grounded_stride() {
     metrics.max_pose_landing_foot_forward_m = LANDING_MIN_POSE_FOOT_FORWARD_M;
     metrics.max_pose_landing_foot_split_m = LANDING_MIN_POSE_FOOT_SPLIT_M;
     metrics.max_pose_landing_flare_degrees = LANDING_MIN_POSE_FLARE_DEGREES;
-    metrics.max_pose_landing_recovery_flip_degrees = LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES;
+    metrics.max_pose_landing_recovery_flip_degrees = LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES;
 
     let checks = metrics.checks(scenario);
     for name in [
@@ -627,7 +631,7 @@ fn target_landing_checks_gate_landing_recovery_and_foot_split() {
         "pose_landing_foot_forward",
         "pose_landing_foot_split",
         "pose_landing_flare",
-        "pose_landing_recovery_flip",
+        "pose_landing_recovery_backbend",
         "unreadable_key_pose_samples",
     ] {
         assert!(
@@ -662,30 +666,35 @@ fn target_landing_checks_gate_landing_recovery_and_foot_split() {
     assert!(!foot_split_check.passed);
     assert_eq!(foot_split_check.threshold, LANDING_MIN_POSE_FOOT_SPLIT_M);
     assert_eq!(foot_split_check.unit, "m");
-    let recovery_flip_check = checks
+    let recovery_backbend_check = checks
         .iter()
-        .find(|check| check.name == "pose_landing_recovery_flip")
-        .expect("landing recovery flip check");
-    assert!(!recovery_flip_check.passed);
+        .find(|check| check.name == "pose_landing_recovery_backbend")
+        .expect("landing recovery backbend check");
+    assert!(recovery_backbend_check.passed);
     assert_eq!(
-        recovery_flip_check.threshold,
-        LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES
+        recovery_backbend_check.threshold,
+        LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES
     );
-    assert_eq!(recovery_flip_check.unit, "deg");
+    assert_eq!(recovery_backbend_check.unit, "deg");
 
     metrics.pose_landing_recovery_samples = 1;
     metrics.max_pose_landing_foot_forward_m = 0.32;
     metrics.max_pose_landing_foot_split_m = LANDING_MIN_POSE_FOOT_SPLIT_M;
     metrics.max_pose_landing_flare_degrees = LANDING_MIN_POSE_FLARE_DEGREES;
-    let failing_flip_checks = metrics.checks(scenario);
-    let failing_flip_check = failing_flip_checks
+    metrics.max_pose_landing_recovery_flip_degrees =
+        LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES + 1.0;
+    let failing_backbend_checks = metrics.checks(scenario);
+    let failing_backbend_check = failing_backbend_checks
         .iter()
-        .find(|check| check.name == "pose_landing_recovery_flip")
-        .expect("landing recovery flip check");
-    assert!(!failing_flip_check.passed);
-    assert_eq!(failing_flip_check.value, 0.0);
+        .find(|check| check.name == "pose_landing_recovery_backbend")
+        .expect("landing recovery backbend check");
+    assert!(!failing_backbend_check.passed);
+    assert_eq!(
+        failing_backbend_check.value,
+        LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES + 1.0
+    );
 
-    metrics.max_pose_landing_recovery_flip_degrees = LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES;
+    metrics.max_pose_landing_recovery_flip_degrees = LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES;
     let passing_checks = metrics.checks(scenario);
     let passing_recovery_check = passing_checks
         .iter()
@@ -707,11 +716,11 @@ fn target_landing_checks_gate_landing_recovery_and_foot_split() {
         .find(|check| check.name == "pose_landing_foot_split")
         .expect("landing foot-split check");
     assert!(passing_foot_split_check.passed);
-    let passing_recovery_flip_check = passing_checks
+    let passing_recovery_backbend_check = passing_checks
         .iter()
-        .find(|check| check.name == "pose_landing_recovery_flip")
-        .expect("landing recovery flip check");
-    assert!(passing_recovery_flip_check.passed);
+        .find(|check| check.name == "pose_landing_recovery_backbend")
+        .expect("landing recovery backbend check");
+    assert!(passing_recovery_backbend_check.passed);
 }
 
 #[test]
