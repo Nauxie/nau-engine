@@ -43,6 +43,8 @@ const PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT: f64 = 62.0;
 const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 113.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT: f64 = 9.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT: f64 = 4.0;
+const PLAYER_MOTION_INTEGRITY_REVIEW_EXPECTED_PANEL_COUNT: f64 = 15.0;
+const PLAYER_MOTION_INTEGRITY_OVERLAY_MAX_WARNING_COUNT: f64 = 0.0;
 const PLAYER_MESH_SILHOUETTE_EXPECTED_POSE_COUNT: f64 = 10.0;
 const PLAYER_MESH_SILHOUETTE_EXPECTED_SAMPLE_COUNT: f64 = 40.0;
 const PLAYER_MESH_SILHOUETTE_MIN_PROJECTED_SPAN_M: f64 = 0.70;
@@ -511,6 +513,7 @@ struct PlayerPosePreviewShape {
     vertices: Vec<Vec3>,
     surface_points: Vec<Vec3>,
     bounds: Aabb3,
+    obb: Obb3,
     color: &'static str,
 }
 
@@ -588,6 +591,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
     let stress_svg = render_player_rig_stress_review_sheet(&gltf, &stress_specs)?;
     let motion_specs = player_motion_integrity_review_specs();
     let motion_svg = render_player_motion_integrity_review_sheet(&gltf, &motion_specs)?;
+    let motion_overlay_warning_audit = player_motion_integrity_overlay_warning_audit(&gltf);
     let transition_specs = player_transition_pose_preview_specs();
     let transition_svg = render_player_transition_pose_preview_sheet(&gltf, &transition_specs)?;
     let glider_specs = glider_pose_preview_specs();
@@ -698,6 +702,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "joint_seam_contact_audit": player_joint_seam_contact_audit(&gltf),
         "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit(&gltf),
         "player_mesh_silhouette_audit": player_mesh_silhouette_audit(&gltf),
+        "motion_integrity_overlay_warning_audit": motion_overlay_warning_audit,
         "surface_contact_audit": player_pose_surface_contact_audit(&gltf),
         "player_glider_attachment_audit": player_glider_attachment_audit(&gltf, &glider_gltf),
         "artifacts": {
@@ -2020,6 +2025,7 @@ fn render_player_transition_pose_preview_sheet(
     .expect("writing to string should not fail");
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#10151f\"/>\n");
     svg.push_str("<text x=\"18\" y=\"24\" fill=\"#dbe7f3\" font-family=\"Menlo, monospace\" font-size=\"16\">NAU player fixture transition pose preview</text>\n");
+    svg.push_str("<desc>surface distance plus mesh overlap overlays for high-risk blends</desc>\n");
     for (index, view) in PLAYER_POSE_PREVIEW_VIEWS.iter().enumerate() {
         let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * index as f32 + VIEW_WIDTH * 0.5;
         writeln!(
@@ -2293,11 +2299,13 @@ fn player_pose_preview_shapes(
             continue;
         }
         let bounds = aabb_from_points(&vertices)?;
+        let obb = mesh_local_aabb(gltf, mesh)?.transformed_obb(transform);
         shapes.push(PlayerPosePreviewShape {
             node_name: node_name.to_string(),
             vertices,
             surface_points,
             bounds,
+            obb,
             color: player_pose_preview_color(node_name),
         });
     }
@@ -2348,11 +2356,13 @@ fn glider_pose_preview_shapes_with_transform(
             continue;
         }
         let bounds = aabb_from_points(&vertices)?;
+        let obb = mesh_local_aabb(gltf, mesh)?.transformed_obb(transform);
         shapes.push(PlayerPosePreviewShape {
             node_name: node_name.to_string(),
             vertices,
             surface_points,
             bounds,
+            obb,
             color: glider_pose_preview_color(node_name),
         });
     }
@@ -3022,50 +3032,8 @@ fn render_player_pose_overlap_overlay(
         origin_y,
         scale,
     };
-    for (left, right) in player_joint_cover_mesh_pairs() {
-        render_player_pose_overlap_marker(
-            svg,
-            shapes,
-            view,
-            transform,
-            PlayerPoseOverlapRule {
-                category: "joint cover mesh overlap",
-                left,
-                right,
-                warn_threshold_m: PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M * 0.95,
-                fail_threshold_m: PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M,
-            },
-        );
-    }
-    for (left, right) in player_joint_bridge_mesh_pairs() {
-        render_player_pose_overlap_marker(
-            svg,
-            shapes,
-            view,
-            transform,
-            PlayerPoseOverlapRule {
-                category: "joint bridge mesh overlap",
-                left,
-                right,
-                warn_threshold_m: PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M * 0.95,
-                fail_threshold_m: PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M,
-            },
-        );
-    }
-    for (left, right) in player_rest_non_adjacent_mesh_overlap_pairs() {
-        render_player_pose_overlap_marker(
-            svg,
-            shapes,
-            view,
-            transform,
-            PlayerPoseOverlapRule {
-                category: "non-adjacent mesh overlap",
-                left,
-                right,
-                warn_threshold_m: PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
-                fail_threshold_m: PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
-            },
-        );
+    for rule in player_pose_overlap_rules() {
+        render_player_pose_overlap_marker(svg, shapes, view, transform, rule);
     }
 }
 
@@ -3085,6 +3053,47 @@ struct PlayerPoseOverlapRule {
     fail_threshold_m: f64,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct PlayerPoseOverlapMarker {
+    category: &'static str,
+    left: &'static str,
+    right: &'static str,
+    overlap_m: f64,
+    failed: bool,
+}
+
+fn player_pose_overlap_rules() -> Vec<PlayerPoseOverlapRule> {
+    let mut rules = Vec::new();
+    for (left, right) in player_joint_cover_mesh_pairs() {
+        rules.push(PlayerPoseOverlapRule {
+            category: "joint cover mesh overlap",
+            left,
+            right,
+            warn_threshold_m: PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M * 0.95,
+            fail_threshold_m: PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M,
+        });
+    }
+    for (left, right) in player_joint_bridge_mesh_pairs() {
+        rules.push(PlayerPoseOverlapRule {
+            category: "joint bridge mesh overlap",
+            left,
+            right,
+            warn_threshold_m: PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M * 0.95,
+            fail_threshold_m: PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M,
+        });
+    }
+    for (left, right) in player_rest_non_adjacent_mesh_overlap_pairs() {
+        rules.push(PlayerPoseOverlapRule {
+            category: "non-adjacent mesh overlap",
+            left,
+            right,
+            warn_threshold_m: PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
+            fail_threshold_m: PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
+        });
+    }
+    rules
+}
+
 fn render_player_pose_overlap_marker(
     svg: &mut String,
     shapes: &[PlayerPosePreviewShape],
@@ -3098,10 +3107,9 @@ fn render_player_pose_overlap_marker(
     let Some(right) = shapes.iter().find(|shape| shape.node_name == rule.right) else {
         return;
     };
-    let overlap_m = left.bounds.overlap_depth_m(right.bounds);
-    if overlap_m <= rule.warn_threshold_m {
+    let Some(marker) = player_pose_overlap_marker_from_shapes(left, right, rule) else {
         return;
-    }
+    };
     let Some((min_u, max_u, min_v, max_v)) =
         projected_aabb_overlap_rect(left.bounds, right.bounds, view)
     else {
@@ -3114,20 +3122,109 @@ fn render_player_pose_overlap_marker(
     if width < 0.7 || height < 0.7 {
         return;
     }
-    let color = if overlap_m > rule.fail_threshold_m {
-        "#ff5364"
-    } else {
-        "#ffb84d"
-    };
+    let color = if marker.failed { "#ff5364" } else { "#ffb84d" };
     writeln!(
         svg,
         "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{width:.2}\" height=\"{height:.2}\" fill=\"{color}\" fill-opacity=\"0.18\" stroke=\"{color}\" stroke-opacity=\"0.92\" stroke-width=\"1.0\"><title>{}: {} into {} overlap {:.3} m</title></rect>",
-        escape_xml(rule.category),
-        escape_xml(rule.left),
-        escape_xml(rule.right),
-        overlap_m
+        escape_xml(marker.category),
+        escape_xml(marker.left),
+        escape_xml(marker.right),
+        marker.overlap_m
     )
     .expect("writing to string should not fail");
+}
+
+fn player_pose_overlap_marker_for_rule(
+    shapes: &[PlayerPosePreviewShape],
+    rule: PlayerPoseOverlapRule,
+) -> Option<PlayerPoseOverlapMarker> {
+    let left = shapes.iter().find(|shape| shape.node_name == rule.left)?;
+    let right = shapes.iter().find(|shape| shape.node_name == rule.right)?;
+    player_pose_overlap_marker_from_shapes(left, right, rule)
+}
+
+fn player_pose_overlap_marker_from_shapes(
+    left: &PlayerPosePreviewShape,
+    right: &PlayerPosePreviewShape,
+    rule: PlayerPoseOverlapRule,
+) -> Option<PlayerPoseOverlapMarker> {
+    let overlap_m = left.obb.overlap_depth_m(right.obb);
+    if overlap_m <= rule.warn_threshold_m {
+        return None;
+    }
+    Some(PlayerPoseOverlapMarker {
+        category: rule.category,
+        left: rule.left,
+        right: rule.right,
+        overlap_m,
+        failed: overlap_m > rule.fail_threshold_m,
+    })
+}
+
+fn player_motion_integrity_overlay_warning_audit(gltf: &Value) -> Option<Value> {
+    let specs = player_motion_integrity_review_specs();
+    let rules = player_pose_overlap_rules();
+    let mut warning_count = 0_u64;
+    let mut fail_count = 0_u64;
+    let mut max_overlap_m = 0.0_f64;
+    let mut worst_warning = Value::Null;
+    let mut panels = Vec::new();
+
+    for spec in &specs {
+        let overrides = player_pose_node_overrides(gltf, spec.context, spec.phase)?;
+        let shapes = player_pose_preview_shapes(gltf, &overrides)?;
+        let review_shapes = filter_player_pose_preview_shapes(&shapes, spec.nodes);
+        let mut panel_warning_count = 0_u64;
+        let mut panel_fail_count = 0_u64;
+
+        for rule in &rules {
+            let Some(marker) = player_pose_overlap_marker_for_rule(&review_shapes, *rule) else {
+                continue;
+            };
+            warning_count += 1;
+            panel_warning_count += 1;
+            if marker.failed {
+                fail_count += 1;
+                panel_fail_count += 1;
+            }
+            if marker.overlap_m > max_overlap_m {
+                max_overlap_m = marker.overlap_m;
+                worst_warning = json!({
+                    "label": spec.label,
+                    "title": spec.title,
+                    "view": spec.view.key(),
+                    "category": marker.category,
+                    "left_node": marker.left,
+                    "right_node": marker.right,
+                    "overlap_m": marker.overlap_m,
+                    "failed": marker.failed,
+                });
+            }
+        }
+
+        panels.push(json!({
+            "label": spec.label,
+            "title": spec.title,
+            "view": spec.view.key(),
+            "node_count": review_shapes.len(),
+            "warning_count": panel_warning_count,
+            "fail_count": panel_fail_count,
+        }));
+    }
+
+    Some(json!({
+        "schema": "nau_player_motion_integrity_overlay_warning_audit.v1",
+        "panel_count": specs.len(),
+        "rule_count": rules.len(),
+        "warning_count": warning_count,
+        "fail_count": fail_count,
+        "max_overlap_m": max_overlap_m,
+        "worst_warning": worst_warning,
+        "thresholds": {
+            "warning_count_max": PLAYER_MOTION_INTEGRITY_OVERLAY_MAX_WARNING_COUNT,
+        },
+        "panels": panels,
+    }))
 }
 
 fn projected_aabb_overlap_rect(
@@ -3610,6 +3707,10 @@ fn audit_fixture(
         .require_player_clips
         .then(|| player_mesh_silhouette_audit(&gltf))
         .flatten();
+    let player_motion_integrity_overlay_warning_audit = requirement
+        .require_player_clips
+        .then(|| player_motion_integrity_overlay_warning_audit(&gltf))
+        .flatten();
 
     let mut checks = vec![
         check_bool("present", true, "file"),
@@ -4046,6 +4147,27 @@ fn audit_fixture(
             0.0,
             "breaches",
         ));
+        let motion_overlay = player_motion_integrity_overlay_warning_audit
+            .as_ref()
+            .expect("player motion overlay warning audit should be present for player fixture");
+        checks.push(check_eq_f64(
+            "player_motion_integrity_overlay_panel_count",
+            number_field(motion_overlay, "panel_count"),
+            PLAYER_MOTION_INTEGRITY_REVIEW_EXPECTED_PANEL_COUNT,
+            "panels",
+        ));
+        checks.push(check_at_most_f64(
+            "player_motion_integrity_overlay_warning_count",
+            number_field(motion_overlay, "warning_count"),
+            PLAYER_MOTION_INTEGRITY_OVERLAY_MAX_WARNING_COUNT,
+            "warnings",
+        ));
+        checks.push(check_at_most_f64(
+            "player_motion_integrity_overlay_fail_count",
+            number_field(motion_overlay, "fail_count"),
+            0.0,
+            "failures",
+        ));
         let pose_contact = player_pose_contact_audit
             .as_ref()
             .expect("player pose contact audit should be present for player fixture");
@@ -4331,6 +4453,7 @@ fn audit_fixture(
         "player_boot_sole_length_min_m": player_boot_sole_length_min_m(&gltf),
         "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit,
         "player_mesh_silhouette_audit": player_mesh_silhouette_audit,
+        "player_motion_integrity_overlay_warning_audit": player_motion_integrity_overlay_warning_audit,
         "player_rest_non_adjacent_mesh_overlap_max_m": player_rest_non_adjacent_mesh_overlap_max_m(&gltf),
         "player_rest_shoulder_mesh_overlap_max_m": player_rest_shoulder_mesh_overlap_max_m(&gltf),
         "player_pose_non_adjacent_mesh_overlap_max_m": player_pose_non_adjacent_mesh_overlap_max_m(&gltf),
@@ -8459,7 +8582,15 @@ mod tests {
         assert!(sheet.contains("Nau Left Suit Pectoral Soft Volume"));
         assert!(sheet.contains("Nau Left Suit Hip Thigh Fairing"));
         assert!(sheet.contains("surface distance"));
-        assert!(sheet.contains("mesh overlap"));
+
+        let overlay_audit =
+            player_motion_integrity_overlay_warning_audit(&gltf).expect("overlay audit");
+        assert_eq!(
+            number_field(&overlay_audit, "panel_count"),
+            PLAYER_MOTION_INTEGRITY_REVIEW_EXPECTED_PANEL_COUNT
+        );
+        assert_eq!(number_field(&overlay_audit, "warning_count"), 0.0);
+        assert_eq!(number_field(&overlay_audit, "fail_count"), 0.0);
     }
 
     #[test]

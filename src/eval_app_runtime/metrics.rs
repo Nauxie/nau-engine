@@ -446,16 +446,10 @@ struct VisiblePosePartSet {
 
 impl VisiblePosePartSet {
     fn part_count(self) -> u32 {
-        [
-            self.torso,
-            self.left_arm,
-            self.right_arm,
-            self.left_leg,
-            self.right_leg,
-        ]
-        .into_iter()
-        .filter(Option::is_some)
-        .count() as u32
+        self.articulated_parts()
+            .into_iter()
+            .filter(Option::is_some)
+            .count() as u32
     }
 
     fn complete(self) -> Option<VisiblePosePartTransforms> {
@@ -2864,9 +2858,9 @@ mod tests {
         );
         let changed = state.take_sample_metrics();
 
-        assert_eq!(initial.visible_pose_part_count, 5);
+        assert_eq!(initial.visible_pose_part_count, 6);
         assert!(initial.max_pose_part_rotation_delta_degrees.is_nan());
-        assert_eq!(changed.visible_pose_part_count, 5);
+        assert_eq!(changed.visible_pose_part_count, 6);
         assert!(changed.max_pose_part_rotation_delta_degrees > 170.0);
         assert!(changed.max_pose_part_translation_delta_m > 0.69);
     }
@@ -2931,7 +2925,7 @@ mod tests {
         );
         let changed = state.take_sample_metrics();
 
-        assert_eq!(changed.visible_pose_part_count, 5);
+        assert_eq!(changed.visible_pose_part_count, 6);
         assert!(changed.max_pose_part_rotation_delta_degrees.is_nan());
         assert!(changed.max_pose_part_translation_delta_m.is_nan());
     }
@@ -2958,7 +2952,7 @@ mod tests {
         );
         let changed = state.take_sample_metrics();
 
-        assert_eq!(changed.visible_pose_part_count, 5);
+        assert_eq!(changed.visible_pose_part_count, 6);
         assert!(changed.max_pose_part_rotation_delta_degrees > 170.0);
         assert!(changed.max_pose_part_translation_delta_m > 0.69);
     }
@@ -2987,7 +2981,7 @@ mod tests {
         );
 
         let metrics = state.take_sample_metrics();
-        assert_eq!(metrics.visible_pose_part_count, 5);
+        assert_eq!(metrics.visible_pose_part_count, 6);
         assert!(metrics.max_pose_part_rotation_delta_degrees > 170.0);
         assert!(metrics.max_pose_part_translation_delta_m > 0.9);
     }
@@ -3055,7 +3049,7 @@ mod tests {
         let mut parts = visible_pose_part_set(Quat::IDENTITY, Vec3::ZERO);
         parts.right_leg = None;
 
-        assert_eq!(parts.part_count(), 4);
+        assert_eq!(parts.part_count(), 5);
         assert!(
             parts
                 .readability_metrics(PlayerPoseContext::new(

@@ -3212,6 +3212,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_landing_recovery_flip",
         "pose_state_unreadable_key_pose_samples",
         "pose_state_key_pose_transition_grace_samples",
+        "pose_state_visible_pose_part_count",
         "pose_state_min_pose_limb_clearance",
         "pose_state_max_pose_limb_penetration",
         "pose_state_pose_joint_gap_samples",
@@ -3637,7 +3638,7 @@ fn observe_pose_state_samples_with_grounded_stride(
             }
             sample = sample.with_pose_readability_metrics(readability_metrics);
             sample = sample.with_pose_temporal_metrics(EvalPoseTemporalMetrics {
-                visible_pose_part_count: 5,
+                visible_pose_part_count: MIN_VISIBLE_POSE_PART_COUNT,
                 max_pose_part_rotation_delta_degrees: 8.0,
                 max_pose_part_translation_delta_m: 0.02,
                 min_pose_limb_clearance_m: 0.12,
@@ -3774,6 +3775,7 @@ fn accumulator_gates_visible_pose_temporal_jank() {
     let rotation_check = named_check(&summary, "air_control_max_pose_part_rotation_delta");
     let translation_check = named_check(&summary, "air_control_max_pose_part_translation_delta");
     let clearance_check = named_check(&summary, "air_control_min_pose_limb_clearance");
+    let part_count_check = named_check(&summary, "air_control_visible_pose_part_count");
     let summary_json = summary.to_json();
 
     assert_eq!(summary.metrics.max_visible_pose_part_count, 5);
@@ -3784,6 +3786,7 @@ fn accumulator_gates_visible_pose_temporal_jank() {
     assert!(!rotation_check.passed);
     assert!(!translation_check.passed);
     assert!(clearance_check.passed);
+    assert!(!part_count_check.passed);
     assert!(summary_json.contains("\"max_pose_part_rotation_delta_degrees\": 150"));
     assert!(summary_json.contains("\"max_pose_part_translation_delta_m\": 0.8000"));
     assert!(summary_json.contains("\"min_pose_limb_clearance_m\": 0.1200"));

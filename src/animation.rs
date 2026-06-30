@@ -1084,7 +1084,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedWalk => -0.010 * walk_weight,
                 PlayerPoseIntent::GroundedRun => -0.025 - run_weight * 0.018,
                 PlayerPoseIntent::Launching => -0.22 + vertical_pitch * 0.12,
-                PlayerPoseIntent::Falling => -1.18 + vertical_pitch * 0.10,
+                PlayerPoseIntent::Falling => -1.30 + vertical_pitch * 0.08,
                 PlayerPoseIntent::Gliding => -0.04 + vertical_pitch * 0.12,
                 PlayerPoseIntent::AirTurn => -0.06 + vertical_pitch * 0.10,
                 PlayerPoseIntent::Diving => {
@@ -1123,7 +1123,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedStride => -0.04 * gait_weight,
                 PlayerPoseIntent::GroundedWalk => -0.035 * walk_weight,
                 PlayerPoseIntent::GroundedRun => -0.08 - run_weight * 0.07,
-                PlayerPoseIntent::Falling => -0.12 + vertical_pitch * 0.04,
+                PlayerPoseIntent::Falling => -0.08 + vertical_pitch * 0.03,
                 PlayerPoseIntent::Gliding => -0.24 + vertical_pitch * 0.35,
                 PlayerPoseIntent::AirTurn => -0.24 + vertical_pitch * 0.32,
                 PlayerPoseIntent::Diving => {
@@ -1216,7 +1216,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedStride => 0.08 + gait.abs() * 0.06 * gait_weight,
                 PlayerPoseIntent::GroundedWalk => 0.10 + gait.abs() * 0.08 * walk_weight,
                 PlayerPoseIntent::GroundedRun => 0.16 + gait.abs() * 0.14,
-                PlayerPoseIntent::Falling => 1.43 + airflow * 0.018,
+                PlayerPoseIntent::Falling => 1.48 + airflow * 0.014,
                 PlayerPoseIntent::Gliding => 1.22 + airflow * 0.035,
                 PlayerPoseIntent::AirTurn => 1.18 + airflow * 0.040,
                 PlayerPoseIntent::Diving => 0.075 + dive_extension * 0.025 + airflow * 0.014,
@@ -1245,7 +1245,7 @@ pub fn part_pose_with_context(
                 }
                 PlayerPoseIntent::LandingRecovery => 0.70 + recovery_strength * 0.40,
                 PlayerPoseIntent::Launching => -0.72,
-                PlayerPoseIntent::Falling => -0.50 + airflow * 0.018,
+                PlayerPoseIntent::Falling => -0.42 + airflow * 0.014,
             };
             translation.z += gait * 0.08 * gait_weight;
             translation.y += match context.mode {
@@ -1405,7 +1405,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::GroundedStride => 0.04 + gait.abs() * 0.05 * gait_weight,
                 PlayerPoseIntent::GroundedWalk => 0.06 + gait.abs() * 0.055 * walk_weight,
                 PlayerPoseIntent::GroundedRun => 0.08 + gait.abs() * 0.08,
-                PlayerPoseIntent::Falling => 0.28 + airflow.abs() * 0.012,
+                PlayerPoseIntent::Falling => 0.24 + airflow.abs() * 0.010,
                 PlayerPoseIntent::Gliding => 0.20 + airflow.abs() * 0.025,
                 PlayerPoseIntent::AirTurn => 0.24 + airflow.abs() * 0.030,
                 PlayerPoseIntent::Diving => 0.10 + dive_pressure * 0.040 + airflow.abs() * 0.008,
@@ -1439,7 +1439,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::LandingRecovery => {
                     -0.64 - recovery_strength * 0.42 - landing_lead * 0.10 + landing_trail * 0.08
                 }
-                PlayerPoseIntent::Falling => 0.58 + vertical_pitch * 0.5,
+                PlayerPoseIntent::Falling => 0.48 + vertical_pitch * 0.35,
                 PlayerPoseIntent::Launching => -0.44,
             };
             let locomotion_gait_weight = if matches!(

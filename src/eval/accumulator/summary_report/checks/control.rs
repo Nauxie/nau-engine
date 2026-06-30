@@ -161,6 +161,12 @@ pub(super) fn append_scenario_checks(
             "samples",
         ));
         checks.push(EvalCheck::at_least(
+            "visible_pose_part_count",
+            acc.max_visible_pose_part_count as f32,
+            MIN_VISIBLE_POSE_PART_COUNT as f32,
+            "parts",
+        ));
+        checks.push(EvalCheck::at_least(
             "landing_pose_temporal_stability_samples",
             acc.landing_pose_temporal_stability_samples as f32,
             MIN_POSE_TEMPORAL_STABILITY_SAMPLES as f32,
@@ -741,6 +747,12 @@ fn append_air_control_checks(
             acc.key_pose_transition_grace_samples as f32,
             AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32,
             "samples",
+        ),
+        EvalCheck::at_least(
+            "air_control_visible_pose_part_count",
+            acc.max_visible_pose_part_count as f32,
+            MIN_VISIBLE_POSE_PART_COUNT as f32,
+            "parts",
         ),
         EvalCheck::at_least(
             "air_control_pose_temporal_stability_samples",
@@ -1373,6 +1385,12 @@ fn append_pose_state_coverage_checks(
             acc.key_pose_transition_grace_samples as f32,
             POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES as f32,
             "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_visible_pose_part_count",
+            acc.max_visible_pose_part_count as f32,
+            MIN_VISIBLE_POSE_PART_COUNT as f32,
+            "parts",
         ),
         EvalCheck::at_least(
             "pose_state_min_pose_limb_clearance",
