@@ -36,11 +36,11 @@ const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.001;
 const PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT: f64 = 10.0;
 const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
-const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 12.0;
+const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 24.0;
 const PLAYER_JOINT_SEAM_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_PAIR_COUNT: f64 = 26.0;
 const PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT: f64 = 110.0;
-const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 161.0;
+const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 173.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT: f64 = 9.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT: f64 = 4.0;
 const PLAYER_MOTION_INTEGRITY_REVIEW_EXPECTED_PANEL_COUNT: f64 = 15.0;
@@ -5790,39 +5790,66 @@ fn player_joint_bridge_node_names() -> [&'static str; 12] {
     ]
 }
 
-fn player_joint_bridge_mesh_pairs() -> [(&'static str, &'static str); 12] {
+fn player_joint_bridge_mesh_pairs() -> [(&'static str, &'static str); 24] {
     [
+        (
+            "Nau Left Shoulder Bridge Sleeve",
+            "Nau Left Shoulder Joint Cover",
+        ),
         ("Nau Left Shoulder Bridge Sleeve", "Nau Left Suit Upper Arm"),
+        (
+            "Nau Right Shoulder Bridge Sleeve",
+            "Nau Right Shoulder Joint Cover",
+        ),
         (
             "Nau Right Shoulder Bridge Sleeve",
             "Nau Right Suit Upper Arm",
         ),
+        ("Nau Left Elbow Bridge Sleeve", "Nau Left Elbow Joint Cover"),
         (
             "Nau Left Elbow Bridge Sleeve",
             "Nau Left Leather Forearm Wrap",
         ),
         (
             "Nau Right Elbow Bridge Sleeve",
+            "Nau Right Elbow Joint Cover",
+        ),
+        (
+            "Nau Right Elbow Bridge Sleeve",
             "Nau Right Leather Forearm Wrap",
         ),
+        ("Nau Left Wrist Bridge Sleeve", "Nau Left Wrist Joint Cover"),
         ("Nau Left Wrist Bridge Sleeve", "Nau Left Leather Hand Palm"),
+        (
+            "Nau Right Wrist Bridge Sleeve",
+            "Nau Right Wrist Joint Cover",
+        ),
         (
             "Nau Right Wrist Bridge Sleeve",
             "Nau Right Leather Hand Palm",
         ),
+        ("Nau Left Hip Bridge Sleeve", "Nau Left Hip Joint Cover"),
         ("Nau Left Hip Bridge Sleeve", "Nau Left Suit Thigh Guard"),
+        ("Nau Right Hip Bridge Sleeve", "Nau Right Hip Joint Cover"),
         ("Nau Right Hip Bridge Sleeve", "Nau Right Suit Thigh Guard"),
+        ("Nau Left Knee Bridge Sleeve", "Nau Left Knee Joint Cover"),
         (
             "Nau Left Knee Bridge Sleeve",
             "Nau Left Suit Lower Leg Greave",
         ),
+        ("Nau Right Knee Bridge Sleeve", "Nau Right Knee Joint Cover"),
         (
             "Nau Right Knee Bridge Sleeve",
             "Nau Right Suit Lower Leg Greave",
         ),
+        ("Nau Left Ankle Bridge Sleeve", "Nau Left Ankle Joint Cover"),
         (
             "Nau Left Ankle Bridge Sleeve",
             "Nau Left Leather Boot Shell",
+        ),
+        (
+            "Nau Right Ankle Bridge Sleeve",
+            "Nau Right Ankle Joint Cover",
         ),
         (
             "Nau Right Ankle Bridge Sleeve",
@@ -8749,8 +8776,8 @@ mod tests {
                     .iter()
                     .filter(|(candidate, _contact)| *candidate == bridge)
                     .count(),
-                1,
-                "{bridge} should stay attached to its animated distal fixture surface"
+                2,
+                "{bridge} should stay attached to its socket and distal fixture surfaces"
             );
         }
     }

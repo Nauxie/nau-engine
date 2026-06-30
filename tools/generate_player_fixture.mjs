@@ -629,9 +629,9 @@ for (const side of [
     scale: [0.70, 0.60, 0.72],
   });
   addMeshChild(arm, `Nau ${label} Shoulder Bridge Sleeve`, meshIndex("Nau Suit Shoulder Bridge Sleeve"), {
-    translation: [sign * -0.02, -0.010, 0.0],
+    translation: [sign * -0.02, -0.026, 0.0],
     rotation: rotZ(sign * 0.10),
-    scale: [0.96, 0.082, 0.96],
+    scale: [0.78, 0.066, 0.78],
   });
   addMeshChild(arm, `Nau ${label} Seamless Shoulder Flex Cover`, meshIndex("Nau Seamless Shoulder Flex Cover"), {
     translation: [sign * -0.008, -0.030, 0.0],
@@ -688,8 +688,8 @@ for (const side of [
   });
   nodeIds[`${lower}Forearm`] = forearm;
   addMeshChild(forearm, `Nau ${label} Elbow Bridge Sleeve`, meshIndex("Nau Suit Elbow Bridge Sleeve"), {
-    translation: [0.0, 0.026, 0.0],
-    scale: [0.96, 0.132, 0.96],
+    translation: [0.0, 0.006, 0.0],
+    scale: [0.50, 0.064, 0.50],
   });
   addMeshChild(forearm, `Nau ${label} Seamless Elbow Flex Cover`, meshIndex("Nau Seamless Elbow Flex Cover"), {
     translation: [0.0, 0.020, 0.0],
@@ -868,7 +868,7 @@ for (const side of [
   addMeshChild(leg, `Nau ${label} Hip Bridge Sleeve`, meshIndex("Nau Suit Hip Bridge Sleeve"), {
     translation: [sign * 0.006, 0.006, 0.0],
     rotation: rotZ(sign * 0.08),
-    scale: [1.04, 0.098, 1.04],
+    scale: [0.96, 0.090, 0.96],
   });
   addMeshChild(leg, `Nau ${label} Seamless Hip Flex Cover`, meshIndex("Nau Seamless Hip Flex Cover"), {
     translation: [sign * 0.008, -0.032, 0.0],
@@ -932,8 +932,8 @@ for (const side of [
   });
   nodeIds[`${lower}LowerLeg`] = lowerLeg;
   addMeshChild(lowerLeg, `Nau ${label} Knee Bridge Sleeve`, meshIndex("Nau Suit Knee Bridge Sleeve"), {
-    translation: [0.0, -0.02, 0.0],
-    scale: [1.08, 0.124, 1.08],
+    translation: [0.0, -0.036, 0.0],
+    scale: [0.54, 0.064, 0.54],
   });
   addMeshChild(lowerLeg, `Nau ${label} Seamless Knee Flex Cover`, meshIndex("Nau Seamless Knee Flex Cover"), {
     translation: [0.0, -0.026, 0.0],
