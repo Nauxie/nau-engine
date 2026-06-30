@@ -22,8 +22,9 @@ use nau_engine::{
     eval::{
         AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES, AIR_CONTROL_RESPONSE,
         BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario, ISLAND_LAUNCH_TO_LANDING,
-        LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES, LANDING_MIN_POSE_FLARE_DEGREES,
-        LANDING_MIN_POSE_FOOT_FORWARD_M, LANDING_MIN_POSE_FOOT_SPLIT_M, LONG_GLIDE_VISIBILITY,
+        LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES, LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
+        LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M,
+        LANDING_MIN_POSE_FOOT_SPLIT_M, LONG_GLIDE_VISIBILITY,
         MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT, MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M,
         MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS, MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE,
         MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES, MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
@@ -338,6 +339,7 @@ fn pose_state_coverage_simulation_gates_full_traversal_pose_chain() {
         "pose_state_landing_foot_forward",
         "pose_state_landing_foot_split",
         "pose_state_landing_flare",
+        "pose_state_landing_flare_backbend",
         "pose_state_landing_recovery_backbend",
         "pose_state_unreadable_key_pose_samples",
         "pose_state_key_pose_transition_grace_samples",
@@ -631,6 +633,7 @@ fn target_landing_checks_gate_landing_recovery_and_foot_split() {
         "pose_landing_foot_forward",
         "pose_landing_foot_split",
         "pose_landing_flare",
+        "pose_landing_flare_backbend",
         "pose_landing_recovery_backbend",
         "unreadable_key_pose_samples",
     ] {
@@ -652,6 +655,16 @@ fn target_landing_checks_gate_landing_recovery_and_foot_split() {
     assert!(!flare_check.passed);
     assert_eq!(flare_check.threshold, LANDING_MIN_POSE_FLARE_DEGREES);
     assert_eq!(flare_check.unit, "deg");
+    let flare_backbend_check = checks
+        .iter()
+        .find(|check| check.name == "pose_landing_flare_backbend")
+        .expect("landing flare backbend check");
+    assert!(flare_backbend_check.passed);
+    assert_eq!(
+        flare_backbend_check.threshold,
+        LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES
+    );
+    assert_eq!(flare_backbend_check.unit, "deg");
     let foot_forward_check = checks
         .iter()
         .find(|check| check.name == "pose_landing_foot_forward")
@@ -706,6 +719,11 @@ fn target_landing_checks_gate_landing_recovery_and_foot_split() {
         .find(|check| check.name == "pose_landing_flare")
         .expect("landing flare check");
     assert!(passing_flare_check.passed);
+    let passing_flare_backbend_check = passing_checks
+        .iter()
+        .find(|check| check.name == "pose_landing_flare_backbend")
+        .expect("landing flare backbend check");
+    assert!(passing_flare_backbend_check.passed);
     let passing_foot_forward_check = passing_checks
         .iter()
         .find(|check| check.name == "pose_landing_foot_forward")

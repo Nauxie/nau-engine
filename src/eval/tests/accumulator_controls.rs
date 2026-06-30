@@ -1405,6 +1405,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     let landing_foot_forward_check = named_check(&summary, "pose_landing_foot_forward");
     let landing_foot_split_check = named_check(&summary, "pose_landing_foot_split");
     let landing_flare_check = named_check(&summary, "pose_landing_flare");
+    let landing_flare_backbend_check = named_check(&summary, "pose_landing_flare_backbend");
     let landing_recovery_backbend_check = named_check(&summary, "pose_landing_recovery_backbend");
     let authored_land_check = named_check(&summary, "authored_landing_clip_samples");
 
@@ -1435,6 +1436,12 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         LANDING_MIN_POSE_FLARE_DEGREES
     );
     assert!(!landing_flare_check.passed);
+    assert_eq!(landing_flare_backbend_check.value, 0.0);
+    assert_eq!(
+        landing_flare_backbend_check.threshold,
+        LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES
+    );
+    assert!(landing_flare_backbend_check.passed);
     assert_eq!(landing_recovery_backbend_check.value, 0.0);
     assert_eq!(
         landing_recovery_backbend_check.threshold,
@@ -1514,6 +1521,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     );
 
     assert!(named_check(&passing_summary, "pose_landing_foot_split").passed);
+    assert!(named_check(&passing_summary, "pose_landing_flare_backbend").passed);
     assert!(named_check(&passing_summary, "pose_landing_recovery_backbend").passed);
     assert_eq!(
         passing_summary.metrics.max_pose_landing_foot_split_m,
@@ -3212,7 +3220,11 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_landing_foot_forward",
         "pose_state_landing_foot_split",
         "pose_state_landing_flare",
+        "pose_state_landing_flare_backbend",
         "pose_state_landing_recovery_backbend",
+        "pose_state_landing_pose_temporal_samples",
+        "pose_state_landing_pose_rotation_delta",
+        "pose_state_landing_pose_translation_delta",
         "pose_state_unreadable_key_pose_samples",
         "pose_state_key_pose_transition_grace_samples",
         "pose_state_visible_pose_part_count",

@@ -62,8 +62,8 @@ impl FlightController {
 
 pub const LANDING_RECOVERY_MIN_IMPACT_SPEED_MPS: f32 = 1.8;
 pub const LANDING_RECOVERY_MAX_IMPACT_SPEED_MPS: f32 = 18.0;
-pub const LANDING_RECOVERY_MIN_DURATION_SECS: f32 = 0.18;
-pub const LANDING_RECOVERY_MAX_DURATION_SECS: f32 = 0.46;
+pub const LANDING_RECOVERY_MIN_DURATION_SECS: f32 = 0.14;
+pub const LANDING_RECOVERY_MAX_DURATION_SECS: f32 = 0.34;
 
 pub fn landing_recovery_duration_secs(impact_speed_mps: f32) -> f32 {
     if impact_speed_mps < LANDING_RECOVERY_MIN_IMPACT_SPEED_MPS {
@@ -87,7 +87,9 @@ pub fn landing_recovery_strength(remaining_secs: f32, impact_speed_mps: f32) -> 
         / (LANDING_RECOVERY_MAX_IMPACT_SPEED_MPS - LANDING_RECOVERY_MIN_IMPACT_SPEED_MPS))
         .clamp(0.0, 1.0);
     let remaining = (remaining_secs / duration).clamp(0.0, 1.0);
-    (0.45 + impact * 0.35 + remaining * 0.20).clamp(0.0, 1.0)
+    let decay = remaining * remaining * (3.0 - 2.0 * remaining);
+    let peak = 0.30 + impact * 0.45;
+    (peak * decay).clamp(0.0, 1.0)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

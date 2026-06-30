@@ -3,8 +3,8 @@ use bevy::prelude::*;
 use super::super::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, GROUND_EPSILON,
     body_heading_error_degrees, desired_planar_movement_direction,
-    desired_planar_travel_heading_error_degrees, face_flight_direction, math::horizontal,
-    step_flight,
+    desired_planar_travel_heading_error_degrees, face_flight_direction, landing_recovery_strength,
+    math::horizontal, step_flight,
 };
 use super::default_state;
 
@@ -659,4 +659,16 @@ fn landing_recovery_timer_expires_after_touchdown() {
 
     assert_eq!(state.controller.landing_recovery_timer, 0.0);
     assert_eq!(state.controller.landing_impact_speed_mps, 0.0);
+}
+
+#[test]
+fn landing_recovery_strength_fades_before_timer_expiry() {
+    let impact_speed_mps = 14.0;
+    let start = landing_recovery_strength(1.0, impact_speed_mps);
+    let mid = landing_recovery_strength(0.10, impact_speed_mps);
+    let near_end = landing_recovery_strength(0.01, impact_speed_mps);
+
+    assert!(start > mid);
+    assert!(mid > near_end);
+    assert!(near_end < 0.01);
 }

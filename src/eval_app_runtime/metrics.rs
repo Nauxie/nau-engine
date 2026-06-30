@@ -45,15 +45,16 @@ pub(super) const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
 const BODY_TRAVEL_HEADING_MIN_PLANAR_SPEED_MPS: f32 = 6.0;
 const KEY_POSE_TRANSITION_READABILITY_FLOOR: f32 = 0.65;
 const KEY_POSE_AIR_BRAKE_RELEASE_TRANSITION_READABILITY_FLOOR: f32 = 0.30;
-const KEY_POSE_LANDING_FLIP_TRANSITION_READABILITY_FLOOR: f32 = 0.35;
+const KEY_POSE_LANDING_FLIP_TRANSITION_READABILITY_FLOOR: f32 = 0.30;
 const KEY_POSE_LANDING_RELEASE_TRANSITION_READABILITY_FLOOR: f32 = 0.35;
 const KEY_POSE_READABILITY_EPSILON: f32 = 0.01;
 const KEY_POSE_TRANSITION_GRACE_FRAMES: u32 = 5;
 const KEY_POSE_EXTENDED_TRANSITION_GRACE_FRAMES: u32 = 8;
+const KEY_POSE_LANDING_TRANSITION_GRACE_FRAMES: u32 = 12;
 const KEY_POSE_TRANSITION_MAX_ROTATION_DELTA_DEGREES: f32 = 60.0;
 const KEY_POSE_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.15;
-const KEY_POSE_RELAXED_TRANSITION_MAX_ROTATION_DELTA_DEGREES: f32 = 120.0;
-const KEY_POSE_RELAXED_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.6;
+const KEY_POSE_LANDING_TRANSITION_MAX_ROTATION_DELTA_DEGREES: f32 = 60.0;
+const KEY_POSE_LANDING_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.25;
 
 #[derive(Resource, Default)]
 pub(crate) struct VisiblePoseTemporalState {
@@ -1601,7 +1602,9 @@ fn key_pose_transition_readability_floor(
         KEY_POSE_AIR_BRAKE_RELEASE_TRANSITION_READABILITY_FLOOR
     } else if landing_flip_transition(current_intent, previous_intent) {
         KEY_POSE_LANDING_FLIP_TRANSITION_READABILITY_FLOOR
-    } else if landing_release_transition(current_intent, previous_intent) {
+    } else if landing_absorb_transition(current_intent, previous_intent)
+        || landing_release_transition(current_intent, previous_intent)
+    {
         KEY_POSE_LANDING_RELEASE_TRANSITION_READABILITY_FLOOR
     } else {
         KEY_POSE_TRANSITION_READABILITY_FLOOR
@@ -1613,11 +1616,12 @@ fn key_pose_transition_temporal_limits(
     previous_intent: Option<PlayerPoseIntent>,
 ) -> (f32, f32) {
     if landing_flip_transition(current_intent, previous_intent)
+        || landing_absorb_transition(current_intent, previous_intent)
         || landing_release_transition(current_intent, previous_intent)
     {
         (
-            KEY_POSE_RELAXED_TRANSITION_MAX_ROTATION_DELTA_DEGREES,
-            KEY_POSE_RELAXED_TRANSITION_MAX_TRANSLATION_DELTA_M,
+            KEY_POSE_LANDING_TRANSITION_MAX_ROTATION_DELTA_DEGREES,
+            KEY_POSE_LANDING_TRANSITION_MAX_TRANSLATION_DELTA_M,
         )
     } else {
         (
@@ -1633,6 +1637,11 @@ fn key_pose_transition_grace_frames(
 ) -> u32 {
     if glide_to_dive_transition(current_intent, previous_intent) {
         KEY_POSE_EXTENDED_TRANSITION_GRACE_FRAMES
+    } else if landing_flip_transition(current_intent, previous_intent)
+        || landing_absorb_transition(current_intent, previous_intent)
+        || landing_release_transition(current_intent, previous_intent)
+    {
+        KEY_POSE_LANDING_TRANSITION_GRACE_FRAMES
     } else {
         KEY_POSE_TRANSITION_GRACE_FRAMES
     }
@@ -1660,8 +1669,16 @@ fn landing_flip_transition(
     current_intent == PlayerPoseIntent::LandingAnticipation
         && matches!(
             previous_intent,
-            Some(PlayerPoseIntent::Diving | PlayerPoseIntent::Gliding)
+            Some(PlayerPoseIntent::Diving | PlayerPoseIntent::Gliding | PlayerPoseIntent::Falling)
         )
+}
+
+fn landing_absorb_transition(
+    current_intent: PlayerPoseIntent,
+    previous_intent: Option<PlayerPoseIntent>,
+) -> bool {
+    current_intent == PlayerPoseIntent::LandingRecovery
+        && previous_intent == Some(PlayerPoseIntent::LandingAnticipation)
 }
 
 fn landing_release_transition(
@@ -2587,8 +2604,8 @@ mod tests {
             1,
             &EvalPoseTemporalMetrics {
                 visible_pose_part_count: 5,
-                max_pose_part_rotation_delta_degrees: 103.0,
-                max_pose_part_translation_delta_m: 0.375,
+                max_pose_part_rotation_delta_degrees: 54.0,
+                max_pose_part_translation_delta_m: 0.18,
                 min_pose_limb_clearance_m: 0.12,
                 max_pose_limb_penetration_m: 0.0,
                 max_pose_joint_gap_m: 0.0,
@@ -2638,8 +2655,59 @@ mod tests {
             1,
             &EvalPoseTemporalMetrics {
                 visible_pose_part_count: 5,
-                max_pose_part_rotation_delta_degrees: 87.05,
-                max_pose_part_translation_delta_m: 0.573,
+                max_pose_part_rotation_delta_degrees: 56.0,
+                max_pose_part_translation_delta_m: 0.20,
+                min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
+            },
+        );
+
+        assert!(raw.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert_eq!(
+            adjusted.metrics.key_pose_readability_score,
+            MIN_KEY_POSE_READABILITY_SCORE
+        );
+        assert!(adjusted.used_transition_grace);
+    }
+
+    #[test]
+    fn transition_aware_pose_readability_accepts_bounded_landing_absorb() {
+        let raw = PoseReadabilityMetrics {
+            torso_pitch_degrees: 68.0,
+            arm_spread_degrees: 120.0,
+            leg_tuck_degrees: 42.0,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
+            landing_crouch_m: 0.08,
+            landing_foot_forward_m: 0.35,
+            landing_foot_split_m: 0.14,
+            landing_recovery_flip_degrees: 68.0,
+            wing_airflow_strength: 0.0,
+            key_pose_readability_score: key_pose_readability_score(
+                PlayerPoseIntent::LandingRecovery,
+                68.0,
+                120.0,
+                42.0,
+                0.08,
+                0.35,
+                0.14,
+            ),
+            ..default()
+        };
+
+        let adjusted = transition_aware_pose_readability(
+            raw,
+            PlayerPoseIntent::LandingRecovery,
+            Some(PlayerPoseIntent::LandingAnticipation),
+            1,
+            &EvalPoseTemporalMetrics {
+                visible_pose_part_count: 5,
+                max_pose_part_rotation_delta_degrees: 44.0,
+                max_pose_part_translation_delta_m: 0.12,
                 min_pose_limb_clearance_m: 0.12,
                 max_pose_limb_penetration_m: 0.0,
                 max_pose_joint_gap_m: 0.0,
@@ -2736,7 +2804,7 @@ mod tests {
             &EvalPoseTemporalMetrics {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 49.49,
-                max_pose_part_translation_delta_m: 0.285,
+                max_pose_part_translation_delta_m: 0.20,
                 min_pose_limb_clearance_m: 0.12,
                 max_pose_limb_penetration_m: 0.0,
                 max_pose_joint_gap_m: 0.0,
