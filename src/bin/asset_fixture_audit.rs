@@ -88,6 +88,9 @@ const PLAYER_MIN_LIMB_ANATOMY_MAJOR_EXTENT_M: f64 = 0.15;
 const PLAYER_ORGANIC_LIMB_VOLUME_EXPECTED_MESH_COUNT: f64 = 5.0;
 const PLAYER_ORGANIC_LIMB_VOLUME_MIN_VERTEX_COUNT: f64 = 580.0;
 const PLAYER_ORGANIC_LIMB_VOLUME_MIN_TRIANGLE_COUNT: f64 = 1100.0;
+const PLAYER_EXTREMITY_VOLUME_EXPECTED_MESH_COUNT: f64 = 10.0;
+const PLAYER_EXTREMITY_VOLUME_MIN_VERTEX_COUNT: f64 = 220.0;
+const PLAYER_EXTREMITY_VOLUME_MIN_TRIANGLE_COUNT: f64 = 380.0;
 const PLAYER_TOPOLOGY_MIN_SHOULDER_WIDTH_M: f64 = 0.84;
 const PLAYER_TOPOLOGY_MAX_SHOULDER_WIDTH_M: f64 = 1.00;
 const PLAYER_TOPOLOGY_MIN_HIP_WIDTH_M: f64 = 0.52;
@@ -842,6 +845,8 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         })).collect::<Vec<_>>(),
         "joint_seam_contact_audit": player_joint_seam_contact_audit(&gltf),
         "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit(&gltf),
+        "player_organic_limb_volume_audit": player_organic_limb_volume_audit(&gltf),
+        "player_extremity_volume_audit": player_extremity_volume_audit(&gltf),
         "player_human_topology_audit": player_human_topology_audit(&gltf),
         "player_mesh_silhouette_audit": player_mesh_silhouette_audit(&gltf),
         "motion_integrity_overlay_warning_audit": motion_overlay_warning_audit,
@@ -3882,6 +3887,10 @@ fn audit_fixture(
         .require_player_clips
         .then(|| player_organic_limb_volume_audit(&gltf))
         .flatten();
+    let player_extremity_volume_audit = requirement
+        .require_player_clips
+        .then(|| player_extremity_volume_audit(&gltf))
+        .flatten();
     let player_human_topology_audit = requirement
         .require_player_clips
         .then(|| player_human_topology_audit(&gltf))
@@ -4072,6 +4081,33 @@ fn audit_fixture(
             "player_organic_limb_volume_triangle_count_min",
             number_field(organic_limb_volume, "min_triangle_count"),
             PLAYER_ORGANIC_LIMB_VOLUME_MIN_TRIANGLE_COUNT,
+            "triangles",
+        ));
+        let extremity_volume = player_extremity_volume_audit
+            .as_ref()
+            .expect("player extremity volume audit should be present for player fixture");
+        checks.push(check_eq_f64(
+            "player_extremity_volume_mesh_count",
+            number_field(extremity_volume, "present_mesh_count"),
+            PLAYER_EXTREMITY_VOLUME_EXPECTED_MESH_COUNT,
+            "meshes",
+        ));
+        checks.push(check_eq_f64(
+            "player_extremity_volume_missing_count",
+            number_field(extremity_volume, "missing_count"),
+            0.0,
+            "meshes",
+        ));
+        checks.push(check_at_least_f64(
+            "player_extremity_volume_vertex_count_min",
+            number_field(extremity_volume, "min_vertex_count"),
+            PLAYER_EXTREMITY_VOLUME_MIN_VERTEX_COUNT,
+            "vertices",
+        ));
+        checks.push(check_at_least_f64(
+            "player_extremity_volume_triangle_count_min",
+            number_field(extremity_volume, "min_triangle_count"),
+            PLAYER_EXTREMITY_VOLUME_MIN_TRIANGLE_COUNT,
             "triangles",
         ));
         let human_topology = player_human_topology_audit
@@ -4835,6 +4871,7 @@ fn audit_fixture(
         "player_boot_sole_length_min_m": player_boot_sole_length_min_m(&gltf),
         "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit,
         "player_organic_limb_volume_audit": player_organic_limb_volume_audit,
+        "player_extremity_volume_audit": player_extremity_volume_audit,
         "player_human_topology_audit": player_human_topology_audit,
         "player_mesh_silhouette_audit": player_mesh_silhouette_audit,
         "player_motion_integrity_overlay_warning_audit": player_motion_integrity_overlay_warning_audit,
@@ -7843,6 +7880,62 @@ fn player_organic_limb_volume_audit(gltf: &Value) -> Option<Value> {
     }))
 }
 
+fn player_extremity_volume_mesh_names() -> [&'static str; 10] {
+    [
+        "Nau Leather Hand Palm",
+        "Nau Leather Finger Grip",
+        "Nau Leather Finger Tip Pad",
+        "Nau Leather Boot Toe Cap",
+        "Nau Leather Boot Toe Lug",
+        "Nau Leather Boot Sole",
+        "Nau Leather Boot Heel",
+        "Nau Leather Finger Web Bridge",
+        "Nau Leather Boot Instep Plate",
+        "Nau Leather Ankle Boot Tongue",
+    ]
+}
+
+fn player_extremity_volume_audit(gltf: &Value) -> Option<Value> {
+    let mut samples = Vec::new();
+    let mut missing = Vec::new();
+    let mut present_mesh_count = 0_u64;
+    let mut min_vertex_count = u64::MAX;
+    let mut min_triangle_count = u64::MAX;
+
+    for mesh_name in player_extremity_volume_mesh_names() {
+        let Some((vertex_count, triangle_count)) =
+            named_mesh_vertex_triangle_counts(gltf, mesh_name)
+        else {
+            missing.push(mesh_name);
+            continue;
+        };
+        present_mesh_count += 1;
+        min_vertex_count = min_vertex_count.min(vertex_count);
+        min_triangle_count = min_triangle_count.min(triangle_count);
+        samples.push(json!({
+            "mesh": mesh_name,
+            "vertex_count": vertex_count,
+            "triangle_count": triangle_count,
+        }));
+    }
+
+    Some(json!({
+        "schema": "nau_player_extremity_volume_audit.v1",
+        "expected_mesh_count": player_extremity_volume_mesh_names().len(),
+        "present_mesh_count": present_mesh_count,
+        "missing_count": missing.len(),
+        "missing": missing,
+        "min_vertex_count": if min_vertex_count == u64::MAX { 0 } else { min_vertex_count },
+        "min_triangle_count": if min_triangle_count == u64::MAX { 0 } else { min_triangle_count },
+        "thresholds": {
+            "mesh_count": PLAYER_EXTREMITY_VOLUME_EXPECTED_MESH_COUNT,
+            "vertex_count_min": PLAYER_EXTREMITY_VOLUME_MIN_VERTEX_COUNT,
+            "triangle_count_min": PLAYER_EXTREMITY_VOLUME_MIN_TRIANGLE_COUNT,
+        },
+        "samples": samples,
+    }))
+}
+
 fn named_mesh_vertex_triangle_counts(gltf: &Value, mesh_name: &str) -> Option<(u64, u64)> {
     let accessors = gltf.get("accessors")?.as_array()?;
     let mesh = gltf
@@ -9776,6 +9869,62 @@ mod tests {
         assert!(
             number_field(&audit, "min_triangle_count")
                 >= PLAYER_ORGANIC_LIMB_VOLUME_MIN_TRIANGLE_COUNT
+        );
+    }
+
+    #[test]
+    fn player_extremity_volume_audit_reports_high_density_hands_and_boots() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let audit = player_extremity_volume_audit(&gltf).expect("extremity volume audit");
+
+        assert_eq!(
+            number_field(&audit, "present_mesh_count"),
+            PLAYER_EXTREMITY_VOLUME_EXPECTED_MESH_COUNT
+        );
+        assert_eq!(number_field(&audit, "missing_count"), 0.0);
+        assert!(
+            number_field(&audit, "min_vertex_count") >= PLAYER_EXTREMITY_VOLUME_MIN_VERTEX_COUNT
+        );
+        assert!(
+            number_field(&audit, "min_triangle_count")
+                >= PLAYER_EXTREMITY_VOLUME_MIN_TRIANGLE_COUNT
+        );
+    }
+
+    #[test]
+    fn player_extremity_volume_audit_rejects_low_density_hands_and_boots() {
+        let mut accessors = Vec::new();
+        let mut meshes = Vec::new();
+        for (index, mesh_name) in player_extremity_volume_mesh_names().iter().enumerate() {
+            let position_accessor = (index * 2) as u64;
+            let index_accessor = position_accessor + 1;
+            accessors.push(json!({ "count": 8 }));
+            accessors.push(json!({ "count": 36 }));
+            meshes.push(json!({
+                "name": mesh_name,
+                "primitives": [{
+                    "attributes": { "POSITION": position_accessor },
+                    "indices": index_accessor,
+                }],
+            }));
+        }
+        let gltf = json!({
+            "accessors": accessors,
+            "meshes": meshes,
+        });
+        let audit = player_extremity_volume_audit(&gltf).expect("extremity volume audit");
+
+        assert_eq!(
+            number_field(&audit, "present_mesh_count"),
+            PLAYER_EXTREMITY_VOLUME_EXPECTED_MESH_COUNT
+        );
+        assert_eq!(number_field(&audit, "missing_count"), 0.0);
+        assert!(
+            number_field(&audit, "min_vertex_count") < PLAYER_EXTREMITY_VOLUME_MIN_VERTEX_COUNT
+        );
+        assert!(
+            number_field(&audit, "min_triangle_count") < PLAYER_EXTREMITY_VOLUME_MIN_TRIANGLE_COUNT
         );
     }
 
