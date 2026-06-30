@@ -7,7 +7,8 @@ mod core;
 
 use nau_engine::eval::{
     AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
-    EvalScenario, LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES, LANDING_MIN_POSE_FLARE_DEGREES,
+    EvalScenario, LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES,
+    LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES, LANDING_MIN_POSE_FLARE_DEGREES,
     LANDING_MIN_POSE_FOOT_FORWARD_M, LANDING_MIN_POSE_FOOT_SPLIT_M, LONG_GLIDE_VISIBILITY,
     MAX_CROSSWIND_NEUTRAL_HORIZONTAL_STEP_M, MIN_CROSSWIND_FORCE_DELTA_MPS,
     MIN_CROSSWIND_FORCE_SAMPLE_COUNT, MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT,
@@ -139,6 +140,12 @@ impl SimMetrics {
                 "pose_landing_flare",
                 self.max_pose_landing_flare_degrees,
                 LANDING_MIN_POSE_FLARE_DEGREES,
+                "deg",
+            ));
+            checks.push(SimCheck::at_most(
+                "pose_landing_flare_backbend",
+                self.max_pose_landing_flare_degrees,
+                LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES,
                 "deg",
             ));
             checks.push(SimCheck::at_most(
@@ -721,6 +728,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             "pose_state_landing_flare",
             metrics.max_pose_landing_flare_degrees,
             POSE_STATE_MIN_LANDING_FLARE_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_most(
+            "pose_state_landing_flare_backbend",
+            metrics.max_pose_landing_flare_degrees,
+            LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES,
             "deg",
         ),
         SimCheck::at_most(
