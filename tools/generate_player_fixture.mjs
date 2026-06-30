@@ -636,7 +636,7 @@ for (const side of [
   addMeshChild(arm, `Nau ${label} Seamless Shoulder Flex Cover`, meshIndex("Nau Seamless Shoulder Flex Cover"), {
     translation: [sign * -0.008, -0.030, 0.0],
     rotation: rotZ(sign * 0.10),
-    scale: [0.92, 0.74, 0.92],
+    scale: [0.72, 0.58, 0.72],
   });
   addMeshChild(arm, `Nau ${label} Suit Shoulder Arm Motion Cowl`, meshIndex("Nau Suit Shoulder Motion Cowl"), {
     translation: [sign * -0.028, -0.076, -0.004],
@@ -693,7 +693,7 @@ for (const side of [
   });
   addMeshChild(forearm, `Nau ${label} Seamless Elbow Flex Cover`, meshIndex("Nau Seamless Elbow Flex Cover"), {
     translation: [0.0, 0.020, 0.0],
-    scale: [1.04, 1.02, 1.04],
+    scale: [0.92, 0.86, 0.92],
   });
   addMeshChild(forearm, `Nau ${label} Suit Elbow Forearm Motion Cowl`, meshIndex("Nau Suit Elbow Motion Cowl"), {
     translation: [0.0, 0.010, 0.0],
@@ -744,8 +744,8 @@ for (const side of [
     scale: [0.90, 0.090, 0.90],
   });
   addMeshChild(hand, `Nau ${label} Seamless Wrist Flex Cover`, meshIndex("Nau Seamless Wrist Flex Cover"), {
-    translation: [0.0, 0.030, 0.0],
-    scale: [1.04, 1.30, 1.04],
+    translation: [0.0, 0.022, 0.0],
+    scale: [0.94, 1.04, 0.94],
   });
   addMeshChild(hand, `Nau ${label} Leather Wrist Palm Gusset`, meshIndex("Nau Leather Wrist Palm Gusset"), {
     translation: [0.0, 0.006, -0.045],
@@ -875,7 +875,7 @@ for (const side of [
   addMeshChild(leg, `Nau ${label} Seamless Hip Flex Cover`, meshIndex("Nau Seamless Hip Flex Cover"), {
     translation: [sign * 0.008, -0.032, 0.0],
     rotation: rotZ(sign * 0.08),
-    scale: [0.98, 0.90, 0.98],
+    scale: [0.86, 0.72, 0.86],
   });
   addMeshChild(leg, `Nau ${label} Suit Hip Thigh Motion Cowl`, meshIndex("Nau Suit Hip Motion Cowl"), {
     translation: [sign * 0.002, -0.058, 0.002],
@@ -939,7 +939,7 @@ for (const side of [
   });
   addMeshChild(lowerLeg, `Nau ${label} Seamless Knee Flex Cover`, meshIndex("Nau Seamless Knee Flex Cover"), {
     translation: [0.0, -0.026, 0.0],
-    scale: [1.08, 1.06, 1.08],
+    scale: [0.78, 0.68, 0.78],
   });
   addMeshChild(lowerLeg, `Nau ${label} Suit Knee Lower Motion Cowl`, meshIndex("Nau Suit Knee Motion Cowl"), {
     translation: [0.0, -0.028, 0.0],
