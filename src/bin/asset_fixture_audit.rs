@@ -46,6 +46,10 @@ const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 24.0;
 const PLAYER_JOINT_SEAM_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_PAIR_COUNT: f64 = 26.0;
+const PLAYER_JOINT_DEFORMATION_EXPECTED_PAIR_COUNT: f64 = 22.0;
+const PLAYER_JOINT_DEFORMATION_MAX_GAP_M: f64 = 0.004;
+const PLAYER_JOINT_DEFORMATION_MIN_OVERLAP_M: f64 = 0.010;
+const PLAYER_JOINT_DEFORMATION_MAX_OVERLAP_M: f64 = 0.092;
 const PLAYER_HAND_PIVOT_EXPECTED_NODE_COUNT: f64 = 2.0;
 const PLAYER_HAND_PIVOT_MAX_WRIST_SOCKET_GAP_M: f64 = 0.015;
 const PLAYER_HAND_PALM_MIN_DISTAL_OFFSET_M: f64 = 0.060;
@@ -542,6 +546,13 @@ struct PlayerSurfaceContactPair {
     category: &'static str,
     left: &'static str,
     right: &'static str,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PlayerJointDeformationPairSpec {
+    joint: &'static str,
+    seam: &'static str,
+    contact: &'static str,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -3853,6 +3864,9 @@ fn audit_fixture(
         .require_player_clips
         .then(|| player_joint_seam_contact_audit(&gltf))
         .flatten();
+    let player_joint_deformation_envelope_audit = player_joint_seam_contact_audit
+        .as_ref()
+        .map(player_joint_deformation_envelope_audit);
     let player_hand_pivot_wiring_audit = requirement
         .require_player_clips
         .then(|| player_hand_pivot_wiring_audit(&gltf))
@@ -4414,6 +4428,45 @@ fn audit_fixture(
             0.0,
             "breaches",
         ));
+        let deformation = player_joint_deformation_envelope_audit
+            .as_ref()
+            .expect("player joint deformation envelope audit should be present for player fixture");
+        checks.push(check_eq_f64(
+            "player_joint_deformation_envelope_pair_count",
+            number_field(deformation, "pair_count"),
+            PLAYER_JOINT_DEFORMATION_EXPECTED_PAIR_COUNT,
+            "pairs",
+        ));
+        checks.push(check_eq_f64(
+            "player_joint_deformation_envelope_missing_count",
+            number_field(deformation, "missing_count"),
+            0.0,
+            "pairs",
+        ));
+        checks.push(check_at_most_f64(
+            "player_joint_deformation_envelope_gap_max",
+            number_field(deformation, "max_gap_m"),
+            PLAYER_JOINT_DEFORMATION_MAX_GAP_M,
+            "m",
+        ));
+        checks.push(check_at_least_f64(
+            "player_joint_deformation_envelope_overlap_min",
+            number_field(deformation, "min_overlap_m"),
+            PLAYER_JOINT_DEFORMATION_MIN_OVERLAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_joint_deformation_envelope_overlap_max",
+            number_field(deformation, "max_overlap_m"),
+            PLAYER_JOINT_DEFORMATION_MAX_OVERLAP_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_joint_deformation_envelope_breach_count",
+            number_field(deformation, "breach_count"),
+            0.0,
+            "breaches",
+        ));
         let surface_contact = player_pose_surface_contact_audit
             .as_ref()
             .expect("player pose surface contact audit should be present for player fixture");
@@ -4763,6 +4816,7 @@ fn audit_fixture(
         "player_joint_bridge_contact_audit": player_joint_bridge_contact_audit,
         "player_proximal_contact_audit": player_proximal_contact_audit,
         "player_joint_seam_contact_audit": player_joint_seam_contact_audit,
+        "player_joint_deformation_envelope_audit": player_joint_deformation_envelope_audit,
         "player_pose_contact_audit": player_pose_contact_audit,
         "player_pose_transition_contact_audit": player_pose_transition_contact_audit,
         "player_pose_surface_contact_audit": player_pose_surface_contact_audit,
@@ -6259,6 +6313,121 @@ fn player_joint_seam_mesh_pairs() -> [(&'static str, &'static str); 26] {
     ]
 }
 
+fn player_joint_deformation_pair_specs() -> [PlayerJointDeformationPairSpec; 22] {
+    [
+        PlayerJointDeformationPairSpec {
+            joint: "left_shoulder",
+            seam: "Nau Left Seamless Shoulder Flex Cover",
+            contact: "Nau Left Shoulder Joint Cover",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "left_shoulder",
+            seam: "Nau Left Seamless Shoulder Flex Cover",
+            contact: "Nau Left Suit Upper Arm",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "left_shoulder",
+            seam: "Nau Left Seamless Shoulder Flex Cover",
+            contact: "Nau Left Suit Deltoid Filler",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "right_shoulder",
+            seam: "Nau Right Seamless Shoulder Flex Cover",
+            contact: "Nau Right Shoulder Joint Cover",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "right_shoulder",
+            seam: "Nau Right Seamless Shoulder Flex Cover",
+            contact: "Nau Right Suit Upper Arm",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "right_shoulder",
+            seam: "Nau Right Seamless Shoulder Flex Cover",
+            contact: "Nau Right Suit Deltoid Filler",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "left_elbow",
+            seam: "Nau Left Seamless Elbow Flex Cover",
+            contact: "Nau Left Elbow Joint Cover",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "left_elbow",
+            seam: "Nau Left Seamless Elbow Flex Cover",
+            contact: "Nau Left Leather Forearm Wrap",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "right_elbow",
+            seam: "Nau Right Seamless Elbow Flex Cover",
+            contact: "Nau Right Elbow Joint Cover",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "right_elbow",
+            seam: "Nau Right Seamless Elbow Flex Cover",
+            contact: "Nau Right Leather Forearm Wrap",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "left_wrist",
+            seam: "Nau Left Seamless Wrist Flex Cover",
+            contact: "Nau Left Wrist Joint Cover",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "left_wrist",
+            seam: "Nau Left Seamless Wrist Flex Cover",
+            contact: "Nau Left Leather Hand Palm",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "right_wrist",
+            seam: "Nau Right Seamless Wrist Flex Cover",
+            contact: "Nau Right Wrist Joint Cover",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "right_wrist",
+            seam: "Nau Right Seamless Wrist Flex Cover",
+            contact: "Nau Right Leather Hand Palm",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "left_hip",
+            seam: "Nau Left Seamless Hip Flex Cover",
+            contact: "Nau Left Hip Joint Cover",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "left_hip",
+            seam: "Nau Left Seamless Hip Flex Cover",
+            contact: "Nau Left Suit Thigh Guard",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "right_hip",
+            seam: "Nau Right Seamless Hip Flex Cover",
+            contact: "Nau Right Hip Joint Cover",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "right_hip",
+            seam: "Nau Right Seamless Hip Flex Cover",
+            contact: "Nau Right Suit Thigh Guard",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "left_knee",
+            seam: "Nau Left Seamless Knee Flex Cover",
+            contact: "Nau Left Knee Joint Cover",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "left_knee",
+            seam: "Nau Left Seamless Knee Flex Cover",
+            contact: "Nau Left Suit Lower Leg Greave",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "right_knee",
+            seam: "Nau Right Seamless Knee Flex Cover",
+            contact: "Nau Right Knee Joint Cover",
+        },
+        PlayerJointDeformationPairSpec {
+            joint: "right_knee",
+            seam: "Nau Right Seamless Knee Flex Cover",
+            contact: "Nau Right Suit Lower Leg Greave",
+        },
+    ]
+}
+
 fn player_surface_contact_pairs() -> Vec<PlayerSurfaceContactPair> {
     let mut pairs = Vec::with_capacity(PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT as usize);
     for (left, right) in player_joint_cover_mesh_pairs() {
@@ -7046,6 +7215,121 @@ fn observe_joint_seam_sample(
     pair_max_overlap.observe_label(overlap_m, overlap_axes_m, seam, contact, label, phase);
     overall_max_overlap.observe_label(overlap_m, overlap_axes_m, seam, contact, label, phase);
     Some(())
+}
+
+fn player_joint_deformation_envelope_audit(seam_contact_audit: &Value) -> Value {
+    let specs = player_joint_deformation_pair_specs();
+    let mut samples = Vec::new();
+    let mut breach_count = 0_u64;
+    let mut missing_count = 0_u64;
+    let mut max_gap_m = 0.0_f64;
+    let mut min_overlap_m = f64::INFINITY;
+    let mut max_overlap_m = 0.0_f64;
+    let mut worst_gap = Value::Null;
+    let mut worst_min_overlap = Value::Null;
+    let mut worst_max_overlap = Value::Null;
+
+    for spec in specs {
+        let Some(row) = joint_deformation_pair_row(seam_contact_audit, spec.seam, spec.contact)
+        else {
+            missing_count += 1;
+            breach_count += 1;
+            samples.push(json!({
+                "joint": spec.joint,
+                "seam_node": spec.seam,
+                "contact_node": spec.contact,
+                "missing": true,
+                "within_thresholds": false,
+            }));
+            continue;
+        };
+        let gap_m = number_field(row, "max_gap_m");
+        let min_pair_overlap_m = number_field(row, "min_overlap_m");
+        let max_pair_overlap_m = number_field(row, "max_overlap_m");
+        let within_thresholds = gap_m <= PLAYER_JOINT_DEFORMATION_MAX_GAP_M
+            && min_pair_overlap_m >= PLAYER_JOINT_DEFORMATION_MIN_OVERLAP_M
+            && max_pair_overlap_m <= PLAYER_JOINT_DEFORMATION_MAX_OVERLAP_M;
+
+        if !within_thresholds {
+            breach_count += 1;
+        }
+        if gap_m > max_gap_m {
+            max_gap_m = gap_m;
+            worst_gap = json!({
+                "joint": spec.joint,
+                "seam_node": spec.seam,
+                "contact_node": spec.contact,
+                "max_gap_m": gap_m,
+                "worst_gap_pair": row.get("worst_gap_pair").cloned().unwrap_or(Value::Null),
+            });
+        }
+        if min_pair_overlap_m < min_overlap_m {
+            min_overlap_m = min_pair_overlap_m;
+            worst_min_overlap = json!({
+                "joint": spec.joint,
+                "seam_node": spec.seam,
+                "contact_node": spec.contact,
+                "min_overlap_m": min_pair_overlap_m,
+                "worst_min_overlap_pair": row.get("worst_min_overlap_pair").cloned().unwrap_or(Value::Null),
+            });
+        }
+        if max_pair_overlap_m > max_overlap_m {
+            max_overlap_m = max_pair_overlap_m;
+            worst_max_overlap = json!({
+                "joint": spec.joint,
+                "seam_node": spec.seam,
+                "contact_node": spec.contact,
+                "max_overlap_m": max_pair_overlap_m,
+                "worst_max_overlap_pair": row.get("worst_max_overlap_pair").cloned().unwrap_or(Value::Null),
+            });
+        }
+
+        samples.push(json!({
+            "joint": spec.joint,
+            "seam_node": spec.seam,
+            "contact_node": spec.contact,
+            "missing": false,
+            "max_gap_m": gap_m,
+            "min_overlap_m": min_pair_overlap_m,
+            "max_overlap_m": max_pair_overlap_m,
+            "within_thresholds": within_thresholds,
+        }));
+    }
+
+    json!({
+        "schema": "nau_player_joint_deformation_envelope_audit.v1",
+        "pair_count": samples.len(),
+        "missing_count": missing_count,
+        "breach_count": breach_count,
+        "max_gap_m": max_gap_m,
+        "min_overlap_m": if min_overlap_m.is_finite() { min_overlap_m } else { 0.0 },
+        "max_overlap_m": max_overlap_m,
+        "thresholds": {
+            "pair_count": PLAYER_JOINT_DEFORMATION_EXPECTED_PAIR_COUNT,
+            "gap_max_m": PLAYER_JOINT_DEFORMATION_MAX_GAP_M,
+            "overlap_min_m": PLAYER_JOINT_DEFORMATION_MIN_OVERLAP_M,
+            "overlap_max_m": PLAYER_JOINT_DEFORMATION_MAX_OVERLAP_M,
+        },
+        "worst_gap_pair": worst_gap,
+        "worst_min_overlap_pair": worst_min_overlap,
+        "worst_max_overlap_pair": worst_max_overlap,
+        "samples": samples,
+    })
+}
+
+fn joint_deformation_pair_row<'a>(
+    seam_contact_audit: &'a Value,
+    seam: &str,
+    contact: &str,
+) -> Option<&'a Value> {
+    seam_contact_audit
+        .get("pairs")?
+        .as_array()?
+        .iter()
+        .find(|pair| {
+            pair.get("seam_node").and_then(Value::as_str) == Some(seam)
+                && pair.get("contact_node").and_then(Value::as_str) == Some(contact)
+        })
 }
 
 fn player_pose_surface_contact_audit(gltf: &Value) -> Option<Value> {
@@ -9148,6 +9432,43 @@ mod tests {
             number_field(&audit, "samples_per_pair"),
             player_pose_contact_samples_per_pair()
         );
+    }
+
+    #[test]
+    fn player_joint_deformation_envelope_audit_rejects_engulfed_flex_covers() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let seam_audit = player_joint_seam_contact_audit(&gltf).expect("seam contact audit");
+        let audit = player_joint_deformation_envelope_audit(&seam_audit);
+
+        assert_eq!(
+            number_field(&audit, "pair_count"),
+            PLAYER_JOINT_DEFORMATION_EXPECTED_PAIR_COUNT
+        );
+        assert_eq!(number_field(&audit, "missing_count"), 0.0);
+        assert_eq!(number_field(&audit, "breach_count"), 0.0);
+        assert!(number_field(&audit, "max_gap_m") <= PLAYER_JOINT_DEFORMATION_MAX_GAP_M);
+        assert!(number_field(&audit, "min_overlap_m") >= PLAYER_JOINT_DEFORMATION_MIN_OVERLAP_M);
+        assert!(number_field(&audit, "max_overlap_m") <= PLAYER_JOINT_DEFORMATION_MAX_OVERLAP_M);
+
+        let mut regressed = seam_audit.clone();
+        let pairs = regressed
+            .get_mut("pairs")
+            .and_then(Value::as_array_mut)
+            .expect("seam pairs");
+        let shoulder_row = pairs
+            .iter_mut()
+            .find(|pair| {
+                pair.get("seam_node").and_then(Value::as_str)
+                    == Some("Nau Left Seamless Shoulder Flex Cover")
+                    && pair.get("contact_node").and_then(Value::as_str)
+                        == Some("Nau Left Suit Deltoid Filler")
+            })
+            .expect("shoulder deformation pair");
+        shoulder_row["max_overlap_m"] = json!(PLAYER_JOINT_DEFORMATION_MAX_OVERLAP_M + 0.01);
+
+        let regressed_audit = player_joint_deformation_envelope_audit(&regressed);
+        assert_eq!(number_field(&regressed_audit, "breach_count"), 1.0);
     }
 
     #[test]
