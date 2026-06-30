@@ -304,6 +304,11 @@ impl AuthoredPlayerPoseNode {
 
 pub(crate) fn authored_player_pose_node_for_name(name: &str) -> Option<AuthoredPlayerPoseNode> {
     let part = match name {
+        "Nau Hips" => CharacterPart::new(
+            CharacterPartRole::Hips,
+            Vec3::new(0.0, 0.82, 0.0),
+            Quat::IDENTITY,
+        ),
         "Nau Torso" => CharacterPart::new(
             CharacterPartRole::Torso,
             Vec3::new(0.0, 0.36, 0.0),

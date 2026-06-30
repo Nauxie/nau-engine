@@ -1,85 +1,66 @@
-# The NAU Engine
+# NAU Engine
 
-The NAU Engine is a Mac-first Rust/Bevy sandbox for flight traversal experiments. The project starts with a small, measurable playground rather than a giant world: first make glide, dive, lift, and camera feel good; then scale the world around those mechanics.
+Mac-first Rust/Bevy flight sandbox for tuning traversal feel before growing into a broader engine.
 
-## Why This Stack
+The current focus is narrow: make glide, dive, lift, camera framing, authored player motion, and route readability measurable enough that changes can be reviewed by eye and by eval output.
 
-- **Rust** for performance, explicit systems programming, and a strong open-source package ecosystem.
-- **Bevy** for a transparent Rust game engine layer with ECS, rendering, input, assets, cameras, and app structure.
-- **wgpu** through Bevy for portable GPU access. On macOS this routes to Metal, without tying the whole project to Apple-only rendering code.
-- **Mac-first, not Mac-only** as the default posture. The M-series hardware is the main development target, but the code should stay portable until a measured hotspot proves otherwise.
+<p align="center">
+  <img src="docs/readme/player_glider_attachment_sheet.png" alt="Player and glider attachment pose sheet" width="100%">
+</p>
 
-## Current Sandbox
+## What Exists
 
-The first executable is a simple 3D flight testbed:
+- A small third-person flight playground with launch, glide, dive, air-brake, landing anticipation, and landing recovery states.
+- A self-authored player/glider fixture with pose-intent animation, connector checks, silhouette review, and visual pose sheets.
+- Floating-island traversal routes with generated terrain, water, clouds, route markers, updraft ribbons, crosswind cues, and debug overlays.
+- Scripted evals for movement, camera stability, route progress, collision, fixture readiness, visual readability, and screenshot audits.
 
-- primitive humanoid character with separate head, torso, limbs, scarf accents, grounded walk/run stride, readable launch, belly-down freefall, glide, head-down streamlined dive with bounded fall-to-dive transition, air-brake, asymmetric landing-anticipation flare/crouch/feet-forward tuck, post-touchdown landing recovery, turn-readable airborne lean, speed-responsive glider wing flex, and measurable key-pose/scarf readability
-- deployable glider wing panels with compact-to-open deployment scaling, subtle wingtip airflow trails, a measurable launch takeout pose, and visible authored traversal response on `Space`
-- one-launch-per-airtime vertical burst on `E`
-- dive on `Shift`
-- camera-relative grounded and airborne steering on `WASD`, with stronger input-aligned planar air-control response, rear-diagonal glide steering, tighter body/travel heading coupling during lateral glide turns, smoothed body yaw and bank toward intended movement, bounded lateral reversal spikes, body-local fallback pose lean, and separate ground friction so walking is playable before launch
-- mouse-look third-person follow camera with player-centered orbit pitch, separate yaw/pitch tuning, click-to-lock cursor capture, obstruction avoidance, and surface-clearance clamping
-- a 20-island floating archipelago with launch, midpoint, landing, high-altitude, branch, far-horizon, and satellite reference islands
-- deterministic collision-aware island relief with 19 named terrain archetypes, route-aligned ravine/channel incisions, terrace/shelf/basin/ridge/needle/satellite variation, per-archetype footprint profiles, fine microrelief, smoother generated terrain normals, higher-resolution vertex-colored terrain, per-island biome palettes, world-space tiled terrain UVs, encoded terrain material-weight channels, quantized material-region identity, sharper 512px terrain-specific procedural PBR textures with smoothed broad material noise, pitted strata, fissures, and mineral flecks, irregular visual/playable island contours shared by terrain, ground containment, 16-segment terrain-rim collision, and four-panel terrain-body cliff collision, generated stratified cliff/underside body meshes, stream-windowed terrain with lightweight startup diagnostics plus cached on-demand terrain/cliff/underside/impostor mesh handles, low-poly distant impostors, and distance-managed detail props: biome-tinted generated terrain colors, ground-cover blades, collidable multi-ring branched trunks with root flares, denser multi-lobed wind-responsive canopies with organic detail cards, collidable stones, irregular pond surfaces, collidable stacked route cairns, a collidable crystalized launch beacon, terrain-integrated collidable obstruction spires, and organic landing-garden markers
-- declared glTF visual asset slots for player, glider, island terrain, foliage, rock, water, route-marker, weather, and impostor assets, with deeper self-authored fixture scenes carrying registry-aligned NAU metadata, proving Bevy `SceneRoot` load/spawn/readiness across every residency class, visible non-player world fixture placements, named player animation-clip discovery through `Gltf`, pose-intent-driven `AnimationGraph`/`AnimationTransitions`, named authored player node pose parity, deterministic load admission, missing/deferred/queued/loading/loaded/failed load diagnostics, spawned/ready scene-instance diagnostics, animation-readiness diagnostics, and residency-split metrics while generated gameplay visuals remain the fallback
-- Bevy-native atmosphere, dynamic sun/fog/exposure weather, volumetric fog/light, bloom, filmic tonemapping, procedural PBR surface maps, reflective/transmissive water, emissive markers, denser five-layer drifting cloud banks with wisp-card edge and filament-ribbon detail, layered high-cirrus cloud clusters, wind-responsive near-LOD environment motion, and shared dynamic `WindField` flow for breathing lift haze plus gusting, depth-layered updraft ribbons/motes, and curved tapered crosswind ribbons/motes that clump and pulse with moving gust packets
-- simple terrain-surface landing detection with one-shot landing friction
-- live debug readout for frame time, speed, altitude, target distance, current route objective, camera pitch/distance/framing angle/motion/obstruction/yaw offset, velocity, aerial power-up visibility/collection/effect state, visual asset slot/load-state/scene-readiness/animation/LOD-residency metrics, visible authored world fixture count, visual wind-field count, lift-field count, world-collision, terrain-rim, and terrain-body proxy/resolution/push metrics, sky-island count, terrain surface vertex/color/material-weight/material-region/texture-detail/relief/cliff-band metrics, procedural-vs-primitive island body counts, island body silhouette and mesh min/max complexity, generated tree/cloud mesh and cloud filament-ribbon complexity, generated landmark counts, generated detail biome-palette count, active chunk window, near/mid/far LOD island buckets, visible/hidden terrain, impostor, detail counts, environment-motion count/offset, resident/catalog/hidden island visual pressure, body-roll/bank response, and stream spawn/despawn churn
-- visible debug gizmos for player velocity, facing, camera line, visual wind/updraft fields, and gameplay lift fields
-- authored crosswind fields with animated guide ribbons/motes, a paired gameplay updraft route with aligned visual wind volumes, collectible aerial boost gates with glowing route-ring markers, dynamic gusting lift haze/ribbon/mote cues, and marked recovery branch islands
-- background-safe terrain export and audit for offline inspection, writing per-island terrain/cliff/underside OBJ meshes, terrain material-weight CSV sidecars with derived material-region coverage, terrain-archetype diversity, per-island base/transition/highland/exposed presence floors plus stronger aggregate archipelago coverage floors, manifest and OBJ height-band/normal-slope-band floors, mesh/material/texture-detail/texture-edge floors, and an `audit.json` pass/fail report
-- repo-native asset fixture audit for every declared glTF fixture, checking provenance, semantic component names, strengthened mesh/material/vertex/triangle floors, normals, UVs, blend-material expectations, player named animation clip inventory, animated player joint gaps, joint-cover mesh gap/overlap contact bands, proximal shoulder/hip overlap, bridge-sleeve continuity, projected visual contact gaps, pose-by-pose and transition-swept limb/contact reports, belly-down freefall shape, launch glider takeout motion, and windowless player/glider pose sheets for human visual review
-- deterministic unit tests for movement, ground control, glider, world route, visual wind fields, gameplay lift, camera, diagnostics, eval metrics, and animation-state/pose-intent/pose-readability/airflow math
-- scripted eval runs for ground taxi control, world-collision contact, terrain-rim contact, terrain-body contact, mouse camera control, camera yaw/strafe/turn stability, air-control response, pose-state coverage, baseline traversal, long-glide visibility, updraft lift, branch recovery landing, and island launch-to-landing with traversal, camera, movement-heading/response, body-roll/bank response, readable pose-intent coverage, pose torso/arm/leg/turn/landing-crouch/landing-feet-forward/recovery/wing-airflow/scarf readability metrics, explicit idle/walk/run/launch/fall/glide pose coverage, direction-split air-turn and air-brake pose coverage, authored idle/walk/run/dive/air-brake/landing clip coverage, visible authored glider response/motion metrics, key-pose readability scoring, global and landing-only pose temporal gates, rear-right/rear-left lateral and rearward response, grounded visual footing, objective-progress, aerial power-up collection/effect, dynamic wind-flow speed/variation/direction-change/range, wind-force flow alignment/aligned-delta, updraft/crosswind guide/ribbon visual count, motion, rise, visual depth span, baseline-relative scale pulse, direction-flow, and shared-field flow-coherence gates, frame-time, content-scale, generated terrain mesh/color/material-weight/material-region/texture-detail/relief/archetype/cliff-band floors, procedural island body, primitive-body, silhouette-complexity, island body mesh floor, generated tree/cloud/filament shape complexity, generated landmark count/per-kind/mesh floors, obstruction-spire count/mesh/shape-band floors, camera-obstruction adjustment gates, world-collision proxy count plus sustained meaningful-contact and peak-push gates, terrain-rim proxy/contact gates with no-contact ground-taxi protection, terrain-body proxy/contact gates that reject rim-masked cliff-body ghosts, asset-slot/load-state/scene-instance readiness, visible authored world fixture count, streaming/LOD, spawn/despawn churn, resident pressure, weather-cloud, environment-motion, resident visual, entity-churn, and visible-detail summary metrics plus fixed camera checkpoint screenshots whose semantic scene sidecars carry `terrain_surface` material variant identity and audit aggregate terrain material/biome variant diversity
+## Visual Review
 
-This is intentionally not a full physics simulation yet. The first job is to create a place where movement constants can be tuned quickly.
+These are checked-in copies of generated eval artifacts. The source outputs live under `target/eval/` after running the relevant preview or screenshot scripts.
 
-## Getting Started
+<p align="center">
+  <img src="docs/readme/player_pose_sheet.png" alt="Player fixture pose preview sheet" width="49%">
+  <img src="docs/readme/player_motion_integrity_review_sheet.png" alt="Player motion integrity review sheet" width="49%">
+</p>
 
-Install Rust through `rustup`, then run:
+<p align="center">
+  <img src="docs/readme/updraft_route.png" alt="Floating island updraft route screenshot" width="100%">
+</p>
+
+## Run
+
+Install Rust with `rustup`, then:
 
 ```sh
 cargo run
-# repo-local alias:
+```
+
+Repo-local alias:
+
+```sh
 cargo naux
 ```
 
-Useful development checks:
+## Useful Checks
 
 ```sh
 cargo check
 cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
-./tools/eval.sh ground_taxi_control target/eval/ground_taxi_control
-./tools/eval.sh world_collision_contact target/eval/world_collision_contact
-./tools/eval.sh terrain_rim_collision_contact target/eval/terrain_rim_collision_contact
-./tools/eval.sh terrain_body_collision_contact target/eval/terrain_body_collision_contact
-./tools/eval.sh camera_mouse_control target/eval/camera_mouse_control
-./tools/eval.sh camera_yaw_stability target/eval/camera_yaw_stability
-./tools/eval.sh camera_turn_stability target/eval/camera_turn_stability
-./tools/eval.sh camera_strafe_stability target/eval/camera_strafe_stability
-./tools/eval.sh air_control_response target/eval/air_control_response
-./tools/eval.sh pose_state_coverage target/eval/pose_state_coverage
-./tools/eval.sh updraft_route target/eval/updraft_route
-./tools/eval.sh branch_recovery_route target/eval/branch_recovery_route
-./tools/eval.sh long_glide_visibility target/eval/long_glide_visibility
-./tools/eval.sh island_launch_to_landing target/eval/island_launch_to_landing
+```
+
+Visual and fixture artifacts:
+
+```sh
+./tools/player_pose_preview.sh target/player_pose_preview
+NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh long_glide_visibility target/eval/long_glide_visibility
+NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh updraft_route target/eval/updraft_route
 ./tools/eval_sim_suite.sh target/eval/sim_suite
 ./tools/terrain_export.sh target/terrain_export
 ./tools/visual_content_export.sh target/visual_content_export
-./tools/player_pose_preview.sh target/player_pose_preview
 ```
-
-Collision evals gate aggregate proxy counts, 16-segment terrain-rim contours, four-panel terrain-body cliff collision, and solid non-rim proxy distribution across trees, rocks, and landmarks so decorative island detail cannot silently lose physical blockers while terrain-rim proxies keep the aggregate count green.
-
-`tools/eval.sh` runs metric-only evals without screenshot capture by default, but app-backed routes still instantiate the native Bevy window/rendering stack. Set `NAU_EVAL_SIM_ONLY=1` to run `traversal_sim_eval`, which exercises the shared scripted input, movement, route, lift, power-up, and camera-follow math without creating a Bevy app or native window. `./tools/eval_sim_suite.sh target/eval/sim_suite` runs every simulation-supported scripted scenario through that path, writes one aggregate `summary.json`, and runs the asset fixture audit once instead of once per scenario; app-only visual/runtime routes such as `world_collision_contact`, `terrain_rim_collision_contact`, and `terrain_body_collision_contact` should be run through the default app eval path. The default path also writes `asset_fixture_audit.json` unless `NAU_EVAL_ASSET_AUDIT=0` is set; that audit now requires each glTF fixture's `extras.nau` metadata to match the asset registry kind, label, residency class, schema, and self-authored license contract, and it gates richer world-fixture semantic fragments plus mesh/material/vertex/triangle floors for terrain erosion/path detail, foliage roots/ferns/moss, water ripples/lily/specular detail, rock seams, route glyphs, cloud haze/filaments, and distant waterfall/broken-cliff impostor detail. The player fixture section also gates higher character mesh floors, hand/boot silhouette proportions, mesh-projected fall/glide/dive silhouette spans, pose-swept socket-to-child continuity across grounded idle, grounded walk, grounded run, launch, fall, glide, dive, air-brake, landing anticipation, and landing recovery, joint-cover mesh contact bands, moving bridge-sleeve gap/overlap contact, flex-cover seam gap/min/max-overlap bands, sampled mesh-surface contact distances plus projected visual gap and proximal shoulder/hip overlap ceilings across shoulders, elbows, wrists, hips, knees, and ankles, and transition-swept blends between launch, fall, glide, dive, air-brake, landing anticipation, and landing recovery so visible limb gaps, marker-like hands, collapsed full-body silhouettes, or deep intersections cannot hide in settled poses, ground locomotion, or in-between animation frames. Use `NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh ...` when checkpoint PNG artifacts, projection-backed route-marker/scene-sample `.markers.json` sidecars, marker-projection pixel audit, semantic-scene pixel audit, and the non-golden visual audit are needed; screenshot evals require `jq` for artifact extraction, disable debug gizmos, and use an opaque window surface so transparent clouds/updrafts cannot composite against other desktop windows. The visual audit checks image quality plus basic scene composition signals such as per-frame scene coverage, center detail, scene detail tile frequency, flat low-detail scene-tile dominance, player visibility, HUD-text balance, severe border clipping, non-opaque PNG alpha, large foreign bright-canvas regions, sequence-level route-marker readability/component identity/hue diversity, sequence-level distant horizon/impostor component readability/color-bucket/span identity, sequence-level terrain/material family diversity plus terrain material coverage/color/tile spread, sequence-level foliage coverage/tile spread, cloud-layer coverage/component/span identity, and sky coverage across final and checkpoint screenshots. The marker sidecars separately classify known route, objective, or power-up markers as visible, occluded, offscreen, or behind-camera while projecting and visibility-classifying terrain/foliage/cloud/distant-island scene samples into each checkpoint camera viewport; `marker_projection_audit.json` verifies marker-colored pixels near at least one non-occluded visible marker per checkpoint, and `semantic_scene_audit.json` requires visible terrain/foliage/cloud/distant-island material families to produce material-like pixels per checkpoint, requires enough distinct visible scene sample kinds per checkpoint, requires visible projected samples plus pixel hits for each expected kind (`terrain_surface`, `tree_canopy`, `weather_cloud`, and `distant_island`) across the checkpoint sequence, and now requires aggregate material/kind pixel-coverage floors so one tiny matching speck cannot satisfy a projected world-quality gate. Set `NAU_EVAL_VISUAL_AUDIT=0` to collect screenshots without the visual audit.
-
-`./tools/terrain_export.sh target/terrain_export` does not open the native window. It writes `manifest.json`, per-island OBJ meshes, `*_terrain_material_weights.csv` files, and `audit.json` so terrain shape, color variation, topology counts, material-weight coverage, texture-detail and local edge-frequency floors, manifest and OBJ height-band/normal-slope-band floors, derived material-region coverage, per-island material-region presence, and aggregate base/transition/highland/exposed region distribution can be checked outside the live app. The underlying export can also be run directly with `cargo run -- --export-terrain target/terrain_export`.
-
-`./tools/visual_content_export.sh target/visual_content_export` also runs without opening the native window. It writes a visual-content `manifest.json`, OBJ artifacts, and `audit.json` for generated ground cover, trees, clouds, route/launch/landing/pond/obstruction-spire landmarks, and biome detail palettes. The audit checks artifact presence plus OBJ vertex/face counts, blade density/height variance, multi-ring trunk mesh floors, trunk taper, branch reach/count, root-flare count, canopy lobe/card structure, tree height/canopy-radius variation, cloud veil plus lobe/wisp/filament/depth-span floors, generated landmark mesh/count/span floors, obstruction-spire count/vertex/triangle/vertical-span and height/radius/normal-slope band floors, and palette diversity so high-vertex blobs, stick-like trees, cuboid blockers, or primitive route props cannot silently replace the current generated visual substrate.
-
-`./tools/player_pose_preview.sh target/player_pose_preview` runs without opening the native window. It writes `manifest.json`, `player_pose_sheet.svg`, `player_transition_pose_sheet.svg`, `glider_pose_sheet.svg`, and `player_glider_attachment_sheet.svg`, human-review pose sheets generated from the current player/glider glTF plus the same runtime pose math used by the fixture audit. The manifest records player/glider source byte counts, stable fixture hashes, the front/rear/side/top view set, hand-to-grip attachment audit, limb-anatomy detail audit, and mesh-projected silhouette audit so stale, incomplete, or disconnected visual artifacts can be spotted. The player sheet shows front, rear, side, and top silhouettes for grounded idle, grounded walk, grounded run, launch takeout, belly-down fall, glide, head-down dive, air-brake, landing anticipation, and landing recovery, with dashed surface-contact overlays for visible connector gaps and translucent overlap markers for near-threshold mesh intersections; the fixture audit also gates launch takeout with an overhead-arm score, fall/glide projected width/depth floors, and a narrowed head-down dive ratio so deployment or airborne pose work cannot regress to a low sideways arm silhouette or collapsed full-body outline. The transition sheet shows the 20%, 40%, 60%, and 80% blend frames for every high-risk traversal pose transition so limb disconnects or clipping that only happen between settled poses are reviewable. The glider sheet uses shared per-view scale across stowed, takeout, glide, dive, and air-brake rows so compact-to-open deployment regressions are visible alongside numeric gates. The attachment sheet renders the player and deployed glider together across takeout, glide, dive, and air-brake rows, with hand-to-grip distance overlays and numeric gates for settled takeout/glide/brake poses.
 
 ## Controls
 
@@ -95,16 +76,17 @@ Collision evals gate aggregate proxy counts, 16-segment terrain-rim contours, fo
 |`Shift`|Dive|
 |`F1`|Toggle debug gizmos|
 
-## Near-Term Roadmap
+## Docs
 
-1. Replace the deepened self-authored fixture scenes with real compatible glTF scenes, starting with a rigged character, production terrain, foliage, water, route props, and richer island impostor kits.
-2. Grow the deterministic visual-asset admission budget into asynchronous distance streaming once real imported scenes outnumber the current always-loaded fixture manifest.
-3. Add per-biome terrain/material screenshot checks beyond the current broad terrain mask.
-4. Expand async asset-loading simulation once real imported scenes outnumber the current fixture manifest.
+- [Architecture](docs/ARCHITECTURE.md)
+- [Eval Spec](docs/EVAL_SPEC.md)
+- [Flight Mechanics](docs/MECHANICS/flight.md)
+- [Roadmap](docs/ROADMAP.md)
 
-## Development Principles
+## Principles
 
-- Tune movement before adding content.
-- Instrument behavior before making it more complex.
-- Prefer Bevy-native APIs until the project has a measured reason to go lower-level.
-- Keep raw Metal out of the codebase unless it is isolated behind a clear renderer boundary and justified by profiling.
+- Keep the playable loop small and measurable.
+- Add debug visualization before complex behavior.
+- Prefer Bevy-native systems until a measured limitation appears.
+- Keep traversal constants visible and easy to tune.
+- Avoid raw Metal unless profiling proves it is needed behind a clear boundary.

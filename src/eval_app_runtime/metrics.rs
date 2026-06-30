@@ -425,6 +425,7 @@ impl VisiblePosePartTransform {
 
 #[derive(Clone, Copy, Debug, Default)]
 struct VisiblePosePartSet {
+    hips: Option<VisiblePosePartTransform>,
     torso: Option<VisiblePosePartTransform>,
     head: Option<VisiblePosePartTransform>,
     left_arm: Option<VisiblePosePartTransform>,
@@ -445,20 +446,15 @@ struct VisiblePosePartSet {
 
 impl VisiblePosePartSet {
     fn part_count(self) -> u32 {
-        [
-            self.torso,
-            self.left_arm,
-            self.right_arm,
-            self.left_leg,
-            self.right_leg,
-        ]
-        .into_iter()
-        .filter(Option::is_some)
-        .count() as u32
+        self.articulated_parts()
+            .into_iter()
+            .filter(Option::is_some)
+            .count() as u32
     }
 
     fn complete(self) -> Option<VisiblePosePartTransforms> {
         Some(VisiblePosePartTransforms {
+            hips: self.hips,
             torso: self.torso?,
             left_arm: self.left_arm?,
             right_arm: self.right_arm?,
@@ -472,8 +468,9 @@ impl VisiblePosePartSet {
             .map(|parts| parts.readability_metrics(context, self.scarf_anchor, self.scarf_tail))
     }
 
-    fn articulated_parts(self) -> [Option<VisiblePosePartTransform>; 14] {
+    fn articulated_parts(self) -> [Option<VisiblePosePartTransform>; 15] {
         [
+            self.hips,
             self.torso,
             self.head,
             self.left_arm,
@@ -570,6 +567,7 @@ struct VisiblePoseAttachmentSet {
 
 #[derive(Clone, Copy, Debug)]
 struct VisiblePosePartTransforms {
+    hips: Option<VisiblePosePartTransform>,
     torso: VisiblePosePartTransform,
     left_arm: VisiblePosePartTransform,
     right_arm: VisiblePosePartTransform,
@@ -587,7 +585,9 @@ impl VisiblePosePartTransforms {
         let mut metrics = pose_readability_metrics_from_part_transforms(
             context,
             PoseReadabilityPartTransforms {
-                torso_rotation: self.torso.rotation,
+                torso_rotation: self.hips.map_or(self.torso.rotation, |hips| {
+                    hips.rotation * self.torso.rotation
+                }),
                 left_arm_rotation: self.left_arm.rotation,
                 right_arm_rotation: self.right_arm.rotation,
                 left_leg_rotation: self.left_leg.rotation,
@@ -1344,6 +1344,7 @@ fn visible_generated_pose_part_set<'a>(
 
         let pose_part = VisiblePosePartTransform::from_part(part, transform, transform.translation);
         match part.role {
+            CharacterPartRole::Hips => parts_set.hips = Some(pose_part),
             CharacterPartRole::Torso => parts_set.torso = Some(pose_part),
             CharacterPartRole::Head => parts_set.head = Some(pose_part),
             CharacterPartRole::Arm(Side::Left) => parts_set.left_arm = Some(pose_part),
@@ -1409,6 +1410,7 @@ fn visible_authored_pose_part_set<'a>(
             global_transform.translation(),
         );
         match node.part.role {
+            CharacterPartRole::Hips => parts_set.hips = Some(pose_part),
             CharacterPartRole::Torso => parts_set.torso = Some(pose_part),
             CharacterPartRole::Head => parts_set.head = Some(pose_part),
             CharacterPartRole::Arm(Side::Left) => parts_set.left_arm = Some(pose_part),
@@ -2856,9 +2858,9 @@ mod tests {
         );
         let changed = state.take_sample_metrics();
 
-        assert_eq!(initial.visible_pose_part_count, 5);
+        assert_eq!(initial.visible_pose_part_count, 6);
         assert!(initial.max_pose_part_rotation_delta_degrees.is_nan());
-        assert_eq!(changed.visible_pose_part_count, 5);
+        assert_eq!(changed.visible_pose_part_count, 6);
         assert!(changed.max_pose_part_rotation_delta_degrees > 170.0);
         assert!(changed.max_pose_part_translation_delta_m > 0.69);
     }
@@ -2923,7 +2925,7 @@ mod tests {
         );
         let changed = state.take_sample_metrics();
 
-        assert_eq!(changed.visible_pose_part_count, 5);
+        assert_eq!(changed.visible_pose_part_count, 6);
         assert!(changed.max_pose_part_rotation_delta_degrees.is_nan());
         assert!(changed.max_pose_part_translation_delta_m.is_nan());
     }
@@ -2950,7 +2952,7 @@ mod tests {
         );
         let changed = state.take_sample_metrics();
 
-        assert_eq!(changed.visible_pose_part_count, 5);
+        assert_eq!(changed.visible_pose_part_count, 6);
         assert!(changed.max_pose_part_rotation_delta_degrees > 170.0);
         assert!(changed.max_pose_part_translation_delta_m > 0.69);
     }
@@ -2979,7 +2981,7 @@ mod tests {
         );
 
         let metrics = state.take_sample_metrics();
-        assert_eq!(metrics.visible_pose_part_count, 5);
+        assert_eq!(metrics.visible_pose_part_count, 6);
         assert!(metrics.max_pose_part_rotation_delta_degrees > 170.0);
         assert!(metrics.max_pose_part_translation_delta_m > 0.9);
     }
@@ -3047,7 +3049,7 @@ mod tests {
         let mut parts = visible_pose_part_set(Quat::IDENTITY, Vec3::ZERO);
         parts.right_leg = None;
 
-        assert_eq!(parts.part_count(), 4);
+        assert_eq!(parts.part_count(), 5);
         assert!(
             parts
                 .readability_metrics(PlayerPoseContext::new(

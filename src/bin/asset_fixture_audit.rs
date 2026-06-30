@@ -34,15 +34,17 @@ const PLAYER_POSE_MAX_SURFACE_CONTACT_DISTANCE_M: f64 = 0.065;
 const PLAYER_POSE_MAX_PROJECTED_CONTACT_GAP_M: f64 = 0.018;
 const PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M: f64 = 0.001;
 const PLAYER_POSE_CONTACT_EXPECTED_POSE_COUNT: f64 = 10.0;
-const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 8.0;
+const PLAYER_POSE_CONTACT_EXPECTED_PHASE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_PAIR_COUNT: f64 = 26.0;
-const PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT: f64 = 24.0;
-const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 75.0;
+const PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT: f64 = 62.0;
+const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 113.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT: f64 = 9.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT: f64 = 4.0;
+const PLAYER_MOTION_INTEGRITY_REVIEW_EXPECTED_PANEL_COUNT: f64 = 15.0;
+const PLAYER_MOTION_INTEGRITY_OVERLAY_MAX_WARNING_COUNT: f64 = 0.0;
 const PLAYER_MESH_SILHOUETTE_EXPECTED_POSE_COUNT: f64 = 10.0;
 const PLAYER_MESH_SILHOUETTE_EXPECTED_SAMPLE_COUNT: f64 = 40.0;
 const PLAYER_MESH_SILHOUETTE_MIN_PROJECTED_SPAN_M: f64 = 0.70;
@@ -59,10 +61,14 @@ const PLAYER_POSE_MIN_LAUNCH_OVERHEAD_ARM_SCORE: f64 = 0.60;
 const PLAYER_POSE_MIN_DIVE_TORSO_PITCH_DEGREES: f64 = 82.0;
 const PLAYER_POSE_MAX_DIVE_ARM_SPREAD_DEGREES: f64 = 74.0;
 const PLAYER_POSE_MIN_DIVE_LEG_TUCK_DEGREES: f64 = 68.0;
+const PLAYER_POSE_MIN_FALLING_HIPS_PITCH_DEGREES: f64 = 58.0;
+const PLAYER_POSE_MIN_DIVE_HIPS_PITCH_DEGREES: f64 = 108.0;
+const PLAYER_POSE_MAX_FALLING_TORSO_LOCAL_PITCH_DEGREES: f64 = 22.0;
+const PLAYER_POSE_MAX_DIVE_TORSO_LOCAL_PITCH_DEGREES: f64 = 42.0;
 const PLAYER_MIN_FINGER_GRIP_LENGTH_M: f64 = 0.10;
 const PLAYER_MAX_FINGER_GRIP_LENGTH_M: f64 = 0.22;
 const PLAYER_MIN_BOOT_SOLE_LENGTH_M: f64 = 0.32;
-const PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT: f64 = 44.0;
+const PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT: f64 = 66.0;
 const PLAYER_MIN_LIMB_ANATOMY_MAJOR_EXTENT_M: f64 = 0.15;
 const PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT: f64 = 0.45;
 const PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT: f64 = 0.70;
@@ -185,6 +191,7 @@ const PLAYER_REST_RIGHT_DISTAL_LEG_MESH_NODES: &[&str] = &[
     "Nau Right Leather Boot Heel",
 ];
 const PLAYER_RUNTIME_POSE_NODE_ROLES: &[(&str, CharacterPartRole)] = &[
+    ("Nau Hips", CharacterPartRole::Hips),
     ("Nau Torso", CharacterPartRole::Torso),
     ("Nau Head", CharacterPartRole::Head),
     ("Nau Left Arm", CharacterPartRole::Arm(Side::Left)),
@@ -506,6 +513,7 @@ struct PlayerPosePreviewShape {
     vertices: Vec<Vec3>,
     surface_points: Vec<Vec3>,
     bounds: Aabb3,
+    obb: Obb3,
     color: &'static str,
 }
 
@@ -579,6 +587,11 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
     let svg = render_player_pose_preview_sheet(&gltf, &specs)?;
     let anatomy_specs = player_anatomy_review_specs();
     let anatomy_svg = render_player_anatomy_review_sheet(&gltf, &anatomy_specs)?;
+    let stress_specs = player_rig_stress_review_specs();
+    let stress_svg = render_player_rig_stress_review_sheet(&gltf, &stress_specs)?;
+    let motion_specs = player_motion_integrity_review_specs();
+    let motion_svg = render_player_motion_integrity_review_sheet(&gltf, &motion_specs)?;
+    let motion_overlay_warning_audit = player_motion_integrity_overlay_warning_audit(&gltf);
     let transition_specs = player_transition_pose_preview_specs();
     let transition_svg = render_player_transition_pose_preview_sheet(&gltf, &transition_specs)?;
     let glider_specs = glider_pose_preview_specs();
@@ -594,6 +607,12 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
     let anatomy_sheet_path = output_dir.join("player_anatomy_review_sheet.svg");
     fs::write(&anatomy_sheet_path, anatomy_svg)
         .map_err(|error| format!("failed to write {anatomy_sheet_path:?}: {error}"))?;
+    let stress_sheet_path = output_dir.join("player_rig_stress_review_sheet.svg");
+    fs::write(&stress_sheet_path, stress_svg)
+        .map_err(|error| format!("failed to write {stress_sheet_path:?}: {error}"))?;
+    let motion_sheet_path = output_dir.join("player_motion_integrity_review_sheet.svg");
+    fs::write(&motion_sheet_path, motion_svg)
+        .map_err(|error| format!("failed to write {motion_sheet_path:?}: {error}"))?;
     let transition_sheet_path = output_dir.join("player_transition_pose_sheet.svg");
     fs::write(&transition_sheet_path, transition_svg)
         .map_err(|error| format!("failed to write {transition_sheet_path:?}: {error}"))?;
@@ -615,6 +634,8 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "glider_source_hash_fnv1a64": fnv1a64_hex(glider_text.as_bytes()),
         "pose_count": specs.len(),
         "anatomy_review_panel_count": anatomy_specs.len(),
+        "stress_review_panel_count": stress_specs.len(),
+        "motion_review_panel_count": motion_specs.len(),
         "transition_pose_count": transition_specs.len(),
         "glider_pose_count": glider_specs.len(),
         "attachment_pose_count": attachment_specs.len(),
@@ -630,6 +651,22 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
             "pose_intent": spec.context.intent().label(),
         })).collect::<Vec<_>>(),
         "anatomy_review_panels": anatomy_specs.iter().map(|spec| json!({
+            "label": spec.label,
+            "title": spec.title,
+            "phase": spec.phase,
+            "pose_intent": spec.context.intent().label(),
+            "view": spec.view.key(),
+            "node_count": spec.nodes.len(),
+        })).collect::<Vec<_>>(),
+        "stress_review_panels": stress_specs.iter().map(|spec| json!({
+            "label": spec.label,
+            "title": spec.title,
+            "phase": spec.phase,
+            "pose_intent": spec.context.intent().label(),
+            "view": spec.view.key(),
+            "node_count": spec.nodes.len(),
+        })).collect::<Vec<_>>(),
+        "motion_review_panels": motion_specs.iter().map(|spec| json!({
             "label": spec.label,
             "title": spec.title,
             "phase": spec.phase,
@@ -665,6 +702,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "joint_seam_contact_audit": player_joint_seam_contact_audit(&gltf),
         "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit(&gltf),
         "player_mesh_silhouette_audit": player_mesh_silhouette_audit(&gltf),
+        "motion_integrity_overlay_warning_audit": motion_overlay_warning_audit,
         "surface_contact_audit": player_pose_surface_contact_audit(&gltf),
         "player_glider_attachment_audit": player_glider_attachment_audit(&gltf, &glider_gltf),
         "artifacts": {
@@ -672,6 +710,10 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
             "pose_sheet_png": output_dir.join("player_pose_sheet.png"),
             "anatomy_review_sheet_svg": anatomy_sheet_path,
             "anatomy_review_sheet_png": output_dir.join("player_anatomy_review_sheet.png"),
+            "rig_stress_review_sheet_svg": stress_sheet_path,
+            "rig_stress_review_sheet_png": output_dir.join("player_rig_stress_review_sheet.png"),
+            "motion_integrity_review_sheet_svg": motion_sheet_path,
+            "motion_integrity_review_sheet_png": output_dir.join("player_motion_integrity_review_sheet.png"),
             "transition_pose_sheet_svg": transition_sheet_path,
             "transition_pose_sheet_png": output_dir.join("player_transition_pose_sheet.png"),
             "glider_pose_sheet_svg": glider_sheet_path,
@@ -694,6 +736,10 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "pose_sheet_png": output_dir.join("player_pose_sheet.png"),
         "anatomy_review_sheet_svg": anatomy_sheet_path,
         "anatomy_review_sheet_png": output_dir.join("player_anatomy_review_sheet.png"),
+        "rig_stress_review_sheet_svg": stress_sheet_path,
+        "rig_stress_review_sheet_png": output_dir.join("player_rig_stress_review_sheet.png"),
+        "motion_integrity_review_sheet_svg": motion_sheet_path,
+        "motion_integrity_review_sheet_png": output_dir.join("player_motion_integrity_review_sheet.png"),
         "transition_pose_sheet_svg": transition_sheet_path,
         "transition_pose_sheet_png": output_dir.join("player_transition_pose_sheet.png"),
         "glider_pose_sheet_svg": glider_sheet_path,
@@ -702,6 +748,8 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         "player_glider_attachment_sheet_png": output_dir.join("player_glider_attachment_sheet.png"),
         "pose_count": specs.len(),
         "anatomy_review_panel_count": anatomy_specs.len(),
+        "stress_review_panel_count": stress_specs.len(),
+        "motion_review_panel_count": motion_specs.len(),
         "transition_pose_count": transition_specs.len(),
         "glider_pose_count": glider_specs.len(),
         "attachment_pose_count": attachment_specs.len(),
@@ -985,15 +1033,44 @@ fn glider_pose_requires_hand_grip(label: &str) -> bool {
 }
 
 const PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES: &[&str] = &[];
+const PLAYER_ANATOMY_CORE_REVIEW_NODES: &[&str] = &[
+    "Nau Skin Rounded Head",
+    "Nau Skin Neck Column",
+    "Nau Neck Joint Cover",
+    "Nau Suit Neck Collar Pad",
+    "Nau Suit Shoulder Yoke Plate",
+    "Nau Suit Armored Torso Shell",
+    "Nau Suit Ribcage Soft Volume",
+    "Nau Left Suit Pectoral Soft Volume",
+    "Nau Right Suit Pectoral Soft Volume",
+    "Nau Left Suit Scapula Soft Volume",
+    "Nau Right Suit Scapula Soft Volume",
+    "Nau Suit Lower Rib Flex Lip",
+    "Nau Suit Abdominal Flex Gasket",
+    "Nau Suit Waist Soft Volume",
+    "Nau Suit Tapered Hips Shell",
+    "Nau Suit Pelvis Hip Yoke",
+    "Nau Left Suit Oblique Flex Connector",
+    "Nau Right Suit Oblique Flex Connector",
+];
 const PLAYER_ANATOMY_SHOULDER_REVIEW_NODES: &[&str] = &[
     "Nau Suit Armored Torso Shell",
+    "Nau Suit Ribcage Soft Volume",
     "Nau Suit Shoulder Yoke Plate",
     "Nau Left Suit Collarbone Plate",
     "Nau Right Suit Collarbone Plate",
     "Nau Left Suit Shoulder Chest Blend",
     "Nau Right Suit Shoulder Chest Blend",
+    "Nau Left Suit Pectoral Soft Volume",
+    "Nau Right Suit Pectoral Soft Volume",
+    "Nau Left Suit Scapula Soft Volume",
+    "Nau Right Suit Scapula Soft Volume",
     "Nau Left Suit Axilla Blend",
     "Nau Right Suit Axilla Blend",
+    "Nau Left Suit Shoulder Web Capsule",
+    "Nau Right Suit Shoulder Web Capsule",
+    "Nau Left Suit Lat Shoulder Connector",
+    "Nau Right Suit Lat Shoulder Connector",
     "Nau Left Shoulder Joint Cover",
     "Nau Right Shoulder Joint Cover",
     "Nau Left Suit Shoulder Root Blend",
@@ -1009,11 +1086,18 @@ const PLAYER_ANATOMY_SHOULDER_REVIEW_NODES: &[&str] = &[
 ];
 const PLAYER_ANATOMY_HIP_REVIEW_NODES: &[&str] = &[
     "Nau Suit Tapered Hips Shell",
+    "Nau Suit Waist Soft Volume",
     "Nau Suit Pelvis Hip Yoke",
     "Nau Left Suit Pelvis Side Plate",
     "Nau Right Suit Pelvis Side Plate",
     "Nau Left Suit Hip Inguinal Blend",
     "Nau Right Suit Hip Inguinal Blend",
+    "Nau Left Suit Hip Web Capsule",
+    "Nau Right Suit Hip Web Capsule",
+    "Nau Left Suit Glute Hip Connector",
+    "Nau Right Suit Glute Hip Connector",
+    "Nau Left Suit Hip Thigh Fairing",
+    "Nau Right Suit Hip Thigh Fairing",
     "Nau Left Hip Joint Cover",
     "Nau Right Hip Joint Cover",
     "Nau Left Hip Bridge Sleeve",
@@ -1069,6 +1153,50 @@ const PLAYER_ANATOMY_BOOT_REVIEW_NODES: &[&str] = &[
     "Nau Left Leather Boot Sole",
     "Nau Left Leather Boot Heel",
 ];
+const PLAYER_ANATOMY_RIGHT_HAND_REVIEW_NODES: &[&str] = &[
+    "Nau Right Wrist Bridge Sleeve",
+    "Nau Right Seamless Wrist Flex Cover",
+    "Nau Right Leather Wrist Palm Gusset",
+    "Nau Right Leather Hand Palm",
+    "Nau Right Leather Outer Palm Edge Pad",
+    "Nau Right Leather Inner Palm Edge Pad",
+    "Nau Right Leather Thumb Web Pad",
+    "Nau Right Leather Index Finger Grip",
+    "Nau Right Leather Finger Grip",
+    "Nau Right Leather Ring Finger Grip",
+    "Nau Right Leather Pinky Finger Grip",
+    "Nau Right Leather Thumb Grip",
+    "Nau Right Leather Index Finger Tip Pad",
+    "Nau Right Leather Middle Finger Tip Pad",
+    "Nau Right Leather Ring Finger Tip Pad",
+    "Nau Right Leather Pinky Finger Tip Pad",
+    "Nau Right Leather Thumb Tip Pad",
+    "Nau Right Leather Palm Heel Pad",
+    "Nau Right Leather Finger Web Bridge",
+    "Nau Right Leather Index Knuckle Pad",
+    "Nau Right Leather Middle Knuckle Pad",
+    "Nau Right Leather Ring Knuckle Pad",
+    "Nau Right Leather Pinky Knuckle Pad",
+];
+const PLAYER_ANATOMY_RIGHT_BOOT_REVIEW_NODES: &[&str] = &[
+    "Nau Right Leather Boot Shell",
+    "Nau Right Ankle Bridge Sleeve",
+    "Nau Right Seamless Ankle Flex Cover",
+    "Nau Right Leather Ankle Wrap",
+    "Nau Right Leather Heel Tendon Guard",
+    "Nau Right Leather Boot Instep Plate",
+    "Nau Right Leather Outer Boot Side Guard",
+    "Nau Right Leather Inner Boot Side Guard",
+    "Nau Right Leather Boot Arch Rib",
+    "Nau Right Leather Ankle Boot Tongue",
+    "Nau Right Leather Lace Cross Strap A",
+    "Nau Right Leather Lace Cross Strap B",
+    "Nau Right Leather Boot Toe Cap",
+    "Nau Right Leather Outer Toe Lug",
+    "Nau Right Leather Inner Toe Lug",
+    "Nau Right Leather Boot Sole",
+    "Nau Right Leather Boot Heel",
+];
 
 fn player_anatomy_review_specs() -> Vec<PlayerAnatomyReviewSpec> {
     let grounded_context = PlayerPoseContext::new(
@@ -1113,6 +1241,22 @@ fn player_anatomy_review_specs() -> Vec<PlayerAnatomyReviewSpec> {
             phase: 0.75,
             view: PlayerPosePreviewView::Side,
             nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "core_front",
+            title: "Core Connectors Front",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_CORE_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "core_side",
+            title: "Core Connectors Side",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_CORE_REVIEW_NODES,
         },
         PlayerAnatomyReviewSpec {
             label: "fall_top",
@@ -1179,6 +1323,22 @@ fn player_anatomy_review_specs() -> Vec<PlayerAnatomyReviewSpec> {
             nodes: PLAYER_ANATOMY_HAND_REVIEW_NODES,
         },
         PlayerAnatomyReviewSpec {
+            label: "right_hand_front",
+            title: "Right Hand Front",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_RIGHT_HAND_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "right_hand_top",
+            title: "Right Hand Top",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Top,
+            nodes: PLAYER_ANATOMY_RIGHT_HAND_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
             label: "boot_side",
             title: "Left Boot Side",
             context: grounded_context,
@@ -1193,6 +1353,353 @@ fn player_anatomy_review_specs() -> Vec<PlayerAnatomyReviewSpec> {
             phase: 0.75,
             view: PlayerPosePreviewView::Top,
             nodes: PLAYER_ANATOMY_BOOT_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "right_boot_side",
+            title: "Right Boot Side",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_RIGHT_BOOT_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "right_boot_top",
+            title: "Right Boot Top",
+            context: grounded_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Top,
+            nodes: PLAYER_ANATOMY_RIGHT_BOOT_REVIEW_NODES,
+        },
+    ]
+}
+
+fn player_rig_stress_review_specs() -> Vec<PlayerAnatomyReviewSpec> {
+    let launch_context = PlayerPoseContext::new(
+        FlightMode::Launching,
+        Vec3::new(0.0, 24.0, -18.0),
+        FlightInput::default(),
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Launching);
+    let fall_context = PlayerPoseContext::new(
+        FlightMode::Airborne,
+        Vec3::new(0.0, -22.0, -24.0),
+        FlightInput::default(),
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Falling);
+    let dive_context = PlayerPoseContext::new(
+        FlightMode::Gliding,
+        Vec3::new(0.0, -34.0, -36.0),
+        FlightInput {
+            glide: true,
+            dive: true,
+            ..FlightInput::default()
+        },
+        120.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Diving);
+    let landing_context = PlayerPoseContext::new(
+        FlightMode::Gliding,
+        Vec3::new(3.0, -20.0, -22.0),
+        FlightInput {
+            glide: true,
+            ..FlightInput::default()
+        },
+        1.5,
+    )
+    .with_resolved_intent(PlayerPoseIntent::LandingAnticipation);
+
+    vec![
+        PlayerAnatomyReviewSpec {
+            label: "launch_shoulders_front",
+            title: "Launch Shoulders Front",
+            context: launch_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_SHOULDER_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "launch_left_hand_front",
+            title: "Launch Left Hand Front",
+            context: launch_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_HAND_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "launch_right_hand_front",
+            title: "Launch Right Hand Front",
+            context: launch_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_RIGHT_HAND_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "fall_core_top",
+            title: "Fall Core Top",
+            context: fall_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Top,
+            nodes: PLAYER_ANATOMY_CORE_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "fall_shoulders_top",
+            title: "Fall Shoulders Top",
+            context: fall_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Top,
+            nodes: PLAYER_ANATOMY_SHOULDER_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "fall_hips_top",
+            title: "Fall Hips Top",
+            context: fall_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Top,
+            nodes: PLAYER_ANATOMY_HIP_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "dive_core_side",
+            title: "Dive Core Side",
+            context: dive_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_CORE_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "dive_shoulders_side",
+            title: "Dive Shoulders Side",
+            context: dive_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_SHOULDER_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "dive_hips_side",
+            title: "Dive Hips Side",
+            context: dive_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_HIP_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "landing_core_front",
+            title: "Landing Core Front",
+            context: landing_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_CORE_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "landing_core_side",
+            title: "Landing Core Side",
+            context: landing_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_CORE_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "landing_hips_front",
+            title: "Landing Hips Front",
+            context: landing_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_HIP_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "landing_hips_side",
+            title: "Landing Hips Side",
+            context: landing_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_HIP_REVIEW_NODES,
+        },
+    ]
+}
+
+fn player_motion_integrity_review_specs() -> Vec<PlayerAnatomyReviewSpec> {
+    let launch_context = PlayerPoseContext::new(
+        FlightMode::Launching,
+        Vec3::new(0.0, 24.0, -18.0),
+        FlightInput::default(),
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Launching);
+    let fall_context = PlayerPoseContext::new(
+        FlightMode::Airborne,
+        Vec3::new(0.0, -22.0, -24.0),
+        FlightInput::default(),
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Falling);
+    let glide_context = PlayerPoseContext::new(
+        FlightMode::Gliding,
+        Vec3::new(0.0, -4.0, -38.0),
+        FlightInput::default(),
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Gliding);
+    let dive_context = PlayerPoseContext::new(
+        FlightMode::Gliding,
+        Vec3::new(0.0, -34.0, -36.0),
+        FlightInput {
+            glide: true,
+            dive: true,
+            ..FlightInput::default()
+        },
+        120.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::Diving);
+    let air_brake_context = PlayerPoseContext::new(
+        FlightMode::Gliding,
+        Vec3::new(0.0, -5.0, 16.0),
+        FlightInput {
+            backward: true,
+            ..FlightInput::default()
+        },
+        80.0,
+    )
+    .with_resolved_intent(PlayerPoseIntent::AirBrake);
+    let landing_context = PlayerPoseContext::new(
+        FlightMode::Gliding,
+        Vec3::new(3.0, -20.0, -22.0),
+        FlightInput {
+            glide: true,
+            ..FlightInput::default()
+        },
+        1.5,
+    )
+    .with_resolved_intent(PlayerPoseIntent::LandingAnticipation);
+    let landing_recovery_context = PlayerPoseContext::new(
+        FlightMode::Grounded,
+        Vec3::new(0.0, 0.0, -8.0),
+        FlightInput::default(),
+        0.0,
+    )
+    .with_landing_recovery(0.36, 16.0)
+    .with_resolved_intent(PlayerPoseIntent::LandingRecovery);
+
+    vec![
+        PlayerAnatomyReviewSpec {
+            label: "launch_front_full",
+            title: "Launch Front Full",
+            context: launch_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "launch_side_full",
+            title: "Launch Side Full",
+            context: launch_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "launch_top_full",
+            title: "Launch Top Full",
+            context: launch_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Top,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "fall_front_full",
+            title: "Fall Front Full",
+            context: fall_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "fall_side_full",
+            title: "Fall Side Full",
+            context: fall_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "fall_top_full",
+            title: "Fall Top Full",
+            context: fall_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Top,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "glide_rear_full",
+            title: "Glide Rear Full",
+            context: glide_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Rear,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "glide_side_full",
+            title: "Glide Side Full",
+            context: glide_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "glide_top_full",
+            title: "Glide Top Full",
+            context: glide_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Top,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "dive_front_full",
+            title: "Dive Front Full",
+            context: dive_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "dive_side_full",
+            title: "Dive Side Full",
+            context: dive_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "dive_top_full",
+            title: "Dive Top Full",
+            context: dive_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Top,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "air_brake_front_full",
+            title: "Air Brake Front Full",
+            context: air_brake_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "landing_side_full",
+            title: "Landing Side Full",
+            context: landing_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Side,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
+        },
+        PlayerAnatomyReviewSpec {
+            label: "landing_recovery_front_full",
+            title: "Landing Recovery Front Full",
+            context: landing_recovery_context,
+            phase: 0.75,
+            view: PlayerPosePreviewView::Front,
+            nodes: PLAYER_ANATOMY_FULL_BODY_REVIEW_NODES,
         },
     ]
 }
@@ -1242,6 +1749,142 @@ fn render_player_anatomy_review_sheet(
         let review_shapes = filter_player_pose_preview_shapes(&shapes, spec.nodes);
         if review_shapes.is_empty() {
             return Err(format!("anatomy review panel {} has no shapes", spec.label));
+        }
+
+        writeln!(
+            svg,
+            "<text x=\"{x:.1}\" y=\"{:.1}\" fill=\"#edf5ff\" font-family=\"Menlo, monospace\" font-size=\"13\">{}</text>",
+            y + 16.0,
+            escape_xml(spec.title)
+        )
+        .expect("writing to string should not fail");
+        writeln!(
+            svg,
+            "<text x=\"{x:.1}\" y=\"{:.1}\" fill=\"#8fb1c9\" font-family=\"Menlo, monospace\" font-size=\"10\">{} / {} nodes</text>",
+            y + 32.0,
+            spec.view.key(),
+            review_shapes.len()
+        )
+        .expect("writing to string should not fail");
+        render_player_pose_preview_view(
+            &mut svg,
+            &review_shapes,
+            spec.view,
+            x,
+            y + LABEL_HEIGHT,
+            PANEL_WIDTH - 12.0,
+            PANEL_HEIGHT - 12.0,
+        );
+    }
+
+    svg.push_str("</svg>\n");
+    Ok(svg)
+}
+
+fn render_player_rig_stress_review_sheet(
+    gltf: &Value,
+    specs: &[PlayerAnatomyReviewSpec],
+) -> Result<String, String> {
+    const COLUMNS: usize = 4;
+    const PANEL_WIDTH: f32 = 282.0;
+    const PANEL_HEIGHT: f32 = 262.0;
+    const HEADER_HEIGHT: f32 = 56.0;
+    const PADDING: f32 = 18.0;
+    const LABEL_HEIGHT: f32 = 38.0;
+
+    let rows = specs.len().div_ceil(COLUMNS);
+    let width = PANEL_WIDTH * COLUMNS as f32 + PADDING * 2.0;
+    let height = HEADER_HEIGHT + (PANEL_HEIGHT + LABEL_HEIGHT) * rows as f32 + PADDING;
+    let mut svg = String::new();
+    writeln!(
+        svg,
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" viewBox=\"0 0 {width:.0} {height:.0}\">"
+    )
+    .expect("writing to string should not fail");
+    svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#10151f\"/>\n");
+    svg.push_str("<text x=\"18\" y=\"24\" fill=\"#dbe7f3\" font-family=\"Menlo, monospace\" font-size=\"16\">NAU player rig stress review sheet</text>\n");
+    svg.push_str("<text x=\"18\" y=\"42\" fill=\"#7f95a7\" font-family=\"Menlo, monospace\" font-size=\"10\">connector closeups in launch, fall, dive, and landing poses</text>\n");
+
+    for (index, spec) in specs.iter().enumerate() {
+        let column = index % COLUMNS;
+        let row = index / COLUMNS;
+        let x = PADDING + PANEL_WIDTH * column as f32;
+        let y = HEADER_HEIGHT + (PANEL_HEIGHT + LABEL_HEIGHT) * row as f32;
+        let overrides = player_pose_node_overrides(gltf, spec.context, spec.phase)
+            .ok_or_else(|| format!("failed to compute stress pose overrides for {}", spec.label))?;
+        let shapes = player_pose_preview_shapes(gltf, &overrides)
+            .ok_or_else(|| format!("failed to compute stress preview shapes for {}", spec.label))?;
+        let review_shapes = filter_player_pose_preview_shapes(&shapes, spec.nodes);
+        if review_shapes.is_empty() {
+            return Err(format!("stress review panel {} has no shapes", spec.label));
+        }
+
+        writeln!(
+            svg,
+            "<text x=\"{x:.1}\" y=\"{:.1}\" fill=\"#edf5ff\" font-family=\"Menlo, monospace\" font-size=\"13\">{}</text>",
+            y + 16.0,
+            escape_xml(spec.title)
+        )
+        .expect("writing to string should not fail");
+        writeln!(
+            svg,
+            "<text x=\"{x:.1}\" y=\"{:.1}\" fill=\"#8fb1c9\" font-family=\"Menlo, monospace\" font-size=\"10\">{} / {} nodes</text>",
+            y + 32.0,
+            spec.view.key(),
+            review_shapes.len()
+        )
+        .expect("writing to string should not fail");
+        render_player_pose_preview_view(
+            &mut svg,
+            &review_shapes,
+            spec.view,
+            x,
+            y + LABEL_HEIGHT,
+            PANEL_WIDTH - 12.0,
+            PANEL_HEIGHT - 12.0,
+        );
+    }
+
+    svg.push_str("</svg>\n");
+    Ok(svg)
+}
+
+fn render_player_motion_integrity_review_sheet(
+    gltf: &Value,
+    specs: &[PlayerAnatomyReviewSpec],
+) -> Result<String, String> {
+    const COLUMNS: usize = 3;
+    const PANEL_WIDTH: f32 = 366.0;
+    const PANEL_HEIGHT: f32 = 318.0;
+    const HEADER_HEIGHT: f32 = 58.0;
+    const PADDING: f32 = 18.0;
+    const LABEL_HEIGHT: f32 = 38.0;
+
+    let rows = specs.len().div_ceil(COLUMNS);
+    let width = PANEL_WIDTH * COLUMNS as f32 + PADDING * 2.0;
+    let height = HEADER_HEIGHT + (PANEL_HEIGHT + LABEL_HEIGHT) * rows as f32 + PADDING;
+    let mut svg = String::new();
+    writeln!(
+        svg,
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" viewBox=\"0 0 {width:.0} {height:.0}\">"
+    )
+    .expect("writing to string should not fail");
+    svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#10151f\"/>\n");
+    svg.push_str("<text x=\"18\" y=\"24\" fill=\"#dbe7f3\" font-family=\"Menlo, monospace\" font-size=\"16\">NAU player motion integrity review sheet</text>\n");
+    svg.push_str("<text x=\"18\" y=\"42\" fill=\"#7f95a7\" font-family=\"Menlo, monospace\" font-size=\"10\">large full-body panels for human review of limb wiring across traversal poses</text>\n");
+
+    for (index, spec) in specs.iter().enumerate() {
+        let column = index % COLUMNS;
+        let row = index / COLUMNS;
+        let x = PADDING + PANEL_WIDTH * column as f32;
+        let y = HEADER_HEIGHT + (PANEL_HEIGHT + LABEL_HEIGHT) * row as f32;
+        let overrides = player_pose_node_overrides(gltf, spec.context, spec.phase)
+            .ok_or_else(|| format!("failed to compute motion pose overrides for {}", spec.label))?;
+        let shapes = player_pose_preview_shapes(gltf, &overrides)
+            .ok_or_else(|| format!("failed to compute motion preview shapes for {}", spec.label))?;
+        let review_shapes = filter_player_pose_preview_shapes(&shapes, spec.nodes);
+        if review_shapes.is_empty() {
+            return Err(format!("motion review panel {} has no shapes", spec.label));
         }
 
         writeln!(
@@ -1382,6 +2025,7 @@ fn render_player_transition_pose_preview_sheet(
     .expect("writing to string should not fail");
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#10151f\"/>\n");
     svg.push_str("<text x=\"18\" y=\"24\" fill=\"#dbe7f3\" font-family=\"Menlo, monospace\" font-size=\"16\">NAU player fixture transition pose preview</text>\n");
+    svg.push_str("<desc>surface distance plus mesh overlap overlays for high-risk blends</desc>\n");
     for (index, view) in PLAYER_POSE_PREVIEW_VIEWS.iter().enumerate() {
         let x = LABEL_WIDTH + PADDING + VIEW_WIDTH * index as f32 + VIEW_WIDTH * 0.5;
         writeln!(
@@ -1655,11 +2299,13 @@ fn player_pose_preview_shapes(
             continue;
         }
         let bounds = aabb_from_points(&vertices)?;
+        let obb = mesh_local_aabb(gltf, mesh)?.transformed_obb(transform);
         shapes.push(PlayerPosePreviewShape {
             node_name: node_name.to_string(),
             vertices,
             surface_points,
             bounds,
+            obb,
             color: player_pose_preview_color(node_name),
         });
     }
@@ -1710,11 +2356,13 @@ fn glider_pose_preview_shapes_with_transform(
             continue;
         }
         let bounds = aabb_from_points(&vertices)?;
+        let obb = mesh_local_aabb(gltf, mesh)?.transformed_obb(transform);
         shapes.push(PlayerPosePreviewShape {
             node_name: node_name.to_string(),
             vertices,
             surface_points,
             bounds,
+            obb,
             color: glider_pose_preview_color(node_name),
         });
     }
@@ -2384,50 +3032,8 @@ fn render_player_pose_overlap_overlay(
         origin_y,
         scale,
     };
-    for (left, right) in player_joint_cover_mesh_pairs() {
-        render_player_pose_overlap_marker(
-            svg,
-            shapes,
-            view,
-            transform,
-            PlayerPoseOverlapRule {
-                category: "joint cover mesh overlap",
-                left,
-                right,
-                warn_threshold_m: PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M * 0.95,
-                fail_threshold_m: PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M,
-            },
-        );
-    }
-    for (left, right) in player_joint_bridge_mesh_pairs() {
-        render_player_pose_overlap_marker(
-            svg,
-            shapes,
-            view,
-            transform,
-            PlayerPoseOverlapRule {
-                category: "joint bridge mesh overlap",
-                left,
-                right,
-                warn_threshold_m: PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M * 0.95,
-                fail_threshold_m: PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M,
-            },
-        );
-    }
-    for (left, right) in player_rest_non_adjacent_mesh_overlap_pairs() {
-        render_player_pose_overlap_marker(
-            svg,
-            shapes,
-            view,
-            transform,
-            PlayerPoseOverlapRule {
-                category: "non-adjacent mesh overlap",
-                left,
-                right,
-                warn_threshold_m: PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
-                fail_threshold_m: PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
-            },
-        );
+    for rule in player_pose_overlap_rules() {
+        render_player_pose_overlap_marker(svg, shapes, view, transform, rule);
     }
 }
 
@@ -2447,6 +3053,47 @@ struct PlayerPoseOverlapRule {
     fail_threshold_m: f64,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct PlayerPoseOverlapMarker {
+    category: &'static str,
+    left: &'static str,
+    right: &'static str,
+    overlap_m: f64,
+    failed: bool,
+}
+
+fn player_pose_overlap_rules() -> Vec<PlayerPoseOverlapRule> {
+    let mut rules = Vec::new();
+    for (left, right) in player_joint_cover_mesh_pairs() {
+        rules.push(PlayerPoseOverlapRule {
+            category: "joint cover mesh overlap",
+            left,
+            right,
+            warn_threshold_m: PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M * 0.95,
+            fail_threshold_m: PLAYER_POSE_MAX_JOINT_COVER_MESH_OVERLAP_M,
+        });
+    }
+    for (left, right) in player_joint_bridge_mesh_pairs() {
+        rules.push(PlayerPoseOverlapRule {
+            category: "joint bridge mesh overlap",
+            left,
+            right,
+            warn_threshold_m: PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M * 0.95,
+            fail_threshold_m: PLAYER_POSE_MAX_JOINT_BRIDGE_MESH_OVERLAP_M,
+        });
+    }
+    for (left, right) in player_rest_non_adjacent_mesh_overlap_pairs() {
+        rules.push(PlayerPoseOverlapRule {
+            category: "non-adjacent mesh overlap",
+            left,
+            right,
+            warn_threshold_m: PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
+            fail_threshold_m: PLAYER_POSE_MAX_NON_ADJACENT_MESH_OVERLAP_M,
+        });
+    }
+    rules
+}
+
 fn render_player_pose_overlap_marker(
     svg: &mut String,
     shapes: &[PlayerPosePreviewShape],
@@ -2460,10 +3107,9 @@ fn render_player_pose_overlap_marker(
     let Some(right) = shapes.iter().find(|shape| shape.node_name == rule.right) else {
         return;
     };
-    let overlap_m = left.bounds.overlap_depth_m(right.bounds);
-    if overlap_m <= rule.warn_threshold_m {
+    let Some(marker) = player_pose_overlap_marker_from_shapes(left, right, rule) else {
         return;
-    }
+    };
     let Some((min_u, max_u, min_v, max_v)) =
         projected_aabb_overlap_rect(left.bounds, right.bounds, view)
     else {
@@ -2476,20 +3122,109 @@ fn render_player_pose_overlap_marker(
     if width < 0.7 || height < 0.7 {
         return;
     }
-    let color = if overlap_m > rule.fail_threshold_m {
-        "#ff5364"
-    } else {
-        "#ffb84d"
-    };
+    let color = if marker.failed { "#ff5364" } else { "#ffb84d" };
     writeln!(
         svg,
         "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{width:.2}\" height=\"{height:.2}\" fill=\"{color}\" fill-opacity=\"0.18\" stroke=\"{color}\" stroke-opacity=\"0.92\" stroke-width=\"1.0\"><title>{}: {} into {} overlap {:.3} m</title></rect>",
-        escape_xml(rule.category),
-        escape_xml(rule.left),
-        escape_xml(rule.right),
-        overlap_m
+        escape_xml(marker.category),
+        escape_xml(marker.left),
+        escape_xml(marker.right),
+        marker.overlap_m
     )
     .expect("writing to string should not fail");
+}
+
+fn player_pose_overlap_marker_for_rule(
+    shapes: &[PlayerPosePreviewShape],
+    rule: PlayerPoseOverlapRule,
+) -> Option<PlayerPoseOverlapMarker> {
+    let left = shapes.iter().find(|shape| shape.node_name == rule.left)?;
+    let right = shapes.iter().find(|shape| shape.node_name == rule.right)?;
+    player_pose_overlap_marker_from_shapes(left, right, rule)
+}
+
+fn player_pose_overlap_marker_from_shapes(
+    left: &PlayerPosePreviewShape,
+    right: &PlayerPosePreviewShape,
+    rule: PlayerPoseOverlapRule,
+) -> Option<PlayerPoseOverlapMarker> {
+    let overlap_m = left.obb.overlap_depth_m(right.obb);
+    if overlap_m <= rule.warn_threshold_m {
+        return None;
+    }
+    Some(PlayerPoseOverlapMarker {
+        category: rule.category,
+        left: rule.left,
+        right: rule.right,
+        overlap_m,
+        failed: overlap_m > rule.fail_threshold_m,
+    })
+}
+
+fn player_motion_integrity_overlay_warning_audit(gltf: &Value) -> Option<Value> {
+    let specs = player_motion_integrity_review_specs();
+    let rules = player_pose_overlap_rules();
+    let mut warning_count = 0_u64;
+    let mut fail_count = 0_u64;
+    let mut max_overlap_m = 0.0_f64;
+    let mut worst_warning = Value::Null;
+    let mut panels = Vec::new();
+
+    for spec in &specs {
+        let overrides = player_pose_node_overrides(gltf, spec.context, spec.phase)?;
+        let shapes = player_pose_preview_shapes(gltf, &overrides)?;
+        let review_shapes = filter_player_pose_preview_shapes(&shapes, spec.nodes);
+        let mut panel_warning_count = 0_u64;
+        let mut panel_fail_count = 0_u64;
+
+        for rule in &rules {
+            let Some(marker) = player_pose_overlap_marker_for_rule(&review_shapes, *rule) else {
+                continue;
+            };
+            warning_count += 1;
+            panel_warning_count += 1;
+            if marker.failed {
+                fail_count += 1;
+                panel_fail_count += 1;
+            }
+            if marker.overlap_m > max_overlap_m {
+                max_overlap_m = marker.overlap_m;
+                worst_warning = json!({
+                    "label": spec.label,
+                    "title": spec.title,
+                    "view": spec.view.key(),
+                    "category": marker.category,
+                    "left_node": marker.left,
+                    "right_node": marker.right,
+                    "overlap_m": marker.overlap_m,
+                    "failed": marker.failed,
+                });
+            }
+        }
+
+        panels.push(json!({
+            "label": spec.label,
+            "title": spec.title,
+            "view": spec.view.key(),
+            "node_count": review_shapes.len(),
+            "warning_count": panel_warning_count,
+            "fail_count": panel_fail_count,
+        }));
+    }
+
+    Some(json!({
+        "schema": "nau_player_motion_integrity_overlay_warning_audit.v1",
+        "panel_count": specs.len(),
+        "rule_count": rules.len(),
+        "warning_count": warning_count,
+        "fail_count": fail_count,
+        "max_overlap_m": max_overlap_m,
+        "worst_warning": worst_warning,
+        "thresholds": {
+            "warning_count_max": PLAYER_MOTION_INTEGRITY_OVERLAY_MAX_WARNING_COUNT,
+        },
+        "panels": panels,
+    }))
 }
 
 fn projected_aabb_overlap_rect(
@@ -2972,6 +3707,10 @@ fn audit_fixture(
         .require_player_clips
         .then(|| player_mesh_silhouette_audit(&gltf))
         .flatten();
+    let player_motion_integrity_overlay_warning_audit = requirement
+        .require_player_clips
+        .then(|| player_motion_integrity_overlay_warning_audit(&gltf))
+        .flatten();
 
     let mut checks = vec![
         check_bool("present", true, "file"),
@@ -3408,6 +4147,27 @@ fn audit_fixture(
             0.0,
             "breaches",
         ));
+        let motion_overlay = player_motion_integrity_overlay_warning_audit
+            .as_ref()
+            .expect("player motion overlay warning audit should be present for player fixture");
+        checks.push(check_eq_f64(
+            "player_motion_integrity_overlay_panel_count",
+            number_field(motion_overlay, "panel_count"),
+            PLAYER_MOTION_INTEGRITY_REVIEW_EXPECTED_PANEL_COUNT,
+            "panels",
+        ));
+        checks.push(check_at_most_f64(
+            "player_motion_integrity_overlay_warning_count",
+            number_field(motion_overlay, "warning_count"),
+            PLAYER_MOTION_INTEGRITY_OVERLAY_MAX_WARNING_COUNT,
+            "warnings",
+        ));
+        checks.push(check_at_most_f64(
+            "player_motion_integrity_overlay_fail_count",
+            number_field(motion_overlay, "fail_count"),
+            0.0,
+            "failures",
+        ));
         let pose_contact = player_pose_contact_audit
             .as_ref()
             .expect("player pose contact audit should be present for player fixture");
@@ -3508,6 +4268,18 @@ fn audit_fixture(
             "deg",
         ));
         checks.push(check_at_least_f64(
+            "player_pose_falling_hips_pitch",
+            number_field(pose_shape, "falling_hips_pitch_degrees"),
+            PLAYER_POSE_MIN_FALLING_HIPS_PITCH_DEGREES,
+            "deg",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_falling_torso_local_pitch",
+            number_field(pose_shape, "falling_torso_local_pitch_degrees"),
+            PLAYER_POSE_MAX_FALLING_TORSO_LOCAL_PITCH_DEGREES,
+            "deg",
+        ));
+        checks.push(check_at_least_f64(
             "player_pose_falling_arm_spread",
             number_field(pose_shape, "falling_arm_spread_degrees"),
             PLAYER_POSE_MIN_FALLING_ARM_SPREAD_DEGREES,
@@ -3523,6 +4295,18 @@ fn audit_fixture(
             "player_pose_dive_torso_pitch",
             number_field(pose_shape, "dive_torso_pitch_degrees"),
             PLAYER_POSE_MIN_DIVE_TORSO_PITCH_DEGREES,
+            "deg",
+        ));
+        checks.push(check_at_least_f64(
+            "player_pose_dive_hips_pitch",
+            number_field(pose_shape, "dive_hips_pitch_degrees"),
+            PLAYER_POSE_MIN_DIVE_HIPS_PITCH_DEGREES,
+            "deg",
+        ));
+        checks.push(check_at_most_f64(
+            "player_pose_dive_torso_local_pitch",
+            number_field(pose_shape, "dive_torso_local_pitch_degrees"),
+            PLAYER_POSE_MAX_DIVE_TORSO_LOCAL_PITCH_DEGREES,
             "deg",
         ));
         checks.push(check_at_most_f64(
@@ -3669,6 +4453,7 @@ fn audit_fixture(
         "player_boot_sole_length_min_m": player_boot_sole_length_min_m(&gltf),
         "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit,
         "player_mesh_silhouette_audit": player_mesh_silhouette_audit,
+        "player_motion_integrity_overlay_warning_audit": player_motion_integrity_overlay_warning_audit,
         "player_rest_non_adjacent_mesh_overlap_max_m": player_rest_non_adjacent_mesh_overlap_max_m(&gltf),
         "player_rest_shoulder_mesh_overlap_max_m": player_rest_shoulder_mesh_overlap_max_m(&gltf),
         "player_pose_non_adjacent_mesh_overlap_max_m": player_pose_non_adjacent_mesh_overlap_max_m(&gltf),
@@ -4320,6 +5105,7 @@ fn player_clip_count(gltf: &Value) -> u64 {
 
 fn player_core_pose_nodes_present(gltf: &Value) -> bool {
     [
+        "Nau Hips",
         "Nau Torso",
         "Nau Head",
         "Nau Left Arm",
@@ -4397,6 +5183,7 @@ fn player_animation_channels_cover_core_signals(gltf: &Value) -> bool {
             return false;
         };
         [
+            "Nau Animation Signal Hips",
             "Nau Animation Signal Torso",
             "Nau Animation Signal Left Arm",
             "Nau Animation Signal Right Arm",
@@ -4410,6 +5197,7 @@ fn player_animation_channels_cover_core_signals(gltf: &Value) -> bool {
 
 fn player_animation_channels_avoid_runtime_pose_nodes(gltf: &Value) -> bool {
     let runtime_pose_nodes = [
+        "Nau Hips",
         "Nau Torso",
         "Nau Head",
         "Nau Left Arm",
@@ -4484,18 +5272,9 @@ fn player_pose_articulated_joint_gap_max_m(gltf: &Value) -> Option<f64> {
     player_pose_articulated_joint_gap_report(gltf).map(|report| report.max_gap_m)
 }
 
-fn player_pose_contact_phases() -> [f32; 8] {
-    let step = std::f32::consts::TAU / 8.0;
-    [
-        0.0,
-        step,
-        step * 2.0,
-        step * 3.0,
-        step * 4.0,
-        step * 5.0,
-        step * 6.0,
-        step * 7.0,
-    ]
+fn player_pose_contact_phases() -> [f32; 12] {
+    let step = std::f32::consts::TAU / 12.0;
+    std::array::from_fn(|index| step * index as f32)
 }
 
 fn player_pose_transition_contact_blends() -> [f32; 4] {
@@ -5091,8 +5870,36 @@ fn player_surface_contact_pairs() -> Vec<PlayerSurfaceContactPair> {
     pairs
 }
 
-fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 24] {
+fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 62] {
     [
+        ("Nau Skin Neck Column", "Nau Skin Rounded Head"),
+        ("Nau Skin Neck Column", "Nau Neck Joint Cover"),
+        ("Nau Suit Neck Collar Pad", "Nau Neck Joint Cover"),
+        ("Nau Suit Neck Collar Pad", "Nau Suit Shoulder Yoke Plate"),
+        (
+            "Nau Suit Lower Rib Flex Lip",
+            "Nau Suit Ribcage Soft Volume",
+        ),
+        (
+            "Nau Suit Abdominal Flex Gasket",
+            "Nau Suit Waist Soft Volume",
+        ),
+        (
+            "Nau Left Suit Oblique Flex Connector",
+            "Nau Suit Abdominal Flex Gasket",
+        ),
+        (
+            "Nau Right Suit Oblique Flex Connector",
+            "Nau Suit Abdominal Flex Gasket",
+        ),
+        (
+            "Nau Left Suit Oblique Flex Connector",
+            "Nau Suit Waist Soft Volume",
+        ),
+        (
+            "Nau Right Suit Oblique Flex Connector",
+            "Nau Suit Waist Soft Volume",
+        ),
         (
             "Nau Left Shoulder Joint Cover",
             "Nau Suit Shoulder Yoke Plate",
@@ -5128,11 +5935,51 @@ fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 24] {
             "Nau Suit Shoulder Yoke Plate",
         ),
         (
+            "Nau Left Suit Pectoral Soft Volume",
+            "Nau Suit Ribcage Soft Volume",
+        ),
+        (
+            "Nau Right Suit Pectoral Soft Volume",
+            "Nau Suit Ribcage Soft Volume",
+        ),
+        (
+            "Nau Left Suit Pectoral Soft Volume",
+            "Nau Left Suit Shoulder Chest Blend",
+        ),
+        (
+            "Nau Right Suit Pectoral Soft Volume",
+            "Nau Right Suit Shoulder Chest Blend",
+        ),
+        (
+            "Nau Left Suit Scapula Soft Volume",
+            "Nau Suit Ribcage Soft Volume",
+        ),
+        (
+            "Nau Right Suit Scapula Soft Volume",
+            "Nau Suit Ribcage Soft Volume",
+        ),
+        (
             "Nau Left Suit Shoulder Root Blend",
             "Nau Left Suit Upper Arm",
         ),
         (
             "Nau Right Suit Shoulder Root Blend",
+            "Nau Right Suit Upper Arm",
+        ),
+        (
+            "Nau Left Suit Lat Shoulder Connector",
+            "Nau Left Suit Shoulder Web Capsule",
+        ),
+        (
+            "Nau Right Suit Lat Shoulder Connector",
+            "Nau Right Suit Shoulder Web Capsule",
+        ),
+        (
+            "Nau Left Suit Lat Shoulder Connector",
+            "Nau Left Suit Upper Arm",
+        ),
+        (
+            "Nau Right Suit Lat Shoulder Connector",
             "Nau Right Suit Upper Arm",
         ),
         ("Nau Left Hip Joint Cover", "Nau Suit Pelvis Hip Yoke"),
@@ -5153,12 +6000,84 @@ fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 24] {
             "Nau Right Suit Thigh Guard",
         ),
         (
+            "Nau Left Suit Glute Hip Connector",
+            "Nau Left Suit Hip Web Capsule",
+        ),
+        (
+            "Nau Right Suit Glute Hip Connector",
+            "Nau Right Suit Hip Web Capsule",
+        ),
+        (
+            "Nau Left Suit Glute Hip Connector",
+            "Nau Left Suit Thigh Guard",
+        ),
+        (
+            "Nau Right Suit Glute Hip Connector",
+            "Nau Right Suit Thigh Guard",
+        ),
+        (
+            "Nau Left Suit Hip Thigh Fairing",
+            "Nau Left Suit Thigh Guard",
+        ),
+        (
+            "Nau Right Suit Hip Thigh Fairing",
+            "Nau Right Suit Thigh Guard",
+        ),
+        (
+            "Nau Left Suit Hip Thigh Fairing",
+            "Nau Left Seamless Hip Flex Cover",
+        ),
+        (
+            "Nau Right Suit Hip Thigh Fairing",
+            "Nau Right Seamless Hip Flex Cover",
+        ),
+        (
             "Nau Left Leather Wrist Palm Gusset",
             "Nau Left Leather Hand Palm",
         ),
         (
             "Nau Right Leather Wrist Palm Gusset",
             "Nau Right Leather Hand Palm",
+        ),
+        (
+            "Nau Left Leather Index Finger Grip",
+            "Nau Left Leather Index Finger Tip Pad",
+        ),
+        (
+            "Nau Right Leather Index Finger Grip",
+            "Nau Right Leather Index Finger Tip Pad",
+        ),
+        (
+            "Nau Left Leather Finger Grip",
+            "Nau Left Leather Middle Finger Tip Pad",
+        ),
+        (
+            "Nau Right Leather Finger Grip",
+            "Nau Right Leather Middle Finger Tip Pad",
+        ),
+        (
+            "Nau Left Leather Ring Finger Grip",
+            "Nau Left Leather Ring Finger Tip Pad",
+        ),
+        (
+            "Nau Right Leather Ring Finger Grip",
+            "Nau Right Leather Ring Finger Tip Pad",
+        ),
+        (
+            "Nau Left Leather Pinky Finger Grip",
+            "Nau Left Leather Pinky Finger Tip Pad",
+        ),
+        (
+            "Nau Right Leather Pinky Finger Grip",
+            "Nau Right Leather Pinky Finger Tip Pad",
+        ),
+        (
+            "Nau Left Leather Thumb Grip",
+            "Nau Left Leather Thumb Tip Pad",
+        ),
+        (
+            "Nau Right Leather Thumb Grip",
+            "Nau Right Leather Thumb Tip Pad",
         ),
         (
             "Nau Left Leather Ankle Boot Tongue",
@@ -5768,6 +6687,18 @@ fn player_rest_shoulder_mesh_overlap_max_m(gltf: &Value) -> Option<f64> {
 
 fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {
     &[
+        "Nau Skin Neck Column",
+        "Nau Suit Neck Collar Pad",
+        "Nau Suit Ribcage Soft Volume",
+        "Nau Suit Lower Rib Flex Lip",
+        "Nau Suit Waist Soft Volume",
+        "Nau Suit Abdominal Flex Gasket",
+        "Nau Left Suit Oblique Flex Connector",
+        "Nau Right Suit Oblique Flex Connector",
+        "Nau Left Suit Pectoral Soft Volume",
+        "Nau Right Suit Pectoral Soft Volume",
+        "Nau Left Suit Scapula Soft Volume",
+        "Nau Right Suit Scapula Soft Volume",
         "Nau Left Suit Bicep Volume",
         "Nau Right Suit Bicep Volume",
         "Nau Left Suit Tricep Sweep",
@@ -5782,6 +6713,10 @@ fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {
         "Nau Right Suit Shoulder Chest Blend",
         "Nau Left Suit Axilla Blend",
         "Nau Right Suit Axilla Blend",
+        "Nau Left Suit Shoulder Web Capsule",
+        "Nau Right Suit Shoulder Web Capsule",
+        "Nau Left Suit Lat Shoulder Connector",
+        "Nau Right Suit Lat Shoulder Connector",
         "Nau Left Suit Outer Thigh Sweep",
         "Nau Right Suit Outer Thigh Sweep",
         "Nau Left Suit Inner Thigh Sweep",
@@ -5790,6 +6725,12 @@ fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {
         "Nau Right Suit Hip Root Blend",
         "Nau Left Suit Hip Inguinal Blend",
         "Nau Right Suit Hip Inguinal Blend",
+        "Nau Left Suit Hip Web Capsule",
+        "Nau Right Suit Hip Web Capsule",
+        "Nau Left Suit Glute Hip Connector",
+        "Nau Right Suit Glute Hip Connector",
+        "Nau Left Suit Hip Thigh Fairing",
+        "Nau Right Suit Hip Thigh Fairing",
         "Nau Left Suit Calf Volume",
         "Nau Right Suit Calf Volume",
         "Nau Left Suit Shin Ridge",
@@ -6294,6 +7235,12 @@ fn player_pose_shape_audit() -> Value {
     let launch = pose_readability_metrics(launch_context, 0.0);
     let dive = pose_readability_metrics(dive_context, 0.0);
     let landing_recovery = pose_readability_metrics(landing_recovery_context, 0.0);
+    let hips_part = CharacterPart::new(CharacterPartRole::Hips, Vec3::ZERO, Quat::IDENTITY);
+    let torso_part = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+    let falling_hips = part_pose_with_context(&hips_part, falling_context, 0.0);
+    let falling_torso = part_pose_with_context(&torso_part, falling_context, 0.0);
+    let dive_hips = part_pose_with_context(&hips_part, dive_context, 0.0);
+    let dive_torso = part_pose_with_context(&torso_part, dive_context, 0.0);
     let glider_launch = glider_traversal_pose(launch_context, 0.0);
     let glider_dive = glider_traversal_pose(dive_context, 0.0);
     let max_connected_limb_translation_m = max_connected_limb_translation_m(&[
@@ -6308,9 +7255,13 @@ fn player_pose_shape_audit() -> Value {
     json!({
         "falling_key_pose_readability_score": falling.key_pose_readability_score,
         "falling_torso_pitch_degrees": falling.torso_pitch_degrees,
+        "falling_hips_pitch_degrees": falling_hips.rotation.angle_between(Quat::IDENTITY).to_degrees(),
+        "falling_torso_local_pitch_degrees": falling_torso.rotation.angle_between(Quat::IDENTITY).to_degrees(),
         "falling_arm_spread_degrees": falling.arm_spread_degrees,
         "dive_key_pose_readability_score": dive.key_pose_readability_score,
         "dive_torso_pitch_degrees": dive.torso_pitch_degrees,
+        "dive_hips_pitch_degrees": dive_hips.rotation.angle_between(Quat::IDENTITY).to_degrees(),
+        "dive_torso_local_pitch_degrees": dive_torso.rotation.angle_between(Quat::IDENTITY).to_degrees(),
         "dive_arm_spread_degrees": dive.arm_spread_degrees,
         "dive_leg_tuck_degrees": dive.leg_tuck_degrees,
         "landing_recovery_key_pose_readability_score": landing_recovery.key_pose_readability_score,
@@ -7366,8 +8317,11 @@ mod tests {
             "Nau Left Suit Bicep Volume",
             "Nau Left Suit Shoulder Root Blend",
             "Nau Right Suit Shoulder Chest Blend",
+            "Nau Left Suit Pectoral Soft Volume",
+            "Nau Right Suit Scapula Soft Volume",
             "Nau Left Suit Axilla Blend",
             "Nau Left Suit Hip Root Blend",
+            "Nau Left Suit Hip Thigh Fairing",
             "Nau Right Suit Hip Inguinal Blend",
             "Nau Right Suit Tricep Sweep",
             "Nau Left Leather Finger Web Bridge",
@@ -7568,14 +8522,75 @@ mod tests {
         let specs = player_anatomy_review_specs();
         let sheet = render_player_anatomy_review_sheet(&gltf, &specs).expect("anatomy sheet");
 
-        assert_eq!(specs.len(), 12);
+        assert_eq!(specs.len(), 18);
         assert!(sheet.contains("player anatomy review sheet"));
+        assert!(sheet.contains("Core Connectors Front"));
         assert!(sheet.contains("Shoulders Front"));
         assert!(sheet.contains("Left Hand Top"));
+        assert!(sheet.contains("Right Hand Top"));
         assert!(sheet.contains("Left Boot Side"));
+        assert!(sheet.contains("Right Boot Side"));
+        assert!(sheet.contains("Nau Skin Neck Column"));
+        assert!(sheet.contains("Nau Suit Abdominal Flex Gasket"));
         assert!(sheet.contains("Nau Left Suit Axilla Blend"));
+        assert!(sheet.contains("Nau Left Suit Pectoral Soft Volume"));
+        assert!(sheet.contains("Nau Right Suit Scapula Soft Volume"));
+        assert!(sheet.contains("Nau Left Suit Hip Thigh Fairing"));
         assert!(sheet.contains("Nau Left Leather Thumb Web Pad"));
         assert!(sheet.contains("Nau Left Leather Boot Arch Rib"));
+        assert!(sheet.contains("Nau Right Leather Thumb Web Pad"));
+        assert!(sheet.contains("Nau Right Leather Boot Arch Rib"));
+    }
+
+    #[test]
+    fn player_rig_stress_review_preview_renders_extreme_pose_closeups() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let specs = player_rig_stress_review_specs();
+        let sheet =
+            render_player_rig_stress_review_sheet(&gltf, &specs).expect("stress review sheet");
+
+        assert_eq!(specs.len(), 13);
+        assert!(sheet.contains("player rig stress review sheet"));
+        assert!(sheet.contains("Launch Shoulders Front"));
+        assert!(sheet.contains("Launch Right Hand Front"));
+        assert!(sheet.contains("Fall Core Top"));
+        assert!(sheet.contains("Dive Core Side"));
+        assert!(sheet.contains("Landing Hips Side"));
+        assert!(sheet.contains("Nau Left Suit Shoulder Web Capsule"));
+        assert!(sheet.contains("Nau Suit Lower Rib Flex Lip"));
+        assert!(sheet.contains("Nau Left Suit Pectoral Soft Volume"));
+        assert!(sheet.contains("Nau Left Suit Glute Hip Connector"));
+        assert!(sheet.contains("Nau Right Leather Thumb Tip Pad"));
+    }
+
+    #[test]
+    fn player_motion_integrity_review_preview_renders_large_full_body_panels() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let specs = player_motion_integrity_review_specs();
+        let sheet =
+            render_player_motion_integrity_review_sheet(&gltf, &specs).expect("motion sheet");
+
+        assert_eq!(specs.len(), 15);
+        assert!(sheet.contains("player motion integrity review sheet"));
+        assert!(sheet.contains("Launch Front Full"));
+        assert!(sheet.contains("Fall Top Full"));
+        assert!(sheet.contains("Glide Rear Full"));
+        assert!(sheet.contains("Dive Side Full"));
+        assert!(sheet.contains("Landing Recovery Front Full"));
+        assert!(sheet.contains("Nau Left Suit Pectoral Soft Volume"));
+        assert!(sheet.contains("Nau Left Suit Hip Thigh Fairing"));
+        assert!(sheet.contains("surface distance"));
+
+        let overlay_audit =
+            player_motion_integrity_overlay_warning_audit(&gltf).expect("overlay audit");
+        assert_eq!(
+            number_field(&overlay_audit, "panel_count"),
+            PLAYER_MOTION_INTEGRITY_REVIEW_EXPECTED_PANEL_COUNT
+        );
+        assert_eq!(number_field(&overlay_audit, "warning_count"), 0.0);
+        assert_eq!(number_field(&overlay_audit, "fail_count"), 0.0);
     }
 
     #[test]
