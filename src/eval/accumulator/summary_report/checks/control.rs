@@ -19,6 +19,9 @@ const POSE_STATE_MIN_RUN_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_IDLE_SAMPLES: f32 = 3.0;
 const POSE_STATE_MIN_LAUNCH_SAMPLES: f32 = 3.0;
 const POSE_STATE_MIN_AUTHORED_LAUNCH_CLIP_SAMPLES: f32 = 3.0;
+const POSE_STATE_MIN_AUTHORED_GLIDER_LAUNCH_SAMPLES: f32 = 3.0;
+const POSE_STATE_MIN_AUTHORED_GLIDER_LAUNCH_RESPONSE_DEGREES: f32 = 20.0;
+const POSE_STATE_MIN_AUTHORED_GLIDER_LAUNCH_MOTION_M: f32 = 0.45;
 const POSE_STATE_MIN_FALLING_SAMPLES: f32 = 8.0;
 const POSE_STATE_MIN_GLIDING_POSE_SAMPLES: f32 = 18.0;
 const POSE_STATE_MIN_AUTHORED_GLIDE_CLIP_SAMPLES: f32 = 18.0;
@@ -1125,6 +1128,24 @@ fn append_pose_state_coverage_checks(
             acc.authored_launch_clip_samples as f32,
             POSE_STATE_MIN_AUTHORED_LAUNCH_CLIP_SAMPLES,
             "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_authored_glider_launch_samples",
+            acc.authored_glider_launch_samples as f32,
+            POSE_STATE_MIN_AUTHORED_GLIDER_LAUNCH_SAMPLES,
+            "samples",
+        ),
+        EvalCheck::at_least(
+            "pose_state_authored_glider_launch_response",
+            acc.max_authored_glider_launch_response_degrees,
+            POSE_STATE_MIN_AUTHORED_GLIDER_LAUNCH_RESPONSE_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_least(
+            "pose_state_authored_glider_launch_motion",
+            acc.max_authored_glider_launch_motion_m,
+            POSE_STATE_MIN_AUTHORED_GLIDER_LAUNCH_MOTION_M,
+            "m",
         ),
         EvalCheck::at_least(
             "pose_state_falling_samples",
