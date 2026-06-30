@@ -719,11 +719,16 @@ fn authored_player_transition_profile(
         return AuthoredTransitionProfile::new(0, "settled");
     }
 
-    if matches!(
-        desired,
-        AuthoredPlayerClip::Launch | AuthoredPlayerClip::Land
-    ) {
+    if desired == AuthoredPlayerClip::Launch {
         return AuthoredTransitionProfile::new(40, "urgent_pose");
+    }
+
+    if desired == AuthoredPlayerClip::Land {
+        return if traversal_clip(current) {
+            AuthoredTransitionProfile::new(180, "landing_blend")
+        } else {
+            AuthoredTransitionProfile::new(120, "landing_settle")
+        };
     }
 
     if current == AuthoredPlayerClip::Launch && desired == AuthoredPlayerClip::Fall {
@@ -933,7 +938,11 @@ mod tests {
     fn authored_player_transition_profile_is_pair_aware() {
         assert_eq!(
             authored_player_transition_profile(AuthoredPlayerClip::Glide, AuthoredPlayerClip::Land),
-            AuthoredTransitionProfile::new(40, "urgent_pose")
+            AuthoredTransitionProfile::new(180, "landing_blend")
+        );
+        assert_eq!(
+            authored_player_transition_profile(AuthoredPlayerClip::Run, AuthoredPlayerClip::Land),
+            AuthoredTransitionProfile::new(120, "landing_settle")
         );
         assert_eq!(
             authored_player_transition_profile(
