@@ -70,6 +70,21 @@ const PLAYER_MAX_FINGER_GRIP_LENGTH_M: f64 = 0.22;
 const PLAYER_MIN_BOOT_SOLE_LENGTH_M: f64 = 0.32;
 const PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT: f64 = 98.0;
 const PLAYER_MIN_LIMB_ANATOMY_MAJOR_EXTENT_M: f64 = 0.15;
+const PLAYER_TOPOLOGY_MIN_SHOULDER_WIDTH_M: f64 = 0.84;
+const PLAYER_TOPOLOGY_MAX_SHOULDER_WIDTH_M: f64 = 1.00;
+const PLAYER_TOPOLOGY_MIN_HIP_WIDTH_M: f64 = 0.52;
+const PLAYER_TOPOLOGY_MAX_HIP_WIDTH_M: f64 = 0.64;
+const PLAYER_TOPOLOGY_MIN_SHOULDER_TO_HIP_RATIO: f64 = 1.45;
+const PLAYER_TOPOLOGY_MAX_SHOULDER_TO_HIP_RATIO: f64 = 1.80;
+const PLAYER_TOPOLOGY_MIN_FOREARM_TO_UPPER_ARM_RATIO: f64 = 0.78;
+const PLAYER_TOPOLOGY_MAX_FOREARM_TO_UPPER_ARM_RATIO: f64 = 1.10;
+const PLAYER_TOPOLOGY_MIN_LOWER_LEG_TO_THIGH_RATIO: f64 = 0.82;
+const PLAYER_TOPOLOGY_MAX_LOWER_LEG_TO_THIGH_RATIO: f64 = 1.08;
+const PLAYER_TOPOLOGY_MAX_ARM_TO_LEG_CHAIN_RATIO: f64 = 1.32;
+const PLAYER_TOPOLOGY_MAX_BILATERAL_DELTA_M: f64 = 0.015;
+const PLAYER_TOPOLOGY_MAX_HEAD_CENTER_OFFSET_M: f64 = 0.04;
+const PLAYER_TOPOLOGY_MIN_NECK_TO_SHOULDER_RISE_M: f64 = 0.12;
+const PLAYER_TOPOLOGY_MAX_NECK_TO_SHOULDER_RISE_M: f64 = 0.32;
 const PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT: f64 = 0.45;
 const PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT: f64 = 0.70;
 const PLAYER_GLIDER_MIN_LAUNCH_RESPONSE_DEGREES: f64 = 8.0;
@@ -701,6 +716,7 @@ fn export_player_pose_preview(output_dir: &Path) -> Result<Value, String> {
         })).collect::<Vec<_>>(),
         "joint_seam_contact_audit": player_joint_seam_contact_audit(&gltf),
         "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit(&gltf),
+        "player_human_topology_audit": player_human_topology_audit(&gltf),
         "player_mesh_silhouette_audit": player_mesh_silhouette_audit(&gltf),
         "motion_integrity_overlay_warning_audit": motion_overlay_warning_audit,
         "surface_contact_audit": player_pose_surface_contact_audit(&gltf),
@@ -3703,6 +3719,10 @@ fn audit_fixture(
         .require_player_clips
         .then(|| player_limb_anatomy_detail_audit(&gltf))
         .flatten();
+    let player_human_topology_audit = requirement
+        .require_player_clips
+        .then(|| player_human_topology_audit(&gltf))
+        .flatten();
     let player_mesh_silhouette_audit = requirement
         .require_player_clips
         .then(|| player_mesh_silhouette_audit(&gltf))
@@ -3863,6 +3883,105 @@ fn audit_fixture(
             number_field(limb_anatomy, "missing_count"),
             0.0,
             "nodes",
+        ));
+        let human_topology = player_human_topology_audit
+            .as_ref()
+            .expect("player human topology audit should be present for player fixture");
+        checks.push(check_at_least_f64(
+            "player_human_topology_shoulder_width_min",
+            number_field(human_topology, "shoulder_width_m"),
+            PLAYER_TOPOLOGY_MIN_SHOULDER_WIDTH_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_human_topology_shoulder_width_max",
+            number_field(human_topology, "shoulder_width_m"),
+            PLAYER_TOPOLOGY_MAX_SHOULDER_WIDTH_M,
+            "m",
+        ));
+        checks.push(check_at_least_f64(
+            "player_human_topology_hip_width_min",
+            number_field(human_topology, "hip_width_m"),
+            PLAYER_TOPOLOGY_MIN_HIP_WIDTH_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_human_topology_hip_width_max",
+            number_field(human_topology, "hip_width_m"),
+            PLAYER_TOPOLOGY_MAX_HIP_WIDTH_M,
+            "m",
+        ));
+        checks.push(check_at_least_f64(
+            "player_human_topology_shoulder_to_hip_ratio_min",
+            number_field(human_topology, "shoulder_to_hip_ratio"),
+            PLAYER_TOPOLOGY_MIN_SHOULDER_TO_HIP_RATIO,
+            "ratio",
+        ));
+        checks.push(check_at_most_f64(
+            "player_human_topology_shoulder_to_hip_ratio_max",
+            number_field(human_topology, "shoulder_to_hip_ratio"),
+            PLAYER_TOPOLOGY_MAX_SHOULDER_TO_HIP_RATIO,
+            "ratio",
+        ));
+        checks.push(check_at_least_f64(
+            "player_human_topology_forearm_to_upper_arm_ratio_min",
+            number_field(human_topology, "min_forearm_to_upper_arm_ratio"),
+            PLAYER_TOPOLOGY_MIN_FOREARM_TO_UPPER_ARM_RATIO,
+            "ratio",
+        ));
+        checks.push(check_at_most_f64(
+            "player_human_topology_forearm_to_upper_arm_ratio_max",
+            number_field(human_topology, "max_forearm_to_upper_arm_ratio"),
+            PLAYER_TOPOLOGY_MAX_FOREARM_TO_UPPER_ARM_RATIO,
+            "ratio",
+        ));
+        checks.push(check_at_least_f64(
+            "player_human_topology_lower_leg_to_thigh_ratio_min",
+            number_field(human_topology, "min_lower_leg_to_thigh_ratio"),
+            PLAYER_TOPOLOGY_MIN_LOWER_LEG_TO_THIGH_RATIO,
+            "ratio",
+        ));
+        checks.push(check_at_most_f64(
+            "player_human_topology_lower_leg_to_thigh_ratio_max",
+            number_field(human_topology, "max_lower_leg_to_thigh_ratio"),
+            PLAYER_TOPOLOGY_MAX_LOWER_LEG_TO_THIGH_RATIO,
+            "ratio",
+        ));
+        checks.push(check_at_most_f64(
+            "player_human_topology_arm_to_leg_chain_ratio_max",
+            number_field(human_topology, "arm_to_leg_chain_ratio"),
+            PLAYER_TOPOLOGY_MAX_ARM_TO_LEG_CHAIN_RATIO,
+            "ratio",
+        ));
+        checks.push(check_at_most_f64(
+            "player_human_topology_bilateral_delta_max",
+            number_field(human_topology, "max_bilateral_delta_m"),
+            PLAYER_TOPOLOGY_MAX_BILATERAL_DELTA_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_human_topology_head_center_offset",
+            number_field(human_topology, "head_center_offset_m"),
+            PLAYER_TOPOLOGY_MAX_HEAD_CENTER_OFFSET_M,
+            "m",
+        ));
+        checks.push(check_at_least_f64(
+            "player_human_topology_neck_to_shoulder_rise_min",
+            number_field(human_topology, "neck_to_shoulder_rise_m"),
+            PLAYER_TOPOLOGY_MIN_NECK_TO_SHOULDER_RISE_M,
+            "m",
+        ));
+        checks.push(check_at_most_f64(
+            "player_human_topology_neck_to_shoulder_rise_max",
+            number_field(human_topology, "neck_to_shoulder_rise_m"),
+            PLAYER_TOPOLOGY_MAX_NECK_TO_SHOULDER_RISE_M,
+            "m",
+        ));
+        checks.push(check_eq_f64(
+            "player_human_topology_breach_count",
+            number_field(human_topology, "breach_count"),
+            0.0,
+            "breaches",
         ));
         let mesh_silhouette = player_mesh_silhouette_audit
             .as_ref()
@@ -4452,6 +4571,7 @@ fn audit_fixture(
         "player_finger_grip_length_range_m": player_finger_grip_length_range_m(&gltf).map(|(min, max)| json!({"min": min, "max": max})),
         "player_boot_sole_length_min_m": player_boot_sole_length_min_m(&gltf),
         "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit,
+        "player_human_topology_audit": player_human_topology_audit,
         "player_mesh_silhouette_audit": player_mesh_silhouette_audit,
         "player_motion_integrity_overlay_warning_audit": player_motion_integrity_overlay_warning_audit,
         "player_rest_non_adjacent_mesh_overlap_max_m": player_rest_non_adjacent_mesh_overlap_max_m(&gltf),
@@ -7023,6 +7143,250 @@ fn player_limb_anatomy_detail_audit(gltf: &Value) -> Option<Value> {
     }))
 }
 
+fn player_human_topology_audit(gltf: &Value) -> Option<Value> {
+    let left_shoulder = world_node_translation(gltf, "Nau Left Shoulder Socket")?;
+    let right_shoulder = world_node_translation(gltf, "Nau Right Shoulder Socket")?;
+    let left_hip = world_node_translation(gltf, "Nau Left Hip Socket")?;
+    let right_hip = world_node_translation(gltf, "Nau Right Hip Socket")?;
+    let neck = world_node_translation(gltf, "Nau Neck Socket")?;
+    let head = world_node_translation(gltf, "Nau Head")?;
+    let left_elbow = world_node_translation(gltf, "Nau Left Elbow Socket")?;
+    let right_elbow = world_node_translation(gltf, "Nau Right Elbow Socket")?;
+    let left_wrist = world_node_translation(gltf, "Nau Left Wrist Socket")?;
+    let right_wrist = world_node_translation(gltf, "Nau Right Wrist Socket")?;
+    let left_knee = world_node_translation(gltf, "Nau Left Knee Socket")?;
+    let right_knee = world_node_translation(gltf, "Nau Right Knee Socket")?;
+    let left_ankle = world_node_translation(gltf, "Nau Left Ankle Socket")?;
+    let right_ankle = world_node_translation(gltf, "Nau Right Ankle Socket")?;
+
+    let shoulder_width_m = distance3(left_shoulder, right_shoulder);
+    let hip_width_m = distance3(left_hip, right_hip);
+    let shoulder_center = midpoint3(left_shoulder, right_shoulder);
+    let hip_center = midpoint3(left_hip, right_hip);
+    let shoulder_to_hip_ratio = shoulder_width_m / hip_width_m.max(0.001);
+    let head_center_offset_m = horizontal_distance3(head, shoulder_center);
+    let neck_to_shoulder_rise_m = neck[1] - shoulder_center[1];
+    let torso_center_offset_m = horizontal_distance3(shoulder_center, hip_center);
+
+    let left_upper_arm_m = distance3(left_shoulder, left_elbow);
+    let right_upper_arm_m = distance3(right_shoulder, right_elbow);
+    let left_forearm_m = distance3(left_elbow, left_wrist);
+    let right_forearm_m = distance3(right_elbow, right_wrist);
+    let left_thigh_m = distance3(left_hip, left_knee);
+    let right_thigh_m = distance3(right_hip, right_knee);
+    let left_lower_leg_m = distance3(left_knee, left_ankle);
+    let right_lower_leg_m = distance3(right_knee, right_ankle);
+    let left_arm_chain_m = left_upper_arm_m + left_forearm_m;
+    let right_arm_chain_m = right_upper_arm_m + right_forearm_m;
+    let left_leg_chain_m = left_thigh_m + left_lower_leg_m;
+    let right_leg_chain_m = right_thigh_m + right_lower_leg_m;
+    let forearm_to_upper_arm_ratios = [
+        left_forearm_m / left_upper_arm_m.max(0.001),
+        right_forearm_m / right_upper_arm_m.max(0.001),
+    ];
+    let lower_leg_to_thigh_ratios = [
+        left_lower_leg_m / left_thigh_m.max(0.001),
+        right_lower_leg_m / right_thigh_m.max(0.001),
+    ];
+    let min_forearm_to_upper_arm_ratio = min_f64(forearm_to_upper_arm_ratios);
+    let max_forearm_to_upper_arm_ratio = max_f64(forearm_to_upper_arm_ratios);
+    let min_lower_leg_to_thigh_ratio = min_f64(lower_leg_to_thigh_ratios);
+    let max_lower_leg_to_thigh_ratio = max_f64(lower_leg_to_thigh_ratios);
+    let arm_to_leg_chain_ratio = max_f64([left_arm_chain_m, right_arm_chain_m])
+        / max_f64([left_leg_chain_m, right_leg_chain_m]).max(0.001);
+    let max_bilateral_delta_m = max_f64([
+        (left_upper_arm_m - right_upper_arm_m).abs(),
+        (left_forearm_m - right_forearm_m).abs(),
+        (left_thigh_m - right_thigh_m).abs(),
+        (left_lower_leg_m - right_lower_leg_m).abs(),
+        (left_arm_chain_m - right_arm_chain_m).abs(),
+        (left_leg_chain_m - right_leg_chain_m).abs(),
+        (left_shoulder[1] - right_shoulder[1]).abs(),
+        (left_shoulder[2] - right_shoulder[2]).abs(),
+        (left_hip[1] - right_hip[1]).abs(),
+        (left_hip[2] - right_hip[2]).abs(),
+        (left_elbow[1] - right_elbow[1]).abs(),
+        (left_elbow[2] - right_elbow[2]).abs(),
+        (left_wrist[1] - right_wrist[1]).abs(),
+        (left_wrist[2] - right_wrist[2]).abs(),
+        (left_knee[1] - right_knee[1]).abs(),
+        (left_knee[2] - right_knee[2]).abs(),
+        (left_ankle[1] - right_ankle[1]).abs(),
+        (left_ankle[2] - right_ankle[2]).abs(),
+    ]);
+
+    let mut breaches = Vec::new();
+    push_topology_breach_min(
+        &mut breaches,
+        "shoulder_width_m",
+        shoulder_width_m,
+        PLAYER_TOPOLOGY_MIN_SHOULDER_WIDTH_M,
+    );
+    push_topology_breach_max(
+        &mut breaches,
+        "shoulder_width_m",
+        shoulder_width_m,
+        PLAYER_TOPOLOGY_MAX_SHOULDER_WIDTH_M,
+    );
+    push_topology_breach_min(
+        &mut breaches,
+        "hip_width_m",
+        hip_width_m,
+        PLAYER_TOPOLOGY_MIN_HIP_WIDTH_M,
+    );
+    push_topology_breach_max(
+        &mut breaches,
+        "hip_width_m",
+        hip_width_m,
+        PLAYER_TOPOLOGY_MAX_HIP_WIDTH_M,
+    );
+    push_topology_breach_min(
+        &mut breaches,
+        "shoulder_to_hip_ratio",
+        shoulder_to_hip_ratio,
+        PLAYER_TOPOLOGY_MIN_SHOULDER_TO_HIP_RATIO,
+    );
+    push_topology_breach_max(
+        &mut breaches,
+        "shoulder_to_hip_ratio",
+        shoulder_to_hip_ratio,
+        PLAYER_TOPOLOGY_MAX_SHOULDER_TO_HIP_RATIO,
+    );
+    push_topology_breach_min(
+        &mut breaches,
+        "min_forearm_to_upper_arm_ratio",
+        min_forearm_to_upper_arm_ratio,
+        PLAYER_TOPOLOGY_MIN_FOREARM_TO_UPPER_ARM_RATIO,
+    );
+    push_topology_breach_max(
+        &mut breaches,
+        "max_forearm_to_upper_arm_ratio",
+        max_forearm_to_upper_arm_ratio,
+        PLAYER_TOPOLOGY_MAX_FOREARM_TO_UPPER_ARM_RATIO,
+    );
+    push_topology_breach_min(
+        &mut breaches,
+        "min_lower_leg_to_thigh_ratio",
+        min_lower_leg_to_thigh_ratio,
+        PLAYER_TOPOLOGY_MIN_LOWER_LEG_TO_THIGH_RATIO,
+    );
+    push_topology_breach_max(
+        &mut breaches,
+        "max_lower_leg_to_thigh_ratio",
+        max_lower_leg_to_thigh_ratio,
+        PLAYER_TOPOLOGY_MAX_LOWER_LEG_TO_THIGH_RATIO,
+    );
+    push_topology_breach_max(
+        &mut breaches,
+        "arm_to_leg_chain_ratio",
+        arm_to_leg_chain_ratio,
+        PLAYER_TOPOLOGY_MAX_ARM_TO_LEG_CHAIN_RATIO,
+    );
+    push_topology_breach_max(
+        &mut breaches,
+        "max_bilateral_delta_m",
+        max_bilateral_delta_m,
+        PLAYER_TOPOLOGY_MAX_BILATERAL_DELTA_M,
+    );
+    push_topology_breach_max(
+        &mut breaches,
+        "head_center_offset_m",
+        head_center_offset_m,
+        PLAYER_TOPOLOGY_MAX_HEAD_CENTER_OFFSET_M,
+    );
+    push_topology_breach_min(
+        &mut breaches,
+        "neck_to_shoulder_rise_m",
+        neck_to_shoulder_rise_m,
+        PLAYER_TOPOLOGY_MIN_NECK_TO_SHOULDER_RISE_M,
+    );
+    push_topology_breach_max(
+        &mut breaches,
+        "neck_to_shoulder_rise_m",
+        neck_to_shoulder_rise_m,
+        PLAYER_TOPOLOGY_MAX_NECK_TO_SHOULDER_RISE_M,
+    );
+
+    Some(json!({
+        "schema": "nau_player_human_topology_audit.v1",
+        "shoulder_width_m": shoulder_width_m,
+        "hip_width_m": hip_width_m,
+        "shoulder_to_hip_ratio": shoulder_to_hip_ratio,
+        "head_center_offset_m": head_center_offset_m,
+        "torso_center_offset_m": torso_center_offset_m,
+        "neck_to_shoulder_rise_m": neck_to_shoulder_rise_m,
+        "left_upper_arm_m": left_upper_arm_m,
+        "right_upper_arm_m": right_upper_arm_m,
+        "left_forearm_m": left_forearm_m,
+        "right_forearm_m": right_forearm_m,
+        "left_thigh_m": left_thigh_m,
+        "right_thigh_m": right_thigh_m,
+        "left_lower_leg_m": left_lower_leg_m,
+        "right_lower_leg_m": right_lower_leg_m,
+        "left_arm_chain_m": left_arm_chain_m,
+        "right_arm_chain_m": right_arm_chain_m,
+        "left_leg_chain_m": left_leg_chain_m,
+        "right_leg_chain_m": right_leg_chain_m,
+        "min_forearm_to_upper_arm_ratio": min_forearm_to_upper_arm_ratio,
+        "max_forearm_to_upper_arm_ratio": max_forearm_to_upper_arm_ratio,
+        "min_lower_leg_to_thigh_ratio": min_lower_leg_to_thigh_ratio,
+        "max_lower_leg_to_thigh_ratio": max_lower_leg_to_thigh_ratio,
+        "arm_to_leg_chain_ratio": arm_to_leg_chain_ratio,
+        "max_bilateral_delta_m": max_bilateral_delta_m,
+        "breach_count": breaches.len(),
+        "breaches": breaches,
+        "thresholds": {
+            "shoulder_width_min_m": PLAYER_TOPOLOGY_MIN_SHOULDER_WIDTH_M,
+            "shoulder_width_max_m": PLAYER_TOPOLOGY_MAX_SHOULDER_WIDTH_M,
+            "hip_width_min_m": PLAYER_TOPOLOGY_MIN_HIP_WIDTH_M,
+            "hip_width_max_m": PLAYER_TOPOLOGY_MAX_HIP_WIDTH_M,
+            "shoulder_to_hip_ratio_min": PLAYER_TOPOLOGY_MIN_SHOULDER_TO_HIP_RATIO,
+            "shoulder_to_hip_ratio_max": PLAYER_TOPOLOGY_MAX_SHOULDER_TO_HIP_RATIO,
+            "forearm_to_upper_arm_ratio_min": PLAYER_TOPOLOGY_MIN_FOREARM_TO_UPPER_ARM_RATIO,
+            "forearm_to_upper_arm_ratio_max": PLAYER_TOPOLOGY_MAX_FOREARM_TO_UPPER_ARM_RATIO,
+            "lower_leg_to_thigh_ratio_min": PLAYER_TOPOLOGY_MIN_LOWER_LEG_TO_THIGH_RATIO,
+            "lower_leg_to_thigh_ratio_max": PLAYER_TOPOLOGY_MAX_LOWER_LEG_TO_THIGH_RATIO,
+            "arm_to_leg_chain_ratio_max": PLAYER_TOPOLOGY_MAX_ARM_TO_LEG_CHAIN_RATIO,
+            "bilateral_delta_max_m": PLAYER_TOPOLOGY_MAX_BILATERAL_DELTA_M,
+            "head_center_offset_max_m": PLAYER_TOPOLOGY_MAX_HEAD_CENTER_OFFSET_M,
+            "neck_to_shoulder_rise_min_m": PLAYER_TOPOLOGY_MIN_NECK_TO_SHOULDER_RISE_M,
+            "neck_to_shoulder_rise_max_m": PLAYER_TOPOLOGY_MAX_NECK_TO_SHOULDER_RISE_M,
+        }
+    }))
+}
+
+fn push_topology_breach_min(
+    breaches: &mut Vec<Value>,
+    name: &'static str,
+    value: f64,
+    threshold: f64,
+) {
+    if value < threshold {
+        breaches.push(json!({
+            "name": name,
+            "value": value,
+            "comparator": ">=",
+            "threshold": threshold,
+        }));
+    }
+}
+
+fn push_topology_breach_max(
+    breaches: &mut Vec<Value>,
+    name: &'static str,
+    value: f64,
+    threshold: f64,
+) {
+    if value > threshold {
+        breaches.push(json!({
+            "name": name,
+            "value": value,
+            "comparator": "<=",
+            "threshold": threshold,
+        }));
+    }
+}
+
 fn player_finger_grip_node_names() -> [&'static str; 10] {
     [
         "Nau Left Leather Index Finger Grip",
@@ -8048,6 +8412,28 @@ fn distance3(a: [f64; 3], b: [f64; 3]) -> f64 {
     (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
+fn horizontal_distance3(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let dx = a[0] - b[0];
+    let dz = a[2] - b[2];
+    (dx * dx + dz * dz).sqrt()
+}
+
+fn midpoint3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        (a[0] + b[0]) * 0.5,
+        (a[1] + b[1]) * 0.5,
+        (a[2] + b[2]) * 0.5,
+    ]
+}
+
+fn min_f64(values: [f64; 2]) -> f64 {
+    values.into_iter().fold(f64::INFINITY, f64::min)
+}
+
+fn max_f64<const N: usize>(values: [f64; N]) -> f64 {
+    values.into_iter().fold(f64::NEG_INFINITY, f64::max)
+}
+
 fn checks_passed(checks: &[Value]) -> bool {
     checks.iter().all(|check| {
         check
@@ -8570,6 +8956,59 @@ mod tests {
                     })
             );
         }
+    }
+
+    #[test]
+    fn player_human_topology_audit_reports_balanced_rest_pose() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let audit = player_human_topology_audit(&gltf).expect("human topology audit");
+
+        assert_eq!(number_field(&audit, "breach_count"), 0.0);
+        assert!(number_field(&audit, "shoulder_width_m") <= PLAYER_TOPOLOGY_MAX_SHOULDER_WIDTH_M);
+        assert!(number_field(&audit, "hip_width_m") >= PLAYER_TOPOLOGY_MIN_HIP_WIDTH_M);
+        assert!(
+            number_field(&audit, "shoulder_to_hip_ratio")
+                <= PLAYER_TOPOLOGY_MAX_SHOULDER_TO_HIP_RATIO
+        );
+        assert!(
+            number_field(&audit, "max_bilateral_delta_m") <= PLAYER_TOPOLOGY_MAX_BILATERAL_DELTA_M
+        );
+    }
+
+    #[test]
+    fn player_human_topology_audit_rejects_overwide_shoulders() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let mut gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        set_node_translation_for_test(&mut gltf, "Nau Left Shoulder Socket", [-0.75, 0.558, -0.02]);
+        set_node_translation_for_test(&mut gltf, "Nau Right Shoulder Socket", [0.75, 0.558, -0.02]);
+        let audit = player_human_topology_audit(&gltf).expect("human topology audit");
+
+        assert!(number_field(&audit, "breach_count") > 0.0);
+        assert!(
+            number_field(&audit, "shoulder_to_hip_ratio")
+                > PLAYER_TOPOLOGY_MAX_SHOULDER_TO_HIP_RATIO
+        );
+        assert!(
+            audit
+                .get("breaches")
+                .and_then(Value::as_array)
+                .is_some_and(|breaches| breaches.iter().any(|breach| {
+                    breach.get("name").and_then(Value::as_str) == Some("shoulder_to_hip_ratio")
+                }))
+        );
+    }
+
+    fn set_node_translation_for_test(gltf: &mut Value, node_name: &str, translation: [f64; 3]) {
+        let nodes = gltf
+            .get_mut("nodes")
+            .and_then(Value::as_array_mut)
+            .expect("nodes");
+        let node = nodes
+            .iter_mut()
+            .find(|node| node.get("name").and_then(Value::as_str) == Some(node_name))
+            .expect("named node");
+        node["translation"] = json!(translation);
     }
 
     #[test]
