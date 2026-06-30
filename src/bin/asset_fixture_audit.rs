@@ -85,6 +85,9 @@ const PLAYER_MAX_FINGER_GRIP_LENGTH_M: f64 = 0.22;
 const PLAYER_MIN_BOOT_SOLE_LENGTH_M: f64 = 0.32;
 const PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT: f64 = 98.0;
 const PLAYER_MIN_LIMB_ANATOMY_MAJOR_EXTENT_M: f64 = 0.15;
+const PLAYER_ORGANIC_LIMB_VOLUME_EXPECTED_MESH_COUNT: f64 = 5.0;
+const PLAYER_ORGANIC_LIMB_VOLUME_MIN_VERTEX_COUNT: f64 = 580.0;
+const PLAYER_ORGANIC_LIMB_VOLUME_MIN_TRIANGLE_COUNT: f64 = 1100.0;
 const PLAYER_TOPOLOGY_MIN_SHOULDER_WIDTH_M: f64 = 0.84;
 const PLAYER_TOPOLOGY_MAX_SHOULDER_WIDTH_M: f64 = 1.00;
 const PLAYER_TOPOLOGY_MIN_HIP_WIDTH_M: f64 = 0.52;
@@ -3875,6 +3878,10 @@ fn audit_fixture(
         .require_player_clips
         .then(|| player_limb_anatomy_detail_audit(&gltf))
         .flatten();
+    let player_organic_limb_volume_audit = requirement
+        .require_player_clips
+        .then(|| player_organic_limb_volume_audit(&gltf))
+        .flatten();
     let player_human_topology_audit = requirement
         .require_player_clips
         .then(|| player_human_topology_audit(&gltf))
@@ -4039,6 +4046,33 @@ fn audit_fixture(
             number_field(limb_anatomy, "missing_count"),
             0.0,
             "nodes",
+        ));
+        let organic_limb_volume = player_organic_limb_volume_audit
+            .as_ref()
+            .expect("player organic limb volume audit should be present for player fixture");
+        checks.push(check_eq_f64(
+            "player_organic_limb_volume_mesh_count",
+            number_field(organic_limb_volume, "present_mesh_count"),
+            PLAYER_ORGANIC_LIMB_VOLUME_EXPECTED_MESH_COUNT,
+            "meshes",
+        ));
+        checks.push(check_eq_f64(
+            "player_organic_limb_volume_missing_count",
+            number_field(organic_limb_volume, "missing_count"),
+            0.0,
+            "meshes",
+        ));
+        checks.push(check_at_least_f64(
+            "player_organic_limb_volume_vertex_count_min",
+            number_field(organic_limb_volume, "min_vertex_count"),
+            PLAYER_ORGANIC_LIMB_VOLUME_MIN_VERTEX_COUNT,
+            "vertices",
+        ));
+        checks.push(check_at_least_f64(
+            "player_organic_limb_volume_triangle_count_min",
+            number_field(organic_limb_volume, "min_triangle_count"),
+            PLAYER_ORGANIC_LIMB_VOLUME_MIN_TRIANGLE_COUNT,
+            "triangles",
         ));
         let human_topology = player_human_topology_audit
             .as_ref()
@@ -4800,11 +4834,14 @@ fn audit_fixture(
         "player_finger_grip_length_range_m": player_finger_grip_length_range_m(&gltf).map(|(min, max)| json!({"min": min, "max": max})),
         "player_boot_sole_length_min_m": player_boot_sole_length_min_m(&gltf),
         "player_limb_anatomy_detail_audit": player_limb_anatomy_detail_audit,
+        "player_organic_limb_volume_audit": player_organic_limb_volume_audit,
         "player_human_topology_audit": player_human_topology_audit,
         "player_mesh_silhouette_audit": player_mesh_silhouette_audit,
         "player_motion_integrity_overlay_warning_audit": player_motion_integrity_overlay_warning_audit,
         "player_rest_non_adjacent_mesh_overlap_max_m": player_rest_non_adjacent_mesh_overlap_max_m(&gltf),
+        "player_rest_non_adjacent_mesh_overlap_worst_pair": player_rest_non_adjacent_mesh_overlap_report(&gltf).map(|report| report.to_json()),
         "player_rest_shoulder_mesh_overlap_max_m": player_rest_shoulder_mesh_overlap_max_m(&gltf),
+        "player_rest_shoulder_mesh_overlap_worst_pair": player_rest_shoulder_mesh_overlap_report(&gltf).map(|report| report.to_json()),
         "player_pose_non_adjacent_mesh_overlap_max_m": player_pose_non_adjacent_mesh_overlap_max_m(&gltf),
         "player_pose_non_adjacent_mesh_overlap_worst_pair": player_pose_non_adjacent_mesh_overlap_report(&gltf).map(|report| report.to_json()),
         "player_pose_articulated_joint_gap_max_m": player_pose_articulated_joint_gap_max_m(&gltf),
@@ -7591,8 +7628,16 @@ fn player_rest_non_adjacent_mesh_overlap_max_m(gltf: &Value) -> Option<f64> {
     mesh_overlap_max_m(gltf, &player_rest_non_adjacent_mesh_overlap_pairs())
 }
 
+fn player_rest_non_adjacent_mesh_overlap_report(gltf: &Value) -> Option<MeshOverlapReport> {
+    mesh_overlap_report(gltf, &player_rest_non_adjacent_mesh_overlap_pairs())
+}
+
 fn player_rest_shoulder_mesh_overlap_max_m(gltf: &Value) -> Option<f64> {
-    mesh_overlap_max_m(
+    player_rest_shoulder_mesh_overlap_report(gltf).map(|report| report.max_overlap_m)
+}
+
+fn player_rest_shoulder_mesh_overlap_report(gltf: &Value) -> Option<MeshOverlapReport> {
+    mesh_overlap_report(
         gltf,
         &[
             ("Nau Left Suit Upper Arm", "Nau Suit Armored Torso Shell"),
@@ -7745,6 +7790,77 @@ fn player_limb_anatomy_detail_audit(gltf: &Value) -> Option<Value> {
         },
         "samples": samples,
     }))
+}
+
+fn player_organic_limb_volume_mesh_names() -> [&'static str; 5] {
+    [
+        "Nau Suit Upper Arm",
+        "Nau Leather Forearm Wrap",
+        "Nau Suit Thigh Guard",
+        "Nau Suit Lower Leg Greave",
+        "Nau Leather Boot",
+    ]
+}
+
+fn player_organic_limb_volume_audit(gltf: &Value) -> Option<Value> {
+    let mut samples = Vec::new();
+    let mut missing = Vec::new();
+    let mut present_mesh_count = 0_u64;
+    let mut min_vertex_count = u64::MAX;
+    let mut min_triangle_count = u64::MAX;
+
+    for mesh_name in player_organic_limb_volume_mesh_names() {
+        let Some((vertex_count, triangle_count)) =
+            named_mesh_vertex_triangle_counts(gltf, mesh_name)
+        else {
+            missing.push(mesh_name);
+            continue;
+        };
+        present_mesh_count += 1;
+        min_vertex_count = min_vertex_count.min(vertex_count);
+        min_triangle_count = min_triangle_count.min(triangle_count);
+        samples.push(json!({
+            "mesh": mesh_name,
+            "vertex_count": vertex_count,
+            "triangle_count": triangle_count,
+        }));
+    }
+
+    Some(json!({
+        "schema": "nau_player_organic_limb_volume_audit.v1",
+        "expected_mesh_count": player_organic_limb_volume_mesh_names().len(),
+        "present_mesh_count": present_mesh_count,
+        "missing_count": missing.len(),
+        "missing": missing,
+        "min_vertex_count": if min_vertex_count == u64::MAX { 0 } else { min_vertex_count },
+        "min_triangle_count": if min_triangle_count == u64::MAX { 0 } else { min_triangle_count },
+        "thresholds": {
+            "mesh_count": PLAYER_ORGANIC_LIMB_VOLUME_EXPECTED_MESH_COUNT,
+            "vertex_count_min": PLAYER_ORGANIC_LIMB_VOLUME_MIN_VERTEX_COUNT,
+            "triangle_count_min": PLAYER_ORGANIC_LIMB_VOLUME_MIN_TRIANGLE_COUNT,
+        },
+        "samples": samples,
+    }))
+}
+
+fn named_mesh_vertex_triangle_counts(gltf: &Value, mesh_name: &str) -> Option<(u64, u64)> {
+    let accessors = gltf.get("accessors")?.as_array()?;
+    let mesh = gltf
+        .get("meshes")?
+        .as_array()?
+        .iter()
+        .find(|mesh| mesh.get("name").and_then(Value::as_str) == Some(mesh_name))?;
+    let mut vertex_count = 0_u64;
+    let mut triangle_count = 0_u64;
+    for primitive in mesh.get("primitives")?.as_array()? {
+        let attributes = primitive.get("attributes")?;
+        let position_accessor = attributes.get("POSITION")?.as_u64()?;
+        vertex_count += accessor_count(accessors, position_accessor);
+        if let Some(index_accessor) = primitive.get("indices").and_then(Value::as_u64) {
+            triangle_count += accessor_count(accessors, index_accessor) / 3;
+        }
+    }
+    Some((vertex_count, triangle_count))
 }
 
 fn player_human_topology_audit(gltf: &Value) -> Option<Value> {
@@ -8070,16 +8186,27 @@ fn player_pose_non_adjacent_mesh_overlap_report(gltf: &Value) -> Option<MeshOver
 }
 
 fn mesh_overlap_max_m(gltf: &Value, pairs: &[(&'static str, &'static str)]) -> Option<f64> {
-    pairs
-        .iter()
-        .map(|(left, right)| {
-            Some(
-                node_world_mesh_aabb(gltf, left)?
-                    .overlap_depth_m(node_world_mesh_aabb(gltf, right)?),
-            )
-        })
-        .collect::<Option<Vec<_>>>()
-        .map(|overlaps| overlaps.into_iter().fold(0.0, f64::max))
+    mesh_overlap_report(gltf, pairs).map(|report| report.max_overlap_m)
+}
+
+fn mesh_overlap_report(
+    gltf: &Value,
+    pairs: &[(&'static str, &'static str)],
+) -> Option<MeshOverlapReport> {
+    let mut report = MeshOverlapReport::zero();
+    for (left, right) in pairs.iter().copied() {
+        let left_bounds = node_world_mesh_aabb(gltf, left)?;
+        let right_bounds = node_world_mesh_aabb(gltf, right)?;
+        report.observe_label(
+            left_bounds.overlap_depth_m(right_bounds),
+            left_bounds.overlap_axes_m(right_bounds),
+            left,
+            right,
+            "rest",
+            0.0,
+        );
+    }
+    Some(report)
 }
 
 fn player_pose_mesh_overlap_contexts() -> [PlayerPoseContext; 10] {
@@ -9630,6 +9757,26 @@ mod tests {
                     })
             );
         }
+    }
+
+    #[test]
+    fn player_organic_limb_volume_audit_rejects_low_density_rods() {
+        let text = fs::read_to_string("assets/models/player/player.gltf").expect("player fixture");
+        let gltf = serde_json::from_str::<Value>(&text).expect("player gltf");
+        let audit = player_organic_limb_volume_audit(&gltf).expect("organic limb volume audit");
+
+        assert_eq!(
+            number_field(&audit, "present_mesh_count"),
+            PLAYER_ORGANIC_LIMB_VOLUME_EXPECTED_MESH_COUNT
+        );
+        assert_eq!(number_field(&audit, "missing_count"), 0.0);
+        assert!(
+            number_field(&audit, "min_vertex_count") >= PLAYER_ORGANIC_LIMB_VOLUME_MIN_VERTEX_COUNT
+        );
+        assert!(
+            number_field(&audit, "min_triangle_count")
+                >= PLAYER_ORGANIC_LIMB_VOLUME_MIN_TRIANGLE_COUNT
+        );
     }
 
     #[test]
