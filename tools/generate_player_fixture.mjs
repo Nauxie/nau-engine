@@ -306,6 +306,70 @@ function organicLimbMesh(bottomRadius, midRadius, topRadius, segments = 58, ring
   return { positions, normals, uvs, indices };
 }
 
+function organicFingerMesh(baseRadius, midRadius, tipRadius, segments = 26, rings = 11) {
+  const positions = [];
+  const normals = [];
+  const uvs = [];
+  for (let ring = 0; ring <= rings; ring += 1) {
+    const t = ring / rings;
+    const y = -0.5 + t;
+    const lowerBlend = Math.max(0, 1 - t * 2);
+    const upperBlend = Math.max(0, t * 2 - 1);
+    const midBlend = 1 - lowerBlend - upperBlend;
+    const knuckleBulge =
+      1.0
+      + 0.16 * Math.exp(-Math.pow((t - 0.28) / 0.16, 2))
+      + 0.10 * Math.exp(-Math.pow((t - 0.68) / 0.18, 2));
+    const padBelly = 1.0 + 0.10 * Math.exp(-Math.pow((t - 0.84) / 0.20, 2));
+    const radiusX = (baseRadius[0] * lowerBlend + midRadius[0] * midBlend + tipRadius[0] * upperBlend)
+      * knuckleBulge;
+    const radiusZ = (baseRadius[1] * lowerBlend + midRadius[1] * midBlend + tipRadius[1] * upperBlend)
+      * padBelly;
+    const curveZ = -0.018 * Math.sin(Math.PI * t);
+    for (let index = 0; index < segments; index += 1) {
+      const u = index / segments;
+      const theta = Math.PI * 2 * u;
+      const xUnit = Math.cos(theta);
+      const zUnit = Math.sin(theta);
+      const nailFlatten = 1.0 - 0.08 * Math.max(0, -zUnit) * Math.max(0, t - 0.55);
+      const sideTendon = 1.0 + 0.035 * Math.cos(theta * 2.0) * Math.sin(Math.PI * t);
+      const x = xUnit * radiusX * sideTendon;
+      const z = curveZ + zUnit * radiusZ * nailFlatten;
+      positions.push([x, y, z]);
+      normals.push(normalize([xUnit / Math.max(radiusX, 0.001), (0.5 - t) * 0.06, zUnit / Math.max(radiusZ, 0.001)]));
+      uvs.push([u, t]);
+    }
+  }
+
+  const bottomCenter = positions.length;
+  positions.push([0, -0.5, 0]);
+  normals.push([0, -1, 0]);
+  uvs.push([0.5, 0.0]);
+  const topCenter = positions.length;
+  positions.push([0, 0.5, -0.002]);
+  normals.push([0, 1, 0]);
+  uvs.push([0.5, 1.0]);
+
+  const indices = [];
+  for (let ring = 0; ring < rings; ring += 1) {
+    const current = ring * segments;
+    const nextRing = (ring + 1) * segments;
+    for (let index = 0; index < segments; index += 1) {
+      const next = (index + 1) % segments;
+      indices.push(current + index, current + next, nextRing + next);
+      indices.push(current + index, nextRing + next, nextRing + index);
+    }
+  }
+  const top = rings * segments;
+  for (let index = 0; index < segments; index += 1) {
+    const next = (index + 1) % segments;
+    indices.push(bottomCenter, index, next);
+    indices.push(topCenter, top + next, top + index);
+  }
+
+  return { positions, normals, uvs, indices };
+}
+
 function ellipsoidMesh(radius, segments = 14, rings = 8) {
   const positions = [];
   const normals = [];
@@ -322,6 +386,45 @@ function ellipsoidMesh(radius, segments = 14, rings = 8) {
       const z = Math.sin(theta) * flat;
       positions.push([x * radius[0], y * radius[1], z * radius[2]]);
       normals.push(normalize([x / radius[0], y / radius[1], z / radius[2]]));
+      uvs.push([u, v]);
+    }
+  }
+
+  const indices = [];
+  const stride = segments + 1;
+  for (let ring = 0; ring < rings; ring += 1) {
+    for (let index = 0; index < segments; index += 1) {
+      const a = ring * stride + index;
+      const b = a + 1;
+      const c = a + stride;
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  return { positions, normals, uvs, indices };
+}
+
+function superellipsoidMesh(radius, segments = 34, rings = 14, exponent = 0.56) {
+  const positions = [];
+  const normals = [];
+  const uvs = [];
+  const signedPow = (value, power) => Math.sign(value) * Math.pow(Math.abs(value), power);
+
+  for (let ring = 0; ring <= rings; ring += 1) {
+    const v = ring / rings;
+    const phi = -Math.PI / 2 + Math.PI * v;
+    const cosPhi = Math.cos(phi);
+    const yUnit = signedPow(Math.sin(phi), exponent);
+    const flat = Math.pow(Math.abs(cosPhi), exponent);
+    for (let index = 0; index <= segments; index += 1) {
+      const u = index / segments;
+      const theta = Math.PI * 2 * u;
+      const xUnit = signedPow(Math.cos(theta), exponent) * flat;
+      const zUnit = signedPow(Math.sin(theta), exponent) * flat;
+      const bevelPulse = 1.0 + 0.018 * Math.sin(theta * 4.0) * Math.sin(Math.PI * v);
+      positions.push([xUnit * radius[0] * bevelPulse, yUnit * radius[1], zUnit * radius[2] * bevelPulse]);
+      normals.push(normalize([xUnit / radius[0], yUnit / radius[1], zUnit / radius[2]]));
       uvs.push([u, v]);
     }
   }
@@ -457,11 +560,11 @@ addMesh("Nau Belt Sash Band", taperedCylinderMesh([0.41, 0.235], [0.40, 0.225], 
 addMesh("Nau Belt Buckle Plate", crystalMesh(), 7);
 addMesh("Nau Leather Gauntlet Cuff", taperedCylinderMesh([0.084, 0.072], [0.078, 0.068], 30), 3);
 addMesh("Nau Accent Knee Guard", ellipsoidMesh([0.088, 0.038, 0.064], 30, 10), 4);
-addMesh("Nau Leather Hand Palm", ellipsoidMesh([0.094, 0.064, 0.088], 32, 12), 3);
-addMesh("Nau Leather Finger Grip", roundedTaperedCylinderMesh([0.029, 0.022], [0.022, 0.016], 14, 5), 3);
-addMesh("Nau Leather Finger Tip Pad", ellipsoidMesh([0.025, 0.017, 0.020], 16, 7), 3);
-addMesh("Nau Leather Boot Toe Cap", ellipsoidMesh([0.120, 0.040, 0.130], 30, 12), 3);
-addMesh("Nau Leather Boot Toe Lug", ellipsoidMesh([0.044, 0.020, 0.060], 18, 7), 3);
+addMesh("Nau Leather Hand Palm", ellipsoidMesh([0.094, 0.064, 0.088], 38, 14), 3);
+addMesh("Nau Leather Finger Grip", organicFingerMesh([0.030, 0.024], [0.028, 0.022], [0.018, 0.015], 26, 11), 3);
+addMesh("Nau Leather Finger Tip Pad", ellipsoidMesh([0.025, 0.017, 0.020], 24, 10), 3);
+addMesh("Nau Leather Boot Toe Cap", ellipsoidMesh([0.120, 0.040, 0.130], 38, 14), 3);
+addMesh("Nau Leather Boot Toe Lug", ellipsoidMesh([0.044, 0.020, 0.060], 26, 10), 3);
 addMesh("Nau Accent Side Tunic Flap", panelMesh(0.12, 0.24, 0.52, -0.02), 4);
 addMesh("Nau Suit Neck Gasket", taperedCylinderMesh([0.15, 0.105], [0.13, 0.092], 28), 0);
 addMesh("Nau Accent Elbow Guard", ellipsoidMesh([0.085, 0.036, 0.060], 26, 9), 4);
@@ -491,8 +594,8 @@ addMesh("Nau Suit Shoulder Yoke Plate", ellipsoidMesh([0.52, 0.064, 0.148], 38, 
 addMesh("Nau Suit Collarbone Plate", ellipsoidMesh([0.16, 0.030, 0.045], 24, 8), 7);
 addMesh("Nau Suit Pelvis Hip Yoke", ellipsoidMesh([0.305, 0.044, 0.126], 34, 10), 0);
 addMesh("Nau Leather Knuckle Pad", ellipsoidMesh([0.026, 0.014, 0.018], 14, 6), 3);
-addMesh("Nau Leather Boot Sole", boxMesh(0.24, 0.036, 0.34), 3);
-addMesh("Nau Leather Boot Heel", boxMesh(0.20, 0.078, 0.14), 3);
+addMesh("Nau Leather Boot Sole", superellipsoidMesh([0.126, 0.020, 0.185], 34, 14, 0.46), 3);
+addMesh("Nau Leather Boot Heel", superellipsoidMesh([0.104, 0.043, 0.082], 30, 12, 0.48), 3);
 addMesh("Nau Suit Deltoid Filler", ellipsoidMesh([0.142, 0.074, 0.106], 30, 10), 0);
 addMesh("Nau Suit Pelvis Side Plate", ellipsoidMesh([0.105, 0.040, 0.095], 24, 8), 7);
 addMesh("Nau Leather Palm Heel Pad", ellipsoidMesh([0.052, 0.020, 0.040], 18, 7), 3);
@@ -503,7 +606,7 @@ addMesh("Nau Suit Upper Arm Inner Tendon", boxMesh(0.036, 0.250, 0.024), 0);
 addMesh("Nau Leather Forearm Tendon Strap", boxMesh(0.050, 0.260, 0.024), 3);
 addMesh("Nau Leather Forearm Radius Ridge", boxMesh(0.040, 0.230, 0.026), 3);
 addMesh("Nau Leather Forearm Ulna Ridge", boxMesh(0.034, 0.210, 0.024), 3);
-addMesh("Nau Leather Finger Web Bridge", boxMesh(0.205, 0.030, 0.040), 3);
+addMesh("Nau Leather Finger Web Bridge", superellipsoidMesh([0.104, 0.014, 0.024], 28, 10, 0.52), 3);
 addMesh("Nau Suit Shoulder Root Blend", ellipsoidMesh([0.160, 0.058, 0.104], 38, 12), 0);
 addMesh("Nau Suit Shoulder Chest Blend", ellipsoidMesh([0.150, 0.030, 0.060], 28, 8), 7);
 addMesh("Nau Suit Thigh Sweep", ellipsoidMesh([0.066, 0.185, 0.058], 28, 10), 0);
@@ -516,10 +619,10 @@ addMesh("Nau Suit Knee Tendon Strap", boxMesh(0.046, 0.220, 0.026), 0);
 addMesh("Nau Suit Lower Leg Outer Calf Ridge", ellipsoidMesh([0.052, 0.160, 0.042], 24, 9), 0);
 addMesh("Nau Suit Lower Leg Inner Tendon", boxMesh(0.036, 0.230, 0.022), 0);
 addMesh("Nau Leather Wrist Palm Gusset", ellipsoidMesh([0.082, 0.034, 0.055], 24, 8), 3);
-addMesh("Nau Leather Boot Instep Plate", boxMesh(0.195, 0.034, 0.226), 3);
-addMesh("Nau Leather Lace Cross Strap", boxMesh(0.048, 0.030, 0.255), 7);
-addMesh("Nau Leather Heel Tendon Guard", boxMesh(0.105, 0.190, 0.034), 3);
-addMesh("Nau Leather Ankle Boot Tongue", boxMesh(0.120, 0.170, 0.026), 3);
+addMesh("Nau Leather Boot Instep Plate", superellipsoidMesh([0.100, 0.018, 0.120], 30, 12, 0.50), 3);
+addMesh("Nau Leather Lace Cross Strap", superellipsoidMesh([0.026, 0.016, 0.132], 26, 9, 0.52), 7);
+addMesh("Nau Leather Heel Tendon Guard", superellipsoidMesh([0.056, 0.096, 0.018], 28, 12, 0.54), 3);
+addMesh("Nau Leather Ankle Boot Tongue", superellipsoidMesh([0.064, 0.086, 0.016], 28, 12, 0.54), 3);
 addMesh("Nau Seamless Shoulder Flex Cover", ellipsoidMesh([0.140, 0.078, 0.124], 40, 14), 0);
 addMesh("Nau Seamless Elbow Flex Cover", ellipsoidMesh([0.086, 0.058, 0.072], 36, 12), 0);
 addMesh("Nau Seamless Wrist Flex Cover", ellipsoidMesh([0.070, 0.046, 0.062], 34, 11), 3);
@@ -540,7 +643,7 @@ addMesh("Nau Suit Hip Thigh Fairing", ellipsoidMesh([0.112, 0.046, 0.078], 34, 1
 addMesh("Nau Leather Palm Edge Pad", ellipsoidMesh([0.060, 0.030, 0.048], 18, 7), 3);
 addMesh("Nau Leather Thumb Web Pad", ellipsoidMesh([0.052, 0.028, 0.044], 18, 7), 3);
 addMesh("Nau Leather Boot Side Guard", ellipsoidMesh([0.055, 0.030, 0.112], 24, 8), 3);
-addMesh("Nau Leather Boot Arch Rib", boxMesh(0.050, 0.038, 0.320), 7);
+addMesh("Nau Leather Boot Arch Rib", superellipsoidMesh([0.028, 0.020, 0.166], 26, 9, 0.50), 7);
 
 function meshIndex(name) {
   const index = meshes.findIndex((mesh) => mesh.name === name);
