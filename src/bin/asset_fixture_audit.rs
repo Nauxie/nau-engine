@@ -39,8 +39,8 @@ const PLAYER_JOINT_BRIDGE_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_BRIDGE_EXPECTED_PAIR_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_NODE_COUNT: f64 = 12.0;
 const PLAYER_JOINT_SEAM_EXPECTED_PAIR_COUNT: f64 = 26.0;
-const PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT: f64 = 94.0;
-const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 145.0;
+const PLAYER_PROXIMAL_CONTACT_EXPECTED_PAIR_COUNT: f64 = 110.0;
+const PLAYER_SURFACE_CONTACT_EXPECTED_PAIR_COUNT: f64 = 161.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_TRANSITION_COUNT: f64 = 9.0;
 const PLAYER_POSE_TRANSITION_EXPECTED_BLEND_COUNT: f64 = 4.0;
 const PLAYER_MOTION_INTEGRITY_REVIEW_EXPECTED_PANEL_COUNT: f64 = 15.0;
@@ -68,7 +68,7 @@ const PLAYER_POSE_MAX_DIVE_TORSO_LOCAL_PITCH_DEGREES: f64 = 42.0;
 const PLAYER_MIN_FINGER_GRIP_LENGTH_M: f64 = 0.10;
 const PLAYER_MAX_FINGER_GRIP_LENGTH_M: f64 = 0.22;
 const PLAYER_MIN_BOOT_SOLE_LENGTH_M: f64 = 0.32;
-const PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT: f64 = 82.0;
+const PLAYER_LIMB_ANATOMY_EXPECTED_NODE_COUNT: f64 = 98.0;
 const PLAYER_MIN_LIMB_ANATOMY_MAJOR_EXTENT_M: f64 = 0.15;
 const PLAYER_GLIDER_MIN_LAUNCH_DEPLOYMENT: f64 = 0.45;
 const PLAYER_GLIDER_MAX_LAUNCH_DEPLOYMENT: f64 = 0.70;
@@ -5870,7 +5870,7 @@ fn player_surface_contact_pairs() -> Vec<PlayerSurfaceContactPair> {
     pairs
 }
 
-fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 94] {
+fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 110] {
     [
         ("Nau Skin Neck Column", "Nau Skin Rounded Head"),
         ("Nau Skin Neck Column", "Nau Neck Joint Cover"),
@@ -6046,6 +6046,38 @@ fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 94] {
             "Nau Right Suit Elbow Forearm Motion Cowl",
             "Nau Right Seamless Elbow Flex Cover",
         ),
+        (
+            "Nau Left Suit Upper Arm Seam Band",
+            "Nau Left Suit Upper Arm",
+        ),
+        (
+            "Nau Right Suit Upper Arm Seam Band",
+            "Nau Right Suit Upper Arm",
+        ),
+        (
+            "Nau Left Suit Upper Arm Inner Tendon",
+            "Nau Left Suit Upper Arm",
+        ),
+        (
+            "Nau Right Suit Upper Arm Inner Tendon",
+            "Nau Right Suit Upper Arm",
+        ),
+        (
+            "Nau Left Leather Forearm Radius Ridge",
+            "Nau Left Leather Forearm Wrap",
+        ),
+        (
+            "Nau Right Leather Forearm Radius Ridge",
+            "Nau Right Leather Forearm Wrap",
+        ),
+        (
+            "Nau Left Leather Forearm Ulna Ridge",
+            "Nau Left Leather Forearm Wrap",
+        ),
+        (
+            "Nau Right Leather Forearm Ulna Ridge",
+            "Nau Right Leather Forearm Wrap",
+        ),
         ("Nau Left Hip Joint Cover", "Nau Suit Pelvis Hip Yoke"),
         ("Nau Right Hip Joint Cover", "Nau Suit Pelvis Hip Yoke"),
         (
@@ -6158,6 +6190,38 @@ fn player_proximal_contact_mesh_pairs() -> [(&'static str, &'static str); 94] {
         (
             "Nau Right Suit Knee Lower Motion Cowl",
             "Nau Right Seamless Knee Flex Cover",
+        ),
+        (
+            "Nau Left Suit Thigh Quad Panel",
+            "Nau Left Suit Thigh Guard",
+        ),
+        (
+            "Nau Right Suit Thigh Quad Panel",
+            "Nau Right Suit Thigh Guard",
+        ),
+        (
+            "Nau Left Suit Thigh Hamstring Ridge",
+            "Nau Left Suit Thigh Guard",
+        ),
+        (
+            "Nau Right Suit Thigh Hamstring Ridge",
+            "Nau Right Suit Thigh Guard",
+        ),
+        (
+            "Nau Left Suit Lower Leg Outer Calf Ridge",
+            "Nau Left Suit Lower Leg Greave",
+        ),
+        (
+            "Nau Right Suit Lower Leg Outer Calf Ridge",
+            "Nau Right Suit Lower Leg Greave",
+        ),
+        (
+            "Nau Left Suit Lower Leg Inner Tendon",
+            "Nau Left Suit Lower Leg Greave",
+        ),
+        (
+            "Nau Right Suit Lower Leg Inner Tendon",
+            "Nau Right Suit Lower Leg Greave",
         ),
         (
             "Nau Left Leather Wrist Palm Gusset",
@@ -6831,8 +6895,16 @@ fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {
         "Nau Right Suit Bicep Volume",
         "Nau Left Suit Tricep Sweep",
         "Nau Right Suit Tricep Sweep",
+        "Nau Left Suit Upper Arm Seam Band",
+        "Nau Right Suit Upper Arm Seam Band",
+        "Nau Left Suit Upper Arm Inner Tendon",
+        "Nau Right Suit Upper Arm Inner Tendon",
         "Nau Left Leather Forearm Tendon Strap",
         "Nau Right Leather Forearm Tendon Strap",
+        "Nau Left Leather Forearm Radius Ridge",
+        "Nau Right Leather Forearm Radius Ridge",
+        "Nau Left Leather Forearm Ulna Ridge",
+        "Nau Right Leather Forearm Ulna Ridge",
         "Nau Left Leather Finger Web Bridge",
         "Nau Right Leather Finger Web Bridge",
         "Nau Left Suit Shoulder Root Blend",
@@ -6857,6 +6929,10 @@ fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {
         "Nau Right Suit Outer Thigh Sweep",
         "Nau Left Suit Inner Thigh Sweep",
         "Nau Right Suit Inner Thigh Sweep",
+        "Nau Left Suit Thigh Quad Panel",
+        "Nau Right Suit Thigh Quad Panel",
+        "Nau Left Suit Thigh Hamstring Ridge",
+        "Nau Right Suit Thigh Hamstring Ridge",
         "Nau Left Suit Hip Root Blend",
         "Nau Right Suit Hip Root Blend",
         "Nau Left Suit Hip Inguinal Blend",
@@ -6877,6 +6953,10 @@ fn player_limb_anatomy_detail_node_names() -> &'static [&'static str] {
         "Nau Right Suit Shin Ridge",
         "Nau Left Suit Knee Tendon Strap",
         "Nau Right Suit Knee Tendon Strap",
+        "Nau Left Suit Lower Leg Outer Calf Ridge",
+        "Nau Right Suit Lower Leg Outer Calf Ridge",
+        "Nau Left Suit Lower Leg Inner Tendon",
+        "Nau Right Suit Lower Leg Inner Tendon",
         "Nau Left Suit Knee Thigh Motion Cowl",
         "Nau Right Suit Knee Thigh Motion Cowl",
         "Nau Left Suit Knee Lower Motion Cowl",
