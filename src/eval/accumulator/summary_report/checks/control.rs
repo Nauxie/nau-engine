@@ -151,10 +151,10 @@ pub(super) fn append_scenario_checks(
             LANDING_MIN_POSE_FLARE_DEGREES,
             "deg",
         ));
-        checks.push(EvalCheck::at_least(
-            "pose_landing_recovery_flip",
+        checks.push(EvalCheck::at_most(
+            "pose_landing_recovery_backbend",
             acc.max_pose_landing_recovery_flip_degrees,
-            LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+            LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
             "deg",
         ));
         checks.push(EvalCheck::at_most(
@@ -1365,10 +1365,10 @@ fn append_pose_state_coverage_checks(
             POSE_STATE_MIN_LANDING_FLARE_DEGREES,
             "deg",
         ),
-        EvalCheck::at_least(
-            "pose_state_landing_recovery_flip",
+        EvalCheck::at_most(
+            "pose_state_landing_recovery_backbend",
             acc.max_pose_landing_recovery_flip_degrees,
-            LANDING_MIN_POSE_RECOVERY_FLIP_DEGREES,
+            LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
             "deg",
         ),
         EvalCheck::at_least(
