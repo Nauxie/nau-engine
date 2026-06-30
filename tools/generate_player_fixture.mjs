@@ -226,6 +226,86 @@ function roundedTaperedCylinderMesh(bottomRadius, topRadius, segments = 32, ring
   return { positions, normals, uvs, indices };
 }
 
+function organicLimbMesh(bottomRadius, midRadius, topRadius, segments = 58, rings = 18, options = {}) {
+  const positions = [];
+  const normals = [];
+  const uvs = [];
+  const {
+    frontBias = 0.0,
+    rearBias = 0.0,
+    outerBias = 0.0,
+    innerBias = 0.0,
+    muscle = 0.10,
+    tendon = 0.04,
+    twist = 0.0,
+  } = options;
+
+  for (let ring = 0; ring <= rings; ring += 1) {
+    const t = ring / rings;
+    const y = -0.5 + t;
+    const lowerBlend = Math.max(0, 1 - t * 2);
+    const upperBlend = Math.max(0, t * 2 - 1);
+    const midBlend = 1 - lowerBlend - upperBlend;
+    const fullness = 0.82 + Math.sin(Math.PI * t) * 0.18;
+    const muscleSweep = Math.sin(Math.PI * t);
+    const flexCrease = 1.0 - Math.pow(Math.abs(t - 0.5) * 2.0, 2) * 0.035;
+    const baseX = (bottomRadius[0] * lowerBlend + midRadius[0] * midBlend + topRadius[0] * upperBlend) * fullness;
+    const baseZ = (bottomRadius[1] * lowerBlend + midRadius[1] * midBlend + topRadius[1] * upperBlend) * fullness;
+
+    for (let index = 0; index < segments; index += 1) {
+      const u = index / segments;
+      const theta = Math.PI * 2 * u + twist * (t - 0.5);
+      const xUnit = Math.cos(theta);
+      const zUnit = Math.sin(theta);
+      const frontBackBias = zUnit < 0 ? frontBias * -zUnit : rearBias * zUnit;
+      const sideBias = xUnit > 0 ? outerBias * xUnit : innerBias * -xUnit;
+      const tendonGroove = 1.0 - tendon * Math.max(0, -zUnit) * (0.45 + 0.55 * muscleSweep);
+      const asymmetricFullness =
+        1.0
+        + muscle * muscleSweep * Math.cos(theta - 0.45)
+        + 0.035 * Math.sin(theta * 2.0 + t * Math.PI * 1.5)
+        + 0.018 * Math.sin(theta * 4.0 - t * Math.PI);
+      const radiusScale = Math.max(
+        0.58,
+        asymmetricFullness * flexCrease * tendonGroove + frontBackBias + sideBias,
+      );
+      const x = xUnit * baseX * radiusScale;
+      const z = zUnit * baseZ * radiusScale;
+      positions.push([x, y, z]);
+      normals.push(normalize([xUnit / Math.max(baseX, 0.001), (0.5 - t) * 0.10, zUnit / Math.max(baseZ, 0.001)]));
+      uvs.push([u, t]);
+    }
+  }
+
+  const bottomCenter = positions.length;
+  positions.push([0, -0.5, 0]);
+  normals.push([0, -1, 0]);
+  uvs.push([0.5, 0.0]);
+  const topCenter = positions.length;
+  positions.push([0, 0.5, 0]);
+  normals.push([0, 1, 0]);
+  uvs.push([0.5, 1.0]);
+
+  const indices = [];
+  for (let ring = 0; ring < rings; ring += 1) {
+    const current = ring * segments;
+    const nextRing = (ring + 1) * segments;
+    for (let index = 0; index < segments; index += 1) {
+      const next = (index + 1) % segments;
+      indices.push(current + index, current + next, nextRing + next);
+      indices.push(current + index, nextRing + next, nextRing + index);
+    }
+  }
+  const top = rings * segments;
+  for (let index = 0; index < segments; index += 1) {
+    const next = (index + 1) % segments;
+    indices.push(bottomCenter, next, index);
+    indices.push(topCenter, top + index, top + next);
+  }
+
+  return { positions, normals, uvs, indices };
+}
+
 function ellipsoidMesh(radius, segments = 14, rings = 8) {
   const positions = [];
   const normals = [];
@@ -335,10 +415,39 @@ addMesh("Nau Skin Rounded Head", ellipsoidMesh([0.205, 0.255, 0.190], 42, 18), 1
 addMesh("Nau Skin Neck Column", roundedTaperedCylinderMesh([0.082, 0.068], [0.074, 0.060], 30, 7), 1);
 addMesh("Nau Suit Neck Collar Pad", ellipsoidMesh([0.178, 0.052, 0.132], 32, 10), 0);
 addMesh("Nau Accent Helmet Crest", taperedCylinderMesh([0.135, 0.078], [0.070, 0.042], 28), 5);
-addMesh("Nau Suit Upper Arm", roundedTaperedCylinderMesh([0.118, 0.100], [0.092, 0.080], 46, 13), 0);
-addMesh("Nau Leather Forearm Wrap", roundedTaperedCylinderMesh([0.102, 0.086], [0.076, 0.064], 46, 13), 3);
-addMesh("Nau Suit Thigh Guard", roundedTaperedCylinderMesh([0.136, 0.118], [0.102, 0.090], 46, 13), 0);
-addMesh("Nau Leather Boot", roundedTaperedCylinderMesh([0.122, 0.128], [0.098, 0.098], 38, 9), 3);
+addMesh("Nau Suit Upper Arm", organicLimbMesh([0.110, 0.094], [0.112, 0.096], [0.086, 0.074], 58, 18, {
+  frontBias: 0.004,
+  rearBias: 0.006,
+  outerBias: 0.002,
+  muscle: 0.052,
+  tendon: 0.032,
+  twist: 0.18,
+}), 0);
+addMesh("Nau Leather Forearm Wrap", organicLimbMesh([0.098, 0.084], [0.104, 0.088], [0.074, 0.064], 58, 18, {
+  frontBias: 0.004,
+  rearBias: 0.006,
+  outerBias: 0.002,
+  innerBias: -0.002,
+  muscle: 0.054,
+  tendon: 0.044,
+  twist: -0.16,
+}), 3);
+addMesh("Nau Suit Thigh Guard", organicLimbMesh([0.128, 0.110], [0.134, 0.114], [0.096, 0.084], 60, 18, {
+  frontBias: 0.004,
+  rearBias: 0.006,
+  outerBias: 0.003,
+  innerBias: 0.001,
+  muscle: 0.052,
+  tendon: 0.030,
+  twist: 0.10,
+}), 0);
+addMesh("Nau Leather Boot", organicLimbMesh([0.132, 0.132], [0.136, 0.128], [0.100, 0.100], 46, 12, {
+  frontBias: 0.010,
+  rearBias: 0.006,
+  outerBias: 0.004,
+  muscle: 0.045,
+  tendon: 0.018,
+}), 3);
 addMesh("Nau Chest Focus Crystal", crystalMesh(), 2);
 addMesh("Nau Accent Shoulder Guard", ellipsoidMesh([0.142, 0.048, 0.096], 30, 10), 4);
 addMesh("Nau Accent Scarf Trail", panelMesh(0.14, 0.30, 0.80, 0.025), 4);
@@ -357,7 +466,15 @@ addMesh("Nau Accent Side Tunic Flap", panelMesh(0.12, 0.24, 0.52, -0.02), 4);
 addMesh("Nau Suit Neck Gasket", taperedCylinderMesh([0.15, 0.105], [0.13, 0.092], 28), 0);
 addMesh("Nau Accent Elbow Guard", ellipsoidMesh([0.085, 0.036, 0.060], 26, 9), 4);
 addMesh("Nau Leather Ankle Wrap", taperedCylinderMesh([0.112, 0.12], [0.102, 0.108], 28), 3);
-addMesh("Nau Suit Lower Leg Greave", roundedTaperedCylinderMesh([0.094, 0.100], [0.074, 0.084], 38, 10), 0);
+addMesh("Nau Suit Lower Leg Greave", organicLimbMesh([0.098, 0.104], [0.104, 0.108], [0.074, 0.084], 56, 16, {
+  frontBias: 0.018,
+  rearBias: 0.012,
+  outerBias: 0.006,
+  innerBias: -0.004,
+  muscle: 0.072,
+  tendon: 0.058,
+  twist: -0.12,
+}), 0);
 addMesh("Nau Joint Shoulder Socket", ellipsoidMesh([0.138, 0.088, 0.120], 34, 12), 4);
 addMesh("Nau Joint Hip Socket", ellipsoidMesh([0.120, 0.082, 0.110], 34, 12), 4);
 addMesh("Nau Joint Elbow Sleeve", taperedCylinderMesh([0.080, 0.064], [0.074, 0.058], 30), 3);
@@ -568,7 +685,7 @@ for (const side of [
 ]) {
   const [label, sign] = side;
   const lower = label.toLowerCase();
-  const shoulderX = 0.465;
+  const shoulderX = 0.482;
   addMeshChild(nodeIds.torso, `Nau ${label} Suit Shoulder Chest Blend`, meshIndex("Nau Suit Shoulder Chest Blend"), {
     translation: [sign * 0.358, 0.488, -0.108],
     rotation: rotZ(sign * 0.20),
@@ -838,7 +955,7 @@ for (const side of [
 ]) {
   const [label, sign] = side;
   const lower = label.toLowerCase();
-  const hipX = 0.280;
+  const hipX = 0.288;
   const hipSocket = addChild(nodeIds.hips, `Nau ${label} Hip Socket`, {
     translation: [sign * hipX, -0.170, 0.020],
   });
