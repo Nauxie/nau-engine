@@ -152,6 +152,12 @@ pub(super) fn append_scenario_checks(
             "deg",
         ));
         checks.push(EvalCheck::at_most(
+            "pose_landing_flare_backbend",
+            acc.max_pose_landing_flare_degrees,
+            LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES,
+            "deg",
+        ));
+        checks.push(EvalCheck::at_most(
             "pose_landing_recovery_backbend",
             acc.max_pose_landing_recovery_flip_degrees,
             LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
@@ -178,13 +184,13 @@ pub(super) fn append_scenario_checks(
         checks.push(EvalCheck::at_most(
             "landing_pose_part_rotation_delta",
             acc.max_landing_pose_part_rotation_delta_degrees,
-            MAX_POSE_PART_ROTATION_DELTA_DEGREES,
+            LANDING_MAX_POSE_PART_ROTATION_DELTA_DEGREES,
             "deg",
         ));
         checks.push(EvalCheck::at_most(
             "landing_pose_part_translation_delta",
             acc.max_landing_pose_part_translation_delta_m,
-            MAX_POSE_PART_TRANSLATION_DELTA_M,
+            LANDING_MAX_POSE_PART_TRANSLATION_DELTA_M,
             "m",
         ));
     }
@@ -1366,10 +1372,34 @@ fn append_pose_state_coverage_checks(
             "deg",
         ),
         EvalCheck::at_most(
+            "pose_state_landing_flare_backbend",
+            acc.max_pose_landing_flare_degrees,
+            LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
             "pose_state_landing_recovery_backbend",
             acc.max_pose_landing_recovery_flip_degrees,
             LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
             "deg",
+        ),
+        EvalCheck::at_least(
+            "pose_state_landing_pose_temporal_samples",
+            acc.landing_pose_temporal_stability_samples as f32,
+            MIN_POSE_TEMPORAL_STABILITY_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "pose_state_landing_pose_rotation_delta",
+            acc.max_landing_pose_part_rotation_delta_degrees,
+            LANDING_MAX_POSE_PART_ROTATION_DELTA_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "pose_state_landing_pose_translation_delta",
+            acc.max_landing_pose_part_translation_delta_m,
+            LANDING_MAX_POSE_PART_TRANSLATION_DELTA_M,
+            "m",
         ),
         EvalCheck::at_least(
             "pose_state_scarf_stream",
