@@ -514,12 +514,12 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
     accumulator.max_pose_landing_foot_split_m = accumulator
         .max_pose_landing_foot_split_m
         .max(sample.pose_landing_foot_split_m);
-    if sample.pose_intent_label == "landing_anticipation" {
+    if sample.pose_intent_label == "landing_anticipation" && !sample.key_pose_transition_grace {
         accumulator.max_pose_landing_flare_degrees = accumulator
             .max_pose_landing_flare_degrees
             .max(sample.pose_torso_pitch_degrees);
     }
-    if sample.pose_intent_label == "landing_recovery" {
+    if sample.pose_intent_label == "landing_recovery" && !sample.key_pose_transition_grace {
         accumulator.max_pose_landing_recovery_flip_degrees = accumulator
             .max_pose_landing_recovery_flip_degrees
             .max(sample.pose_landing_recovery_flip_degrees);
