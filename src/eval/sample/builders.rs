@@ -122,6 +122,9 @@ impl EvalSample {
             pose_landing_foot_forward_m: 0.0,
             pose_landing_foot_split_m: 0.0,
             pose_landing_recovery_flip_degrees: 0.0,
+            pose_torso_backward_bend_degrees: f32::NAN,
+            pose_torso_local_bend_degrees: f32::NAN,
+            pose_torso_offset_m: f32::NAN,
             pose_wing_airflow_strength: 0.0,
             pose_scarf_stream_m: 0.0,
             pose_scarf_lateral_sway_m: 0.0,
@@ -421,6 +424,25 @@ impl EvalSample {
 
     pub fn with_key_pose_transition_grace(mut self, used_transition_grace: bool) -> Self {
         self.key_pose_transition_grace = used_transition_grace;
+        self
+    }
+
+    pub fn with_pose_torso_offset(mut self, torso_offset_m: f32) -> Self {
+        self.pose_torso_offset_m = finite_nonnegative_or_nan(torso_offset_m);
+        self
+    }
+
+    pub fn with_pose_torso_backward_bend(mut self, bend_degrees: f32) -> Self {
+        self.pose_torso_backward_bend_degrees = if bend_degrees.is_finite() {
+            bend_degrees
+        } else {
+            f32::NAN
+        };
+        self
+    }
+
+    pub fn with_pose_torso_local_bend(mut self, bend_degrees: f32) -> Self {
+        self.pose_torso_local_bend_degrees = finite_nonnegative_or_nan(bend_degrees);
         self
     }
 
