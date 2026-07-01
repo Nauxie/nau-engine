@@ -82,7 +82,7 @@ fn island_launch_script_releases_forward_after_touchdown() {
     assert!(scripted_input(scenario, 360).glide);
     assert!(scripted_input(scenario, 360).dive);
     assert!(scripted_input(scenario, 423).forward);
-    assert!(!scripted_input(scenario, 430).forward);
+    assert!(!scripted_input(scenario, 475).forward);
     assert!(scenario.thresholds.require_target_landing);
 }
 
@@ -97,9 +97,14 @@ fn branch_recovery_route_targets_named_recovery_island() {
     assert!(scripted_input(scenario, 1).launch);
     assert!(scripted_input(scenario, 540).glide);
     assert!(scripted_input(scenario, 540).dive);
-    assert!(scripted_input(scenario, 630).forward);
+    assert!(!scripted_input(scenario, 590).dive);
+    assert!(!scripted_input(scenario, 630).forward);
+    assert!(scripted_input(scenario, 630).backward);
+    assert!(!scripted_input(scenario, 650).forward);
     assert!(scripted_input(scenario, 650).backward);
-    assert!(!scripted_input(scenario, 675).backward);
+    assert!(scripted_input(scenario, 660).backward);
+    assert!(scripted_input(scenario, 675).backward);
+    assert!(!scripted_input(scenario, 690).backward);
     assert!(!scripted_input(scenario, 750).forward);
 }
 
@@ -200,14 +205,16 @@ fn pose_state_coverage_script_exercises_full_traversal_pose_chain() {
     assert!(scripted_input(scenario, 345).right);
     assert!(!scripted_input(scenario, 345).backward);
     assert!(!scripted_input(scenario, 360).dive);
+    assert!(scripted_input(scenario, 450).forward);
     assert!(!scripted_input(scenario, 500).forward);
     assert!(!scripted_input(scenario, 510).forward);
-    assert!(scripted_input(scenario, 540).forward);
-    assert!(scripted_input(scenario, 650).forward);
+    assert!(!scripted_input(scenario, 540).forward);
+    assert!(!scripted_input(scenario, 650).forward);
     assert!(!scripted_input(scenario, 700).forward);
+    assert!(scripted_input(scenario, 720).forward);
     assert!(!scripted_input(scenario, 760).forward);
     assert_eq!(scripted_camera_input(scenario, 360), CameraInput::default());
-    assert!(scenario.frame_count >= 780);
+    assert!(scenario.frame_count >= 840);
     assert!(scenario.thresholds.min_samples >= 140);
     assert!(scenario.thresholds.min_grounded_samples >= 12);
     assert!(scenario.thresholds.min_gliding_samples >= 55);
