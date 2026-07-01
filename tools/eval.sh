@@ -154,8 +154,12 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
   fi
 
   if [[ "${visual_audit_requested}" != "0" && "${#screenshot_artifacts[@]}" -gt 0 ]]; then
+    visual_audit_args=()
+    if [[ "${scenario}" == "world_collision_contact" ]]; then
+      visual_audit_args+=(--profile close_obstruction)
+    fi
     set +e
-    cargo run --quiet --bin visual_audit -- "${screenshot_artifacts[@]}" \
+    cargo run --quiet --bin visual_audit -- "${visual_audit_args[@]}" "${screenshot_artifacts[@]}" \
       > "${visual_audit_path}"
     visual_audit_status=$?
     set -e
