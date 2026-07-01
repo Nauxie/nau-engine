@@ -112,6 +112,7 @@ pub(crate) struct SimSample {
     pub(crate) pose_landing_crouch_m: f32,
     pub(crate) pose_landing_foot_forward_m: f32,
     pub(crate) pose_landing_foot_split_m: f32,
+    pub(crate) pose_landing_distal_foot_split_m: f32,
     pub(crate) pose_landing_recovery_flip_degrees: f32,
     pub(crate) pose_torso_backward_bend_degrees: f32,
     pub(crate) pose_wing_airflow_strength: f32,
@@ -264,6 +265,8 @@ impl SimSample {
         .with_resolved_intent(pose_intent);
         let pose_intent_label = pose_context.intent().label();
         let pose_readability = pose_readability_metrics(pose_context, pose_phase);
+        let pose_landing_distal_foot_split_m =
+            generated_landing_distal_foot_split_m(pose_context, pose_phase);
         let min_pose_limb_clearance_m = generated_pose_limb_clearance_m(pose_context, pose_phase);
         let wind_load_glider_response_degrees =
             glider_traversal_pose(pose_context, pose_phase).response_degrees();
@@ -292,6 +295,7 @@ impl SimSample {
             pose_landing_crouch_m: pose_readability.landing_crouch_m,
             pose_landing_foot_forward_m: pose_readability.landing_foot_forward_m,
             pose_landing_foot_split_m: pose_readability.landing_foot_split_m,
+            pose_landing_distal_foot_split_m,
             pose_landing_recovery_flip_degrees: pose_readability.landing_recovery_flip_degrees,
             pose_torso_backward_bend_degrees: pose_readability.torso_backward_bend_degrees,
             pose_wing_airflow_strength: pose_readability.wing_airflow_strength,
@@ -404,6 +408,7 @@ impl SimSample {
             "pose_landing_crouch_m": round4(self.pose_landing_crouch_m),
             "pose_landing_foot_forward_m": round4(self.pose_landing_foot_forward_m),
             "pose_landing_foot_split_m": round4(self.pose_landing_foot_split_m),
+            "pose_landing_distal_foot_split_m": round4(self.pose_landing_distal_foot_split_m),
             "pose_landing_recovery_flip_degrees": round4(self.pose_landing_recovery_flip_degrees),
             "pose_torso_backward_bend_degrees": round4(self.pose_torso_backward_bend_degrees),
             "pose_wing_airflow_strength": round4(self.pose_wing_airflow_strength),
@@ -770,6 +775,74 @@ fn generated_pose_limb_clearance_m(context: PlayerPoseContext, phase: f32) -> f3
     ]
     .into_iter()
     .fold(f32::INFINITY, f32::min)
+}
+
+fn generated_landing_distal_foot_split_m(context: PlayerPoseContext, phase: f32) -> f32 {
+    if !matches!(
+        context.intent(),
+        PlayerPoseIntent::LandingAnticipation | PlayerPoseIntent::LandingRecovery
+    ) {
+        return 0.0;
+    }
+
+    let left_lower_leg_base = Vec3::new(0.0, -0.34, 0.01);
+    let right_lower_leg_base = Vec3::new(0.0, -0.34, 0.01);
+    let left_foot_base = Vec3::new(0.0, -0.32, -0.012);
+    let right_foot_base = Vec3::new(0.0, -0.32, -0.012);
+    let left_lower_leg = generated_part_transform(
+        CharacterPartRole::LowerLeg(Side::Left),
+        left_lower_leg_base,
+        context,
+        phase,
+    );
+    let right_lower_leg = generated_part_transform(
+        CharacterPartRole::LowerLeg(Side::Right),
+        right_lower_leg_base,
+        context,
+        phase,
+    );
+    let left_foot = generated_part_transform(
+        CharacterPartRole::Foot(Side::Left),
+        left_foot_base,
+        context,
+        phase,
+    );
+    let right_foot = generated_part_transform(
+        CharacterPartRole::Foot(Side::Right),
+        right_foot_base,
+        context,
+        phase,
+    );
+
+    distal_limb_split_m(
+        left_lower_leg.translation - left_lower_leg_base,
+        right_lower_leg.translation - right_lower_leg_base,
+        left_lower_leg.rotation,
+        right_lower_leg.rotation,
+        0.40,
+        0.18,
+    )
+    .max(distal_limb_split_m(
+        left_foot.translation - left_foot_base,
+        right_foot.translation - right_foot_base,
+        left_foot.rotation,
+        right_foot.rotation,
+        0.55,
+        0.12,
+    ))
+}
+
+fn distal_limb_split_m(
+    left_delta: Vec3,
+    right_delta: Vec3,
+    left_rotation: Quat,
+    right_rotation: Quat,
+    lateral_weight: f32,
+    rotation_weight: f32,
+) -> f32 {
+    (left_delta.x - right_delta.x).abs() * lateral_weight
+        + (left_delta.z - right_delta.z).abs()
+        + left_rotation.angle_between(right_rotation) * rotation_weight
 }
 
 #[derive(Clone, Copy)]
