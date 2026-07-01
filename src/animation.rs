@@ -98,6 +98,7 @@ pub struct PartPose {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PoseReadabilityMetrics {
     pub torso_pitch_degrees: f32,
+    pub torso_backward_bend_degrees: f32,
     pub arm_spread_degrees: f32,
     pub leg_tuck_degrees: f32,
     pub lateral_lean_degrees: f32,
@@ -129,12 +130,16 @@ pub const LANDING_MIN_FOOT_FORWARD_READABILITY_M: f32 = 0.32;
 pub const LANDING_MIN_FOOT_SPLIT_READABILITY_M: f32 = 0.14;
 pub const LANDING_MAX_ANTICIPATION_BACKBEND_DEGREES: f32 = 78.0;
 pub const LANDING_MAX_RECOVERY_BACKBEND_DEGREES: f32 = 28.0;
+pub const LANDING_MAX_TORSO_LOCAL_BEND_DEGREES: f32 = 48.0;
+pub const LANDING_MAX_TORSO_LOCAL_OFFSET_M: f32 = 0.24;
+pub const LANDING_MAX_TORSO_BACKWARD_BEND_DEGREES: f32 = 8.0;
+pub const LANDING_MIN_TORSO_FORWARD_FOLD_DEGREES: f32 = 24.0;
 const DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES: f32 = 82.0;
 const DIVE_MAX_ARM_SPREAD_READABILITY_DEGREES: f32 = 48.0;
 const DIVE_MIN_LEG_TUCK_READABILITY_DEGREES: f32 = 68.0;
 const CONNECTED_LIMB_MAX_TRANSLATION_M: f32 = 0.015;
 const FALL_POSE_MAX_UPWARD_VELOCITY_MPS: f32 = 0.75;
-const LANDING_ANTICIPATION_BASE_HEIGHT_M: f32 = 6.0;
+const LANDING_ANTICIPATION_BASE_HEIGHT_M: f32 = 8.0;
 const LANDING_ANTICIPATION_MAX_HEIGHT_M: f32 = 36.0;
 const LANDING_ANTICIPATION_SINK_LOOKAHEAD_SECS: f32 = 0.95;
 
@@ -262,7 +267,7 @@ pub fn advance_phase(phase: f32, speed: f32, dt: f32) -> f32 {
 
 pub fn pose_blend_for_intent(intent: PlayerPoseIntent, dt: f32) -> f32 {
     let rate = match intent {
-        PlayerPoseIntent::LandingAnticipation => 18.0,
+        PlayerPoseIntent::LandingAnticipation => 22.0,
         PlayerPoseIntent::LandingRecovery => 16.0,
         PlayerPoseIntent::Gliding | PlayerPoseIntent::AirTurn => 28.0,
         PlayerPoseIntent::Diving => 14.0,
@@ -412,7 +417,7 @@ pub fn player_pose_intent(context: PlayerPoseContext) -> PlayerPoseIntent {
         return PlayerPoseIntent::LandingRecovery;
     }
 
-    let near_landing = context.mode != FlightMode::Grounded
+    let near_landing = context.mode == FlightMode::Airborne
         && context.height_above_ground_m <= landing_anticipation_height_m(context.velocity.y)
         && context.velocity.y < -1.2;
 
@@ -801,6 +806,11 @@ fn torso_lateral_lean_degrees(rotation: Quat) -> f32 {
     torso_signed_lateral_lean_degrees(rotation).abs()
 }
 
+fn torso_signed_backward_bend_degrees(rotation: Quat) -> f32 {
+    let local_up = rotation * Vec3::Y;
+    local_up.z.atan2(local_up.y).to_degrees()
+}
+
 fn launch_overhead_arm_score(
     intent: PlayerPoseIntent,
     left_arm_rotation: Quat,
@@ -867,6 +877,7 @@ pub fn pose_readability_metrics_from_part_transforms(
         .torso_rotation
         .angle_between(Quat::IDENTITY)
         .to_degrees();
+    let torso_backward_bend_degrees = torso_signed_backward_bend_degrees(parts.torso_rotation);
     let arm_spread_degrees = parts
         .left_arm_rotation
         .angle_between(parts.right_arm_rotation)
@@ -905,8 +916,28 @@ pub fn pose_readability_metrics_from_part_transforms(
         0.0
     };
 
+    let mut key_pose_readability_score = key_pose_readability_score(
+        context.intent(),
+        torso_pitch_degrees,
+        arm_spread_degrees,
+        leg_tuck_degrees,
+        landing_crouch_m,
+        landing_foot_forward_m,
+        landing_foot_split_m,
+    );
+    if context.intent() == PlayerPoseIntent::LandingAnticipation {
+        let forward_fold_degrees = (-torso_backward_bend_degrees).max(0.0);
+        key_pose_readability_score = key_pose_readability_score
+            .min(readable_at_most_score(
+                torso_backward_bend_degrees.max(0.0),
+                LANDING_MAX_TORSO_BACKWARD_BEND_DEGREES,
+            ))
+            .min((forward_fold_degrees / LANDING_MIN_TORSO_FORWARD_FOLD_DEGREES).clamp(0.0, 1.0));
+    }
+
     PoseReadabilityMetrics {
         torso_pitch_degrees,
+        torso_backward_bend_degrees,
         arm_spread_degrees,
         leg_tuck_degrees,
         lateral_lean_degrees: torso_lateral_lean_degrees(parts.torso_rotation),
@@ -930,15 +961,7 @@ pub fn pose_readability_metrics_from_part_transforms(
             parts.left_arm_rotation,
             parts.right_arm_rotation,
         ),
-        key_pose_readability_score: key_pose_readability_score(
-            context.intent(),
-            torso_pitch_degrees,
-            arm_spread_degrees,
-            leg_tuck_degrees,
-            landing_crouch_m,
-            landing_foot_forward_m,
-            landing_foot_split_m,
-        ),
+        key_pose_readability_score,
     }
 }
 
@@ -1101,9 +1124,9 @@ pub fn part_pose_with_context(
                 }
                 PlayerPoseIntent::AirBrake => 0.02 + rearward_brake_pressure * 0.06,
                 PlayerPoseIntent::LandingAnticipation => {
-                    0.30 + landing_strength * 0.10 + landing_flip * 0.20
+                    -0.34 - landing_strength * 0.14 - landing_flip * 0.20
                 }
-                PlayerPoseIntent::LandingRecovery => 0.05 + recovery_strength * 0.08,
+                PlayerPoseIntent::LandingRecovery => -0.04 - recovery_strength * 0.10,
             };
             translation.y += match intent {
                 PlayerPoseIntent::GroundedWalk => cycle.abs() * 0.006,
@@ -1111,14 +1134,14 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Launching => 0.030,
                 PlayerPoseIntent::Falling => dive_flutter * 0.003,
                 PlayerPoseIntent::Diving => dive_pressure * 0.020 + dive_flutter * 0.006,
-                PlayerPoseIntent::LandingAnticipation => 0.040 + landing_flip * 0.040,
+                PlayerPoseIntent::LandingAnticipation => -0.010 - landing_flip * 0.010,
                 PlayerPoseIntent::LandingRecovery => -0.018 - recovery_strength * 0.025,
                 _ => 0.0,
             };
             translation.z += match intent {
                 PlayerPoseIntent::Launching => 0.035,
                 PlayerPoseIntent::Diving => dive_pressure * 0.020,
-                PlayerPoseIntent::LandingAnticipation => 0.060 + landing_flip * 0.060,
+                PlayerPoseIntent::LandingAnticipation => 0.020 + landing_flip * 0.020,
                 PlayerPoseIntent::LandingRecovery => 0.015 + recovery_strength * 0.020,
                 _ => 0.0,
             };
@@ -1145,9 +1168,9 @@ pub fn part_pose_with_context(
                         + vertical_pitch * 0.35
                 }
                 PlayerPoseIntent::LandingAnticipation => {
-                    0.252 + landing_strength * 0.08 + landing_flip * 0.16
+                    -0.20 - landing_strength * 0.08 - landing_flip * 0.12
                 }
-                PlayerPoseIntent::LandingRecovery => 0.025 + recovery_strength * 0.055,
+                PlayerPoseIntent::LandingRecovery => -0.02 - recovery_strength * 0.08,
                 PlayerPoseIntent::Launching => -0.20 + vertical_pitch * 0.24,
             };
             translation.y += match intent {
@@ -1160,8 +1183,8 @@ pub fn part_pose_with_context(
                 _ => cycle.abs() * (0.014 + gait_weight * 0.018),
             };
             if intent == PlayerPoseIntent::LandingAnticipation {
-                translation.y += 0.13 + landing_strength * 0.07 + landing_flip * 0.08;
-                translation.z += 0.18 + landing_strength * 0.10 + landing_flip * 0.16;
+                translation.y += 0.030 + landing_strength * 0.020 + landing_flip * 0.018;
+                translation.z += 0.030 + landing_strength * 0.030 + landing_flip * 0.035;
             } else if intent == PlayerPoseIntent::LandingRecovery {
                 translation.y -= 0.025 + recovery_strength * 0.025;
                 translation.z += 0.025 + recovery_strength * 0.035;
@@ -1442,8 +1465,8 @@ pub fn part_pose_with_context(
                         - same_side_turn * 0.16
                 }
                 PlayerPoseIntent::LandingAnticipation => {
-                    -1.14 - landing_strength * 0.28 - landing_flip * 0.52 - landing_lead * 0.24
-                        + landing_trail * 0.10
+                    -0.70 - landing_strength * 0.14 - landing_flip * 0.22 - landing_lead * 0.08
+                        + landing_trail * 0.05
                 }
                 PlayerPoseIntent::LandingRecovery => {
                     -0.64 - recovery_strength * 0.42 - landing_lead * 0.10 + landing_trail * 0.08
@@ -1480,11 +1503,11 @@ pub fn part_pose_with_context(
                 translation.y += rearward_brake_pressure * 0.035;
             }
             if intent == PlayerPoseIntent::LandingAnticipation {
-                translation.z += 0.42
-                    + landing_strength * 0.16
-                    + landing_flip * 0.34
-                    + landing_lead * (0.20 + landing_strength * 0.06 + landing_flip * 0.12)
-                    - landing_trail * (0.08 + landing_flip * 0.04);
+                translation.z += 0.38
+                    + landing_strength * 0.13
+                    + landing_flip * 0.24
+                    + landing_lead * (0.12 + landing_strength * 0.04 + landing_flip * 0.08)
+                    - landing_trail * (0.035 + landing_flip * 0.020);
                 translation.y += 0.11
                     + landing_strength * 0.07
                     + landing_flip * 0.08
@@ -1547,7 +1570,7 @@ pub fn part_pose_with_context(
             translation.y += airflow * 0.005;
             translation.z += match intent {
                 PlayerPoseIntent::Diving => 0.014 + dive_side_flutter.abs() * 0.004,
-                PlayerPoseIntent::LandingAnticipation => 0.040 + landing_flip * 0.016,
+                PlayerPoseIntent::LandingAnticipation => 0.026 + landing_flip * 0.010,
                 _ => 0.0,
             };
             let lower_leg_roll = match intent {
@@ -1592,7 +1615,7 @@ pub fn part_pose_with_context(
             translation.x += sign * turn_reach * 0.004;
             translation.z += match intent {
                 PlayerPoseIntent::Diving => 0.002,
-                PlayerPoseIntent::LandingAnticipation => 0.018 + landing_flip * 0.016,
+                PlayerPoseIntent::LandingAnticipation => 0.010 + landing_flip * 0.010,
                 _ => 0.0,
             };
             let ankle_yaw = if intent == PlayerPoseIntent::Diving {
@@ -1744,15 +1767,88 @@ mod tests {
     }
 
     #[test]
-    fn landing_anticipation_pose_blend_is_smooth_enough_for_first_contact() {
+    fn landing_anticipation_pose_blend_exits_head_down_dive_without_snapping() {
         let frame_dt = 1.0 / 60.0;
         let landing_blend = pose_blend_for_intent(PlayerPoseIntent::LandingAnticipation, frame_dt);
         let dive_blend = pose_blend_for_intent(PlayerPoseIntent::Diving, frame_dt);
+        let hips = CharacterPart::new(CharacterPartRole::Hips, Vec3::ZERO, Quat::IDENTITY);
+        let torso = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+        let dive_input = FlightInput {
+            glide: true,
+            dive: true,
+            ..Default::default()
+        };
+        let dive_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -14.0, -28.0),
+            dive_input,
+            9.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::Diving);
+        let landing_context = PlayerPoseContext::new(
+            FlightMode::Airborne,
+            Vec3::new(0.0, -10.0, -24.0),
+            FlightInput::default(),
+            4.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::LandingAnticipation);
+        let dive_hips = part_pose_with_context(&hips, dive_context, 0.0);
+        let dive_torso = part_pose_with_context(&torso, dive_context, 0.0);
+        let landing_hips = part_pose_with_context(&hips, landing_context, 0.0);
+        let landing_torso = part_pose_with_context(&torso, landing_context, 0.0);
+        let mut smoothed_hips_rotation = dive_hips.rotation;
+        let mut smoothed_torso_rotation = dive_torso.rotation;
+        let mut max_step_delta_degrees: f32 = 0.0;
+        for _ in 0..8 {
+            let previous_hips_rotation = smoothed_hips_rotation;
+            let previous_torso_rotation = smoothed_torso_rotation;
+            smoothed_hips_rotation =
+                smoothed_hips_rotation.slerp(landing_hips.rotation, landing_blend);
+            smoothed_torso_rotation =
+                smoothed_torso_rotation.slerp(landing_torso.rotation, landing_blend);
+            max_step_delta_degrees = max_step_delta_degrees
+                .max(
+                    smoothed_hips_rotation
+                        .angle_between(previous_hips_rotation)
+                        .to_degrees(),
+                )
+                .max(
+                    smoothed_torso_rotation
+                        .angle_between(previous_torso_rotation)
+                        .to_degrees(),
+                );
+        }
+        let transitioned_metrics = pose_readability_metrics_from_part_transforms(
+            landing_context,
+            PoseReadabilityPartTransforms {
+                torso_rotation: smoothed_hips_rotation * smoothed_torso_rotation,
+                left_arm_rotation: Quat::IDENTITY,
+                right_arm_rotation: Quat::IDENTITY,
+                left_leg_rotation: Quat::IDENTITY,
+                right_leg_rotation: Quat::IDENTITY,
+                left_leg_translation: Vec3::ZERO,
+                right_leg_translation: Vec3::ZERO,
+            },
+        );
 
-        assert!(landing_blend > 0.20);
-        assert!(landing_blend < 0.35);
+        assert!(landing_blend > 0.28);
+        assert!(landing_blend < 0.34);
         assert!(dive_blend > 0.20);
-        assert!(landing_blend < dive_blend * 1.5);
+        assert!(max_step_delta_degrees <= 60.0);
+        assert!(
+            transitioned_metrics.torso_pitch_degrees <= LANDING_MAX_ANTICIPATION_BACKBEND_DEGREES
+        );
+        assert!(
+            landing_torso
+                .rotation
+                .angle_between(Quat::IDENTITY)
+                .to_degrees()
+                <= LANDING_MAX_TORSO_LOCAL_BEND_DEGREES
+        );
+        assert!(
+            landing_torso.translation.distance(torso.base_translation)
+                <= LANDING_MAX_TORSO_LOCAL_OFFSET_M
+        );
     }
 
     #[test]
@@ -2414,11 +2510,32 @@ mod tests {
                 FlightInput::default(),
                 4.5,
             )),
-            PlayerPoseIntent::LandingAnticipation
+            PlayerPoseIntent::Gliding
         );
         assert_eq!(
             player_pose_intent(PlayerPoseContext::new(
                 FlightMode::Gliding,
+                Vec3::new(0.0, -24.0, -18.0),
+                FlightInput {
+                    dive: true,
+                    ..default()
+                },
+                10.5,
+            )),
+            PlayerPoseIntent::Diving
+        );
+        assert_eq!(
+            player_pose_intent(PlayerPoseContext::new(
+                FlightMode::Airborne,
+                Vec3::new(0.0, -3.0, -18.0),
+                FlightInput::default(),
+                4.5,
+            )),
+            PlayerPoseIntent::LandingAnticipation
+        );
+        assert_eq!(
+            player_pose_intent(PlayerPoseContext::new(
+                FlightMode::Airborne,
                 Vec3::new(0.0, -24.0, -18.0),
                 FlightInput {
                     dive: true,
@@ -2585,7 +2702,7 @@ mod tests {
     #[test]
     fn landing_anticipation_interrupts_held_air_pose_intent() {
         let near_ground = PlayerPoseContext::new(
-            FlightMode::Gliding,
+            FlightMode::Airborne,
             Vec3::new(0.0, -18.0, -28.0),
             FlightInput {
                 dive: true,
@@ -2598,6 +2715,33 @@ mod tests {
 
         assert_eq!(resolved.intent, PlayerPoseIntent::LandingAnticipation);
         assert_eq!(resolved.hold_remaining_secs, 0.0);
+    }
+
+    #[test]
+    fn gliding_near_ground_keeps_glider_pose_instead_of_landing_anticipation() {
+        let neutral_glide = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -18.0, -28.0),
+            FlightInput::default(),
+            4.0,
+        );
+        let diving_glide = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -18.0, -28.0),
+            FlightInput {
+                dive: true,
+                ..default()
+            },
+            4.0,
+        );
+
+        assert_eq!(player_pose_intent(neutral_glide), PlayerPoseIntent::Gliding);
+        assert_eq!(player_pose_intent(diving_glide), PlayerPoseIntent::Diving);
+
+        let resolved =
+            resolve_pose_intent(PlayerPoseIntent::Diving, 0.12, diving_glide, 1.0 / 60.0);
+
+        assert_eq!(resolved.intent, PlayerPoseIntent::Diving);
     }
 
     #[test]
@@ -3130,7 +3274,7 @@ mod tests {
             20.0,
         );
         let landing_context = PlayerPoseContext::new(
-            FlightMode::Gliding,
+            FlightMode::Airborne,
             Vec3::new(0.0, -3.0, -18.0),
             FlightInput::default(),
             4.5,
@@ -3164,13 +3308,13 @@ mod tests {
             Quat::IDENTITY,
         );
         let slow_context = PlayerPoseContext::new(
-            FlightMode::Gliding,
+            FlightMode::Airborne,
             Vec3::new(0.0, -3.0, -18.0),
             FlightInput::default(),
             4.5,
         );
         let fast_context = PlayerPoseContext::new(
-            FlightMode::Gliding,
+            FlightMode::Airborne,
             Vec3::new(0.0, -14.0, -28.0),
             FlightInput::default(),
             7.0,
@@ -3188,9 +3332,15 @@ mod tests {
         let fast_lead_leg = part_pose_with_context(&lead_leg, fast_context, 0.0);
 
         assert!(fast_metrics.torso_pitch_degrees > slow_metrics.torso_pitch_degrees + 8.0);
-        assert!(fast_metrics.leg_tuck_degrees > slow_metrics.leg_tuck_degrees + 8.0);
+        assert!(
+            fast_metrics.torso_backward_bend_degrees
+                < slow_metrics.torso_backward_bend_degrees - 8.0
+        );
+        assert!(slow_metrics.torso_backward_bend_degrees <= 0.0);
+        assert!(fast_metrics.torso_backward_bend_degrees <= 0.0);
+        assert!(fast_metrics.leg_tuck_degrees > slow_metrics.leg_tuck_degrees + 4.0);
         assert!(fast_metrics.landing_crouch_m > slow_metrics.landing_crouch_m + 0.005);
-        assert!(fast_metrics.landing_foot_forward_m > slow_metrics.landing_foot_forward_m + 0.04);
+        assert!(fast_metrics.landing_foot_forward_m > slow_metrics.landing_foot_forward_m + 0.02);
         assert!(fast_metrics.landing_foot_split_m >= LANDING_MIN_FOOT_SPLIT_READABILITY_M);
         assert!(
             fast_head
@@ -3678,10 +3828,10 @@ mod tests {
         );
         let landing = pose_readability_metrics(
             PlayerPoseContext::new(
-                FlightMode::Gliding,
-                Vec3::new(0.0, -4.0, -18.0),
+                FlightMode::Airborne,
+                Vec3::new(0.0, -14.0, -28.0),
                 FlightInput::default(),
-                4.0,
+                7.0,
             ),
             0.0,
         );
