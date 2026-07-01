@@ -254,7 +254,9 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     );
     let summary_json = summary.to_json();
 
-    assert!(summary_json.contains("\"min_island_terrain_surface_count\": 20"));
+    assert!(summary_json.contains(&format!(
+        "\"min_island_terrain_surface_count\": {MIN_ISLAND_TERRAIN_SURFACE_COUNT}"
+    )));
     assert!(summary_json.contains("\"min_island_terrain_mesh_vertices\": 2305"));
     assert!(summary_json.contains("\"min_island_terrain_color_bands\": 61"));
     assert!(summary_json.contains("\"min_island_terrain_material_weight_bands\": 36"));
@@ -276,9 +278,13 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_generated_route_cairn_count\": 16"));
     assert!(summary_json.contains("\"min_generated_launch_beacon_count\": 1"));
     assert!(summary_json.contains("\"min_generated_landing_garden_marker_count\": 4"));
-    assert!(summary_json.contains("\"min_generated_pond_surface_count\": 20"));
+    assert!(summary_json.contains(&format!(
+        "\"min_generated_pond_surface_count\": {MIN_GENERATED_POND_SURFACE_COUNT}"
+    )));
     assert!(summary_json.contains("\"min_landmark_mesh_vertices\": 39"));
-    assert!(summary_json.contains("\"min_generated_weather_cloud_bank_count\": 20"));
+    assert!(summary_json.contains(&format!(
+        "\"min_generated_weather_cloud_bank_count\": {MIN_GENERATED_WEATHER_CLOUD_BANK_COUNT}"
+    )));
     assert!(summary_json.contains("\"min_weather_cloud_bank_depth_m\": 6.2000"));
     assert!(summary_json.contains("\"min_weather_cloud_mesh_vertices\": 1530"));
     assert!(summary_json.contains("\"min_weather_cloud_filament_ribbon_detail_count\": 27"));
@@ -286,9 +292,18 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"max_updraft_ribbon_visual_count\": 12"));
     assert!(summary_json.contains("\"max_crosswind_guide_visual_count\": 180"));
     assert!(summary_json.contains("\"max_crosswind_ribbon_visual_count\": 21"));
-    assert!(summary_json.contains("\"max_updraft_field_count\": 2"));
-    assert!(summary_json.contains("\"max_updraft_fields_with_guides_and_ribbons_count\": 2"));
-    assert!(summary_json.contains("\"max_updraft_flow_coherent_field_count\": 2"));
+    assert!(summary_json.contains(&format!(
+        "\"max_updraft_field_count\": {}",
+        GAMEPLAY_LIFT_ROUTE.len()
+    )));
+    assert!(summary_json.contains(&format!(
+        "\"max_updraft_fields_with_guides_and_ribbons_count\": {}",
+        GAMEPLAY_LIFT_ROUTE.len()
+    )));
+    assert!(summary_json.contains(&format!(
+        "\"max_updraft_flow_coherent_field_count\": {}",
+        GAMEPLAY_LIFT_ROUTE.len()
+    )));
     assert!(summary_json.contains(&format!(
         "\"max_crosswind_field_count\": {VISUAL_CROSSWIND_FIELD_COUNT}"
     )));
@@ -954,9 +969,18 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"updraft_ribbon_visual_count\":12"));
     assert!(sample_json.contains("\"crosswind_guide_visual_count\":180"));
     assert!(sample_json.contains("\"crosswind_ribbon_visual_count\":21"));
-    assert!(sample_json.contains("\"updraft_field_count\":2"));
-    assert!(sample_json.contains("\"updraft_fields_with_guides_and_ribbons_count\":2"));
-    assert!(sample_json.contains("\"updraft_flow_coherent_field_count\":2"));
+    assert!(sample_json.contains(&format!(
+        "\"updraft_field_count\":{}",
+        GAMEPLAY_LIFT_ROUTE.len()
+    )));
+    assert!(sample_json.contains(&format!(
+        "\"updraft_fields_with_guides_and_ribbons_count\":{}",
+        GAMEPLAY_LIFT_ROUTE.len()
+    )));
+    assert!(sample_json.contains(&format!(
+        "\"updraft_flow_coherent_field_count\":{}",
+        GAMEPLAY_LIFT_ROUTE.len()
+    )));
     assert!(sample_json.contains(&format!(
         "\"crosswind_field_count\":{VISUAL_CROSSWIND_FIELD_COUNT}"
     )));
