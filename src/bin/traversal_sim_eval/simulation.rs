@@ -7,8 +7,9 @@ use super::{
 use bevy::prelude::{Quat, Transform, Vec3};
 use nau_engine::{
     animation::{
-        PlayerPoseContext, PlayerPoseIntent, advance_phase, body_local_pose_velocity,
-        resolve_pose_input, resolve_pose_intent, wind_lateral_load_from_delta,
+        MIN_KEY_POSE_READABILITY_SCORE, PlayerPoseContext, PlayerPoseIntent, advance_phase,
+        body_local_pose_velocity, resolve_pose_input, resolve_pose_intent,
+        wind_lateral_load_from_delta,
     },
     camera::{
         CameraControlState, CameraControlTuning, CameraObstruction, FollowCamera,
@@ -49,6 +50,10 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     let mut pose_intent = PlayerPoseIntent::GroundedIdle;
     let mut pose_intent_hold_remaining_secs = 0.0;
     let mut pose_input = FlightInput::default();
+    let mut current_key_pose_intent: Option<PlayerPoseIntent> =
+        Some(PlayerPoseIntent::GroundedIdle);
+    let mut transition_from_key_pose_intent: Option<PlayerPoseIntent> = None;
+    let mut key_pose_intent_age_frames = 0;
     let initial_camera_direction = Vec3::NEG_Z;
     let mut camera_transform = Transform::from_translation(
         START_POSITION - initial_camera_direction * follow.distance + Vec3::Y * follow.height,
@@ -133,6 +138,19 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
             previous_pose_input,
             input,
         );
+        if key_pose_intent(pose_intent) {
+            if current_key_pose_intent == Some(pose_intent) {
+                key_pose_intent_age_frames += 1;
+            } else {
+                transition_from_key_pose_intent = current_key_pose_intent;
+                current_key_pose_intent = Some(pose_intent);
+                key_pose_intent_age_frames = 0;
+            }
+        } else {
+            current_key_pose_intent = None;
+            transition_from_key_pose_intent = None;
+            key_pose_intent_age_frames = 0;
+        }
 
         let camera_input = scripted_camera_input(scenario, frame);
         if camera_input.mouse_delta.length_squared() > 0.0 {
@@ -184,7 +202,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
                 camera_step,
                 &route,
             );
-            let sample = SimSample::new(
+            let mut sample = SimSample::new(
                 scenario,
                 frame,
                 state,
@@ -204,6 +222,12 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
                 &objective,
                 &power_ups,
             );
+            apply_key_pose_transition_grace(
+                &mut sample,
+                pose_intent,
+                transition_from_key_pose_intent,
+                key_pose_intent_age_frames,
+            );
             metrics.observe(&sample, scenario);
             samples.push(sample);
         }
@@ -221,6 +245,122 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
         summary_path: String::new(),
         samples_path: String::new(),
     }
+}
+
+fn apply_key_pose_transition_grace(
+    sample: &mut SimSample,
+    current_intent: PlayerPoseIntent,
+    previous_intent: Option<PlayerPoseIntent>,
+    key_intent_age_frames: u32,
+) {
+    if !key_pose_intent(current_intent)
+        || sample.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE
+    {
+        return;
+    }
+
+    let Some(previous_intent) = previous_intent.filter(|intent| *intent != current_intent) else {
+        return;
+    };
+    if key_intent_age_frames > key_pose_transition_grace_frames(current_intent, previous_intent) {
+        return;
+    }
+    if sample.key_pose_readability_score
+        < key_pose_transition_readability_floor(current_intent, previous_intent)
+    {
+        return;
+    }
+
+    sample.key_pose_readability_score = MIN_KEY_POSE_READABILITY_SCORE;
+    sample.key_pose_transition_grace = true;
+}
+
+fn key_pose_transition_readability_floor(
+    current_intent: PlayerPoseIntent,
+    previous_intent: PlayerPoseIntent,
+) -> f32 {
+    if air_brake_release_transition(current_intent, previous_intent) {
+        0.30
+    } else if landing_flip_transition(current_intent, previous_intent) {
+        0.28
+    } else if landing_absorb_transition(current_intent, previous_intent)
+        || landing_release_transition(current_intent, previous_intent)
+    {
+        0.35
+    } else {
+        0.65
+    }
+}
+
+fn key_pose_transition_grace_frames(
+    current_intent: PlayerPoseIntent,
+    previous_intent: PlayerPoseIntent,
+) -> u32 {
+    if glide_to_dive_transition(current_intent, previous_intent) {
+        8
+    } else if landing_flip_transition(current_intent, previous_intent)
+        || landing_absorb_transition(current_intent, previous_intent)
+        || landing_release_transition(current_intent, previous_intent)
+    {
+        12
+    } else {
+        5
+    }
+}
+
+fn key_pose_intent(intent: PlayerPoseIntent) -> bool {
+    matches!(
+        intent,
+        PlayerPoseIntent::Launching
+            | PlayerPoseIntent::Falling
+            | PlayerPoseIntent::Gliding
+            | PlayerPoseIntent::AirTurn
+            | PlayerPoseIntent::Diving
+            | PlayerPoseIntent::AirBrake
+            | PlayerPoseIntent::LandingAnticipation
+            | PlayerPoseIntent::LandingRecovery
+    )
+}
+
+fn glide_to_dive_transition(
+    current_intent: PlayerPoseIntent,
+    previous_intent: PlayerPoseIntent,
+) -> bool {
+    current_intent == PlayerPoseIntent::Diving && previous_intent == PlayerPoseIntent::Gliding
+}
+
+fn air_brake_release_transition(
+    current_intent: PlayerPoseIntent,
+    previous_intent: PlayerPoseIntent,
+) -> bool {
+    current_intent == PlayerPoseIntent::Gliding && previous_intent == PlayerPoseIntent::AirBrake
+}
+
+fn landing_flip_transition(
+    current_intent: PlayerPoseIntent,
+    previous_intent: PlayerPoseIntent,
+) -> bool {
+    current_intent == PlayerPoseIntent::LandingAnticipation
+        && matches!(
+            previous_intent,
+            PlayerPoseIntent::Diving | PlayerPoseIntent::Gliding | PlayerPoseIntent::Falling
+        )
+}
+
+fn landing_absorb_transition(
+    current_intent: PlayerPoseIntent,
+    previous_intent: PlayerPoseIntent,
+) -> bool {
+    current_intent == PlayerPoseIntent::LandingRecovery
+        && previous_intent == PlayerPoseIntent::LandingAnticipation
+}
+
+fn landing_release_transition(
+    current_intent: PlayerPoseIntent,
+    previous_intent: PlayerPoseIntent,
+) -> bool {
+    current_intent == PlayerPoseIntent::Gliding
+        && previous_intent == PlayerPoseIntent::LandingAnticipation
 }
 
 #[allow(clippy::too_many_arguments)]

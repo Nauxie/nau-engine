@@ -1237,6 +1237,7 @@ fn accumulator_summarizes_pose_intent_samples() {
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 1.0,
     });
+    landing_anticipation_sample.mode = FlightMode::Airborne.label();
     landing_anticipation_sample.pose_intent_label = "landing_anticipation";
     landing_anticipation_sample =
         landing_anticipation_sample.with_authored_animation_metrics("land", "land", 1, 140);
@@ -1304,6 +1305,7 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert_eq!(summary.metrics.gliding_dive_samples, 1);
     assert_eq!(summary.metrics.pose_air_brake_samples, 1);
     assert_eq!(summary.metrics.pose_landing_anticipation_samples, 1);
+    assert_eq!(summary.metrics.gliding_landing_anticipation_samples, 0);
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 1);
     assert_eq!(summary.metrics.authored_clip_match_samples, 8);
     assert_eq!(summary.metrics.authored_clip_mismatch_samples, 0);
@@ -1342,6 +1344,7 @@ fn accumulator_summarizes_pose_intent_samples() {
     assert!(summary_json.contains("\"max_authored_glider_dive_motion_m\""));
     assert!(summary_json.contains("\"pose_air_brake_samples\": 1"));
     assert!(summary_json.contains("\"pose_landing_anticipation_samples\": 1"));
+    assert!(summary_json.contains("\"gliding_landing_anticipation_samples\": 0"));
     assert!(summary_json.contains("\"pose_landing_recovery_samples\": 1"));
     assert!(summary_json.contains("\"authored_clip_match_samples\": 8"));
     assert!(summary_json.contains("\"authored_clip_mismatch_samples\": 0"));
@@ -1385,6 +1388,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 1.0,
     });
+    sample.mode = FlightMode::Airborne.label();
     sample.pose_intent_label = "landing_anticipation";
     sample = sample.with_authored_animation_metrics("land", "land", 1, 140);
     sample.target_distance_m = 0.0;
@@ -1406,10 +1410,14 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     let landing_foot_split_check = named_check(&summary, "pose_landing_foot_split");
     let landing_flare_check = named_check(&summary, "pose_landing_flare");
     let landing_flare_backbend_check = named_check(&summary, "pose_landing_flare_backbend");
+    let landing_forward_fold_check = named_check(&summary, "pose_landing_forward_fold");
+    let landing_backward_bend_check = named_check(&summary, "pose_landing_backward_bend");
     let landing_recovery_backbend_check = named_check(&summary, "pose_landing_recovery_backbend");
+    let gliding_landing_check = named_check(&summary, "gliding_landing_anticipation_samples");
     let authored_land_check = named_check(&summary, "authored_landing_clip_samples");
 
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 0);
+    assert_eq!(summary.metrics.gliding_landing_anticipation_samples, 0);
     assert_eq!(summary.metrics.authored_land_clip_samples, 1);
     assert_eq!(summary.metrics.max_pose_landing_foot_forward_m, 0.40);
     assert_eq!(summary.metrics.max_pose_landing_foot_split_m, 0.0);
@@ -1442,12 +1450,27 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES
     );
     assert!(landing_flare_backbend_check.passed);
+    assert_eq!(landing_forward_fold_check.value, 0.0);
+    assert_eq!(
+        landing_forward_fold_check.threshold,
+        LANDING_MIN_POSE_FORWARD_FOLD_DEGREES
+    );
+    assert!(!landing_forward_fold_check.passed);
+    assert_eq!(landing_backward_bend_check.value, 0.0);
+    assert_eq!(
+        landing_backward_bend_check.threshold,
+        LANDING_MAX_POSE_BACKWARD_BEND_DEGREES
+    );
+    assert!(landing_backward_bend_check.passed);
     assert_eq!(landing_recovery_backbend_check.value, 0.0);
     assert_eq!(
         landing_recovery_backbend_check.threshold,
         LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES
     );
     assert!(landing_recovery_backbend_check.passed);
+    assert_eq!(gliding_landing_check.value, 0.0);
+    assert_eq!(gliding_landing_check.threshold, 0.0);
+    assert!(gliding_landing_check.passed);
 
     let mut passing_accumulator = EvalAccumulator::default();
     let mut passing_anticipation = air_control_metric_sample(
@@ -1473,7 +1496,9 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         landing_recovery_flip_degrees: 0.0,
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 1.0,
-    });
+    })
+    .with_pose_torso_backward_bend(-LANDING_MIN_POSE_FORWARD_FOLD_DEGREES);
+    passing_anticipation.mode = FlightMode::Airborne.label();
     passing_anticipation.pose_intent_label = "landing_anticipation";
     passing_anticipation =
         passing_anticipation.with_authored_animation_metrics("land", "land", 1, 140);
@@ -1504,7 +1529,8 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         landing_recovery_flip_degrees: LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
         wing_airflow_strength: 0.0,
         key_pose_readability_score: 1.0,
-    });
+    })
+    .with_pose_torso_backward_bend(0.0);
     passing_recovery.pose_intent_label = "landing_recovery";
     passing_recovery = passing_recovery.with_authored_animation_metrics("land", "land", 1, 140);
     passing_accumulator.observe(passing_recovery);
@@ -1522,7 +1548,14 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
 
     assert!(named_check(&passing_summary, "pose_landing_foot_split").passed);
     assert!(named_check(&passing_summary, "pose_landing_flare_backbend").passed);
+    assert!(named_check(&passing_summary, "pose_landing_forward_fold").passed);
+    assert!(named_check(&passing_summary, "pose_landing_backward_bend").passed);
     assert!(named_check(&passing_summary, "pose_landing_recovery_backbend").passed);
+    assert!(named_check(&passing_summary, "gliding_landing_anticipation_samples").passed);
+    assert_eq!(
+        passing_summary.metrics.gliding_landing_anticipation_samples,
+        0
+    );
     assert_eq!(
         passing_summary.metrics.max_pose_landing_foot_split_m,
         LANDING_MIN_POSE_FOOT_SPLIT_M
@@ -1532,6 +1565,18 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
             .metrics
             .max_pose_landing_recovery_flip_degrees,
         LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES
+    );
+    assert_eq!(
+        passing_summary
+            .metrics
+            .max_pose_landing_forward_fold_degrees,
+        LANDING_MIN_POSE_FORWARD_FOLD_DEGREES
+    );
+    assert_eq!(
+        passing_summary
+            .metrics
+            .max_pose_landing_backward_bend_degrees,
+        0.0
     );
     assert!(
         passing_summary
@@ -1543,6 +1588,248 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
             .to_json()
             .contains("\"max_pose_landing_recovery_flip_degrees\"")
     );
+    assert!(
+        passing_summary
+            .to_json()
+            .contains("\"max_pose_landing_forward_fold_degrees\"")
+    );
+    assert!(
+        passing_summary
+            .to_json()
+            .contains("\"max_pose_landing_backward_bend_degrees\"")
+    );
+}
+
+#[test]
+fn accumulator_rejects_landing_anticipation_while_gliding() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("island route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let mut sample = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, -2.0, -18.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    )
+    .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: LANDING_MIN_POSE_FLARE_DEGREES,
+        arm_spread_degrees: 0.0,
+        leg_tuck_degrees: 64.0,
+        lateral_lean_degrees: 0.0,
+        signed_lateral_lean_degrees: 0.0,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
+        landing_crouch_m: 0.12,
+        landing_foot_forward_m: LANDING_MIN_POSE_FOOT_FORWARD_M,
+        landing_foot_split_m: LANDING_MIN_POSE_FOOT_SPLIT_M,
+        landing_recovery_flip_degrees: 0.0,
+        wing_airflow_strength: 0.0,
+        key_pose_readability_score: 1.0,
+    })
+    .with_pose_torso_backward_bend(-LANDING_MIN_POSE_FORWARD_FOLD_DEGREES);
+    sample.mode = FlightMode::Gliding.label();
+    sample.pose_intent_label = "landing_anticipation";
+    sample = sample.with_authored_animation_metrics("land", "land", 1, 140);
+    sample.target_distance_m = 0.0;
+    sample.on_landing_target = true;
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let check = named_check(&summary, "gliding_landing_anticipation_samples");
+
+    assert_eq!(summary.metrics.gliding_landing_anticipation_samples, 1);
+    assert_eq!(check.value, 1.0);
+    assert_eq!(check.threshold, 0.0);
+    assert!(!check.passed);
+}
+
+#[test]
+fn accumulator_gates_landing_backward_bend_even_with_readable_pitch() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("island route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let mut sample = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, -2.0, -18.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    )
+    .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: LANDING_MIN_POSE_FLARE_DEGREES,
+        arm_spread_degrees: 0.0,
+        leg_tuck_degrees: 64.0,
+        lateral_lean_degrees: 0.0,
+        signed_lateral_lean_degrees: 0.0,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
+        landing_crouch_m: 0.12,
+        landing_foot_forward_m: LANDING_MIN_POSE_FOOT_FORWARD_M,
+        landing_foot_split_m: LANDING_MIN_POSE_FOOT_SPLIT_M,
+        landing_recovery_flip_degrees: 0.0,
+        wing_airflow_strength: 0.0,
+        key_pose_readability_score: 1.0,
+    })
+    .with_pose_torso_backward_bend(LANDING_MAX_POSE_BACKWARD_BEND_DEGREES + 6.0);
+    sample.mode = FlightMode::Airborne.label();
+    sample.pose_intent_label = "landing_anticipation";
+    sample = sample.with_authored_animation_metrics("land", "land", 1, 140);
+    sample.target_distance_m = 0.0;
+    sample.on_landing_target = true;
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let backward_bend_check = named_check(&summary, "pose_landing_backward_bend");
+
+    assert_eq!(
+        summary.metrics.max_pose_landing_backward_bend_degrees,
+        LANDING_MAX_POSE_BACKWARD_BEND_DEGREES + 6.0
+    );
+    assert_eq!(
+        backward_bend_check.threshold,
+        LANDING_MAX_POSE_BACKWARD_BEND_DEGREES
+    );
+    assert!(!backward_bend_check.passed);
+}
+
+#[test]
+fn accumulator_gates_landing_transition_backbend_even_during_grace() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("island route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let mut sample = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, -2.0, -18.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    )
+    .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: LANDING_MIN_POSE_FLARE_DEGREES,
+        arm_spread_degrees: 0.0,
+        leg_tuck_degrees: 64.0,
+        lateral_lean_degrees: 0.0,
+        signed_lateral_lean_degrees: 0.0,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
+        landing_crouch_m: 0.12,
+        landing_foot_forward_m: LANDING_MIN_POSE_FOOT_FORWARD_M,
+        landing_foot_split_m: LANDING_MIN_POSE_FOOT_SPLIT_M,
+        landing_recovery_flip_degrees: 0.0,
+        wing_airflow_strength: 0.0,
+        key_pose_readability_score: 1.0,
+    })
+    .with_pose_torso_local_bend(LANDING_MAX_POSE_TRANSITION_BACKBEND_DEGREES + 8.0)
+    .with_key_pose_transition_grace(true);
+    sample.mode = FlightMode::Airborne.label();
+    sample.pose_intent_label = "landing_anticipation";
+    sample = sample.with_authored_animation_metrics("land", "land", 1, 140);
+    sample.target_distance_m = 0.0;
+    sample.on_landing_target = true;
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let transition_check = named_check(&summary, "pose_landing_transition_backbend");
+
+    assert_eq!(
+        summary.metrics.max_pose_landing_transition_backbend_degrees,
+        LANDING_MAX_POSE_TRANSITION_BACKBEND_DEGREES + 8.0
+    );
+    assert_eq!(
+        transition_check.threshold,
+        LANDING_MAX_POSE_TRANSITION_BACKBEND_DEGREES
+    );
+    assert!(!transition_check.passed);
+}
+
+#[test]
+fn accumulator_gates_landing_torso_offset() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("island route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let mut sample = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(0.0, -2.0, -18.0),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    )
+    .with_pose_readability_metrics(EvalPoseReadabilityMetrics {
+        torso_pitch_degrees: LANDING_MIN_POSE_FLARE_DEGREES,
+        arm_spread_degrees: 0.0,
+        leg_tuck_degrees: 64.0,
+        lateral_lean_degrees: 0.0,
+        signed_lateral_lean_degrees: 0.0,
+        grounded_stride_foot_travel_m: 0.0,
+        grounded_stride_leg_opposition_degrees: 0.0,
+        landing_crouch_m: 0.12,
+        landing_foot_forward_m: LANDING_MIN_POSE_FOOT_FORWARD_M,
+        landing_foot_split_m: LANDING_MIN_POSE_FOOT_SPLIT_M,
+        landing_recovery_flip_degrees: 0.0,
+        wing_airflow_strength: 0.0,
+        key_pose_readability_score: 1.0,
+    })
+    .with_pose_torso_offset(LANDING_MAX_POSE_TORSO_OFFSET_M + 0.04);
+    sample.mode = FlightMode::Airborne.label();
+    sample.pose_intent_label = "landing_anticipation";
+    sample = sample.with_authored_animation_metrics("land", "land", 1, 140);
+    sample.target_distance_m = 0.0;
+    sample.on_landing_target = true;
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let torso_offset_check = named_check(&summary, "pose_landing_torso_offset");
+
+    assert_eq!(
+        summary.metrics.max_pose_landing_torso_offset_m,
+        LANDING_MAX_POSE_TORSO_OFFSET_M + 0.04
+    );
+    assert_eq!(
+        torso_offset_check.threshold,
+        LANDING_MAX_POSE_TORSO_OFFSET_M
+    );
+    assert!(!torso_offset_check.passed);
 }
 
 #[test]
@@ -1604,6 +1891,11 @@ fn accumulator_gates_target_landing_pose_temporal_samples() {
             max_pose_joint_gap_m: 0.0,
             pose_joint_gap_samples: 1,
         });
+        sample.mode = if pose_intent_label == "landing_anticipation" {
+            FlightMode::Airborne.label()
+        } else {
+            FlightMode::Grounded.label()
+        };
         sample.pose_intent_label = pose_intent_label;
         sample = sample.with_authored_animation_metrics("land", "land", 1, 140);
         sample.target_distance_m = 0.0;
@@ -1667,6 +1959,7 @@ fn accumulator_gates_target_landing_pose_temporal_jank() {
         max_pose_joint_gap_m: 0.0,
         pose_joint_gap_samples: 1,
     });
+    sample.mode = FlightMode::Airborne.label();
     sample.pose_intent_label = "landing_anticipation";
     sample = sample.with_authored_animation_metrics("land", "land", 1, 140);
     sample.target_distance_m = 0.0;
@@ -3077,7 +3370,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
             ("air_turn", FlightMode::Gliding.label(), 12),
             ("air_brake", FlightMode::Gliding.label(), 8),
             ("diving", FlightMode::Gliding.label(), 1),
-            ("landing_anticipation", FlightMode::Gliding.label(), 1),
+            ("landing_anticipation", FlightMode::Airborne.label(), 1),
             ("landing_recovery", FlightMode::Grounded.label(), 1),
         ],
     );
@@ -3143,6 +3436,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
     assert_eq!(summary.metrics.gliding_dive_samples, 1);
     assert_eq!(summary.metrics.authored_dive_clip_samples, 1);
     assert_eq!(summary.metrics.pose_landing_anticipation_samples, 1);
+    assert_eq!(summary.metrics.gliding_landing_anticipation_samples, 0);
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 1);
     assert_eq!(summary.metrics.unreadable_key_pose_samples, 0);
     assert!(summary.metrics.pose_joint_gap_samples > 0);
@@ -3214,6 +3508,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_dive_pose_arm_spread",
         "pose_state_dive_pose_leg_tuck",
         "pose_state_landing_anticipation_samples",
+        "pose_state_gliding_landing_anticipation_samples",
         "pose_state_landing_recovery_samples",
         "pose_state_authored_land_clip_samples",
         "pose_state_landing_crouch",
@@ -3221,7 +3516,11 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_landing_foot_split",
         "pose_state_landing_flare",
         "pose_state_landing_flare_backbend",
+        "pose_state_landing_forward_fold",
+        "pose_state_landing_backward_bend",
+        "pose_state_landing_transition_backbend",
         "pose_state_landing_recovery_backbend",
+        "pose_state_landing_torso_offset",
         "pose_state_landing_pose_temporal_samples",
         "pose_state_landing_pose_rotation_delta",
         "pose_state_landing_pose_translation_delta",
@@ -3684,6 +3983,10 @@ fn observe_pose_state_samples_with_grounded_stride(
                     -movement_axis.x.signum() * AIR_CONTROL_MIN_SIGNED_POSE_LATERAL_LEAN_DEGREES;
             }
             sample = sample.with_pose_readability_metrics(readability_metrics);
+            if pose_intent_label == "landing_anticipation" {
+                sample =
+                    sample.with_pose_torso_backward_bend(-LANDING_MIN_POSE_FORWARD_FOLD_DEGREES);
+            }
             sample = sample.with_pose_temporal_metrics(EvalPoseTemporalMetrics {
                 visible_pose_part_count: MIN_VISIBLE_POSE_PART_COUNT,
                 max_pose_part_rotation_delta_degrees: 8.0,

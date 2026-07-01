@@ -89,12 +89,13 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
     }
     if scenario.name == BRANCH_RECOVERY_ROUTE {
         let dive = (8.45..=10.9).contains(&t);
+        let final_landing_approach = t >= 9.35;
         return FlightInput {
             forward: (0.05..=10.55).contains(&t),
             backward: (10.75..=11.1).contains(&t),
             right: (1.2..=2.2).contains(&t) || (9.1..=9.75).contains(&t),
             left: (4.7..=5.0).contains(&t),
-            glide: t >= 0.45,
+            glide: t >= 0.45 && !final_landing_approach,
             dive,
             launch: frame == 1,
         };
@@ -135,12 +136,14 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
     };
     let backward = scenario.name == ISLAND_LAUNCH_TO_LANDING && (7.05..=7.55).contains(&t);
 
+    let final_landing_approach = scenario.name == ISLAND_LAUNCH_TO_LANDING && t >= 7.45;
+
     FlightInput {
         forward,
         backward,
         left,
         right,
-        glide: t >= 0.45,
+        glide: t >= 0.45 && !final_landing_approach,
         dive,
         launch: frame == 1,
     }

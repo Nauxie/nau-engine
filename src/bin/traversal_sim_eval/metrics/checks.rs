@@ -8,8 +8,9 @@ mod core;
 use nau_engine::eval::{
     AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
     EvalScenario, LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES,
-    LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES, LANDING_MIN_POSE_FLARE_DEGREES,
-    LANDING_MIN_POSE_FOOT_FORWARD_M, LANDING_MIN_POSE_FOOT_SPLIT_M, LONG_GLIDE_VISIBILITY,
+    LANDING_MAX_POSE_BACKWARD_BEND_DEGREES, LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
+    LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M, LANDING_MIN_POSE_FOOT_SPLIT_M,
+    LANDING_MIN_POSE_FORWARD_FOLD_DEGREES, LONG_GLIDE_VISIBILITY,
     MAX_CROSSWIND_NEUTRAL_HORIZONTAL_STEP_M, MIN_CROSSWIND_FORCE_DELTA_MPS,
     MIN_CROSSWIND_FORCE_SAMPLE_COUNT, MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT,
     MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M, MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS,
@@ -53,7 +54,7 @@ const POSE_STATE_MIN_AIR_BRAKE_SAMPLES: f32 = 4.0;
 const POSE_STATE_MIN_DIVING_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_LANDING_POSE_SAMPLES: f32 = 1.0;
-const POSE_STATE_MIN_LANDING_FLARE_DEGREES: f32 = 55.0;
+const POSE_STATE_MIN_LANDING_FLARE_DEGREES: f32 = LANDING_MIN_POSE_FLARE_DEGREES;
 
 #[derive(Clone, Debug)]
 pub(crate) struct SimCheck {
@@ -112,6 +113,12 @@ impl SimMetrics {
                 1.0,
                 "samples",
             ));
+            checks.push(SimCheck::at_most(
+                "gliding_landing_anticipation_samples",
+                self.gliding_landing_anticipation_samples as f32,
+                0.0,
+                "samples",
+            ));
             checks.push(SimCheck::at_least(
                 "pose_landing_recovery_samples",
                 self.pose_landing_recovery_samples as f32,
@@ -146,6 +153,18 @@ impl SimMetrics {
                 "pose_landing_flare_backbend",
                 self.max_pose_landing_flare_degrees,
                 LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES,
+                "deg",
+            ));
+            checks.push(SimCheck::at_least(
+                "pose_landing_forward_fold",
+                self.max_pose_landing_forward_fold_degrees,
+                LANDING_MIN_POSE_FORWARD_FOLD_DEGREES,
+                "deg",
+            ));
+            checks.push(SimCheck::at_most(
+                "pose_landing_backward_bend",
+                self.max_pose_landing_backward_bend_degrees,
+                LANDING_MAX_POSE_BACKWARD_BEND_DEGREES,
                 "deg",
             ));
             checks.push(SimCheck::at_most(
@@ -700,6 +719,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             POSE_STATE_MIN_LANDING_POSE_SAMPLES,
             "samples",
         ),
+        SimCheck::at_most(
+            "pose_state_gliding_landing_anticipation_samples",
+            metrics.gliding_landing_anticipation_samples as f32,
+            0.0,
+            "samples",
+        ),
         SimCheck::at_least(
             "pose_state_landing_recovery_samples",
             metrics.pose_landing_recovery_samples as f32,
@@ -734,6 +759,18 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             "pose_state_landing_flare_backbend",
             metrics.max_pose_landing_flare_degrees,
             LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_least(
+            "pose_state_landing_forward_fold",
+            metrics.max_pose_landing_forward_fold_degrees,
+            LANDING_MIN_POSE_FORWARD_FOLD_DEGREES,
+            "deg",
+        ),
+        SimCheck::at_most(
+            "pose_state_landing_backward_bend",
+            metrics.max_pose_landing_backward_bend_degrees,
+            LANDING_MAX_POSE_BACKWARD_BEND_DEGREES,
             "deg",
         ),
         SimCheck::at_most(
