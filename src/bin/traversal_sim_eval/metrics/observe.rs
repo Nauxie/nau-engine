@@ -1,5 +1,6 @@
 use bevy::prelude::{Vec2, Vec3};
 use nau_engine::animation::MIN_KEY_POSE_READABILITY_SCORE;
+use nau_engine::camera::CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M;
 use nau_engine::eval::{
     CAMERA_STRAFE_STABILITY, EvalScenario, MIN_CROSSWIND_FORCE_DELTA_MPS,
     MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS, MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS,
@@ -74,6 +75,22 @@ impl SimMetrics {
         self.max_camera_obstruction_hits = self
             .max_camera_obstruction_hits
             .max(sample.camera_obstruction_hits);
+        if sample.camera_obstruction_hits > 0 {
+            self.min_camera_obstructed_distance_m = Some(
+                self.min_camera_obstructed_distance_m
+                    .map_or(sample.camera_distance_m, |distance| {
+                        distance.min(sample.camera_distance_m)
+                    }),
+            );
+            if self.previous_camera_obstructed_sample
+                && sample.camera_step_distance_m > CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M
+            {
+                self.camera_obstruction_snap_count += 1;
+            }
+            self.previous_camera_obstructed_sample = true;
+        } else {
+            self.previous_camera_obstructed_sample = false;
+        }
         self.max_abs_camera_yaw_offset_degrees = self
             .max_abs_camera_yaw_offset_degrees
             .max(sample.camera_yaw_offset_degrees.abs());
