@@ -743,6 +743,25 @@ pub(super) fn build_checks(
         },
     ]);
 
+    if thresholds.min_camera_obstruction_adjustment_m > 0.0
+        || thresholds.min_camera_obstructed_distance_m > 0.0
+    {
+        checks.extend([
+            EvalCheck::at_least(
+                "min_camera_obstructed_distance",
+                acc.min_camera_obstructed_distance_m.unwrap_or(0.0),
+                thresholds.min_camera_obstructed_distance_m,
+                "m",
+            ),
+            EvalCheck::at_most(
+                "camera_obstruction_snap_count",
+                acc.camera_obstruction_snap_count as f32,
+                thresholds.max_camera_obstruction_snap_count as f32,
+                "samples",
+            ),
+        ]);
+    }
+
     control::append_scenario_checks(&mut checks, acc, scenario, derived, &thresholds);
     checks
 }
