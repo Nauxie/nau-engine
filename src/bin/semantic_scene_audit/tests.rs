@@ -1,10 +1,12 @@
 use crate::{
     checkpoint::{audit_checkpoint_path, audit_scene_sample, terrain_material_variant_for_label},
     materials::{material_matches, sample_pixel_hits, sample_pixel_hits_with_variant},
-    report::{json_number, json_string, report_checks},
+    report::{json_number, json_string, report_checks, report_json},
     thresholds::{
+        MIN_DISTANT_ISLAND_PIXEL_COVERAGE, MIN_FOLIAGE_PIXEL_COVERAGE,
         MIN_PASSED_TERRAIN_MATERIAL_VARIANTS, MIN_SAMPLE_PIXEL_HITS,
-        MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE, MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS,
+        MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE, MIN_TERRAIN_PIXEL_COVERAGE,
+        MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS,
     },
     types::{CheckpointAudit, SceneSampleAudit},
 };
@@ -299,6 +301,7 @@ fn report_checks_require_visible_material_samples_before_pixel_hits() {
     let checkpoint = CheckpointAudit {
         metadata_path: "checkpoint.markers.json".to_string(),
         screenshot_path: "checkpoint.png".to_string(),
+        scenario: "default".to_string(),
         checkpoint: "test".to_string(),
         in_viewport_scene_sample_count: 2,
         occluded_scene_sample_count: 1,
@@ -473,6 +476,7 @@ fn report_checks_require_scene_pixel_coverage_not_just_hit_counts() {
     let checkpoint = CheckpointAudit {
         metadata_path: "checkpoint.markers.json".to_string(),
         screenshot_path: "checkpoint.png".to_string(),
+        scenario: "default".to_string(),
         checkpoint: "test".to_string(),
         in_viewport_scene_sample_count: 1,
         occluded_scene_sample_count: 0,
@@ -515,6 +519,7 @@ fn report_checks_require_terrain_material_variant_diversity() {
     let checkpoint = CheckpointAudit {
         metadata_path: "checkpoint.markers.json".to_string(),
         screenshot_path: "checkpoint.png".to_string(),
+        scenario: "default".to_string(),
         checkpoint: "test".to_string(),
         in_viewport_scene_sample_count: 2,
         occluded_scene_sample_count: 0,
@@ -563,6 +568,7 @@ fn report_checks_require_visible_terrain_material_variants_to_hit() {
     let checkpoint = CheckpointAudit {
         metadata_path: "checkpoint.markers.json".to_string(),
         screenshot_path: "checkpoint.png".to_string(),
+        scenario: "default".to_string(),
         checkpoint: "test".to_string(),
         in_viewport_scene_sample_count: 3,
         occluded_scene_sample_count: 0,
@@ -605,6 +611,7 @@ fn report_checks_require_per_variant_terrain_pixel_coverage() {
     let checkpoint = CheckpointAudit {
         metadata_path: "checkpoint.markers.json".to_string(),
         screenshot_path: "checkpoint.png".to_string(),
+        scenario: "default".to_string(),
         checkpoint: "test".to_string(),
         in_viewport_scene_sample_count: 1,
         occluded_scene_sample_count: 0,
@@ -636,6 +643,80 @@ fn report_checks_require_per_variant_terrain_pixel_coverage() {
     assert_eq!(
         lush_coverage.threshold,
         MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE as f64
+    );
+}
+
+#[test]
+fn world_collision_contact_report_profile_focuses_close_obstruction_scene() {
+    let checkpoint = CheckpointAudit {
+        metadata_path: "checkpoint.markers.json".to_string(),
+        screenshot_path: "checkpoint.png".to_string(),
+        scenario: "world_collision_contact".to_string(),
+        checkpoint: "blocked_by_tree".to_string(),
+        in_viewport_scene_sample_count: 3,
+        occluded_scene_sample_count: 0,
+        visible_scene_sample_count: 3,
+        scene_sample_pixel_hit_count: 3,
+        visible_scene_material_count: 3,
+        scene_material_pixel_hit_count: 3,
+        visible_scene_sample_kind_count: 3,
+        scene_sample_kind_pixel_hit_count: 3,
+        visible_terrain_material_variant_count: 1,
+        terrain_material_variant_pixel_hit_count: 1,
+        passed: true,
+        samples: vec![
+            terrain_audit_sample_with_hits(
+                "launch mesa",
+                "terrain_lush_meadow",
+                MIN_TERRAIN_PIXEL_COVERAGE,
+            ),
+            scene_audit_sample(
+                "tree_canopy",
+                "launch mesa",
+                "foliage",
+                "foliage",
+                MIN_FOLIAGE_PIXEL_COVERAGE,
+            ),
+            scene_audit_sample(
+                "distant_island",
+                "midpoint shelf",
+                "distant_island",
+                "distant_island",
+                MIN_DISTANT_ISLAND_PIXEL_COVERAGE,
+            ),
+        ],
+        materials: Vec::new(),
+    };
+
+    let checkpoints = vec![checkpoint];
+    let checks = report_checks(&checkpoints);
+    let report =
+        serde_json::from_str::<Value>(&report_json(true, &checks, &checkpoints)).expect("report");
+    let profile = report.get("profile").expect("profile");
+
+    assert!(checks.iter().all(|check| check.passed));
+    assert!(!checks.iter().any(|check| check.name.contains("cloud")));
+    assert!(
+        !checks
+            .iter()
+            .any(|check| check.name == "visible_terrain_material_variant_count")
+    );
+    assert_eq!(
+        profile.get("name").and_then(Value::as_str),
+        Some("close_obstruction")
+    );
+    assert_eq!(
+        profile
+            .get("require_terrain_material_variants")
+            .and_then(Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(
+        profile
+            .get("expected_materials")
+            .and_then(Value::as_array)
+            .map(Vec::len),
+        Some(3)
     );
 }
 
@@ -818,6 +899,27 @@ fn terrain_audit_sample_with_hits(
         kind: "terrain_surface".to_string(),
         label: label.to_string(),
         expected_material: "terrain".to_string(),
+        material_variant: material_variant.to_string(),
+        in_viewport: true,
+        visibility: "visible".to_string(),
+        screen_x: Some(12.0),
+        screen_y: Some(12.0),
+        semantic_pixel_hits,
+        passed: true,
+    }
+}
+
+fn scene_audit_sample(
+    kind: &str,
+    label: &str,
+    expected_material: &str,
+    material_variant: &str,
+    semantic_pixel_hits: usize,
+) -> SceneSampleAudit {
+    SceneSampleAudit {
+        kind: kind.to_string(),
+        label: label.to_string(),
+        expected_material: expected_material.to_string(),
         material_variant: material_variant.to_string(),
         in_viewport: true,
         visibility: "visible".to_string(),
