@@ -11,10 +11,10 @@ use bevy::prelude::*;
 use bevy::render::render_resource::BlendState;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use nau_engine::camera::{
-    CameraControlState, CameraControlTuning, CameraInput, CameraObstruction, FollowCamera,
-    FollowCameraState, apply_camera_input, avoid_camera_obstructions,
-    camera_orbit_alignment_degrees, clamp_camera_step, lift_camera_above_floor,
-    movement_input_stable_follow_direction, step_camera_with_direction,
+    CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M, CameraControlState, CameraControlTuning, CameraInput,
+    CameraObstruction, FollowCamera, FollowCameraState, apply_camera_input,
+    avoid_camera_obstructions, camera_orbit_alignment_degrees, clamp_camera_step,
+    lift_camera_above_floor, movement_input_stable_follow_direction, step_camera_with_direction,
     update_follow_direction_state,
 };
 use nau_engine::eval::{scripted_camera_input, scripted_input};
@@ -23,7 +23,7 @@ use nau_engine::world::SkyRoute;
 
 const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
 const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
-const CAMERA_MAX_STEP_M: f32 = 9.5;
+const CAMERA_MAX_STEP_M: f32 = CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M - 0.05;
 pub(crate) const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
 
 #[derive(Resource, Clone, Copy, Debug, Default)]

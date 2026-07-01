@@ -5,7 +5,51 @@ use super::{
     types::{Check, ImageAudit},
 };
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum VisualAuditProfile {
+    Default,
+    CloseObstruction,
+}
+
+impl VisualAuditProfile {
+    pub(super) fn parse(name: &str) -> Option<Self> {
+        match name {
+            "default" => Some(Self::Default),
+            "close_obstruction" => Some(Self::CloseObstruction),
+            _ => None,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::CloseObstruction => "close_obstruction",
+        }
+    }
+
+    fn relaxed_checks(self) -> &'static [&'static str] {
+        match self {
+            Self::Default => &[],
+            Self::CloseObstruction => &[
+                "max_top_sky_fraction",
+                "max_route_marker_fraction",
+                "max_route_marker_component_count",
+                "max_route_marker_hue_family_count",
+                "max_foliage_scene_fraction",
+            ],
+        }
+    }
+}
+
+#[cfg(test)]
 pub(super) fn report_checks(audits: &[ImageAudit]) -> Vec<Check> {
+    report_checks_for_profile(audits, VisualAuditProfile::Default)
+}
+
+pub(super) fn report_checks_for_profile(
+    audits: &[ImageAudit],
+    profile: VisualAuditProfile,
+) -> Vec<Check> {
     let max_top_sky_fraction = audits
         .iter()
         .map(|audit| audit.top_sky_fraction)
@@ -92,7 +136,7 @@ pub(super) fn report_checks(audits: &[ImageAudit]) -> Vec<Check> {
         .map(|audit| audit.cloud_layer_vertical_span_fraction)
         .fold(0.0, f64::max);
 
-    vec![
+    let mut checks = vec![
         Check::at_least(
             "max_top_sky_fraction",
             max_top_sky_fraction,
@@ -207,17 +251,20 @@ pub(super) fn report_checks(audits: &[ImageAudit]) -> Vec<Check> {
             MIN_SEQUENCE_CLOUD_LAYER_VERTICAL_SPAN_FRACTION,
             "ratio",
         ),
-    ]
+    ];
+    checks.retain(|check| !profile.relaxed_checks().contains(&check.name));
+    checks
 }
 
 pub(super) fn report_passed(audits: &[ImageAudit], report_checks: &[Check]) -> bool {
     audits.iter().all(|audit| audit.passed) && report_checks.iter().all(|check| check.passed)
 }
 
-pub(super) fn audit_report_json(
+pub(super) fn audit_report_json_for_profile(
     passed: bool,
     report_checks: &[Check],
     audits: &[ImageAudit],
+    profile: VisualAuditProfile,
 ) -> String {
     let checks = report_checks
         .iter()
@@ -230,11 +277,25 @@ pub(super) fn audit_report_json(
         .collect::<Vec<_>>()
         .join(",\n    ");
     format!(
-        "{{\n  \"passed\": {},\n  \"image_count\": {},\n  \"checks\": [\n    {}\n  ],\n  \"images\": [\n    {}\n  ]\n}}",
+        "{{\n  \"passed\": {},\n  \"image_count\": {},\n  \"profile\": {},\n  \"checks\": [\n    {}\n  ],\n  \"images\": [\n    {}\n  ]\n}}",
         passed,
         audits.len(),
+        profile_json(profile),
         checks,
         images
+    )
+}
+
+fn profile_json(profile: VisualAuditProfile) -> String {
+    format!(
+        "{{\"name\": {}, \"relaxed_checks\": [{}]}}",
+        json_string(profile.name()),
+        profile
+            .relaxed_checks()
+            .iter()
+            .map(|check| json_string(check))
+            .collect::<Vec<_>>()
+            .join(", ")
     )
 }
 

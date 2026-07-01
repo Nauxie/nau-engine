@@ -4,6 +4,7 @@ use crate::animation::{
     GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
     LANDING_MAX_FOOT_SPLIT_READABILITY_M,
 };
+use crate::camera::CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M;
 use crate::movement::{LAUNCH_MAX_HORIZONTAL_SPEED_MPS, LAUNCH_MAX_UPWARD_SPEED_MPS};
 
 #[test]
@@ -1075,6 +1076,42 @@ fn accumulator_gates_movement_only_camera_view_yaw_drift() {
 
     assert_eq!(summary.metrics.max_camera_view_yaw_drift_degrees, 12.0);
     assert_eq!(check.value, 12.0);
+    assert!(!check.passed);
+}
+
+#[test]
+fn accumulator_counts_obstruction_snaps_by_camera_step() {
+    let scenario = scenario_named(CAMERA_MOUSE_CONTROL).expect("camera mouse route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    let mut first = content_metric_sample(scenario, 0, 12, 0, 64);
+    first.camera_obstruction_hits = 1;
+    first.camera_obstruction_adjustment_m = 1.0;
+    first.camera_distance_m = 14.0;
+    first.camera_step_distance_m = 0.2;
+    accumulator.observe(first);
+
+    let mut lateral_snap = content_metric_sample(scenario, 1, 12, 0, 64);
+    lateral_snap.camera_obstruction_hits = 1;
+    lateral_snap.camera_obstruction_adjustment_m = 1.0;
+    lateral_snap.camera_distance_m = 14.0;
+    lateral_snap.camera_step_distance_m = CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M + 0.25;
+    accumulator.observe(lateral_snap);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let check = named_check(&summary, "camera_obstruction_snap_count");
+
+    assert_eq!(summary.metrics.camera_obstruction_snap_count, 1);
+    assert_eq!(check.value, 1.0);
     assert!(!check.passed);
 }
 

@@ -712,20 +712,15 @@ pub(crate) fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> 
     let lift_roll = (elapsed * 0.58 + phase * 0.67 + progress * std::f32::consts::TAU * 1.9).cos();
     let visibility = wind_loop_visibility(progress);
     let radial_breath = radial_axis
-        * (flow.variation * 0.28
-            + breathing * 0.18
-            + gust_packet * 0.12
-            + flow.layered_gust_strength * 0.1);
-    let tangential_depth = tangent_axis
-        * (thermal_roll * (0.08 + flow.variation * 0.1)
+        * (flow.variation * 0.08
+            + breathing * 0.05
             + gust_packet * 0.04
-            + flow.layered_gust_strength * 0.06);
+            + flow.layered_gust_strength * 0.035);
+    let tangential_depth = tangent_axis
+        * (thermal_roll * (0.025 + flow.variation * 0.035)
+            + gust_packet * 0.025
+            + flow.layered_gust_strength * 0.025);
     let horizontal_drift = horizontal_flow * 0.03;
-    let flow_pulse = flow.gust_strength * 0.08
-        + flow.variation * 0.05
-        + gust_packet * 0.04
-        + flow.layered_gust_strength * 0.03;
-
     Transform {
         translation: ribbon.base_translation
             + horizontal_drift
@@ -738,27 +733,27 @@ pub(crate) fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> 
             + radial_breath
             + tangential_depth,
         rotation: ribbon.base_rotation
-            * Quat::from_rotation_y(elapsed * ribbon.spin_speed * 1.02 + flow_pulse)
-            * Quat::from_rotation_x(thermal_roll * 0.05)
+            * Quat::from_rotation_y(elapsed * ribbon.spin_speed * 1.02)
+            * Quat::from_rotation_x(thermal_roll * 0.012)
             * Quat::from_rotation_z(
-                breathing * flow.variation * 0.15
-                    + gust_packet * 0.045
-                    + flow.layered_gust_strength * 0.035,
+                breathing * flow.variation * 0.035
+                    + gust_packet * 0.015
+                    + flow.layered_gust_strength * 0.012,
             ),
         scale: updraft_ribbon_scale_with_visibility(
             Vec3::new(
-                1.0 + flow.variation * 0.14
-                    + scale_wave * 0.08
-                    + gust_packet * 0.05
-                    + flow.layered_gust_strength * 0.04,
-                1.0 + flow.gust_strength * 0.03
-                    + vertical_ratio * 0.03
-                    + scale_wave.abs() * 0.02
+                1.0 + flow.variation * 0.04
+                    + scale_wave * 0.025
                     + gust_packet * 0.02
-                    + flow.layered_gust_strength * 0.02,
-                1.0 + flow.variation * 0.1 - scale_wave * 0.055
-                    + gust_packet * 0.04
-                    + flow.layered_gust_strength * 0.035,
+                    + flow.layered_gust_strength * 0.015,
+                1.0 + flow.gust_strength * 0.02
+                    + vertical_ratio * 0.02
+                    + scale_wave.abs() * 0.01
+                    + gust_packet * 0.01
+                    + flow.layered_gust_strength * 0.01,
+                1.0 + flow.variation * 0.035 - scale_wave * 0.02
+                    + gust_packet * 0.015
+                    + flow.layered_gust_strength * 0.012,
             ),
             visibility,
         ),
@@ -783,7 +778,7 @@ fn updraft_ribbon_flow_sample(ribbon: &UpdraftRibbon, elapsed: f32) -> UpdraftRi
     let vertical_ratio =
         (base_flow.vector.y.max(0.0) / ribbon.field.visual_speed.max(1.0)).min(1.4);
     let progress =
-        (ribbon.phase + elapsed * ribbon.field.visual_speed.max(1.0) / field_height * 0.14).fract();
+        (ribbon.phase + elapsed * ribbon.field.visual_speed.max(1.0) / field_height * 0.36).fract();
     let vertical_scroll =
         (progress - 0.5) * ribbon.field.half_extents.y * (0.385 + vertical_ratio * 0.06);
     let phase = ribbon.phase * std::f32::consts::TAU;

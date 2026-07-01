@@ -72,6 +72,8 @@ fn route_objectives_track_main_and_branch_targets() {
     let route = SkyRoute::default();
     let main = route.route_objectives(None);
     let branch = route.route_objectives(Some("sunlit terrace"));
+    let stratos = route.route_objectives(Some("stratos shelf"));
+    let summit = route.route_objectives(Some("summit anvil"));
 
     assert_eq!(main.len(), 2);
     assert_eq!(main[0].label, "launch terrace updraft");
@@ -79,6 +81,14 @@ fn route_objectives_track_main_and_branch_targets() {
     assert_eq!(branch.len(), 3);
     assert_eq!(branch[1].label, "distant recovery updraft");
     assert_eq!(branch[2].label, "sunlit terrace");
+    assert_eq!(stratos.len(), 5);
+    assert_eq!(stratos[2].label, "upper thermal ring updraft");
+    assert_eq!(stratos[3].label, "stratos shelf updraft");
+    assert_eq!(stratos[4].label, "stratos shelf");
+    assert_eq!(summit.len(), 6);
+    assert_eq!(summit[3].label, "stratos shelf updraft");
+    assert_eq!(summit[4].label, "summit anvil updraft");
+    assert_eq!(summit[5].label, "summit anvil");
 }
 
 #[test]
@@ -112,7 +122,33 @@ fn route_has_archipelago_scale_and_distant_landmarks() {
         .fold(0.0_f32, f32::min);
 
     assert_eq!(route.islands().len(), SKY_ROUTE_ISLAND_COUNT);
-    assert!(farthest_z < -1000.0);
+    assert!(farthest_z < -1500.0);
+}
+
+#[test]
+fn route_has_wide_vertical_and_scale_variation() {
+    let route = SkyRoute::default();
+    let mut min_y = f32::INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+    let mut smallest_base_area = f32::INFINITY;
+    let mut largest_base_area = 0.0_f32;
+    let mut low_island_count = 0;
+    let mut high_island_count = 0;
+
+    for island in route.islands() {
+        min_y = min_y.min(island.center.y);
+        max_y = max_y.max(island.center.y);
+        let base_area = island.half_extents.x * island.half_extents.y;
+        smallest_base_area = smallest_base_area.min(base_area);
+        largest_base_area = largest_base_area.max(base_area);
+        low_island_count += usize::from(island.center.y <= 24.0);
+        high_island_count += usize::from(island.center.y >= 140.0);
+    }
+
+    assert!(max_y - min_y >= 190.0);
+    assert!(low_island_count >= 3);
+    assert!(high_island_count >= 6);
+    assert!(largest_base_area / smallest_base_area >= 16.0);
 }
 
 #[test]
@@ -129,9 +165,9 @@ fn route_has_large_traversible_anchor_islands() {
         large_anchor_count += usize::from(base_area >= 1500.0);
     }
 
-    assert!(total_base_area >= 28_000.0);
-    assert!(largest_base_area >= 3_300.0);
-    assert!(large_anchor_count >= 9);
+    assert!(total_base_area >= 48_000.0);
+    assert!(largest_base_area >= 4_400.0);
+    assert!(large_anchor_count >= 12);
 }
 
 #[test]
@@ -160,6 +196,18 @@ fn route_preserves_core_path_and_appends_satellite_islands() {
         "storm shard",
         "orchard spur",
         "mist stepping stone",
+        "underbridge cay",
+        "low reef",
+        "quiet lower garden",
+        "lowwind shelf",
+        "upper thermal ring",
+        "needle crownlet",
+        "skyhook basin",
+        "stratos shelf",
+        "cloudfall meadow",
+        "highgate stair",
+        "thin air roost",
+        "summit anvil",
     ];
 
     for (index, expected_name) in core_route_names.into_iter().enumerate() {

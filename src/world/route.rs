@@ -8,7 +8,7 @@ use super::{
     StreamingLodStats,
 };
 
-pub const SKY_ROUTE_ISLAND_COUNT: usize = 20;
+pub const SKY_ROUTE_ISLAND_COUNT: usize = 32;
 
 #[derive(Resource, Clone, Debug)]
 pub struct SkyRoute {
@@ -161,9 +161,106 @@ impl Default for SkyRoute {
                     15.0,
                     false,
                 ),
+                SkyIsland::new(
+                    "underbridge cay",
+                    Vec3::new(-64.0, 18.0, -92.0),
+                    Vec2::new(18.0, 14.0),
+                    6.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "low reef",
+                    Vec3::new(92.0, 22.0, -188.0),
+                    Vec2::new(34.0, 20.0),
+                    7.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "quiet lower garden",
+                    Vec3::new(-188.0, 38.0, -238.0),
+                    Vec2::new(40.0, 30.0),
+                    8.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "lowwind shelf",
+                    Vec3::new(178.0, 24.0, -412.0),
+                    Vec2::new(38.0, 24.0),
+                    8.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "upper thermal ring",
+                    Vec3::new(122.0, 138.0, -520.0),
+                    Vec2::new(42.0, 32.0),
+                    18.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "needle crownlet",
+                    Vec3::new(250.0, 148.0, -832.0),
+                    Vec2::new(20.0, 18.0),
+                    21.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "skyhook basin",
+                    Vec3::new(-238.0, 128.0, -882.0),
+                    Vec2::new(66.0, 44.0),
+                    22.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "stratos shelf",
+                    Vec3::new(-22.0, 156.0, -1138.0),
+                    Vec2::new(86.0, 52.0),
+                    24.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "cloudfall meadow",
+                    Vec3::new(-144.0, 142.0, -1208.0),
+                    Vec2::new(74.0, 54.0),
+                    20.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "highgate stair",
+                    Vec3::new(260.0, 172.0, -1210.0),
+                    Vec2::new(30.0, 24.0),
+                    25.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "thin air roost",
+                    Vec3::new(54.0, 196.0, -1355.0),
+                    Vec2::new(24.0, 20.0),
+                    28.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "summit anvil",
+                    Vec3::new(-18.0, 218.0, -1510.0),
+                    Vec2::new(90.0, 46.0),
+                    30.0,
+                    false,
+                ),
             ],
         }
     }
+}
+
+fn lift_route_node_count_for_target(target: SkyIsland) -> usize {
+    let mut count = if target.is_target { 1 } else { 2 };
+    let target_depth = -target.center.z;
+    for (index, node) in GAMEPLAY_LIFT_ROUTE.iter().enumerate().skip(2) {
+        let node_depth = -node.center.z;
+        if target.center.y >= node.center.y - 36.0 || target_depth >= node_depth - 40.0 {
+            count = index + 1;
+        }
+    }
+
+    count.min(GAMEPLAY_LIFT_ROUTE.len())
 }
 
 impl SkyRoute {
@@ -172,16 +269,18 @@ impl SkyRoute {
     }
 
     pub fn route_objectives(&self, island_name: Option<&str>) -> Vec<RouteObjective> {
-        let mut objectives = vec![RouteObjective::fly_through(GAMEPLAY_LIFT_ROUTE[0])];
-        if self
-            .tracked_target_island(island_name)
-            .is_some_and(|island| !island.is_target)
-        {
-            objectives.push(RouteObjective::fly_through(GAMEPLAY_LIFT_ROUTE[1]));
-        }
-        if let Some(target) = self.tracked_target_island(island_name) {
-            objectives.push(RouteObjective::land_on(target));
-        }
+        let Some(target) = self.tracked_target_island(island_name) else {
+            return Vec::new();
+        };
+
+        let lift_node_count = lift_route_node_count_for_target(target);
+        let mut objectives = GAMEPLAY_LIFT_ROUTE
+            .iter()
+            .copied()
+            .take(lift_node_count)
+            .map(RouteObjective::fly_through)
+            .collect::<Vec<_>>();
+        objectives.push(RouteObjective::land_on(target));
 
         objectives
     }

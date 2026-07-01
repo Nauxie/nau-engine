@@ -14,12 +14,25 @@ mod types;
 use std::{env, path::PathBuf, process};
 
 use analysis::audit_path;
-use report::{audit_report_json, report_checks, report_passed};
+use report::{
+    VisualAuditProfile, audit_report_json_for_profile, report_checks_for_profile, report_passed,
+};
 
 fn main() {
-    let paths = env::args().skip(1).map(PathBuf::from).collect::<Vec<_>>();
+    let (profile, paths) = match parse_args(env::args().skip(1)) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            eprintln!("{error}");
+            eprintln!(
+                "Usage: cargo run --bin visual_audit -- [--profile default|close_obstruction] <png> [<png> ...]"
+            );
+            process::exit(2);
+        }
+    };
     if paths.is_empty() {
-        eprintln!("Usage: cargo run --bin visual_audit -- <png> [<png> ...]");
+        eprintln!(
+            "Usage: cargo run --bin visual_audit -- [--profile default|close_obstruction] <png> [<png> ...]"
+        );
         process::exit(2);
     }
 
@@ -34,12 +47,36 @@ fn main() {
         }
     }
 
-    let report_checks = report_checks(&audits);
+    let report_checks = report_checks_for_profile(&audits, profile);
     let passed = report_passed(&audits, &report_checks);
-    println!("{}", audit_report_json(passed, &report_checks, &audits));
+    println!(
+        "{}",
+        audit_report_json_for_profile(passed, &report_checks, &audits, profile)
+    );
     if !passed {
         process::exit(1);
     }
+}
+
+fn parse_args(
+    args: impl IntoIterator<Item = String>,
+) -> Result<(VisualAuditProfile, Vec<PathBuf>), String> {
+    let mut profile = VisualAuditProfile::Default;
+    let mut paths = Vec::new();
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        if arg == "--profile" {
+            let Some(name) = args.next() else {
+                return Err("--profile requires a value".to_string());
+            };
+            profile = VisualAuditProfile::parse(&name)
+                .ok_or_else(|| format!("unknown visual audit profile: {name}"))?;
+        } else {
+            paths.push(PathBuf::from(arg));
+        }
+    }
+
+    Ok((profile, paths))
 }
 
 #[cfg(test)]

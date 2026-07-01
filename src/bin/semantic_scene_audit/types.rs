@@ -16,6 +16,7 @@ pub(crate) struct SceneSampleAudit {
 pub(crate) struct CheckpointAudit {
     pub(crate) metadata_path: String,
     pub(crate) screenshot_path: String,
+    pub(crate) scenario: String,
     pub(crate) checkpoint: String,
     pub(crate) in_viewport_scene_sample_count: usize,
     pub(crate) occluded_scene_sample_count: usize,

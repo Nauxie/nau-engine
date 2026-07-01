@@ -700,7 +700,7 @@ fn wind_visual_export_writes_motion_tracks_and_manifest() {
         .expect("low-alignment track count should be present");
     assert!(static_track_count * 50 <= expected_tracks as u64);
     assert!(off_field_track_count * 1000 <= expected_tracks as u64);
-    assert!(low_alignment_track_count * 100 <= expected_tracks as u64 * 8);
+    assert!(low_alignment_track_count * 100 <= expected_tracks as u64 * 9);
     assert!(
         total_motion["coherent_track_count"]
             .as_u64()

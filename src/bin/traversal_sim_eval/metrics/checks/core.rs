@@ -186,6 +186,25 @@ pub(super) fn append_checks(
             "samples",
         ),
     ]);
+
+    if thresholds.min_camera_obstruction_adjustment_m > 0.0
+        || thresholds.min_camera_obstructed_distance_m > 0.0
+    {
+        checks.extend([
+            SimCheck::at_least(
+                "camera_obstructed_distance",
+                metrics.min_camera_obstructed_distance_m.unwrap_or(0.0),
+                thresholds.min_camera_obstructed_distance_m,
+                "m",
+            ),
+            SimCheck::at_most(
+                "camera_obstruction_snap_count",
+                metrics.camera_obstruction_snap_count as f32,
+                thresholds.max_camera_obstruction_snap_count as f32,
+                "samples",
+            ),
+        ]);
+    }
 }
 
 fn camera_pitch_min_check(metrics: &SimMetrics, scenario: EvalScenario) -> SimCheck {

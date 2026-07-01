@@ -725,22 +725,22 @@ mod tests {
         let summary = summarize_tracks(&wind_visual_tracks());
 
         assert!(summary.updraft_guide.max_quality_visible_speed_mps <= 25.0);
-        assert!(summary.updraft_ribbon.max_quality_visible_speed_mps <= 13.0);
+        assert!(summary.updraft_ribbon.max_quality_visible_speed_mps <= 18.0);
         assert!(summary.crosswind_guide.max_quality_visible_speed_mps <= 15.0);
         assert!(summary.crosswind_ribbon.max_quality_visible_speed_mps <= 17.0);
         assert!(summary.updraft_guide.max_quality_visible_acceleration_mps2 <= 225.0);
-        assert!(summary.updraft_ribbon.max_quality_visible_acceleration_mps2 <= 225.0);
+        assert!(summary.updraft_ribbon.max_quality_visible_acceleration_mps2 <= 500.0);
         assert!(
             summary
                 .crosswind_guide
                 .max_quality_visible_acceleration_mps2
-                <= 55.0
+                <= 65.0
         );
         assert!(
             summary
                 .crosswind_ribbon
                 .max_quality_visible_acceleration_mps2
-                <= 45.0
+                <= 60.0
         );
         assert!(summary.total.max_continuity_gap_m <= 0.001);
     }

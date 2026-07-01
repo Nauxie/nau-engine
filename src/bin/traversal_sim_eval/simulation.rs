@@ -12,11 +12,12 @@ use nau_engine::{
         wind_lateral_load_from_delta,
     },
     camera::{
-        CameraControlState, CameraControlTuning, CameraObstruction, FollowCamera,
-        FollowCameraState, apply_camera_input, avoid_camera_obstructions,
-        camera_orbit_alignment_degrees, lift_camera_above_floor,
-        movement_facing_from_follow_direction, movement_input_stable_follow_direction,
-        step_camera_with_direction, update_follow_direction_state,
+        CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M, CameraControlState, CameraControlTuning,
+        CameraObstruction, FollowCamera, FollowCameraState, apply_camera_input,
+        avoid_camera_obstructions, camera_orbit_alignment_degrees, clamp_camera_step,
+        lift_camera_above_floor, movement_facing_from_follow_direction,
+        movement_input_stable_follow_direction, step_camera_with_direction,
+        update_follow_direction_state,
     },
     environment::{
         AERIAL_POWER_UP_ROUTE, GAMEPLAY_LIFT_ROUTE, LiftApplication, LiftField, WindField,
@@ -31,6 +32,8 @@ use nau_engine::{
     world::{START_POSITION, SkyRoute, route_obstruction_spires},
 };
 
+const CAMERA_MAX_STEP_M: f32 = CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M - 0.05;
+
 pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     let route = SkyRoute::default();
     let tuning = FlightTuning::default();
@@ -41,7 +44,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
         .map(|node| node.lift_field())
         .collect::<Vec<_>>();
     let visual_fields = visual_wind_fields();
-    let obstructions = camera_obstructions(&route);
+    let obstructions = camera_obstructions(&route, scenario);
     let mut power_ups = SimPowerUps::default();
     let mut objective = ObjectiveState::for_route(&route, scenario.target_island_name);
     let mut state = FlightState::new(START_POSITION, Vec3::ZERO, FlightController::default());
@@ -462,6 +465,7 @@ fn step_camera_frame(
         camera_floor_y,
         CAMERA_MIN_SURFACE_CLEARANCE,
     );
+    let frame = clamp_camera_step(frame, current.translation, CAMERA_MAX_STEP_M);
 
     CameraStepSample {
         position: frame.position,
@@ -472,7 +476,11 @@ fn step_camera_frame(
     }
 }
 
-fn camera_obstructions(route: &SkyRoute) -> Vec<CameraObstruction> {
+fn camera_obstructions(route: &SkyRoute, scenario: EvalScenario) -> Vec<CameraObstruction> {
+    if scenario.thresholds.min_camera_obstruction_adjustment_m <= 0.0 {
+        return Vec::new();
+    }
+
     route_obstruction_spires(route)
         .into_iter()
         .map(|spire| CameraObstruction::new(spire.center, spire.half_extents))
@@ -482,6 +490,54 @@ fn camera_obstructions(route: &SkyRoute) -> Vec<CameraObstruction> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sim_camera_obstructions_are_enabled_for_obstruction_gated_scenarios() {
+        let route = SkyRoute::default();
+        let obstruction_scenario =
+            nau_engine::eval::scenario_named(nau_engine::eval::CAMERA_MOUSE_CONTROL)
+                .expect("camera mouse scenario");
+        let movement_scenario =
+            nau_engine::eval::scenario_named(nau_engine::eval::AIR_CONTROL_RESPONSE)
+                .expect("air control scenario");
+        let obstructions = camera_obstructions(&route, obstruction_scenario);
+
+        assert_eq!(obstructions.len(), route_obstruction_spires(&route).len());
+        assert!(!obstructions.is_empty());
+        assert!(camera_obstructions(&route, movement_scenario).is_empty());
+    }
+
+    #[test]
+    fn sim_camera_obstruction_metrics_report_applied_resolution_after_final_clamp() {
+        let route = SkyRoute::default();
+        let follow = FollowCamera::default();
+        let current = Transform::from_translation(
+            START_POSITION + Vec3::Y * follow.height + Vec3::Z * follow.distance,
+        )
+        .looking_at(
+            START_POSITION + Vec3::Y * follow.look_height + Vec3::NEG_Z * follow.look_ahead,
+            Vec3::Y,
+        );
+        let blocker = CameraObstruction::new(
+            route_obstruction_spires(&route)[0].center,
+            route_obstruction_spires(&route)[0].half_extents,
+        );
+
+        let sample = step_camera_frame(
+            current,
+            START_POSITION,
+            Vec3::NEG_Z,
+            &follow,
+            nau_engine::camera::CameraOrbit::default(),
+            &route,
+            &[blocker],
+            1.0 / 60.0,
+        );
+
+        assert!(sample.obstruction_hits > 0);
+        assert!(sample.obstruction_adjustment_m >= 1.0);
+        assert!(current.translation.distance(sample.position) <= CAMERA_MAX_STEP_M + 0.001);
+    }
 
     #[test]
     fn world_lift_requires_gliding_mode() {

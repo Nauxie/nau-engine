@@ -611,7 +611,7 @@ impl LiftRouteNode {
     }
 }
 
-pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 2] = [
+pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 5] = [
     LiftRouteNode {
         name: "launch terrace updraft",
         center: Vec3::new(12.0, 52.0, -78.0),
@@ -628,9 +628,33 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 2] = [
         max_upward_speed: 22.0,
         visual_speed: 14.0,
     },
+    LiftRouteNode {
+        name: "upper thermal ring updraft",
+        center: Vec3::new(122.0, 146.0, -520.0),
+        half_extents: Vec3::new(30.0, 46.0, 30.0),
+        lift_accel: 22.0,
+        max_upward_speed: 24.0,
+        visual_speed: 15.0,
+    },
+    LiftRouteNode {
+        name: "stratos shelf updraft",
+        center: Vec3::new(-22.0, 174.0, -1138.0),
+        half_extents: Vec3::new(36.0, 58.0, 36.0),
+        lift_accel: 24.0,
+        max_upward_speed: 25.0,
+        visual_speed: 16.0,
+    },
+    LiftRouteNode {
+        name: "summit anvil updraft",
+        center: Vec3::new(-18.0, 214.0, -1510.0),
+        half_extents: Vec3::new(42.0, 62.0, 42.0),
+        lift_accel: 24.0,
+        max_upward_speed: 26.0,
+        visual_speed: 17.0,
+    },
 ];
 
-pub const VISUAL_CROSSWIND_FIELD_COUNT: usize = 4;
+pub const VISUAL_CROSSWIND_FIELD_COUNT: usize = 7;
 
 pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
     [
@@ -657,6 +681,24 @@ pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
             Vec3::new(44.0, 36.0, 34.0),
             Vec3::new(-0.45, 0.0, -0.75),
             9.5,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[2].center,
+            Vec3::new(54.0, 34.0, 34.0),
+            Vec3::new(-0.82, 0.0, 0.28),
+            10.5,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[3].center,
+            Vec3::new(64.0, 40.0, 36.0),
+            Vec3::new(0.68, 0.0, -0.48),
+            11.0,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[4].center,
+            Vec3::new(70.0, 44.0, 42.0),
+            Vec3::new(-0.35, 0.0, 0.94),
+            11.5,
         ),
     ]
 }
