@@ -29,6 +29,8 @@ impl SimMetrics {
             "max_camera_world_yaw_drift_degrees": round4(self.max_camera_world_yaw_drift_degrees),
             "max_camera_obstruction_adjustment_m": round4(self.max_camera_obstruction_adjustment_m),
             "max_camera_obstruction_hits": self.max_camera_obstruction_hits,
+            "min_camera_obstructed_distance_m": round4(self.min_camera_obstructed_distance_m.unwrap_or(0.0)),
+            "camera_obstruction_snap_count": self.camera_obstruction_snap_count,
             "max_abs_camera_yaw_offset_degrees": round4(self.max_abs_camera_yaw_offset_degrees),
             "min_camera_pitch_offset_degrees": round4(self.min_camera_pitch_offset_degrees),
             "max_camera_pitch_offset_degrees": round4(self.max_camera_pitch_offset_degrees),
