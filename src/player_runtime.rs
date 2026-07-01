@@ -430,6 +430,7 @@ fn step_player(
         dt,
     );
     let mut next = next;
+    let lift_enabled = next.controller.mode == FlightMode::Gliding;
     let lift = apply_lift_fields(
         next.position,
         next.velocity,
@@ -437,7 +438,7 @@ fn step_player(
         context.visual_wind_fields.iter().copied(),
         elapsed_secs,
         dt,
-        next.controller.mode != FlightMode::Grounded,
+        lift_enabled,
     );
     next.velocity = lift.velocity;
     let wind = apply_wind_fields(
