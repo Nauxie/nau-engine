@@ -725,7 +725,7 @@ fn authored_player_transition_profile(
 
     if desired == AuthoredPlayerClip::Land {
         return if traversal_clip(current) {
-            AuthoredTransitionProfile::new(180, "landing_blend")
+            AuthoredTransitionProfile::new(150, "landing_blend")
         } else {
             AuthoredTransitionProfile::new(120, "landing_settle")
         };
@@ -938,7 +938,7 @@ mod tests {
     fn authored_player_transition_profile_is_pair_aware() {
         assert_eq!(
             authored_player_transition_profile(AuthoredPlayerClip::Glide, AuthoredPlayerClip::Land),
-            AuthoredTransitionProfile::new(180, "landing_blend")
+            AuthoredTransitionProfile::new(150, "landing_blend")
         );
         assert_eq!(
             authored_player_transition_profile(AuthoredPlayerClip::Run, AuthoredPlayerClip::Land),
