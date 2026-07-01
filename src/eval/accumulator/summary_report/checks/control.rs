@@ -32,7 +32,7 @@ const POSE_STATE_MIN_DIVING_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_LANDING_POSE_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_AUTHORED_LAND_CLIP_SAMPLES: f32 = 1.0;
-const POSE_STATE_MIN_LANDING_FLARE_DEGREES: f32 = 55.0;
+const POSE_STATE_MIN_LANDING_FLARE_DEGREES: f32 = LANDING_MIN_POSE_FLARE_DEGREES;
 const AIR_CONTROL_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 const AIR_CONTROL_MIN_AUTHORED_DIVE_CLIP_SAMPLES: f32 = 1.0;
 const AIR_CONTROL_MIN_AUTHORED_AIR_BRAKE_CLIP_SAMPLES: f32 = 4.0;
@@ -109,6 +109,12 @@ pub(super) fn append_scenario_checks(
             1.0,
             "samples",
         ));
+        checks.push(EvalCheck::at_most(
+            "gliding_landing_anticipation_samples",
+            acc.gliding_landing_anticipation_samples as f32,
+            0.0,
+            "samples",
+        ));
         checks.push(EvalCheck::at_least(
             "pose_landing_recovery_samples",
             acc.pose_landing_recovery_samples as f32,
@@ -157,11 +163,35 @@ pub(super) fn append_scenario_checks(
             LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES,
             "deg",
         ));
+        checks.push(EvalCheck::at_least(
+            "pose_landing_forward_fold",
+            acc.max_pose_landing_forward_fold_degrees,
+            LANDING_MIN_POSE_FORWARD_FOLD_DEGREES,
+            "deg",
+        ));
+        checks.push(EvalCheck::at_most(
+            "pose_landing_backward_bend",
+            acc.max_pose_landing_backward_bend_degrees,
+            LANDING_MAX_POSE_BACKWARD_BEND_DEGREES,
+            "deg",
+        ));
+        checks.push(EvalCheck::at_most(
+            "pose_landing_transition_backbend",
+            acc.max_pose_landing_transition_backbend_degrees,
+            LANDING_MAX_POSE_TRANSITION_BACKBEND_DEGREES,
+            "deg",
+        ));
         checks.push(EvalCheck::at_most(
             "pose_landing_recovery_backbend",
             acc.max_pose_landing_recovery_flip_degrees,
             LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
             "deg",
+        ));
+        checks.push(EvalCheck::at_most(
+            "pose_landing_torso_offset",
+            acc.max_pose_landing_torso_offset_m,
+            LANDING_MAX_POSE_TORSO_OFFSET_M,
+            "m",
         ));
         checks.push(EvalCheck::at_most(
             "unreadable_key_pose_samples",
@@ -1335,6 +1365,12 @@ fn append_pose_state_coverage_checks(
             POSE_STATE_MIN_LANDING_POSE_SAMPLES,
             "samples",
         ),
+        EvalCheck::at_most(
+            "pose_state_gliding_landing_anticipation_samples",
+            acc.gliding_landing_anticipation_samples as f32,
+            0.0,
+            "samples",
+        ),
         EvalCheck::at_least(
             "pose_state_landing_recovery_samples",
             acc.pose_landing_recovery_samples as f32,
@@ -1377,11 +1413,35 @@ fn append_pose_state_coverage_checks(
             LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES,
             "deg",
         ),
+        EvalCheck::at_least(
+            "pose_state_landing_forward_fold",
+            acc.max_pose_landing_forward_fold_degrees,
+            LANDING_MIN_POSE_FORWARD_FOLD_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "pose_state_landing_backward_bend",
+            acc.max_pose_landing_backward_bend_degrees,
+            LANDING_MAX_POSE_BACKWARD_BEND_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "pose_state_landing_transition_backbend",
+            acc.max_pose_landing_transition_backbend_degrees,
+            LANDING_MAX_POSE_TRANSITION_BACKBEND_DEGREES,
+            "deg",
+        ),
         EvalCheck::at_most(
             "pose_state_landing_recovery_backbend",
             acc.max_pose_landing_recovery_flip_degrees,
             LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
             "deg",
+        ),
+        EvalCheck::at_most(
+            "pose_state_landing_torso_offset",
+            acc.max_pose_landing_torso_offset_m,
+            LANDING_MAX_POSE_TORSO_OFFSET_M,
+            "m",
         ),
         EvalCheck::at_least(
             "pose_state_landing_pose_temporal_samples",
