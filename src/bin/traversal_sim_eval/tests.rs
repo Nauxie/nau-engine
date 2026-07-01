@@ -19,6 +19,7 @@ use nau_engine::{
         GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
         LANDING_MAX_FOOT_SPLIT_READABILITY_M, PlayerPoseIntent,
     },
+    camera::CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M,
     environment::{LiftApplication, WindForceApplication},
     eval::{
         AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES, AIR_CONTROL_RESPONSE,
@@ -1196,6 +1197,36 @@ fn camera_mouse_simulation_exercises_yaw_and_pitch_axes() {
             >= scenario.thresholds.min_camera_obstruction_adjustment_m
     );
     assert!(result.metrics.max_camera_obstruction_hits > 0);
+}
+
+#[test]
+fn sim_metrics_count_obstruction_snaps_by_camera_step() {
+    let route = SkyRoute::default();
+    let scenario = scenario_named(CAMERA_MOUSE_CONTROL).expect("scenario");
+    let mut metrics = SimMetrics::new(&route);
+
+    let mut first = sim_roll_sample(&route, scenario, 0, FlightMode::Gliding, 0.0, 0.0);
+    first.camera_obstruction_hits = 1;
+    first.camera_obstruction_adjustment_m = 1.0;
+    first.camera_distance_m = 14.0;
+    first.camera_step_distance_m = 0.2;
+    metrics.observe(&first, scenario);
+
+    let mut lateral_snap = sim_roll_sample(&route, scenario, 1, FlightMode::Gliding, 0.0, 0.0);
+    lateral_snap.camera_obstruction_hits = 1;
+    lateral_snap.camera_obstruction_adjustment_m = 1.0;
+    lateral_snap.camera_distance_m = 14.0;
+    lateral_snap.camera_step_distance_m = CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M + 0.25;
+    metrics.observe(&lateral_snap, scenario);
+
+    assert_eq!(metrics.camera_obstruction_snap_count, 1);
+    let check = metrics
+        .checks(scenario)
+        .into_iter()
+        .find(|check| check.name == "camera_obstruction_snap_count")
+        .expect("camera obstruction snap check");
+    assert_eq!(check.value, 1.0);
+    assert!(!check.passed);
 }
 
 #[test]
