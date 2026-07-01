@@ -12,7 +12,22 @@ use crate::{
 };
 use std::collections::{BTreeMap, HashSet};
 
+const CLOSE_OBSTRUCTION_EXPECTED_MATERIALS: &[&str] = &["terrain", "foliage", "distant_island"];
+const CLOSE_OBSTRUCTION_EXPECTED_SAMPLE_KINDS: &[&str] =
+    &["terrain_surface", "tree_canopy", "distant_island"];
+
+#[derive(Clone, Copy)]
+struct AuditProfile {
+    name: &'static str,
+    min_visible_materials_per_checkpoint: usize,
+    min_visible_sample_kinds_per_checkpoint: usize,
+    expected_materials: &'static [&'static str],
+    expected_scene_sample_kinds: &'static [&'static str],
+    require_terrain_material_variants: bool,
+}
+
 pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
+    let profile = audit_profile(checkpoints);
     let passed_checkpoint_count = checkpoints
         .iter()
         .filter(|checkpoint| checkpoint.passed)
@@ -20,7 +35,7 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
     let material_family_checkpoint_count = checkpoints
         .iter()
         .filter(|checkpoint| {
-            checkpoint.visible_scene_material_count >= MIN_VISIBLE_MATERIALS_PER_CHECKPOINT
+            checkpoint.visible_scene_material_count >= profile.min_visible_materials_per_checkpoint
                 && checkpoint.scene_material_pixel_hit_count
                     >= checkpoint.visible_scene_material_count
         })
@@ -52,7 +67,8 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
     let kind_family_checkpoint_count = checkpoints
         .iter()
         .filter(|checkpoint| {
-            checkpoint.visible_scene_sample_kind_count >= MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT
+            checkpoint.visible_scene_sample_kind_count
+                >= profile.min_visible_sample_kinds_per_checkpoint
                 && checkpoint.scene_sample_kind_pixel_hit_count
                     >= checkpoint.visible_scene_sample_kind_count
         })
@@ -78,7 +94,7 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
     checks.push(Check::at_least(
         "min_visible_scene_material_count",
         min_visible_material_count as f64,
-        MIN_VISIBLE_MATERIALS_PER_CHECKPOINT as f64,
+        profile.min_visible_materials_per_checkpoint as f64,
         "materials",
     ));
     checks.push(Check::at_least(
@@ -90,29 +106,31 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
     checks.push(Check::at_least(
         "min_visible_scene_sample_kind_count",
         min_visible_kind_count as f64,
-        MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT as f64,
+        profile.min_visible_sample_kinds_per_checkpoint as f64,
         "sample_kinds",
     ));
-    checks.push(Check::at_least(
-        "visible_terrain_material_variant_count",
-        visible_terrain_variant_counts.len() as f64,
-        MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS as f64,
-        "variants",
-    ));
-    checks.push(Check::at_least(
-        "terrain_material_variant_pixel_hit_count",
-        terrain_variant_hit_counts.len() as f64,
-        MIN_PASSED_TERRAIN_MATERIAL_VARIANTS as f64,
-        "variants",
-    ));
-    checks.push(Check::at_least(
-        "checkpoint_terrain_material_variant_hits",
-        terrain_variant_checkpoint_count as f64,
-        checkpoints.len() as f64,
-        "checkpoints",
-    ));
+    if profile.require_terrain_material_variants {
+        checks.push(Check::at_least(
+            "visible_terrain_material_variant_count",
+            visible_terrain_variant_counts.len() as f64,
+            MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS as f64,
+            "variants",
+        ));
+        checks.push(Check::at_least(
+            "terrain_material_variant_pixel_hit_count",
+            terrain_variant_hit_counts.len() as f64,
+            MIN_PASSED_TERRAIN_MATERIAL_VARIANTS as f64,
+            "variants",
+        ));
+        checks.push(Check::at_least(
+            "checkpoint_terrain_material_variant_hits",
+            terrain_variant_checkpoint_count as f64,
+            checkpoints.len() as f64,
+            "checkpoints",
+        ));
+    }
 
-    for material in EXPECTED_MATERIALS {
+    for material in profile.expected_materials {
         checks.push(Check::at_least(
             format!("{material}_visible_scene_samples"),
             *visible_material_counts.get(material).unwrap_or(&0) as f64,
@@ -162,7 +180,7 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
         ));
     }
 
-    for kind in EXPECTED_SCENE_SAMPLE_KINDS {
+    for kind in profile.expected_scene_sample_kinds {
         checks.push(Check::at_least(
             format!("scene_kind_{kind}_visible_samples"),
             *visible_kind_counts.get(kind).unwrap_or(&0) as f64,
@@ -183,30 +201,60 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
         ));
     }
 
-    for variant in EXPECTED_TERRAIN_MATERIAL_VARIANTS {
-        let visible_variant_samples = *visible_terrain_variant_counts.get(variant).unwrap_or(&0);
-        checks.push(Check::at_least(
-            format!("{variant}_visible_terrain_samples"),
-            visible_variant_samples as f64,
-            0.0,
-            "samples",
-        ));
-        checks.push(Check::at_least(
-            format!("{variant}_terrain_sample_pixel_hits"),
-            *terrain_variant_hit_counts.get(variant).unwrap_or(&0) as f64,
-            min_terrain_material_variant_hit_count(visible_variant_samples) as f64,
-            "samples",
-        ));
-        let variant_hit_samples = *terrain_variant_hit_counts.get(variant).unwrap_or(&0);
-        checks.push(Check::at_least(
-            format!("{variant}_terrain_sample_pixel_coverage"),
-            *terrain_variant_pixel_coverage.get(variant).unwrap_or(&0) as f64,
-            (variant_hit_samples.max(1) * MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE) as f64,
-            "pixels",
-        ));
+    if profile.require_terrain_material_variants {
+        for variant in EXPECTED_TERRAIN_MATERIAL_VARIANTS {
+            let visible_variant_samples =
+                *visible_terrain_variant_counts.get(variant).unwrap_or(&0);
+            checks.push(Check::at_least(
+                format!("{variant}_visible_terrain_samples"),
+                visible_variant_samples as f64,
+                0.0,
+                "samples",
+            ));
+            checks.push(Check::at_least(
+                format!("{variant}_terrain_sample_pixel_hits"),
+                *terrain_variant_hit_counts.get(variant).unwrap_or(&0) as f64,
+                min_terrain_material_variant_hit_count(visible_variant_samples) as f64,
+                "samples",
+            ));
+            let variant_hit_samples = *terrain_variant_hit_counts.get(variant).unwrap_or(&0);
+            checks.push(Check::at_least(
+                format!("{variant}_terrain_sample_pixel_coverage"),
+                *terrain_variant_pixel_coverage.get(variant).unwrap_or(&0) as f64,
+                (variant_hit_samples.max(1) * MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE) as f64,
+                "pixels",
+            ));
+        }
     }
 
     checks
+}
+
+fn audit_profile(checkpoints: &[CheckpointAudit]) -> AuditProfile {
+    let close_obstruction = !checkpoints.is_empty()
+        && checkpoints
+            .iter()
+            .all(|checkpoint| checkpoint.scenario == "world_collision_contact");
+
+    if close_obstruction {
+        return AuditProfile {
+            name: "close_obstruction",
+            min_visible_materials_per_checkpoint: 3,
+            min_visible_sample_kinds_per_checkpoint: 3,
+            expected_materials: CLOSE_OBSTRUCTION_EXPECTED_MATERIALS,
+            expected_scene_sample_kinds: CLOSE_OBSTRUCTION_EXPECTED_SAMPLE_KINDS,
+            require_terrain_material_variants: false,
+        };
+    }
+
+    AuditProfile {
+        name: "full_scene",
+        min_visible_materials_per_checkpoint: MIN_VISIBLE_MATERIALS_PER_CHECKPOINT,
+        min_visible_sample_kinds_per_checkpoint: MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT,
+        expected_materials: &EXPECTED_MATERIALS,
+        expected_scene_sample_kinds: &EXPECTED_SCENE_SAMPLE_KINDS,
+        require_terrain_material_variants: true,
+    }
 }
 
 pub(crate) fn material_visible_counts(checkpoints: &[CheckpointAudit]) -> BTreeMap<&str, usize> {
@@ -387,13 +435,25 @@ pub(crate) fn report_json(
         .map(check_json)
         .collect::<Vec<_>>()
         .join(",\n    ");
+    let profile_json = audit_profile_json(audit_profile(checkpoints));
 
     format!(
-        "{{\n  \"passed\": {},\n  \"checkpoint_count\": {},\n  \"checks\": [\n    {}\n  ],\n  \"checkpoints\": [\n{}\n  ]\n}}",
+        "{{\n  \"passed\": {},\n  \"checkpoint_count\": {},\n  \"profile\": {},\n  \"checks\": [\n    {}\n  ],\n  \"checkpoints\": [\n{}\n  ]\n}}",
         passed,
         checkpoints.len(),
+        profile_json,
         checks_json,
         checkpoints_json
+    )
+}
+
+fn audit_profile_json(profile: AuditProfile) -> String {
+    format!(
+        "{{\"name\": {}, \"expected_materials\": {}, \"expected_scene_sample_kinds\": {}, \"require_terrain_material_variants\": {}}}",
+        json_string(profile.name),
+        json_string_array(profile.expected_materials),
+        json_string_array(profile.expected_scene_sample_kinds),
+        profile.require_terrain_material_variants
     )
 }
 
@@ -411,9 +471,10 @@ pub(crate) fn checkpoint_json(checkpoint: &CheckpointAudit) -> String {
         .collect::<Vec<_>>()
         .join(",\n");
     format!(
-        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"checkpoint\": {},\n      \"passed\": {},\n      \"in_viewport_scene_sample_count\": {},\n      \"occluded_scene_sample_count\": {},\n      \"visible_scene_sample_count\": {},\n      \"scene_sample_pixel_hit_count\": {},\n      \"visible_scene_material_count\": {},\n      \"scene_material_pixel_hit_count\": {},\n      \"visible_scene_sample_kind_count\": {},\n      \"scene_sample_kind_pixel_hit_count\": {},\n      \"visible_terrain_material_variant_count\": {},\n      \"terrain_material_variant_pixel_hit_count\": {},\n      \"materials\": [\n{}\n      ],\n      \"samples\": [\n{}\n      ]\n    }}",
+        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"scenario\": {},\n      \"checkpoint\": {},\n      \"passed\": {},\n      \"in_viewport_scene_sample_count\": {},\n      \"occluded_scene_sample_count\": {},\n      \"visible_scene_sample_count\": {},\n      \"scene_sample_pixel_hit_count\": {},\n      \"visible_scene_material_count\": {},\n      \"scene_material_pixel_hit_count\": {},\n      \"visible_scene_sample_kind_count\": {},\n      \"scene_sample_kind_pixel_hit_count\": {},\n      \"visible_terrain_material_variant_count\": {},\n      \"terrain_material_variant_pixel_hit_count\": {},\n      \"materials\": [\n{}\n      ],\n      \"samples\": [\n{}\n      ]\n    }}",
         json_string(&checkpoint.metadata_path),
         json_string(&checkpoint.screenshot_path),
+        json_string(&checkpoint.scenario),
         json_string(&checkpoint.checkpoint),
         checkpoint.passed,
         checkpoint.in_viewport_scene_sample_count,
@@ -502,4 +563,15 @@ pub(crate) fn json_string(value: &str) -> String {
         }
     }
     format!("\"{escaped}\"")
+}
+
+fn json_string_array(values: &[&str]) -> String {
+    format!(
+        "[{}]",
+        values
+            .iter()
+            .map(|value| json_string(value))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
