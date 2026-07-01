@@ -613,11 +613,11 @@ impl LiftRouteNode {
 
 pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 2] = [
     LiftRouteNode {
-        name: "near route updraft",
-        center: Vec3::new(38.0, 68.0, -112.0),
-        half_extents: Vec3::new(20.0, 34.0, 22.0),
-        lift_accel: 28.0,
-        max_upward_speed: 20.0,
+        name: "launch terrace updraft",
+        center: Vec3::new(12.0, 52.0, -78.0),
+        half_extents: Vec3::new(48.0, 34.0, 52.0),
+        lift_accel: 36.0,
+        max_upward_speed: 22.0,
         visual_speed: 12.0,
     },
     LiftRouteNode {
