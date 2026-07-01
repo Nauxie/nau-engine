@@ -35,6 +35,8 @@ pub(super) fn build_metrics_summary(
         max_camera_world_yaw_drift_degrees: acc.max_camera_world_yaw_drift_degrees,
         max_camera_obstruction_adjustment_m: acc.max_camera_obstruction_adjustment_m,
         max_camera_obstruction_hits: acc.max_camera_obstruction_hits,
+        min_camera_obstructed_distance_m: acc.min_camera_obstructed_distance_m.unwrap_or(0.0),
+        camera_obstruction_snap_count: acc.camera_obstruction_snap_count,
         avg_desired_body_heading_error_degrees: derived.avg_desired_body_heading_error_degrees,
         p95_desired_body_heading_error_degrees: derived.p95_desired_body_heading_error_degrees,
         max_desired_body_heading_error_degrees: acc.max_desired_body_heading_error_degrees,
