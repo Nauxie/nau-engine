@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-06-30
+Last updated: 2026-07-01
 
 ## Current Milestone
 
@@ -10,17 +10,17 @@ The project has a Bevy sandbox with a richer self-authored animated player fixtu
 
 ## Last Known Good
 
-- Commit: `0eebcc8`
-- Merged PR: `#91` - Add richer island impostor eval gates
+- Commit: `816b52c`
+- Merged PR: `#353` - Fix landing pose gating and eval coverage
 - Verification:
   - `cargo fmt --all --check`
-  - `git diff --check`
   - `cargo check`
-  - `cargo test`
   - `cargo clippy --all-targets --all-features -- -D warnings`
-  - `./tools/terrain_export.sh target/terrain_material_granularity_export`
-  - metric-only evals for baseline traversal and air-control response
-  - screenshot baseline eval with visual audit, opaque PNG alpha, and foreign-canvas checks
+  - `cargo test`
+  - hidden app evals for `island_launch_to_landing` and `branch_recovery_route`
+  - sim-only evals for `pose_state_coverage`, `branch_recovery_route`, and `island_launch_to_landing`
+  - `./tools/player_pose_preview.sh target/player_pose_preview_landing_glide_gate_final`
+  - source scan for proprietary-reference terms, with only internal identifier false positives
 
 ## Active Work
 
@@ -36,7 +36,7 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 - Player animation is now meaningfully closer to the desired airborne traversal feel, and the eval surface tracks visible pose temporal deltas, visible authored articulation count, minimum limb clearance, joint gaps, mesh surface contact, seam/proximal connector contact, and motion-integrity overlay warnings so obvious self-overlap, disconnection, or overfilled joints regress loudly. The character fixture now has a broader limb-anatomy detail layer for biceps, triceps, upper-arm seam and inner-tendon shapes, shoulder root blends, shoulder chest blends, forearm tendon/radius/ulna ridges, wrist-palm gussets, finger webs, hip root blends, thigh quad/hamstring panels, calf/shin/lower-leg tendon shape, knee tendon straps, boot insteps, heel tendons, boot tongues, lace straps, tuned shoulder/hip/elbow/wrist/knee/ankle connector volumes, and a dedicated elbow sleeve mesh, with audit gates so those silhouette and connector details cannot disappear or overfill. The fixture audit and pose-preview manifest now also gate human-topology proportions for shoulder width, hip width, shoulder-to-hip ratio, limb segment ratios, bilateral symmetry, head centering, and neck-to-shoulder rise after narrowing the shoulder roots and widening the hip roots. The fixture audit and pose-preview manifest now also project the actual generated mesh hulls across front/rear/side/top pose previews and gate fall/glide wide silhouettes plus head-down dive narrowing. The character still needs more fidelity work for limb articulation, richer authored geometry, and rendered screenshot/video sidecars before making the model substantially more complex.
 - Falling and diving now have more distinct full-body silhouettes in code and tests: normal fall rotates into a flatter belly-down posture with wider arms, while explicit dive is a head-down streamlined drop with narrow arms and trailing legs. Future work should keep glide, fall, dive, braking, and landing readable during blends rather than only at steady-state samples.
 - Wind visuals now have runtime and export quality gates before adding more effects. The app-side sustained-flow mismatch was traced to eval wind visuals animating from Bevy wall-clock time while movement, wind force, samples, and sim used the deterministic eval frame clock; app `air_control_response` and `pose_state_coverage` pass after aligning wind guide/ribbon/column animation to the eval clock. The current wind pass adds observed visual-speed, acceleration, visible wrap/jump, quality-visible export speed/acceleration, and projected horizontal crosswind drift checks, so future wind work should focus on art/feel improvements without losing those measurable contracts.
-- Camera collision near collidable trees and props needs a readability pass. The current obstruction avoidance can push the camera very close to Nau when near a tree, which technically avoids clipping but can destroy player framing. Future camera work should preserve a minimum readable player framing or use a deliberate blocker-handling policy, then prove it with a prop/tree obstruction route, camera-distance/framing metrics, and fixed checkpoint screenshots.
+- Camera collision near collidable trees and props is now the highest-value next feel risk. The current obstruction avoidance can push the camera very close to Nau when near a tree, which technically avoids clipping but can destroy player framing. Future camera work should preserve a minimum readable player framing or use a deliberate blocker-handling policy, then prove it with a prop/tree obstruction route, camera-distance/framing metrics, and fixed checkpoint screenshots.
 - Avoid project references to proprietary game names, assets, maps, or designs. Use neutral terms such as "large-world sky-island traversal", "commercial open-world traversal reference", or "the north-star traversal feel" in code and docs.
 
 ## What Works
@@ -104,17 +104,17 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 
 ## Next Tasks
 
-1. Continue player pose/model fidelity: reduce remaining limb articulation roughness, expand screenshot/sidecar silhouette checks beyond the current SVG review artifacts, and keep fall belly-down, dive head-down streamlined, limb-clearance, connector-contact, and smooth-pose gates green.
-2. Improve camera obstruction behavior near collidable trees/props so collision avoidance preserves readable player framing.
-3. Keep wind-current regression coverage green while improving airflow art direction; quality-visible export speed/acceleration, observed runtime speed/acceleration, jump, and projected crosswind drift metrics should remain part of every wind-facing PR.
-4. Replace the deepened temporary visible environment fixture scenes and faceted player fixture with authored or compatible production-quality glTF assets that satisfy the declared scene, visible world-fixture, and player animation clip readiness metrics.
-5. Add stricter terrain screenshot review for exact world semantics, occlusion accuracy, and art direction once the generated substrate or imported assets are stable enough for less tolerant classifiers.
+1. Improve camera obstruction behavior near collidable trees/props so collision avoidance preserves readable player framing instead of collapsing the camera into Nau.
+2. Add a prop/tree obstruction eval route with app metrics and fixed checkpoint screenshots that fail on unreadable camera distance, poor player framing, excessive obstruction adjustment, or repeated camera snapping.
+3. Continue player pose/model fidelity after the camera route is measurable: reduce remaining limb articulation roughness, expand screenshot/sidecar silhouette checks beyond the current SVG review artifacts, and keep fall belly-down, dive head-down streamlined, landing, limb-clearance, connector-contact, and smooth-pose gates green.
+4. Keep wind-current regression coverage green while improving airflow art direction; quality-visible export speed/acceleration, observed runtime speed/acceleration, jump, and projected crosswind drift metrics should remain part of every wind-facing PR.
+5. Replace the deepened temporary visible environment fixture scenes and faceted player fixture with authored or compatible production-quality glTF assets that satisfy the declared scene, visible world-fixture, and player animation clip readiness metrics.
 
 ## Next Goal Draft
 
-Use this as the next long-run `/goal` seed when continuing toward the north-star traversal slice:
+Use this as the next 12-24 hour `/goal` seed when continuing toward the north-star traversal slice:
 
-Tighten NAU's airborne character fidelity and near-obstruction camera readability in PR-sized loops from clean latest `main`, keeping the new wind-current quality gates green as regression coverage. First, audit the current self-authored player model and pose pipeline for limb clipping, self-intersection risk, silhouette readability, transition pops, and temporal jitter; make normal fall read as a full-body belly-down skydiver posture, make explicit dive read as a head-down streamlined drop, and preserve smooth glide/air-brake/landing transitions with focused pose metrics, tests, and app/sim evals. Second, improve camera obstruction near collidable trees/props so avoidance does not collapse player framing; add or extend a prop/tree obstruction route with camera distance, framing, obstruction-adjustment, and fixed checkpoint screenshot evidence. Third, continue terrain/visual-substrate work only after those readability blockers are measurable: expand island scale/variation and asset collision without weakening the wind, camera, movement-input, collision, or pose eval surfaces. Each feature should update status/eval docs, run relevant unit tests, export audits, sim/app evals, a source scan for proprietary references, full Rust gates, `review naux` when the branch is nontrivial, `pr naux`, merge, and clean latest `main naux` before starting the next feature.
+From clean latest `main`, make camera obstruction near collidable trees/props feel production-deliberate and prove it with evals before taking on broader character or terrain work. Audit the current camera obstruction path, generated solid prop/tree collision proxies, existing camera metrics, and screenshot checkpoint harness; identify why obstruction avoidance can collapse the boom into Nau even when it technically avoids clipping. Implement a bounded obstruction policy that preserves readable player framing near blockers, such as minimum readable boom distance, lateral/vertical shoulder fallback, target-focus adjustment, hysteresis, or transparent/ignore-near-blocker behavior if that is the better local design. Add or extend a prop/tree obstruction scenario that drives Nau near real generated collidable assets, captures fixed checkpoints, and gates camera distance, player-framing angle, obstruction adjustment, camera step/rotation deltas, and no repeated snap/oscillation. Keep existing camera yaw/strafe/turn, movement, landing-pose, wind-current, and collision evals green. If the camera route reaches a high-confidence stopping point early, use remaining time only for narrow adjacent polish: small camera profile tuning for launch/glide/dive/ground or extra screenshot sidecars for manual review, not a broad terrain/model rewrite. Finish with updated docs/status/eval spec as needed, a proprietary-reference source scan, full Rust gates, relevant sim/app/screenshot evals, `review naux` if the branch is nontrivial, `pr naux`, merge, and clean latest `main naux`.
 
 ## Read First
 
