@@ -98,7 +98,7 @@ pub(super) fn pose_state_coverage() -> EvalScenario {
     EvalScenario {
         name: POSE_STATE_COVERAGE,
         fixed_dt: 1.0 / 60.0,
-        frame_count: 780,
+        frame_count: 840,
         sample_stride: 3,
         target_island_name: None,
         checkpoints: POSE_STATE_CHECKPOINTS,
