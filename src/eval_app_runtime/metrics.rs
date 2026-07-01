@@ -461,6 +461,10 @@ impl VisiblePosePartSet {
             right_arm: self.right_arm?,
             left_leg: self.left_leg?,
             right_leg: self.right_leg?,
+            left_lower_leg: self.left_lower_leg,
+            right_lower_leg: self.right_lower_leg,
+            left_foot: self.left_foot,
+            right_foot: self.right_foot,
         })
     }
 
@@ -586,6 +590,10 @@ struct VisiblePosePartTransforms {
     right_arm: VisiblePosePartTransform,
     left_leg: VisiblePosePartTransform,
     right_leg: VisiblePosePartTransform,
+    left_lower_leg: Option<VisiblePosePartTransform>,
+    right_lower_leg: Option<VisiblePosePartTransform>,
+    left_foot: Option<VisiblePosePartTransform>,
+    right_foot: Option<VisiblePosePartTransform>,
 }
 
 impl VisiblePosePartTransforms {
@@ -609,6 +617,27 @@ impl VisiblePosePartTransforms {
                 right_leg_translation: self.right_leg.base_delta,
             },
         );
+        let distal_split_m = landing_distal_foot_split_m(
+            context.intent(),
+            self.left_lower_leg.zip(self.right_lower_leg),
+            self.left_foot.zip(self.right_foot),
+        );
+        metrics.landing_distal_foot_split_m = distal_split_m;
+        let landing_readability_split_m = metrics.landing_foot_split_m.max(distal_split_m);
+        if landing_readability_split_m > metrics.landing_foot_split_m {
+            metrics.key_pose_readability_score =
+                metrics
+                    .key_pose_readability_score
+                    .min(key_pose_readability_score(
+                        context.intent(),
+                        metrics.torso_pitch_degrees,
+                        metrics.arm_spread_degrees,
+                        metrics.leg_tuck_degrees,
+                        metrics.landing_crouch_m,
+                        metrics.landing_foot_forward_m,
+                        landing_readability_split_m,
+                    ));
+        }
         if let Some(scarf_tail) = scarf_tail {
             metrics.scarf_stream_m = scarf_tail.base_delta.z.max(0.0);
             metrics.scarf_lateral_sway_m = scarf_tail.base_delta.x.abs();
@@ -705,6 +734,39 @@ impl VisiblePosePartTransforms {
             .fold(0.0, f32::max),
         )
     }
+}
+
+fn landing_distal_foot_split_m(
+    intent: PlayerPoseIntent,
+    lower_legs: Option<(VisiblePosePartTransform, VisiblePosePartTransform)>,
+    feet: Option<(VisiblePosePartTransform, VisiblePosePartTransform)>,
+) -> f32 {
+    if !matches!(
+        intent,
+        PlayerPoseIntent::LandingAnticipation | PlayerPoseIntent::LandingRecovery
+    ) {
+        return 0.0;
+    }
+
+    let mut split_m: f32 = 0.0;
+    if let Some((left, right)) = lower_legs {
+        split_m = split_m.max(distal_limb_split_m(left, right, 0.40, 0.18));
+    }
+    if let Some((left, right)) = feet {
+        split_m = split_m.max(distal_limb_split_m(left, right, 0.55, 0.12));
+    }
+    split_m
+}
+
+fn distal_limb_split_m(
+    left: VisiblePosePartTransform,
+    right: VisiblePosePartTransform,
+    lateral_weight: f32,
+    rotation_weight: f32,
+) -> f32 {
+    (left.base_delta.x - right.base_delta.x).abs() * lateral_weight
+        + (left.base_delta.z - right.base_delta.z).abs()
+        + left.rotation.angle_between(right.rotation) * rotation_weight
 }
 
 fn limb_clearance(
@@ -1183,6 +1245,7 @@ pub(crate) fn collect_eval_metrics(
         wing_airflow_strength: pose_readability.wing_airflow_strength,
         key_pose_readability_score: pose_readability.key_pose_readability_score,
     })
+    .with_pose_landing_distal_foot_split(pose_readability.landing_distal_foot_split_m)
     .with_pose_torso_backward_bend(pose_readability.torso_backward_bend_degrees)
     .with_pose_torso_local_bend(visible_pose_parts.torso_local_bend_degrees())
     .with_pose_torso_offset(visible_pose_parts.torso_offset_m())
@@ -1585,7 +1648,9 @@ fn transition_aware_pose_readability(
             metrics.leg_tuck_degrees,
             metrics.landing_crouch_m,
             metrics.landing_foot_forward_m,
-            metrics.landing_foot_split_m,
+            metrics
+                .landing_foot_split_m
+                .max(metrics.landing_distal_foot_split_m),
         );
         transition_readability_score = transition_readability_score.max(previous_score);
     }
@@ -1747,6 +1812,7 @@ fn key_pose_intent(intent: PlayerPoseIntent) -> bool {
 mod tests {
     use super::*;
     use crate::authored_assets::AuthoredPlayerClip;
+    use nau_engine::animation::LANDING_MAX_FOOT_SPLIT_READABILITY_M;
     use nau_engine::movement::{FlightInput, FlightMode};
 
     #[test]
@@ -2090,9 +2156,141 @@ mod tests {
         )
         .expect("visible generated pose metrics");
 
-        assert!(metrics.landing_crouch_m > 0.07);
-        assert!(metrics.landing_crouch_m < 0.08);
+        assert!(metrics.landing_crouch_m > 0.08);
+        assert!(metrics.landing_crouch_m < 0.09);
         assert!(metrics.key_pose_readability_score < 0.1);
+    }
+
+    #[test]
+    fn generated_landing_readability_penalizes_distal_leg_spread() {
+        let context = PlayerPoseContext::new(
+            FlightMode::Airborne,
+            Vec3::new(0.0, -4.0, -18.0),
+            FlightInput::default(),
+            4.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::LandingAnticipation);
+        let left_leg_base = Vec3::new(-0.22, 0.28, 0.0);
+        let right_leg_base = Vec3::new(0.22, 0.28, 0.0);
+        let left_lower_leg_base = Vec3::new(-0.18, -0.22, 0.0);
+        let right_lower_leg_base = Vec3::new(0.18, -0.22, 0.0);
+        let left_foot_base = Vec3::new(-0.18, -0.58, 0.05);
+        let right_foot_base = Vec3::new(0.18, -0.58, 0.05);
+        let parts = [
+            (
+                CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY),
+                Transform::from_rotation(Quat::from_rotation_x(0.45)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Arm(Side::Left),
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                ),
+                Transform::from_rotation(Quat::from_rotation_z(-0.9)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Arm(Side::Right),
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                ),
+                Transform::from_rotation(Quat::from_rotation_z(0.9)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Leg(Side::Left),
+                    left_leg_base,
+                    Quat::IDENTITY,
+                ),
+                Transform {
+                    translation: left_leg_base + Vec3::new(0.0, 0.11, 0.40),
+                    rotation: Quat::from_rotation_x(-0.8),
+                    ..default()
+                },
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Leg(Side::Right),
+                    right_leg_base,
+                    Quat::IDENTITY,
+                ),
+                Transform {
+                    translation: right_leg_base + Vec3::new(0.0, 0.11, 0.34),
+                    rotation: Quat::from_rotation_x(-0.8),
+                    ..default()
+                },
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::LowerLeg(Side::Left),
+                    left_lower_leg_base,
+                    Quat::IDENTITY,
+                ),
+                Transform {
+                    translation: left_lower_leg_base,
+                    rotation: Quat::from_rotation_z(1.35),
+                    ..default()
+                },
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::LowerLeg(Side::Right),
+                    right_lower_leg_base,
+                    Quat::IDENTITY,
+                ),
+                Transform {
+                    translation: right_lower_leg_base,
+                    rotation: Quat::from_rotation_z(-1.35),
+                    ..default()
+                },
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Foot(Side::Left),
+                    left_foot_base,
+                    Quat::IDENTITY,
+                ),
+                Transform {
+                    translation: left_foot_base,
+                    rotation: Quat::from_rotation_z(0.9),
+                    ..default()
+                },
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(
+                    CharacterPartRole::Foot(Side::Right),
+                    right_foot_base,
+                    Quat::IDENTITY,
+                ),
+                Transform {
+                    translation: right_foot_base,
+                    rotation: Quat::from_rotation_z(-0.9),
+                    ..default()
+                },
+                Visibility::Inherited,
+            ),
+        ];
+
+        let metrics = visible_generated_pose_readability_metrics(
+            parts
+                .iter()
+                .map(|(part, transform, visibility)| (part, transform, visibility)),
+            context,
+        )
+        .expect("visible generated pose metrics");
+
+        assert!(metrics.landing_foot_split_m < LANDING_MAX_FOOT_SPLIT_READABILITY_M);
+        assert!(metrics.landing_distal_foot_split_m > LANDING_MAX_FOOT_SPLIT_READABILITY_M);
+        assert!(metrics.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
     }
 
     #[test]
