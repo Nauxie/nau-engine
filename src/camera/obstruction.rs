@@ -2,6 +2,14 @@ use bevy::prelude::*;
 
 use super::types::{CameraFrame, CameraObstruction, CameraObstructionResolution};
 
+pub const CAMERA_MIN_READABLE_OBSTRUCTION_DISTANCE_M: f32 = 6.5;
+pub const CAMERA_OBSTRUCTION_SHOULDER_OFFSET_M: f32 = 4.8;
+pub const CAMERA_OBSTRUCTION_VERTICAL_OFFSET_M: f32 = 2.4;
+pub const CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M: f32 = 1.5;
+const CAMERA_OBSTRUCTION_FRONT_CLEARANCE_M: f32 = 0.08;
+const CAMERA_TRANSPARENT_NEAR_BLOCKER_MAX_HORIZONTAL_HALF_EXTENT_M: f32 = 2.0;
+const CAMERA_TRANSPARENT_NEAR_BLOCKER_MAX_VERTICAL_HALF_EXTENT_M: f32 = 6.0;
+
 pub fn lift_camera_above_floor(
     mut frame: CameraFrame,
     floor_y: f32,
@@ -42,6 +50,7 @@ pub fn avoid_camera_obstructions(
     obstructions: impl IntoIterator<Item = CameraObstruction>,
     clearance: f32,
 ) -> CameraObstructionResolution {
+    let obstructions = obstructions.into_iter().collect::<Vec<_>>();
     let segment = frame.position - frame.look_target;
     let segment_length = segment.length();
     if segment_length <= 0.001 || !segment_length.is_finite() {
@@ -54,9 +63,10 @@ pub fn avoid_camera_obstructions(
 
     let direction = segment / segment_length;
     let mut nearest_hit_distance = segment_length;
+    let mut nearest_obstruction = None;
     let mut hit_count = 0;
 
-    for obstruction in obstructions {
+    for obstruction in obstructions.iter().copied() {
         let obstruction = obstruction.expanded(clearance);
         if obstruction.contains(frame.look_target) {
             continue;
@@ -67,7 +77,10 @@ pub fn avoid_camera_obstructions(
             continue;
         };
         hit_count += 1;
-        nearest_hit_distance = nearest_hit_distance.min(hit_distance);
+        if hit_distance < nearest_hit_distance {
+            nearest_hit_distance = hit_distance;
+            nearest_obstruction = Some(obstruction);
+        }
     }
 
     if hit_count == 0 || nearest_hit_distance >= segment_length {
@@ -78,8 +91,29 @@ pub fn avoid_camera_obstructions(
         };
     }
 
-    let min_target_distance = 2.4;
-    let adjusted_distance = nearest_hit_distance.max(min_target_distance);
+    if let Some(fallback) = readable_obstruction_fallback(frame, &obstructions, clearance) {
+        return CameraObstructionResolution {
+            frame: fallback,
+            adjusted_distance_m: frame.position.distance(fallback.position),
+            hit_count,
+        };
+    }
+
+    if nearest_hit_distance < CAMERA_MIN_READABLE_OBSTRUCTION_DISTANCE_M
+        && nearest_obstruction.is_some_and(is_local_prop_blocker)
+    {
+        return CameraObstructionResolution {
+            frame,
+            adjusted_distance_m: 0.0,
+            hit_count,
+        };
+    }
+
+    let adjusted_distance = if nearest_hit_distance > CAMERA_OBSTRUCTION_FRONT_CLEARANCE_M {
+        nearest_hit_distance - CAMERA_OBSTRUCTION_FRONT_CLEARANCE_M
+    } else {
+        nearest_hit_distance * 0.5
+    };
     let mut adjusted = frame;
     adjusted.position = frame.look_target + direction * adjusted_distance;
     adjusted.rotation = Transform::from_translation(adjusted.position)
@@ -91,6 +125,72 @@ pub fn avoid_camera_obstructions(
         adjusted_distance_m: frame.position.distance(adjusted.position),
         hit_count,
     }
+}
+
+fn is_local_prop_blocker(obstruction: CameraObstruction) -> bool {
+    obstruction.half_extents.x.max(obstruction.half_extents.z)
+        <= CAMERA_TRANSPARENT_NEAR_BLOCKER_MAX_HORIZONTAL_HALF_EXTENT_M
+        && obstruction.half_extents.y <= CAMERA_TRANSPARENT_NEAR_BLOCKER_MAX_VERTICAL_HALF_EXTENT_M
+}
+
+fn readable_obstruction_fallback(
+    frame: CameraFrame,
+    obstructions: &[CameraObstruction],
+    clearance: f32,
+) -> Option<CameraFrame> {
+    let target_to_camera = frame.position - frame.look_target;
+    let boom_distance = target_to_camera.length();
+    if boom_distance < CAMERA_MIN_READABLE_OBSTRUCTION_DISTANCE_M || !boom_distance.is_finite() {
+        return None;
+    }
+
+    let direction = target_to_camera / boom_distance;
+    let lateral = direction.cross(Vec3::Y).normalize_or_zero();
+    if lateral.length_squared() <= 0.0001 {
+        return None;
+    }
+
+    let offsets = [
+        Vec3::Y * CAMERA_OBSTRUCTION_VERTICAL_OFFSET_M,
+        lateral * CAMERA_OBSTRUCTION_SHOULDER_OFFSET_M,
+        -lateral * CAMERA_OBSTRUCTION_SHOULDER_OFFSET_M,
+        lateral * CAMERA_OBSTRUCTION_SHOULDER_OFFSET_M
+            + Vec3::Y * (CAMERA_OBSTRUCTION_VERTICAL_OFFSET_M * 0.65),
+        -lateral * CAMERA_OBSTRUCTION_SHOULDER_OFFSET_M
+            + Vec3::Y * (CAMERA_OBSTRUCTION_VERTICAL_OFFSET_M * 0.65),
+    ];
+
+    offsets.into_iter().find_map(|offset| {
+        let mut candidate = frame;
+        candidate.position = frame.position + offset;
+        if camera_segment_is_blocked(candidate, obstructions.iter().copied(), clearance) {
+            return None;
+        }
+        candidate.rotation = Transform::from_translation(candidate.position)
+            .looking_at(candidate.look_target, Vec3::Y)
+            .rotation;
+        Some(candidate)
+    })
+}
+
+fn camera_segment_is_blocked(
+    frame: CameraFrame,
+    obstructions: impl IntoIterator<Item = CameraObstruction>,
+    clearance: f32,
+) -> bool {
+    let segment = frame.position - frame.look_target;
+    let segment_length = segment.length();
+    if segment_length <= 0.001 || !segment_length.is_finite() {
+        return false;
+    }
+
+    let direction = segment / segment_length;
+    obstructions.into_iter().any(|obstruction| {
+        let obstruction = obstruction.expanded(clearance);
+        !obstruction.contains(frame.look_target)
+            && segment_aabb_hit_distance(frame.look_target, direction, segment_length, obstruction)
+                .is_some()
+    })
 }
 
 fn segment_aabb_hit_distance(
