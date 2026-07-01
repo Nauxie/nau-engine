@@ -4,7 +4,10 @@ use super::{
     GROUND_EPSILON,
     math::{horizontal, horizontal_or, smoothing_factor},
     orientation::desired_air_steering_direction,
-    types::{Facing, FlightInput, FlightMode, FlightState, FlightTuning},
+    types::{
+        Facing, FlightInput, FlightMode, FlightState, FlightTuning,
+        LAUNCH_MAX_HORIZONTAL_SPEED_MPS, LAUNCH_MAX_UPWARD_SPEED_MPS,
+    },
 };
 
 pub fn step_flight(
@@ -31,8 +34,9 @@ pub fn step_flight(
         && state.controller.launch_available
         && state.controller.launch_cooldown_remaining <= 0.0
     {
-        state.velocity.y = tuning.launch_speed;
+        state.velocity.y = tuning.launch_speed.min(LAUNCH_MAX_UPWARD_SPEED_MPS);
         state.velocity += facing.forward * tuning.launch_forward_bonus;
+        state.velocity = clamp_horizontal_velocity(state.velocity, LAUNCH_MAX_HORIZONTAL_SPEED_MPS);
         state.controller.launch_available = false;
         state.controller.launch_cooldown_remaining = tuning.launch_cooldown;
         state.controller.launch_timer = tuning.launch_duration;
@@ -189,6 +193,8 @@ pub fn step_flight(
 
     let max_horizontal_speed = if started_grounded && !launching {
         tuning.ground_max_horizontal_speed
+    } else if launching {
+        LAUNCH_MAX_HORIZONTAL_SPEED_MPS
     } else {
         tuning.max_horizontal_speed
     };
@@ -337,6 +343,12 @@ fn target_bank_degrees(input: FlightInput, mode: FlightMode, tuning: &FlightTuni
 }
 
 fn clamp_velocity(mut velocity: Vec3, tuning: &FlightTuning, max_horizontal_speed: f32) -> Vec3 {
+    velocity = clamp_horizontal_velocity(velocity, max_horizontal_speed);
+    velocity.y = velocity.y.max(-tuning.max_fall_speed);
+    velocity
+}
+
+fn clamp_horizontal_velocity(mut velocity: Vec3, max_horizontal_speed: f32) -> Vec3 {
     let horizontal_velocity = horizontal(velocity);
     let horizontal_speed = horizontal_velocity.length();
     let max_horizontal_speed = max_horizontal_speed.max(0.0);
@@ -347,9 +359,6 @@ fn clamp_velocity(mut velocity: Vec3, tuning: &FlightTuning, max_horizontal_spee
         velocity.z = horizontal_velocity.z;
     }
 
-    velocity.y = velocity
-        .y
-        .clamp(-tuning.max_fall_speed, tuning.launch_speed);
     velocity
 }
 
