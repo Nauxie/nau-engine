@@ -7,6 +7,12 @@ use crate::environment_visuals::WindResponsiveVisual;
 use bevy::prelude::*;
 use std::collections::HashSet;
 
+const ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET: usize = 32;
+
+fn stream_change_budget_allows(initialized: bool, applied_changes: usize) -> bool {
+    !initialized || applied_changes < ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
+}
+
 fn island_visual_is_resident(entry: &IslandVisualEntry, player_position: Vec3) -> bool {
     let activation = entry.island.stream_activation(player_position);
     let band = entry.island.lod_band(player_position);
@@ -107,11 +113,18 @@ pub(crate) fn update_island_stream_visibility(
         if resident {
             desired_keys.insert(entry.key);
             if !stream_state.spawned.contains_key(&entry.key) {
-                let entity =
-                    spawn_island_visual_entry(&mut commands, &mut meshes, &mut stream_state, entry);
-                stream_state.spawned.insert(entry.key, entity);
-                if diagnostics.initialized {
-                    spawned_visuals += 1;
+                let applied_changes = spawned_visuals + despawned_visual_count;
+                if stream_change_budget_allows(diagnostics.initialized, applied_changes) {
+                    let entity = spawn_island_visual_entry(
+                        &mut commands,
+                        &mut meshes,
+                        &mut stream_state,
+                        entry,
+                    );
+                    stream_state.spawned.insert(entry.key, entity);
+                    if diagnostics.initialized {
+                        spawned_visuals += 1;
+                    }
                 }
             }
         }
@@ -124,6 +137,11 @@ pub(crate) fn update_island_stream_visibility(
         .collect::<Vec<_>>();
 
     for (key, entity) in despawned_visuals {
+        let applied_changes = spawned_visuals + despawned_visual_count;
+        if !stream_change_budget_allows(diagnostics.initialized, applied_changes) {
+            break;
+        }
+
         commands.entity(entity).despawn();
         stream_state.spawned.remove(&key);
         if diagnostics.initialized {
@@ -149,4 +167,89 @@ pub(crate) fn update_island_stream_visibility(
     diagnostics.total_spawned_visuals += spawned_visuals;
     diagnostics.total_despawned_visuals += despawned_visual_count;
     diagnostics.initialized = true;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nau_engine::world::SkyIsland;
+
+    fn resident_entry(index: usize) -> IslandVisualEntry {
+        let island = SkyIsland::new(
+            "stream-budget-test",
+            Vec3::ZERO,
+            Vec2::splat(48.0),
+            8.0,
+            false,
+        );
+        IslandVisualEntry {
+            key: super::super::types::IslandVisualKey {
+                island_name: "stream-budget-test",
+                layer: super::super::types::IslandVisualLayer::Terrain,
+                index,
+            },
+            island,
+            layer: super::super::types::IslandVisualLayer::Terrain,
+            mesh: None,
+            mesh_recipe: None,
+            material: None,
+            transform: Transform::from_translation(Vec3::new(index as f32, 0.0, 0.0)),
+            obstacle: None,
+            collision: None,
+            wind_motion: None,
+            name: "stream-budget-test-visual",
+        }
+    }
+
+    #[test]
+    fn initialized_streaming_caps_spawn_changes_per_frame() {
+        let mut app = App::new();
+        app.insert_resource(Assets::<Mesh>::default());
+        app.insert_resource(IslandVisualCatalog {
+            entries: (0..ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET + 3)
+                .map(resident_entry)
+                .collect(),
+        });
+        app.insert_resource(IslandStreamState::default());
+        app.insert_resource(IslandStreamDiagnostics {
+            initialized: true,
+            ..default()
+        });
+        app.world_mut().spawn((crate::Player, Transform::default()));
+        app.add_systems(Update, update_island_stream_visibility);
+
+        app.update();
+
+        let diagnostics = app.world().resource::<IslandStreamDiagnostics>();
+        assert_eq!(
+            diagnostics.visibility_changes_this_frame,
+            ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
+        );
+        assert_eq!(
+            diagnostics.spawned_visuals_this_frame,
+            ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
+        );
+        assert_eq!(
+            diagnostics.max_visibility_changes_per_frame,
+            ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
+        );
+        assert_eq!(
+            app.world().resource::<IslandStreamState>().spawned.len(),
+            ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
+        );
+
+        app.update();
+
+        let diagnostics = app.world().resource::<IslandStreamDiagnostics>();
+        assert_eq!(diagnostics.visibility_changes_this_frame, 3);
+        assert_eq!(diagnostics.spawned_visuals_this_frame, 3);
+        assert_eq!(
+            diagnostics.max_visibility_changes_per_frame,
+            ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
+        );
+        assert_eq!(
+            app.world().resource::<IslandStreamState>().spawned.len(),
+            ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET + 3
+        );
+    }
 }
