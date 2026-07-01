@@ -64,6 +64,8 @@ if command -v jq >/dev/null 2>&1; then
           pose_grounded_walk_samples: .metrics.pose_grounded_walk_samples,
           pose_grounded_run_samples: .metrics.pose_grounded_run_samples,
           pose_launching_samples: .metrics.pose_launching_samples,
+          max_launch_upward_speed_mps: .metrics.max_launch_upward_speed_mps,
+          max_launch_horizontal_speed_mps: .metrics.max_launch_horizontal_speed_mps,
           pose_falling_samples: .metrics.pose_falling_samples,
           pose_gliding_samples: .metrics.pose_gliding_samples,
           pose_air_turn_samples: .metrics.pose_air_turn_samples,
