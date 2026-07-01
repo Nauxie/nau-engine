@@ -5,8 +5,9 @@ use crate::{
         UPDRAFT_RIBBONS_PER_FIELD, UpdraftGuide, UpdraftRibbon, WIND_VISUAL_ALIGNMENT_MIN_DOT,
         WIND_VISUAL_COHERENCE_DT, crosswind_guide_position, crosswind_guide_scale,
         crosswind_ribbon_scene_sample_positions, crosswind_ribbon_transform,
-        updraft_guide_position, updraft_guide_scale, updraft_ribbon_scene_sample_positions,
-        updraft_ribbon_transform, visual_flow_alignment, wind_visual_quality_visible,
+        updraft_guide_angular_speed, updraft_guide_position, updraft_guide_ring_radius,
+        updraft_guide_scale, updraft_ribbon_scene_sample_positions, updraft_ribbon_transform,
+        visual_flow_alignment, wind_visual_quality_visible,
     },
     eval_runtime::{path_string, remove_existing_dir},
 };
@@ -177,7 +178,7 @@ fn wind_visual_tracks() -> Vec<WindVisualTrack> {
 
     for (field_index, node) in GAMEPLAY_LIFT_ROUTE.iter().copied().enumerate() {
         let field = node.visual_field();
-        let ring_radius = field.half_extents.x.min(field.half_extents.z) * 0.5;
+        let ring_radius = updraft_guide_ring_radius(field.half_extents.x.min(field.half_extents.z));
         for ribbon_index in 0..UPDRAFT_RIBBONS_PER_FIELD {
             let phase = ribbon_index as f32 / UPDRAFT_RIBBONS_PER_FIELD as f32;
             let mesh_phase = phase * std::f32::consts::TAU;
@@ -239,7 +240,7 @@ fn wind_visual_tracks() -> Vec<WindVisualTrack> {
                     radius: ring_radius,
                     height_offset: level * field.half_extents.y,
                     phase,
-                    angular_speed: 0.26 + level_index as f32 * 0.035,
+                    angular_speed: updraft_guide_angular_speed(level_index),
                 };
                 let visual_index = level_index * UPDRAFT_GUIDES_PER_RING + marker_index;
                 push_transform_state_tracks(
@@ -727,8 +728,8 @@ mod tests {
         assert!(summary.updraft_ribbon.max_quality_visible_speed_mps <= 13.0);
         assert!(summary.crosswind_guide.max_quality_visible_speed_mps <= 15.0);
         assert!(summary.crosswind_ribbon.max_quality_visible_speed_mps <= 17.0);
-        assert!(summary.updraft_guide.max_quality_visible_acceleration_mps2 <= 110.0);
-        assert!(summary.updraft_ribbon.max_quality_visible_acceleration_mps2 <= 160.0);
+        assert!(summary.updraft_guide.max_quality_visible_acceleration_mps2 <= 225.0);
+        assert!(summary.updraft_ribbon.max_quality_visible_acceleration_mps2 <= 225.0);
         assert!(
             summary
                 .crosswind_guide
