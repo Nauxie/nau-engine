@@ -66,10 +66,16 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
         .and_then(Value::as_str)
         .unwrap_or("unknown")
         .to_string();
+    let scenario = parsed
+        .get("scenario")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
 
     Ok(CheckpointAudit {
         metadata_path: path.to_string_lossy().into_owned(),
         screenshot_path: screenshot_path.to_string_lossy().into_owned(),
+        scenario,
         checkpoint,
         in_viewport_scene_sample_count,
         occluded_scene_sample_count,
