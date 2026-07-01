@@ -1,8 +1,9 @@
 use bevy::prelude::*;
 
 use super::super::{
-    CameraFrame, CameraObstruction, avoid_camera_obstructions, camera_surface_clearance,
-    camera_target_angle_degrees, clamp_camera_step, lift_camera_above_floor,
+    CAMERA_MIN_READABLE_OBSTRUCTION_DISTANCE_M, CameraFrame, CameraObstruction,
+    avoid_camera_obstructions, camera_surface_clearance, camera_target_angle_degrees,
+    clamp_camera_step, lift_camera_above_floor,
 };
 
 #[test]
@@ -37,8 +38,10 @@ fn camera_obstruction_moves_camera_in_front_of_blocker() {
     );
 
     assert_eq!(resolved.hit_count, 1);
-    assert!(resolved.adjusted_distance_m > 5.0);
-    assert!(resolved.frame.position.z < 4.0);
+    assert!(resolved.adjusted_distance_m > 3.0);
+    assert!(resolved.frame.position.distance(resolved.frame.look_target) > 10.0);
+    assert!(resolved.frame.position.y > frame.position.y || resolved.frame.position.x.abs() > 3.0);
+    assert_eq!(resolved.frame.position.z, frame.position.z);
     assert!(
         camera_target_angle_degrees(
             resolved.frame.position,
@@ -46,6 +49,64 @@ fn camera_obstruction_moves_camera_in_front_of_blocker() {
             resolved.frame.look_target,
         ) < 0.001
     );
+}
+
+#[test]
+fn camera_obstruction_clears_broad_blocker_when_readable_fallback_is_blocked() {
+    let frame = CameraFrame {
+        position: Vec3::new(0.0, 2.0, 12.0),
+        rotation: Quat::IDENTITY,
+        look_target: Vec3::new(0.0, 2.0, 0.0),
+    };
+
+    let resolved = avoid_camera_obstructions(
+        frame,
+        [CameraObstruction::new(
+            Vec3::new(0.0, 2.0, 4.0),
+            Vec3::new(20.0, 20.0, 1.0),
+        )],
+        0.25,
+    );
+
+    assert_eq!(resolved.hit_count, 1);
+    assert!(
+        resolved.frame.position.distance(resolved.frame.look_target)
+            < CAMERA_MIN_READABLE_OBSTRUCTION_DISTANCE_M
+    );
+    assert!(resolved.frame.position.z < 2.75);
+    assert!(
+        camera_target_angle_degrees(
+            resolved.frame.position,
+            resolved.frame.rotation,
+            resolved.frame.look_target,
+        ) < 0.001
+    );
+}
+
+#[test]
+fn camera_obstruction_treats_near_narrow_prop_as_transparent_when_fallback_is_blocked() {
+    let frame = CameraFrame {
+        position: Vec3::new(0.0, 2.0, 12.0),
+        rotation: Quat::IDENTITY,
+        look_target: Vec3::new(0.0, 2.0, 0.0),
+    };
+
+    let resolved = avoid_camera_obstructions(
+        frame,
+        [
+            CameraObstruction::new(Vec3::new(0.0, 2.0, 4.0), Vec3::new(0.6, 2.0, 0.6)),
+            CameraObstruction::new(Vec3::new(1.6, 2.0, 4.0), Vec3::new(0.35, 2.0, 0.6)),
+            CameraObstruction::new(Vec3::new(-1.6, 2.0, 4.0), Vec3::new(0.35, 2.0, 0.6)),
+            CameraObstruction::new(Vec3::new(0.0, 2.8, 4.0), Vec3::new(0.6, 0.25, 0.6)),
+            CameraObstruction::new(Vec3::new(1.6, 2.5, 4.0), Vec3::new(0.35, 0.35, 0.6)),
+            CameraObstruction::new(Vec3::new(-1.6, 2.5, 4.0), Vec3::new(0.35, 0.35, 0.6)),
+        ],
+        0.45,
+    );
+
+    assert_eq!(resolved.hit_count, 1);
+    assert_eq!(resolved.adjusted_distance_m, 0.0);
+    assert_eq!(resolved.frame.position, frame.position);
 }
 
 #[test]
@@ -88,8 +149,10 @@ fn camera_obstruction_uses_nearest_blocker() {
     );
 
     assert_eq!(resolved.hit_count, 2);
-    assert!(resolved.frame.position.z < 3.0);
-    assert!(resolved.frame.position.z > 2.3);
+    assert!(
+        resolved.frame.position.distance(resolved.frame.look_target)
+            >= CAMERA_MIN_READABLE_OBSTRUCTION_DISTANCE_M
+    );
 }
 
 #[test]
