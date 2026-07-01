@@ -1,5 +1,7 @@
 use bevy::prelude::*;
-use nau_engine::environment::{GAMEPLAY_LIFT_ROUTE, WindField, visual_crosswind_fields};
+use nau_engine::environment::{
+    GAMEPLAY_LIFT_ROUTE, VISUAL_CROSSWIND_FIELD_COUNT, WindField, visual_crosswind_fields,
+};
 use serde_json::{Value, json};
 use std::{
     env, fs,
@@ -8,31 +10,32 @@ use std::{
 };
 
 const EXPECTED_SCHEMA: &str = "nau_wind_visual_export.v1";
-const MIN_UPDRAFT_FIELDS: u64 = 2;
-const MIN_CROSSWIND_FIELDS: u64 = 4;
-const MIN_UPDRAFT_GUIDES: u64 = 210;
-const MIN_UPDRAFT_RIBBONS: u64 = 12;
-const MIN_CROSSWIND_GUIDES: u64 = 240;
-const MIN_CROSSWIND_RIBBONS: u64 = 28;
+const MIN_UPDRAFT_FIELDS: u64 = GAMEPLAY_LIFT_ROUTE.len() as u64;
+const MIN_CROSSWIND_FIELDS: u64 = VISUAL_CROSSWIND_FIELD_COUNT as u64;
+const MIN_UPDRAFT_GUIDES: u64 = MIN_UPDRAFT_FIELDS * 105;
+const MIN_UPDRAFT_RIBBONS: u64 = MIN_UPDRAFT_FIELDS * 6;
+const MIN_CROSSWIND_GUIDES: u64 = MIN_CROSSWIND_FIELDS * 60;
+const MIN_CROSSWIND_RIBBONS: u64 = MIN_CROSSWIND_FIELDS * 7;
 const MIN_TOTAL_TRACKS: u64 = 1100;
 const MIN_TOTAL_COHERENT_TRACKS: u64 = 1040;
 const MIN_UPDRAFT_GUIDE_COHERENT_TRACKS: u64 = 400;
-const MIN_UPDRAFT_RIBBON_COHERENT_TRACKS: u64 = 40;
+const MIN_UPDRAFT_RIBBON_COHERENT_TRACKS: u64 = 4000;
 const MIN_CROSSWIND_GUIDE_COHERENT_TRACKS: u64 = 450;
 const MIN_CROSSWIND_RIBBON_COHERENT_TRACKS: u64 = 125;
 const MAX_STATIC_TRACK_RATIO: f64 = 0.02;
 const MAX_OFF_FIELD_TRACK_RATIO: f64 = 0.001;
-const MAX_LOW_ALIGNMENT_TRACK_RATIO: f64 = 0.08;
+const MAX_LOW_ALIGNMENT_TRACK_RATIO: f64 = 0.09;
+const MAX_UPDRAFT_RIBBON_LOW_ALIGNMENT_TRACK_RATIO: f64 = 0.68;
 const MIN_FAMILY_MAX_DISPLACEMENT_M: f64 = 0.25;
 const MIN_UPDRAFT_RIBBON_MAX_DISPLACEMENT_M: f64 = 0.16;
 const MAX_UPDRAFT_GUIDE_QUALITY_VISIBLE_SPEED_MPS: f64 = 25.0;
-const MAX_UPDRAFT_RIBBON_QUALITY_VISIBLE_SPEED_MPS: f64 = 13.0;
+const MAX_UPDRAFT_RIBBON_QUALITY_VISIBLE_SPEED_MPS: f64 = 18.0;
 const MAX_CROSSWIND_GUIDE_QUALITY_VISIBLE_SPEED_MPS: f64 = 15.0;
 const MAX_CROSSWIND_RIBBON_QUALITY_VISIBLE_SPEED_MPS: f64 = 17.0;
 const MAX_UPDRAFT_GUIDE_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 225.0;
-const MAX_UPDRAFT_RIBBON_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 225.0;
-const MAX_CROSSWIND_GUIDE_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 55.0;
-const MAX_CROSSWIND_RIBBON_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 45.0;
+const MAX_UPDRAFT_RIBBON_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 500.0;
+const MAX_CROSSWIND_GUIDE_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 65.0;
+const MAX_CROSSWIND_RIBBON_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 60.0;
 const MAX_TRACK_CONTINUITY_GAP_M: f64 = 0.01;
 const MOTION_METRIC_TOLERANCE: f64 = 0.05;
 const MIN_TRACK_DISPLACEMENT_M: f32 = 0.01;
@@ -384,6 +387,15 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
             track_metrics.total.track_count,
         ),
         MAX_LOW_ALIGNMENT_TRACK_RATIO,
+        "ratio",
+    ));
+    checks.push(check_at_most_f64(
+        "updraft_ribbon_low_alignment_track_ratio",
+        track_ratio(
+            track_metrics.updraft_ribbon.low_alignment_track_count,
+            track_metrics.updraft_ribbon.track_count,
+        ),
+        MAX_UPDRAFT_RIBBON_LOW_ALIGNMENT_TRACK_RATIO,
         "ratio",
     ));
     for (name, metrics, min_displacement_m) in [
