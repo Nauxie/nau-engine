@@ -5,6 +5,7 @@ mod camera_strafe;
 #[path = "checks/core.rs"]
 mod core;
 
+use nau_engine::animation::LANDING_MAX_FOOT_SPLIT_READABILITY_M;
 use nau_engine::eval::{
     AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
     EvalScenario, LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES,
@@ -24,6 +25,7 @@ use nau_engine::eval::{
     POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES, POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES,
     UPDRAFT_ROUTE,
 };
+use nau_engine::movement::{LAUNCH_MAX_HORIZONTAL_SPEED_MPS, LAUNCH_MAX_UPWARD_SPEED_MPS};
 use serde_json::{Value, json};
 
 use super::{super::round4, SimMetrics};
@@ -55,7 +57,7 @@ const POSE_STATE_MIN_DIVING_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_LANDING_POSE_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_LANDING_FLARE_DEGREES: f32 = LANDING_MIN_POSE_FLARE_DEGREES;
-
+const TARGET_LANDING_MIN_GLIDER_RESPONSE_DEGREES: f32 = 4.0;
 #[derive(Clone, Debug)]
 pub(crate) struct SimCheck {
     pub(crate) name: &'static str,
@@ -106,6 +108,21 @@ impl SimMetrics {
         let mut checks = Vec::new();
         core::append_checks(&mut checks, self, scenario);
 
+        if self.launching_samples > 0 {
+            checks.push(SimCheck::at_most(
+                "launch_upward_speed",
+                self.max_launch_upward_speed_mps,
+                LAUNCH_MAX_UPWARD_SPEED_MPS,
+                "mps",
+            ));
+            checks.push(SimCheck::at_most(
+                "launch_horizontal_speed",
+                self.max_launch_horizontal_speed_mps,
+                LAUNCH_MAX_HORIZONTAL_SPEED_MPS,
+                "mps",
+            ));
+        }
+
         if scenario.thresholds.require_target_landing {
             checks.push(SimCheck::at_least(
                 "pose_landing_anticipation_samples",
@@ -126,6 +143,12 @@ impl SimMetrics {
                 "samples",
             ));
             checks.push(SimCheck::at_least(
+                "target_landing_glider_response",
+                self.max_glider_response_degrees,
+                TARGET_LANDING_MIN_GLIDER_RESPONSE_DEGREES,
+                "deg",
+            ));
+            checks.push(SimCheck::at_least(
                 "pose_landing_crouch",
                 self.max_pose_landing_crouch_m,
                 LANDING_MIN_POSE_CROUCH_M,
@@ -141,6 +164,12 @@ impl SimMetrics {
                 "pose_landing_foot_split",
                 self.max_pose_landing_foot_split_m,
                 LANDING_MIN_POSE_FOOT_SPLIT_M,
+                "m",
+            ));
+            checks.push(SimCheck::at_most(
+                "pose_landing_foot_split_max",
+                max_landing_foot_split_m(self),
+                LANDING_MAX_FOOT_SPLIT_READABILITY_M,
                 "m",
             ));
             checks.push(SimCheck::at_least(
@@ -749,6 +778,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             LANDING_MIN_POSE_FOOT_SPLIT_M,
             "m",
         ),
+        SimCheck::at_most(
+            "pose_state_landing_foot_split_max",
+            max_landing_foot_split_m(metrics),
+            LANDING_MAX_FOOT_SPLIT_READABILITY_M,
+            "m",
+        ),
         SimCheck::at_least(
             "pose_state_landing_flare",
             metrics.max_pose_landing_flare_degrees,
@@ -816,6 +851,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             "m",
         ),
     ]);
+}
+
+fn max_landing_foot_split_m(metrics: &SimMetrics) -> f32 {
+    metrics
+        .max_pose_landing_foot_split_m
+        .max(metrics.max_pose_landing_distal_foot_split_m)
 }
 
 fn wind_force_scenario(scenario: EvalScenario) -> bool {
