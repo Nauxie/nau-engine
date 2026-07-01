@@ -2,7 +2,9 @@ use super::*;
 use crate::animation::{
     GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
     GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+    LANDING_MAX_FOOT_SPLIT_READABILITY_M,
 };
+use crate::movement::{LAUNCH_MAX_HORIZONTAL_SPEED_MPS, LAUNCH_MAX_UPWARD_SPEED_MPS};
 
 #[test]
 fn accumulator_summarizes_frame_time_percentiles() {
@@ -27,6 +29,55 @@ fn accumulator_summarizes_frame_time_percentiles() {
     assert_eq!(summary.metrics.p95_frame_time_ms, 50.0);
     assert_eq!(summary.metrics.p99_frame_time_ms, 50.0);
     assert_eq!(summary.metrics.max_frame_time_ms, 50.0);
+}
+
+#[test]
+fn accumulator_reports_and_gates_launch_speed_caps() {
+    let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("island route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let mut sample = air_control_metric_sample(
+        scenario,
+        0,
+        Vec3::new(
+            LAUNCH_MAX_HORIZONTAL_SPEED_MPS + 0.5,
+            LAUNCH_MAX_UPWARD_SPEED_MPS + 0.5,
+            0.0,
+        ),
+        Vec2::ZERO,
+        0.0,
+        18.0,
+        0.0,
+    );
+    sample.mode = FlightMode::Launching.label();
+    sample.pose_intent_label = "launching";
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(
+        summary.metrics.max_launch_upward_speed_mps,
+        LAUNCH_MAX_UPWARD_SPEED_MPS + 0.5
+    );
+    assert_eq!(
+        summary.metrics.max_launch_horizontal_speed_mps,
+        LAUNCH_MAX_HORIZONTAL_SPEED_MPS + 0.5
+    );
+    assert!(
+        summary
+            .to_json()
+            .contains("\"max_launch_upward_speed_mps\"")
+    );
+    assert!(!named_check(&summary, "launch_upward_speed").passed);
+    assert!(!named_check(&summary, "launch_horizontal_speed").passed);
 }
 
 #[test]
@@ -1391,6 +1442,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     sample.mode = FlightMode::Airborne.label();
     sample.pose_intent_label = "landing_anticipation";
     sample = sample.with_authored_animation_metrics("land", "land", 1, 140);
+    sample = sample.with_authored_glider_metrics(0.0, 0.0);
     sample.target_distance_m = 0.0;
     sample.on_landing_target = true;
     accumulator.observe(sample);
@@ -1408,6 +1460,7 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     let landing_recovery_check = named_check(&summary, "pose_landing_recovery_samples");
     let landing_foot_forward_check = named_check(&summary, "pose_landing_foot_forward");
     let landing_foot_split_check = named_check(&summary, "pose_landing_foot_split");
+    let landing_foot_split_max_check = named_check(&summary, "pose_landing_foot_split_max");
     let landing_flare_check = named_check(&summary, "pose_landing_flare");
     let landing_flare_backbend_check = named_check(&summary, "pose_landing_flare_backbend");
     let landing_forward_fold_check = named_check(&summary, "pose_landing_forward_fold");
@@ -1415,6 +1468,9 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     let landing_recovery_backbend_check = named_check(&summary, "pose_landing_recovery_backbend");
     let gliding_landing_check = named_check(&summary, "gliding_landing_anticipation_samples");
     let authored_land_check = named_check(&summary, "authored_landing_clip_samples");
+    let target_glider_response_check =
+        named_check(&summary, "target_landing_authored_glider_response");
+    let target_glider_motion_check = named_check(&summary, "target_landing_authored_glider_motion");
 
     assert_eq!(summary.metrics.pose_landing_recovery_samples, 0);
     assert_eq!(summary.metrics.gliding_landing_anticipation_samples, 0);
@@ -1429,6 +1485,15 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     assert_eq!(authored_land_check.value, 1.0);
     assert_eq!(authored_land_check.threshold, 2.0);
     assert!(!authored_land_check.passed);
+    assert_eq!(target_glider_response_check.value, 0.0);
+    assert_eq!(
+        target_glider_response_check.threshold,
+        AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES
+    );
+    assert!(!target_glider_response_check.passed);
+    assert_eq!(target_glider_motion_check.value, 0.0);
+    assert_eq!(target_glider_motion_check.threshold, 0.04);
+    assert!(!target_glider_motion_check.passed);
     assert_eq!(landing_foot_forward_check.value, 0.40);
     assert_eq!(landing_foot_forward_check.threshold, 0.32);
     assert!(landing_foot_forward_check.passed);
@@ -1438,6 +1503,12 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         LANDING_MIN_POSE_FOOT_SPLIT_M
     );
     assert!(!landing_foot_split_check.passed);
+    assert_eq!(landing_foot_split_max_check.value, 0.0);
+    assert_eq!(
+        landing_foot_split_max_check.threshold,
+        LANDING_MAX_FOOT_SPLIT_READABILITY_M
+    );
+    assert!(landing_foot_split_max_check.passed);
     assert_eq!(landing_flare_check.value, 0.0);
     assert_eq!(
         landing_flare_check.threshold,
@@ -1502,8 +1573,13 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     passing_anticipation.pose_intent_label = "landing_anticipation";
     passing_anticipation =
         passing_anticipation.with_authored_animation_metrics("land", "land", 1, 140);
+    passing_anticipation = passing_anticipation
+        .with_authored_glider_metrics(AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES, 0.04);
     passing_anticipation.target_distance_m = 0.0;
     passing_anticipation.on_landing_target = true;
+    let mut excessive_split_anticipation = passing_anticipation.clone();
+    excessive_split_anticipation.pose_landing_distal_foot_split_m =
+        LANDING_MAX_FOOT_SPLIT_READABILITY_M + 0.01;
     passing_accumulator.observe(passing_anticipation);
 
     let mut passing_recovery = air_control_metric_sample(
@@ -1533,6 +1609,11 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     .with_pose_torso_backward_bend(0.0);
     passing_recovery.pose_intent_label = "landing_recovery";
     passing_recovery = passing_recovery.with_authored_animation_metrics("land", "land", 1, 140);
+    passing_recovery = passing_recovery
+        .with_authored_glider_metrics(AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES, 0.04);
+    let mut excessive_split_recovery = passing_recovery.clone();
+    excessive_split_recovery.pose_landing_distal_foot_split_m =
+        LANDING_MAX_FOOT_SPLIT_READABILITY_M + 0.01;
     passing_accumulator.observe(passing_recovery);
 
     let passing_summary = passing_accumulator.summary(
@@ -1547,11 +1628,14 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     );
 
     assert!(named_check(&passing_summary, "pose_landing_foot_split").passed);
+    assert!(named_check(&passing_summary, "pose_landing_foot_split_max").passed);
     assert!(named_check(&passing_summary, "pose_landing_flare_backbend").passed);
     assert!(named_check(&passing_summary, "pose_landing_forward_fold").passed);
     assert!(named_check(&passing_summary, "pose_landing_backward_bend").passed);
     assert!(named_check(&passing_summary, "pose_landing_recovery_backbend").passed);
     assert!(named_check(&passing_summary, "gliding_landing_anticipation_samples").passed);
+    assert!(named_check(&passing_summary, "target_landing_authored_glider_response").passed);
+    assert!(named_check(&passing_summary, "target_landing_authored_glider_motion").passed);
     assert_eq!(
         passing_summary.metrics.gliding_landing_anticipation_samples,
         0
@@ -1586,6 +1670,11 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
     assert!(
         passing_summary
             .to_json()
+            .contains("\"max_pose_landing_distal_foot_split_m\"")
+    );
+    assert!(
+        passing_summary
+            .to_json()
             .contains("\"max_pose_landing_recovery_flip_degrees\"")
     );
     assert!(
@@ -1597,6 +1686,35 @@ fn accumulator_gates_target_landing_recovery_pose_samples_and_flare() {
         passing_summary
             .to_json()
             .contains("\"max_pose_landing_backward_bend_degrees\"")
+    );
+
+    let mut excessive_split_accumulator = EvalAccumulator::default();
+    excessive_split_accumulator.observe(excessive_split_anticipation);
+    excessive_split_accumulator.observe(excessive_split_recovery);
+    let excessive_split_summary = excessive_split_accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert!(named_check(&excessive_split_summary, "pose_landing_foot_split").passed);
+    assert!(!named_check(&excessive_split_summary, "pose_landing_foot_split_max").passed);
+    assert_eq!(
+        excessive_split_summary
+            .metrics
+            .max_pose_landing_foot_split_m,
+        LANDING_MIN_POSE_FOOT_SPLIT_M
+    );
+    assert_eq!(
+        excessive_split_summary
+            .metrics
+            .max_pose_landing_distal_foot_split_m,
+        LANDING_MAX_FOOT_SPLIT_READABILITY_M + 0.01
     );
 }
 
@@ -3514,6 +3632,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_landing_crouch",
         "pose_state_landing_foot_forward",
         "pose_state_landing_foot_split",
+        "pose_state_landing_foot_split_max",
         "pose_state_landing_flare",
         "pose_state_landing_flare_backbend",
         "pose_state_landing_forward_fold",
