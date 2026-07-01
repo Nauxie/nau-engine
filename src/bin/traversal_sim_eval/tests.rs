@@ -3,6 +3,7 @@ use super::{
     AIR_CONTROL_MAX_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MAX_P95_DESIRED_TRAVEL_HEADING_ERROR_DEGREES,
     AIR_CONTROL_MAX_P95_LATERAL_BODY_TRAVEL_HEADING_ERROR_DEGREES,
+    AIR_CONTROL_MIN_AIR_BRAKE_PLANAR_SPEED_DROP_MPS,
     AIR_CONTROL_MIN_BACKWARD_DIAGONAL_BODY_TRAVEL_HEADING_SAMPLES,
     AIR_CONTROL_MIN_PURE_AIR_TURN_SIDEWAYS_SAMPLES, LANDING_MIN_POSE_CROUCH_M,
     MIN_POSE_LIMB_CLEARANCE_M,
@@ -16,7 +17,7 @@ use nau_engine::{
     animation::{
         GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
         GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
-        PlayerPoseIntent,
+        LANDING_MAX_FOOT_SPLIT_READABILITY_M, PlayerPoseIntent,
     },
     environment::{LiftApplication, WindForceApplication},
     eval::{
@@ -63,10 +64,12 @@ fn baseline_simulation_writes_windowless_artifacts() {
     assert!(summary.contains("\"gliding_landing_anticipation_samples\""));
     assert!(summary.contains("\"max_pose_landing_foot_forward_m\""));
     assert!(summary.contains("\"max_pose_landing_foot_split_m\""));
+    assert!(summary.contains("\"max_pose_landing_distal_foot_split_m\""));
     assert!(summary.contains("\"max_pose_landing_flare_degrees\""));
     assert!(summary.contains("\"max_pose_landing_recovery_flip_degrees\""));
     assert!(summary.contains("\"max_pose_landing_forward_fold_degrees\""));
     assert!(summary.contains("\"max_pose_landing_backward_bend_degrees\""));
+    assert!(summary.contains("\"max_glider_response_degrees\""));
     assert!(summary.contains("\"key_pose_transition_grace_samples\""));
     assert!(summary.contains("\"min_pose_limb_clearance_m\""));
     assert!(
@@ -578,6 +581,7 @@ fn sim_metrics_track_landing_flare_and_foot_split_from_landing_pose() {
     landing_sample.pose_torso_pitch_degrees = 34.0;
     landing_sample.pose_landing_foot_forward_m = 0.41;
     landing_sample.pose_landing_foot_split_m = 0.25;
+    landing_sample.pose_landing_distal_foot_split_m = 0.31;
     metrics.observe(&landing_sample, scenario);
 
     assert_eq!(metrics.max_pose_torso_pitch_degrees, 72.0);
@@ -585,10 +589,15 @@ fn sim_metrics_track_landing_flare_and_foot_split_from_landing_pose() {
     assert_eq!(metrics.max_pose_landing_flare_degrees, 34.0);
     assert_eq!(metrics.max_pose_landing_foot_forward_m, 0.41);
     assert_eq!(metrics.max_pose_landing_foot_split_m, 0.25);
+    assert_eq!(metrics.max_pose_landing_distal_foot_split_m, 0.31);
     assert_eq!(
         landing_sample.to_json()["pose_landing_foot_split_m"].as_f64(),
         Some(0.25)
     );
+    let distal_json = landing_sample.to_json()["pose_landing_distal_foot_split_m"]
+        .as_f64()
+        .expect("distal landing split is serialized");
+    assert!((distal_json - 0.31).abs() < 0.001);
 }
 
 #[test]
@@ -648,9 +657,11 @@ fn target_landing_checks_gate_landing_recovery_and_foot_split() {
         "pose_landing_anticipation_samples",
         "gliding_landing_anticipation_samples",
         "pose_landing_recovery_samples",
+        "target_landing_glider_response",
         "pose_landing_crouch",
         "pose_landing_foot_forward",
         "pose_landing_foot_split",
+        "pose_landing_foot_split_max",
         "pose_landing_flare",
         "pose_landing_flare_backbend",
         "pose_landing_forward_fold",
@@ -669,6 +680,13 @@ fn target_landing_checks_gate_landing_recovery_and_foot_split() {
         .expect("landing recovery check");
     assert!(!recovery_check.passed);
     assert_eq!(recovery_check.threshold, 1.0);
+    let target_glider_response_check = checks
+        .iter()
+        .find(|check| check.name == "target_landing_glider_response")
+        .expect("target landing glider response check");
+    assert!(!target_glider_response_check.passed);
+    assert_eq!(target_glider_response_check.threshold, 4.0);
+    assert_eq!(target_glider_response_check.unit, "deg");
     let gliding_landing_check = checks
         .iter()
         .find(|check| check.name == "gliding_landing_anticipation_samples")
@@ -726,6 +744,16 @@ fn target_landing_checks_gate_landing_recovery_and_foot_split() {
     assert!(!foot_split_check.passed);
     assert_eq!(foot_split_check.threshold, LANDING_MIN_POSE_FOOT_SPLIT_M);
     assert_eq!(foot_split_check.unit, "m");
+    let foot_split_max_check = checks
+        .iter()
+        .find(|check| check.name == "pose_landing_foot_split_max")
+        .expect("landing max foot-split check");
+    assert!(foot_split_max_check.passed);
+    assert_eq!(
+        foot_split_max_check.threshold,
+        LANDING_MAX_FOOT_SPLIT_READABILITY_M
+    );
+    assert_eq!(foot_split_max_check.unit, "m");
     let recovery_backbend_check = checks
         .iter()
         .find(|check| check.name == "pose_landing_recovery_backbend")
@@ -738,6 +766,7 @@ fn target_landing_checks_gate_landing_recovery_and_foot_split() {
     assert_eq!(recovery_backbend_check.unit, "deg");
 
     metrics.pose_landing_recovery_samples = 1;
+    metrics.max_glider_response_degrees = 4.0;
     metrics.max_pose_landing_foot_forward_m = 0.32;
     metrics.max_pose_landing_foot_split_m = LANDING_MIN_POSE_FOOT_SPLIT_M;
     metrics.max_pose_landing_flare_degrees = LANDING_MIN_POSE_FLARE_DEGREES;
@@ -767,12 +796,30 @@ fn target_landing_checks_gate_landing_recovery_and_foot_split() {
     assert_eq!(failing_gliding_landing_check.value, 1.0);
 
     metrics.gliding_landing_anticipation_samples = 0;
+    metrics.max_pose_landing_distal_foot_split_m = LANDING_MAX_FOOT_SPLIT_READABILITY_M + 0.01;
+    let failing_foot_split_max_checks = metrics.checks(scenario);
+    let failing_foot_split_max_check = failing_foot_split_max_checks
+        .iter()
+        .find(|check| check.name == "pose_landing_foot_split_max")
+        .expect("landing max foot-split check");
+    assert!(!failing_foot_split_max_check.passed);
+    assert_eq!(
+        failing_foot_split_max_check.value,
+        LANDING_MAX_FOOT_SPLIT_READABILITY_M + 0.01
+    );
+
+    metrics.max_pose_landing_distal_foot_split_m = 0.0;
     let passing_checks = metrics.checks(scenario);
     let passing_recovery_check = passing_checks
         .iter()
         .find(|check| check.name == "pose_landing_recovery_samples")
         .expect("landing recovery check");
     assert!(passing_recovery_check.passed);
+    let passing_glider_response_check = passing_checks
+        .iter()
+        .find(|check| check.name == "target_landing_glider_response")
+        .expect("target landing glider response check");
+    assert!(passing_glider_response_check.passed);
     let passing_flare_check = passing_checks
         .iter()
         .find(|check| check.name == "pose_landing_flare")
@@ -803,6 +850,11 @@ fn target_landing_checks_gate_landing_recovery_and_foot_split() {
         .find(|check| check.name == "pose_landing_foot_split")
         .expect("landing foot-split check");
     assert!(passing_foot_split_check.passed);
+    let passing_foot_split_max_check = passing_checks
+        .iter()
+        .find(|check| check.name == "pose_landing_foot_split_max")
+        .expect("landing max foot-split check");
+    assert!(passing_foot_split_max_check.passed);
     let passing_recovery_backbend_check = passing_checks
         .iter()
         .find(|check| check.name == "pose_landing_recovery_backbend")
@@ -1154,7 +1206,10 @@ fn air_control_simulation_measures_backward_diagonal_response() {
     assert!(result.passed);
     assert!(result.metrics.max_backward_right_rear_response_mps >= 10.0);
     assert!(result.metrics.max_backward_left_rear_response_mps >= 10.0);
-    assert!(result.metrics.max_air_brake_planar_speed_drop_mps >= 12.0);
+    assert!(
+        result.metrics.max_air_brake_planar_speed_drop_mps
+            >= AIR_CONTROL_MIN_AIR_BRAKE_PLANAR_SPEED_DROP_MPS
+    );
     assert!(result.metrics.pose_air_turn_samples > 0);
     assert!(result.metrics.pose_air_brake_samples > 0);
     assert!(result.metrics.right_pose_air_brake_samples > 0);
