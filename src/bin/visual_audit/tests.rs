@@ -1,11 +1,13 @@
 use super::{
     analysis::{audit_image, audit_image_with_alpha},
-    report::{json_string, report_checks, report_passed},
+    report::{
+        VisualAuditProfile, json_string, report_checks, report_checks_for_profile, report_passed,
+    },
     thresholds::*,
 };
 use image::{Rgb, RgbImage};
 
-fn paint_player_and_route_markers(image: &mut RgbImage) {
+fn paint_player_focus(image: &mut RgbImage) {
     let width = image.width();
     let height = image.height();
     let center_x = width / 2;
@@ -20,6 +22,12 @@ fn paint_player_and_route_markers(image: &mut RgbImage) {
             image.put_pixel(x, y, Rgb([188, 84, 34]));
         }
     }
+}
+
+fn paint_player_and_route_markers(image: &mut RgbImage) {
+    let width = image.width();
+    let height = image.height();
+    paint_player_focus(image);
     for y in height * 48 / 100..height * 72 / 100 {
         let x = width * 68 / 100 + (y % 3);
         image.put_pixel(x, y, Rgb([246, 58, 142]));
@@ -545,6 +553,7 @@ fn report_allows_low_sky_close_frame_when_checkpoint_has_sky() {
             checkpoint_image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
         }
     }
+    paint_collapsed_cloud_layer_signals(&mut checkpoint_image);
     paint_readability_signals(&mut checkpoint_image);
 
     let checkpoint_audit =
@@ -714,6 +723,58 @@ fn report_rejects_sequence_without_foliage_readability() {
         checks
             .iter()
             .any(|check| check.name == "max_foliage_scene_fraction" && !check.passed)
+    );
+}
+
+#[test]
+fn close_obstruction_profile_relaxes_route_marker_and_broad_foliage_gates() {
+    let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    paint_high_sky_textured_scene(&mut image);
+    paint_readability_signals(&mut image);
+
+    let audit = audit_image("close_obstruction.png".to_string(), image).expect("audit should load");
+    let mut checkpoint_image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    for y in 0..MIN_HEIGHT {
+        for x in 0..MIN_WIDTH {
+            let checker = (x + y) % 2 == 0;
+            let (r, g, b) = if y < MIN_HEIGHT / 3 {
+                (132 + (x % 32), 162 + (y % 32), 198 + ((x + y) % 32))
+            } else if checker {
+                (44 + (x % 90), 110 + (y % 90), 58 + ((x + y) % 52))
+            } else {
+                (118 + (x % 78), 84 + (y % 58), 52 + ((x + y) % 48))
+            };
+            checkpoint_image.put_pixel(x, y, Rgb([r as u8, g as u8, b as u8]));
+        }
+    }
+    paint_collapsed_cloud_layer_signals(&mut checkpoint_image);
+    paint_readability_signals(&mut checkpoint_image);
+    let checkpoint_audit =
+        audit_image("checkpoint.png".to_string(), checkpoint_image).expect("audit should load");
+    let audits = vec![audit, checkpoint_audit];
+    let close_checks = report_checks_for_profile(&audits, VisualAuditProfile::CloseObstruction);
+
+    assert!(audits.iter().all(|audit| audit.passed), "{audits:?}");
+    assert!(
+        report_passed(&audits, &close_checks),
+        "audits={audits:?}, close_checks={close_checks:?}"
+    );
+    for relaxed_check in [
+        "max_top_sky_fraction",
+        "max_route_marker_fraction",
+        "max_route_marker_component_count",
+        "max_route_marker_hue_family_count",
+        "max_foliage_scene_fraction",
+    ] {
+        assert!(
+            close_checks.iter().all(|check| check.name != relaxed_check),
+            "{relaxed_check} should be omitted from the close-obstruction profile"
+        );
+    }
+    assert!(
+        close_checks
+            .iter()
+            .any(|check| check.name == "max_foliage_scene_tile_count" && check.passed)
     );
 }
 
