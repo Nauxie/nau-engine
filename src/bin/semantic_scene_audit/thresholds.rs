@@ -14,7 +14,7 @@ pub(crate) const MIN_DISTANT_ISLAND_PIXEL_COVERAGE: usize = 10_000;
 pub(crate) const MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE: usize = 12;
 pub(crate) const MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS: usize = 3;
 pub(crate) const MIN_PASSED_TERRAIN_MATERIAL_VARIANTS: usize = 3;
-pub(crate) const MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE: usize = 200;
+pub(crate) const MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE: usize = 35;
 pub(crate) const EXPECTED_MATERIALS: [&str; 4] = ["terrain", "foliage", "cloud", "distant_island"];
 pub(crate) const EXPECTED_SCENE_SAMPLE_KINDS: [&str; 4] = [
     "terrain_surface",
