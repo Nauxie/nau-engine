@@ -2,9 +2,9 @@ use bevy::prelude::*;
 
 use super::super::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, GROUND_EPSILON,
-    body_heading_error_degrees, desired_planar_movement_direction,
-    desired_planar_travel_heading_error_degrees, face_flight_direction, landing_recovery_strength,
-    math::horizontal, step_flight,
+    LAUNCH_MAX_HORIZONTAL_SPEED_MPS, LAUNCH_MAX_UPWARD_SPEED_MPS, body_heading_error_degrees,
+    desired_planar_movement_direction, desired_planar_travel_heading_error_degrees,
+    face_flight_direction, landing_recovery_strength, math::horizontal, step_flight,
 };
 use super::default_state;
 
@@ -20,10 +20,51 @@ fn launch_only_fires_from_ground() {
     let launched = step_flight(default_state(), input, facing, &tuning, 1.0 / 60.0);
     assert_eq!(launched.controller.mode, FlightMode::Launching);
     assert!(!launched.controller.launch_available);
-    assert!(launched.velocity.y > 35.0);
+    assert!(launched.velocity.y >= 16.0);
+    assert!(launched.velocity.y <= LAUNCH_MAX_UPWARD_SPEED_MPS);
+    assert!(horizontal(launched.velocity).length() <= 4.0);
 
     let relaunched = step_flight(launched, input, facing, &tuning, 1.0 / 60.0);
     assert!(relaunched.velocity.y < tuning.launch_speed);
+}
+
+#[test]
+fn running_launch_preserves_momentum_without_exceeding_assist_cap() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let input = FlightInput {
+        forward: true,
+        launch: true,
+        ..default()
+    };
+    let mut state = default_state();
+    state.velocity = facing.forward * tuning.ground_max_horizontal_speed;
+
+    let launched = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+
+    assert_eq!(launched.controller.mode, FlightMode::Launching);
+    assert!(launched.velocity.y <= LAUNCH_MAX_UPWARD_SPEED_MPS);
+    assert!(horizontal(launched.velocity).length() <= LAUNCH_MAX_HORIZONTAL_SPEED_MPS);
+    assert!(horizontal(launched.velocity).length() >= tuning.ground_max_horizontal_speed);
+}
+
+#[test]
+fn airborne_clamp_preserves_updraft_speed_above_launch_assist_cap() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::NEG_Z, Vec3::X);
+    let input = FlightInput {
+        glide: true,
+        ..default()
+    };
+    let mut state = default_state();
+    state.position.y = tuning.floor_y + 20.0;
+    state.velocity = Vec3::new(0.0, LAUNCH_MAX_UPWARD_SPEED_MPS + 2.0, 0.0);
+    state.controller.mode = FlightMode::Gliding;
+
+    let next = step_flight(state, input, facing, &tuning, 1.0 / 60.0);
+
+    assert_eq!(next.controller.mode, FlightMode::Gliding);
+    assert!(next.velocity.y > LAUNCH_MAX_UPWARD_SPEED_MPS);
 }
 
 #[test]
