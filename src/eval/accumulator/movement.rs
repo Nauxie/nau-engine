@@ -1,4 +1,4 @@
-use bevy::prelude::Vec2;
+use bevy::prelude::{Vec2, Vec3};
 
 use crate::{
     animation::MIN_KEY_POSE_READABILITY_SCORE,
@@ -18,6 +18,7 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_altitude_m = accumulator.max_altitude_m.max(sample.altitude_m);
     accumulator.min_altitude_m = accumulator.min_altitude_m.min(sample.altitude_m);
     accumulator.max_speed_mps = accumulator.max_speed_mps.max(sample.speed_mps);
+    observe_launch_velocity(accumulator, sample);
 
     observe_grounded_visual_footing(accumulator, sample);
     observe_body_heading(accumulator, sample);
@@ -32,6 +33,18 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     observe_authored_clip_coverage(accumulator, sample);
     observe_pose_intent_counts(accumulator, sample);
     observe_mode_counts(accumulator, sample);
+}
+
+fn observe_launch_velocity(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
+    if sample.mode == FlightMode::Launching.label() {
+        let velocity = Vec3::from_array(sample.velocity);
+        accumulator.max_launch_upward_speed_mps = accumulator
+            .max_launch_upward_speed_mps
+            .max(velocity.y.max(0.0));
+        accumulator.max_launch_horizontal_speed_mps = accumulator
+            .max_launch_horizontal_speed_mps
+            .max(Vec2::new(velocity.x, velocity.z).length());
+    }
 }
 
 fn observe_grounded_visual_footing(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
@@ -514,6 +527,9 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
     accumulator.max_pose_landing_foot_split_m = accumulator
         .max_pose_landing_foot_split_m
         .max(sample.pose_landing_foot_split_m);
+    accumulator.max_pose_landing_distal_foot_split_m = accumulator
+        .max_pose_landing_distal_foot_split_m
+        .max(sample.pose_landing_distal_foot_split_m);
     if sample.pose_intent_label == "landing_anticipation" && !sample.key_pose_transition_grace {
         accumulator.max_pose_landing_flare_degrees = accumulator
             .max_pose_landing_flare_degrees

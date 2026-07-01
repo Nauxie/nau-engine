@@ -74,7 +74,7 @@ fn route_objectives_track_main_and_branch_targets() {
     let branch = route.route_objectives(Some("sunlit terrace"));
 
     assert_eq!(main.len(), 2);
-    assert_eq!(main[0].label, "near route updraft");
+    assert_eq!(main[0].label, "launch terrace updraft");
     assert_eq!(main[1].label, "landing garden");
     assert_eq!(branch.len(), 3);
     assert_eq!(branch[1].label, "distant recovery updraft");
@@ -88,6 +88,16 @@ fn route_objective_completion_tracks_flythrough_and_landing() {
     let target = route.target_island().expect("target island exists");
 
     assert!(objectives[0].is_complete(&route, GAMEPLAY_LIFT_ROUTE[0].center, FlightMode::Gliding));
+    assert!(!objectives[0].is_complete(
+        &route,
+        GAMEPLAY_LIFT_ROUTE[0].center,
+        FlightMode::Airborne
+    ));
+    assert!(!objectives[0].is_complete(
+        &route,
+        GAMEPLAY_LIFT_ROUTE[0].center - Vec3::Y * (GAMEPLAY_LIFT_ROUTE[0].half_extents.y + 1.0),
+        FlightMode::Gliding
+    ));
     assert!(!objectives[1].is_complete(&route, target.center + Vec3::Y * 8.0, FlightMode::Gliding));
     assert!(objectives[1].is_complete(&route, target.center, FlightMode::Grounded));
 }

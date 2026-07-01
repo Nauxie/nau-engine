@@ -115,7 +115,7 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
         });
     }
 
-    for (_, _, transform) in scene.updraft_guides.iter().step_by(7).take(14) {
+    for (_, _, transform) in scene.updraft_guides.iter().step_by(7).take(30) {
         samples.push(SemanticSceneSample {
             kind: "updraft_wind_visual",
             label: "updraft wind mote",
@@ -124,7 +124,7 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
             world_position: transform.translation,
         });
     }
-    for (_, ribbon, transform) in scene.updraft_ribbons.iter().take(6) {
+    for (_, ribbon, transform) in scene.updraft_ribbons.iter().take(12) {
         for (label, world_position) in UPDRAFT_RIBBON_SAMPLE_LABELS
             .into_iter()
             .zip(updraft_ribbon_scene_sample_positions(ribbon, transform))
@@ -175,8 +175,9 @@ fn terrain_material_variant(island_index: usize) -> &'static str {
     }
 }
 
-fn island_terrain_surface_sample_positions(island: SkyIsland) -> [Vec3; 4] {
+fn island_terrain_surface_sample_positions(island: SkyIsland) -> [Vec3; 5] {
     [
+        Vec2::ZERO,
         Vec2::new(0.16, -0.14),
         Vec2::new(-0.28, 0.20),
         Vec2::new(0.42, 0.18),

@@ -111,6 +111,9 @@ impl FlightMode {
     }
 }
 
+pub const LAUNCH_MAX_UPWARD_SPEED_MPS: f32 = 20.0;
+pub const LAUNCH_MAX_HORIZONTAL_SPEED_MPS: f32 = 12.0;
+
 #[derive(Resource, Clone, Copy, Debug)]
 pub struct FlightTuning {
     pub ground_accel: f32,
@@ -177,10 +180,10 @@ impl Default for FlightTuning {
             gravity: 18.0,
             glide_gravity_scale: 0.28,
             glide_max_fall_speed: 7.5,
-            launch_speed: 38.0,
-            launch_forward_bonus: 12.0,
+            launch_speed: 18.0,
+            launch_forward_bonus: 3.0,
             launch_cooldown: 1.4,
-            launch_duration: 0.35,
+            launch_duration: 0.22,
             drag: 0.82,
             max_horizontal_speed: 58.0,
             max_fall_speed: 70.0,

@@ -3,6 +3,7 @@ use crate::{
     animation::{
         GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
         GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+        LANDING_MAX_FOOT_SPLIT_READABILITY_M,
     },
     eval::{
         scenarios::{
@@ -12,6 +13,7 @@ use crate::{
         summary::EvalCheck,
         thresholds::{EvalThresholds, *},
     },
+    movement::{LAUNCH_MAX_HORIZONTAL_SPEED_MPS, LAUNCH_MAX_UPWARD_SPEED_MPS},
 };
 
 const POSE_STATE_MIN_WALK_SAMPLES: f32 = 8.0;
@@ -38,6 +40,7 @@ const AIR_CONTROL_MIN_AUTHORED_DIVE_CLIP_SAMPLES: f32 = 1.0;
 const AIR_CONTROL_MIN_AUTHORED_AIR_BRAKE_CLIP_SAMPLES: f32 = 4.0;
 const AIR_CONTROL_MIN_AUTHORED_GLIDER_DIVE_MOTION_M: f32 = 0.04;
 const TARGET_LANDING_MIN_AUTHORED_LAND_CLIP_SAMPLES: f32 = 2.0;
+const TARGET_LANDING_MIN_AUTHORED_GLIDER_MOTION_M: f32 = 0.04;
 
 pub(super) fn append_scenario_checks(
     checks: &mut Vec<EvalCheck>,
@@ -90,6 +93,21 @@ pub(super) fn append_scenario_checks(
             "ratio",
         ));
     }
+
+    if acc.launching_samples > 0 {
+        checks.push(EvalCheck::at_most(
+            "launch_upward_speed",
+            acc.max_launch_upward_speed_mps,
+            LAUNCH_MAX_UPWARD_SPEED_MPS,
+            "m/s",
+        ));
+        checks.push(EvalCheck::at_most(
+            "launch_horizontal_speed",
+            acc.max_launch_horizontal_speed_mps,
+            LAUNCH_MAX_HORIZONTAL_SPEED_MPS,
+            "m/s",
+        ));
+    }
     if thresholds.require_target_landing {
         checks.push(EvalCheck::at_most(
             "final_target_distance",
@@ -127,6 +145,18 @@ pub(super) fn append_scenario_checks(
             TARGET_LANDING_MIN_AUTHORED_LAND_CLIP_SAMPLES,
             "samples",
         ));
+        checks.push(EvalCheck::at_least(
+            "target_landing_authored_glider_response",
+            acc.max_authored_glider_response_degrees,
+            AIR_CONTROL_MIN_AUTHORED_GLIDER_RESPONSE_DEGREES,
+            "deg",
+        ));
+        checks.push(EvalCheck::at_least(
+            "target_landing_authored_glider_motion",
+            acc.max_authored_glider_motion_m,
+            TARGET_LANDING_MIN_AUTHORED_GLIDER_MOTION_M,
+            "m",
+        ));
         checks.push(EvalCheck::at_most(
             "authored_clip_mismatch_samples",
             acc.authored_clip_mismatch_samples as f32,
@@ -149,6 +179,12 @@ pub(super) fn append_scenario_checks(
             "pose_landing_foot_split",
             acc.max_pose_landing_foot_split_m,
             LANDING_MIN_POSE_FOOT_SPLIT_M,
+            "m",
+        ));
+        checks.push(EvalCheck::at_most(
+            "pose_landing_foot_split_max",
+            max_landing_foot_split_m(acc),
+            LANDING_MAX_FOOT_SPLIT_READABILITY_M,
             "m",
         ));
         checks.push(EvalCheck::at_least(
@@ -1401,6 +1437,12 @@ fn append_pose_state_coverage_checks(
             LANDING_MIN_POSE_FOOT_SPLIT_M,
             "m",
         ),
+        EvalCheck::at_most(
+            "pose_state_landing_foot_split_max",
+            max_landing_foot_split_m(acc),
+            LANDING_MAX_FOOT_SPLIT_READABILITY_M,
+            "m",
+        ),
         EvalCheck::at_least(
             "pose_state_landing_flare",
             acc.max_pose_landing_flare_degrees,
@@ -1528,6 +1570,11 @@ fn append_pose_state_coverage_checks(
             "m",
         ),
     ]);
+}
+
+fn max_landing_foot_split_m(acc: &EvalAccumulator) -> f32 {
+    acc.max_pose_landing_foot_split_m
+        .max(acc.max_pose_landing_distal_foot_split_m)
 }
 
 fn append_camera_strafe_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccumulator) {

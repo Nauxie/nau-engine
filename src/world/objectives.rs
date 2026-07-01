@@ -19,6 +19,7 @@ pub struct RouteObjective {
     pub label: &'static str,
     pub position: Vec3,
     pub radius_m: f32,
+    pub half_extents: Vec3,
     pub kind: RouteObjectiveKind,
     pub island_name: Option<&'static str>,
 }
@@ -29,6 +30,7 @@ impl RouteObjective {
             label: node.name,
             position: node.center,
             radius_m: node.half_extents.x.max(node.half_extents.z) + 8.0,
+            half_extents: node.half_extents,
             kind: RouteObjectiveKind::FlyThrough,
             island_name: None,
         }
@@ -39,6 +41,7 @@ impl RouteObjective {
             label: island.name,
             position: island.center,
             radius_m: island.half_extents.x.max(island.half_extents.y),
+            half_extents: Vec3::ZERO,
             kind: RouteObjectiveKind::Land,
             island_name: Some(island.name),
         }
@@ -50,10 +53,19 @@ impl RouteObjective {
 
     pub fn is_complete(self, route: &SkyRoute, position: Vec3, mode: FlightMode) -> bool {
         match self.kind {
-            RouteObjectiveKind::FlyThrough => self.horizontal_distance(position) <= self.radius_m,
+            RouteObjectiveKind::FlyThrough => {
+                mode == FlightMode::Gliding && self.contains_flythrough_volume(position)
+            }
             RouteObjectiveKind::Land => {
                 route.on_landing_target_named(position, mode, self.island_name)
             }
         }
+    }
+
+    fn contains_flythrough_volume(self, position: Vec3) -> bool {
+        let offset = position - self.position;
+        offset.x.abs() <= self.half_extents.x
+            && offset.y.abs() <= self.half_extents.y
+            && offset.z.abs() <= self.half_extents.z
     }
 }

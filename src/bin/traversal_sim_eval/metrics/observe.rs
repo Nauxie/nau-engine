@@ -29,6 +29,14 @@ impl SimMetrics {
         self.max_altitude_m = self.max_altitude_m.max(sample.altitude_m);
         self.min_altitude_m = self.min_altitude_m.min(sample.altitude_m);
         self.max_speed_mps = self.max_speed_mps.max(sample.speed_mps);
+        if sample.mode == "launching" {
+            self.max_launch_upward_speed_mps = self
+                .max_launch_upward_speed_mps
+                .max(sample.velocity.y.max(0.0));
+            self.max_launch_horizontal_speed_mps = self
+                .max_launch_horizontal_speed_mps
+                .max(Vec2::new(sample.velocity.x, sample.velocity.z).length());
+        }
         self.max_camera_distance_m = self.max_camera_distance_m.max(sample.camera_distance_m);
         self.min_camera_surface_clearance_m = self
             .min_camera_surface_clearance_m
@@ -240,6 +248,9 @@ impl SimMetrics {
         self.max_pose_landing_foot_split_m = self
             .max_pose_landing_foot_split_m
             .max(sample.pose_landing_foot_split_m);
+        self.max_pose_landing_distal_foot_split_m = self
+            .max_pose_landing_distal_foot_split_m
+            .max(sample.pose_landing_distal_foot_split_m);
         if sample.pose_intent_label == "landing_anticipation" {
             self.max_pose_landing_flare_degrees = self
                 .max_pose_landing_flare_degrees
@@ -409,6 +420,9 @@ impl SimMetrics {
         self.max_updraft_swirl_force_aligned_delta_mps = self
             .max_updraft_swirl_force_aligned_delta_mps
             .max(sample.max_updraft_swirl_force_aligned_delta_mps);
+        self.max_glider_response_degrees = self
+            .max_glider_response_degrees
+            .max(sample.wind_load_glider_response_degrees);
         if wind_load_response_sample(sample) {
             self.wind_load_response_samples += 1;
             self.max_wind_load_lateral_load = self

@@ -24,7 +24,7 @@ pub(super) fn baseline_route() -> EvalScenario {
     EvalScenario {
         name: BASELINE_ROUTE,
         fixed_dt: 1.0 / 60.0,
-        frame_count: 420,
+        frame_count: 440,
         sample_stride: 10,
         target_island_name: None,
         checkpoints: BASELINE_CHECKPOINTS,
@@ -106,7 +106,7 @@ pub(super) fn island_launch_to_landing() -> EvalScenario {
             min_max_speed_mps: 30.0,
             min_gliding_samples: 45,
             min_grounded_samples: 1,
-            min_lifted_samples: 0,
+            min_lifted_samples: 8,
             min_sky_island_count: MIN_SKY_ISLAND_COUNT,
             min_active_island_count: 4,
             max_active_chunk_count: 25,
@@ -237,7 +237,7 @@ pub(super) fn branch_recovery_route() -> EvalScenario {
     EvalScenario {
         name: BRANCH_RECOVERY_ROUTE,
         fixed_dt: 1.0 / 60.0,
-        frame_count: 760,
+        frame_count: 840,
         sample_stride: 5,
         target_island_name: Some("sunlit terrace"),
         checkpoints: BRANCH_RECOVERY_CHECKPOINTS,

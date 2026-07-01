@@ -39,7 +39,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 
 - `E` launch is ground-gated.
 - Launch is one use per airtime.
-- Launch gives vertical velocity and a small forward bonus.
+- Launch gives modest vertical velocity and a small forward bonus; it should create enough airtime to deploy the glider, not enough power to complete routes by itself.
 - Gliding reduces gravity and clamps ordinary fall speed.
 - A glider dive keeps the glider deployed but bypasses the ordinary glide fall-speed clamp so dive can trade altitude for speed without hiding the wing state.
 - Gliding does not create altitude on its own.
@@ -48,7 +48,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Visual `WindField` volumes are finite axis-aligned boxes for readable wind/updraft streams, gust/swirl diagnostics, and bounded horizontal airborne wind response.
 - Crosswind `WindField`s push airborne horizontal velocity toward their dynamic flow; updraft `WindField`s add only lateral swirl current.
 - Every gameplay updraft route node intentionally overlaps an angled crosswind layer so wind-current routes can prove simultaneous crosswind-plus-updraft swirl response rather than one isolated vertical field at a time.
-- Gameplay `LiftField` updraft volumes are separate finite boxes that add vertical velocity while the player is airborne inside them.
+- Gameplay `LiftField` updraft volumes are separate finite boxes that add vertical velocity only while the player is gliding inside them.
 - Authored gameplay updraft route nodes must pair the visual `WindField` and gameplay `LiftField` at the same center and extents.
 - Lift fields clamp against their configured maximum upward speed instead of granting unbounded climb.
 - Aerial power-up gates are one-time route pickups that apply a small capped forward/upward boost while airborne, then disappear.
@@ -73,7 +73,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 
 Launch:
 
-- clear upward impulse
+- clear but modest upward impulse
 - short visual launch pose
 - camera should remain behind horizontal heading
 - no repeated midair burst by default
@@ -103,7 +103,7 @@ Landing:
 
 - landing anticipation and post-touchdown recovery are explicit pose intents now; anticipation is only valid after glider release while airborne and descending, not while the glider pose is still active
 - high-sink landings enter anticipation early enough to rotate out of dive over several frames, so the visible pose folds forward into an absorbing feet-forward crouch before contact instead of popping on the landing frame
-- landing anticipation and recovery blends are bounded by landing-specific pose-temporal, signed backward-bend, forward-fold, local torso-bend, and torso-offset gates, so dive/glide-to-land transitions cannot pass eval by hiding spine separation or a backward V-shaped silhouette behind transition grace
+- landing anticipation and recovery blends are bounded by landing-specific foot-split, pose-temporal, signed backward-bend, forward-fold, local torso-bend, and torso-offset gates, so dive/glide-to-land transitions cannot pass eval by hiding spine separation, broken-knee leg spread, or a backward V-shaped silhouette behind transition grace
 - a full authored landing locomotion state with slope-aware collider handling is still future work
 - needs collision and slope logic before polish
 
@@ -125,7 +125,7 @@ Power-ups:
 
 Current tests cover:
 
-- launch only fires from the ground
+- launch only fires from the ground and stays under upward/horizontal speed caps
 - relaunch is blocked during airtime
 - gliding descends over time
 - gliding clamps ordinary fall speed
@@ -138,6 +138,7 @@ Current tests cover:
 - wind response applies only while airborne and stays horizontally bounded
 - lift fields only apply inside bounds while enabled
 - authored gameplay lift route nodes pair visual and lift volumes
+- `island_launch_to_landing` requires sampled gameplay lift after the modest launch so route completion depends on glider use and updraft placement
 - aerial power-up route gates are collectible, directional, and capped
 - visual field bounds and stream origins are deterministic
 - smoothing factors do not overshoot
@@ -157,10 +158,10 @@ Current tests cover:
 - `camera_strafe_stability` eval tracks right/left lateral movement without camera auto-orbit, including view-yaw and world-yaw drift
 - `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking while the scripted forward input stays active long enough to make the distance gate non-vacuous
 - `air_control_response` eval tracks diagonal/lateral air steering, separate right/left response latency, stronger total/planar backward braking, pure-backward and diagonal body-heading intent, readable right/left air-turn plus deployed-glider dive and right/left/backward-right/backward-left air-brake key-pose coverage, authored bank-left/bank-right/dive/air-brake clip coverage, visible pose part count, bounded key-pose part rotation/translation deltas, torso pitch, arm spread, leg tuck, unsigned and signed lateral lean, wing-airflow strength, visible authored glider response/motion including dive-specific glider response/motion, zero key-pose samples below the readability floor, post-brake recovery, desired heading and aggregate plus right/left/backward-right/backward-left desired-travel alignment, average/p95/max body-heading error, tighter right/left and backward-right/backward-left body/travel heading samples and error, max body-yaw error step, body-yaw oscillation, left/right body-bank response, body-roll step smoothness, follow-direction error distribution, view-yaw/world-yaw drift, and movement-input camera non-coupling
-- `pose_state_coverage` eval tracks grounded idle/walk/run samples, walk/run stride foot travel, walk/run leg opposition, readable launch/fall/glide/air-turn/air-brake/gliding-dive key-pose samples, right and left air-turn pose samples, pure-sideways right/left AirTurn samples, backward-right/backward-left diagonal air-brake samples, landing anticipation/recovery samples, zero gliding landing-anticipation samples, landing crouch, feet-forward tuck, asymmetric foot split, signed landing forward-fold/backward-bend, landing local torso bend, landing torso offset, landing-only app pose temporal deltas, zero upward-velocity fall poses, zero dive poses without dive input, and zero unreadable key poses in both the app and windowless sim harnesses; app evals also gate settled authored `idle`, `walk`, `run`, `launch`, `glide`, `fall`, and `land` clip samples separately from active transition blends
+- `pose_state_coverage` eval tracks grounded idle/walk/run samples, walk/run stride foot travel, walk/run leg opposition, readable launch/fall/glide/air-turn/air-brake/gliding-dive key-pose samples, right and left air-turn pose samples, pure-sideways right/left AirTurn samples, backward-right/backward-left diagonal air-brake samples, landing anticipation/recovery samples, zero gliding landing-anticipation samples, landing crouch, feet-forward tuck, asymmetric foot split with a bounded max split, signed landing forward-fold/backward-bend, landing local torso bend, landing torso offset, landing-only app pose temporal deltas, zero upward-velocity fall poses, zero dive poses without dive input, and zero unreadable key poses in both the app and windowless sim harnesses; app evals also gate settled authored `idle`, `walk`, `run`, `launch`, `glide`, `fall`, and `land` clip samples separately from active transition blends
 - `long_glide_visibility` eval tracks sustained archipelago traversal, aerial power-up collection/effect samples, and content-scale signals
 - app evals track `world_collision_proxy_count`, `solid_world_collision_proxy_count`, `tree_world_collision_proxy_count`, `rock_world_collision_proxy_count`, `landmark_world_collision_proxy_count`, `world_collision_resolved_samples`, `world_collision_contact_samples`, `max_world_collision_push_m`, `terrain_rim_collision_proxy_count`, `terrain_rim_collision_contact_samples`, and `max_terrain_rim_collision_push_m`, with proxy-count gates so collidable props, route obstruction spires, per-kind solid asset distribution, and 16-segment terrain-rim contours cannot silently disappear; the island-visual catalog test also audits named solid visuals, per-island terrain-rim contour parity, and explicit camera-only blocker allowlists before aggregate eval counts can hide a missing proxy; `world_collision_contact` must sustain launch-mesa obstacle contact, `terrain_rim_collision_contact` must sustain launch-mesa rim contact, and `ground_taxi_control` must stay free of terrain-rim contact
-- landing-required evals track landing anticipation, zero gliding landing-anticipation samples, signed forward-fold absorption, bounded backward bend, feet-forward landing tuck, asymmetric foot split, post-contact landing recovery, bounded local torso bend and torso offset, landing crouch depth, zero unreadable key-pose samples across both key landing poses, landing-only visible-pose temporal samples, and bounded landing pose-part rotation/translation deltas
+- landing-required evals track landing anticipation, zero gliding landing-anticipation samples, signed forward-fold absorption, bounded backward bend, feet-forward landing tuck, asymmetric foot split with a max human-readability ceiling, post-contact landing recovery, bounded local torso bend and torso offset, landing crouch depth, zero unreadable key-pose samples across both key landing poses, landing-only visible-pose temporal samples, and bounded landing pose-part rotation/translation deltas
 
 Future tests should cover:
 

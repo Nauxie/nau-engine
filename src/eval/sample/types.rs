@@ -95,6 +95,7 @@ pub struct EvalSample {
     pub pose_landing_crouch_m: f32,
     pub pose_landing_foot_forward_m: f32,
     pub pose_landing_foot_split_m: f32,
+    pub pose_landing_distal_foot_split_m: f32,
     pub pose_landing_recovery_flip_degrees: f32,
     pub pose_torso_backward_bend_degrees: f32,
     pub pose_torso_local_bend_degrees: f32,

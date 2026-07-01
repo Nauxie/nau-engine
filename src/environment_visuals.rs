@@ -35,6 +35,14 @@ const WIND_FIELD_METRIC_EPSILON: f32 = 0.001;
 const WIND_VISUAL_LOOP_FADE_FRACTION: f32 = 0.24;
 const WIND_VISUAL_QUALITY_MIN_SCALE: f32 = 0.5;
 
+pub(crate) fn updraft_guide_ring_radius(field_radius: f32) -> f32 {
+    (field_radius * 0.5).min(10.0)
+}
+
+pub(crate) fn updraft_guide_angular_speed(level_index: usize) -> f32 {
+    0.16 + level_index as f32 * 0.02
+}
+
 #[derive(Component)]
 pub(crate) struct CinematicSun;
 
@@ -252,7 +260,7 @@ pub(crate) fn spawn_updraft_guide(
     }
 
     let marker_mesh = meshes.add(Sphere::new(0.32));
-    let ring_radius = radius * 0.5;
+    let ring_radius = updraft_guide_ring_radius(radius);
 
     for (level_index, level) in UPDRAFT_GUIDE_RING_LEVELS.into_iter().enumerate() {
         for marker_index in 0..UPDRAFT_GUIDES_PER_RING {
@@ -265,7 +273,7 @@ pub(crate) fn spawn_updraft_guide(
                 radius: ring_radius,
                 height_offset: level * lift.half_extents.y,
                 phase,
-                angular_speed: 0.26 + level_index as f32 * 0.035,
+                angular_speed: updraft_guide_angular_speed(level_index),
             };
             let translation = updraft_guide_position(&guide, 0.0);
             commands.spawn((
@@ -704,15 +712,15 @@ pub(crate) fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> 
     let lift_roll = (elapsed * 0.58 + phase * 0.67 + progress * std::f32::consts::TAU * 1.9).cos();
     let visibility = wind_loop_visibility(progress);
     let radial_breath = radial_axis
-        * (flow.variation * 0.5
-            + breathing * 0.3
-            + gust_packet * 0.22
-            + flow.layered_gust_strength * 0.18);
+        * (flow.variation * 0.28
+            + breathing * 0.18
+            + gust_packet * 0.12
+            + flow.layered_gust_strength * 0.1);
     let tangential_depth = tangent_axis
-        * (thermal_roll * (0.14 + flow.variation * 0.18)
-            + gust_packet * 0.08
-            + flow.layered_gust_strength * 0.12);
-    let horizontal_drift = horizontal_flow * 0.08;
+        * (thermal_roll * (0.08 + flow.variation * 0.1)
+            + gust_packet * 0.04
+            + flow.layered_gust_strength * 0.06);
+    let horizontal_drift = horizontal_flow * 0.03;
     let flow_pulse = flow.gust_strength * 0.08
         + flow.variation * 0.05
         + gust_packet * 0.04
@@ -723,10 +731,10 @@ pub(crate) fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> 
             + horizontal_drift
             + Vec3::Y
                 * (vertical_scroll
-                    + flow.variation * 0.28
-                    + gust_packet * 0.18
-                    + flow.layered_gust_strength * 0.16
-                    + lift_roll * (0.06 + flow.variation * 0.08))
+                    + flow.variation * 0.08
+                    + gust_packet * 0.05
+                    + flow.layered_gust_strength * 0.04
+                    + lift_roll * (0.02 + flow.variation * 0.02))
             + radial_breath
             + tangential_depth,
         rotation: ribbon.base_rotation
@@ -774,9 +782,8 @@ fn updraft_ribbon_flow_sample(ribbon: &UpdraftRibbon, elapsed: f32) -> UpdraftRi
     let field_height = (ribbon.field.half_extents.y * 2.0).max(1.0);
     let vertical_ratio =
         (base_flow.vector.y.max(0.0) / ribbon.field.visual_speed.max(1.0)).min(1.4);
-    let progress = (ribbon.phase
-        + elapsed * ribbon.field.visual_speed.max(1.0) / field_height * 0.265)
-        .fract();
+    let progress =
+        (ribbon.phase + elapsed * ribbon.field.visual_speed.max(1.0) / field_height * 0.14).fract();
     let vertical_scroll =
         (progress - 0.5) * ribbon.field.half_extents.y * (0.385 + vertical_ratio * 0.06);
     let phase = ribbon.phase * std::f32::consts::TAU;
@@ -1757,7 +1764,7 @@ pub(crate) fn updraft_guide_position(guide: &UpdraftGuide, elapsed: f32) -> Vec3
     });
     let angle = guide.phase
         + elapsed * guide.angular_speed * 0.92
-        + progress * std::f32::consts::TAU * 0.68
+        + progress * std::f32::consts::TAU * 0.42
         + variation * 0.025
         + gust_packet * 0.02;
     let radius = guide.radius
@@ -2856,7 +2863,7 @@ mod tests {
         let displacement = later.translation - start.translation;
 
         assert!(
-            displacement.y.abs() > 1.0,
+            displacement.y.abs() > 0.85,
             "expected ribbon to visibly scroll through the updraft, displacement={displacement:?}"
         );
         assert!(
@@ -2936,11 +2943,11 @@ mod tests {
             Vec2::new(lower_delta.x - upper_delta.x, lower_delta.z - upper_delta.z).length();
 
         assert!(
-            lower_delta.y.abs() > 0.8 && upper_delta.y.abs() > 0.8,
+            lower_delta.y.abs() > 0.6 && upper_delta.y.abs() > 0.6,
             "expected both thermal ribbons to keep scrolling vertically, lower={lower_delta:?}, upper={upper_delta:?}"
         );
         assert!(
-            horizontal_separation > 0.45,
+            horizontal_separation > 0.3,
             "expected phase-staggered ribbons to occupy different thermal depth lanes, lower={lower_delta:?}, upper={upper_delta:?}"
         );
     }
