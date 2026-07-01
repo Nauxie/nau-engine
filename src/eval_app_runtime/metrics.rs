@@ -45,7 +45,7 @@ pub(super) const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
 const BODY_TRAVEL_HEADING_MIN_PLANAR_SPEED_MPS: f32 = 6.0;
 const KEY_POSE_TRANSITION_READABILITY_FLOOR: f32 = 0.65;
 const KEY_POSE_AIR_BRAKE_RELEASE_TRANSITION_READABILITY_FLOOR: f32 = 0.30;
-const KEY_POSE_LANDING_FLIP_TRANSITION_READABILITY_FLOOR: f32 = 0.30;
+const KEY_POSE_LANDING_FLIP_TRANSITION_READABILITY_FLOOR: f32 = 0.28;
 const KEY_POSE_LANDING_RELEASE_TRANSITION_READABILITY_FLOOR: f32 = 0.35;
 const KEY_POSE_READABILITY_EPSILON: f32 = 0.01;
 const KEY_POSE_TRANSITION_GRACE_FRAMES: u32 = 5;
@@ -467,6 +467,18 @@ impl VisiblePosePartSet {
     fn readability_metrics(self, context: PlayerPoseContext) -> Option<PoseReadabilityMetrics> {
         self.complete()
             .map(|parts| parts.readability_metrics(context, self.scarf_anchor, self.scarf_tail))
+    }
+
+    fn torso_offset_m(self) -> f32 {
+        self.torso
+            .map(|torso| torso.base_delta.length())
+            .unwrap_or(f32::NAN)
+    }
+
+    fn torso_local_bend_degrees(self) -> f32 {
+        self.torso
+            .map(|torso| torso.rotation.angle_between(Quat::IDENTITY).to_degrees())
+            .unwrap_or(f32::NAN)
     }
 
     fn articulated_parts(self) -> [Option<VisiblePosePartTransform>; 15] {
@@ -1171,6 +1183,9 @@ pub(crate) fn collect_eval_metrics(
         wing_airflow_strength: pose_readability.wing_airflow_strength,
         key_pose_readability_score: pose_readability.key_pose_readability_score,
     })
+    .with_pose_torso_backward_bend(pose_readability.torso_backward_bend_degrees)
+    .with_pose_torso_local_bend(visible_pose_parts.torso_local_bend_degrees())
+    .with_pose_torso_offset(visible_pose_parts.torso_offset_m())
     .with_scarf_pose_metrics(
         pose_readability.scarf_stream_m,
         pose_readability.scarf_lateral_sway_m,
@@ -2008,7 +2023,7 @@ mod tests {
     #[test]
     fn generated_landing_crouch_uses_pose_delta_and_rotation_not_leg_base_height() {
         let context = PlayerPoseContext::new(
-            FlightMode::Gliding,
+            FlightMode::Airborne,
             Vec3::new(0.0, -4.0, -18.0),
             FlightInput::default(),
             4.0,
