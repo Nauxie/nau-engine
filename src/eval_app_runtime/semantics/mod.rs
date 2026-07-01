@@ -176,6 +176,10 @@ fn checkpoint_requires_wind_visual_sample(scenario: EvalScenario, checkpoint_nam
         (scenario.name, checkpoint_name),
         ("updraft_route", "updraft_entry" | "high_glide")
             | (
+                "island_launch_to_landing",
+                "launch_updraft_entry" | "midroute_lift_view"
+            )
+            | (
                 "branch_recovery_route",
                 "branch_choice" | "recovery_approach"
             )
@@ -190,6 +194,7 @@ mod tests {
     #[test]
     fn wind_visual_sidecar_gate_only_applies_to_wind_critical_checkpoints() {
         let updraft = scenario_named("updraft_route").expect("updraft scenario");
+        let island = scenario_named("island_launch_to_landing").expect("island scenario");
         let branch = scenario_named("branch_recovery_route").expect("branch scenario");
         let camera = scenario_named("camera_mouse_control").expect("camera scenario");
 
@@ -200,6 +205,14 @@ mod tests {
         assert!(checkpoint_requires_wind_visual_sample(
             updraft,
             "high_glide"
+        ));
+        assert!(checkpoint_requires_wind_visual_sample(
+            island,
+            "launch_updraft_entry"
+        ));
+        assert!(checkpoint_requires_wind_visual_sample(
+            island,
+            "midroute_lift_view"
         ));
         assert!(checkpoint_requires_wind_visual_sample(
             branch,
