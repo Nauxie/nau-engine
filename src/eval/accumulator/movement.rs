@@ -518,11 +518,36 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
         accumulator.max_pose_landing_flare_degrees = accumulator
             .max_pose_landing_flare_degrees
             .max(sample.pose_torso_pitch_degrees);
+        if sample.pose_torso_backward_bend_degrees.is_finite() {
+            accumulator.max_pose_landing_forward_fold_degrees = accumulator
+                .max_pose_landing_forward_fold_degrees
+                .max((-sample.pose_torso_backward_bend_degrees).max(0.0));
+        }
+    }
+    if landing_pose_intent_label(sample.pose_intent_label)
+        && sample.pose_torso_backward_bend_degrees.is_finite()
+    {
+        accumulator.max_pose_landing_backward_bend_degrees = accumulator
+            .max_pose_landing_backward_bend_degrees
+            .max(sample.pose_torso_backward_bend_degrees.max(0.0));
+    }
+    if sample.pose_intent_label == "landing_anticipation"
+        && sample.pose_torso_local_bend_degrees.is_finite()
+    {
+        accumulator.max_pose_landing_transition_backbend_degrees = accumulator
+            .max_pose_landing_transition_backbend_degrees
+            .max(sample.pose_torso_local_bend_degrees);
     }
     if sample.pose_intent_label == "landing_recovery" && !sample.key_pose_transition_grace {
         accumulator.max_pose_landing_recovery_flip_degrees = accumulator
             .max_pose_landing_recovery_flip_degrees
             .max(sample.pose_landing_recovery_flip_degrees);
+    }
+    if landing_pose_intent_label(sample.pose_intent_label) && sample.pose_torso_offset_m.is_finite()
+    {
+        accumulator.max_pose_landing_torso_offset_m = accumulator
+            .max_pose_landing_torso_offset_m
+            .max(sample.pose_torso_offset_m);
     }
     accumulator.max_pose_wing_airflow_strength = accumulator
         .max_pose_wing_airflow_strength
@@ -559,6 +584,9 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
         accumulator.max_authored_glider_dive_motion_m = accumulator
             .max_authored_glider_dive_motion_m
             .max(sample.authored_glider_motion_m);
+    }
+    if sample.mode == "gliding" && sample.pose_intent_label == "landing_anticipation" {
+        accumulator.gliding_landing_anticipation_samples += 1;
     }
     accumulator.max_visible_pose_part_count = accumulator
         .max_visible_pose_part_count
