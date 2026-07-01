@@ -1,3 +1,5 @@
+use crate::camera::CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M;
+
 use super::{EvalAccumulator, EvalSample};
 
 pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
@@ -59,6 +61,23 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_camera_obstruction_hits = accumulator
         .max_camera_obstruction_hits
         .max(sample.camera_obstruction_hits);
+    if sample.camera_obstruction_hits > 0 {
+        accumulator.min_camera_obstructed_distance_m = Some(
+            accumulator
+                .min_camera_obstructed_distance_m
+                .map_or(sample.camera_distance_m, |distance| {
+                    distance.min(sample.camera_distance_m)
+                }),
+        );
+        if accumulator.previous_camera_obstructed_sample
+            && sample.camera_step_distance_m > CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M
+        {
+            accumulator.camera_obstruction_snap_count += 1;
+        }
+        accumulator.previous_camera_obstructed_sample = true;
+    } else {
+        accumulator.previous_camera_obstructed_sample = false;
+    }
     accumulator.min_camera_pitch_degrees = accumulator
         .min_camera_pitch_degrees
         .min(sample.camera_pitch_degrees);
