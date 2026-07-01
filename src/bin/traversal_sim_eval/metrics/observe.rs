@@ -244,6 +244,17 @@ impl SimMetrics {
             self.max_pose_landing_flare_degrees = self
                 .max_pose_landing_flare_degrees
                 .max(sample.pose_torso_pitch_degrees);
+            self.max_pose_landing_forward_fold_degrees = self
+                .max_pose_landing_forward_fold_degrees
+                .max((-sample.pose_torso_backward_bend_degrees).max(0.0));
+        }
+        if matches!(
+            sample.pose_intent_label,
+            "landing_anticipation" | "landing_recovery"
+        ) {
+            self.max_pose_landing_backward_bend_degrees = self
+                .max_pose_landing_backward_bend_degrees
+                .max(sample.pose_torso_backward_bend_degrees.max(0.0));
         }
         if sample.pose_intent_label == "landing_recovery" {
             self.max_pose_landing_recovery_flip_degrees = self
@@ -484,6 +495,9 @@ impl SimMetrics {
         }
         if sample.mode == "gliding" && sample.pose_intent_label == "diving" {
             self.gliding_dive_samples += 1;
+        }
+        if sample.mode == "gliding" && sample.pose_intent_label == "landing_anticipation" {
+            self.gliding_landing_anticipation_samples += 1;
         }
         self.observe_pose_intent_counts(sample);
 
