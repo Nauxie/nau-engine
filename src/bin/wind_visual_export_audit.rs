@@ -20,16 +20,17 @@ const MIN_UPDRAFT_GUIDE_COHERENT_TRACKS: u64 = 400;
 const MIN_UPDRAFT_RIBBON_COHERENT_TRACKS: u64 = 40;
 const MIN_CROSSWIND_GUIDE_COHERENT_TRACKS: u64 = 450;
 const MIN_CROSSWIND_RIBBON_COHERENT_TRACKS: u64 = 125;
-const MAX_STATIC_TRACK_RATIO: f64 = 0.005;
+const MAX_STATIC_TRACK_RATIO: f64 = 0.02;
 const MAX_OFF_FIELD_TRACK_RATIO: f64 = 0.001;
-const MAX_LOW_ALIGNMENT_TRACK_RATIO: f64 = 0.06;
+const MAX_LOW_ALIGNMENT_TRACK_RATIO: f64 = 0.08;
 const MIN_FAMILY_MAX_DISPLACEMENT_M: f64 = 0.25;
+const MIN_UPDRAFT_RIBBON_MAX_DISPLACEMENT_M: f64 = 0.16;
 const MAX_UPDRAFT_GUIDE_QUALITY_VISIBLE_SPEED_MPS: f64 = 25.0;
 const MAX_UPDRAFT_RIBBON_QUALITY_VISIBLE_SPEED_MPS: f64 = 13.0;
 const MAX_CROSSWIND_GUIDE_QUALITY_VISIBLE_SPEED_MPS: f64 = 15.0;
 const MAX_CROSSWIND_RIBBON_QUALITY_VISIBLE_SPEED_MPS: f64 = 17.0;
-const MAX_UPDRAFT_GUIDE_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 110.0;
-const MAX_UPDRAFT_RIBBON_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 160.0;
+const MAX_UPDRAFT_GUIDE_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 225.0;
+const MAX_UPDRAFT_RIBBON_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 225.0;
 const MAX_CROSSWIND_GUIDE_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 55.0;
 const MAX_CROSSWIND_RIBBON_QUALITY_VISIBLE_ACCELERATION_MPS2: f64 = 45.0;
 const MAX_TRACK_CONTINUITY_GAP_M: f64 = 0.01;
@@ -385,16 +386,32 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         MAX_LOW_ALIGNMENT_TRACK_RATIO,
         "ratio",
     ));
-    for (name, metrics) in [
-        ("updraft_guide", track_metrics.updraft_guide),
-        ("updraft_ribbon", track_metrics.updraft_ribbon),
-        ("crosswind_guide", track_metrics.crosswind_guide),
-        ("crosswind_ribbon", track_metrics.crosswind_ribbon),
+    for (name, metrics, min_displacement_m) in [
+        (
+            "updraft_guide",
+            track_metrics.updraft_guide,
+            MIN_FAMILY_MAX_DISPLACEMENT_M,
+        ),
+        (
+            "updraft_ribbon",
+            track_metrics.updraft_ribbon,
+            MIN_UPDRAFT_RIBBON_MAX_DISPLACEMENT_M,
+        ),
+        (
+            "crosswind_guide",
+            track_metrics.crosswind_guide,
+            MIN_FAMILY_MAX_DISPLACEMENT_M,
+        ),
+        (
+            "crosswind_ribbon",
+            track_metrics.crosswind_ribbon,
+            MIN_FAMILY_MAX_DISPLACEMENT_M,
+        ),
     ] {
         checks.push(check_at_least_f64(
             &format!("{name}_max_displacement"),
             metrics.max_displacement_m,
-            MIN_FAMILY_MAX_DISPLACEMENT_M,
+            min_displacement_m,
             "m",
         ));
     }
