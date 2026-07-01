@@ -378,6 +378,7 @@ fn step_flight_with_world(
     was_grounded: bool,
 ) -> SimWorldStep {
     let mut next = nau_engine::movement::step_flight(state, input, facing, tuning, dt);
+    let lift_enabled = next.controller.mode == FlightMode::Gliding;
     let lift = apply_lift_fields(
         next.position,
         next.velocity,
@@ -385,7 +386,7 @@ fn step_flight_with_world(
         visual_fields.iter().copied(),
         elapsed_secs,
         dt,
-        next.controller.mode != FlightMode::Grounded,
+        lift_enabled,
     );
     next.velocity = lift.velocity;
     let wind = apply_wind_fields(
@@ -476,4 +477,61 @@ fn camera_obstructions(route: &SkyRoute) -> Vec<CameraObstruction> {
         .into_iter()
         .map(|spire| CameraObstruction::new(spire.center, spire.half_extents))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn world_lift_requires_gliding_mode() {
+        let route = SkyRoute::default();
+        let tuning = FlightTuning::default();
+        let lift_fields = [GAMEPLAY_LIFT_ROUTE[0].lift_field()];
+        let visual_fields = visual_wind_fields();
+        let facing = Facing::new(Vec3::NEG_Z, Vec3::X);
+        let controller = FlightController {
+            mode: FlightMode::Airborne,
+            ..Default::default()
+        };
+        let state = FlightState::new(GAMEPLAY_LIFT_ROUTE[0].center, Vec3::ZERO, controller);
+
+        let airborne = step_flight_with_world(
+            state,
+            FlightInput::default(),
+            facing,
+            &tuning,
+            &route,
+            &lift_fields,
+            &visual_fields,
+            0.0,
+            &mut SimPowerUps::default(),
+            1.0 / 60.0,
+            false,
+        );
+
+        assert_eq!(airborne.lift.active_fields, 1);
+        assert_eq!(airborne.lift.applied_delta_y, 0.0);
+        assert_eq!(airborne.state.controller.mode, FlightMode::Airborne);
+
+        let gliding = step_flight_with_world(
+            state,
+            FlightInput {
+                glide: true,
+                ..Default::default()
+            },
+            facing,
+            &tuning,
+            &route,
+            &lift_fields,
+            &visual_fields,
+            0.0,
+            &mut SimPowerUps::default(),
+            1.0 / 60.0,
+            false,
+        );
+
+        assert_eq!(gliding.state.controller.mode, FlightMode::Gliding);
+        assert!(gliding.lift.applied_delta_y > 0.0);
+    }
 }
