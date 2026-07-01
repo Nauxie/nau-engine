@@ -12,8 +12,20 @@ pub(super) const BASELINE_CHECKPOINTS: &[EvalCheckpoint] = &[
 ];
 pub(super) const ISLAND_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
+        frame: 35,
+        name: "launch_terrain_read",
+    },
+    EvalCheckpoint {
+        frame: 85,
+        name: "launch_updraft_entry",
+    },
+    EvalCheckpoint {
         frame: 120,
         name: "outbound_glide",
+    },
+    EvalCheckpoint {
+        frame: 220,
+        name: "midroute_lift_view",
     },
     EvalCheckpoint {
         frame: 320,
