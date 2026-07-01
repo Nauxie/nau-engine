@@ -39,15 +39,15 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
         let backward_right_air_brake = (5.1..=5.52).contains(&t);
         let pure_right_air_turn = (5.55..=5.82).contains(&t);
         let route_forward = (0.05..=3.0).contains(&t) || (5.85..=7.8).contains(&t);
-        let post_landing_idle_hold_end = 9.0;
-        let post_landing_stride = (post_landing_idle_hold_end..=11.5).contains(&t);
+        let post_landing_idle_hold_end = 11.9;
+        let post_landing_stride = (post_landing_idle_hold_end..=12.6).contains(&t);
         return FlightInput {
             forward: route_forward || post_landing_stride,
             right: backward_right_air_brake || pure_right_air_turn,
             left: pure_left_air_turn || backward_left_air_brake,
             backward: backward_left_air_brake || backward_right_air_brake,
             launch: frame == 1,
-            glide: (1.15..=8.0).contains(&t),
+            glide: (0.85..=8.0).contains(&t),
             dive: (4.38..=4.58).contains(&t),
         };
     }
@@ -88,12 +88,12 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
         };
     }
     if scenario.name == BRANCH_RECOVERY_ROUTE {
-        let dive = (8.45..=10.9).contains(&t);
-        let final_landing_approach = t >= 9.35;
+        let dive = (8.45..=9.2).contains(&t);
+        let final_landing_approach = t >= 10.35;
         return FlightInput {
-            forward: (0.05..=10.55).contains(&t),
-            backward: (10.75..=11.1).contains(&t),
-            right: (1.2..=2.2).contains(&t) || (9.1..=9.75).contains(&t),
+            forward: (0.05..=10.35).contains(&t),
+            backward: (10.45..=11.45).contains(&t),
+            right: (1.2..=2.2).contains(&t) || (9.1..=9.45).contains(&t),
             left: (4.7..=5.0).contains(&t),
             glide: t >= 0.45 && !final_landing_approach,
             dive,
@@ -123,20 +123,20 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
     }
 
     let dive = match scenario.name {
-        ISLAND_LAUNCH_TO_LANDING => (5.8..=6.7).contains(&t),
+        ISLAND_LAUNCH_TO_LANDING => (6.0..=7.55).contains(&t),
         _ => (6.2..=7.0).contains(&t),
     };
     let left = (3.1..=4.2).contains(&t);
     let right = (5.1..=5.35).contains(&t);
 
     let forward = if scenario.name == ISLAND_LAUNCH_TO_LANDING {
-        (0.05..=7.05).contains(&t)
+        (0.05..=7.85).contains(&t)
     } else {
         t >= 0.05
     };
-    let backward = scenario.name == ISLAND_LAUNCH_TO_LANDING && (7.05..=7.55).contains(&t);
+    let backward = scenario.name == ISLAND_LAUNCH_TO_LANDING && (8.15..=8.65).contains(&t);
 
-    let final_landing_approach = scenario.name == ISLAND_LAUNCH_TO_LANDING && t >= 7.45;
+    let final_landing_approach = scenario.name == ISLAND_LAUNCH_TO_LANDING && t >= 8.15;
 
     FlightInput {
         forward,
