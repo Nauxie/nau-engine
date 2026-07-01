@@ -17,6 +17,7 @@ pub use orientation::{
     lateral_response_speed,
 };
 pub use types::{
-    Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
+    Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning,
+    LAUNCH_MAX_HORIZONTAL_SPEED_MPS, LAUNCH_MAX_UPWARD_SPEED_MPS, Velocity,
     landing_recovery_strength,
 };
