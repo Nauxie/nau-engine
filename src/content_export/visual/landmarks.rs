@@ -10,7 +10,8 @@ use crate::{
 };
 use bevy::prelude::*;
 use nau_engine::world::{
-    IslandLandmarkRole, IslandTerrainArchetype, SkyIsland, route_obstruction_spire,
+    IslandLandmarkRole, IslandPlateauRegion, IslandTerrainArchetype, SkyIsland,
+    route_obstruction_spire,
 };
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -60,6 +61,16 @@ pub(super) fn visual_content_landmark_summaries(
             island_slug,
             &mesh,
         )?);
+    }
+
+    if island.is_great_plateau_anchor() {
+        push_great_plateau_arrival_landmarks(
+            &mut landmarks,
+            output_dir,
+            island_index,
+            island,
+            island_slug,
+        )?;
     }
 
     if island.world_tags.landmark_role == IslandLandmarkRole::RuinArch {
@@ -172,6 +183,84 @@ pub(super) fn visual_content_landmark_summaries(
     }
 
     Ok(landmarks)
+}
+
+fn push_great_plateau_arrival_landmarks(
+    landmarks: &mut Vec<VisualLandmarkSummary>,
+    output_dir: &Path,
+    island_index: usize,
+    island: SkyIsland,
+    island_slug: &str,
+) -> std::io::Result<()> {
+    let shelf_radius = (island.half_extents.min_element() * 0.17).clamp(22.0, 34.0);
+    let shelf_mesh = garden_ring_mesh(
+        shelf_radius,
+        (shelf_radius * 0.20).clamp(3.8, 6.2),
+        (island.thickness * 0.010).clamp(0.42, 0.72),
+        41_000 + island_index as u32 * 239,
+    );
+    landmarks.push(write_visual_landmark_summary(
+        output_dir,
+        island.name,
+        "plateau_arrival_shelf",
+        "meadow landing shelf",
+        island_index,
+        island_slug,
+        &shelf_mesh,
+    )?);
+
+    let ruin_width = (island.half_extents.min_element() * 0.14).clamp(22.0, 30.0);
+    let ruin_height = (island.thickness * 0.26).clamp(18.0, 26.0);
+    let ruin_depth = (island.half_extents.min_element() * 0.050).clamp(5.0, 7.0);
+    let ruin_mesh = ruin_arch_mesh(
+        ruin_width,
+        ruin_height,
+        ruin_depth,
+        42_000 + island_index as u32 * 241,
+    );
+    landmarks.push(write_visual_landmark_summary(
+        output_dir,
+        island.name,
+        "plateau_arrival_ruin",
+        "arrival ruin marker",
+        island_index,
+        island_slug,
+        &ruin_mesh,
+    )?);
+
+    for (hint_index, label, region) in [
+        (
+            0_u32,
+            "high shelf onward hint",
+            IslandPlateauRegion::HighShelf,
+        ),
+        (
+            1_u32,
+            "cave mouth onward hint",
+            IslandPlateauRegion::UnderhangEntry,
+        ),
+    ] {
+        if island.plateau_region_position(region).is_none() {
+            continue;
+        }
+
+        let hint_mesh = route_cairn_mesh(
+            0.72,
+            6.2 + hint_index as f32 * 0.45,
+            43_000 + island_index as u32 * 251 + hint_index * 29,
+        );
+        landmarks.push(write_visual_landmark_summary(
+            output_dir,
+            island.name,
+            "plateau_onward_hint",
+            label,
+            island_index,
+            island_slug,
+            &hint_mesh,
+        )?);
+    }
+
+    Ok(())
 }
 
 fn write_visual_landmark_summary(
