@@ -135,6 +135,208 @@ struct PlateauWaterfallFeatureSpec {
     index: u32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FirstExpeditionSilhouetteKind {
+    NorthRuinSpire,
+    SouthRuinSpire,
+    WaterfallCliff,
+    CaveArch,
+    RingGarden,
+    BrokenStair,
+    HighCrown,
+}
+
+impl FirstExpeditionSilhouetteKind {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::NorthRuinSpire => "first_expedition_north_ruin_spire",
+            Self::SouthRuinSpire => "first_expedition_south_ruin_spire",
+            Self::WaterfallCliff => "first_expedition_waterfall_cliff",
+            Self::CaveArch => "first_expedition_cave_arch",
+            Self::RingGarden => "first_expedition_ring_garden",
+            Self::BrokenStair => "first_expedition_broken_stair",
+            Self::HighCrown => "first_expedition_high_crown",
+        }
+    }
+
+    pub(crate) fn visual_name(self) -> &'static str {
+        match self {
+            Self::NorthRuinSpire => "first expedition north ruin spire",
+            Self::SouthRuinSpire => "first expedition south ruin spire",
+            Self::WaterfallCliff => "first expedition waterfall cliff",
+            Self::CaveArch => "first expedition cave arch",
+            Self::RingGarden => "first expedition ring garden",
+            Self::BrokenStair => "first expedition broken stair",
+            Self::HighCrown => "first expedition high crown",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FirstExpeditionSilhouetteSpec {
+    pub(crate) kind: FirstExpeditionSilhouetteKind,
+    pub(crate) label: &'static str,
+    pub(crate) translation: Vec3,
+    pub(crate) rotation_y: f32,
+    mesh: FirstExpeditionSilhouetteMesh,
+    seed: u32,
+}
+
+impl FirstExpeditionSilhouetteSpec {
+    pub(crate) fn build_mesh(self) -> Mesh {
+        match self.mesh {
+            FirstExpeditionSilhouetteMesh::Cairn { radius, height } => {
+                route_cairn_mesh(radius, height, self.seed)
+            }
+            FirstExpeditionSilhouetteMesh::RuinArch {
+                width,
+                height,
+                depth,
+            } => ruin_arch_mesh(width, height, depth, self.seed),
+            FirstExpeditionSilhouetteMesh::GardenRing {
+                radius,
+                band_width,
+                height,
+            } => garden_ring_mesh(radius, band_width, height, self.seed),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum FirstExpeditionSilhouetteMesh {
+    Cairn {
+        radius: f32,
+        height: f32,
+    },
+    RuinArch {
+        width: f32,
+        height: f32,
+        depth: f32,
+    },
+    GardenRing {
+        radius: f32,
+        band_width: f32,
+        height: f32,
+    },
+}
+
+pub(crate) fn first_expedition_silhouette_specs(
+    island_index: usize,
+    island: SkyIsland,
+) -> Vec<FirstExpeditionSilhouetteSpec> {
+    let seed = 51_000 + island_index as u32 * 269;
+    match island.name {
+        "mist arch" => {
+            let height = 16.0;
+            vec![FirstExpeditionSilhouetteSpec {
+                kind: FirstExpeditionSilhouetteKind::NorthRuinSpire,
+                label: "north ruin spire",
+                translation: island_water_surface_position(island, Vec2::new(-0.24, 0.18))
+                    + Vec3::Y * (height * 0.5),
+                rotation_y: -0.34,
+                mesh: FirstExpeditionSilhouetteMesh::Cairn {
+                    radius: 1.05,
+                    height,
+                },
+                seed,
+            }]
+        }
+        "cloud gate" => {
+            let height = 15.5;
+            vec![FirstExpeditionSilhouetteSpec {
+                kind: FirstExpeditionSilhouetteKind::SouthRuinSpire,
+                label: "south ruin spire",
+                translation: island_water_surface_position(island, Vec2::new(0.22, -0.16))
+                    + Vec3::Y * (height * 0.5),
+                rotation_y: 0.42,
+                mesh: FirstExpeditionSilhouetteMesh::Cairn {
+                    radius: 1.0,
+                    height,
+                },
+                seed,
+            }]
+        }
+        "cloudfall meadow" => {
+            let height = 14.0;
+            vec![FirstExpeditionSilhouetteSpec {
+                kind: FirstExpeditionSilhouetteKind::WaterfallCliff,
+                label: "waterfall cliff silhouette",
+                translation: island_water_surface_position(island, Vec2::new(0.54, 0.10))
+                    + Vec3::Y * (height * 0.44),
+                rotation_y: -0.18,
+                mesh: FirstExpeditionSilhouetteMesh::RuinArch {
+                    width: 18.0,
+                    height,
+                    depth: 5.2,
+                },
+                seed,
+            }]
+        }
+        "underbridge cay" => island
+            .under_route_segment()
+            .map(|segment| {
+                let height = 8.2;
+                vec![FirstExpeditionSilhouetteSpec {
+                    kind: FirstExpeditionSilhouetteKind::CaveArch,
+                    label: "cave mouth silhouette",
+                    translation: segment.entry + Vec3::Y * (height * 0.34),
+                    rotation_y: -0.62,
+                    mesh: FirstExpeditionSilhouetteMesh::RuinArch {
+                        width: 10.5,
+                        height,
+                        depth: 2.7,
+                    },
+                    seed,
+                }]
+            })
+            .unwrap_or_default(),
+        "sunspire garden" => vec![FirstExpeditionSilhouetteSpec {
+            kind: FirstExpeditionSilhouetteKind::RingGarden,
+            label: "ring garden silhouette",
+            translation: island_water_surface_position(island, Vec2::ZERO) + Vec3::Y * 0.12,
+            rotation_y: 0.18,
+            mesh: FirstExpeditionSilhouetteMesh::GardenRing {
+                radius: 11.0,
+                band_width: 2.4,
+                height: 0.62,
+            },
+            seed,
+        }],
+        "broken stair" => {
+            let height = 12.0;
+            vec![FirstExpeditionSilhouetteSpec {
+                kind: FirstExpeditionSilhouetteKind::BrokenStair,
+                label: "broken stair silhouette",
+                translation: island_water_surface_position(island, Vec2::new(0.18, 0.22))
+                    + Vec3::Y * (height * 0.44),
+                rotation_y: 0.72,
+                mesh: FirstExpeditionSilhouetteMesh::RuinArch {
+                    width: 15.0,
+                    height,
+                    depth: 4.6,
+                },
+                seed,
+            }]
+        }
+        "upper crown" => {
+            let height = 21.0;
+            vec![FirstExpeditionSilhouetteSpec {
+                kind: FirstExpeditionSilhouetteKind::HighCrown,
+                label: "high crown silhouette",
+                translation: island_water_surface_position(island, Vec2::ZERO)
+                    + Vec3::Y * (height * 0.5),
+                rotation_y: -0.25,
+                mesh: FirstExpeditionSilhouetteMesh::Cairn {
+                    radius: 1.45,
+                    height,
+                },
+                seed,
+            }]
+        }
+        _ => Vec::new(),
+    }
+}
+
 pub(crate) fn island_water_visual_specs(
     island_index: usize,
     island: SkyIsland,
