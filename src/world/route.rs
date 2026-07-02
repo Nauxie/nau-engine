@@ -10,6 +10,8 @@ use super::{
 
 pub const SKY_ROUTE_ISLAND_COUNT: usize = 41;
 pub const PLAYTEST_RESET_ISLAND_NAME: &str = "great sky plateau";
+const UNDER_ROUTE_GROUND_CLEARANCE_PADDING_M: f32 = 10.0;
+const UNDER_ROUTE_TOP_SURFACE_CLEARANCE_FRACTION: f32 = 0.18;
 
 #[derive(Resource, Clone, Debug)]
 pub struct SkyRoute {
@@ -410,6 +412,7 @@ impl SkyRoute {
             .iter()
             .copied()
             .filter(|island| island.contains_horizontal(position))
+            .filter(|island| !position_is_inside_under_route_clearance(*island, position))
             .map(|island| GroundSurface::from_island_at(island, position))
             .max_by(|a, b| a.floor_y.total_cmp(&b.floor_y))
             .unwrap_or(GroundSurface {
@@ -526,4 +529,15 @@ impl SkyRoute {
             .and_then(|name| self.island_named(name))
             .or_else(|| self.target_island())
     }
+}
+
+fn position_is_inside_under_route_clearance(island: SkyIsland, position: Vec3) -> bool {
+    let Some(segment) = island.under_route_segment() else {
+        return false;
+    };
+    let under_top_surface = position.y
+        < island.mesh_top_y() - island.thickness * UNDER_ROUTE_TOP_SURFACE_CLEARANCE_FRACTION;
+
+    under_top_surface
+        && segment.contains_clearance(position, UNDER_ROUTE_GROUND_CLEARANCE_PADDING_M)
 }

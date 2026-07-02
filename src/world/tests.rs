@@ -376,6 +376,61 @@ fn great_sky_plateau_defines_under_island_glide_route() {
 }
 
 #[test]
+fn under_route_clearance_does_not_snap_player_to_island_top() {
+    let route = SkyRoute::default();
+    let underbridge = route
+        .island_named("underbridge cay")
+        .expect("underbridge cay exists");
+    let segment = underbridge
+        .under_route_segment()
+        .expect("underbridge should expose an under-island route");
+
+    for point in segment.sample_points() {
+        let ground = route.ground_at(point);
+
+        assert_ne!(ground.island_name, Some("underbridge cay"));
+        assert!(ground.floor_y < point.y - 1.0);
+        assert!(!route.is_grounded_at(point));
+    }
+
+    let top_surface_position = Vec3::new(
+        segment.midpoint.x,
+        underbridge.floor_y(),
+        segment.midpoint.z,
+    );
+    let top_ground = route.ground_at(top_surface_position);
+
+    assert_eq!(top_ground.island_name, Some("underbridge cay"));
+    assert!(route.is_grounded_at(top_surface_position));
+}
+
+#[test]
+fn under_route_ground_resolution_preserves_low_glide() {
+    let route = SkyRoute::default();
+    let underbridge = route
+        .island_named("underbridge cay")
+        .expect("underbridge cay exists");
+    let segment = underbridge
+        .under_route_segment()
+        .expect("underbridge should expose an under-island route");
+    let state = FlightState::new(
+        segment.midpoint,
+        Vec3::new(0.0, -2.0, -10.0),
+        FlightController {
+            mode: FlightMode::Gliding,
+            launch_available: false,
+            ..Default::default()
+        },
+    );
+
+    let resolved = route.resolve_ground_contact(state);
+
+    assert_eq!(resolved.position, state.position);
+    assert_eq!(resolved.velocity, state.velocity);
+    assert_eq!(resolved.controller.mode, FlightMode::Gliding);
+}
+
+#[test]
 fn route_preserves_core_path_and_appends_satellite_islands() {
     let route = SkyRoute::default();
     let core_route_names = [

@@ -19,6 +19,7 @@ use super::{
 const BODY_YAW_INTENT_AXIS_EPSILON: f32 = 0.05;
 const BODY_YAW_INTENT_CHANGE_DOT: f32 = 0.98;
 const FALL_POSE_MAX_UPWARD_VELOCITY_MPS: f32 = 0.75;
+const UNDER_ROUTE_NEAR_PADDING_M: f32 = 6.0;
 
 impl SimMetrics {
     pub(crate) fn observe(&mut self, sample: &SimSample, scenario: EvalScenario) {
@@ -90,6 +91,22 @@ impl SimMetrics {
             self.previous_camera_obstructed_sample = true;
         } else {
             self.previous_camera_obstructed_sample = false;
+        }
+        if let Some((under_route_distance_m, near_under_route)) =
+            nearest_under_route_distance(sample.position, &self.under_route_segments)
+        {
+            self.min_under_route_distance_m = Some(
+                self.min_under_route_distance_m
+                    .map_or(under_route_distance_m, |distance| {
+                        distance.min(under_route_distance_m)
+                    }),
+            );
+            if near_under_route {
+                self.under_route_near_samples += 1;
+                if sample.camera_obstruction_hits > 0 {
+                    self.under_route_camera_obstruction_samples += 1;
+                }
+            }
         }
         self.max_abs_camera_yaw_offset_degrees = self
             .max_abs_camera_yaw_offset_degrees
@@ -900,6 +917,35 @@ impl SimMetrics {
             self.max_air_brake_planar_speed_drop_mps = (start - minimum).max(0.0);
         }
     }
+}
+
+fn nearest_under_route_distance(
+    position: Vec3,
+    segments: &[nau_engine::world::IslandUnderRouteSegment],
+) -> Option<(f32, bool)> {
+    segments
+        .iter()
+        .map(|segment| {
+            let points = segment.sample_points();
+            let entry_to_midpoint = point_segment_distance(position, points[0], points[1]);
+            let midpoint_to_exit = point_segment_distance(position, points[1], points[2]);
+            let distance = entry_to_midpoint.min(midpoint_to_exit);
+            let near = distance <= segment.clearance_radius_m + UNDER_ROUTE_NEAR_PADDING_M;
+
+            (distance, near)
+        })
+        .min_by(|left, right| left.0.total_cmp(&right.0))
+}
+
+fn point_segment_distance(point: Vec3, start: Vec3, end: Vec3) -> f32 {
+    let segment = end - start;
+    let segment_length_squared = segment.length_squared();
+    if segment_length_squared <= f32::EPSILON {
+        return point.distance(start);
+    }
+
+    let progress = ((point - start).dot(segment) / segment_length_squared).clamp(0.0, 1.0);
+    point.distance(start + segment * progress)
 }
 
 fn wind_load_response_sample(sample: &SimSample) -> bool {

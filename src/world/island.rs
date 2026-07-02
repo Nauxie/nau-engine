@@ -802,6 +802,18 @@ impl IslandUnderRouteSegment {
         [self.entry, self.midpoint, self.exit]
     }
 
+    pub fn distance_to(self, point: Vec3) -> f32 {
+        let points = self.sample_points();
+        let entry_to_midpoint = point_segment_distance(point, points[0], points[1]);
+        let midpoint_to_exit = point_segment_distance(point, points[1], points[2]);
+
+        entry_to_midpoint.min(midpoint_to_exit)
+    }
+
+    pub fn contains_clearance(self, point: Vec3, padding_m: f32) -> bool {
+        self.distance_to(point) <= self.clearance_radius_m + padding_m.max(0.0)
+    }
+
     pub fn horizontal_length_m(self) -> f32 {
         let entry_to_mid = Vec2::new(
             self.midpoint.x - self.entry.x,
@@ -813,6 +825,17 @@ impl IslandUnderRouteSegment {
 
         entry_to_mid + mid_to_exit
     }
+}
+
+fn point_segment_distance(point: Vec3, start: Vec3, end: Vec3) -> f32 {
+    let segment = end - start;
+    let segment_length_sq = segment.length_squared();
+    if segment_length_sq <= f32::EPSILON {
+        return point.distance(start);
+    }
+
+    let t = ((point - start).dot(segment) / segment_length_sq).clamp(0.0, 1.0);
+    point.distance(start + segment * t)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]

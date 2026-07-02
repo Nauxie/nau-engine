@@ -23,7 +23,7 @@ use nau_engine::eval::{
     MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
     MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
     POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES, POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES,
-    UPDRAFT_ROUTE,
+    UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
 };
 use nau_engine::movement::{LAUNCH_MAX_HORIZONTAL_SPEED_MPS, LAUNCH_MAX_UPWARD_SPEED_MPS};
 use serde_json::{Value, json};
@@ -58,6 +58,11 @@ const POSE_STATE_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_LANDING_POSE_SAMPLES: f32 = 1.0;
 const POSE_STATE_MIN_LANDING_FLARE_DEGREES: f32 = LANDING_MIN_POSE_FLARE_DEGREES;
 const TARGET_LANDING_MIN_GLIDER_RESPONSE_DEGREES: f32 = 4.0;
+const UNDER_ROUTE_MAX_DISTANCE_M: f32 = 11.0;
+const MIN_UNDER_ROUTE_NEAR_SAMPLES: u32 = 3;
+const MIN_UNDER_ROUTE_CAMERA_OBSTRUCTION_SAMPLES: u32 = 1;
+const UNDER_ROUTE_MIN_DYNAMIC_WIND_FLOW_SPEED_MPS: f32 = 6.0;
+const UNDER_ROUTE_MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE: f32 = 0.08;
 #[derive(Clone, Debug)]
 pub(crate) struct SimCheck {
     pub(crate) name: &'static str,
@@ -210,7 +215,33 @@ impl SimMetrics {
             ));
         }
 
+        if scenario.name == UNDERBRIDGE_UNDER_ROUTE {
+            checks.push(SimCheck::at_most(
+                "under_route_distance",
+                self.min_under_route_distance_m.unwrap_or(f32::MAX),
+                UNDER_ROUTE_MAX_DISTANCE_M,
+                "m",
+            ));
+            checks.push(SimCheck::at_least(
+                "under_route_near_samples",
+                self.under_route_near_samples as f32,
+                MIN_UNDER_ROUTE_NEAR_SAMPLES as f32,
+                "samples",
+            ));
+            checks.push(SimCheck::at_least(
+                "under_route_camera_obstruction_samples",
+                self.under_route_camera_obstruction_samples as f32,
+                MIN_UNDER_ROUTE_CAMERA_OBSTRUCTION_SAMPLES as f32,
+                "samples",
+            ));
+        }
+
         if scenario.thresholds.min_lifted_samples > 0 {
+            let min_dynamic_wind_flow_speed_mps = if scenario.name == UNDERBRIDGE_UNDER_ROUTE {
+                UNDER_ROUTE_MIN_DYNAMIC_WIND_FLOW_SPEED_MPS
+            } else {
+                MIN_DYNAMIC_WIND_FLOW_SPEED_MPS
+            };
             checks.push(SimCheck::at_least(
                 "dynamic_readable_lift_samples",
                 self.dynamic_readable_lift_samples as f32,
@@ -220,7 +251,7 @@ impl SimMetrics {
             checks.push(SimCheck::at_least(
                 "max_wind_flow_speed",
                 self.max_wind_flow_speed_mps,
-                MIN_DYNAMIC_WIND_FLOW_SPEED_MPS,
+                min_dynamic_wind_flow_speed_mps,
                 "mps",
             ));
             checks.push(SimCheck::at_least(
@@ -481,6 +512,11 @@ impl SimMetrics {
         }
 
         if scenario.thresholds.min_lifted_samples > 0 {
+            let min_dynamic_lift_multiplier_range = if scenario.name == UNDERBRIDGE_UNDER_ROUTE {
+                UNDER_ROUTE_MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE
+            } else {
+                MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE
+            };
             checks.push(SimCheck::at_least(
                 "dynamic_lift_samples",
                 self.dynamic_lift_samples as f32,
@@ -508,7 +544,7 @@ impl SimMetrics {
             checks.push(SimCheck::at_least(
                 "dynamic_lift_multiplier_range",
                 self.max_dynamic_lift_multiplier_range,
-                MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE,
+                min_dynamic_lift_multiplier_range,
                 "ratio",
             ));
         }

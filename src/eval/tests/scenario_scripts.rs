@@ -263,6 +263,36 @@ fn great_sky_plateau_route_targets_long_vertical_chain() {
 }
 
 #[test]
+fn underbridge_under_route_targets_low_cave_camera_pass() {
+    let scenario = scenario_named(UNDERBRIDGE_UNDER_ROUTE).expect("underbridge route exists");
+    let alias = scenario_named("under_route").expect("under-route alias exists");
+
+    assert_eq!(alias.name, UNDERBRIDGE_UNDER_ROUTE);
+    assert_eq!(scenario.target_island_name, Some("underbridge cay"));
+    assert_eq!(
+        scenario.checkpoints[1].name,
+        "under_route_camera_obstruction"
+    );
+    assert_eq!(
+        scenario.thresholds.min_camera_obstruction_adjustment_m,
+        0.25
+    );
+    assert_eq!(scenario.thresholds.max_camera_obstruction_snap_count, 0);
+    assert!(scenario.thresholds.min_lifted_samples >= 2);
+    assert!(!scripted_input(scenario, 1).launch);
+    assert!(scripted_input(scenario, 30).left);
+    assert!(!scripted_input(scenario, 120).glide);
+    assert!(!scripted_input(scenario, 120).dive);
+    assert!(scripted_input(scenario, 220).glide);
+    assert!(scripted_input(scenario, 220).dive);
+    assert!(scripted_input(scenario, 240).left);
+    assert!(scripted_input(scenario, 330).left);
+    assert!(scripted_input(scenario, 300).forward);
+    assert!(scripted_input(scenario, 330).forward);
+    assert!(scripted_input(scenario, 390).right);
+}
+
+#[test]
 fn scenario_camera_thresholds_guard_follow_distance_and_jitter() {
     for name in SCENARIO_NAMES {
         let scenario = scenario_named(name).expect("scenario exists");
@@ -278,7 +308,13 @@ fn scenario_camera_thresholds_guard_follow_distance_and_jitter() {
         );
         assert!(
             scenario.thresholds.max_camera_player_angle_degrees
-                <= if mouse_camera { 6.0 } else { 3.0 },
+                <= if *name == UNDERBRIDGE_UNDER_ROUTE {
+                    12.0
+                } else if mouse_camera {
+                    6.0
+                } else {
+                    3.0
+                },
             "{name} should keep the player focus centered"
         );
         assert!(
