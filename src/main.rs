@@ -30,7 +30,7 @@ use environment_visuals::*;
 use eval_app_runtime::*;
 use eval_runtime::{CliAction, EvalMovementBasis, EvalOptions, EvalRun, path_string, usage};
 #[cfg(test)]
-use eval_runtime::{parse_cli_args, remove_existing_dir};
+use eval_runtime::{RunMode, parse_cli_args, remove_existing_dir};
 #[cfg(test)]
 use generated_content::*;
 use island_visuals::*;
@@ -47,7 +47,10 @@ pub(crate) use player_runtime::{
     Player, RouteObjectiveTracker, WindForceDiagnostics, grounded_visual_foot_gap_m,
     keyboard_flight_input, movement_facing,
 };
-use player_runtime::{animate_character, eval_fly_player, fly_player, update_route_objectives};
+use player_runtime::{
+    animate_character, eval_fly_player, fly_player, reset_player_to_playtest_position,
+    update_route_objectives,
+};
 use player_runtime::{
     apply_authored_glider_pose, apply_authored_player_pose_nodes, reapply_authored_glider_pose,
     reapply_authored_player_pose_nodes,
@@ -74,8 +77,8 @@ fn main() -> AppExit {
         }
     };
 
-    let eval = match cli {
-        CliAction::Run { eval } => eval,
+    let (eval, run_mode) = match cli {
+        CliAction::Run { eval, mode } => (eval, mode),
         CliAction::ExportTerrain { output_dir } => {
             return match export_terrain_inspection(&output_dir) {
                 Ok(report) => {
@@ -145,6 +148,7 @@ fn main() -> AppExit {
         .insert_resource(FlightTuning::default())
         .insert_resource(CameraControlTuning::default())
         .insert_resource(CameraControlState::default())
+        .insert_resource(run_mode)
         .insert_resource(CameraDiagnostics::default())
         .insert_resource(CinematicWeather::new(WORLD_RADIUS))
         .insert_resource(VisualAssetDiagnostics::default())
@@ -156,7 +160,7 @@ fn main() -> AppExit {
         .insert_resource(WindForceDiagnostics::default())
         .insert_resource(MouseLookState::default())
         .insert_resource(DebugVisuals {
-            enabled: !screenshot_eval,
+            enabled: !screenshot_eval && run_mode.debug_visuals_enabled(),
         })
         .insert_resource(SkyRoute::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -249,10 +253,25 @@ fn main() -> AppExit {
                     .in_set(GameSet::Eval),
             );
     } else {
-        app.add_systems(
-            Update,
-            (toggle_debug_visuals, fly_player).in_set(GameSet::Movement),
-        );
+        if run_mode.debug_visuals_enabled() {
+            app.add_systems(
+                Update,
+                (
+                    toggle_debug_visuals,
+                    reset_player_to_playtest_position,
+                    fly_player,
+                )
+                    .chain()
+                    .in_set(GameSet::Movement),
+            );
+        } else {
+            app.add_systems(
+                Update,
+                (reset_player_to_playtest_position, fly_player)
+                    .chain()
+                    .in_set(GameSet::Movement),
+            );
+        }
     }
 
     app.run()

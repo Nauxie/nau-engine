@@ -27,68 +27,68 @@ pub(crate) struct TerrainBiomePalette {
 pub(crate) fn terrain_biome_palette(island_index: usize) -> TerrainBiomePalette {
     match island_index % TERRAIN_BIOME_PALETTE_COUNT {
         1 => TerrainBiomePalette {
-            grass: Vec3::new(0.30, 0.56, 0.24),
-            moss: Vec3::new(0.20, 0.38, 0.24),
-            meadow: Vec3::new(0.62, 0.56, 0.30),
-            clay: Vec3::new(0.50, 0.38, 0.27),
-            rock: Vec3::new(0.43, 0.42, 0.38),
+            grass: Vec3::new(0.44, 0.67, 0.36),
+            moss: Vec3::new(0.28, 0.48, 0.38),
+            meadow: Vec3::new(0.78, 0.68, 0.38),
+            clay: Vec3::new(0.62, 0.48, 0.34),
+            rock: Vec3::new(0.50, 0.50, 0.46),
             region_tints: [
-                Vec3::new(0.26, 0.50, 0.22),
-                Vec3::new(0.57, 0.53, 0.28),
-                Vec3::new(0.18, 0.34, 0.25),
-                Vec3::new(0.40, 0.36, 0.30),
+                Vec3::new(0.38, 0.62, 0.32),
+                Vec3::new(0.72, 0.62, 0.34),
+                Vec3::new(0.24, 0.44, 0.36),
+                Vec3::new(0.48, 0.44, 0.38),
             ],
         },
         2 => TerrainBiomePalette {
-            grass: Vec3::new(0.36, 0.49, 0.24),
-            moss: Vec3::new(0.25, 0.34, 0.25),
-            meadow: Vec3::new(0.61, 0.45, 0.24),
-            clay: Vec3::new(0.56, 0.32, 0.20),
-            rock: Vec3::new(0.48, 0.39, 0.33),
+            grass: Vec3::new(0.50, 0.60, 0.31),
+            moss: Vec3::new(0.34, 0.43, 0.32),
+            meadow: Vec3::new(0.78, 0.56, 0.30),
+            clay: Vec3::new(0.66, 0.39, 0.27),
+            rock: Vec3::new(0.54, 0.45, 0.39),
             region_tints: [
-                Vec3::new(0.34, 0.46, 0.22),
-                Vec3::new(0.59, 0.42, 0.23),
-                Vec3::new(0.24, 0.32, 0.24),
-                Vec3::new(0.43, 0.32, 0.27),
+                Vec3::new(0.48, 0.56, 0.28),
+                Vec3::new(0.74, 0.51, 0.29),
+                Vec3::new(0.30, 0.39, 0.31),
+                Vec3::new(0.51, 0.38, 0.34),
             ],
         },
         3 => TerrainBiomePalette {
-            grass: Vec3::new(0.18, 0.48, 0.42),
-            moss: Vec3::new(0.12, 0.34, 0.38),
-            meadow: Vec3::new(0.42, 0.52, 0.44),
-            clay: Vec3::new(0.35, 0.36, 0.34),
-            rock: Vec3::new(0.38, 0.44, 0.46),
+            grass: Vec3::new(0.29, 0.60, 0.54),
+            moss: Vec3::new(0.18, 0.44, 0.48),
+            meadow: Vec3::new(0.55, 0.66, 0.55),
+            clay: Vec3::new(0.45, 0.46, 0.43),
+            rock: Vec3::new(0.44, 0.52, 0.56),
             region_tints: [
-                Vec3::new(0.16, 0.44, 0.36),
-                Vec3::new(0.40, 0.50, 0.40),
-                Vec3::new(0.10, 0.30, 0.36),
-                Vec3::new(0.34, 0.40, 0.42),
+                Vec3::new(0.24, 0.54, 0.46),
+                Vec3::new(0.50, 0.62, 0.50),
+                Vec3::new(0.14, 0.38, 0.44),
+                Vec3::new(0.39, 0.48, 0.52),
             ],
         },
         4 => TerrainBiomePalette {
-            grass: Vec3::new(0.42, 0.52, 0.25),
-            moss: Vec3::new(0.30, 0.39, 0.23),
-            meadow: Vec3::new(0.62, 0.55, 0.30),
-            clay: Vec3::new(0.48, 0.39, 0.25),
-            rock: Vec3::new(0.43, 0.40, 0.34),
+            grass: Vec3::new(0.56, 0.63, 0.32),
+            moss: Vec3::new(0.39, 0.49, 0.29),
+            meadow: Vec3::new(0.80, 0.68, 0.38),
+            clay: Vec3::new(0.58, 0.47, 0.31),
+            rock: Vec3::new(0.50, 0.47, 0.40),
             region_tints: [
-                Vec3::new(0.36, 0.48, 0.23),
-                Vec3::new(0.59, 0.52, 0.29),
-                Vec3::new(0.28, 0.36, 0.22),
-                Vec3::new(0.42, 0.36, 0.28),
+                Vec3::new(0.50, 0.58, 0.30),
+                Vec3::new(0.76, 0.63, 0.36),
+                Vec3::new(0.34, 0.44, 0.28),
+                Vec3::new(0.48, 0.42, 0.34),
             ],
         },
         _ => TerrainBiomePalette {
-            grass: Vec3::new(0.22, 0.58, 0.29),
-            moss: Vec3::new(0.15, 0.42, 0.32),
-            meadow: Vec3::new(0.55, 0.52, 0.28),
-            clay: Vec3::new(0.48, 0.36, 0.25),
-            rock: Vec3::new(0.42, 0.40, 0.36),
+            grass: Vec3::new(0.36, 0.68, 0.38),
+            moss: Vec3::new(0.22, 0.50, 0.40),
+            meadow: Vec3::new(0.72, 0.66, 0.36),
+            clay: Vec3::new(0.58, 0.44, 0.30),
+            rock: Vec3::new(0.49, 0.48, 0.43),
             region_tints: [
-                Vec3::new(0.19, 0.52, 0.24),
-                Vec3::new(0.50, 0.49, 0.25),
-                Vec3::new(0.14, 0.36, 0.30),
-                Vec3::new(0.39, 0.34, 0.29),
+                Vec3::new(0.30, 0.62, 0.32),
+                Vec3::new(0.66, 0.60, 0.32),
+                Vec3::new(0.18, 0.44, 0.36),
+                Vec3::new(0.46, 0.40, 0.34),
             ],
         },
     }
@@ -129,24 +129,24 @@ pub(crate) fn rgba8(color: Vec3) -> [u8; 4] {
 
 pub(crate) fn biome_detail_color_set(island_index: usize) -> BiomeDetailColorSet {
     let palette = terrain_biome_palette(island_index);
-    let bark_base = palette.clay.lerp(Vec3::new(0.25, 0.14, 0.08), 0.46);
-    let foliage_base = palette.grass.lerp(palette.moss, 0.54);
-    let ground_base = palette.grass.lerp(palette.meadow, 0.24);
-    let stone_base = palette.rock.lerp(palette.clay, 0.28);
+    let bark_base = palette.clay.lerp(Vec3::new(0.34, 0.20, 0.12), 0.34);
+    let foliage_base = palette.grass.lerp(palette.moss, 0.42);
+    let ground_base = palette.grass.lerp(palette.meadow, 0.30);
+    let stone_base = palette.rock.lerp(palette.clay, 0.20);
 
     BiomeDetailColorSet {
         trunk_primary: rgba8(bark_base),
-        trunk_secondary: rgba8(bark_base * 0.58),
-        trunk_accent: rgba8(bark_base.lerp(Vec3::new(0.72, 0.46, 0.26), 0.38)),
+        trunk_secondary: rgba8(bark_base * 0.66),
+        trunk_accent: rgba8(bark_base.lerp(Vec3::new(0.80, 0.56, 0.32), 0.42)),
         foliage_primary: rgba8(foliage_base),
-        foliage_secondary: rgba8(palette.moss * 0.72),
-        foliage_accent: rgba8(foliage_base.lerp(palette.meadow, 0.34)),
+        foliage_secondary: rgba8(palette.moss * 0.82),
+        foliage_accent: rgba8(foliage_base.lerp(palette.meadow, 0.42)),
         ground_primary: rgba8(ground_base),
-        ground_secondary: rgba8(palette.moss.lerp(palette.rock, 0.16)),
-        ground_accent: rgba8(palette.meadow.lerp(Vec3::new(0.92, 0.78, 0.38), 0.22)),
+        ground_secondary: rgba8(palette.moss.lerp(palette.rock, 0.12)),
+        ground_accent: rgba8(palette.meadow.lerp(Vec3::new(0.96, 0.82, 0.46), 0.28)),
         stone_primary: rgba8(stone_base),
-        stone_secondary: rgba8(palette.rock * 0.68),
-        stone_accent: rgba8(stone_base.lerp(Vec3::splat(0.76), 0.22)),
+        stone_secondary: rgba8(palette.rock * 0.74),
+        stone_accent: rgba8(stone_base.lerp(Vec3::new(0.78, 0.74, 0.66), 0.28)),
     }
 }
 
@@ -225,7 +225,7 @@ pub(crate) fn island_terrain_material_weights(
     let (inner_meadow, exposed_edge, highland, _) =
         island_terrain_material_factors(island_index, radius, angle, relief_m);
     [
-        (highland * 0.72 + inner_meadow * 0.28).clamp(0.0, 1.0),
+        (highland * 0.68 + inner_meadow * 0.32).clamp(0.0, 1.0),
         exposed_edge.clamp(0.0, 1.0),
     ]
 }
@@ -260,13 +260,15 @@ pub(crate) fn island_terrain_vertex_color(
         angle,
         relief_m,
     ));
+    let watercolor_wash = Vec3::new(0.86, 0.74, 0.48) * (inner_meadow * 0.035 + highland * 0.018);
     let color = palette
         .grass
         .lerp(palette.meadow, inner_meadow * 0.36)
         .lerp(palette.moss, highland * 0.42)
-        .lerp(palette.clay, exposed_edge * 0.38)
+        .lerp(palette.clay, exposed_edge * 0.32)
         .lerp(palette.rock, exposed_edge.powf(1.7) * 0.48)
         .lerp(palette.region_tints[region as usize], 0.32)
+        + watercolor_wash
         + Vec3::splat(dapple);
     color_array(color)
 }
@@ -281,18 +283,24 @@ pub(crate) fn island_rock_vertex_color(
     let band = ((t * ISLAND_CLIFF_STRATA_BANDS as f32 + phase * 0.13).floor() as usize)
         % ISLAND_CLIFF_STRATA_BANDS;
     let band_tint = band as f32 / (ISLAND_CLIFF_STRATA_BANDS - 1) as f32;
-    let vertical_stain = (angle * 17.0 + phase + t * 4.0).sin().abs() * 0.08;
+    let vertical_stain = (angle * 17.0 + phase + t * 4.0).sin().abs() * 0.07;
+    let sun_wash = Vec3::new(0.040, 0.024, -0.014) * (angle * 5.0 + phase).sin();
+    let cool_wash = Vec3::new(-0.018, 0.014, 0.034) * (angle * 11.0 - phase * 0.7 + t).cos();
+    let stratum_wash = Vec3::new(0.026, 0.012, -0.010) * ((band % 4) as f32 / 3.0);
     let base = if underside {
-        Vec3::new(0.25, 0.22, 0.18)
+        Vec3::new(0.30, 0.28, 0.25)
     } else {
-        Vec3::new(0.38, 0.35, 0.3)
+        Vec3::new(0.46, 0.42, 0.35)
     };
-    let warm = Vec3::new(0.48, 0.39, 0.29);
-    let cool = Vec3::new(0.28, 0.3, 0.31);
+    let warm = Vec3::new(0.62, 0.49, 0.34);
+    let cool = Vec3::new(0.34, 0.38, 0.42);
     let color = base
         .lerp(warm, band_tint * 0.32)
         .lerp(cool, ((band % 3) as f32 / 2.0) * 0.22)
-        - Vec3::splat(vertical_stain + if underside { 0.07 } else { 0.0 });
+        + sun_wash
+        + cool_wash
+        + stratum_wash
+        - Vec3::splat(vertical_stain + if underside { 0.04 } else { 0.0 });
     color_array(color)
 }
 

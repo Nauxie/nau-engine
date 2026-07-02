@@ -22,6 +22,7 @@ pub const AIR_CONTROL_RESPONSE: &str = "air_control_response";
 pub const POSE_STATE_COVERAGE: &str = "pose_state_coverage";
 pub const LONG_GLIDE_VISIBILITY: &str = "long_glide_visibility";
 pub const BRANCH_RECOVERY_ROUTE: &str = "branch_recovery_route";
+pub const GREAT_SKY_PLATEAU_ROUTE: &str = "great_sky_plateau_route";
 pub const SCENARIO_NAMES: &[&str] = &[
     BASELINE_ROUTE,
     ISLAND_LAUNCH_TO_LANDING,
@@ -38,6 +39,7 @@ pub const SCENARIO_NAMES: &[&str] = &[
     AIR_CONTROL_RESPONSE,
     POSE_STATE_COVERAGE,
     LONG_GLIDE_VISIBILITY,
+    GREAT_SKY_PLATEAU_ROUTE,
 ];
 pub const APP_ONLY_SCENARIO_NAMES: &[&str] = &[
     WORLD_COLLISION_CONTACT,
@@ -122,6 +124,9 @@ pub fn scenario_named(name: &str) -> Option<EvalScenario> {
         }
         LONG_GLIDE_VISIBILITY | "long_glide" | "glide_visibility" => {
             Some(traversal_scenarios::long_glide_visibility())
+        }
+        GREAT_SKY_PLATEAU_ROUTE | "great_sky_plateau" | "plateau_route" => {
+            Some(traversal_scenarios::great_sky_plateau_route())
         }
         _ => None,
     }

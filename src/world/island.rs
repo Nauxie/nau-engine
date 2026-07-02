@@ -28,26 +28,32 @@ pub enum IslandTerrainArchetype {
     StormShard,
     OrchardSpur,
     MistStep,
+    SkyPlateau,
 }
 
 impl IslandTerrainArchetype {
-    pub const COUNT: usize = 19;
+    pub const COUNT: usize = 20;
 
     pub fn for_name(name: &str) -> Option<Self> {
         match name {
             "launch mesa" => Some(Self::LaunchMesa),
-            "midpoint shelf" | "stratos shelf" => Some(Self::Shelf),
-            "landing garden" | "quiet lower garden" => Some(Self::GardenBasin),
-            "distant crown" | "summit anvil" => Some(Self::CrownRidge),
-            "wind overlook" | "lowwind shelf" => Some(Self::WindOverlook),
-            "copper stair" | "sunlit terrace" | "highgate stair" => Some(Self::TerracedSpur),
+            "midpoint shelf" | "stratos shelf" | "upper sky shelf" => Some(Self::Shelf),
+            "landing garden" | "quiet lower garden" | "bluevault basin" | "sunspire garden" => {
+                Some(Self::GardenBasin)
+            }
+            "distant crown" | "summit anvil" | "upper crown" => Some(Self::CrownRidge),
+            "great sky plateau" => Some(Self::SkyPlateau),
+            "wind overlook" | "lowwind shelf" | "far horizon perch" => Some(Self::WindOverlook),
+            "copper stair" | "sunlit terrace" | "highgate stair" | "east windchain" => {
+                Some(Self::TerracedSpur)
+            }
             "western refuge" | "underbridge cay" => Some(Self::RefugeTableland),
             "storm porch" => Some(Self::StormRavine),
             "high orchard" | "cloudfall meadow" => Some(Self::OrchardBasin),
             "far needle" | "needle crownlet" | "thin air roost" => Some(Self::Needle),
             "sapphire basin" | "skyhook basin" => Some(Self::SapphireBasin),
             "mist arch" | "upper thermal ring" => Some(Self::MistArch),
-            "broken stair" => Some(Self::BrokenStair),
+            "broken stair" | "outer switchback" | "cloudbreak stair" => Some(Self::BrokenStair),
             "cloud gate" => Some(Self::CloudGate),
             "launch spur" | "low reef" => Some(Self::LaunchSpur),
             "garden apron" => Some(Self::GardenApron),
@@ -83,6 +89,7 @@ impl IslandTerrainArchetype {
             Self::StormShard => 16,
             Self::OrchardSpur => 17,
             Self::MistStep => 18,
+            Self::SkyPlateau => 19,
         }
     }
 
@@ -107,6 +114,7 @@ impl IslandTerrainArchetype {
             Self::StormShard => "storm_shard",
             Self::OrchardSpur => "orchard_spur",
             Self::MistStep => "mist_step",
+            Self::SkyPlateau => "sky_plateau",
         }
     }
 
@@ -159,6 +167,13 @@ impl IslandTerrainArchetype {
                 let stepping_edge = (angle * 4.0 - phase * 0.25).sin().max(0.0);
                 let airy_cut = (angle - phase * 0.2).cos().max(0.0);
                 0.10 * stepping_edge - 0.13 * airy_cut
+            }
+            Self::SkyPlateau => {
+                let high_shelf = angular_lobe(angle, 2.70, 0.78);
+                let broken_edge = angular_lobe(angle, 0.35, 0.50);
+                let underhang_bite = angular_lobe(angle, -2.36, 0.46);
+                let broad_lobes = (angle * 3.0 + phase * 0.25).cos() * 0.045;
+                broad_lobes + high_shelf * 0.14 - broken_edge * 0.10 - underhang_bite * 0.16
             }
         }
     }
@@ -259,6 +274,64 @@ impl IslandTerrainArchetype {
                 terrain_step(radius, 0.20, 0.72, 0.09)
                     + step_bands * smoothstep(0.22, 0.86, radius) * 0.07
                     - airy_cut * smoothstep(0.42, 0.92, radius) * 0.18
+            }
+            Self::SkyPlateau => {
+                let high_shelf = angular_lobe(angle, 2.70, 0.78)
+                    * smoothstep(0.24, 0.76, radius)
+                    * (1.0 - smoothstep(0.90, 1.0, radius));
+                let low_basin = angular_lobe(angle, -0.92, 0.74)
+                    * smoothstep(0.18, 0.70, radius)
+                    * (1.0 - smoothstep(0.86, 1.0, radius));
+                let broken_edge = angular_lobe(angle, 0.35, 0.52) * smoothstep(0.58, 1.0, radius);
+                let underhang_lip =
+                    angular_lobe(angle, -2.36, 0.48) * smoothstep(0.44, 0.92, radius);
+                let rim =
+                    smoothstep(0.66, 0.86, radius) * 0.15 - smoothstep(0.88, 1.0, radius) * 0.26;
+                let terraces =
+                    (radius * std::f32::consts::TAU * 3.4 + phase * 0.18 + angle.sin() * 0.35)
+                        .sin()
+                        .max(0.0)
+                        * smoothstep(0.20, 0.82, radius)
+                        * 0.075;
+                let terrace_edges =
+                    (1.0 - smoothstep(
+                        0.015,
+                        0.115,
+                        (radius * std::f32::consts::TAU * 7.0 + phase * 0.23)
+                            .sin()
+                            .abs(),
+                    )) * smoothstep(0.24, 0.86, radius)
+                        * 0.15;
+                let radial_cracks =
+                    (1.0 - smoothstep(
+                        0.020,
+                        0.120,
+                        (angle * 9.0 + radius * 3.8 - phase * 0.15).sin().abs(),
+                    )) * smoothstep(0.34, 0.94, radius)
+                        * 0.20;
+                let cliff_teeth = (angle * 15.0 + radius * 5.2 + phase * 0.33)
+                    .sin()
+                    .max(0.0)
+                    .powf(2.6)
+                    * smoothstep(0.56, 0.94, radius)
+                    * 0.18;
+                let mesh_scale_terraces = (radius * std::f32::consts::TAU * 12.0
+                    + (angle * 4.0 + phase).sin() * 0.45)
+                    .sin()
+                    * smoothstep(0.30, 0.88, radius)
+                    * 0.22;
+                let angular_scarps = (angle * 22.0 + phase * 0.4 + radius * 2.0).sin()
+                    * smoothstep(0.48, 0.96, radius)
+                    * 0.16;
+
+                high_shelf * 0.24 - low_basin * 0.30 - broken_edge * 0.28 - underhang_lip * 0.18
+                    + rim
+                    + terraces
+                    + terrace_edges
+                    + cliff_teeth
+                    + mesh_scale_terraces
+                    + angular_scarps
+                    - radial_cracks
             }
         }
     }
@@ -417,6 +490,14 @@ impl IslandTerrainArchetype {
                 FootprintShelf::new(-0.90, 0.58, 0.070),
                 1.07,
             ),
+            Self::SkyPlateau => IslandFootprintProfile::new(
+                4.0,
+                0.090,
+                6.0,
+                0.070,
+                FootprintShelf::new(2.70, 0.86, 0.130),
+                1.18,
+            ),
         }
     }
 }
@@ -490,6 +571,465 @@ impl IslandFootprintProfile {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum IslandScaleClass {
+    Tiny,
+    Small,
+    Medium,
+    Large,
+    HugePlateau,
+}
+
+impl IslandScaleClass {
+    pub const COUNT: usize = 5;
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Tiny => "tiny",
+            Self::Small => "small",
+            Self::Medium => "medium",
+            Self::Large => "large",
+            Self::HugePlateau => "huge_plateau",
+        }
+    }
+
+    pub fn from_footprint_area(area_m2: f32) -> Self {
+        if area_m2 >= 6_000.0 {
+            Self::HugePlateau
+        } else if area_m2 >= 2_600.0 {
+            Self::Large
+        } else if area_m2 >= 1_200.0 {
+            Self::Medium
+        } else if area_m2 >= 600.0 {
+            Self::Small
+        } else {
+            Self::Tiny
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum IslandBiome {
+    Meadow,
+    Garden,
+    Storm,
+    Orchard,
+    Lake,
+    Mist,
+    Alpine,
+    Ruin,
+}
+
+impl IslandBiome {
+    pub const COUNT: usize = 8;
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Meadow => "meadow",
+            Self::Garden => "garden",
+            Self::Storm => "storm",
+            Self::Orchard => "orchard",
+            Self::Lake => "lake",
+            Self::Mist => "mist",
+            Self::Alpine => "alpine",
+            Self::Ruin => "ruin",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum IslandWaterFeature {
+    Dry,
+    Pond,
+    LakeBasin,
+    WaterfallSource,
+}
+
+impl IslandWaterFeature {
+    pub const COUNT: usize = 4;
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Dry => "dry",
+            Self::Pond => "pond",
+            Self::LakeBasin => "lake_basin",
+            Self::WaterfallSource => "waterfall_source",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum IslandVerticalProfile {
+    Mesa,
+    Shelf,
+    Basin,
+    Spire,
+    Stair,
+    Ravine,
+    Arch,
+    UnderhangCave,
+    Plateau,
+}
+
+impl IslandVerticalProfile {
+    pub const COUNT: usize = 9;
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Mesa => "mesa",
+            Self::Shelf => "shelf",
+            Self::Basin => "basin",
+            Self::Spire => "spire",
+            Self::Stair => "stair",
+            Self::Ravine => "ravine",
+            Self::Arch => "arch",
+            Self::UnderhangCave => "underhang_cave",
+            Self::Plateau => "plateau",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum IslandRouteRole {
+    Launch,
+    MainPath,
+    Destination,
+    RecoveryBranch,
+    SteppingStone,
+    UpdraftHub,
+    SkyPlateau,
+    Satellite,
+}
+
+impl IslandRouteRole {
+    pub const COUNT: usize = 8;
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Launch => "launch",
+            Self::MainPath => "main_path",
+            Self::Destination => "destination",
+            Self::RecoveryBranch => "recovery_branch",
+            Self::SteppingStone => "stepping_stone",
+            Self::UpdraftHub => "updraft_hub",
+            Self::SkyPlateau => "sky_plateau",
+            Self::Satellite => "satellite",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum IslandLandmarkRole {
+    None,
+    LaunchMesa,
+    LandingGarden,
+    WindGate,
+    RuinArch,
+    CaveMouth,
+    LakeBasin,
+    HighCrown,
+    WaterfallEdge,
+}
+
+impl IslandLandmarkRole {
+    pub const COUNT: usize = 9;
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::LaunchMesa => "launch_mesa",
+            Self::LandingGarden => "landing_garden",
+            Self::WindGate => "wind_gate",
+            Self::RuinArch => "ruin_arch",
+            Self::CaveMouth => "cave_mouth",
+            Self::LakeBasin => "lake_basin",
+            Self::HighCrown => "high_crown",
+            Self::WaterfallEdge => "waterfall_edge",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum IslandPlateauRegion {
+    MeadowPlateau,
+    CliffRim,
+    HighShelf,
+    LowBasin,
+    BrokenEdge,
+    UnderhangEntry,
+}
+
+impl IslandPlateauRegion {
+    pub const COUNT: usize = 6;
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::MeadowPlateau => "meadow_plateau",
+            Self::CliffRim => "cliff_rim",
+            Self::HighShelf => "high_shelf",
+            Self::LowBasin => "low_basin",
+            Self::BrokenEdge => "broken_edge",
+            Self::UnderhangEntry => "underhang_entry",
+        }
+    }
+
+    pub fn sample_offset(self) -> Vec2 {
+        match self {
+            Self::MeadowPlateau => Vec2::new(0.0, 0.0),
+            Self::CliffRim => Vec2::new(0.0, 0.82),
+            Self::HighShelf => Vec2::new(-0.58, 0.22),
+            Self::LowBasin => Vec2::new(0.28, -0.42),
+            Self::BrokenEdge => Vec2::new(0.64, 0.24),
+            Self::UnderhangEntry => Vec2::new(-0.52, -0.46),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IslandUnderRouteSegment {
+    pub island_name: &'static str,
+    pub entry_region: IslandPlateauRegion,
+    pub entry: Vec3,
+    pub midpoint: Vec3,
+    pub exit_region: IslandPlateauRegion,
+    pub exit: Vec3,
+    pub clearance_radius_m: f32,
+    pub recommended_lift_point: Vec3,
+}
+
+impl IslandUnderRouteSegment {
+    pub fn sample_points(self) -> [Vec3; 3] {
+        [self.entry, self.midpoint, self.exit]
+    }
+
+    pub fn horizontal_length_m(self) -> f32 {
+        let entry_to_mid = Vec2::new(
+            self.midpoint.x - self.entry.x,
+            self.midpoint.z - self.entry.z,
+        )
+        .length();
+        let mid_to_exit =
+            Vec2::new(self.exit.x - self.midpoint.x, self.exit.z - self.midpoint.z).length();
+
+        entry_to_mid + mid_to_exit
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct IslandWorldTags {
+    pub scale_class: IslandScaleClass,
+    pub biome: IslandBiome,
+    pub water_feature: IslandWaterFeature,
+    pub vertical_profile: IslandVerticalProfile,
+    pub route_role: IslandRouteRole,
+    pub landmark_role: IslandLandmarkRole,
+}
+
+impl IslandWorldTags {
+    fn inferred(
+        name: &str,
+        half_extents: Vec2,
+        thickness: f32,
+        is_target: bool,
+        terrain_archetype: IslandTerrainArchetype,
+    ) -> Self {
+        let scale_class = IslandScaleClass::from_footprint_area(half_extents.x * half_extents.y);
+
+        Self {
+            scale_class,
+            biome: island_biome_for(name, terrain_archetype),
+            water_feature: island_water_feature_for(name, terrain_archetype),
+            vertical_profile: island_vertical_profile_for(
+                name,
+                scale_class,
+                thickness,
+                terrain_archetype,
+            ),
+            route_role: island_route_role_for(name, scale_class, is_target),
+            landmark_role: island_landmark_role_for(name, terrain_archetype),
+        }
+    }
+
+    pub fn labels(self) -> [&'static str; 6] {
+        [
+            self.scale_class.label(),
+            self.biome.label(),
+            self.water_feature.label(),
+            self.vertical_profile.label(),
+            self.route_role.label(),
+            self.landmark_role.label(),
+        ]
+    }
+}
+
+fn island_biome_for(name: &str, terrain_archetype: IslandTerrainArchetype) -> IslandBiome {
+    match terrain_archetype {
+        IslandTerrainArchetype::GardenBasin | IslandTerrainArchetype::GardenApron => {
+            IslandBiome::Garden
+        }
+        IslandTerrainArchetype::StormRavine | IslandTerrainArchetype::StormShard => {
+            IslandBiome::Storm
+        }
+        IslandTerrainArchetype::OrchardBasin | IslandTerrainArchetype::OrchardSpur => {
+            IslandBiome::Orchard
+        }
+        IslandTerrainArchetype::SapphireBasin => IslandBiome::Lake,
+        IslandTerrainArchetype::MistArch
+        | IslandTerrainArchetype::MistStep
+        | IslandTerrainArchetype::CloudGate => IslandBiome::Mist,
+        IslandTerrainArchetype::CrownRidge | IslandTerrainArchetype::Needle => IslandBiome::Alpine,
+        IslandTerrainArchetype::BrokenStair => IslandBiome::Ruin,
+        IslandTerrainArchetype::SkyPlateau => IslandBiome::Meadow,
+        _ if name.contains("anvil") || name.contains("crown") => IslandBiome::Alpine,
+        _ => IslandBiome::Meadow,
+    }
+}
+
+fn island_water_feature_for(
+    name: &str,
+    terrain_archetype: IslandTerrainArchetype,
+) -> IslandWaterFeature {
+    if name == "cloudfall meadow" {
+        IslandWaterFeature::WaterfallSource
+    } else if terrain_archetype == IslandTerrainArchetype::SapphireBasin
+        || name == "bluevault basin"
+    {
+        IslandWaterFeature::LakeBasin
+    } else if matches!(
+        terrain_archetype,
+        IslandTerrainArchetype::GardenBasin
+            | IslandTerrainArchetype::GardenApron
+            | IslandTerrainArchetype::OrchardBasin
+            | IslandTerrainArchetype::SkyPlateau
+    ) {
+        IslandWaterFeature::Pond
+    } else {
+        IslandWaterFeature::Dry
+    }
+}
+
+fn island_vertical_profile_for(
+    name: &str,
+    scale_class: IslandScaleClass,
+    thickness: f32,
+    terrain_archetype: IslandTerrainArchetype,
+) -> IslandVerticalProfile {
+    if name == "underbridge cay" {
+        return IslandVerticalProfile::UnderhangCave;
+    }
+    if scale_class == IslandScaleClass::HugePlateau || name.contains("anvil") {
+        return IslandVerticalProfile::Plateau;
+    }
+    if thickness >= 34.0 && matches!(scale_class, IslandScaleClass::Large) {
+        return IslandVerticalProfile::Plateau;
+    }
+
+    match terrain_archetype {
+        IslandTerrainArchetype::LaunchMesa => IslandVerticalProfile::Mesa,
+        IslandTerrainArchetype::Needle | IslandTerrainArchetype::StormShard => {
+            IslandVerticalProfile::Spire
+        }
+        IslandTerrainArchetype::GardenBasin
+        | IslandTerrainArchetype::OrchardBasin
+        | IslandTerrainArchetype::SapphireBasin
+        | IslandTerrainArchetype::GardenApron => IslandVerticalProfile::Basin,
+        IslandTerrainArchetype::TerracedSpur
+        | IslandTerrainArchetype::BrokenStair
+        | IslandTerrainArchetype::MistStep
+        | IslandTerrainArchetype::LaunchSpur => IslandVerticalProfile::Stair,
+        IslandTerrainArchetype::StormRavine => IslandVerticalProfile::Ravine,
+        IslandTerrainArchetype::MistArch | IslandTerrainArchetype::CloudGate => {
+            IslandVerticalProfile::Arch
+        }
+        IslandTerrainArchetype::SkyPlateau => IslandVerticalProfile::Plateau,
+        _ => IslandVerticalProfile::Shelf,
+    }
+}
+
+fn island_route_role_for(
+    name: &str,
+    scale_class: IslandScaleClass,
+    is_target: bool,
+) -> IslandRouteRole {
+    if is_target {
+        return IslandRouteRole::Destination;
+    }
+    if name == "launch mesa" {
+        return IslandRouteRole::Launch;
+    }
+    if matches!(name, "sunlit terrace" | "western refuge") {
+        return IslandRouteRole::RecoveryBranch;
+    }
+    if matches!(
+        name,
+        "midpoint shelf"
+            | "distant crown"
+            | "wind overlook"
+            | "copper stair"
+            | "storm porch"
+            | "high orchard"
+            | "far needle"
+            | "sapphire basin"
+            | "broken stair"
+            | "mist arch"
+            | "cloud gate"
+    ) {
+        return IslandRouteRole::MainPath;
+    }
+    if matches!(
+        name,
+        "upper thermal ring" | "lowwind shelf" | "east windchain" | "far horizon perch"
+    ) {
+        return IslandRouteRole::UpdraftHub;
+    }
+    if scale_class == IslandScaleClass::HugePlateau || name.contains("anvil") {
+        return IslandRouteRole::SkyPlateau;
+    }
+    if matches!(
+        scale_class,
+        IslandScaleClass::Tiny | IslandScaleClass::Small
+    ) {
+        return IslandRouteRole::SteppingStone;
+    }
+
+    IslandRouteRole::Satellite
+}
+
+fn island_landmark_role_for(
+    name: &str,
+    terrain_archetype: IslandTerrainArchetype,
+) -> IslandLandmarkRole {
+    if name == "launch mesa" {
+        IslandLandmarkRole::LaunchMesa
+    } else if name == "landing garden" {
+        IslandLandmarkRole::LandingGarden
+    } else if name == "underbridge cay" {
+        IslandLandmarkRole::CaveMouth
+    } else if name == "cloudfall meadow" {
+        IslandLandmarkRole::WaterfallEdge
+    } else if terrain_archetype == IslandTerrainArchetype::SapphireBasin {
+        IslandLandmarkRole::LakeBasin
+    } else if matches!(
+        terrain_archetype,
+        IslandTerrainArchetype::MistArch
+            | IslandTerrainArchetype::CloudGate
+            | IslandTerrainArchetype::BrokenStair
+    ) {
+        IslandLandmarkRole::RuinArch
+    } else if matches!(
+        terrain_archetype,
+        IslandTerrainArchetype::WindOverlook | IslandTerrainArchetype::MistStep
+    ) {
+        IslandLandmarkRole::WindGate
+    } else if terrain_archetype == IslandTerrainArchetype::CrownRidge || name.contains("anvil") {
+        IslandLandmarkRole::HighCrown
+    } else if terrain_archetype == IslandTerrainArchetype::SkyPlateau {
+        IslandLandmarkRole::CaveMouth
+    } else {
+        IslandLandmarkRole::None
+    }
+}
+
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct SkyIsland {
     pub name: &'static str,
@@ -498,6 +1038,7 @@ pub struct SkyIsland {
     pub thickness: f32,
     pub is_target: bool,
     pub terrain_archetype: IslandTerrainArchetype,
+    pub world_tags: IslandWorldTags,
 }
 
 impl SkyIsland {
@@ -508,14 +1049,135 @@ impl SkyIsland {
         thickness: f32,
         is_target: bool,
     ) -> Self {
+        let terrain_archetype = IslandTerrainArchetype::for_name_or_default(name);
+        let thickness = thickness.max(1.0);
         Self {
             name,
             center,
             half_extents,
-            thickness: thickness.max(1.0),
+            thickness,
             is_target,
-            terrain_archetype: IslandTerrainArchetype::for_name_or_default(name),
+            terrain_archetype,
+            world_tags: IslandWorldTags::inferred(
+                name,
+                half_extents,
+                thickness,
+                is_target,
+                terrain_archetype,
+            ),
         }
+    }
+
+    pub fn base_area_m2(self) -> f32 {
+        self.half_extents.x * self.half_extents.y
+    }
+
+    pub fn longest_span_m(self) -> f32 {
+        self.half_extents.x.max(self.half_extents.y) * 2.0
+    }
+
+    pub fn has_major_water_feature(self) -> bool {
+        matches!(
+            self.world_tags.water_feature,
+            IslandWaterFeature::LakeBasin | IslandWaterFeature::WaterfallSource
+        )
+    }
+
+    pub fn has_underworld_route_potential(self) -> bool {
+        self.world_tags.vertical_profile == IslandVerticalProfile::UnderhangCave
+            || self.world_tags.landmark_role == IslandLandmarkRole::CaveMouth
+            || self.terrain_archetype == IslandTerrainArchetype::SkyPlateau
+    }
+
+    pub fn is_great_plateau_anchor(self) -> bool {
+        self.terrain_archetype == IslandTerrainArchetype::SkyPlateau
+            && self.world_tags.scale_class == IslandScaleClass::HugePlateau
+    }
+
+    pub fn plateau_region_at_normalized_offset(
+        self,
+        normalized_offset: Vec2,
+    ) -> Option<IslandPlateauRegion> {
+        if self.terrain_archetype != IslandTerrainArchetype::SkyPlateau {
+            return None;
+        }
+
+        let radius = normalized_offset.length();
+        if radius <= f32::EPSILON {
+            return Some(IslandPlateauRegion::MeadowPlateau);
+        }
+
+        let angle = normalized_offset.y.atan2(normalized_offset.x);
+        if radius > self.playable_silhouette_scale(angle) * 0.96 {
+            return None;
+        }
+
+        if normalized_offset.x < -0.42 && normalized_offset.y < -0.34 {
+            return Some(IslandPlateauRegion::UnderhangEntry);
+        }
+        if normalized_offset.x > 0.56 && normalized_offset.y > 0.12 {
+            return Some(IslandPlateauRegion::BrokenEdge);
+        }
+        if normalized_offset.x < -0.46 && normalized_offset.y > 0.08 {
+            return Some(IslandPlateauRegion::HighShelf);
+        }
+        if normalized_offset.x > 0.16 && normalized_offset.y < -0.24 {
+            return Some(IslandPlateauRegion::LowBasin);
+        }
+        if radius >= 0.72 {
+            return Some(IslandPlateauRegion::CliffRim);
+        }
+
+        Some(IslandPlateauRegion::MeadowPlateau)
+    }
+
+    pub fn plateau_region_position(self, region: IslandPlateauRegion) -> Option<Vec3> {
+        let offset = region.sample_offset();
+        if self.plateau_region_at_normalized_offset(offset) != Some(region) {
+            return None;
+        }
+
+        let x = self.center.x + self.half_extents.x * offset.x;
+        let z = self.center.z + self.half_extents.y * offset.y;
+        let surface_position = Vec3::new(x, self.center.y, z);
+
+        Some(Vec3::new(x, self.terrain_surface_y_at(surface_position), z))
+    }
+
+    pub fn under_route_segment(self) -> Option<IslandUnderRouteSegment> {
+        if !self.is_great_plateau_anchor() {
+            return None;
+        }
+
+        let entry_region = IslandPlateauRegion::UnderhangEntry;
+        let exit_region = IslandPlateauRegion::MeadowPlateau;
+        let entry_surface = self.plateau_region_position(entry_region)?;
+        let entry = Vec3::new(
+            entry_surface.x,
+            entry_surface.y - self.thickness * 0.32,
+            entry_surface.z,
+        );
+        let midpoint = Vec3::new(
+            self.center.x - self.half_extents.x * 0.08,
+            self.mesh_top_y() - self.thickness * 0.58,
+            self.center.z - self.half_extents.y * 0.04,
+        );
+        let exit = Vec3::new(
+            self.center.x + self.half_extents.x * 0.02,
+            self.mesh_top_y() - self.thickness * 0.34,
+            self.center.z + self.half_extents.y * 0.02,
+        );
+
+        Some(IslandUnderRouteSegment {
+            island_name: self.name,
+            entry_region,
+            entry,
+            midpoint,
+            exit_region,
+            exit,
+            clearance_radius_m: (self.half_extents.min_element() * 0.08).clamp(10.0, 16.0),
+            recommended_lift_point: exit,
+        })
     }
 
     pub fn floor_y(self) -> f32 {

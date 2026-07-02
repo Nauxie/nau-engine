@@ -202,3 +202,21 @@ pub(super) const LONG_GLIDE_CHECKPOINTS: &[EvalCheckpoint] = &[
         name: "distant_islands",
     },
 ];
+pub(super) const GREAT_SKY_PLATEAU_CHECKPOINTS: &[EvalCheckpoint] = &[
+    EvalCheckpoint {
+        frame: 360,
+        name: "upper_thermal_chain",
+    },
+    EvalCheckpoint {
+        frame: 780,
+        name: "stratos_to_summit_climb",
+    },
+    EvalCheckpoint {
+        frame: 1260,
+        name: "high_archipelago_crossing",
+    },
+    EvalCheckpoint {
+        frame: 1740,
+        name: "plateau_approach",
+    },
+];

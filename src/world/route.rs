@@ -3,12 +3,13 @@ use crate::movement::{FlightMode, FlightState};
 use bevy::prelude::{Resource, Vec2, Vec3};
 
 use super::{
-    GROUND_CONTACT_EPSILON, GROUND_CONTACT_HORIZONTAL_DAMPING, GroundSurface, LodBand,
-    PLAYER_STANDING_OFFSET, RouteObjective, START_FLOOR_Y, SkyIsland, StreamChunkCoord,
-    StreamingLodStats,
+    GROUND_CONTACT_EPSILON, GROUND_CONTACT_HORIZONTAL_DAMPING, GroundSurface,
+    IslandUnderRouteSegment, LodBand, PLAYER_STANDING_OFFSET, RouteObjective, START_FLOOR_Y,
+    SkyIsland, StreamChunkCoord, StreamingLodStats,
 };
 
-pub const SKY_ROUTE_ISLAND_COUNT: usize = 32;
+pub const SKY_ROUTE_ISLAND_COUNT: usize = 41;
+pub const PLAYTEST_RESET_ISLAND_NAME: &str = "great sky plateau";
 
 #[derive(Resource, Clone, Debug)]
 pub struct SkyRoute {
@@ -165,28 +166,28 @@ impl Default for SkyRoute {
                     "underbridge cay",
                     Vec3::new(-64.0, 18.0, -92.0),
                     Vec2::new(18.0, 14.0),
-                    6.0,
+                    9.0,
                     false,
                 ),
                 SkyIsland::new(
                     "low reef",
                     Vec3::new(92.0, 22.0, -188.0),
                     Vec2::new(34.0, 20.0),
-                    7.0,
+                    9.0,
                     false,
                 ),
                 SkyIsland::new(
                     "quiet lower garden",
                     Vec3::new(-188.0, 38.0, -238.0),
                     Vec2::new(40.0, 30.0),
-                    8.0,
+                    9.0,
                     false,
                 ),
                 SkyIsland::new(
                     "lowwind shelf",
                     Vec3::new(178.0, 24.0, -412.0),
                     Vec2::new(38.0, 24.0),
-                    8.0,
+                    9.0,
                     false,
                 ),
                 SkyIsland::new(
@@ -245,6 +246,69 @@ impl Default for SkyRoute {
                     30.0,
                     false,
                 ),
+                SkyIsland::new(
+                    "upper sky shelf",
+                    Vec3::new(-210.0, 285.0, -1720.0),
+                    Vec2::new(86.0, 54.0),
+                    32.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "east windchain",
+                    Vec3::new(300.0, 318.0, -1695.0),
+                    Vec2::new(34.0, 26.0),
+                    28.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "bluevault basin",
+                    Vec3::new(90.0, 365.0, -1905.0),
+                    Vec2::new(84.0, 54.0),
+                    34.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "outer switchback",
+                    Vec3::new(-380.0, 430.0, -2050.0),
+                    Vec2::new(42.0, 30.0),
+                    32.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "sunspire garden",
+                    Vec3::new(420.0, 505.0, -2240.0),
+                    Vec2::new(72.0, 46.0),
+                    36.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "cloudbreak stair",
+                    Vec3::new(160.0, 580.0, -2410.0),
+                    Vec2::new(36.0, 30.0),
+                    38.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "great sky plateau",
+                    Vec3::new(-120.0, 690.0, -2600.0),
+                    Vec2::new(230.0, 155.0),
+                    72.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "far horizon perch",
+                    Vec3::new(520.0, 820.0, -2860.0),
+                    Vec2::new(64.0, 44.0),
+                    46.0,
+                    false,
+                ),
+                SkyIsland::new(
+                    "upper crown",
+                    Vec3::new(-360.0, 1040.0, -3200.0),
+                    Vec2::new(82.0, 52.0),
+                    50.0,
+                    false,
+                ),
             ],
         }
     }
@@ -254,6 +318,9 @@ fn lift_route_node_count_for_target(target: SkyIsland) -> usize {
     let mut count = if target.is_target { 1 } else { 2 };
     let target_depth = -target.center.z;
     for (index, node) in GAMEPLAY_LIFT_ROUTE.iter().enumerate().skip(2) {
+        if !is_route_objective_lift_node(node.name) {
+            continue;
+        }
         let node_depth = -node.center.z;
         if target.center.y >= node.center.y - 36.0 || target_depth >= node_depth - 40.0 {
             count = index + 1;
@@ -263,9 +330,27 @@ fn lift_route_node_count_for_target(target: SkyIsland) -> usize {
     count.min(GAMEPLAY_LIFT_ROUTE.len())
 }
 
+fn is_route_objective_lift_node(name: &str) -> bool {
+    !matches!(
+        name,
+        "low reef updraft"
+            | "western catch updraft"
+            | "skyhook basin updraft"
+            | "cloudfall meadow updraft"
+    )
+}
+
 impl SkyRoute {
     pub fn islands(&self) -> &[SkyIsland] {
         &self.islands
+    }
+
+    pub fn under_island_route_segments(&self) -> Vec<IslandUnderRouteSegment> {
+        self.islands
+            .iter()
+            .copied()
+            .filter_map(SkyIsland::under_route_segment)
+            .collect()
     }
 
     pub fn route_objectives(&self, island_name: Option<&str>) -> Vec<RouteObjective> {
@@ -283,6 +368,16 @@ impl SkyRoute {
         objectives.push(RouteObjective::land_on(target));
 
         objectives
+    }
+
+    pub fn playtest_reset_position(&self) -> Vec3 {
+        let island = self
+            .island_named(PLAYTEST_RESET_ISLAND_NAME)
+            .or_else(|| self.target_island())
+            .expect("default route should include a reset island");
+        let mut position = island.center;
+        position.y = self.ground_at(position).floor_y;
+        position
     }
 
     pub fn streaming_lod_stats(&self, position: Vec3) -> StreamingLodStats {

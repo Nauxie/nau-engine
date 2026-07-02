@@ -3,8 +3,8 @@ use bevy::prelude::*;
 
 use super::{
     AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, CAMERA_STRAFE_STABILITY,
-    CAMERA_TURN_STABILITY, CAMERA_YAW_STABILITY, EvalScenario, GROUND_TAXI_CONTROL,
-    ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE,
+    CAMERA_TURN_STABILITY, CAMERA_YAW_STABILITY, EvalScenario, GREAT_SKY_PLATEAU_ROUTE,
+    GROUND_TAXI_CONTROL, ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE,
     TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_RIM_COLLISION_CONTACT, UPDRAFT_ROUTE,
     WORLD_COLLISION_CONTACT,
 };
@@ -108,6 +108,23 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
             glide: t >= 0.45,
             launch: frame == 1,
             ..default()
+        };
+    }
+    if scenario.name == GREAT_SKY_PLATEAU_ROUTE {
+        return FlightInput {
+            forward: t >= 0.05,
+            backward: false,
+            right: (1.1..=2.4).contains(&t)
+                || (6.6..=8.2).contains(&t)
+                || (10.9..=13.5).contains(&t)
+                || (15.5..=17.4).contains(&t),
+            left: (3.1..=4.5).contains(&t)
+                || (9.4..=10.4).contains(&t)
+                || (18.0..=21.6).contains(&t)
+                || (28.2..=30.4).contains(&t),
+            glide: t >= 0.45,
+            dive: (7.8..=8.45).contains(&t),
+            launch: frame == 1,
         };
     }
     if scenario.name == CAMERA_TURN_STABILITY {

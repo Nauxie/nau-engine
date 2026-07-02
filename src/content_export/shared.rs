@@ -17,27 +17,27 @@ pub(super) fn write_mesh_obj(path: &Path, mesh: &Mesh, object_name: &str) -> std
             let color = colors[index];
             writeln!(
                 file,
-                "v {:.4} {:.4} {:.4} {:.4} {:.4} {:.4}",
+                "v {:.6} {:.6} {:.6} {:.4} {:.4} {:.4}",
                 position[0], position[1], position[2], color[0], color[1], color[2]
             )?;
         } else {
             writeln!(
                 file,
-                "v {:.4} {:.4} {:.4}",
+                "v {:.6} {:.6} {:.6}",
                 position[0], position[1], position[2]
             )?;
         }
     }
     if let Some(uvs) = uvs {
         for uv in uvs {
-            writeln!(file, "vt {:.4} {:.4}", uv[0], uv[1])?;
+            writeln!(file, "vt {:.6} {:.6}", uv[0], uv[1])?;
         }
     }
     if let Some(normals) = normals {
         for normal in normals {
             writeln!(
                 file,
-                "vn {:.4} {:.4} {:.4}",
+                "vn {:.6} {:.6} {:.6}",
                 normal[0], normal[1], normal[2]
             )?;
         }

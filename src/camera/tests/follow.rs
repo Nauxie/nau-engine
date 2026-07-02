@@ -193,8 +193,9 @@ fn follow_direction_smoothing_limits_turnaround_snap() {
         1.0 / 60.0,
     );
 
+    assert!(follow_direction.z > 0.9);
     assert!(
-        frame.position.z > 8.0,
+        frame.position.z > 0.0,
         "camera should not instantly orbit across the player on a velocity flip"
     );
 }

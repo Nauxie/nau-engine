@@ -12,12 +12,12 @@ use nau_engine::{
         wind_lateral_load_from_delta,
     },
     camera::{
-        CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M, CameraControlState, CameraControlTuning,
-        CameraObstruction, FollowCamera, FollowCameraState, apply_camera_input,
-        avoid_camera_obstructions, camera_orbit_alignment_degrees, clamp_camera_step,
+        CameraControlState, CameraControlTuning, CameraObstruction,
+        CameraObstructionSmoothingState, FollowCamera, FollowCameraState, apply_camera_input,
+        avoid_camera_obstructions_with_preferred_offset, camera_orbit_alignment_degrees,
         lift_camera_above_floor, movement_facing_from_follow_direction,
-        movement_input_stable_follow_direction, step_camera_with_direction,
-        update_follow_direction_state,
+        movement_input_stable_follow_direction, smooth_camera_obstruction,
+        step_camera_with_direction, update_follow_direction_state,
     },
     environment::{
         AERIAL_POWER_UP_ROUTE, GAMEPLAY_LIFT_ROUTE, LiftApplication, LiftField, WindField,
@@ -31,8 +31,6 @@ use nau_engine::{
     },
     world::{START_POSITION, SkyRoute, route_obstruction_spires},
 };
-
-const CAMERA_MAX_STEP_M: f32 = CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M - 0.05;
 
 pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     let route = SkyRoute::default();
@@ -69,6 +67,8 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     );
     let mut camera_control = CameraControlState::default();
     let mut follow_state = FollowCameraState::default();
+    let mut camera_obstruction_smoothing = CameraObstructionSmoothingState::default();
+    let mut camera_diagnostics_initialized = false;
     let mut samples = Vec::new();
     let mut metrics = SimMetrics::new(&route);
 
@@ -183,10 +183,18 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
             camera_control.orbit,
             &route,
             &obstructions,
+            &mut camera_obstruction_smoothing,
             scenario.fixed_dt,
         );
         camera_transform.translation = camera_step.position;
         camera_transform.rotation = camera_step.rotation;
+        let (diagnostics_previous_position, diagnostics_previous_rotation) =
+            if camera_diagnostics_initialized {
+                (previous_camera_position, previous_camera_rotation)
+            } else {
+                (camera_transform.translation, camera_transform.rotation)
+            };
+        camera_diagnostics_initialized = true;
         objective.update(
             &route,
             scenario.target_island_name,
@@ -196,8 +204,8 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
 
         if scenario.should_sample(frame) {
             let camera_diagnostics = CameraDiagnosticsSample::new(
-                previous_camera_position,
-                previous_camera_rotation,
+                diagnostics_previous_position,
+                diagnostics_previous_rotation,
                 camera_transform,
                 state.position,
                 follow_direction,
@@ -439,6 +447,7 @@ fn step_camera_frame(
     orbit: nau_engine::camera::CameraOrbit,
     route: &SkyRoute,
     obstructions: &[CameraObstruction],
+    obstruction_smoothing: &mut CameraObstructionSmoothingState,
     dt: f32,
 ) -> CameraStepSample {
     let frame = step_camera_with_direction(
@@ -454,10 +463,11 @@ fn step_camera_frame(
         camera_orbit_alignment_degrees(frame.position, frame.look_target, follow_direction, orbit);
     let camera_floor_y = route.ground_at(frame.position).floor_y;
     let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
-    let obstruction = avoid_camera_obstructions(
+    let obstruction = avoid_camera_obstructions_with_preferred_offset(
         frame,
         obstructions.iter().copied(),
         CAMERA_OBSTRUCTION_CLEARANCE,
+        obstruction_smoothing.readable_offset(),
     );
     let camera_floor_y = route.ground_at(obstruction.frame.position).floor_y;
     let frame = lift_camera_above_floor(
@@ -465,7 +475,13 @@ fn step_camera_frame(
         camera_floor_y,
         CAMERA_MIN_SURFACE_CLEARANCE,
     );
-    let frame = clamp_camera_step(frame, current.translation, CAMERA_MAX_STEP_M);
+    let frame = smooth_camera_obstruction(
+        frame,
+        obstruction_smoothing,
+        obstruction.hit_count,
+        obstruction.adjusted_distance_m,
+        dt,
+    );
 
     CameraStepSample {
         position: frame.position,
@@ -508,7 +524,7 @@ mod tests {
     }
 
     #[test]
-    fn sim_camera_obstruction_metrics_report_applied_resolution_after_final_clamp() {
+    fn sim_camera_obstruction_metrics_report_applied_resolution_without_global_follow_clamp() {
         let route = SkyRoute::default();
         let follow = FollowCamera::default();
         let current = Transform::from_translation(
@@ -522,6 +538,7 @@ mod tests {
             route_obstruction_spires(&route)[0].center,
             route_obstruction_spires(&route)[0].half_extents,
         );
+        let mut obstruction_smoothing = CameraObstructionSmoothingState::default();
 
         let sample = step_camera_frame(
             current,
@@ -531,12 +548,16 @@ mod tests {
             nau_engine::camera::CameraOrbit::default(),
             &route,
             &[blocker],
+            &mut obstruction_smoothing,
             1.0 / 60.0,
         );
 
         assert!(sample.obstruction_hits > 0);
         assert!(sample.obstruction_adjustment_m >= 1.0);
-        assert!(current.translation.distance(sample.position) <= CAMERA_MAX_STEP_M + 0.001);
+        assert!(
+            sample.position.distance(START_POSITION) <= 16.0,
+            "obstruction handling should not leave the camera zoomed far away from the player"
+        );
     }
 
     #[test]

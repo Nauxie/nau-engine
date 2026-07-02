@@ -1,4 +1,6 @@
-use crate::generated_content::TERRAIN_BIOME_PALETTE_COUNT;
+use crate::generated_content::{
+    IslandUnderRouteVisualKind, IslandWaterVisualKind, TERRAIN_BIOME_PALETTE_COUNT,
+};
 use bevy::prelude::*;
 use nau_engine::world::IslandTerrainArchetype;
 
@@ -232,6 +234,8 @@ impl IslandContentDiagnostics {
                 self.generated_landing_garden_marker_count += 1;
             }
             GeneratedLandmarkKind::PondSurface => self.generated_pond_surface_count += 1,
+            GeneratedLandmarkKind::WaterFeature => {}
+            GeneratedLandmarkKind::CaveFeature => {}
         }
     }
 
@@ -280,6 +284,23 @@ pub(crate) enum GeneratedLandmarkKind {
     LaunchBeacon,
     LandingGardenMarker,
     PondSurface,
+    WaterFeature,
+    CaveFeature,
+}
+
+impl GeneratedLandmarkKind {
+    pub(crate) fn from_under_route_visual(_kind: IslandUnderRouteVisualKind) -> Self {
+        Self::CaveFeature
+    }
+
+    pub(crate) fn from_water_visual(kind: IslandWaterVisualKind) -> Self {
+        match kind {
+            IslandWaterVisualKind::PondSurface => Self::PondSurface,
+            IslandWaterVisualKind::PlateauLakeSurface
+            | IslandWaterVisualKind::PlateauWaterfallRibbon
+            | IslandWaterVisualKind::PlateauWaterfallMist => Self::WaterFeature,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -350,6 +371,8 @@ mod tests {
         diagnostics.record_generated_landmark(GeneratedLandmarkKind::LaunchBeacon, 306);
         diagnostics.record_generated_landmark(GeneratedLandmarkKind::LandingGardenMarker, 39);
         diagnostics.record_generated_landmark(GeneratedLandmarkKind::PondSurface, 65);
+        diagnostics.record_generated_landmark(GeneratedLandmarkKind::WaterFeature, 180);
+        diagnostics.record_generated_landmark(GeneratedLandmarkKind::CaveFeature, 220);
         diagnostics.record_generated_weather_cloud(7, 315, 14, 4.2, true);
         diagnostics.record_generated_weather_cloud(4, 180, 8, 0.8, false);
 
@@ -363,7 +386,7 @@ mod tests {
         assert_eq!(diagnostics.detail_biome_palette_count(), 2);
         assert_eq!(diagnostics.generated_rock_count, 2);
         assert_eq!(diagnostics.min_rock_mesh_vertices, 74);
-        assert_eq!(diagnostics.generated_landmark_count, 4);
+        assert_eq!(diagnostics.generated_landmark_count, 6);
         assert_eq!(diagnostics.generated_route_cairn_count, 1);
         assert_eq!(diagnostics.generated_launch_beacon_count, 1);
         assert_eq!(diagnostics.generated_landing_garden_marker_count, 1);

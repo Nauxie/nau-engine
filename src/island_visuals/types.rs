@@ -23,9 +23,9 @@ pub(super) enum IslandVisualLayer {
 impl IslandVisualLayer {
     pub(super) fn is_resident_in(self, activation: StreamActivation, band: LodBand) -> bool {
         match self {
-            Self::Terrain => activation.is_active(),
+            Self::Terrain => activation.is_active() && band == LodBand::Near,
             Self::Detail => activation.is_active() && band == LodBand::Near,
-            Self::Beacon => true,
+            Self::Beacon => band != LodBand::Far,
             Self::Impostor => !activation.is_active() || band != LodBand::Near,
             Self::Collision => activation.is_active() && band == LodBand::Near,
         }
@@ -206,6 +206,22 @@ impl IslandVisualCatalog {
             })
             .count()
     }
+
+    #[cfg(test)]
+    pub(crate) fn named_obstacle_count(
+        &self,
+        island_name: &'static str,
+        name: &'static str,
+    ) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| {
+                entry.key.island_name == island_name
+                    && entry.name == name
+                    && entry.obstacle.is_some()
+            })
+            .count()
+    }
 }
 
 #[derive(Resource, Default)]
@@ -218,5 +234,46 @@ impl IslandStreamState {
     #[cfg(test)]
     pub(crate) fn loaded_mesh_count(&self) -> usize {
         self.loaded_meshes.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn terrain_detail_and_collision_are_near_lod_only() {
+        for layer in [
+            IslandVisualLayer::Terrain,
+            IslandVisualLayer::Detail,
+            IslandVisualLayer::Collision,
+        ] {
+            assert!(layer.is_resident_in(StreamActivation::Active, LodBand::Near));
+            assert!(!layer.is_resident_in(StreamActivation::Active, LodBand::Mid));
+            assert!(!layer.is_resident_in(StreamActivation::Active, LodBand::Far));
+            assert!(!layer.is_resident_in(StreamActivation::Inactive, LodBand::Near));
+        }
+    }
+
+    #[test]
+    fn impostors_cover_mid_far_and_inactive_islands() {
+        assert!(
+            !IslandVisualLayer::Impostor.is_resident_in(StreamActivation::Active, LodBand::Near)
+        );
+        assert!(IslandVisualLayer::Impostor.is_resident_in(StreamActivation::Active, LodBand::Mid));
+        assert!(IslandVisualLayer::Impostor.is_resident_in(StreamActivation::Active, LodBand::Far));
+        assert!(
+            IslandVisualLayer::Impostor.is_resident_in(StreamActivation::Inactive, LodBand::Near)
+        );
+    }
+
+    #[test]
+    fn beacons_stay_visible_until_far_lod() {
+        assert!(IslandVisualLayer::Beacon.is_resident_in(StreamActivation::Active, LodBand::Near));
+        assert!(IslandVisualLayer::Beacon.is_resident_in(StreamActivation::Inactive, LodBand::Mid));
+        assert!(!IslandVisualLayer::Beacon.is_resident_in(StreamActivation::Active, LodBand::Far));
+        assert!(
+            !IslandVisualLayer::Beacon.is_resident_in(StreamActivation::Inactive, LodBand::Far)
+        );
     }
 }

@@ -5,7 +5,9 @@ use crate::authored_assets::{
     AuthoredPlayerPoseNode, AuthoredVisualScene, AuthoredVisualSceneRole,
     GeneratedPlayerPlaceholder, VisualAssetRegistry,
 };
-use crate::camera_runtime::{CameraDiagnostics, CameraFollowFilter};
+use crate::camera_runtime::{
+    CameraDiagnostics, CameraFollowFilter, CameraObstructionMemory, follow_camera_transform,
+};
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
 use crate::power_up_runtime::{PowerUpCollectionState, collect_aerial_power_ups};
 use crate::world_collision_runtime::{
@@ -20,7 +22,8 @@ use nau_engine::animation::{
 };
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::{
-    CameraControlState, movement_facing_from_follow_direction as camera_movement_facing,
+    CameraControlState, FollowCamera, FollowCameraState,
+    movement_facing_from_follow_direction as camera_movement_facing,
 };
 use nau_engine::environment::{
     LiftField, WindField, WindForceApplication, apply_lift_fields, apply_wind_fields,
@@ -313,6 +316,54 @@ pub(crate) fn fly_player(
             dt,
         ),
     );
+}
+
+pub(crate) fn reset_player_to_playtest_position(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    route: Res<SkyRoute>,
+    mut camera_control: ResMut<CameraControlState>,
+    mut player: Query<
+        (
+            &mut Transform,
+            &mut Velocity,
+            &mut FlightController,
+            &mut AnimationState,
+        ),
+        With<Player>,
+    >,
+    mut camera: Query<
+        (
+            &mut Transform,
+            &FollowCamera,
+            &mut FollowCameraState,
+            &mut CameraObstructionMemory,
+        ),
+        CameraFollowFilter,
+    >,
+) {
+    if !keyboard.just_pressed(KeyCode::KeyR) {
+        return;
+    }
+    let Ok((mut transform, mut velocity, mut controller, mut animation)) = player.single_mut()
+    else {
+        return;
+    };
+
+    let reset_position = route.playtest_reset_position();
+    transform.translation = reset_position;
+    transform.rotation = Quat::IDENTITY;
+    velocity.0 = Vec3::ZERO;
+    *controller = FlightController::default();
+    *animation = AnimationState::default();
+
+    if let Ok((mut camera_transform, follow, mut follow_state, mut obstruction_memory)) =
+        camera.single_mut()
+    {
+        *camera_control = CameraControlState::default();
+        *follow_state = FollowCameraState::default();
+        *obstruction_memory = CameraObstructionMemory::default();
+        *camera_transform = follow_camera_transform(reset_position, follow);
+    }
 }
 
 pub(crate) fn keyboard_flight_input(keyboard: &ButtonInput<KeyCode>) -> FlightInput {

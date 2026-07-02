@@ -611,7 +611,7 @@ impl LiftRouteNode {
     }
 }
 
-pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 5] = [
+pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 14] = [
     LiftRouteNode {
         name: "launch terrace updraft",
         center: Vec3::new(12.0, 52.0, -78.0),
@@ -639,7 +639,7 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 5] = [
     LiftRouteNode {
         name: "stratos shelf updraft",
         center: Vec3::new(-22.0, 174.0, -1138.0),
-        half_extents: Vec3::new(36.0, 58.0, 36.0),
+        half_extents: Vec3::new(42.0, 78.0, 76.0),
         lift_accel: 24.0,
         max_upward_speed: 25.0,
         visual_speed: 16.0,
@@ -652,9 +652,81 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 5] = [
         max_upward_speed: 26.0,
         visual_speed: 17.0,
     },
+    LiftRouteNode {
+        name: "upper sky shelf updraft",
+        center: Vec3::new(-210.0, 302.0, -1720.0),
+        half_extents: Vec3::new(44.0, 64.0, 44.0),
+        lift_accel: 23.0,
+        max_upward_speed: 26.0,
+        visual_speed: 17.0,
+    },
+    LiftRouteNode {
+        name: "bluevault basin updraft",
+        center: Vec3::new(90.0, 395.0, -1905.0),
+        half_extents: Vec3::new(48.0, 70.0, 48.0),
+        lift_accel: 23.0,
+        max_upward_speed: 27.0,
+        visual_speed: 17.5,
+    },
+    LiftRouteNode {
+        name: "sunspire garden updraft",
+        center: Vec3::new(420.0, 528.0, -2240.0),
+        half_extents: Vec3::new(46.0, 76.0, 46.0),
+        lift_accel: 22.0,
+        max_upward_speed: 27.0,
+        visual_speed: 18.0,
+    },
+    LiftRouteNode {
+        name: "great sky plateau updraft",
+        center: Vec3::new(-120.0, 720.0, -2600.0),
+        half_extents: Vec3::new(54.0, 86.0, 54.0),
+        lift_accel: 22.0,
+        max_upward_speed: 28.0,
+        visual_speed: 18.5,
+    },
+    LiftRouteNode {
+        name: "upper crown updraft",
+        center: Vec3::new(-360.0, 1008.0, -3200.0),
+        half_extents: Vec3::new(58.0, 92.0, 58.0),
+        lift_accel: 22.0,
+        max_upward_speed: 28.0,
+        visual_speed: 19.0,
+    },
+    LiftRouteNode {
+        name: "low reef updraft",
+        center: Vec3::new(110.0, 44.0, -210.0),
+        half_extents: Vec3::new(36.0, 34.0, 36.0),
+        lift_accel: 20.0,
+        max_upward_speed: 19.0,
+        visual_speed: 12.0,
+    },
+    LiftRouteNode {
+        name: "western catch updraft",
+        center: Vec3::new(-168.0, 72.0, -320.0),
+        half_extents: Vec3::new(38.0, 42.0, 38.0),
+        lift_accel: 20.0,
+        max_upward_speed: 20.0,
+        visual_speed: 12.5,
+    },
+    LiftRouteNode {
+        name: "skyhook basin updraft",
+        center: Vec3::new(-238.0, 156.0, -882.0),
+        half_extents: Vec3::new(44.0, 56.0, 44.0),
+        lift_accel: 22.0,
+        max_upward_speed: 24.0,
+        visual_speed: 15.0,
+    },
+    LiftRouteNode {
+        name: "cloudfall meadow updraft",
+        center: Vec3::new(-144.0, 176.0, -1208.0),
+        half_extents: Vec3::new(46.0, 60.0, 46.0),
+        lift_accel: 22.0,
+        max_upward_speed: 25.0,
+        visual_speed: 16.0,
+    },
 ];
 
-pub const VISUAL_CROSSWIND_FIELD_COUNT: usize = 7;
+pub const VISUAL_CROSSWIND_FIELD_COUNT: usize = 16;
 
 pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
     [
@@ -699,6 +771,60 @@ pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
             Vec3::new(70.0, 44.0, 42.0),
             Vec3::new(-0.35, 0.0, 0.94),
             11.5,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[5].center,
+            Vec3::new(72.0, 44.0, 46.0),
+            Vec3::new(0.42, 0.0, -0.84),
+            11.5,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[6].center,
+            Vec3::new(74.0, 46.0, 48.0),
+            Vec3::new(-0.74, 0.0, -0.36),
+            12.0,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[7].center,
+            Vec3::new(76.0, 48.0, 48.0),
+            Vec3::new(-0.58, 0.0, 0.72),
+            12.0,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[8].center,
+            Vec3::new(84.0, 52.0, 54.0),
+            Vec3::new(0.64, 0.0, 0.42),
+            12.5,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[9].center,
+            Vec3::new(88.0, 56.0, 58.0),
+            Vec3::new(-0.38, 0.0, -0.92),
+            13.0,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[10].center,
+            Vec3::new(44.0, 32.0, 36.0),
+            Vec3::new(0.66, 0.0, 0.22),
+            8.5,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[11].center,
+            Vec3::new(46.0, 34.0, 38.0),
+            Vec3::new(-0.26, 0.0, -0.86),
+            9.0,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[12].center,
+            Vec3::new(58.0, 40.0, 42.0),
+            Vec3::new(0.86, 0.0, -0.20),
+            10.5,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[13].center,
+            Vec3::new(62.0, 42.0, 44.0),
+            Vec3::new(-0.52, 0.0, 0.66),
+            11.0,
         ),
     ]
 }

@@ -6,11 +6,12 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 
-pub(crate) const CLOUD_BANK_LOBES: usize = 18;
-pub(crate) const CLOUD_VEIL_LOBES: usize = 9;
-pub(crate) const CLOUD_WISP_CARDS_PER_LOBE: usize = 4;
-pub(crate) const CLOUD_FILAMENT_RIBBONS_PER_LOBE: usize = 3;
-const CLOUD_FILAMENT_RIBBON_SEGMENTS: usize = 5;
+pub(crate) const CLOUD_BANK_LOBES: usize = 22;
+pub(crate) const CLOUD_VEIL_LOBES: usize = 12;
+pub(crate) const CLOUD_WISP_CARDS_PER_LOBE: usize = 5;
+pub(crate) const CLOUD_FILAMENT_RIBBONS_PER_LOBE: usize = 4;
+const CLOUD_FILAMENT_RIBBON_SEGMENTS: usize = 6;
+const CLOUD_VERTICAL_LAYERS: usize = 7;
 #[cfg(test)]
 pub(crate) const CLOUD_FILAMENT_RIBBON_VERTICES: usize = (CLOUD_FILAMENT_RIBBON_SEGMENTS + 1) * 4;
 
@@ -22,33 +23,40 @@ pub(crate) fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
     let mut positions = Vec::new();
     let mut normals = Vec::new();
     let mut uvs = Vec::new();
+    let mut colors = Vec::new();
     let mut indices = Vec::new();
 
     for lobe in 0..lobe_count {
         let phase = lobe as f32 / lobe_count as f32 * std::f32::consts::TAU
             + random_unit(seed, lobe as u32, 5) * 0.8;
-        let layer = lobe % 5;
+        let layer = lobe % CLOUD_VERTICAL_LAYERS;
         let layer_height = match layer {
-            0 => -0.52,
-            1 => -0.22,
-            2 => 0.08,
-            3 => 0.34,
-            _ => 0.60,
+            0 => -0.68,
+            1 => -0.42,
+            2 => -0.16,
+            3 => 0.10,
+            4 => 0.34,
+            5 => 0.56,
+            _ => 0.74,
         };
         let layer_spread = match layer {
-            0 => 0.86,
-            1 => 0.68,
-            2 => 0.52,
-            3 => 0.36,
-            _ => 0.22,
+            0 => 0.98,
+            1 => 0.82,
+            2 => 0.66,
+            3 => 0.52,
+            4 => 0.38,
+            5 => 0.27,
+            _ => 0.18,
         };
         let radius =
-            0.36 + random_unit(seed, lobe as u32, 19) * 0.27 + if layer <= 1 { 0.08 } else { 0.0 };
+            0.40 + random_unit(seed, lobe as u32, 19) * 0.30 + if layer <= 2 { 0.10 } else { 0.0 };
         let center = Vec3::new(
             phase.cos() * (0.18 + layer_spread * random_unit(seed, lobe as u32, 29)),
-            layer_height + (random_unit(seed, lobe as u32, 41) - 0.5) * 0.16,
-            phase.sin() * (0.14 + layer_spread * random_unit(seed, lobe as u32, 53) * 0.82),
+            layer_height + (random_unit(seed, lobe as u32, 41) - 0.5) * 0.20,
+            phase.sin() * (0.18 + layer_spread * random_unit(seed, lobe as u32, 53) * 0.96),
         );
+        let lobe_color = cloud_lobe_color(seed, lobe as u32, layer, false);
+        let lobe_start = positions.len();
         append_ellipsoid_lobe(
             &mut positions,
             &mut normals,
@@ -56,15 +64,19 @@ pub(crate) fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
             &mut indices,
             center,
             Vec3::new(
-                radius * (1.24 + layer as f32 * 0.035),
-                radius * (0.54 + layer as f32 * 0.035),
-                radius * (0.84 + layer as f32 * 0.05),
+                radius * (1.34 + layer as f32 * 0.025),
+                radius * (0.58 + layer as f32 * 0.030),
+                radius * (0.92 + layer as f32 * 0.045),
             ),
             5,
             10,
             seed.wrapping_add(lobe as u32 * 101),
-            0.15,
+            0.18,
         );
+        colors.extend(std::iter::repeat_n(
+            lobe_color,
+            positions.len() - lobe_start,
+        ));
 
         for card in 0..CLOUD_WISP_CARDS_PER_LOBE {
             let lower_depth_card = card == CLOUD_WISP_CARDS_PER_LOBE - 1;
@@ -74,13 +86,13 @@ pub(crate) fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
             let outward = if lower_depth_card {
                 Vec3::new(
                     card_phase.cos() * 0.86,
-                    -0.16 - layer as f32 * 0.018,
-                    card_phase.sin() * 1.12,
+                    -0.20 - layer as f32 * 0.020,
+                    card_phase.sin() * 1.18,
                 )
             } else {
                 Vec3::new(
                     card_phase.cos(),
-                    0.10 + layer as f32 * 0.025,
+                    0.12 + layer as f32 * 0.024,
                     card_phase.sin(),
                 )
             }
@@ -95,28 +107,30 @@ pub(crate) fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
                 center
                     + outward
                         * radius
-                        * (0.78 + random_unit(seed, lobe as u32, 223 + card as u32) * 0.22)
+                        * (0.84 + random_unit(seed, lobe as u32, 223 + card as u32) * 0.28)
                     - Vec3::Y
                         * radius
-                        * (0.18 + random_unit(seed, lobe as u32, 239 + card as u32) * 0.10)
+                        * (0.22 + random_unit(seed, lobe as u32, 239 + card as u32) * 0.14)
             } else {
                 center
                     + outward
                         * radius
-                        * (0.58 + random_unit(seed, lobe as u32, 223 + card as u32) * 0.22)
+                        * (0.62 + random_unit(seed, lobe as u32, 223 + card as u32) * 0.26)
             };
             let half_width = radius
                 * if lower_depth_card {
-                    0.70 + random_unit(seed, lobe as u32, 229 + card as u32) * 0.18
+                    0.82 + random_unit(seed, lobe as u32, 229 + card as u32) * 0.22
                 } else {
-                    0.62 + random_unit(seed, lobe as u32, 229 + card as u32) * 0.22
+                    0.68 + random_unit(seed, lobe as u32, 229 + card as u32) * 0.25
                 };
             let half_height = radius
                 * if lower_depth_card {
-                    0.28 + random_unit(seed, lobe as u32, 233 + card as u32) * 0.12
+                    0.32 + random_unit(seed, lobe as u32, 233 + card as u32) * 0.14
                 } else {
-                    0.20 + random_unit(seed, lobe as u32, 233 + card as u32) * 0.10
+                    0.24 + random_unit(seed, lobe as u32, 233 + card as u32) * 0.12
                 };
+            let card_color = cloud_lobe_color(seed, lobe as u32 + card as u32 * 17, layer, true);
+            let card_start = positions.len();
             append_double_sided_detail_card(
                 &mut positions,
                 &mut normals,
@@ -128,6 +142,10 @@ pub(crate) fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
                 half_width,
                 half_height,
             );
+            colors.extend(std::iter::repeat_n(
+                card_color,
+                positions.len() - card_start,
+            ));
         }
 
         for ribbon in 0..CLOUD_FILAMENT_RIBBONS_PER_LOBE {
@@ -135,6 +153,7 @@ pub(crate) fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
                 &mut positions,
                 &mut normals,
                 &mut uvs,
+                &mut colors,
                 &mut indices,
                 center,
                 phase,
@@ -153,7 +172,38 @@ pub(crate) fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
     .with_inserted_indices(Indices::U32(indices))
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+fn cloud_lobe_color(seed: u32, lobe: u32, layer: usize, wisp: bool) -> [f32; 4] {
+    let layer_t = layer as f32 / (CLOUD_VERTICAL_LAYERS - 1) as f32;
+    let sun_wash = Vec3::new(1.0, 0.88, 0.66);
+    let vapor = Vec3::new(0.78, 0.88, 1.0);
+    let lavender_shadow = Vec3::new(0.58, 0.66, 0.82);
+    let warm_variation = random_unit(seed, lobe, 401) * 0.18;
+    let cool_variation = random_unit(seed, lobe, 409) * 0.14;
+    let color = vapor
+        .lerp(
+            sun_wash,
+            (0.24 + layer_t * 0.42 + warm_variation).clamp(0.0, 1.0),
+        )
+        .lerp(
+            lavender_shadow,
+            ((1.0 - layer_t) * 0.22 + cool_variation).clamp(0.0, 0.48),
+        );
+    let alpha = if wisp {
+        0.34 + layer_t * 0.07
+    } else {
+        0.50 + layer_t * 0.10
+    };
+
+    [
+        color.x.clamp(0.0, 1.0),
+        color.y.clamp(0.0, 1.0),
+        color.z.clamp(0.0, 1.0),
+        alpha,
+    ]
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -161,6 +211,7 @@ fn append_cloud_filament_ribbon(
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
     uvs: &mut Vec<[f32; 2]>,
+    colors: &mut Vec<[f32; 4]>,
     indices: &mut Vec<u32>,
     center: Vec3,
     phase: f32,
@@ -203,6 +254,8 @@ fn append_cloud_filament_ribbon(
         ]);
         normals.extend([normal.to_array(), normal.to_array()]);
         uvs.extend([[0.0, uv_y], [1.0, uv_y]]);
+        let color = cloud_lobe_color(seed, lobe + segment as u32 * 13 + ribbon * 29, 2, true);
+        colors.extend([color, color]);
     }
 
     for segment in 0..CLOUD_FILAMENT_RIBBON_SEGMENTS {
@@ -219,6 +272,7 @@ fn append_cloud_filament_ribbon(
         positions.push(positions[start as usize + index]);
         normals.push((-normal).to_array());
         uvs.push(uvs[start as usize + index]);
+        colors.push(colors[start as usize + index]);
     }
     for segment in 0..CLOUD_FILAMENT_RIBBON_SEGMENTS {
         let a = reverse_start + (segment * 2) as u32;

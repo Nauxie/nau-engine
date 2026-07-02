@@ -19,12 +19,37 @@ pub(crate) struct EvalOptions {
     pub(crate) capture_screenshot: bool,
 }
 
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RunMode {
+    Debug,
+    Play,
+}
+
+impl RunMode {
+    pub(crate) fn debug_readout_enabled(self) -> bool {
+        matches!(self, Self::Debug)
+    }
+
+    pub(crate) fn debug_visuals_enabled(self) -> bool {
+        matches!(self, Self::Debug)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum CliAction {
-    Run { eval: Option<Box<EvalOptions>> },
-    ExportTerrain { output_dir: PathBuf },
-    ExportVisualContent { output_dir: PathBuf },
-    ExportWindVisuals { output_dir: PathBuf },
+    Run {
+        eval: Option<Box<EvalOptions>>,
+        mode: RunMode,
+    },
+    ExportTerrain {
+        output_dir: PathBuf,
+    },
+    ExportVisualContent {
+        output_dir: PathBuf,
+    },
+    ExportWindVisuals {
+        output_dir: PathBuf,
+    },
     Help,
 }
 
@@ -158,11 +183,14 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
     let mut export_wind_visuals_output = None;
     let mut capture_screenshot = true;
     let mut saw_eval = false;
+    let mut play_mode = false;
     let mut args = args.into_iter();
 
     while let Some(arg) = args.next() {
         if arg == "--help" || arg == "-h" {
             return Ok(CliAction::Help);
+        } else if arg == "--play" {
+            play_mode = true;
         } else if arg == "--eval" {
             saw_eval = true;
             eval_name = Some(
@@ -216,6 +244,12 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
     if export_path_count > 1 {
         return Err("export paths cannot be combined".to_string());
     }
+    if play_mode && saw_eval {
+        return Err("--play cannot be combined with --eval".to_string());
+    }
+    if play_mode && export_path_count > 0 {
+        return Err("--play cannot be combined with export commands".to_string());
+    }
 
     if let Some(output_dir) = export_terrain_output {
         if saw_eval {
@@ -255,12 +289,19 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
         None
     };
 
-    Ok(CliAction::Run { eval })
+    Ok(CliAction::Run {
+        eval,
+        mode: if play_mode {
+            RunMode::Play
+        } else {
+            RunMode::Debug
+        },
+    })
 }
 
 pub(crate) fn usage() -> String {
     format!(
-        "Usage:\n  cargo run\n  cargo run -- --eval <scenario> [--eval-output <dir>] [--eval-no-screenshot]\n  cargo run -- --export-terrain <dir>\n  cargo run -- --export-visual-content <dir>\n  cargo run -- --export-wind-visuals <dir>\n\nScenarios: {}",
+        "Usage:\n  cargo run\n  cargo run -- --play\n  cargo run -- --eval <scenario> [--eval-output <dir>] [--eval-no-screenshot]\n  cargo run -- --export-terrain <dir>\n  cargo run -- --export-visual-content <dir>\n  cargo run -- --export-wind-visuals <dir>\n\nScenarios: {}",
         SCENARIO_NAMES.join(", ")
     )
 }

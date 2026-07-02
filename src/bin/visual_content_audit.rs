@@ -38,6 +38,13 @@ const MIN_WEATHER_CLOUD_SCALED_DEPTH_SPAN_M: f64 = 12.0;
 const MIN_TREE_TRUNK_HEIGHT_RANGE_M: f64 = 1.5;
 const MIN_TREE_CANOPY_RADIUS_RANGE_M: f64 = 0.35;
 const MIN_LANDMARK_COUNT: u64 = 60;
+const MIN_LANDMARK_KIND_COUNT: u64 = 8;
+const MIN_SMALL_ISLAND_COUNT: u64 = 10;
+const MIN_PLATEAU_LANDMARK_COUNT: u64 = 10;
+const MIN_PLATEAU_WATERFALL_RIBBON_COUNT: u64 = 2;
+const MIN_PLATEAU_WATERFALL_MIST_COUNT: u64 = 2;
+const MIN_UNDER_ROUTE_VISUAL_COUNT: u64 = 3;
+const MIN_UNDER_ROUTE_CAVE_MOUTH_COUNT: u64 = 2;
 const MIN_ROUTE_CAIRN_COUNT: u64 = 16;
 const MIN_LAUNCH_BEACON_COUNT: u64 = 1;
 const MIN_LANDING_GARDEN_MARKER_COUNT: u64 = 4;
@@ -51,6 +58,10 @@ const MIN_LANDING_GARDEN_MARKER_MESH_VERTICES: u64 = 39;
 const MIN_LANDING_GARDEN_MARKER_VERTICAL_SPAN_M: f64 = 0.12;
 const MIN_POND_SURFACE_MESH_VERTICES: u64 = 65;
 const MIN_POND_SURFACE_VERTICAL_SPAN_M: f64 = 0.015;
+const MIN_PLATEAU_LANDMARK_VERTEX_TOTAL: u64 = 2_500;
+const MIN_MAX_PLATEAU_LANDMARK_MESH_VERTICES: u64 = 600;
+const MIN_PLATEAU_WATERFALL_VERTICAL_SPAN_M: f64 = 45.0;
+const MIN_UNDER_ROUTE_VISUAL_VERTICAL_SPAN_M: f64 = 4.0;
 const MIN_OBSTRUCTION_SPIRE_MESH_VERTICES: u64 = 300;
 const MIN_OBSTRUCTION_SPIRE_TRIANGLE_COUNT: u64 = 500;
 const MIN_OBSTRUCTION_SPIRE_VERTICAL_SPAN_M: f64 = 3.0;
@@ -188,6 +199,48 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "landmark_count",
         value_u64(counts, "landmark_count"),
         MIN_LANDMARK_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "landmark_kind_count",
+        value_u64(counts, "landmark_kind_count"),
+        MIN_LANDMARK_KIND_COUNT,
+        "kinds",
+    ));
+    checks.push(check_at_least_u64(
+        "small_island_count",
+        value_u64(counts, "small_island_count"),
+        MIN_SMALL_ISLAND_COUNT,
+        "islands",
+    ));
+    checks.push(check_at_least_u64(
+        "plateau_landmark_count",
+        value_u64(counts, "plateau_landmark_count"),
+        MIN_PLATEAU_LANDMARK_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "plateau_waterfall_ribbon_count",
+        value_u64(counts, "plateau_waterfall_ribbon_count"),
+        MIN_PLATEAU_WATERFALL_RIBBON_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "plateau_waterfall_mist_count",
+        value_u64(counts, "plateau_waterfall_mist_count"),
+        MIN_PLATEAU_WATERFALL_MIST_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "under_route_visual_count",
+        value_u64(counts, "under_route_visual_count"),
+        MIN_UNDER_ROUTE_VISUAL_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "under_route_cave_mouth_count",
+        value_u64(counts, "under_route_cave_mouth_count"),
+        MIN_UNDER_ROUTE_CAVE_MOUTH_COUNT,
         "meshes",
     ));
     checks.push(check_at_least_u64(
@@ -398,6 +451,30 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "pond_surface_vertical_span",
         value_f64(minimums, "pond_surface_vertical_span_m"),
         MIN_POND_SURFACE_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "plateau_landmark_vertex_total",
+        value_u64(minimums, "plateau_landmark_vertex_total"),
+        MIN_PLATEAU_LANDMARK_VERTEX_TOTAL,
+        "vertices",
+    ));
+    checks.push(check_at_least_u64(
+        "max_plateau_landmark_mesh_vertices",
+        value_u64(minimums, "max_plateau_landmark_mesh_vertices"),
+        MIN_MAX_PLATEAU_LANDMARK_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_f64(
+        "plateau_waterfall_vertical_span",
+        value_f64(minimums, "plateau_waterfall_vertical_span_m"),
+        MIN_PLATEAU_WATERFALL_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "under_route_visual_vertical_span",
+        value_f64(minimums, "under_route_visual_vertical_span_m"),
+        MIN_UNDER_ROUTE_VISUAL_VERTICAL_SPAN_M,
         "m",
     ));
     checks.push(check_at_least_u64(
@@ -736,6 +813,13 @@ mod tests {
                 "weather_cloud_bank_count": 0,
                 "weather_cloud_veil_count": 0,
                 "landmark_count": 1,
+                "landmark_kind_count": 1,
+                "small_island_count": 1,
+                "plateau_landmark_count": 1,
+                "plateau_waterfall_ribbon_count": 0,
+                "plateau_waterfall_mist_count": 0,
+                "under_route_visual_count": 0,
+                "under_route_cave_mouth_count": 0,
                 "route_cairn_count": 0,
                 "launch_beacon_count": 0,
                 "landing_garden_marker_count": 0,
@@ -773,6 +857,10 @@ mod tests {
                 "landing_garden_marker_vertical_span_m": 0.01,
                 "pond_surface_mesh_vertices": 6,
                 "pond_surface_vertical_span_m": 0.0,
+                "plateau_landmark_vertex_total": 10,
+                "max_plateau_landmark_mesh_vertices": 10,
+                "plateau_waterfall_vertical_span_m": 3.0,
+                "under_route_visual_vertical_span_m": 0.5,
                 "obstruction_spire_mesh_vertices": 8,
                 "obstruction_spire_triangle_count": 12,
                 "obstruction_spire_vertical_span_m": 0.4,
@@ -830,6 +918,13 @@ mod tests {
         );
         for name in [
             "landmark_count",
+            "landmark_kind_count",
+            "small_island_count",
+            "plateau_landmark_count",
+            "plateau_waterfall_ribbon_count",
+            "plateau_waterfall_mist_count",
+            "under_route_visual_count",
+            "under_route_cave_mouth_count",
             "route_cairn_count",
             "launch_beacon_count",
             "landing_garden_marker_count",
@@ -843,6 +938,10 @@ mod tests {
             "landing_garden_marker_vertical_span",
             "pond_surface_mesh_vertices",
             "pond_surface_vertical_span",
+            "plateau_landmark_vertex_total",
+            "max_plateau_landmark_mesh_vertices",
+            "plateau_waterfall_vertical_span",
+            "under_route_visual_vertical_span",
             "obstruction_spire_mesh_vertices",
             "obstruction_spire_triangle_count",
             "obstruction_spire_vertical_span",

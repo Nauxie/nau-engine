@@ -17,6 +17,13 @@ pub(crate) fn island_cliff_surface_position(
     t: f32,
 ) -> [f32; 3] {
     let phase = island_index as f32 * 0.73;
+    if t <= f32::EPSILON {
+        let radius_scale = island_silhouette_scale(island, angle);
+        let x = island.center.x + angle.cos() * island.half_extents.x * radius_scale;
+        let z = island.center.z + angle.sin() * island.half_extents.y * radius_scale;
+        return [x, island.mesh_top_y_at(Vec3::new(x, island.center.y, z)), z];
+    }
+
     let shelf_variation = 1.0
         + t * 0.035 * (angle * 5.0 + phase + t * 1.7).sin()
         + t * 0.025 * (angle * 13.0 - phase * 0.3 + t * 2.1).cos();

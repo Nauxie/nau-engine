@@ -27,10 +27,6 @@ pub(crate) fn island_silhouette_scale(island: SkyIsland, angle: f32) -> f32 {
     island.visual_silhouette_scale(angle)
 }
 
-pub(crate) fn island_playable_silhouette_scale(island: SkyIsland, angle: f32) -> f32 {
-    island.playable_silhouette_scale(angle)
-}
-
 pub(crate) fn island_polar_position(
     island: SkyIsland,
     angle: f32,

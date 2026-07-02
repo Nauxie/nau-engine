@@ -2,6 +2,7 @@ use super::*;
 use bevy::mesh::{Indices, VertexAttributeValues};
 use nau_engine::animation::PlayerPoseIntent;
 use nau_engine::movement::FlightInput;
+use nau_engine::world::{IslandPlateauRegion, IslandScaleClass, IslandTerrainArchetype};
 
 fn test_island() -> SkyIsland {
     SkyIsland::new(
@@ -49,12 +50,12 @@ fn normalized_radius(island: SkyIsland, position: [f32; 3]) -> f32 {
     .length()
 }
 
-fn normalized_playable_radius(island: SkyIsland, position: [f32; 3]) -> f32 {
+fn normalized_visual_radius(island: SkyIsland, position: [f32; 3]) -> f32 {
     let normalized = Vec2::new(
         (position[0] - island.center.x) / island.half_extents.x,
         (position[2] - island.center.z) / island.half_extents.y,
     );
-    normalized.length() / island.playable_silhouette_scale(normalized.y.atan2(normalized.x))
+    normalized.length() / island.visual_silhouette_scale(normalized.y.atan2(normalized.x))
 }
 
 fn radial_range(positions: &[[f32; 3]]) -> f32 {
@@ -244,6 +245,36 @@ fn named_animation_clip_resolution_reports_missing_clips() {
 }
 
 #[test]
+fn parse_cli_args_defaults_to_debug_run_mode() {
+    let action = parse_cli_args(std::iter::empty::<String>())
+        .expect("empty args should run the debug sandbox");
+
+    match action {
+        CliAction::Run { eval, mode } => {
+            assert!(eval.is_none());
+            assert_eq!(mode, RunMode::Debug);
+        }
+        _ => panic!("expected run action"),
+    }
+}
+
+#[test]
+fn parse_cli_args_accepts_play_mode() {
+    let action =
+        parse_cli_args(["--play"].into_iter().map(str::to_string)).expect("play args should parse");
+
+    match action {
+        CliAction::Run { eval, mode } => {
+            assert!(eval.is_none());
+            assert_eq!(mode, RunMode::Play);
+            assert!(!mode.debug_readout_enabled());
+            assert!(!mode.debug_visuals_enabled());
+        }
+        _ => panic!("expected play run action"),
+    }
+}
+
+#[test]
 fn parse_cli_args_accepts_terrain_export() {
     let action = parse_cli_args(
         ["--export-terrain", "target/terrain_export"]
@@ -365,6 +396,30 @@ fn parse_cli_args_rejects_both_export_paths_together() {
 }
 
 #[test]
+fn parse_cli_args_rejects_play_and_eval_together() {
+    let error = parse_cli_args(
+        ["--play", "--eval", "baseline_route"]
+            .into_iter()
+            .map(str::to_string),
+    )
+    .expect_err("play and eval should be mutually exclusive");
+
+    assert!(error.contains("cannot be combined"));
+}
+
+#[test]
+fn parse_cli_args_rejects_play_and_export_together() {
+    let error = parse_cli_args(
+        ["--play", "--export-terrain", "target/terrain_export"]
+            .into_iter()
+            .map(str::to_string),
+    )
+    .expect_err("play and export should be mutually exclusive");
+
+    assert!(error.contains("cannot be combined"));
+}
+
+#[test]
 fn metric_only_eval_window_is_hidden_and_unfocused() {
     let scenario = scenario_named("baseline_route").expect("baseline scenario should exist");
     let options = EvalOptions {
@@ -473,6 +528,202 @@ fn terrain_export_writes_manifest_meshes_and_weight_sidecars() {
 }
 
 #[test]
+fn terrain_export_includes_great_sky_plateau_scale_and_region_evidence() {
+    let output_dir = std::env::temp_dir().join(format!(
+        "nau-terrain-export-plateau-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos()
+    ));
+    remove_existing_dir(&output_dir).expect("stale terrain export dir should be removable");
+
+    let report = export_terrain_inspection(&output_dir).expect("terrain export should succeed");
+    let manifest = fs::read_to_string(&report.manifest_path).expect("manifest should be readable");
+    let plateau = report
+        .islands
+        .iter()
+        .find(|island| island.island.name == "great sky plateau")
+        .expect("terrain export should include the Great Sky Plateau island");
+    let terrain_obj = output_dir.join(&plateau.terrain.obj_path);
+    let regions = [
+        IslandPlateauRegion::MeadowPlateau,
+        IslandPlateauRegion::CliffRim,
+        IslandPlateauRegion::HighShelf,
+        IslandPlateauRegion::LowBasin,
+        IslandPlateauRegion::BrokenEdge,
+        IslandPlateauRegion::UnderhangEntry,
+    ];
+
+    assert_eq!(
+        plateau.island.terrain_archetype,
+        IslandTerrainArchetype::SkyPlateau
+    );
+    assert!(plateau.island.is_great_plateau_anchor());
+    assert!(plateau.island.base_area_m2() >= 32_000.0);
+    assert!(plateau.island.longest_span_m() >= 450.0);
+    assert!(plateau.terrain.relief_range_m >= 0.8);
+    assert!(plateau.terrain.height_bands >= ISLAND_TERRAIN_HEIGHT_BANDS);
+    assert!(plateau.terrain.normal_slope_bands >= ISLAND_TERRAIN_NORMAL_SLOPE_BANDS);
+    assert!(plateau.slug.contains("great_sky_plateau"));
+    assert!(terrain_obj.exists());
+    assert!(manifest.contains("\"name\": \"great sky plateau\""));
+    assert!(manifest.contains("\"terrain_archetype\": \"sky_plateau\""));
+    assert!(manifest.contains("great_sky_plateau_terrain.obj"));
+
+    for region in regions {
+        assert!(
+            plateau.island.plateau_region_position(region).is_some(),
+            "{region:?} should export from a playable plateau surface"
+        );
+    }
+
+    remove_existing_dir(&output_dir).expect("terrain export test dir should be removable");
+}
+
+#[test]
+fn great_sky_plateau_water_specs_span_basin_cliffs_and_falls() {
+    let route = SkyRoute::default();
+    let (plateau_index, plateau) = route
+        .islands()
+        .iter()
+        .copied()
+        .enumerate()
+        .find(|(_, island)| island.is_great_plateau_anchor())
+        .expect("route should include great sky plateau");
+    let water_features = island_water_visual_specs(plateau_index, plateau);
+
+    assert_eq!(
+        water_features
+            .iter()
+            .filter(|feature| feature.kind == IslandWaterVisualKind::PondSurface)
+            .count(),
+        1
+    );
+    assert_eq!(
+        water_features
+            .iter()
+            .filter(|feature| feature.kind == IslandWaterVisualKind::PlateauLakeSurface)
+            .count(),
+        2
+    );
+    assert_eq!(
+        water_features
+            .iter()
+            .filter(|feature| feature.kind == IslandWaterVisualKind::PlateauWaterfallRibbon)
+            .count(),
+        2
+    );
+    assert_eq!(
+        water_features
+            .iter()
+            .filter(|feature| feature.kind == IslandWaterVisualKind::PlateauWaterfallMist)
+            .count(),
+        2
+    );
+
+    let low_basin = plateau
+        .plateau_region_position(IslandPlateauRegion::LowBasin)
+        .expect("low basin should be playable");
+    let high_shelf = plateau
+        .plateau_region_position(IslandPlateauRegion::HighShelf)
+        .expect("high shelf should be playable");
+    let lake = water_features
+        .iter()
+        .find(|feature| feature.label == "low basin lake")
+        .expect("plateau should place a low basin lake");
+    let high_pool = water_features
+        .iter()
+        .find(|feature| feature.label == "high shelf pool")
+        .expect("plateau should place a high shelf pool");
+    assert!(lake.translation.distance(low_basin) < 0.2);
+    assert!(high_pool.translation.distance(high_shelf) < 0.2);
+    assert!(high_pool.translation.y - lake.translation.y >= 0.30);
+
+    let rim = plateau
+        .plateau_region_position(IslandPlateauRegion::CliffRim)
+        .expect("rim should be playable");
+    let waterfall = water_features
+        .iter()
+        .find(|feature| feature.label == "north rim waterfall")
+        .expect("plateau should place a rim waterfall");
+    let mist = water_features
+        .iter()
+        .find(|feature| feature.label == "north rim waterfall mist")
+        .expect("plateau should place waterfall mist below the rim");
+    assert!(rim.y - waterfall.translation.y >= 25.0);
+    assert!(waterfall.translation.y - mist.translation.y >= 25.0);
+
+    let lake_mesh = lake.build_mesh();
+    let waterfall_mesh = waterfall.build_mesh();
+    let mist_mesh = mist.build_mesh();
+    assert!(lake_mesh.count_vertices() > LAKE_SURFACE_SEGMENTS * 3);
+    assert!(mesh_y_range(&lake_mesh) >= 0.05);
+    assert!(mesh_y_range(&waterfall_mesh) >= 58.0);
+    assert!(waterfall_mesh.count_vertices() >= WATERFALL_RIBBON_COLUMNS * WATERFALL_RIBBON_ROWS);
+    assert!(mist_mesh.count_vertices() >= WATERFALL_MIST_LOBES * 40);
+}
+
+#[test]
+fn great_sky_plateau_under_route_visual_specs_mark_cave_and_shelf() {
+    let route = SkyRoute::default();
+    let (plateau_index, plateau) = route
+        .islands()
+        .iter()
+        .copied()
+        .enumerate()
+        .find(|(_, island)| island.is_great_plateau_anchor())
+        .expect("route should include great sky plateau");
+    let under_route = plateau
+        .under_route_segment()
+        .expect("plateau should define an under-route");
+    let cave_features = island_under_route_visual_specs(plateau_index, plateau);
+
+    assert_eq!(cave_features.len(), 3);
+    assert_eq!(
+        cave_features
+            .iter()
+            .filter(|feature| feature.kind == IslandUnderRouteVisualKind::CaveMouthArch)
+            .count(),
+        2
+    );
+    assert_eq!(
+        cave_features
+            .iter()
+            .filter(|feature| feature.kind == IslandUnderRouteVisualKind::UnderhangShelf)
+            .count(),
+        1
+    );
+
+    let entry_arch = cave_features
+        .iter()
+        .find(|feature| feature.label == "underhang entry arch")
+        .expect("entry arch should be generated");
+    let shelf = cave_features
+        .iter()
+        .find(|feature| feature.label == "underside glide shelf")
+        .expect("glide shelf should be generated");
+    let exit_arch = cave_features
+        .iter()
+        .find(|feature| feature.label == "updraft skylight exit arch")
+        .expect("exit arch should be generated");
+
+    assert!(entry_arch.translation.distance(under_route.entry) < 0.1);
+    assert!(exit_arch.translation.distance(under_route.exit) < 0.1);
+    assert!(shelf.translation.y < under_route.midpoint.y);
+    assert!(entry_arch.camera_half_extents.x >= under_route.clearance_radius_m);
+    assert!(shelf.camera_half_extents.x > entry_arch.camera_half_extents.x);
+
+    let arch_mesh = entry_arch.build_mesh();
+    let shelf_mesh = shelf.build_mesh();
+    assert!(arch_mesh.count_vertices() >= CAVE_MOUTH_ARCH_STONES * 40);
+    assert!(mesh_y_range(&arch_mesh) >= under_route.clearance_radius_m);
+    assert_eq!(shelf_mesh.count_vertices(), UNDERHANG_SHELF_SEGMENTS * 2);
+    assert!(mesh_y_range(&shelf_mesh) > 3.0);
+}
+
+#[test]
 fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     let output_dir = std::env::temp_dir().join(format!(
         "nau-visual-content-export-test-{}-{}",
@@ -495,11 +746,29 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     let launch_pond = output_dir.join("visuals/00_launch_mesa_pond_surface.obj");
     let launch_spire = output_dir.join("visuals/00_launch_mesa_obstruction_spire.obj");
     let landing_marker = output_dir.join("visuals/02_landing_garden_landing_garden_marker_0.obj");
-    let island_count = SkyRoute::default().islands().len();
+    let route = SkyRoute::default();
+    let island_count = route.islands().len();
+    let small_island_count = route
+        .islands()
+        .iter()
+        .filter(|island| {
+            matches!(
+                island.world_tags.scale_class,
+                IslandScaleClass::Tiny | IslandScaleClass::Small
+            )
+        })
+        .count();
     let generated_tree_count = island_count * 3;
     let weather_veil_count = island_count.div_ceil(2) * 3;
     let route_cairn_count = island_count - 2;
-    let landmark_count = island_count * 2 + route_cairn_count + 1 + 4;
+    let plateau_extra_water_count = 6;
+    let plateau_extra_cave_count = 3;
+    let landmark_count = island_count * 2
+        + route_cairn_count
+        + 1
+        + 4
+        + plateau_extra_water_count
+        + plateau_extra_cave_count;
 
     assert_eq!(report.ground_cover_count, island_count);
     assert_eq!(
@@ -519,11 +788,59 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.weather_cloud_bank_count, island_count);
     assert_eq!(report.weather_cloud_veil_count, weather_veil_count);
     assert_eq!(report.landmark_count, landmark_count);
+    assert!(report.landmark_kind_count >= 8);
+    assert_eq!(report.small_island_count, small_island_count);
+    assert!(report.small_island_count >= 10);
+    assert_eq!(report.plateau_landmark_count, 12);
+    assert_eq!(report.plateau_waterfall_ribbon_count, 2);
+    assert_eq!(report.plateau_waterfall_mist_count, 2);
+    assert_eq!(report.under_route_visual_count, plateau_extra_cave_count);
+    assert_eq!(report.under_route_cave_mouth_count, 2);
     assert_eq!(report.route_cairn_count, route_cairn_count);
     assert_eq!(report.launch_beacon_count, 1);
     assert_eq!(report.landing_garden_marker_count, 4);
     assert_eq!(report.pond_surface_count, island_count);
     assert_eq!(report.obstruction_spire_count, island_count);
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "plateau_lake_surface")
+            .count(),
+        2
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "plateau_waterfall_ribbon")
+            .count(),
+        2
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "plateau_waterfall_mist")
+            .count(),
+        2
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "under_route_cave_mouth")
+            .count(),
+        2
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "under_route_hanging_shelf")
+            .count(),
+        1
+    );
     assert_eq!(
         report.mesh_count,
         report.ground_cover_count
@@ -548,13 +865,13 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_tree_canopy_detail_card_count >= 18);
     assert!(report.min_tree_canopy_vertical_to_horizontal_ratio >= 0.45);
     assert!(report.tree_canopy_radius_range_m >= 0.35);
-    assert!(report.min_weather_cloud_mesh_vertices >= 1530);
-    assert!(report.min_weather_cloud_lobe_count >= 9);
-    assert!(report.min_weather_cloud_wisp_card_count >= 36);
-    assert!(report.min_weather_cloud_filament_ribbon_detail_count >= 27);
-    assert!(report.min_weather_cloud_bank_depth_m >= 5.8);
-    assert!(report.min_weather_cloud_bank_lobe_count >= 18);
-    assert!(report.min_weather_cloud_scaled_depth_span_m >= 12.0);
+    assert!(report.min_weather_cloud_mesh_vertices >= 2500);
+    assert!(report.min_weather_cloud_lobe_count >= 12);
+    assert!(report.min_weather_cloud_wisp_card_count >= 60);
+    assert!(report.min_weather_cloud_filament_ribbon_detail_count >= 48);
+    assert!(report.min_weather_cloud_bank_depth_m >= 6.4);
+    assert!(report.min_weather_cloud_bank_lobe_count >= 22);
+    assert!(report.min_weather_cloud_scaled_depth_span_m >= 14.0);
     assert!(report.min_route_cairn_mesh_vertices >= 240);
     assert!(report.min_route_cairn_vertical_span_m >= 3.0);
     assert!(report.min_launch_beacon_mesh_vertices >= 300);
@@ -563,6 +880,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_landing_garden_marker_vertical_span_m >= 0.12);
     assert!(report.min_pond_surface_mesh_vertices >= 65);
     assert!(report.min_pond_surface_vertical_span_m >= 0.015);
+    assert!(report.plateau_landmark_vertex_total >= 2_500);
+    assert!(report.max_plateau_landmark_mesh_vertices >= 600);
+    assert!(report.min_plateau_waterfall_vertical_span_m >= 58.0);
+    assert!(report.min_under_route_visual_vertical_span_m >= 4.0);
     assert!(report.min_obstruction_spire_mesh_vertices >= 300);
     assert!(report.min_obstruction_spire_triangle_count >= 500);
     assert!(report.min_obstruction_spire_vertical_span_m >= 3.0);
@@ -583,6 +904,56 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(launch_pond.exists());
     assert!(launch_spire.exists());
     assert!(landing_marker.exists());
+    let low_basin_lake = report
+        .landmarks
+        .iter()
+        .find(|summary| {
+            summary.island_name == "great sky plateau" && summary.label == "low basin lake"
+        })
+        .expect("great sky plateau should export a low basin lake");
+    let waterfall = report
+        .landmarks
+        .iter()
+        .find(|summary| {
+            summary.island_name == "great sky plateau" && summary.kind == "plateau_waterfall_ribbon"
+        })
+        .expect("great sky plateau should export waterfall ribbons");
+    let mist = report
+        .landmarks
+        .iter()
+        .find(|summary| {
+            summary.island_name == "great sky plateau" && summary.kind == "plateau_waterfall_mist"
+        })
+        .expect("great sky plateau should export waterfall mist");
+    let cave_arch = report
+        .landmarks
+        .iter()
+        .find(|summary| {
+            summary.island_name == "great sky plateau" && summary.label == "underhang entry arch"
+        })
+        .expect("great sky plateau should export an underhang entry arch");
+    let underhang_shelf = report
+        .landmarks
+        .iter()
+        .find(|summary| {
+            summary.island_name == "great sky plateau" && summary.label == "underside glide shelf"
+        })
+        .expect("great sky plateau should export an underside glide shelf");
+
+    assert!(low_basin_lake.mesh.horizontal_span_m >= 100.0);
+    assert!(low_basin_lake.mesh.depth_span_m >= 45.0);
+    assert!(waterfall.mesh.vertical_span_m >= 58.0);
+    assert!(waterfall.normal_slope_band_count >= 4);
+    assert!(mist.mesh.horizontal_span_m >= 20.0);
+    assert!(cave_arch.mesh.horizontal_span_m >= 20.0);
+    assert!(cave_arch.mesh.vertical_span_m >= 14.0);
+    assert!(underhang_shelf.mesh.horizontal_span_m >= 45.0);
+    assert!(underhang_shelf.mesh.depth_span_m >= 24.0);
+    assert!(output_dir.join(&low_basin_lake.mesh.obj_path).exists());
+    assert!(output_dir.join(&waterfall.mesh.obj_path).exists());
+    assert!(output_dir.join(&mist.mesh.obj_path).exists());
+    assert!(output_dir.join(&cave_arch.mesh.obj_path).exists());
+    assert!(output_dir.join(&underhang_shelf.mesh.obj_path).exists());
     assert!(manifest.contains("\"schema\": \"nau_visual_content_export.v1\""));
     assert!(manifest.contains("\"ground_cover_blade_height_range_m\""));
     assert!(manifest.contains("\"tree_branch_reach_ratio\""));
@@ -597,6 +968,13 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"weather_cloud_wisp_card_count\""));
     assert!(manifest.contains("\"weather_cloud_filament_ribbon_detail_count\""));
     assert!(manifest.contains(&format!("\"landmark_count\": {landmark_count}")));
+    assert!(manifest.contains("\"landmark_kind_count\""));
+    assert!(manifest.contains(&format!("\"small_island_count\": {small_island_count}")));
+    assert!(manifest.contains("\"plateau_landmark_count\": 12"));
+    assert!(manifest.contains("\"plateau_waterfall_ribbon_count\": 2"));
+    assert!(manifest.contains("\"plateau_waterfall_mist_count\": 2"));
+    assert!(manifest.contains("\"under_route_visual_count\": 3"));
+    assert!(manifest.contains("\"under_route_cave_mouth_count\": 2"));
     assert!(manifest.contains(&format!("\"route_cairn_count\": {route_cairn_count}")));
     assert!(manifest.contains("\"launch_beacon_count\": 1"));
     assert!(manifest.contains("\"landing_garden_marker_count\": 4"));
@@ -606,6 +984,19 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"launch_beacon_vertical_span_m\""));
     assert!(manifest.contains("\"landing_garden_marker_vertical_span_m\""));
     assert!(manifest.contains("\"pond_surface_vertical_span_m\""));
+    assert!(manifest.contains("\"plateau_landmark_vertex_total\""));
+    assert!(manifest.contains("\"max_plateau_landmark_mesh_vertices\""));
+    assert!(manifest.contains("\"plateau_waterfall_vertical_span_m\""));
+    assert!(manifest.contains("\"under_route_visual_vertical_span_m\""));
+    assert!(manifest.contains("\"kind\": \"plateau_lake_surface\""));
+    assert!(manifest.contains("\"kind\": \"plateau_waterfall_ribbon\""));
+    assert!(manifest.contains("\"kind\": \"plateau_waterfall_mist\""));
+    assert!(manifest.contains("\"kind\": \"under_route_cave_mouth\""));
+    assert!(manifest.contains("\"kind\": \"under_route_hanging_shelf\""));
+    assert!(manifest.contains("great_sky_plateau_low_basin_lake.obj"));
+    assert!(manifest.contains("great_sky_plateau_north_rim_waterfall.obj"));
+    assert!(manifest.contains("great_sky_plateau_underhang_entry_arch.obj"));
+    assert!(manifest.contains("great_sky_plateau_underside_glide_shelf.obj"));
     assert!(manifest.contains("\"obstruction_spire_height_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_radius_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_normal_slope_band_count\""));
@@ -760,6 +1151,14 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         route.islands().len() * nau_engine::world::TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND
     );
     assert!(coverage.camera_only_allowance_count >= route.islands().len());
+    assert_eq!(
+        catalog.named_obstacle_count("great sky plateau", "plateau cave mouth arch"),
+        2
+    );
+    assert_eq!(
+        catalog.named_obstacle_count("great sky plateau", "plateau underhang shelf"),
+        1
+    );
     assert_eq!(catalog.deferred_mesh_count(), route.islands().len() * 4);
     assert!(catalog.prebuilt_mesh_count() > catalog.deferred_mesh_count());
 
@@ -806,6 +1205,10 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         nau_engine::world::START_POSITION,
         WorldCollisionProxyKind::TerrainBody,
     );
+    let expected_spawned_landmark_proxy_count = catalog.resident_collision_proxy_count(
+        nau_engine::world::START_POSITION,
+        WorldCollisionProxyKind::Landmark,
+    );
     let tree_proxy_count = proxies
         .iter()
         .filter(|proxy| proxy.kind == WorldCollisionProxyKind::Tree)
@@ -824,7 +1227,8 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
     assert!(solid_proxy_count >= 60);
     assert!(tree_proxy_count >= 10);
     assert!(rock_proxy_count >= 12);
-    assert!(landmark_proxy_count >= 40);
+    assert!(landmark_proxy_count >= 24);
+    assert_eq!(landmark_proxy_count, expected_spawned_landmark_proxy_count);
     assert_eq!(
         terrain_rim_proxy_count,
         expected_spawned_terrain_rim_proxy_count
@@ -995,6 +1399,7 @@ fn tree_canopy_mesh_uses_overlapping_lobes_instead_of_one_sphere() {
 fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
     let mesh = cloud_cluster_mesh(99, CLOUD_BANK_LOBES);
     let positions = positions(&mesh);
+    let colors = colors(&mesh);
     let lobe_vertices = (5 + 1) * (10 + 1);
     let card_vertices = CLOUD_WISP_CARDS_PER_LOBE * DETAIL_CARD_VERTICES;
     let filament_vertices = CLOUD_FILAMENT_RIBBONS_PER_LOBE * CLOUD_FILAMENT_RIBBON_VERTICES;
@@ -1026,6 +1431,7 @@ fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
         .fold(f32::NEG_INFINITY, f32::max);
 
     assert_eq!(mesh.count_vertices(), CLOUD_BANK_LOBES * per_lobe_vertices);
+    assert_eq!(colors.len(), positions.len());
     assert_eq!(
         cloud_filament_ribbon_detail_count(CLOUD_BANK_LOBES),
         CLOUD_BANK_LOBES * CLOUD_FILAMENT_RIBBONS_PER_LOBE
@@ -1063,6 +1469,45 @@ fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
     assert!(
         lower_depth_wisp_count > CLOUD_BANK_LOBES * 3 / 4,
         "cloud clusters should add lower depth wisps under most lobes"
+    );
+}
+
+#[test]
+fn cloud_cluster_mesh_has_painterly_warm_and_cool_color_wash() {
+    let mesh = cloud_cluster_mesh(123, CLOUD_BANK_LOBES);
+    let colors = colors(&mesh);
+    let min_alpha = colors
+        .iter()
+        .map(|color| color[3])
+        .fold(f32::INFINITY, f32::min);
+    let max_alpha = colors
+        .iter()
+        .map(|color| color[3])
+        .fold(f32::NEG_INFINITY, f32::max);
+    let warm_vertices = colors
+        .iter()
+        .filter(|color| color[0] > color[2] && color[1] > 0.72)
+        .count();
+    let cool_shadow_vertices = colors
+        .iter()
+        .filter(|color| color[2] >= color[0] && color[1] < 0.84)
+        .count();
+
+    assert!(
+        mesh_vertex_color_band_count(&mesh) >= 8,
+        "clouds should carry watercolor-like color variation instead of one flat material color"
+    );
+    assert!(
+        max_alpha - min_alpha > 0.12,
+        "cloud core and wisp geometry should have layered opacity"
+    );
+    assert!(
+        warm_vertices > colors.len() / 5,
+        "clouds should include warm sunlit wash vertices"
+    );
+    assert!(
+        cool_shadow_vertices > colors.len() / 8,
+        "clouds should include cooler shadowed vapor vertices"
     );
 }
 
@@ -1275,6 +1720,74 @@ fn landmark_meshes_replace_basic_cylinders_and_boxes() {
         "pond surface should carry subtle ripple variation"
     );
 
+    let lake = lake_surface_mesh(18.0, 9.0, 31_789);
+    let lake_positions = positions(&lake);
+    let lake_indices = u32_indices(&lake);
+    assert_eq!(lake.count_vertices(), 1 + LAKE_SURFACE_SEGMENTS * 3);
+    assert_eq!(lake_indices.len(), LAKE_SURFACE_SEGMENTS * 15);
+    assert!(
+        radial_range(lake_positions) > 14.0,
+        "large lakes should read as broad irregular basins"
+    );
+    assert!(
+        mesh_y_range(&lake) > 0.05,
+        "large lakes should carry stronger watercolor ripple relief than small ponds"
+    );
+
+    let waterfall = waterfall_ribbon_mesh(16.0, 60.0, 1.4, 33_789);
+    let waterfall_indices = u32_indices(&waterfall);
+    assert_eq!(
+        waterfall.count_vertices(),
+        WATERFALL_RIBBON_COLUMNS * WATERFALL_RIBBON_ROWS
+    );
+    assert_eq!(
+        waterfall_indices.len(),
+        (WATERFALL_RIBBON_COLUMNS - 1) * (WATERFALL_RIBBON_ROWS - 1) * 6
+    );
+    assert!(
+        mesh_y_range(&waterfall) > 59.0,
+        "waterfalls should be vertical traversal-scale ribbons"
+    );
+    assert!(
+        mesh_normal_slope_band_count(&waterfall) >= 4,
+        "waterfall ribbons should not be a single flat quad"
+    );
+
+    let mist = waterfall_mist_mesh(7.0, 5.0, 34_789);
+    assert!(
+        mist.count_vertices() > WATERFALL_MIST_LOBES * 40,
+        "waterfall mist should be built from multiple soft lobes"
+    );
+    assert!(
+        mesh_y_range(&mist) > 4.0,
+        "mist should have visible depth instead of a flat decal"
+    );
+
+    let cave_arch = cave_mouth_arch_mesh(24.0, 18.0, 6.0, 41_789);
+    assert!(
+        cave_arch.count_vertices() >= CAVE_MOUTH_ARCH_STONES * 40,
+        "cave mouths should be built from stacked arch stones, not one flat decal"
+    );
+    assert!(
+        mesh_y_range(&cave_arch) > 14.0,
+        "cave mouth arches should frame a readable flight opening"
+    );
+
+    let underhang_shelf = underhang_shelf_mesh(54.0, 30.0, 4.0, 42_789);
+    let shelf_indices = u32_indices(&underhang_shelf);
+    assert_eq!(
+        underhang_shelf.count_vertices(),
+        UNDERHANG_SHELF_SEGMENTS * 2
+    );
+    assert_eq!(
+        shelf_indices.len(),
+        (UNDERHANG_SHELF_SEGMENTS - 2) * 6 + UNDERHANG_SHELF_SEGMENTS * 6
+    );
+    assert!(
+        radial_range(positions(&underhang_shelf)) > 10.0,
+        "underhang shelves should have broad irregular ledge silhouettes"
+    );
+
     let spire = obstruction_spire_mesh(1.0, 5.2, 18_123);
     let spire_positions = positions(&spire);
     let spire_indices = u32_indices(&spire);
@@ -1316,9 +1829,13 @@ fn terrain_mesh_uses_high_resolution_irregular_silhouette() {
         .iter()
         .map(|position| normalized_radius(island, *position))
         .fold(f32::NEG_INFINITY, f32::max);
-    let max_playable_radius = outer_ring
+    let min_visual_radius = outer_ring
         .iter()
-        .map(|position| normalized_playable_radius(island, *position))
+        .map(|position| normalized_visual_radius(island, *position))
+        .fold(f32::INFINITY, f32::min);
+    let max_visual_radius = outer_ring
+        .iter()
+        .map(|position| normalized_visual_radius(island, *position))
         .fold(f32::NEG_INFINITY, f32::max);
 
     assert_eq!(
@@ -1326,8 +1843,8 @@ fn terrain_mesh_uses_high_resolution_irregular_silhouette() {
         1 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS
     );
     assert!(
-        max_playable_radius <= 1.001,
-        "playable terrain must stay inside the profiled route collision footprint"
+        min_visual_radius >= 0.999 && max_visual_radius <= 1.001,
+        "terrain top ring must meet the visual cliff contour without a see-through rim gap"
     );
     assert!(
         max_radius - min_radius > 0.10,
@@ -1371,6 +1888,25 @@ fn terrain_mesh_uses_high_resolution_irregular_silhouette() {
         mesh_y_range(&mesh) >= 0.8,
         "terrain mesh should have enough relief range to avoid flat plateaus"
     );
+}
+
+#[test]
+fn terrain_and_cliff_top_rings_share_a_closed_visual_seam() {
+    let island = test_island();
+    let terrain_mesh = island_terrain_mesh(2, island);
+    let cliff_mesh = island_cliff_mesh(2, island);
+    let terrain_positions = positions(&terrain_mesh);
+    let cliff_positions = positions(&cliff_mesh);
+    let terrain_outer_start = 1 + (ISLAND_TERRAIN_RINGS - 1) * ISLAND_BODY_SEGMENTS;
+
+    for segment in 0..ISLAND_BODY_SEGMENTS {
+        let terrain = Vec3::from_array(terrain_positions[terrain_outer_start + segment]);
+        let cliff = Vec3::from_array(cliff_positions[segment]);
+        assert!(
+            terrain.distance(cliff) < 0.001,
+            "terrain and cliff top rings should meet without a hollow rim seam"
+        );
+    }
 }
 
 #[test]

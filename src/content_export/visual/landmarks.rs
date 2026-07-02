@@ -2,8 +2,9 @@ use super::{metrics::visual_content_mesh_summary, types::VisualLandmarkSummary};
 use crate::{
     content_export::shared::{mesh_positions, terrain_export_slug, write_mesh_obj},
     generated_content::{
-        landing_garden_marker_mesh, launch_beacon_mesh, mesh_normal_slope_band_count,
-        mesh_vertical_band_count, obstruction_spire_mesh, pond_surface_mesh, route_cairn_mesh,
+        island_under_route_visual_specs, island_water_visual_specs, landing_garden_marker_mesh,
+        launch_beacon_mesh, mesh_normal_slope_band_count, mesh_vertical_band_count,
+        obstruction_spire_mesh, route_cairn_mesh,
     },
 };
 use bevy::prelude::*;
@@ -19,20 +20,31 @@ pub(super) fn visual_content_landmark_summaries(
 ) -> std::io::Result<Vec<VisualLandmarkSummary>> {
     let mut landmarks = Vec::new();
 
-    let pond_mesh = pond_surface_mesh(
-        island.half_extents.x * 0.12,
-        island.half_extents.y * 0.08,
-        11_000 + island_index as u32 * 149,
-    );
-    landmarks.push(write_visual_landmark_summary(
-        output_dir,
-        island.name,
-        "pond_surface",
-        "pond surface",
-        island_index,
-        island_slug,
-        &pond_mesh,
-    )?);
+    for water_feature in island_water_visual_specs(island_index, island) {
+        let mesh = water_feature.build_mesh();
+        landmarks.push(write_visual_landmark_summary(
+            output_dir,
+            island.name,
+            water_feature.kind.label(),
+            water_feature.label,
+            island_index,
+            island_slug,
+            &mesh,
+        )?);
+    }
+
+    for cave_feature in island_under_route_visual_specs(island_index, island) {
+        let mesh = cave_feature.build_mesh();
+        landmarks.push(write_visual_landmark_summary(
+            output_dir,
+            island.name,
+            cave_feature.kind.label(),
+            cave_feature.label,
+            island_index,
+            island_slug,
+            &mesh,
+        )?);
+    }
 
     let spire = route_obstruction_spire(island_index, island);
     let spire_mesh = obstruction_spire_mesh(spire.radius_m, spire.height_m, spire.seed);

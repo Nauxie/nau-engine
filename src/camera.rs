@@ -20,7 +20,9 @@ pub use metrics::{
 };
 pub use obstruction::{
     CAMERA_MIN_READABLE_OBSTRUCTION_DISTANCE_M, CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M,
-    avoid_camera_obstructions, clamp_camera_step, lift_camera_above_floor,
+    CameraObstructionSmoothingState, avoid_camera_obstructions,
+    avoid_camera_obstructions_with_preferred_offset, clamp_camera_step, lift_camera_above_floor,
+    smooth_camera_obstruction,
 };
 pub use types::{
     CameraControlState, CameraControlTuning, CameraFrame, CameraInput, CameraObstruction,

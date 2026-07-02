@@ -1,3 +1,4 @@
+mod caves;
 mod clouds;
 mod effects;
 mod landmarks;
@@ -5,6 +6,11 @@ mod rocks;
 mod shared;
 mod trees;
 
+#[cfg(test)]
+pub(crate) use caves::{
+    CAVE_MOUTH_ARCH_STONES, UNDERHANG_SHELF_SEGMENTS, cave_mouth_arch_mesh, underhang_shelf_mesh,
+};
+pub(crate) use caves::{IslandUnderRouteVisualKind, island_under_route_visual_specs};
 pub(crate) use clouds::{
     CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, CLOUD_WISP_CARDS_PER_LOBE, cloud_cluster_mesh,
     cloud_filament_ribbon_detail_count,
@@ -15,13 +21,19 @@ pub(crate) use effects::{
     crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh, glider_airflow_trail_mesh,
     updraft_ribbon_mesh,
 };
+pub(crate) use landmarks::{
+    IslandWaterVisualKind, island_water_visual_specs, landing_garden_marker_mesh,
+    launch_beacon_mesh, route_cairn_mesh,
+};
 #[cfg(test)]
 pub(crate) use landmarks::{
-    LANDING_GARDEN_MARKER_SEGMENTS, LAUNCH_BEACON_CRYSTAL_COUNT, POND_SURFACE_SEGMENTS,
-    ROUTE_CAIRN_STONE_COUNT,
+    LAKE_SURFACE_SEGMENTS, LANDING_GARDEN_MARKER_SEGMENTS, LAUNCH_BEACON_CRYSTAL_COUNT,
+    POND_SURFACE_SEGMENTS, ROUTE_CAIRN_STONE_COUNT, WATERFALL_MIST_LOBES, WATERFALL_RIBBON_COLUMNS,
+    WATERFALL_RIBBON_ROWS,
 };
+#[cfg(test)]
 pub(crate) use landmarks::{
-    landing_garden_marker_mesh, launch_beacon_mesh, pond_surface_mesh, route_cairn_mesh,
+    lake_surface_mesh, pond_surface_mesh, waterfall_mist_mesh, waterfall_ribbon_mesh,
 };
 #[cfg(test)]
 pub(crate) use rocks::{
