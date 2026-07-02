@@ -5,7 +5,12 @@ Mac-first Rust/Bevy flight sandbox for tuning traversal feel before growing into
 The current focus is narrow: make glide, dive, lift, camera framing, authored player motion, and route readability measurable enough that changes can be reviewed by eye and by eval output.
 
 <p align="center">
-  <img src="docs/readme/player_glider_attachment_sheet.png" alt="Player and glider attachment pose sheet" width="100%">
+  <img src="docs/showcase/great_sky_plateau_high_crossing.png" alt="Glider crossing the high archipelago route" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/showcase/updraft_high_glide.png" alt="Glider approaching visible updraft columns and route markers" width="49%">
+  <img src="docs/showcase/player_rig_stress_review_sheet.png" alt="Player rig stress review sheet" width="49%">
 </p>
 
 ## What Exists
@@ -17,15 +22,18 @@ The current focus is narrow: make glide, dive, lift, camera framing, authored pl
 
 ## Visual Review
 
-These are checked-in copies of generated eval artifacts. The source outputs live under `target/eval/` after running the relevant preview or screenshot scripts.
+These are checked-in copies of generated eval artifacts. The source outputs live under `target/eval/`, `target/player_pose_preview/`, and export-specific `target/` folders after running the relevant scripts.
+
+See [Showcase](SHOWCASE.md) for the fuller image set.
 
 <p align="center">
-  <img src="docs/readme/player_pose_sheet.png" alt="Player fixture pose preview sheet" width="49%">
-  <img src="docs/readme/player_motion_integrity_review_sheet.png" alt="Player motion integrity review sheet" width="49%">
+  <img src="docs/showcase/long_glide_archipelago_midroute.png" alt="Long glide archipelago midroute screenshot" width="49%">
+  <img src="docs/showcase/great_sky_plateau_summit_climb.png" alt="Great sky plateau summit climb screenshot" width="49%">
 </p>
 
 <p align="center">
-  <img src="docs/readme/updraft_route.png" alt="Floating island updraft route screenshot" width="100%">
+  <img src="docs/showcase/player_glider_attachment_sheet.png" alt="Player and glider attachment pose sheet" width="49%">
+  <img src="docs/showcase/player_motion_integrity_review_sheet.png" alt="Player motion integrity review sheet" width="49%">
 </p>
 
 ## Run
@@ -66,6 +74,7 @@ NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh updraft_route target/eval/updraft_route
 ./tools/eval_sim_suite.sh target/eval/sim_suite
 ./tools/terrain_export.sh target/terrain_export
 ./tools/visual_content_export.sh target/visual_content_export
+./tools/wind_visual_export.sh target/wind_visual_export
 ```
 
 ## Controls
@@ -89,6 +98,7 @@ NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh updraft_route target/eval/updraft_route
 - [Eval Spec](docs/EVAL_SPEC.md)
 - [Flight Mechanics](docs/MECHANICS/flight.md)
 - [Roadmap](docs/ROADMAP.md)
+- [Showcase](SHOWCASE.md)
 
 ## Principles
 
