@@ -16,7 +16,9 @@ use crate::generated_content::{
 };
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
-use nau_engine::world::{IslandLandmarkRole, IslandTerrainArchetype, SkyIsland};
+use nau_engine::world::{
+    IslandLandmarkRole, IslandPlateauRegion, IslandTerrainArchetype, SkyIsland,
+};
 
 use crate::world_collision_runtime::{WorldCollisionProxy, WorldCollisionProxyKind};
 
@@ -231,6 +233,19 @@ pub(super) fn queue_sky_island_details(
             },
             None,
             "lake basin",
+        );
+    }
+
+    if island.is_great_plateau_anchor() {
+        queue_great_plateau_arrival_details(
+            entries,
+            visual_index,
+            content_diagnostics,
+            meshes,
+            detail_materials.stone.clone(),
+            flower_material.clone(),
+            island_index,
+            island,
         );
     }
 
@@ -531,6 +546,140 @@ fn is_cliff_tooth_island(island: SkyIsland) -> bool {
         island.terrain_archetype,
         IslandTerrainArchetype::StormRavine | IslandTerrainArchetype::StormShard
     )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn queue_great_plateau_arrival_details(
+    entries: &mut Vec<IslandVisualEntry>,
+    visual_index: &mut usize,
+    content_diagnostics: &mut IslandContentDiagnostics,
+    meshes: &mut Assets<Mesh>,
+    stone_material: Handle<StandardMaterial>,
+    flower_material: Handle<StandardMaterial>,
+    island_index: usize,
+    island: SkyIsland,
+) {
+    let Some(meadow) = island.plateau_region_position(IslandPlateauRegion::MeadowPlateau) else {
+        return;
+    };
+
+    let shelf_radius = (island.half_extents.min_element() * 0.17).clamp(22.0, 34.0);
+    let shelf_mesh = garden_ring_mesh(
+        shelf_radius,
+        (shelf_radius * 0.20).clamp(3.8, 6.2),
+        (island.thickness * 0.010).clamp(0.42, 0.72),
+        41_000 + island_index as u32 * 239,
+    );
+    content_diagnostics.record_generated_landmark(
+        GeneratedLandmarkKind::GardenRing,
+        shelf_mesh.count_vertices(),
+    );
+    queue_island_visual(
+        entries,
+        visual_index,
+        island,
+        IslandVisualLayer::Detail,
+        meshes.add(shelf_mesh),
+        flower_material.clone(),
+        Transform {
+            translation: meadow + Vec3::Y * 0.08,
+            rotation: Quat::from_rotation_y(0.18),
+            ..default()
+        },
+        None,
+        "plateau meadow landing shelf",
+    );
+
+    let ruin_offset = Vec2::new(-0.16, 0.12);
+    let ruin_surface = island_visual_surface_position(island, ruin_offset);
+    let ruin_width = (island.half_extents.min_element() * 0.14).clamp(22.0, 30.0);
+    let ruin_height = (island.thickness * 0.26).clamp(18.0, 26.0);
+    let ruin_depth = (island.half_extents.min_element() * 0.050).clamp(5.0, 7.0);
+    let ruin_center = ruin_surface + Vec3::Y * (ruin_height * 0.46);
+    let ruin_mesh = ruin_arch_mesh(
+        ruin_width,
+        ruin_height,
+        ruin_depth,
+        42_000 + island_index as u32 * 241,
+    );
+    content_diagnostics
+        .record_generated_landmark(GeneratedLandmarkKind::RuinArch, ruin_mesh.count_vertices());
+    queue_collidable_island_visual(
+        entries,
+        visual_index,
+        island,
+        IslandVisualLayer::Detail,
+        meshes.add(ruin_mesh),
+        stone_material.clone(),
+        Transform {
+            translation: ruin_center,
+            rotation: Quat::from_rotation_y(-0.42),
+            ..default()
+        },
+        Some(CameraObstacle(CameraObstruction::new(
+            ruin_center,
+            Vec3::new(ruin_width * 0.42, ruin_height * 0.46, ruin_depth * 0.52),
+        ))),
+        WorldCollisionProxy::new(
+            ruin_center,
+            Vec3::new(ruin_width * 0.40, ruin_height * 0.45, ruin_depth * 0.50),
+            WorldCollisionProxyKind::Landmark,
+        ),
+        "plateau arrival ruin marker",
+    );
+
+    for (hint_index, name, region) in [
+        (
+            0_u32,
+            "plateau high shelf route hint",
+            IslandPlateauRegion::HighShelf,
+        ),
+        (
+            1_u32,
+            "plateau cave route hint",
+            IslandPlateauRegion::UnderhangEntry,
+        ),
+    ] {
+        let Some(surface) = island.plateau_region_position(region) else {
+            continue;
+        };
+        let height = 6.2 + hint_index as f32 * 0.45;
+        let hint_center = surface + Vec3::Y * (height * 0.5);
+        let region_offset = region.sample_offset();
+        let yaw = region_offset.x.atan2(region_offset.y);
+        let hint_mesh = route_cairn_mesh(
+            0.72,
+            height,
+            43_000 + island_index as u32 * 251 + hint_index * 29,
+        );
+        content_diagnostics.record_generated_landmark(
+            GeneratedLandmarkKind::RouteCairn,
+            hint_mesh.count_vertices(),
+        );
+        queue_collidable_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Beacon,
+            meshes.add(hint_mesh),
+            flower_material.clone(),
+            Transform {
+                translation: hint_center,
+                rotation: Quat::from_rotation_y(yaw),
+                ..default()
+            },
+            Some(CameraObstacle(CameraObstruction::new(
+                hint_center,
+                Vec3::new(0.82, height * 0.50, 0.82),
+            ))),
+            WorldCollisionProxy::new(
+                hint_center,
+                Vec3::new(0.82, height * 0.50, 0.82),
+                WorldCollisionProxyKind::Landmark,
+            ),
+            name,
+        );
+    }
 }
 
 fn is_garden_ring_island(island: SkyIsland) -> bool {

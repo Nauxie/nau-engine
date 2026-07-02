@@ -59,6 +59,18 @@ const SOLID_VISUAL_REQUIREMENTS: &[SolidVisualRequirement] = &[
         name: "launch beacon",
         kind: WorldCollisionProxyKind::Landmark,
     },
+    SolidVisualRequirement {
+        name: "plateau arrival ruin marker",
+        kind: WorldCollisionProxyKind::Landmark,
+    },
+    SolidVisualRequirement {
+        name: "plateau high shelf route hint",
+        kind: WorldCollisionProxyKind::Landmark,
+    },
+    SolidVisualRequirement {
+        name: "plateau cave route hint",
+        kind: WorldCollisionProxyKind::Landmark,
+    },
 ];
 
 const CAMERA_ONLY_ALLOWLIST: &[&str] = &[
