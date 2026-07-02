@@ -6,7 +6,7 @@ use super::palette::{
     island_rock_vertex_color, island_terrain_material_weights, island_terrain_vertex_color,
     terrain_material_region_id,
 };
-use super::shape::{island_playable_silhouette_scale, island_silhouette_scale};
+use super::shape::island_silhouette_scale;
 use bevy::prelude::*;
 use nau_engine::world::SkyIsland;
 use std::collections::HashSet;
@@ -80,7 +80,7 @@ pub(crate) fn island_terrain_mesh_diagnostics(
         let radius = ring as f32 / ISLAND_TERRAIN_RINGS as f32;
         for segment in 0..ISLAND_BODY_SEGMENTS {
             let angle = segment as f32 / ISLAND_BODY_SEGMENTS as f32 * std::f32::consts::TAU;
-            let edge_scale = island_playable_silhouette_scale(island, angle);
+            let edge_scale = island_silhouette_scale(island, angle);
             let radius_scale = radius * (1.0 + radius.powf(1.35) * (edge_scale - 1.0));
             let x = island.center.x + angle.cos() * island.half_extents.x * radius_scale;
             let z = island.center.z + angle.sin() * island.half_extents.y * radius_scale;

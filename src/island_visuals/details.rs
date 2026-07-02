@@ -8,9 +8,9 @@ use crate::content_diagnostics::{GeneratedLandmarkKind, IslandContentDiagnostics
 use crate::environment_visuals::wind_visual_motion;
 use crate::generated_content::{
     GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES, IslandDetailMaterials,
-    island_ground_cover_mesh, island_playable_normalized_offset, island_visual_surface_position,
-    landing_garden_marker_mesh, launch_beacon_mesh, pond_surface_mesh, rock_scatter_mesh,
-    route_cairn_mesh, tree_canopy_mesh, tree_trunk_mesh,
+    island_ground_cover_mesh, island_playable_normalized_offset, island_under_route_visual_specs,
+    island_visual_surface_position, island_water_visual_specs, landing_garden_marker_mesh,
+    launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh, tree_canopy_mesh, tree_trunk_mesh,
 };
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
@@ -149,35 +149,57 @@ pub(super) fn queue_sky_island_details(
         );
     }
 
-    let pond_offset = if island.is_target {
-        Vec2::new(-0.34, 0.18)
-    } else {
-        Vec2::new(0.18, 0.28)
-    };
-    let pond_surface = island_visual_surface_position(island, pond_offset);
-    let pond_radius_x = island.half_extents.x * 0.12;
-    let pond_radius_z = island.half_extents.y * 0.08;
-    let pond_mesh = pond_surface_mesh(
-        pond_radius_x,
-        pond_radius_z,
-        11_000 + island_index as u32 * 149,
-    );
-    content_diagnostics.record_generated_landmark(
-        GeneratedLandmarkKind::PondSurface,
-        pond_mesh.count_vertices(),
-    );
-    queue_wind_island_visual(
-        entries,
-        visual_index,
-        island,
-        IslandVisualLayer::Detail,
-        meshes.add(pond_mesh),
-        water_material,
-        Transform::from_translation(pond_surface + Vec3::Y * 0.055),
-        None,
-        wind_visual_motion(island_index, 3.4, 0.035, 0.018, 1.1),
-        "island pond",
-    );
+    for cave_feature in island_under_route_visual_specs(island_index, island) {
+        let mesh = cave_feature.build_mesh();
+        let landmark_kind = GeneratedLandmarkKind::from_under_route_visual(cave_feature.kind);
+        content_diagnostics.record_generated_landmark(landmark_kind, mesh.count_vertices());
+        queue_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Detail,
+            meshes.add(mesh),
+            detail_materials.stone.clone(),
+            Transform {
+                translation: cave_feature.translation,
+                rotation: Quat::from_rotation_y(cave_feature.rotation_y),
+                ..default()
+            },
+            Some(CameraObstacle(CameraObstruction::new(
+                cave_feature.translation,
+                cave_feature.camera_half_extents,
+            ))),
+            cave_feature.kind.visual_name(),
+        );
+    }
+
+    for water_feature in island_water_visual_specs(island_index, island) {
+        let mesh = water_feature.build_mesh();
+        let landmark_kind = GeneratedLandmarkKind::from_water_visual(water_feature.kind);
+        content_diagnostics.record_generated_landmark(landmark_kind, mesh.count_vertices());
+        queue_wind_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Detail,
+            meshes.add(mesh),
+            water_material.clone(),
+            Transform {
+                translation: water_feature.translation,
+                rotation: Quat::from_rotation_y(water_feature.rotation_y),
+                ..default()
+            },
+            None,
+            wind_visual_motion(
+                island_index,
+                water_feature.wind_phase,
+                0.035 * water_feature.wind_motion_scale,
+                0.018 * water_feature.wind_motion_scale,
+                1.1 * water_feature.wind_motion_scale,
+            ),
+            water_feature.kind.visual_name(),
+        );
+    }
 
     if !island.is_target && island.name != "launch mesa" {
         let beacon_height = 3.8 + (island_index % 3) as f32 * 0.7;

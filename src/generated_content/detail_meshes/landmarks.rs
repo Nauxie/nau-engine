@@ -2,15 +2,176 @@ use super::{super::random_unit, shared::append_ellipsoid_lobe};
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
+use nau_engine::world::{IslandPlateauRegion, SkyIsland};
 
 pub(crate) const ROUTE_CAIRN_STONE_COUNT: usize = 5;
 pub(crate) const LAUNCH_BEACON_CRYSTAL_COUNT: usize = 4;
 pub(crate) const LANDING_GARDEN_MARKER_SEGMENTS: usize = 12;
 pub(crate) const POND_SURFACE_SEGMENTS: usize = 32;
+pub(crate) const LAKE_SURFACE_SEGMENTS: usize = 48;
+pub(crate) const WATERFALL_RIBBON_COLUMNS: usize = 8;
+pub(crate) const WATERFALL_RIBBON_ROWS: usize = 18;
+pub(crate) const WATERFALL_MIST_LOBES: usize = 7;
 
 const LANDMARK_LOBE_LATITUDE_SEGMENTS: usize = 4;
 const LANDMARK_LOBE_LONGITUDE_SEGMENTS: usize = 9;
 const CRYSTAL_RING_SEGMENTS: usize = 6;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum IslandWaterVisualKind {
+    PondSurface,
+    PlateauLakeSurface,
+    PlateauWaterfallRibbon,
+    PlateauWaterfallMist,
+}
+
+impl IslandWaterVisualKind {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::PondSurface => "pond_surface",
+            Self::PlateauLakeSurface => "plateau_lake_surface",
+            Self::PlateauWaterfallRibbon => "plateau_waterfall_ribbon",
+            Self::PlateauWaterfallMist => "plateau_waterfall_mist",
+        }
+    }
+
+    pub(crate) fn visual_name(self) -> &'static str {
+        match self {
+            Self::PondSurface => "island pond",
+            Self::PlateauLakeSurface => "plateau lake",
+            Self::PlateauWaterfallRibbon => "plateau waterfall ribbon",
+            Self::PlateauWaterfallMist => "plateau waterfall mist",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum IslandWaterVisualMesh {
+    PondSurface { radius_x: f32, radius_z: f32 },
+    LakeSurface { radius_x: f32, radius_z: f32 },
+    WaterfallRibbon { width: f32, height: f32, depth: f32 },
+    WaterfallMist { radius: f32, height: f32 },
+}
+
+impl IslandWaterVisualMesh {
+    pub(crate) fn build(self, seed: u32) -> Mesh {
+        match self {
+            Self::PondSurface { radius_x, radius_z } => pond_surface_mesh(radius_x, radius_z, seed),
+            Self::LakeSurface { radius_x, radius_z } => lake_surface_mesh(radius_x, radius_z, seed),
+            Self::WaterfallRibbon {
+                width,
+                height,
+                depth,
+            } => waterfall_ribbon_mesh(width, height, depth, seed),
+            Self::WaterfallMist { radius, height } => waterfall_mist_mesh(radius, height, seed),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct IslandWaterVisualSpec {
+    pub(crate) kind: IslandWaterVisualKind,
+    pub(crate) label: &'static str,
+    pub(crate) translation: Vec3,
+    pub(crate) rotation_y: f32,
+    pub(crate) wind_phase: f32,
+    pub(crate) wind_motion_scale: f32,
+    pub(crate) mesh: IslandWaterVisualMesh,
+    seed: u32,
+}
+
+impl IslandWaterVisualSpec {
+    pub(crate) fn build_mesh(self) -> Mesh {
+        self.mesh.build(self.seed)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PlateauWaterfallFeatureSpec {
+    region: IslandPlateauRegion,
+    ribbon_label: &'static str,
+    mist_label: &'static str,
+    width_scale: f32,
+    index: u32,
+}
+
+pub(crate) fn island_water_visual_specs(
+    island_index: usize,
+    island: SkyIsland,
+) -> Vec<IslandWaterVisualSpec> {
+    let mut specs = Vec::new();
+    let pond_offset = if island.is_target {
+        Vec2::new(-0.34, 0.18)
+    } else {
+        Vec2::new(0.18, 0.28)
+    };
+    specs.push(IslandWaterVisualSpec {
+        kind: IslandWaterVisualKind::PondSurface,
+        label: "pond surface",
+        translation: island_water_surface_position(island, pond_offset) + Vec3::Y * 0.055,
+        rotation_y: 0.0,
+        wind_phase: 3.4,
+        wind_motion_scale: 1.0,
+        mesh: IslandWaterVisualMesh::PondSurface {
+            radius_x: island.half_extents.x * 0.12,
+            radius_z: island.half_extents.y * 0.08,
+        },
+        seed: 11_000 + island_index as u32 * 149,
+    });
+
+    if island.is_great_plateau_anchor() {
+        if let Some(low_basin) = island.plateau_region_position(IslandPlateauRegion::LowBasin) {
+            specs.push(IslandWaterVisualSpec {
+                kind: IslandWaterVisualKind::PlateauLakeSurface,
+                label: "low basin lake",
+                translation: low_basin + Vec3::Y * 0.08,
+                rotation_y: 0.22,
+                wind_phase: 4.7,
+                wind_motion_scale: 1.45,
+                mesh: IslandWaterVisualMesh::LakeSurface {
+                    radius_x: island.half_extents.x * 0.24,
+                    radius_z: island.half_extents.y * 0.17,
+                },
+                seed: 31_000 + island_index as u32 * 191,
+            });
+        }
+        if let Some(high_shelf) = island.plateau_region_position(IslandPlateauRegion::HighShelf) {
+            specs.push(IslandWaterVisualSpec {
+                kind: IslandWaterVisualKind::PlateauLakeSurface,
+                label: "high shelf pool",
+                translation: high_shelf + Vec3::Y * 0.08,
+                rotation_y: -0.18,
+                wind_phase: 5.2,
+                wind_motion_scale: 1.25,
+                mesh: IslandWaterVisualMesh::LakeSurface {
+                    radius_x: island.half_extents.x * 0.13,
+                    radius_z: island.half_extents.y * 0.09,
+                },
+                seed: 32_000 + island_index as u32 * 193,
+            });
+        }
+        for waterfall in [
+            PlateauWaterfallFeatureSpec {
+                region: IslandPlateauRegion::CliffRim,
+                ribbon_label: "north rim waterfall",
+                mist_label: "north rim waterfall mist",
+                width_scale: 0.18,
+                index: 0,
+            },
+            PlateauWaterfallFeatureSpec {
+                region: IslandPlateauRegion::BrokenEdge,
+                ribbon_label: "broken edge waterfall",
+                mist_label: "broken edge waterfall mist",
+                width_scale: 0.14,
+                index: 1,
+            },
+        ] {
+            push_plateau_waterfall_specs(&mut specs, island_index, island, waterfall);
+        }
+    }
+
+    specs
+}
 
 pub(crate) fn route_cairn_mesh(radius: f32, height: f32, seed: u32) -> Mesh {
     let mut positions = Vec::new();
@@ -125,22 +286,147 @@ pub(crate) fn landing_garden_marker_mesh(length: f32, width: f32, seed: u32) -> 
 }
 
 pub(crate) fn pond_surface_mesh(radius_x: f32, radius_z: f32, seed: u32) -> Mesh {
-    let mut positions = Vec::with_capacity(1 + POND_SURFACE_SEGMENTS * 2);
+    irregular_water_surface_mesh(
+        radius_x,
+        radius_z,
+        seed,
+        POND_SURFACE_SEGMENTS,
+        &[0.48, 1.0],
+        0.15,
+        0.012,
+    )
+}
+
+pub(crate) fn lake_surface_mesh(radius_x: f32, radius_z: f32, seed: u32) -> Mesh {
+    irregular_water_surface_mesh(
+        radius_x,
+        radius_z,
+        seed,
+        LAKE_SURFACE_SEGMENTS,
+        &[0.34, 0.68, 1.0],
+        0.20,
+        0.030,
+    )
+}
+
+pub(crate) fn waterfall_ribbon_mesh(width: f32, height: f32, depth: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::with_capacity(WATERFALL_RIBBON_COLUMNS * WATERFALL_RIBBON_ROWS);
     let mut normals = Vec::with_capacity(positions.capacity());
     let mut uvs = Vec::with_capacity(positions.capacity());
-    let mut indices = Vec::with_capacity(POND_SURFACE_SEGMENTS * 9);
+    let mut indices =
+        Vec::with_capacity((WATERFALL_RIBBON_COLUMNS - 1) * (WATERFALL_RIBBON_ROWS - 1) * 6);
+
+    for row in 0..WATERFALL_RIBBON_ROWS {
+        let v = row as f32 / (WATERFALL_RIBBON_ROWS - 1) as f32;
+        let y = height * (0.5 - v);
+        let fall_waver = (v * 18.0 + seed as f32 * 0.019).sin();
+        for column in 0..WATERFALL_RIBBON_COLUMNS {
+            let u = column as f32 / (WATERFALL_RIBBON_COLUMNS - 1) as f32;
+            let centered_u = u - 0.5;
+            let strand_noise = random_unit(seed, column as u32, 1_021) - 0.5;
+            let taper = 1.0 - v * 0.18 + (v * std::f32::consts::PI).sin() * 0.10;
+            let x = centered_u * width * taper
+                + (fall_waver + column as f32 * 0.19).sin() * width * 0.018;
+            let z =
+                (fall_waver * 0.55 + centered_u * 2.1).sin() * depth + strand_noise * depth * 0.28;
+            let alpha_lane = (1.0 - centered_u.abs() * 1.35).max(0.0);
+            let normal_lift = 0.05
+                + alpha_lane * 0.34
+                + (v * std::f32::consts::PI).sin() * 0.16
+                + (fall_waver + column as f32 * 0.41).cos().abs() * 0.10;
+            let normal = Vec3::new(
+                (strand_noise * 0.24 + fall_waver * 0.08).clamp(-0.32, 0.32),
+                normal_lift,
+                1.0 + centered_u.abs() * 0.18,
+            )
+            .normalize();
+
+            positions.push([x, y, z]);
+            normals.push(normal.to_array());
+            uvs.push([u, v * (1.0 + alpha_lane * 0.08)]);
+        }
+    }
+
+    for row in 0..WATERFALL_RIBBON_ROWS - 1 {
+        for column in 0..WATERFALL_RIBBON_COLUMNS - 1 {
+            let current = (row * WATERFALL_RIBBON_COLUMNS + column) as u32;
+            let right = current + 1;
+            let next = current + WATERFALL_RIBBON_COLUMNS as u32;
+            let next_right = next + 1;
+            indices.extend([current, next, right, right, next, next_right]);
+        }
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+pub(crate) fn waterfall_mist_mesh(radius: f32, height: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+
+    for lobe in 0..WATERFALL_MIST_LOBES {
+        let t = lobe as f32 / WATERFALL_MIST_LOBES as f32;
+        let phase = t * std::f32::consts::TAU + random_unit(seed, lobe as u32, 1_117) * 0.45;
+        let ring_radius = radius * (0.12 + random_unit(seed, lobe as u32, 1_123) * 0.62);
+        let center = Vec3::new(
+            phase.cos() * ring_radius,
+            height * (0.18 + random_unit(seed, lobe as u32, 1_131) * 0.38),
+            phase.sin() * ring_radius * 0.72,
+        );
+        let lobe_radius = Vec3::new(
+            radius * (0.22 + random_unit(seed, lobe as u32, 1_139) * 0.14),
+            height * (0.20 + random_unit(seed, lobe as u32, 1_149) * 0.18),
+            radius * (0.16 + random_unit(seed, lobe as u32, 1_151) * 0.12),
+        );
+        append_ellipsoid_lobe(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            center,
+            lobe_radius,
+            LANDMARK_LOBE_LATITUDE_SEGMENTS,
+            LANDMARK_LOBE_LONGITUDE_SEGMENTS,
+            seed.wrapping_add(lobe as u32 * 97),
+            0.28,
+        );
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+fn irregular_water_surface_mesh(
+    radius_x: f32,
+    radius_z: f32,
+    seed: u32,
+    segments: usize,
+    rings: &[f32],
+    edge_noise_scale: f32,
+    ripple_scale: f32,
+) -> Mesh {
+    let mut positions = Vec::with_capacity(1 + segments * rings.len());
+    let mut normals = Vec::with_capacity(positions.capacity());
+    let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut indices = Vec::with_capacity(segments * (3 + rings.len().saturating_sub(1) * 6));
 
     positions.push([0.0, 0.0, 0.0]);
     normals.push(Vec3::Y.to_array());
     uvs.push([0.5, 0.5]);
 
-    for ring in [0.48_f32, 1.0] {
-        for segment in 0..POND_SURFACE_SEGMENTS {
-            let angle = segment as f32 / POND_SURFACE_SEGMENTS as f32 * std::f32::consts::TAU;
+    for (ring_index, ring) in rings.iter().copied().enumerate() {
+        for segment in 0..segments {
+            let angle = segment as f32 / segments as f32 * std::f32::consts::TAU;
             let edge = 1.0
-                + (random_unit(seed, segment as u32, 907) - 0.5) * 0.15 * ring
+                + (random_unit(seed, segment as u32 + ring_index as u32 * 31, 907) - 0.5)
+                    * edge_noise_scale
+                    * ring
                 + 0.035 * (angle * 5.0 + seed as f32 * 0.011).sin();
-            let ripple = (angle * 4.0 + seed as f32 * 0.017).sin() * 0.012 * ring;
+            let ripple = ((angle * 4.0 + seed as f32 * 0.017).sin()
+                + (angle * 9.0 + ring_index as f32 * 0.71).sin() * 0.35)
+                * ripple_scale
+                * ring;
             let x = angle.cos() * radius_x * ring * edge;
             let z = angle.sin() * radius_z * ring * edge;
 
@@ -153,24 +439,96 @@ pub(crate) fn pond_surface_mesh(radius_x: f32, radius_z: f32, seed: u32) -> Mesh
         }
     }
 
-    let inner_index = |segment: usize| -> u32 { 1 + segment as u32 % POND_SURFACE_SEGMENTS as u32 };
-    let outer_index = |segment: usize| -> u32 {
-        1 + POND_SURFACE_SEGMENTS as u32 + segment as u32 % POND_SURFACE_SEGMENTS as u32
+    let ring_vertex_index = |ring_index: usize, segment: usize| -> u32 {
+        1 + (ring_index * segments + segment % segments) as u32
     };
 
-    for segment in 0..POND_SURFACE_SEGMENTS {
-        indices.extend([0, inner_index(segment), inner_index(segment + 1)]);
+    for segment in 0..segments {
         indices.extend([
-            inner_index(segment),
-            outer_index(segment),
-            inner_index(segment + 1),
-            inner_index(segment + 1),
-            outer_index(segment),
-            outer_index(segment + 1),
+            0,
+            ring_vertex_index(0, segment),
+            ring_vertex_index(0, segment + 1),
         ]);
+    }
+    for ring_index in 0..rings.len().saturating_sub(1) {
+        for segment in 0..segments {
+            indices.extend([
+                ring_vertex_index(ring_index, segment),
+                ring_vertex_index(ring_index + 1, segment),
+                ring_vertex_index(ring_index, segment + 1),
+                ring_vertex_index(ring_index, segment + 1),
+                ring_vertex_index(ring_index + 1, segment),
+                ring_vertex_index(ring_index + 1, segment + 1),
+            ]);
+        }
     }
 
     build_mesh(positions, normals, uvs, indices)
+}
+
+fn push_plateau_waterfall_specs(
+    specs: &mut Vec<IslandWaterVisualSpec>,
+    island_index: usize,
+    island: SkyIsland,
+    waterfall: PlateauWaterfallFeatureSpec,
+) {
+    let Some(surface) = island.plateau_region_position(waterfall.region) else {
+        return;
+    };
+    let sample = waterfall.region.sample_offset();
+    let outward = Vec2::new(sample.x, sample.y).normalize_or_zero();
+    let outward = if outward.length_squared() > 0.001 {
+        outward
+    } else {
+        Vec2::Y
+    };
+    let yaw = outward.x.atan2(outward.y);
+    let height = island.thickness * 0.84;
+    let width = island.half_extents.min_element() * waterfall.width_scale;
+    let outward3 = Vec3::new(outward.x, 0.0, outward.y);
+    let seed_base = 33_000 + island_index as u32 * 197 + waterfall.index * 1_009;
+
+    specs.push(IslandWaterVisualSpec {
+        kind: IslandWaterVisualKind::PlateauWaterfallRibbon,
+        label: waterfall.ribbon_label,
+        translation: surface + outward3 * 6.0 - Vec3::Y * (height * 0.48),
+        rotation_y: yaw,
+        wind_phase: 6.1 + waterfall.index as f32 * 0.7,
+        wind_motion_scale: 1.8,
+        mesh: IslandWaterVisualMesh::WaterfallRibbon {
+            width,
+            height,
+            depth: width * 0.05,
+        },
+        seed: seed_base,
+    });
+    specs.push(IslandWaterVisualSpec {
+        kind: IslandWaterVisualKind::PlateauWaterfallMist,
+        label: waterfall.mist_label,
+        translation: surface + outward3 * 9.0 - Vec3::Y * (height * 0.94),
+        rotation_y: yaw,
+        wind_phase: 6.8 + waterfall.index as f32 * 0.9,
+        wind_motion_scale: 1.55,
+        mesh: IslandWaterVisualMesh::WaterfallMist {
+            radius: width * 0.42,
+            height: island.thickness * 0.08,
+        },
+        seed: seed_base + 503,
+    });
+}
+
+fn island_water_surface_position(island: SkyIsland, normalized_offset: Vec2) -> Vec3 {
+    let radius = normalized_offset.length();
+    let playable_offset = if radius <= f32::EPSILON {
+        Vec2::ZERO
+    } else {
+        let angle = normalized_offset.y.atan2(normalized_offset.x);
+        let max_radius = island.playable_silhouette_scale(angle) * 0.94;
+        normalized_offset / radius * radius.min(max_radius)
+    };
+    let x = island.center.x + island.half_extents.x * playable_offset.x;
+    let z = island.center.z + island.half_extents.y * playable_offset.y;
+    Vec3::new(x, island.mesh_top_y_at(Vec3::new(x, island.center.y, z)), z)
 }
 
 fn append_cairn_stones(

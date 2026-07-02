@@ -171,13 +171,13 @@ pub(crate) fn cloud_surface_material(
     materials: &mut Assets<StandardMaterial>,
 ) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial {
-        base_color: Color::srgba(0.86, 0.91, 0.96, 0.38),
+        base_color: Color::srgba(0.96, 0.90, 0.76, 0.48),
         alpha_mode: AlphaMode::Blend,
         cull_mode: None,
         double_sided: true,
         perceptual_roughness: 1.0,
-        reflectance: 0.12,
-        diffuse_transmission: 0.18,
+        reflectance: 0.18,
+        diffuse_transmission: 0.28,
         ..default()
     })
 }
@@ -186,13 +186,13 @@ pub(crate) fn cloud_veil_material(
     materials: &mut Assets<StandardMaterial>,
 ) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial {
-        base_color: Color::srgba(0.76, 0.84, 0.96, 0.24),
+        base_color: Color::srgba(0.72, 0.82, 0.96, 0.30),
         alpha_mode: AlphaMode::Blend,
         cull_mode: None,
         double_sided: true,
         perceptual_roughness: 1.0,
-        reflectance: 0.06,
-        diffuse_transmission: 0.34,
+        reflectance: 0.10,
+        diffuse_transmission: 0.42,
         ..default()
     })
 }
@@ -201,8 +201,8 @@ pub(crate) fn updraft_column_material(
     materials: &mut Assets<StandardMaterial>,
 ) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial {
-        base_color: Color::srgba(0.18, 0.74, 1.0, 0.006),
-        emissive: LinearRgba::rgb(0.004, 0.025, 0.045),
+        base_color: Color::srgba(0.38, 0.95, 0.70, 0.010),
+        emissive: LinearRgba::rgb(0.010, 0.040, 0.026),
         emissive_exposure_weight: 0.12,
         alpha_mode: AlphaMode::Add,
         cull_mode: None,
@@ -218,8 +218,8 @@ pub(crate) fn updraft_ribbon_material(
     materials: &mut Assets<StandardMaterial>,
 ) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial {
-        base_color: Color::srgba(0.44, 0.92, 1.0, 0.32),
-        emissive: LinearRgba::rgb(0.06, 0.9, 1.8),
+        base_color: Color::srgba(0.58, 1.0, 0.72, 0.34),
+        emissive: LinearRgba::rgb(0.18, 1.45, 0.82),
         emissive_exposure_weight: 0.2,
         alpha_mode: AlphaMode::Add,
         cull_mode: None,

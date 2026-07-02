@@ -36,6 +36,12 @@ Install Rust with `rustup`, then:
 cargo run
 ```
 
+Clean play mode hides the debug readout and debug gizmos:
+
+```sh
+cargo run -- --play
+```
+
 Repo-local alias:
 
 ```sh
@@ -74,7 +80,8 @@ NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh updraft_route target/eval/updraft_route
 |`Space`|Deploy glider while airborne|
 |`E`|Launch upward from the ground|
 |`Shift`|Dive|
-|`F1`|Toggle debug gizmos|
+|`R`|Reset to the central playtest island|
+|`F1`|Toggle debug gizmos in the default debug sandbox|
 
 ## Docs
 

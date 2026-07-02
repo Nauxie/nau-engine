@@ -61,7 +61,12 @@ const SOLID_VISUAL_REQUIREMENTS: &[SolidVisualRequirement] = &[
     },
 ];
 
-const CAMERA_ONLY_ALLOWLIST: &[&str] = &["island tree canopy", "launch camera tree canopy"];
+const CAMERA_ONLY_ALLOWLIST: &[&str] = &[
+    "island tree canopy",
+    "launch camera tree canopy",
+    "plateau cave mouth arch",
+    "plateau underhang shelf",
+];
 
 #[derive(Debug)]
 pub(crate) struct IslandCollisionCoverageAudit {

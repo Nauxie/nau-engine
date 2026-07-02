@@ -19,7 +19,7 @@ impl Default for FollowCamera {
             height: 5.0,
             look_height: 1.4,
             look_ahead: 0.5,
-            position_smoothing: 10.0,
+            position_smoothing: 22.0,
             rotation_smoothing: 24.0,
             direction_smoothing: 1.0,
             min_height: 1.6,

@@ -74,6 +74,7 @@ fn route_objectives_track_main_and_branch_targets() {
     let branch = route.route_objectives(Some("sunlit terrace"));
     let stratos = route.route_objectives(Some("stratos shelf"));
     let summit = route.route_objectives(Some("summit anvil"));
+    let plateau = route.route_objectives(Some("great sky plateau"));
 
     assert_eq!(main.len(), 2);
     assert_eq!(main[0].label, "launch terrace updraft");
@@ -89,6 +90,16 @@ fn route_objectives_track_main_and_branch_targets() {
     assert_eq!(summit[3].label, "stratos shelf updraft");
     assert_eq!(summit[4].label, "summit anvil updraft");
     assert_eq!(summit[5].label, "summit anvil");
+    assert_eq!(plateau.len(), 10);
+    assert_eq!(plateau[6].label, "bluevault basin updraft");
+    assert_eq!(plateau[7].label, "sunspire garden updraft");
+    assert_eq!(plateau[8].label, "great sky plateau updraft");
+    assert_eq!(plateau[9].label, "great sky plateau");
+    assert!(
+        plateau
+            .iter()
+            .all(|objective| objective.label != "upper crown updraft")
+    );
 }
 
 #[test]
@@ -122,7 +133,7 @@ fn route_has_archipelago_scale_and_distant_landmarks() {
         .fold(0.0_f32, f32::min);
 
     assert_eq!(route.islands().len(), SKY_ROUTE_ISLAND_COUNT);
-    assert!(farthest_z < -1500.0);
+    assert!(farthest_z < -3100.0);
 }
 
 #[test]
@@ -145,10 +156,10 @@ fn route_has_wide_vertical_and_scale_variation() {
         high_island_count += usize::from(island.center.y >= 140.0);
     }
 
-    assert!(max_y - min_y >= 190.0);
+    assert!(max_y - min_y >= 1000.0);
     assert!(low_island_count >= 3);
-    assert!(high_island_count >= 6);
-    assert!(largest_base_area / smallest_base_area >= 16.0);
+    assert!(high_island_count >= 14);
+    assert!(largest_base_area / smallest_base_area >= 80.0);
 }
 
 #[test]
@@ -165,9 +176,164 @@ fn route_has_large_traversible_anchor_islands() {
         large_anchor_count += usize::from(base_area >= 1500.0);
     }
 
-    assert!(total_base_area >= 48_000.0);
-    assert!(largest_base_area >= 4_400.0);
+    assert!(total_base_area >= 76_000.0);
+    assert!(largest_base_area >= 32_000.0);
     assert!(large_anchor_count >= 12);
+}
+
+#[test]
+fn route_has_named_great_sky_plateau_anchor() {
+    let route = SkyRoute::default();
+    let plateau = route
+        .island_named("great sky plateau")
+        .expect("route should include a named Great Sky Plateau-scale island");
+    let largest_non_plateau = route
+        .islands()
+        .iter()
+        .copied()
+        .filter(|island| island.name != plateau.name)
+        .map(SkyIsland::base_area_m2)
+        .fold(0.0_f32, f32::max);
+
+    assert!(plateau.is_great_plateau_anchor());
+    assert_eq!(
+        plateau.terrain_archetype,
+        IslandTerrainArchetype::SkyPlateau
+    );
+    assert_eq!(
+        plateau.world_tags.scale_class,
+        IslandScaleClass::HugePlateau
+    );
+    assert_eq!(plateau.world_tags.route_role, IslandRouteRole::SkyPlateau);
+    assert_eq!(
+        plateau.world_tags.vertical_profile,
+        IslandVerticalProfile::Plateau
+    );
+    assert_eq!(
+        plateau.world_tags.landmark_role,
+        IslandLandmarkRole::CaveMouth
+    );
+    assert!(plateau.base_area_m2() >= largest_non_plateau * 4.0);
+    assert!(plateau.longest_span_m() >= 450.0);
+    assert!(plateau.thickness >= 68.0);
+}
+
+#[test]
+fn great_sky_plateau_defines_playable_regions_and_relief() {
+    let route = SkyRoute::default();
+    let plateau = route
+        .island_named("great sky plateau")
+        .expect("plateau island exists");
+    let regions = [
+        IslandPlateauRegion::MeadowPlateau,
+        IslandPlateauRegion::CliffRim,
+        IslandPlateauRegion::HighShelf,
+        IslandPlateauRegion::LowBasin,
+        IslandPlateauRegion::BrokenEdge,
+        IslandPlateauRegion::UnderhangEntry,
+    ];
+    let mut region_mask = 0_u32;
+
+    for region in regions {
+        assert!(!region.label().is_empty());
+        let offset = region.sample_offset();
+        assert_eq!(
+            plateau.plateau_region_at_normalized_offset(offset),
+            Some(region),
+            "{region:?} sample offset should classify back to the same plateau region"
+        );
+        let position = plateau
+            .plateau_region_position(region)
+            .expect("region should map to a traversable plateau surface");
+        let ground = route.ground_at(position);
+
+        assert_eq!(ground.island_name, Some("great sky plateau"));
+        assert_eq!(position.y, ground.floor_y);
+        region_mask |= 1_u32 << region as u32;
+    }
+
+    let high_shelf = plateau
+        .plateau_region_position(IslandPlateauRegion::HighShelf)
+        .expect("high shelf exists");
+    let low_basin = plateau
+        .plateau_region_position(IslandPlateauRegion::LowBasin)
+        .expect("low basin exists");
+    let broken_edge = plateau
+        .plateau_region_position(IslandPlateauRegion::BrokenEdge)
+        .expect("broken edge exists");
+    let meadow = plateau
+        .plateau_region_position(IslandPlateauRegion::MeadowPlateau)
+        .expect("meadow plateau exists");
+
+    assert_eq!(
+        region_mask.count_ones() as usize,
+        IslandPlateauRegion::COUNT
+    );
+    assert!(high_shelf.y - low_basin.y >= 0.30);
+    assert!(meadow.distance(broken_edge) >= 150.0);
+    assert!(plateau.has_underworld_route_potential());
+}
+
+#[test]
+fn great_sky_plateau_stays_within_streaming_lod_and_collision_budget() {
+    let route = SkyRoute::default();
+    let plateau = route
+        .island_named("great sky plateau")
+        .expect("plateau island exists");
+    let stats = route.streaming_lod_stats(plateau.center);
+    let body_proxies = terrain_body_collision_proxies(plateau);
+    let rim_proxies = terrain_rim_collision_proxies(plateau);
+
+    assert!(plateau.stream_activation(plateau.center).is_active());
+    assert_eq!(plateau.lod_band(plateau.center), LodBand::Near);
+    assert!(stats.active_island_count <= 8);
+    assert!(stats.near_lod_islands <= 3);
+    assert_eq!(
+        body_proxies.len(),
+        TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND
+    );
+    assert_eq!(rim_proxies.len(), TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND);
+}
+
+#[test]
+fn great_sky_plateau_defines_under_island_glide_route() {
+    let route = SkyRoute::default();
+    let plateau = route
+        .island_named("great sky plateau")
+        .expect("plateau island exists");
+    let under_routes = route.under_island_route_segments();
+    let segment = under_routes
+        .iter()
+        .copied()
+        .find(|segment| segment.island_name == "great sky plateau")
+        .expect("plateau should expose an under-island glide route");
+    let lift = GAMEPLAY_LIFT_ROUTE
+        .iter()
+        .find(|node| node.name == "great sky plateau updraft")
+        .expect("plateau should have a paired lift recovery field")
+        .lift_field();
+
+    assert_eq!(under_routes.len(), 1);
+    assert_eq!(segment.entry_region, IslandPlateauRegion::UnderhangEntry);
+    assert_eq!(segment.exit_region, IslandPlateauRegion::MeadowPlateau);
+    assert!(segment.horizontal_length_m() >= 125.0);
+    assert!(segment.clearance_radius_m >= 10.0);
+    assert!(lift.contains(segment.recommended_lift_point));
+
+    for point in segment.sample_points() {
+        assert!(
+            plateau.contains_horizontal(point),
+            "under-route point should stay within the plateau footprint"
+        );
+        assert!(
+            point.y < plateau.mesh_top_y() - plateau.thickness * 0.24,
+            "under-route point should sit below the top surface"
+        );
+        assert!(
+            point.y > plateau.mesh_top_y() - plateau.thickness * 0.86,
+            "under-route point should stay above the tapered underside tip"
+        );
+    }
 }
 
 #[test]
@@ -208,6 +374,15 @@ fn route_preserves_core_path_and_appends_satellite_islands() {
         "highgate stair",
         "thin air roost",
         "summit anvil",
+        "upper sky shelf",
+        "east windchain",
+        "bluevault basin",
+        "outer switchback",
+        "sunspire garden",
+        "cloudbreak stair",
+        "great sky plateau",
+        "far horizon perch",
+        "upper crown",
     ];
 
     for (index, expected_name) in core_route_names.into_iter().enumerate() {
@@ -216,6 +391,23 @@ fn route_preserves_core_path_and_appends_satellite_islands() {
     for expected_name in satellite_names {
         assert!(route.island_named(expected_name).is_some());
     }
+}
+
+#[test]
+fn playtest_reset_position_targets_known_central_island() {
+    let route = SkyRoute::default();
+    let reset = route.playtest_reset_position();
+    let reset_island = route
+        .island_named(PLAYTEST_RESET_ISLAND_NAME)
+        .expect("reset island exists");
+
+    assert_eq!(reset.x, reset_island.center.x);
+    assert_eq!(reset.z, reset_island.center.z);
+    assert_eq!(reset.y, route.ground_at(reset).floor_y);
+    assert_eq!(
+        route.ground_at(reset).island_name,
+        Some(PLAYTEST_RESET_ISLAND_NAME)
+    );
 }
 
 #[test]
@@ -235,6 +427,90 @@ fn route_uses_all_declared_terrain_archetypes() {
         archetype_mask.count_ones() as usize,
         IslandTerrainArchetype::COUNT
     );
+}
+
+#[test]
+fn route_defines_explicit_world_taxonomy_for_every_island() {
+    let route = SkyRoute::default();
+    let mut scale_mask = 0_u32;
+    let mut biome_mask = 0_u32;
+    let mut water_mask = 0_u32;
+    let mut vertical_mask = 0_u32;
+    let mut route_role_mask = 0_u32;
+    let mut landmark_mask = 0_u32;
+
+    for island in route.islands() {
+        let tags = island.world_tags;
+        assert!(
+            tags.labels().iter().all(|label| !label.is_empty()),
+            "{} has an empty taxonomy label",
+            island.name
+        );
+        assert_eq!(
+            tags.scale_class,
+            IslandScaleClass::from_footprint_area(island.base_area_m2()),
+            "{} scale class should match its measured footprint",
+            island.name
+        );
+
+        scale_mask |= 1_u32 << tags.scale_class as u32;
+        biome_mask |= 1_u32 << tags.biome as u32;
+        water_mask |= 1_u32 << tags.water_feature as u32;
+        vertical_mask |= 1_u32 << tags.vertical_profile as u32;
+        route_role_mask |= 1_u32 << tags.route_role as u32;
+        landmark_mask |= 1_u32 << tags.landmark_role as u32;
+    }
+
+    assert_eq!(scale_mask.count_ones() as usize, IslandScaleClass::COUNT);
+    assert!(biome_mask.count_ones() as usize >= IslandBiome::COUNT - 1);
+    assert_eq!(water_mask.count_ones() as usize, IslandWaterFeature::COUNT);
+    assert!(vertical_mask.count_ones() as usize >= IslandVerticalProfile::COUNT - 1);
+    assert!(route_role_mask.count_ones() as usize >= IslandRouteRole::COUNT - 1);
+    assert!(landmark_mask.count_ones() as usize >= IslandLandmarkRole::COUNT - 1);
+}
+
+#[test]
+fn route_includes_plateau_scale_water_cave_spire_and_stepping_stone_roles() {
+    let route = SkyRoute::default();
+    let mut tiny_count = 0;
+    let mut small_count = 0;
+    let mut medium_count = 0;
+    let mut large_count = 0;
+    let mut huge_plateau_count = 0;
+    let mut lake_basin_count = 0;
+    let mut waterfall_source_count = 0;
+    let mut cave_or_underhang_count = 0;
+    let mut spire_count = 0;
+    let mut stepping_stone_count = 0;
+    let mut plateau_role_count = 0;
+
+    for island in route.islands() {
+        let tags = island.world_tags;
+        tiny_count += usize::from(tags.scale_class == IslandScaleClass::Tiny);
+        small_count += usize::from(tags.scale_class == IslandScaleClass::Small);
+        medium_count += usize::from(tags.scale_class == IslandScaleClass::Medium);
+        large_count += usize::from(tags.scale_class == IslandScaleClass::Large);
+        huge_plateau_count += usize::from(tags.scale_class == IslandScaleClass::HugePlateau);
+        lake_basin_count += usize::from(tags.water_feature == IslandWaterFeature::LakeBasin);
+        waterfall_source_count +=
+            usize::from(tags.water_feature == IslandWaterFeature::WaterfallSource);
+        cave_or_underhang_count += usize::from(island.has_underworld_route_potential());
+        spire_count += usize::from(tags.vertical_profile == IslandVerticalProfile::Spire);
+        stepping_stone_count += usize::from(tags.route_role == IslandRouteRole::SteppingStone);
+        plateau_role_count += usize::from(tags.route_role == IslandRouteRole::SkyPlateau);
+    }
+
+    assert!(tiny_count >= 5);
+    assert!(small_count >= 5);
+    assert!(medium_count >= 8);
+    assert!(large_count >= 10);
+    assert!(huge_plateau_count >= 1);
+    assert!(lake_basin_count >= 3);
+    assert!(waterfall_source_count >= 1);
+    assert!(cave_or_underhang_count >= 1);
+    assert!(spire_count >= 3);
+    assert!(stepping_stone_count >= 8);
+    assert!(plateau_role_count >= 2);
 }
 
 #[test]

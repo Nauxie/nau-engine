@@ -264,7 +264,9 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_island_terrain_material_regions\": 4"));
     assert!(summary_json.contains("\"min_island_terrain_texture_detail_bands\": 64"));
     assert!(summary_json.contains("\"min_island_terrain_relief_range_m\": 0.8000"));
-    assert!(summary_json.contains("\"min_island_terrain_archetype_count\": 19"));
+    assert!(summary_json.contains(&format!(
+        "\"min_island_terrain_archetype_count\": {MIN_ISLAND_TERRAIN_ARCHETYPE_COUNT}"
+    )));
     assert!(summary_json.contains("\"min_island_cliff_color_bands\": 9"));
     assert!(summary_json.contains("\"min_island_body_mesh_vertices\": 1633"));
     assert!(summary_json.contains("\"min_generated_ground_cover_patch_count\": 800"));
@@ -1057,7 +1059,9 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"terrain_body_collision_resolved_count\":0"));
     assert!(sample_json.contains("\"max_terrain_rim_collision_push_m\":0.0000"));
     assert!(sample_json.contains("\"max_terrain_body_collision_push_m\":0.0000"));
-    assert!(sample_json.contains("\"island_terrain_archetype_count\":19"));
+    assert!(sample_json.contains(&format!(
+        "\"island_terrain_archetype_count\":{MIN_ISLAND_TERRAIN_ARCHETYPE_COUNT}"
+    )));
 }
 
 #[test]
@@ -1225,7 +1229,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
             "grounded_idle",
             12.0,
             3.0,
-            4.0,
+            2.5,
             -20.0,
             0.0,
             0.0,
@@ -1320,7 +1324,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
             "gliding",
             14.0,
             3.0,
-            4.0,
+            2.5,
             -18.0,
             0.0,
             0.0,
@@ -1423,7 +1427,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
                 "gliding",
                 13.0,
                 3.0,
-                4.0,
+                2.5,
                 -18.0,
                 0.0,
                 0.0,

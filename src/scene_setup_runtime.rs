@@ -9,7 +9,7 @@ use bevy::prelude::*;
 
 use crate::authored_assets::{VisualAssetRegistry, prepare_visual_asset_registry};
 use crate::camera_runtime::spawn_follow_camera;
-use crate::eval_runtime::EvalRun;
+use crate::eval_runtime::{EvalRun, RunMode};
 use crate::scene_setup_runtime::hud::spawn_debug_readout;
 use crate::scene_setup_runtime::materials::prepare_scene_materials;
 use crate::scene_setup_runtime::player::spawn_player_runtime;
@@ -30,6 +30,7 @@ pub(crate) fn setup(
     mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
     asset_server: Res<AssetServer>,
     eval_run: Option<Res<EvalRun>>,
+    run_mode: Res<RunMode>,
 ) {
     let mut visual_asset_registry = prepare_visual_asset_registry(&asset_server);
     let player_scene_handle = visual_asset_registry.scene_handle(VisualAssetKind::PlayerCharacter);
@@ -69,7 +70,9 @@ pub(crate) fn setup(
         INITIAL_SKY_CLEAR_COLOR,
     );
 
-    spawn_debug_readout(&mut commands);
+    if run_mode.debug_readout_enabled() {
+        spawn_debug_readout(&mut commands);
+    }
 }
 
 fn initial_player_position(eval_run: Option<&EvalRun>, route: &SkyRoute) -> Vec3 {

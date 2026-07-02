@@ -236,6 +236,64 @@ fn long_glide_visibility_script_crosses_archipelago() {
 }
 
 #[test]
+fn great_sky_plateau_route_targets_long_vertical_chain() {
+    let scenario = scenario_named(GREAT_SKY_PLATEAU_ROUTE).expect("plateau route exists");
+    let alias = scenario_named("plateau_route").expect("plateau alias exists");
+
+    assert_eq!(alias.name, GREAT_SKY_PLATEAU_ROUTE);
+    assert_eq!(alias.target_island_name, scenario.target_island_name);
+    assert_eq!(scenario.target_island_name, Some("great sky plateau"));
+    assert!(
+        scenario.frame_count
+            > scenario_named(LONG_GLIDE_VISIBILITY)
+                .expect("long glide route exists")
+                .frame_count
+    );
+    assert_eq!(scenario.thresholds.min_objective_total_count, 10);
+    assert!(scenario.thresholds.min_completed_objective_count >= 4);
+    assert!(scenario.thresholds.min_lifted_samples >= 8);
+    assert!(scripted_input(scenario, 1).launch);
+    assert!(scripted_input(scenario, 420).glide);
+    assert!(scripted_input(scenario, 480).dive);
+    assert!(scripted_input(scenario, 1020).right);
+    assert!(scripted_input(scenario, 1240).left);
+    assert!(scripted_input(scenario, 1980).glide);
+    assert!(scripted_input(scenario, 1980).forward);
+    assert!(!scripted_input(scenario, 1980).backward);
+}
+
+#[test]
+fn scenario_camera_thresholds_guard_follow_distance_and_jitter() {
+    for name in SCENARIO_NAMES {
+        let scenario = scenario_named(name).expect("scenario exists");
+        let mouse_camera = *name == CAMERA_MOUSE_CONTROL;
+
+        assert!(
+            scenario.thresholds.max_camera_distance_m <= 16.5,
+            "{name} should fail if the follow camera drifts into a zoomed-out view"
+        );
+        assert!(
+            scenario.thresholds.max_camera_step_distance_m <= 3.0,
+            "{name} should fail large per-frame camera jumps"
+        );
+        assert!(
+            scenario.thresholds.max_camera_player_angle_degrees
+                <= if mouse_camera { 6.0 } else { 3.0 },
+            "{name} should keep the player focus centered"
+        );
+        assert!(
+            scenario.thresholds.max_camera_rotation_delta_degrees
+                <= if mouse_camera { 12.0 } else { 3.0 },
+            "{name} should fail camera rotation jitter"
+        );
+        assert!(
+            scenario.thresholds.max_camera_orbit_alignment_degrees <= 5.0,
+            "{name} should fail broad orbit misalignment"
+        );
+    }
+}
+
+#[test]
 fn scenarios_define_non_final_camera_checkpoints() {
     for name in SCENARIO_NAMES {
         let scenario = scenario_named(name).expect("scenario exists");

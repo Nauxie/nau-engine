@@ -17,7 +17,7 @@ use crate::{
         island_ground_cover_mesh, tree_canopy_mesh, tree_trunk_mesh,
     },
 };
-use nau_engine::world::SkyRoute;
+use nau_engine::world::{IslandScaleClass, SkyRoute};
 use std::{
     collections::HashSet,
     fs,
@@ -126,6 +126,41 @@ pub(crate) fn export_visual_content_inspection(
         .map(|palette| palette.stone_key)
         .collect::<HashSet<_>>()
         .len();
+    let landmark_kind_count = landmarks
+        .iter()
+        .map(|summary| summary.kind)
+        .collect::<HashSet<_>>()
+        .len();
+    let small_island_count = route
+        .islands()
+        .iter()
+        .filter(|island| {
+            matches!(
+                island.world_tags.scale_class,
+                IslandScaleClass::Tiny | IslandScaleClass::Small
+            )
+        })
+        .count();
+    let plateau_landmark_count = landmarks
+        .iter()
+        .filter(|summary| summary.island_name == "great sky plateau")
+        .count();
+    let plateau_waterfall_ribbon_count = landmarks
+        .iter()
+        .filter(|summary| summary.kind == "plateau_waterfall_ribbon")
+        .count();
+    let plateau_waterfall_mist_count = landmarks
+        .iter()
+        .filter(|summary| summary.kind == "plateau_waterfall_mist")
+        .count();
+    let under_route_visual_count = landmarks
+        .iter()
+        .filter(|summary| summary.kind.starts_with("under_route_"))
+        .count();
+    let under_route_cave_mouth_count = landmarks
+        .iter()
+        .filter(|summary| summary.kind == "under_route_cave_mouth")
+        .count();
 
     let mesh_count = ground_cover.len() + trees.len() * 2 + clouds.len() + landmarks.len();
     let total_vertex_count = ground_cover
@@ -169,6 +204,13 @@ pub(crate) fn export_visual_content_inspection(
             .filter(|summary| summary.kind == "veil")
             .count(),
         landmark_count: landmarks.len(),
+        landmark_kind_count,
+        small_island_count,
+        plateau_landmark_count,
+        plateau_waterfall_ribbon_count,
+        plateau_waterfall_mist_count,
+        under_route_visual_count,
+        under_route_cave_mouth_count,
         route_cairn_count: landmarks
             .iter()
             .filter(|summary| summary.kind == "route_cairn")
@@ -305,6 +347,27 @@ pub(crate) fn export_visual_content_inspection(
         ),
         min_pond_surface_mesh_vertices: min_landmark_vertices(&landmarks, "pond_surface"),
         min_pond_surface_vertical_span_m: min_landmark_vertical_span(&landmarks, "pond_surface"),
+        plateau_landmark_vertex_total: landmarks
+            .iter()
+            .filter(|summary| summary.island_name == "great sky plateau")
+            .map(|summary| summary.mesh.vertex_count)
+            .sum(),
+        max_plateau_landmark_mesh_vertices: landmarks
+            .iter()
+            .filter(|summary| summary.island_name == "great sky plateau")
+            .map(|summary| summary.mesh.vertex_count)
+            .max()
+            .unwrap_or(0),
+        min_plateau_waterfall_vertical_span_m: min_landmark_vertical_span(
+            &landmarks,
+            "plateau_waterfall_ribbon",
+        ),
+        min_under_route_visual_vertical_span_m: min_finite_f32(
+            landmarks
+                .iter()
+                .filter(|summary| summary.kind.starts_with("under_route_"))
+                .map(|summary| summary.mesh.vertical_span_m),
+        ),
         min_obstruction_spire_mesh_vertices: min_landmark_vertices(&landmarks, "obstruction_spire"),
         min_obstruction_spire_triangle_count: min_landmark_triangles(
             &landmarks,

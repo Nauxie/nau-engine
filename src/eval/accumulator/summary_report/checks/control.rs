@@ -8,7 +8,8 @@ use crate::{
     eval::{
         scenarios::{
             AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
-            EvalScenario, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE, UPDRAFT_ROUTE,
+            EvalScenario, GREAT_SKY_PLATEAU_ROUTE, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE,
+            UPDRAFT_ROUTE,
         },
         summary::EvalCheck,
         thresholds::{EvalThresholds, *},
@@ -488,7 +489,11 @@ pub(super) fn append_scenario_checks(
 fn wind_force_scenario(scenario: EvalScenario) -> bool {
     matches!(
         scenario.name,
-        BASELINE_ROUTE | UPDRAFT_ROUTE | BRANCH_RECOVERY_ROUTE | LONG_GLIDE_VISIBILITY
+        BASELINE_ROUTE
+            | UPDRAFT_ROUTE
+            | BRANCH_RECOVERY_ROUTE
+            | LONG_GLIDE_VISIBILITY
+            | GREAT_SKY_PLATEAU_ROUTE
     )
 }
 

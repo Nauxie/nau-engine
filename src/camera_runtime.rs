@@ -11,11 +11,11 @@ use bevy::prelude::*;
 use bevy::render::render_resource::BlendState;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use nau_engine::camera::{
-    CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M, CameraControlState, CameraControlTuning, CameraInput,
-    CameraObstruction, FollowCamera, FollowCameraState, apply_camera_input,
-    avoid_camera_obstructions, camera_orbit_alignment_degrees, clamp_camera_step,
-    lift_camera_above_floor, movement_input_stable_follow_direction, step_camera_with_direction,
-    update_follow_direction_state,
+    CameraControlState, CameraControlTuning, CameraInput, CameraObstruction,
+    CameraObstructionSmoothingState, FollowCamera, FollowCameraState, apply_camera_input,
+    avoid_camera_obstructions_with_preferred_offset, camera_orbit_alignment_degrees,
+    lift_camera_above_floor, movement_input_stable_follow_direction, smooth_camera_obstruction,
+    step_camera_with_direction, update_follow_direction_state,
 };
 use nau_engine::eval::{scripted_camera_input, scripted_input};
 use nau_engine::movement::Velocity;
@@ -23,7 +23,6 @@ use nau_engine::world::SkyRoute;
 
 const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
 const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
-const CAMERA_MAX_STEP_M: f32 = CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M - 0.05;
 pub(crate) const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
@@ -45,6 +44,12 @@ pub(crate) struct MouseLookState {
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct CameraObstacle(pub(crate) CameraObstruction);
 
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub(crate) struct CameraObstructionMemory {
+    state: CameraObstructionSmoothingState,
+    diagnostics_initialized: bool,
+}
+
 pub(crate) type CameraFollowFilter = (With<Camera3d>, Without<Player>);
 
 #[derive(SystemParam)]
@@ -60,6 +65,7 @@ pub(crate) struct CameraScene<'w, 's> {
             &'static mut Transform,
             &'static FollowCamera,
             &'static mut FollowCameraState,
+            &'static mut CameraObstructionMemory,
         ),
         CameraFollowFilter,
     >,
@@ -74,7 +80,6 @@ pub(crate) fn spawn_follow_camera(
     clear_color: Color,
 ) {
     let follow_camera = FollowCamera::default();
-    let initial_camera_direction = Vec3::NEG_Z;
     commands.spawn((
         Camera3d::default(),
         Camera {
@@ -110,19 +115,24 @@ pub(crate) fn spawn_follow_camera(
                 end: world_radius,
             },
         },
-        Transform::from_translation(
-            player_start - initial_camera_direction * follow_camera.distance
-                + Vec3::Y * follow_camera.height,
-        )
-        .looking_at(
-            player_start
-                + Vec3::Y * follow_camera.look_height
-                + initial_camera_direction * follow_camera.look_ahead,
-            Vec3::Y,
-        ),
+        follow_camera_transform(player_start, &follow_camera),
         follow_camera,
         FollowCameraState::default(),
+        CameraObstructionMemory::default(),
     ));
+}
+
+pub(crate) fn follow_camera_transform(player_position: Vec3, follow: &FollowCamera) -> Transform {
+    let initial_camera_direction = Vec3::NEG_Z;
+    Transform::from_translation(
+        player_position - initial_camera_direction * follow.distance + Vec3::Y * follow.height,
+    )
+    .looking_at(
+        player_position
+            + Vec3::Y * follow.look_height
+            + initial_camera_direction * follow.look_ahead,
+        Vec3::Y,
+    )
 }
 
 pub(crate) fn update_mouse_look_capture(
@@ -206,7 +216,9 @@ pub(crate) fn follow_camera(
     let Ok((player_transform, player_velocity)) = scene.player.single() else {
         return;
     };
-    let Ok((mut camera_transform, follow, mut follow_state)) = scene.camera.single_mut() else {
+    let Ok((mut camera_transform, follow, mut follow_state, mut obstruction_memory)) =
+        scene.camera.single_mut()
+    else {
         return;
     };
     let previous_camera_position = camera_transform.translation;
@@ -242,10 +254,11 @@ pub(crate) fn follow_camera(
     );
     let camera_floor_y = scene.route.ground_at(frame.position).floor_y;
     let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
-    let obstruction_resolution = avoid_camera_obstructions(
+    let obstruction_resolution = avoid_camera_obstructions_with_preferred_offset(
         frame,
         scene.obstacles.iter().map(|obstacle| obstacle.0),
         CAMERA_OBSTRUCTION_CLEARANCE,
+        obstruction_memory.state.readable_offset(),
     );
     let camera_floor_y = scene
         .route
@@ -256,10 +269,25 @@ pub(crate) fn follow_camera(
         camera_floor_y,
         CAMERA_MIN_SURFACE_CLEARANCE,
     );
-    let frame = clamp_camera_step(frame, previous_camera_position, CAMERA_MAX_STEP_M);
+    let frame = smooth_camera_obstruction(
+        frame,
+        &mut obstruction_memory.state,
+        obstruction_resolution.hit_count,
+        obstruction_resolution.adjusted_distance_m,
+        dt,
+    );
 
-    scene.camera_diagnostics.step_distance_m = previous_camera_position.distance(frame.position);
-    scene.camera_diagnostics.rotation_delta_degrees = previous_camera_rotation
+    let (diagnostics_previous_position, diagnostics_previous_rotation) =
+        if obstruction_memory.diagnostics_initialized {
+            (previous_camera_position, previous_camera_rotation)
+        } else {
+            (frame.position, frame.rotation)
+        };
+    obstruction_memory.diagnostics_initialized = true;
+
+    scene.camera_diagnostics.step_distance_m =
+        diagnostics_previous_position.distance(frame.position);
+    scene.camera_diagnostics.rotation_delta_degrees = diagnostics_previous_rotation
         .angle_between(frame.rotation)
         .to_degrees();
     scene.camera_diagnostics.orbit_alignment_degrees = orbit_alignment_degrees;
