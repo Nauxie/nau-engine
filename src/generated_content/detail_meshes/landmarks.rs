@@ -8,6 +8,8 @@ pub(crate) const ROUTE_CAIRN_STONE_COUNT: usize = 5;
 pub(crate) const RUIN_ARCH_STONE_COUNT: usize = 11;
 pub(crate) const LAUNCH_BEACON_CRYSTAL_COUNT: usize = 4;
 pub(crate) const LANDING_GARDEN_MARKER_SEGMENTS: usize = 12;
+pub(crate) const GARDEN_RING_SEGMENTS: usize = 36;
+pub(crate) const GARDEN_RING_BANDS: usize = 4;
 pub(crate) const POND_SURFACE_SEGMENTS: usize = 32;
 pub(crate) const LAKE_SURFACE_SEGMENTS: usize = 48;
 pub(crate) const WATERFALL_RIBBON_COLUMNS: usize = 8;
@@ -353,6 +355,76 @@ pub(crate) fn landing_garden_marker_mesh(length: f32, width: f32, seed: u32) -> 
             next + 1,
             next + 2,
         ]);
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+pub(crate) fn garden_ring_mesh(radius: f32, width: f32, height: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::with_capacity((GARDEN_RING_SEGMENTS + 1) * GARDEN_RING_BANDS);
+    let mut normals = Vec::with_capacity(positions.capacity());
+    let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut indices = Vec::with_capacity(GARDEN_RING_SEGMENTS * (GARDEN_RING_BANDS - 1) * 6);
+    let radius = radius.max(1.0);
+    let width = width.max(0.25);
+    let height = height.max(0.08);
+
+    for segment in 0..=GARDEN_RING_SEGMENTS {
+        let wrapped_segment = segment % GARDEN_RING_SEGMENTS;
+        let t = segment as f32 / GARDEN_RING_SEGMENTS as f32;
+        let angle = t * std::f32::consts::TAU;
+        let radial = Vec2::new(angle.cos(), angle.sin());
+        let tangent = Vec2::new(-angle.sin(), angle.cos());
+        let edge_noise = random_unit(seed, wrapped_segment as u32, 1_609) - 0.5;
+        let crest_noise = random_unit(seed, wrapped_segment as u32, 1_613) - 0.5;
+        let skew = (random_unit(seed, wrapped_segment as u32, 1_619) - 0.5) * width * 0.22;
+        let center_radius =
+            radius * (1.0 + 0.035 * (angle * 5.0 + seed as f32 * 0.011).sin()) + skew;
+        let ring_width = width * (0.82 + edge_noise * 0.26);
+        let crest_height =
+            height * (0.64 + random_unit(seed, wrapped_segment as u32, 1_631) * 0.54);
+        let base_y = height * 0.04 + crest_noise * height * 0.08;
+        let band_specs: [(f32, f32, f32); GARDEN_RING_BANDS] = [
+            (-0.58, base_y, 0.58),
+            (-0.18, crest_height, 0.18),
+            (0.18, crest_height * (0.82 + edge_noise * 0.12), 0.18),
+            (0.58, base_y + edge_noise * height * 0.05, 0.58),
+        ];
+
+        for (band, (radial_offset, y, slope)) in band_specs.into_iter().enumerate() {
+            let lane_radius = center_radius + radial_offset * ring_width;
+            let tangential_waver = tangent
+                * ((random_unit(seed, wrapped_segment as u32 + band as u32 * 13, 1_637) - 0.5)
+                    * width
+                    * 0.08);
+            let position = radial * lane_radius + tangential_waver;
+            let horizontal_normal = radial * slope.copysign(radial_offset);
+            let normal = Vec3::new(
+                horizontal_normal.x,
+                0.78 + (crest_height / height).clamp(0.0, 1.4) * 0.18,
+                horizontal_normal.y,
+            )
+            .normalize();
+            positions.push([position.x, y, position.y]);
+            normals.push(normal.to_array());
+            uvs.push([t, band as f32 / (GARDEN_RING_BANDS - 1) as f32]);
+        }
+    }
+
+    for segment in 0..GARDEN_RING_SEGMENTS {
+        let current = (segment * GARDEN_RING_BANDS) as u32;
+        let next = current + GARDEN_RING_BANDS as u32;
+        for band in 0..GARDEN_RING_BANDS - 1 {
+            let band = band as u32;
+            indices.extend([
+                current + band,
+                next + band,
+                current + band + 1,
+                current + band + 1,
+                next + band,
+                next + band + 1,
+            ]);
+        }
     }
 
     build_mesh(positions, normals, uvs, indices)

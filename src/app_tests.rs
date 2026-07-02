@@ -796,6 +796,19 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             )
         })
         .count();
+    let garden_ring_count = route
+        .islands()
+        .iter()
+        .filter(|island| {
+            matches!(
+                island.terrain_archetype,
+                IslandTerrainArchetype::GardenBasin
+                    | IslandTerrainArchetype::GardenApron
+                    | IslandTerrainArchetype::OrchardBasin
+                    | IslandTerrainArchetype::OrchardSpur
+            )
+        })
+        .count();
     let generated_tree_count = island_count * 3;
     let weather_veil_count = island_count.div_ceil(2) * 3;
     let route_cairn_count = island_count - 2;
@@ -808,7 +821,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         + plateau_extra_water_count
         + plateau_extra_cave_count
         + ruin_arch_count
-        + cliff_teeth_count;
+        + cliff_teeth_count
+        + garden_ring_count;
 
     assert_eq!(report.ground_cover_count, island_count);
     assert_eq!(
@@ -828,7 +842,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.weather_cloud_bank_count, island_count);
     assert_eq!(report.weather_cloud_veil_count, weather_veil_count);
     assert_eq!(report.landmark_count, landmark_count);
-    assert!(report.landmark_kind_count >= 13);
+    assert!(report.landmark_kind_count >= 14);
     assert_eq!(report.small_island_count, small_island_count);
     assert!(report.small_island_count >= 10);
     assert_eq!(report.plateau_landmark_count, 13);
@@ -905,6 +919,14 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             .filter(|summary| summary.kind == "cliff_teeth")
             .count(),
         cliff_teeth_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "garden_ring")
+            .count(),
+        garden_ring_count
     );
     assert_eq!(
         report.mesh_count,
@@ -1027,6 +1049,11 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .iter()
         .find(|summary| summary.kind == "cliff_teeth")
         .expect("storm islands should export jagged cliff teeth");
+    let garden_ring = report
+        .landmarks
+        .iter()
+        .find(|summary| summary.kind == "garden_ring")
+        .expect("garden and orchard islands should export organic garden rings");
 
     assert!(low_basin_lake.mesh.horizontal_span_m >= 100.0);
     assert!(low_basin_lake.mesh.depth_span_m >= 45.0);
@@ -1049,6 +1076,11 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(cliff_teeth.mesh.vertical_span_m >= 4.0);
     assert!(cliff_teeth.mesh.horizontal_span_m >= 10.0);
     assert!(cliff_teeth.normal_slope_band_count >= 4);
+    assert!(garden_ring.mesh.vertex_count >= (GARDEN_RING_SEGMENTS + 1) * GARDEN_RING_BANDS);
+    assert!(garden_ring.mesh.horizontal_span_m >= 5.0);
+    assert!(garden_ring.mesh.depth_span_m >= 5.0);
+    assert!(garden_ring.mesh.vertical_span_m >= 0.16);
+    assert!(garden_ring.normal_slope_band_count >= 3);
     assert!(output_dir.join(&low_basin_lake.mesh.obj_path).exists());
     assert!(output_dir.join(&waterfall.mesh.obj_path).exists());
     assert!(output_dir.join(&mist.mesh.obj_path).exists());
@@ -1057,6 +1089,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(output_dir.join(&hanging_roots.mesh.obj_path).exists());
     assert!(output_dir.join(&ruin_arch.mesh.obj_path).exists());
     assert!(output_dir.join(&cliff_teeth.mesh.obj_path).exists());
+    assert!(output_dir.join(&garden_ring.mesh.obj_path).exists());
     assert!(manifest.contains("\"schema\": \"nau_visual_content_export.v1\""));
     assert!(manifest.contains("\"ground_cover_blade_height_range_m\""));
     assert!(manifest.contains("\"tree_branch_reach_ratio\""));
@@ -1104,6 +1137,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"kind\": \"under_route_hanging_roots\""));
     assert!(manifest.contains("\"kind\": \"ruin_arch\""));
     assert!(manifest.contains("\"kind\": \"cliff_teeth\""));
+    assert!(manifest.contains("\"kind\": \"garden_ring\""));
     assert!(manifest.contains("great_sky_plateau_low_basin_lake.obj"));
     assert!(manifest.contains("great_sky_plateau_north_rim_waterfall.obj"));
     assert!(manifest.contains("great_sky_plateau_underhang_entry_arch.obj"));
@@ -1111,6 +1145,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("great_sky_plateau_hanging_root_curtain.obj"));
     assert!(manifest.contains("broken_stair_ruin_arch.obj"));
     assert!(manifest.contains("storm_porch_cliff_teeth.obj"));
+    assert!(manifest.contains("landing_garden_garden_ring.obj"));
     assert!(manifest.contains("\"obstruction_spire_height_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_radius_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_normal_slope_band_count\""));
@@ -1961,6 +1996,43 @@ fn landmark_meshes_replace_basic_cylinders_and_boxes() {
     assert!(
         mesh_normal_slope_band_count(&cliff_teeth) >= 4,
         "cliff teeth should keep faceted fracture planes"
+    );
+
+    let garden_ring = garden_ring_mesh(6.0, 1.2, 0.6, 46_789);
+    let garden_ring_positions = positions(&garden_ring);
+    let garden_ring_indices = u32_indices(&garden_ring);
+    let garden_min_x = garden_ring_positions
+        .iter()
+        .map(|position| position[0])
+        .fold(f32::INFINITY, f32::min);
+    let garden_max_x = garden_ring_positions
+        .iter()
+        .map(|position| position[0])
+        .fold(f32::NEG_INFINITY, f32::max);
+
+    assert_eq!(
+        garden_ring.count_vertices(),
+        (GARDEN_RING_SEGMENTS + 1) * GARDEN_RING_BANDS
+    );
+    assert_eq!(
+        garden_ring_indices.len(),
+        GARDEN_RING_SEGMENTS * (GARDEN_RING_BANDS - 1) * 6
+    );
+    assert!(
+        garden_max_x - garden_min_x > 11.0,
+        "garden rings should be broad circular landmarks, not short strips"
+    );
+    assert!(
+        radial_range(garden_ring_positions) > 0.7,
+        "garden rings should have measurable annular width"
+    );
+    assert!(
+        mesh_y_range(&garden_ring) > 0.45,
+        "garden rings should have low organic mound relief instead of a flat decal"
+    );
+    assert!(
+        mesh_normal_slope_band_count(&garden_ring) >= 3,
+        "garden rings should vary their soft ridge slopes"
     );
 
     let spire = obstruction_spire_mesh(1.0, 5.2, 18_123);

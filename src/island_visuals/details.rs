@@ -8,7 +8,7 @@ use crate::content_diagnostics::{GeneratedLandmarkKind, IslandContentDiagnostics
 use crate::environment_visuals::wind_visual_motion;
 use crate::generated_content::{
     GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES, IslandDetailMaterials,
-    IslandUnderRouteVisualKind, cliff_tooth_ridge_mesh, island_ground_cover_mesh,
+    IslandUnderRouteVisualKind, cliff_tooth_ridge_mesh, garden_ring_mesh, island_ground_cover_mesh,
     island_playable_normalized_offset, island_under_route_visual_specs,
     island_visual_surface_position, island_water_visual_specs, landing_garden_marker_mesh,
     launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh, ruin_arch_mesh, tree_canopy_mesh,
@@ -210,6 +210,46 @@ pub(super) fn queue_sky_island_details(
                 1.1 * water_feature.wind_motion_scale,
             ),
             water_feature.kind.visual_name(),
+        );
+    }
+
+    if is_garden_ring_island(island) {
+        let ring_radius = (island.half_extents.min_element() * 0.18).clamp(2.8, 8.5);
+        let ring_width = (ring_radius * 0.24).clamp(0.62, 1.5);
+        let ring_height = (island.thickness * 0.032).clamp(0.24, 0.62);
+        let offset_phase = detail_phase + 2.05;
+        let normalized_offset = island_playable_normalized_offset(
+            island,
+            Vec2::new(
+                -0.28 + offset_phase.cos() * 0.08,
+                0.30 + offset_phase.sin() * 0.07,
+            ),
+        );
+        let surface = island_visual_surface_position(island, normalized_offset);
+        let ring_mesh = garden_ring_mesh(
+            ring_radius,
+            ring_width,
+            ring_height,
+            17_000 + island_index as u32 * 199,
+        );
+        content_diagnostics.record_generated_landmark(
+            GeneratedLandmarkKind::GardenRing,
+            ring_mesh.count_vertices(),
+        );
+        queue_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Detail,
+            meshes.add(ring_mesh),
+            flower_material.clone(),
+            Transform {
+                translation: surface + Vec3::Y * 0.045,
+                rotation: Quat::from_rotation_y(offset_phase * 0.18),
+                ..default()
+            },
+            None,
+            "garden ring",
         );
     }
 
@@ -469,5 +509,15 @@ fn is_cliff_tooth_island(island: SkyIsland) -> bool {
     matches!(
         island.terrain_archetype,
         IslandTerrainArchetype::StormRavine | IslandTerrainArchetype::StormShard
+    )
+}
+
+fn is_garden_ring_island(island: SkyIsland) -> bool {
+    matches!(
+        island.terrain_archetype,
+        IslandTerrainArchetype::GardenBasin
+            | IslandTerrainArchetype::GardenApron
+            | IslandTerrainArchetype::OrchardBasin
+            | IslandTerrainArchetype::OrchardSpur
     )
 }

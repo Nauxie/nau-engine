@@ -2,9 +2,10 @@ use super::{metrics::visual_content_mesh_summary, types::VisualLandmarkSummary};
 use crate::{
     content_export::shared::{mesh_positions, terrain_export_slug, write_mesh_obj},
     generated_content::{
-        cliff_tooth_ridge_mesh, island_under_route_visual_specs, island_water_visual_specs,
-        landing_garden_marker_mesh, launch_beacon_mesh, mesh_normal_slope_band_count,
-        mesh_vertical_band_count, obstruction_spire_mesh, route_cairn_mesh, ruin_arch_mesh,
+        cliff_tooth_ridge_mesh, garden_ring_mesh, island_under_route_visual_specs,
+        island_water_visual_specs, landing_garden_marker_mesh, launch_beacon_mesh,
+        mesh_normal_slope_band_count, mesh_vertical_band_count, obstruction_spire_mesh,
+        route_cairn_mesh, ruin_arch_mesh,
     },
 };
 use bevy::prelude::*;
@@ -60,6 +61,25 @@ pub(super) fn visual_content_landmark_summaries(
             island.name,
             "ruin_arch",
             "ruin arch",
+            island_index,
+            island_slug,
+            &mesh,
+        )?);
+    }
+
+    if is_garden_ring_island(island) {
+        let ring_radius = (island.half_extents.min_element() * 0.18).clamp(2.8, 8.5);
+        let mesh = garden_ring_mesh(
+            ring_radius,
+            (ring_radius * 0.24).clamp(0.62, 1.5),
+            (island.thickness * 0.032).clamp(0.24, 0.62),
+            17_000 + island_index as u32 * 199,
+        );
+        landmarks.push(write_visual_landmark_summary(
+            output_dir,
+            island.name,
+            "garden_ring",
+            "garden ring",
             island_index,
             island_slug,
             &mesh,
@@ -181,5 +201,15 @@ fn is_cliff_tooth_island(island: SkyIsland) -> bool {
     matches!(
         island.terrain_archetype,
         IslandTerrainArchetype::StormRavine | IslandTerrainArchetype::StormShard
+    )
+}
+
+fn is_garden_ring_island(island: SkyIsland) -> bool {
+    matches!(
+        island.terrain_archetype,
+        IslandTerrainArchetype::GardenBasin
+            | IslandTerrainArchetype::GardenApron
+            | IslandTerrainArchetype::OrchardBasin
+            | IslandTerrainArchetype::OrchardSpur
     )
 }
