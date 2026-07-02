@@ -8,7 +8,8 @@ mod trees;
 
 #[cfg(test)]
 pub(crate) use caves::{
-    CAVE_MOUTH_ARCH_STONES, UNDERHANG_SHELF_SEGMENTS, cave_mouth_arch_mesh, underhang_shelf_mesh,
+    CAVE_MOUTH_ARCH_STONES, HANGING_ROOT_SEGMENTS, HANGING_ROOT_STRANDS, UNDERHANG_SHELF_SEGMENTS,
+    cave_mouth_arch_mesh, hanging_root_curtain_mesh, underhang_shelf_mesh,
 };
 pub(crate) use caves::{IslandUnderRouteVisualKind, island_under_route_visual_specs};
 pub(crate) use clouds::{

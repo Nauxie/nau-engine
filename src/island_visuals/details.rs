@@ -8,10 +8,10 @@ use crate::content_diagnostics::{GeneratedLandmarkKind, IslandContentDiagnostics
 use crate::environment_visuals::wind_visual_motion;
 use crate::generated_content::{
     GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES, IslandDetailMaterials,
-    island_ground_cover_mesh, island_playable_normalized_offset, island_under_route_visual_specs,
-    island_visual_surface_position, island_water_visual_specs, landing_garden_marker_mesh,
-    launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh, ruin_arch_mesh, tree_canopy_mesh,
-    tree_trunk_mesh,
+    IslandUnderRouteVisualKind, island_ground_cover_mesh, island_playable_normalized_offset,
+    island_under_route_visual_specs, island_visual_surface_position, island_water_visual_specs,
+    landing_garden_marker_mesh, launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh,
+    ruin_arch_mesh, tree_canopy_mesh, tree_trunk_mesh,
 };
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
@@ -154,22 +154,32 @@ pub(super) fn queue_sky_island_details(
         let mesh = cave_feature.build_mesh();
         let landmark_kind = GeneratedLandmarkKind::from_under_route_visual(cave_feature.kind);
         content_diagnostics.record_generated_landmark(landmark_kind, mesh.count_vertices());
+        let material = if cave_feature.kind == IslandUnderRouteVisualKind::HangingRoots {
+            detail_materials.trunk.clone()
+        } else {
+            detail_materials.stone.clone()
+        };
+        let camera_obstacle = if cave_feature.kind == IslandUnderRouteVisualKind::HangingRoots {
+            None
+        } else {
+            Some(CameraObstacle(CameraObstruction::new(
+                cave_feature.translation,
+                cave_feature.camera_half_extents,
+            )))
+        };
         queue_island_visual(
             entries,
             visual_index,
             island,
             IslandVisualLayer::Detail,
             meshes.add(mesh),
-            detail_materials.stone.clone(),
+            material,
             Transform {
                 translation: cave_feature.translation,
                 rotation: Quat::from_rotation_y(cave_feature.rotation_y),
                 ..default()
             },
-            Some(CameraObstacle(CameraObstruction::new(
-                cave_feature.translation,
-                cave_feature.camera_half_extents,
-            ))),
+            camera_obstacle,
             cave_feature.kind.visual_name(),
         );
     }
