@@ -2,7 +2,9 @@ use super::{super::random_unit, shared::append_ellipsoid_lobe};
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
-use nau_engine::world::{IslandPlateauRegion, IslandTerrainArchetype, SkyIsland};
+use nau_engine::world::{
+    IslandPlateauRegion, IslandTerrainArchetype, IslandWaterFeature, SkyIsland,
+};
 
 pub(crate) const ROUTE_CAIRN_STONE_COUNT: usize = 5;
 pub(crate) const RUIN_ARCH_STONE_COUNT: usize = 11;
@@ -28,6 +30,8 @@ pub(crate) enum IslandWaterVisualKind {
     PlateauLakeSurface,
     PlateauWaterfallRibbon,
     PlateauWaterfallMist,
+    RouteWaterfallRibbon,
+    RouteWaterfallMist,
 }
 
 impl IslandWaterVisualKind {
@@ -37,6 +41,8 @@ impl IslandWaterVisualKind {
             Self::PlateauLakeSurface => "plateau_lake_surface",
             Self::PlateauWaterfallRibbon => "plateau_waterfall_ribbon",
             Self::PlateauWaterfallMist => "plateau_waterfall_mist",
+            Self::RouteWaterfallRibbon => "route_waterfall_ribbon",
+            Self::RouteWaterfallMist => "route_waterfall_mist",
         }
     }
 
@@ -46,6 +52,8 @@ impl IslandWaterVisualKind {
             Self::PlateauLakeSurface => "plateau lake",
             Self::PlateauWaterfallRibbon => "plateau waterfall ribbon",
             Self::PlateauWaterfallMist => "plateau waterfall mist",
+            Self::RouteWaterfallRibbon => "route waterfall ribbon",
+            Self::RouteWaterfallMist => "route waterfall mist",
         }
     }
 }
@@ -197,6 +205,12 @@ pub(crate) fn island_water_visual_specs(
         ] {
             push_plateau_waterfall_specs(&mut specs, island_index, island, waterfall);
         }
+    }
+
+    if island.world_tags.water_feature == IslandWaterFeature::WaterfallSource
+        && !island.is_great_plateau_anchor()
+    {
+        push_route_edge_waterfall_specs(&mut specs, island_index, island);
     }
 
     specs
@@ -816,6 +830,52 @@ fn push_plateau_waterfall_specs(
             height: island.thickness * 0.08,
         },
         seed: seed_base + 503,
+    });
+}
+
+fn push_route_edge_waterfall_specs(
+    specs: &mut Vec<IslandWaterVisualSpec>,
+    island_index: usize,
+    island: SkyIsland,
+) {
+    let source_offset = Vec2::new(-0.42, 0.16);
+    let edge_offset = Vec2::new(-0.76, 0.28);
+    let surface = island_water_surface_position(island, edge_offset);
+    let outward = edge_offset.normalize_or_zero();
+    let yaw = outward.x.atan2(outward.y);
+    let outward3 = Vec3::new(outward.x, 0.0, outward.y);
+    let height = (island.thickness * 1.25).clamp(18.0, 34.0);
+    let width = island.half_extents.min_element() * 0.16;
+    let source = island_water_surface_position(island, source_offset);
+    let source_drop = (source.y - surface.y).max(0.0) * 0.12;
+    let seed_base = 39_000 + island_index as u32 * 223;
+
+    specs.push(IslandWaterVisualSpec {
+        kind: IslandWaterVisualKind::RouteWaterfallRibbon,
+        label: "route edge waterfall",
+        translation: surface + outward3 * 4.5 - Vec3::Y * (height * 0.46 + source_drop),
+        rotation_y: yaw,
+        wind_phase: 7.4,
+        wind_motion_scale: 1.65,
+        mesh: IslandWaterVisualMesh::WaterfallRibbon {
+            width,
+            height,
+            depth: width * 0.07,
+        },
+        seed: seed_base,
+    });
+    specs.push(IslandWaterVisualSpec {
+        kind: IslandWaterVisualKind::RouteWaterfallMist,
+        label: "route edge mist",
+        translation: surface + outward3 * 7.5 - Vec3::Y * (height * 0.90 + source_drop),
+        rotation_y: yaw,
+        wind_phase: 8.1,
+        wind_motion_scale: 1.45,
+        mesh: IslandWaterVisualMesh::WaterfallMist {
+            radius: width * 0.48,
+            height: height * 0.10,
+        },
+        seed: seed_base + 509,
     });
 }
 

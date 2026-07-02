@@ -4,6 +4,7 @@ use nau_engine::animation::PlayerPoseIntent;
 use nau_engine::movement::FlightInput;
 use nau_engine::world::{
     IslandLandmarkRole, IslandPlateauRegion, IslandScaleClass, IslandTerrainArchetype,
+    IslandWaterFeature,
 };
 
 fn test_island() -> SkyIsland {
@@ -815,6 +816,12 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .enumerate()
         .map(|(index, island)| island_lake_basin_visual_specs(index, *island).len())
         .sum();
+    let route_waterfall_source_count = route
+        .islands()
+        .iter()
+        .filter(|island| island.world_tags.water_feature == IslandWaterFeature::WaterfallSource)
+        .count();
+    let route_waterfall_visual_count = route_waterfall_source_count * 2;
     let generated_tree_count = island_count * 3;
     let weather_veil_count = island_count.div_ceil(2) * 3;
     let route_cairn_count = island_count - 2;
@@ -829,7 +836,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         + ruin_arch_count
         + cliff_teeth_count
         + garden_ring_count
-        + lake_basin_count;
+        + lake_basin_count
+        + route_waterfall_visual_count;
 
     assert_eq!(report.ground_cover_count, island_count);
     assert_eq!(
@@ -849,12 +857,20 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.weather_cloud_bank_count, island_count);
     assert_eq!(report.weather_cloud_veil_count, weather_veil_count);
     assert_eq!(report.landmark_count, landmark_count);
-    assert!(report.landmark_kind_count >= 15);
+    assert!(report.landmark_kind_count >= 17);
     assert_eq!(report.small_island_count, small_island_count);
     assert!(report.small_island_count >= 10);
     assert_eq!(report.plateau_landmark_count, 15);
     assert_eq!(report.plateau_waterfall_ribbon_count, 2);
     assert_eq!(report.plateau_waterfall_mist_count, 2);
+    assert_eq!(
+        report.route_waterfall_ribbon_count,
+        route_waterfall_source_count
+    );
+    assert_eq!(
+        report.route_waterfall_mist_count,
+        route_waterfall_source_count
+    );
     assert_eq!(report.under_route_visual_count, plateau_extra_cave_count);
     assert_eq!(report.under_route_cave_mouth_count, 2);
     assert_eq!(report.ruin_arch_count, ruin_arch_count);
@@ -886,6 +902,22 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             .filter(|summary| summary.kind == "plateau_waterfall_mist")
             .count(),
         2
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "route_waterfall_ribbon")
+            .count(),
+        route_waterfall_source_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "route_waterfall_mist")
+            .count(),
+        route_waterfall_source_count
     );
     assert_eq!(
         report
@@ -985,6 +1017,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.plateau_landmark_vertex_total >= 2_500);
     assert!(report.max_plateau_landmark_mesh_vertices >= 600);
     assert!(report.min_plateau_waterfall_vertical_span_m >= 58.0);
+    assert!(report.min_route_waterfall_vertical_span_m >= 24.0);
     assert!(report.min_under_route_visual_vertical_span_m >= 4.0);
     assert!(report.min_ruin_arch_mesh_vertices >= 500);
     assert!(report.min_ruin_arch_vertical_span_m >= 4.5);
@@ -1033,6 +1066,20 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             summary.island_name == "great sky plateau" && summary.kind == "plateau_waterfall_mist"
         })
         .expect("great sky plateau should export waterfall mist");
+    let route_waterfall = report
+        .landmarks
+        .iter()
+        .find(|summary| {
+            summary.island_name == "cloudfall meadow" && summary.kind == "route_waterfall_ribbon"
+        })
+        .expect("waterfall-source islands should export route waterfall ribbons");
+    let route_mist = report
+        .landmarks
+        .iter()
+        .find(|summary| {
+            summary.island_name == "cloudfall meadow" && summary.kind == "route_waterfall_mist"
+        })
+        .expect("waterfall-source islands should export route waterfall mist");
     let cave_arch = report
         .landmarks
         .iter()
@@ -1082,6 +1129,9 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(waterfall.mesh.vertical_span_m >= 58.0);
     assert!(waterfall.normal_slope_band_count >= 4);
     assert!(mist.mesh.horizontal_span_m >= 20.0);
+    assert!(route_waterfall.mesh.vertical_span_m >= 24.0);
+    assert!(route_waterfall.normal_slope_band_count >= 4);
+    assert!(route_mist.mesh.vertical_span_m >= 1.8);
     assert!(cave_arch.mesh.horizontal_span_m >= 20.0);
     assert!(cave_arch.mesh.vertical_span_m >= 14.0);
     assert!(underhang_shelf.mesh.horizontal_span_m >= 45.0);
@@ -1111,6 +1161,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(output_dir.join(&low_basin_lake.mesh.obj_path).exists());
     assert!(output_dir.join(&waterfall.mesh.obj_path).exists());
     assert!(output_dir.join(&mist.mesh.obj_path).exists());
+    assert!(output_dir.join(&route_waterfall.mesh.obj_path).exists());
+    assert!(output_dir.join(&route_mist.mesh.obj_path).exists());
     assert!(output_dir.join(&cave_arch.mesh.obj_path).exists());
     assert!(output_dir.join(&underhang_shelf.mesh.obj_path).exists());
     assert!(output_dir.join(&hanging_roots.mesh.obj_path).exists());
@@ -1137,6 +1189,12 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"plateau_landmark_count\": 15"));
     assert!(manifest.contains("\"plateau_waterfall_ribbon_count\": 2"));
     assert!(manifest.contains("\"plateau_waterfall_mist_count\": 2"));
+    assert!(manifest.contains(&format!(
+        "\"route_waterfall_ribbon_count\": {route_waterfall_source_count}"
+    )));
+    assert!(manifest.contains(&format!(
+        "\"route_waterfall_mist_count\": {route_waterfall_source_count}"
+    )));
     assert!(manifest.contains("\"under_route_visual_count\": 4"));
     assert!(manifest.contains("\"under_route_cave_mouth_count\": 2"));
     assert!(manifest.contains(&format!("\"ruin_arch_count\": {ruin_arch_count}")));
@@ -1152,6 +1210,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"plateau_landmark_vertex_total\""));
     assert!(manifest.contains("\"max_plateau_landmark_mesh_vertices\""));
     assert!(manifest.contains("\"plateau_waterfall_vertical_span_m\""));
+    assert!(manifest.contains("\"route_waterfall_vertical_span_m\""));
     assert!(manifest.contains("\"under_route_visual_vertical_span_m\""));
     assert!(manifest.contains("\"ruin_arch_mesh_vertices\""));
     assert!(manifest.contains("\"ruin_arch_vertical_span_m\""));
@@ -1160,6 +1219,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"kind\": \"plateau_lake_surface\""));
     assert!(manifest.contains("\"kind\": \"plateau_waterfall_ribbon\""));
     assert!(manifest.contains("\"kind\": \"plateau_waterfall_mist\""));
+    assert!(manifest.contains("\"kind\": \"route_waterfall_ribbon\""));
+    assert!(manifest.contains("\"kind\": \"route_waterfall_mist\""));
     assert!(manifest.contains("\"kind\": \"under_route_cave_mouth\""));
     assert!(manifest.contains("\"kind\": \"under_route_hanging_shelf\""));
     assert!(manifest.contains("\"kind\": \"under_route_hanging_roots\""));
@@ -1169,6 +1230,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"kind\": \"lake_basin\""));
     assert!(manifest.contains("great_sky_plateau_low_basin_lake.obj"));
     assert!(manifest.contains("great_sky_plateau_north_rim_waterfall.obj"));
+    assert!(manifest.contains("cloudfall_meadow_route_edge_waterfall.obj"));
+    assert!(manifest.contains("cloudfall_meadow_route_edge_mist.obj"));
     assert!(manifest.contains("great_sky_plateau_underhang_entry_arch.obj"));
     assert!(manifest.contains("great_sky_plateau_underside_glide_shelf.obj"));
     assert!(manifest.contains("great_sky_plateau_hanging_root_curtain.obj"));
