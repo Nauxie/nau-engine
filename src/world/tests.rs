@@ -140,6 +140,137 @@ fn route_objectives_keep_recovery_updrafts_as_non_gating_support() {
 }
 
 #[test]
+fn first_expedition_route_beats_define_ordered_playable_journey() {
+    let route = SkyRoute::default();
+    let beats = route.first_expedition_route_beats();
+    let expected_kinds = [
+        FirstExpeditionBeatKind::Launch,
+        FirstExpeditionBeatKind::FirstGlide,
+        FirstExpeditionBeatKind::LowRecovery,
+        FirstExpeditionBeatKind::UnderRoutePass,
+        FirstExpeditionBeatKind::LakeWaterfallLandmark,
+        FirstExpeditionBeatKind::HighClimb,
+        FirstExpeditionBeatKind::PlateauApproach,
+        FirstExpeditionBeatKind::PlateauArrival,
+    ];
+    let expected_modes = [
+        FirstExpeditionTraversalMode::GroundLaunch,
+        FirstExpeditionTraversalMode::OpenGlide,
+        FirstExpeditionTraversalMode::RecoveryLift,
+        FirstExpeditionTraversalMode::UnderIslandGlide,
+        FirstExpeditionTraversalMode::LandmarkGlide,
+        FirstExpeditionTraversalMode::SustainedClimb,
+        FirstExpeditionTraversalMode::ApproachGlide,
+        FirstExpeditionTraversalMode::ArrivalLanding,
+    ];
+    let expected_bands = [
+        FirstExpeditionAltitudeBand::Low,
+        FirstExpeditionAltitudeBand::Low,
+        FirstExpeditionAltitudeBand::Low,
+        FirstExpeditionAltitudeBand::Low,
+        FirstExpeditionAltitudeBand::Mid,
+        FirstExpeditionAltitudeBand::High,
+        FirstExpeditionAltitudeBand::High,
+        FirstExpeditionAltitudeBand::Plateau,
+    ];
+
+    assert_eq!(beats.len(), expected_kinds.len());
+    for (index, beat) in beats.iter().enumerate() {
+        assert_eq!(beat.kind, expected_kinds[index]);
+        assert_eq!(beat.traversal_mode, expected_modes[index]);
+        assert_eq!(beat.altitude_band, expected_bands[index]);
+        assert!(!beat.label.is_empty());
+        assert!(!beat.kind.label().is_empty());
+        assert!(!beat.traversal_mode.label().is_empty());
+        assert!(!beat.altitude_band.label().is_empty());
+        assert!(
+            beat.altitude_band >= beats[index.saturating_sub(1)].altitude_band,
+            "first expedition route should not drop to a lower intended altitude band"
+        );
+    }
+}
+
+#[test]
+fn first_expedition_route_beats_resolve_to_world_content_without_debug_guidance() {
+    let route = SkyRoute::default();
+    let beats = route.first_expedition_route_beats();
+
+    assert_eq!(beats.len(), 8);
+    for beat in beats {
+        assert!(route.island_named(beat.anchor_island_name).is_some());
+        assert_route_beat_text_is_not_debug_only(beat.label);
+        assert_route_beat_text_is_not_debug_only(beat.landmark_anchor);
+        assert!(!beat.landmark_anchor.is_empty());
+        assert!(!beat.recovery_affordance.label().is_empty());
+        if let Some(lift_name) = beat.recovery_affordance.lift_name() {
+            assert!(
+                GAMEPLAY_LIFT_ROUTE
+                    .iter()
+                    .any(|node| node.name == lift_name),
+                "{lift_name} should exist as a readable recovery lift"
+            );
+            assert_route_beat_text_is_not_debug_only(lift_name);
+        }
+        if let Some(island_name) = beat.recovery_affordance.island_name() {
+            assert!(route.island_named(island_name).is_some());
+            assert_route_beat_text_is_not_debug_only(island_name);
+        }
+
+        match beat.kind {
+            FirstExpeditionBeatKind::Launch
+            | FirstExpeditionBeatKind::FirstGlide
+            | FirstExpeditionBeatKind::LakeWaterfallLandmark
+            | FirstExpeditionBeatKind::PlateauArrival => {
+                assert_eq!(
+                    route.ground_at(beat.position).island_name,
+                    Some(beat.anchor_island_name)
+                );
+            }
+            FirstExpeditionBeatKind::LowRecovery
+            | FirstExpeditionBeatKind::HighClimb
+            | FirstExpeditionBeatKind::PlateauApproach => {
+                let lift_name = beat
+                    .recovery_affordance
+                    .lift_name()
+                    .expect("lift beat should expose a recovery updraft");
+                let lift = GAMEPLAY_LIFT_ROUTE
+                    .iter()
+                    .find(|node| node.name == lift_name)
+                    .expect("lift exists")
+                    .lift_field();
+                assert!(lift.contains(beat.position));
+            }
+            FirstExpeditionBeatKind::UnderRoutePass => {
+                let under_route = route
+                    .island_named(beat.anchor_island_name)
+                    .expect("under-route island exists")
+                    .under_route_segment()
+                    .expect("under-route segment exists");
+                assert_eq!(beat.position, under_route.midpoint);
+                assert!(!route.is_grounded_at(beat.position));
+            }
+        }
+    }
+}
+
+fn assert_route_beat_text_is_not_debug_only(text: &str) {
+    let lower = text.to_ascii_lowercase();
+
+    assert!(
+        !lower.contains("debug"),
+        "{text} should not depend on debug UI"
+    );
+    assert!(
+        !lower.contains("vector"),
+        "{text} should not depend on movement vectors"
+    );
+    assert!(
+        !lower.contains("eval"),
+        "{text} should not depend on eval overlays"
+    );
+}
+
+#[test]
 fn route_objective_completion_tracks_flythrough_and_landing() {
     let route = SkyRoute::default();
     let objectives = route.route_objectives(None);

@@ -3,7 +3,7 @@ use crate::movement::{FlightMode, FlightState};
 use bevy::prelude::{Resource, Vec2, Vec3};
 
 use super::{
-    GROUND_CONTACT_EPSILON, GROUND_CONTACT_HORIZONTAL_DAMPING, GroundSurface,
+    GROUND_CONTACT_EPSILON, GROUND_CONTACT_HORIZONTAL_DAMPING, GroundSurface, IslandPlateauRegion,
     IslandUnderRouteSegment, LodBand, PLAYER_STANDING_OFFSET, RouteObjective, START_FLOOR_Y,
     SkyIsland, StreamChunkCoord, StreamingLodStats,
 };
@@ -12,6 +12,264 @@ pub const SKY_ROUTE_ISLAND_COUNT: usize = 41;
 pub const PLAYTEST_RESET_ISLAND_NAME: &str = "great sky plateau";
 const UNDER_ROUTE_GROUND_CLEARANCE_PADDING_M: f32 = 10.0;
 const UNDER_ROUTE_TOP_SURFACE_CLEARANCE_FRACTION: f32 = 0.18;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FirstExpeditionBeatKind {
+    Launch,
+    FirstGlide,
+    LowRecovery,
+    UnderRoutePass,
+    LakeWaterfallLandmark,
+    HighClimb,
+    PlateauApproach,
+    PlateauArrival,
+}
+
+impl FirstExpeditionBeatKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Launch => "launch",
+            Self::FirstGlide => "first_glide",
+            Self::LowRecovery => "low_recovery",
+            Self::UnderRoutePass => "under_route_pass",
+            Self::LakeWaterfallLandmark => "lake_waterfall_landmark",
+            Self::HighClimb => "high_climb",
+            Self::PlateauApproach => "plateau_approach",
+            Self::PlateauArrival => "plateau_arrival",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub enum FirstExpeditionAltitudeBand {
+    Low,
+    Mid,
+    High,
+    Plateau,
+}
+
+impl FirstExpeditionAltitudeBand {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Mid => "mid",
+            Self::High => "high",
+            Self::Plateau => "plateau",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FirstExpeditionTraversalMode {
+    GroundLaunch,
+    OpenGlide,
+    RecoveryLift,
+    UnderIslandGlide,
+    LandmarkGlide,
+    SustainedClimb,
+    ApproachGlide,
+    ArrivalLanding,
+}
+
+impl FirstExpeditionTraversalMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::GroundLaunch => "ground_launch",
+            Self::OpenGlide => "open_glide",
+            Self::RecoveryLift => "recovery_lift",
+            Self::UnderIslandGlide => "under_island_glide",
+            Self::LandmarkGlide => "landmark_glide",
+            Self::SustainedClimb => "sustained_climb",
+            Self::ApproachGlide => "approach_glide",
+            Self::ArrivalLanding => "arrival_landing",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FirstExpeditionRecoveryAffordance {
+    LaunchLift {
+        lift_name: &'static str,
+    },
+    LandingSurface {
+        island_name: &'static str,
+    },
+    RecoveryUpdraft {
+        lift_name: &'static str,
+    },
+    UnderRouteRecovery {
+        lift_name: &'static str,
+    },
+    PlateauReset {
+        island_name: &'static str,
+        lift_name: &'static str,
+    },
+}
+
+impl FirstExpeditionRecoveryAffordance {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::LaunchLift { .. } => "launch_lift",
+            Self::LandingSurface { .. } => "landing_surface",
+            Self::RecoveryUpdraft { .. } => "recovery_updraft",
+            Self::UnderRouteRecovery { .. } => "under_route_recovery",
+            Self::PlateauReset { .. } => "plateau_reset",
+        }
+    }
+
+    pub fn lift_name(self) -> Option<&'static str> {
+        match self {
+            Self::LaunchLift { lift_name }
+            | Self::RecoveryUpdraft { lift_name }
+            | Self::UnderRouteRecovery { lift_name }
+            | Self::PlateauReset { lift_name, .. } => Some(lift_name),
+            Self::LandingSurface { .. } => None,
+        }
+    }
+
+    pub fn island_name(self) -> Option<&'static str> {
+        match self {
+            Self::LandingSurface { island_name } | Self::PlateauReset { island_name, .. } => {
+                Some(island_name)
+            }
+            Self::LaunchLift { .. }
+            | Self::RecoveryUpdraft { .. }
+            | Self::UnderRouteRecovery { .. } => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FirstExpeditionRouteBeat {
+    pub label: &'static str,
+    pub kind: FirstExpeditionBeatKind,
+    pub anchor_island_name: &'static str,
+    pub position: Vec3,
+    pub altitude_band: FirstExpeditionAltitudeBand,
+    pub traversal_mode: FirstExpeditionTraversalMode,
+    pub landmark_anchor: &'static str,
+    pub recovery_affordance: FirstExpeditionRecoveryAffordance,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FirstExpeditionRouteBeatSpec {
+    label: &'static str,
+    kind: FirstExpeditionBeatKind,
+    anchor_island_name: &'static str,
+    position: FirstExpeditionBeatPosition,
+    altitude_band: FirstExpeditionAltitudeBand,
+    traversal_mode: FirstExpeditionTraversalMode,
+    landmark_anchor: &'static str,
+    recovery_affordance: FirstExpeditionRecoveryAffordance,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum FirstExpeditionBeatPosition {
+    IslandSurface,
+    LiftNode(&'static str),
+    UnderRouteMidpoint,
+    PlateauRegion(IslandPlateauRegion),
+}
+
+const FIRST_EXPEDITION_ROUTE_BEAT_SPECS: [FirstExpeditionRouteBeatSpec; 8] = [
+    FirstExpeditionRouteBeatSpec {
+        label: "launch mesa takeoff",
+        kind: FirstExpeditionBeatKind::Launch,
+        anchor_island_name: "launch mesa",
+        position: FirstExpeditionBeatPosition::IslandSurface,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        traversal_mode: FirstExpeditionTraversalMode::GroundLaunch,
+        landmark_anchor: "launch beacon",
+        recovery_affordance: FirstExpeditionRecoveryAffordance::LaunchLift {
+            lift_name: "launch terrace updraft",
+        },
+    },
+    FirstExpeditionRouteBeatSpec {
+        label: "midpoint shelf first glide",
+        kind: FirstExpeditionBeatKind::FirstGlide,
+        anchor_island_name: "midpoint shelf",
+        position: FirstExpeditionBeatPosition::IslandSurface,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        traversal_mode: FirstExpeditionTraversalMode::OpenGlide,
+        landmark_anchor: "route cairn line",
+        recovery_affordance: FirstExpeditionRecoveryAffordance::LandingSurface {
+            island_name: "landing garden",
+        },
+    },
+    FirstExpeditionRouteBeatSpec {
+        label: "low reef recovery thermal",
+        kind: FirstExpeditionBeatKind::LowRecovery,
+        anchor_island_name: "low reef",
+        position: FirstExpeditionBeatPosition::LiftNode("low reef updraft"),
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        traversal_mode: FirstExpeditionTraversalMode::RecoveryLift,
+        landmark_anchor: "low reef wind ribbons",
+        recovery_affordance: FirstExpeditionRecoveryAffordance::RecoveryUpdraft {
+            lift_name: "low reef updraft",
+        },
+    },
+    FirstExpeditionRouteBeatSpec {
+        label: "underbridge cay under-route",
+        kind: FirstExpeditionBeatKind::UnderRoutePass,
+        anchor_island_name: "underbridge cay",
+        position: FirstExpeditionBeatPosition::UnderRouteMidpoint,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        traversal_mode: FirstExpeditionTraversalMode::UnderIslandGlide,
+        landmark_anchor: "under-route cave mouth arch",
+        recovery_affordance: FirstExpeditionRecoveryAffordance::UnderRouteRecovery {
+            lift_name: "underbridge cay updraft",
+        },
+    },
+    FirstExpeditionRouteBeatSpec {
+        label: "cloudfall lake and waterfall sightline",
+        kind: FirstExpeditionBeatKind::LakeWaterfallLandmark,
+        anchor_island_name: "cloudfall meadow",
+        position: FirstExpeditionBeatPosition::IslandSurface,
+        altitude_band: FirstExpeditionAltitudeBand::Mid,
+        traversal_mode: FirstExpeditionTraversalMode::LandmarkGlide,
+        landmark_anchor: "route edge waterfall and bluevault basin lake",
+        recovery_affordance: FirstExpeditionRecoveryAffordance::RecoveryUpdraft {
+            lift_name: "cloudfall meadow updraft",
+        },
+    },
+    FirstExpeditionRouteBeatSpec {
+        label: "sunspire garden high climb",
+        kind: FirstExpeditionBeatKind::HighClimb,
+        anchor_island_name: "sunspire garden",
+        position: FirstExpeditionBeatPosition::LiftNode("sunspire garden updraft"),
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        traversal_mode: FirstExpeditionTraversalMode::SustainedClimb,
+        landmark_anchor: "sunspire garden ring",
+        recovery_affordance: FirstExpeditionRecoveryAffordance::RecoveryUpdraft {
+            lift_name: "sunspire garden updraft",
+        },
+    },
+    FirstExpeditionRouteBeatSpec {
+        label: "cloudbreak stair plateau approach",
+        kind: FirstExpeditionBeatKind::PlateauApproach,
+        anchor_island_name: "cloudbreak stair",
+        position: FirstExpeditionBeatPosition::LiftNode("cloudbreak stair recovery updraft"),
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        traversal_mode: FirstExpeditionTraversalMode::ApproachGlide,
+        landmark_anchor: "great sky plateau west rim silhouette",
+        recovery_affordance: FirstExpeditionRecoveryAffordance::RecoveryUpdraft {
+            lift_name: "cloudbreak stair recovery updraft",
+        },
+    },
+    FirstExpeditionRouteBeatSpec {
+        label: "great sky plateau meadow arrival",
+        kind: FirstExpeditionBeatKind::PlateauArrival,
+        anchor_island_name: PLAYTEST_RESET_ISLAND_NAME,
+        position: FirstExpeditionBeatPosition::PlateauRegion(IslandPlateauRegion::MeadowPlateau),
+        altitude_band: FirstExpeditionAltitudeBand::Plateau,
+        traversal_mode: FirstExpeditionTraversalMode::ArrivalLanding,
+        landmark_anchor: "plateau lake waterfall vista and cave mouth",
+        recovery_affordance: FirstExpeditionRecoveryAffordance::PlateauReset {
+            island_name: PLAYTEST_RESET_ISLAND_NAME,
+            lift_name: "great sky plateau updraft",
+        },
+    },
+];
 
 #[derive(Resource, Clone, Debug)]
 pub struct SkyRoute {
@@ -359,6 +617,47 @@ impl SkyRoute {
             .collect()
     }
 
+    pub fn first_expedition_route_beats(&self) -> Vec<FirstExpeditionRouteBeat> {
+        FIRST_EXPEDITION_ROUTE_BEAT_SPECS
+            .iter()
+            .filter_map(|spec| self.first_expedition_route_beat(*spec))
+            .collect()
+    }
+
+    fn first_expedition_route_beat(
+        &self,
+        spec: FirstExpeditionRouteBeatSpec,
+    ) -> Option<FirstExpeditionRouteBeat> {
+        let anchor_island = self.island_named(spec.anchor_island_name)?;
+        let position = match spec.position {
+            FirstExpeditionBeatPosition::IslandSurface => {
+                let mut position = anchor_island.center;
+                position.y = self.ground_at(position).floor_y;
+                position
+            }
+            FirstExpeditionBeatPosition::LiftNode(lift_name) => {
+                lift_route_node_named(lift_name)?.center
+            }
+            FirstExpeditionBeatPosition::UnderRouteMidpoint => {
+                anchor_island.under_route_segment()?.midpoint
+            }
+            FirstExpeditionBeatPosition::PlateauRegion(region) => {
+                anchor_island.plateau_region_position(region)?
+            }
+        };
+
+        Some(FirstExpeditionRouteBeat {
+            label: spec.label,
+            kind: spec.kind,
+            anchor_island_name: spec.anchor_island_name,
+            position,
+            altitude_band: spec.altitude_band,
+            traversal_mode: spec.traversal_mode,
+            landmark_anchor: spec.landmark_anchor,
+            recovery_affordance: spec.recovery_affordance,
+        })
+    }
+
     pub fn route_objectives(&self, island_name: Option<&str>) -> Vec<RouteObjective> {
         let Some(target) = self.tracked_target_island(island_name) else {
             return Vec::new();
@@ -532,6 +831,13 @@ impl SkyRoute {
             .and_then(|name| self.island_named(name))
             .or_else(|| self.target_island())
     }
+}
+
+fn lift_route_node_named(name: &str) -> Option<crate::environment::LiftRouteNode> {
+    GAMEPLAY_LIFT_ROUTE
+        .iter()
+        .copied()
+        .find(|node| node.name == name)
 }
 
 fn position_is_inside_under_route_clearance(island: SkyIsland, position: Vec3) -> bool {
