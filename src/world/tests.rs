@@ -253,6 +253,171 @@ fn first_expedition_route_beats_resolve_to_world_content_without_debug_guidance(
     }
 }
 
+#[test]
+fn first_expedition_optional_detours_define_recovery_and_upper_side_routes() {
+    let route = SkyRoute::default();
+    let detours = route.first_expedition_optional_detours();
+
+    assert_eq!(detours.len(), 2);
+    assert_eq!(
+        detours.iter().map(|detour| detour.kind).collect::<Vec<_>>(),
+        vec![
+            FirstExpeditionDetourKind::LowAltitudeRecoveryLoop,
+            FirstExpeditionDetourKind::HighRiskUpperPath,
+        ]
+    );
+    assert_eq!(
+        detours.iter().map(|detour| detour.risk).collect::<Vec<_>>(),
+        vec![
+            FirstExpeditionDetourRisk::Recovery,
+            FirstExpeditionDetourRisk::HighRiskHighReward,
+        ]
+    );
+
+    let low_loop = detours
+        .iter()
+        .find(|detour| detour.kind == FirstExpeditionDetourKind::LowAltitudeRecoveryLoop)
+        .expect("low recovery loop exists");
+    assert_eq!(
+        low_loop.entry_beat_kind,
+        FirstExpeditionBeatKind::FirstGlide
+    );
+    assert_eq!(
+        low_loop.reconnect_beat_kind,
+        FirstExpeditionBeatKind::LowRecovery
+    );
+    assert_eq!(low_loop.altitude_band, FirstExpeditionAltitudeBand::Low);
+    assert_eq!(
+        low_loop.island_names,
+        ["low reef", "lowwind shelf", "western refuge"]
+    );
+    assert_eq!(
+        low_loop.lift_names,
+        [
+            "low reef updraft",
+            "western catch updraft",
+            "distant recovery updraft"
+        ]
+    );
+
+    let upper_path = detours
+        .iter()
+        .find(|detour| detour.kind == FirstExpeditionDetourKind::HighRiskUpperPath)
+        .expect("upper challenge path exists");
+    assert_eq!(
+        upper_path.entry_beat_kind,
+        FirstExpeditionBeatKind::HighClimb
+    );
+    assert_eq!(
+        upper_path.reconnect_beat_kind,
+        FirstExpeditionBeatKind::PlateauArrival
+    );
+    assert_eq!(upper_path.altitude_band, FirstExpeditionAltitudeBand::High);
+    assert_eq!(
+        upper_path.island_names,
+        ["bluevault basin", "outer switchback", "far horizon perch"]
+    );
+    assert_eq!(
+        upper_path.lift_names,
+        [
+            "bluevault shoulder recovery updraft",
+            "plateau west rim recovery updraft",
+            "great sky plateau updraft"
+        ]
+    );
+
+    for detour in detours {
+        assert!(!detour.label.is_empty());
+        assert!(!detour.kind.label().is_empty());
+        assert!(!detour.risk.label().is_empty());
+        assert!(!detour.landmark_anchor.is_empty());
+        assert_route_beat_text_is_not_debug_only(detour.label);
+        assert_route_beat_text_is_not_debug_only(detour.landmark_anchor);
+        assert_eq!(
+            detour.route_positions.len(),
+            detour.island_names.len() + detour.lift_names.len()
+        );
+    }
+}
+
+#[test]
+fn first_expedition_optional_detours_reconnect_without_becoming_required_objectives() {
+    let route = SkyRoute::default();
+    let detours = route.first_expedition_optional_detours();
+    let baseline_objectives = route.route_objectives(None);
+    let plateau_objectives = route.route_objectives(Some("great sky plateau"));
+    let upper_crown_objectives = route.route_objectives(Some("upper crown"));
+    let non_gating_detour_lifts = [
+        "low reef updraft",
+        "western catch updraft",
+        "bluevault shoulder recovery updraft",
+        "plateau west rim recovery updraft",
+    ];
+
+    assert_eq!(
+        baseline_objectives
+            .iter()
+            .map(|objective| objective.label)
+            .collect::<Vec<_>>(),
+        vec!["launch terrace updraft", "landing garden"]
+    );
+    assert_eq!(plateau_objectives.len(), 10);
+    assert_eq!(
+        plateau_objectives.last().expect("plateau objective").label,
+        "great sky plateau"
+    );
+    assert_eq!(upper_crown_objectives.len(), 11);
+    for lift_name in non_gating_detour_lifts {
+        assert!(
+            plateau_objectives
+                .iter()
+                .all(|objective| objective.label != lift_name),
+            "{lift_name} should remain optional for the plateau route"
+        );
+        assert!(
+            upper_crown_objectives
+                .iter()
+                .all(|objective| objective.label != lift_name),
+            "{lift_name} should remain optional for the upper route"
+        );
+    }
+
+    for detour in detours {
+        assert!(detour.lift_names.contains(&detour.reconnect_lift_name));
+        for &island_name in detour.island_names {
+            let island = route
+                .island_named(island_name)
+                .expect("detour island exists");
+            assert_eq!(
+                route.ground_at(island.center).island_name,
+                Some(island_name)
+            );
+            assert!(
+                plateau_objectives
+                    .iter()
+                    .all(|objective| objective.label != island_name),
+                "{island_name} should not become a required plateau objective"
+            );
+        }
+        for &lift_name in detour.lift_names {
+            let node = GAMEPLAY_LIFT_ROUTE
+                .iter()
+                .find(|node| node.name == lift_name)
+                .expect("detour lift exists");
+            assert!(node.lift_field().contains(node.center));
+            assert!(node.visual_field().contains(node.center));
+            assert!(
+                node.max_upward_speed <= 28.0,
+                "{lift_name} should be readable lift support, not a teleport-like boost"
+            );
+            assert!(
+                node.lift_accel <= 24.0,
+                "{lift_name} should stay within established traversal lift acceleration"
+            );
+        }
+    }
+}
+
 fn assert_route_beat_text_is_not_debug_only(text: &str) {
     let lower = text.to_ascii_lowercase();
 

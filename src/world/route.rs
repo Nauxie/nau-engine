@@ -87,6 +87,36 @@ impl FirstExpeditionTraversalMode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FirstExpeditionDetourKind {
+    LowAltitudeRecoveryLoop,
+    HighRiskUpperPath,
+}
+
+impl FirstExpeditionDetourKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::LowAltitudeRecoveryLoop => "low_altitude_recovery_loop",
+            Self::HighRiskUpperPath => "high_risk_upper_path",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FirstExpeditionDetourRisk {
+    Recovery,
+    HighRiskHighReward,
+}
+
+impl FirstExpeditionDetourRisk {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Recovery => "recovery",
+            Self::HighRiskHighReward => "high_risk_high_reward",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FirstExpeditionRecoveryAffordance {
     LaunchLift {
         lift_name: &'static str,
@@ -151,6 +181,21 @@ pub struct FirstExpeditionRouteBeat {
     pub recovery_affordance: FirstExpeditionRecoveryAffordance,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct FirstExpeditionOptionalDetour {
+    pub label: &'static str,
+    pub kind: FirstExpeditionDetourKind,
+    pub risk: FirstExpeditionDetourRisk,
+    pub entry_beat_kind: FirstExpeditionBeatKind,
+    pub reconnect_beat_kind: FirstExpeditionBeatKind,
+    pub altitude_band: FirstExpeditionAltitudeBand,
+    pub island_names: &'static [&'static str],
+    pub lift_names: &'static [&'static str],
+    pub reconnect_lift_name: &'static str,
+    pub landmark_anchor: &'static str,
+    pub route_positions: Vec<Vec3>,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct FirstExpeditionRouteBeatSpec {
     label: &'static str,
@@ -170,6 +215,35 @@ enum FirstExpeditionBeatPosition {
     UnderRouteMidpoint,
     PlateauRegion(IslandPlateauRegion),
 }
+
+#[derive(Clone, Copy, Debug)]
+struct FirstExpeditionOptionalDetourSpec {
+    label: &'static str,
+    kind: FirstExpeditionDetourKind,
+    risk: FirstExpeditionDetourRisk,
+    entry_beat_kind: FirstExpeditionBeatKind,
+    reconnect_beat_kind: FirstExpeditionBeatKind,
+    altitude_band: FirstExpeditionAltitudeBand,
+    island_names: &'static [&'static str],
+    lift_names: &'static [&'static str],
+    reconnect_lift_name: &'static str,
+    landmark_anchor: &'static str,
+}
+
+const LOW_ALTITUDE_RECOVERY_LOOP_ISLANDS: [&str; 3] =
+    ["low reef", "lowwind shelf", "western refuge"];
+const LOW_ALTITUDE_RECOVERY_LOOP_LIFTS: [&str; 3] = [
+    "low reef updraft",
+    "western catch updraft",
+    "distant recovery updraft",
+];
+const HIGH_RISK_UPPER_PATH_ISLANDS: [&str; 3] =
+    ["bluevault basin", "outer switchback", "far horizon perch"];
+const HIGH_RISK_UPPER_PATH_LIFTS: [&str; 3] = [
+    "bluevault shoulder recovery updraft",
+    "plateau west rim recovery updraft",
+    "great sky plateau updraft",
+];
 
 const FIRST_EXPEDITION_ROUTE_BEAT_SPECS: [FirstExpeditionRouteBeatSpec; 8] = [
     FirstExpeditionRouteBeatSpec {
@@ -268,6 +342,33 @@ const FIRST_EXPEDITION_ROUTE_BEAT_SPECS: [FirstExpeditionRouteBeatSpec; 8] = [
             island_name: PLAYTEST_RESET_ISLAND_NAME,
             lift_name: "great sky plateau updraft",
         },
+    },
+];
+
+const FIRST_EXPEDITION_OPTIONAL_DETOUR_SPECS: [FirstExpeditionOptionalDetourSpec; 2] = [
+    FirstExpeditionOptionalDetourSpec {
+        label: "low reef missed-glide recovery loop",
+        kind: FirstExpeditionDetourKind::LowAltitudeRecoveryLoop,
+        risk: FirstExpeditionDetourRisk::Recovery,
+        entry_beat_kind: FirstExpeditionBeatKind::FirstGlide,
+        reconnect_beat_kind: FirstExpeditionBeatKind::LowRecovery,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        island_names: &LOW_ALTITUDE_RECOVERY_LOOP_ISLANDS,
+        lift_names: &LOW_ALTITUDE_RECOVERY_LOOP_LIFTS,
+        reconnect_lift_name: "distant recovery updraft",
+        landmark_anchor: "low reef wind ribbons and western catch cairn",
+    },
+    FirstExpeditionOptionalDetourSpec {
+        label: "bluevault west-rim upper challenge path",
+        kind: FirstExpeditionDetourKind::HighRiskUpperPath,
+        risk: FirstExpeditionDetourRisk::HighRiskHighReward,
+        entry_beat_kind: FirstExpeditionBeatKind::HighClimb,
+        reconnect_beat_kind: FirstExpeditionBeatKind::PlateauArrival,
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        island_names: &HIGH_RISK_UPPER_PATH_ISLANDS,
+        lift_names: &HIGH_RISK_UPPER_PATH_LIFTS,
+        reconnect_lift_name: "plateau west rim recovery updraft",
+        landmark_anchor: "bluevault lake shoulder and plateau west rim thermal",
     },
 ];
 
@@ -624,6 +725,13 @@ impl SkyRoute {
             .collect()
     }
 
+    pub fn first_expedition_optional_detours(&self) -> Vec<FirstExpeditionOptionalDetour> {
+        FIRST_EXPEDITION_OPTIONAL_DETOUR_SPECS
+            .iter()
+            .filter_map(|spec| self.first_expedition_optional_detour(*spec))
+            .collect()
+    }
+
     fn first_expedition_route_beat(
         &self,
         spec: FirstExpeditionRouteBeatSpec,
@@ -655,6 +763,37 @@ impl SkyRoute {
             traversal_mode: spec.traversal_mode,
             landmark_anchor: spec.landmark_anchor,
             recovery_affordance: spec.recovery_affordance,
+        })
+    }
+
+    fn first_expedition_optional_detour(
+        &self,
+        spec: FirstExpeditionOptionalDetourSpec,
+    ) -> Option<FirstExpeditionOptionalDetour> {
+        let mut route_positions = Vec::new();
+        for island_name in spec.island_names {
+            let island = self.island_named(island_name)?;
+            let mut position = island.center;
+            position.y = self.ground_at(position).floor_y;
+            route_positions.push(position);
+        }
+        for lift_name in spec.lift_names {
+            route_positions.push(lift_route_node_named(lift_name)?.center);
+        }
+        lift_route_node_named(spec.reconnect_lift_name)?;
+
+        Some(FirstExpeditionOptionalDetour {
+            label: spec.label,
+            kind: spec.kind,
+            risk: spec.risk,
+            entry_beat_kind: spec.entry_beat_kind,
+            reconnect_beat_kind: spec.reconnect_beat_kind,
+            altitude_band: spec.altitude_band,
+            island_names: spec.island_names,
+            lift_names: spec.lift_names,
+            reconnect_lift_name: spec.reconnect_lift_name,
+            landmark_anchor: spec.landmark_anchor,
+            route_positions,
         })
     }
 
