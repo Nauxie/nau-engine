@@ -28,9 +28,10 @@ pub use obstruction_spires::{
 };
 pub use route::{
     FirstExpeditionAltitudeBand, FirstExpeditionBeatKind, FirstExpeditionDetourKind,
-    FirstExpeditionDetourRisk, FirstExpeditionOptionalDetour, FirstExpeditionRecoveryAffordance,
-    FirstExpeditionRouteBeat, FirstExpeditionTraversalMode, PLAYTEST_RESET_ISLAND_NAME,
-    SKY_ROUTE_ISLAND_COUNT, SkyRoute,
+    FirstExpeditionDetourRisk, FirstExpeditionNavigationContext, FirstExpeditionNavigationLandmark,
+    FirstExpeditionNavigationLandmarkKind, FirstExpeditionOptionalDetour,
+    FirstExpeditionRecoveryAffordance, FirstExpeditionRouteBeat, FirstExpeditionTraversalMode,
+    PLAYTEST_RESET_ISLAND_NAME, SKY_ROUTE_ISLAND_COUNT, SkyRoute,
 };
 pub use streaming::{LodBand, StreamActivation, StreamChunkCoord, StreamingLodStats};
 pub use surface::GroundSurface;

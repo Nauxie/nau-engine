@@ -418,6 +418,141 @@ fn first_expedition_optional_detours_reconnect_without_becoming_required_objecti
     }
 }
 
+#[test]
+fn first_expedition_navigation_landmarks_cover_required_beats_and_optional_detours() {
+    let route = SkyRoute::default();
+    let beats = route.first_expedition_route_beats();
+    let detours = route.first_expedition_optional_detours();
+    let landmarks = route.first_expedition_navigation_landmarks();
+
+    assert_eq!(landmarks.len(), beats.len() + detours.len());
+    assert_eq!(
+        landmarks
+            .iter()
+            .filter(|landmark| matches!(
+                landmark.context,
+                FirstExpeditionNavigationContext::RequiredBeat(_)
+            ))
+            .count(),
+        beats.len()
+    );
+    assert_eq!(
+        landmarks
+            .iter()
+            .filter(|landmark| matches!(
+                landmark.context,
+                FirstExpeditionNavigationContext::OptionalDetour(_)
+            ))
+            .count(),
+        detours.len()
+    );
+
+    for beat in beats {
+        let matching = landmarks
+            .iter()
+            .filter(|landmark| {
+                landmark.context == FirstExpeditionNavigationContext::RequiredBeat(beat.kind)
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            matching.len(),
+            1,
+            "{:?} should have one landmark",
+            beat.kind
+        );
+        let landmark = matching[0];
+        assert!(landmark.required_route);
+        assert_eq!(landmark.altitude_band, beat.altitude_band);
+        assert!(
+            landmark.position.distance(beat.position) <= landmark.readable_radius_m,
+            "{} should remain within its readable radius of {}",
+            landmark.label,
+            beat.label
+        );
+    }
+
+    for detour in detours {
+        let matching = landmarks
+            .iter()
+            .filter(|landmark| {
+                landmark.context == FirstExpeditionNavigationContext::OptionalDetour(detour.kind)
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            matching.len(),
+            1,
+            "{:?} should have one non-gating landmark",
+            detour.kind
+        );
+        let landmark = matching[0];
+        assert!(!landmark.required_route);
+        assert_eq!(landmark.altitude_band, detour.altitude_band);
+        assert!(detour.island_names.contains(&landmark.island_name));
+        assert!(
+            detour
+                .route_positions
+                .iter()
+                .any(|position| position.distance(landmark.position) <= landmark.readable_radius_m),
+            "{} should sit on or near its optional detour route",
+            landmark.label
+        );
+    }
+}
+
+#[test]
+fn first_expedition_navigation_landmarks_are_world_readable_not_debug_text() {
+    let route = SkyRoute::default();
+    let landmarks = route.first_expedition_navigation_landmarks();
+    let mut required_beat_mask = 0_u32;
+    let mut optional_detour_mask = 0_u32;
+
+    for landmark in landmarks {
+        let island = route
+            .island_named(landmark.island_name)
+            .expect("landmark island should exist");
+
+        assert!(!landmark.label.is_empty());
+        assert!(!landmark.kind.label().is_empty());
+        assert!(!landmark.context.label().is_empty());
+        assert!(!landmark.visual_anchor.is_empty());
+        assert_route_beat_text_is_not_debug_only(landmark.label);
+        assert_route_beat_text_is_not_debug_only(landmark.visual_anchor);
+        assert!(landmark.position.x.is_finite());
+        assert!(landmark.position.y.is_finite());
+        assert!(landmark.position.z.is_finite());
+        assert!(landmark.readable_radius_m >= 80.0);
+        assert!(
+            landmark.position.distance(island.center)
+                <= island.longest_span_m() + landmark.readable_radius_m,
+            "{} should remain visually associated with {}",
+            landmark.label,
+            island.name
+        );
+
+        match landmark.context {
+            FirstExpeditionNavigationContext::RequiredBeat(kind) => {
+                required_beat_mask |= 1_u32 << kind as u32;
+                assert!(landmark.required_route);
+            }
+            FirstExpeditionNavigationContext::OptionalDetour(kind) => {
+                optional_detour_mask |= 1_u32 << kind as u32;
+                assert!(!landmark.required_route);
+            }
+        }
+    }
+
+    assert_eq!(
+        required_beat_mask.count_ones(),
+        route.first_expedition_route_beats().len() as u32
+    );
+    assert_eq!(
+        optional_detour_mask.count_ones(),
+        route.first_expedition_optional_detours().len() as u32
+    );
+}
+
 fn assert_route_beat_text_is_not_debug_only(text: &str) {
     let lower = text.to_ascii_lowercase();
 
