@@ -611,7 +611,7 @@ impl LiftRouteNode {
     }
 }
 
-pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 15] = [
+pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     LiftRouteNode {
         name: "launch terrace updraft",
         center: Vec3::new(12.0, 52.0, -78.0),
@@ -732,9 +732,33 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 15] = [
         max_upward_speed: 19.0,
         visual_speed: 12.0,
     },
+    LiftRouteNode {
+        name: "bluevault shoulder recovery updraft",
+        center: Vec3::new(228.0, 455.0, -2070.0),
+        half_extents: Vec3::new(42.0, 62.0, 42.0),
+        lift_accel: 20.0,
+        max_upward_speed: 24.0,
+        visual_speed: 16.0,
+    },
+    LiftRouteNode {
+        name: "cloudbreak stair recovery updraft",
+        center: Vec3::new(150.0, 610.0, -2410.0),
+        half_extents: Vec3::new(42.0, 68.0, 42.0),
+        lift_accel: 20.0,
+        max_upward_speed: 24.0,
+        visual_speed: 16.5,
+    },
+    LiftRouteNode {
+        name: "plateau west rim recovery updraft",
+        center: Vec3::new(-270.0, 735.0, -2470.0),
+        half_extents: Vec3::new(50.0, 72.0, 50.0),
+        lift_accel: 20.0,
+        max_upward_speed: 25.0,
+        visual_speed: 17.0,
+    },
 ];
 
-pub const VISUAL_CROSSWIND_FIELD_COUNT: usize = 17;
+pub const VISUAL_CROSSWIND_FIELD_COUNT: usize = 20;
 
 pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
     [
@@ -839,6 +863,24 @@ pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
             Vec3::new(40.0, 30.0, 34.0),
             Vec3::new(0.58, 0.0, -0.42),
             8.5,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[15].center,
+            Vec3::new(58.0, 42.0, 48.0),
+            Vec3::new(-0.68, 0.0, -0.38),
+            11.0,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[16].center,
+            Vec3::new(58.0, 46.0, 48.0),
+            Vec3::new(0.54, 0.0, -0.74),
+            11.5,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[17].center,
+            Vec3::new(66.0, 50.0, 54.0),
+            Vec3::new(0.44, 0.0, 0.82),
+            12.0,
         ),
     ]
 }
@@ -1582,6 +1624,38 @@ mod tests {
             assert!(lift.contains(node.center));
             assert!(visual.contains(node.center));
             assert_eq!(visual.kind, WindFieldKind::Updraft);
+        }
+    }
+
+    #[test]
+    fn plateau_recovery_updrafts_are_modest_readable_support() {
+        let fields = visual_wind_fields();
+        let recovery_names = [
+            "bluevault shoulder recovery updraft",
+            "cloudbreak stair recovery updraft",
+            "plateau west rim recovery updraft",
+        ];
+
+        for name in recovery_names {
+            let node = GAMEPLAY_LIFT_ROUTE
+                .iter()
+                .find(|node| node.name == name)
+                .expect("recovery updraft should be declared");
+            let crosswind_count = fields
+                .iter()
+                .filter(|field| {
+                    field.kind == WindFieldKind::Crosswind && field.contains(node.center)
+                })
+                .count();
+
+            assert!(node.center.y >= 400.0);
+            assert!(node.lift_accel <= 20.0);
+            assert!(node.max_upward_speed <= 25.0);
+            assert!(fields.iter().any(|field| *field == node.visual_field()));
+            assert!(
+                crosswind_count >= 1,
+                "{name} should have paired readable crosswind"
+            );
         }
     }
 
