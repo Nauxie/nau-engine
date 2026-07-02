@@ -11,9 +11,10 @@ pub(crate) use detail_meshes::{
     DETAIL_CARD_VERTICES, LAKE_SURFACE_SEGMENTS, LANDING_GARDEN_MARKER_SEGMENTS,
     LAUNCH_BEACON_CRYSTAL_COUNT, OBSTRUCTION_SPIRE_RIB_COUNT, OBSTRUCTION_SPIRE_RINGS,
     OBSTRUCTION_SPIRE_SEGMENTS, POND_SURFACE_SEGMENTS, ROCK_MESH_RINGS, ROCK_MESH_SEGMENTS,
-    ROUTE_CAIRN_STONE_COUNT, TREE_BRANCH_SEGMENTS, TREE_CANOPY_LATITUDE_SEGMENTS,
-    TREE_CANOPY_LONGITUDE_SEGMENTS, TREE_ROOT_FLARE_SEGMENTS, UNDERHANG_SHELF_SEGMENTS,
-    WATERFALL_MIST_LOBES, WATERFALL_RIBBON_COLUMNS, WATERFALL_RIBBON_ROWS,
+    ROUTE_CAIRN_STONE_COUNT, RUIN_ARCH_STONE_COUNT, TREE_BRANCH_SEGMENTS,
+    TREE_CANOPY_LATITUDE_SEGMENTS, TREE_CANOPY_LONGITUDE_SEGMENTS, TREE_ROOT_FLARE_SEGMENTS,
+    UNDERHANG_SHELF_SEGMENTS, WATERFALL_MIST_LOBES, WATERFALL_RIBBON_COLUMNS,
+    WATERFALL_RIBBON_ROWS,
 };
 pub(crate) use detail_meshes::{
     CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, CLOUD_WISP_CARDS_PER_LOBE, IslandUnderRouteVisualKind,
@@ -22,8 +23,8 @@ pub(crate) use detail_meshes::{
     cloud_filament_ribbon_detail_count, crosswind_flow_ribbon_centerline_offset,
     crosswind_flow_ribbon_mesh, glider_airflow_trail_mesh, island_under_route_visual_specs,
     island_water_visual_specs, landing_garden_marker_mesh, launch_beacon_mesh,
-    obstruction_spire_mesh, rock_scatter_mesh, route_cairn_mesh, tree_canopy_mesh, tree_trunk_mesh,
-    updraft_ribbon_mesh,
+    obstruction_spire_mesh, rock_scatter_mesh, route_cairn_mesh, ruin_arch_mesh, tree_canopy_mesh,
+    tree_trunk_mesh, updraft_ribbon_mesh,
 };
 #[cfg(test)]
 pub(crate) use detail_meshes::{

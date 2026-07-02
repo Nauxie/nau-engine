@@ -5,6 +5,7 @@ use bevy::prelude::*;
 use nau_engine::world::{IslandPlateauRegion, SkyIsland};
 
 pub(crate) const ROUTE_CAIRN_STONE_COUNT: usize = 5;
+pub(crate) const RUIN_ARCH_STONE_COUNT: usize = 11;
 pub(crate) const LAUNCH_BEACON_CRYSTAL_COUNT: usize = 4;
 pub(crate) const LANDING_GARDEN_MARKER_SEGMENTS: usize = 12;
 pub(crate) const POND_SURFACE_SEGMENTS: usize = 32;
@@ -226,6 +227,78 @@ pub(crate) fn launch_beacon_mesh(radius: f32, height: f32, seed: u32) -> Mesh {
             lean,
             radius * (0.13 + random_unit(seed, crystal as u32, 727) * 0.06),
             height * (0.56 + random_unit(seed, crystal as u32, 733) * 0.14),
+        );
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+pub(crate) fn ruin_arch_mesh(width: f32, height: f32, depth: f32, seed: u32) -> Mesh {
+    let lobe_vertices =
+        (LANDMARK_LOBE_LATITUDE_SEGMENTS + 1) * (LANDMARK_LOBE_LONGITUDE_SEGMENTS + 1);
+    let lobe_indices = LANDMARK_LOBE_LATITUDE_SEGMENTS * LANDMARK_LOBE_LONGITUDE_SEGMENTS * 6;
+    let mut positions = Vec::with_capacity(RUIN_ARCH_STONE_COUNT * lobe_vertices);
+    let mut normals = Vec::with_capacity(positions.capacity());
+    let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut indices = Vec::with_capacity(RUIN_ARCH_STONE_COUNT * lobe_indices);
+
+    for side in [-1.0_f32, 1.0] {
+        for layer in 0..3 {
+            let t = layer as f32 / 2.0;
+            let lean =
+                random_unit(seed, layer as u32, if side < 0.0 { 1_307 } else { 1_313 }) - 0.5;
+            let center = Vec3::new(
+                side * width * (0.35 + lean * 0.035),
+                height * (-0.31 + t * 0.22),
+                (random_unit(seed, layer as u32, if side < 0.0 { 1_319 } else { 1_327 }) - 0.5)
+                    * depth
+                    * 0.18,
+            );
+            let lobe_radius = Vec3::new(
+                width * (0.155 + random_unit(seed, layer as u32, 1_331) * 0.030),
+                height * (0.115 + random_unit(seed, layer as u32, 1_337) * 0.020),
+                depth * (0.44 + random_unit(seed, layer as u32, 1_339) * 0.11),
+            );
+            append_ellipsoid_lobe(
+                &mut positions,
+                &mut normals,
+                &mut uvs,
+                &mut indices,
+                center,
+                lobe_radius,
+                LANDMARK_LOBE_LATITUDE_SEGMENTS,
+                LANDMARK_LOBE_LONGITUDE_SEGMENTS,
+                seed.wrapping_add(layer as u32 * 91 + if side < 0.0 { 17 } else { 43 }),
+                0.22,
+            );
+        }
+    }
+
+    for crown in 0..5 {
+        let t = crown as f32 / 4.0;
+        let angle = std::f32::consts::PI * (0.82 - t * 0.64);
+        let center = Vec3::new(
+            angle.cos() * width * 0.38,
+            height * (-0.03 + angle.sin() * 0.54),
+            (random_unit(seed, crown as u32, 1_401) - 0.5) * depth * 0.14,
+        );
+        let crown_scale = 1.0 - (t - 0.5).abs() * 0.20;
+        let lobe_radius = Vec3::new(
+            width * (0.145 + random_unit(seed, crown as u32, 1_409) * 0.035) * crown_scale,
+            height * (0.105 + random_unit(seed, crown as u32, 1_419) * 0.020),
+            depth * (0.48 + random_unit(seed, crown as u32, 1_421) * 0.14),
+        );
+        append_ellipsoid_lobe(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            center,
+            lobe_radius,
+            LANDMARK_LOBE_LATITUDE_SEGMENTS,
+            LANDMARK_LOBE_LONGITUDE_SEGMENTS,
+            seed.wrapping_add(crown as u32 * 103 + 211),
+            0.24,
         );
     }
 

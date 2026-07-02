@@ -211,6 +211,10 @@ pub(crate) fn export_visual_content_inspection(
         plateau_waterfall_mist_count,
         under_route_visual_count,
         under_route_cave_mouth_count,
+        ruin_arch_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "ruin_arch")
+            .count(),
         route_cairn_count: landmarks
             .iter()
             .filter(|summary| summary.kind == "route_cairn")
@@ -367,6 +371,13 @@ pub(crate) fn export_visual_content_inspection(
                 .iter()
                 .filter(|summary| summary.kind.starts_with("under_route_"))
                 .map(|summary| summary.mesh.vertical_span_m),
+        ),
+        min_ruin_arch_mesh_vertices: min_landmark_vertices(&landmarks, "ruin_arch"),
+        min_ruin_arch_vertical_span_m: min_landmark_vertical_span(&landmarks, "ruin_arch"),
+        min_ruin_arch_radius_band_count: min_landmark_radius_bands(&landmarks, "ruin_arch"),
+        min_ruin_arch_normal_slope_band_count: min_landmark_normal_slope_bands(
+            &landmarks,
+            "ruin_arch",
         ),
         min_obstruction_spire_mesh_vertices: min_landmark_vertices(&landmarks, "obstruction_spire"),
         min_obstruction_spire_triangle_count: min_landmark_triangles(

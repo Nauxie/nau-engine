@@ -229,6 +229,7 @@ impl IslandContentDiagnostics {
         self.generated_landmark_count += 1;
         match kind {
             GeneratedLandmarkKind::RouteCairn => self.generated_route_cairn_count += 1,
+            GeneratedLandmarkKind::RuinArch => {}
             GeneratedLandmarkKind::LaunchBeacon => self.generated_launch_beacon_count += 1,
             GeneratedLandmarkKind::LandingGardenMarker => {
                 self.generated_landing_garden_marker_count += 1;
@@ -281,6 +282,7 @@ impl IslandContentDiagnostics {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum GeneratedLandmarkKind {
     RouteCairn,
+    RuinArch,
     LaunchBeacon,
     LandingGardenMarker,
     PondSurface,
@@ -368,6 +370,7 @@ mod tests {
         diagnostics.record_generated_rock(74);
         diagnostics.record_generated_rock(80);
         diagnostics.record_generated_landmark(GeneratedLandmarkKind::RouteCairn, 250);
+        diagnostics.record_generated_landmark(GeneratedLandmarkKind::RuinArch, 550);
         diagnostics.record_generated_landmark(GeneratedLandmarkKind::LaunchBeacon, 306);
         diagnostics.record_generated_landmark(GeneratedLandmarkKind::LandingGardenMarker, 39);
         diagnostics.record_generated_landmark(GeneratedLandmarkKind::PondSurface, 65);
@@ -386,7 +389,7 @@ mod tests {
         assert_eq!(diagnostics.detail_biome_palette_count(), 2);
         assert_eq!(diagnostics.generated_rock_count, 2);
         assert_eq!(diagnostics.min_rock_mesh_vertices, 74);
-        assert_eq!(diagnostics.generated_landmark_count, 6);
+        assert_eq!(diagnostics.generated_landmark_count, 7);
         assert_eq!(diagnostics.generated_route_cairn_count, 1);
         assert_eq!(diagnostics.generated_launch_beacon_count, 1);
         assert_eq!(diagnostics.generated_landing_garden_marker_count, 1);

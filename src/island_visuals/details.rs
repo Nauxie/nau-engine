@@ -10,11 +10,12 @@ use crate::generated_content::{
     GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES, IslandDetailMaterials,
     island_ground_cover_mesh, island_playable_normalized_offset, island_under_route_visual_specs,
     island_visual_surface_position, island_water_visual_specs, landing_garden_marker_mesh,
-    launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh, tree_canopy_mesh, tree_trunk_mesh,
+    launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh, ruin_arch_mesh, tree_canopy_mesh,
+    tree_trunk_mesh,
 };
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
-use nau_engine::world::SkyIsland;
+use nau_engine::world::{IslandLandmarkRole, SkyIsland};
 
 use crate::world_collision_runtime::{WorldCollisionProxy, WorldCollisionProxyKind};
 
@@ -198,6 +199,44 @@ pub(super) fn queue_sky_island_details(
                 1.1 * water_feature.wind_motion_scale,
             ),
             water_feature.kind.visual_name(),
+        );
+    }
+
+    if island.world_tags.landmark_role == IslandLandmarkRole::RuinArch {
+        let arch_width = (island.half_extents.x * 0.24).clamp(5.5, 18.0);
+        let arch_height = (island.thickness * 0.38).clamp(4.8, 12.0);
+        let arch_depth = (island.half_extents.y * 0.08).clamp(1.2, 3.2);
+        let offset_phase = detail_phase + 0.9;
+        let normalized_offset = island_playable_normalized_offset(
+            island,
+            Vec2::new(
+                0.24 + offset_phase.sin() * 0.08,
+                -0.20 + offset_phase.cos() * 0.06,
+            ),
+        );
+        let surface = island_visual_surface_position(island, normalized_offset);
+        let arch_mesh = ruin_arch_mesh(
+            arch_width,
+            arch_height,
+            arch_depth,
+            15_000 + island_index as u32 * 181,
+        );
+        content_diagnostics
+            .record_generated_landmark(GeneratedLandmarkKind::RuinArch, arch_mesh.count_vertices());
+        queue_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Detail,
+            meshes.add(arch_mesh),
+            detail_materials.stone.clone(),
+            Transform {
+                translation: surface + Vec3::Y * (arch_height * 0.46),
+                rotation: Quat::from_rotation_y(offset_phase * 0.31),
+                ..default()
+            },
+            None,
+            "ruin arch",
         );
     }
 

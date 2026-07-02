@@ -23,13 +23,13 @@ pub(crate) use effects::{
 };
 pub(crate) use landmarks::{
     IslandWaterVisualKind, island_water_visual_specs, landing_garden_marker_mesh,
-    launch_beacon_mesh, route_cairn_mesh,
+    launch_beacon_mesh, route_cairn_mesh, ruin_arch_mesh,
 };
 #[cfg(test)]
 pub(crate) use landmarks::{
     LAKE_SURFACE_SEGMENTS, LANDING_GARDEN_MARKER_SEGMENTS, LAUNCH_BEACON_CRYSTAL_COUNT,
-    POND_SURFACE_SEGMENTS, ROUTE_CAIRN_STONE_COUNT, WATERFALL_MIST_LOBES, WATERFALL_RIBBON_COLUMNS,
-    WATERFALL_RIBBON_ROWS,
+    POND_SURFACE_SEGMENTS, ROUTE_CAIRN_STONE_COUNT, RUIN_ARCH_STONE_COUNT, WATERFALL_MIST_LOBES,
+    WATERFALL_RIBBON_COLUMNS, WATERFALL_RIBBON_ROWS,
 };
 #[cfg(test)]
 pub(crate) use landmarks::{
