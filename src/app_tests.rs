@@ -682,7 +682,7 @@ fn great_sky_plateau_under_route_visual_specs_mark_cave_and_shelf() {
         .expect("plateau should define an under-route");
     let cave_features = island_under_route_visual_specs(plateau_index, plateau);
 
-    assert_eq!(cave_features.len(), 3);
+    assert_eq!(cave_features.len(), 4);
     assert_eq!(
         cave_features
             .iter()
@@ -697,6 +697,13 @@ fn great_sky_plateau_under_route_visual_specs_mark_cave_and_shelf() {
             .count(),
         1
     );
+    assert_eq!(
+        cave_features
+            .iter()
+            .filter(|feature| feature.kind == IslandUnderRouteVisualKind::HangingRoots)
+            .count(),
+        1
+    );
 
     let entry_arch = cave_features
         .iter()
@@ -706,6 +713,10 @@ fn great_sky_plateau_under_route_visual_specs_mark_cave_and_shelf() {
         .iter()
         .find(|feature| feature.label == "underside glide shelf")
         .expect("glide shelf should be generated");
+    let roots = cave_features
+        .iter()
+        .find(|feature| feature.label == "hanging root curtain")
+        .expect("hanging roots should be generated");
     let exit_arch = cave_features
         .iter()
         .find(|feature| feature.label == "updraft skylight exit arch")
@@ -714,15 +725,23 @@ fn great_sky_plateau_under_route_visual_specs_mark_cave_and_shelf() {
     assert!(entry_arch.translation.distance(under_route.entry) < 0.1);
     assert!(exit_arch.translation.distance(under_route.exit) < 0.1);
     assert!(shelf.translation.y < under_route.midpoint.y);
+    assert!(roots.translation.y > under_route.midpoint.y);
     assert!(entry_arch.camera_half_extents.x >= under_route.clearance_radius_m);
     assert!(shelf.camera_half_extents.x > entry_arch.camera_half_extents.x);
+    assert!(roots.camera_half_extents.y >= under_route.clearance_radius_m * 0.4);
 
     let arch_mesh = entry_arch.build_mesh();
     let shelf_mesh = shelf.build_mesh();
+    let roots_mesh = roots.build_mesh();
     assert!(arch_mesh.count_vertices() >= CAVE_MOUTH_ARCH_STONES * 40);
     assert!(mesh_y_range(&arch_mesh) >= under_route.clearance_radius_m);
     assert_eq!(shelf_mesh.count_vertices(), UNDERHANG_SHELF_SEGMENTS * 2);
     assert!(mesh_y_range(&shelf_mesh) > 3.0);
+    assert_eq!(
+        roots_mesh.count_vertices(),
+        HANGING_ROOT_STRANDS * (HANGING_ROOT_SEGMENTS + 1) * 4
+    );
+    assert!(mesh_y_range(&roots_mesh) >= under_route.clearance_radius_m * 0.7);
 }
 
 #[test]
@@ -749,6 +768,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     let launch_spire = output_dir.join("visuals/00_launch_mesa_obstruction_spire.obj");
     let landing_marker = output_dir.join("visuals/02_landing_garden_landing_garden_marker_0.obj");
     let broken_stair_ruin = output_dir.join("visuals/12_broken_stair_ruin_arch.obj");
+    let plateau_roots = output_dir.join("visuals/38_great_sky_plateau_hanging_root_curtain.obj");
     let route = SkyRoute::default();
     let island_count = route.islands().len();
     let small_island_count = route
@@ -770,7 +790,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     let weather_veil_count = island_count.div_ceil(2) * 3;
     let route_cairn_count = island_count - 2;
     let plateau_extra_water_count = 6;
-    let plateau_extra_cave_count = 3;
+    let plateau_extra_cave_count = 4;
     let landmark_count = island_count * 2
         + route_cairn_count
         + 1
@@ -800,7 +820,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.landmark_kind_count >= 8);
     assert_eq!(report.small_island_count, small_island_count);
     assert!(report.small_island_count >= 10);
-    assert_eq!(report.plateau_landmark_count, 12);
+    assert_eq!(report.plateau_landmark_count, 13);
     assert_eq!(report.plateau_waterfall_ribbon_count, 2);
     assert_eq!(report.plateau_waterfall_mist_count, 2);
     assert_eq!(report.under_route_visual_count, plateau_extra_cave_count);
@@ -848,6 +868,14 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             .landmarks
             .iter()
             .filter(|summary| summary.kind == "under_route_hanging_shelf")
+            .count(),
+        1
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "under_route_hanging_roots")
             .count(),
         1
     );
@@ -927,6 +955,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(launch_spire.exists());
     assert!(landing_marker.exists());
     assert!(broken_stair_ruin.exists());
+    assert!(plateau_roots.exists());
     let low_basin_lake = report
         .landmarks
         .iter()
@@ -962,6 +991,13 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             summary.island_name == "great sky plateau" && summary.label == "underside glide shelf"
         })
         .expect("great sky plateau should export an underside glide shelf");
+    let hanging_roots = report
+        .landmarks
+        .iter()
+        .find(|summary| {
+            summary.island_name == "great sky plateau" && summary.label == "hanging root curtain"
+        })
+        .expect("great sky plateau should export hanging roots");
     let ruin_arch = report
         .landmarks
         .iter()
@@ -977,6 +1013,9 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(cave_arch.mesh.vertical_span_m >= 14.0);
     assert!(underhang_shelf.mesh.horizontal_span_m >= 45.0);
     assert!(underhang_shelf.mesh.depth_span_m >= 24.0);
+    assert!(hanging_roots.mesh.vertex_count >= 350);
+    assert!(hanging_roots.mesh.vertical_span_m >= 8.0);
+    assert!(hanging_roots.mesh.horizontal_span_m >= 20.0);
     assert!(ruin_arch.mesh.vertex_count >= 500);
     assert!(ruin_arch.mesh.vertical_span_m >= 4.5);
     assert!(ruin_arch.radius_band_count >= 8);
@@ -985,6 +1024,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(output_dir.join(&mist.mesh.obj_path).exists());
     assert!(output_dir.join(&cave_arch.mesh.obj_path).exists());
     assert!(output_dir.join(&underhang_shelf.mesh.obj_path).exists());
+    assert!(output_dir.join(&hanging_roots.mesh.obj_path).exists());
     assert!(output_dir.join(&ruin_arch.mesh.obj_path).exists());
     assert!(manifest.contains("\"schema\": \"nau_visual_content_export.v1\""));
     assert!(manifest.contains("\"ground_cover_blade_height_range_m\""));
@@ -1002,10 +1042,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains(&format!("\"landmark_count\": {landmark_count}")));
     assert!(manifest.contains("\"landmark_kind_count\""));
     assert!(manifest.contains(&format!("\"small_island_count\": {small_island_count}")));
-    assert!(manifest.contains("\"plateau_landmark_count\": 12"));
+    assert!(manifest.contains("\"plateau_landmark_count\": 13"));
     assert!(manifest.contains("\"plateau_waterfall_ribbon_count\": 2"));
     assert!(manifest.contains("\"plateau_waterfall_mist_count\": 2"));
-    assert!(manifest.contains("\"under_route_visual_count\": 3"));
+    assert!(manifest.contains("\"under_route_visual_count\": 4"));
     assert!(manifest.contains("\"under_route_cave_mouth_count\": 2"));
     assert!(manifest.contains(&format!("\"ruin_arch_count\": {ruin_arch_count}")));
     assert!(manifest.contains(&format!("\"route_cairn_count\": {route_cairn_count}")));
@@ -1030,11 +1070,13 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"kind\": \"plateau_waterfall_mist\""));
     assert!(manifest.contains("\"kind\": \"under_route_cave_mouth\""));
     assert!(manifest.contains("\"kind\": \"under_route_hanging_shelf\""));
+    assert!(manifest.contains("\"kind\": \"under_route_hanging_roots\""));
     assert!(manifest.contains("\"kind\": \"ruin_arch\""));
     assert!(manifest.contains("great_sky_plateau_low_basin_lake.obj"));
     assert!(manifest.contains("great_sky_plateau_north_rim_waterfall.obj"));
     assert!(manifest.contains("great_sky_plateau_underhang_entry_arch.obj"));
     assert!(manifest.contains("great_sky_plateau_underside_glide_shelf.obj"));
+    assert!(manifest.contains("great_sky_plateau_hanging_root_curtain.obj"));
     assert!(manifest.contains("broken_stair_ruin_arch.obj"));
     assert!(manifest.contains("\"obstruction_spire_height_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_radius_band_count\""));
@@ -1844,6 +1886,25 @@ fn landmark_meshes_replace_basic_cylinders_and_boxes() {
     assert!(
         radial_range(positions(&underhang_shelf)) > 10.0,
         "underhang shelves should have broad irregular ledge silhouettes"
+    );
+
+    let hanging_roots = hanging_root_curtain_mesh(32.0, 12.0, 8.0, 44_789);
+    let hanging_root_indices = u32_indices(&hanging_roots);
+    assert_eq!(
+        hanging_roots.count_vertices(),
+        HANGING_ROOT_STRANDS * (HANGING_ROOT_SEGMENTS + 1) * 4
+    );
+    assert_eq!(
+        hanging_root_indices.len(),
+        HANGING_ROOT_STRANDS * HANGING_ROOT_SEGMENTS * 24
+    );
+    assert!(
+        mesh_y_range(&hanging_roots) > 9.0,
+        "hanging roots should visibly descend from the cave ceiling"
+    );
+    assert!(
+        radial_range(positions(&hanging_roots)) > 12.0,
+        "hanging roots should form a broad organic curtain, not one strand"
     );
 
     let spire = obstruction_spire_mesh(1.0, 5.2, 18_123);
