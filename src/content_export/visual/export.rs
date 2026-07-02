@@ -153,6 +153,14 @@ pub(crate) fn export_visual_content_inspection(
         .iter()
         .filter(|summary| summary.kind == "plateau_waterfall_mist")
         .count();
+    let route_waterfall_ribbon_count = landmarks
+        .iter()
+        .filter(|summary| summary.kind == "route_waterfall_ribbon")
+        .count();
+    let route_waterfall_mist_count = landmarks
+        .iter()
+        .filter(|summary| summary.kind == "route_waterfall_mist")
+        .count();
     let under_route_visual_count = landmarks
         .iter()
         .filter(|summary| summary.kind.starts_with("under_route_"))
@@ -209,6 +217,8 @@ pub(crate) fn export_visual_content_inspection(
         plateau_landmark_count,
         plateau_waterfall_ribbon_count,
         plateau_waterfall_mist_count,
+        route_waterfall_ribbon_count,
+        route_waterfall_mist_count,
         under_route_visual_count,
         under_route_cave_mouth_count,
         ruin_arch_count: landmarks
@@ -365,6 +375,10 @@ pub(crate) fn export_visual_content_inspection(
         min_plateau_waterfall_vertical_span_m: min_landmark_vertical_span(
             &landmarks,
             "plateau_waterfall_ribbon",
+        ),
+        min_route_waterfall_vertical_span_m: min_landmark_vertical_span(
+            &landmarks,
+            "route_waterfall_ribbon",
         ),
         min_under_route_visual_vertical_span_m: min_finite_f32(
             landmarks
