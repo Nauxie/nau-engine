@@ -161,6 +161,10 @@ pub(crate) fn export_visual_content_inspection(
         .iter()
         .filter(|summary| summary.kind == "route_waterfall_mist")
         .count();
+    let route_lake_surface_count = landmarks
+        .iter()
+        .filter(|summary| summary.kind == "route_lake_surface")
+        .count();
     let under_route_visual_count = landmarks
         .iter()
         .filter(|summary| summary.kind.starts_with("under_route_"))
@@ -219,6 +223,7 @@ pub(crate) fn export_visual_content_inspection(
         plateau_waterfall_mist_count,
         route_waterfall_ribbon_count,
         route_waterfall_mist_count,
+        route_lake_surface_count,
         under_route_visual_count,
         under_route_cave_mouth_count,
         ruin_arch_count: landmarks
@@ -380,6 +385,10 @@ pub(crate) fn export_visual_content_inspection(
             &landmarks,
             "route_waterfall_ribbon",
         ),
+        min_route_lake_surface_horizontal_span_m: min_landmark_horizontal_span(
+            &landmarks,
+            "route_lake_surface",
+        ),
         min_under_route_visual_vertical_span_m: min_finite_f32(
             landmarks
                 .iter()
@@ -455,6 +464,18 @@ fn min_landmark_vertical_span(
             .iter()
             .filter(|summary| summary.kind == kind)
             .map(|summary| summary.mesh.vertical_span_m),
+    )
+}
+
+fn min_landmark_horizontal_span(
+    landmarks: &[super::types::VisualLandmarkSummary],
+    kind: &str,
+) -> f32 {
+    min_finite_f32(
+        landmarks
+            .iter()
+            .filter(|summary| summary.kind == kind)
+            .map(|summary| summary.mesh.horizontal_span_m),
     )
 }
 

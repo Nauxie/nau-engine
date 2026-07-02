@@ -32,6 +32,7 @@ pub(crate) enum IslandWaterVisualKind {
     PlateauWaterfallMist,
     RouteWaterfallRibbon,
     RouteWaterfallMist,
+    RouteLakeSurface,
 }
 
 impl IslandWaterVisualKind {
@@ -43,6 +44,7 @@ impl IslandWaterVisualKind {
             Self::PlateauWaterfallMist => "plateau_waterfall_mist",
             Self::RouteWaterfallRibbon => "route_waterfall_ribbon",
             Self::RouteWaterfallMist => "route_waterfall_mist",
+            Self::RouteLakeSurface => "route_lake_surface",
         }
     }
 
@@ -54,6 +56,7 @@ impl IslandWaterVisualKind {
             Self::PlateauWaterfallMist => "plateau waterfall mist",
             Self::RouteWaterfallRibbon => "route waterfall ribbon",
             Self::RouteWaterfallMist => "route waterfall mist",
+            Self::RouteLakeSurface => "route lake",
         }
     }
 }
@@ -212,6 +215,11 @@ pub(crate) fn island_water_visual_specs(
     {
         push_route_edge_waterfall_specs(&mut specs, island_index, island);
     }
+    if island.world_tags.water_feature == IslandWaterFeature::LakeBasin
+        && !island.is_great_plateau_anchor()
+    {
+        push_route_lake_surface_specs(&mut specs, island_index, island);
+    }
 
     specs
 }
@@ -249,10 +257,17 @@ pub(crate) fn island_lake_basin_visual_specs(
         }
     }
 
-    if island.terrain_archetype == IslandTerrainArchetype::SapphireBasin {
+    if island.world_tags.water_feature == IslandWaterFeature::LakeBasin
+        && !island.is_great_plateau_anchor()
+    {
+        let label = if island.terrain_archetype == IslandTerrainArchetype::SapphireBasin {
+            "sapphire lake basin"
+        } else {
+            "route lake basin"
+        };
         specs.push(IslandLakeBasinVisualSpec {
-            label: "sapphire lake basin",
-            translation: island_water_surface_position(island, Vec2::new(0.06, -0.10))
+            label,
+            translation: island_water_surface_position(island, route_lake_basin_offset(island))
                 + Vec3::Y * 0.035,
             rotation_y: -0.08,
             radius_x: island.half_extents.x * 0.19,
@@ -833,6 +848,27 @@ fn push_plateau_waterfall_specs(
     });
 }
 
+fn push_route_lake_surface_specs(
+    specs: &mut Vec<IslandWaterVisualSpec>,
+    island_index: usize,
+    island: SkyIsland,
+) {
+    specs.push(IslandWaterVisualSpec {
+        kind: IslandWaterVisualKind::RouteLakeSurface,
+        label: "route lake surface",
+        translation: island_water_surface_position(island, route_lake_basin_offset(island))
+            + Vec3::Y * 0.075,
+        rotation_y: -0.08,
+        wind_phase: 5.8 + island_index as f32 * 0.037,
+        wind_motion_scale: 1.32,
+        mesh: IslandWaterVisualMesh::LakeSurface {
+            radius_x: island.half_extents.x * 0.18,
+            radius_z: island.half_extents.y * 0.13,
+        },
+        seed: 38_000 + island_index as u32 * 219,
+    });
+}
+
 fn push_route_edge_waterfall_specs(
     specs: &mut Vec<IslandWaterVisualSpec>,
     island_index: usize,
@@ -877,6 +913,14 @@ fn push_route_edge_waterfall_specs(
         },
         seed: seed_base + 509,
     });
+}
+
+fn route_lake_basin_offset(island: SkyIsland) -> Vec2 {
+    if island.terrain_archetype == IslandTerrainArchetype::SapphireBasin {
+        Vec2::new(0.06, -0.10)
+    } else {
+        Vec2::new(-0.08, 0.12)
+    }
 }
 
 fn island_water_surface_position(island: SkyIsland, normalized_offset: Vec2) -> Vec3 {

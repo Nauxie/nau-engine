@@ -38,13 +38,14 @@ const MIN_WEATHER_CLOUD_SCALED_DEPTH_SPAN_M: f64 = 12.0;
 const MIN_TREE_TRUNK_HEIGHT_RANGE_M: f64 = 1.5;
 const MIN_TREE_CANOPY_RADIUS_RANGE_M: f64 = 0.35;
 const MIN_LANDMARK_COUNT: u64 = 60;
-const MIN_LANDMARK_KIND_COUNT: u64 = 15;
+const MIN_LANDMARK_KIND_COUNT: u64 = 18;
 const MIN_SMALL_ISLAND_COUNT: u64 = 10;
 const MIN_PLATEAU_LANDMARK_COUNT: u64 = 15;
 const MIN_PLATEAU_WATERFALL_RIBBON_COUNT: u64 = 2;
 const MIN_PLATEAU_WATERFALL_MIST_COUNT: u64 = 2;
 const MIN_ROUTE_WATERFALL_RIBBON_COUNT: u64 = 1;
 const MIN_ROUTE_WATERFALL_MIST_COUNT: u64 = 1;
+const MIN_ROUTE_LAKE_SURFACE_COUNT: u64 = 3;
 const MIN_UNDER_ROUTE_VISUAL_COUNT: u64 = 4;
 const MIN_UNDER_ROUTE_CAVE_MOUTH_COUNT: u64 = 2;
 const MIN_RUIN_ARCH_COUNT: u64 = 4;
@@ -65,6 +66,7 @@ const MIN_PLATEAU_LANDMARK_VERTEX_TOTAL: u64 = 2_500;
 const MIN_MAX_PLATEAU_LANDMARK_MESH_VERTICES: u64 = 600;
 const MIN_PLATEAU_WATERFALL_VERTICAL_SPAN_M: f64 = 45.0;
 const MIN_ROUTE_WATERFALL_VERTICAL_SPAN_M: f64 = 18.0;
+const MIN_ROUTE_LAKE_SURFACE_HORIZONTAL_SPAN_M: f64 = 18.0;
 const MIN_UNDER_ROUTE_VISUAL_VERTICAL_SPAN_M: f64 = 4.0;
 const MIN_RUIN_ARCH_MESH_VERTICES: u64 = 500;
 const MIN_RUIN_ARCH_VERTICAL_SPAN_M: f64 = 4.5;
@@ -249,6 +251,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "route_waterfall_mist_count",
         value_u64(counts, "route_waterfall_mist_count"),
         MIN_ROUTE_WATERFALL_MIST_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "route_lake_surface_count",
+        value_u64(counts, "route_lake_surface_count"),
+        MIN_ROUTE_LAKE_SURFACE_COUNT,
         "meshes",
     ));
     checks.push(check_at_least_u64(
@@ -501,6 +509,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "route_waterfall_vertical_span",
         value_f64(minimums, "route_waterfall_vertical_span_m"),
         MIN_ROUTE_WATERFALL_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "route_lake_surface_horizontal_span",
+        value_f64(minimums, "route_lake_surface_horizontal_span_m"),
+        MIN_ROUTE_LAKE_SURFACE_HORIZONTAL_SPAN_M,
         "m",
     ));
     checks.push(check_at_least_f64(
@@ -876,6 +890,7 @@ mod tests {
                 "plateau_waterfall_mist_count": 0,
                 "route_waterfall_ribbon_count": 0,
                 "route_waterfall_mist_count": 0,
+                "route_lake_surface_count": 0,
                 "under_route_visual_count": 0,
                 "under_route_cave_mouth_count": 0,
                 "ruin_arch_count": 0,
@@ -920,6 +935,7 @@ mod tests {
                 "max_plateau_landmark_mesh_vertices": 10,
                 "plateau_waterfall_vertical_span_m": 3.0,
                 "route_waterfall_vertical_span_m": 2.0,
+                "route_lake_surface_horizontal_span_m": 4.0,
                 "under_route_visual_vertical_span_m": 0.5,
                 "ruin_arch_mesh_vertices": 10,
                 "ruin_arch_vertical_span_m": 0.4,
@@ -989,6 +1005,7 @@ mod tests {
             "plateau_waterfall_mist_count",
             "route_waterfall_ribbon_count",
             "route_waterfall_mist_count",
+            "route_lake_surface_count",
             "under_route_visual_count",
             "under_route_cave_mouth_count",
             "ruin_arch_count",
@@ -1009,6 +1026,7 @@ mod tests {
             "max_plateau_landmark_mesh_vertices",
             "plateau_waterfall_vertical_span",
             "route_waterfall_vertical_span",
+            "route_lake_surface_horizontal_span",
             "under_route_visual_vertical_span",
             "ruin_arch_mesh_vertices",
             "ruin_arch_vertical_span",
