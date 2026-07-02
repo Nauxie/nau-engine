@@ -22,15 +22,15 @@ pub(crate) use effects::{
     crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh, glider_airflow_trail_mesh,
     updraft_ribbon_mesh,
 };
-pub(crate) use landmarks::{
-    IslandWaterVisualKind, island_water_visual_specs, landing_garden_marker_mesh,
-    launch_beacon_mesh, route_cairn_mesh, ruin_arch_mesh,
-};
 #[cfg(test)]
 pub(crate) use landmarks::{
-    LAKE_SURFACE_SEGMENTS, LANDING_GARDEN_MARKER_SEGMENTS, LAUNCH_BEACON_CRYSTAL_COUNT,
-    POND_SURFACE_SEGMENTS, ROUTE_CAIRN_STONE_COUNT, RUIN_ARCH_STONE_COUNT, WATERFALL_MIST_LOBES,
-    WATERFALL_RIBBON_COLUMNS, WATERFALL_RIBBON_ROWS,
+    GARDEN_RING_BANDS, GARDEN_RING_SEGMENTS, LAKE_SURFACE_SEGMENTS, LANDING_GARDEN_MARKER_SEGMENTS,
+    LAUNCH_BEACON_CRYSTAL_COUNT, POND_SURFACE_SEGMENTS, ROUTE_CAIRN_STONE_COUNT,
+    RUIN_ARCH_STONE_COUNT, WATERFALL_MIST_LOBES, WATERFALL_RIBBON_COLUMNS, WATERFALL_RIBBON_ROWS,
+};
+pub(crate) use landmarks::{
+    IslandWaterVisualKind, garden_ring_mesh, island_water_visual_specs, landing_garden_marker_mesh,
+    launch_beacon_mesh, route_cairn_mesh, ruin_arch_mesh,
 };
 #[cfg(test)]
 pub(crate) use landmarks::{
