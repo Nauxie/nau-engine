@@ -2,7 +2,7 @@ use crate::eval_app_runtime::scene::EvalScene;
 use crate::generated_content::island_visual_surface_position;
 use bevy::prelude::*;
 use nau_engine::environment::AERIAL_POWER_UP_ROUTE;
-use nau_engine::world::RouteObjectiveKind;
+use nau_engine::world::{FirstExpeditionNavigationContext, RouteObjectiveKind};
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct SemanticRouteMarker {
@@ -73,6 +73,21 @@ pub(super) fn semantic_route_markers(scene: &EvalScene) -> Vec<SemanticRouteMark
                 current_objective: false,
             });
         }
+    }
+
+    for landmark in scene.route.first_expedition_navigation_landmarks() {
+        let kind = match landmark.context {
+            FirstExpeditionNavigationContext::RequiredBeat(_) => "first_expedition_landmark",
+            FirstExpeditionNavigationContext::OptionalDetour(_) => {
+                "first_expedition_detour_landmark"
+            }
+        };
+        markers.push(SemanticRouteMarker {
+            kind,
+            label: landmark.label,
+            world_position: landmark.position,
+            current_objective: false,
+        });
     }
 
     for power_up in AERIAL_POWER_UP_ROUTE {

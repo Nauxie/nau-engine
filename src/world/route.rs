@@ -117,6 +117,50 @@ impl FirstExpeditionDetourRisk {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FirstExpeditionNavigationLandmarkKind {
+    LaunchBeacon,
+    RouteCairn,
+    RecoveryUpdraft,
+    CaveMouth,
+    WaterfallLakeVista,
+    GardenRing,
+    PlateauRim,
+    PlateauArrivalRuin,
+    DetourMarker,
+}
+
+impl FirstExpeditionNavigationLandmarkKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::LaunchBeacon => "launch_beacon",
+            Self::RouteCairn => "route_cairn",
+            Self::RecoveryUpdraft => "recovery_updraft",
+            Self::CaveMouth => "cave_mouth",
+            Self::WaterfallLakeVista => "waterfall_lake_vista",
+            Self::GardenRing => "garden_ring",
+            Self::PlateauRim => "plateau_rim",
+            Self::PlateauArrivalRuin => "plateau_arrival_ruin",
+            Self::DetourMarker => "detour_marker",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FirstExpeditionNavigationContext {
+    RequiredBeat(FirstExpeditionBeatKind),
+    OptionalDetour(FirstExpeditionDetourKind),
+}
+
+impl FirstExpeditionNavigationContext {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::RequiredBeat(_) => "required_beat",
+            Self::OptionalDetour(_) => "optional_detour",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FirstExpeditionRecoveryAffordance {
     LaunchLift {
         lift_name: &'static str,
@@ -196,6 +240,19 @@ pub struct FirstExpeditionOptionalDetour {
     pub route_positions: Vec<Vec3>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FirstExpeditionNavigationLandmark {
+    pub label: &'static str,
+    pub kind: FirstExpeditionNavigationLandmarkKind,
+    pub context: FirstExpeditionNavigationContext,
+    pub island_name: &'static str,
+    pub visual_anchor: &'static str,
+    pub position: Vec3,
+    pub altitude_band: FirstExpeditionAltitudeBand,
+    pub readable_radius_m: f32,
+    pub required_route: bool,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct FirstExpeditionRouteBeatSpec {
     label: &'static str,
@@ -228,6 +285,29 @@ struct FirstExpeditionOptionalDetourSpec {
     lift_names: &'static [&'static str],
     reconnect_lift_name: &'static str,
     landmark_anchor: &'static str,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FirstExpeditionNavigationLandmarkSpec {
+    label: &'static str,
+    kind: FirstExpeditionNavigationLandmarkKind,
+    context: FirstExpeditionNavigationContext,
+    island_name: &'static str,
+    visual_anchor: &'static str,
+    position: FirstExpeditionNavigationLandmarkPosition,
+    altitude_band: FirstExpeditionAltitudeBand,
+    readable_radius_m: f32,
+    required_route: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum FirstExpeditionNavigationLandmarkPosition {
+    IslandSurfaceOffset {
+        normalized_offset: [f32; 2],
+        height_offset_m: f32,
+    },
+    LiftNode(&'static str),
+    UnderRouteEntry,
 }
 
 const LOW_ALTITUDE_RECOVERY_LOOP_ISLANDS: [&str; 3] =
@@ -369,6 +449,159 @@ const FIRST_EXPEDITION_OPTIONAL_DETOUR_SPECS: [FirstExpeditionOptionalDetourSpec
         lift_names: &HIGH_RISK_UPPER_PATH_LIFTS,
         reconnect_lift_name: "plateau west rim recovery updraft",
         landmark_anchor: "bluevault lake shoulder and plateau west rim thermal",
+    },
+];
+
+const FIRST_EXPEDITION_NAVIGATION_LANDMARK_SPECS: [FirstExpeditionNavigationLandmarkSpec; 10] = [
+    FirstExpeditionNavigationLandmarkSpec {
+        label: "launch beacon",
+        kind: FirstExpeditionNavigationLandmarkKind::LaunchBeacon,
+        context: FirstExpeditionNavigationContext::RequiredBeat(FirstExpeditionBeatKind::Launch),
+        island_name: "launch mesa",
+        visual_anchor: "launch beacon",
+        position: FirstExpeditionNavigationLandmarkPosition::IslandSurfaceOffset {
+            normalized_offset: [-0.42, 0.38],
+            height_offset_m: 1.6,
+        },
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        readable_radius_m: 90.0,
+        required_route: true,
+    },
+    FirstExpeditionNavigationLandmarkSpec {
+        label: "midpoint cairn line",
+        kind: FirstExpeditionNavigationLandmarkKind::RouteCairn,
+        context: FirstExpeditionNavigationContext::RequiredBeat(
+            FirstExpeditionBeatKind::FirstGlide,
+        ),
+        island_name: "midpoint shelf",
+        visual_anchor: "route cairn line",
+        position: FirstExpeditionNavigationLandmarkPosition::IslandSurfaceOffset {
+            normalized_offset: [-0.18, 0.22],
+            height_offset_m: 2.25,
+        },
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        readable_radius_m: 105.0,
+        required_route: true,
+    },
+    FirstExpeditionNavigationLandmarkSpec {
+        label: "low reef wind ribbons",
+        kind: FirstExpeditionNavigationLandmarkKind::RecoveryUpdraft,
+        context: FirstExpeditionNavigationContext::RequiredBeat(
+            FirstExpeditionBeatKind::LowRecovery,
+        ),
+        island_name: "low reef",
+        visual_anchor: "low reef wind ribbons",
+        position: FirstExpeditionNavigationLandmarkPosition::LiftNode("low reef updraft"),
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        readable_radius_m: 130.0,
+        required_route: true,
+    },
+    FirstExpeditionNavigationLandmarkSpec {
+        label: "underbridge cave mouth arch",
+        kind: FirstExpeditionNavigationLandmarkKind::CaveMouth,
+        context: FirstExpeditionNavigationContext::RequiredBeat(
+            FirstExpeditionBeatKind::UnderRoutePass,
+        ),
+        island_name: "underbridge cay",
+        visual_anchor: "under-route cave mouth arch",
+        position: FirstExpeditionNavigationLandmarkPosition::UnderRouteEntry,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        readable_radius_m: 95.0,
+        required_route: true,
+    },
+    FirstExpeditionNavigationLandmarkSpec {
+        label: "cloudfall waterfall lake sightline",
+        kind: FirstExpeditionNavigationLandmarkKind::WaterfallLakeVista,
+        context: FirstExpeditionNavigationContext::RequiredBeat(
+            FirstExpeditionBeatKind::LakeWaterfallLandmark,
+        ),
+        island_name: "cloudfall meadow",
+        visual_anchor: "route edge waterfall and bluevault basin lake",
+        position: FirstExpeditionNavigationLandmarkPosition::IslandSurfaceOffset {
+            normalized_offset: [0.54, 0.10],
+            height_offset_m: 1.2,
+        },
+        altitude_band: FirstExpeditionAltitudeBand::Mid,
+        readable_radius_m: 185.0,
+        required_route: true,
+    },
+    FirstExpeditionNavigationLandmarkSpec {
+        label: "sunspire garden ring",
+        kind: FirstExpeditionNavigationLandmarkKind::GardenRing,
+        context: FirstExpeditionNavigationContext::RequiredBeat(FirstExpeditionBeatKind::HighClimb),
+        island_name: "sunspire garden",
+        visual_anchor: "sunspire garden ring",
+        position: FirstExpeditionNavigationLandmarkPosition::IslandSurfaceOffset {
+            normalized_offset: [0.0, 0.0],
+            height_offset_m: 0.35,
+        },
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        readable_radius_m: 145.0,
+        required_route: true,
+    },
+    FirstExpeditionNavigationLandmarkSpec {
+        label: "cloudbreak plateau rim silhouette",
+        kind: FirstExpeditionNavigationLandmarkKind::PlateauRim,
+        context: FirstExpeditionNavigationContext::RequiredBeat(
+            FirstExpeditionBeatKind::PlateauApproach,
+        ),
+        island_name: "cloudbreak stair",
+        visual_anchor: "great sky plateau west rim silhouette",
+        position: FirstExpeditionNavigationLandmarkPosition::IslandSurfaceOffset {
+            normalized_offset: [-0.18, 0.22],
+            height_offset_m: 3.0,
+        },
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        readable_radius_m: 210.0,
+        required_route: true,
+    },
+    FirstExpeditionNavigationLandmarkSpec {
+        label: "great sky plateau arrival ruin",
+        kind: FirstExpeditionNavigationLandmarkKind::PlateauArrivalRuin,
+        context: FirstExpeditionNavigationContext::RequiredBeat(
+            FirstExpeditionBeatKind::PlateauArrival,
+        ),
+        island_name: PLAYTEST_RESET_ISLAND_NAME,
+        visual_anchor: "plateau arrival ruin marker",
+        position: FirstExpeditionNavigationLandmarkPosition::IslandSurfaceOffset {
+            normalized_offset: [-0.16, 0.12],
+            height_offset_m: 10.0,
+        },
+        altitude_band: FirstExpeditionAltitudeBand::Plateau,
+        readable_radius_m: 220.0,
+        required_route: true,
+    },
+    FirstExpeditionNavigationLandmarkSpec {
+        label: "western refuge recovery cairn",
+        kind: FirstExpeditionNavigationLandmarkKind::DetourMarker,
+        context: FirstExpeditionNavigationContext::OptionalDetour(
+            FirstExpeditionDetourKind::LowAltitudeRecoveryLoop,
+        ),
+        island_name: "western refuge",
+        visual_anchor: "western catch cairn",
+        position: FirstExpeditionNavigationLandmarkPosition::IslandSurfaceOffset {
+            normalized_offset: [-0.18, 0.22],
+            height_offset_m: 2.8,
+        },
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        readable_radius_m: 115.0,
+        required_route: false,
+    },
+    FirstExpeditionNavigationLandmarkSpec {
+        label: "bluevault lake shoulder marker",
+        kind: FirstExpeditionNavigationLandmarkKind::DetourMarker,
+        context: FirstExpeditionNavigationContext::OptionalDetour(
+            FirstExpeditionDetourKind::HighRiskUpperPath,
+        ),
+        island_name: "bluevault basin",
+        visual_anchor: "bluevault lake shoulder",
+        position: FirstExpeditionNavigationLandmarkPosition::IslandSurfaceOffset {
+            normalized_offset: [0.08, -0.10],
+            height_offset_m: 0.8,
+        },
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        readable_radius_m: 150.0,
+        required_route: false,
     },
 ];
 
@@ -732,6 +965,13 @@ impl SkyRoute {
             .collect()
     }
 
+    pub fn first_expedition_navigation_landmarks(&self) -> Vec<FirstExpeditionNavigationLandmark> {
+        FIRST_EXPEDITION_NAVIGATION_LANDMARK_SPECS
+            .iter()
+            .filter_map(|spec| self.first_expedition_navigation_landmark(*spec))
+            .collect()
+    }
+
     fn first_expedition_route_beat(
         &self,
         spec: FirstExpeditionRouteBeatSpec,
@@ -794,6 +1034,45 @@ impl SkyRoute {
             reconnect_lift_name: spec.reconnect_lift_name,
             landmark_anchor: spec.landmark_anchor,
             route_positions,
+        })
+    }
+
+    fn first_expedition_navigation_landmark(
+        &self,
+        spec: FirstExpeditionNavigationLandmarkSpec,
+    ) -> Option<FirstExpeditionNavigationLandmark> {
+        let island = self.island_named(spec.island_name)?;
+        let position = match spec.position {
+            FirstExpeditionNavigationLandmarkPosition::IslandSurfaceOffset {
+                normalized_offset,
+                height_offset_m,
+            } => {
+                let x = island.center.x + normalized_offset[0] * island.half_extents.x;
+                let z = island.center.z + normalized_offset[1] * island.half_extents.y;
+                Vec3::new(
+                    x,
+                    island.mesh_top_y_at(Vec3::new(x, island.center.y, z)) + height_offset_m,
+                    z,
+                )
+            }
+            FirstExpeditionNavigationLandmarkPosition::LiftNode(lift_name) => {
+                lift_route_node_named(lift_name)?.center
+            }
+            FirstExpeditionNavigationLandmarkPosition::UnderRouteEntry => {
+                island.under_route_segment()?.entry
+            }
+        };
+
+        Some(FirstExpeditionNavigationLandmark {
+            label: spec.label,
+            kind: spec.kind,
+            context: spec.context,
+            island_name: spec.island_name,
+            visual_anchor: spec.visual_anchor,
+            position,
+            altitude_band: spec.altitude_band,
+            readable_radius_m: spec.readable_radius_m,
+            required_route: spec.required_route,
         })
     }
 
