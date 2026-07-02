@@ -38,10 +38,10 @@ pub(crate) use landmarks::{
 };
 #[cfg(test)]
 pub(crate) use rocks::{
-    OBSTRUCTION_SPIRE_RIB_COUNT, OBSTRUCTION_SPIRE_RINGS, OBSTRUCTION_SPIRE_SEGMENTS,
-    ROCK_MESH_RINGS, ROCK_MESH_SEGMENTS,
+    CLIFF_TOOTH_COUNT, CLIFF_TOOTH_TRIANGLES_PER_TOOTH, OBSTRUCTION_SPIRE_RIB_COUNT,
+    OBSTRUCTION_SPIRE_RINGS, OBSTRUCTION_SPIRE_SEGMENTS, ROCK_MESH_RINGS, ROCK_MESH_SEGMENTS,
 };
-pub(crate) use rocks::{obstruction_spire_mesh, rock_scatter_mesh};
+pub(crate) use rocks::{cliff_tooth_ridge_mesh, obstruction_spire_mesh, rock_scatter_mesh};
 #[cfg(test)]
 pub(crate) use shared::DETAIL_CARD_VERTICES;
 pub(crate) use trees::{

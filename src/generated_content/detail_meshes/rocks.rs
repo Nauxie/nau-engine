@@ -8,6 +8,8 @@ pub(crate) const ROCK_MESH_RINGS: usize = 6;
 pub(crate) const OBSTRUCTION_SPIRE_SEGMENTS: usize = 22;
 pub(crate) const OBSTRUCTION_SPIRE_RINGS: usize = 12;
 pub(crate) const OBSTRUCTION_SPIRE_RIB_COUNT: usize = 7;
+pub(crate) const CLIFF_TOOTH_COUNT: usize = 9;
+pub(crate) const CLIFF_TOOTH_TRIANGLES_PER_TOOTH: usize = 6;
 
 pub(crate) fn rock_scatter_mesh(radius: f32, seed: u32) -> Mesh {
     let mut positions = Vec::with_capacity(ROCK_MESH_RINGS * ROCK_MESH_SEGMENTS + 2);
@@ -214,6 +216,130 @@ pub(crate) fn obstruction_spire_mesh(radius: f32, height: f32, seed: u32) -> Mes
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+pub(crate) fn cliff_tooth_ridge_mesh(width: f32, height: f32, depth: f32, seed: u32) -> Mesh {
+    let vertex_count = CLIFF_TOOTH_COUNT * CLIFF_TOOTH_TRIANGLES_PER_TOOTH * 3;
+    let mut positions = Vec::with_capacity(vertex_count);
+    let mut normals = Vec::with_capacity(vertex_count);
+    let mut uvs = Vec::with_capacity(vertex_count);
+    let mut indices = Vec::with_capacity(vertex_count);
+    let width = width.max(2.0);
+    let height = height.max(1.0);
+    let depth = depth.max(0.6);
+    let spacing = width / CLIFF_TOOTH_COUNT as f32;
+
+    for tooth in 0..CLIFF_TOOTH_COUNT {
+        let tooth_seed = tooth as u32;
+        let t = tooth as f32 / (CLIFF_TOOTH_COUNT - 1) as f32;
+        let center_x =
+            (t - 0.5) * width * 0.92 + (random_unit(seed, tooth_seed, 211) - 0.5) * spacing * 0.32;
+        let half_width = spacing * (0.42 + random_unit(seed, tooth_seed, 223) * 0.24);
+        let base_depth = depth * (0.72 + random_unit(seed, tooth_seed, 227) * 0.52);
+        let root_y = (random_unit(seed, tooth_seed, 229) - 0.5) * height * 0.04;
+        let tooth_height = height * (0.78 + random_unit(seed, tooth_seed, 233) * 0.36);
+        let lean = Vec2::new(
+            (random_unit(seed, tooth_seed, 239) - 0.5) * spacing * 0.56,
+            (random_unit(seed, tooth_seed, 241) - 0.5) * base_depth * 0.42,
+        );
+        let skew = (random_unit(seed, tooth_seed, 251) - 0.5) * half_width * 0.44;
+
+        let left_front = Vec3::new(center_x - half_width - skew, root_y, -base_depth * 0.55);
+        let right_front = Vec3::new(
+            center_x + half_width,
+            root_y + (random_unit(seed, tooth_seed, 257) - 0.5) * height * 0.018,
+            -base_depth * 0.46,
+        );
+        let right_back = Vec3::new(
+            center_x + half_width * 0.72 + skew,
+            root_y + random_unit(seed, tooth_seed, 263) * height * 0.018,
+            base_depth * 0.54,
+        );
+        let left_back = Vec3::new(
+            center_x - half_width * 0.82,
+            root_y - random_unit(seed, tooth_seed, 269) * height * 0.016,
+            base_depth * 0.46,
+        );
+        let tip = Vec3::new(center_x + lean.x, root_y + tooth_height, lean.y);
+
+        append_flat_triangle(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            [left_front, right_front, right_back],
+            [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
+        );
+        append_flat_triangle(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            [left_front, right_back, left_back],
+            [[0.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+        );
+        append_flat_triangle(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            [left_front, tip, right_front],
+            [[0.0, 0.0], [0.5, 1.0], [1.0, 0.0]],
+        );
+        append_flat_triangle(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            [right_front, tip, right_back],
+            [[0.0, 0.0], [0.5, 1.0], [1.0, 0.0]],
+        );
+        append_flat_triangle(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            [right_back, tip, left_back],
+            [[0.0, 0.0], [0.5, 1.0], [1.0, 0.0]],
+        );
+        append_flat_triangle(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            [left_back, tip, left_front],
+            [[0.0, 0.0], [0.5, 1.0], [1.0, 0.0]],
+        );
+    }
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+fn append_flat_triangle(
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    uvs: &mut Vec<[f32; 2]>,
+    indices: &mut Vec<u32>,
+    points: [Vec3; 3],
+    triangle_uvs: [[f32; 2]; 3],
+) {
+    let start = positions.len() as u32;
+    let normal = (points[1] - points[0])
+        .cross(points[2] - points[0])
+        .normalize();
+    for (point, uv) in points.into_iter().zip(triangle_uvs) {
+        positions.push(point.to_array());
+        normals.push(normal.to_array());
+        uvs.push(uv);
+    }
+    indices.extend([start, start + 1, start + 2]);
 }
 
 fn append_spire_ribs(

@@ -786,6 +786,16 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .iter()
         .filter(|island| island.world_tags.landmark_role == IslandLandmarkRole::RuinArch)
         .count();
+    let cliff_teeth_count = route
+        .islands()
+        .iter()
+        .filter(|island| {
+            matches!(
+                island.terrain_archetype,
+                IslandTerrainArchetype::StormRavine | IslandTerrainArchetype::StormShard
+            )
+        })
+        .count();
     let generated_tree_count = island_count * 3;
     let weather_veil_count = island_count.div_ceil(2) * 3;
     let route_cairn_count = island_count - 2;
@@ -797,7 +807,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         + 4
         + plateau_extra_water_count
         + plateau_extra_cave_count
-        + ruin_arch_count;
+        + ruin_arch_count
+        + cliff_teeth_count;
 
     assert_eq!(report.ground_cover_count, island_count);
     assert_eq!(
@@ -817,7 +828,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.weather_cloud_bank_count, island_count);
     assert_eq!(report.weather_cloud_veil_count, weather_veil_count);
     assert_eq!(report.landmark_count, landmark_count);
-    assert!(report.landmark_kind_count >= 8);
+    assert!(report.landmark_kind_count >= 13);
     assert_eq!(report.small_island_count, small_island_count);
     assert!(report.small_island_count >= 10);
     assert_eq!(report.plateau_landmark_count, 13);
@@ -886,6 +897,14 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             .filter(|summary| summary.kind == "ruin_arch")
             .count(),
         ruin_arch_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "cliff_teeth")
+            .count(),
+        cliff_teeth_count
     );
     assert_eq!(
         report.mesh_count,
@@ -1003,6 +1022,11 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .iter()
         .find(|summary| summary.kind == "ruin_arch")
         .expect("ruin-tagged islands should export stacked stone arches");
+    let cliff_teeth = report
+        .landmarks
+        .iter()
+        .find(|summary| summary.kind == "cliff_teeth")
+        .expect("storm islands should export jagged cliff teeth");
 
     assert!(low_basin_lake.mesh.horizontal_span_m >= 100.0);
     assert!(low_basin_lake.mesh.depth_span_m >= 45.0);
@@ -1019,6 +1043,12 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(ruin_arch.mesh.vertex_count >= 500);
     assert!(ruin_arch.mesh.vertical_span_m >= 4.5);
     assert!(ruin_arch.radius_band_count >= 8);
+    assert!(
+        cliff_teeth.mesh.vertex_count >= CLIFF_TOOTH_COUNT * CLIFF_TOOTH_TRIANGLES_PER_TOOTH * 3
+    );
+    assert!(cliff_teeth.mesh.vertical_span_m >= 4.0);
+    assert!(cliff_teeth.mesh.horizontal_span_m >= 10.0);
+    assert!(cliff_teeth.normal_slope_band_count >= 4);
     assert!(output_dir.join(&low_basin_lake.mesh.obj_path).exists());
     assert!(output_dir.join(&waterfall.mesh.obj_path).exists());
     assert!(output_dir.join(&mist.mesh.obj_path).exists());
@@ -1026,6 +1056,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(output_dir.join(&underhang_shelf.mesh.obj_path).exists());
     assert!(output_dir.join(&hanging_roots.mesh.obj_path).exists());
     assert!(output_dir.join(&ruin_arch.mesh.obj_path).exists());
+    assert!(output_dir.join(&cliff_teeth.mesh.obj_path).exists());
     assert!(manifest.contains("\"schema\": \"nau_visual_content_export.v1\""));
     assert!(manifest.contains("\"ground_cover_blade_height_range_m\""));
     assert!(manifest.contains("\"tree_branch_reach_ratio\""));
@@ -1072,12 +1103,14 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"kind\": \"under_route_hanging_shelf\""));
     assert!(manifest.contains("\"kind\": \"under_route_hanging_roots\""));
     assert!(manifest.contains("\"kind\": \"ruin_arch\""));
+    assert!(manifest.contains("\"kind\": \"cliff_teeth\""));
     assert!(manifest.contains("great_sky_plateau_low_basin_lake.obj"));
     assert!(manifest.contains("great_sky_plateau_north_rim_waterfall.obj"));
     assert!(manifest.contains("great_sky_plateau_underhang_entry_arch.obj"));
     assert!(manifest.contains("great_sky_plateau_underside_glide_shelf.obj"));
     assert!(manifest.contains("great_sky_plateau_hanging_root_curtain.obj"));
     assert!(manifest.contains("broken_stair_ruin_arch.obj"));
+    assert!(manifest.contains("storm_porch_cliff_teeth.obj"));
     assert!(manifest.contains("\"obstruction_spire_height_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_radius_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_normal_slope_band_count\""));
@@ -1905,6 +1938,29 @@ fn landmark_meshes_replace_basic_cylinders_and_boxes() {
     assert!(
         radial_range(positions(&hanging_roots)) > 12.0,
         "hanging roots should form a broad organic curtain, not one strand"
+    );
+
+    let cliff_teeth = cliff_tooth_ridge_mesh(24.0, 8.0, 4.0, 45_789);
+    let cliff_teeth_indices = u32_indices(&cliff_teeth);
+    assert_eq!(
+        cliff_teeth.count_vertices(),
+        CLIFF_TOOTH_COUNT * CLIFF_TOOTH_TRIANGLES_PER_TOOTH * 3
+    );
+    assert_eq!(
+        cliff_teeth_indices.len(),
+        CLIFF_TOOTH_COUNT * CLIFF_TOOTH_TRIANGLES_PER_TOOTH * 3
+    );
+    assert!(
+        mesh_y_range(&cliff_teeth) > 7.0,
+        "cliff teeth should create sharp vertical silhouette peaks"
+    );
+    assert!(
+        radial_range(positions(&cliff_teeth)) > 10.0,
+        "cliff teeth should form a broad broken ridge, not one spike"
+    );
+    assert!(
+        mesh_normal_slope_band_count(&cliff_teeth) >= 4,
+        "cliff teeth should keep faceted fracture planes"
     );
 
     let spire = obstruction_spire_mesh(1.0, 5.2, 18_123);
