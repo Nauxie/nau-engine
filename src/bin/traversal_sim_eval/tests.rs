@@ -23,16 +23,16 @@ use nau_engine::{
     environment::{LiftApplication, WindForceApplication},
     eval::{
         AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES, AIR_CONTROL_RESPONSE,
-        BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario, ISLAND_LAUNCH_TO_LANDING,
-        LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES, LANDING_MAX_POSE_BACKWARD_BEND_DEGREES,
-        LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES, LANDING_MIN_POSE_FLARE_DEGREES,
-        LANDING_MIN_POSE_FOOT_FORWARD_M, LANDING_MIN_POSE_FOOT_SPLIT_M,
-        LANDING_MIN_POSE_FORWARD_FOLD_DEGREES, LONG_GLIDE_VISIBILITY,
-        MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT, MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M,
-        MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS, MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE,
-        MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES, MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
-        MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_LOAD_POSE_LEAN_DEGREES,
-        MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
+        BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, EvalScenario, GREAT_SKY_PLATEAU_ROUTE,
+        ISLAND_LAUNCH_TO_LANDING, LANDING_MAX_POSE_ANTICIPATION_BACKBEND_DEGREES,
+        LANDING_MAX_POSE_BACKWARD_BEND_DEGREES, LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
+        LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M,
+        LANDING_MIN_POSE_FOOT_SPLIT_M, LANDING_MIN_POSE_FORWARD_FOLD_DEGREES,
+        LONG_GLIDE_VISIBILITY, MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT,
+        MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M, MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS,
+        MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE, MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES,
+        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
+        MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
         POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES,
         POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES, UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
         scenario_named,
@@ -1171,6 +1171,56 @@ fn long_glide_simulation_collects_boosts_and_crosses_archipelago() {
     assert!(
         result.metrics.power_up_effect_samples >= scenario.thresholds.min_power_up_effect_samples
     );
+}
+
+#[test]
+fn great_sky_plateau_simulation_climbs_toward_plateau_chain() {
+    let scenario = scenario_named(GREAT_SKY_PLATEAU_ROUTE).expect("scenario");
+    let result = run_simulation(scenario);
+
+    assert!(result.passed, "{:#?}", result.checks);
+    assert_eq!(scenario.target_island_name, Some("great sky plateau"));
+    assert_eq!(result.metrics.objective_total_count, 10);
+    assert!(
+        result.metrics.horizontal_distance_m >= scenario.thresholds.min_horizontal_distance_m,
+        "plateau route should cover the long horizontal archipelago approach"
+    );
+    assert!(
+        result.metrics.max_altitude_m >= scenario.thresholds.min_max_altitude_m,
+        "plateau route should climb into the upper island chain"
+    );
+    assert!(
+        result.metrics.max_completed_objective_count
+            >= scenario.thresholds.min_completed_objective_count
+    );
+    assert!(
+        result.metrics.dynamic_lift_samples >= scenario.thresholds.min_lifted_samples,
+        "plateau route should use readable dynamic lift rather than only raw glide distance"
+    );
+    assert!(
+        result.metrics.max_camera_step_distance_m <= scenario.thresholds.max_camera_step_distance_m
+    );
+    assert!(
+        result.metrics.max_camera_rotation_delta_degrees
+            <= scenario.thresholds.max_camera_rotation_delta_degrees
+    );
+    for check_name in [
+        "horizontal_distance",
+        "max_altitude",
+        "gliding_samples",
+        "dynamic_lift_samples",
+        "completed_objective_count",
+        "camera_step_distance",
+        "camera_rotation_delta",
+    ] {
+        assert!(
+            result
+                .checks
+                .iter()
+                .any(|check| check.name == check_name && check.passed),
+            "{check_name} should be a passing plateau-route check"
+        );
+    }
 }
 
 #[test]
