@@ -26,7 +26,11 @@ pub use obstruction_spires::{
     ROUTE_OBSTRUCTION_SPIRES_PER_ISLAND, RouteObstructionSpire, route_obstruction_spire,
     route_obstruction_spires,
 };
-pub use route::{PLAYTEST_RESET_ISLAND_NAME, SKY_ROUTE_ISLAND_COUNT, SkyRoute};
+pub use route::{
+    FirstExpeditionAltitudeBand, FirstExpeditionBeatKind, FirstExpeditionRecoveryAffordance,
+    FirstExpeditionRouteBeat, FirstExpeditionTraversalMode, PLAYTEST_RESET_ISLAND_NAME,
+    SKY_ROUTE_ISLAND_COUNT, SkyRoute,
+};
 pub use streaming::{LodBand, StreamActivation, StreamChunkCoord, StreamingLodStats};
 pub use surface::GroundSurface;
 
