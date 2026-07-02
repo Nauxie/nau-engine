@@ -308,7 +308,8 @@ impl GeneratedLandmarkKind {
             | IslandWaterVisualKind::PlateauWaterfallRibbon
             | IslandWaterVisualKind::PlateauWaterfallMist
             | IslandWaterVisualKind::RouteWaterfallRibbon
-            | IslandWaterVisualKind::RouteWaterfallMist => Self::WaterFeature,
+            | IslandWaterVisualKind::RouteWaterfallMist
+            | IslandWaterVisualKind::RouteLakeSurface => Self::WaterFeature,
         }
     }
 }

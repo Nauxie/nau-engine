@@ -816,6 +816,11 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .enumerate()
         .map(|(index, island)| island_lake_basin_visual_specs(index, *island).len())
         .sum();
+    let route_lake_surface_count = route
+        .islands()
+        .iter()
+        .filter(|island| island.world_tags.water_feature == IslandWaterFeature::LakeBasin)
+        .count();
     let route_waterfall_source_count = route
         .islands()
         .iter()
@@ -837,6 +842,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         + cliff_teeth_count
         + garden_ring_count
         + lake_basin_count
+        + route_lake_surface_count
         + route_waterfall_visual_count;
 
     assert_eq!(report.ground_cover_count, island_count);
@@ -857,7 +863,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.weather_cloud_bank_count, island_count);
     assert_eq!(report.weather_cloud_veil_count, weather_veil_count);
     assert_eq!(report.landmark_count, landmark_count);
-    assert!(report.landmark_kind_count >= 17);
+    assert!(report.landmark_kind_count >= 18);
     assert_eq!(report.small_island_count, small_island_count);
     assert!(report.small_island_count >= 10);
     assert_eq!(report.plateau_landmark_count, 15);
@@ -871,6 +877,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         report.route_waterfall_mist_count,
         route_waterfall_source_count
     );
+    assert_eq!(report.route_lake_surface_count, route_lake_surface_count);
     assert_eq!(report.under_route_visual_count, plateau_extra_cave_count);
     assert_eq!(report.under_route_cave_mouth_count, 2);
     assert_eq!(report.ruin_arch_count, ruin_arch_count);
@@ -918,6 +925,14 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             .filter(|summary| summary.kind == "route_waterfall_mist")
             .count(),
         route_waterfall_source_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "route_lake_surface")
+            .count(),
+        route_lake_surface_count
     );
     assert_eq!(
         report
@@ -1018,6 +1033,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.max_plateau_landmark_mesh_vertices >= 600);
     assert!(report.min_plateau_waterfall_vertical_span_m >= 58.0);
     assert!(report.min_route_waterfall_vertical_span_m >= 24.0);
+    assert!(report.min_route_lake_surface_horizontal_span_m >= 18.0);
     assert!(report.min_under_route_visual_vertical_span_m >= 4.0);
     assert!(report.min_ruin_arch_mesh_vertices >= 500);
     assert!(report.min_ruin_arch_vertical_span_m >= 4.5);
@@ -1080,6 +1096,20 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             summary.island_name == "cloudfall meadow" && summary.kind == "route_waterfall_mist"
         })
         .expect("waterfall-source islands should export route waterfall mist");
+    let route_lake = report
+        .landmarks
+        .iter()
+        .find(|summary| {
+            summary.island_name == "sapphire basin" && summary.kind == "route_lake_surface"
+        })
+        .expect("lake-basin islands should export route lake surfaces");
+    let bluevault_basin = report
+        .landmarks
+        .iter()
+        .find(|summary| {
+            summary.island_name == "bluevault basin" && summary.label == "route lake basin"
+        })
+        .expect("bluevault basin should export a terrain lake basin rim");
     let cave_arch = report
         .landmarks
         .iter()
@@ -1132,6 +1162,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(route_waterfall.mesh.vertical_span_m >= 24.0);
     assert!(route_waterfall.normal_slope_band_count >= 4);
     assert!(route_mist.mesh.vertical_span_m >= 1.8);
+    assert!(route_lake.mesh.horizontal_span_m >= 18.0);
+    assert!(route_lake.mesh.depth_span_m >= 9.0);
+    assert!(bluevault_basin.mesh.horizontal_span_m >= 32.0);
+    assert!(bluevault_basin.normal_slope_band_count >= 4);
     assert!(cave_arch.mesh.horizontal_span_m >= 20.0);
     assert!(cave_arch.mesh.vertical_span_m >= 14.0);
     assert!(underhang_shelf.mesh.horizontal_span_m >= 45.0);
@@ -1163,6 +1197,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(output_dir.join(&mist.mesh.obj_path).exists());
     assert!(output_dir.join(&route_waterfall.mesh.obj_path).exists());
     assert!(output_dir.join(&route_mist.mesh.obj_path).exists());
+    assert!(output_dir.join(&route_lake.mesh.obj_path).exists());
+    assert!(output_dir.join(&bluevault_basin.mesh.obj_path).exists());
     assert!(output_dir.join(&cave_arch.mesh.obj_path).exists());
     assert!(output_dir.join(&underhang_shelf.mesh.obj_path).exists());
     assert!(output_dir.join(&hanging_roots.mesh.obj_path).exists());
@@ -1195,6 +1231,9 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains(&format!(
         "\"route_waterfall_mist_count\": {route_waterfall_source_count}"
     )));
+    assert!(manifest.contains(&format!(
+        "\"route_lake_surface_count\": {route_lake_surface_count}"
+    )));
     assert!(manifest.contains("\"under_route_visual_count\": 4"));
     assert!(manifest.contains("\"under_route_cave_mouth_count\": 2"));
     assert!(manifest.contains(&format!("\"ruin_arch_count\": {ruin_arch_count}")));
@@ -1211,6 +1250,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"max_plateau_landmark_mesh_vertices\""));
     assert!(manifest.contains("\"plateau_waterfall_vertical_span_m\""));
     assert!(manifest.contains("\"route_waterfall_vertical_span_m\""));
+    assert!(manifest.contains("\"route_lake_surface_horizontal_span_m\""));
     assert!(manifest.contains("\"under_route_visual_vertical_span_m\""));
     assert!(manifest.contains("\"ruin_arch_mesh_vertices\""));
     assert!(manifest.contains("\"ruin_arch_vertical_span_m\""));
@@ -1221,6 +1261,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"kind\": \"plateau_waterfall_mist\""));
     assert!(manifest.contains("\"kind\": \"route_waterfall_ribbon\""));
     assert!(manifest.contains("\"kind\": \"route_waterfall_mist\""));
+    assert!(manifest.contains("\"kind\": \"route_lake_surface\""));
     assert!(manifest.contains("\"kind\": \"under_route_cave_mouth\""));
     assert!(manifest.contains("\"kind\": \"under_route_hanging_shelf\""));
     assert!(manifest.contains("\"kind\": \"under_route_hanging_roots\""));
@@ -1232,6 +1273,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("great_sky_plateau_north_rim_waterfall.obj"));
     assert!(manifest.contains("cloudfall_meadow_route_edge_waterfall.obj"));
     assert!(manifest.contains("cloudfall_meadow_route_edge_mist.obj"));
+    assert!(manifest.contains("sapphire_basin_route_lake_surface.obj"));
+    assert!(manifest.contains("bluevault_basin_route_lake_basin.obj"));
     assert!(manifest.contains("great_sky_plateau_underhang_entry_arch.obj"));
     assert!(manifest.contains("great_sky_plateau_underside_glide_shelf.obj"));
     assert!(manifest.contains("great_sky_plateau_hanging_root_curtain.obj"));
