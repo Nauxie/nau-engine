@@ -23,6 +23,7 @@ pub const POSE_STATE_COVERAGE: &str = "pose_state_coverage";
 pub const LONG_GLIDE_VISIBILITY: &str = "long_glide_visibility";
 pub const BRANCH_RECOVERY_ROUTE: &str = "branch_recovery_route";
 pub const GREAT_SKY_PLATEAU_ROUTE: &str = "great_sky_plateau_route";
+pub const UNDERBRIDGE_UNDER_ROUTE: &str = "underbridge_under_route";
 pub const SCENARIO_NAMES: &[&str] = &[
     BASELINE_ROUTE,
     ISLAND_LAUNCH_TO_LANDING,
@@ -40,6 +41,7 @@ pub const SCENARIO_NAMES: &[&str] = &[
     POSE_STATE_COVERAGE,
     LONG_GLIDE_VISIBILITY,
     GREAT_SKY_PLATEAU_ROUTE,
+    UNDERBRIDGE_UNDER_ROUTE,
 ];
 pub const APP_ONLY_SCENARIO_NAMES: &[&str] = &[
     WORLD_COLLISION_CONTACT,
@@ -127,6 +129,9 @@ pub fn scenario_named(name: &str) -> Option<EvalScenario> {
         }
         GREAT_SKY_PLATEAU_ROUTE | "great_sky_plateau" | "plateau_route" => {
             Some(traversal_scenarios::great_sky_plateau_route())
+        }
+        UNDERBRIDGE_UNDER_ROUTE | "underbridge_route" | "under_route" => {
+            Some(traversal_scenarios::underbridge_under_route())
         }
         _ => None,
     }

@@ -10,7 +10,7 @@ mod util;
 use bevy::prelude::{Vec2, Vec3};
 use nau_engine::{
     environment::AERIAL_POWER_UP_ROUTE,
-    world::{START_POSITION, SkyRoute},
+    world::{IslandUnderRouteSegment, START_POSITION, SkyRoute},
 };
 
 pub(crate) use report::SimResult;
@@ -20,6 +20,10 @@ pub(crate) struct SimMetrics {
     pub(crate) sample_count: u32,
     pub(crate) start_position: Vec3,
     pub(crate) final_position: Vec3,
+    pub(crate) under_route_segments: Vec<IslandUnderRouteSegment>,
+    pub(crate) min_under_route_distance_m: Option<f32>,
+    pub(crate) under_route_near_samples: u32,
+    pub(crate) under_route_camera_obstruction_samples: u32,
     pub(crate) horizontal_distance_m: f32,
     pub(crate) max_altitude_m: f32,
     pub(crate) min_altitude_m: f32,
@@ -248,6 +252,10 @@ impl SimMetrics {
             sample_count: 0,
             start_position: START_POSITION,
             final_position: START_POSITION,
+            under_route_segments: route.under_island_route_segments(),
+            min_under_route_distance_m: None,
+            under_route_near_samples: 0,
+            under_route_camera_obstruction_samples: 0,
             horizontal_distance_m: 0.0,
             max_altitude_m: START_POSITION.y,
             min_altitude_m: START_POSITION.y,

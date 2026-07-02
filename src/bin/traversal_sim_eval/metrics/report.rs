@@ -12,6 +12,10 @@ impl SimMetrics {
     fn to_json(&self) -> Value {
         json!({
             "sample_count": self.sample_count,
+            "under_route_segment_count": self.under_route_segments.len(),
+            "min_under_route_distance_m": round4(self.min_under_route_distance_m.unwrap_or(0.0)),
+            "under_route_near_samples": self.under_route_near_samples,
+            "under_route_camera_obstruction_samples": self.under_route_camera_obstruction_samples,
             "horizontal_distance_m": round4(self.horizontal_distance_m),
             "max_altitude_m": round4(self.max_altitude_m),
             "min_altitude_m": round4(self.min_altitude_m),

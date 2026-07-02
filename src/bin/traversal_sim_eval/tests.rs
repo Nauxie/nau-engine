@@ -34,7 +34,8 @@ use nau_engine::{
         MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_LOAD_POSE_LEAN_DEGREES,
         MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
         POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES,
-        POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES, UPDRAFT_ROUTE, scenario_named,
+        POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES, UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
+        scenario_named,
     },
     movement::{Facing, FlightController, FlightInput, FlightMode, FlightState},
     world::{START_POSITION, SkyRoute},
@@ -1170,6 +1171,39 @@ fn long_glide_simulation_collects_boosts_and_crosses_archipelago() {
     assert!(
         result.metrics.power_up_effect_samples >= scenario.thresholds.min_power_up_effect_samples
     );
+}
+
+#[test]
+fn underbridge_under_route_simulation_exercises_cave_camera_pass() {
+    let scenario = scenario_named(UNDERBRIDGE_UNDER_ROUTE).expect("scenario");
+    let result = run_simulation(scenario);
+
+    assert!(result.passed, "{:#?}", result.checks);
+    assert!(
+        result
+            .metrics
+            .min_under_route_distance_m
+            .unwrap_or(f32::MAX)
+            <= 11.0
+    );
+    assert!(result.metrics.under_route_near_samples >= 3);
+    assert!(result.metrics.under_route_camera_obstruction_samples >= 1);
+    assert_eq!(result.metrics.camera_obstruction_snap_count, 0);
+    assert!(result.metrics.dynamic_lift_samples >= scenario.thresholds.min_lifted_samples);
+    for check_name in [
+        "under_route_distance",
+        "under_route_near_samples",
+        "under_route_camera_obstruction_samples",
+        "camera_obstruction_snap_count",
+    ] {
+        assert!(
+            result
+                .checks
+                .iter()
+                .any(|check| check.name == check_name && check.passed),
+            "{check_name} should be a passing check"
+        );
+    }
 }
 
 #[test]

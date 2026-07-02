@@ -24,12 +24,12 @@ use nau_engine::{
         WindForceApplication, apply_aerial_power_up, apply_lift_fields, apply_wind_fields,
         visual_wind_fields,
     },
-    eval::{EvalScenario, scripted_camera_input, scripted_input},
+    eval::{EvalScenario, UNDERBRIDGE_UNDER_ROUTE, scripted_camera_input, scripted_input},
     movement::{
         Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning,
         face_flight_direction,
     },
-    world::{START_POSITION, SkyRoute, route_obstruction_spires},
+    world::{IslandUnderRouteSegment, START_POSITION, SkyRoute, route_obstruction_spires},
 };
 
 pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
@@ -497,10 +497,42 @@ fn camera_obstructions(route: &SkyRoute, scenario: EvalScenario) -> Vec<CameraOb
         return Vec::new();
     }
 
+    if scenario.name == UNDERBRIDGE_UNDER_ROUTE {
+        return under_route_camera_obstructions(route);
+    }
+
     route_obstruction_spires(route)
         .into_iter()
         .map(|spire| CameraObstruction::new(spire.center, spire.half_extents))
         .collect()
+}
+
+fn under_route_camera_obstructions(route: &SkyRoute) -> Vec<CameraObstruction> {
+    route
+        .under_island_route_segments()
+        .into_iter()
+        .flat_map(under_route_segment_camera_obstructions)
+        .collect()
+}
+
+fn under_route_segment_camera_obstructions(
+    segment: IslandUnderRouteSegment,
+) -> [CameraObstruction; 3] {
+    let arch_width = segment.clearance_radius_m * 2.35;
+    let arch_height = segment.clearance_radius_m * 1.65;
+    let arch_depth = segment.clearance_radius_m * 0.55;
+    let shelf_width = segment.clearance_radius_m * 4.4;
+    let shelf_depth = segment.clearance_radius_m * 2.45;
+    let shelf_thickness = (segment.clearance_radius_m * 0.32).max(4.0);
+    let shelf_translation = segment.midpoint - Vec3::Y * (segment.clearance_radius_m * 0.88);
+    let arch_half_extents = Vec3::new(arch_width * 0.55, arch_height * 0.52, arch_depth);
+    let shelf_half_extents = Vec3::new(shelf_width * 0.50, shelf_thickness, shelf_depth * 0.50);
+
+    [
+        CameraObstruction::new(segment.entry, arch_half_extents),
+        CameraObstruction::new(shelf_translation, shelf_half_extents),
+        CameraObstruction::new(segment.exit, arch_half_extents),
+    ]
 }
 
 #[cfg(test)]
@@ -513,13 +545,21 @@ mod tests {
         let obstruction_scenario =
             nau_engine::eval::scenario_named(nau_engine::eval::CAMERA_MOUSE_CONTROL)
                 .expect("camera mouse scenario");
+        let under_route_scenario =
+            nau_engine::eval::scenario_named(nau_engine::eval::UNDERBRIDGE_UNDER_ROUTE)
+                .expect("under-route scenario");
         let movement_scenario =
             nau_engine::eval::scenario_named(nau_engine::eval::AIR_CONTROL_RESPONSE)
                 .expect("air control scenario");
         let obstructions = camera_obstructions(&route, obstruction_scenario);
+        let under_route_obstructions = camera_obstructions(&route, under_route_scenario);
 
         assert_eq!(obstructions.len(), route_obstruction_spires(&route).len());
         assert!(!obstructions.is_empty());
+        assert_eq!(
+            under_route_obstructions.len(),
+            route.under_island_route_segments().len() * 3
+        );
         assert!(camera_obstructions(&route, movement_scenario).is_empty());
     }
 
