@@ -809,6 +809,12 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             )
         })
         .count();
+    let lake_basin_count: usize = route
+        .islands()
+        .iter()
+        .enumerate()
+        .map(|(index, island)| island_lake_basin_visual_specs(index, *island).len())
+        .sum();
     let generated_tree_count = island_count * 3;
     let weather_veil_count = island_count.div_ceil(2) * 3;
     let route_cairn_count = island_count - 2;
@@ -822,7 +828,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         + plateau_extra_cave_count
         + ruin_arch_count
         + cliff_teeth_count
-        + garden_ring_count;
+        + garden_ring_count
+        + lake_basin_count;
 
     assert_eq!(report.ground_cover_count, island_count);
     assert_eq!(
@@ -842,10 +849,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.weather_cloud_bank_count, island_count);
     assert_eq!(report.weather_cloud_veil_count, weather_veil_count);
     assert_eq!(report.landmark_count, landmark_count);
-    assert!(report.landmark_kind_count >= 14);
+    assert!(report.landmark_kind_count >= 15);
     assert_eq!(report.small_island_count, small_island_count);
     assert!(report.small_island_count >= 10);
-    assert_eq!(report.plateau_landmark_count, 13);
+    assert_eq!(report.plateau_landmark_count, 15);
     assert_eq!(report.plateau_waterfall_ribbon_count, 2);
     assert_eq!(report.plateau_waterfall_mist_count, 2);
     assert_eq!(report.under_route_visual_count, plateau_extra_cave_count);
@@ -927,6 +934,14 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             .filter(|summary| summary.kind == "garden_ring")
             .count(),
         garden_ring_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "lake_basin")
+            .count(),
+        lake_basin_count
     );
     assert_eq!(
         report.mesh_count,
@@ -1054,6 +1069,13 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .iter()
         .find(|summary| summary.kind == "garden_ring")
         .expect("garden and orchard islands should export organic garden rings");
+    let lake_basin = report
+        .landmarks
+        .iter()
+        .find(|summary| {
+            summary.island_name == "great sky plateau" && summary.label == "low basin lake basin"
+        })
+        .expect("great sky plateau should export a terrain lake basin rim");
 
     assert!(low_basin_lake.mesh.horizontal_span_m >= 100.0);
     assert!(low_basin_lake.mesh.depth_span_m >= 45.0);
@@ -1081,6 +1103,11 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(garden_ring.mesh.depth_span_m >= 5.0);
     assert!(garden_ring.mesh.vertical_span_m >= 0.16);
     assert!(garden_ring.normal_slope_band_count >= 3);
+    assert!(lake_basin.mesh.vertex_count >= (LAKE_BASIN_RIM_SEGMENTS + 1) * LAKE_BASIN_RIM_BANDS);
+    assert!(lake_basin.mesh.horizontal_span_m >= 120.0);
+    assert!(lake_basin.mesh.depth_span_m >= 65.0);
+    assert!(lake_basin.mesh.vertical_span_m >= 1.0);
+    assert!(lake_basin.normal_slope_band_count >= 4);
     assert!(output_dir.join(&low_basin_lake.mesh.obj_path).exists());
     assert!(output_dir.join(&waterfall.mesh.obj_path).exists());
     assert!(output_dir.join(&mist.mesh.obj_path).exists());
@@ -1090,6 +1117,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(output_dir.join(&ruin_arch.mesh.obj_path).exists());
     assert!(output_dir.join(&cliff_teeth.mesh.obj_path).exists());
     assert!(output_dir.join(&garden_ring.mesh.obj_path).exists());
+    assert!(output_dir.join(&lake_basin.mesh.obj_path).exists());
     assert!(manifest.contains("\"schema\": \"nau_visual_content_export.v1\""));
     assert!(manifest.contains("\"ground_cover_blade_height_range_m\""));
     assert!(manifest.contains("\"tree_branch_reach_ratio\""));
@@ -1106,7 +1134,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains(&format!("\"landmark_count\": {landmark_count}")));
     assert!(manifest.contains("\"landmark_kind_count\""));
     assert!(manifest.contains(&format!("\"small_island_count\": {small_island_count}")));
-    assert!(manifest.contains("\"plateau_landmark_count\": 13"));
+    assert!(manifest.contains("\"plateau_landmark_count\": 15"));
     assert!(manifest.contains("\"plateau_waterfall_ribbon_count\": 2"));
     assert!(manifest.contains("\"plateau_waterfall_mist_count\": 2"));
     assert!(manifest.contains("\"under_route_visual_count\": 4"));
@@ -1138,6 +1166,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"kind\": \"ruin_arch\""));
     assert!(manifest.contains("\"kind\": \"cliff_teeth\""));
     assert!(manifest.contains("\"kind\": \"garden_ring\""));
+    assert!(manifest.contains("\"kind\": \"lake_basin\""));
     assert!(manifest.contains("great_sky_plateau_low_basin_lake.obj"));
     assert!(manifest.contains("great_sky_plateau_north_rim_waterfall.obj"));
     assert!(manifest.contains("great_sky_plateau_underhang_entry_arch.obj"));
@@ -1146,6 +1175,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("broken_stair_ruin_arch.obj"));
     assert!(manifest.contains("storm_porch_cliff_teeth.obj"));
     assert!(manifest.contains("landing_garden_garden_ring.obj"));
+    assert!(manifest.contains("great_sky_plateau_low_basin_lake_basin.obj"));
     assert!(manifest.contains("\"obstruction_spire_height_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_radius_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_normal_slope_band_count\""));
@@ -2033,6 +2063,51 @@ fn landmark_meshes_replace_basic_cylinders_and_boxes() {
     assert!(
         mesh_normal_slope_band_count(&garden_ring) >= 3,
         "garden rings should vary their soft ridge slopes"
+    );
+
+    let lake_basin = lake_basin_rim_mesh(24.0, 14.0, 2.4, 1.2, 47_789);
+    let lake_basin_positions = positions(&lake_basin);
+    let lake_basin_indices = u32_indices(&lake_basin);
+    let lake_basin_min_x = lake_basin_positions
+        .iter()
+        .map(|position| position[0])
+        .fold(f32::INFINITY, f32::min);
+    let lake_basin_max_x = lake_basin_positions
+        .iter()
+        .map(|position| position[0])
+        .fold(f32::NEG_INFINITY, f32::max);
+    let lake_basin_min_z = lake_basin_positions
+        .iter()
+        .map(|position| position[2])
+        .fold(f32::INFINITY, f32::min);
+    let lake_basin_max_z = lake_basin_positions
+        .iter()
+        .map(|position| position[2])
+        .fold(f32::NEG_INFINITY, f32::max);
+
+    assert_eq!(
+        lake_basin.count_vertices(),
+        (LAKE_BASIN_RIM_SEGMENTS + 1) * LAKE_BASIN_RIM_BANDS
+    );
+    assert_eq!(
+        lake_basin_indices.len(),
+        LAKE_BASIN_RIM_SEGMENTS * (LAKE_BASIN_RIM_BANDS - 1) * 6
+    );
+    assert!(
+        lake_basin_max_x - lake_basin_min_x > 45.0,
+        "lake basin rims should read as broad terrain-scale shorelines"
+    );
+    assert!(
+        lake_basin_max_z - lake_basin_min_z > 25.0,
+        "lake basin rims should preserve elliptical basin depth"
+    );
+    assert!(
+        mesh_y_range(&lake_basin) > 0.9,
+        "lake basin rims should have terraced shoreline relief"
+    );
+    assert!(
+        mesh_normal_slope_band_count(&lake_basin) >= 4,
+        "lake basin rims should include varied inner and outer slopes"
     );
 
     let spire = obstruction_spire_mesh(1.0, 5.2, 18_123);
