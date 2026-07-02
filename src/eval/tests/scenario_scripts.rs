@@ -281,15 +281,22 @@ fn underbridge_under_route_targets_low_cave_camera_pass() {
     assert!(scenario.thresholds.min_lifted_samples >= 2);
     assert!(!scripted_input(scenario, 1).launch);
     assert!(scripted_input(scenario, 30).left);
-    assert!(!scripted_input(scenario, 120).glide);
+    assert!(scripted_input(scenario, 120).glide);
     assert!(!scripted_input(scenario, 120).dive);
     assert!(scripted_input(scenario, 220).glide);
     assert!(scripted_input(scenario, 220).dive);
-    assert!(scripted_input(scenario, 240).left);
-    assert!(scripted_input(scenario, 330).left);
-    assert!(scripted_input(scenario, 300).forward);
-    assert!(scripted_input(scenario, 330).forward);
-    assert!(scripted_input(scenario, 390).right);
+    assert!(scripted_input(scenario, 220).right);
+    assert!(scripted_input(scenario, 220).backward);
+    assert!(!scripted_input(scenario, 220).left);
+    assert!(!scripted_input(scenario, 220).forward);
+    assert!(scripted_input(scenario, 240).right);
+    assert!(scripted_input(scenario, 240).backward);
+    assert!(!scripted_input(scenario, 240).dive);
+    assert!(scripted_input(scenario, 300).right);
+    assert!(scripted_input(scenario, 300).backward);
+    assert!(!scripted_input(scenario, 330).left);
+    assert!(!scripted_input(scenario, 330).forward);
+    assert!(!scripted_input(scenario, 390).right);
 }
 
 #[test]

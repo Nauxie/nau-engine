@@ -23,6 +23,7 @@ pub const POSE_STATE_COVERAGE: &str = "pose_state_coverage";
 pub const LONG_GLIDE_VISIBILITY: &str = "long_glide_visibility";
 pub const BRANCH_RECOVERY_ROUTE: &str = "branch_recovery_route";
 pub const GREAT_SKY_PLATEAU_ROUTE: &str = "great_sky_plateau_route";
+pub const PLATEAU_ARRIVAL_CAMERA: &str = "plateau_arrival_camera";
 pub const UNDERBRIDGE_UNDER_ROUTE: &str = "underbridge_under_route";
 pub const SCENARIO_NAMES: &[&str] = &[
     BASELINE_ROUTE,
@@ -41,6 +42,7 @@ pub const SCENARIO_NAMES: &[&str] = &[
     POSE_STATE_COVERAGE,
     LONG_GLIDE_VISIBILITY,
     GREAT_SKY_PLATEAU_ROUTE,
+    PLATEAU_ARRIVAL_CAMERA,
     UNDERBRIDGE_UNDER_ROUTE,
 ];
 pub const APP_ONLY_SCENARIO_NAMES: &[&str] = &[
@@ -130,9 +132,37 @@ pub fn scenario_named(name: &str) -> Option<EvalScenario> {
         GREAT_SKY_PLATEAU_ROUTE | "great_sky_plateau" | "plateau_route" => {
             Some(traversal_scenarios::great_sky_plateau_route())
         }
+        PLATEAU_ARRIVAL_CAMERA | "plateau_camera" | "plateau_arrival" => {
+            Some(traversal_scenarios::plateau_arrival_camera())
+        }
         UNDERBRIDGE_UNDER_ROUTE | "underbridge_route" | "under_route" => {
             Some(traversal_scenarios::underbridge_under_route())
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plateau_arrival_camera_targets_close_geometry_regression() {
+        let scenario = scenario_named(PLATEAU_ARRIVAL_CAMERA).expect("plateau camera scenario");
+        let alias = scenario_named("plateau_camera").expect("plateau camera alias");
+
+        assert_eq!(alias.name, PLATEAU_ARRIVAL_CAMERA);
+        assert_eq!(scenario.target_island_name, Some("great sky plateau"));
+        assert_eq!(
+            scenario.checkpoints[1].name,
+            "plateau_spire_camera_obstruction"
+        );
+        assert!(scenario.thresholds.min_camera_obstruction_adjustment_m >= 0.25);
+        assert!(scenario.thresholds.min_camera_obstructed_distance_m >= 1.0);
+        assert_eq!(scenario.thresholds.max_camera_obstruction_snap_count, 0);
+        assert!(scripted_input(scenario, 30).forward);
+        assert!(scripted_input(scenario, 130).right);
+        assert!(scripted_input(scenario, 280).left);
+        assert!(!scripted_input(scenario, 1).launch);
     }
 }

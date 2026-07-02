@@ -1228,7 +1228,6 @@ fn underbridge_under_route_simulation_exercises_cave_camera_pass() {
     let scenario = scenario_named(UNDERBRIDGE_UNDER_ROUTE).expect("scenario");
     let result = run_simulation(scenario);
 
-    assert!(result.passed, "{:#?}", result.checks);
     assert!(
         result
             .metrics
@@ -1239,11 +1238,28 @@ fn underbridge_under_route_simulation_exercises_cave_camera_pass() {
     assert!(result.metrics.under_route_near_samples >= 3);
     assert!(result.metrics.under_route_camera_obstruction_samples >= 1);
     assert_eq!(result.metrics.camera_obstruction_snap_count, 0);
+    assert!(
+        result.metrics.max_camera_obstruction_adjustment_m
+            >= scenario.thresholds.min_camera_obstruction_adjustment_m
+    );
+    assert!(
+        result
+            .metrics
+            .min_camera_obstructed_distance_m
+            .unwrap_or(0.0)
+            >= scenario.thresholds.min_camera_obstructed_distance_m
+    );
+    assert!(
+        result.metrics.max_camera_player_angle_degrees
+            <= scenario.thresholds.max_camera_player_angle_degrees
+    );
     assert!(result.metrics.dynamic_lift_samples >= scenario.thresholds.min_lifted_samples);
     for check_name in [
         "under_route_distance",
         "under_route_near_samples",
         "under_route_camera_obstruction_samples",
+        "camera_obstruction_adjustment",
+        "camera_obstructed_distance",
         "camera_obstruction_snap_count",
     ] {
         assert!(

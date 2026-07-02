@@ -223,15 +223,15 @@ pub(super) const GREAT_SKY_PLATEAU_CHECKPOINTS: &[EvalCheckpoint] = &[
 
 pub(super) const UNDERBRIDGE_UNDER_ROUTE_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
-        frame: 105,
+        frame: 35,
         name: "underbridge_low_setup",
     },
     EvalCheckpoint {
-        frame: 170,
+        frame: 65,
         name: "under_route_camera_obstruction",
     },
     EvalCheckpoint {
-        frame: 250,
+        frame: 155,
         name: "underbridge_lift_recovery",
     },
 ];

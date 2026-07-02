@@ -24,13 +24,18 @@ use nau_engine::{
         WindForceApplication, apply_aerial_power_up, apply_lift_fields, apply_wind_fields,
         visual_wind_fields,
     },
-    eval::{EvalScenario, UNDERBRIDGE_UNDER_ROUTE, scripted_camera_input, scripted_input},
+    eval::{
+        EvalScenario, PLATEAU_ARRIVAL_CAMERA, UNDERBRIDGE_UNDER_ROUTE, scripted_camera_input,
+        scripted_input,
+    },
     movement::{
         Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning,
         face_flight_direction,
     },
     world::{IslandUnderRouteSegment, START_POSITION, SkyRoute, route_obstruction_spires},
 };
+
+const PLATEAU_CAMERA_START_BACKOFF_M: f32 = 7.0;
 
 pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     let route = SkyRoute::default();
@@ -45,7 +50,8 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     let obstructions = camera_obstructions(&route, scenario);
     let mut power_ups = SimPowerUps::default();
     let mut objective = ObjectiveState::for_route(&route, scenario.target_island_name);
-    let mut state = FlightState::new(START_POSITION, Vec3::ZERO, FlightController::default());
+    let start_position = simulation_start_position(&route, scenario);
+    let mut state = FlightState::new(start_position, Vec3::ZERO, FlightController::default());
     let mut player_rotation = Quat::IDENTITY;
     let mut animation_phase = 0.0;
     let mut pose_intent = PlayerPoseIntent::GroundedIdle;
@@ -57,10 +63,10 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     let mut key_pose_intent_age_frames = 0;
     let initial_camera_direction = Vec3::NEG_Z;
     let mut camera_transform = Transform::from_translation(
-        START_POSITION - initial_camera_direction * follow.distance + Vec3::Y * follow.height,
+        start_position - initial_camera_direction * follow.distance + Vec3::Y * follow.height,
     )
     .looking_at(
-        START_POSITION
+        start_position
             + Vec3::Y * follow.look_height
             + initial_camera_direction * follow.look_ahead,
         Vec3::Y,
@@ -70,7 +76,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     let mut camera_obstruction_smoothing = CameraObstructionSmoothingState::default();
     let mut camera_diagnostics_initialized = false;
     let mut samples = Vec::new();
-    let mut metrics = SimMetrics::new(&route);
+    let mut metrics = SimMetrics::new_at(&route, start_position);
 
     for frame in 0..=scenario.frame_count {
         let input = scripted_input(scenario, frame);
@@ -256,6 +262,37 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
         summary_path: String::new(),
         samples_path: String::new(),
     }
+}
+
+fn simulation_start_position(route: &SkyRoute, scenario: EvalScenario) -> Vec3 {
+    if scenario.name == UNDERBRIDGE_UNDER_ROUTE {
+        return underbridge_under_route_start_position(route);
+    }
+
+    if scenario.name == PLATEAU_ARRIVAL_CAMERA {
+        return plateau_arrival_camera_start_position(route);
+    }
+
+    START_POSITION
+}
+
+fn underbridge_under_route_start_position(route: &SkyRoute) -> Vec3 {
+    route
+        .under_island_route_segments()
+        .into_iter()
+        .find(|segment| segment.island_name == "underbridge cay")
+        .map(|segment| segment.exit + Vec3::NEG_Z * 8.0)
+        .unwrap_or(START_POSITION)
+}
+
+fn plateau_arrival_camera_start_position(route: &SkyRoute) -> Vec3 {
+    let mut position = route_obstruction_spires(route)
+        .into_iter()
+        .find(|spire| spire.island_name == "great sky plateau")
+        .map(|spire| spire.base_position + Vec3::NEG_Z * PLATEAU_CAMERA_START_BACKOFF_M)
+        .unwrap_or_else(|| route.playtest_reset_position());
+    position.y = route.ground_at(position).floor_y;
+    position
 }
 
 fn apply_key_pose_transition_grace(
@@ -501,8 +538,20 @@ fn camera_obstructions(route: &SkyRoute, scenario: EvalScenario) -> Vec<CameraOb
         return under_route_camera_obstructions(route);
     }
 
+    if scenario.name == PLATEAU_ARRIVAL_CAMERA {
+        return plateau_arrival_camera_obstructions(route);
+    }
+
     route_obstruction_spires(route)
         .into_iter()
+        .map(|spire| CameraObstruction::new(spire.center, spire.half_extents))
+        .collect()
+}
+
+fn plateau_arrival_camera_obstructions(route: &SkyRoute) -> Vec<CameraObstruction> {
+    route_obstruction_spires(route)
+        .into_iter()
+        .filter(|spire| spire.island_name == "great sky plateau")
         .map(|spire| CameraObstruction::new(spire.center, spire.half_extents))
         .collect()
 }
@@ -548,11 +597,15 @@ mod tests {
         let under_route_scenario =
             nau_engine::eval::scenario_named(nau_engine::eval::UNDERBRIDGE_UNDER_ROUTE)
                 .expect("under-route scenario");
+        let plateau_camera_scenario =
+            nau_engine::eval::scenario_named(nau_engine::eval::PLATEAU_ARRIVAL_CAMERA)
+                .expect("plateau camera scenario");
         let movement_scenario =
             nau_engine::eval::scenario_named(nau_engine::eval::AIR_CONTROL_RESPONSE)
                 .expect("air control scenario");
         let obstructions = camera_obstructions(&route, obstruction_scenario);
         let under_route_obstructions = camera_obstructions(&route, under_route_scenario);
+        let plateau_camera_obstructions = camera_obstructions(&route, plateau_camera_scenario);
 
         assert_eq!(obstructions.len(), route_obstruction_spires(&route).len());
         assert!(!obstructions.is_empty());
@@ -560,7 +613,60 @@ mod tests {
             under_route_obstructions.len(),
             route.under_island_route_segments().len() * 3
         );
+        assert_eq!(plateau_camera_obstructions.len(), 1);
         assert!(camera_obstructions(&route, movement_scenario).is_empty());
+    }
+
+    #[test]
+    fn plateau_arrival_camera_start_sits_on_plateau_near_obstruction() {
+        let route = SkyRoute::default();
+        let start = plateau_arrival_camera_start_position(&route);
+        let ground = route.ground_at(start);
+        let plateau_spire = route_obstruction_spires(&route)
+            .into_iter()
+            .find(|spire| spire.island_name == "great sky plateau")
+            .expect("plateau spire");
+
+        assert_eq!(ground.island_name, Some("great sky plateau"));
+        assert_eq!(start.y, ground.floor_y);
+        assert!(
+            start.distance(plateau_spire.base_position) <= PLATEAU_CAMERA_START_BACKOFF_M + 2.0
+        );
+        assert!(start.z < plateau_spire.base_position.z);
+    }
+
+    #[test]
+    fn plateau_arrival_camera_simulation_exercises_plateau_obstruction() {
+        let scenario = nau_engine::eval::scenario_named(nau_engine::eval::PLATEAU_ARRIVAL_CAMERA)
+            .expect("plateau camera scenario");
+        let result = run_simulation(scenario);
+
+        assert!(result.passed, "{:#?}", result.checks);
+        assert_eq!(scenario.target_island_name, Some("great sky plateau"));
+        assert!(
+            result.metrics.horizontal_distance_m <= 80.0,
+            "local plateau camera scenario should not inherit distance from the launch route"
+        );
+        assert!(
+            result.metrics.max_camera_obstruction_adjustment_m
+                >= scenario.thresholds.min_camera_obstruction_adjustment_m
+        );
+        assert!(
+            result
+                .metrics
+                .min_camera_obstructed_distance_m
+                .unwrap_or(0.0)
+                >= scenario.thresholds.min_camera_obstructed_distance_m
+        );
+        assert_eq!(result.metrics.camera_obstruction_snap_count, 0);
+        assert!(
+            result.metrics.max_camera_step_distance_m
+                <= scenario.thresholds.max_camera_step_distance_m
+        );
+        assert!(
+            result.metrics.max_camera_rotation_delta_degrees
+                <= scenario.thresholds.max_camera_rotation_delta_degrees
+        );
     }
 
     #[test]

@@ -4,9 +4,9 @@ use bevy::prelude::*;
 use super::{
     AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, CAMERA_STRAFE_STABILITY,
     CAMERA_TURN_STABILITY, CAMERA_YAW_STABILITY, EvalScenario, GREAT_SKY_PLATEAU_ROUTE,
-    GROUND_TAXI_CONTROL, ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE,
-    TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_RIM_COLLISION_CONTACT, UNDERBRIDGE_UNDER_ROUTE,
-    UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
+    GROUND_TAXI_CONTROL, ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, PLATEAU_ARRIVAL_CAMERA,
+    POSE_STATE_COVERAGE, TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_RIM_COLLISION_CONTACT,
+    UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
 };
 
 pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
@@ -89,13 +89,13 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
     }
     if scenario.name == UNDERBRIDGE_UNDER_ROUTE {
         return FlightInput {
-            forward: (0.05..=7.2).contains(&t),
-            left: (0.2..=5.6).contains(&t),
-            right: (6.45..=6.9).contains(&t),
-            glide: t >= 3.35,
-            dive: (3.35..=4.95).contains(&t),
+            forward: (0.05..=3.25).contains(&t),
+            backward: (3.3..=5.2).contains(&t),
+            left: (0.2..=3.05).contains(&t),
+            right: (3.1..=5.2).contains(&t),
+            glide: t >= 0.45,
+            dive: (3.35..=3.9).contains(&t),
             launch: false,
-            ..default()
         };
     }
     if scenario.name == BRANCH_RECOVERY_ROUTE {
@@ -136,6 +136,16 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
             glide: t >= 0.45,
             dive: (7.8..=8.45).contains(&t),
             launch: frame == 1,
+        };
+    }
+    if scenario.name == PLATEAU_ARRIVAL_CAMERA {
+        return FlightInput {
+            forward: (0.05..=5.2).contains(&t),
+            right: (1.45..=3.35).contains(&t),
+            left: (4.15..=5.25).contains(&t),
+            glide: false,
+            launch: false,
+            ..default()
         };
     }
     if scenario.name == CAMERA_TURN_STABILITY {

@@ -10,7 +10,7 @@ mod util;
 use bevy::prelude::{Vec2, Vec3};
 use nau_engine::{
     environment::AERIAL_POWER_UP_ROUTE,
-    world::{IslandUnderRouteSegment, START_POSITION, SkyRoute},
+    world::{IslandUnderRouteSegment, SkyRoute},
 };
 
 pub(crate) use report::SimResult;
@@ -247,18 +247,23 @@ pub(crate) struct SimMetrics {
 }
 
 impl SimMetrics {
+    #[cfg(test)]
     pub(crate) fn new(route: &SkyRoute) -> Self {
+        Self::new_at(route, nau_engine::world::START_POSITION)
+    }
+
+    pub(crate) fn new_at(route: &SkyRoute, start_position: Vec3) -> Self {
         Self {
             sample_count: 0,
-            start_position: START_POSITION,
-            final_position: START_POSITION,
+            start_position,
+            final_position: start_position,
             under_route_segments: route.under_island_route_segments(),
             min_under_route_distance_m: None,
             under_route_near_samples: 0,
             under_route_camera_obstruction_samples: 0,
             horizontal_distance_m: 0.0,
-            max_altitude_m: START_POSITION.y,
-            min_altitude_m: START_POSITION.y,
+            max_altitude_m: start_position.y,
+            min_altitude_m: start_position.y,
             max_speed_mps: 0.0,
             max_launch_upward_speed_mps: 0.0,
             max_launch_horizontal_speed_mps: 0.0,
@@ -373,7 +378,7 @@ impl SimMetrics {
             max_pose_scarf_tail_flex_degrees: 0.0,
             min_pose_limb_clearance_m: None,
             min_target_distance_m: f32::MAX,
-            final_target_distance_m: route.target_distance_to(START_POSITION, None),
+            final_target_distance_m: route.target_distance_to(start_position, None),
             objective_total_count: 0,
             max_completed_objective_count: 0,
             final_objective_completed_count: 0,

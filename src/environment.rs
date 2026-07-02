@@ -543,7 +543,7 @@ pub fn apply_wind_fields(
 fn wind_force_response_rate(kind: WindFieldKind) -> f32 {
     match kind {
         WindFieldKind::Crosswind => 0.48,
-        WindFieldKind::Updraft => 0.24,
+        WindFieldKind::Updraft => 0.28,
     }
 }
 
@@ -730,7 +730,7 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
         half_extents: Vec3::new(28.0, 32.0, 28.0),
         lift_accel: 20.0,
         max_upward_speed: 19.0,
-        visual_speed: 12.0,
+        visual_speed: 13.0,
     },
     LiftRouteNode {
         name: "bluevault shoulder recovery updraft",

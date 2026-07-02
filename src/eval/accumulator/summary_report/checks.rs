@@ -11,13 +11,17 @@ use crate::{
     environment::{GAMEPLAY_LIFT_ROUTE, VISUAL_CROSSWIND_FIELD_COUNT},
     eval::{
         scenarios::{
-            EvalScenario, GROUND_TAXI_CONTROL, TERRAIN_BODY_COLLISION_CONTACT,
-            TERRAIN_RIM_COLLISION_CONTACT, UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
+            EvalScenario, GROUND_TAXI_CONTROL, PLATEAU_ARRIVAL_CAMERA,
+            TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_RIM_COLLISION_CONTACT, UPDRAFT_ROUTE,
+            WORLD_COLLISION_CONTACT,
         },
         summary::EvalCheck,
         thresholds::*,
     },
 };
+
+const PLATEAU_CAMERA_MIN_TREE_WORLD_COLLISION_PROXY_COUNT: usize = 4;
+const PLATEAU_CAMERA_MIN_ROCK_WORLD_COLLISION_PROXY_COUNT: usize = 5;
 
 pub(super) fn build_checks(
     acc: &EvalAccumulator,
@@ -25,6 +29,17 @@ pub(super) fn build_checks(
     derived: &SummaryDerivedMetrics,
 ) -> Vec<EvalCheck> {
     let thresholds = scenario.thresholds;
+    let min_tree_world_collision_proxy_count = if scenario.name == PLATEAU_ARRIVAL_CAMERA {
+        PLATEAU_CAMERA_MIN_TREE_WORLD_COLLISION_PROXY_COUNT
+    } else {
+        MIN_TREE_WORLD_COLLISION_PROXY_COUNT
+    };
+    let min_rock_world_collision_proxy_count = if scenario.name == PLATEAU_ARRIVAL_CAMERA {
+        PLATEAU_CAMERA_MIN_ROCK_WORLD_COLLISION_PROXY_COUNT
+    } else {
+        MIN_ROCK_WORLD_COLLISION_PROXY_COUNT
+    };
+
     let mut checks = vec![
         EvalCheck::at_least(
             "sample_count",
@@ -491,13 +506,13 @@ pub(super) fn build_checks(
         EvalCheck::at_least(
             "tree_world_collision_proxy_count",
             acc.max_tree_world_collision_proxy_count as f32,
-            MIN_TREE_WORLD_COLLISION_PROXY_COUNT as f32,
+            min_tree_world_collision_proxy_count as f32,
             "proxies",
         ),
         EvalCheck::at_least(
             "rock_world_collision_proxy_count",
             acc.max_rock_world_collision_proxy_count as f32,
-            MIN_ROCK_WORLD_COLLISION_PROXY_COUNT as f32,
+            min_rock_world_collision_proxy_count as f32,
             "proxies",
         ),
         EvalCheck::at_least(

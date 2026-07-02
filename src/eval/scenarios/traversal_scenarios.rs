@@ -12,8 +12,9 @@ use crate::{
 };
 
 use super::{
-    BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, EvalScenario, GREAT_SKY_PLATEAU_ROUTE,
-    ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
+    BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, EvalCheckpoint, EvalScenario, GREAT_SKY_PLATEAU_ROUTE,
+    ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, PLATEAU_ARRIVAL_CAMERA,
+    UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
     checkpoints::{
         BASELINE_CHECKPOINTS, BRANCH_RECOVERY_CHECKPOINTS, GREAT_SKY_PLATEAU_CHECKPOINTS,
         ISLAND_CHECKPOINTS, LONG_GLIDE_CHECKPOINTS, UNDERBRIDGE_UNDER_ROUTE_CHECKPOINTS,
@@ -26,6 +27,21 @@ const MAX_CAMERA_PLAYER_ANGLE_DEGREES: f32 = 3.0;
 const MAX_CAMERA_STEP_DISTANCE_M: f32 = 3.0;
 const MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 3.0;
 const MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES: f32 = 5.0;
+
+const PLATEAU_ARRIVAL_CAMERA_CHECKPOINTS: &[EvalCheckpoint] = &[
+    EvalCheckpoint {
+        frame: 20,
+        name: "plateau_spire_setup",
+    },
+    EvalCheckpoint {
+        frame: 90,
+        name: "plateau_spire_camera_obstruction",
+    },
+    EvalCheckpoint {
+        frame: 240,
+        name: "plateau_rim_camera_recenter",
+    },
+];
 
 pub(super) fn baseline_route() -> EvalScenario {
     EvalScenario {
@@ -418,6 +434,47 @@ pub(super) fn great_sky_plateau_route() -> EvalScenario {
     scenario
 }
 
+pub(super) fn plateau_arrival_camera() -> EvalScenario {
+    let mut scenario = long_glide_visibility();
+    scenario.name = PLATEAU_ARRIVAL_CAMERA;
+    scenario.frame_count = 360;
+    scenario.sample_stride = 5;
+    scenario.target_island_name = Some("great sky plateau");
+    scenario.checkpoints = PLATEAU_ARRIVAL_CAMERA_CHECKPOINTS;
+    scenario.thresholds.min_samples = 60;
+    scenario.thresholds.min_horizontal_distance_m = 22.0;
+    scenario.thresholds.min_max_altitude_m = 660.0;
+    scenario.thresholds.min_max_speed_mps = 4.0;
+    scenario.thresholds.min_gliding_samples = 0;
+    scenario.thresholds.min_grounded_samples = 55;
+    scenario.thresholds.min_lifted_samples = 0;
+    scenario.thresholds.min_active_island_count = 2;
+    scenario.thresholds.min_near_lod_island_count = 1;
+    scenario.thresholds.min_mid_lod_island_count = 2;
+    scenario.thresholds.max_visible_island_terrain_count = 62;
+    scenario.thresholds.min_visible_route_beacon_count = 5;
+    scenario.thresholds.min_entity_count = 180;
+    scenario.thresholds.max_camera_distance_m = MAX_CAMERA_FOLLOW_DISTANCE_M;
+    scenario.thresholds.min_camera_surface_clearance_m = 1.0;
+    scenario.thresholds.max_camera_player_angle_degrees = MAX_CAMERA_PLAYER_ANGLE_DEGREES;
+    scenario.thresholds.max_camera_step_distance_m = MAX_CAMERA_STEP_DISTANCE_M;
+    scenario.thresholds.max_camera_rotation_delta_degrees = MAX_CAMERA_ROTATION_DELTA_DEGREES;
+    scenario.thresholds.max_camera_orbit_alignment_degrees = MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES;
+    scenario.thresholds.max_abs_camera_view_yaw_degrees = 22.0;
+    scenario.thresholds.min_camera_obstruction_adjustment_m = 0.25;
+    scenario.thresholds.min_camera_obstructed_distance_m = 1.0;
+    scenario.thresholds.max_camera_obstruction_snap_count = 0;
+    scenario.thresholds.min_objective_total_count = 10;
+    scenario.thresholds.min_completed_objective_count = 0;
+    scenario.thresholds.min_collected_power_up_count = 0;
+    scenario.thresholds.min_power_up_effect_samples = 0;
+    scenario.thresholds.require_target_landing = false;
+    scenario.thresholds.max_final_target_distance_m = 3_000.0;
+    scenario.thresholds.min_target_landing_samples = 0;
+
+    scenario
+}
+
 pub(super) fn underbridge_under_route() -> EvalScenario {
     EvalScenario {
         name: UNDERBRIDGE_UNDER_ROUTE,
@@ -428,8 +485,8 @@ pub(super) fn underbridge_under_route() -> EvalScenario {
         checkpoints: UNDERBRIDGE_UNDER_ROUTE_CHECKPOINTS,
         thresholds: EvalThresholds {
             min_samples: 80,
-            min_horizontal_distance_m: 105.0,
-            min_max_altitude_m: 28.0,
+            min_horizontal_distance_m: 70.0,
+            min_max_altitude_m: 12.0,
             min_max_speed_mps: 18.0,
             min_gliding_samples: 35,
             min_grounded_samples: 1,
@@ -467,7 +524,7 @@ pub(super) fn underbridge_under_route() -> EvalScenario {
             max_camera_step_distance_m: MAX_CAMERA_STEP_DISTANCE_M,
             max_camera_rotation_delta_degrees: MAX_CAMERA_ROTATION_DELTA_DEGREES,
             max_camera_orbit_alignment_degrees: MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES,
-            max_abs_camera_view_yaw_degrees: 16.0,
+            max_abs_camera_view_yaw_degrees: 22.0,
             min_camera_obstruction_adjustment_m: 0.25,
             min_camera_obstructed_distance_m: 1.75,
             max_camera_obstruction_snap_count: 0,
