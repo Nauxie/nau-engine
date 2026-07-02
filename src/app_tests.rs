@@ -2,7 +2,9 @@ use super::*;
 use bevy::mesh::{Indices, VertexAttributeValues};
 use nau_engine::animation::PlayerPoseIntent;
 use nau_engine::movement::FlightInput;
-use nau_engine::world::{IslandPlateauRegion, IslandScaleClass, IslandTerrainArchetype};
+use nau_engine::world::{
+    IslandLandmarkRole, IslandPlateauRegion, IslandScaleClass, IslandTerrainArchetype,
+};
 
 fn test_island() -> SkyIsland {
     SkyIsland::new(
@@ -746,6 +748,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     let launch_pond = output_dir.join("visuals/00_launch_mesa_pond_surface.obj");
     let launch_spire = output_dir.join("visuals/00_launch_mesa_obstruction_spire.obj");
     let landing_marker = output_dir.join("visuals/02_landing_garden_landing_garden_marker_0.obj");
+    let broken_stair_ruin = output_dir.join("visuals/12_broken_stair_ruin_arch.obj");
     let route = SkyRoute::default();
     let island_count = route.islands().len();
     let small_island_count = route
@@ -758,6 +761,11 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             )
         })
         .count();
+    let ruin_arch_count = route
+        .islands()
+        .iter()
+        .filter(|island| island.world_tags.landmark_role == IslandLandmarkRole::RuinArch)
+        .count();
     let generated_tree_count = island_count * 3;
     let weather_veil_count = island_count.div_ceil(2) * 3;
     let route_cairn_count = island_count - 2;
@@ -768,7 +776,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         + 1
         + 4
         + plateau_extra_water_count
-        + plateau_extra_cave_count;
+        + plateau_extra_cave_count
+        + ruin_arch_count;
 
     assert_eq!(report.ground_cover_count, island_count);
     assert_eq!(
@@ -796,6 +805,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.plateau_waterfall_mist_count, 2);
     assert_eq!(report.under_route_visual_count, plateau_extra_cave_count);
     assert_eq!(report.under_route_cave_mouth_count, 2);
+    assert_eq!(report.ruin_arch_count, ruin_arch_count);
     assert_eq!(report.route_cairn_count, route_cairn_count);
     assert_eq!(report.launch_beacon_count, 1);
     assert_eq!(report.landing_garden_marker_count, 4);
@@ -842,6 +852,14 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         1
     );
     assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "ruin_arch")
+            .count(),
+        ruin_arch_count
+    );
+    assert_eq!(
         report.mesh_count,
         report.ground_cover_count
             + report.tree_trunk_count * 2
@@ -884,6 +902,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.max_plateau_landmark_mesh_vertices >= 600);
     assert!(report.min_plateau_waterfall_vertical_span_m >= 58.0);
     assert!(report.min_under_route_visual_vertical_span_m >= 4.0);
+    assert!(report.min_ruin_arch_mesh_vertices >= 500);
+    assert!(report.min_ruin_arch_vertical_span_m >= 4.5);
+    assert!(report.min_ruin_arch_radius_band_count >= 8);
+    assert!(report.min_ruin_arch_normal_slope_band_count >= 5);
     assert!(report.min_obstruction_spire_mesh_vertices >= 300);
     assert!(report.min_obstruction_spire_triangle_count >= 500);
     assert!(report.min_obstruction_spire_vertical_span_m >= 3.0);
@@ -904,6 +926,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(launch_pond.exists());
     assert!(launch_spire.exists());
     assert!(landing_marker.exists());
+    assert!(broken_stair_ruin.exists());
     let low_basin_lake = report
         .landmarks
         .iter()
@@ -939,6 +962,11 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             summary.island_name == "great sky plateau" && summary.label == "underside glide shelf"
         })
         .expect("great sky plateau should export an underside glide shelf");
+    let ruin_arch = report
+        .landmarks
+        .iter()
+        .find(|summary| summary.kind == "ruin_arch")
+        .expect("ruin-tagged islands should export stacked stone arches");
 
     assert!(low_basin_lake.mesh.horizontal_span_m >= 100.0);
     assert!(low_basin_lake.mesh.depth_span_m >= 45.0);
@@ -949,11 +977,15 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(cave_arch.mesh.vertical_span_m >= 14.0);
     assert!(underhang_shelf.mesh.horizontal_span_m >= 45.0);
     assert!(underhang_shelf.mesh.depth_span_m >= 24.0);
+    assert!(ruin_arch.mesh.vertex_count >= 500);
+    assert!(ruin_arch.mesh.vertical_span_m >= 4.5);
+    assert!(ruin_arch.radius_band_count >= 8);
     assert!(output_dir.join(&low_basin_lake.mesh.obj_path).exists());
     assert!(output_dir.join(&waterfall.mesh.obj_path).exists());
     assert!(output_dir.join(&mist.mesh.obj_path).exists());
     assert!(output_dir.join(&cave_arch.mesh.obj_path).exists());
     assert!(output_dir.join(&underhang_shelf.mesh.obj_path).exists());
+    assert!(output_dir.join(&ruin_arch.mesh.obj_path).exists());
     assert!(manifest.contains("\"schema\": \"nau_visual_content_export.v1\""));
     assert!(manifest.contains("\"ground_cover_blade_height_range_m\""));
     assert!(manifest.contains("\"tree_branch_reach_ratio\""));
@@ -975,6 +1007,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"plateau_waterfall_mist_count\": 2"));
     assert!(manifest.contains("\"under_route_visual_count\": 3"));
     assert!(manifest.contains("\"under_route_cave_mouth_count\": 2"));
+    assert!(manifest.contains(&format!("\"ruin_arch_count\": {ruin_arch_count}")));
     assert!(manifest.contains(&format!("\"route_cairn_count\": {route_cairn_count}")));
     assert!(manifest.contains("\"launch_beacon_count\": 1"));
     assert!(manifest.contains("\"landing_garden_marker_count\": 4"));
@@ -988,15 +1021,21 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"max_plateau_landmark_mesh_vertices\""));
     assert!(manifest.contains("\"plateau_waterfall_vertical_span_m\""));
     assert!(manifest.contains("\"under_route_visual_vertical_span_m\""));
+    assert!(manifest.contains("\"ruin_arch_mesh_vertices\""));
+    assert!(manifest.contains("\"ruin_arch_vertical_span_m\""));
+    assert!(manifest.contains("\"ruin_arch_radius_band_count\""));
+    assert!(manifest.contains("\"ruin_arch_normal_slope_band_count\""));
     assert!(manifest.contains("\"kind\": \"plateau_lake_surface\""));
     assert!(manifest.contains("\"kind\": \"plateau_waterfall_ribbon\""));
     assert!(manifest.contains("\"kind\": \"plateau_waterfall_mist\""));
     assert!(manifest.contains("\"kind\": \"under_route_cave_mouth\""));
     assert!(manifest.contains("\"kind\": \"under_route_hanging_shelf\""));
+    assert!(manifest.contains("\"kind\": \"ruin_arch\""));
     assert!(manifest.contains("great_sky_plateau_low_basin_lake.obj"));
     assert!(manifest.contains("great_sky_plateau_north_rim_waterfall.obj"));
     assert!(manifest.contains("great_sky_plateau_underhang_entry_arch.obj"));
     assert!(manifest.contains("great_sky_plateau_underside_glide_shelf.obj"));
+    assert!(manifest.contains("broken_stair_ruin_arch.obj"));
     assert!(manifest.contains("\"obstruction_spire_height_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_radius_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_normal_slope_band_count\""));
@@ -1702,6 +1741,25 @@ fn landmark_meshes_replace_basic_cylinders_and_boxes() {
     assert!(
         mesh_y_range(&marker) > 0.12,
         "landing garden markers should be low organic mounds, not flat boxes"
+    );
+
+    let ruin_arch = ruin_arch_mesh(9.0, 6.2, 2.2, 15_789);
+    let ruin_positions = positions(&ruin_arch);
+    assert!(
+        ruin_arch.count_vertices() >= RUIN_ARCH_STONE_COUNT * 50,
+        "ruin arches should be made from separate stacked stones"
+    );
+    assert!(
+        mesh_y_range(&ruin_arch) > 6.0,
+        "ruin arches should form a readable vertical opening"
+    );
+    assert!(
+        radial_range(ruin_positions) > 3.0,
+        "ruin arches should have a broad broken-stone silhouette"
+    );
+    assert!(
+        mesh_normal_slope_band_count(&ruin_arch) >= 5,
+        "ruin arches should not collapse into one flat slab"
     );
 
     let pond = pond_surface_mesh(3.2, 1.4, 11_789);

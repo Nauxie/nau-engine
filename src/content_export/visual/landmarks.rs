@@ -4,11 +4,11 @@ use crate::{
     generated_content::{
         island_under_route_visual_specs, island_water_visual_specs, landing_garden_marker_mesh,
         launch_beacon_mesh, mesh_normal_slope_band_count, mesh_vertical_band_count,
-        obstruction_spire_mesh, route_cairn_mesh,
+        obstruction_spire_mesh, route_cairn_mesh, ruin_arch_mesh,
     },
 };
 use bevy::prelude::*;
-use nau_engine::world::{SkyIsland, route_obstruction_spire};
+use nau_engine::world::{IslandLandmarkRole, SkyIsland, route_obstruction_spire};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -40,6 +40,24 @@ pub(super) fn visual_content_landmark_summaries(
             island.name,
             cave_feature.kind.label(),
             cave_feature.label,
+            island_index,
+            island_slug,
+            &mesh,
+        )?);
+    }
+
+    if island.world_tags.landmark_role == IslandLandmarkRole::RuinArch {
+        let mesh = ruin_arch_mesh(
+            (island.half_extents.x * 0.24).clamp(5.5, 18.0),
+            (island.thickness * 0.38).clamp(4.8, 12.0),
+            (island.half_extents.y * 0.08).clamp(1.2, 3.2),
+            15_000 + island_index as u32 * 181,
+        );
+        landmarks.push(write_visual_landmark_summary(
+            output_dir,
+            island.name,
+            "ruin_arch",
+            "ruin arch",
             island_index,
             island_slug,
             &mesh,
