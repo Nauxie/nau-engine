@@ -7,8 +7,9 @@ mod textures;
 pub(crate) use detail_meshes::pond_surface_mesh;
 #[cfg(test)]
 pub(crate) use detail_meshes::{
-    CAVE_MOUTH_ARCH_STONES, CLOUD_FILAMENT_RIBBON_VERTICES, CLOUD_FILAMENT_RIBBONS_PER_LOBE,
-    DETAIL_CARD_VERTICES, HANGING_ROOT_SEGMENTS, HANGING_ROOT_STRANDS, LAKE_SURFACE_SEGMENTS,
+    CAVE_MOUTH_ARCH_STONES, CLIFF_TOOTH_COUNT, CLIFF_TOOTH_TRIANGLES_PER_TOOTH,
+    CLOUD_FILAMENT_RIBBON_VERTICES, CLOUD_FILAMENT_RIBBONS_PER_LOBE, DETAIL_CARD_VERTICES,
+    HANGING_ROOT_SEGMENTS, HANGING_ROOT_STRANDS, LAKE_SURFACE_SEGMENTS,
     LANDING_GARDEN_MARKER_SEGMENTS, LAUNCH_BEACON_CRYSTAL_COUNT, OBSTRUCTION_SPIRE_RIB_COUNT,
     OBSTRUCTION_SPIRE_RINGS, OBSTRUCTION_SPIRE_SEGMENTS, POND_SURFACE_SEGMENTS, ROCK_MESH_RINGS,
     ROCK_MESH_SEGMENTS, ROUTE_CAIRN_STONE_COUNT, RUIN_ARCH_STONE_COUNT, TREE_BRANCH_SEGMENTS,
@@ -19,7 +20,7 @@ pub(crate) use detail_meshes::{
 pub(crate) use detail_meshes::{
     CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, CLOUD_WISP_CARDS_PER_LOBE, IslandUnderRouteVisualKind,
     IslandWaterVisualKind, TREE_BRANCH_COUNT, TREE_CANOPY_CARD_COUNT, TREE_ROOT_FLARE_COUNT,
-    TREE_TRUNK_RING_COUNT, TREE_TRUNK_SEGMENTS, cloud_cluster_mesh,
+    TREE_TRUNK_RING_COUNT, TREE_TRUNK_SEGMENTS, cliff_tooth_ridge_mesh, cloud_cluster_mesh,
     cloud_filament_ribbon_detail_count, crosswind_flow_ribbon_centerline_offset,
     crosswind_flow_ribbon_mesh, glider_airflow_trail_mesh, island_under_route_visual_specs,
     island_water_visual_specs, landing_garden_marker_mesh, launch_beacon_mesh,

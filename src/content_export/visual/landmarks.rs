@@ -2,13 +2,15 @@ use super::{metrics::visual_content_mesh_summary, types::VisualLandmarkSummary};
 use crate::{
     content_export::shared::{mesh_positions, terrain_export_slug, write_mesh_obj},
     generated_content::{
-        island_under_route_visual_specs, island_water_visual_specs, landing_garden_marker_mesh,
-        launch_beacon_mesh, mesh_normal_slope_band_count, mesh_vertical_band_count,
-        obstruction_spire_mesh, route_cairn_mesh, ruin_arch_mesh,
+        cliff_tooth_ridge_mesh, island_under_route_visual_specs, island_water_visual_specs,
+        landing_garden_marker_mesh, launch_beacon_mesh, mesh_normal_slope_band_count,
+        mesh_vertical_band_count, obstruction_spire_mesh, route_cairn_mesh, ruin_arch_mesh,
     },
 };
 use bevy::prelude::*;
-use nau_engine::world::{IslandLandmarkRole, SkyIsland, route_obstruction_spire};
+use nau_engine::world::{
+    IslandLandmarkRole, IslandTerrainArchetype, SkyIsland, route_obstruction_spire,
+};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -58,6 +60,24 @@ pub(super) fn visual_content_landmark_summaries(
             island.name,
             "ruin_arch",
             "ruin arch",
+            island_index,
+            island_slug,
+            &mesh,
+        )?);
+    }
+
+    if is_cliff_tooth_island(island) {
+        let mesh = cliff_tooth_ridge_mesh(
+            (island.half_extents.x * 0.42).clamp(10.0, 24.0),
+            (island.thickness * 0.46).clamp(4.0, 9.5),
+            (island.half_extents.y * 0.12).clamp(1.8, 5.0),
+            16_000 + island_index as u32 * 193,
+        );
+        landmarks.push(write_visual_landmark_summary(
+            output_dir,
+            island.name,
+            "cliff_teeth",
+            "cliff teeth",
             island_index,
             island_slug,
             &mesh,
@@ -155,4 +175,11 @@ fn landmark_radius_band_count(mesh: &Mesh) -> usize {
         })
         .collect::<HashSet<_>>()
         .len()
+}
+
+fn is_cliff_tooth_island(island: SkyIsland) -> bool {
+    matches!(
+        island.terrain_archetype,
+        IslandTerrainArchetype::StormRavine | IslandTerrainArchetype::StormShard
+    )
 }
