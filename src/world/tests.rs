@@ -301,24 +301,52 @@ fn great_sky_plateau_defines_under_island_glide_route() {
     let plateau = route
         .island_named("great sky plateau")
         .expect("plateau island exists");
+    let underbridge_island = route
+        .island_named("underbridge cay")
+        .expect("underbridge cay exists");
     let under_routes = route.under_island_route_segments();
     let segment = under_routes
         .iter()
         .copied()
         .find(|segment| segment.island_name == "great sky plateau")
         .expect("plateau should expose an under-island glide route");
+    let underbridge = under_routes
+        .iter()
+        .copied()
+        .find(|segment| segment.island_name == "underbridge cay")
+        .expect("underbridge cay should expose an under-island glide route");
     let lift = GAMEPLAY_LIFT_ROUTE
         .iter()
         .find(|node| node.name == "great sky plateau updraft")
         .expect("plateau should have a paired lift recovery field")
         .lift_field();
+    let underbridge_lift = GAMEPLAY_LIFT_ROUTE
+        .iter()
+        .find(|node| node.name == "underbridge cay updraft")
+        .expect("underbridge cay should have a paired lift recovery field")
+        .lift_field();
 
-    assert_eq!(under_routes.len(), 1);
+    assert_eq!(under_routes.len(), 2);
     assert_eq!(segment.entry_region, IslandPlateauRegion::UnderhangEntry);
     assert_eq!(segment.exit_region, IslandPlateauRegion::MeadowPlateau);
     assert!(segment.horizontal_length_m() >= 125.0);
     assert!(segment.clearance_radius_m >= 10.0);
     assert!(lift.contains(segment.recommended_lift_point));
+    assert_eq!(
+        underbridge.entry_region,
+        IslandPlateauRegion::UnderhangEntry
+    );
+    assert_eq!(underbridge.exit_region, IslandPlateauRegion::MeadowPlateau);
+    assert!(underbridge.horizontal_length_m() >= 38.0);
+    assert!(underbridge.clearance_radius_m >= 4.8);
+    assert!(underbridge_lift.contains(underbridge.recommended_lift_point));
+    assert!(
+        underbridge
+            .sample_points()
+            .iter()
+            .any(|point| underbridge_island.contains_horizontal(*point)),
+        "underbridge route should pass beneath the island footprint"
+    );
 
     for point in segment.sample_points() {
         assert!(
@@ -332,6 +360,17 @@ fn great_sky_plateau_defines_under_island_glide_route() {
         assert!(
             point.y > plateau.mesh_top_y() - plateau.thickness * 0.86,
             "under-route point should stay above the tapered underside tip"
+        );
+    }
+
+    for point in underbridge.sample_points() {
+        assert!(
+            point.y < underbridge_island.mesh_top_y() - underbridge_island.thickness * 0.32,
+            "underbridge route should sit below the top surface"
+        );
+        assert!(
+            point.y > underbridge_island.mesh_top_y() - underbridge_island.thickness * 0.92,
+            "underbridge route should stay above the tapered underside tip"
         );
     }
 }
@@ -507,7 +546,7 @@ fn route_includes_plateau_scale_water_cave_spire_and_stepping_stone_roles() {
     assert!(huge_plateau_count >= 1);
     assert!(lake_basin_count >= 3);
     assert!(waterfall_source_count >= 1);
-    assert!(cave_or_underhang_count >= 1);
+    assert!(cave_or_underhang_count >= 2);
     assert!(spire_count >= 3);
     assert!(stepping_stone_count >= 8);
     assert!(plateau_role_count >= 2);

@@ -746,6 +746,83 @@ fn great_sky_plateau_under_route_visual_specs_mark_cave_and_shelf() {
 }
 
 #[test]
+fn underbridge_cay_under_route_visual_specs_mark_cave_and_shelf() {
+    let route = SkyRoute::default();
+    let (underbridge_index, underbridge) = route
+        .islands()
+        .iter()
+        .copied()
+        .enumerate()
+        .find(|(_, island)| island.name == "underbridge cay")
+        .expect("route should include underbridge cay");
+    let under_route = underbridge
+        .under_route_segment()
+        .expect("underbridge cay should define an under-route");
+    let cave_features = island_under_route_visual_specs(underbridge_index, underbridge);
+
+    assert_eq!(cave_features.len(), 4);
+    assert_eq!(
+        cave_features
+            .iter()
+            .filter(|feature| feature.kind == IslandUnderRouteVisualKind::CaveMouthArch)
+            .count(),
+        2
+    );
+    assert_eq!(
+        cave_features
+            .iter()
+            .filter(|feature| feature.kind == IslandUnderRouteVisualKind::UnderhangShelf)
+            .count(),
+        1
+    );
+    assert_eq!(
+        cave_features
+            .iter()
+            .filter(|feature| feature.kind == IslandUnderRouteVisualKind::HangingRoots)
+            .count(),
+        1
+    );
+
+    let entry_arch = cave_features
+        .iter()
+        .find(|feature| feature.label == "underhang entry arch")
+        .expect("entry arch should be generated");
+    let shelf = cave_features
+        .iter()
+        .find(|feature| feature.label == "underside glide shelf")
+        .expect("glide shelf should be generated");
+    let roots = cave_features
+        .iter()
+        .find(|feature| feature.label == "hanging root curtain")
+        .expect("hanging roots should be generated");
+    let exit_arch = cave_features
+        .iter()
+        .find(|feature| feature.label == "updraft skylight exit arch")
+        .expect("exit arch should be generated");
+
+    assert!(entry_arch.translation.distance(under_route.entry) < 0.1);
+    assert!(exit_arch.translation.distance(under_route.exit) < 0.1);
+    assert!(shelf.translation.y < under_route.midpoint.y);
+    assert!(roots.translation.y > under_route.midpoint.y);
+    assert!(entry_arch.camera_half_extents.x >= under_route.clearance_radius_m);
+    assert!(shelf.camera_half_extents.x > entry_arch.camera_half_extents.x);
+    assert!(roots.camera_half_extents.y >= under_route.clearance_radius_m * 0.4);
+
+    let arch_mesh = entry_arch.build_mesh();
+    let shelf_mesh = shelf.build_mesh();
+    let roots_mesh = roots.build_mesh();
+    assert!(arch_mesh.count_vertices() >= CAVE_MOUTH_ARCH_STONES * 40);
+    assert!(mesh_y_range(&arch_mesh) >= under_route.clearance_radius_m);
+    assert_eq!(shelf_mesh.count_vertices(), UNDERHANG_SHELF_SEGMENTS * 2);
+    assert!(mesh_y_range(&shelf_mesh) >= under_route.clearance_radius_m * 0.30);
+    assert_eq!(
+        roots_mesh.count_vertices(),
+        HANGING_ROOT_STRANDS * (HANGING_ROOT_SEGMENTS + 1) * 4
+    );
+    assert!(mesh_y_range(&roots_mesh) >= under_route.clearance_radius_m * 0.7);
+}
+
+#[test]
 fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     let output_dir = std::env::temp_dir().join(format!(
         "nau-visual-content-export-test-{}-{}",
@@ -831,13 +908,35 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     let weather_veil_count = island_count.div_ceil(2) * 3;
     let route_cairn_count = island_count - 2;
     let plateau_extra_water_count = 6;
-    let plateau_extra_cave_count = 4;
+    let under_route_visual_specs = route
+        .islands()
+        .iter()
+        .enumerate()
+        .flat_map(|(index, island)| island_under_route_visual_specs(index, *island))
+        .collect::<Vec<_>>();
+    let under_route_visual_count = under_route_visual_specs.len();
+    let under_route_cave_mouth_count = under_route_visual_specs
+        .iter()
+        .filter(|feature| feature.kind == IslandUnderRouteVisualKind::CaveMouthArch)
+        .count();
+    let under_route_shelf_count = under_route_visual_specs
+        .iter()
+        .filter(|feature| feature.kind == IslandUnderRouteVisualKind::UnderhangShelf)
+        .count();
+    let under_route_root_count = under_route_visual_specs
+        .iter()
+        .filter(|feature| feature.kind == IslandUnderRouteVisualKind::HangingRoots)
+        .count();
+    assert_eq!(under_route_visual_count, 8);
+    assert_eq!(under_route_cave_mouth_count, 4);
+    assert_eq!(under_route_shelf_count, 2);
+    assert_eq!(under_route_root_count, 2);
     let landmark_count = island_count * 2
         + route_cairn_count
         + 1
         + 4
         + plateau_extra_water_count
-        + plateau_extra_cave_count
+        + under_route_visual_count
         + ruin_arch_count
         + cliff_teeth_count
         + garden_ring_count
@@ -878,8 +977,11 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         route_waterfall_source_count
     );
     assert_eq!(report.route_lake_surface_count, route_lake_surface_count);
-    assert_eq!(report.under_route_visual_count, plateau_extra_cave_count);
-    assert_eq!(report.under_route_cave_mouth_count, 2);
+    assert_eq!(report.under_route_visual_count, under_route_visual_count);
+    assert_eq!(
+        report.under_route_cave_mouth_count,
+        under_route_cave_mouth_count
+    );
     assert_eq!(report.ruin_arch_count, ruin_arch_count);
     assert_eq!(report.route_cairn_count, route_cairn_count);
     assert_eq!(report.launch_beacon_count, 1);
@@ -940,7 +1042,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             .iter()
             .filter(|summary| summary.kind == "under_route_cave_mouth")
             .count(),
-        2
+        under_route_cave_mouth_count
     );
     assert_eq!(
         report
@@ -948,7 +1050,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             .iter()
             .filter(|summary| summary.kind == "under_route_hanging_shelf")
             .count(),
-        1
+        under_route_shelf_count
     );
     assert_eq!(
         report
@@ -956,7 +1058,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             .iter()
             .filter(|summary| summary.kind == "under_route_hanging_roots")
             .count(),
-        1
+        under_route_root_count
     );
     assert_eq!(
         report
@@ -1234,8 +1336,12 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains(&format!(
         "\"route_lake_surface_count\": {route_lake_surface_count}"
     )));
-    assert!(manifest.contains("\"under_route_visual_count\": 4"));
-    assert!(manifest.contains("\"under_route_cave_mouth_count\": 2"));
+    assert!(manifest.contains(&format!(
+        "\"under_route_visual_count\": {under_route_visual_count}"
+    )));
+    assert!(manifest.contains(&format!(
+        "\"under_route_cave_mouth_count\": {under_route_cave_mouth_count}"
+    )));
     assert!(manifest.contains(&format!("\"ruin_arch_count\": {ruin_arch_count}")));
     assert!(manifest.contains(&format!("\"route_cairn_count\": {route_cairn_count}")));
     assert!(manifest.contains("\"launch_beacon_count\": 1"));
@@ -1278,6 +1384,9 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("great_sky_plateau_underhang_entry_arch.obj"));
     assert!(manifest.contains("great_sky_plateau_underside_glide_shelf.obj"));
     assert!(manifest.contains("great_sky_plateau_hanging_root_curtain.obj"));
+    assert!(manifest.contains("underbridge_cay_underhang_entry_arch.obj"));
+    assert!(manifest.contains("underbridge_cay_underside_glide_shelf.obj"));
+    assert!(manifest.contains("underbridge_cay_hanging_root_curtain.obj"));
     assert!(manifest.contains("broken_stair_ruin_arch.obj"));
     assert!(manifest.contains("storm_porch_cliff_teeth.obj"));
     assert!(manifest.contains("landing_garden_garden_ring.obj"));
@@ -1437,11 +1546,19 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
     );
     assert!(coverage.camera_only_allowance_count >= route.islands().len());
     assert_eq!(
-        catalog.named_obstacle_count("great sky plateau", "plateau cave mouth arch"),
+        catalog.named_obstacle_count("great sky plateau", "under-route cave mouth arch"),
         2
     );
     assert_eq!(
-        catalog.named_obstacle_count("great sky plateau", "plateau underhang shelf"),
+        catalog.named_obstacle_count("great sky plateau", "under-route hanging shelf"),
+        1
+    );
+    assert_eq!(
+        catalog.named_obstacle_count("underbridge cay", "under-route cave mouth arch"),
+        2
+    );
+    assert_eq!(
+        catalog.named_obstacle_count("underbridge cay", "under-route hanging shelf"),
         1
     );
     assert_eq!(catalog.deferred_mesh_count(), route.islands().len() * 4);
