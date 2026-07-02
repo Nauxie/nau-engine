@@ -611,7 +611,7 @@ impl LiftRouteNode {
     }
 }
 
-pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 14] = [
+pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 15] = [
     LiftRouteNode {
         name: "launch terrace updraft",
         center: Vec3::new(12.0, 52.0, -78.0),
@@ -724,9 +724,17 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 14] = [
         max_upward_speed: 25.0,
         visual_speed: 16.0,
     },
+    LiftRouteNode {
+        name: "underbridge cay updraft",
+        center: Vec3::new(-34.0, 34.0, -86.0),
+        half_extents: Vec3::new(28.0, 32.0, 28.0),
+        lift_accel: 20.0,
+        max_upward_speed: 19.0,
+        visual_speed: 12.0,
+    },
 ];
 
-pub const VISUAL_CROSSWIND_FIELD_COUNT: usize = 16;
+pub const VISUAL_CROSSWIND_FIELD_COUNT: usize = 17;
 
 pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
     [
@@ -825,6 +833,12 @@ pub fn visual_crosswind_fields() -> [WindField; VISUAL_CROSSWIND_FIELD_COUNT] {
             Vec3::new(62.0, 42.0, 44.0),
             Vec3::new(-0.52, 0.0, 0.66),
             11.0,
+        ),
+        WindField::crosswind(
+            GAMEPLAY_LIFT_ROUTE[14].center,
+            Vec3::new(40.0, 30.0, 34.0),
+            Vec3::new(0.58, 0.0, -0.42),
+            8.5,
         ),
     ]
 }

@@ -30,9 +30,9 @@ impl IslandUnderRouteVisualKind {
 
     pub(crate) fn visual_name(self) -> &'static str {
         match self {
-            Self::CaveMouthArch => "plateau cave mouth arch",
-            Self::UnderhangShelf => "plateau underhang shelf",
-            Self::HangingRoots => "plateau hanging roots",
+            Self::CaveMouthArch => "under-route cave mouth arch",
+            Self::UnderhangShelf => "under-route hanging shelf",
+            Self::HangingRoots => "under-route hanging roots",
         }
     }
 }
@@ -110,7 +110,7 @@ pub(crate) fn island_under_route_visual_specs(
     let arch_depth = segment.clearance_radius_m * 0.55;
     let shelf_width = segment.clearance_radius_m * 4.4;
     let shelf_depth = segment.clearance_radius_m * 2.45;
-    let shelf_thickness = segment.clearance_radius_m * 0.32;
+    let shelf_thickness = (segment.clearance_radius_m * 0.32).max(4.0);
     let shelf_translation = segment.midpoint - Vec3::Y * (segment.clearance_radius_m * 0.88);
     let root_width = segment.clearance_radius_m * 2.65;
     let root_height = segment.clearance_radius_m * 1.05;

@@ -337,6 +337,7 @@ fn is_route_objective_lift_node(name: &str) -> bool {
             | "western catch updraft"
             | "skyhook basin updraft"
             | "cloudfall meadow updraft"
+            | "underbridge cay updraft"
     )
 }
 

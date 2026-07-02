@@ -1145,10 +1145,18 @@ impl SkyIsland {
     }
 
     pub fn under_route_segment(self) -> Option<IslandUnderRouteSegment> {
-        if !self.is_great_plateau_anchor() {
-            return None;
+        if self.is_great_plateau_anchor() {
+            return self.great_plateau_under_route_segment();
         }
 
+        if self.name == "underbridge cay" {
+            return Some(self.underbridge_cay_under_route_segment());
+        }
+
+        None
+    }
+
+    fn great_plateau_under_route_segment(self) -> Option<IslandUnderRouteSegment> {
         let entry_region = IslandPlateauRegion::UnderhangEntry;
         let exit_region = IslandPlateauRegion::MeadowPlateau;
         let entry_surface = self.plateau_region_position(entry_region)?;
@@ -1178,6 +1186,35 @@ impl SkyIsland {
             clearance_radius_m: (self.half_extents.min_element() * 0.08).clamp(10.0, 16.0),
             recommended_lift_point: exit,
         })
+    }
+
+    fn underbridge_cay_under_route_segment(self) -> IslandUnderRouteSegment {
+        let entry = Vec3::new(
+            self.center.x - self.half_extents.x * 1.08,
+            self.mesh_top_y() - self.thickness * 0.56,
+            self.center.z - self.half_extents.y * 0.24,
+        );
+        let midpoint = Vec3::new(
+            self.center.x - self.half_extents.x * 0.08,
+            self.mesh_top_y() - self.thickness * 0.78,
+            self.center.z + self.half_extents.y * 0.02,
+        );
+        let exit = Vec3::new(
+            self.center.x + self.half_extents.x * 1.12,
+            self.mesh_top_y() - self.thickness * 0.52,
+            self.center.z + self.half_extents.y * 0.28,
+        );
+
+        IslandUnderRouteSegment {
+            island_name: self.name,
+            entry_region: IslandPlateauRegion::UnderhangEntry,
+            entry,
+            midpoint,
+            exit_region: IslandPlateauRegion::MeadowPlateau,
+            exit,
+            clearance_radius_m: (self.half_extents.min_element() * 0.36).clamp(4.8, 6.4),
+            recommended_lift_point: Vec3::new(-34.0, 34.0, -86.0),
+        }
     }
 
     pub fn floor_y(self) -> f32 {
