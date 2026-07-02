@@ -7,8 +7,9 @@ use crate::camera_runtime::CameraObstacle;
 use crate::content_diagnostics::{GeneratedLandmarkKind, IslandContentDiagnostics};
 use crate::environment_visuals::wind_visual_motion;
 use crate::generated_content::{
-    GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES, IslandDetailMaterials,
-    IslandUnderRouteVisualKind, cliff_tooth_ridge_mesh, garden_ring_mesh, island_ground_cover_mesh,
+    FirstExpeditionSilhouetteKind, GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES,
+    IslandDetailMaterials, IslandUnderRouteVisualKind, cliff_tooth_ridge_mesh,
+    first_expedition_silhouette_specs, garden_ring_mesh, island_ground_cover_mesh,
     island_lake_basin_visual_specs, island_playable_normalized_offset,
     island_under_route_visual_specs, island_visual_surface_position, island_water_visual_specs,
     landing_garden_marker_mesh, launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh,
@@ -367,6 +368,38 @@ pub(super) fn queue_sky_island_details(
         );
     }
 
+    for silhouette in first_expedition_silhouette_specs(island_index, island) {
+        let silhouette_mesh = silhouette.build_mesh();
+        content_diagnostics.record_generated_landmark(
+            first_expedition_silhouette_landmark_kind(silhouette.kind),
+            silhouette_mesh.count_vertices(),
+        );
+        let material = match silhouette.kind {
+            FirstExpeditionSilhouetteKind::RingGarden => flower_material.clone(),
+            FirstExpeditionSilhouetteKind::NorthRuinSpire
+            | FirstExpeditionSilhouetteKind::SouthRuinSpire
+            | FirstExpeditionSilhouetteKind::WaterfallCliff
+            | FirstExpeditionSilhouetteKind::CaveArch
+            | FirstExpeditionSilhouetteKind::BrokenStair
+            | FirstExpeditionSilhouetteKind::HighCrown => detail_materials.stone.clone(),
+        };
+        queue_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Detail,
+            meshes.add(silhouette_mesh),
+            material,
+            Transform {
+                translation: silhouette.translation,
+                rotation: Quat::from_rotation_y(silhouette.rotation_y),
+                ..default()
+            },
+            None,
+            silhouette.kind.visual_name(),
+        );
+    }
+
     if !island.is_target && island.name != "launch mesa" {
         let beacon_height = 3.8 + (island_index % 3) as f32 * 0.7;
         let beacon_surface = island_visual_surface_position(island, Vec2::new(-0.18, 0.22));
@@ -546,6 +579,20 @@ fn is_cliff_tooth_island(island: SkyIsland) -> bool {
         island.terrain_archetype,
         IslandTerrainArchetype::StormRavine | IslandTerrainArchetype::StormShard
     )
+}
+
+fn first_expedition_silhouette_landmark_kind(
+    kind: FirstExpeditionSilhouetteKind,
+) -> GeneratedLandmarkKind {
+    match kind {
+        FirstExpeditionSilhouetteKind::RingGarden => GeneratedLandmarkKind::GardenRing,
+        FirstExpeditionSilhouetteKind::NorthRuinSpire
+        | FirstExpeditionSilhouetteKind::SouthRuinSpire
+        | FirstExpeditionSilhouetteKind::WaterfallCliff
+        | FirstExpeditionSilhouetteKind::CaveArch
+        | FirstExpeditionSilhouetteKind::BrokenStair
+        | FirstExpeditionSilhouetteKind::HighCrown => GeneratedLandmarkKind::RuinArch,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

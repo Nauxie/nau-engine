@@ -855,6 +855,15 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         output_dir.join("visuals/38_great_sky_plateau_high_shelf_onward_hint.obj");
     let plateau_cave_hint =
         output_dir.join("visuals/38_great_sky_plateau_cave_mouth_onward_hint.obj");
+    let north_ruin_spire = output_dir.join("visuals/13_mist_arch_north_ruin_spire.obj");
+    let south_ruin_spire = output_dir.join("visuals/14_cloud_gate_south_ruin_spire.obj");
+    let waterfall_cliff =
+        output_dir.join("visuals/28_cloudfall_meadow_waterfall_cliff_silhouette.obj");
+    let cave_arch = output_dir.join("visuals/20_underbridge_cay_cave_mouth_silhouette.obj");
+    let ring_garden = output_dir.join("visuals/36_sunspire_garden_ring_garden_silhouette.obj");
+    let broken_stair_silhouette =
+        output_dir.join("visuals/12_broken_stair_broken_stair_silhouette.obj");
+    let high_crown = output_dir.join("visuals/40_upper_crown_high_crown_silhouette.obj");
     let route = SkyRoute::default();
     let island_count = route.islands().len();
     let small_island_count = route
@@ -901,6 +910,12 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .enumerate()
         .map(|(index, island)| island_lake_basin_visual_specs(index, *island).len())
         .sum();
+    let first_expedition_silhouette_count: usize = route
+        .islands()
+        .iter()
+        .enumerate()
+        .map(|(index, island)| first_expedition_silhouette_specs(index, *island).len())
+        .sum();
     let route_lake_surface_count = route
         .islands()
         .iter()
@@ -940,6 +955,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(under_route_cave_mouth_count, 4);
     assert_eq!(under_route_shelf_count, 2);
     assert_eq!(under_route_root_count, 2);
+    assert_eq!(first_expedition_silhouette_count, 7);
     let landmark_count = island_count * 2
         + route_cairn_count
         + 1
@@ -947,6 +963,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         + plateau_extra_water_count
         + plateau_arrival_landmark_count
         + under_route_visual_count
+        + first_expedition_silhouette_count
         + ruin_arch_count
         + cliff_teeth_count
         + garden_ring_count
@@ -972,7 +989,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.weather_cloud_bank_count, island_count);
     assert_eq!(report.weather_cloud_veil_count, weather_veil_count);
     assert_eq!(report.landmark_count, landmark_count);
-    assert!(report.landmark_kind_count >= 21);
+    assert!(report.landmark_kind_count >= 28);
     assert_eq!(report.small_island_count, small_island_count);
     assert!(report.small_island_count >= 10);
     assert_eq!(report.plateau_landmark_count, 19);
@@ -1021,6 +1038,14 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             .filter(|summary| summary.kind == "plateau_onward_hint")
             .count(),
         2
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind.starts_with("first_expedition_"))
+            .count(),
+        first_expedition_silhouette_count
     );
     assert_eq!(
         report
@@ -1201,6 +1226,13 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(plateau_arrival_ruin.exists());
     assert!(plateau_high_shelf_hint.exists());
     assert!(plateau_cave_hint.exists());
+    assert!(north_ruin_spire.exists());
+    assert!(south_ruin_spire.exists());
+    assert!(waterfall_cliff.exists());
+    assert!(cave_arch.exists());
+    assert!(ring_garden.exists());
+    assert!(broken_stair_silhouette.exists());
+    assert!(high_crown.exists());
     let low_basin_lake = report
         .landmarks
         .iter()
@@ -1459,6 +1491,13 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"kind\": \"cliff_teeth\""));
     assert!(manifest.contains("\"kind\": \"garden_ring\""));
     assert!(manifest.contains("\"kind\": \"lake_basin\""));
+    assert!(manifest.contains("\"kind\": \"first_expedition_north_ruin_spire\""));
+    assert!(manifest.contains("\"kind\": \"first_expedition_south_ruin_spire\""));
+    assert!(manifest.contains("\"kind\": \"first_expedition_waterfall_cliff\""));
+    assert!(manifest.contains("\"kind\": \"first_expedition_cave_arch\""));
+    assert!(manifest.contains("\"kind\": \"first_expedition_ring_garden\""));
+    assert!(manifest.contains("\"kind\": \"first_expedition_broken_stair\""));
+    assert!(manifest.contains("\"kind\": \"first_expedition_high_crown\""));
     assert!(manifest.contains("great_sky_plateau_low_basin_lake.obj"));
     assert!(manifest.contains("great_sky_plateau_north_rim_waterfall.obj"));
     assert!(manifest.contains("great_sky_plateau_meadow_landing_shelf.obj"));
@@ -1479,6 +1518,13 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("storm_porch_cliff_teeth.obj"));
     assert!(manifest.contains("landing_garden_garden_ring.obj"));
     assert!(manifest.contains("great_sky_plateau_low_basin_lake_basin.obj"));
+    assert!(manifest.contains("mist_arch_north_ruin_spire.obj"));
+    assert!(manifest.contains("cloud_gate_south_ruin_spire.obj"));
+    assert!(manifest.contains("cloudfall_meadow_waterfall_cliff_silhouette.obj"));
+    assert!(manifest.contains("underbridge_cay_cave_mouth_silhouette.obj"));
+    assert!(manifest.contains("sunspire_garden_ring_garden_silhouette.obj"));
+    assert!(manifest.contains("broken_stair_broken_stair_silhouette.obj"));
+    assert!(manifest.contains("upper_crown_high_crown_silhouette.obj"));
     assert!(manifest.contains("\"obstruction_spire_height_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_radius_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_normal_slope_band_count\""));
