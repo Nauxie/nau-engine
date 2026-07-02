@@ -103,6 +103,43 @@ fn route_objectives_track_main_and_branch_targets() {
 }
 
 #[test]
+fn route_objectives_keep_recovery_updrafts_as_non_gating_support() {
+    let route = SkyRoute::default();
+    let plateau = route.route_objectives(Some("great sky plateau"));
+    let upper_crown = route.route_objectives(Some("upper crown"));
+    let recovery_updrafts = [
+        "low reef updraft",
+        "western catch updraft",
+        "skyhook basin updraft",
+        "cloudfall meadow updraft",
+        "underbridge cay updraft",
+        "bluevault shoulder recovery updraft",
+        "cloudbreak stair recovery updraft",
+        "plateau west rim recovery updraft",
+    ];
+
+    for objectives in [&plateau, &upper_crown] {
+        for recovery_name in recovery_updrafts {
+            assert!(
+                objectives
+                    .iter()
+                    .all(|objective| objective.label != recovery_name),
+                "{recovery_name} should not become a required route objective"
+            );
+        }
+    }
+    assert_eq!(
+        plateau.last().expect("plateau objective").label,
+        "great sky plateau"
+    );
+    assert_eq!(
+        upper_crown.last().expect("upper crown objective").label,
+        "upper crown"
+    );
+    assert_eq!(upper_crown.len(), 11);
+}
+
+#[test]
 fn route_objective_completion_tracks_flythrough_and_landing() {
     let route = SkyRoute::default();
     let objectives = route.route_objectives(None);
