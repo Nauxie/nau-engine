@@ -2,7 +2,7 @@ use super::{super::random_unit, shared::append_ellipsoid_lobe};
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
-use nau_engine::world::{IslandPlateauRegion, SkyIsland};
+use nau_engine::world::{IslandPlateauRegion, IslandTerrainArchetype, SkyIsland};
 
 pub(crate) const ROUTE_CAIRN_STONE_COUNT: usize = 5;
 pub(crate) const RUIN_ARCH_STONE_COUNT: usize = 11;
@@ -10,6 +10,8 @@ pub(crate) const LAUNCH_BEACON_CRYSTAL_COUNT: usize = 4;
 pub(crate) const LANDING_GARDEN_MARKER_SEGMENTS: usize = 12;
 pub(crate) const GARDEN_RING_SEGMENTS: usize = 36;
 pub(crate) const GARDEN_RING_BANDS: usize = 4;
+pub(crate) const LAKE_BASIN_RIM_SEGMENTS: usize = 48;
+pub(crate) const LAKE_BASIN_RIM_BANDS: usize = 5;
 pub(crate) const POND_SURFACE_SEGMENTS: usize = 32;
 pub(crate) const LAKE_SURFACE_SEGMENTS: usize = 48;
 pub(crate) const WATERFALL_RIBBON_COLUMNS: usize = 8;
@@ -86,6 +88,30 @@ pub(crate) struct IslandWaterVisualSpec {
 impl IslandWaterVisualSpec {
     pub(crate) fn build_mesh(self) -> Mesh {
         self.mesh.build(self.seed)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct IslandLakeBasinVisualSpec {
+    pub(crate) label: &'static str,
+    pub(crate) translation: Vec3,
+    pub(crate) rotation_y: f32,
+    pub(crate) radius_x: f32,
+    pub(crate) radius_z: f32,
+    pub(crate) rim_width: f32,
+    pub(crate) rim_height: f32,
+    seed: u32,
+}
+
+impl IslandLakeBasinVisualSpec {
+    pub(crate) fn build_mesh(self) -> Mesh {
+        lake_basin_rim_mesh(
+            self.radius_x,
+            self.radius_z,
+            self.rim_width,
+            self.rim_height,
+            self.seed,
+        )
     }
 }
 
@@ -171,6 +197,56 @@ pub(crate) fn island_water_visual_specs(
         ] {
             push_plateau_waterfall_specs(&mut specs, island_index, island, waterfall);
         }
+    }
+
+    specs
+}
+
+pub(crate) fn island_lake_basin_visual_specs(
+    island_index: usize,
+    island: SkyIsland,
+) -> Vec<IslandLakeBasinVisualSpec> {
+    let mut specs = Vec::new();
+
+    if island.is_great_plateau_anchor() {
+        if let Some(low_basin) = island.plateau_region_position(IslandPlateauRegion::LowBasin) {
+            specs.push(IslandLakeBasinVisualSpec {
+                label: "low basin lake basin",
+                translation: low_basin + Vec3::Y * 0.035,
+                rotation_y: 0.22,
+                radius_x: island.half_extents.x * 0.255,
+                radius_z: island.half_extents.y * 0.185,
+                rim_width: island.half_extents.min_element() * 0.035,
+                rim_height: island.thickness * 0.025,
+                seed: 35_000 + island_index as u32 * 211,
+            });
+        }
+        if let Some(high_shelf) = island.plateau_region_position(IslandPlateauRegion::HighShelf) {
+            specs.push(IslandLakeBasinVisualSpec {
+                label: "high shelf lake basin",
+                translation: high_shelf + Vec3::Y * 0.035,
+                rotation_y: -0.18,
+                radius_x: island.half_extents.x * 0.145,
+                radius_z: island.half_extents.y * 0.105,
+                rim_width: island.half_extents.min_element() * 0.025,
+                rim_height: island.thickness * 0.021,
+                seed: 36_000 + island_index as u32 * 213,
+            });
+        }
+    }
+
+    if island.terrain_archetype == IslandTerrainArchetype::SapphireBasin {
+        specs.push(IslandLakeBasinVisualSpec {
+            label: "sapphire lake basin",
+            translation: island_water_surface_position(island, Vec2::new(0.06, -0.10))
+                + Vec3::Y * 0.035,
+            rotation_y: -0.08,
+            radius_x: island.half_extents.x * 0.19,
+            radius_z: island.half_extents.y * 0.14,
+            rim_width: island.half_extents.min_element() * 0.030,
+            rim_height: island.thickness * 0.030,
+            seed: 37_000 + island_index as u32 * 217,
+        });
     }
 
     specs
@@ -415,6 +491,87 @@ pub(crate) fn garden_ring_mesh(radius: f32, width: f32, height: f32, seed: u32) 
         let current = (segment * GARDEN_RING_BANDS) as u32;
         let next = current + GARDEN_RING_BANDS as u32;
         for band in 0..GARDEN_RING_BANDS - 1 {
+            let band = band as u32;
+            indices.extend([
+                current + band,
+                next + band,
+                current + band + 1,
+                current + band + 1,
+                next + band,
+                next + band + 1,
+            ]);
+        }
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+pub(crate) fn lake_basin_rim_mesh(
+    radius_x: f32,
+    radius_z: f32,
+    rim_width: f32,
+    rim_height: f32,
+    seed: u32,
+) -> Mesh {
+    let mut positions = Vec::with_capacity((LAKE_BASIN_RIM_SEGMENTS + 1) * LAKE_BASIN_RIM_BANDS);
+    let mut normals = Vec::with_capacity(positions.capacity());
+    let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut indices = Vec::with_capacity(LAKE_BASIN_RIM_SEGMENTS * (LAKE_BASIN_RIM_BANDS - 1) * 6);
+    let radius_x = radius_x.max(1.0);
+    let radius_z = radius_z.max(1.0);
+    let rim_width = rim_width.max(0.35);
+    let rim_height = rim_height.max(0.12);
+    let band_specs: [(f32, f32, f32); LAKE_BASIN_RIM_BANDS] = [
+        (-0.82, 0.08, -0.52),
+        (-0.34, 0.34, -0.22),
+        (0.08, 1.00, 0.10),
+        (0.52, 0.48, 0.36),
+        (0.96, 0.14, 0.58),
+    ];
+
+    for segment in 0..=LAKE_BASIN_RIM_SEGMENTS {
+        let wrapped_segment = segment % LAKE_BASIN_RIM_SEGMENTS;
+        let t = segment as f32 / LAKE_BASIN_RIM_SEGMENTS as f32;
+        let angle = t * std::f32::consts::TAU;
+        let radial = Vec2::new(angle.cos(), angle.sin());
+        let tangent = Vec2::new(-angle.sin(), angle.cos());
+        let basin_noise = random_unit(seed, wrapped_segment as u32, 1_701) - 0.5;
+        let scallop = 0.035 * (angle * 6.0 + seed as f32 * 0.013).sin()
+            + 0.020 * (angle * 11.0 + seed as f32 * 0.019).cos();
+
+        for (band, (offset, height_factor, slope)) in band_specs.into_iter().enumerate() {
+            let lane_noise =
+                random_unit(seed, wrapped_segment as u32 + band as u32 * 19, 1_709) - 0.5;
+            let lane_offset = offset * rim_width * (0.92 + basin_noise * 0.18);
+            let lane_radius_x = radius_x * (1.0 + scallop) + lane_offset;
+            let lane_radius_z = radius_z * (1.0 + scallop * 0.82) + lane_offset * 0.72;
+            let shore_waver = tangent * lane_noise * rim_width * 0.10;
+            let position =
+                Vec2::new(radial.x * lane_radius_x, radial.y * lane_radius_z) + shore_waver;
+            let y = rim_height
+                * (height_factor
+                    + lane_noise * 0.07
+                    + basin_noise * 0.04
+                    + (angle * 3.0 + band as f32).sin() * 0.018);
+            let horizontal_scale = if offset < 0.0 { -1.0 } else { 1.0 };
+            let horizontal_normal = radial * slope.abs() * horizontal_scale;
+            let normal = Vec3::new(
+                horizontal_normal.x,
+                0.76 + height_factor * 0.16,
+                horizontal_normal.y,
+            )
+            .normalize();
+
+            positions.push([position.x, y, position.y]);
+            normals.push(normal.to_array());
+            uvs.push([t, band as f32 / (LAKE_BASIN_RIM_BANDS - 1) as f32]);
+        }
+    }
+
+    for segment in 0..LAKE_BASIN_RIM_SEGMENTS {
+        let current = (segment * LAKE_BASIN_RIM_BANDS) as u32;
+        let next = current + LAKE_BASIN_RIM_BANDS as u32;
+        for band in 0..LAKE_BASIN_RIM_BANDS - 1 {
             let band = band as u32;
             indices.extend([
                 current + band,
