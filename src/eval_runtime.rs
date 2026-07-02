@@ -33,6 +33,10 @@ impl RunMode {
     pub(crate) fn debug_visuals_enabled(self) -> bool {
         matches!(self, Self::Debug)
     }
+
+    pub(crate) fn debug_visual_toggle_enabled(self) -> bool {
+        matches!(self, Self::Debug)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -183,14 +187,16 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
     let mut export_wind_visuals_output = None;
     let mut capture_screenshot = true;
     let mut saw_eval = false;
-    let mut play_mode = false;
+    let mut requested_run_mode = None;
     let mut args = args.into_iter();
 
     while let Some(arg) = args.next() {
         if arg == "--help" || arg == "-h" {
             return Ok(CliAction::Help);
         } else if arg == "--play" {
-            play_mode = true;
+            set_requested_run_mode(&mut requested_run_mode, RunMode::Play)?;
+        } else if arg == "--debug" {
+            set_requested_run_mode(&mut requested_run_mode, RunMode::Debug)?;
         } else if arg == "--eval" {
             saw_eval = true;
             eval_name = Some(
@@ -244,11 +250,8 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
     if export_path_count > 1 {
         return Err("export paths cannot be combined".to_string());
     }
-    if play_mode && saw_eval {
-        return Err("--play cannot be combined with --eval".to_string());
-    }
-    if play_mode && export_path_count > 0 {
-        return Err("--play cannot be combined with export commands".to_string());
+    if requested_run_mode.is_some() && export_path_count > 0 {
+        return Err("run mode flags cannot be combined with export commands".to_string());
     }
 
     if let Some(output_dir) = export_terrain_output {
@@ -291,19 +294,27 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
 
     Ok(CliAction::Run {
         eval,
-        mode: if play_mode {
-            RunMode::Play
-        } else {
-            RunMode::Debug
-        },
+        mode: requested_run_mode.unwrap_or(RunMode::Play),
     })
 }
 
 pub(crate) fn usage() -> String {
     format!(
-        "Usage:\n  cargo run\n  cargo run -- --play\n  cargo run -- --eval <scenario> [--eval-output <dir>] [--eval-no-screenshot]\n  cargo run -- --export-terrain <dir>\n  cargo run -- --export-visual-content <dir>\n  cargo run -- --export-wind-visuals <dir>\n\nScenarios: {}",
+        "Usage:\n  cargo run\n  cargo run -- --debug\n  cargo run -- --play\n  cargo run -- --eval <scenario> [--eval-output <dir>] [--eval-no-screenshot] [--debug]\n  cargo run -- --export-terrain <dir>\n  cargo run -- --export-visual-content <dir>\n  cargo run -- --export-wind-visuals <dir>\n\nScenarios: {}",
         SCENARIO_NAMES.join(", ")
     )
+}
+
+fn set_requested_run_mode(
+    requested_run_mode: &mut Option<RunMode>,
+    mode: RunMode,
+) -> Result<(), String> {
+    if requested_run_mode.is_some_and(|requested| requested != mode) {
+        return Err("--play and --debug cannot be combined".to_string());
+    }
+
+    *requested_run_mode = Some(mode);
+    Ok(())
 }
 
 pub(crate) fn path_string(path: &Path) -> String {
