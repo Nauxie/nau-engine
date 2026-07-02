@@ -120,7 +120,7 @@ pub(super) fn queue_sky_island_details(
         );
     }
 
-    for index in 0..5 {
+    for index in 0..4 {
         let angle = detail_phase + index as f32 * 1.37;
         let radius = if index % 2 == 0 { 0.52 } else { 0.72 };
         let normalized_offset =

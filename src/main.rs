@@ -159,9 +159,7 @@ fn main() -> AppExit {
         .insert_resource(WorldCollisionDiagnostics::default())
         .insert_resource(WindForceDiagnostics::default())
         .insert_resource(MouseLookState::default())
-        .insert_resource(DebugVisuals {
-            enabled: !screenshot_eval && run_mode.debug_visuals_enabled(),
-        })
+        .insert_resource(DebugVisuals::for_run_mode(run_mode, screenshot_eval))
         .insert_resource(SkyRoute::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(primary_window(eval.as_deref())),
@@ -253,7 +251,7 @@ fn main() -> AppExit {
                     .in_set(GameSet::Eval),
             );
     } else {
-        if run_mode.debug_visuals_enabled() {
+        if run_mode.debug_visual_toggle_enabled() {
             app.add_systems(
                 Update,
                 (

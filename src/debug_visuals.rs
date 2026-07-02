@@ -1,16 +1,19 @@
 use crate::Player;
+use crate::eval_runtime::RunMode;
 use bevy::prelude::*;
 use nau_engine::environment::{LiftField, WindField, WindFieldKind};
 use nau_engine::movement::Velocity;
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub(crate) struct DebugVisuals {
     pub(crate) enabled: bool,
 }
 
-impl Default for DebugVisuals {
-    fn default() -> Self {
-        Self { enabled: true }
+impl DebugVisuals {
+    pub(crate) fn for_run_mode(run_mode: RunMode, suppress_for_screenshot: bool) -> Self {
+        Self {
+            enabled: run_mode.debug_visuals_enabled() && !suppress_for_screenshot,
+        }
     }
 }
 

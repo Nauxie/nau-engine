@@ -1,6 +1,9 @@
 use super::*;
+use bevy::gltf::Gltf;
 use bevy::mesh::{Indices, VertexAttributeValues};
+use bevy::pbr::ScatteringMedium;
 use nau_engine::animation::PlayerPoseIntent;
+use nau_engine::environment::{LiftField, WindField};
 use nau_engine::movement::FlightInput;
 use nau_engine::world::{
     IslandLandmarkRole, IslandPlateauRegion, IslandScaleClass, IslandTerrainArchetype,
@@ -248,14 +251,17 @@ fn named_animation_clip_resolution_reports_missing_clips() {
 }
 
 #[test]
-fn parse_cli_args_defaults_to_debug_run_mode() {
+fn parse_cli_args_defaults_to_clean_play_run_mode() {
     let action = parse_cli_args(std::iter::empty::<String>())
-        .expect("empty args should run the debug sandbox");
+        .expect("empty args should run the clean play sandbox");
 
     match action {
         CliAction::Run { eval, mode } => {
             assert!(eval.is_none());
-            assert_eq!(mode, RunMode::Debug);
+            assert_eq!(mode, RunMode::Play);
+            assert!(!mode.debug_readout_enabled());
+            assert!(!mode.debug_visuals_enabled());
+            assert!(!mode.debug_visual_toggle_enabled());
         }
         _ => panic!("expected run action"),
     }
@@ -272,8 +278,62 @@ fn parse_cli_args_accepts_play_mode() {
             assert_eq!(mode, RunMode::Play);
             assert!(!mode.debug_readout_enabled());
             assert!(!mode.debug_visuals_enabled());
+            assert!(!mode.debug_visual_toggle_enabled());
         }
         _ => panic!("expected play run action"),
+    }
+}
+
+#[test]
+fn parse_cli_args_accepts_debug_mode() {
+    let action = parse_cli_args(["--debug"].into_iter().map(str::to_string))
+        .expect("debug args should parse");
+
+    match action {
+        CliAction::Run { eval, mode } => {
+            assert!(eval.is_none());
+            assert_eq!(mode, RunMode::Debug);
+            assert!(mode.debug_readout_enabled());
+            assert!(mode.debug_visuals_enabled());
+            assert!(mode.debug_visual_toggle_enabled());
+        }
+        _ => panic!("expected debug run action"),
+    }
+}
+
+#[test]
+fn parse_cli_args_eval_defaults_to_clean_play_mode() {
+    let action = parse_cli_args(["--eval", "baseline_route"].into_iter().map(str::to_string))
+        .expect("eval args should parse");
+
+    match action {
+        CliAction::Run { eval, mode } => {
+            assert!(eval.is_some());
+            assert_eq!(mode, RunMode::Play);
+            assert!(!mode.debug_readout_enabled());
+            assert!(!mode.debug_visuals_enabled());
+        }
+        _ => panic!("expected eval run action"),
+    }
+}
+
+#[test]
+fn parse_cli_args_accepts_debug_eval_mode() {
+    let action = parse_cli_args(
+        ["--eval", "baseline_route", "--debug"]
+            .into_iter()
+            .map(str::to_string),
+    )
+    .expect("debug eval args should parse");
+
+    match action {
+        CliAction::Run { eval, mode } => {
+            assert!(eval.is_some());
+            assert_eq!(mode, RunMode::Debug);
+            assert!(mode.debug_readout_enabled());
+            assert!(mode.debug_visuals_enabled());
+        }
+        _ => panic!("expected debug eval run action"),
     }
 }
 
@@ -399,27 +459,95 @@ fn parse_cli_args_rejects_both_export_paths_together() {
 }
 
 #[test]
-fn parse_cli_args_rejects_play_and_eval_together() {
-    let error = parse_cli_args(
-        ["--play", "--eval", "baseline_route"]
-            .into_iter()
-            .map(str::to_string),
-    )
-    .expect_err("play and eval should be mutually exclusive");
+fn parse_cli_args_rejects_play_and_debug_together() {
+    let error = parse_cli_args(["--play", "--debug"].into_iter().map(str::to_string))
+        .expect_err("play and debug should be mutually exclusive");
 
     assert!(error.contains("cannot be combined"));
 }
 
 #[test]
-fn parse_cli_args_rejects_play_and_export_together() {
+fn parse_cli_args_rejects_run_mode_and_export_together() {
     let error = parse_cli_args(
-        ["--play", "--export-terrain", "target/terrain_export"]
+        ["--debug", "--export-terrain", "target/terrain_export"]
             .into_iter()
             .map(str::to_string),
     )
-    .expect_err("play and export should be mutually exclusive");
+    .expect_err("run mode flags and export should be mutually exclusive");
 
     assert!(error.contains("cannot be combined"));
+}
+
+#[test]
+fn clean_play_mode_starts_world_without_debug_readout_or_gizmos() {
+    let mut app = setup_headless_runtime_app(RunMode::Play, false);
+    let world = app.world_mut();
+    let route_island_count = world.resource::<SkyRoute>().islands().len();
+    let content_metrics = *world.resource::<crate::content_diagnostics::IslandContentDiagnostics>();
+
+    assert_eq!(component_count::<DebugReadout>(world), 0);
+    assert!(!world.resource::<DebugVisuals>().enabled);
+    assert_eq!(component_count::<Player>(world), 1);
+    assert_eq!(component_count::<Camera3d>(world), 1);
+    assert!(
+        world
+            .resource::<IslandVisualCatalog>()
+            .prebuilt_mesh_count()
+            > route_island_count
+    );
+    assert!(content_metrics.generated_launch_beacon_count >= 1);
+    assert!(content_metrics.generated_route_cairn_count >= route_island_count);
+    assert!(component_count::<WindField>(world) > 0);
+    assert!(component_count::<LiftField>(world) > 0);
+    assert!(component_count::<UpdraftGuide>(world) > 0);
+    assert!(component_count::<UpdraftRibbon>(world) > 0);
+    assert!(component_count::<CrosswindGuide>(world) > 0);
+}
+
+#[test]
+fn debug_mode_starts_with_debug_readout_and_toggleable_gizmos() {
+    let mut app = setup_headless_runtime_app(RunMode::Debug, false);
+    let world = app.world_mut();
+
+    assert_eq!(component_count::<DebugReadout>(world), 1);
+    assert!(world.resource::<DebugVisuals>().enabled);
+    assert_eq!(component_count::<Player>(world), 1);
+    assert_eq!(component_count::<Camera3d>(world), 1);
+}
+
+#[test]
+fn screenshot_eval_suppresses_debug_gizmos_even_in_debug_mode() {
+    let debug_visuals = DebugVisuals::for_run_mode(RunMode::Debug, true);
+
+    assert!(!debug_visuals.enabled);
+}
+
+fn setup_headless_runtime_app(
+    run_mode: RunMode,
+    suppress_debug_visuals_for_screenshot: bool,
+) -> App {
+    let mut app = App::new();
+    app.insert_resource(run_mode)
+        .insert_resource(DebugVisuals::for_run_mode(
+            run_mode,
+            suppress_debug_visuals_for_screenshot,
+        ))
+        .insert_resource(SkyRoute::default())
+        .add_plugins((MinimalPlugins, AssetPlugin::default()))
+        .init_resource::<Assets<Mesh>>()
+        .init_resource::<Assets<StandardMaterial>>()
+        .init_resource::<Assets<Image>>()
+        .init_resource::<Assets<ScatteringMedium>>()
+        .init_asset::<Gltf>()
+        .init_asset::<Scene>()
+        .add_systems(Startup, setup);
+    app.update();
+    app
+}
+
+fn component_count<T: Component>(world: &mut World) -> usize {
+    let mut query = world.query_filtered::<Entity, With<T>>();
+    query.iter(world).count()
 }
 
 #[test]
