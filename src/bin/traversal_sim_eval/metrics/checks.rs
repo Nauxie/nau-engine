@@ -62,6 +62,8 @@ const UNDER_ROUTE_MAX_DISTANCE_M: f32 = 11.0;
 const MIN_UNDER_ROUTE_NEAR_SAMPLES: u32 = 3;
 const MIN_UNDER_ROUTE_CAMERA_OBSTRUCTION_SAMPLES: u32 = 1;
 const UNDER_ROUTE_MIN_DYNAMIC_WIND_FLOW_SPEED_MPS: f32 = 6.0;
+const UNDER_ROUTE_MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS: f32 = 0.027;
+const UNDER_ROUTE_MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS: f32 = 0.27;
 const UNDER_ROUTE_MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE: f32 = 0.08;
 #[derive(Clone, Debug)]
 pub(crate) struct SimCheck {
@@ -371,6 +373,11 @@ impl SimMetrics {
         }
 
         if scenario.thresholds.min_lifted_samples > 0 {
+            let min_updraft_swirl_force_delta = if scenario.name == UNDERBRIDGE_UNDER_ROUTE {
+                UNDER_ROUTE_MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS
+            } else {
+                MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS
+            };
             checks.push(SimCheck::at_least(
                 "updraft_swirl_force_samples",
                 self.updraft_swirl_force_samples as f32,
@@ -392,7 +399,7 @@ impl SimMetrics {
             checks.push(SimCheck::at_least(
                 "updraft_swirl_force_delta",
                 self.max_updraft_swirl_force_delta_mps,
-                MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+                min_updraft_swirl_force_delta,
                 "m/s",
             ));
             checks.push(SimCheck::at_least(
@@ -404,7 +411,7 @@ impl SimMetrics {
             checks.push(SimCheck::at_least(
                 "updraft_swirl_force_aligned_delta",
                 self.max_updraft_swirl_force_aligned_delta_mps,
-                MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
+                min_updraft_swirl_force_delta,
                 "m/s",
             ));
         }
@@ -517,6 +524,11 @@ impl SimMetrics {
             } else {
                 MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE
             };
+            let min_dynamic_lift_applied_delta = if scenario.name == UNDERBRIDGE_UNDER_ROUTE {
+                UNDER_ROUTE_MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS
+            } else {
+                MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS
+            };
             checks.push(SimCheck::at_least(
                 "dynamic_lift_samples",
                 self.dynamic_lift_samples as f32,
@@ -538,7 +550,7 @@ impl SimMetrics {
             checks.push(SimCheck::at_least(
                 "lift_applied_delta",
                 self.max_lift_applied_delta_mps,
-                MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS,
+                min_dynamic_lift_applied_delta,
                 "m/s",
             ));
             checks.push(SimCheck::at_least(

@@ -20,7 +20,7 @@ use crate::world_collision_runtime::{WorldCollisionProxy, WorldCollisionProxyKin
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::CameraObstruction;
 use nau_engine::environment::{GAMEPLAY_LIFT_ROUTE, visual_crosswind_fields};
-use nau_engine::world::{SkyRoute, route_obstruction_spires};
+use nau_engine::world::{IslandUnderRouteSegment, SkyRoute, route_obstruction_spires};
 
 pub(super) fn spawn_world_runtime(
     commands: &mut Commands,
@@ -161,6 +161,42 @@ fn spawn_camera_obstacles(
             Name::new(format!("{} obstruction spire", spire.island_name)),
         ));
     }
+
+    for segment in route.under_island_route_segments() {
+        for (index, obstacle) in under_route_segment_camera_obstacles(segment)
+            .into_iter()
+            .enumerate()
+        {
+            commands.spawn((
+                CameraObstacle(obstacle),
+                Name::new(format!(
+                    "{} under-route camera obstacle {}",
+                    segment.island_name,
+                    index + 1
+                )),
+            ));
+        }
+    }
+}
+
+fn under_route_segment_camera_obstacles(
+    segment: IslandUnderRouteSegment,
+) -> [CameraObstruction; 3] {
+    let arch_width = segment.clearance_radius_m * 2.35;
+    let arch_height = segment.clearance_radius_m * 1.65;
+    let arch_depth = segment.clearance_radius_m * 0.55;
+    let shelf_width = segment.clearance_radius_m * 4.4;
+    let shelf_depth = segment.clearance_radius_m * 2.45;
+    let shelf_thickness = (segment.clearance_radius_m * 0.32).max(4.0);
+    let shelf_translation = segment.midpoint - Vec3::Y * (segment.clearance_radius_m * 0.88);
+    let arch_half_extents = Vec3::new(arch_width * 0.55, arch_height * 0.52, arch_depth);
+    let shelf_half_extents = Vec3::new(shelf_width * 0.50, shelf_thickness, shelf_depth * 0.50);
+
+    [
+        CameraObstruction::new(segment.entry, arch_half_extents),
+        CameraObstruction::new(shelf_translation, shelf_half_extents),
+        CameraObstruction::new(segment.exit, arch_half_extents),
+    ]
 }
 
 fn spawn_environment_volumes(
@@ -275,6 +311,34 @@ mod tests {
         }
 
         assert_eq!(spire_count, expected_count);
+    }
+
+    #[test]
+    fn under_route_segments_spawn_camera_only_blockers() {
+        let route = SkyRoute::default();
+        let mut world = World::new();
+        let mut meshes = Assets::<Mesh>::default();
+        let mut images = Assets::<Image>::default();
+        let mut materials = Assets::<StandardMaterial>::default();
+        let scene_materials = prepare_scene_materials(&mut images, &mut materials);
+
+        {
+            let mut commands = world.commands();
+            spawn_camera_obstacles(&mut commands, &route, &mut meshes, &scene_materials);
+        }
+        world.flush();
+
+        let expected_count = route.under_island_route_segments().len() * 3;
+        let mut query = world.query::<(&Name, &CameraObstacle, Option<&WorldCollisionProxy>)>();
+        let mut under_route_count = 0;
+        for (name, _camera_obstacle, collision_proxy) in query.iter(&world) {
+            if name.as_str().contains("under-route camera obstacle") {
+                under_route_count += 1;
+                assert!(collision_proxy.is_none());
+            }
+        }
+
+        assert_eq!(under_route_count, expected_count);
     }
 
     #[test]
