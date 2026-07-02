@@ -27,7 +27,8 @@ pub use obstruction_spires::{
     route_obstruction_spires,
 };
 pub use route::{
-    FirstExpeditionAltitudeBand, FirstExpeditionBeatKind, FirstExpeditionRecoveryAffordance,
+    FirstExpeditionAltitudeBand, FirstExpeditionBeatKind, FirstExpeditionDetourKind,
+    FirstExpeditionDetourRisk, FirstExpeditionOptionalDetour, FirstExpeditionRecoveryAffordance,
     FirstExpeditionRouteBeat, FirstExpeditionTraversalMode, PLAYTEST_RESET_ISLAND_NAME,
     SKY_ROUTE_ISLAND_COUNT, SkyRoute,
 };
