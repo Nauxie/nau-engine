@@ -40,6 +40,9 @@ pub(crate) fn setup(
     let player_scene_handle = visual_asset_registry.scene_handle(VisualAssetKind::PlayerCharacter);
     let glider_scene_handle = visual_asset_registry.scene_handle(VisualAssetKind::Glider);
     let scene_materials = prepare_scene_materials(&mut images, &mut materials);
+    let screenshot_eval = eval_run
+        .as_deref()
+        .is_some_and(|run| run.screenshot_path.is_some());
     let player_start = initial_player_position(eval_run.as_deref(), &route);
     let authored_world_fixture_scene_entities = spawn_world_runtime(
         &mut commands,
@@ -74,7 +77,7 @@ pub(crate) fn setup(
         INITIAL_SKY_CLEAR_COLOR,
     );
 
-    if run_mode.debug_readout_enabled() {
+    if run_mode.debug_readout_enabled() && !screenshot_eval {
         spawn_debug_readout(&mut commands);
     }
 }
