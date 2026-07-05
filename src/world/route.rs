@@ -145,6 +145,147 @@ impl FirstExpeditionNavigationLandmarkKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum IslandCompositionFamily {
+    LaunchTerraces,
+    LowChain,
+    WesternRecovery,
+    OrchardRise,
+    MistGate,
+    UpperThermals,
+    PlateauAscent,
+    GreatPlateau,
+    CrownReach,
+}
+
+impl IslandCompositionFamily {
+    pub const COUNT: usize = 9;
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::LaunchTerraces => "launch_terraces",
+            Self::LowChain => "low_chain",
+            Self::WesternRecovery => "western_recovery",
+            Self::OrchardRise => "orchard_rise",
+            Self::MistGate => "mist_gate",
+            Self::UpperThermals => "upper_thermals",
+            Self::PlateauAscent => "plateau_ascent",
+            Self::GreatPlateau => "great_plateau",
+            Self::CrownReach => "crown_reach",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum IslandVisualMotif {
+    LaunchBeacon,
+    CairnShelf,
+    GardenRing,
+    WindRibbon,
+    StormStone,
+    OrchardGrove,
+    NeedleSpire,
+    LakeBasin,
+    RuinStair,
+    MistArch,
+    CaveMouth,
+    ThermalRing,
+    WaterfallMeadow,
+    PlateauRim,
+    CrownPerch,
+}
+
+impl IslandVisualMotif {
+    pub const COUNT: usize = 15;
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::LaunchBeacon => "launch_beacon",
+            Self::CairnShelf => "cairn_shelf",
+            Self::GardenRing => "garden_ring",
+            Self::WindRibbon => "wind_ribbon",
+            Self::StormStone => "storm_stone",
+            Self::OrchardGrove => "orchard_grove",
+            Self::NeedleSpire => "needle_spire",
+            Self::LakeBasin => "lake_basin",
+            Self::RuinStair => "ruin_stair",
+            Self::MistArch => "mist_arch",
+            Self::CaveMouth => "cave_mouth",
+            Self::ThermalRing => "thermal_ring",
+            Self::WaterfallMeadow => "waterfall_meadow",
+            Self::PlateauRim => "plateau_rim",
+            Self::CrownPerch => "crown_perch",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum IslandTraversalPurpose {
+    LaunchHub,
+    MainSpine,
+    LandingTarget,
+    RecoveryLoop,
+    UnderRoute,
+    SteppingStone,
+    WindGate,
+    LakeVista,
+    WaterfallSource,
+    HighClimb,
+    PlateauApproach,
+    PlateauHub,
+    OptionalChallenge,
+    ReturnDescent,
+    DistantCrown,
+}
+
+impl IslandTraversalPurpose {
+    pub const COUNT: usize = 15;
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::LaunchHub => "launch_hub",
+            Self::MainSpine => "main_spine",
+            Self::LandingTarget => "landing_target",
+            Self::RecoveryLoop => "recovery_loop",
+            Self::UnderRoute => "under_route",
+            Self::SteppingStone => "stepping_stone",
+            Self::WindGate => "wind_gate",
+            Self::LakeVista => "lake_vista",
+            Self::WaterfallSource => "waterfall_source",
+            Self::HighClimb => "high_climb",
+            Self::PlateauApproach => "plateau_approach",
+            Self::PlateauHub => "plateau_hub",
+            Self::OptionalChallenge => "optional_challenge",
+            Self::ReturnDescent => "return_descent",
+            Self::DistantCrown => "distant_crown",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IslandComposition {
+    pub island_name: &'static str,
+    pub family: IslandCompositionFamily,
+    pub visual_motif: IslandVisualMotif,
+    pub traversal_purpose: IslandTraversalPurpose,
+    pub altitude_band: FirstExpeditionAltitudeBand,
+    pub sightline_target: Option<&'static str>,
+    pub neighbor_islands: &'static [&'static str],
+    pub landmark_dependency: Option<&'static str>,
+    pub player_facing_identity: &'static str,
+}
+
+impl IslandComposition {
+    pub fn labels(self) -> [&'static str; 4] {
+        [
+            self.family.label(),
+            self.visual_motif.label(),
+            self.traversal_purpose.label(),
+            self.altitude_band.label(),
+        ]
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FirstExpeditionNavigationContext {
     RequiredBeat(FirstExpeditionBeatKind),
@@ -323,6 +464,554 @@ const HIGH_RISK_UPPER_PATH_LIFTS: [&str; 3] = [
     "bluevault shoulder recovery updraft",
     "plateau west rim recovery updraft",
     "great sky plateau updraft",
+];
+
+const ISLAND_COMPOSITION_SPECS: [IslandComposition; SKY_ROUTE_ISLAND_COUNT] = [
+    IslandComposition {
+        island_name: "launch mesa",
+        family: IslandCompositionFamily::LaunchTerraces,
+        visual_motif: IslandVisualMotif::LaunchBeacon,
+        traversal_purpose: IslandTraversalPurpose::LaunchHub,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("midpoint shelf"),
+        neighbor_islands: &[
+            "launch spur",
+            "midpoint shelf",
+            "underbridge cay",
+            "low reef",
+        ],
+        landmark_dependency: Some("launch beacon"),
+        player_facing_identity: "first takeoff terrace with the launch beacon",
+    },
+    IslandComposition {
+        island_name: "midpoint shelf",
+        family: IslandCompositionFamily::LowChain,
+        visual_motif: IslandVisualMotif::CairnShelf,
+        traversal_purpose: IslandTraversalPurpose::MainSpine,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("low reef"),
+        neighbor_islands: &[
+            "launch mesa",
+            "launch spur",
+            "landing garden",
+            "low reef",
+            "wind overlook",
+        ],
+        landmark_dependency: Some("route cairn line"),
+        player_facing_identity: "first readable shelf after launch",
+    },
+    IslandComposition {
+        island_name: "landing garden",
+        family: IslandCompositionFamily::LowChain,
+        visual_motif: IslandVisualMotif::GardenRing,
+        traversal_purpose: IslandTraversalPurpose::LandingTarget,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("distant crown"),
+        neighbor_islands: &["midpoint shelf", "garden apron", "distant crown"],
+        landmark_dependency: Some("landing garden ring"),
+        player_facing_identity: "safe early landing garden",
+    },
+    IslandComposition {
+        island_name: "distant crown",
+        family: IslandCompositionFamily::OrchardRise,
+        visual_motif: IslandVisualMotif::CrownPerch,
+        traversal_purpose: IslandTraversalPurpose::MainSpine,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("copper stair"),
+        neighbor_islands: &["landing garden", "copper stair", "sunlit terrace"],
+        landmark_dependency: Some("high crown silhouette"),
+        player_facing_identity: "first far crown silhouette",
+    },
+    IslandComposition {
+        island_name: "wind overlook",
+        family: IslandCompositionFamily::WesternRecovery,
+        visual_motif: IslandVisualMotif::WindRibbon,
+        traversal_purpose: IslandTraversalPurpose::WindGate,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("western refuge"),
+        neighbor_islands: &["midpoint shelf", "western refuge", "quiet lower garden"],
+        landmark_dependency: Some("wind overlook ribbons"),
+        player_facing_identity: "western wind readout ledge",
+    },
+    IslandComposition {
+        island_name: "copper stair",
+        family: IslandCompositionFamily::OrchardRise,
+        visual_motif: IslandVisualMotif::RuinStair,
+        traversal_purpose: IslandTraversalPurpose::MainSpine,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("sunlit terrace"),
+        neighbor_islands: &["distant crown", "sunlit terrace", "storm porch"],
+        landmark_dependency: Some("copper stair cairn"),
+        player_facing_identity: "copper ruin stair toward the orchard rise",
+    },
+    IslandComposition {
+        island_name: "sunlit terrace",
+        family: IslandCompositionFamily::OrchardRise,
+        visual_motif: IslandVisualMotif::OrchardGrove,
+        traversal_purpose: IslandTraversalPurpose::RecoveryLoop,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("storm porch"),
+        neighbor_islands: &[
+            "distant crown",
+            "copper stair",
+            "storm porch",
+            "high orchard",
+        ],
+        landmark_dependency: Some("sunlit terrace recovery grove"),
+        player_facing_identity: "wide sunlit recovery terrace",
+    },
+    IslandComposition {
+        island_name: "western refuge",
+        family: IslandCompositionFamily::WesternRecovery,
+        visual_motif: IslandVisualMotif::CairnShelf,
+        traversal_purpose: IslandTraversalPurpose::RecoveryLoop,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("lowwind shelf"),
+        neighbor_islands: &[
+            "wind overlook",
+            "garden apron",
+            "lowwind shelf",
+            "storm porch",
+        ],
+        landmark_dependency: Some("low reef wind ribbons and western catch cairn"),
+        player_facing_identity: "western missed-glide refuge",
+    },
+    IslandComposition {
+        island_name: "storm porch",
+        family: IslandCompositionFamily::WesternRecovery,
+        visual_motif: IslandVisualMotif::StormStone,
+        traversal_purpose: IslandTraversalPurpose::MainSpine,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("high orchard"),
+        neighbor_islands: &[
+            "copper stair",
+            "sunlit terrace",
+            "western refuge",
+            "storm shard",
+            "high orchard",
+        ],
+        landmark_dependency: Some("storm porch cairn"),
+        player_facing_identity: "storm-cut porch before the orchard climb",
+    },
+    IslandComposition {
+        island_name: "high orchard",
+        family: IslandCompositionFamily::OrchardRise,
+        visual_motif: IslandVisualMotif::OrchardGrove,
+        traversal_purpose: IslandTraversalPurpose::MainSpine,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("sapphire basin"),
+        neighbor_islands: &[
+            "sunlit terrace",
+            "storm porch",
+            "orchard spur",
+            "far needle",
+            "sapphire basin",
+        ],
+        landmark_dependency: Some("high orchard grove"),
+        player_facing_identity: "orchard shelf that opens the lake route",
+    },
+    IslandComposition {
+        island_name: "far needle",
+        family: IslandCompositionFamily::MistGate,
+        visual_motif: IslandVisualMotif::NeedleSpire,
+        traversal_purpose: IslandTraversalPurpose::MainSpine,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("sapphire basin"),
+        neighbor_islands: &[
+            "high orchard",
+            "orchard spur",
+            "sapphire basin",
+            "cloud gate",
+        ],
+        landmark_dependency: Some("far needle silhouette"),
+        player_facing_identity: "thin needle marker above the lake basin",
+    },
+    IslandComposition {
+        island_name: "sapphire basin",
+        family: IslandCompositionFamily::MistGate,
+        visual_motif: IslandVisualMotif::LakeBasin,
+        traversal_purpose: IslandTraversalPurpose::LakeVista,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("mist arch"),
+        neighbor_islands: &["high orchard", "far needle", "broken stair", "mist arch"],
+        landmark_dependency: Some("sapphire basin lake"),
+        player_facing_identity: "blue lake basin that frames the mist arch",
+    },
+    IslandComposition {
+        island_name: "broken stair",
+        family: IslandCompositionFamily::WesternRecovery,
+        visual_motif: IslandVisualMotif::RuinStair,
+        traversal_purpose: IslandTraversalPurpose::MainSpine,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("mist arch"),
+        neighbor_islands: &["sapphire basin", "storm shard", "mist arch"],
+        landmark_dependency: Some("broken stair ruins"),
+        player_facing_identity: "broken western stair into the mist gate",
+    },
+    IslandComposition {
+        island_name: "mist arch",
+        family: IslandCompositionFamily::MistGate,
+        visual_motif: IslandVisualMotif::MistArch,
+        traversal_purpose: IslandTraversalPurpose::MainSpine,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("cloud gate"),
+        neighbor_islands: &[
+            "sapphire basin",
+            "broken stair",
+            "mist stepping stone",
+            "cloud gate",
+        ],
+        landmark_dependency: Some("mist arch ruin"),
+        player_facing_identity: "large arch that gates the upper sky",
+    },
+    IslandComposition {
+        island_name: "cloud gate",
+        family: IslandCompositionFamily::MistGate,
+        visual_motif: IslandVisualMotif::MistArch,
+        traversal_purpose: IslandTraversalPurpose::WindGate,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("upper thermal ring"),
+        neighbor_islands: &[
+            "far needle",
+            "mist arch",
+            "mist stepping stone",
+            "upper thermal ring",
+        ],
+        landmark_dependency: Some("cloud gate arch"),
+        player_facing_identity: "wind gate at the edge of the low route",
+    },
+    IslandComposition {
+        island_name: "launch spur",
+        family: IslandCompositionFamily::LaunchTerraces,
+        visual_motif: IslandVisualMotif::CairnShelf,
+        traversal_purpose: IslandTraversalPurpose::SteppingStone,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("midpoint shelf"),
+        neighbor_islands: &["launch mesa", "midpoint shelf"],
+        landmark_dependency: Some("launch spur cairn"),
+        player_facing_identity: "near-launch practice spur",
+    },
+    IslandComposition {
+        island_name: "garden apron",
+        family: IslandCompositionFamily::LowChain,
+        visual_motif: IslandVisualMotif::GardenRing,
+        traversal_purpose: IslandTraversalPurpose::RecoveryLoop,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("landing garden"),
+        neighbor_islands: &["landing garden", "quiet lower garden", "western refuge"],
+        landmark_dependency: Some("garden apron flowers"),
+        player_facing_identity: "low garden apron below the first target",
+    },
+    IslandComposition {
+        island_name: "storm shard",
+        family: IslandCompositionFamily::WesternRecovery,
+        visual_motif: IslandVisualMotif::StormStone,
+        traversal_purpose: IslandTraversalPurpose::SteppingStone,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("broken stair"),
+        neighbor_islands: &["storm porch", "broken stair", "skyhook basin"],
+        landmark_dependency: Some("storm shard spire"),
+        player_facing_identity: "small storm shard off the western branch",
+    },
+    IslandComposition {
+        island_name: "orchard spur",
+        family: IslandCompositionFamily::OrchardRise,
+        visual_motif: IslandVisualMotif::OrchardGrove,
+        traversal_purpose: IslandTraversalPurpose::SteppingStone,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("high orchard"),
+        neighbor_islands: &["high orchard", "far needle", "upper thermal ring"],
+        landmark_dependency: Some("orchard spur trees"),
+        player_facing_identity: "small orchard side spur",
+    },
+    IslandComposition {
+        island_name: "mist stepping stone",
+        family: IslandCompositionFamily::MistGate,
+        visual_motif: IslandVisualMotif::MistArch,
+        traversal_purpose: IslandTraversalPurpose::SteppingStone,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("cloud gate"),
+        neighbor_islands: &["mist arch", "cloud gate", "needle crownlet"],
+        landmark_dependency: Some("mist stepping stone cairn"),
+        player_facing_identity: "small stone below the cloud gate",
+    },
+    IslandComposition {
+        island_name: "underbridge cay",
+        family: IslandCompositionFamily::LowChain,
+        visual_motif: IslandVisualMotif::CaveMouth,
+        traversal_purpose: IslandTraversalPurpose::UnderRoute,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("cloudfall meadow"),
+        neighbor_islands: &[
+            "launch mesa",
+            "low reef",
+            "quiet lower garden",
+            "cloudfall meadow",
+        ],
+        landmark_dependency: Some("under-route cave mouth arch"),
+        player_facing_identity: "low cave-mouth island for the under-route pass",
+    },
+    IslandComposition {
+        island_name: "low reef",
+        family: IslandCompositionFamily::LowChain,
+        visual_motif: IslandVisualMotif::WindRibbon,
+        traversal_purpose: IslandTraversalPurpose::RecoveryLoop,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("underbridge cay"),
+        neighbor_islands: &[
+            "launch mesa",
+            "midpoint shelf",
+            "underbridge cay",
+            "lowwind shelf",
+        ],
+        landmark_dependency: Some("low reef wind ribbons"),
+        player_facing_identity: "low recovery reef with readable wind ribbons",
+    },
+    IslandComposition {
+        island_name: "quiet lower garden",
+        family: IslandCompositionFamily::LowChain,
+        visual_motif: IslandVisualMotif::GardenRing,
+        traversal_purpose: IslandTraversalPurpose::RecoveryLoop,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("underbridge cay"),
+        neighbor_islands: &["wind overlook", "garden apron", "underbridge cay"],
+        landmark_dependency: Some("quiet lower garden flowers"),
+        player_facing_identity: "quiet lower recovery garden",
+    },
+    IslandComposition {
+        island_name: "lowwind shelf",
+        family: IslandCompositionFamily::LowChain,
+        visual_motif: IslandVisualMotif::WindRibbon,
+        traversal_purpose: IslandTraversalPurpose::RecoveryLoop,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        sightline_target: Some("upper thermal ring"),
+        neighbor_islands: &["low reef", "western refuge", "upper thermal ring"],
+        landmark_dependency: Some("low reef wind ribbons and western catch cairn"),
+        player_facing_identity: "low wind shelf that reconnects missed glides",
+    },
+    IslandComposition {
+        island_name: "upper thermal ring",
+        family: IslandCompositionFamily::UpperThermals,
+        visual_motif: IslandVisualMotif::ThermalRing,
+        traversal_purpose: IslandTraversalPurpose::HighClimb,
+        altitude_band: FirstExpeditionAltitudeBand::Mid,
+        sightline_target: Some("stratos shelf"),
+        neighbor_islands: &[
+            "cloud gate",
+            "lowwind shelf",
+            "orchard spur",
+            "stratos shelf",
+        ],
+        landmark_dependency: Some("upper thermal ring"),
+        player_facing_identity: "first upper thermal ring",
+    },
+    IslandComposition {
+        island_name: "needle crownlet",
+        family: IslandCompositionFamily::MistGate,
+        visual_motif: IslandVisualMotif::NeedleSpire,
+        traversal_purpose: IslandTraversalPurpose::OptionalChallenge,
+        altitude_band: FirstExpeditionAltitudeBand::Mid,
+        sightline_target: Some("cloud gate"),
+        neighbor_islands: &["mist stepping stone", "skyhook basin", "highgate stair"],
+        landmark_dependency: Some("needle crownlet silhouette"),
+        player_facing_identity: "tiny high-risk needle perch",
+    },
+    IslandComposition {
+        island_name: "skyhook basin",
+        family: IslandCompositionFamily::UpperThermals,
+        visual_motif: IslandVisualMotif::LakeBasin,
+        traversal_purpose: IslandTraversalPurpose::OptionalChallenge,
+        altitude_band: FirstExpeditionAltitudeBand::Mid,
+        sightline_target: Some("stratos shelf"),
+        neighbor_islands: &[
+            "storm shard",
+            "needle crownlet",
+            "stratos shelf",
+            "cloudfall meadow",
+        ],
+        landmark_dependency: Some("skyhook basin lake"),
+        player_facing_identity: "wide optional basin on the upper west route",
+    },
+    IslandComposition {
+        island_name: "stratos shelf",
+        family: IslandCompositionFamily::UpperThermals,
+        visual_motif: IslandVisualMotif::CairnShelf,
+        traversal_purpose: IslandTraversalPurpose::HighClimb,
+        altitude_band: FirstExpeditionAltitudeBand::Mid,
+        sightline_target: Some("cloudfall meadow"),
+        neighbor_islands: &[
+            "upper thermal ring",
+            "skyhook basin",
+            "cloudfall meadow",
+            "summit anvil",
+        ],
+        landmark_dependency: Some("stratos shelf cairn"),
+        player_facing_identity: "broad upper shelf before the waterfall meadow",
+    },
+    IslandComposition {
+        island_name: "cloudfall meadow",
+        family: IslandCompositionFamily::UpperThermals,
+        visual_motif: IslandVisualMotif::WaterfallMeadow,
+        traversal_purpose: IslandTraversalPurpose::WaterfallSource,
+        altitude_band: FirstExpeditionAltitudeBand::Mid,
+        sightline_target: Some("sunspire garden"),
+        neighbor_islands: &[
+            "underbridge cay",
+            "skyhook basin",
+            "stratos shelf",
+            "bluevault basin",
+        ],
+        landmark_dependency: Some("route edge waterfall and bluevault basin lake"),
+        player_facing_identity: "waterfall meadow that reveals the lake route",
+    },
+    IslandComposition {
+        island_name: "highgate stair",
+        family: IslandCompositionFamily::UpperThermals,
+        visual_motif: IslandVisualMotif::RuinStair,
+        traversal_purpose: IslandTraversalPurpose::HighClimb,
+        altitude_band: FirstExpeditionAltitudeBand::Mid,
+        sightline_target: Some("sunspire garden"),
+        neighbor_islands: &["needle crownlet", "thin air roost", "sunspire garden"],
+        landmark_dependency: Some("highgate stair cairn"),
+        player_facing_identity: "upper stair that points at the sunspire",
+    },
+    IslandComposition {
+        island_name: "thin air roost",
+        family: IslandCompositionFamily::UpperThermals,
+        visual_motif: IslandVisualMotif::NeedleSpire,
+        traversal_purpose: IslandTraversalPurpose::OptionalChallenge,
+        altitude_band: FirstExpeditionAltitudeBand::Mid,
+        sightline_target: Some("summit anvil"),
+        neighbor_islands: &["highgate stair", "summit anvil", "east windchain"],
+        landmark_dependency: Some("thin air roost perch"),
+        player_facing_identity: "thin high perch above the thermal route",
+    },
+    IslandComposition {
+        island_name: "summit anvil",
+        family: IslandCompositionFamily::UpperThermals,
+        visual_motif: IslandVisualMotif::CrownPerch,
+        traversal_purpose: IslandTraversalPurpose::HighClimb,
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        sightline_target: Some("upper sky shelf"),
+        neighbor_islands: &["stratos shelf", "thin air roost", "upper sky shelf"],
+        landmark_dependency: Some("summit anvil silhouette"),
+        player_facing_identity: "anvil shelf that begins the upper ascent",
+    },
+    IslandComposition {
+        island_name: "upper sky shelf",
+        family: IslandCompositionFamily::PlateauAscent,
+        visual_motif: IslandVisualMotif::CairnShelf,
+        traversal_purpose: IslandTraversalPurpose::HighClimb,
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        sightline_target: Some("bluevault basin"),
+        neighbor_islands: &["summit anvil", "bluevault basin", "outer switchback"],
+        landmark_dependency: Some("upper sky shelf cairn"),
+        player_facing_identity: "upper shelf before the bluevault basin",
+    },
+    IslandComposition {
+        island_name: "east windchain",
+        family: IslandCompositionFamily::PlateauAscent,
+        visual_motif: IslandVisualMotif::WindRibbon,
+        traversal_purpose: IslandTraversalPurpose::WindGate,
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        sightline_target: Some("sunspire garden"),
+        neighbor_islands: &["thin air roost", "sunspire garden", "cloudbreak stair"],
+        landmark_dependency: Some("east windchain ribbons"),
+        player_facing_identity: "eastern chain of wind gates",
+    },
+    IslandComposition {
+        island_name: "bluevault basin",
+        family: IslandCompositionFamily::PlateauAscent,
+        visual_motif: IslandVisualMotif::LakeBasin,
+        traversal_purpose: IslandTraversalPurpose::LakeVista,
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        sightline_target: Some("great sky plateau"),
+        neighbor_islands: &[
+            "cloudfall meadow",
+            "upper sky shelf",
+            "outer switchback",
+            "sunspire garden",
+            "great sky plateau",
+        ],
+        landmark_dependency: Some("bluevault lake shoulder and plateau west rim thermal"),
+        player_facing_identity: "blue basin that frames the plateau climb",
+    },
+    IslandComposition {
+        island_name: "outer switchback",
+        family: IslandCompositionFamily::PlateauAscent,
+        visual_motif: IslandVisualMotif::RuinStair,
+        traversal_purpose: IslandTraversalPurpose::ReturnDescent,
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        sightline_target: Some("great sky plateau"),
+        neighbor_islands: &["upper sky shelf", "bluevault basin", "far horizon perch"],
+        landmark_dependency: Some("bluevault lake shoulder and plateau west rim thermal"),
+        player_facing_identity: "outer high-risk switchback toward the plateau rim",
+    },
+    IslandComposition {
+        island_name: "sunspire garden",
+        family: IslandCompositionFamily::PlateauAscent,
+        visual_motif: IslandVisualMotif::GardenRing,
+        traversal_purpose: IslandTraversalPurpose::HighClimb,
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        sightline_target: Some("cloudbreak stair"),
+        neighbor_islands: &[
+            "bluevault basin",
+            "east windchain",
+            "cloudbreak stair",
+            "highgate stair",
+        ],
+        landmark_dependency: Some("sunspire garden ring"),
+        player_facing_identity: "high garden ring that commits to the plateau climb",
+    },
+    IslandComposition {
+        island_name: "cloudbreak stair",
+        family: IslandCompositionFamily::PlateauAscent,
+        visual_motif: IslandVisualMotif::RuinStair,
+        traversal_purpose: IslandTraversalPurpose::PlateauApproach,
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        sightline_target: Some("great sky plateau"),
+        neighbor_islands: &["sunspire garden", "east windchain", "great sky plateau"],
+        landmark_dependency: Some("great sky plateau west rim silhouette"),
+        player_facing_identity: "final stair under the plateau rim",
+    },
+    IslandComposition {
+        island_name: "great sky plateau",
+        family: IslandCompositionFamily::GreatPlateau,
+        visual_motif: IslandVisualMotif::PlateauRim,
+        traversal_purpose: IslandTraversalPurpose::PlateauHub,
+        altitude_band: FirstExpeditionAltitudeBand::Plateau,
+        sightline_target: Some("upper crown"),
+        neighbor_islands: &[
+            "cloudbreak stair",
+            "far horizon perch",
+            "upper crown",
+            "bluevault basin",
+        ],
+        landmark_dependency: Some("plateau lake waterfall vista and cave mouth"),
+        player_facing_identity: "vast plateau hub with lake, cave, and arrival ruin",
+    },
+    IslandComposition {
+        island_name: "far horizon perch",
+        family: IslandCompositionFamily::CrownReach,
+        visual_motif: IslandVisualMotif::CrownPerch,
+        traversal_purpose: IslandTraversalPurpose::OptionalChallenge,
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        sightline_target: Some("upper crown"),
+        neighbor_islands: &["outer switchback", "great sky plateau", "upper crown"],
+        landmark_dependency: Some("bluevault lake shoulder and plateau west rim thermal"),
+        player_facing_identity: "far horizon perch teasing the crown route",
+    },
+    IslandComposition {
+        island_name: "upper crown",
+        family: IslandCompositionFamily::CrownReach,
+        visual_motif: IslandVisualMotif::CrownPerch,
+        traversal_purpose: IslandTraversalPurpose::DistantCrown,
+        altitude_band: FirstExpeditionAltitudeBand::Plateau,
+        sightline_target: Some("great sky plateau"),
+        neighbor_islands: &["great sky plateau", "far horizon perch"],
+        landmark_dependency: Some("upper crown silhouette"),
+        player_facing_identity: "highest optional crown above the plateau",
+    },
 ];
 
 const FIRST_EXPEDITION_ROUTE_BEAT_SPECS: [FirstExpeditionRouteBeatSpec; 8] = [
@@ -949,6 +1638,22 @@ impl SkyRoute {
             .copied()
             .filter_map(SkyIsland::under_route_segment)
             .collect()
+    }
+
+    pub fn island_compositions(&self) -> Vec<IslandComposition> {
+        ISLAND_COMPOSITION_SPECS
+            .iter()
+            .copied()
+            .filter(|composition| self.island_named(composition.island_name).is_some())
+            .collect()
+    }
+
+    pub fn island_composition(&self, island_name: &str) -> Option<IslandComposition> {
+        ISLAND_COMPOSITION_SPECS
+            .iter()
+            .copied()
+            .find(|composition| composition.island_name == island_name)
+            .filter(|composition| self.island_named(composition.island_name).is_some())
     }
 
     pub fn first_expedition_route_beats(&self) -> Vec<FirstExpeditionRouteBeat> {

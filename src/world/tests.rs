@@ -2,6 +2,7 @@ use super::*;
 use crate::environment::GAMEPLAY_LIFT_ROUTE;
 use crate::movement::{FlightController, FlightMode, FlightState};
 use bevy::prelude::{Vec2, Vec3};
+use std::collections::{BTreeSet, VecDeque};
 
 #[test]
 fn route_reports_highest_island_surface_under_player() {
@@ -1029,6 +1030,212 @@ fn route_defines_explicit_world_taxonomy_for_every_island() {
     assert!(vertical_mask.count_ones() as usize >= IslandVerticalProfile::COUNT - 1);
     assert!(route_role_mask.count_ones() as usize >= IslandRouteRole::COUNT - 1);
     assert!(landmark_mask.count_ones() as usize >= IslandLandmarkRole::COUNT - 1);
+}
+
+#[test]
+fn route_defines_authored_composition_for_every_island() {
+    let route = SkyRoute::default();
+    let compositions = route.island_compositions();
+    let mut seen = BTreeSet::new();
+
+    assert_eq!(compositions.len(), route.islands().len());
+
+    for composition in &compositions {
+        assert!(
+            seen.insert(composition.island_name),
+            "{} should have one authored composition record",
+            composition.island_name
+        );
+        assert!(
+            route.island_named(composition.island_name).is_some(),
+            "{} composition should reference a real island",
+            composition.island_name
+        );
+        assert!(
+            composition.labels().iter().all(|label| !label.is_empty()),
+            "{} has an empty composition label",
+            composition.island_name
+        );
+        assert!(
+            composition
+                .player_facing_identity
+                .split_whitespace()
+                .count()
+                >= 3,
+            "{} should have a useful player-facing identity",
+            composition.island_name
+        );
+        assert_route_beat_text_is_not_debug_only(composition.player_facing_identity);
+        assert!(
+            composition.landmark_dependency.is_some(),
+            "{} should explicitly name the visual dependency that sells its route purpose",
+            composition.island_name
+        );
+        if let Some(landmark_dependency) = composition.landmark_dependency {
+            assert!(!landmark_dependency.is_empty());
+            assert_route_beat_text_is_not_debug_only(landmark_dependency);
+        }
+        assert!(
+            !composition.neighbor_islands.is_empty(),
+            "{} should participate in the authored neighbor graph",
+            composition.island_name
+        );
+        for neighbor in composition.neighbor_islands {
+            assert_ne!(
+                *neighbor, composition.island_name,
+                "{} should not neighbor itself",
+                composition.island_name
+            );
+            assert!(
+                route.island_named(neighbor).is_some(),
+                "{} neighbor {} should be a real island",
+                composition.island_name,
+                neighbor
+            );
+        }
+        if let Some(sightline_target) = composition.sightline_target {
+            assert_ne!(sightline_target, composition.island_name);
+            assert!(
+                route.island_named(sightline_target).is_some(),
+                "{} sightline target {} should be a real island",
+                composition.island_name,
+                sightline_target
+            );
+        }
+    }
+
+    for island in route.islands() {
+        assert!(
+            seen.contains(island.name),
+            "{} should be covered by authored composition",
+            island.name
+        );
+        assert!(route.island_composition(island.name).is_some());
+    }
+}
+
+#[test]
+fn authored_archipelago_composition_graph_is_connected_and_diverse() {
+    let route = SkyRoute::default();
+    let compositions = route.island_compositions();
+    let mut visited = BTreeSet::new();
+    let mut queue = VecDeque::from(["launch mesa"]);
+    let mut family_mask = 0_u32;
+    let mut motif_mask = 0_u32;
+    let mut purpose_mask = 0_u32;
+    let mut recovery_loop_count = 0;
+    let mut optional_challenge_count = 0;
+    let mut high_or_plateau_count = 0;
+
+    while let Some(island_name) = queue.pop_front() {
+        if !visited.insert(island_name) {
+            continue;
+        }
+        let composition = route
+            .island_composition(island_name)
+            .expect("neighbor graph should only contain composed islands");
+        for neighbor in composition.neighbor_islands {
+            queue.push_back(neighbor);
+        }
+    }
+
+    for composition in &compositions {
+        family_mask |= 1_u32 << composition.family as u32;
+        motif_mask |= 1_u32 << composition.visual_motif as u32;
+        purpose_mask |= 1_u32 << composition.traversal_purpose as u32;
+        recovery_loop_count +=
+            usize::from(composition.traversal_purpose == IslandTraversalPurpose::RecoveryLoop);
+        optional_challenge_count +=
+            usize::from(composition.traversal_purpose == IslandTraversalPurpose::OptionalChallenge);
+        high_or_plateau_count +=
+            usize::from(composition.altitude_band >= FirstExpeditionAltitudeBand::High);
+
+        for neighbor in composition.neighbor_islands {
+            let neighbor_composition = route
+                .island_composition(neighbor)
+                .expect("neighbor should be composed");
+            assert!(
+                neighbor_composition
+                    .neighbor_islands
+                    .contains(&composition.island_name),
+                "{} and {} should have a symmetric authored neighbor link",
+                composition.island_name,
+                neighbor
+            );
+        }
+    }
+
+    assert_eq!(visited.len(), compositions.len());
+    assert_eq!(
+        family_mask.count_ones() as usize,
+        IslandCompositionFamily::COUNT
+    );
+    assert_eq!(motif_mask.count_ones() as usize, IslandVisualMotif::COUNT);
+    assert_eq!(
+        purpose_mask.count_ones() as usize,
+        IslandTraversalPurpose::COUNT
+    );
+    assert!(recovery_loop_count >= 6);
+    assert!(optional_challenge_count >= 3);
+    assert!(high_or_plateau_count >= 10);
+}
+
+#[test]
+fn authored_composition_aligns_route_beats_detours_and_sightlines() {
+    let route = SkyRoute::default();
+
+    for beat in route.first_expedition_route_beats() {
+        let composition = route
+            .island_composition(beat.anchor_island_name)
+            .expect("route beat should have authored composition");
+        assert_eq!(
+            composition.altitude_band, beat.altitude_band,
+            "{} composition should match its route beat altitude band",
+            beat.anchor_island_name
+        );
+        assert_eq!(
+            composition.landmark_dependency,
+            Some(beat.landmark_anchor),
+            "{} should depend on the landmark that pulls the route beat",
+            beat.anchor_island_name
+        );
+        assert!(
+            composition.sightline_target.is_some(),
+            "{} should name the next visual pull",
+            beat.anchor_island_name
+        );
+    }
+
+    for detour in route.first_expedition_optional_detours() {
+        assert!(
+            detour.island_names.iter().any(|island_name| {
+                route
+                    .island_composition(island_name)
+                    .is_some_and(|composition| {
+                        composition.landmark_dependency == Some(detour.landmark_anchor)
+                    })
+            }),
+            "{} should have at least one island carrying its landmark dependency",
+            detour.label
+        );
+        for island_name in detour.island_names {
+            let composition = route
+                .island_composition(island_name)
+                .expect("detour island should have authored composition");
+            assert_eq!(composition.altitude_band, detour.altitude_band);
+            assert!(
+                matches!(
+                    composition.traversal_purpose,
+                    IslandTraversalPurpose::RecoveryLoop
+                        | IslandTraversalPurpose::OptionalChallenge
+                        | IslandTraversalPurpose::LakeVista
+                        | IslandTraversalPurpose::ReturnDescent
+                ),
+                "{} should read as optional/recovery route composition",
+                island_name
+            );
+        }
+    }
 }
 
 #[test]
