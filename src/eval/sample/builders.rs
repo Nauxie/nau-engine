@@ -189,6 +189,10 @@ impl EvalSample {
             readable_lift_fields,
             lift_field_count,
             target_distance_m,
+            nearest_island_edge_distance_m: 0.0,
+            signed_island_edge_distance_m: 0.0,
+            near_island_edge: false,
+            outside_island_footprint: false,
             on_landing_target,
             objective,
             sky_island_count,
@@ -762,6 +766,19 @@ impl EvalSample {
         self.world_collision_proxy_count = proxy_count;
         self.world_collision_resolved_count = resolved_count;
         self.max_world_collision_push_m = max_push_m.max(0.0);
+        self
+    }
+
+    pub fn with_island_edge_metrics(
+        mut self,
+        signed_edge_distance_m: f32,
+        near_edge: bool,
+        outside_footprint: bool,
+    ) -> Self {
+        self.signed_island_edge_distance_m = signed_edge_distance_m;
+        self.nearest_island_edge_distance_m = signed_edge_distance_m.abs();
+        self.near_island_edge = near_edge;
+        self.outside_island_footprint = outside_footprint;
         self
     }
 

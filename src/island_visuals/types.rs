@@ -208,6 +208,14 @@ impl IslandVisualCatalog {
     }
 
     #[cfg(test)]
+    pub(crate) fn collision_proxy_count_by_name(&self, name: &'static str) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| entry.name == name && entry.collision.is_some())
+            .count()
+    }
+
+    #[cfg(test)]
     pub(crate) fn named_obstacle_count(
         &self,
         island_name: &'static str,

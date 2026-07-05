@@ -72,6 +72,16 @@ pub(super) const TERRAIN_BODY_COLLISION_CONTACT_CHECKPOINTS: &[EvalCheckpoint] =
         name: "blocked_by_cliff_body",
     },
 ];
+pub(super) const TERRAIN_EDGE_WALKOFF_CHECKPOINTS: &[EvalCheckpoint] = &[
+    EvalCheckpoint {
+        frame: 60,
+        name: "edge_grounded_approach",
+    },
+    EvalCheckpoint {
+        frame: 180,
+        name: "edge_clean_walkoff",
+    },
+];
 pub(super) const UPDRAFT_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
         frame: 150,

@@ -5,8 +5,8 @@ use super::{
     AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, CAMERA_STRAFE_STABILITY,
     CAMERA_TURN_STABILITY, CAMERA_YAW_STABILITY, EvalScenario, GREAT_SKY_PLATEAU_ROUTE,
     GROUND_TAXI_CONTROL, ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, PLATEAU_ARRIVAL_CAMERA,
-    POSE_STATE_COVERAGE, TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_RIM_COLLISION_CONTACT,
-    UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
+    POSE_STATE_COVERAGE, TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_EDGE_WALKOFF,
+    TERRAIN_RIM_COLLISION_CONTACT, UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
 };
 
 pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
@@ -74,6 +74,15 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
     if scenario.name == TERRAIN_BODY_COLLISION_CONTACT {
         return FlightInput {
             right: (0.05..=9.0).contains(&t),
+            ..default()
+        };
+    }
+    if scenario.name == TERRAIN_EDGE_WALKOFF {
+        return FlightInput {
+            right: (0.05..=2.2).contains(&t),
+            forward: (2.2..=4.2).contains(&t),
+            glide: t >= 0.35,
+            launch: false,
             ..default()
         };
     }

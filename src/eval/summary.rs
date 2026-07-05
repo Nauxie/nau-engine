@@ -309,6 +309,9 @@ pub struct EvalMetricsSummary {
     pub max_world_collision_push_m: f32,
     pub max_terrain_rim_collision_push_m: f32,
     pub max_terrain_body_collision_push_m: f32,
+    pub near_island_edge_samples: u32,
+    pub outside_island_footprint_samples: u32,
+    pub outside_near_island_edge_samples: u32,
     pub min_island_terrain_surface_count: usize,
     pub min_island_terrain_mesh_vertices: usize,
     pub min_island_terrain_color_bands: usize,
@@ -854,7 +857,7 @@ impl EvalMetricsSummary {
         );
         let json = json.replacen(&terrain_surface_key, &wind_visual_metrics, 1);
         let collision_metrics = format!(
-            "{indent}  \"max_world_collision_proxy_count\": {},\n{indent}  \"max_terrain_rim_collision_proxy_count\": {},\n{indent}  \"max_terrain_body_collision_proxy_count\": {},\n{indent}  \"max_solid_world_collision_proxy_count\": {},\n{indent}  \"max_tree_world_collision_proxy_count\": {},\n{indent}  \"max_rock_world_collision_proxy_count\": {},\n{indent}  \"max_landmark_world_collision_proxy_count\": {},\n{indent}  \"world_collision_resolved_samples\": {},\n{indent}  \"world_collision_contact_samples\": {},\n{indent}  \"terrain_rim_collision_resolved_samples\": {},\n{indent}  \"terrain_rim_collision_contact_samples\": {},\n{indent}  \"terrain_body_collision_resolved_samples\": {},\n{indent}  \"terrain_body_collision_contact_samples\": {},\n{indent}  \"max_world_collision_push_m\": {},\n{indent}  \"max_terrain_rim_collision_push_m\": {},\n{indent}  \"max_terrain_body_collision_push_m\": {},\n{}",
+            "{indent}  \"max_world_collision_proxy_count\": {},\n{indent}  \"max_terrain_rim_collision_proxy_count\": {},\n{indent}  \"max_terrain_body_collision_proxy_count\": {},\n{indent}  \"max_solid_world_collision_proxy_count\": {},\n{indent}  \"max_tree_world_collision_proxy_count\": {},\n{indent}  \"max_rock_world_collision_proxy_count\": {},\n{indent}  \"max_landmark_world_collision_proxy_count\": {},\n{indent}  \"world_collision_resolved_samples\": {},\n{indent}  \"world_collision_contact_samples\": {},\n{indent}  \"terrain_rim_collision_resolved_samples\": {},\n{indent}  \"terrain_rim_collision_contact_samples\": {},\n{indent}  \"terrain_body_collision_resolved_samples\": {},\n{indent}  \"terrain_body_collision_contact_samples\": {},\n{indent}  \"max_world_collision_push_m\": {},\n{indent}  \"max_terrain_rim_collision_push_m\": {},\n{indent}  \"max_terrain_body_collision_push_m\": {},\n{indent}  \"near_island_edge_samples\": {},\n{indent}  \"outside_island_footprint_samples\": {},\n{indent}  \"outside_near_island_edge_samples\": {},\n{}",
             self.max_world_collision_proxy_count,
             self.max_terrain_rim_collision_proxy_count,
             self.max_terrain_body_collision_proxy_count,
@@ -871,6 +874,9 @@ impl EvalMetricsSummary {
             json_number(self.max_world_collision_push_m),
             json_number(self.max_terrain_rim_collision_push_m),
             json_number(self.max_terrain_body_collision_push_m),
+            self.near_island_edge_samples,
+            self.outside_island_footprint_samples,
+            self.outside_near_island_edge_samples,
             terrain_surface_key
         );
         let json = json.replacen(&terrain_surface_key, &collision_metrics, 1);

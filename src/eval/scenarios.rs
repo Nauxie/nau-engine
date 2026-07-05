@@ -13,6 +13,7 @@ pub const GROUND_TAXI_CONTROL: &str = "ground_taxi_control";
 pub const WORLD_COLLISION_CONTACT: &str = "world_collision_contact";
 pub const TERRAIN_RIM_COLLISION_CONTACT: &str = "terrain_rim_collision_contact";
 pub const TERRAIN_BODY_COLLISION_CONTACT: &str = "terrain_body_collision_contact";
+pub const TERRAIN_EDGE_WALKOFF: &str = "terrain_edge_walkoff";
 pub const UPDRAFT_ROUTE: &str = "updraft_route";
 pub const CAMERA_MOUSE_CONTROL: &str = "camera_mouse_control";
 pub const CAMERA_YAW_STABILITY: &str = "camera_yaw_stability";
@@ -32,6 +33,7 @@ pub const SCENARIO_NAMES: &[&str] = &[
     WORLD_COLLISION_CONTACT,
     TERRAIN_RIM_COLLISION_CONTACT,
     TERRAIN_BODY_COLLISION_CONTACT,
+    TERRAIN_EDGE_WALKOFF,
     UPDRAFT_ROUTE,
     BRANCH_RECOVERY_ROUTE,
     CAMERA_MOUSE_CONTROL,
@@ -49,6 +51,7 @@ pub const APP_ONLY_SCENARIO_NAMES: &[&str] = &[
     WORLD_COLLISION_CONTACT,
     TERRAIN_RIM_COLLISION_CONTACT,
     TERRAIN_BODY_COLLISION_CONTACT,
+    TERRAIN_EDGE_WALKOFF,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -104,6 +107,9 @@ pub fn scenario_named(name: &str) -> Option<EvalScenario> {
         | "terrain_body_contact"
         | "body_collision"
         | "cliff_collision" => Some(control_scenarios::terrain_body_collision_contact()),
+        TERRAIN_EDGE_WALKOFF | "edge_walkoff" | "edge_collision_truth" => {
+            Some(control_scenarios::terrain_edge_walkoff())
+        }
         UPDRAFT_ROUTE | "updraft" => Some(traversal_scenarios::updraft_route()),
         BRANCH_RECOVERY_ROUTE | "branch_recovery" | "recovery_route" => {
             Some(traversal_scenarios::branch_recovery_route())
@@ -164,5 +170,18 @@ mod tests {
         assert!(scripted_input(scenario, 130).right);
         assert!(scripted_input(scenario, 280).left);
         assert!(!scripted_input(scenario, 1).launch);
+    }
+
+    #[test]
+    fn terrain_edge_walkoff_targets_invisible_barrier_regression() {
+        let scenario = scenario_named(TERRAIN_EDGE_WALKOFF).expect("edge walkoff scenario");
+        let alias = scenario_named("edge_collision_truth").expect("edge collision alias");
+
+        assert_eq!(alias.name, TERRAIN_EDGE_WALKOFF);
+        assert!(APP_ONLY_SCENARIO_NAMES.contains(&TERRAIN_EDGE_WALKOFF));
+        assert!(scripted_input(scenario, 30).right);
+        assert!(!scripted_input(scenario, 30).launch);
+        assert_eq!(scenario.thresholds.max_camera_obstruction_snap_count, 0);
+        assert!(scenario.thresholds.min_grounded_samples >= 12);
     }
 }

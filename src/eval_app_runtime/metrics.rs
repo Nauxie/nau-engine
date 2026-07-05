@@ -39,6 +39,7 @@ use nau_engine::movement::{
     desired_heading_alignment_speed, desired_planar_movement_direction,
     desired_planar_travel_heading_error_degrees, lateral_response_speed,
 };
+use nau_engine::world::SkyRoute;
 use std::collections::HashMap;
 
 pub(super) const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
@@ -55,6 +56,46 @@ const KEY_POSE_TRANSITION_MAX_ROTATION_DELTA_DEGREES: f32 = 60.0;
 const KEY_POSE_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.15;
 const KEY_POSE_LANDING_TRANSITION_MAX_ROTATION_DELTA_DEGREES: f32 = 60.0;
 const KEY_POSE_LANDING_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.25;
+const ISLAND_EDGE_DISTANCE_SAMPLE_COUNT: usize = 64;
+const NEAR_ISLAND_EDGE_DISTANCE_M: f32 = 2.0;
+
+#[derive(Clone, Copy, Debug)]
+struct IslandEdgeMetrics {
+    signed_distance_m: f32,
+    near_edge: bool,
+    outside_footprint: bool,
+}
+
+fn island_edge_metrics(route: &SkyRoute, position: Vec3) -> IslandEdgeMetrics {
+    let position_xz = Vec2::new(position.x, position.z);
+    let mut nearest_distance_m = f32::INFINITY;
+    let mut inside_any_footprint = false;
+
+    for island in route.islands().iter().copied() {
+        inside_any_footprint |= island.contains_horizontal(position);
+        for sample in 0..ISLAND_EDGE_DISTANCE_SAMPLE_COUNT {
+            let angle =
+                sample as f32 / ISLAND_EDGE_DISTANCE_SAMPLE_COUNT as f32 * std::f32::consts::TAU;
+            nearest_distance_m = nearest_distance_m
+                .min(position_xz.distance(island.footprint_contour_point(angle, false)));
+        }
+    }
+
+    if !nearest_distance_m.is_finite() {
+        nearest_distance_m = 0.0;
+    }
+    let signed_distance_m = if inside_any_footprint {
+        -nearest_distance_m
+    } else {
+        nearest_distance_m
+    };
+
+    IslandEdgeMetrics {
+        signed_distance_m,
+        near_edge: nearest_distance_m <= NEAR_ISLAND_EDGE_DISTANCE_M,
+        outside_footprint: !inside_any_footprint,
+    }
+}
 
 #[derive(Resource, Default)]
 pub(crate) struct VisiblePoseTemporalState {
@@ -856,6 +897,7 @@ pub(crate) fn collect_eval_metrics(
     let target_distance_m = scene
         .route
         .target_distance_to(transform.translation, scenario_target);
+    let edge_metrics = island_edge_metrics(&scene.route, transform.translation);
     let on_landing_target = scene.route.on_landing_target_named(
         transform.translation,
         controller.mode,
@@ -1124,6 +1166,11 @@ pub(crate) fn collect_eval_metrics(
     .with_camera_follow_metrics(scene.camera_diagnostics.follow_direction_error_degrees)
     .with_camera_world_yaw_metrics(camera_world_yaw)
     .with_visual_foot_gap(visual_foot_gap_m)
+    .with_island_edge_metrics(
+        edge_metrics.signed_distance_m,
+        edge_metrics.near_edge,
+        edge_metrics.outside_footprint,
+    )
     .with_wind_guide_visual_metrics(
         wind_guide_metrics.updraft_guide_count,
         wind_guide_metrics.updraft_ribbon_count,

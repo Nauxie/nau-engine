@@ -1885,6 +1885,14 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         nau_engine::world::START_POSITION,
         WorldCollisionProxyKind::Landmark,
     );
+    let expected_spawned_tree_proxy_count = catalog.resident_collision_proxy_count(
+        nau_engine::world::START_POSITION,
+        WorldCollisionProxyKind::Tree,
+    );
+    let expected_spawned_rock_proxy_count = catalog.resident_collision_proxy_count(
+        nau_engine::world::START_POSITION,
+        WorldCollisionProxyKind::Rock,
+    );
     let tree_proxy_count = proxies
         .iter()
         .filter(|proxy| proxy.kind == WorldCollisionProxyKind::Tree)
@@ -1897,14 +1905,14 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         .iter()
         .filter(|proxy| proxy.kind == WorldCollisionProxyKind::Landmark)
         .count();
-    let solid_proxy_count = tree_proxy_count + rock_proxy_count + landmark_proxy_count;
 
     assert!(proxies.len() >= 24);
-    assert!(solid_proxy_count >= 60);
     assert!(tree_proxy_count >= 10);
     assert!(rock_proxy_count >= 12);
-    assert!(landmark_proxy_count >= 24);
+    assert_eq!(tree_proxy_count, expected_spawned_tree_proxy_count);
+    assert_eq!(rock_proxy_count, expected_spawned_rock_proxy_count);
     assert_eq!(landmark_proxy_count, expected_spawned_landmark_proxy_count);
+    assert_eq!(catalog.collision_proxy_count_by_name("island ridge"), 0);
     assert_eq!(
         terrain_rim_proxy_count,
         expected_spawned_terrain_rim_proxy_count
@@ -1937,18 +1945,6 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
             })
             .count()
             >= 4
-    );
-    assert!(
-        proxies
-            .iter()
-            .filter(|proxy| {
-                proxy.kind == WorldCollisionProxyKind::Landmark
-                    && proxy.half_extents.y <= 0.4
-                    && proxy.half_extents.x > 2.0
-                    && proxy.half_extents.z > 1.0
-            })
-            .count()
-            >= expected_spawned_near_island_count
     );
 }
 

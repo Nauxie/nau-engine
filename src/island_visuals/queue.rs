@@ -388,8 +388,7 @@ pub(crate) fn queue_sky_island(
     let ridge_width = island.half_extents.x * 0.32;
     let ridge_surface = island_visual_surface_position(island, Vec2::new(0.28, -0.24));
     let ridge_center = ridge_surface + Vec3::Y * 0.375;
-    let ridge_half_extents = Vec3::new(ridge_width * 0.5, 0.375, island.half_extents.y * 0.09);
-    queue_collidable_island_visual(
+    queue_island_visual(
         entries,
         &mut visual_index,
         island,
@@ -397,15 +396,7 @@ pub(crate) fn queue_sky_island(
         meshes.add(Cuboid::new(ridge_width, 0.75, island.half_extents.y * 0.18)),
         under_material,
         Transform::from_translation(ridge_center),
-        Some(CameraObstacle(CameraObstruction::new(
-            ridge_center,
-            ridge_half_extents,
-        ))),
-        WorldCollisionProxy::new(
-            ridge_center,
-            ridge_half_extents,
-            WorldCollisionProxyKind::Landmark,
-        ),
+        None,
         "island ridge",
     );
 

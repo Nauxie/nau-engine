@@ -14,12 +14,14 @@ use crate::{
 use super::{
     AIR_CONTROL_RESPONSE, CAMERA_MOUSE_CONTROL, CAMERA_STRAFE_STABILITY, CAMERA_TURN_STABILITY,
     CAMERA_YAW_STABILITY, EvalScenario, GROUND_TAXI_CONTROL, POSE_STATE_COVERAGE,
-    TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_RIM_COLLISION_CONTACT, WORLD_COLLISION_CONTACT,
+    TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT,
+    WORLD_COLLISION_CONTACT,
     checkpoints::{
         AIR_CONTROL_RESPONSE_CHECKPOINTS, CAMERA_MOUSE_CHECKPOINTS, CAMERA_STRAFE_CHECKPOINTS,
         CAMERA_TURN_CHECKPOINTS, CAMERA_YAW_STABILITY_CHECKPOINTS, GROUND_TAXI_CHECKPOINTS,
         POSE_STATE_CHECKPOINTS, TERRAIN_BODY_COLLISION_CONTACT_CHECKPOINTS,
-        TERRAIN_RIM_COLLISION_CONTACT_CHECKPOINTS, WORLD_COLLISION_CONTACT_CHECKPOINTS,
+        TERRAIN_EDGE_WALKOFF_CHECKPOINTS, TERRAIN_RIM_COLLISION_CONTACT_CHECKPOINTS,
+        WORLD_COLLISION_CONTACT_CHECKPOINTS,
     },
 };
 
@@ -338,6 +340,23 @@ pub(super) fn terrain_body_collision_contact() -> EvalScenario {
         },
         ..base
     }
+}
+
+pub(super) fn terrain_edge_walkoff() -> EvalScenario {
+    let mut scenario = ground_taxi_control();
+    scenario.name = TERRAIN_EDGE_WALKOFF;
+    scenario.frame_count = 300;
+    scenario.sample_stride = 1;
+    scenario.checkpoints = TERRAIN_EDGE_WALKOFF_CHECKPOINTS;
+    scenario.thresholds.min_samples = 180;
+    scenario.thresholds.min_horizontal_distance_m = 10.0;
+    scenario.thresholds.min_max_altitude_m = 27.5;
+    scenario.thresholds.min_max_speed_mps = 6.0;
+    scenario.thresholds.min_gliding_samples = 18;
+    scenario.thresholds.min_grounded_samples = 12;
+    scenario.thresholds.min_completed_objective_count = 0;
+    scenario.thresholds.max_final_target_distance_m = 320.0;
+    scenario
 }
 
 pub(super) fn camera_mouse_control() -> EvalScenario {

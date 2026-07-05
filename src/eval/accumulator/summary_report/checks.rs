@@ -12,8 +12,8 @@ use crate::{
     eval::{
         scenarios::{
             EvalScenario, GROUND_TAXI_CONTROL, PLATEAU_ARRIVAL_CAMERA,
-            TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_RIM_COLLISION_CONTACT, UPDRAFT_ROUTE,
-            WORLD_COLLISION_CONTACT,
+            TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT,
+            UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
         },
         summary::EvalCheck,
         thresholds::*,
@@ -22,6 +22,9 @@ use crate::{
 
 const PLATEAU_CAMERA_MIN_TREE_WORLD_COLLISION_PROXY_COUNT: usize = 4;
 const PLATEAU_CAMERA_MIN_ROCK_WORLD_COLLISION_PROXY_COUNT: usize = 5;
+const EDGE_WALKOFF_MIN_NEAR_ISLAND_EDGE_SAMPLES: u32 = 12;
+const EDGE_WALKOFF_MIN_OUTSIDE_ISLAND_FOOTPRINT_SAMPLES: u32 = 4;
+const EDGE_WALKOFF_MIN_OUTSIDE_NEAR_ISLAND_EDGE_SAMPLES: u32 = 4;
 
 pub(super) fn build_checks(
     acc: &EvalAccumulator,
@@ -597,6 +600,76 @@ pub(super) fn build_checks(
                 acc.terrain_rim_collision_resolved_samples as f32,
                 0.0,
                 "samples",
+            ),
+        ]);
+    }
+    if scenario.name == TERRAIN_EDGE_WALKOFF {
+        checks.extend([
+            EvalCheck::at_least(
+                "terrain_edge_walkoff_near_island_edge_samples",
+                acc.near_island_edge_samples as f32,
+                EDGE_WALKOFF_MIN_NEAR_ISLAND_EDGE_SAMPLES as f32,
+                "samples",
+            ),
+            EvalCheck::at_least(
+                "terrain_edge_walkoff_outside_island_footprint_samples",
+                acc.outside_island_footprint_samples as f32,
+                EDGE_WALKOFF_MIN_OUTSIDE_ISLAND_FOOTPRINT_SAMPLES as f32,
+                "samples",
+            ),
+            EvalCheck::at_least(
+                "terrain_edge_walkoff_outside_near_island_edge_samples",
+                acc.outside_near_island_edge_samples as f32,
+                EDGE_WALKOFF_MIN_OUTSIDE_NEAR_ISLAND_EDGE_SAMPLES as f32,
+                "samples",
+            ),
+            EvalCheck::at_most(
+                "terrain_edge_walkoff_world_collision_resolved_samples",
+                acc.world_collision_resolved_samples as f32,
+                0.0,
+                "samples",
+            ),
+            EvalCheck::at_most(
+                "terrain_edge_walkoff_rim_resolved_samples",
+                acc.terrain_rim_collision_resolved_samples as f32,
+                0.0,
+                "samples",
+            ),
+            EvalCheck::at_most(
+                "terrain_edge_walkoff_body_resolved_samples",
+                acc.terrain_body_collision_resolved_samples as f32,
+                0.0,
+                "samples",
+            ),
+            EvalCheck::at_most(
+                "terrain_edge_walkoff_collision_push",
+                acc.max_world_collision_push_m,
+                0.0,
+                "m",
+            ),
+            EvalCheck::at_most(
+                "terrain_edge_walkoff_camera_obstruction_snap_count",
+                acc.camera_obstruction_snap_count as f32,
+                0.0,
+                "samples",
+            ),
+            EvalCheck::at_most(
+                "terrain_edge_walkoff_launching_samples",
+                acc.launching_samples as f32,
+                0.0,
+                "samples",
+            ),
+            EvalCheck::at_most(
+                "terrain_edge_walkoff_launch_upward_speed",
+                acc.max_launch_upward_speed_mps,
+                0.0,
+                "m/s",
+            ),
+            EvalCheck::at_most(
+                "terrain_edge_walkoff_launch_horizontal_speed",
+                acc.max_launch_horizontal_speed_mps,
+                0.0,
+                "m/s",
             ),
         ]);
     }

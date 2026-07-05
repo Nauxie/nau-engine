@@ -12,9 +12,13 @@ mod tests;
 use bevy::prelude::Vec3;
 
 pub use collision::{
-    TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND, TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND,
-    WorldCollisionProxy, WorldCollisionProxyKind, WorldCollisionResolution,
-    resolve_world_collisions, terrain_body_collision_proxies, terrain_rim_collision_proxies,
+    TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND, TERRAIN_COLLISION_TRUTH_CONTOUR_SAMPLES_PER_ISLAND,
+    TERRAIN_COLLISION_TRUTH_EDGE_TRAVERSE_PROBES_PER_CONTOUR_SAMPLE,
+    TERRAIN_COLLISION_TRUTH_MAX_NEAR_CLIFF_PUSH_M,
+    TERRAIN_COLLISION_TRUTH_WALKOFF_SHOULDER_PROBES_PER_CONTOUR_SAMPLE,
+    TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND, TerrainCollisionTruthReport, WorldCollisionProxy,
+    WorldCollisionProxyKind, WorldCollisionResolution, resolve_world_collisions,
+    terrain_body_collision_proxies, terrain_collision_truth_report, terrain_rim_collision_proxies,
 };
 pub use island::{
     ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT, IslandBiome, IslandFootprintProfile, IslandLandmarkRole,

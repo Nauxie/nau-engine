@@ -16,7 +16,8 @@ use crate::scene_setup_runtime::player::spawn_player_runtime;
 use crate::scene_setup_runtime::world::spawn_world_runtime;
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::eval::{
-    PLATEAU_ARRIVAL_CAMERA, TERRAIN_BODY_COLLISION_CONTACT, UNDERBRIDGE_UNDER_ROUTE,
+    PLATEAU_ARRIVAL_CAMERA, TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_EDGE_WALKOFF,
+    UNDERBRIDGE_UNDER_ROUTE,
 };
 use nau_engine::world::{SkyRoute, route_obstruction_spires};
 
@@ -89,6 +90,9 @@ fn initial_player_position(eval_run: Option<&EvalRun>, route: &SkyRoute) -> Vec3
         start.y = route.ground_at(start).floor_y;
         return start;
     }
+    if eval_run.is_some_and(|run| run.scenario.name == TERRAIN_EDGE_WALKOFF) {
+        return terrain_edge_walkoff_start_position(route);
+    }
     if eval_run.is_some_and(|run| run.scenario.name == UNDERBRIDGE_UNDER_ROUTE) {
         return underbridge_under_route_start_position(route);
     }
@@ -97,6 +101,19 @@ fn initial_player_position(eval_run: Option<&EvalRun>, route: &SkyRoute) -> Vec3
     }
 
     PLAYER_START
+}
+
+fn terrain_edge_walkoff_start_position(route: &SkyRoute) -> Vec3 {
+    let Some(island) = route.island_named("launch mesa") else {
+        return PLAYER_START;
+    };
+    let angle = 0.0_f32;
+    let contour = island.footprint_contour_point(angle, false);
+    let outward = (contour - Vec2::new(island.center.x, island.center.z)).normalize_or_zero();
+    let start_xz = contour - outward * 1.25;
+    let mut position = Vec3::new(start_xz.x, PLAYER_START.y, start_xz.y);
+    position.y = route.ground_at(position).floor_y;
+    position
 }
 
 fn underbridge_under_route_start_position(route: &SkyRoute) -> Vec3 {

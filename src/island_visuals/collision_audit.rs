@@ -2,6 +2,7 @@ use super::types::{IslandVisualCatalog, IslandVisualLayer};
 use crate::world_collision_runtime::WorldCollisionProxyKind;
 use nau_engine::world::{
     SkyRoute, TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND, TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND,
+    terrain_collision_truth_report,
 };
 
 const TERRAIN_RIM_NAME: &str = "island terrain rim collision";
@@ -18,10 +19,6 @@ const SOLID_VISUAL_REQUIREMENTS: &[SolidVisualRequirement] = &[
     SolidVisualRequirement {
         name: TERRAIN_BODY_NAME,
         kind: WorldCollisionProxyKind::TerrainBody,
-    },
-    SolidVisualRequirement {
-        name: "island ridge",
-        kind: WorldCollisionProxyKind::Landmark,
     },
     SolidVisualRequirement {
         name: "landing target marker",
@@ -262,6 +259,44 @@ pub(crate) fn audit_island_collision_coverage(
                 "{name} is camera-only allowlisted but is missing from the catalog"
             ));
         }
+    }
+
+    let terrain_truth = terrain_collision_truth_report(route.islands());
+    if terrain_truth.top_edge_air_barrier_count > 0 {
+        failures.push(format!(
+            "terrain collision truth found {} top-edge air barrier probes",
+            terrain_truth.top_edge_air_barrier_count
+        ));
+    }
+    if terrain_truth.edge_traverse_barrier_count > 0 {
+        failures.push(format!(
+            "terrain collision truth found {} edge-traverse barrier probes",
+            terrain_truth.edge_traverse_barrier_count
+        ));
+    }
+    if terrain_truth.walkoff_shoulder_barrier_count > 0 {
+        failures.push(format!(
+            "terrain collision truth found {} walkoff-shoulder barrier probes",
+            terrain_truth.walkoff_shoulder_barrier_count
+        ));
+    }
+    if terrain_truth.far_field_hit_count > 0 {
+        failures.push(format!(
+            "terrain collision truth found {} far-field invisible collision hits",
+            terrain_truth.far_field_hit_count
+        ));
+    }
+    if terrain_truth.near_cliff_miss_count > 0 {
+        failures.push(format!(
+            "terrain collision truth found {} visible near-cliff collision misses",
+            terrain_truth.near_cliff_miss_count
+        ));
+    }
+    if terrain_truth.excessive_near_cliff_push_count > 0 {
+        failures.push(format!(
+            "terrain collision truth found {} excessive near-cliff pushes",
+            terrain_truth.excessive_near_cliff_push_count
+        ));
     }
 
     IslandCollisionCoverageAudit {
