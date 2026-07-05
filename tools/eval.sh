@@ -159,7 +159,7 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
       visual_audit_args+=(--profile close_obstruction)
     fi
     set +e
-    cargo run --quiet --bin visual_audit -- "${visual_audit_args[@]}" "${screenshot_artifacts[@]}" \
+    cargo run --quiet --bin visual_audit -- ${visual_audit_args[@]+"${visual_audit_args[@]}"} "${screenshot_artifacts[@]}" \
       > "${visual_audit_path}"
     visual_audit_status=$?
     set -e
