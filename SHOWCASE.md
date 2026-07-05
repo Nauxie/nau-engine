@@ -5,6 +5,15 @@ Visual snapshots from the current Rust/Bevy traversal sandbox: clean eval screen
 ## Route Captures
 
 <p align="center">
+  <img src="docs/showcase/island_launch_landing_approach.png" alt="Landing approach over expedition navigation landmarks" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/showcase/island_launch_midroute_lift.png" alt="Midroute lift view across the launch archipelago" width="49%">
+  <img src="docs/showcase/branch_recovery_updraft_spiral.png" alt="Updraft spiral during the branch recovery approach" width="49%">
+</p>
+
+<p align="center">
   <img src="docs/showcase/great_sky_plateau_high_crossing.png" alt="Glider crossing the high archipelago route" width="100%">
 </p>
 
@@ -14,7 +23,13 @@ Visual snapshots from the current Rust/Bevy traversal sandbox: clean eval screen
 </p>
 
 <p align="center">
-  <img src="docs/showcase/great_sky_plateau_summit_climb.png" alt="Great sky plateau summit climb screenshot" width="100%">
+  <img src="docs/showcase/great_sky_plateau_upper_thermals.png" alt="Upper thermal chain on the great sky plateau route" width="49%">
+  <img src="docs/showcase/long_glide_distant_landmarks.png" alt="Distant silhouette landmarks on the long glide route" width="49%">
+</p>
+
+<p align="center">
+  <img src="docs/showcase/great_sky_plateau_summit_climb.png" alt="Great sky plateau summit climb screenshot" width="49%">
+  <img src="docs/showcase/great_sky_plateau_summit_arrival.png" alt="Landed arrival on the great sky plateau summit" width="49%">
 </p>
 
 ## Player And Glider Review
@@ -31,13 +46,15 @@ Visual snapshots from the current Rust/Bevy traversal sandbox: clean eval screen
 ## Generated Content
 
 - Terrain export: 41 islands, 164 meshes, 167,444 vertices, 318,816 triangles.
-- Visual content export: 543 meshes, 530,169 vertices, 542,804 triangles.
-- Wind visual export: 30 fields, 2,626 visuals, 328,812 sampled tracks.
+- Visual content export: 568 meshes, 537,821 vertices, 554,270 triangles.
+- Wind visual export: 38 fields, 3,338 visuals, 417,852 sampled tracks.
 
 ## Reproduce
 
 ```sh
 ./tools/player_pose_preview.sh target/player_pose_preview
+NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh island_launch_to_landing target/eval/island_launch_to_landing
+NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh branch_recovery_route target/eval/branch_recovery_route
 NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh updraft_route target/eval/updraft_route
 NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh long_glide_visibility target/eval/long_glide_visibility
 NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh great_sky_plateau_route target/eval/great_sky_plateau_route
