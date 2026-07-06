@@ -1,4 +1,5 @@
 use super::*;
+use crate::environment_visuals::CINEMATIC_WEATHER_REVIEW_SAMPLE_COUNT;
 use bevy::gltf::Gltf;
 use bevy::mesh::{Indices, VertexAttributeValues};
 use bevy::pbr::ScatteringMedium;
@@ -1540,13 +1541,33 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_tree_canopy_detail_card_count >= 18);
     assert!(report.min_tree_canopy_vertical_to_horizontal_ratio >= 0.45);
     assert!(report.tree_canopy_radius_range_m >= 0.35);
-    assert!(report.min_weather_cloud_mesh_vertices >= 2500);
+    assert!(report.min_weather_cloud_mesh_vertices >= 2800);
     assert!(report.min_weather_cloud_lobe_count >= 12);
     assert!(report.min_weather_cloud_wisp_card_count >= 60);
     assert!(report.min_weather_cloud_filament_ribbon_detail_count >= 48);
     assert!(report.min_weather_cloud_bank_depth_m >= 6.4);
     assert!(report.min_weather_cloud_bank_lobe_count >= 22);
     assert!(report.min_weather_cloud_scaled_depth_span_m >= 14.0);
+    assert_eq!(
+        report.atmosphere_sample_count,
+        CINEMATIC_WEATHER_REVIEW_SAMPLE_COUNT
+    );
+    assert_eq!(report.atmosphere.len(), report.atmosphere_sample_count);
+    assert!(report.atmosphere_sky_luma_range > 0.06);
+    assert!(report.atmosphere_ambient_brightness_range > 100.0);
+    assert!(report.atmosphere_sun_illuminance_range > 14_000.0);
+    assert!(report.atmosphere_exposure_range > 0.25);
+    assert!(report.atmosphere_fog_start_range_m > 10.0);
+    assert!(report.min_atmosphere_fog_band_m > 3_300.0);
+    assert!(report.atmosphere_volumetric_intensity_range > 0.010);
+    assert!(report.min_atmosphere_volumetric_step_count >= 48);
+    let launch_atmosphere = report
+        .atmosphere
+        .iter()
+        .find(|summary| summary.elapsed_secs == 0.0)
+        .expect("visual export should include launch-time atmosphere review sample");
+    assert!(launch_atmosphere.fog_band_m > 3_300.0);
+    assert_eq!(launch_atmosphere.volumetric_step_count, 56);
     assert!(report.min_route_cairn_mesh_vertices >= 240);
     assert!(report.min_route_cairn_vertical_span_m >= 3.0);
     assert!(report.min_launch_beacon_mesh_vertices >= 300);
@@ -1908,6 +1929,15 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"weather_cloud_scaled_depth_span_m\""));
     assert!(manifest.contains("\"weather_cloud_wisp_card_count\""));
     assert!(manifest.contains("\"weather_cloud_filament_ribbon_detail_count\""));
+    assert!(manifest.contains("\"atmosphere_sample_count\": 5"));
+    assert!(manifest.contains("\"atmosphere_sky_luma_range\""));
+    assert!(manifest.contains("\"atmosphere_ambient_brightness_range\""));
+    assert!(manifest.contains("\"atmosphere_sun_illuminance_range\""));
+    assert!(manifest.contains("\"atmosphere_exposure_range\""));
+    assert!(manifest.contains("\"atmosphere_fog_start_range_m\""));
+    assert!(manifest.contains("\"atmosphere_fog_band_m\""));
+    assert!(manifest.contains("\"atmosphere_volumetric_intensity_range\""));
+    assert!(manifest.contains("\"atmosphere_volumetric_step_count\": 56"));
     assert!(manifest.contains(&format!("\"landmark_count\": {landmark_count}")));
     assert!(manifest.contains("\"landmark_kind_count\""));
     assert!(manifest.contains(&format!(
@@ -2040,6 +2070,9 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"kind\": \"first_expedition_ring_garden\""));
     assert!(manifest.contains("\"kind\": \"first_expedition_broken_stair\""));
     assert!(manifest.contains("\"kind\": \"first_expedition_high_crown\""));
+    assert!(manifest.contains("\"atmosphere\""));
+    assert!(manifest.contains("\"elapsed_secs\": 0"));
+    assert!(manifest.contains("\"volumetric_ambient_color\""));
     assert!(manifest.contains("great_sky_plateau_low_basin_lake.obj"));
     assert!(manifest.contains("great_sky_plateau_north_rim_waterfall.obj"));
     assert!(manifest.contains("great_sky_plateau_meadow_landing_shelf.obj"));
@@ -2483,8 +2516,11 @@ fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
     let lobe_vertices = (5 + 1) * (10 + 1);
     let card_vertices = CLOUD_WISP_CARDS_PER_LOBE * DETAIL_CARD_VERTICES;
     let filament_vertices = CLOUD_FILAMENT_RIBBONS_PER_LOBE * CLOUD_FILAMENT_RIBBON_VERTICES;
-    let per_lobe_vertices = lobe_vertices + card_vertices + filament_vertices;
+    let strata_vertices = CLOUD_STRATA_CARDS_PER_LOBE * DETAIL_CARD_VERTICES;
+    let per_lobe_vertices = lobe_vertices + card_vertices + filament_vertices + strata_vertices;
     let mut lower_depth_wisp_count = 0usize;
+    let mut lower_strata_card_count = 0usize;
+    let mut translucent_strata_card_count = 0usize;
     let min_x = positions
         .iter()
         .map(|position| position[0])
@@ -2516,6 +2552,10 @@ fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
         cloud_filament_ribbon_detail_count(CLOUD_BANK_LOBES),
         CLOUD_BANK_LOBES * CLOUD_FILAMENT_RIBBONS_PER_LOBE
     );
+    assert_eq!(
+        cloud_strata_card_detail_count(CLOUD_BANK_LOBES),
+        CLOUD_BANK_LOBES * CLOUD_STRATA_CARDS_PER_LOBE
+    );
     assert!(
         max_x - min_x > 1.2,
         "cloud clusters should have lateral lobe structure"
@@ -2534,6 +2574,9 @@ fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
         let lower_depth_wisp =
             &positions[lower_depth_start..lower_depth_start + DETAIL_CARD_VERTICES];
         let upper_wisp = &positions[lobe_start..lower_depth_start];
+        let strata_start = lobe_start + card_vertices + filament_vertices;
+        let strata_cards = &positions[strata_start..strata_start + strata_vertices];
+        let strata_colors = &colors[strata_start..strata_start + strata_vertices];
         let lower_avg_y = lower_depth_wisp
             .iter()
             .map(|position| position[1])
@@ -2541,14 +2584,32 @@ fn cloud_cluster_mesh_uses_multiple_lobes_for_depth() {
             / lower_depth_wisp.len() as f32;
         let upper_avg_y =
             upper_wisp.iter().map(|position| position[1]).sum::<f32>() / upper_wisp.len() as f32;
+        let strata_avg_y = strata_cards.iter().map(|position| position[1]).sum::<f32>()
+            / strata_cards.len() as f32;
+        let strata_avg_alpha =
+            strata_colors.iter().map(|color| color[3]).sum::<f32>() / strata_colors.len() as f32;
 
         if lower_avg_y + 0.05 < upper_avg_y {
             lower_depth_wisp_count += 1;
+        }
+        if strata_avg_y + 0.08 < upper_avg_y {
+            lower_strata_card_count += 1;
+        }
+        if strata_avg_alpha < 0.30 {
+            translucent_strata_card_count += 1;
         }
     }
     assert!(
         lower_depth_wisp_count > CLOUD_BANK_LOBES * 3 / 4,
         "cloud clusters should add lower depth wisps under most lobes"
+    );
+    assert_eq!(
+        lower_strata_card_count, CLOUD_BANK_LOBES,
+        "cloud clusters should carry lower painterly shadow strata under every lobe"
+    );
+    assert_eq!(
+        translucent_strata_card_count, CLOUD_BANK_LOBES,
+        "cloud strata should remain translucent enough to read as soft watercolor washes"
     );
 }
 

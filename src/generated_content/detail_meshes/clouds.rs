@@ -9,6 +9,7 @@ use bevy::prelude::*;
 pub(crate) const CLOUD_BANK_LOBES: usize = 22;
 pub(crate) const CLOUD_VEIL_LOBES: usize = 12;
 pub(crate) const CLOUD_WISP_CARDS_PER_LOBE: usize = 5;
+pub(crate) const CLOUD_STRATA_CARDS_PER_LOBE: usize = 2;
 pub(crate) const CLOUD_FILAMENT_RIBBONS_PER_LOBE: usize = 4;
 const CLOUD_FILAMENT_RIBBON_SEGMENTS: usize = 6;
 const CLOUD_VERTICAL_LAYERS: usize = 7;
@@ -17,6 +18,11 @@ pub(crate) const CLOUD_FILAMENT_RIBBON_VERTICES: usize = (CLOUD_FILAMENT_RIBBON_
 
 pub(crate) fn cloud_filament_ribbon_detail_count(lobe_count: usize) -> usize {
     lobe_count * CLOUD_FILAMENT_RIBBONS_PER_LOBE
+}
+
+#[cfg(test)]
+pub(crate) fn cloud_strata_card_detail_count(lobe_count: usize) -> usize {
+    lobe_count * CLOUD_STRATA_CARDS_PER_LOBE
 }
 
 pub(crate) fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
@@ -163,6 +169,23 @@ pub(crate) fn cloud_cluster_mesh(seed: u32, lobe_count: usize) -> Mesh {
                 ribbon as u32,
             );
         }
+
+        for strata in 0..CLOUD_STRATA_CARDS_PER_LOBE {
+            append_cloud_strata_card(
+                &mut positions,
+                &mut normals,
+                &mut uvs,
+                &mut colors,
+                &mut indices,
+                center,
+                phase,
+                radius,
+                seed,
+                lobe as u32,
+                layer,
+                strata as u32,
+            );
+        }
     }
 
     Mesh::new(
@@ -204,6 +227,78 @@ fn cloud_lobe_color(seed: u32, lobe: u32, layer: usize, wisp: bool) -> [f32; 4] 
         color.z.clamp(0.0, 1.0),
         alpha,
     ]
+}
+
+fn cloud_strata_color(seed: u32, lobe: u32, layer: usize, strata: u32) -> [f32; 4] {
+    let layer_t = layer as f32 / (CLOUD_VERTICAL_LAYERS - 1) as f32;
+    let cool_shadow = Vec3::new(0.50, 0.62, 0.82);
+    let violet_edge = Vec3::new(0.66, 0.58, 0.82);
+    let warm_mist = Vec3::new(0.95, 0.82, 0.62);
+    let color = cool_shadow
+        .lerp(
+            violet_edge,
+            0.22 + random_unit(seed, lobe, 503 + strata) * 0.18,
+        )
+        .lerp(
+            warm_mist,
+            (layer_t * 0.20 + random_unit(seed, lobe, 521 + strata) * 0.10).clamp(0.0, 0.32),
+        );
+    let alpha = 0.16 + strata as f32 * 0.035 + (1.0 - layer_t) * 0.045;
+
+    [
+        color.x.clamp(0.0, 1.0),
+        color.y.clamp(0.0, 1.0),
+        color.z.clamp(0.0, 1.0),
+        alpha.clamp(0.12, 0.28),
+    ]
+}
+
+#[allow(clippy::too_many_arguments)]
+fn append_cloud_strata_card(
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    uvs: &mut Vec<[f32; 2]>,
+    colors: &mut Vec<[f32; 4]>,
+    indices: &mut Vec<u32>,
+    center: Vec3,
+    phase: f32,
+    radius: f32,
+    seed: u32,
+    lobe: u32,
+    layer: usize,
+    strata: u32,
+) {
+    let sheet_phase = phase + random_unit(seed, lobe, 547 + strata) * 0.72 + strata as f32 * 0.38;
+    let tangent = Vec3::new(-sheet_phase.sin(), 0.03, sheet_phase.cos()).normalize();
+    let outward = Vec3::new(sheet_phase.cos(), 0.0, sheet_phase.sin()).normalize();
+    let up = (Vec3::Y * 0.18 - outward * (0.52 + strata as f32 * 0.10)).normalize();
+    let layer_t = layer as f32 / (CLOUD_VERTICAL_LAYERS - 1) as f32;
+    let sheet_center = center
+        + outward
+            * radius
+            * (0.30 + strata as f32 * 0.22 + random_unit(seed, lobe, 557 + strata) * 0.18)
+        - Vec3::Y * radius * (0.34 + (1.0 - layer_t) * 0.24 + strata as f32 * 0.08);
+    let half_width =
+        radius * (1.04 + strata as f32 * 0.20 + random_unit(seed, lobe, 563 + strata) * 0.22);
+    let half_height =
+        radius * (0.16 + random_unit(seed, lobe, 571 + strata) * 0.07 + layer_t * 0.035);
+    let card_start = positions.len();
+
+    append_double_sided_detail_card(
+        positions,
+        normals,
+        uvs,
+        indices,
+        sheet_center,
+        tangent,
+        up,
+        half_width,
+        half_height,
+    );
+    colors.extend(std::iter::repeat_n(
+        cloud_strata_color(seed, lobe, layer, strata),
+        positions.len() - card_start,
+    ));
 }
 
 #[allow(clippy::too_many_arguments)]

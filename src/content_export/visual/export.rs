@@ -4,14 +4,16 @@ use super::{
     metrics::{finite_range_f32, finite_ratio, min_finite_f32, visual_content_mesh_summary},
     palette::visual_content_palette_summary,
     types::{
-        VisualContentExportReport, VisualGroundCoverSummary, VisualRouteSightlineSummary,
-        VisualTreeSummary,
+        VisualAtmosphereSummary, VisualContentExportReport, VisualGroundCoverSummary,
+        VisualRouteSightlineSummary, VisualTreeSummary,
     },
     vegetation::{
         ground_cover_blade_stats, tree_canopy_lobe_count, tree_trunk_shape_metrics,
         visual_content_tree_specs,
     },
 };
+use crate::environment_visuals::{CinematicWeather, cinematic_weather_review_profiles};
+use crate::scene_setup_runtime::WORLD_RADIUS;
 use crate::{
     content_export::shared::{terrain_export_slug, write_mesh_obj},
     eval_runtime::remove_existing_dir,
@@ -20,6 +22,7 @@ use crate::{
         island_ground_cover_mesh, tree_canopy_mesh, tree_trunk_mesh,
     },
 };
+use bevy::prelude::Color;
 use nau_engine::world::{IslandScaleClass, SkyRoute};
 use std::{
     collections::HashSet,
@@ -142,6 +145,25 @@ pub(crate) fn export_visual_content_inspection(
                 readable_margin_m: moment.readable_distance_m - distance_m,
                 required_route: moment.required_route,
             }
+        })
+        .collect::<Vec<_>>();
+    let atmosphere = cinematic_weather_review_profiles(CinematicWeather::new(WORLD_RADIUS))
+        .into_iter()
+        .map(|profile| VisualAtmosphereSummary {
+            elapsed_secs: profile.elapsed_secs,
+            sky_color: color_rgba(profile.sky_color),
+            ambient_color: color_rgba(profile.ambient_color),
+            ambient_brightness: profile.ambient_brightness,
+            sun_color: color_rgba(profile.sun_color),
+            sun_illuminance: profile.sun_illuminance,
+            exposure_ev100: profile.exposure_ev100,
+            fog_color: color_rgba(profile.fog_color),
+            fog_start_m: profile.fog_start_m,
+            fog_end_m: profile.fog_end_m,
+            fog_band_m: profile.fog_end_m - profile.fog_start_m,
+            volumetric_ambient_color: color_rgba(profile.volumetric_ambient_color),
+            volumetric_ambient_intensity: profile.volumetric_ambient_intensity,
+            volumetric_step_count: profile.volumetric_step_count,
         })
         .collect::<Vec<_>>();
     let terrain_biome_palette_count = palettes
@@ -280,6 +302,7 @@ pub(crate) fn export_visual_content_inspection(
             .count(),
         landmark_count: landmarks.len(),
         landmark_kind_count,
+        atmosphere_sample_count: atmosphere.len(),
         route_sightline_count: route_sightlines.len(),
         required_route_sightline_count: route_sightlines
             .iter()
@@ -458,6 +481,36 @@ pub(crate) fn export_visual_content_inspection(
         min_weather_cloud_scaled_depth_span_m: min_finite_f32(
             clouds.iter().map(|summary| summary.scaled_depth_span_m),
         ),
+        atmosphere_sky_luma_range: finite_range_f32(
+            atmosphere
+                .iter()
+                .map(|summary| luma_rgba(summary.sky_color)),
+        ),
+        atmosphere_ambient_brightness_range: finite_range_f32(
+            atmosphere.iter().map(|summary| summary.ambient_brightness),
+        ),
+        atmosphere_sun_illuminance_range: finite_range_f32(
+            atmosphere.iter().map(|summary| summary.sun_illuminance),
+        ),
+        atmosphere_exposure_range: finite_range_f32(
+            atmosphere.iter().map(|summary| summary.exposure_ev100),
+        ),
+        atmosphere_fog_start_range_m: finite_range_f32(
+            atmosphere.iter().map(|summary| summary.fog_start_m),
+        ),
+        min_atmosphere_fog_band_m: min_finite_f32(
+            atmosphere.iter().map(|summary| summary.fog_band_m),
+        ),
+        atmosphere_volumetric_intensity_range: finite_range_f32(
+            atmosphere
+                .iter()
+                .map(|summary| summary.volumetric_ambient_intensity),
+        ),
+        min_atmosphere_volumetric_step_count: atmosphere
+            .iter()
+            .map(|summary| summary.volumetric_step_count)
+            .min()
+            .unwrap_or(0),
         min_route_cairn_mesh_vertices: min_landmark_vertices(&landmarks, "route_cairn"),
         min_route_cairn_vertical_span_m: min_landmark_vertical_span(&landmarks, "route_cairn"),
         min_launch_beacon_mesh_vertices: min_landmark_vertices(&landmarks, "launch_beacon"),
@@ -586,6 +639,7 @@ pub(crate) fn export_visual_content_inspection(
         trees,
         clouds,
         landmarks,
+        atmosphere,
         route_sightlines,
         palettes,
     };
@@ -699,4 +753,13 @@ fn min_landmark_normal_slope_bands(
         .map(|summary| summary.normal_slope_band_count)
         .min()
         .unwrap_or(0)
+}
+
+fn color_rgba(color: Color) -> [f32; 4] {
+    let srgb = color.to_srgba();
+    [srgb.red, srgb.green, srgb.blue, srgb.alpha]
+}
+
+fn luma_rgba(color: [f32; 4]) -> f32 {
+    color[0] * 0.2126 + color[1] * 0.7152 + color[2] * 0.0722
 }

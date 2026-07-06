@@ -21,6 +21,7 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) weather_cloud_veil_count: usize,
     pub(crate) landmark_count: usize,
     pub(crate) landmark_kind_count: usize,
+    pub(crate) atmosphere_sample_count: usize,
     pub(crate) route_sightline_count: usize,
     pub(crate) required_route_sightline_count: usize,
     pub(crate) optional_route_sightline_count: usize,
@@ -74,6 +75,14 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) min_weather_cloud_bank_depth_m: f32,
     pub(crate) min_weather_cloud_bank_lobe_count: usize,
     pub(crate) min_weather_cloud_scaled_depth_span_m: f32,
+    pub(crate) atmosphere_sky_luma_range: f32,
+    pub(crate) atmosphere_ambient_brightness_range: f32,
+    pub(crate) atmosphere_sun_illuminance_range: f32,
+    pub(crate) atmosphere_exposure_range: f32,
+    pub(crate) atmosphere_fog_start_range_m: f32,
+    pub(crate) min_atmosphere_fog_band_m: f32,
+    pub(crate) atmosphere_volumetric_intensity_range: f32,
+    pub(crate) min_atmosphere_volumetric_step_count: u32,
     pub(crate) min_route_cairn_mesh_vertices: usize,
     pub(crate) min_route_cairn_vertical_span_m: f32,
     pub(crate) min_launch_beacon_mesh_vertices: usize,
@@ -116,6 +125,7 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) trees: Vec<VisualTreeSummary>,
     pub(crate) clouds: Vec<VisualCloudSummary>,
     pub(crate) landmarks: Vec<VisualLandmarkSummary>,
+    pub(crate) atmosphere: Vec<VisualAtmosphereSummary>,
     pub(crate) route_sightlines: Vec<VisualRouteSightlineSummary>,
     pub(crate) palettes: Vec<VisualPaletteSummary>,
 }
@@ -194,6 +204,24 @@ pub(crate) struct VisualLandmarkSummary {
 }
 
 #[derive(Debug)]
+pub(crate) struct VisualAtmosphereSummary {
+    pub(crate) elapsed_secs: f32,
+    pub(crate) sky_color: [f32; 4],
+    pub(crate) ambient_color: [f32; 4],
+    pub(crate) ambient_brightness: f32,
+    pub(crate) sun_color: [f32; 4],
+    pub(crate) sun_illuminance: f32,
+    pub(crate) exposure_ev100: f32,
+    pub(crate) fog_color: [f32; 4],
+    pub(crate) fog_start_m: f32,
+    pub(crate) fog_end_m: f32,
+    pub(crate) fog_band_m: f32,
+    pub(crate) volumetric_ambient_color: [f32; 4],
+    pub(crate) volumetric_ambient_intensity: f32,
+    pub(crate) volumetric_step_count: u32,
+}
+
+#[derive(Debug)]
 pub(crate) struct VisualRouteSightlineSummary {
     pub(crate) label: &'static str,
     pub(crate) kind: &'static str,
@@ -244,6 +272,12 @@ impl VisualContentExportReport {
             .map(|summary| summary.to_json("    "))
             .collect::<Vec<_>>()
             .join(",\n");
+        let atmosphere = self
+            .atmosphere
+            .iter()
+            .map(|summary| summary.to_json("    "))
+            .collect::<Vec<_>>()
+            .join(",\n");
         let route_sightlines = self
             .route_sightlines
             .iter()
@@ -275,6 +309,7 @@ impl VisualContentExportReport {
                 "    \"weather_cloud_veil_count\": {},\n",
                 "    \"landmark_count\": {},\n",
                 "    \"landmark_kind_count\": {},\n",
+                "    \"atmosphere_sample_count\": {},\n",
                 "    \"route_sightline_count\": {},\n",
                 "    \"required_route_sightline_count\": {},\n",
                 "    \"optional_route_sightline_count\": {},\n",
@@ -330,6 +365,14 @@ impl VisualContentExportReport {
                 "    \"weather_cloud_bank_depth_m\": {},\n",
                 "    \"weather_cloud_bank_lobe_count\": {},\n",
                 "    \"weather_cloud_scaled_depth_span_m\": {},\n",
+                "    \"atmosphere_sky_luma_range\": {},\n",
+                "    \"atmosphere_ambient_brightness_range\": {},\n",
+                "    \"atmosphere_sun_illuminance_range\": {},\n",
+                "    \"atmosphere_exposure_range\": {},\n",
+                "    \"atmosphere_fog_start_range_m\": {},\n",
+                "    \"atmosphere_fog_band_m\": {},\n",
+                "    \"atmosphere_volumetric_intensity_range\": {},\n",
+                "    \"atmosphere_volumetric_step_count\": {},\n",
                 "    \"route_cairn_mesh_vertices\": {},\n",
                 "    \"route_cairn_vertical_span_m\": {},\n",
                 "    \"launch_beacon_mesh_vertices\": {},\n",
@@ -381,6 +424,9 @@ impl VisualContentExportReport {
                 "  \"landmarks\": [\n",
                 "{}\n",
                 "  ],\n",
+                "  \"atmosphere\": [\n",
+                "{}\n",
+                "  ],\n",
                 "  \"route_sightlines\": [\n",
                 "{}\n",
                 "  ],\n",
@@ -402,6 +448,7 @@ impl VisualContentExportReport {
             self.weather_cloud_veil_count,
             self.landmark_count,
             self.landmark_kind_count,
+            self.atmosphere_sample_count,
             self.route_sightline_count,
             self.required_route_sightline_count,
             self.optional_route_sightline_count,
@@ -455,6 +502,14 @@ impl VisualContentExportReport {
             terrain_export_json_number(self.min_weather_cloud_bank_depth_m),
             self.min_weather_cloud_bank_lobe_count,
             terrain_export_json_number(self.min_weather_cloud_scaled_depth_span_m),
+            terrain_export_json_number(self.atmosphere_sky_luma_range),
+            terrain_export_json_number(self.atmosphere_ambient_brightness_range),
+            terrain_export_json_number(self.atmosphere_sun_illuminance_range),
+            terrain_export_json_number(self.atmosphere_exposure_range),
+            terrain_export_json_number(self.atmosphere_fog_start_range_m),
+            terrain_export_json_number(self.min_atmosphere_fog_band_m),
+            terrain_export_json_number(self.atmosphere_volumetric_intensity_range),
+            self.min_atmosphere_volumetric_step_count,
             self.min_route_cairn_mesh_vertices,
             terrain_export_json_number(self.min_route_cairn_vertical_span_m),
             self.min_launch_beacon_mesh_vertices,
@@ -497,6 +552,7 @@ impl VisualContentExportReport {
             trees,
             clouds,
             landmarks,
+            atmosphere,
             route_sightlines,
             palettes
         )
@@ -634,6 +690,43 @@ impl VisualLandmarkSummary {
     }
 }
 
+impl VisualAtmosphereSummary {
+    fn to_json(&self, indent: &str) -> String {
+        format!(
+            "{indent}{{\n\
+             {indent}  \"elapsed_secs\": {},\n\
+             {indent}  \"sky_color\": {},\n\
+             {indent}  \"ambient_color\": {},\n\
+             {indent}  \"ambient_brightness\": {},\n\
+             {indent}  \"sun_color\": {},\n\
+             {indent}  \"sun_illuminance\": {},\n\
+             {indent}  \"exposure_ev100\": {},\n\
+             {indent}  \"fog_color\": {},\n\
+             {indent}  \"fog_start_m\": {},\n\
+             {indent}  \"fog_end_m\": {},\n\
+             {indent}  \"fog_band_m\": {},\n\
+             {indent}  \"volumetric_ambient_color\": {},\n\
+             {indent}  \"volumetric_ambient_intensity\": {},\n\
+             {indent}  \"volumetric_step_count\": {}\n\
+             {indent}}}",
+            terrain_export_json_number(self.elapsed_secs),
+            visual_content_json_rgba(self.sky_color),
+            visual_content_json_rgba(self.ambient_color),
+            terrain_export_json_number(self.ambient_brightness),
+            visual_content_json_rgba(self.sun_color),
+            terrain_export_json_number(self.sun_illuminance),
+            terrain_export_json_number(self.exposure_ev100),
+            visual_content_json_rgba(self.fog_color),
+            terrain_export_json_number(self.fog_start_m),
+            terrain_export_json_number(self.fog_end_m),
+            terrain_export_json_number(self.fog_band_m),
+            visual_content_json_rgba(self.volumetric_ambient_color),
+            terrain_export_json_number(self.volumetric_ambient_intensity),
+            self.volumetric_step_count
+        )
+    }
+}
+
 impl VisualRouteSightlineSummary {
     fn to_json(&self, indent: &str) -> String {
         format!(
@@ -693,5 +786,15 @@ fn visual_content_json_vec3(position: [f32; 3]) -> String {
         terrain_export_json_number(position[0]),
         terrain_export_json_number(position[1]),
         terrain_export_json_number(position[2])
+    )
+}
+
+fn visual_content_json_rgba(color: [f32; 4]) -> String {
+    format!(
+        "[{}, {}, {}, {}]",
+        terrain_export_json_number(color[0]),
+        terrain_export_json_number(color[1]),
+        terrain_export_json_number(color[2]),
+        terrain_export_json_number(color[3])
     )
 }

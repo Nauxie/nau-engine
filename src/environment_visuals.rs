@@ -31,6 +31,7 @@ pub(crate) const CROSSWIND_RIBBON_LENGTH_SCALE: f32 = 0.92;
 pub(crate) const CROSSWIND_RIBBON_CENTER_ADVANCE: f32 = 0.95;
 pub(crate) const WIND_VISUAL_COHERENCE_DT: f32 = 0.2;
 pub(crate) const WIND_VISUAL_ALIGNMENT_MIN_DOT: f32 = 0.55;
+pub(crate) const CINEMATIC_WEATHER_REVIEW_SAMPLE_COUNT: usize = 5;
 const WIND_FIELD_METRIC_EPSILON: f32 = 0.001;
 const WIND_VISUAL_LOOP_FADE_FRACTION: f32 = 0.34;
 const WIND_VISUAL_QUALITY_MIN_SCALE: f32 = 0.5;
@@ -77,6 +78,90 @@ impl CinematicWeather {
             haze_ceiling_m,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CinematicWeatherProfile {
+    pub(crate) elapsed_secs: f32,
+    pub(crate) sky_color: Color,
+    pub(crate) ambient_color: Color,
+    pub(crate) ambient_brightness: f32,
+    pub(crate) sun_color: Color,
+    pub(crate) sun_illuminance: f32,
+    pub(crate) sun_elevation: f32,
+    pub(crate) sun_yaw: f32,
+    pub(crate) exposure_ev100: f32,
+    pub(crate) fog_color: Color,
+    pub(crate) fog_directional_light_color: Color,
+    pub(crate) fog_directional_light_exponent: f32,
+    pub(crate) fog_start_m: f32,
+    pub(crate) fog_end_m: f32,
+    pub(crate) volumetric_ambient_color: Color,
+    pub(crate) volumetric_ambient_intensity: f32,
+    pub(crate) volumetric_jitter: f32,
+    pub(crate) volumetric_step_count: u32,
+}
+
+pub(crate) fn cinematic_weather_profile(
+    elapsed_secs: f32,
+    weather: CinematicWeather,
+) -> CinematicWeatherProfile {
+    let cycle = (elapsed_secs / weather.cycle_seconds * std::f32::consts::TAU).sin();
+    let warm = (cycle * 0.5 + 0.5).clamp(0.0, 1.0);
+    let storm = ((elapsed_secs * 0.037).sin() * 0.5 + 0.5).powf(2.2) * 0.34;
+    let cool_light = Color::srgb(0.78, 0.84, 1.0);
+    let warm_light = Color::srgb(1.0, 0.82, 0.55);
+    let sky_clear = Color::srgb(0.46, 0.66, 0.92);
+    let sky_weather = Color::srgb(0.38, 0.48, 0.64);
+    let sky_color = mix_color(
+        mix_color(sky_weather, sky_clear, warm),
+        Color::srgb(0.56, 0.70, 0.88),
+        0.18,
+    );
+
+    CinematicWeatherProfile {
+        elapsed_secs,
+        sky_color,
+        ambient_color: mix_color(
+            Color::srgb(0.48, 0.56, 0.72),
+            Color::srgb(0.72, 0.68, 0.60),
+            warm,
+        ),
+        ambient_brightness: 260.0 + warm * 170.0 - storm * 80.0,
+        sun_color: mix_color(cool_light, warm_light, warm),
+        sun_illuminance: 34_000.0 + warm * 24_000.0 - storm * 7_000.0,
+        sun_elevation: -0.62 - warm * 0.34,
+        sun_yaw: -0.62 + cycle * 0.18,
+        exposure_ev100: 12.35 + warm * 0.42 - storm * 0.2,
+        fog_color: mix_color(
+            Color::srgba(0.44, 0.52, 0.66, 0.58),
+            Color::srgba(0.60, 0.74, 0.92, 0.42),
+            warm,
+        ),
+        fog_directional_light_color: mix_color(
+            Color::srgba(0.72, 0.78, 1.0, 0.36),
+            Color::srgba(1.0, 0.78, 0.46, 0.58),
+            warm,
+        ),
+        fog_directional_light_exponent: 12.0 + warm * 14.0,
+        fog_start_m: weather.haze_floor_m - storm * 70.0,
+        fog_end_m: weather.haze_ceiling_m - storm * 150.0,
+        volumetric_ambient_color: mix_color(
+            Color::srgb(0.48, 0.56, 0.70),
+            Color::srgb(0.76, 0.70, 0.60),
+            warm,
+        ),
+        volumetric_ambient_intensity: 0.028 + warm * 0.022 + storm * 0.012,
+        volumetric_jitter: 0.42,
+        volumetric_step_count: 56,
+    }
+}
+
+pub(crate) fn cinematic_weather_review_profiles(
+    weather: CinematicWeather,
+) -> [CinematicWeatherProfile; CINEMATIC_WEATHER_REVIEW_SAMPLE_COUNT] {
+    [0.0, 18.0, 36.0, 54.0, 72.0]
+        .map(|elapsed_secs| cinematic_weather_profile(elapsed_secs, weather))
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -502,65 +587,36 @@ pub(crate) fn update_cinematic_weather(
         With<Camera3d>,
     >,
 ) {
-    let cycle = (time.elapsed_secs() / weather.cycle_seconds * std::f32::consts::TAU).sin();
-    let warm = (cycle * 0.5 + 0.5).clamp(0.0, 1.0);
-    let storm = ((time.elapsed_secs() * 0.037).sin() * 0.5 + 0.5).powf(2.2) * 0.34;
-    let cool_light = Color::srgb(0.78, 0.84, 1.0);
-    let warm_light = Color::srgb(1.0, 0.82, 0.55);
-    let sky_clear = Color::srgb(0.46, 0.66, 0.92);
-    let sky_weather = Color::srgb(0.38, 0.48, 0.64);
-
-    let sky_color = mix_color(
-        mix_color(sky_weather, sky_clear, warm),
-        Color::srgb(0.56, 0.70, 0.88),
-        0.18,
-    );
-    clear_color.0 = sky_color;
-    ambient.color = mix_color(
-        Color::srgb(0.48, 0.56, 0.72),
-        Color::srgb(0.72, 0.68, 0.60),
-        warm,
-    );
-    ambient.brightness = 260.0 + warm * 170.0 - storm * 80.0;
+    let profile = cinematic_weather_profile(time.elapsed_secs(), *weather);
+    clear_color.0 = profile.sky_color;
+    ambient.color = profile.ambient_color;
+    ambient.brightness = profile.ambient_brightness;
 
     for (mut light, mut transform) in &mut sun {
-        light.color = mix_color(cool_light, warm_light, warm);
-        light.illuminance = 34_000.0 + warm * 24_000.0 - storm * 7_000.0;
-        let elevation = -0.62 - warm * 0.34;
-        let yaw = -0.62 + cycle * 0.18;
-        transform.rotation = Quat::from_euler(EulerRot::XYZ, elevation, yaw, 0.0);
+        light.color = profile.sun_color;
+        light.illuminance = profile.sun_illuminance;
+        transform.rotation =
+            Quat::from_euler(EulerRot::XYZ, profile.sun_elevation, profile.sun_yaw, 0.0);
     }
 
     for (mut camera, mut exposure, mut fog, mut volumetric_fog) in &mut camera_fx {
-        camera.clear_color = ClearColorConfig::Custom(sky_color);
+        camera.clear_color = ClearColorConfig::Custom(profile.sky_color);
         camera.output_mode = CameraOutputMode::Write {
             blend_state: Some(BlendState::REPLACE),
-            clear_color: ClearColorConfig::Custom(sky_color),
+            clear_color: ClearColorConfig::Custom(profile.sky_color),
         };
-        exposure.ev100 = 12.35 + warm * 0.42 - storm * 0.2;
-        fog.color = mix_color(
-            Color::srgba(0.44, 0.52, 0.66, 0.58),
-            Color::srgba(0.60, 0.74, 0.92, 0.42),
-            warm,
-        );
-        fog.directional_light_color = mix_color(
-            Color::srgba(0.72, 0.78, 1.0, 0.36),
-            Color::srgba(1.0, 0.78, 0.46, 0.58),
-            warm,
-        );
-        fog.directional_light_exponent = 12.0 + warm * 14.0;
+        exposure.ev100 = profile.exposure_ev100;
+        fog.color = profile.fog_color;
+        fog.directional_light_color = profile.fog_directional_light_color;
+        fog.directional_light_exponent = profile.fog_directional_light_exponent;
         fog.falloff = FogFalloff::Linear {
-            start: weather.haze_floor_m - storm * 70.0,
-            end: weather.haze_ceiling_m - storm * 150.0,
+            start: profile.fog_start_m,
+            end: profile.fog_end_m,
         };
-        volumetric_fog.ambient_color = mix_color(
-            Color::srgb(0.48, 0.56, 0.70),
-            Color::srgb(0.76, 0.70, 0.60),
-            warm,
-        );
-        volumetric_fog.ambient_intensity = 0.028 + warm * 0.022 + storm * 0.012;
-        volumetric_fog.jitter = 0.42;
-        volumetric_fog.step_count = 56;
+        volumetric_fog.ambient_color = profile.volumetric_ambient_color;
+        volumetric_fog.ambient_intensity = profile.volumetric_ambient_intensity;
+        volumetric_fog.jitter = profile.volumetric_jitter;
+        volumetric_fog.step_count = profile.volumetric_step_count;
     }
 }
 
@@ -1986,6 +2042,57 @@ mod tests {
         let elapsed = eval_wind_visual_elapsed_secs(99.0, Some((24, 1.0 / 60.0)));
         assert!((elapsed - 0.4).abs() < 0.0001);
         assert_eq!(eval_wind_visual_elapsed_secs(2.5, None), 2.5);
+    }
+
+    #[test]
+    fn cinematic_weather_profiles_preserve_watercolor_depth_and_readable_haze() {
+        let profiles = cinematic_weather_review_profiles(CinematicWeather::new(3_600.0));
+        assert_eq!(profiles.len(), CINEMATIC_WEATHER_REVIEW_SAMPLE_COUNT);
+
+        let sky_luma_range = finite_range(profiles.iter().map(|profile| luma(profile.sky_color)));
+        let ambient_brightness_range =
+            finite_range(profiles.iter().map(|profile| profile.ambient_brightness));
+        let sun_illuminance_range =
+            finite_range(profiles.iter().map(|profile| profile.sun_illuminance));
+        let exposure_range = finite_range(profiles.iter().map(|profile| profile.exposure_ev100));
+        let volumetric_intensity_range = finite_range(
+            profiles
+                .iter()
+                .map(|profile| profile.volumetric_ambient_intensity),
+        );
+        let fog_start_range = finite_range(profiles.iter().map(|profile| profile.fog_start_m));
+        let min_fog_band = profiles
+            .iter()
+            .map(|profile| profile.fog_end_m - profile.fog_start_m)
+            .fold(f32::INFINITY, f32::min);
+
+        assert!(sky_luma_range > 0.06);
+        assert!(ambient_brightness_range > 100.0);
+        assert!(sun_illuminance_range > 14_000.0);
+        assert!(exposure_range > 0.25);
+        assert!(volumetric_intensity_range > 0.010);
+        assert!(fog_start_range > 10.0);
+        assert!(min_fog_band > 3_300.0);
+        assert!(
+            profiles
+                .iter()
+                .all(|profile| profile.volumetric_step_count >= 48)
+        );
+    }
+
+    fn finite_range(values: impl Iterator<Item = f32>) -> f32 {
+        let mut min_value = f32::INFINITY;
+        let mut max_value = f32::NEG_INFINITY;
+        for value in values {
+            min_value = min_value.min(value);
+            max_value = max_value.max(value);
+        }
+        max_value - min_value
+    }
+
+    fn luma(color: Color) -> f32 {
+        let srgb = color.to_srgba();
+        srgb.red * 0.2126 + srgb.green * 0.7152 + srgb.blue * 0.0722
     }
 
     fn test_updraft_guide() -> UpdraftGuide {

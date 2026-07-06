@@ -28,13 +28,22 @@ const MIN_TREE_CANOPY_VERTICAL_TO_HORIZONTAL_RATIO: f64 = 0.45;
 const MIN_WEATHER_CLOUD_COUNT: u64 = 40;
 const MIN_WEATHER_CLOUD_BANK_COUNT: u64 = 20;
 const MIN_WEATHER_CLOUD_VEIL_COUNT: u64 = 30;
-const MIN_WEATHER_CLOUD_MESH_VERTICES: u64 = 1530;
+const MIN_WEATHER_CLOUD_MESH_VERTICES: u64 = 2800;
 const MIN_WEATHER_CLOUD_LOBE_COUNT: u64 = 9;
 const MIN_WEATHER_CLOUD_WISP_CARD_COUNT: u64 = 36;
 const MIN_WEATHER_CLOUD_FILAMENT_RIBBON_DETAIL_COUNT: u64 = 27;
 const MIN_WEATHER_CLOUD_BANK_DEPTH_M: f64 = 5.8;
 const MIN_WEATHER_CLOUD_BANK_LOBE_COUNT: u64 = 18;
 const MIN_WEATHER_CLOUD_SCALED_DEPTH_SPAN_M: f64 = 12.0;
+const MIN_ATMOSPHERE_SAMPLE_COUNT: u64 = 5;
+const MIN_ATMOSPHERE_SKY_LUMA_RANGE: f64 = 0.06;
+const MIN_ATMOSPHERE_AMBIENT_BRIGHTNESS_RANGE: f64 = 100.0;
+const MIN_ATMOSPHERE_SUN_ILLUMINANCE_RANGE: f64 = 14_000.0;
+const MIN_ATMOSPHERE_EXPOSURE_RANGE: f64 = 0.25;
+const MIN_ATMOSPHERE_FOG_START_RANGE_M: f64 = 10.0;
+const MIN_ATMOSPHERE_FOG_BAND_M: f64 = 3_300.0;
+const MIN_ATMOSPHERE_VOLUMETRIC_INTENSITY_RANGE: f64 = 0.010;
+const MIN_ATMOSPHERE_VOLUMETRIC_STEP_COUNT: u64 = 48;
 const MIN_TREE_TRUNK_HEIGHT_RANGE_M: f64 = 1.5;
 const MIN_TREE_CANOPY_RADIUS_RANGE_M: f64 = 0.35;
 const MIN_LANDMARK_COUNT: u64 = 60;
@@ -243,6 +252,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         value_u64(counts, "landmark_kind_count"),
         MIN_LANDMARK_KIND_COUNT,
         "kinds",
+    ));
+    checks.push(check_at_least_u64(
+        "atmosphere_sample_count",
+        value_u64(counts, "atmosphere_sample_count"),
+        MIN_ATMOSPHERE_SAMPLE_COUNT,
+        "samples",
     ));
     checks.push(check_at_least_u64(
         "route_sightline_count",
@@ -562,6 +577,54 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         MIN_WEATHER_CLOUD_SCALED_DEPTH_SPAN_M,
         "m",
     ));
+    checks.push(check_at_least_f64(
+        "atmosphere_sky_luma_range",
+        value_f64(minimums, "atmosphere_sky_luma_range"),
+        MIN_ATMOSPHERE_SKY_LUMA_RANGE,
+        "luma",
+    ));
+    checks.push(check_at_least_f64(
+        "atmosphere_ambient_brightness_range",
+        value_f64(minimums, "atmosphere_ambient_brightness_range"),
+        MIN_ATMOSPHERE_AMBIENT_BRIGHTNESS_RANGE,
+        "lux",
+    ));
+    checks.push(check_at_least_f64(
+        "atmosphere_sun_illuminance_range",
+        value_f64(minimums, "atmosphere_sun_illuminance_range"),
+        MIN_ATMOSPHERE_SUN_ILLUMINANCE_RANGE,
+        "lux",
+    ));
+    checks.push(check_at_least_f64(
+        "atmosphere_exposure_range",
+        value_f64(minimums, "atmosphere_exposure_range"),
+        MIN_ATMOSPHERE_EXPOSURE_RANGE,
+        "ev100",
+    ));
+    checks.push(check_at_least_f64(
+        "atmosphere_fog_start_range",
+        value_f64(minimums, "atmosphere_fog_start_range_m"),
+        MIN_ATMOSPHERE_FOG_START_RANGE_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "atmosphere_fog_band",
+        value_f64(minimums, "atmosphere_fog_band_m"),
+        MIN_ATMOSPHERE_FOG_BAND_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "atmosphere_volumetric_intensity_range",
+        value_f64(minimums, "atmosphere_volumetric_intensity_range"),
+        MIN_ATMOSPHERE_VOLUMETRIC_INTENSITY_RANGE,
+        "intensity",
+    ));
+    checks.push(check_at_least_u64(
+        "atmosphere_volumetric_step_count",
+        value_u64(minimums, "atmosphere_volumetric_step_count"),
+        MIN_ATMOSPHERE_VOLUMETRIC_STEP_COUNT,
+        "steps",
+    ));
     checks.push(check_at_least_u64(
         "route_cairn_mesh_vertices",
         value_u64(minimums, "route_cairn_mesh_vertices"),
@@ -818,6 +881,18 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         &mut artifact_counters,
         &mut artifacts,
     );
+
+    let atmosphere_entry_count = manifest
+        .get("atmosphere")
+        .and_then(Value::as_array)
+        .map(|entries| entries.len() as u64)
+        .unwrap_or(0);
+    checks.push(check_eq_u64(
+        "atmosphere_manifest_entries",
+        atmosphere_entry_count,
+        value_u64(counts, "atmosphere_sample_count"),
+        "samples",
+    ));
 
     let route_sightline_entry_count = manifest
         .get("route_sightlines")
@@ -1085,6 +1160,7 @@ mod tests {
                 "weather_cloud_veil_count": 0,
                 "landmark_count": 1,
                 "landmark_kind_count": 1,
+                "atmosphere_sample_count": 0,
                 "route_sightline_count": 0,
                 "required_route_sightline_count": 0,
                 "optional_route_sightline_count": 0,
@@ -1140,6 +1216,14 @@ mod tests {
                 "weather_cloud_bank_depth_m": 0.2,
                 "weather_cloud_bank_lobe_count": 0,
                 "weather_cloud_scaled_depth_span_m": 0.5,
+                "atmosphere_sky_luma_range": 0.0,
+                "atmosphere_ambient_brightness_range": 0.0,
+                "atmosphere_sun_illuminance_range": 0.0,
+                "atmosphere_exposure_range": 0.0,
+                "atmosphere_fog_start_range_m": 0.0,
+                "atmosphere_fog_band_m": 0.0,
+                "atmosphere_volumetric_intensity_range": 0.0,
+                "atmosphere_volumetric_step_count": 0,
                 "route_cairn_mesh_vertices": 10,
                 "route_cairn_vertical_span_m": 0.2,
                 "launch_beacon_mesh_vertices": 10,
@@ -1183,6 +1267,7 @@ mod tests {
             "trees": [],
             "clouds": [],
             "landmarks": [],
+            "atmosphere": [],
             "route_sightlines": []
         });
 
@@ -1225,6 +1310,24 @@ mod tests {
             check_named(checks, "weather_cloud_scaled_depth_span")
                 .is_some_and(|check| { !check.get("passed").and_then(Value::as_bool).unwrap() })
         );
+        for name in [
+            "atmosphere_sample_count",
+            "atmosphere_sky_luma_range",
+            "atmosphere_ambient_brightness_range",
+            "atmosphere_sun_illuminance_range",
+            "atmosphere_exposure_range",
+            "atmosphere_fog_start_range",
+            "atmosphere_fog_band",
+            "atmosphere_volumetric_intensity_range",
+            "atmosphere_volumetric_step_count",
+        ] {
+            assert!(
+                check_named(checks, name).is_some_and(|check| {
+                    !check.get("passed").and_then(Value::as_bool).unwrap()
+                }),
+                "{name} should fail for flat atmosphere regressions"
+            );
+        }
         for name in [
             "landmark_count",
             "landmark_kind_count",

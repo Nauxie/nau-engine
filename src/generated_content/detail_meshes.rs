@@ -17,7 +17,10 @@ pub(crate) use clouds::{
     cloud_filament_ribbon_detail_count,
 };
 #[cfg(test)]
-pub(crate) use clouds::{CLOUD_FILAMENT_RIBBON_VERTICES, CLOUD_FILAMENT_RIBBONS_PER_LOBE};
+pub(crate) use clouds::{
+    CLOUD_FILAMENT_RIBBON_VERTICES, CLOUD_FILAMENT_RIBBONS_PER_LOBE, CLOUD_STRATA_CARDS_PER_LOBE,
+    cloud_strata_card_detail_count,
+};
 pub(crate) use effects::{
     crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh, glider_airflow_trail_mesh,
     updraft_ribbon_mesh,
