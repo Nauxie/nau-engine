@@ -38,7 +38,7 @@ const MIN_WEATHER_CLOUD_SCALED_DEPTH_SPAN_M: f64 = 12.0;
 const MIN_TREE_TRUNK_HEIGHT_RANGE_M: f64 = 1.5;
 const MIN_TREE_CANOPY_RADIUS_RANGE_M: f64 = 0.35;
 const MIN_LANDMARK_COUNT: u64 = 60;
-const MIN_LANDMARK_KIND_COUNT: u64 = 18;
+const MIN_LANDMARK_KIND_COUNT: u64 = 22;
 const MIN_SMALL_ISLAND_COUNT: u64 = 10;
 const MIN_PLATEAU_LANDMARK_COUNT: u64 = 15;
 const MIN_PLATEAU_WATERFALL_RIBBON_COUNT: u64 = 2;
@@ -48,6 +48,10 @@ const MIN_ROUTE_WATERFALL_MIST_COUNT: u64 = 1;
 const MIN_ROUTE_LAKE_SURFACE_COUNT: u64 = 3;
 const MIN_UNDER_ROUTE_VISUAL_COUNT: u64 = 8;
 const MIN_UNDER_ROUTE_CAVE_MOUTH_COUNT: u64 = 4;
+const MIN_GLYPH_SLAB_COUNT: u64 = 1;
+const MIN_BROKEN_COLUMN_COUNT: u64 = 1;
+const MIN_BRIDGE_FRAGMENT_COUNT: u64 = 1;
+const MIN_WIND_VANE_COUNT: u64 = 1;
 const MIN_RUIN_ARCH_COUNT: u64 = 4;
 const MIN_ROUTE_CAIRN_COUNT: u64 = 16;
 const MIN_LAUNCH_BEACON_COUNT: u64 = 1;
@@ -269,6 +273,30 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "under_route_cave_mouth_count",
         value_u64(counts, "under_route_cave_mouth_count"),
         MIN_UNDER_ROUTE_CAVE_MOUTH_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "glyph_slab_count",
+        landmark_kind_count(manifest, "first_expedition_glyph_slab"),
+        MIN_GLYPH_SLAB_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "broken_column_count",
+        landmark_kind_count(manifest, "first_expedition_broken_columns"),
+        MIN_BROKEN_COLUMN_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "bridge_fragment_count",
+        landmark_kind_count(manifest, "first_expedition_bridge_fragment"),
+        MIN_BRIDGE_FRAGMENT_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "wind_vane_count",
+        landmark_kind_count(manifest, "first_expedition_wind_vane"),
+        MIN_WIND_VANE_COUNT,
         "meshes",
     ));
     checks.push(check_at_least_u64(
@@ -817,6 +845,19 @@ fn value_f64(parent: &Value, key: &str) -> f64 {
     parent.get(key).and_then(Value::as_f64).unwrap_or(0.0)
 }
 
+fn landmark_kind_count(manifest: &Value, kind: &str) -> u64 {
+    manifest
+        .get("landmarks")
+        .and_then(Value::as_array)
+        .map(|landmarks| {
+            landmarks
+                .iter()
+                .filter(|landmark| landmark.get("kind").and_then(Value::as_str) == Some(kind))
+                .count() as u64
+        })
+        .unwrap_or(0)
+}
+
 fn check_eq_str(name: &str, value: &str, expected: &str, unit: &str) -> Value {
     json!({
         "name": name,
@@ -1008,6 +1049,10 @@ mod tests {
             "route_lake_surface_count",
             "under_route_visual_count",
             "under_route_cave_mouth_count",
+            "glyph_slab_count",
+            "broken_column_count",
+            "bridge_fragment_count",
+            "wind_vane_count",
             "ruin_arch_count",
             "route_cairn_count",
             "launch_beacon_count",

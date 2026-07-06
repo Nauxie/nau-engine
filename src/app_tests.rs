@@ -1086,7 +1086,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(under_route_cave_mouth_count, 4);
     assert_eq!(under_route_shelf_count, 2);
     assert_eq!(under_route_root_count, 2);
-    assert_eq!(first_expedition_silhouette_count, 7);
+    assert_eq!(first_expedition_silhouette_count, 11);
     let landmark_count = island_count * 2
         + route_cairn_count
         + 1
@@ -1120,7 +1120,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.weather_cloud_bank_count, island_count);
     assert_eq!(report.weather_cloud_veil_count, weather_veil_count);
     assert_eq!(report.landmark_count, landmark_count);
-    assert!(report.landmark_kind_count >= 28);
+    assert!(report.landmark_kind_count >= 32);
     assert_eq!(report.small_island_count, small_island_count);
     assert!(report.small_island_count >= 10);
     assert_eq!(report.plateau_landmark_count, 19);
@@ -1177,6 +1177,38 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             .filter(|summary| summary.kind.starts_with("first_expedition_"))
             .count(),
         first_expedition_silhouette_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "first_expedition_glyph_slab")
+            .count(),
+        1
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "first_expedition_broken_columns")
+            .count(),
+        1
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "first_expedition_bridge_fragment")
+            .count(),
+        1
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "first_expedition_wind_vane")
+            .count(),
+        1
     );
     assert_eq!(
         report
@@ -1289,8 +1321,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             + report.weather_cloud_count
             + report.landmark_count
     );
-    assert!(report.total_vertex_count > 70_000);
-    assert!(report.total_triangle_count > 75_000);
+    assert!(report.total_vertex_count > 71_000);
+    assert!(report.total_triangle_count > 76_000);
     assert!(report.min_ground_cover_mesh_vertices >= 1320);
     assert!(report.min_ground_cover_blade_count >= 220);
     assert!(report.min_ground_cover_blade_height_range_m >= 0.7);
@@ -1484,6 +1516,26 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             summary.island_name == "great sky plateau" && summary.label == "low basin lake basin"
         })
         .expect("great sky plateau should export a terrain lake basin rim");
+    let glyph_slab = report
+        .landmarks
+        .iter()
+        .find(|summary| summary.kind == "first_expedition_glyph_slab")
+        .expect("mist arch should export a carved glyph slab");
+    let broken_columns = report
+        .landmarks
+        .iter()
+        .find(|summary| summary.kind == "first_expedition_broken_columns")
+        .expect("cloud gate should export broken column ruins");
+    let bridge_fragment = report
+        .landmarks
+        .iter()
+        .find(|summary| summary.kind == "first_expedition_bridge_fragment")
+        .expect("bridge-remnant islands should export a broken bridge fragment");
+    let wind_vane = report
+        .landmarks
+        .iter()
+        .find(|summary| summary.kind == "first_expedition_wind_vane")
+        .expect("wind-gate islands should export a stone wind vane");
 
     assert!(low_basin_lake.mesh.horizontal_span_m >= 100.0);
     assert!(low_basin_lake.mesh.depth_span_m >= 45.0);
@@ -1534,6 +1586,19 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(lake_basin.mesh.depth_span_m >= 65.0);
     assert!(lake_basin.mesh.vertical_span_m >= 1.0);
     assert!(lake_basin.normal_slope_band_count >= 4);
+    assert!(glyph_slab.mesh.vertex_count >= 300);
+    assert!(glyph_slab.mesh.vertical_span_m >= 6.8);
+    assert!(glyph_slab.mesh.depth_span_m >= 0.7);
+    assert!(glyph_slab.normal_slope_band_count >= 4);
+    assert!(broken_columns.mesh.vertex_count >= 600);
+    assert!(broken_columns.mesh.vertical_span_m >= 4.0);
+    assert!(broken_columns.normal_slope_band_count >= 5);
+    assert!(bridge_fragment.mesh.vertex_count >= 250);
+    assert!(bridge_fragment.mesh.horizontal_span_m >= 8.0);
+    assert!(bridge_fragment.mesh.depth_span_m >= 2.0);
+    assert!(wind_vane.mesh.vertex_count >= 90);
+    assert!(wind_vane.mesh.vertical_span_m >= 7.5);
+    assert!(wind_vane.mesh.horizontal_span_m >= 4.2);
     assert!(output_dir.join(&low_basin_lake.mesh.obj_path).exists());
     assert!(output_dir.join(&waterfall.mesh.obj_path).exists());
     assert!(output_dir.join(&mist.mesh.obj_path).exists());
@@ -1552,6 +1617,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(output_dir.join(&cliff_teeth.mesh.obj_path).exists());
     assert!(output_dir.join(&garden_ring.mesh.obj_path).exists());
     assert!(output_dir.join(&lake_basin.mesh.obj_path).exists());
+    assert!(output_dir.join(&glyph_slab.mesh.obj_path).exists());
+    assert!(output_dir.join(&broken_columns.mesh.obj_path).exists());
+    assert!(output_dir.join(&bridge_fragment.mesh.obj_path).exists());
+    assert!(output_dir.join(&wind_vane.mesh.obj_path).exists());
     assert!(manifest.contains("\"schema\": \"nau_visual_content_export.v1\""));
     assert!(manifest.contains("\"ground_cover_blade_height_range_m\""));
     assert!(manifest.contains("\"tree_branch_reach_ratio\""));

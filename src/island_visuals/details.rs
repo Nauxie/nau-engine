@@ -381,7 +381,11 @@ pub(super) fn queue_sky_island_details(
             | FirstExpeditionSilhouetteKind::WaterfallCliff
             | FirstExpeditionSilhouetteKind::CaveArch
             | FirstExpeditionSilhouetteKind::BrokenStair
-            | FirstExpeditionSilhouetteKind::HighCrown => detail_materials.stone.clone(),
+            | FirstExpeditionSilhouetteKind::HighCrown
+            | FirstExpeditionSilhouetteKind::AncientGlyphSlab
+            | FirstExpeditionSilhouetteKind::BrokenColumnCluster
+            | FirstExpeditionSilhouetteKind::BridgeFragment
+            | FirstExpeditionSilhouetteKind::WindVane => detail_materials.stone.clone(),
         };
         queue_island_visual(
             entries,
@@ -591,7 +595,11 @@ fn first_expedition_silhouette_landmark_kind(
         | FirstExpeditionSilhouetteKind::WaterfallCliff
         | FirstExpeditionSilhouetteKind::CaveArch
         | FirstExpeditionSilhouetteKind::BrokenStair
-        | FirstExpeditionSilhouetteKind::HighCrown => GeneratedLandmarkKind::RuinArch,
+        | FirstExpeditionSilhouetteKind::HighCrown
+        | FirstExpeditionSilhouetteKind::AncientGlyphSlab
+        | FirstExpeditionSilhouetteKind::BrokenColumnCluster
+        | FirstExpeditionSilhouetteKind::BridgeFragment
+        | FirstExpeditionSilhouetteKind::WindVane => GeneratedLandmarkKind::RuinArch,
     }
 }
 

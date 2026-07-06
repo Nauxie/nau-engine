@@ -1,4 +1,7 @@
-use super::{super::random_unit, shared::append_ellipsoid_lobe};
+use super::{
+    super::random_unit,
+    shared::{append_double_sided_detail_card, append_ellipsoid_lobe},
+};
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
@@ -144,6 +147,10 @@ pub(crate) enum FirstExpeditionSilhouetteKind {
     RingGarden,
     BrokenStair,
     HighCrown,
+    AncientGlyphSlab,
+    BrokenColumnCluster,
+    BridgeFragment,
+    WindVane,
 }
 
 impl FirstExpeditionSilhouetteKind {
@@ -156,6 +163,10 @@ impl FirstExpeditionSilhouetteKind {
             Self::RingGarden => "first_expedition_ring_garden",
             Self::BrokenStair => "first_expedition_broken_stair",
             Self::HighCrown => "first_expedition_high_crown",
+            Self::AncientGlyphSlab => "first_expedition_glyph_slab",
+            Self::BrokenColumnCluster => "first_expedition_broken_columns",
+            Self::BridgeFragment => "first_expedition_bridge_fragment",
+            Self::WindVane => "first_expedition_wind_vane",
         }
     }
 
@@ -168,6 +179,10 @@ impl FirstExpeditionSilhouetteKind {
             Self::RingGarden => "first expedition ring garden",
             Self::BrokenStair => "first expedition broken stair",
             Self::HighCrown => "first expedition high crown",
+            Self::AncientGlyphSlab => "first expedition glyph slab",
+            Self::BrokenColumnCluster => "first expedition broken columns",
+            Self::BridgeFragment => "first expedition bridge fragment",
+            Self::WindVane => "first expedition wind vane",
         }
     }
 }
@@ -198,6 +213,22 @@ impl FirstExpeditionSilhouetteSpec {
                 band_width,
                 height,
             } => garden_ring_mesh(radius, band_width, height, self.seed),
+            FirstExpeditionSilhouetteMesh::GlyphSlab {
+                width,
+                height,
+                depth,
+            } => carved_glyph_slab_mesh(width, height, depth, self.seed),
+            FirstExpeditionSilhouetteMesh::BrokenColumns { radius, height } => {
+                broken_column_cluster_mesh(radius, height, self.seed)
+            }
+            FirstExpeditionSilhouetteMesh::BridgeFragment {
+                length,
+                width,
+                height,
+            } => bridge_fragment_mesh(length, width, height, self.seed),
+            FirstExpeditionSilhouetteMesh::WindVane { height, span } => {
+                wind_vane_mesh(height, span, self.seed)
+            }
         }
     }
 }
@@ -218,6 +249,24 @@ enum FirstExpeditionSilhouetteMesh {
         band_width: f32,
         height: f32,
     },
+    GlyphSlab {
+        width: f32,
+        height: f32,
+        depth: f32,
+    },
+    BrokenColumns {
+        radius: f32,
+        height: f32,
+    },
+    BridgeFragment {
+        length: f32,
+        width: f32,
+        height: f32,
+    },
+    WindVane {
+        height: f32,
+        span: f32,
+    },
 }
 
 pub(crate) fn first_expedition_silhouette_specs(
@@ -228,33 +277,62 @@ pub(crate) fn first_expedition_silhouette_specs(
     match island.name {
         "mist arch" => {
             let height = 16.0;
-            vec![FirstExpeditionSilhouetteSpec {
-                kind: FirstExpeditionSilhouetteKind::NorthRuinSpire,
-                label: "north ruin spire",
-                translation: island_water_surface_position(island, Vec2::new(-0.24, 0.18))
-                    + Vec3::Y * (height * 0.5),
-                rotation_y: -0.34,
-                mesh: FirstExpeditionSilhouetteMesh::Cairn {
-                    radius: 1.05,
-                    height,
+            vec![
+                FirstExpeditionSilhouetteSpec {
+                    kind: FirstExpeditionSilhouetteKind::NorthRuinSpire,
+                    label: "north ruin spire",
+                    translation: island_water_surface_position(island, Vec2::new(-0.24, 0.18))
+                        + Vec3::Y * (height * 0.5),
+                    rotation_y: -0.34,
+                    mesh: FirstExpeditionSilhouetteMesh::Cairn {
+                        radius: 1.05,
+                        height,
+                    },
+                    seed,
                 },
-                seed,
-            }]
+                FirstExpeditionSilhouetteSpec {
+                    kind: FirstExpeditionSilhouetteKind::AncientGlyphSlab,
+                    label: "ancient glyph slab",
+                    translation: island_water_surface_position(island, Vec2::new(0.28, -0.18))
+                        + Vec3::Y * 0.10,
+                    rotation_y: 0.38,
+                    mesh: FirstExpeditionSilhouetteMesh::GlyphSlab {
+                        width: 5.0,
+                        height: 7.2,
+                        depth: 0.72,
+                    },
+                    seed: seed.wrapping_add(37),
+                },
+            ]
         }
         "cloud gate" => {
             let height = 15.5;
-            vec![FirstExpeditionSilhouetteSpec {
-                kind: FirstExpeditionSilhouetteKind::SouthRuinSpire,
-                label: "south ruin spire",
-                translation: island_water_surface_position(island, Vec2::new(0.22, -0.16))
-                    + Vec3::Y * (height * 0.5),
-                rotation_y: 0.42,
-                mesh: FirstExpeditionSilhouetteMesh::Cairn {
-                    radius: 1.0,
-                    height,
+            vec![
+                FirstExpeditionSilhouetteSpec {
+                    kind: FirstExpeditionSilhouetteKind::SouthRuinSpire,
+                    label: "south ruin spire",
+                    translation: island_water_surface_position(island, Vec2::new(0.22, -0.16))
+                        + Vec3::Y * (height * 0.5),
+                    rotation_y: 0.42,
+                    mesh: FirstExpeditionSilhouetteMesh::Cairn {
+                        radius: 1.0,
+                        height,
+                    },
+                    seed,
                 },
-                seed,
-            }]
+                FirstExpeditionSilhouetteSpec {
+                    kind: FirstExpeditionSilhouetteKind::BrokenColumnCluster,
+                    label: "broken column cluster",
+                    translation: island_water_surface_position(island, Vec2::new(-0.30, 0.20))
+                        + Vec3::Y * 0.06,
+                    rotation_y: -0.48,
+                    mesh: FirstExpeditionSilhouetteMesh::BrokenColumns {
+                        radius: 0.92,
+                        height: 7.4,
+                    },
+                    seed: seed.wrapping_add(53),
+                },
+            ]
         }
         "cloudfall meadow" => {
             let height = 14.0;
@@ -299,6 +377,31 @@ pub(crate) fn first_expedition_silhouette_specs(
                 radius: 11.0,
                 band_width: 2.4,
                 height: 0.62,
+            },
+            seed,
+        }],
+        "mist stepping stone" => vec![FirstExpeditionSilhouetteSpec {
+            kind: FirstExpeditionSilhouetteKind::BridgeFragment,
+            label: "broken bridge fragment",
+            translation: island_water_surface_position(island, Vec2::new(0.02, 0.22))
+                + Vec3::Y * 0.08,
+            rotation_y: 0.58,
+            mesh: FirstExpeditionSilhouetteMesh::BridgeFragment {
+                length: 9.5,
+                width: 2.4,
+                height: 1.15,
+            },
+            seed,
+        }],
+        "east windchain" => vec![FirstExpeditionSilhouetteSpec {
+            kind: FirstExpeditionSilhouetteKind::WindVane,
+            label: "stone wind vane",
+            translation: island_water_surface_position(island, Vec2::new(0.34, -0.04))
+                + Vec3::Y * 0.06,
+            rotation_y: 0.72,
+            mesh: FirstExpeditionSilhouetteMesh::WindVane {
+                height: 7.8,
+                span: 4.8,
             },
             seed,
         }],
@@ -610,6 +713,299 @@ pub(crate) fn ruin_arch_mesh(width: f32, height: f32, depth: f32, seed: u32) -> 
             0.24,
         );
     }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+fn carved_glyph_slab_mesh(width: f32, height: f32, depth: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+    let width = width.max(1.0);
+    let height = height.max(1.0);
+    let depth = depth.max(0.18);
+
+    append_weathered_block(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        Vec3::new(0.0, height * 0.50, 0.0),
+        Vec3::new(width * 0.50, height * 0.50, depth * 0.50),
+        0.0,
+        seed,
+        0.080,
+    );
+
+    for chip in 0..4 {
+        let side = if chip % 2 == 0 { -1.0 } else { 1.0 };
+        let t = chip as f32 / 3.0;
+        append_weathered_block(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            Vec3::new(
+                side * width * (0.20 + random_unit(seed, chip, 2_101) * 0.23),
+                height * (0.10 + t * 0.25),
+                -depth * 0.58,
+            ),
+            Vec3::new(width * 0.035, height * 0.12, depth * 0.10),
+            side * 0.16,
+            seed.wrapping_add(chip * 31),
+            0.045,
+        );
+    }
+
+    for stroke in 0..9 {
+        let row = stroke / 3;
+        let column = stroke % 3;
+        let horizontal = stroke % 2 == 0;
+        let x = (column as f32 - 1.0) * width * 0.20;
+        let y = height * (0.28 + row as f32 * 0.18);
+        let yaw = if horizontal { 0.0 } else { 0.18 };
+        let half_extents = if horizontal {
+            Vec3::new(width * 0.125, height * 0.020, depth * 0.085)
+        } else {
+            Vec3::new(width * 0.026, height * 0.105, depth * 0.085)
+        };
+        append_weathered_block(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            Vec3::new(x, y, -depth * 0.66),
+            half_extents,
+            yaw,
+            seed.wrapping_add(stroke as u32 * 43 + 503),
+            0.020,
+        );
+    }
+
+    for rubble in 0..4 {
+        let side = if rubble % 2 == 0 { -1.0 } else { 1.0 };
+        let x = side * width * (0.18 + random_unit(seed, rubble, 2_231) * 0.22);
+        let z = -depth * (0.48 + random_unit(seed, rubble, 2_239) * 0.18);
+        append_ellipsoid_lobe(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            Vec3::new(
+                x,
+                height * (0.05 + random_unit(seed, rubble, 2_241) * 0.05),
+                z,
+            ),
+            Vec3::new(
+                width * (0.055 + random_unit(seed, rubble, 2_251) * 0.030),
+                height * (0.030 + random_unit(seed, rubble, 2_257) * 0.020),
+                depth * (0.20 + random_unit(seed, rubble, 2_263) * 0.08),
+            ),
+            LANDMARK_LOBE_LATITUDE_SEGMENTS,
+            LANDMARK_LOBE_LONGITUDE_SEGMENTS,
+            seed.wrapping_add(rubble * 79 + 911),
+            0.24,
+        );
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+fn broken_column_cluster_mesh(radius: f32, height: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+    let radius = radius.max(0.25);
+    let height = height.max(1.5);
+
+    for column in 0..3 {
+        let phase =
+            column as f32 / 3.0 * std::f32::consts::TAU + random_unit(seed, column, 2_401) * 0.32;
+        let center_x = phase.cos() * radius * 0.90;
+        let center_z = phase.sin() * radius * 0.72;
+        let column_height = height * (0.44 + random_unit(seed, column, 2_409) * 0.36);
+        let drum_count = 3 + column;
+        let drum_height = column_height / drum_count as f32;
+
+        for drum in 0..drum_count {
+            let t = drum as f32 / drum_count as f32;
+            let lean = Vec2::new(phase.cos(), phase.sin())
+                * radius
+                * (random_unit(seed, column * 17 + drum, 2_421) - 0.5)
+                * 0.18
+                * t;
+            append_ellipsoid_lobe(
+                &mut positions,
+                &mut normals,
+                &mut uvs,
+                &mut indices,
+                Vec3::new(
+                    center_x + lean.x,
+                    drum_height * (0.56 + drum as f32),
+                    center_z + lean.y,
+                ),
+                Vec3::new(
+                    radius * (0.48 + random_unit(seed, drum, 2_431) * 0.10),
+                    drum_height * 0.48,
+                    radius * (0.40 + random_unit(seed, drum, 2_437) * 0.10),
+                ),
+                LANDMARK_LOBE_LATITUDE_SEGMENTS,
+                LANDMARK_LOBE_LONGITUDE_SEGMENTS,
+                seed.wrapping_add(column * 101 + drum * 17),
+                0.16,
+            );
+        }
+
+        append_weathered_block(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            Vec3::new(center_x * 1.18, radius * 0.16, center_z * 1.20),
+            Vec3::new(radius * 0.72, radius * 0.14, radius * 0.30),
+            phase,
+            seed.wrapping_add(column * 67 + 811),
+            0.08,
+        );
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+fn bridge_fragment_mesh(length: f32, width: f32, height: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+    let length = length.max(2.0);
+    let width = width.max(0.5);
+    let height = height.max(0.2);
+
+    for plank in 0..4 {
+        let lane = plank as f32 / 3.0 - 0.5;
+        let broken_scale = 0.72 + random_unit(seed, plank, 2_701) * 0.28;
+        append_weathered_block(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            Vec3::new(
+                (random_unit(seed, plank, 2_709) - 0.5) * length * 0.10,
+                height * (0.34 + lane.abs() * 0.10),
+                lane * width,
+            ),
+            Vec3::new(length * 0.46 * broken_scale, height * 0.16, width * 0.10),
+            (random_unit(seed, plank, 2_719) - 0.5) * 0.18,
+            seed.wrapping_add(plank * 73),
+            0.050,
+        );
+    }
+
+    for support in 0..3 {
+        let x = (support as f32 - 1.0) * length * 0.30;
+        append_weathered_block(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            Vec3::new(x, height * 0.18, 0.0),
+            Vec3::new(width * 0.14, height * 0.18, width * 0.66),
+            0.05 * support as f32,
+            seed.wrapping_add(support * 89 + 271),
+            0.055,
+        );
+    }
+
+    for post in 0..4 {
+        let x = if post < 2 {
+            -length * 0.42
+        } else {
+            length * 0.38
+        };
+        let z = if post % 2 == 0 {
+            -width * 0.62
+        } else {
+            width * 0.58
+        };
+        let post_height = height * (1.00 + random_unit(seed, post, 2_801) * 0.58);
+        append_weathered_block(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            Vec3::new(x, post_height * 0.50, z),
+            Vec3::new(width * 0.10, post_height * 0.50, width * 0.10),
+            (random_unit(seed, post, 2_809) - 0.5) * 0.24,
+            seed.wrapping_add(post * 97 + 503),
+            0.050,
+        );
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+fn wind_vane_mesh(height: f32, span: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+    let height = height.max(2.0);
+    let span = span.max(1.0);
+    let post_width = span * 0.055;
+
+    append_weathered_block(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        Vec3::new(0.0, height * 0.48, 0.0),
+        Vec3::new(post_width, height * 0.48, post_width),
+        0.05,
+        seed,
+        0.040,
+    );
+    append_weathered_block(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        Vec3::new(0.0, height * 0.72, 0.0),
+        Vec3::new(span * 0.50, post_width * 0.85, post_width * 0.85),
+        0.0,
+        seed.wrapping_add(97),
+        0.040,
+    );
+
+    for vane in 0..4 {
+        let angle = vane as f32 / 4.0 * std::f32::consts::TAU;
+        let radial = Vec3::new(angle.cos(), 0.0, angle.sin());
+        let tangent = Vec3::new(-angle.sin(), 0.0, angle.cos());
+        let center = radial * span * 0.38 + Vec3::Y * height * (0.72 + vane as f32 * 0.012);
+        append_double_sided_detail_card(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            center,
+            tangent,
+            Vec3::Y,
+            span * (0.15 + random_unit(seed, vane, 2_901) * 0.035),
+            height * 0.115,
+        );
+    }
+
+    append_crystal_shard(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        Vec3::new(0.0, height * 0.90, 0.0),
+        Vec3::Y,
+        span * 0.045,
+        height * 0.16,
+    );
 
     build_mesh(positions, normals, uvs, indices)
 }
@@ -1249,6 +1645,79 @@ fn append_crystal_shard(
             bottom_center,
             base_next,
             base_current,
+        ]);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn append_weathered_block(
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    uvs: &mut Vec<[f32; 2]>,
+    indices: &mut Vec<u32>,
+    center: Vec3,
+    half_extents: Vec3,
+    yaw: f32,
+    seed: u32,
+    corner_jitter: f32,
+) {
+    let x_axis = Vec3::new(yaw.cos(), 0.0, -yaw.sin());
+    let y_axis = Vec3::Y;
+    let z_axis = Vec3::new(yaw.sin(), 0.0, yaw.cos());
+    let jitter_scale = half_extents.min_element().max(0.01) * corner_jitter;
+    let corner = |index: u32, sx: f32, sy: f32, sz: f32| {
+        let jitter = Vec3::new(
+            random_unit(seed, index, 3_101) - 0.5,
+            random_unit(seed, index, 3_109) - 0.5,
+            random_unit(seed, index, 3_121) - 0.5,
+        ) * jitter_scale;
+        center
+            + x_axis * (sx * half_extents.x)
+            + y_axis * (sy * half_extents.y)
+            + z_axis * (sz * half_extents.z)
+            + jitter
+    };
+    let corners = [
+        corner(0, -1.0, -1.0, -1.0),
+        corner(1, 1.0, -1.0, -1.0),
+        corner(2, 1.0, 1.0, -1.0),
+        corner(3, -1.0, 1.0, -1.0),
+        corner(4, -1.0, -1.0, 1.0),
+        corner(5, 1.0, -1.0, 1.0),
+        corner(6, 1.0, 1.0, 1.0),
+        corner(7, -1.0, 1.0, 1.0),
+    ];
+
+    for (face_indices, normal) in [
+        ([0_usize, 1, 2, 3], -z_axis),
+        ([1, 5, 6, 2], x_axis),
+        ([5, 4, 7, 6], z_axis),
+        ([4, 0, 3, 7], -x_axis),
+        ([3, 2, 6, 7], y_axis),
+        ([4, 5, 1, 0], -y_axis),
+    ] {
+        let start = positions.len() as u32;
+        for (uv, corner_index) in [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+            .into_iter()
+            .zip(face_indices)
+        {
+            positions.push(corners[corner_index].to_array());
+            normals.push(normal.to_array());
+            uvs.push(uv);
+        }
+        indices.extend([
+            start,
+            start + 1,
+            start + 2,
+            start,
+            start + 2,
+            start + 3,
+            start + 2,
+            start + 1,
+            start,
+            start + 3,
+            start + 2,
+            start,
         ]);
     }
 }
