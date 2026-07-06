@@ -2,6 +2,8 @@ use super::super::EvalAccumulator;
 use super::derived::SummaryDerivedMetrics;
 use crate::eval::summary::EvalMetricsSummary;
 
+const EVAL_ARTIFACT_FRAME_TIME_SPIKE_MS: f32 = 100.0;
+
 pub(super) fn build_metrics_summary(
     acc: &EvalAccumulator,
     derived: &SummaryDerivedMetrics,
@@ -12,6 +14,18 @@ pub(super) fn build_metrics_summary(
         p95_frame_time_ms: derived.frame_time_stats.p95_ms,
         p99_frame_time_ms: derived.frame_time_stats.p99_ms,
         max_frame_time_ms: derived.frame_time_stats.max_ms,
+        runtime_frame_time_sample_count: derived.runtime_frame_time_stats.sample_count,
+        avg_runtime_frame_time_ms: derived.runtime_frame_time_stats.avg_ms,
+        p95_runtime_frame_time_ms: derived.runtime_frame_time_stats.p95_ms,
+        p99_runtime_frame_time_ms: derived.runtime_frame_time_stats.p99_ms,
+        max_runtime_frame_time_ms: derived.runtime_frame_time_stats.max_ms,
+        eval_artifact_frame_time_sample_count: derived.eval_artifact_frame_time_stats.sample_count,
+        eval_artifact_frame_time_spike_count: acc
+            .eval_artifact_frame_times_ms
+            .iter()
+            .filter(|frame_time_ms| **frame_time_ms >= EVAL_ARTIFACT_FRAME_TIME_SPIKE_MS)
+            .count() as u32,
+        max_eval_artifact_frame_time_ms: derived.eval_artifact_frame_time_stats.max_ms,
         horizontal_distance_m: derived.horizontal_distance_m,
         max_altitude_m: acc.max_altitude_m,
         min_altitude_m: acc.min_altitude_m,
@@ -327,6 +341,9 @@ pub(super) fn build_metrics_summary(
         max_world_collision_push_m: acc.max_world_collision_push_m,
         max_terrain_rim_collision_push_m: acc.max_terrain_rim_collision_push_m,
         max_terrain_body_collision_push_m: acc.max_terrain_body_collision_push_m,
+        near_island_edge_samples: acc.near_island_edge_samples,
+        outside_island_footprint_samples: acc.outside_island_footprint_samples,
+        outside_near_island_edge_samples: acc.outside_near_island_edge_samples,
         min_island_terrain_surface_count: acc.min_island_terrain_surface_count,
         min_island_terrain_mesh_vertices: acc.min_island_terrain_mesh_vertices,
         min_island_terrain_color_bands: acc.min_island_terrain_color_bands,
@@ -356,6 +373,7 @@ pub(super) fn build_metrics_summary(
         min_generated_rock_count: acc.min_generated_rock_count,
         min_rock_mesh_vertices: acc.min_rock_mesh_vertices,
         min_generated_landmark_count: acc.min_generated_landmark_count,
+        min_generated_ruin_cluster_count: acc.min_generated_ruin_cluster_count,
         min_generated_route_cairn_count: acc.min_generated_route_cairn_count,
         min_generated_launch_beacon_count: acc.min_generated_launch_beacon_count,
         min_generated_landing_garden_marker_count: acc.min_generated_landing_garden_marker_count,

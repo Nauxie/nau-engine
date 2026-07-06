@@ -173,6 +173,12 @@ pub(super) fn append_content_checks(
             "meshes",
         ),
         EvalCheck::at_least(
+            "generated_ruin_cluster_count",
+            acc.min_generated_ruin_cluster_count as f32,
+            MIN_GENERATED_RUIN_CLUSTER_COUNT as f32,
+            "meshes",
+        ),
+        EvalCheck::at_least(
             "generated_route_cairn_count",
             acc.min_generated_route_cairn_count as f32,
             MIN_GENERATED_ROUTE_CAIRN_COUNT as f32,

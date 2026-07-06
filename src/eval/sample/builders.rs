@@ -189,6 +189,10 @@ impl EvalSample {
             readable_lift_fields,
             lift_field_count,
             target_distance_m,
+            nearest_island_edge_distance_m: 0.0,
+            signed_island_edge_distance_m: 0.0,
+            near_island_edge: false,
+            outside_island_footprint: false,
             on_landing_target,
             objective,
             sky_island_count,
@@ -295,6 +299,7 @@ impl EvalSample {
             generated_rock_count: 0,
             min_rock_mesh_vertices: 0,
             generated_landmark_count: 0,
+            generated_ruin_cluster_count: 0,
             generated_route_cairn_count: 0,
             generated_launch_beacon_count: 0,
             generated_landing_garden_marker_count: 0,
@@ -765,6 +770,19 @@ impl EvalSample {
         self
     }
 
+    pub fn with_island_edge_metrics(
+        mut self,
+        signed_edge_distance_m: f32,
+        near_edge: bool,
+        outside_footprint: bool,
+    ) -> Self {
+        self.signed_island_edge_distance_m = signed_edge_distance_m;
+        self.nearest_island_edge_distance_m = signed_edge_distance_m.abs();
+        self.near_island_edge = near_edge;
+        self.outside_island_footprint = outside_footprint;
+        self
+    }
+
     pub fn with_terrain_rim_collision_metrics(
         mut self,
         proxy_count: usize,
@@ -872,6 +890,7 @@ impl EvalSample {
         generated_rock_count: usize,
         min_rock_mesh_vertices: usize,
         generated_landmark_count: usize,
+        generated_ruin_cluster_count: usize,
         generated_route_cairn_count: usize,
         generated_launch_beacon_count: usize,
         generated_landing_garden_marker_count: usize,
@@ -896,6 +915,7 @@ impl EvalSample {
         self.generated_rock_count = generated_rock_count;
         self.min_rock_mesh_vertices = min_rock_mesh_vertices;
         self.generated_landmark_count = generated_landmark_count;
+        self.generated_ruin_cluster_count = generated_ruin_cluster_count;
         self.generated_route_cairn_count = generated_route_cairn_count;
         self.generated_launch_beacon_count = generated_launch_beacon_count;
         self.generated_landing_garden_marker_count = generated_landing_garden_marker_count;

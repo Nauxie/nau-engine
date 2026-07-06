@@ -14,6 +14,7 @@ fn accumulator_summarizes_frame_time_percentiles() {
     for frame_time_ms in [8.0, 16.0, 33.0, 50.0] {
         accumulator.observe_frame_time_ms(frame_time_ms);
     }
+    accumulator.observe_eval_artifact_frame_time_ms(250.0);
 
     let summary = accumulator.summary(
         scenario,
@@ -26,10 +27,18 @@ fn accumulator_summarizes_frame_time_percentiles() {
         },
     );
 
-    assert_eq!(summary.metrics.avg_frame_time_ms, 26.75);
-    assert_eq!(summary.metrics.p95_frame_time_ms, 50.0);
-    assert_eq!(summary.metrics.p99_frame_time_ms, 50.0);
-    assert_eq!(summary.metrics.max_frame_time_ms, 50.0);
+    assert_eq!(summary.metrics.avg_frame_time_ms, 71.4);
+    assert_eq!(summary.metrics.p95_frame_time_ms, 250.0);
+    assert_eq!(summary.metrics.p99_frame_time_ms, 250.0);
+    assert_eq!(summary.metrics.max_frame_time_ms, 250.0);
+    assert_eq!(summary.metrics.runtime_frame_time_sample_count, 4);
+    assert_eq!(summary.metrics.avg_runtime_frame_time_ms, 26.75);
+    assert_eq!(summary.metrics.p95_runtime_frame_time_ms, 50.0);
+    assert_eq!(summary.metrics.p99_runtime_frame_time_ms, 50.0);
+    assert_eq!(summary.metrics.max_runtime_frame_time_ms, 50.0);
+    assert_eq!(summary.metrics.eval_artifact_frame_time_sample_count, 1);
+    assert_eq!(summary.metrics.eval_artifact_frame_time_spike_count, 1);
+    assert_eq!(summary.metrics.max_eval_artifact_frame_time_ms, 250.0);
 }
 
 #[test]
@@ -79,6 +88,36 @@ fn accumulator_reports_and_gates_launch_speed_caps() {
     );
     assert!(!named_check(&summary, "launch_upward_speed").passed);
     assert!(!named_check(&summary, "launch_horizontal_speed").passed);
+}
+
+#[test]
+fn accumulator_gates_entity_count_as_performance_ceiling() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut sample = content_metric_sample(scenario, 0, MIN_SKY_ISLAND_COUNT, 0, 96);
+    sample.entity_count = scenario.thresholds.max_entity_count + 1;
+
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let check = named_check(&summary, "entity_count");
+
+    assert_eq!(
+        summary.metrics.max_entity_count,
+        scenario.thresholds.max_entity_count + 1
+    );
+    assert_eq!(check.comparator, "<=");
+    assert_eq!(check.threshold, scenario.thresholds.max_entity_count as f32);
+    assert!(!check.passed);
 }
 
 #[test]

@@ -26,6 +26,7 @@ pub(crate) const ISLAND_IMPOSTOR_COLOR_BANDS: usize = 18;
 pub(crate) const ISLAND_CLIFF_STRATA_BANDS: usize = 9;
 
 pub(crate) const ISLAND_TERRAIN_RINGS: usize = 24;
+pub(crate) const ISLAND_TERRAIN_EDGE_SKIRT_DEPTH_M: f32 = 0.32;
 pub(crate) const ISLAND_BODY_SEGMENTS: usize = 96;
 pub(crate) const ISLAND_IMPOSTOR_SEGMENTS: usize = 48;
 pub(crate) const ISLAND_CLIFF_RINGS: usize = 8;

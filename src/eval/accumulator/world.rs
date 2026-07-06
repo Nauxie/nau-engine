@@ -424,6 +424,15 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.max_terrain_body_collision_push_m = accumulator
         .max_terrain_body_collision_push_m
         .max(sample.max_terrain_body_collision_push_m);
+    if sample.near_island_edge {
+        accumulator.near_island_edge_samples += 1;
+    }
+    if sample.outside_island_footprint {
+        accumulator.outside_island_footprint_samples += 1;
+    }
+    if sample.near_island_edge && sample.outside_island_footprint {
+        accumulator.outside_near_island_edge_samples += 1;
+    }
     accumulator.max_resident_island_visual_count = accumulator
         .max_resident_island_visual_count
         .max(sample.resident_island_visual_count);

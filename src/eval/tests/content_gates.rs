@@ -277,6 +277,7 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"min_generated_rock_count\": 90"));
     assert!(summary_json.contains("\"min_rock_mesh_vertices\": 74"));
     assert!(summary_json.contains("\"min_generated_landmark_count\": 40"));
+    assert!(summary_json.contains("\"min_generated_ruin_cluster_count\": 0"));
     assert!(summary_json.contains("\"min_generated_route_cairn_count\": 16"));
     assert!(summary_json.contains("\"min_generated_launch_beacon_count\": 1"));
     assert!(summary_json.contains("\"min_generated_landing_garden_marker_count\": 4"));
@@ -507,6 +508,62 @@ fn accumulator_fails_when_solid_world_collision_proxy_kinds_are_missing() {
         "landmark_world_collision_proxy_count",
     ] {
         assert!(!named_check(&summary, check_name).passed);
+    }
+}
+
+#[test]
+fn close_camera_scenarios_use_local_rock_proxy_threshold() {
+    for scenario_name in [
+        WORLD_COLLISION_CONTACT,
+        CAMERA_MOUSE_CONTROL,
+        CAMERA_YAW_STABILITY,
+        CAMERA_TURN_STABILITY,
+        CAMERA_STRAFE_STABILITY,
+    ] {
+        let scenario = scenario_named(scenario_name).expect("close camera scenario exists");
+        let mut below_threshold = EvalAccumulator::default();
+        below_threshold.observe(
+            content_metric_sample(scenario, 0, 12, 0, 96).with_world_collision_kind_metrics(
+                MIN_SOLID_WORLD_COLLISION_PROXY_COUNT,
+                MIN_TREE_WORLD_COLLISION_PROXY_COUNT,
+                11,
+                MIN_LANDMARK_WORLD_COLLISION_PROXY_COUNT,
+            ),
+        );
+        let below_summary = below_threshold.summary(
+            scenario,
+            EvalArtifacts {
+                summary_json: "summary.json".to_string(),
+                samples_ndjson: "samples.ndjson".to_string(),
+                screenshot_png: None,
+                checkpoint_screenshots: Vec::new(),
+                checkpoint_marker_metadata: Vec::new(),
+            },
+        );
+
+        assert!(!named_check(&below_summary, "rock_world_collision_proxy_count").passed);
+
+        let mut at_threshold = EvalAccumulator::default();
+        at_threshold.observe(
+            content_metric_sample(scenario, 0, 12, 0, 96).with_world_collision_kind_metrics(
+                MIN_SOLID_WORLD_COLLISION_PROXY_COUNT,
+                MIN_TREE_WORLD_COLLISION_PROXY_COUNT,
+                12,
+                MIN_LANDMARK_WORLD_COLLISION_PROXY_COUNT,
+            ),
+        );
+        let at_summary = at_threshold.summary(
+            scenario,
+            EvalArtifacts {
+                summary_json: "summary.json".to_string(),
+                samples_ndjson: "samples.ndjson".to_string(),
+                screenshot_png: None,
+                checkpoint_screenshots: Vec::new(),
+                checkpoint_marker_metadata: Vec::new(),
+            },
+        );
+
+        assert!(named_check(&at_summary, "rock_world_collision_proxy_count").passed);
     }
 }
 
@@ -858,7 +915,7 @@ fn terrain_rim_contact_eval_fails_without_rim_contact_resolution() {
 fn terrain_rim_contact_eval_fails_when_contact_samples_are_only_skin_depth() {
     let scenario = scenario_named(TERRAIN_RIM_COLLISION_CONTACT).expect("rim route exists");
     let mut accumulator = EvalAccumulator::default();
-    for frame in 0..MIN_WORLD_COLLISION_CONTACT_SAMPLES {
+    for frame in 0..MIN_TERRAIN_RIM_COLLISION_CONTACT_SAMPLES {
         accumulator.observe(
             content_metric_sample(scenario, frame, 12, 0, 96).with_terrain_rim_collision_metrics(
                 MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT,
@@ -897,7 +954,7 @@ fn terrain_rim_contact_eval_fails_when_contact_samples_are_only_skin_depth() {
 fn terrain_rim_contact_eval_passes_when_rim_contact_resolves_with_meaningful_push() {
     let scenario = scenario_named(TERRAIN_RIM_COLLISION_CONTACT).expect("rim route exists");
     let mut accumulator = EvalAccumulator::default();
-    for frame in 0..MIN_WORLD_COLLISION_CONTACT_SAMPLES {
+    for frame in 0..MIN_TERRAIN_RIM_COLLISION_CONTACT_SAMPLES {
         let push_m = if frame == 0 {
             MIN_WORLD_COLLISION_CONTACT_PUSH_M
         } else {
@@ -928,10 +985,163 @@ fn terrain_rim_contact_eval_passes_when_rim_contact_resolves_with_meaningful_pus
     assert!(contact_check.passed);
     assert_eq!(
         contact_check.value,
-        MIN_WORLD_COLLISION_CONTACT_SAMPLES as f32
+        MIN_TERRAIN_RIM_COLLISION_CONTACT_SAMPLES as f32
     );
     assert!(push_check.passed);
     assert_eq!(push_check.value, MIN_WORLD_COLLISION_CONTACT_PUSH_M);
+}
+
+#[test]
+fn terrain_edge_walkoff_eval_fails_without_off_rim_edge_coverage() {
+    let scenario = scenario_named(TERRAIN_EDGE_WALKOFF).expect("edge route exists");
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe(content_metric_sample(scenario, 0, 12, 0, 96));
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let near_edge_check = named_check(&summary, "terrain_edge_walkoff_near_island_edge_samples");
+    let outside_check = named_check(
+        &summary,
+        "terrain_edge_walkoff_outside_island_footprint_samples",
+    );
+    let outside_near_edge_check = named_check(
+        &summary,
+        "terrain_edge_walkoff_outside_near_island_edge_samples",
+    );
+
+    assert!(!near_edge_check.passed);
+    assert_eq!(near_edge_check.value, 0.0);
+    assert!(!outside_check.passed);
+    assert_eq!(outside_check.value, 0.0);
+    assert!(!outside_near_edge_check.passed);
+    assert_eq!(outside_near_edge_check.value, 0.0);
+}
+
+#[test]
+fn terrain_edge_walkoff_eval_passes_with_inside_and_outside_edge_coverage() {
+    let scenario = scenario_named(TERRAIN_EDGE_WALKOFF).expect("edge route exists");
+    let mut accumulator = EvalAccumulator::default();
+    for frame in 0..12 {
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 12, 0, 96)
+                .with_island_edge_metrics(-1.0, true, false),
+        );
+    }
+    for frame in 12..16 {
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 12, 0, 96)
+                .with_island_edge_metrics(1.0, true, true),
+        );
+    }
+    for frame in 16..20 {
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 12, 0, 96)
+                .with_island_edge_metrics(8.0, false, true),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let near_edge_check = named_check(&summary, "terrain_edge_walkoff_near_island_edge_samples");
+    let outside_check = named_check(
+        &summary,
+        "terrain_edge_walkoff_outside_island_footprint_samples",
+    );
+    let outside_near_edge_check = named_check(
+        &summary,
+        "terrain_edge_walkoff_outside_near_island_edge_samples",
+    );
+    let push_check = named_check(&summary, "terrain_edge_walkoff_collision_push");
+    let camera_snap_check = named_check(
+        &summary,
+        "terrain_edge_walkoff_camera_obstruction_snap_count",
+    );
+
+    assert!(near_edge_check.passed);
+    assert_eq!(near_edge_check.value, 16.0);
+    assert!(outside_check.passed);
+    assert_eq!(outside_check.value, 8.0);
+    assert!(outside_near_edge_check.passed);
+    assert_eq!(outside_near_edge_check.value, 4.0);
+    assert!(push_check.passed);
+    assert!(camera_snap_check.passed);
+    assert_eq!(camera_snap_check.value, 0.0);
+}
+
+#[test]
+fn terrain_edge_walkoff_eval_fails_when_camera_snaps_during_edge_coverage() {
+    let scenario = scenario_named(TERRAIN_EDGE_WALKOFF).expect("edge route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in 0..12 {
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 12, 0, 96)
+                .with_island_edge_metrics(-1.0, true, false),
+        );
+    }
+    let mut first_obstructed =
+        content_metric_sample(scenario, 12, 12, 0, 96).with_island_edge_metrics(1.0, true, true);
+    first_obstructed.camera_obstruction_hits = 1;
+    first_obstructed.camera_obstruction_adjustment_m = 1.0;
+    first_obstructed.camera_distance_m = 12.0;
+    first_obstructed.camera_step_distance_m = 0.2;
+    accumulator.observe(first_obstructed);
+
+    let mut snap_sample =
+        content_metric_sample(scenario, 13, 12, 0, 96).with_island_edge_metrics(1.0, true, true);
+    snap_sample.camera_obstruction_hits = 1;
+    snap_sample.camera_obstruction_adjustment_m = 1.0;
+    snap_sample.camera_distance_m = 12.0;
+    snap_sample.camera_step_distance_m = 10.0;
+    accumulator.observe(snap_sample);
+
+    for frame in 14..16 {
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 12, 0, 96)
+                .with_island_edge_metrics(1.0, true, true),
+        );
+    }
+    for frame in 16..20 {
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 12, 0, 96)
+                .with_island_edge_metrics(8.0, false, true),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let camera_snap_check = named_check(
+        &summary,
+        "terrain_edge_walkoff_camera_obstruction_snap_count",
+    );
+
+    assert_eq!(summary.metrics.camera_obstruction_snap_count, 1);
+    assert_eq!(camera_snap_check.value, 1.0);
+    assert!(!camera_snap_check.passed);
 }
 
 #[test]
@@ -965,7 +1175,9 @@ fn ground_taxi_control_fails_when_terrain_rim_contacts_are_recorded() {
 #[test]
 fn sample_json_emits_wind_guide_visual_metrics() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
-    let sample_json = content_metric_sample(scenario, 0, 12, 0, 96).to_json();
+    let sample_json = content_metric_sample(scenario, 0, 12, 0, 96)
+        .with_island_edge_metrics(-1.25, true, false)
+        .to_json();
 
     assert!(sample_json.contains("\"updraft_guide_visual_count\":126"));
     assert!(sample_json.contains("\"updraft_ribbon_visual_count\":12"));
@@ -1045,6 +1257,10 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"max_crosswind_force_aligned_delta_mps\":0.0300"));
     assert!(sample_json.contains("\"max_updraft_swirl_force_aligned_delta_mps\":0.0300"));
     assert!(sample_json.contains("\"wind_lateral_load\":0.0000"));
+    assert!(sample_json.contains("\"nearest_island_edge_distance_m\":1.2500"));
+    assert!(sample_json.contains("\"signed_island_edge_distance_m\":-1.2500"));
+    assert!(sample_json.contains("\"near_island_edge\":true"));
+    assert!(sample_json.contains("\"outside_island_footprint\":false"));
     assert!(sample_json.contains(&format!(
         "\"terrain_rim_collision_proxy_count\":{MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT}"
     )));
@@ -1128,13 +1344,35 @@ fn accumulator_fails_generated_visual_shape_regression() {
     let mut accumulator = EvalAccumulator::default();
     accumulator.observe(
         content_metric_sample(scenario, 0, 12, 0, 96).with_generated_visual_shape_metrics(
-            528, 220, 1320, 12, 12, 62, 316, 5, 48, 74, 27, 10, 1, 4, 12, 39, 12, 12, 6.2, 9, 18,
-            1530, 27,
+            528,
+            220,
+            1320,
+            12,
+            12,
+            62,
+            316,
+            5,
+            48,
+            74,
+            27,
+            MIN_GENERATED_RUIN_CLUSTER_COUNT,
+            10,
+            1,
+            4,
+            12,
+            39,
+            12,
+            12,
+            6.2,
+            9,
+            18,
+            1530,
+            27,
         ),
     );
     accumulator.observe(
         content_metric_sample(scenario, 10, 12, 0, 96).with_generated_visual_shape_metrics(
-            10, 12, 72, 0, 0, 8, 45, 1, 1, 12, 0, 0, 0, 0, 0, 8, 0, 0, 0.4, 1, 1, 45, 0,
+            10, 12, 72, 0, 0, 8, 45, 1, 1, 12, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0.4, 1, 1, 45, 0,
         ),
     );
 
@@ -1157,6 +1395,7 @@ fn accumulator_fails_generated_visual_shape_regression() {
     let rock_count_check = named_check(&summary, "generated_rock_count");
     let rock_vertex_check = named_check(&summary, "rock_mesh_vertices");
     let landmark_count_check = named_check(&summary, "generated_landmark_count");
+    let ruin_cluster_count_check = named_check(&summary, "generated_ruin_cluster_count");
     let route_cairn_count_check = named_check(&summary, "generated_route_cairn_count");
     let launch_beacon_count_check = named_check(&summary, "generated_launch_beacon_count");
     let landing_garden_marker_count_check =
@@ -1188,6 +1427,8 @@ fn accumulator_fails_generated_visual_shape_regression() {
     assert_eq!(rock_vertex_check.value, 12.0);
     assert!(!landmark_count_check.passed);
     assert_eq!(landmark_count_check.value, 0.0);
+    assert!(ruin_cluster_count_check.passed);
+    assert_eq!(ruin_cluster_count_check.value, 0.0);
     assert!(!route_cairn_count_check.passed);
     assert_eq!(route_cairn_count_check.value, 0.0);
     assert!(!launch_beacon_count_check.passed);
@@ -1234,7 +1475,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
             0.0,
             0.0,
             0.2,
-            2.0,
+            1.4,
             0.0,
             0.0,
             0.0,
@@ -1329,7 +1570,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
             0.0,
             0.0,
             0.2,
-            2.0,
+            1.4,
             0.0,
             0.0,
             0.0,
@@ -1432,7 +1673,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
                 0.0,
                 0.0,
                 0.2,
-                2.0,
+                1.4,
                 0.0,
                 0.0,
                 0.0,
@@ -1650,6 +1891,7 @@ fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample
                 MIN_GENERATED_ROCK_COUNT,
                 74,
                 MIN_GENERATED_LANDMARK_COUNT,
+                MIN_GENERATED_RUIN_CLUSTER_COUNT,
                 MIN_GENERATED_ROUTE_CAIRN_COUNT,
                 MIN_GENERATED_LAUNCH_BEACON_COUNT,
                 MIN_GENERATED_LANDING_GARDEN_MARKER_COUNT,

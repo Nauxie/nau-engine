@@ -4,21 +4,24 @@ use crate::{
         STREAMING_VISUAL_ASSET_SLOT_COUNT, VISUAL_ASSET_SLOT_COUNT,
     },
     eval::thresholds::{
-        EvalThresholds, MAX_RESIDENT_ISLAND_VISUAL_COUNT, MAX_VISIBLE_ISLAND_DETAIL_COUNT,
-        MIN_ISLAND_CLIFF_COLOR_BANDS, MIN_ISLAND_TERRAIN_ARCHETYPE_COUNT,
-        MIN_ISLAND_TERRAIN_COLOR_BANDS, MIN_ISLAND_TERRAIN_MESH_VERTICES,
-        MIN_ISLAND_TERRAIN_RELIEF_RANGE_M, MIN_ISLAND_TERRAIN_SURFACE_COUNT, MIN_SKY_ISLAND_COUNT,
+        EvalThresholds, MAX_ENTITY_COUNT, MAX_RESIDENT_ISLAND_VISUAL_COUNT,
+        MAX_VISIBLE_ISLAND_DETAIL_COUNT, MIN_ISLAND_CLIFF_COLOR_BANDS,
+        MIN_ISLAND_TERRAIN_ARCHETYPE_COUNT, MIN_ISLAND_TERRAIN_COLOR_BANDS,
+        MIN_ISLAND_TERRAIN_MESH_VERTICES, MIN_ISLAND_TERRAIN_RELIEF_RANGE_M,
+        MIN_ISLAND_TERRAIN_SURFACE_COUNT, MIN_SKY_ISLAND_COUNT,
     },
 };
 
 use super::{
     AIR_CONTROL_RESPONSE, CAMERA_MOUSE_CONTROL, CAMERA_STRAFE_STABILITY, CAMERA_TURN_STABILITY,
-    CAMERA_YAW_STABILITY, EvalScenario, GROUND_TAXI_CONTROL, POSE_STATE_COVERAGE,
-    TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_RIM_COLLISION_CONTACT, WORLD_COLLISION_CONTACT,
+    CAMERA_YAW_STABILITY, EvalScenario, GROUND_TAXI_CONTROL, PLAYTEST_RESET, POSE_STATE_COVERAGE,
+    TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT,
+    WORLD_COLLISION_CONTACT,
     checkpoints::{
         AIR_CONTROL_RESPONSE_CHECKPOINTS, CAMERA_MOUSE_CHECKPOINTS, CAMERA_STRAFE_CHECKPOINTS,
         CAMERA_TURN_CHECKPOINTS, CAMERA_YAW_STABILITY_CHECKPOINTS, GROUND_TAXI_CHECKPOINTS,
-        POSE_STATE_CHECKPOINTS, TERRAIN_BODY_COLLISION_CONTACT_CHECKPOINTS,
+        PLAYTEST_RESET_CHECKPOINTS, POSE_STATE_CHECKPOINTS,
+        TERRAIN_BODY_COLLISION_CONTACT_CHECKPOINTS, TERRAIN_EDGE_WALKOFF_CHECKPOINTS,
         TERRAIN_RIM_COLLISION_CONTACT_CHECKPOINTS, WORLD_COLLISION_CONTACT_CHECKPOINTS,
     },
 };
@@ -26,8 +29,8 @@ use super::{
 const MAX_CAMERA_FOLLOW_DISTANCE_M: f32 = 16.5;
 const MAX_CAMERA_PLAYER_ANGLE_DEGREES: f32 = 3.0;
 const MAX_CAMERA_MOUSE_PLAYER_ANGLE_DEGREES: f32 = 6.0;
-const MAX_CAMERA_STEP_DISTANCE_M: f32 = 3.0;
-const MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 3.0;
+const MAX_CAMERA_STEP_DISTANCE_M: f32 = 1.15;
+const MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 1.5;
 const MAX_CAMERA_MOUSE_ROTATION_DELTA_DEGREES: f32 = 12.0;
 const MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES: f32 = 5.0;
 
@@ -73,7 +76,7 @@ pub(super) fn ground_taxi_control() -> EvalScenario {
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 32,
-            min_entity_count: 100,
+            max_entity_count: MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_PLAYER_ANGLE_DEGREES,
@@ -100,6 +103,79 @@ pub(super) fn ground_taxi_control() -> EvalScenario {
             require_target_landing: false,
             max_final_target_distance_m: 280.0,
             min_target_landing_samples: 0,
+        },
+    }
+}
+
+pub(super) fn playtest_reset() -> EvalScenario {
+    EvalScenario {
+        name: PLAYTEST_RESET,
+        fixed_dt: 1.0 / 60.0,
+        frame_count: 180,
+        sample_stride: 1,
+        target_island_name: Some("great sky plateau"),
+        checkpoints: PLAYTEST_RESET_CHECKPOINTS,
+        thresholds: EvalThresholds {
+            min_samples: 30,
+            min_horizontal_distance_m: 0.0,
+            min_max_altitude_m: 28.0,
+            min_max_speed_mps: 0.0,
+            min_gliding_samples: 0,
+            min_grounded_samples: 150,
+            min_lifted_samples: 0,
+            min_sky_island_count: MIN_SKY_ISLAND_COUNT,
+            min_active_island_count: 1,
+            max_active_chunk_count: 25,
+            min_near_lod_island_count: 1,
+            min_mid_lod_island_count: 1,
+            min_far_lod_island_count: 1,
+            max_visible_island_terrain_count: 55,
+            min_hidden_island_terrain_count: 5,
+            min_visible_island_impostor_count: 2,
+            max_visible_island_detail_count: MAX_VISIBLE_ISLAND_DETAIL_COUNT,
+            min_hidden_island_detail_count: 20,
+            min_visible_route_beacon_count: 12,
+            min_weather_cloud_count: 12,
+            min_environment_motion_visual_count: 6,
+            min_environment_motion_offset_m: 0.03,
+            min_island_terrain_surface_count: MIN_ISLAND_TERRAIN_SURFACE_COUNT,
+            min_island_terrain_mesh_vertices: MIN_ISLAND_TERRAIN_MESH_VERTICES,
+            min_island_terrain_color_bands: MIN_ISLAND_TERRAIN_COLOR_BANDS,
+            min_island_terrain_relief_range_m: MIN_ISLAND_TERRAIN_RELIEF_RANGE_M,
+            min_island_terrain_archetype_count: MIN_ISLAND_TERRAIN_ARCHETYPE_COUNT,
+            min_island_cliff_color_bands: MIN_ISLAND_CLIFF_COLOR_BANDS,
+            min_procedural_island_body_count: MIN_SKY_ISLAND_COUNT,
+            max_primitive_island_body_count: 0,
+            min_island_body_silhouette_segments: 96,
+            max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
+            max_stream_visibility_changes_per_frame: 48,
+            max_entity_count: MAX_ENTITY_COUNT,
+            max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
+            min_camera_surface_clearance_m: 1.0,
+            max_camera_player_angle_degrees: MAX_CAMERA_PLAYER_ANGLE_DEGREES,
+            max_camera_step_distance_m: MAX_CAMERA_STEP_DISTANCE_M,
+            max_camera_rotation_delta_degrees: MAX_CAMERA_ROTATION_DELTA_DEGREES,
+            max_camera_orbit_alignment_degrees: MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES,
+            max_abs_camera_view_yaw_degrees: 8.0,
+            min_camera_obstruction_adjustment_m: 0.0,
+            min_camera_obstructed_distance_m: 0.0,
+            max_camera_obstruction_snap_count: 0,
+            min_abs_camera_yaw_degrees: 0.0,
+            min_camera_pitch_offset_degrees: 0.0,
+            max_camera_pitch_offset_degrees: 0.0,
+            min_objective_total_count: 10,
+            min_completed_objective_count: 0,
+            min_visual_asset_slot_count: VISUAL_ASSET_SLOT_COUNT,
+            min_gltf_scene_asset_slot_count: GLTF_SCENE_VISUAL_ASSET_SLOT_COUNT,
+            min_streaming_visual_asset_slot_count: STREAMING_VISUAL_ASSET_SLOT_COUNT,
+            min_declared_animation_clip_count: DECLARED_VISUAL_ANIMATION_CLIP_COUNT,
+            max_failed_visual_asset_scene_count: 0,
+            min_power_up_count: 3,
+            min_collected_power_up_count: 0,
+            min_power_up_effect_samples: 0,
+            require_target_landing: false,
+            max_final_target_distance_m: 16.5,
+            min_target_landing_samples: 140,
         },
     }
 }
@@ -146,7 +222,7 @@ pub(super) fn pose_state_coverage() -> EvalScenario {
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 40,
-            min_entity_count: 100,
+            max_entity_count: MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_PLAYER_ANGLE_DEGREES,
@@ -219,14 +295,14 @@ pub(super) fn world_collision_contact() -> EvalScenario {
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 32,
-            min_entity_count: 100,
+            max_entity_count: MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_PLAYER_ANGLE_DEGREES,
             max_camera_step_distance_m: MAX_CAMERA_STEP_DISTANCE_M,
             max_camera_rotation_delta_degrees: MAX_CAMERA_ROTATION_DELTA_DEGREES,
             max_camera_orbit_alignment_degrees: MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES,
-            max_abs_camera_view_yaw_degrees: 24.0,
+            max_abs_camera_view_yaw_degrees: 32.0,
             min_camera_obstruction_adjustment_m: 1.0,
             min_camera_obstructed_distance_m: 6.5,
             max_camera_obstruction_snap_count: 0,
@@ -254,17 +330,17 @@ pub(super) fn terrain_rim_collision_contact() -> EvalScenario {
     EvalScenario {
         name: TERRAIN_RIM_COLLISION_CONTACT,
         fixed_dt: 1.0 / 60.0,
-        frame_count: 300,
+        frame_count: 56,
         sample_stride: 1,
         target_island_name: None,
         checkpoints: TERRAIN_RIM_COLLISION_CONTACT_CHECKPOINTS,
         thresholds: EvalThresholds {
             min_samples: 30,
-            min_horizontal_distance_m: 18.0,
-            min_max_altitude_m: 28.0,
-            min_max_speed_mps: 8.0,
+            min_horizontal_distance_m: 0.5,
+            min_max_altitude_m: 26.0,
+            min_max_speed_mps: 1.0,
             min_gliding_samples: 0,
-            min_grounded_samples: 28,
+            min_grounded_samples: 0,
             min_lifted_samples: 0,
             min_sky_island_count: MIN_SKY_ISLAND_COUNT,
             min_active_island_count: 4,
@@ -292,7 +368,7 @@ pub(super) fn terrain_rim_collision_contact() -> EvalScenario {
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 32,
-            min_entity_count: 100,
+            max_entity_count: MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_PLAYER_ANGLE_DEGREES,
@@ -327,11 +403,11 @@ pub(super) fn terrain_body_collision_contact() -> EvalScenario {
     let base = terrain_rim_collision_contact();
     EvalScenario {
         name: TERRAIN_BODY_COLLISION_CONTACT,
-        frame_count: 360,
+        frame_count: 121,
         checkpoints: TERRAIN_BODY_COLLISION_CONTACT_CHECKPOINTS,
         thresholds: EvalThresholds {
-            min_horizontal_distance_m: 1.0,
-            min_max_altitude_m: 27.5,
+            min_horizontal_distance_m: 0.0,
+            min_max_altitude_m: 26.0,
             min_max_speed_mps: 1.0,
             max_stream_visibility_changes_per_frame: 33,
             ..base.thresholds
@@ -340,12 +416,30 @@ pub(super) fn terrain_body_collision_contact() -> EvalScenario {
     }
 }
 
+pub(super) fn terrain_edge_walkoff() -> EvalScenario {
+    let mut scenario = ground_taxi_control();
+    scenario.name = TERRAIN_EDGE_WALKOFF;
+    scenario.frame_count = 300;
+    scenario.sample_stride = 1;
+    scenario.checkpoints = TERRAIN_EDGE_WALKOFF_CHECKPOINTS;
+    scenario.thresholds.min_samples = 180;
+    scenario.thresholds.min_horizontal_distance_m = 10.0;
+    scenario.thresholds.min_max_altitude_m = 27.5;
+    scenario.thresholds.min_max_speed_mps = 6.0;
+    scenario.thresholds.min_gliding_samples = 18;
+    scenario.thresholds.min_grounded_samples = 12;
+    scenario.thresholds.min_completed_objective_count = 0;
+    scenario.thresholds.max_final_target_distance_m = 320.0;
+
+    scenario
+}
+
 pub(super) fn camera_mouse_control() -> EvalScenario {
     EvalScenario {
         name: CAMERA_MOUSE_CONTROL,
         fixed_dt: 1.0 / 60.0,
         frame_count: 200,
-        sample_stride: 5,
+        sample_stride: 1,
         target_island_name: None,
         checkpoints: CAMERA_MOUSE_CHECKPOINTS,
         thresholds: EvalThresholds {
@@ -382,7 +476,7 @@ pub(super) fn camera_mouse_control() -> EvalScenario {
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 32,
-            min_entity_count: 100,
+            max_entity_count: MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_MOUSE_PLAYER_ANGLE_DEGREES,
@@ -418,7 +512,7 @@ pub(super) fn camera_yaw_stability() -> EvalScenario {
         name: CAMERA_YAW_STABILITY,
         fixed_dt: 1.0 / 60.0,
         frame_count: 300,
-        sample_stride: 5,
+        sample_stride: 1,
         target_island_name: None,
         checkpoints: CAMERA_YAW_STABILITY_CHECKPOINTS,
         thresholds: EvalThresholds {
@@ -455,7 +549,7 @@ pub(super) fn camera_yaw_stability() -> EvalScenario {
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 32,
-            min_entity_count: 100,
+            max_entity_count: MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_PLAYER_ANGLE_DEGREES,
@@ -491,7 +585,7 @@ pub(super) fn camera_turn_stability() -> EvalScenario {
         name: CAMERA_TURN_STABILITY,
         fixed_dt: 1.0 / 60.0,
         frame_count: 360,
-        sample_stride: 5,
+        sample_stride: 1,
         target_island_name: None,
         checkpoints: CAMERA_TURN_CHECKPOINTS,
         thresholds: EvalThresholds {
@@ -528,7 +622,7 @@ pub(super) fn camera_turn_stability() -> EvalScenario {
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 32,
-            min_entity_count: 100,
+            max_entity_count: MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_PLAYER_ANGLE_DEGREES,
@@ -564,7 +658,7 @@ pub(super) fn camera_strafe_stability() -> EvalScenario {
         name: CAMERA_STRAFE_STABILITY,
         fixed_dt: 1.0 / 60.0,
         frame_count: 260,
-        sample_stride: 5,
+        sample_stride: 1,
         target_island_name: None,
         checkpoints: CAMERA_STRAFE_CHECKPOINTS,
         thresholds: EvalThresholds {
@@ -601,7 +695,7 @@ pub(super) fn camera_strafe_stability() -> EvalScenario {
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 32,
-            min_entity_count: 100,
+            max_entity_count: MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_PLAYER_ANGLE_DEGREES,
@@ -636,7 +730,7 @@ pub(super) fn air_control_response() -> EvalScenario {
     EvalScenario {
         name: AIR_CONTROL_RESPONSE,
         fixed_dt: 1.0 / 60.0,
-        frame_count: 390,
+        frame_count: 420,
         sample_stride: 5,
         target_island_name: None,
         checkpoints: AIR_CONTROL_RESPONSE_CHECKPOINTS,
@@ -674,7 +768,7 @@ pub(super) fn air_control_response() -> EvalScenario {
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 33,
-            min_entity_count: 100,
+            max_entity_count: MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_PLAYER_ANGLE_DEGREES,

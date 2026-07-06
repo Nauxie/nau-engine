@@ -5,8 +5,27 @@ use super::{
 
 impl EvalAccumulator {
     pub fn observe_frame_time_ms(&mut self, frame_time_ms: f32) {
+        self.observe_frame_time_sample_ms(frame_time_ms, true);
+    }
+
+    pub fn observe_eval_artifact_frame_time_ms(&mut self, frame_time_ms: f32) {
+        self.observe_frame_time_sample_ms(frame_time_ms, false);
+    }
+
+    pub fn observe_startup_frame_time_ms(&mut self, frame_time_ms: f32) {
         if frame_time_ms.is_finite() && frame_time_ms >= 0.0 {
             self.frame_times_ms.push(frame_time_ms);
+        }
+    }
+
+    fn observe_frame_time_sample_ms(&mut self, frame_time_ms: f32, runtime_sample: bool) {
+        if frame_time_ms.is_finite() && frame_time_ms >= 0.0 {
+            self.frame_times_ms.push(frame_time_ms);
+            if runtime_sample {
+                self.runtime_frame_times_ms.push(frame_time_ms);
+            } else {
+                self.eval_artifact_frame_times_ms.push(frame_time_ms);
+            }
         }
     }
 

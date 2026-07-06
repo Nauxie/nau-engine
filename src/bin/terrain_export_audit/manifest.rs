@@ -1,8 +1,8 @@
 use crate::{
     artifact::{audit_obj_path, audit_weight_csv_path},
     checks::{
-        check_at_least_f64, check_at_least_u64, check_eq_str, check_eq_u64, error_artifact,
-        relative_path, value_f64, value_u64,
+        check_at_least_f64, check_at_least_u64, check_at_most_f64, check_eq_bool, check_eq_str,
+        check_eq_u64, error_artifact, relative_path, value_bool, value_f64, value_u64,
     },
     thresholds::*,
 };
@@ -47,6 +47,13 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
     let mut min_island_body_silhouette_radius_bands = u64::MAX;
     let mut min_impostor_vertical_range_m = f64::INFINITY;
     let mut min_impostor_horizontal_radius_bands = u64::MAX;
+    let mut min_shape_silhouette_range = f64::INFINITY;
+    let mut min_shape_mid_relief_range_m = f64::INFINITY;
+    let mut min_shape_edge_relief_range_m = f64::INFINITY;
+    let mut min_shape_radial_reversal_count = u64::MAX;
+    let mut max_island_terrain_cliff_top_gap_m = 0.0_f64;
+    let mut min_island_terrain_edge_skirt_depth_m = f64::INFINITY;
+    let mut max_island_terrain_edge_skirt_horizontal_gap_m = 0.0_f64;
 
     let schema = manifest.get("schema").and_then(Value::as_str).unwrap_or("");
     checks.push(check_eq_str(
@@ -62,6 +69,10 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         .unwrap_or(0);
     let terrain_archetype_count = manifest
         .get("terrain_archetype_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let shape_language_count = manifest
+        .get("shape_language_count")
         .and_then(Value::as_u64)
         .unwrap_or(0);
     let mesh_count = manifest
@@ -81,6 +92,23 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
+    let collision_truth = manifest.get("collision_truth").unwrap_or(&Value::Null);
+    let visual_collision_coverage = manifest
+        .get("visual_collision_coverage")
+        .unwrap_or(&Value::Null);
+    let seam_coverage = manifest.get("seam_coverage").unwrap_or(&Value::Null);
+    let terrain_shape_review = manifest.get("terrain_shape_review").unwrap_or(&Value::Null);
+    let expected_collision_truth_probe_count =
+        island_count.saturating_mul(TERRAIN_COLLISION_TRUTH_CONTOUR_SAMPLES_PER_ISLAND);
+    let expected_collision_truth_edge_traverse_probe_count = expected_collision_truth_probe_count
+        .saturating_mul(TERRAIN_COLLISION_TRUTH_EDGE_TRAVERSE_PROBES_PER_CONTOUR_SAMPLE);
+    let expected_collision_truth_walkoff_shoulder_probe_count =
+        expected_collision_truth_probe_count
+            .saturating_mul(TERRAIN_COLLISION_TRUTH_WALKOFF_SHOULDER_PROBES_PER_CONTOUR_SAMPLE);
+    let expected_visual_terrain_body_proxy_count =
+        island_count.saturating_mul(VISUAL_COLLISION_TERRAIN_BODY_PROXIES_PER_ISLAND);
+    let expected_visual_terrain_rim_proxy_count =
+        island_count.saturating_mul(VISUAL_COLLISION_TERRAIN_RIM_PROXIES_PER_ISLAND);
 
     checks.push(check_at_least_u64(
         "island_count",
@@ -99,6 +127,12 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         terrain_archetype_count,
         MIN_TERRAIN_ARCHETYPE_COUNT,
         "archetypes",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_shape_language_count",
+        shape_language_count,
+        MIN_TERRAIN_SHAPE_LANGUAGE_COUNT,
+        "shape_languages",
     ));
     checks.push(check_eq_u64(
         "mesh_count",
@@ -198,8 +232,367 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         MIN_ISLAND_IMPOSTOR_COLOR_BANDS,
         "bands",
     ));
+    checks.push(check_eq_str(
+        "collision_truth_schema",
+        collision_truth
+            .get("schema")
+            .and_then(Value::as_str)
+            .unwrap_or(""),
+        "nau_terrain_collision_truth.v1",
+        "schema",
+    ));
+    checks.push(check_eq_u64(
+        "collision_truth_island_count",
+        value_u64(collision_truth, "island_count"),
+        island_count,
+        "islands",
+    ));
+    checks.push(check_eq_u64(
+        "collision_truth_contour_sample_count",
+        value_u64(collision_truth, "contour_sample_count"),
+        TERRAIN_COLLISION_TRUTH_CONTOUR_SAMPLES_PER_ISLAND,
+        "samples/island",
+    ));
+    checks.push(check_eq_u64(
+        "collision_truth_top_edge_probe_count",
+        value_u64(collision_truth, "top_edge_probe_count"),
+        expected_collision_truth_probe_count,
+        "samples",
+    ));
+    checks.push(check_eq_u64(
+        "collision_truth_top_edge_air_barrier_count",
+        value_u64(collision_truth, "top_edge_air_barrier_count"),
+        0,
+        "samples",
+    ));
+    checks.push(check_eq_u64(
+        "collision_truth_edge_traverse_probe_count",
+        value_u64(collision_truth, "edge_traverse_probe_count"),
+        expected_collision_truth_edge_traverse_probe_count,
+        "samples",
+    ));
+    checks.push(check_eq_u64(
+        "collision_truth_edge_traverse_barrier_count",
+        value_u64(collision_truth, "edge_traverse_barrier_count"),
+        0,
+        "samples",
+    ));
+    checks.push(check_at_most_f64(
+        "collision_truth_max_edge_traverse_push",
+        value_f64(collision_truth, "max_edge_traverse_push_m"),
+        MAX_TERRAIN_COLLISION_TRUTH_EDGE_TRAVERSE_PUSH_M,
+        "m",
+    ));
+    checks.push(check_eq_u64(
+        "collision_truth_walkoff_shoulder_probe_count",
+        value_u64(collision_truth, "walkoff_shoulder_probe_count"),
+        expected_collision_truth_walkoff_shoulder_probe_count,
+        "samples",
+    ));
+    checks.push(check_eq_u64(
+        "collision_truth_walkoff_shoulder_barrier_count",
+        value_u64(collision_truth, "walkoff_shoulder_barrier_count"),
+        0,
+        "samples",
+    ));
+    checks.push(check_at_most_f64(
+        "collision_truth_max_walkoff_shoulder_push",
+        value_f64(collision_truth, "max_walkoff_shoulder_push_m"),
+        MAX_TERRAIN_COLLISION_TRUTH_WALKOFF_SHOULDER_PUSH_M,
+        "m",
+    ));
+    checks.push(check_eq_u64(
+        "collision_truth_far_field_probe_count",
+        value_u64(collision_truth, "far_field_probe_count"),
+        expected_collision_truth_probe_count,
+        "samples",
+    ));
+    checks.push(check_eq_u64(
+        "collision_truth_far_field_hit_count",
+        value_u64(collision_truth, "far_field_hit_count"),
+        0,
+        "samples",
+    ));
+    checks.push(check_eq_u64(
+        "collision_truth_near_cliff_probe_count",
+        value_u64(collision_truth, "near_cliff_probe_count"),
+        expected_collision_truth_probe_count,
+        "samples",
+    ));
+    checks.push(check_eq_u64(
+        "collision_truth_near_cliff_miss_count",
+        value_u64(collision_truth, "near_cliff_miss_count"),
+        0,
+        "samples",
+    ));
+    checks.push(check_eq_u64(
+        "collision_truth_excessive_near_cliff_push_count",
+        value_u64(collision_truth, "excessive_near_cliff_push_count"),
+        0,
+        "samples",
+    ));
+    checks.push(check_at_most_f64(
+        "collision_truth_max_near_cliff_push",
+        value_f64(collision_truth, "max_near_cliff_push_m"),
+        MAX_TERRAIN_COLLISION_TRUTH_NEAR_CLIFF_PUSH_M,
+        "m",
+    ));
+    checks.push(check_eq_str(
+        "visual_collision_coverage_schema",
+        visual_collision_coverage
+            .get("schema")
+            .and_then(Value::as_str)
+            .unwrap_or(""),
+        "nau_visual_collision_coverage.v2",
+        "schema",
+    ));
+    checks.push(check_eq_bool(
+        "visual_collision_coverage_passed",
+        value_bool(visual_collision_coverage, "passed"),
+        true,
+        "bool",
+    ));
+    checks.push(check_eq_u64(
+        "visual_collision_coverage_failure_count",
+        value_u64(visual_collision_coverage, "failure_count"),
+        0,
+        "failures",
+    ));
+    checks.push(check_at_least_u64(
+        "visual_collision_solid_visual_count",
+        value_u64(visual_collision_coverage, "solid_visual_count"),
+        MIN_VISUAL_COLLISION_SOLID_VISUAL_COUNT,
+        "visuals",
+    ));
+    checks.push(check_at_least_u64(
+        "visual_collision_surface_supported_solid_proxy_count",
+        value_u64(
+            visual_collision_coverage,
+            "surface_supported_solid_proxy_count",
+        ),
+        MIN_VISUAL_COLLISION_SURFACE_SUPPORTED_SOLID_PROXY_COUNT,
+        "proxies",
+    ));
+    checks.push(check_eq_u64(
+        "visual_collision_footprint_bounded_solid_proxy_count",
+        value_u64(
+            visual_collision_coverage,
+            "footprint_bounded_solid_proxy_count",
+        ),
+        value_u64(
+            visual_collision_coverage,
+            "surface_supported_solid_proxy_count",
+        ),
+        "proxies",
+    ));
+    checks.push(check_at_least_f64(
+        "visual_collision_min_solid_proxy_edge_clearance_m",
+        value_f64(
+            visual_collision_coverage,
+            "min_solid_proxy_edge_clearance_m",
+        ),
+        MIN_VISUAL_COLLISION_SOLID_PROXY_EDGE_CLEARANCE_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "visual_collision_tree_solid_proxy_count",
+        value_u64(visual_collision_coverage, "tree_solid_proxy_count"),
+        MIN_VISUAL_COLLISION_TREE_SOLID_PROXY_COUNT,
+        "proxies",
+    ));
+    checks.push(check_eq_u64(
+        "visual_collision_tree_footprint_bounded_proxy_count",
+        value_u64(
+            visual_collision_coverage,
+            "tree_footprint_bounded_proxy_count",
+        ),
+        value_u64(visual_collision_coverage, "tree_solid_proxy_count"),
+        "proxies",
+    ));
+    checks.push(check_at_least_u64(
+        "visual_collision_rock_solid_proxy_count",
+        value_u64(visual_collision_coverage, "rock_solid_proxy_count"),
+        MIN_VISUAL_COLLISION_ROCK_SOLID_PROXY_COUNT,
+        "proxies",
+    ));
+    checks.push(check_eq_u64(
+        "visual_collision_rock_footprint_bounded_proxy_count",
+        value_u64(
+            visual_collision_coverage,
+            "rock_footprint_bounded_proxy_count",
+        ),
+        value_u64(visual_collision_coverage, "rock_solid_proxy_count"),
+        "proxies",
+    ));
+    checks.push(check_at_least_u64(
+        "visual_collision_landmark_solid_proxy_count",
+        value_u64(visual_collision_coverage, "landmark_solid_proxy_count"),
+        MIN_VISUAL_COLLISION_LANDMARK_SOLID_PROXY_COUNT,
+        "proxies",
+    ));
+    checks.push(check_eq_u64(
+        "visual_collision_landmark_footprint_bounded_proxy_count",
+        value_u64(
+            visual_collision_coverage,
+            "landmark_footprint_bounded_proxy_count",
+        ),
+        value_u64(visual_collision_coverage, "landmark_solid_proxy_count"),
+        "proxies",
+    ));
+    checks.push(check_eq_u64(
+        "visual_collision_terrain_body_proxy_count",
+        value_u64(visual_collision_coverage, "terrain_body_proxy_count"),
+        expected_visual_terrain_body_proxy_count,
+        "proxies",
+    ));
+    checks.push(check_eq_u64(
+        "visual_collision_terrain_rim_proxy_count",
+        value_u64(visual_collision_coverage, "terrain_rim_proxy_count"),
+        expected_visual_terrain_rim_proxy_count,
+        "proxies",
+    ));
+    checks.push(check_at_least_u64(
+        "visual_collision_camera_only_allowance_count",
+        value_u64(visual_collision_coverage, "camera_only_allowance_count"),
+        island_count,
+        "visuals",
+    ));
+    checks.push(check_at_least_u64(
+        "visual_collision_non_blocking_visual_count",
+        value_u64(visual_collision_coverage, "non_blocking_visual_count"),
+        MIN_VISUAL_COLLISION_NON_BLOCKING_VISUAL_COUNT,
+        "visuals",
+    ));
+    checks.push(check_eq_str(
+        "terrain_seam_coverage_schema",
+        seam_coverage
+            .get("schema")
+            .and_then(Value::as_str)
+            .unwrap_or(""),
+        "nau_terrain_seam_coverage.v1",
+        "schema",
+    ));
+    checks.push(check_eq_u64(
+        "terrain_seam_coverage_island_count",
+        value_u64(seam_coverage, "island_count"),
+        island_count,
+        "islands",
+    ));
+    checks.push(check_at_most_f64(
+        "terrain_cliff_top_seam_gap",
+        value_f64(seam_coverage, "max_terrain_cliff_top_gap_m"),
+        MAX_TERRAIN_CLIFF_TOP_SEAM_GAP_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "terrain_edge_skirt_depth",
+        value_f64(seam_coverage, "min_terrain_edge_skirt_depth_m"),
+        MIN_TERRAIN_EDGE_SKIRT_DEPTH_M,
+        "m",
+    ));
+    checks.push(check_at_most_f64(
+        "terrain_edge_skirt_horizontal_gap",
+        value_f64(seam_coverage, "max_terrain_edge_skirt_horizontal_gap_m"),
+        MAX_TERRAIN_EDGE_SKIRT_HORIZONTAL_GAP_M,
+        "m",
+    ));
+    checks.push(check_eq_u64(
+        "terrain_shape_review_representative_count",
+        value_u64(terrain_shape_review, "representative_count"),
+        shape_language_count,
+        "tiles",
+    ));
+    checks.push(check_eq_u64(
+        "terrain_shape_review_shape_language_coverage",
+        value_u64(terrain_shape_review, "covered_shape_language_count"),
+        shape_language_count,
+        "shape_languages",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_shape_review_archetype_coverage",
+        value_u64(terrain_shape_review, "covered_terrain_archetype_count"),
+        MIN_TERRAIN_SHAPE_REVIEW_ARCHETYPE_COVERAGE,
+        "archetypes",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_shape_review_projection_pixels",
+        value_u64(terrain_shape_review, "min_projection_pixel_count"),
+        MIN_TERRAIN_SHAPE_REVIEW_PROJECTION_PIXELS,
+        "pixels",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_shape_review_horizontal_span",
+        value_u64(terrain_shape_review, "min_projection_horizontal_span_px"),
+        MIN_TERRAIN_SHAPE_REVIEW_HORIZONTAL_SPAN_PX,
+        "px",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_shape_review_vertical_span",
+        value_u64(terrain_shape_review, "min_projection_vertical_span_px"),
+        MIN_TERRAIN_SHAPE_REVIEW_VERTICAL_SPAN_PX,
+        "px",
+    ));
+    checks.push(check_at_most_f64(
+        "terrain_shape_review_seam_gap",
+        value_f64(
+            terrain_shape_review,
+            "max_representative_terrain_cliff_top_gap_m",
+        ),
+        MAX_TERRAIN_CLIFF_TOP_SEAM_GAP_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "terrain_shape_review_skirt_depth",
+        value_f64(
+            terrain_shape_review,
+            "min_representative_terrain_edge_skirt_depth_m",
+        ),
+        MIN_TERRAIN_EDGE_SKIRT_DEPTH_M,
+        "m",
+    ));
+    checks.push(check_at_most_f64(
+        "terrain_shape_review_skirt_horizontal_gap",
+        value_f64(
+            terrain_shape_review,
+            "max_representative_terrain_edge_skirt_horizontal_gap_m",
+        ),
+        MAX_TERRAIN_EDGE_SKIRT_HORIZONTAL_GAP_M,
+        "m",
+    ));
+
+    expected_artifact_count += 1;
+    if let Some(contact_sheet_path) = relative_path(terrain_shape_review, "contact_sheet") {
+        let full_contact_sheet_path = root_dir.join(&contact_sheet_path);
+        if full_contact_sheet_path.is_file() {
+            found_artifact_count += 1;
+            artifacts.push(json!({
+                "island": "terrain",
+                "kind": "terrain_shape_review",
+                "image": contact_sheet_path.to_string_lossy(),
+                "representative_count": value_u64(terrain_shape_review, "representative_count"),
+                "min_projection_pixel_count": value_u64(terrain_shape_review, "min_projection_pixel_count"),
+                "min_projection_horizontal_span_px": value_u64(terrain_shape_review, "min_projection_horizontal_span_px"),
+                "min_projection_vertical_span_px": value_u64(terrain_shape_review, "min_projection_vertical_span_px"),
+            }));
+        } else {
+            missing_artifact_count += 1;
+            artifacts.push(error_artifact(
+                "terrain",
+                "terrain_shape_review",
+                "missing contact sheet file",
+            ));
+        }
+    } else {
+        missing_artifact_count += 1;
+        artifacts.push(error_artifact(
+            "terrain",
+            "terrain_shape_review",
+            "missing contact sheet path",
+        ));
+    }
 
     let mut terrain_archetype_mask = 0_u64;
+    let mut shape_language_mask = 0_u64;
     for island in &islands {
         let island_name = island.get("name").and_then(Value::as_str).unwrap_or("");
         if let Some(archetype_index) = island
@@ -209,6 +602,29 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         {
             terrain_archetype_mask |= 1_u64 << archetype_index;
         }
+        if let Some(shape_language_index) =
+            island.get("shape_language_index").and_then(Value::as_u64)
+            && shape_language_index < u64::BITS as u64
+        {
+            shape_language_mask |= 1_u64 << shape_language_index;
+        }
+        let shape_signature = island.get("shape_signature").unwrap_or(&Value::Null);
+        min_shape_silhouette_range =
+            min_shape_silhouette_range.min(value_f64(shape_signature, "silhouette_range"));
+        min_shape_mid_relief_range_m =
+            min_shape_mid_relief_range_m.min(value_f64(shape_signature, "mid_relief_range_m"));
+        min_shape_edge_relief_range_m =
+            min_shape_edge_relief_range_m.min(value_f64(shape_signature, "edge_relief_range_m"));
+        min_shape_radial_reversal_count = min_shape_radial_reversal_count
+            .min(value_u64(shape_signature, "radial_reversal_count"));
+        let seam = island.get("seam").unwrap_or(&Value::Null);
+        max_island_terrain_cliff_top_gap_m =
+            max_island_terrain_cliff_top_gap_m.max(value_f64(seam, "max_terrain_cliff_top_gap_m"));
+        min_island_terrain_edge_skirt_depth_m = min_island_terrain_edge_skirt_depth_m
+            .min(value_f64(seam, "min_terrain_edge_skirt_depth_m"));
+        max_island_terrain_edge_skirt_horizontal_gap_m =
+            max_island_terrain_edge_skirt_horizontal_gap_m
+                .max(value_f64(seam, "max_terrain_edge_skirt_horizontal_gap_m"));
         for mesh_kind in ["terrain", "cliff", "underside", "impostor"] {
             let mesh = island.get(mesh_kind).unwrap_or(&Value::Null);
             expected_artifact_count += 1;
@@ -298,7 +714,11 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
                     continue;
                 };
                 let full_csv_path = root_dir.join(&csv_path);
-                match audit_weight_csv_path(&full_csv_path) {
+                let material_region_row_limit = match value_u64(mesh, "surface_vertex_count") {
+                    0 => manifest_vertices,
+                    surface_vertices => surface_vertices.min(manifest_vertices),
+                };
+                match audit_weight_csv_path(&full_csv_path, Some(material_region_row_limit)) {
                     Ok(csv) => {
                         found_artifact_count += 1;
                         let expected_rows = manifest_vertices;
@@ -313,10 +733,11 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
                         csv_band_mismatch_count += u64::from(band_mismatch);
                         csv_channel_mismatch_count += u64::from(channel_mismatch);
                         csv_region_mismatch_count += u64::from(region_mismatch);
-                        aggregate_region_row_count += csv.row_count;
+                        aggregate_region_row_count += csv.region_row_count;
                         for (index, promille) in csv.region_promille.iter().enumerate() {
                             min_region_promille[index] = min_region_promille[index].min(*promille);
-                            aggregate_region_promille_sums[index] += promille * csv.row_count;
+                            aggregate_region_promille_sums[index] +=
+                                promille * csv.region_row_count;
                         }
 
                         artifacts.push(json!({
@@ -324,6 +745,7 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
                             "kind": "terrain_material_weights",
                             "csv": csv_path.to_string_lossy(),
                             "row_count": csv.row_count,
+                            "region_row_count": csv.region_row_count,
                             "material_weight_bands": csv.material_weight_bands,
                             "material_channels": csv.material_channels,
                             "material_regions": csv.material_regions,
@@ -423,6 +845,71 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         terrain_archetype_mask.count_ones() as u64,
         terrain_archetype_count,
         "archetypes",
+    ));
+    checks.push(check_eq_u64(
+        "terrain_shape_language_entry_count",
+        shape_language_mask.count_ones() as u64,
+        shape_language_count,
+        "shape_languages",
+    ));
+    if !min_shape_silhouette_range.is_finite() {
+        min_shape_silhouette_range = 0.0;
+    }
+    if !min_shape_mid_relief_range_m.is_finite() {
+        min_shape_mid_relief_range_m = 0.0;
+    }
+    if !min_shape_edge_relief_range_m.is_finite() {
+        min_shape_edge_relief_range_m = 0.0;
+    }
+    let min_shape_radial_reversal_count = if min_shape_radial_reversal_count == u64::MAX {
+        0
+    } else {
+        min_shape_radial_reversal_count
+    };
+    checks.push(check_at_least_f64(
+        "terrain_shape_silhouette_range",
+        min_shape_silhouette_range,
+        MIN_TERRAIN_SHAPE_SILHOUETTE_RANGE,
+        "scale",
+    ));
+    checks.push(check_at_least_f64(
+        "terrain_shape_mid_relief_range",
+        min_shape_mid_relief_range_m,
+        MIN_TERRAIN_SHAPE_MID_RELIEF_RANGE_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "terrain_shape_edge_relief_range",
+        min_shape_edge_relief_range_m,
+        MIN_TERRAIN_SHAPE_EDGE_RELIEF_RANGE_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_shape_radial_reversal_count",
+        min_shape_radial_reversal_count,
+        MIN_TERRAIN_SHAPE_RADIAL_REVERSAL_COUNT,
+        "reversals",
+    ));
+    if !min_island_terrain_edge_skirt_depth_m.is_finite() {
+        min_island_terrain_edge_skirt_depth_m = 0.0;
+    }
+    checks.push(check_at_most_f64(
+        "island_terrain_cliff_top_seam_gap",
+        max_island_terrain_cliff_top_gap_m,
+        MAX_TERRAIN_CLIFF_TOP_SEAM_GAP_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "island_terrain_edge_skirt_depth",
+        min_island_terrain_edge_skirt_depth_m,
+        MIN_TERRAIN_EDGE_SKIRT_DEPTH_M,
+        "m",
+    ));
+    checks.push(check_at_most_f64(
+        "island_terrain_edge_skirt_horizontal_gap",
+        max_island_terrain_edge_skirt_horizontal_gap_m,
+        MAX_TERRAIN_EDGE_SKIRT_HORIZONTAL_GAP_M,
+        "m",
     ));
     let min_region_promille =
         min_region_promille.map(|value| if value == u64::MAX { 0 } else { value });

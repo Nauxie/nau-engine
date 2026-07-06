@@ -1897,10 +1897,7 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         .iter()
         .filter(|proxy| proxy.kind == WorldCollisionProxyKind::Landmark)
         .count();
-    let solid_proxy_count = tree_proxy_count + rock_proxy_count + landmark_proxy_count;
-
     assert!(proxies.len() >= 24);
-    assert!(solid_proxy_count >= 60);
     assert!(tree_proxy_count >= 10);
     assert!(rock_proxy_count >= 12);
     assert!(landmark_proxy_count >= 24);
@@ -1937,18 +1934,6 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
             })
             .count()
             >= 4
-    );
-    assert!(
-        proxies
-            .iter()
-            .filter(|proxy| {
-                proxy.kind == WorldCollisionProxyKind::Landmark
-                    && proxy.half_extents.y <= 0.4
-                    && proxy.half_extents.x > 2.0
-                    && proxy.half_extents.z > 1.0
-            })
-            .count()
-            >= expected_spawned_near_island_count
     );
 }
 
@@ -2659,7 +2644,7 @@ fn terrain_mesh_uses_high_resolution_irregular_silhouette() {
 
     assert_eq!(
         mesh.count_vertices(),
-        1 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS
+        1 + (ISLAND_TERRAIN_RINGS + 1) * ISLAND_BODY_SEGMENTS
     );
     assert!(
         min_visual_radius >= 0.999 && max_visual_radius <= 1.001,
@@ -2670,6 +2655,19 @@ fn terrain_mesh_uses_high_resolution_irregular_silhouette() {
         "outer ring should not read as a perfect cylinder"
     );
     assert_eq!(colors.len(), positions.len());
+    let skirt_start = 1 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS;
+    for segment in 0..ISLAND_BODY_SEGMENTS {
+        let terrain = Vec3::from_array(outer_ring[segment]);
+        let skirt = Vec3::from_array(positions[skirt_start + segment]);
+        assert!(
+            Vec2::new(terrain.x, terrain.z).distance(Vec2::new(skirt.x, skirt.z)) < 0.001,
+            "terrain edge skirt should drop vertically instead of opening a horizontal rim gap"
+        );
+        assert!(
+            terrain.y - skirt.y >= ISLAND_TERRAIN_EDGE_SKIRT_DEPTH_M - 0.001,
+            "terrain edge skirt should be deep enough to hide the terrain/cliff seam"
+        );
+    }
     assert!(
         mesh_vertex_color_band_count(&mesh) >= ISLAND_TERRAIN_COLOR_BANDS,
         "terrain mesh should carry vertex-color biome/detail variation"

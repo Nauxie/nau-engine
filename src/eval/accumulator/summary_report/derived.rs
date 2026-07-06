@@ -3,6 +3,7 @@ use crate::eval::scenarios::EvalScenario;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct EvalFrameTimeStats {
+    pub(super) sample_count: u32,
     pub(super) avg_ms: f32,
     pub(super) p95_ms: f32,
     pub(super) p99_ms: f32,
@@ -20,6 +21,7 @@ impl EvalFrameTimeStats {
 
         let sum: f32 = sorted.iter().sum();
         Self {
+            sample_count: sorted.len() as u32,
             avg_ms: sum / sorted.len() as f32,
             p95_ms: percentile(&sorted, 0.95),
             p99_ms: percentile(&sorted, 0.99),
@@ -35,6 +37,8 @@ pub(super) struct SummaryDerivedMetrics {
     pub(super) final_objective_completed_count: usize,
     pub(super) final_objective_distance_m: f32,
     pub(super) frame_time_stats: EvalFrameTimeStats,
+    pub(super) runtime_frame_time_stats: EvalFrameTimeStats,
+    pub(super) eval_artifact_frame_time_stats: EvalFrameTimeStats,
     pub(super) avg_desired_body_heading_error_degrees: f32,
     pub(super) p95_desired_body_heading_error_degrees: f32,
     pub(super) p95_lateral_body_travel_heading_error_degrees: f32,
@@ -73,6 +77,10 @@ impl SummaryDerivedMetrics {
             .as_ref()
             .map_or(0.0, |sample| sample.objective.current_distance_m);
         let frame_time_stats = EvalFrameTimeStats::from_samples(&acc.frame_times_ms);
+        let runtime_frame_time_stats =
+            EvalFrameTimeStats::from_samples(&acc.runtime_frame_times_ms);
+        let eval_artifact_frame_time_stats =
+            EvalFrameTimeStats::from_samples(&acc.eval_artifact_frame_times_ms);
         let avg_desired_body_heading_error_degrees = if acc.desired_body_heading_samples == 0 {
             0.0
         } else {
@@ -136,6 +144,8 @@ impl SummaryDerivedMetrics {
             final_objective_completed_count,
             final_objective_distance_m,
             frame_time_stats,
+            runtime_frame_time_stats,
+            eval_artifact_frame_time_stats,
             avg_desired_body_heading_error_degrees,
             p95_desired_body_heading_error_degrees,
             p95_lateral_body_travel_heading_error_degrees,

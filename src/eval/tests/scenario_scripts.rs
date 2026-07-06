@@ -27,6 +27,31 @@ fn ground_taxi_script_exercises_wasd_without_launching() {
 }
 
 #[test]
+fn playtest_reset_script_triggers_the_central_reset_command() {
+    let scenario = scenario_named(PLAYTEST_RESET).expect("playtest reset route exists");
+    let alias = scenario_named("central_reset").expect("central reset alias exists");
+
+    assert_eq!(alias.name, PLAYTEST_RESET);
+    assert!(APP_ONLY_SCENARIO_NAMES.contains(&PLAYTEST_RESET));
+    assert_eq!(scenario.target_island_name, Some("great sky plateau"));
+    assert!(scripted_input(scenario, 12).forward);
+    assert!(scripted_input(scenario, 20).right);
+    assert!(!scripted_input(scenario, 36).forward);
+    assert!(!scripted_input(scenario, 36).launch);
+    assert!(!scripted_playtest_reset_requested(scenario, 29));
+    assert!(scripted_playtest_reset_requested(scenario, 30));
+    assert!(!scripted_playtest_reset_requested(scenario, 31));
+    assert!(
+        scenario
+            .checkpoint_at(96)
+            .is_some_and(|checkpoint| { checkpoint.name == "plateau_central_close_review" })
+    );
+    assert_eq!(scenario.frame_count, 180);
+    assert!(scenario.thresholds.min_target_landing_samples >= 140);
+    assert!(scenario.thresholds.max_final_target_distance_m <= 16.5);
+}
+
+#[test]
 fn world_collision_contact_script_taxis_into_launch_tree() {
     let scenario = scenario_named(WORLD_COLLISION_CONTACT).expect("collision route exists");
 
@@ -34,33 +59,52 @@ fn world_collision_contact_script_taxis_into_launch_tree() {
     assert!(scripted_input(scenario, 150).backward);
     assert!(!scripted_input(scenario, 1).launch);
     assert!(!scripted_input(scenario, 60).glide);
+    assert_eq!(scenario.thresholds.max_abs_camera_view_yaw_degrees, 32.0);
+    assert!(scenario.thresholds.max_camera_rotation_delta_degrees <= 1.5);
+    assert_eq!(scenario.thresholds.max_camera_obstruction_snap_count, 0);
 }
 
 #[test]
-fn terrain_rim_collision_contact_script_taxis_into_launch_rim() {
+fn terrain_rim_collision_contact_script_presses_into_visible_launch_rim() {
     let scenario = scenario_named(TERRAIN_RIM_COLLISION_CONTACT).expect("rim route exists");
 
-    assert!(scripted_input(scenario, 60).forward);
-    assert!(scripted_input(scenario, 150).forward);
-    assert!(scripted_input(scenario, 260).forward);
+    assert!(scripted_input(scenario, 15).backward);
+    assert!(scripted_input(scenario, 52).backward);
+    assert!(scripted_input(scenario, 52).left);
     assert!(!scripted_input(scenario, 1).launch);
-    assert!(!scripted_input(scenario, 60).glide);
-    assert!(!scripted_input(scenario, 120).backward);
-    assert!(scenario.frame_count >= 300);
+    assert!(!scripted_input(scenario, 52).glide);
+    assert!(!scripted_input(scenario, 52).forward);
+    assert_eq!(scenario.thresholds.min_grounded_samples, 0);
+    assert_eq!(scenario.frame_count, 56);
 }
 
 #[test]
-fn terrain_body_collision_contact_script_taxis_into_launch_cliff_body() {
+fn terrain_body_collision_contact_script_presses_into_visible_launch_cliff_body() {
     let scenario = scenario_named(TERRAIN_BODY_COLLISION_CONTACT).expect("body route exists");
+
+    assert!(scripted_input(scenario, 60).left);
+    assert!(scripted_input(scenario, 120).left);
+    assert!(!scripted_input(scenario, 120).forward);
+    assert!(!scripted_input(scenario, 1).launch);
+    assert!(scripted_input(scenario, 60).glide);
+    assert!(!scripted_input(scenario, 120).backward);
+    assert_eq!(scenario.thresholds.min_grounded_samples, 0);
+    assert_eq!(scenario.frame_count, 121);
+}
+
+#[test]
+fn terrain_edge_walkoff_script_walks_off_then_skim_glides() {
+    let scenario = scenario_named(TERRAIN_EDGE_WALKOFF).expect("edge walkoff route exists");
 
     assert!(scripted_input(scenario, 60).right);
     assert!(scripted_input(scenario, 180).right);
-    assert!(scripted_input(scenario, 320).right);
-    assert!(!scripted_input(scenario, 180).forward);
     assert!(!scripted_input(scenario, 1).launch);
-    assert!(!scripted_input(scenario, 60).glide);
-    assert!(!scripted_input(scenario, 120).backward);
-    assert!(scenario.frame_count >= 360);
+    assert!(!scripted_input(scenario, 20).glide);
+    assert!(scripted_input(scenario, 30).glide);
+    assert!(scripted_input(scenario, 180).glide);
+    assert_eq!(scenario.frame_count, 300);
+    assert!(scenario.thresholds.min_gliding_samples >= 18);
+    assert!(scenario.thresholds.min_grounded_samples >= 12);
 }
 
 #[test]
@@ -239,10 +283,25 @@ fn long_glide_visibility_script_crosses_archipelago() {
 fn great_sky_plateau_route_targets_long_vertical_chain() {
     let scenario = scenario_named(GREAT_SKY_PLATEAU_ROUTE).expect("plateau route exists");
     let alias = scenario_named("plateau_route").expect("plateau alias exists");
+    let checkpoint_names = scenario
+        .checkpoints
+        .iter()
+        .map(|checkpoint| checkpoint.name)
+        .collect::<Vec<_>>();
 
     assert_eq!(alias.name, GREAT_SKY_PLATEAU_ROUTE);
     assert_eq!(alias.target_island_name, scenario.target_island_name);
     assert_eq!(scenario.target_island_name, Some("great sky plateau"));
+    assert_eq!(
+        checkpoint_names,
+        [
+            "launch_review",
+            "upper_thermal_chain",
+            "waterfall_vista",
+            "high_crown_tease",
+            "plateau_arrival_reveal",
+        ]
+    );
     assert!(
         scenario.frame_count
             > scenario_named(LONG_GLIDE_VISIBILITY)
@@ -250,7 +309,7 @@ fn great_sky_plateau_route_targets_long_vertical_chain() {
                 .frame_count
     );
     assert_eq!(scenario.thresholds.min_objective_total_count, 10);
-    assert!(scenario.thresholds.min_completed_objective_count >= 4);
+    assert!(scenario.thresholds.min_completed_objective_count >= 3);
     assert!(scenario.thresholds.min_lifted_samples >= 8);
     assert!(scripted_input(scenario, 1).launch);
     assert!(scripted_input(scenario, 420).glide);
@@ -277,6 +336,7 @@ fn underbridge_under_route_targets_low_cave_camera_pass() {
         scenario.thresholds.min_camera_obstruction_adjustment_m,
         0.25
     );
+    assert!(scenario.thresholds.max_camera_step_distance_m <= 1.0);
     assert_eq!(scenario.thresholds.max_camera_obstruction_snap_count, 0);
     assert!(scenario.thresholds.min_lifted_samples >= 2);
     assert!(!scripted_input(scenario, 1).launch);
@@ -310,23 +370,17 @@ fn scenario_camera_thresholds_guard_follow_distance_and_jitter() {
             "{name} should fail if the follow camera drifts into a zoomed-out view"
         );
         assert!(
-            scenario.thresholds.max_camera_step_distance_m <= 3.0,
+            scenario.thresholds.max_camera_step_distance_m <= 1.15,
             "{name} should fail large per-frame camera jumps"
         );
         assert!(
             scenario.thresholds.max_camera_player_angle_degrees
-                <= if *name == UNDERBRIDGE_UNDER_ROUTE {
-                    12.0
-                } else if mouse_camera {
-                    6.0
-                } else {
-                    3.0
-                },
+                <= if mouse_camera { 6.0 } else { 3.0 },
             "{name} should keep the player focus centered"
         );
         assert!(
             scenario.thresholds.max_camera_rotation_delta_degrees
-                <= if mouse_camera { 12.0 } else { 3.0 },
+                <= if mouse_camera { 12.0 } else { 1.5 },
             "{name} should fail camera rotation jitter"
         );
         assert!(

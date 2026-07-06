@@ -4,9 +4,10 @@ use super::super::math::yawed_horizontal_direction;
 use super::super::{
     CameraControlTuning, CameraOrbit, FollowCamera, FollowCameraState,
     camera_orbit_alignment_degrees, camera_pitch_degrees, camera_target_angle_degrees,
-    camera_view_yaw_degrees, horizontal_follow_direction, movement_facing_from_follow_direction,
-    movement_input_stable_follow_direction, movement_stable_follow_direction, step_camera,
-    step_camera_with_direction, step_camera_with_orbit, update_follow_direction_state,
+    camera_view_yaw_degrees, clamp_camera_player_distance, horizontal_follow_direction,
+    movement_facing_from_follow_direction, movement_input_stable_follow_direction,
+    movement_stable_follow_direction, step_camera, step_camera_with_direction,
+    step_camera_with_orbit, update_follow_direction_state,
 };
 
 #[test]
@@ -243,5 +244,23 @@ fn persistent_yaw_offset_does_not_compound_into_spin() {
     assert!(
         drift_degrees < 3.0,
         "persistent yaw drifted by {drift_degrees} degrees"
+    );
+}
+
+#[test]
+fn camera_distance_clamp_handles_high_vertical_offsets() {
+    let player_position = Vec3::new(2.0, 10.0, -4.0);
+    let frame = super::super::CameraFrame {
+        position: player_position + Vec3::new(5.0, 40.0, 6.0),
+        rotation: Quat::IDENTITY,
+        look_target: player_position + Vec3::Y * FollowCamera::default().look_height,
+    };
+
+    let clamped = clamp_camera_player_distance(frame, player_position, 16.0);
+
+    assert!(clamped.position.distance(player_position) <= 16.001);
+    assert!(clamped.position.y > player_position.y);
+    assert!(
+        camera_target_angle_degrees(clamped.position, clamped.rotation, frame.look_target) < 0.1
     );
 }
