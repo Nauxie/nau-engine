@@ -19,7 +19,9 @@ use crate::island_visuals::{
 use bevy::prelude::*;
 use image::{Rgba, RgbaImage};
 use nau_engine::world::{
-    SkyIsland, SkyRoute, TerrainCollisionTruthReport, terrain_collision_truth_report,
+    START_POSITION, SkyIsland, SkyRoute, TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND,
+    TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND, TerrainCollisionTruthReport,
+    terrain_collision_truth_report,
 };
 use std::{
     collections::BTreeSet,
@@ -33,6 +35,7 @@ const TERRAIN_SHAPE_REVIEW_TILE_HEIGHT_PX: u32 = 170;
 const TERRAIN_SHAPE_REVIEW_COLUMNS: u32 = 4;
 const TERRAIN_SHAPE_REVIEW_TILE_GAP_PX: u32 = 10;
 const TERRAIN_SHAPE_REVIEW_PANEL_SIZE_PX: u32 = 88;
+const TERRAIN_VISUAL_MESHES_PER_NEAR_ISLAND: usize = 4;
 
 #[derive(Debug)]
 pub(crate) struct TerrainExportReport {
@@ -59,6 +62,7 @@ pub(crate) struct TerrainExportReport {
     pub(crate) seam_coverage: TerrainSeamCoverageSummary,
     pub(crate) collision_truth: TerrainCollisionTruthReport,
     pub(crate) visual_collision_coverage: IslandCollisionCoverageAudit,
+    pub(crate) streaming_budget: TerrainStreamingBudgetSummary,
     pub(crate) terrain_shape_review: TerrainShapeReviewSummary,
     pub(crate) islands: Vec<TerrainExportIslandSummary>,
 }
@@ -89,6 +93,20 @@ pub(crate) struct TerrainIslandSeamSummary {
     pub(crate) max_terrain_cliff_top_gap_m: f32,
     pub(crate) min_terrain_edge_skirt_depth_m: f32,
     pub(crate) max_terrain_edge_skirt_horizontal_gap_m: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct TerrainStreamingBudgetSummary {
+    pub(crate) sample_count: usize,
+    pub(crate) pair_sample_count: usize,
+    pub(crate) max_active_chunk_count: usize,
+    pub(crate) max_active_island_count: usize,
+    pub(crate) max_near_lod_islands: usize,
+    pub(crate) max_mid_lod_islands: usize,
+    pub(crate) max_far_lod_islands: usize,
+    pub(crate) max_visible_terrain_mesh_count: usize,
+    pub(crate) max_visible_impostor_mesh_count: usize,
+    pub(crate) max_terrain_collision_proxy_count: usize,
 }
 
 #[derive(Debug)]
@@ -198,6 +216,7 @@ impl TerrainExportReport {
                 "  \"seam_coverage\": {},\n",
                 "  \"collision_truth\": {},\n",
                 "  \"visual_collision_coverage\": {},\n",
+                "  \"streaming_budget\": {},\n",
                 "  \"terrain_shape_review\": {},\n",
                 "  \"islands\": [\n",
                 "{}\n",
@@ -226,6 +245,7 @@ impl TerrainExportReport {
             self.seam_coverage.to_json(),
             terrain_collision_truth_json(self.collision_truth),
             visual_collision_coverage_json(&self.visual_collision_coverage),
+            self.streaming_budget.to_json(),
             self.terrain_shape_review.to_json("  "),
             islands
         )
@@ -530,6 +550,37 @@ impl TerrainIslandSeamSummary {
     }
 }
 
+impl TerrainStreamingBudgetSummary {
+    fn to_json(self) -> String {
+        format!(
+            concat!(
+                "{{\n",
+                "    \"sample_count\": {},\n",
+                "    \"pair_sample_count\": {},\n",
+                "    \"max_active_chunk_count\": {},\n",
+                "    \"max_active_island_count\": {},\n",
+                "    \"max_near_lod_islands\": {},\n",
+                "    \"max_mid_lod_islands\": {},\n",
+                "    \"max_far_lod_islands\": {},\n",
+                "    \"max_visible_terrain_mesh_count\": {},\n",
+                "    \"max_visible_impostor_mesh_count\": {},\n",
+                "    \"max_terrain_collision_proxy_count\": {}\n",
+                "  }}"
+            ),
+            self.sample_count,
+            self.pair_sample_count,
+            self.max_active_chunk_count,
+            self.max_active_island_count,
+            self.max_near_lod_islands,
+            self.max_mid_lod_islands,
+            self.max_far_lod_islands,
+            self.max_visible_terrain_mesh_count,
+            self.max_visible_impostor_mesh_count,
+            self.max_terrain_collision_proxy_count,
+        )
+    }
+}
+
 impl TerrainExportMeshSummary {
     fn to_json(&self) -> String {
         let material_weights_path = self
@@ -727,6 +778,7 @@ pub(crate) fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<Te
     let seam_coverage = TerrainSeamCoverageSummary::from_islands(&islands);
     let collision_truth = terrain_collision_truth_report(route.islands());
     let visual_collision_coverage = terrain_export_visual_collision_coverage(&route);
+    let streaming_budget = terrain_streaming_budget_summary(&route);
     let terrain_shape_review = terrain_shape_review_summary(output_dir, &islands)?;
 
     let manifest_path = output_dir.join("manifest.json");
@@ -754,6 +806,7 @@ pub(crate) fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<Te
         seam_coverage,
         collision_truth,
         visual_collision_coverage,
+        streaming_budget,
         terrain_shape_review,
         islands,
     };
@@ -1337,6 +1390,55 @@ fn terrain_export_visual_collision_coverage(route: &SkyRoute) -> IslandCollision
     }
 
     audit_island_collision_coverage(&catalog, route)
+}
+
+fn terrain_streaming_budget_summary(route: &SkyRoute) -> TerrainStreamingBudgetSummary {
+    let islands = route.islands();
+    let mut summary = TerrainStreamingBudgetSummary::default();
+
+    observe_terrain_streaming_budget_sample(route, START_POSITION, &mut summary);
+    for island in islands.iter().copied() {
+        observe_terrain_streaming_budget_sample(route, island.center, &mut summary);
+    }
+    for (index, first) in islands.iter().copied().enumerate() {
+        for second in islands.iter().copied().skip(index + 1) {
+            let midpoint = (first.center + second.center) * 0.5;
+            summary.pair_sample_count += 1;
+            observe_terrain_streaming_budget_sample(route, midpoint, &mut summary);
+        }
+    }
+
+    summary
+}
+
+fn observe_terrain_streaming_budget_sample(
+    route: &SkyRoute,
+    position: Vec3,
+    summary: &mut TerrainStreamingBudgetSummary,
+) {
+    let stats = route.streaming_lod_stats(position);
+    let visible_terrain_mesh_count = stats.near_lod_islands * TERRAIN_VISUAL_MESHES_PER_NEAR_ISLAND;
+    let visible_impostor_mesh_count = route.islands().len().saturating_sub(stats.near_lod_islands);
+    let terrain_collision_proxy_count = stats.near_lod_islands
+        * (TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND + TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND);
+
+    summary.sample_count += 1;
+    summary.max_active_chunk_count = summary.max_active_chunk_count.max(stats.active_chunk_count);
+    summary.max_active_island_count = summary
+        .max_active_island_count
+        .max(stats.active_island_count);
+    summary.max_near_lod_islands = summary.max_near_lod_islands.max(stats.near_lod_islands);
+    summary.max_mid_lod_islands = summary.max_mid_lod_islands.max(stats.mid_lod_islands);
+    summary.max_far_lod_islands = summary.max_far_lod_islands.max(stats.far_lod_islands);
+    summary.max_visible_terrain_mesh_count = summary
+        .max_visible_terrain_mesh_count
+        .max(visible_terrain_mesh_count);
+    summary.max_visible_impostor_mesh_count = summary
+        .max_visible_impostor_mesh_count
+        .max(visible_impostor_mesh_count);
+    summary.max_terrain_collision_proxy_count = summary
+        .max_terrain_collision_proxy_count
+        .max(terrain_collision_proxy_count);
 }
 
 fn terrain_shape_signature(island: SkyIsland) -> TerrainShapeSignatureSummary {

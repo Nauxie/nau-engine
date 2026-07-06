@@ -1,8 +1,9 @@
 use crate::{
     artifact::{audit_obj_path, audit_weight_csv_path},
     checks::{
-        check_at_least_f64, check_at_least_u64, check_at_most_f64, check_eq_bool, check_eq_str,
-        check_eq_u64, error_artifact, relative_path, value_bool, value_f64, value_u64,
+        check_at_least_f64, check_at_least_u64, check_at_most_f64, check_at_most_u64,
+        check_eq_bool, check_eq_str, check_eq_u64, error_artifact, relative_path, value_bool,
+        value_f64, value_u64,
     },
     thresholds::*,
 };
@@ -97,7 +98,11 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         .get("visual_collision_coverage")
         .unwrap_or(&Value::Null);
     let seam_coverage = manifest.get("seam_coverage").unwrap_or(&Value::Null);
+    let streaming_budget = manifest.get("streaming_budget").unwrap_or(&Value::Null);
     let terrain_shape_review = manifest.get("terrain_shape_review").unwrap_or(&Value::Null);
+    let expected_streaming_pair_sample_count =
+        island_count.saturating_mul(island_count.saturating_sub(1)) / 2;
+    let expected_streaming_sample_count = island_count + expected_streaming_pair_sample_count + 1;
     let expected_collision_truth_probe_count =
         island_count.saturating_mul(TERRAIN_COLLISION_TRUTH_CONTOUR_SAMPLES_PER_ISLAND);
     let expected_collision_truth_edge_traverse_probe_count = expected_collision_truth_probe_count
@@ -151,6 +156,54 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         total_triangle_count,
         island_count.saturating_mul(4000),
         "triangles",
+    ));
+    checks.push(check_at_least_u64(
+        "streaming_budget_sample_count",
+        value_u64(streaming_budget, "sample_count"),
+        expected_streaming_sample_count,
+        "samples",
+    ));
+    checks.push(check_eq_u64(
+        "streaming_budget_pair_sample_count",
+        value_u64(streaming_budget, "pair_sample_count"),
+        expected_streaming_pair_sample_count,
+        "samples",
+    ));
+    checks.push(check_at_most_u64(
+        "streaming_budget_active_chunk_count",
+        value_u64(streaming_budget, "max_active_chunk_count"),
+        MAX_STREAMING_BUDGET_ACTIVE_CHUNKS,
+        "chunks",
+    ));
+    checks.push(check_at_most_u64(
+        "streaming_budget_active_island_count",
+        value_u64(streaming_budget, "max_active_island_count"),
+        MAX_STREAMING_BUDGET_ACTIVE_ISLANDS,
+        "islands",
+    ));
+    checks.push(check_at_most_u64(
+        "streaming_budget_near_lod_islands",
+        value_u64(streaming_budget, "max_near_lod_islands"),
+        MAX_STREAMING_BUDGET_NEAR_LOD_ISLANDS,
+        "islands",
+    ));
+    checks.push(check_at_most_u64(
+        "streaming_budget_visible_terrain_mesh_count",
+        value_u64(streaming_budget, "max_visible_terrain_mesh_count"),
+        MAX_STREAMING_BUDGET_VISIBLE_TERRAIN_MESHES,
+        "meshes",
+    ));
+    checks.push(check_at_most_u64(
+        "streaming_budget_visible_impostor_mesh_count",
+        value_u64(streaming_budget, "max_visible_impostor_mesh_count"),
+        island_count,
+        "meshes",
+    ));
+    checks.push(check_at_most_u64(
+        "streaming_budget_terrain_collision_proxy_count",
+        value_u64(streaming_budget, "max_terrain_collision_proxy_count"),
+        MAX_STREAMING_BUDGET_TERRAIN_COLLISION_PROXIES,
+        "proxies",
     ));
 
     let minimums = manifest.get("minimums").unwrap_or(&Value::Null);

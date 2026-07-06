@@ -47,6 +47,17 @@ pub(crate) fn check_at_least_f64(name: &str, value: f64, threshold: f64, unit: &
     })
 }
 
+pub(crate) fn check_at_most_u64(name: &str, value: u64, threshold: u64, unit: &str) -> Value {
+    json!({
+        "name": name,
+        "passed": value <= threshold,
+        "value": value,
+        "comparator": "<=",
+        "threshold": threshold,
+        "unit": unit,
+    })
+}
+
 pub(crate) fn check_at_most_f64(name: &str, value: f64, threshold: f64, unit: &str) -> Value {
     json!({
         "name": name,

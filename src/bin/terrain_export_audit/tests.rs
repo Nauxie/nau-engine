@@ -1,6 +1,11 @@
 use crate::{
     artifact::{audit_obj_text, audit_weight_csv_text},
     manifest::audit_manifest,
+    thresholds::{
+        MAX_STREAMING_BUDGET_ACTIVE_CHUNKS, MAX_STREAMING_BUDGET_ACTIVE_ISLANDS,
+        MAX_STREAMING_BUDGET_NEAR_LOD_ISLANDS, MAX_STREAMING_BUDGET_TERRAIN_COLLISION_PROXIES,
+        MAX_STREAMING_BUDGET_VISIBLE_TERRAIN_MESHES,
+    },
 };
 use serde_json::{Value, json};
 use std::{fs, path::Path};
@@ -37,6 +42,21 @@ fn passing_seam_coverage(island_count: u64) -> Value {
         "max_terrain_cliff_top_gap_m": 0.0,
         "min_terrain_edge_skirt_depth_m": 0.32,
         "max_terrain_edge_skirt_horizontal_gap_m": 0.0
+    })
+}
+
+fn passing_streaming_budget(island_count: u64) -> Value {
+    json!({
+        "sample_count": island_count + (island_count * island_count.saturating_sub(1) / 2) + 1,
+        "pair_sample_count": island_count * island_count.saturating_sub(1) / 2,
+        "max_active_chunk_count": MAX_STREAMING_BUDGET_ACTIVE_CHUNKS,
+        "max_active_island_count": MAX_STREAMING_BUDGET_ACTIVE_ISLANDS,
+        "max_near_lod_islands": MAX_STREAMING_BUDGET_NEAR_LOD_ISLANDS,
+        "max_mid_lod_islands": 12,
+        "max_far_lod_islands": island_count,
+        "max_visible_terrain_mesh_count": MAX_STREAMING_BUDGET_VISIBLE_TERRAIN_MESHES,
+        "max_visible_impostor_mesh_count": island_count,
+        "max_terrain_collision_proxy_count": MAX_STREAMING_BUDGET_TERRAIN_COLLISION_PROXIES
     })
 }
 
@@ -301,6 +321,100 @@ fn audit_manifest_requires_impostor_entries_and_minimums() {
                     && artifact.get("error").and_then(Value::as_str) == Some("missing obj path")
             )
     );
+}
+
+#[test]
+fn audit_manifest_rejects_streaming_budget_regressions() {
+    let mut streaming_budget = passing_streaming_budget(2);
+    let budget = streaming_budget
+        .as_object_mut()
+        .expect("streaming budget should be an object");
+    budget.insert("sample_count".to_string(), json!(2));
+    budget.insert("pair_sample_count".to_string(), json!(0));
+    budget.insert(
+        "max_active_chunk_count".to_string(),
+        json!(MAX_STREAMING_BUDGET_ACTIVE_CHUNKS + 1),
+    );
+    budget.insert(
+        "max_active_island_count".to_string(),
+        json!(MAX_STREAMING_BUDGET_ACTIVE_ISLANDS + 1),
+    );
+    budget.insert(
+        "max_near_lod_islands".to_string(),
+        json!(MAX_STREAMING_BUDGET_NEAR_LOD_ISLANDS + 1),
+    );
+    budget.insert(
+        "max_visible_terrain_mesh_count".to_string(),
+        json!(MAX_STREAMING_BUDGET_VISIBLE_TERRAIN_MESHES + 1),
+    );
+    budget.insert("max_visible_impostor_mesh_count".to_string(), json!(3));
+    budget.insert(
+        "max_terrain_collision_proxy_count".to_string(),
+        json!(MAX_STREAMING_BUDGET_TERRAIN_COLLISION_PROXIES + 1),
+    );
+
+    let manifest = json!({
+        "schema": "nau_terrain_export.v1",
+        "island_count": 2,
+        "terrain_archetype_count": 19,
+        "shape_language_count": 14,
+        "mesh_count": 8,
+        "total_vertex_count": 4610,
+        "total_triangle_count": 8000,
+        "minimums": {
+            "terrain_mesh_vertices": 2305,
+            "terrain_color_bands": 32,
+            "terrain_material_weight_bands": 24,
+            "terrain_material_channels": 3,
+            "terrain_material_regions": 4,
+            "terrain_height_bands": 19,
+            "terrain_normal_slope_bands": 10,
+            "terrain_texture_detail_bands": 50,
+            "terrain_texture_edge_promille": 590,
+            "terrain_relief_range_m": 0.8,
+            "cliff_color_bands": 9,
+            "impostor_mesh_vertices": 140,
+            "impostor_color_bands": 18
+        },
+        "streaming_budget": streaming_budget,
+        "visual_collision_coverage": passing_visual_collision_coverage(2),
+        "seam_coverage": passing_seam_coverage(2),
+        "islands": []
+    });
+    let report = audit_manifest(&manifest, Path::new("."), "manifest.json");
+
+    assert!(!audit_check_passed(
+        &report,
+        "streaming_budget_sample_count"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "streaming_budget_pair_sample_count"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "streaming_budget_active_chunk_count"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "streaming_budget_active_island_count"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "streaming_budget_near_lod_islands"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "streaming_budget_visible_terrain_mesh_count"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "streaming_budget_visible_impostor_mesh_count"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "streaming_budget_terrain_collision_proxy_count"
+    ));
 }
 
 #[test]
