@@ -10,14 +10,13 @@ The project has a Bevy sandbox with a richer self-authored animated player fixtu
 
 ## 2026-07-06 Fresh-Session Handoff
 
-Do not merge the authored-world stack into `main` until the camera incident below is reproduced, isolated, fixed at the root, and covered by stronger app/manual-style evals. The latest branch state passes headless checks, but manual playtests found severe regressions that the harness did not catch.
+Do not merge PR3+ of the authored-world stack into `main` until the camera incident below is reproduced, isolated, fixed at the root, and covered by stronger app/manual-style evals. PR1 and PR2 have been merged to `main` after clean post-merge verification; the regression boundary remains PR3.
 
 - Active stabilization worktree: `/Users/abhinav/Dev/abhinav/nau-engine`
-- Active handoff branch: `abhinav/performance-streaming-budget-pr8`
+- Active handoff branch: `abhinav/camera-stability-contract-pr8`
 - Current in-progress camera fix branch: `abhinav/camera-stability-contract-pr8`
-- Pushed handoff commit before this docs update: `b30346a` (`Add route-wide streaming budget audit`)
-- Cleaned PR queue state after stabilization snapshot `dcfdc68`: `#388` is the draft camera/frame-pacing stabilization PR from `abhinav/camera-stability-contract-pr8` into `abhinav/performance-streaming-budget-pr8`; `#389` is the draft PR8 route-wide streaming budget PR into PR7.
-- Canonical stack PRs: `#384` PR1 into `main`, `#385` PR2 into PR1, then draft-held `#380` PR3, `#386` PR4, `#382` PR5, `#383` PR6, `#387` PR7, `#389` PR8, and `#388` camera stabilization. Stale duplicate PRs `#378`, `#379`, and `#381` were closed without deleting branches.
+- Main cleanup completed after stabilization snapshot `dcfdc68`: `#384` PR1 and `#385` PR2 were merged into `main`; `#380` PR3 is now draft-targeted directly at `main`; `#388` is the draft camera/frame-pacing stabilization PR from `abhinav/camera-stability-contract-pr8` into `abhinav/performance-streaming-budget-pr8`; `#389` is the draft PR8 route-wide streaming budget PR into PR7.
+- Canonical stack PRs: merged `#384` PR1, merged `#385` PR2, then draft-held `#380` PR3 into `main`, `#386` PR4 into PR3, `#382` PR5 into PR4, `#383` PR6 into PR5, `#387` PR7 into PR6, `#389` PR8 into PR7, and `#388` camera stabilization into PR8. Stale duplicate PRs `#378`, `#379`, and `#381` were closed without deleting branches.
 
 Manual regression report:
 
@@ -41,15 +40,15 @@ Recent stack slices:
 Fresh-session start checklist:
 
 1. `git fetch origin`.
-2. Inspect `main`, then inspect `abhinav/performance-streaming-budget-pr8`; do not merge either stack branch first.
-3. Reproduce camera behavior on current `main`, PR7, and PR8 to identify the first bad slice.
+2. Start from latest `main` (`de596c9` after PR1/PR2 merges), then inspect draft `#380`/PR3 and the camera stabilization branch; do not merge PR3+ first.
+3. Reproduce camera behavior on current `main`, draft PR3, PR7/PR8, and the camera stabilization branch before moving any stack branch out of draft.
 4. Prioritize app-path camera instrumentation and deterministic stress scenarios over further visual/world expansion.
 5. Only resume authored-world PR slicing after camera stability and player-control continuity are proven.
 
 Camera incident evidence gathered on 2026-07-06:
 
-- App-path `underbridge_under_route` on current `main` (`fb957b9`) passes with max camera step `0.9695m`, max camera rotation delta `0.7662deg`, max camera distance `14.5243m`, max player angle `1.6082deg`, and no obstruction snaps.
-- The first active stack slice that reproduces the current app-path camera regression is PR3, `abhinav/island-shape-language-pr3` (`1c169ca`). PR1 (`bc1db5e`) and PR2 (`7c049a1`) do not show the app camera spike on the same route. PR3 through PR8 all reproduce max camera step `1.2867m`, max rotation delta `1.6856deg`, and max world collision push `1.2943m` on `underbridge_under_route`.
+- App-path `underbridge_under_route` on current `main` (`de596c9`, after merged PR1/PR2) passes with max camera step `0.9756m`, max camera rotation delta `0.6392deg`, max camera distance `14.5422m`, max player angle `1.6148deg`, and no obstruction snaps. Post-merge full verification also passed `cargo fmt --all --check`, `cargo check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test`, `git diff --check`, and a conflict-marker scan.
+- The first active stack slice that reproduces the current app-path camera regression is PR3, `abhinav/island-shape-language-pr3` (`1c169ca`). The merged PR1/PR2 baseline does not show the app camera spike on the same route. PR3 through PR8 all reproduce max camera step `1.2867m`, max rotation delta `1.6856deg`, and max world collision push `1.2943m` on `underbridge_under_route`.
 - Frame-level trace on PR8 shows two bounded failure classes on the app path: obstruction entry at frame 190 jumps the camera `1.2867m`, and a terrain-rim collision target jump at frame 208 moves the player by `1.2943m` and the camera by `1.2181m`.
 - Current `abhinav/camera-stability-contract-pr8` work reduces those same app-path frames without removing the underlying collision evidence: frame 190 camera step is `0.6864m`; frame 208 terrain-rim push remains `1.2943m`, but camera step is capped to `0.2600m`. The fixed stack emits zero invalid camera target, camera transform, player-control, or transform samples on the rerun, with zero obstruction snaps and max stale obstruction memory age of 24 frames.
 - Sim-path comparison is not enough by itself: PR7/PR8 sim underbridge only exceeds the old `1.0m` step gate by steady high-speed follow (`1.0165m`), while the app path reproduces the collision-coupled spike. Treat app-path stress evals as the authoritative regression signal for this incident.
@@ -89,7 +88,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 
 - Stop-the-line priority: camera stability/player-control incident on the authored-world stack.
 - Active pushed branch for handoff: `abhinav/camera-stability-contract-pr8`, draft PR `#388` into PR8.
-- PR8 is now draft PR `#389` into PR7. PR3 through PR8 plus the camera stabilization PR are draft-held; PR1 `#384` and PR2 `#385` remain the only non-draft stack PRs because the app-path camera regression was first isolated at PR3.
+- PR1 `#384` and PR2 `#385` are merged to `main`. PR3 `#380` now targets `main` directly and remains draft-held; PR4 through PR8 plus the camera stabilization PR are also draft-held because the app-path camera regression was first isolated at PR3.
 - Do not merge PR3+ authored-world work into `main` until the camera contract is backported/restacked into the first bad slice or the full stack is treated as one validated integration batch.
 
 ## Current Course Correction
