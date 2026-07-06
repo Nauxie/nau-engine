@@ -32,9 +32,10 @@ pub use route::{
     FirstExpeditionAltitudeBand, FirstExpeditionBeatKind, FirstExpeditionDetourKind,
     FirstExpeditionDetourRisk, FirstExpeditionNavigationContext, FirstExpeditionNavigationLandmark,
     FirstExpeditionNavigationLandmarkKind, FirstExpeditionOptionalDetour,
-    FirstExpeditionRecoveryAffordance, FirstExpeditionRouteBeat, FirstExpeditionTraversalMode,
-    IslandComposition, IslandCompositionFamily, IslandTraversalPurpose, IslandVisualMotif,
-    PLAYTEST_RESET_ISLAND_NAME, SKY_ROUTE_ISLAND_COUNT, SkyRoute,
+    FirstExpeditionRecoveryAffordance, FirstExpeditionRouteBeat, FirstExpeditionSightlineKind,
+    FirstExpeditionSightlineMoment, FirstExpeditionTraversalMode, IslandComposition,
+    IslandCompositionFamily, IslandTraversalPurpose, IslandVisualMotif, PLAYTEST_RESET_ISLAND_NAME,
+    SKY_ROUTE_ISLAND_COUNT, SkyRoute,
 };
 pub use streaming::{LodBand, StreamActivation, StreamChunkCoord, StreamingLodStats};
 pub use surface::GroundSurface;

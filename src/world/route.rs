@@ -88,6 +88,37 @@ impl FirstExpeditionTraversalMode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FirstExpeditionSightlineKind {
+    LaunchLowerChain,
+    FirstRecoveryThermalReveal,
+    CaveMouthApproach,
+    WaterfallLakeVista,
+    HighClimbRuinReveal,
+    PlateauRimApproach,
+    PlateauArrivalReveal,
+    OptionalCrownRouteTease,
+    ReturnDescentView,
+}
+
+impl FirstExpeditionSightlineKind {
+    pub const COUNT: usize = 9;
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::LaunchLowerChain => "launch_lower_chain",
+            Self::FirstRecoveryThermalReveal => "first_recovery_thermal_reveal",
+            Self::CaveMouthApproach => "cave_mouth_approach",
+            Self::WaterfallLakeVista => "waterfall_lake_vista",
+            Self::HighClimbRuinReveal => "high_climb_ruin_reveal",
+            Self::PlateauRimApproach => "plateau_rim_approach",
+            Self::PlateauArrivalReveal => "plateau_arrival_reveal",
+            Self::OptionalCrownRouteTease => "optional_crown_route_tease",
+            Self::ReturnDescentView => "return_descent_view",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FirstExpeditionDetourKind {
     LowAltitudeRecoveryLoop,
     HighRiskUpperPath,
@@ -367,6 +398,21 @@ pub struct FirstExpeditionRouteBeat {
     pub recovery_affordance: FirstExpeditionRecoveryAffordance,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FirstExpeditionSightlineMoment {
+    pub label: &'static str,
+    pub kind: FirstExpeditionSightlineKind,
+    pub route_beat_kind: Option<FirstExpeditionBeatKind>,
+    pub origin_island_name: &'static str,
+    pub target_island_name: &'static str,
+    pub visual_anchor: &'static str,
+    pub origin_position: Vec3,
+    pub target_position: Vec3,
+    pub altitude_band: FirstExpeditionAltitudeBand,
+    pub readable_distance_m: f32,
+    pub required_route: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct FirstExpeditionOptionalDetour {
     pub label: &'static str,
@@ -405,6 +451,23 @@ struct FirstExpeditionRouteBeatSpec {
     traversal_mode: FirstExpeditionTraversalMode,
     landmark_anchor: &'static str,
     recovery_affordance: FirstExpeditionRecoveryAffordance,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FirstExpeditionSightlineMomentSpec {
+    label: &'static str,
+    kind: FirstExpeditionSightlineKind,
+    route_beat_kind: Option<FirstExpeditionBeatKind>,
+    origin_island_name: &'static str,
+    target_island_name: &'static str,
+    visual_anchor: &'static str,
+    origin_offset: [f32; 2],
+    origin_height_offset_m: f32,
+    target_offset: [f32; 2],
+    target_height_offset_m: f32,
+    altitude_band: FirstExpeditionAltitudeBand,
+    readable_distance_m: f32,
+    required_route: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1115,6 +1178,145 @@ const FIRST_EXPEDITION_ROUTE_BEAT_SPECS: [FirstExpeditionRouteBeatSpec; 8] = [
     },
 ];
 
+const FIRST_EXPEDITION_SIGHTLINE_MOMENT_SPECS: [FirstExpeditionSightlineMomentSpec;
+    FirstExpeditionSightlineKind::COUNT] = [
+    FirstExpeditionSightlineMomentSpec {
+        label: "launch view over the lower chain",
+        kind: FirstExpeditionSightlineKind::LaunchLowerChain,
+        route_beat_kind: Some(FirstExpeditionBeatKind::Launch),
+        origin_island_name: "launch mesa",
+        target_island_name: "midpoint shelf",
+        visual_anchor: "route cairn line",
+        origin_offset: [0.18, 0.42],
+        origin_height_offset_m: 4.2,
+        target_offset: [-0.18, 0.22],
+        target_height_offset_m: 2.6,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        readable_distance_m: 360.0,
+        required_route: true,
+    },
+    FirstExpeditionSightlineMomentSpec {
+        label: "first recovery thermal reveal",
+        kind: FirstExpeditionSightlineKind::FirstRecoveryThermalReveal,
+        route_beat_kind: Some(FirstExpeditionBeatKind::FirstGlide),
+        origin_island_name: "midpoint shelf",
+        target_island_name: "low reef",
+        visual_anchor: "low reef wind ribbons",
+        origin_offset: [0.34, 0.08],
+        origin_height_offset_m: 3.4,
+        target_offset: [0.0, 0.0],
+        target_height_offset_m: 12.0,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        readable_distance_m: 520.0,
+        required_route: true,
+    },
+    FirstExpeditionSightlineMomentSpec {
+        label: "cave-mouth approach under the reef",
+        kind: FirstExpeditionSightlineKind::CaveMouthApproach,
+        route_beat_kind: Some(FirstExpeditionBeatKind::LowRecovery),
+        origin_island_name: "low reef",
+        target_island_name: "underbridge cay",
+        visual_anchor: "under-route cave mouth arch",
+        origin_offset: [0.18, -0.34],
+        origin_height_offset_m: 3.0,
+        target_offset: [-0.40, 0.12],
+        target_height_offset_m: 4.5,
+        altitude_band: FirstExpeditionAltitudeBand::Low,
+        readable_distance_m: 520.0,
+        required_route: true,
+    },
+    FirstExpeditionSightlineMomentSpec {
+        label: "waterfall and lake vista pull",
+        kind: FirstExpeditionSightlineKind::WaterfallLakeVista,
+        route_beat_kind: Some(FirstExpeditionBeatKind::UnderRoutePass),
+        origin_island_name: "underbridge cay",
+        target_island_name: "cloudfall meadow",
+        visual_anchor: "route edge waterfall and bluevault basin lake",
+        origin_offset: [0.46, 0.16],
+        origin_height_offset_m: 5.0,
+        target_offset: [0.54, 0.10],
+        target_height_offset_m: 4.0,
+        altitude_band: FirstExpeditionAltitudeBand::Mid,
+        readable_distance_m: 1_250.0,
+        required_route: true,
+    },
+    FirstExpeditionSightlineMomentSpec {
+        label: "high climb into the sunspire ruins",
+        kind: FirstExpeditionSightlineKind::HighClimbRuinReveal,
+        route_beat_kind: Some(FirstExpeditionBeatKind::LakeWaterfallLandmark),
+        origin_island_name: "cloudfall meadow",
+        target_island_name: "sunspire garden",
+        visual_anchor: "sunspire garden ring",
+        origin_offset: [0.24, -0.18],
+        origin_height_offset_m: 5.6,
+        target_offset: [0.0, 0.0],
+        target_height_offset_m: 6.0,
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        readable_distance_m: 1_350.0,
+        required_route: true,
+    },
+    FirstExpeditionSightlineMomentSpec {
+        label: "cloudbreak stair rim approach",
+        kind: FirstExpeditionSightlineKind::PlateauRimApproach,
+        route_beat_kind: Some(FirstExpeditionBeatKind::HighClimb),
+        origin_island_name: "sunspire garden",
+        target_island_name: "cloudbreak stair",
+        visual_anchor: "great sky plateau west rim silhouette",
+        origin_offset: [0.24, 0.08],
+        origin_height_offset_m: 6.5,
+        target_offset: [-0.18, 0.22],
+        target_height_offset_m: 7.0,
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        readable_distance_m: 560.0,
+        required_route: true,
+    },
+    FirstExpeditionSightlineMomentSpec {
+        label: "plateau arrival rim reveal",
+        kind: FirstExpeditionSightlineKind::PlateauArrivalReveal,
+        route_beat_kind: Some(FirstExpeditionBeatKind::PlateauApproach),
+        origin_island_name: "cloudbreak stair",
+        target_island_name: "great sky plateau",
+        visual_anchor: "great sky plateau west rim silhouette",
+        origin_offset: [-0.18, 0.22],
+        origin_height_offset_m: 7.0,
+        target_offset: [-0.44, 0.08],
+        target_height_offset_m: 18.0,
+        altitude_band: FirstExpeditionAltitudeBand::High,
+        readable_distance_m: 900.0,
+        required_route: true,
+    },
+    FirstExpeditionSightlineMomentSpec {
+        label: "optional crown route tease",
+        kind: FirstExpeditionSightlineKind::OptionalCrownRouteTease,
+        route_beat_kind: Some(FirstExpeditionBeatKind::PlateauArrival),
+        origin_island_name: "great sky plateau",
+        target_island_name: "upper crown",
+        visual_anchor: "upper crown silhouette",
+        origin_offset: [0.18, -0.22],
+        origin_height_offset_m: 18.0,
+        target_offset: [0.0, 0.0],
+        target_height_offset_m: 8.5,
+        altitude_band: FirstExpeditionAltitudeBand::Plateau,
+        readable_distance_m: 820.0,
+        required_route: false,
+    },
+    FirstExpeditionSightlineMomentSpec {
+        label: "return descent view back to the plateau",
+        kind: FirstExpeditionSightlineKind::ReturnDescentView,
+        route_beat_kind: None,
+        origin_island_name: "upper crown",
+        target_island_name: "great sky plateau",
+        visual_anchor: "plateau lake waterfall vista and cave mouth",
+        origin_offset: [-0.10, 0.14],
+        origin_height_offset_m: 9.0,
+        target_offset: [0.28, -0.18],
+        target_height_offset_m: 16.0,
+        altitude_band: FirstExpeditionAltitudeBand::Plateau,
+        readable_distance_m: 820.0,
+        required_route: false,
+    },
+];
+
 const FIRST_EXPEDITION_OPTIONAL_DETOUR_SPECS: [FirstExpeditionOptionalDetourSpec; 2] = [
     FirstExpeditionOptionalDetourSpec {
         label: "low reef missed-glide recovery loop",
@@ -1628,6 +1830,20 @@ fn is_route_objective_lift_node(name: &str) -> bool {
     )
 }
 
+fn island_surface_offset_position(
+    island: &SkyIsland,
+    normalized_offset: [f32; 2],
+    height_offset_m: f32,
+) -> Vec3 {
+    let x = island.center.x + normalized_offset[0] * island.half_extents.x;
+    let z = island.center.z + normalized_offset[1] * island.half_extents.y;
+    Vec3::new(
+        x,
+        island.mesh_top_y_at(Vec3::new(x, island.center.y, z)) + height_offset_m,
+        z,
+    )
+}
+
 impl SkyRoute {
     pub fn islands(&self) -> &[SkyIsland] {
         &self.islands
@@ -1661,6 +1877,13 @@ impl SkyRoute {
         FIRST_EXPEDITION_ROUTE_BEAT_SPECS
             .iter()
             .filter_map(|spec| self.first_expedition_route_beat(*spec))
+            .collect()
+    }
+
+    pub fn first_expedition_sightline_moments(&self) -> Vec<FirstExpeditionSightlineMoment> {
+        FIRST_EXPEDITION_SIGHTLINE_MOMENT_SPECS
+            .iter()
+            .filter_map(|spec| self.first_expedition_sightline_moment(*spec))
             .collect()
     }
 
@@ -1712,6 +1935,38 @@ impl SkyRoute {
         })
     }
 
+    fn first_expedition_sightline_moment(
+        &self,
+        spec: FirstExpeditionSightlineMomentSpec,
+    ) -> Option<FirstExpeditionSightlineMoment> {
+        let origin_island = self.island_named(spec.origin_island_name)?;
+        let target_island = self.island_named(spec.target_island_name)?;
+        let origin_position = island_surface_offset_position(
+            &origin_island,
+            spec.origin_offset,
+            spec.origin_height_offset_m,
+        );
+        let target_position = island_surface_offset_position(
+            &target_island,
+            spec.target_offset,
+            spec.target_height_offset_m,
+        );
+
+        Some(FirstExpeditionSightlineMoment {
+            label: spec.label,
+            kind: spec.kind,
+            route_beat_kind: spec.route_beat_kind,
+            origin_island_name: spec.origin_island_name,
+            target_island_name: spec.target_island_name,
+            visual_anchor: spec.visual_anchor,
+            origin_position,
+            target_position,
+            altitude_band: spec.altitude_band,
+            readable_distance_m: spec.readable_distance_m,
+            required_route: spec.required_route,
+        })
+    }
+
     fn first_expedition_optional_detour(
         &self,
         spec: FirstExpeditionOptionalDetourSpec,
@@ -1752,15 +2007,7 @@ impl SkyRoute {
             FirstExpeditionNavigationLandmarkPosition::IslandSurfaceOffset {
                 normalized_offset,
                 height_offset_m,
-            } => {
-                let x = island.center.x + normalized_offset[0] * island.half_extents.x;
-                let z = island.center.z + normalized_offset[1] * island.half_extents.y;
-                Vec3::new(
-                    x,
-                    island.mesh_top_y_at(Vec3::new(x, island.center.y, z)) + height_offset_m,
-                    z,
-                )
-            }
+            } => island_surface_offset_position(&island, normalized_offset, height_offset_m),
             FirstExpeditionNavigationLandmarkPosition::LiftNode(lift_name) => {
                 lift_route_node_named(lift_name)?.center
             }

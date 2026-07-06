@@ -39,6 +39,13 @@ const MIN_TREE_TRUNK_HEIGHT_RANGE_M: f64 = 1.5;
 const MIN_TREE_CANOPY_RADIUS_RANGE_M: f64 = 0.35;
 const MIN_LANDMARK_COUNT: u64 = 60;
 const MIN_LANDMARK_KIND_COUNT: u64 = 18;
+const MIN_ROUTE_SIGHTLINE_COUNT: u64 = 9;
+const MIN_REQUIRED_ROUTE_SIGHTLINE_COUNT: u64 = 7;
+const MIN_OPTIONAL_ROUTE_SIGHTLINE_COUNT: u64 = 2;
+const MIN_ROUTE_SIGHTLINE_KIND_COUNT: u64 = 9;
+const MIN_ROUTE_SIGHTLINE_ANCHOR_COUNT: u64 = 8;
+const MIN_ROUTE_SIGHTLINE_COVERED_BEAT_COUNT: u64 = 8;
+const MIN_ROUTE_SIGHTLINE_ALTITUDE_BAND_COUNT: u64 = 4;
 const MIN_ARTIFACT_DETAIL_COUNT: u64 = 55;
 const MIN_ARTIFACT_DETAIL_KIND_COUNT: u64 = 7;
 const MIN_ARTIFACT_STAIR_COUNT: u64 = 8;
@@ -77,6 +84,9 @@ const MIN_PLATEAU_WATERFALL_VERTICAL_SPAN_M: f64 = 45.0;
 const MIN_ROUTE_WATERFALL_VERTICAL_SPAN_M: f64 = 18.0;
 const MIN_ROUTE_LAKE_SURFACE_HORIZONTAL_SPAN_M: f64 = 18.0;
 const MIN_UNDER_ROUTE_VISUAL_VERTICAL_SPAN_M: f64 = 4.0;
+const MIN_ROUTE_SIGHTLINE_DISTANCE_M: f64 = 80.0;
+const MIN_ROUTE_SIGHTLINE_DISTANCE_RANGE_M: f64 = 400.0;
+const MIN_ROUTE_SIGHTLINE_READABLE_MARGIN_M: f64 = 10.0;
 const MIN_ARTIFACT_DETAIL_VERTEX_TOTAL: u64 = 16_000;
 const MIN_ARTIFACT_DETAIL_MESH_VERTICES: u64 = 60;
 const MIN_ARTIFACT_STONE_MESH_VERTICES: u64 = 140;
@@ -233,6 +243,48 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         value_u64(counts, "landmark_kind_count"),
         MIN_LANDMARK_KIND_COUNT,
         "kinds",
+    ));
+    checks.push(check_at_least_u64(
+        "route_sightline_count",
+        value_u64(counts, "route_sightline_count"),
+        MIN_ROUTE_SIGHTLINE_COUNT,
+        "moments",
+    ));
+    checks.push(check_at_least_u64(
+        "required_route_sightline_count",
+        value_u64(counts, "required_route_sightline_count"),
+        MIN_REQUIRED_ROUTE_SIGHTLINE_COUNT,
+        "moments",
+    ));
+    checks.push(check_at_least_u64(
+        "optional_route_sightline_count",
+        value_u64(counts, "optional_route_sightline_count"),
+        MIN_OPTIONAL_ROUTE_SIGHTLINE_COUNT,
+        "moments",
+    ));
+    checks.push(check_at_least_u64(
+        "route_sightline_kind_count",
+        value_u64(counts, "route_sightline_kind_count"),
+        MIN_ROUTE_SIGHTLINE_KIND_COUNT,
+        "kinds",
+    ));
+    checks.push(check_at_least_u64(
+        "route_sightline_anchor_count",
+        value_u64(counts, "route_sightline_anchor_count"),
+        MIN_ROUTE_SIGHTLINE_ANCHOR_COUNT,
+        "anchors",
+    ));
+    checks.push(check_at_least_u64(
+        "route_sightline_covered_beat_count",
+        value_u64(counts, "route_sightline_covered_beat_count"),
+        MIN_ROUTE_SIGHTLINE_COVERED_BEAT_COUNT,
+        "beats",
+    ));
+    checks.push(check_at_least_u64(
+        "route_sightline_altitude_band_count",
+        value_u64(counts, "route_sightline_altitude_band_count"),
+        MIN_ROUTE_SIGHTLINE_ALTITUDE_BAND_COUNT,
+        "bands",
     ));
     checks.push(check_at_least_u64(
         "artifact_detail_count",
@@ -594,6 +646,24 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         MIN_UNDER_ROUTE_VISUAL_VERTICAL_SPAN_M,
         "m",
     ));
+    checks.push(check_at_least_f64(
+        "route_sightline_distance",
+        value_f64(minimums, "route_sightline_distance_m"),
+        MIN_ROUTE_SIGHTLINE_DISTANCE_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "route_sightline_distance_range",
+        value_f64(minimums, "route_sightline_distance_range_m"),
+        MIN_ROUTE_SIGHTLINE_DISTANCE_RANGE_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "route_sightline_readable_margin",
+        value_f64(minimums, "route_sightline_readable_margin_m"),
+        MIN_ROUTE_SIGHTLINE_READABLE_MARGIN_M,
+        "m",
+    ));
     checks.push(check_at_least_u64(
         "artifact_detail_vertex_total",
         value_u64(minimums, "artifact_detail_vertex_total"),
@@ -748,6 +818,18 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         &mut artifact_counters,
         &mut artifacts,
     );
+
+    let route_sightline_entry_count = manifest
+        .get("route_sightlines")
+        .and_then(Value::as_array)
+        .map(|entries| entries.len() as u64)
+        .unwrap_or(0);
+    checks.push(check_eq_u64(
+        "route_sightline_manifest_entries",
+        route_sightline_entry_count,
+        value_u64(counts, "route_sightline_count"),
+        "moments",
+    ));
 
     checks.push(check_eq_u64(
         "mesh_count",
@@ -1003,6 +1085,13 @@ mod tests {
                 "weather_cloud_veil_count": 0,
                 "landmark_count": 1,
                 "landmark_kind_count": 1,
+                "route_sightline_count": 0,
+                "required_route_sightline_count": 0,
+                "optional_route_sightline_count": 0,
+                "route_sightline_kind_count": 0,
+                "route_sightline_anchor_count": 0,
+                "route_sightline_covered_beat_count": 0,
+                "route_sightline_altitude_band_count": 0,
                 "artifact_detail_count": 0,
                 "artifact_detail_kind_count": 0,
                 "artifact_stair_count": 0,
@@ -1065,6 +1154,9 @@ mod tests {
                 "route_waterfall_vertical_span_m": 2.0,
                 "route_lake_surface_horizontal_span_m": 4.0,
                 "under_route_visual_vertical_span_m": 0.5,
+                "route_sightline_distance_m": 0.0,
+                "route_sightline_distance_range_m": 0.0,
+                "route_sightline_readable_margin_m": 0.0,
                 "artifact_detail_vertex_total": 10,
                 "artifact_detail_mesh_vertices": 4,
                 "artifact_stone_mesh_vertices": 8,
@@ -1090,7 +1182,8 @@ mod tests {
             "ground_cover": [],
             "trees": [],
             "clouds": [],
-            "landmarks": []
+            "landmarks": [],
+            "route_sightlines": []
         });
 
         let report = audit_manifest(&manifest, Path::new("."), "manifest.json");
@@ -1135,6 +1228,13 @@ mod tests {
         for name in [
             "landmark_count",
             "landmark_kind_count",
+            "route_sightline_count",
+            "required_route_sightline_count",
+            "optional_route_sightline_count",
+            "route_sightline_kind_count",
+            "route_sightline_anchor_count",
+            "route_sightline_covered_beat_count",
+            "route_sightline_altitude_band_count",
             "artifact_detail_count",
             "artifact_detail_kind_count",
             "artifact_stair_count",
@@ -1173,6 +1273,9 @@ mod tests {
             "route_waterfall_vertical_span",
             "route_lake_surface_horizontal_span",
             "under_route_visual_vertical_span",
+            "route_sightline_distance",
+            "route_sightline_distance_range",
+            "route_sightline_readable_margin",
             "artifact_detail_vertex_total",
             "artifact_detail_mesh_vertices",
             "artifact_stone_mesh_vertices",

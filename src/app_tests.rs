@@ -1105,6 +1105,53 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .iter()
         .filter(|spec| spec.kind == IslandArtifactVisualKind::ReedPatch)
         .count();
+    let route_sightline_specs = route.first_expedition_sightline_moments();
+    let route_sightline_count = route_sightline_specs.len();
+    let required_route_sightline_count = route_sightline_specs
+        .iter()
+        .filter(|moment| moment.required_route)
+        .count();
+    let optional_route_sightline_count = route_sightline_count - required_route_sightline_count;
+    let route_sightline_kind_count = route_sightline_specs
+        .iter()
+        .map(|moment| moment.kind.label())
+        .collect::<HashSet<_>>()
+        .len();
+    let route_sightline_anchor_count = route_sightline_specs
+        .iter()
+        .map(|moment| moment.visual_anchor)
+        .collect::<HashSet<_>>()
+        .len();
+    let route_sightline_covered_beat_count = route_sightline_specs
+        .iter()
+        .filter_map(|moment| moment.route_beat_kind.map(|kind| kind.label()))
+        .collect::<HashSet<_>>()
+        .len();
+    let route_sightline_altitude_band_count = route_sightline_specs
+        .iter()
+        .map(|moment| moment.altitude_band.label())
+        .collect::<HashSet<_>>()
+        .len();
+    let route_sightline_distances = route_sightline_specs
+        .iter()
+        .map(|moment| moment.origin_position.distance(moment.target_position))
+        .collect::<Vec<_>>();
+    let min_route_sightline_distance_m = route_sightline_distances
+        .iter()
+        .copied()
+        .fold(f32::INFINITY, f32::min);
+    let max_route_sightline_distance_m = route_sightline_distances
+        .iter()
+        .copied()
+        .fold(f32::NEG_INFINITY, f32::max);
+    let route_sightline_distance_range_m =
+        max_route_sightline_distance_m - min_route_sightline_distance_m;
+    let min_route_sightline_readable_margin_m = route_sightline_specs
+        .iter()
+        .map(|moment| {
+            moment.readable_distance_m - moment.origin_position.distance(moment.target_position)
+        })
+        .fold(f32::INFINITY, f32::min);
     let plateau_artifact_count: usize = route
         .islands()
         .iter()
@@ -1188,6 +1235,39 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.weather_cloud_veil_count, weather_veil_count);
     assert_eq!(report.landmark_count, landmark_count);
     assert!(report.landmark_kind_count >= 35);
+    assert_eq!(report.route_sightline_count, route_sightline_count);
+    assert_eq!(
+        report.required_route_sightline_count,
+        required_route_sightline_count
+    );
+    assert_eq!(
+        report.optional_route_sightline_count,
+        optional_route_sightline_count
+    );
+    assert_eq!(
+        report.route_sightline_kind_count,
+        route_sightline_kind_count
+    );
+    assert_eq!(
+        report.route_sightline_anchor_count,
+        route_sightline_anchor_count
+    );
+    assert_eq!(
+        report.route_sightline_covered_beat_count,
+        route_sightline_covered_beat_count
+    );
+    assert_eq!(
+        report.route_sightline_altitude_band_count,
+        route_sightline_altitude_band_count
+    );
+    assert_eq!(report.route_sightlines.len(), route_sightline_count);
+    assert_eq!(report.route_sightline_count, 9);
+    assert_eq!(report.required_route_sightline_count, 7);
+    assert_eq!(report.optional_route_sightline_count, 2);
+    assert_eq!(report.route_sightline_kind_count, 9);
+    assert_eq!(report.route_sightline_anchor_count, 8);
+    assert_eq!(report.route_sightline_covered_beat_count, 8);
+    assert_eq!(report.route_sightline_altitude_band_count, 4);
     assert_eq!(report.artifact_detail_count, artifact_detail_count);
     assert_eq!(
         report.artifact_detail_kind_count,
@@ -1481,6 +1561,21 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_route_waterfall_vertical_span_m >= 24.0);
     assert!(report.min_route_lake_surface_horizontal_span_m >= 18.0);
     assert!(report.min_under_route_visual_vertical_span_m >= 4.0);
+    assert_eq!(
+        report.min_route_sightline_distance_m,
+        min_route_sightline_distance_m
+    );
+    assert_eq!(
+        report.route_sightline_distance_range_m,
+        route_sightline_distance_range_m
+    );
+    assert_eq!(
+        report.min_route_sightline_readable_margin_m,
+        min_route_sightline_readable_margin_m
+    );
+    assert!(report.min_route_sightline_distance_m >= 80.0);
+    assert!(report.route_sightline_distance_range_m >= 400.0);
+    assert!(report.min_route_sightline_readable_margin_m >= 10.0);
     assert!(report.artifact_detail_vertex_total >= 16_000);
     assert!(report.min_artifact_detail_mesh_vertices >= 60);
     assert!(report.min_artifact_stone_mesh_vertices >= 140);
@@ -1676,6 +1771,21 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .iter()
         .find(|summary| summary.kind == "artifact_reed_patch")
         .expect("water islands should export reed patches");
+    let launch_lower_chain = report
+        .route_sightlines
+        .iter()
+        .find(|summary| summary.kind == "launch_lower_chain")
+        .expect("launch view should export a lower-chain sightline moment");
+    let waterfall_lake_vista = report
+        .route_sightlines
+        .iter()
+        .find(|summary| summary.kind == "waterfall_lake_vista")
+        .expect("under-route exit should export a waterfall and lake sightline moment");
+    let return_descent_view = report
+        .route_sightlines
+        .iter()
+        .find(|summary| summary.kind == "return_descent_view")
+        .expect("upper crown should export a return descent sightline moment");
 
     assert!(low_basin_lake.mesh.horizontal_span_m >= 100.0);
     assert!(low_basin_lake.mesh.depth_span_m >= 45.0);
@@ -1746,6 +1856,22 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(artifact_glyph.normal_slope_band_count >= 3);
     assert!(artifact_banner.mesh.vertical_span_m >= 1.5);
     assert!(artifact_reed.mesh.vertical_span_m >= 0.8);
+    assert!(launch_lower_chain.required_route);
+    assert_eq!(launch_lower_chain.route_beat_kind, Some("launch"));
+    assert_eq!(launch_lower_chain.origin_island_name, "launch mesa");
+    assert_eq!(launch_lower_chain.target_island_name, "midpoint shelf");
+    assert_eq!(launch_lower_chain.visual_anchor, "route cairn line");
+    assert!(launch_lower_chain.distance_m >= 80.0);
+    assert!(launch_lower_chain.readable_margin_m >= 10.0);
+    assert!(waterfall_lake_vista.required_route);
+    assert_eq!(waterfall_lake_vista.altitude_band, "mid");
+    assert_eq!(waterfall_lake_vista.origin_island_name, "underbridge cay");
+    assert_eq!(waterfall_lake_vista.target_island_name, "cloudfall meadow");
+    assert!(waterfall_lake_vista.distance_m >= 400.0);
+    assert!(!return_descent_view.required_route);
+    assert_eq!(return_descent_view.route_beat_kind, None);
+    assert_eq!(return_descent_view.origin_island_name, "upper crown");
+    assert_eq!(return_descent_view.target_island_name, "great sky plateau");
     assert!(output_dir.join(&low_basin_lake.mesh.obj_path).exists());
     assert!(output_dir.join(&waterfall.mesh.obj_path).exists());
     assert!(output_dir.join(&mist.mesh.obj_path).exists());
@@ -1784,6 +1910,19 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"weather_cloud_filament_ribbon_detail_count\""));
     assert!(manifest.contains(&format!("\"landmark_count\": {landmark_count}")));
     assert!(manifest.contains("\"landmark_kind_count\""));
+    assert!(manifest.contains(&format!(
+        "\"route_sightline_count\": {route_sightline_count}"
+    )));
+    assert!(manifest.contains(&format!(
+        "\"required_route_sightline_count\": {required_route_sightline_count}"
+    )));
+    assert!(manifest.contains(&format!(
+        "\"optional_route_sightline_count\": {optional_route_sightline_count}"
+    )));
+    assert!(manifest.contains("\"route_sightline_kind_count\": 9"));
+    assert!(manifest.contains("\"route_sightline_anchor_count\": 8"));
+    assert!(manifest.contains("\"route_sightline_covered_beat_count\": 8"));
+    assert!(manifest.contains("\"route_sightline_altitude_band_count\": 4"));
     assert!(manifest.contains(&format!(
         "\"artifact_detail_count\": {artifact_detail_count}"
     )));
@@ -1846,6 +1985,9 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"route_waterfall_vertical_span_m\""));
     assert!(manifest.contains("\"route_lake_surface_horizontal_span_m\""));
     assert!(manifest.contains("\"under_route_visual_vertical_span_m\""));
+    assert!(manifest.contains("\"route_sightline_distance_m\""));
+    assert!(manifest.contains("\"route_sightline_distance_range_m\""));
+    assert!(manifest.contains("\"route_sightline_readable_margin_m\""));
     assert!(manifest.contains("\"artifact_detail_vertex_total\""));
     assert!(manifest.contains("\"artifact_detail_mesh_vertices\""));
     assert!(manifest.contains("\"artifact_stone_mesh_vertices\""));
@@ -1881,6 +2023,16 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"kind\": \"artifact_banner_strips\""));
     assert!(manifest.contains("\"kind\": \"artifact_pebble_field\""));
     assert!(manifest.contains("\"kind\": \"artifact_reed_patch\""));
+    assert!(manifest.contains("\"route_sightlines\""));
+    assert!(manifest.contains("\"kind\": \"launch_lower_chain\""));
+    assert!(manifest.contains("\"kind\": \"waterfall_lake_vista\""));
+    assert!(manifest.contains("\"kind\": \"plateau_arrival_reveal\""));
+    assert!(manifest.contains("\"kind\": \"optional_crown_route_tease\""));
+    assert!(manifest.contains("\"kind\": \"return_descent_view\""));
+    assert!(
+        manifest.contains("\"visual_anchor\": \"route edge waterfall and bluevault basin lake\"")
+    );
+    assert!(manifest.contains("\"route_beat_kind\": null"));
     assert!(manifest.contains("\"kind\": \"first_expedition_north_ruin_spire\""));
     assert!(manifest.contains("\"kind\": \"first_expedition_south_ruin_spire\""));
     assert!(manifest.contains("\"kind\": \"first_expedition_waterfall_cliff\""));

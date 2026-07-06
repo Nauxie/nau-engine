@@ -3,7 +3,10 @@ use super::{
     landmarks::visual_content_landmark_summaries,
     metrics::{finite_range_f32, finite_ratio, min_finite_f32, visual_content_mesh_summary},
     palette::visual_content_palette_summary,
-    types::{VisualContentExportReport, VisualGroundCoverSummary, VisualTreeSummary},
+    types::{
+        VisualContentExportReport, VisualGroundCoverSummary, VisualRouteSightlineSummary,
+        VisualTreeSummary,
+    },
     vegetation::{
         ground_cover_blade_stats, tree_canopy_lobe_count, tree_trunk_shape_metrics,
         visual_content_tree_specs,
@@ -111,6 +114,36 @@ pub(crate) fn export_visual_content_inspection(
     let palettes = (0..TERRAIN_BIOME_PALETTE_COUNT)
         .map(visual_content_palette_summary)
         .collect::<Vec<_>>();
+    let route_sightlines = route
+        .first_expedition_sightline_moments()
+        .into_iter()
+        .map(|moment| {
+            let distance_m = moment.origin_position.distance(moment.target_position);
+            VisualRouteSightlineSummary {
+                label: moment.label,
+                kind: moment.kind.label(),
+                route_beat_kind: moment.route_beat_kind.map(|kind| kind.label()),
+                origin_island_name: moment.origin_island_name,
+                target_island_name: moment.target_island_name,
+                visual_anchor: moment.visual_anchor,
+                altitude_band: moment.altitude_band.label(),
+                origin_position: [
+                    moment.origin_position.x,
+                    moment.origin_position.y,
+                    moment.origin_position.z,
+                ],
+                target_position: [
+                    moment.target_position.x,
+                    moment.target_position.y,
+                    moment.target_position.z,
+                ],
+                distance_m,
+                readable_distance_m: moment.readable_distance_m,
+                readable_margin_m: moment.readable_distance_m - distance_m,
+                required_route: moment.required_route,
+            }
+        })
+        .collect::<Vec<_>>();
     let terrain_biome_palette_count = palettes
         .iter()
         .map(|palette| palette.terrain_key)
@@ -183,6 +216,26 @@ pub(crate) fn export_visual_content_inspection(
         .map(|summary| summary.kind)
         .collect::<HashSet<_>>()
         .len();
+    let route_sightline_kind_count = route_sightlines
+        .iter()
+        .map(|summary| summary.kind)
+        .collect::<HashSet<_>>()
+        .len();
+    let route_sightline_anchor_count = route_sightlines
+        .iter()
+        .map(|summary| summary.visual_anchor)
+        .collect::<HashSet<_>>()
+        .len();
+    let route_sightline_covered_beat_count = route_sightlines
+        .iter()
+        .filter_map(|summary| summary.route_beat_kind)
+        .collect::<HashSet<_>>()
+        .len();
+    let route_sightline_altitude_band_count = route_sightlines
+        .iter()
+        .map(|summary| summary.altitude_band)
+        .collect::<HashSet<_>>()
+        .len();
 
     let mesh_count = ground_cover.len() + trees.len() * 2 + clouds.len() + landmarks.len();
     let total_vertex_count = ground_cover
@@ -227,6 +280,19 @@ pub(crate) fn export_visual_content_inspection(
             .count(),
         landmark_count: landmarks.len(),
         landmark_kind_count,
+        route_sightline_count: route_sightlines.len(),
+        required_route_sightline_count: route_sightlines
+            .iter()
+            .filter(|summary| summary.required_route)
+            .count(),
+        optional_route_sightline_count: route_sightlines
+            .iter()
+            .filter(|summary| !summary.required_route)
+            .count(),
+        route_sightline_kind_count,
+        route_sightline_anchor_count,
+        route_sightline_covered_beat_count,
+        route_sightline_altitude_band_count,
         artifact_detail_count,
         artifact_detail_kind_count,
         artifact_stair_count: landmarks
@@ -435,6 +501,17 @@ pub(crate) fn export_visual_content_inspection(
                 .filter(|summary| summary.kind.starts_with("under_route_"))
                 .map(|summary| summary.mesh.vertical_span_m),
         ),
+        min_route_sightline_distance_m: min_finite_f32(
+            route_sightlines.iter().map(|summary| summary.distance_m),
+        ),
+        route_sightline_distance_range_m: finite_range_f32(
+            route_sightlines.iter().map(|summary| summary.distance_m),
+        ),
+        min_route_sightline_readable_margin_m: min_finite_f32(
+            route_sightlines
+                .iter()
+                .map(|summary| summary.readable_margin_m),
+        ),
         artifact_detail_vertex_total: landmarks
             .iter()
             .filter(|summary| summary.kind.starts_with("artifact_"))
@@ -509,6 +586,7 @@ pub(crate) fn export_visual_content_inspection(
         trees,
         clouds,
         landmarks,
+        route_sightlines,
         palettes,
     };
 

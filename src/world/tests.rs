@@ -300,6 +300,129 @@ fn first_expedition_route_beats_resolve_to_world_content_without_debug_guidance(
 }
 
 #[test]
+fn first_expedition_sightline_moments_stage_major_route_views() {
+    let route = SkyRoute::default();
+    let moments = route.first_expedition_sightline_moments();
+    let expected_kinds = [
+        FirstExpeditionSightlineKind::LaunchLowerChain,
+        FirstExpeditionSightlineKind::FirstRecoveryThermalReveal,
+        FirstExpeditionSightlineKind::CaveMouthApproach,
+        FirstExpeditionSightlineKind::WaterfallLakeVista,
+        FirstExpeditionSightlineKind::HighClimbRuinReveal,
+        FirstExpeditionSightlineKind::PlateauRimApproach,
+        FirstExpeditionSightlineKind::PlateauArrivalReveal,
+        FirstExpeditionSightlineKind::OptionalCrownRouteTease,
+        FirstExpeditionSightlineKind::ReturnDescentView,
+    ];
+
+    assert_eq!(moments.len(), FirstExpeditionSightlineKind::COUNT);
+    assert_eq!(
+        moments.iter().map(|moment| moment.kind).collect::<Vec<_>>(),
+        expected_kinds
+    );
+    assert_eq!(
+        moments
+            .iter()
+            .filter(|moment| moment.required_route)
+            .count(),
+        7
+    );
+    assert_eq!(
+        moments
+            .iter()
+            .filter(|moment| !moment.required_route)
+            .count(),
+        2
+    );
+
+    let mut routed_beat_mask = 0_u32;
+    for moment in &moments {
+        assert!(!moment.kind.label().is_empty());
+        if let Some(route_beat_kind) = moment.route_beat_kind {
+            routed_beat_mask |= 1_u32 << route_beat_kind as u32;
+        }
+    }
+    assert_eq!(
+        routed_beat_mask.count_ones(),
+        route.first_expedition_route_beats().len() as u32,
+        "each required route beat should have a staged visual next pull"
+    );
+}
+
+#[test]
+fn first_expedition_sightline_moments_resolve_to_world_anchors_without_debug_guidance() {
+    let route = SkyRoute::default();
+    let moments = route.first_expedition_sightline_moments();
+    let landmarks = route.first_expedition_navigation_landmarks();
+
+    for moment in moments {
+        let origin = route
+            .island_named(moment.origin_island_name)
+            .expect("sightline origin island should exist");
+        let target = route
+            .island_named(moment.target_island_name)
+            .expect("sightline target island should exist");
+        let origin_composition = route
+            .island_composition(moment.origin_island_name)
+            .expect("sightline origin should have authored composition");
+        let target_composition = route
+            .island_composition(moment.target_island_name)
+            .expect("sightline target should have authored composition");
+
+        assert!(!moment.label.is_empty());
+        assert!(!moment.visual_anchor.is_empty());
+        assert_route_beat_text_is_not_debug_only(moment.label);
+        assert_route_beat_text_is_not_debug_only(moment.kind.label());
+        assert_route_beat_text_is_not_debug_only(moment.visual_anchor);
+        assert_eq!(
+            origin_composition.sightline_target,
+            Some(moment.target_island_name),
+            "{} should look toward {} through authored composition",
+            moment.origin_island_name,
+            moment.target_island_name
+        );
+
+        let distance = moment.origin_position.distance(moment.target_position);
+        assert!(
+            distance >= 80.0,
+            "{} should be a composed vista, not an overlapping marker",
+            moment.label
+        );
+        assert!(
+            distance <= moment.readable_distance_m,
+            "{} should keep {} readable within {:.1}m, got {:.1}m",
+            moment.label,
+            moment.visual_anchor,
+            moment.readable_distance_m,
+            distance
+        );
+        assert_eq!(
+            route.ground_at(moment.origin_position).island_name,
+            Some(origin.name)
+        );
+        assert_eq!(
+            route.ground_at(moment.target_position).island_name,
+            Some(target.name)
+        );
+        assert!(
+            moment.origin_position.y >= origin.floor_y()
+                && moment.target_position.y >= target.floor_y()
+        );
+
+        let visual_anchor_is_world_content = landmarks
+            .iter()
+            .any(|landmark| landmark.visual_anchor == moment.visual_anchor)
+            || origin_composition.landmark_dependency == Some(moment.visual_anchor)
+            || target_composition.landmark_dependency == Some(moment.visual_anchor);
+        assert!(
+            visual_anchor_is_world_content,
+            "{} should point at an existing world-facing landmark dependency",
+            moment.visual_anchor
+        );
+    }
+}
+
+#[test]
 fn first_expedition_optional_detours_define_recovery_and_upper_side_routes() {
     let route = SkyRoute::default();
     let detours = route.first_expedition_optional_detours();

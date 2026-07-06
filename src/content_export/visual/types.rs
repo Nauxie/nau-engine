@@ -21,6 +21,13 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) weather_cloud_veil_count: usize,
     pub(crate) landmark_count: usize,
     pub(crate) landmark_kind_count: usize,
+    pub(crate) route_sightline_count: usize,
+    pub(crate) required_route_sightline_count: usize,
+    pub(crate) optional_route_sightline_count: usize,
+    pub(crate) route_sightline_kind_count: usize,
+    pub(crate) route_sightline_anchor_count: usize,
+    pub(crate) route_sightline_covered_beat_count: usize,
+    pub(crate) route_sightline_altitude_band_count: usize,
     pub(crate) artifact_detail_count: usize,
     pub(crate) artifact_detail_kind_count: usize,
     pub(crate) artifact_stair_count: usize,
@@ -81,6 +88,9 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) min_route_waterfall_vertical_span_m: f32,
     pub(crate) min_route_lake_surface_horizontal_span_m: f32,
     pub(crate) min_under_route_visual_vertical_span_m: f32,
+    pub(crate) min_route_sightline_distance_m: f32,
+    pub(crate) route_sightline_distance_range_m: f32,
+    pub(crate) min_route_sightline_readable_margin_m: f32,
     pub(crate) artifact_detail_vertex_total: usize,
     pub(crate) min_artifact_detail_mesh_vertices: usize,
     pub(crate) min_artifact_stone_mesh_vertices: usize,
@@ -106,6 +116,7 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) trees: Vec<VisualTreeSummary>,
     pub(crate) clouds: Vec<VisualCloudSummary>,
     pub(crate) landmarks: Vec<VisualLandmarkSummary>,
+    pub(crate) route_sightlines: Vec<VisualRouteSightlineSummary>,
     pub(crate) palettes: Vec<VisualPaletteSummary>,
 }
 
@@ -183,6 +194,23 @@ pub(crate) struct VisualLandmarkSummary {
 }
 
 #[derive(Debug)]
+pub(crate) struct VisualRouteSightlineSummary {
+    pub(crate) label: &'static str,
+    pub(crate) kind: &'static str,
+    pub(crate) route_beat_kind: Option<&'static str>,
+    pub(crate) origin_island_name: &'static str,
+    pub(crate) target_island_name: &'static str,
+    pub(crate) visual_anchor: &'static str,
+    pub(crate) altitude_band: &'static str,
+    pub(crate) origin_position: [f32; 3],
+    pub(crate) target_position: [f32; 3],
+    pub(crate) distance_m: f32,
+    pub(crate) readable_distance_m: f32,
+    pub(crate) readable_margin_m: f32,
+    pub(crate) required_route: bool,
+}
+
+#[derive(Debug)]
 pub(crate) struct VisualPaletteSummary {
     pub(crate) index: usize,
     pub(crate) terrain_key: [u8; 3],
@@ -216,6 +244,12 @@ impl VisualContentExportReport {
             .map(|summary| summary.to_json("    "))
             .collect::<Vec<_>>()
             .join(",\n");
+        let route_sightlines = self
+            .route_sightlines
+            .iter()
+            .map(|summary| summary.to_json("    "))
+            .collect::<Vec<_>>()
+            .join(",\n");
         let palettes = self
             .palettes
             .iter()
@@ -241,6 +275,13 @@ impl VisualContentExportReport {
                 "    \"weather_cloud_veil_count\": {},\n",
                 "    \"landmark_count\": {},\n",
                 "    \"landmark_kind_count\": {},\n",
+                "    \"route_sightline_count\": {},\n",
+                "    \"required_route_sightline_count\": {},\n",
+                "    \"optional_route_sightline_count\": {},\n",
+                "    \"route_sightline_kind_count\": {},\n",
+                "    \"route_sightline_anchor_count\": {},\n",
+                "    \"route_sightline_covered_beat_count\": {},\n",
+                "    \"route_sightline_altitude_band_count\": {},\n",
                 "    \"artifact_detail_count\": {},\n",
                 "    \"artifact_detail_kind_count\": {},\n",
                 "    \"artifact_stair_count\": {},\n",
@@ -303,6 +344,9 @@ impl VisualContentExportReport {
                 "    \"route_waterfall_vertical_span_m\": {},\n",
                 "    \"route_lake_surface_horizontal_span_m\": {},\n",
                 "    \"under_route_visual_vertical_span_m\": {},\n",
+                "    \"route_sightline_distance_m\": {},\n",
+                "    \"route_sightline_distance_range_m\": {},\n",
+                "    \"route_sightline_readable_margin_m\": {},\n",
                 "    \"artifact_detail_vertex_total\": {},\n",
                 "    \"artifact_detail_mesh_vertices\": {},\n",
                 "    \"artifact_stone_mesh_vertices\": {},\n",
@@ -337,6 +381,9 @@ impl VisualContentExportReport {
                 "  \"landmarks\": [\n",
                 "{}\n",
                 "  ],\n",
+                "  \"route_sightlines\": [\n",
+                "{}\n",
+                "  ],\n",
                 "  \"palettes\": [\n",
                 "{}\n",
                 "  ]\n",
@@ -355,6 +402,13 @@ impl VisualContentExportReport {
             self.weather_cloud_veil_count,
             self.landmark_count,
             self.landmark_kind_count,
+            self.route_sightline_count,
+            self.required_route_sightline_count,
+            self.optional_route_sightline_count,
+            self.route_sightline_kind_count,
+            self.route_sightline_anchor_count,
+            self.route_sightline_covered_beat_count,
+            self.route_sightline_altitude_band_count,
             self.artifact_detail_count,
             self.artifact_detail_kind_count,
             self.artifact_stair_count,
@@ -415,6 +469,9 @@ impl VisualContentExportReport {
             terrain_export_json_number(self.min_route_waterfall_vertical_span_m),
             terrain_export_json_number(self.min_route_lake_surface_horizontal_span_m),
             terrain_export_json_number(self.min_under_route_visual_vertical_span_m),
+            terrain_export_json_number(self.min_route_sightline_distance_m),
+            terrain_export_json_number(self.route_sightline_distance_range_m),
+            terrain_export_json_number(self.min_route_sightline_readable_margin_m),
             self.artifact_detail_vertex_total,
             self.min_artifact_detail_mesh_vertices,
             self.min_artifact_stone_mesh_vertices,
@@ -440,6 +497,7 @@ impl VisualContentExportReport {
             trees,
             clouds,
             landmarks,
+            route_sightlines,
             palettes
         )
     }
@@ -576,6 +634,41 @@ impl VisualLandmarkSummary {
     }
 }
 
+impl VisualRouteSightlineSummary {
+    fn to_json(&self, indent: &str) -> String {
+        format!(
+            "{indent}{{\n\
+             {indent}  \"label\": {},\n\
+             {indent}  \"kind\": {},\n\
+             {indent}  \"route_beat_kind\": {},\n\
+             {indent}  \"origin_island\": {},\n\
+             {indent}  \"target_island\": {},\n\
+             {indent}  \"visual_anchor\": {},\n\
+             {indent}  \"altitude_band\": {},\n\
+             {indent}  \"origin_position\": {},\n\
+             {indent}  \"target_position\": {},\n\
+             {indent}  \"distance_m\": {},\n\
+             {indent}  \"readable_distance_m\": {},\n\
+             {indent}  \"readable_margin_m\": {},\n\
+             {indent}  \"required_route\": {}\n\
+             {indent}}}",
+            terrain_export_json_string(self.label),
+            terrain_export_json_string(self.kind),
+            optional_json_string(self.route_beat_kind),
+            terrain_export_json_string(self.origin_island_name),
+            terrain_export_json_string(self.target_island_name),
+            terrain_export_json_string(self.visual_anchor),
+            terrain_export_json_string(self.altitude_band),
+            visual_content_json_vec3(self.origin_position),
+            visual_content_json_vec3(self.target_position),
+            terrain_export_json_number(self.distance_m),
+            terrain_export_json_number(self.readable_distance_m),
+            terrain_export_json_number(self.readable_margin_m),
+            self.required_route
+        )
+    }
+}
+
 impl VisualPaletteSummary {
     fn to_json(&self, indent: &str) -> String {
         format!(
@@ -586,4 +679,19 @@ impl VisualPaletteSummary {
             visual_content_json_u8_triplet(self.stone_key)
         )
     }
+}
+
+fn optional_json_string(value: Option<&str>) -> String {
+    value
+        .map(terrain_export_json_string)
+        .unwrap_or_else(|| "null".to_string())
+}
+
+fn visual_content_json_vec3(position: [f32; 3]) -> String {
+    format!(
+        "[{}, {}, {}]",
+        terrain_export_json_number(position[0]),
+        terrain_export_json_number(position[1]),
+        terrain_export_json_number(position[2])
+    )
 }
