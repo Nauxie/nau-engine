@@ -32,7 +32,7 @@ pub(crate) const CROSSWIND_RIBBON_CENTER_ADVANCE: f32 = 0.95;
 pub(crate) const WIND_VISUAL_COHERENCE_DT: f32 = 0.2;
 pub(crate) const WIND_VISUAL_ALIGNMENT_MIN_DOT: f32 = 0.55;
 const WIND_FIELD_METRIC_EPSILON: f32 = 0.001;
-const WIND_VISUAL_LOOP_FADE_FRACTION: f32 = 0.24;
+const WIND_VISUAL_LOOP_FADE_FRACTION: f32 = 0.34;
 const WIND_VISUAL_QUALITY_MIN_SCALE: f32 = 0.5;
 
 pub(crate) fn updraft_guide_ring_radius(field_radius: f32) -> f32 {
@@ -714,14 +714,16 @@ pub(crate) fn updraft_ribbon_transform(ribbon: &UpdraftRibbon, elapsed: f32) -> 
     let visibility = wind_loop_visibility(progress);
     let radial_breath = radial_axis
         * (flow.variation * 0.05
-            + breathing * 0.200
+            + breathing * 0.140
             + gust_packet * 0.015
             + flow.layered_gust_strength * 0.012);
     let tangential_depth = tangent_axis
-        * (thermal_roll * (0.160 + flow.variation * 0.020)
+        * (thermal_roll * (0.100 + flow.variation * 0.016)
             + gust_packet * 0.010
             + flow.layered_gust_strength * 0.010);
-    let phase_swirl = phase_tangent_axis * ((progress - 0.5) * 0.42 + (elapsed * 0.7).sin() * 0.32);
+    let slow_swirl = (elapsed * 0.22 + phase * 0.13).sin();
+    let phase_swirl = phase_tangent_axis
+        * ((progress - 0.5) * 0.28 + (elapsed * 0.7).sin() * 0.18 + slow_swirl * 0.42);
     let horizontal_drift = horizontal_flow * 0.012;
     Transform {
         translation: ribbon.base_translation
@@ -780,7 +782,7 @@ fn updraft_ribbon_flow_sample(ribbon: &UpdraftRibbon, elapsed: f32) -> UpdraftRi
     let vertical_ratio =
         (base_flow.vector.y.max(0.0) / ribbon.field.visual_speed.max(1.0)).min(1.4);
     let progress =
-        (ribbon.phase + elapsed * ribbon.field.visual_speed.max(1.0) / field_height * 0.36).fract();
+        (ribbon.phase + elapsed * ribbon.field.visual_speed.max(1.0) / field_height * 0.32).fract();
     let vertical_scroll =
         (progress - 0.5) * ribbon.field.half_extents.y * (0.385 + vertical_ratio * 0.06);
     let phase = ribbon.phase * std::f32::consts::TAU;
@@ -3016,7 +3018,11 @@ mod tests {
         assert_eq!(metrics.updraft_ribbon_count, 1);
         assert!(metrics.max_updraft_visual_motion_m > 0.5);
         assert!(metrics.max_updraft_visual_rise_m > 0.5);
-        assert!(metrics.max_updraft_visual_swirl_displacement_m > 0.1);
+        assert!(
+            metrics.max_updraft_visual_swirl_displacement_m > 0.1,
+            "swirl displacement was {}",
+            metrics.max_updraft_visual_swirl_displacement_m
+        );
         assert_eq!(metrics.updraft_flow_coherent_visual_count, 1);
         assert!(metrics.max_updraft_visual_flow_alignment > 0.55);
     }

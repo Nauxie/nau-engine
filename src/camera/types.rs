@@ -15,8 +15,8 @@ pub struct FollowCamera {
 impl Default for FollowCamera {
     fn default() -> Self {
         Self {
-            distance: 12.0,
-            height: 5.0,
+            distance: 10.75,
+            height: 4.8,
             look_height: 1.4,
             look_ahead: 0.5,
             position_smoothing: 22.0,

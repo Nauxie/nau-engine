@@ -3,7 +3,7 @@ use super::constants::{
     ISLAND_UNDERSIDE_RINGS,
 };
 use super::normals::{smooth_normals_from_triangles, smooth_normals_from_triangles_oriented};
-use super::palette::{island_rock_vertex_color, island_terrain_vertex_color};
+use super::palette::{island_rock_vertex_color, island_terrain_vertex_color_for_shape};
 use super::shape::{island_polar_position, island_silhouette_scale};
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
@@ -216,7 +216,13 @@ pub(crate) fn island_impostor_mesh(island_index: usize, island: SkyIsland) -> Me
 
     positions.push([island.center.x, top_center_y, island.center.z]);
     uvs.push([0.5, 0.5]);
-    colors.push(island_terrain_vertex_color(island_index, 0.0, 0.0, 0.0));
+    colors.push(island_terrain_vertex_color_for_shape(
+        island.shape_language(),
+        island_index,
+        0.0,
+        0.0,
+        0.0,
+    ));
 
     for segment in 0..ISLAND_IMPOSTOR_SEGMENTS {
         let angle = segment as f32 / ISLAND_IMPOSTOR_SEGMENTS as f32 * std::f32::consts::TAU;
@@ -230,7 +236,8 @@ pub(crate) fn island_impostor_mesh(island_index: usize, island: SkyIsland) -> Me
 
         positions.push([x, y, z]);
         uvs.push([0.5 + angle.cos() * 0.45, 0.5 + angle.sin() * 0.45]);
-        colors.push(island_terrain_vertex_color(
+        colors.push(island_terrain_vertex_color_for_shape(
+            island.shape_language(),
             island_index,
             0.9,
             angle,

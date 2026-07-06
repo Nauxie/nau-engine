@@ -12,8 +12,9 @@ use nau_engine::{
         wind_lateral_load_from_delta,
     },
     camera::{
-        CAMERA_MAX_FOLLOW_FRAME_STEP_M, CAMERA_MAX_OBSTRUCTION_FRAME_STEP_M,
-        CAMERA_MAX_OBSTRUCTION_HANDOFF_FRAME_STEP_M, CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES,
+        CAMERA_DISTANCE_CLAMP_STEP_GRACE_M, CAMERA_MAX_FOLLOW_FRAME_STEP_M,
+        CAMERA_MAX_OBSTRUCTION_FRAME_STEP_M, CAMERA_MAX_OBSTRUCTION_HANDOFF_FRAME_STEP_M,
+        CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES, CAMERA_MAX_PLAYER_DISTANCE_M,
         CAMERA_OBSTRUCTION_MIN_ACTIVE_ADJUSTMENT_M, CAMERA_OBSTRUCTION_RELEASE_HANDOFF_FRAMES,
         CameraControlState, CameraControlTuning, CameraObstruction,
         CameraObstructionSmoothingState, FollowCamera, FollowCameraState, apply_camera_input,
@@ -41,8 +42,6 @@ use nau_engine::{
 };
 
 const PLATEAU_CAMERA_START_BACKOFF_M: f32 = 7.0;
-const CAMERA_MAX_PLAYER_DISTANCE: f32 = 16.45;
-
 pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     let route = SkyRoute::default();
     let tuning = FlightTuning::default();
@@ -96,7 +95,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
         let was_grounded =
             route.is_grounded_at(state.position) && state.controller.mode == FlightMode::Grounded;
         let mut frame_tuning = tuning;
-        frame_tuning.floor_y = route.ground_at(state.position).floor_y;
+        frame_tuning.floor_y = route.contact_ground_at(state.position).floor_y;
         let world_step = step_flight_with_world(
             state,
             input,
@@ -123,7 +122,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
         animation_phase =
             advance_phase(animation_phase, state.velocity.length(), scenario.fixed_dt);
         let height_above_route_ground_m =
-            (state.position.y - route.ground_at(state.position).floor_y).max(0.0);
+            (state.position.y - route.contact_ground_at(state.position).floor_y).max(0.0);
         let wind_lateral_load =
             wind_lateral_load_from_delta(world_step.wind.crosswind_delta, player_rotation);
         let pose_context = PlayerPoseContext::new(
@@ -192,6 +191,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
         let camera_step = step_camera_frame(
             camera_transform,
             state.position,
+            state.controller.mode,
             follow_direction,
             &follow,
             camera_control.orbit,
@@ -498,6 +498,7 @@ fn collect_aerial_power_ups(state: &mut FlightState, power_ups: &mut SimPowerUps
 fn step_camera_frame(
     current: Transform,
     player_position: Vec3,
+    player_mode: FlightMode,
     follow_direction: Vec3,
     follow: &FollowCamera,
     orbit: nau_engine::camera::CameraOrbit,
@@ -519,7 +520,7 @@ fn step_camera_frame(
     );
     let orbit_alignment_degrees =
         camera_orbit_alignment_degrees(frame.position, frame.look_target, follow_direction, orbit);
-    let camera_floor_y = route.ground_at(frame.position).floor_y;
+    let camera_floor_y = route.contact_ground_at(frame.position).floor_y;
     let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
     let preferred_obstruction_offset = obstruction_smoothing.readable_offset();
     let obstruction = avoid_camera_obstructions_with_preferred_offset(
@@ -545,7 +546,7 @@ fn step_camera_frame(
     } else {
         frame
     };
-    let camera_floor_y = route.ground_at(obstruction_frame.position).floor_y;
+    let camera_floor_y = route.contact_ground_at(obstruction_frame.position).floor_y;
     let frame = lift_camera_above_floor(
         obstruction_frame,
         camera_floor_y,
@@ -571,7 +572,7 @@ fn step_camera_frame(
     );
     let (frame, active_obstruction_hits, active_obstruction_adjustment_m) = if revalidated_active {
         let camera_floor_y = route
-            .ground_at(revalidated_obstruction.frame.position)
+            .contact_ground_at(revalidated_obstruction.frame.position)
             .floor_y;
         (
             lift_camera_above_floor(
@@ -604,7 +605,7 @@ fn step_camera_frame(
     } else {
         active_obstruction_adjustment_m
     };
-    let frame = clamp_camera_player_distance(frame, player_position, CAMERA_MAX_PLAYER_DISTANCE);
+    let frame = clamp_camera_player_distance(frame, player_position, CAMERA_MAX_PLAYER_DISTANCE_M);
     let pre_cap_rotation_delta_degrees =
         current.rotation.angle_between(frame.rotation).to_degrees();
     let obstruction_position_controlled = active_obstruction_hits > 0 || release_smoothing_active;
@@ -634,6 +635,18 @@ fn step_camera_frame(
             current.rotation,
             CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES,
         )
+    } else {
+        frame
+    };
+    let distance_clamped_frame =
+        clamp_camera_player_distance(frame, player_position, CAMERA_MAX_PLAYER_DISTANCE_M);
+    let frame = if player_mode == FlightMode::Gliding
+        || distance_clamped_frame
+            .position
+            .distance(current.translation)
+            <= CAMERA_MAX_FOLLOW_FRAME_STEP_M + CAMERA_DISTANCE_CLAMP_STEP_GRACE_M
+    {
+        distance_clamped_frame
     } else {
         frame
     };
@@ -840,6 +853,7 @@ mod tests {
         let sample = step_camera_frame(
             current,
             START_POSITION,
+            FlightMode::Gliding,
             Vec3::NEG_Z,
             &follow,
             nau_engine::camera::CameraOrbit::default(),

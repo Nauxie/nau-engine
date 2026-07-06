@@ -638,8 +638,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "stratos shelf updraft",
-        center: Vec3::new(-22.0, 174.0, -1138.0),
-        half_extents: Vec3::new(42.0, 78.0, 76.0),
+        center: Vec3::new(16.0, 158.0, -1138.0),
+        half_extents: Vec3::new(76.0, 104.0, 86.0),
         lift_accel: 24.0,
         max_upward_speed: 25.0,
         visual_speed: 16.0,
@@ -654,8 +654,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "upper sky shelf updraft",
-        center: Vec3::new(-210.0, 302.0, -1720.0),
-        half_extents: Vec3::new(44.0, 64.0, 44.0),
+        center: Vec3::new(-64.0, 272.0, -1640.0),
+        half_extents: Vec3::new(56.0, 104.0, 108.0),
         lift_accel: 23.0,
         max_upward_speed: 26.0,
         visual_speed: 17.0,
@@ -726,8 +726,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "underbridge cay updraft",
-        center: Vec3::new(-34.0, 34.0, -86.0),
-        half_extents: Vec3::new(28.0, 32.0, 28.0),
+        center: Vec3::new(-82.0, 22.0, -136.0),
+        half_extents: Vec3::new(64.0, 38.0, 72.0),
         lift_accel: 20.0,
         max_upward_speed: 19.0,
         visual_speed: 13.0,

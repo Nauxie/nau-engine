@@ -55,7 +55,7 @@ pub(crate) use island_meshes::{
     ISLAND_TERRAIN_HEIGHT_BANDS, ISLAND_TERRAIN_MATERIAL_CHANNELS, ISLAND_TERRAIN_MATERIAL_REGIONS,
     ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS, ISLAND_TERRAIN_NORMAL_SLOPE_BANDS,
     ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS, ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE,
-    ISLAND_UNDERSIDE_RINGS, island_terrain_vertex_color,
+    ISLAND_UNDERSIDE_RINGS, island_terrain_vertex_color_for_shape,
 };
 pub(crate) use materials::{
     cloud_surface_material, cloud_veil_material, emissive_material, glider_airflow_material,

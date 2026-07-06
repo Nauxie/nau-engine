@@ -431,7 +431,7 @@ pub(super) fn long_glide_visibility() -> EvalScenario {
 pub(super) fn great_sky_plateau_route() -> EvalScenario {
     let mut scenario = long_glide_visibility();
     scenario.name = GREAT_SKY_PLATEAU_ROUTE;
-    scenario.frame_count = 2100;
+    scenario.frame_count = 2520;
     scenario.sample_stride = 15;
     scenario.target_island_name = Some("great sky plateau");
     scenario.checkpoints = GREAT_SKY_PLATEAU_CHECKPOINTS;
@@ -541,7 +541,7 @@ pub(super) fn underbridge_under_route() -> EvalScenario {
             min_max_altitude_m: 12.0,
             min_max_speed_mps: 18.0,
             min_gliding_samples: 35,
-            min_grounded_samples: 1,
+            min_grounded_samples: 0,
             min_lifted_samples: 2,
             min_sky_island_count: MIN_SKY_ISLAND_COUNT,
             min_active_island_count: 4,

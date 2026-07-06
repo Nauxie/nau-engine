@@ -6,8 +6,8 @@ use nau_engine::animation::PlayerPoseIntent;
 use nau_engine::environment::{LiftField, WindField};
 use nau_engine::movement::FlightInput;
 use nau_engine::world::{
-    IslandLandmarkRole, IslandPlateauRegion, IslandScaleClass, IslandTerrainArchetype,
-    IslandWaterFeature,
+    IslandLandmarkRole, IslandPlateauRegion, IslandScaleClass, IslandShapeLanguage,
+    IslandTerrainArchetype, IslandWaterFeature,
 };
 
 fn test_island() -> SkyIsland {
@@ -605,6 +605,7 @@ fn terrain_export_writes_manifest_meshes_and_weight_sidecars() {
         fs::read_to_string(&launch_weights).expect("material weights csv should be readable");
 
     assert_eq!(report.island_count, SkyRoute::default().islands().len());
+    assert_eq!(report.shape_language_count, IslandShapeLanguage::COUNT);
     assert_eq!(report.mesh_count, report.island_count * 4);
     assert!(report.total_vertex_count > report.island_count * (2305 + 140));
     assert!(report.total_triangle_count > report.island_count * 4000);
@@ -627,6 +628,8 @@ fn terrain_export_writes_manifest_meshes_and_weight_sidecars() {
     assert!(weights.starts_with("vertex,lush_highland,exposed_edge\n"));
     assert!(weights.lines().count() > 2000);
     assert!(manifest.contains("\"schema\": \"nau_terrain_export.v1\""));
+    assert!(manifest.contains("\"shape_language_count\": 14"));
+    assert!(manifest.contains("\"shape_language\": \"terrace_mesa\""));
     assert!(manifest.contains(
         "\"material_weights_csv\": \"islands/00_launch_mesa_terrain_material_weights.csv\""
     ));
@@ -2855,7 +2858,13 @@ fn terrain_biome_palettes_vary_base_hues() {
 fn terrain_vertex_colors_use_biome_palette_variation() {
     let color_keys = (0..5)
         .map(|index| {
-            let color = island_terrain_vertex_color(index, 0.56, 1.2, 0.24);
+            let color = island_terrain_vertex_color_for_shape(
+                IslandShapeLanguage::MeadowShelf,
+                index,
+                0.56,
+                1.2,
+                0.24,
+            );
             [
                 (color[0] * 31.0).round() as u8,
                 (color[1] * 31.0).round() as u8,

@@ -11,17 +11,19 @@ use bevy::prelude::*;
 use bevy::render::render_resource::BlendState;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use nau_engine::camera::{
-    CameraControlState, CameraControlTuning, CameraInput, CameraObstruction,
-    CameraObstructionSmoothingState, FollowCamera, FollowCameraState, apply_camera_input,
-    avoid_camera_obstructions_with_preferred_offset, camera_orbit_alignment_degrees,
-    lift_camera_above_floor, movement_input_stable_follow_direction, smooth_camera_obstruction,
-    step_camera_with_direction, update_follow_direction_state,
+    CAMERA_DISTANCE_CLAMP_STEP_GRACE_M, CAMERA_MAX_FOLLOW_FRAME_STEP_M,
+    CAMERA_MAX_PLAYER_DISTANCE_M, CameraControlState, CameraControlTuning, CameraInput,
+    CameraObstruction, CameraObstructionSmoothingState, FollowCamera, FollowCameraState,
+    apply_camera_input, avoid_camera_obstructions_with_preferred_offset,
+    camera_orbit_alignment_degrees, clamp_camera_player_distance, lift_camera_above_floor,
+    movement_input_stable_follow_direction, smooth_camera_obstruction, step_camera_with_direction,
+    update_follow_direction_state,
 };
 use nau_engine::eval::{scripted_camera_input, scripted_input};
 use nau_engine::movement::Velocity;
 use nau_engine::world::SkyRoute;
 
-const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
+const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 1.45;
 const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
 pub(crate) const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
 
@@ -252,7 +254,7 @@ pub(crate) fn follow_camera(
         follow_direction,
         scene.camera_control.orbit,
     );
-    let camera_floor_y = scene.route.ground_at(frame.position).floor_y;
+    let camera_floor_y = scene.route.contact_ground_at(frame.position).floor_y;
     let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
     let obstruction_resolution = avoid_camera_obstructions_with_preferred_offset(
         frame,
@@ -262,7 +264,7 @@ pub(crate) fn follow_camera(
     );
     let camera_floor_y = scene
         .route
-        .ground_at(obstruction_resolution.frame.position)
+        .contact_ground_at(obstruction_resolution.frame.position)
         .floor_y;
     let frame = lift_camera_above_floor(
         obstruction_resolution.frame,
@@ -276,6 +278,20 @@ pub(crate) fn follow_camera(
         obstruction_resolution.adjusted_distance_m,
         dt,
     );
+    let distance_clamped_frame = clamp_camera_player_distance(
+        frame,
+        player_transform.translation,
+        CAMERA_MAX_PLAYER_DISTANCE_M,
+    );
+    let frame = if distance_clamped_frame
+        .position
+        .distance(previous_camera_position)
+        <= CAMERA_MAX_FOLLOW_FRAME_STEP_M + CAMERA_DISTANCE_CLAMP_STEP_GRACE_M
+    {
+        distance_clamped_frame
+    } else {
+        frame
+    };
 
     let (diagnostics_previous_position, diagnostics_previous_rotation) =
         if obstruction_memory.diagnostics_initialized {

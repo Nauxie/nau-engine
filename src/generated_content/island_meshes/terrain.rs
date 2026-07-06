@@ -3,8 +3,8 @@ use super::constants::{
 };
 use super::normals::smooth_normals_from_triangles;
 use super::palette::{
-    balance_terrain_material_weights, island_terrain_material_weights, island_terrain_uv,
-    island_terrain_vertex_color,
+    balance_terrain_material_weights, island_terrain_material_weights_for_shape, island_terrain_uv,
+    island_terrain_vertex_color_for_shape,
 };
 use super::shape::island_silhouette_scale;
 use bevy::asset::RenderAssetUsages;
@@ -30,13 +30,15 @@ pub(crate) fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mes
         island.center.x,
         island.center.z,
     ));
-    colors.push(island_terrain_vertex_color(
+    colors.push(island_terrain_vertex_color_for_shape(
+        island.shape_language(),
         island_index,
         0.0,
         0.0,
         center_y - island.mesh_top_y(),
     ));
-    material_weights.push(island_terrain_material_weights(
+    material_weights.push(island_terrain_material_weights_for_shape(
+        island.shape_language(),
         island_index,
         0.0,
         0.0,
@@ -55,13 +57,15 @@ pub(crate) fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mes
 
             positions.push([x, y, z]);
             uvs.push(island_terrain_uv(island_index, island, x, z));
-            colors.push(island_terrain_vertex_color(
+            colors.push(island_terrain_vertex_color_for_shape(
+                island.shape_language(),
                 island_index,
                 radius,
                 angle,
                 y - island.mesh_top_y(),
             ));
-            material_weights.push(island_terrain_material_weights(
+            material_weights.push(island_terrain_material_weights_for_shape(
+                island.shape_language(),
                 island_index,
                 radius,
                 angle,
@@ -80,13 +84,15 @@ pub(crate) fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mes
 
         positions.push([x, y, z]);
         uvs.push(island_terrain_uv(island_index, island, x, z));
-        colors.push(island_terrain_vertex_color(
+        colors.push(island_terrain_vertex_color_for_shape(
+            island.shape_language(),
             island_index,
             1.0,
             angle,
             y - island.mesh_top_y(),
         ));
-        material_weights.push(island_terrain_material_weights(
+        material_weights.push(island_terrain_material_weights_for_shape(
+            island.shape_language(),
             island_index,
             1.0,
             angle,

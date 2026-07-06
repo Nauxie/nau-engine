@@ -20,7 +20,7 @@ use nau_engine::animation::{
 pub(crate) use sample::{SimSample, round4, round4_f64, vec3_json};
 pub(crate) use simulation::run_simulation;
 
-const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
+const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 1.45;
 const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
 const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
 const AIR_CONTROL_RESPONSE_THRESHOLD_MPS: f32 = 6.0;

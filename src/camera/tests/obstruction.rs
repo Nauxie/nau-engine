@@ -2,8 +2,9 @@ use bevy::prelude::*;
 
 use super::super::{
     CAMERA_MIN_READABLE_OBSTRUCTION_DISTANCE_M, CameraFrame, CameraObstruction,
-    avoid_camera_obstructions, camera_surface_clearance, camera_target_angle_degrees,
-    clamp_camera_step, lift_camera_above_floor,
+    CameraObstructionSmoothingState, avoid_camera_obstructions, camera_surface_clearance,
+    camera_target_angle_degrees, clamp_camera_step, lift_camera_above_floor,
+    smooth_camera_obstruction,
 };
 
 #[test]
@@ -171,5 +172,31 @@ fn camera_step_clamp_limits_large_obstruction_snaps() {
     assert!(
         camera_target_angle_degrees(clamped.position, clamped.rotation, clamped.look_target)
             < 0.001
+    );
+}
+
+#[test]
+fn active_camera_obstruction_offsets_are_smoothed() {
+    let look_target = Vec3::new(0.0, 2.0, 0.0);
+    let mut state = CameraObstructionSmoothingState::default();
+    let first_frame = CameraFrame {
+        position: Vec3::new(0.0, 4.0, 6.0),
+        rotation: Quat::IDENTITY,
+        look_target,
+    };
+    let first = smooth_camera_obstruction(first_frame, &mut state, 1, 1.0, 1.0 / 60.0);
+    let second_target = CameraFrame {
+        position: Vec3::new(4.0, 4.0, 6.0),
+        rotation: Quat::IDENTITY,
+        look_target,
+    };
+
+    let second = smooth_camera_obstruction(second_target, &mut state, 1, 1.0, 1.0 / 60.0);
+
+    assert_eq!(first.position, first_frame.position);
+    assert!(second.position.x > first.position.x);
+    assert!(second.position.x < second_target.position.x);
+    assert!(
+        camera_target_angle_degrees(second.position, second.rotation, second.look_target) < 0.001
     );
 }

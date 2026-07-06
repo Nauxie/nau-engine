@@ -19,8 +19,9 @@ pub use collision::{
 };
 pub use island::{
     ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT, IslandBiome, IslandFootprintProfile, IslandLandmarkRole,
-    IslandPlateauRegion, IslandRouteRole, IslandScaleClass, IslandTerrainArchetype,
-    IslandUnderRouteSegment, IslandVerticalProfile, IslandWaterFeature, IslandWorldTags, SkyIsland,
+    IslandPlateauRegion, IslandRouteRole, IslandScaleClass, IslandShapeLanguage,
+    IslandTerrainArchetype, IslandUnderRouteSegment, IslandVerticalProfile, IslandWaterFeature,
+    IslandWorldTags, SkyIsland,
 };
 pub use objectives::{RouteObjective, RouteObjectiveKind, is_recovery_branch_island};
 pub use obstruction_spires::{
@@ -51,5 +52,4 @@ pub const TERRAIN_MAX_DROP_M: f32 = 0.75;
 pub const TERRAIN_VISUAL_FOOTING_OFFSET_M: f32 = 0.18;
 
 const GROUND_CONTACT_EPSILON: f32 = 0.05;
-const GROUND_CONTACT_VERTICAL_CAPTURE_M: f32 = 2.75;
 const GROUND_CONTACT_HORIZONTAL_DAMPING: f32 = 0.58;

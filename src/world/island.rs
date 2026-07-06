@@ -1431,8 +1431,8 @@ impl SkyIsland {
         if self.name == "bluevault basin" || self.has_major_water_feature() {
             return IslandShapeLanguage::LakeBasin;
         }
-        if self.name == "outer switchback" {
-            return IslandShapeLanguage::RuinFoundation;
+        if self.name == "mist stepping stone" || self.name == "east windchain" {
+            return IslandShapeLanguage::BridgeRemnant;
         }
 
         match self.terrain_archetype {
@@ -1470,7 +1470,7 @@ impl SkyIsland {
             IslandTerrainArchetype::Needle => IslandShapeLanguage::NeedlePerch,
             IslandTerrainArchetype::SapphireBasin => IslandShapeLanguage::LakeBasin,
             IslandTerrainArchetype::MistArch | IslandTerrainArchetype::CloudGate => {
-                IslandShapeLanguage::BridgeRemnant
+                IslandShapeLanguage::RuinFoundation
             }
             IslandTerrainArchetype::SkyPlateau => IslandShapeLanguage::PlateauFragment,
         }
@@ -1712,7 +1712,7 @@ impl SkyIsland {
             + self.terrain_archetype.silhouette_bias(angle, phase)
             + self.shape_language().silhouette_bias(angle, phase)
             + self.footprint_profile().bias(angle, phase))
-        .clamp(0.54, 1.34)
+        .clamp(0.50, 1.38)
     }
 
     pub fn playable_silhouette_scale(self, angle: f32) -> f32 {
@@ -1722,6 +1722,21 @@ impl SkyIsland {
 
     pub fn footprint_profile(self) -> IslandFootprintProfile {
         self.terrain_archetype.footprint_profile()
+    }
+
+    pub fn silhouette_scale_range(self, samples: usize) -> (f32, f32) {
+        let samples = samples.max(1);
+        let mut min_scale = f32::INFINITY;
+        let mut max_scale = f32::NEG_INFINITY;
+
+        for step in 0..samples {
+            let angle = step as f32 / samples as f32 * std::f32::consts::TAU;
+            let scale = self.visual_silhouette_scale(angle);
+            min_scale = min_scale.min(scale);
+            max_scale = max_scale.max(scale);
+        }
+
+        (min_scale, max_scale)
     }
 
     pub fn footprint_contour_point(self, angle: f32, visual: bool) -> Vec2 {

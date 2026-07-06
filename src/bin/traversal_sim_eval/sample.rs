@@ -64,7 +64,7 @@ impl CameraDiagnosticsSample {
         camera_step: CameraStepSample,
         route: &SkyRoute,
     ) -> Self {
-        let camera_floor_y = route.ground_at(camera.translation).floor_y;
+        let camera_floor_y = route.contact_ground_at(camera.translation).floor_y;
         let player_focus = player_position + Vec3::Y * CAMERA_PLAYER_FOCUS_HEIGHT;
         Self {
             distance_m: camera_distance(camera.translation, player_position),
@@ -247,7 +247,7 @@ impl SimSample {
             0.0
         };
         let height_above_route_ground_m =
-            (state.position.y - route.ground_at(state.position).floor_y).max(0.0);
+            (state.position.y - route.contact_ground_at(state.position).floor_y).max(0.0);
         let time_secs = frame as f32 * scenario.fixed_dt;
         let wind_lateral_load =
             wind_lateral_load_from_delta(wind_force.applied_delta, player_rotation);
