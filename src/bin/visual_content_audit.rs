@@ -39,6 +39,15 @@ const MIN_TREE_TRUNK_HEIGHT_RANGE_M: f64 = 1.5;
 const MIN_TREE_CANOPY_RADIUS_RANGE_M: f64 = 0.35;
 const MIN_LANDMARK_COUNT: u64 = 60;
 const MIN_LANDMARK_KIND_COUNT: u64 = 18;
+const MIN_ARTIFACT_DETAIL_COUNT: u64 = 55;
+const MIN_ARTIFACT_DETAIL_KIND_COUNT: u64 = 7;
+const MIN_ARTIFACT_STAIR_COUNT: u64 = 8;
+const MIN_ARTIFACT_BRIDGE_FRAGMENT_COUNT: u64 = 6;
+const MIN_ARTIFACT_GLYPH_SLAB_COUNT: u64 = 8;
+const MIN_ARTIFACT_RETAINING_WALL_COUNT: u64 = 8;
+const MIN_ARTIFACT_BANNER_COUNT: u64 = 6;
+const MIN_ARTIFACT_PEBBLE_FIELD_COUNT: u64 = 30;
+const MIN_ARTIFACT_REED_PATCH_COUNT: u64 = 4;
 const MIN_SMALL_ISLAND_COUNT: u64 = 10;
 const MIN_PLATEAU_LANDMARK_COUNT: u64 = 15;
 const MIN_PLATEAU_WATERFALL_RIBBON_COUNT: u64 = 2;
@@ -68,6 +77,14 @@ const MIN_PLATEAU_WATERFALL_VERTICAL_SPAN_M: f64 = 45.0;
 const MIN_ROUTE_WATERFALL_VERTICAL_SPAN_M: f64 = 18.0;
 const MIN_ROUTE_LAKE_SURFACE_HORIZONTAL_SPAN_M: f64 = 18.0;
 const MIN_UNDER_ROUTE_VISUAL_VERTICAL_SPAN_M: f64 = 4.0;
+const MIN_ARTIFACT_DETAIL_VERTEX_TOTAL: u64 = 16_000;
+const MIN_ARTIFACT_DETAIL_MESH_VERTICES: u64 = 60;
+const MIN_ARTIFACT_STONE_MESH_VERTICES: u64 = 140;
+const MIN_ARTIFACT_STONE_NORMAL_SLOPE_BANDS: u64 = 3;
+const MIN_ARTIFACT_STAIR_HORIZONTAL_SPAN_M: f64 = 5.0;
+const MIN_ARTIFACT_BRIDGE_HORIZONTAL_SPAN_M: f64 = 5.0;
+const MIN_ARTIFACT_BANNER_VERTICAL_SPAN_M: f64 = 1.5;
+const MIN_ARTIFACT_REED_VERTICAL_SPAN_M: f64 = 0.8;
 const MIN_RUIN_ARCH_MESH_VERTICES: u64 = 500;
 const MIN_RUIN_ARCH_VERTICAL_SPAN_M: f64 = 4.5;
 const MIN_RUIN_ARCH_RADIUS_BANDS: u64 = 8;
@@ -216,6 +233,60 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         value_u64(counts, "landmark_kind_count"),
         MIN_LANDMARK_KIND_COUNT,
         "kinds",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_detail_count",
+        value_u64(counts, "artifact_detail_count"),
+        MIN_ARTIFACT_DETAIL_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_detail_kind_count",
+        value_u64(counts, "artifact_detail_kind_count"),
+        MIN_ARTIFACT_DETAIL_KIND_COUNT,
+        "kinds",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_stair_count",
+        value_u64(counts, "artifact_stair_count"),
+        MIN_ARTIFACT_STAIR_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_bridge_fragment_count",
+        value_u64(counts, "artifact_bridge_fragment_count"),
+        MIN_ARTIFACT_BRIDGE_FRAGMENT_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_glyph_slab_count",
+        value_u64(counts, "artifact_glyph_slab_count"),
+        MIN_ARTIFACT_GLYPH_SLAB_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_retaining_wall_count",
+        value_u64(counts, "artifact_retaining_wall_count"),
+        MIN_ARTIFACT_RETAINING_WALL_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_banner_count",
+        value_u64(counts, "artifact_banner_count"),
+        MIN_ARTIFACT_BANNER_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_pebble_field_count",
+        value_u64(counts, "artifact_pebble_field_count"),
+        MIN_ARTIFACT_PEBBLE_FIELD_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_reed_patch_count",
+        value_u64(counts, "artifact_reed_patch_count"),
+        MIN_ARTIFACT_REED_PATCH_COUNT,
+        "meshes",
     ));
     checks.push(check_at_least_u64(
         "small_island_count",
@@ -521,6 +592,54 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "under_route_visual_vertical_span",
         value_f64(minimums, "under_route_visual_vertical_span_m"),
         MIN_UNDER_ROUTE_VISUAL_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_detail_vertex_total",
+        value_u64(minimums, "artifact_detail_vertex_total"),
+        MIN_ARTIFACT_DETAIL_VERTEX_TOTAL,
+        "vertices",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_detail_mesh_vertices",
+        value_u64(minimums, "artifact_detail_mesh_vertices"),
+        MIN_ARTIFACT_DETAIL_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_stone_mesh_vertices",
+        value_u64(minimums, "artifact_stone_mesh_vertices"),
+        MIN_ARTIFACT_STONE_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_stone_normal_slope_bands",
+        value_u64(minimums, "artifact_stone_normal_slope_band_count"),
+        MIN_ARTIFACT_STONE_NORMAL_SLOPE_BANDS,
+        "bands",
+    ));
+    checks.push(check_at_least_f64(
+        "artifact_stair_horizontal_span",
+        value_f64(minimums, "artifact_stair_horizontal_span_m"),
+        MIN_ARTIFACT_STAIR_HORIZONTAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "artifact_bridge_horizontal_span",
+        value_f64(minimums, "artifact_bridge_horizontal_span_m"),
+        MIN_ARTIFACT_BRIDGE_HORIZONTAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "artifact_banner_vertical_span",
+        value_f64(minimums, "artifact_banner_vertical_span_m"),
+        MIN_ARTIFACT_BANNER_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "artifact_reed_vertical_span",
+        value_f64(minimums, "artifact_reed_vertical_span_m"),
+        MIN_ARTIFACT_REED_VERTICAL_SPAN_M,
         "m",
     ));
     checks.push(check_at_least_u64(
@@ -884,6 +1003,15 @@ mod tests {
                 "weather_cloud_veil_count": 0,
                 "landmark_count": 1,
                 "landmark_kind_count": 1,
+                "artifact_detail_count": 0,
+                "artifact_detail_kind_count": 0,
+                "artifact_stair_count": 0,
+                "artifact_bridge_fragment_count": 0,
+                "artifact_glyph_slab_count": 0,
+                "artifact_retaining_wall_count": 0,
+                "artifact_banner_count": 0,
+                "artifact_pebble_field_count": 0,
+                "artifact_reed_patch_count": 0,
                 "small_island_count": 1,
                 "plateau_landmark_count": 1,
                 "plateau_waterfall_ribbon_count": 0,
@@ -937,6 +1065,14 @@ mod tests {
                 "route_waterfall_vertical_span_m": 2.0,
                 "route_lake_surface_horizontal_span_m": 4.0,
                 "under_route_visual_vertical_span_m": 0.5,
+                "artifact_detail_vertex_total": 10,
+                "artifact_detail_mesh_vertices": 4,
+                "artifact_stone_mesh_vertices": 8,
+                "artifact_stone_normal_slope_band_count": 1,
+                "artifact_stair_horizontal_span_m": 0.5,
+                "artifact_bridge_horizontal_span_m": 0.5,
+                "artifact_banner_vertical_span_m": 0.2,
+                "artifact_reed_vertical_span_m": 0.1,
                 "ruin_arch_mesh_vertices": 10,
                 "ruin_arch_vertical_span_m": 0.4,
                 "ruin_arch_radius_band_count": 1,
@@ -999,6 +1135,15 @@ mod tests {
         for name in [
             "landmark_count",
             "landmark_kind_count",
+            "artifact_detail_count",
+            "artifact_detail_kind_count",
+            "artifact_stair_count",
+            "artifact_bridge_fragment_count",
+            "artifact_glyph_slab_count",
+            "artifact_retaining_wall_count",
+            "artifact_banner_count",
+            "artifact_pebble_field_count",
+            "artifact_reed_patch_count",
             "small_island_count",
             "plateau_landmark_count",
             "plateau_waterfall_ribbon_count",
@@ -1028,6 +1173,14 @@ mod tests {
             "route_waterfall_vertical_span",
             "route_lake_surface_horizontal_span",
             "under_route_visual_vertical_span",
+            "artifact_detail_vertex_total",
+            "artifact_detail_mesh_vertices",
+            "artifact_stone_mesh_vertices",
+            "artifact_stone_normal_slope_bands",
+            "artifact_stair_horizontal_span",
+            "artifact_bridge_horizontal_span",
+            "artifact_banner_vertical_span",
+            "artifact_reed_vertical_span",
             "ruin_arch_mesh_vertices",
             "ruin_arch_vertical_span",
             "ruin_arch_radius_bands",

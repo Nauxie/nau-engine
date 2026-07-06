@@ -8,12 +8,13 @@ use crate::content_diagnostics::{GeneratedLandmarkKind, IslandContentDiagnostics
 use crate::environment_visuals::wind_visual_motion;
 use crate::generated_content::{
     FirstExpeditionSilhouetteKind, GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES,
-    IslandDetailMaterials, IslandUnderRouteVisualKind, cliff_tooth_ridge_mesh,
-    first_expedition_silhouette_specs, garden_ring_mesh, island_ground_cover_mesh,
-    island_lake_basin_visual_specs, island_playable_normalized_offset,
-    island_under_route_visual_specs, island_visual_surface_position, island_water_visual_specs,
-    landing_garden_marker_mesh, launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh,
-    ruin_arch_mesh, tree_canopy_mesh, tree_trunk_mesh,
+    IslandArtifactMaterial, IslandDetailMaterials, IslandUnderRouteVisualKind,
+    cliff_tooth_ridge_mesh, first_expedition_silhouette_specs, garden_ring_mesh,
+    island_artifact_visual_specs, island_ground_cover_mesh, island_lake_basin_visual_specs,
+    island_playable_normalized_offset, island_under_route_visual_specs,
+    island_visual_surface_position, island_water_visual_specs, landing_garden_marker_mesh,
+    launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh, ruin_arch_mesh, tree_canopy_mesh,
+    tree_trunk_mesh,
 };
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
@@ -234,6 +235,34 @@ pub(super) fn queue_sky_island_details(
             },
             None,
             "lake basin",
+        );
+    }
+
+    for artifact in island_artifact_visual_specs(island_index, island) {
+        let mesh = artifact.build_mesh();
+        content_diagnostics.record_generated_landmark(
+            GeneratedLandmarkKind::ArtifactDetail,
+            mesh.count_vertices(),
+        );
+        let material = match artifact.material {
+            IslandArtifactMaterial::Stone => detail_materials.stone.clone(),
+            IslandArtifactMaterial::Foliage => detail_materials.foliage.clone(),
+            IslandArtifactMaterial::Trunk => detail_materials.trunk.clone(),
+        };
+        queue_island_visual(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Detail,
+            meshes.add(mesh),
+            material,
+            Transform {
+                translation: artifact.translation,
+                rotation: Quat::from_rotation_y(artifact.rotation_y),
+                ..default()
+            },
+            None,
+            artifact.kind.visual_name(),
         );
     }
 

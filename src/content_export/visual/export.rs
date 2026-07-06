@@ -173,6 +173,16 @@ pub(crate) fn export_visual_content_inspection(
         .iter()
         .filter(|summary| summary.kind == "under_route_cave_mouth")
         .count();
+    let artifact_detail_count = landmarks
+        .iter()
+        .filter(|summary| summary.kind.starts_with("artifact_"))
+        .count();
+    let artifact_detail_kind_count = landmarks
+        .iter()
+        .filter(|summary| summary.kind.starts_with("artifact_"))
+        .map(|summary| summary.kind)
+        .collect::<HashSet<_>>()
+        .len();
 
     let mesh_count = ground_cover.len() + trees.len() * 2 + clouds.len() + landmarks.len();
     let total_vertex_count = ground_cover
@@ -217,6 +227,36 @@ pub(crate) fn export_visual_content_inspection(
             .count(),
         landmark_count: landmarks.len(),
         landmark_kind_count,
+        artifact_detail_count,
+        artifact_detail_kind_count,
+        artifact_stair_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_ancient_stair")
+            .count(),
+        artifact_bridge_fragment_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_bridge_fragment")
+            .count(),
+        artifact_glyph_slab_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_glyph_slab")
+            .count(),
+        artifact_retaining_wall_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_retaining_wall")
+            .count(),
+        artifact_banner_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_banner_strips")
+            .count(),
+        artifact_pebble_field_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_pebble_field")
+            .count(),
+        artifact_reed_patch_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_reed_patch")
+            .count(),
         small_island_count,
         plateau_landmark_count,
         plateau_waterfall_ribbon_count,
@@ -395,6 +435,45 @@ pub(crate) fn export_visual_content_inspection(
                 .filter(|summary| summary.kind.starts_with("under_route_"))
                 .map(|summary| summary.mesh.vertical_span_m),
         ),
+        artifact_detail_vertex_total: landmarks
+            .iter()
+            .filter(|summary| summary.kind.starts_with("artifact_"))
+            .map(|summary| summary.mesh.vertex_count)
+            .sum(),
+        min_artifact_detail_mesh_vertices: landmarks
+            .iter()
+            .filter(|summary| summary.kind.starts_with("artifact_"))
+            .map(|summary| summary.mesh.vertex_count)
+            .min()
+            .unwrap_or(0),
+        min_artifact_stone_mesh_vertices: landmarks
+            .iter()
+            .filter(|summary| is_artifact_stone_kind(summary.kind))
+            .map(|summary| summary.mesh.vertex_count)
+            .min()
+            .unwrap_or(0),
+        min_artifact_stone_normal_slope_band_count: landmarks
+            .iter()
+            .filter(|summary| is_artifact_faceted_stone_kind(summary.kind))
+            .map(|summary| summary.normal_slope_band_count)
+            .min()
+            .unwrap_or(0),
+        min_artifact_stair_horizontal_span_m: min_landmark_planar_span(
+            &landmarks,
+            "artifact_ancient_stair",
+        ),
+        min_artifact_bridge_horizontal_span_m: min_landmark_planar_span(
+            &landmarks,
+            "artifact_bridge_fragment",
+        ),
+        min_artifact_banner_vertical_span_m: min_landmark_vertical_span(
+            &landmarks,
+            "artifact_banner_strips",
+        ),
+        min_artifact_reed_vertical_span_m: min_landmark_vertical_span(
+            &landmarks,
+            "artifact_reed_patch",
+        ),
         min_ruin_arch_mesh_vertices: min_landmark_vertices(&landmarks, "ruin_arch"),
         min_ruin_arch_vertical_span_m: min_landmark_vertical_span(&landmarks, "ruin_arch"),
         min_ruin_arch_radius_band_count: min_landmark_radius_bands(&landmarks, "ruin_arch"),
@@ -446,6 +525,21 @@ fn min_landmark_vertices(landmarks: &[super::types::VisualLandmarkSummary], kind
         .unwrap_or(0)
 }
 
+fn is_artifact_stone_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "artifact_ancient_stair"
+            | "artifact_retaining_wall"
+            | "artifact_glyph_slab"
+            | "artifact_bridge_fragment"
+            | "artifact_pebble_field"
+    )
+}
+
+fn is_artifact_faceted_stone_kind(kind: &str) -> bool {
+    kind == "artifact_pebble_field"
+}
+
 fn min_landmark_triangles(landmarks: &[super::types::VisualLandmarkSummary], kind: &str) -> usize {
     landmarks
         .iter()
@@ -476,6 +570,20 @@ fn min_landmark_horizontal_span(
             .iter()
             .filter(|summary| summary.kind == kind)
             .map(|summary| summary.mesh.horizontal_span_m),
+    )
+}
+
+fn min_landmark_planar_span(landmarks: &[super::types::VisualLandmarkSummary], kind: &str) -> f32 {
+    min_finite_f32(
+        landmarks
+            .iter()
+            .filter(|summary| summary.kind == kind)
+            .map(|summary| {
+                summary
+                    .mesh
+                    .horizontal_span_m
+                    .max(summary.mesh.depth_span_m)
+            }),
     )
 }
 

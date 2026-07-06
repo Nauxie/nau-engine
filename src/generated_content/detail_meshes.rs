@@ -22,22 +22,28 @@ pub(crate) use effects::{
     crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh, glider_airflow_trail_mesh,
     updraft_ribbon_mesh,
 };
+#[cfg(test)]
 pub(crate) use landmarks::{
-    FirstExpeditionSilhouetteKind, IslandWaterVisualKind, first_expedition_silhouette_specs,
-    garden_ring_mesh, island_lake_basin_visual_specs, island_water_visual_specs,
-    landing_garden_marker_mesh, launch_beacon_mesh, route_cairn_mesh, ruin_arch_mesh,
+    ARTIFACT_BANNER_STRIP_COUNT, ARTIFACT_BRIDGE_FRAGMENT_COUNT, ARTIFACT_GLYPH_STROKE_COUNT,
+    ARTIFACT_PEBBLE_COUNT, ARTIFACT_REED_COUNT, ARTIFACT_RETAINING_WALL_SEGMENTS,
+    ARTIFACT_STAIR_STEP_COUNT, GARDEN_RING_BANDS, GARDEN_RING_SEGMENTS, IslandArtifactVisualKind,
+    LAKE_BASIN_RIM_BANDS, LAKE_BASIN_RIM_SEGMENTS, LAKE_SURFACE_SEGMENTS,
+    LANDING_GARDEN_MARKER_SEGMENTS, LAUNCH_BEACON_CRYSTAL_COUNT, POND_SURFACE_SEGMENTS,
+    ROUTE_CAIRN_STONE_COUNT, RUIN_ARCH_STONE_COUNT, WATERFALL_MIST_LOBES, WATERFALL_RIBBON_COLUMNS,
+    WATERFALL_RIBBON_ROWS,
+};
+pub(crate) use landmarks::{
+    FirstExpeditionSilhouetteKind, IslandArtifactMaterial, IslandWaterVisualKind,
+    first_expedition_silhouette_specs, garden_ring_mesh, island_artifact_visual_specs,
+    island_lake_basin_visual_specs, island_water_visual_specs, landing_garden_marker_mesh,
+    launch_beacon_mesh, route_cairn_mesh, ruin_arch_mesh,
 };
 #[cfg(test)]
 pub(crate) use landmarks::{
-    GARDEN_RING_BANDS, GARDEN_RING_SEGMENTS, LAKE_BASIN_RIM_BANDS, LAKE_BASIN_RIM_SEGMENTS,
-    LAKE_SURFACE_SEGMENTS, LANDING_GARDEN_MARKER_SEGMENTS, LAUNCH_BEACON_CRYSTAL_COUNT,
-    POND_SURFACE_SEGMENTS, ROUTE_CAIRN_STONE_COUNT, RUIN_ARCH_STONE_COUNT, WATERFALL_MIST_LOBES,
-    WATERFALL_RIBBON_COLUMNS, WATERFALL_RIBBON_ROWS,
-};
-#[cfg(test)]
-pub(crate) use landmarks::{
-    lake_basin_rim_mesh, lake_surface_mesh, pond_surface_mesh, waterfall_mist_mesh,
-    waterfall_ribbon_mesh,
+    artifact_banner_strips_mesh, artifact_bridge_fragment_mesh, artifact_glyph_slab_mesh,
+    artifact_pebble_field_mesh, artifact_reed_patch_mesh, artifact_retaining_wall_mesh,
+    artifact_stair_run_mesh, lake_basin_rim_mesh, lake_surface_mesh, pond_surface_mesh,
+    waterfall_mist_mesh, waterfall_ribbon_mesh,
 };
 #[cfg(test)]
 pub(crate) use rocks::{

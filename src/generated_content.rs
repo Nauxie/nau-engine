@@ -7,32 +7,38 @@ mod textures;
 pub(crate) use detail_meshes::pond_surface_mesh;
 #[cfg(test)]
 pub(crate) use detail_meshes::{
-    CAVE_MOUTH_ARCH_STONES, CLIFF_TOOTH_COUNT, CLIFF_TOOTH_TRIANGLES_PER_TOOTH,
-    CLOUD_FILAMENT_RIBBON_VERTICES, CLOUD_FILAMENT_RIBBONS_PER_LOBE, DETAIL_CARD_VERTICES,
-    GARDEN_RING_BANDS, GARDEN_RING_SEGMENTS, HANGING_ROOT_SEGMENTS, HANGING_ROOT_STRANDS,
-    LAKE_BASIN_RIM_BANDS, LAKE_BASIN_RIM_SEGMENTS, LAKE_SURFACE_SEGMENTS,
-    LANDING_GARDEN_MARKER_SEGMENTS, LAUNCH_BEACON_CRYSTAL_COUNT, OBSTRUCTION_SPIRE_RIB_COUNT,
-    OBSTRUCTION_SPIRE_RINGS, OBSTRUCTION_SPIRE_SEGMENTS, POND_SURFACE_SEGMENTS, ROCK_MESH_RINGS,
-    ROCK_MESH_SEGMENTS, ROUTE_CAIRN_STONE_COUNT, RUIN_ARCH_STONE_COUNT, TREE_BRANCH_SEGMENTS,
+    ARTIFACT_BANNER_STRIP_COUNT, ARTIFACT_BRIDGE_FRAGMENT_COUNT, ARTIFACT_GLYPH_STROKE_COUNT,
+    ARTIFACT_PEBBLE_COUNT, ARTIFACT_REED_COUNT, ARTIFACT_RETAINING_WALL_SEGMENTS,
+    ARTIFACT_STAIR_STEP_COUNT, CAVE_MOUTH_ARCH_STONES, CLIFF_TOOTH_COUNT,
+    CLIFF_TOOTH_TRIANGLES_PER_TOOTH, CLOUD_FILAMENT_RIBBON_VERTICES,
+    CLOUD_FILAMENT_RIBBONS_PER_LOBE, DETAIL_CARD_VERTICES, GARDEN_RING_BANDS, GARDEN_RING_SEGMENTS,
+    HANGING_ROOT_SEGMENTS, HANGING_ROOT_STRANDS, IslandArtifactVisualKind, LAKE_BASIN_RIM_BANDS,
+    LAKE_BASIN_RIM_SEGMENTS, LAKE_SURFACE_SEGMENTS, LANDING_GARDEN_MARKER_SEGMENTS,
+    LAUNCH_BEACON_CRYSTAL_COUNT, OBSTRUCTION_SPIRE_RIB_COUNT, OBSTRUCTION_SPIRE_RINGS,
+    OBSTRUCTION_SPIRE_SEGMENTS, POND_SURFACE_SEGMENTS, ROCK_MESH_RINGS, ROCK_MESH_SEGMENTS,
+    ROUTE_CAIRN_STONE_COUNT, RUIN_ARCH_STONE_COUNT, TREE_BRANCH_SEGMENTS,
     TREE_CANOPY_LATITUDE_SEGMENTS, TREE_CANOPY_LONGITUDE_SEGMENTS, TREE_ROOT_FLARE_SEGMENTS,
     UNDERHANG_SHELF_SEGMENTS, WATERFALL_MIST_LOBES, WATERFALL_RIBBON_COLUMNS,
     WATERFALL_RIBBON_ROWS,
 };
 pub(crate) use detail_meshes::{
     CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, CLOUD_WISP_CARDS_PER_LOBE, FirstExpeditionSilhouetteKind,
-    IslandUnderRouteVisualKind, IslandWaterVisualKind, TREE_BRANCH_COUNT, TREE_CANOPY_CARD_COUNT,
-    TREE_ROOT_FLARE_COUNT, TREE_TRUNK_RING_COUNT, TREE_TRUNK_SEGMENTS, cliff_tooth_ridge_mesh,
-    cloud_cluster_mesh, cloud_filament_ribbon_detail_count,
+    IslandArtifactMaterial, IslandUnderRouteVisualKind, IslandWaterVisualKind, TREE_BRANCH_COUNT,
+    TREE_CANOPY_CARD_COUNT, TREE_ROOT_FLARE_COUNT, TREE_TRUNK_RING_COUNT, TREE_TRUNK_SEGMENTS,
+    cliff_tooth_ridge_mesh, cloud_cluster_mesh, cloud_filament_ribbon_detail_count,
     crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh,
     first_expedition_silhouette_specs, garden_ring_mesh, glider_airflow_trail_mesh,
-    island_lake_basin_visual_specs, island_under_route_visual_specs, island_water_visual_specs,
-    landing_garden_marker_mesh, launch_beacon_mesh, obstruction_spire_mesh, rock_scatter_mesh,
-    route_cairn_mesh, ruin_arch_mesh, tree_canopy_mesh, tree_trunk_mesh, updraft_ribbon_mesh,
+    island_artifact_visual_specs, island_lake_basin_visual_specs, island_under_route_visual_specs,
+    island_water_visual_specs, landing_garden_marker_mesh, launch_beacon_mesh,
+    obstruction_spire_mesh, rock_scatter_mesh, route_cairn_mesh, ruin_arch_mesh, tree_canopy_mesh,
+    tree_trunk_mesh, updraft_ribbon_mesh,
 };
 #[cfg(test)]
 pub(crate) use detail_meshes::{
-    cave_mouth_arch_mesh, hanging_root_curtain_mesh, lake_basin_rim_mesh, lake_surface_mesh,
-    underhang_shelf_mesh, waterfall_mist_mesh, waterfall_ribbon_mesh,
+    artifact_banner_strips_mesh, artifact_bridge_fragment_mesh, artifact_glyph_slab_mesh,
+    artifact_pebble_field_mesh, artifact_reed_patch_mesh, artifact_retaining_wall_mesh,
+    artifact_stair_run_mesh, cave_mouth_arch_mesh, hanging_root_curtain_mesh, lake_basin_rim_mesh,
+    lake_surface_mesh, underhang_shelf_mesh, waterfall_mist_mesh, waterfall_ribbon_mesh,
 };
 #[cfg(test)]
 pub(crate) use island_meshes::ISLAND_TERRAIN_EDGE_SKIRT_DEPTH_M;

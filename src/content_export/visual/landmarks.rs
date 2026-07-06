@@ -3,9 +3,10 @@ use crate::{
     content_export::shared::{mesh_positions, terrain_export_slug, write_mesh_obj},
     generated_content::{
         cliff_tooth_ridge_mesh, first_expedition_silhouette_specs, garden_ring_mesh,
-        island_lake_basin_visual_specs, island_under_route_visual_specs, island_water_visual_specs,
-        landing_garden_marker_mesh, launch_beacon_mesh, mesh_normal_slope_band_count,
-        mesh_vertical_band_count, obstruction_spire_mesh, route_cairn_mesh, ruin_arch_mesh,
+        island_artifact_visual_specs, island_lake_basin_visual_specs,
+        island_under_route_visual_specs, island_water_visual_specs, landing_garden_marker_mesh,
+        launch_beacon_mesh, mesh_normal_slope_band_count, mesh_vertical_band_count,
+        obstruction_spire_mesh, route_cairn_mesh, ruin_arch_mesh,
     },
 };
 use bevy::prelude::*;
@@ -57,6 +58,19 @@ pub(super) fn visual_content_landmark_summaries(
             island.name,
             "lake_basin",
             lake_basin.label,
+            island_index,
+            island_slug,
+            &mesh,
+        )?);
+    }
+
+    for artifact in island_artifact_visual_specs(island_index, island) {
+        let mesh = artifact.build_mesh();
+        landmarks.push(write_visual_landmark_summary(
+            output_dir,
+            island.name,
+            artifact.kind.label(),
+            artifact.label,
             island_index,
             island_slug,
             &mesh,

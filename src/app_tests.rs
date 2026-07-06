@@ -75,6 +75,18 @@ fn radial_range(positions: &[[f32; 3]]) -> f32 {
     max_radius - min_radius
 }
 
+fn axis_range(positions: &[[f32; 3]], axis: usize) -> f32 {
+    let min = positions
+        .iter()
+        .map(|position| position[axis])
+        .fold(f32::INFINITY, f32::min);
+    let max = positions
+        .iter()
+        .map(|position| position[axis])
+        .fold(f32::NEG_INFINITY, f32::max);
+    max - min
+}
+
 #[test]
 fn marker_occlusion_detects_island_between_camera_and_marker() {
     let island = SkyIsland::new(
@@ -977,6 +989,12 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     let launch_spire = output_dir.join("visuals/00_launch_mesa_obstruction_spire.obj");
     let landing_marker = output_dir.join("visuals/02_landing_garden_landing_garden_marker_0.obj");
     let broken_stair_ruin = output_dir.join("visuals/12_broken_stair_ruin_arch.obj");
+    let launch_stair = output_dir.join("visuals/00_launch_mesa_ancient_stair_run.obj");
+    let mist_bridge = output_dir.join("visuals/13_mist_arch_broken_bridge_fragment.obj");
+    let plateau_glyph = output_dir.join("visuals/38_great_sky_plateau_glyph_stone_slab.obj");
+    let cloudfall_reeds = output_dir.join("visuals/28_cloudfall_meadow_reed_patch.obj");
+    let horizon_banner =
+        output_dir.join("visuals/39_far_horizon_perch_weathered_banner_strips.obj");
     let plateau_roots = output_dir.join("visuals/38_great_sky_plateau_hanging_root_curtain.obj");
     let plateau_arrival_shelf =
         output_dir.join("visuals/38_great_sky_plateau_meadow_landing_shelf.obj");
@@ -1047,6 +1065,54 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .enumerate()
         .map(|(index, island)| first_expedition_silhouette_specs(index, *island).len())
         .sum();
+    let artifact_specs = route
+        .islands()
+        .iter()
+        .enumerate()
+        .flat_map(|(index, island)| island_artifact_visual_specs(index, *island))
+        .collect::<Vec<_>>();
+    let artifact_detail_count = artifact_specs.len();
+    let artifact_detail_kind_count = artifact_specs
+        .iter()
+        .map(|spec| spec.kind)
+        .collect::<HashSet<_>>()
+        .len();
+    let artifact_stair_count = artifact_specs
+        .iter()
+        .filter(|spec| spec.kind == IslandArtifactVisualKind::AncientStairRun)
+        .count();
+    let artifact_bridge_fragment_count = artifact_specs
+        .iter()
+        .filter(|spec| spec.kind == IslandArtifactVisualKind::BridgeFragment)
+        .count();
+    let artifact_glyph_slab_count = artifact_specs
+        .iter()
+        .filter(|spec| spec.kind == IslandArtifactVisualKind::GlyphSlab)
+        .count();
+    let artifact_retaining_wall_count = artifact_specs
+        .iter()
+        .filter(|spec| spec.kind == IslandArtifactVisualKind::RetainingWall)
+        .count();
+    let artifact_banner_count = artifact_specs
+        .iter()
+        .filter(|spec| spec.kind == IslandArtifactVisualKind::BannerStrips)
+        .count();
+    let artifact_pebble_field_count = artifact_specs
+        .iter()
+        .filter(|spec| spec.kind == IslandArtifactVisualKind::PebbleField)
+        .count();
+    let artifact_reed_patch_count = artifact_specs
+        .iter()
+        .filter(|spec| spec.kind == IslandArtifactVisualKind::ReedPatch)
+        .count();
+    let plateau_artifact_count: usize = route
+        .islands()
+        .iter()
+        .enumerate()
+        .filter(|(_, island)| island.name == "great sky plateau")
+        .map(|(index, island)| island_artifact_visual_specs(index, *island).len())
+        .sum();
+    let plateau_landmark_count = 19 + plateau_artifact_count;
     let route_lake_surface_count = route
         .islands()
         .iter()
@@ -1099,6 +1165,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         + cliff_teeth_count
         + garden_ring_count
         + lake_basin_count
+        + artifact_detail_count
         + route_lake_surface_count
         + route_waterfall_visual_count;
 
@@ -1120,10 +1187,33 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.weather_cloud_bank_count, island_count);
     assert_eq!(report.weather_cloud_veil_count, weather_veil_count);
     assert_eq!(report.landmark_count, landmark_count);
-    assert!(report.landmark_kind_count >= 28);
+    assert!(report.landmark_kind_count >= 35);
+    assert_eq!(report.artifact_detail_count, artifact_detail_count);
+    assert_eq!(
+        report.artifact_detail_kind_count,
+        artifact_detail_kind_count
+    );
+    assert_eq!(report.artifact_stair_count, artifact_stair_count);
+    assert_eq!(
+        report.artifact_bridge_fragment_count,
+        artifact_bridge_fragment_count
+    );
+    assert_eq!(report.artifact_glyph_slab_count, artifact_glyph_slab_count);
+    assert_eq!(
+        report.artifact_retaining_wall_count,
+        artifact_retaining_wall_count
+    );
+    assert_eq!(report.artifact_banner_count, artifact_banner_count);
+    assert_eq!(
+        report.artifact_pebble_field_count,
+        artifact_pebble_field_count
+    );
+    assert_eq!(report.artifact_reed_patch_count, artifact_reed_patch_count);
+    assert!(report.artifact_detail_count >= 55);
+    assert_eq!(report.artifact_detail_kind_count, 7);
     assert_eq!(report.small_island_count, small_island_count);
     assert!(report.small_island_count >= 10);
-    assert_eq!(report.plateau_landmark_count, 19);
+    assert_eq!(report.plateau_landmark_count, plateau_landmark_count);
     assert_eq!(report.plateau_waterfall_ribbon_count, 2);
     assert_eq!(report.plateau_waterfall_mist_count, 2);
     assert_eq!(
@@ -1177,6 +1267,70 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             .filter(|summary| summary.kind.starts_with("first_expedition_"))
             .count(),
         first_expedition_silhouette_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind.starts_with("artifact_"))
+            .count(),
+        artifact_detail_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_ancient_stair")
+            .count(),
+        artifact_stair_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_bridge_fragment")
+            .count(),
+        artifact_bridge_fragment_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_glyph_slab")
+            .count(),
+        artifact_glyph_slab_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_retaining_wall")
+            .count(),
+        artifact_retaining_wall_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_banner_strips")
+            .count(),
+        artifact_banner_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_pebble_field")
+            .count(),
+        artifact_pebble_field_count
+    );
+    assert_eq!(
+        report
+            .landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_reed_patch")
+            .count(),
+        artifact_reed_patch_count
     );
     assert_eq!(
         report
@@ -1327,6 +1481,14 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_route_waterfall_vertical_span_m >= 24.0);
     assert!(report.min_route_lake_surface_horizontal_span_m >= 18.0);
     assert!(report.min_under_route_visual_vertical_span_m >= 4.0);
+    assert!(report.artifact_detail_vertex_total >= 16_000);
+    assert!(report.min_artifact_detail_mesh_vertices >= 60);
+    assert!(report.min_artifact_stone_mesh_vertices >= 140);
+    assert!(report.min_artifact_stone_normal_slope_band_count >= 3);
+    assert!(report.min_artifact_stair_horizontal_span_m >= 5.0);
+    assert!(report.min_artifact_bridge_horizontal_span_m >= 5.0);
+    assert!(report.min_artifact_banner_vertical_span_m >= 1.5);
+    assert!(report.min_artifact_reed_vertical_span_m >= 0.8);
     assert!(report.min_ruin_arch_mesh_vertices >= 500);
     assert!(report.min_ruin_arch_vertical_span_m >= 4.5);
     assert!(report.min_ruin_arch_radius_band_count >= 8);
@@ -1350,6 +1512,11 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(midpoint_cairn.exists());
     assert!(launch_pond.exists());
     assert!(launch_spire.exists());
+    assert!(launch_stair.exists());
+    assert!(mist_bridge.exists());
+    assert!(plateau_glyph.exists());
+    assert!(cloudfall_reeds.exists());
+    assert!(horizon_banner.exists());
     assert!(landing_marker.exists());
     assert!(broken_stair_ruin.exists());
     assert!(plateau_roots.exists());
@@ -1484,6 +1651,31 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             summary.island_name == "great sky plateau" && summary.label == "low basin lake basin"
         })
         .expect("great sky plateau should export a terrain lake basin rim");
+    let artifact_stair = report
+        .landmarks
+        .iter()
+        .find(|summary| summary.kind == "artifact_ancient_stair")
+        .expect("terraced islands should export ancient stair artifact meshes");
+    let artifact_bridge = report
+        .landmarks
+        .iter()
+        .find(|summary| summary.kind == "artifact_bridge_fragment")
+        .expect("mist and broken-stair islands should export bridge fragments");
+    let artifact_glyph = report
+        .landmarks
+        .iter()
+        .find(|summary| summary.kind == "artifact_glyph_slab")
+        .expect("ruin islands should export glyph slabs");
+    let artifact_banner = report
+        .landmarks
+        .iter()
+        .find(|summary| summary.kind == "artifact_banner_strips")
+        .expect("wind-gate islands should export weathered banner strips");
+    let artifact_reed = report
+        .landmarks
+        .iter()
+        .find(|summary| summary.kind == "artifact_reed_patch")
+        .expect("water islands should export reed patches");
 
     assert!(low_basin_lake.mesh.horizontal_span_m >= 100.0);
     assert!(low_basin_lake.mesh.depth_span_m >= 45.0);
@@ -1534,6 +1726,26 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(lake_basin.mesh.depth_span_m >= 65.0);
     assert!(lake_basin.mesh.vertical_span_m >= 1.0);
     assert!(lake_basin.normal_slope_band_count >= 4);
+    assert!(
+        artifact_stair
+            .mesh
+            .horizontal_span_m
+            .max(artifact_stair.mesh.depth_span_m)
+            >= 5.0
+    );
+    assert!(artifact_stair.mesh.vertex_count >= ARTIFACT_STAIR_STEP_COUNT * 24);
+    assert!(
+        artifact_bridge
+            .mesh
+            .horizontal_span_m
+            .max(artifact_bridge.mesh.depth_span_m)
+            >= 5.0
+    );
+    assert!(artifact_bridge.mesh.vertex_count >= ARTIFACT_BRIDGE_FRAGMENT_COUNT * 18);
+    assert!(artifact_glyph.mesh.vertical_span_m >= 2.0);
+    assert!(artifact_glyph.normal_slope_band_count >= 3);
+    assert!(artifact_banner.mesh.vertical_span_m >= 1.5);
+    assert!(artifact_reed.mesh.vertical_span_m >= 0.8);
     assert!(output_dir.join(&low_basin_lake.mesh.obj_path).exists());
     assert!(output_dir.join(&waterfall.mesh.obj_path).exists());
     assert!(output_dir.join(&mist.mesh.obj_path).exists());
@@ -1552,6 +1764,11 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(output_dir.join(&cliff_teeth.mesh.obj_path).exists());
     assert!(output_dir.join(&garden_ring.mesh.obj_path).exists());
     assert!(output_dir.join(&lake_basin.mesh.obj_path).exists());
+    assert!(output_dir.join(&artifact_stair.mesh.obj_path).exists());
+    assert!(output_dir.join(&artifact_bridge.mesh.obj_path).exists());
+    assert!(output_dir.join(&artifact_glyph.mesh.obj_path).exists());
+    assert!(output_dir.join(&artifact_banner.mesh.obj_path).exists());
+    assert!(output_dir.join(&artifact_reed.mesh.obj_path).exists());
     assert!(manifest.contains("\"schema\": \"nau_visual_content_export.v1\""));
     assert!(manifest.contains("\"ground_cover_blade_height_range_m\""));
     assert!(manifest.contains("\"tree_branch_reach_ratio\""));
@@ -1567,8 +1784,35 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"weather_cloud_filament_ribbon_detail_count\""));
     assert!(manifest.contains(&format!("\"landmark_count\": {landmark_count}")));
     assert!(manifest.contains("\"landmark_kind_count\""));
+    assert!(manifest.contains(&format!(
+        "\"artifact_detail_count\": {artifact_detail_count}"
+    )));
+    assert!(manifest.contains(&format!(
+        "\"artifact_detail_kind_count\": {artifact_detail_kind_count}"
+    )));
+    assert!(manifest.contains(&format!("\"artifact_stair_count\": {artifact_stair_count}")));
+    assert!(manifest.contains(&format!(
+        "\"artifact_bridge_fragment_count\": {artifact_bridge_fragment_count}"
+    )));
+    assert!(manifest.contains(&format!(
+        "\"artifact_glyph_slab_count\": {artifact_glyph_slab_count}"
+    )));
+    assert!(manifest.contains(&format!(
+        "\"artifact_retaining_wall_count\": {artifact_retaining_wall_count}"
+    )));
+    assert!(manifest.contains(&format!(
+        "\"artifact_banner_count\": {artifact_banner_count}"
+    )));
+    assert!(manifest.contains(&format!(
+        "\"artifact_pebble_field_count\": {artifact_pebble_field_count}"
+    )));
+    assert!(manifest.contains(&format!(
+        "\"artifact_reed_patch_count\": {artifact_reed_patch_count}"
+    )));
     assert!(manifest.contains(&format!("\"small_island_count\": {small_island_count}")));
-    assert!(manifest.contains("\"plateau_landmark_count\": 19"));
+    assert!(manifest.contains(&format!(
+        "\"plateau_landmark_count\": {plateau_landmark_count}"
+    )));
     assert!(manifest.contains("\"plateau_waterfall_ribbon_count\": 2"));
     assert!(manifest.contains("\"plateau_waterfall_mist_count\": 2"));
     assert!(manifest.contains(&format!(
@@ -1602,6 +1846,14 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"route_waterfall_vertical_span_m\""));
     assert!(manifest.contains("\"route_lake_surface_horizontal_span_m\""));
     assert!(manifest.contains("\"under_route_visual_vertical_span_m\""));
+    assert!(manifest.contains("\"artifact_detail_vertex_total\""));
+    assert!(manifest.contains("\"artifact_detail_mesh_vertices\""));
+    assert!(manifest.contains("\"artifact_stone_mesh_vertices\""));
+    assert!(manifest.contains("\"artifact_stone_normal_slope_band_count\""));
+    assert!(manifest.contains("\"artifact_stair_horizontal_span_m\""));
+    assert!(manifest.contains("\"artifact_bridge_horizontal_span_m\""));
+    assert!(manifest.contains("\"artifact_banner_vertical_span_m\""));
+    assert!(manifest.contains("\"artifact_reed_vertical_span_m\""));
     assert!(manifest.contains("\"ruin_arch_mesh_vertices\""));
     assert!(manifest.contains("\"ruin_arch_vertical_span_m\""));
     assert!(manifest.contains("\"ruin_arch_radius_band_count\""));
@@ -1622,6 +1874,13 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"kind\": \"cliff_teeth\""));
     assert!(manifest.contains("\"kind\": \"garden_ring\""));
     assert!(manifest.contains("\"kind\": \"lake_basin\""));
+    assert!(manifest.contains("\"kind\": \"artifact_ancient_stair\""));
+    assert!(manifest.contains("\"kind\": \"artifact_bridge_fragment\""));
+    assert!(manifest.contains("\"kind\": \"artifact_glyph_slab\""));
+    assert!(manifest.contains("\"kind\": \"artifact_retaining_wall\""));
+    assert!(manifest.contains("\"kind\": \"artifact_banner_strips\""));
+    assert!(manifest.contains("\"kind\": \"artifact_pebble_field\""));
+    assert!(manifest.contains("\"kind\": \"artifact_reed_patch\""));
     assert!(manifest.contains("\"kind\": \"first_expedition_north_ruin_spire\""));
     assert!(manifest.contains("\"kind\": \"first_expedition_south_ruin_spire\""));
     assert!(manifest.contains("\"kind\": \"first_expedition_waterfall_cliff\""));
@@ -1649,6 +1908,11 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("storm_porch_cliff_teeth.obj"));
     assert!(manifest.contains("landing_garden_garden_ring.obj"));
     assert!(manifest.contains("great_sky_plateau_low_basin_lake_basin.obj"));
+    assert!(manifest.contains("launch_mesa_ancient_stair_run.obj"));
+    assert!(manifest.contains("mist_arch_broken_bridge_fragment.obj"));
+    assert!(manifest.contains("great_sky_plateau_glyph_stone_slab.obj"));
+    assert!(manifest.contains("cloudfall_meadow_reed_patch.obj"));
+    assert!(manifest.contains("far_horizon_perch_weathered_banner_strips.obj"));
     assert!(manifest.contains("mist_arch_north_ruin_spire.obj"));
     assert!(manifest.contains("cloud_gate_south_ruin_spire.obj"));
     assert!(manifest.contains("cloudfall_meadow_waterfall_cliff_silhouette.obj"));
@@ -2618,6 +2882,52 @@ fn landmark_meshes_replace_basic_cylinders_and_boxes() {
     );
     assert!(mesh_vertical_band_count(&spire) >= 6);
     assert!(mesh_normal_slope_band_count(&spire) >= 5);
+}
+
+#[test]
+fn artifact_kit_meshes_replace_placeholder_ruin_and_natural_detail() {
+    let stair = artifact_stair_run_mesh(9.0, 2.4, 2.2, 61_111);
+    assert_eq!(stair.count_vertices(), ARTIFACT_STAIR_STEP_COUNT * 24);
+    assert!(mesh_y_range(&stair) > 2.0);
+    assert!(axis_range(positions(&stair), 2) > 8.0);
+    assert!(mesh_normal_slope_band_count(&stair) >= 3);
+
+    let wall = artifact_retaining_wall_mesh(8.0, 2.4, 1.1, 61_222);
+    assert_eq!(wall.count_vertices(), ARTIFACT_RETAINING_WALL_SEGMENTS * 24);
+    assert!(mesh_y_range(&wall) > 1.8);
+    assert!(axis_range(positions(&wall), 0) > 7.0);
+
+    let glyph = artifact_glyph_slab_mesh(2.2, 4.0, 0.7, 61_333);
+    assert_eq!(
+        glyph.count_vertices(),
+        (1 + ARTIFACT_GLYPH_STROKE_COUNT) * 24
+    );
+    assert!(mesh_y_range(&glyph) > 3.8);
+    assert!(mesh_normal_slope_band_count(&glyph) >= 3);
+
+    let bridge = artifact_bridge_fragment_mesh(10.0, 2.6, 0.6, 61_444);
+    assert!(bridge.count_vertices() >= ARTIFACT_BRIDGE_FRAGMENT_COUNT * 18);
+    assert!(axis_range(positions(&bridge), 0) > 9.0);
+    assert!(mesh_y_range(&bridge) > 0.8);
+
+    let banners = artifact_banner_strips_mesh(3.8, 2.8, 61_555);
+    assert_eq!(
+        banners.count_vertices(),
+        24 + ARTIFACT_BANNER_STRIP_COUNT * DETAIL_CARD_VERTICES
+    );
+    assert!(mesh_y_range(&banners) > 1.5);
+
+    let pebbles = artifact_pebble_field_mesh(2.2, 61_666);
+    assert!(pebbles.count_vertices() >= ARTIFACT_PEBBLE_COUNT * 30);
+    assert!(radial_range(positions(&pebbles)) > 1.5);
+
+    let reeds = artifact_reed_patch_mesh(1.8, 1.6, 61_777);
+    assert_eq!(
+        reeds.count_vertices(),
+        ARTIFACT_REED_COUNT * DETAIL_CARD_VERTICES
+    );
+    assert!(mesh_y_range(&reeds) > 0.8);
+    assert!(radial_range(positions(&reeds)) > 1.0);
 }
 
 #[test]
