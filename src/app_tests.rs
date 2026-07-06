@@ -2730,9 +2730,15 @@ fn terrain_and_cliff_top_rings_share_a_closed_visual_seam() {
 fn island_impostor_mesh_uses_layered_color_and_silhouette() {
     let island = test_island();
     let mesh = island_impostor_mesh(4, island);
-    let positions = positions(&mesh);
+    let terrain_mesh = island_terrain_mesh(4, island);
+    let underside_mesh = island_underside_mesh(4, island);
+    let impostor_positions = positions(&mesh);
+    let terrain_positions = positions(&terrain_mesh);
+    let underside_positions = positions(&underside_mesh);
     let colors = colors(&mesh);
-    let top_ring = &positions[1..1 + ISLAND_IMPOSTOR_SEGMENTS];
+    let top_ring = &impostor_positions[1..1 + ISLAND_IMPOSTOR_SEGMENTS];
+    let terrain_outer_start = 1 + (ISLAND_TERRAIN_RINGS - 1) * ISLAND_BODY_SEGMENTS;
+    let terrain_step = ISLAND_BODY_SEGMENTS / ISLAND_IMPOSTOR_SEGMENTS;
     let min_radius = top_ring
         .iter()
         .map(|position| normalized_radius(island, *position))
@@ -2743,13 +2749,33 @@ fn island_impostor_mesh_uses_layered_color_and_silhouette() {
         .fold(f32::NEG_INFINITY, f32::max);
 
     assert_eq!(mesh.count_vertices(), 2 + ISLAND_IMPOSTOR_SEGMENTS * 3);
-    assert_eq!(colors.len(), positions.len());
+    assert_eq!(colors.len(), impostor_positions.len());
     assert!(
         max_radius - min_radius > 0.08,
         "distant impostor should keep an irregular island silhouette"
     );
+    for segment in 0..ISLAND_IMPOSTOR_SEGMENTS {
+        let terrain =
+            Vec3::from_array(terrain_positions[terrain_outer_start + segment * terrain_step]);
+        let impostor = Vec3::from_array(top_ring[segment]);
+        assert!(
+            terrain.distance(impostor) < 0.001,
+            "distant impostor top ring should preserve the full terrain footprint"
+        );
+    }
+    let impostor_tip = Vec3::from_array(
+        *impostor_positions
+            .last()
+            .expect("impostor bottom tip exists"),
+    );
+    let underside_tip =
+        Vec3::from_array(*underside_positions.last().expect("underside tip exists"));
     assert!(
-        mesh_y_range(&mesh) >= island.thickness * 0.85,
+        impostor_tip.distance(underside_tip) < 0.001,
+        "distant impostor should keep the full underside depth"
+    );
+    assert!(
+        mesh_y_range(&mesh) >= island.thickness * 1.5,
         "distant impostor should include a readable underside mass"
     );
     assert!(
