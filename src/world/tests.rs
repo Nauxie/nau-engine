@@ -42,6 +42,51 @@ fn route_surface_follows_island_relief() {
 }
 
 #[test]
+fn contact_ground_ignores_island_surfaces_far_overhead() {
+    let route = SkyRoute::default();
+    let overhead_island = route
+        .island_named("wind overlook")
+        .expect("wind overlook exists");
+    let low_position = Vec3::new(
+        overhead_island.center.x,
+        route.fallback_floor_y,
+        overhead_island.center.z,
+    );
+
+    let xz_surface = route.ground_at(low_position);
+    assert_eq!(xz_surface.island_name, Some("wind overlook"));
+    assert!(xz_surface.floor_y - low_position.y > 40.0);
+
+    let contact_ground = route.contact_ground_at(low_position);
+    assert_eq!(contact_ground.island_name, None);
+    assert_eq!(contact_ground.floor_y, route.fallback_floor_y);
+
+    let grounded_state = FlightState::new(
+        low_position,
+        Vec3::new(8.0, 0.0, 0.0),
+        FlightController {
+            mode: FlightMode::Grounded,
+            ..Default::default()
+        },
+    );
+    let resolved = route.resolve_ground_contact_after_step(grounded_state, true);
+
+    assert_eq!(resolved.position.y, route.fallback_floor_y);
+    assert_eq!(resolved.controller.mode, FlightMode::Grounded);
+
+    let near_surface = Vec3::new(
+        overhead_island.center.x,
+        xz_surface.floor_y - 2.0,
+        overhead_island.center.z,
+    );
+
+    assert_eq!(
+        route.contact_ground_at(near_surface).island_name,
+        Some("wind overlook")
+    );
+}
+
+#[test]
 fn target_distance_reaches_zero_near_landing_island_center() {
     let route = SkyRoute::default();
     let target = route.target_island().expect("target island exists");
@@ -834,6 +879,10 @@ fn great_sky_plateau_defines_under_island_glide_route() {
 
     for point in underbridge.sample_points() {
         assert!(
+            underbridge_lift.contains(point),
+            "underbridge recovery updraft should cover each authored cave-route sample"
+        );
+        assert!(
             point.y < underbridge_island.mesh_top_y() - underbridge_island.thickness * 0.32,
             "underbridge route should sit below the top surface"
         );
@@ -990,6 +1039,151 @@ fn route_uses_all_declared_terrain_archetypes() {
         archetype_mask.count_ones() as usize,
         IslandTerrainArchetype::COUNT
     );
+}
+
+#[test]
+fn route_uses_all_declared_shape_archetypes() {
+    let route = SkyRoute::default();
+    let mut shape_mask = 0_u32;
+    let mut strongly_notched_count = 0;
+    let mut broad_silhouette_count = 0;
+    let mut varied_relief_count = 0;
+
+    for island in route.islands() {
+        let declared_shape = IslandShapeArchetype::for_name(island.name, island.terrain_archetype);
+        assert_eq!(
+            island.shape_archetype, declared_shape,
+            "{} should use its authored shape archetype",
+            island.name
+        );
+        assert!(!island.shape_archetype.label().is_empty());
+        shape_mask |= 1_u32 << island.shape_archetype.index();
+
+        let (min_scale, max_scale) = island.silhouette_scale_range(96);
+        assert!(
+            min_scale >= 0.50 && max_scale <= 1.38,
+            "{} silhouette should remain inside the collision-safe authored clamp",
+            island.name
+        );
+        strongly_notched_count += usize::from(max_scale - min_scale >= 0.24);
+        broad_silhouette_count += usize::from(max_scale >= 1.13);
+
+        let mut min_relief = f32::INFINITY;
+        let mut max_relief = f32::NEG_INFINITY;
+        for step in 0..96 {
+            let angle = step as f32 / 96.0 * std::f32::consts::TAU;
+            let relief = island.terrain_relief_m(0.66, angle);
+            min_relief = min_relief.min(relief);
+            max_relief = max_relief.max(relief);
+        }
+        varied_relief_count += usize::from(max_relief - min_relief >= 0.28);
+    }
+
+    assert_eq!(
+        shape_mask.count_ones() as usize,
+        IslandShapeArchetype::COUNT
+    );
+    assert!(strongly_notched_count >= 18);
+    assert!(broad_silhouette_count >= 24);
+    assert!(varied_relief_count >= 34);
+}
+
+#[test]
+fn authored_shape_language_aligns_with_composition_roles() {
+    let route = SkyRoute::default();
+
+    for composition in route.island_compositions() {
+        let island = route
+            .island_named(composition.island_name)
+            .expect("composition island exists");
+
+        match composition.traversal_purpose {
+            IslandTraversalPurpose::LaunchHub => {
+                assert_eq!(island.shape_archetype, IslandShapeArchetype::TerraceMesa);
+            }
+            IslandTraversalPurpose::UnderRoute => {
+                assert_eq!(
+                    island.shape_archetype,
+                    IslandShapeArchetype::UndercutCaveIsland
+                );
+            }
+            IslandTraversalPurpose::LakeVista => {
+                assert_eq!(island.shape_archetype, IslandShapeArchetype::LakeBasin);
+            }
+            IslandTraversalPurpose::WaterfallSource => {
+                assert_eq!(island.shape_archetype, IslandShapeArchetype::WaterfallShelf);
+            }
+            IslandTraversalPurpose::PlateauHub => {
+                assert_eq!(
+                    island.shape_archetype,
+                    IslandShapeArchetype::PlateauFragment
+                );
+            }
+            IslandTraversalPurpose::DistantCrown => {
+                assert_eq!(island.shape_archetype, IslandShapeArchetype::SpireCluster);
+            }
+            IslandTraversalPurpose::ReturnDescent | IslandTraversalPurpose::PlateauApproach => {
+                assert_eq!(
+                    island.shape_archetype,
+                    IslandShapeArchetype::SteppedStairIsland
+                );
+            }
+            IslandTraversalPurpose::SteppingStone => {
+                assert!(
+                    matches!(
+                        island.shape_archetype,
+                        IslandShapeArchetype::TerraceMesa
+                            | IslandShapeArchetype::BrokenCrescent
+                            | IslandShapeArchetype::MeadowShelf
+                            | IslandShapeArchetype::BridgeRemnant
+                    ),
+                    "{} stepping stone should read as a small traversal shape",
+                    island.name
+                );
+            }
+            IslandTraversalPurpose::WindGate => {
+                assert!(
+                    matches!(
+                        island.shape_archetype,
+                        IslandShapeArchetype::CliffSlab
+                            | IslandShapeArchetype::RuinFoundation
+                            | IslandShapeArchetype::BridgeRemnant
+                    ),
+                    "{} wind gate should expose a readable edge, ruin gate, or bridge remnant",
+                    island.name
+                );
+            }
+            _ => {}
+        }
+
+        match composition.visual_motif {
+            IslandVisualMotif::LakeBasin => {
+                assert_eq!(island.shape_archetype, IslandShapeArchetype::LakeBasin);
+            }
+            IslandVisualMotif::WaterfallMeadow => {
+                assert_eq!(island.shape_archetype, IslandShapeArchetype::WaterfallShelf);
+            }
+            IslandVisualMotif::CaveMouth => {
+                assert_eq!(
+                    island.shape_archetype,
+                    IslandShapeArchetype::UndercutCaveIsland
+                );
+            }
+            IslandVisualMotif::PlateauRim => {
+                assert_eq!(
+                    island.shape_archetype,
+                    IslandShapeArchetype::PlateauFragment
+                );
+            }
+            IslandVisualMotif::NeedleSpire => {
+                assert_eq!(island.shape_archetype, IslandShapeArchetype::NeedlePerch);
+            }
+            IslandVisualMotif::GardenRing => {
+                assert_eq!(island.shape_archetype, IslandShapeArchetype::RingGarden);
+            }
+            _ => {}
+        }
+    }
 }
 
 #[test]

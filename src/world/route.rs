@@ -10,6 +10,7 @@ use super::{
 
 pub const SKY_ROUTE_ISLAND_COUNT: usize = 41;
 pub const PLAYTEST_RESET_ISLAND_NAME: &str = "great sky plateau";
+const ROUTE_GROUND_CONTACT_SNAP_M: f32 = 6.0;
 const UNDER_ROUTE_GROUND_CLEARANCE_PADDING_M: f32 = 10.0;
 const UNDER_ROUTE_TOP_SURFACE_CLEARANCE_FRACTION: f32 = 0.18;
 
@@ -1833,22 +1834,40 @@ impl SkyRoute {
     }
 
     pub fn ground_at(&self, position: Vec3) -> GroundSurface {
+        self.island_ground_surfaces_at(position)
+            .max_by(|a, b| a.floor_y.total_cmp(&b.floor_y))
+            .unwrap_or_else(|| self.fallback_ground())
+    }
+
+    pub fn contact_ground_at(&self, position: Vec3) -> GroundSurface {
+        self.island_ground_surfaces_at(position)
+            .filter(|ground| position.y + ROUTE_GROUND_CONTACT_SNAP_M >= ground.floor_y)
+            .max_by(|a, b| a.floor_y.total_cmp(&b.floor_y))
+            .unwrap_or_else(|| self.fallback_ground())
+    }
+
+    fn island_ground_surfaces_at(
+        &self,
+        position: Vec3,
+    ) -> impl Iterator<Item = GroundSurface> + '_ {
         self.islands
             .iter()
             .copied()
-            .filter(|island| island.contains_horizontal(position))
-            .filter(|island| !position_is_inside_under_route_clearance(*island, position))
-            .map(|island| GroundSurface::from_island_at(island, position))
-            .max_by(|a, b| a.floor_y.total_cmp(&b.floor_y))
-            .unwrap_or(GroundSurface {
-                floor_y: self.fallback_floor_y,
-                is_target: false,
-                island_name: None,
-            })
+            .filter(move |island| island.contains_horizontal(position))
+            .filter(move |island| !position_is_inside_under_route_clearance(*island, position))
+            .map(move |island| GroundSurface::from_island_at(island, position))
+    }
+
+    fn fallback_ground(&self) -> GroundSurface {
+        GroundSurface {
+            floor_y: self.fallback_floor_y,
+            is_target: false,
+            island_name: None,
+        }
     }
 
     pub fn is_grounded_at(&self, position: Vec3) -> bool {
-        let ground = self.ground_at(position);
+        let ground = self.contact_ground_at(position);
         position.y <= ground.floor_y + GROUND_CONTACT_EPSILON
     }
 
@@ -1872,7 +1891,7 @@ impl SkyRoute {
             return state;
         }
 
-        let ground = self.ground_at(state.position);
+        let ground = self.contact_ground_at(state.position);
         if state.position.y <= ground.floor_y + GROUND_CONTACT_EPSILON {
             state.position.y = ground.floor_y;
             state.velocity.y = state.velocity.y.max(0.0);
@@ -1889,7 +1908,7 @@ impl SkyRoute {
         mut state: FlightState,
         apply_landing_damping: bool,
     ) -> FlightState {
-        let ground = self.ground_at(state.position);
+        let ground = self.contact_ground_at(state.position);
         if state.position.y <= ground.floor_y + GROUND_CONTACT_EPSILON {
             let impact_speed_mps = (-state.velocity.y).max(0.0);
             state.position.y = ground.floor_y;
@@ -1931,7 +1950,7 @@ impl SkyRoute {
         mode: FlightMode,
         island_name: Option<&str>,
     ) -> bool {
-        let ground = self.ground_at(position);
+        let ground = self.contact_ground_at(position);
         self.tracked_target_island(island_name)
             .is_some_and(|island| ground.island_name == Some(island.name))
             && mode == FlightMode::Grounded

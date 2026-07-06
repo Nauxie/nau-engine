@@ -22,8 +22,9 @@ pub use collision::{
 };
 pub use island::{
     ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT, IslandBiome, IslandFootprintProfile, IslandLandmarkRole,
-    IslandPlateauRegion, IslandRouteRole, IslandScaleClass, IslandTerrainArchetype,
-    IslandUnderRouteSegment, IslandVerticalProfile, IslandWaterFeature, IslandWorldTags, SkyIsland,
+    IslandPlateauRegion, IslandRouteRole, IslandScaleClass, IslandShapeArchetype,
+    IslandTerrainArchetype, IslandUnderRouteSegment, IslandVerticalProfile, IslandWaterFeature,
+    IslandWorldTags, SkyIsland,
 };
 pub use objectives::{RouteObjective, RouteObjectiveKind, is_recovery_branch_island};
 pub use obstruction_spires::{

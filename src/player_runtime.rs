@@ -467,7 +467,7 @@ fn step_player(
         && player.controller.mode == FlightMode::Grounded;
     tuning.floor_y = context
         .route
-        .ground_at(player.transform.translation)
+        .contact_ground_at(player.transform.translation)
         .floor_y;
     let next = step_flight(
         FlightState::new(
@@ -574,7 +574,7 @@ impl AnimationKinematics {
     ) -> Self {
         Self {
             height_above_ground_m: (transform.translation.y
-                - route.ground_at(transform.translation).floor_y)
+                - route.contact_ground_at(transform.translation).floor_y)
                 .max(0.0),
             pose_velocity: body_local_pose_velocity(velocity.0, transform.rotation),
             wind_lateral_load,

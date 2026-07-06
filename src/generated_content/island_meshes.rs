@@ -32,7 +32,7 @@ pub(crate) use metrics::{
     mesh_vertex_color_band_count, mesh_vertical_band_count, mesh_y_range,
 };
 #[cfg(test)]
-pub(crate) use palette::island_terrain_vertex_color;
+pub(crate) use palette::island_terrain_vertex_color_for_shape;
 pub(crate) use palette::{
     IslandDetailMaterials, biome_detail_color_set, biome_detail_materials, terrain_biome_palette,
 };

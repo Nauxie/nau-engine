@@ -31,6 +31,267 @@ pub enum IslandTerrainArchetype {
     SkyPlateau,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum IslandShapeArchetype {
+    TerraceMesa,
+    BrokenCrescent,
+    RingGarden,
+    CliffSlab,
+    SpireCluster,
+    LakeBasin,
+    WaterfallShelf,
+    UndercutCaveIsland,
+    RuinFoundation,
+    SteppedStairIsland,
+    PlateauFragment,
+    NeedlePerch,
+    MeadowShelf,
+    BridgeRemnant,
+}
+
+impl IslandShapeArchetype {
+    pub const COUNT: usize = 14;
+
+    pub fn for_name(name: &str, terrain_archetype: IslandTerrainArchetype) -> Self {
+        match name {
+            "launch mesa" | "launch spur" | "sunlit terrace" => Self::TerraceMesa,
+            "storm porch" | "storm shard" => Self::BrokenCrescent,
+            "landing garden" | "garden apron" | "quiet lower garden" | "upper thermal ring"
+            | "sunspire garden" => Self::RingGarden,
+            "wind overlook" | "western refuge" | "lowwind shelf" | "stratos shelf"
+            | "upper sky shelf" => Self::CliffSlab,
+            "distant crown" | "upper crown" => Self::SpireCluster,
+            "sapphire basin" | "skyhook basin" | "bluevault basin" => Self::LakeBasin,
+            "cloudfall meadow" => Self::WaterfallShelf,
+            "underbridge cay" => Self::UndercutCaveIsland,
+            "mist arch" | "cloud gate" => Self::RuinFoundation,
+            "copper stair" | "broken stair" | "highgate stair" | "outer switchback"
+            | "cloudbreak stair" => Self::SteppedStairIsland,
+            "summit anvil" | "great sky plateau" => Self::PlateauFragment,
+            "far needle" | "needle crownlet" | "thin air roost" | "far horizon perch" => {
+                Self::NeedlePerch
+            }
+            "midpoint shelf" | "high orchard" | "orchard spur" => Self::MeadowShelf,
+            "mist stepping stone" | "low reef" | "east windchain" => Self::BridgeRemnant,
+            _ => Self::for_terrain_archetype(terrain_archetype),
+        }
+    }
+
+    fn for_terrain_archetype(terrain_archetype: IslandTerrainArchetype) -> Self {
+        match terrain_archetype {
+            IslandTerrainArchetype::LaunchMesa | IslandTerrainArchetype::LaunchSpur => {
+                Self::TerraceMesa
+            }
+            IslandTerrainArchetype::Shelf
+            | IslandTerrainArchetype::RefugeTableland
+            | IslandTerrainArchetype::WindOverlook => Self::CliffSlab,
+            IslandTerrainArchetype::GardenBasin
+            | IslandTerrainArchetype::GardenApron
+            | IslandTerrainArchetype::OrchardBasin
+            | IslandTerrainArchetype::OrchardSpur => Self::RingGarden,
+            IslandTerrainArchetype::CrownRidge => Self::SpireCluster,
+            IslandTerrainArchetype::StormRavine | IslandTerrainArchetype::StormShard => {
+                Self::BrokenCrescent
+            }
+            IslandTerrainArchetype::Needle => Self::NeedlePerch,
+            IslandTerrainArchetype::SapphireBasin => Self::LakeBasin,
+            IslandTerrainArchetype::MistArch | IslandTerrainArchetype::CloudGate => {
+                Self::RuinFoundation
+            }
+            IslandTerrainArchetype::BrokenStair
+            | IslandTerrainArchetype::TerracedSpur
+            | IslandTerrainArchetype::MistStep => Self::SteppedStairIsland,
+            IslandTerrainArchetype::SkyPlateau => Self::PlateauFragment,
+        }
+    }
+
+    pub fn index(self) -> usize {
+        match self {
+            Self::TerraceMesa => 0,
+            Self::BrokenCrescent => 1,
+            Self::RingGarden => 2,
+            Self::CliffSlab => 3,
+            Self::SpireCluster => 4,
+            Self::LakeBasin => 5,
+            Self::WaterfallShelf => 6,
+            Self::UndercutCaveIsland => 7,
+            Self::RuinFoundation => 8,
+            Self::SteppedStairIsland => 9,
+            Self::PlateauFragment => 10,
+            Self::NeedlePerch => 11,
+            Self::MeadowShelf => 12,
+            Self::BridgeRemnant => 13,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::TerraceMesa => "terrace_mesa",
+            Self::BrokenCrescent => "broken_crescent",
+            Self::RingGarden => "ring_garden",
+            Self::CliffSlab => "cliff_slab",
+            Self::SpireCluster => "spire_cluster",
+            Self::LakeBasin => "lake_basin",
+            Self::WaterfallShelf => "waterfall_shelf",
+            Self::UndercutCaveIsland => "undercut_cave_island",
+            Self::RuinFoundation => "ruin_foundation",
+            Self::SteppedStairIsland => "stepped_stair_island",
+            Self::PlateauFragment => "plateau_fragment",
+            Self::NeedlePerch => "needle_perch",
+            Self::MeadowShelf => "meadow_shelf",
+            Self::BridgeRemnant => "bridge_remnant",
+        }
+    }
+
+    fn silhouette_bias(self, angle: f32, phase: f32) -> f32 {
+        match self {
+            Self::TerraceMesa => {
+                let broad_front = angular_lobe(angle, -0.45, 0.86);
+                let cut_back = angular_lobe(angle, 2.72, 0.48);
+                broad_front * 0.075 - cut_back * 0.060
+            }
+            Self::BrokenCrescent => {
+                let outer_arc = angular_lobe(angle, -1.10 + phase * 0.03, 1.24);
+                let bite = angular_lobe(angle, 1.46, 0.58);
+                outer_arc * 0.115 - bite * 0.175
+            }
+            Self::RingGarden => {
+                0.050 * (angle * 6.0 + phase * 0.22).cos()
+                    + 0.028 * (angle * 3.0 - phase * 0.31).sin()
+            }
+            Self::CliffSlab => {
+                let slab = (angle - 0.16).cos().abs();
+                let sheared_end = angular_lobe(angle, 2.38, 0.44);
+                slab * 0.055 - sheared_end * 0.090
+            }
+            Self::SpireCluster => {
+                let spikes = (angle * 8.0 + phase * 0.20).sin().max(0.0).powf(1.7);
+                spikes * 0.090 - 0.065
+            }
+            Self::LakeBasin => {
+                let shore = (angle * 4.0 - phase * 0.18).cos();
+                shore * 0.045 + angular_lobe(angle, -2.10, 0.88) * 0.060
+            }
+            Self::WaterfallShelf => {
+                let lip = angular_lobe(angle, -1.58, 0.64);
+                let source = angular_lobe(angle, 1.35, 0.82);
+                source * 0.060 + lip * 0.120 - angular_lobe(angle, 0.08, 0.45) * 0.070
+            }
+            Self::UndercutCaveIsland => {
+                let mouth = angular_lobe(angle, -2.72, 0.52);
+                let roof = angular_lobe(angle, 0.38, 0.78);
+                roof * 0.095 - mouth * 0.165
+            }
+            Self::RuinFoundation => {
+                let long_axis = (angle * 2.0 + phase * 0.18).cos().abs() * 0.065;
+                let broken_corner = angular_lobe(angle, -0.70, 0.42);
+                long_axis - broken_corner * 0.105
+            }
+            Self::SteppedStairIsland => {
+                let run = angular_lobe(angle, -0.92, 0.72);
+                let broken_side = (angle * 5.0 + phase * 0.27).sin().max(0.0);
+                run * 0.105 - broken_side * 0.055
+            }
+            Self::PlateauFragment => {
+                let shelf = angular_lobe(angle, 2.62, 0.90);
+                let cleft = angular_lobe(angle, -2.28, 0.52);
+                shelf * 0.090 - cleft * 0.125 + (angle * 4.0 + phase * 0.12).cos() * 0.035
+            }
+            Self::NeedlePerch => {
+                let perch = angular_lobe(angle, -0.18, 0.46);
+                let splinter = (angle * 7.0 - phase * 0.15).sin().abs() * 0.035;
+                perch * 0.055 + splinter - 0.120
+            }
+            Self::MeadowShelf => {
+                let shelf = angular_lobe(angle, -1.28, 0.88);
+                shelf * 0.080 + (angle * 3.0 + phase * 0.20).sin() * 0.030
+            }
+            Self::BridgeRemnant => {
+                let span = (angle * 2.0 - phase * 0.10).cos().abs() * 0.100;
+                let broken_gap = angular_lobe(angle, 1.55, 0.50);
+                span - broken_gap * 0.145 - 0.035
+            }
+        }
+    }
+
+    fn relief_bias_m(self, radius: f32, angle: f32, phase: f32) -> f32 {
+        match self {
+            Self::TerraceMesa => terrain_step(radius, 0.36, 0.82, 0.10),
+            Self::BrokenCrescent => {
+                let bite = angular_lobe(angle, 1.46, 0.58);
+                let rim = angular_lobe(angle, -1.10, 1.20);
+                rim * smoothstep(0.46, 0.92, radius) * 0.15
+                    - bite * smoothstep(0.26, 0.90, radius) * 0.22
+            }
+            Self::RingGarden => {
+                let ring = 1.0 - smoothstep(0.020, 0.145, (radius - 0.58).abs());
+                ring * 0.13 - basin(radius, 0.38, 0.10)
+            }
+            Self::CliffSlab => {
+                let slab_edge = angular_lobe(angle, 0.05, 0.64);
+                slab_edge * smoothstep(0.52, 1.0, radius) * 0.18
+                    - smoothstep(0.78, 1.0, radius) * 0.12
+            }
+            Self::SpireCluster => {
+                let spires = (angle * 8.0 + phase * 0.20).sin().max(0.0).powf(1.8);
+                (1.0 - radius).powf(1.45) * 0.19 + spires * smoothstep(0.28, 0.78, radius) * 0.11
+                    - smoothstep(0.70, 1.0, radius) * 0.17
+            }
+            Self::LakeBasin => {
+                -basin(radius, 0.44, 0.18)
+                    + smoothstep(0.64, 0.92, radius) * 0.12
+                    + (angle * 4.0 - phase * 0.18).cos() * smoothstep(0.52, 0.94, radius) * 0.045
+            }
+            Self::WaterfallShelf => {
+                let lip = angular_lobe(angle, -1.58, 0.64);
+                terrain_step(radius, 0.30, 0.70, 0.08) + lip * smoothstep(0.54, 1.0, radius) * 0.20
+                    - angular_lobe(angle, 0.08, 0.45) * smoothstep(0.42, 0.96, radius) * 0.14
+            }
+            Self::UndercutCaveIsland => {
+                let mouth = angular_lobe(angle, -2.72, 0.52);
+                let roof = angular_lobe(angle, 0.38, 0.78);
+                roof * smoothstep(0.30, 0.82, radius) * 0.15
+                    - mouth * smoothstep(0.32, 0.96, radius) * 0.24
+            }
+            Self::RuinFoundation => {
+                let plinth = terrain_step(radius, 0.22, 0.72, 0.11);
+                let missing_corner = angular_lobe(angle, -0.70, 0.42);
+                plinth - missing_corner * smoothstep(0.50, 1.0, radius) * 0.18
+            }
+            Self::SteppedStairIsland => {
+                let stair = (radius * std::f32::consts::TAU * 5.5 + phase * 0.18)
+                    .sin()
+                    .max(0.0);
+                terrain_step(radius, 0.20, 0.82, 0.09)
+                    + stair * smoothstep(0.25, 0.88, radius) * 0.075
+            }
+            Self::PlateauFragment => {
+                let cleft = angular_lobe(angle, -2.28, 0.52);
+                terrain_step(radius, 0.34, 0.86, 0.10)
+                    - cleft * smoothstep(0.38, 0.94, radius) * 0.20
+                    + (angle * 9.0 + radius * 5.0 + phase * 0.10).sin()
+                        * smoothstep(0.50, 0.96, radius)
+                        * 0.065
+            }
+            Self::NeedlePerch => {
+                (1.0 - radius).powf(2.0) * 0.24 - smoothstep(0.42, 1.0, radius) * 0.22
+            }
+            Self::MeadowShelf => {
+                let shelf = angular_lobe(angle, -1.28, 0.88);
+                terrain_step(radius, 0.30, 0.74, 0.07)
+                    + shelf * smoothstep(0.34, 0.86, radius) * 0.10
+                    - smoothstep(0.86, 1.0, radius) * 0.10
+            }
+            Self::BridgeRemnant => {
+                let span = (angle * 2.0 - phase * 0.10).cos().abs();
+                let gap = angular_lobe(angle, 1.55, 0.50);
+                span * smoothstep(0.24, 0.80, radius) * 0.12
+                    - gap * smoothstep(0.36, 0.94, radius) * 0.20
+            }
+        }
+    }
+}
+
 impl IslandTerrainArchetype {
     pub const COUNT: usize = 20;
 
@@ -1061,6 +1322,7 @@ pub struct SkyIsland {
     pub thickness: f32,
     pub is_target: bool,
     pub terrain_archetype: IslandTerrainArchetype,
+    pub shape_archetype: IslandShapeArchetype,
     pub world_tags: IslandWorldTags,
 }
 
@@ -1073,6 +1335,7 @@ impl SkyIsland {
         is_target: bool,
     ) -> Self {
         let terrain_archetype = IslandTerrainArchetype::for_name_or_default(name);
+        let shape_archetype = IslandShapeArchetype::for_name(name, terrain_archetype);
         let thickness = thickness.max(1.0);
         Self {
             name,
@@ -1081,6 +1344,7 @@ impl SkyIsland {
             thickness,
             is_target,
             terrain_archetype,
+            shape_archetype,
             world_tags: IslandWorldTags::inferred(
                 name,
                 half_extents,
@@ -1284,6 +1548,7 @@ impl SkyIsland {
         let strata_crag = terrain_strata_crag_relief_m(radius, angle, phase);
         let micro = terrain_micro_relief_m(radius, angle, phase);
         let archetype = self.terrain_archetype.relief_bias_m(radius, angle, phase);
+        let shape = self.shape_archetype.relief_bias_m(radius, angle, phase);
 
         (ridge
             + shoulder
@@ -1294,7 +1559,8 @@ impl SkyIsland {
             + braided_path
             + strata_crag
             + micro
-            + archetype)
+            + archetype
+            + shape)
             .clamp(-TERRAIN_MAX_DROP_M, TERRAIN_MAX_RISE_M)
     }
 
@@ -1347,8 +1613,9 @@ impl SkyIsland {
             + 0.055 * (angle * 7.0 - phase * 0.4).cos()
             + 0.032 * (angle * 11.0 + phase * 1.7).sin()
             + self.terrain_archetype.silhouette_bias(angle, phase)
+            + self.shape_archetype.silhouette_bias(angle, phase)
             + self.footprint_profile().bias(angle, phase))
-        .clamp(0.54, 1.34)
+        .clamp(0.50, 1.38)
     }
 
     pub fn playable_silhouette_scale(self, angle: f32) -> f32 {
@@ -1358,6 +1625,21 @@ impl SkyIsland {
 
     pub fn footprint_profile(self) -> IslandFootprintProfile {
         self.terrain_archetype.footprint_profile()
+    }
+
+    pub fn silhouette_scale_range(self, samples: usize) -> (f32, f32) {
+        let samples = samples.max(1);
+        let mut min_scale = f32::INFINITY;
+        let mut max_scale = f32::NEG_INFINITY;
+
+        for step in 0..samples {
+            let angle = step as f32 / samples as f32 * std::f32::consts::TAU;
+            let scale = self.visual_silhouette_scale(angle);
+            min_scale = min_scale.min(scale);
+            max_scale = max_scale.max(scale);
+        }
+
+        (min_scale, max_scale)
     }
 
     pub fn footprint_contour_point(self, angle: f32, visual: bool) -> Vec2 {

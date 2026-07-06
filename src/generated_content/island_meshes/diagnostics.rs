@@ -3,8 +3,8 @@ use super::constants::{
     ISLAND_UNDERSIDE_RINGS,
 };
 use super::palette::{
-    island_rock_vertex_color, island_terrain_material_weights, island_terrain_vertex_color,
-    terrain_material_region_id,
+    island_rock_vertex_color, island_terrain_material_weights_for_shape,
+    island_terrain_vertex_color_for_shape, terrain_material_region_id,
 };
 use super::shape::island_silhouette_scale;
 use bevy::prelude::*;
@@ -61,10 +61,22 @@ pub(crate) fn island_terrain_mesh_diagnostics(
         max_y = max_y.max(y);
 
         let height_delta = y - island.mesh_top_y();
-        let color = island_terrain_vertex_color(island_index, radius, angle, height_delta);
+        let color = island_terrain_vertex_color_for_shape(
+            island.shape_archetype,
+            island_index,
+            radius,
+            angle,
+            height_delta,
+        );
         color_bands.insert(quantized_color_band(color));
 
-        let weight = island_terrain_material_weights(island_index, radius, angle, height_delta);
+        let weight = island_terrain_material_weights_for_shape(
+            island.shape_archetype,
+            island_index,
+            radius,
+            angle,
+            height_delta,
+        );
         material_weight_bands.insert([
             (weight[0].clamp(0.0, 1.0) * 15.0).round() as u8,
             (weight[1].clamp(0.0, 1.0) * 15.0).round() as u8,
@@ -110,7 +122,8 @@ pub(crate) fn island_impostor_mesh_diagnostics(
 ) -> IslandImpostorMeshDiagnostics {
     let vertex_count = 2 + ISLAND_IMPOSTOR_SEGMENTS * 3;
     let mut color_bands = HashSet::new();
-    color_bands.insert(quantized_color_band(island_terrain_vertex_color(
+    color_bands.insert(quantized_color_band(island_terrain_vertex_color_for_shape(
+        island.shape_archetype,
         island_index,
         0.0,
         0.0,
@@ -127,7 +140,8 @@ pub(crate) fn island_impostor_mesh_diagnostics(
         let x = island.center.x + angle.cos() * radius_x;
         let z = island.center.z + angle.sin() * radius_z;
         let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z)) - 0.18;
-        color_bands.insert(quantized_color_band(island_terrain_vertex_color(
+        color_bands.insert(quantized_color_band(island_terrain_vertex_color_for_shape(
+            island.shape_archetype,
             island_index,
             0.9,
             angle,

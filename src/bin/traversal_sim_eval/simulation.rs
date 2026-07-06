@@ -88,7 +88,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
         let was_grounded =
             route.is_grounded_at(state.position) && state.controller.mode == FlightMode::Grounded;
         let mut frame_tuning = tuning;
-        frame_tuning.floor_y = route.ground_at(state.position).floor_y;
+        frame_tuning.floor_y = route.contact_ground_at(state.position).floor_y;
         let world_step = step_flight_with_world(
             state,
             input,
@@ -115,7 +115,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
         animation_phase =
             advance_phase(animation_phase, state.velocity.length(), scenario.fixed_dt);
         let height_above_route_ground_m =
-            (state.position.y - route.ground_at(state.position).floor_y).max(0.0);
+            (state.position.y - route.contact_ground_at(state.position).floor_y).max(0.0);
         let wind_lateral_load =
             wind_lateral_load_from_delta(world_step.wind.crosswind_delta, player_rotation);
         let pose_context = PlayerPoseContext::new(
@@ -498,7 +498,7 @@ fn step_camera_frame(
     );
     let orbit_alignment_degrees =
         camera_orbit_alignment_degrees(frame.position, frame.look_target, follow_direction, orbit);
-    let camera_floor_y = route.ground_at(frame.position).floor_y;
+    let camera_floor_y = route.contact_ground_at(frame.position).floor_y;
     let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
     let obstruction = avoid_camera_obstructions_with_preferred_offset(
         frame,
@@ -506,7 +506,7 @@ fn step_camera_frame(
         CAMERA_OBSTRUCTION_CLEARANCE,
         obstruction_smoothing.readable_offset(),
     );
-    let camera_floor_y = route.ground_at(obstruction.frame.position).floor_y;
+    let camera_floor_y = route.contact_ground_at(obstruction.frame.position).floor_y;
     let frame = lift_camera_above_floor(
         obstruction.frame,
         camera_floor_y,

@@ -252,7 +252,7 @@ pub(crate) fn follow_camera(
         follow_direction,
         scene.camera_control.orbit,
     );
-    let camera_floor_y = scene.route.ground_at(frame.position).floor_y;
+    let camera_floor_y = scene.route.contact_ground_at(frame.position).floor_y;
     let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
     let obstruction_resolution = avoid_camera_obstructions_with_preferred_offset(
         frame,
@@ -262,7 +262,7 @@ pub(crate) fn follow_camera(
     );
     let camera_floor_y = scene
         .route
-        .ground_at(obstruction_resolution.frame.position)
+        .contact_ground_at(obstruction_resolution.frame.position)
         .floor_y;
     let frame = lift_camera_above_floor(
         obstruction_resolution.frame,

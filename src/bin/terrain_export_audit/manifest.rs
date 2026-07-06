@@ -64,6 +64,10 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         .get("terrain_archetype_count")
         .and_then(Value::as_u64)
         .unwrap_or(0);
+    let shape_archetype_count = manifest
+        .get("shape_archetype_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
     let mesh_count = manifest
         .get("mesh_count")
         .and_then(Value::as_u64)
@@ -98,6 +102,12 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         "terrain_archetype_count",
         terrain_archetype_count,
         MIN_TERRAIN_ARCHETYPE_COUNT,
+        "archetypes",
+    ));
+    checks.push(check_at_least_u64(
+        "shape_archetype_count",
+        shape_archetype_count,
+        MIN_SHAPE_ARCHETYPE_COUNT,
         "archetypes",
     ));
     checks.push(check_eq_u64(
@@ -200,6 +210,7 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
     ));
 
     let mut terrain_archetype_mask = 0_u64;
+    let mut shape_archetype_mask = 0_u64;
     for island in &islands {
         let island_name = island.get("name").and_then(Value::as_str).unwrap_or("");
         if let Some(archetype_index) = island
@@ -208,6 +219,11 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
             && archetype_index < u64::BITS as u64
         {
             terrain_archetype_mask |= 1_u64 << archetype_index;
+        }
+        if let Some(archetype_index) = island.get("shape_archetype_index").and_then(Value::as_u64)
+            && archetype_index < u64::BITS as u64
+        {
+            shape_archetype_mask |= 1_u64 << archetype_index;
         }
         for mesh_kind in ["terrain", "cliff", "underside", "impostor"] {
             let mesh = island.get(mesh_kind).unwrap_or(&Value::Null);
@@ -422,6 +438,12 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         "terrain_archetype_entry_count",
         terrain_archetype_mask.count_ones() as u64,
         terrain_archetype_count,
+        "archetypes",
+    ));
+    checks.push(check_eq_u64(
+        "shape_archetype_entry_count",
+        shape_archetype_mask.count_ones() as u64,
+        shape_archetype_count,
         "archetypes",
     ));
     let min_region_promille =

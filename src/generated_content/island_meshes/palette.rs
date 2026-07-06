@@ -3,7 +3,7 @@ use super::constants::{
     ISLAND_CLIFF_STRATA_BANDS, TERRAIN_BIOME_PALETTE_COUNT, TERRAIN_UV_TILES_PER_METER,
 };
 use bevy::prelude::*;
-use nau_engine::world::SkyIsland;
+use nau_engine::world::{IslandShapeArchetype, SkyIsland};
 
 pub(crate) fn color_array(color: Vec3) -> [f32; 4] {
     [
@@ -216,7 +216,8 @@ pub(crate) fn island_terrain_material_factors(
     (inner_meadow, exposed_edge, highland, dapple)
 }
 
-pub(crate) fn island_terrain_material_weights(
+pub(crate) fn island_terrain_material_weights_for_shape(
+    shape_archetype: IslandShapeArchetype,
     island_index: usize,
     radius: f32,
     angle: f32,
@@ -224,10 +225,47 @@ pub(crate) fn island_terrain_material_weights(
 ) -> [f32; 2] {
     let (inner_meadow, exposed_edge, highland, _) =
         island_terrain_material_factors(island_index, radius, angle, relief_m);
-    [
-        (highland * 0.68 + inner_meadow * 0.32).clamp(0.0, 1.0),
-        exposed_edge.clamp(0.0, 1.0),
-    ]
+    let shoulder = smoothstep(0.22, 0.50, radius) * (1.0 - smoothstep(0.74, 0.90, radius));
+    let center_clearing = (1.0 - smoothstep(0.14, 0.34, radius)) * 0.18;
+    let rim_highland = smoothstep(0.50, 0.70, radius) * (1.0 - smoothstep(0.78, 0.94, radius));
+    let phase = island_index as f32 * 0.49;
+    let material_grain =
+        (angle * 11.0 + phase).sin() * 0.018 + (radius * 23.0 - phase * 0.4).cos() * 0.012;
+    if shape_archetype == IslandShapeArchetype::NeedlePerch {
+        let center_clear_unit = 1.0 - smoothstep(0.12, 0.34, radius);
+        let needle_grain =
+            (angle * 17.0 - phase).sin() * 0.055 + (radius * 19.0 + phase).cos() * 0.035;
+        let lush_highland =
+            (0.30 + highland * 0.18 + rim_highland * 0.16 + shoulder * 0.02 + needle_grain
+                - center_clear_unit * 0.32)
+                .clamp(0.0, 1.0);
+
+        return [lush_highland, exposed_edge.clamp(0.0, 1.0)];
+    }
+
+    let mut lush_highland =
+        highland * 0.68 + inner_meadow * 0.30 + shoulder * 0.06 - center_clearing + material_grain;
+
+    lush_highland += match shape_archetype {
+        IslandShapeArchetype::TerraceMesa => rim_highland * 0.12 - center_clearing * 0.45,
+        IslandShapeArchetype::BrokenCrescent => rim_highland * 0.55 - center_clearing * 0.25,
+        IslandShapeArchetype::LakeBasin => {
+            rim_highland * 0.20 + shoulder * 0.30 - center_clearing * 0.25
+        }
+        IslandShapeArchetype::NeedlePerch => unreachable!("needle perches return above"),
+        IslandShapeArchetype::RingGarden => rim_highland * 0.30,
+        IslandShapeArchetype::CliffSlab => rim_highland * 0.24 - center_clearing * 0.35,
+        IslandShapeArchetype::UndercutCaveIsland => rim_highland * 0.28 - center_clearing * 0.35,
+        IslandShapeArchetype::RuinFoundation => rim_highland * 0.25 - center_clearing * 0.80,
+        IslandShapeArchetype::SpireCluster => rim_highland * 0.12 - center_clearing * 1.15,
+        IslandShapeArchetype::SteppedStairIsland => rim_highland * 0.32 - center_clearing * 0.80,
+        IslandShapeArchetype::BridgeRemnant => rim_highland * 0.18 - center_clearing * 0.80,
+        IslandShapeArchetype::WaterfallShelf => rim_highland * 0.28 - center_clearing * 0.25,
+        IslandShapeArchetype::PlateauFragment => rim_highland * 0.18 - center_clearing * 0.65,
+        IslandShapeArchetype::MeadowShelf => rim_highland * 0.28 - center_clearing * 0.35,
+    };
+
+    [lush_highland.clamp(0.0, 1.0), exposed_edge.clamp(0.0, 1.0)]
 }
 
 pub(crate) fn terrain_material_region_id(weight: [f32; 2]) -> u8 {
@@ -245,7 +283,8 @@ pub(crate) fn terrain_material_region_id(weight: [f32; 2]) -> u8 {
     }
 }
 
-pub(crate) fn island_terrain_vertex_color(
+pub(crate) fn island_terrain_vertex_color_for_shape(
+    shape_archetype: IslandShapeArchetype,
     island_index: usize,
     radius: f32,
     angle: f32,
@@ -254,7 +293,8 @@ pub(crate) fn island_terrain_vertex_color(
     let palette = terrain_biome_palette(island_index);
     let (inner_meadow, exposed_edge, highland, dapple) =
         island_terrain_material_factors(island_index, radius, angle, relief_m);
-    let region = terrain_material_region_id(island_terrain_material_weights(
+    let region = terrain_material_region_id(island_terrain_material_weights_for_shape(
+        shape_archetype,
         island_index,
         radius,
         angle,
@@ -315,4 +355,9 @@ pub(crate) fn island_terrain_uv(
         (x - island.center.x) * TERRAIN_UV_TILES_PER_METER + 0.5 + island_offset,
         (z - island.center.z) * TERRAIN_UV_TILES_PER_METER + 0.5 + island_offset * 1.37,
     ]
+}
+
+fn smoothstep(edge0: f32, edge1: f32, value: f32) -> f32 {
+    let t = ((value - edge0) / (edge1 - edge0).max(f32::EPSILON)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }

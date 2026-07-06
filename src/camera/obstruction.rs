@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::movement::smoothing_factor;
+
 use super::types::{CameraFrame, CameraObstruction, CameraObstructionResolution};
 
 pub const CAMERA_MIN_READABLE_OBSTRUCTION_DISTANCE_M: f32 = 6.5;
@@ -8,6 +10,7 @@ pub const CAMERA_OBSTRUCTION_SOFT_SHOULDER_OFFSET_M: f32 = 2.4;
 pub const CAMERA_OBSTRUCTION_VERTICAL_OFFSET_M: f32 = 2.4;
 pub const CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M: f32 = 1.5;
 pub const CAMERA_OBSTRUCTION_RELEASE_HOLD_SECS: f32 = 0.22;
+const CAMERA_OBSTRUCTION_RESPONSE_RATE: f32 = 12.0;
 const CAMERA_OBSTRUCTION_FRONT_CLEARANCE_M: f32 = 0.08;
 const CAMERA_TRANSPARENT_NEAR_BLOCKER_MAX_HORIZONTAL_HALF_EXTENT_M: f32 = 2.0;
 const CAMERA_TRANSPARENT_NEAR_BLOCKER_MAX_VERTICAL_HALF_EXTENT_M: f32 = 6.0;
@@ -69,8 +72,18 @@ pub fn smooth_camera_obstruction(
 ) -> CameraFrame {
     if obstruction_hits > 0 && obstruction_adjustment_m > 0.0 {
         let target_offset = frame.position - frame.look_target;
+        if state.obstructed_last_frame && state.held_offset.length_squared() > 0.001 {
+            let offset = state.held_offset.lerp(
+                target_offset,
+                smoothing_factor(CAMERA_OBSTRUCTION_RESPONSE_RATE, dt),
+            );
+            frame.position = frame.look_target + offset;
+            frame.rotation = Transform::from_translation(frame.position)
+                .looking_at(frame.look_target, Vec3::Y)
+                .rotation;
+        }
 
-        state.held_offset = target_offset;
+        state.held_offset = frame.position - frame.look_target;
         state.release_remaining_secs = CAMERA_OBSTRUCTION_RELEASE_HOLD_SECS;
         state.obstructed_last_frame = true;
         return frame;
@@ -417,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn active_obstruction_returns_clear_preferred_frame_without_extra_lag() {
+    fn active_obstruction_transitions_toward_clear_preferred_frame() {
         let mut state = CameraObstructionSmoothingState::default();
         let look_target = Vec3::new(0.0, 2.0, 0.0);
         let first_blocked = CameraFrame {
@@ -434,10 +447,11 @@ mod tests {
         };
         let smoothed = smooth_camera_obstruction(opposite_blocked, &mut state, 1, 4.0, 1.0 / 60.0);
 
-        assert_eq!(smoothed.position, opposite_blocked.position);
+        assert!(smoothed.position.x < first_blocked.position.x);
+        assert!(smoothed.position.x > opposite_blocked.position.x);
         assert_eq!(
             state.readable_offset(),
-            Some(opposite_blocked.position - look_target)
+            Some(smoothed.position - look_target)
         );
     }
 }
