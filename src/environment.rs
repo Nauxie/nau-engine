@@ -587,8 +587,67 @@ impl LiftField {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LiftRouteStage {
+    Launch,
+    LowChain,
+    UnderRoute,
+    WaterfallRoute,
+    HighRoute,
+    PlateauApproach,
+    CrownRoute,
+    ReturnDescent,
+}
+
+impl LiftRouteStage {
+    pub const ALL: [Self; 8] = [
+        Self::Launch,
+        Self::LowChain,
+        Self::UnderRoute,
+        Self::WaterfallRoute,
+        Self::HighRoute,
+        Self::PlateauApproach,
+        Self::CrownRoute,
+        Self::ReturnDescent,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Launch => "launch",
+            Self::LowChain => "low_chain",
+            Self::UnderRoute => "under_route",
+            Self::WaterfallRoute => "waterfall_route",
+            Self::HighRoute => "high_route",
+            Self::PlateauApproach => "plateau_approach",
+            Self::CrownRoute => "crown_route",
+            Self::ReturnDescent => "return_descent",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LiftRoutePurpose {
+    CriticalRoute,
+    Recovery,
+    OptionalDetour,
+}
+
+impl LiftRoutePurpose {
+    pub const ALL: [Self; 3] = [Self::CriticalRoute, Self::Recovery, Self::OptionalDetour];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::CriticalRoute => "critical_route",
+            Self::Recovery => "recovery",
+            Self::OptionalDetour => "optional_detour",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LiftRouteNode {
     pub name: &'static str,
+    pub stage: LiftRouteStage,
+    pub purpose: LiftRoutePurpose,
     pub center: Vec3,
     pub half_extents: Vec3,
     pub lift_accel: f32,
@@ -614,6 +673,8 @@ impl LiftRouteNode {
 pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     LiftRouteNode {
         name: "launch terrace updraft",
+        stage: LiftRouteStage::Launch,
+        purpose: LiftRoutePurpose::CriticalRoute,
         center: Vec3::new(12.0, 52.0, -78.0),
         half_extents: Vec3::new(48.0, 34.0, 52.0),
         lift_accel: 36.0,
@@ -622,6 +683,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "distant recovery updraft",
+        stage: LiftRouteStage::LowChain,
+        purpose: LiftRoutePurpose::Recovery,
         center: Vec3::new(24.0, 74.0, -430.0),
         half_extents: Vec3::new(26.0, 42.0, 26.0),
         lift_accel: 24.0,
@@ -630,6 +693,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "upper thermal ring updraft",
+        stage: LiftRouteStage::LowChain,
+        purpose: LiftRoutePurpose::CriticalRoute,
         center: Vec3::new(122.0, 146.0, -520.0),
         half_extents: Vec3::new(30.0, 46.0, 30.0),
         lift_accel: 22.0,
@@ -638,6 +703,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "stratos shelf updraft",
+        stage: LiftRouteStage::HighRoute,
+        purpose: LiftRoutePurpose::CriticalRoute,
         center: Vec3::new(16.0, 158.0, -1138.0),
         half_extents: Vec3::new(76.0, 104.0, 86.0),
         lift_accel: 24.0,
@@ -646,6 +713,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "summit anvil updraft",
+        stage: LiftRouteStage::HighRoute,
+        purpose: LiftRoutePurpose::CriticalRoute,
         center: Vec3::new(-18.0, 214.0, -1510.0),
         half_extents: Vec3::new(42.0, 62.0, 42.0),
         lift_accel: 24.0,
@@ -654,6 +723,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "upper sky shelf updraft",
+        stage: LiftRouteStage::HighRoute,
+        purpose: LiftRoutePurpose::CriticalRoute,
         center: Vec3::new(-64.0, 272.0, -1640.0),
         half_extents: Vec3::new(56.0, 104.0, 108.0),
         lift_accel: 23.0,
@@ -662,6 +733,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "bluevault basin updraft",
+        stage: LiftRouteStage::PlateauApproach,
+        purpose: LiftRoutePurpose::CriticalRoute,
         center: Vec3::new(90.0, 395.0, -1905.0),
         half_extents: Vec3::new(48.0, 70.0, 48.0),
         lift_accel: 23.0,
@@ -670,6 +743,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "sunspire garden updraft",
+        stage: LiftRouteStage::PlateauApproach,
+        purpose: LiftRoutePurpose::CriticalRoute,
         center: Vec3::new(420.0, 528.0, -2240.0),
         half_extents: Vec3::new(46.0, 76.0, 46.0),
         lift_accel: 22.0,
@@ -678,6 +753,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "great sky plateau updraft",
+        stage: LiftRouteStage::PlateauApproach,
+        purpose: LiftRoutePurpose::CriticalRoute,
         center: Vec3::new(-120.0, 720.0, -2600.0),
         half_extents: Vec3::new(54.0, 86.0, 54.0),
         lift_accel: 22.0,
@@ -686,6 +763,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "upper crown updraft",
+        stage: LiftRouteStage::CrownRoute,
+        purpose: LiftRoutePurpose::OptionalDetour,
         center: Vec3::new(-360.0, 1008.0, -3200.0),
         half_extents: Vec3::new(58.0, 92.0, 58.0),
         lift_accel: 22.0,
@@ -694,6 +773,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "low reef updraft",
+        stage: LiftRouteStage::LowChain,
+        purpose: LiftRoutePurpose::OptionalDetour,
         center: Vec3::new(110.0, 44.0, -210.0),
         half_extents: Vec3::new(36.0, 34.0, 36.0),
         lift_accel: 20.0,
@@ -702,6 +783,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "western catch updraft",
+        stage: LiftRouteStage::LowChain,
+        purpose: LiftRoutePurpose::Recovery,
         center: Vec3::new(-168.0, 72.0, -320.0),
         half_extents: Vec3::new(38.0, 42.0, 38.0),
         lift_accel: 20.0,
@@ -710,6 +793,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "skyhook basin updraft",
+        stage: LiftRouteStage::HighRoute,
+        purpose: LiftRoutePurpose::OptionalDetour,
         center: Vec3::new(-238.0, 156.0, -882.0),
         half_extents: Vec3::new(44.0, 56.0, 44.0),
         lift_accel: 22.0,
@@ -718,6 +803,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "cloudfall meadow updraft",
+        stage: LiftRouteStage::WaterfallRoute,
+        purpose: LiftRoutePurpose::CriticalRoute,
         center: Vec3::new(-144.0, 176.0, -1208.0),
         half_extents: Vec3::new(46.0, 60.0, 46.0),
         lift_accel: 22.0,
@@ -726,6 +813,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "underbridge cay updraft",
+        stage: LiftRouteStage::UnderRoute,
+        purpose: LiftRoutePurpose::CriticalRoute,
         center: Vec3::new(-82.0, 22.0, -136.0),
         half_extents: Vec3::new(64.0, 38.0, 72.0),
         lift_accel: 20.0,
@@ -734,6 +823,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "bluevault shoulder recovery updraft",
+        stage: LiftRouteStage::PlateauApproach,
+        purpose: LiftRoutePurpose::Recovery,
         center: Vec3::new(228.0, 455.0, -2070.0),
         half_extents: Vec3::new(42.0, 62.0, 42.0),
         lift_accel: 20.0,
@@ -742,6 +833,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "cloudbreak stair recovery updraft",
+        stage: LiftRouteStage::PlateauApproach,
+        purpose: LiftRoutePurpose::Recovery,
         center: Vec3::new(150.0, 610.0, -2410.0),
         half_extents: Vec3::new(42.0, 68.0, 42.0),
         lift_accel: 20.0,
@@ -750,6 +843,8 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "plateau west rim recovery updraft",
+        stage: LiftRouteStage::ReturnDescent,
+        purpose: LiftRoutePurpose::Recovery,
         center: Vec3::new(-270.0, 735.0, -2470.0),
         half_extents: Vec3::new(50.0, 72.0, 50.0),
         lift_accel: 20.0,
@@ -1628,6 +1723,65 @@ mod tests {
     }
 
     #[test]
+    fn gameplay_lift_route_declares_authored_traversal_affordances() {
+        assert_eq!(GAMEPLAY_LIFT_ROUTE.len(), 18);
+
+        for stage in LiftRouteStage::ALL {
+            let count = GAMEPLAY_LIFT_ROUTE
+                .iter()
+                .filter(|node| node.stage == stage)
+                .count();
+            assert!(
+                count >= 1,
+                "{} should have at least one authored lift affordance",
+                stage.label()
+            );
+        }
+
+        assert_eq!(
+            route_purpose_count(LiftRoutePurpose::CriticalRoute),
+            10,
+            "critical route lift should cover launch, cave, waterfall, high route, and plateau approach"
+        );
+        assert_eq!(
+            route_purpose_count(LiftRoutePurpose::Recovery),
+            5,
+            "recovery lift should remain explicit instead of blending into arbitrary boost columns"
+        );
+        assert_eq!(
+            route_purpose_count(LiftRoutePurpose::OptionalDetour),
+            3,
+            "optional and crown routes should have their own authored lift support"
+        );
+
+        assert_stage_purpose(
+            LiftRouteStage::Launch,
+            LiftRoutePurpose::CriticalRoute,
+            "launch should be deliberate takeoff support",
+        );
+        assert_stage_purpose(
+            LiftRouteStage::UnderRoute,
+            LiftRoutePurpose::CriticalRoute,
+            "cave-pass lift should remain on the required under-route",
+        );
+        assert_stage_purpose(
+            LiftRouteStage::WaterfallRoute,
+            LiftRoutePurpose::CriticalRoute,
+            "waterfall flyby should be supported by authored route lift",
+        );
+        assert_stage_purpose(
+            LiftRouteStage::CrownRoute,
+            LiftRoutePurpose::OptionalDetour,
+            "upper crown lift should stay optional instead of gating the main route",
+        );
+        assert_stage_purpose(
+            LiftRouteStage::ReturnDescent,
+            LiftRoutePurpose::Recovery,
+            "return descent should expose recovery lift back toward the plateau",
+        );
+    }
+
+    #[test]
     fn plateau_recovery_updrafts_are_modest_readable_support() {
         let fields = visual_wind_fields();
         let recovery_names = [
@@ -1649,6 +1803,7 @@ mod tests {
                 .count();
 
             assert!(node.center.y >= 400.0);
+            assert_eq!(node.purpose, LiftRoutePurpose::Recovery);
             assert!(node.lift_accel <= 20.0);
             assert!(node.max_upward_speed <= 25.0);
             assert!(fields.iter().any(|field| *field == node.visual_field()));
@@ -1657,6 +1812,26 @@ mod tests {
                 "{name} should have paired readable crosswind"
             );
         }
+    }
+
+    fn route_purpose_count(purpose: LiftRoutePurpose) -> usize {
+        GAMEPLAY_LIFT_ROUTE
+            .iter()
+            .filter(|node| node.purpose == purpose)
+            .count()
+    }
+
+    fn assert_stage_purpose(
+        stage: LiftRouteStage,
+        purpose: LiftRoutePurpose,
+        message: &'static str,
+    ) {
+        assert!(
+            GAMEPLAY_LIFT_ROUTE
+                .iter()
+                .any(|node| node.stage == stage && node.purpose == purpose),
+            "{message}"
+        );
     }
 
     #[test]

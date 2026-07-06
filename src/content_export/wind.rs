@@ -13,7 +13,8 @@ use crate::{
 };
 use bevy::prelude::*;
 use nau_engine::environment::{
-    GAMEPLAY_LIFT_ROUTE, VISUAL_CROSSWIND_FIELD_COUNT, WindField, visual_crosswind_fields,
+    GAMEPLAY_LIFT_ROUTE, LiftRoutePurpose, LiftRouteStage, VISUAL_CROSSWIND_FIELD_COUNT, WindField,
+    visual_crosswind_fields,
 };
 use serde_json::{Value, json};
 use std::{
@@ -608,6 +609,7 @@ fn wind_visual_manifest(input: WindVisualManifestInput<'_>) -> Value {
             "crosswind_fields_with_ribbons_count": counts.crosswind_field_count,
             "crosswind_fields_with_guides_and_ribbons_count": counts.crosswind_field_count,
         },
+        "authored_route": authored_lift_route_json(),
         "motion": {
             "total": family_metrics_json(summary.total),
             "updraft_guide": family_metrics_json(summary.updraft_guide),
@@ -616,6 +618,74 @@ fn wind_visual_manifest(input: WindVisualManifestInput<'_>) -> Value {
             "crosswind_ribbon": family_metrics_json(summary.crosswind_ribbon),
         },
     })
+}
+
+fn authored_lift_route_json() -> Value {
+    let stages = LiftRouteStage::ALL
+        .into_iter()
+        .map(|stage| {
+            json!({
+                "stage": stage.label(),
+                "node_count": lift_stage_count(stage),
+            })
+        })
+        .collect::<Vec<_>>();
+    let purposes = LiftRoutePurpose::ALL
+        .into_iter()
+        .map(|purpose| {
+            json!({
+                "purpose": purpose.label(),
+                "node_count": lift_purpose_count(purpose),
+            })
+        })
+        .collect::<Vec<_>>();
+    let nodes = GAMEPLAY_LIFT_ROUTE
+        .iter()
+        .map(|node| {
+            json!({
+                "name": node.name,
+                "stage": node.stage.label(),
+                "purpose": node.purpose.label(),
+                "center": [node.center.x, node.center.y, node.center.z],
+                "half_extents": [node.half_extents.x, node.half_extents.y, node.half_extents.z],
+                "lift_accel": node.lift_accel,
+                "max_upward_speed": node.max_upward_speed,
+                "visual_speed": node.visual_speed,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "stage_count": stages
+            .iter()
+            .filter(|stage| value_u64(stage, "node_count") > 0)
+            .count(),
+        "purpose_count": purposes
+            .iter()
+            .filter(|purpose| value_u64(purpose, "node_count") > 0)
+            .count(),
+        "stages": stages,
+        "purposes": purposes,
+        "nodes": nodes,
+    })
+}
+
+fn lift_stage_count(stage: LiftRouteStage) -> usize {
+    GAMEPLAY_LIFT_ROUTE
+        .iter()
+        .filter(|node| node.stage == stage)
+        .count()
+}
+
+fn lift_purpose_count(purpose: LiftRoutePurpose) -> usize {
+    GAMEPLAY_LIFT_ROUTE
+        .iter()
+        .filter(|node| node.purpose == purpose)
+        .count()
+}
+
+fn value_u64(parent: &Value, key: &str) -> u64 {
+    parent.get(key).and_then(Value::as_u64).unwrap_or(0)
 }
 
 fn family_metrics_json(metrics: FamilyMetrics) -> Value {

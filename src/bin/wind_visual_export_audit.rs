@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use nau_engine::environment::{
-    GAMEPLAY_LIFT_ROUTE, VISUAL_CROSSWIND_FIELD_COUNT, WindField, visual_crosswind_fields,
+    GAMEPLAY_LIFT_ROUTE, LiftRoutePurpose, LiftRouteStage, VISUAL_CROSSWIND_FIELD_COUNT, WindField,
+    visual_crosswind_fields,
 };
 use serde_json::{Value, json};
 use std::{
@@ -22,6 +23,11 @@ const MIN_UPDRAFT_GUIDE_COHERENT_TRACKS: u64 = 400;
 const MIN_UPDRAFT_RIBBON_COHERENT_TRACKS: u64 = 4000;
 const MIN_CROSSWIND_GUIDE_COHERENT_TRACKS: u64 = 450;
 const MIN_CROSSWIND_RIBBON_COHERENT_TRACKS: u64 = 125;
+const MIN_LIFT_ROUTE_STAGE_COUNT: u64 = LiftRouteStage::ALL.len() as u64;
+const MIN_LIFT_ROUTE_PURPOSE_COUNT: u64 = LiftRoutePurpose::ALL.len() as u64;
+const MIN_CRITICAL_ROUTE_LIFT_NODES: u64 = 10;
+const MIN_RECOVERY_LIFT_NODES: u64 = 5;
+const MIN_OPTIONAL_DETOUR_LIFT_NODES: u64 = 3;
 const MAX_STATIC_TRACK_RATIO: f64 = 0.02;
 const MAX_OFF_FIELD_TRACK_RATIO: f64 = 0.001;
 const MAX_LOW_ALIGNMENT_TRACK_RATIO: f64 = 0.09;
@@ -147,6 +153,7 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
     let artifacts = manifest.get("artifacts").unwrap_or(&Value::Null);
     let counts = manifest.get("counts").unwrap_or(&Value::Null);
     let coverage = manifest.get("coverage").unwrap_or(&Value::Null);
+    let authored_route = manifest.get("authored_route").unwrap_or(&Value::Null);
     let motion = manifest.get("motion").unwrap_or(&Value::Null);
     let track_count = value_u64(counts, "track_count");
 
@@ -216,6 +223,56 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         MIN_CROSSWIND_FIELDS,
         "fields",
     ));
+    checks.push(check_at_least_u64(
+        "lift_route_stage_count",
+        value_u64(authored_route, "stage_count"),
+        MIN_LIFT_ROUTE_STAGE_COUNT,
+        "stages",
+    ));
+    checks.push(check_at_least_u64(
+        "lift_route_purpose_count",
+        value_u64(authored_route, "purpose_count"),
+        MIN_LIFT_ROUTE_PURPOSE_COUNT,
+        "purposes",
+    ));
+    checks.push(check_eq_u64(
+        "authored_lift_node_count",
+        array_len(authored_route, "nodes"),
+        value_u64(counts, "updraft_field_count"),
+        "nodes",
+    ));
+    for stage in LiftRouteStage::ALL {
+        checks.push(check_at_least_u64(
+            &format!("lift_stage_{}", stage.label()),
+            authored_route_node_count_by_label(authored_route, "stage", stage.label()),
+            1,
+            "nodes",
+        ));
+    }
+    for (purpose, threshold, name) in [
+        (
+            LiftRoutePurpose::CriticalRoute,
+            MIN_CRITICAL_ROUTE_LIFT_NODES,
+            "critical_route_lift_nodes",
+        ),
+        (
+            LiftRoutePurpose::Recovery,
+            MIN_RECOVERY_LIFT_NODES,
+            "recovery_lift_nodes",
+        ),
+        (
+            LiftRoutePurpose::OptionalDetour,
+            MIN_OPTIONAL_DETOUR_LIFT_NODES,
+            "optional_detour_lift_nodes",
+        ),
+    ] {
+        checks.push(check_at_least_u64(
+            name,
+            authored_route_node_count_by_label(authored_route, "purpose", purpose.label()),
+            threshold,
+            "nodes",
+        ));
+    }
 
     let (obj_audit, obj_error) = match relative_path(artifacts, "track_obj") {
         Some(path) => match audit_obj_path(&root_dir.join(&path)) {
@@ -943,6 +1000,31 @@ fn relative_path(parent: &Value, key: &str) -> Option<PathBuf> {
     parent.get(key).and_then(Value::as_str).map(PathBuf::from)
 }
 
+fn authored_route_node_count_by_label(parent: &Value, label_key: &str, label: &str) -> u64 {
+    parent
+        .get("nodes")
+        .and_then(Value::as_array)
+        .map(|nodes| {
+            nodes
+                .iter()
+                .filter(|node| {
+                    node.get(label_key)
+                        .and_then(Value::as_str)
+                        .is_some_and(|value| value == label)
+                })
+                .count() as u64
+        })
+        .unwrap_or(0)
+}
+
+fn array_len(parent: &Value, key: &str) -> u64 {
+    parent
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|entries| entries.len() as u64)
+        .unwrap_or(0)
+}
+
 fn value_u64(parent: &Value, key: &str) -> u64 {
     parent.get(key).and_then(Value::as_u64).unwrap_or(0)
 }
@@ -1111,6 +1193,45 @@ mod tests {
         let report = audit_manifest(&manifest, Path::new("."), "missing.json");
 
         assert!(!report.get("passed").and_then(Value::as_bool).unwrap());
+    }
+
+    #[test]
+    fn audit_rejects_unstaged_lift_route_manifest() {
+        let manifest = json!({
+            "schema": EXPECTED_SCHEMA,
+            "artifacts": {},
+            "counts": {
+                "updraft_field_count": MIN_UPDRAFT_FIELDS,
+                "crosswind_field_count": MIN_CROSSWIND_FIELDS,
+                "updraft_guide_count": MIN_UPDRAFT_GUIDES,
+                "updraft_ribbon_count": MIN_UPDRAFT_RIBBONS,
+                "crosswind_guide_count": MIN_CROSSWIND_GUIDES,
+                "crosswind_ribbon_count": MIN_CROSSWIND_RIBBONS,
+                "track_count": MIN_TOTAL_TRACKS,
+                "track_vertex_count": MIN_TOTAL_TRACKS * 2,
+                "track_segment_count": MIN_TOTAL_TRACKS
+            },
+            "coverage": {
+                "updraft_fields_with_guides_and_ribbons_count": MIN_UPDRAFT_FIELDS,
+                "crosswind_fields_with_guides_and_ribbons_count": MIN_CROSSWIND_FIELDS
+            },
+            "authored_route": {
+                "stage_count": 1,
+                "purpose_count": 1,
+                "stages": [{"stage": "launch", "node_count": 1}],
+                "purposes": [{"purpose": "critical_route", "node_count": 1}],
+                "nodes": []
+            },
+            "motion": {}
+        });
+
+        let report = audit_manifest(&manifest, Path::new("."), "unstaged.json");
+        let checks = report.get("checks").and_then(Value::as_array).unwrap();
+
+        assert!(!named_check_passed(checks, "lift_route_stage_count"));
+        assert!(!named_check_passed(checks, "lift_stage_under_route"));
+        assert!(!named_check_passed(checks, "recovery_lift_nodes"));
+        assert!(!named_check_passed(checks, "authored_lift_node_count"));
     }
 
     #[test]
