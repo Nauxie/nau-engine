@@ -7,7 +7,8 @@ use crate::camera_runtime::CameraObstacle;
 use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::generated_content::{
     ISLAND_BODY_SEGMENTS, IslandDetailMaterials, island_body_mesh_diagnostics,
-    island_impostor_mesh_diagnostics, island_terrain_mesh_diagnostics,
+    island_impostor_cliff_mesh, island_impostor_mesh_diagnostics, island_impostor_terrain_mesh,
+    island_impostor_underside_mesh, island_terrain_mesh_diagnostics,
     island_visual_surface_position,
 };
 use crate::world_collision_runtime::{
@@ -278,19 +279,38 @@ pub(crate) fn queue_sky_island(
         impostor_diagnostics.vertex_count,
         impostor_diagnostics.color_bands,
     );
-    queue_generated_island_visual(
+    queue_island_visual(
         entries,
         &mut visual_index,
         island,
         IslandVisualLayer::Impostor,
-        IslandVisualMeshRecipe::Impostor {
-            island_index,
-            island,
-        },
+        meshes.add(island_impostor_terrain_mesh(island_index, island)),
         top_material.clone(),
         Transform::default(),
         None,
-        "island distant impostor",
+        "island distant impostor terrain",
+    );
+    queue_island_visual(
+        entries,
+        &mut visual_index,
+        island,
+        IslandVisualLayer::Impostor,
+        meshes.add(island_impostor_cliff_mesh(island_index, island)),
+        rock_material.clone(),
+        Transform::default(),
+        None,
+        "island distant impostor cliff",
+    );
+    queue_island_visual(
+        entries,
+        &mut visual_index,
+        island,
+        IslandVisualLayer::Impostor,
+        meshes.add(island_impostor_underside_mesh(island_index, island)),
+        under_material.clone(),
+        Transform::default(),
+        None,
+        "island distant impostor underside",
     );
 
     let terrain_diagnostics = island_terrain_mesh_diagnostics(island_index, island);

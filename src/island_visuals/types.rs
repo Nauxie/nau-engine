@@ -1,8 +1,6 @@
 use crate::camera_runtime::CameraObstacle;
 use crate::environment_visuals::WindVisualMotion;
-use crate::generated_content::{
-    island_cliff_mesh, island_impostor_mesh, island_terrain_mesh, island_underside_mesh,
-};
+use crate::generated_content::{island_cliff_mesh, island_terrain_mesh, island_underside_mesh};
 use crate::world_collision_runtime::WorldCollisionProxy;
 use bevy::prelude::*;
 use nau_engine::world::{LodBand, SkyIsland, StreamActivation};
@@ -114,10 +112,6 @@ pub(super) enum IslandVisualMeshRecipe {
         island_index: usize,
         island: SkyIsland,
     },
-    Impostor {
-        island_index: usize,
-        island: SkyIsland,
-    },
 }
 
 impl IslandVisualMeshRecipe {
@@ -135,10 +129,6 @@ impl IslandVisualMeshRecipe {
                 island_index,
                 island,
             } => island_underside_mesh(island_index, island),
-            Self::Impostor {
-                island_index,
-                island,
-            } => island_impostor_mesh(island_index, island),
         }
     }
 }

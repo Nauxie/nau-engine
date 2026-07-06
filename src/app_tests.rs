@@ -75,6 +75,12 @@ fn radial_range(positions: &[[f32; 3]]) -> f32 {
     max_radius - min_radius
 }
 
+const EXPECTED_ISLAND_IMPOSTOR_MESH_VERTICES: usize = 1
+    + ISLAND_IMPOSTOR_TERRAIN_RINGS * ISLAND_IMPOSTOR_SEGMENTS
+    + (ISLAND_IMPOSTOR_CLIFF_RINGS + 1) * ISLAND_IMPOSTOR_SEGMENTS
+    + (ISLAND_IMPOSTOR_UNDERSIDE_RINGS + 1) * ISLAND_IMPOSTOR_SEGMENTS
+    + 1;
+
 #[test]
 fn marker_occlusion_detects_island_between_camera_and_marker() {
     let island = SkyIsland::new(
@@ -619,7 +625,7 @@ fn terrain_export_writes_manifest_meshes_and_weight_sidecars() {
     assert!(report.min_terrain_texture_edge_promille >= ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE);
     assert!(report.min_terrain_relief_range_m >= 0.8);
     assert!(report.min_cliff_color_bands >= ISLAND_CLIFF_STRATA_BANDS / 2);
-    assert!(report.min_impostor_mesh_vertices >= 2 + ISLAND_IMPOSTOR_SEGMENTS * 3);
+    assert!(report.min_impostor_mesh_vertices >= EXPECTED_ISLAND_IMPOSTOR_MESH_VERTICES);
     assert!(report.min_impostor_color_bands >= ISLAND_IMPOSTOR_COLOR_BANDS);
     assert!(launch_terrain.exists());
     assert!(launch_impostor.exists());
@@ -648,7 +654,10 @@ fn terrain_export_writes_manifest_meshes_and_weight_sidecars() {
         "\"terrain_texture_edge_promille\": {}",
         report.min_terrain_texture_edge_promille
     )));
-    assert!(manifest.contains("\"impostor_mesh_vertices\": 146"));
+    assert!(manifest.contains(&format!(
+        "\"impostor_mesh_vertices\": {}",
+        report.min_impostor_mesh_vertices
+    )));
     assert!(manifest.contains(&format!(
         "\"impostor_color_bands\": {}",
         report.min_impostor_color_bands
@@ -1835,7 +1844,7 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         catalog.named_obstacle_count("underbridge cay", "under-route hanging shelf"),
         1
     );
-    assert_eq!(catalog.deferred_mesh_count(), route.islands().len() * 4);
+    assert_eq!(catalog.deferred_mesh_count(), route.islands().len() * 3);
     assert!(catalog.prebuilt_mesh_count() > catalog.deferred_mesh_count());
 
     let mut world = World::new();
@@ -2736,7 +2745,8 @@ fn island_impostor_mesh_uses_layered_color_and_silhouette() {
     let terrain_positions = positions(&terrain_mesh);
     let underside_positions = positions(&underside_mesh);
     let colors = colors(&mesh);
-    let top_ring = &impostor_positions[1..1 + ISLAND_IMPOSTOR_SEGMENTS];
+    let top_ring_start = 1 + (ISLAND_IMPOSTOR_TERRAIN_RINGS - 1) * ISLAND_IMPOSTOR_SEGMENTS;
+    let top_ring = &impostor_positions[top_ring_start..top_ring_start + ISLAND_IMPOSTOR_SEGMENTS];
     let terrain_outer_start = 1 + (ISLAND_TERRAIN_RINGS - 1) * ISLAND_BODY_SEGMENTS;
     let terrain_step = ISLAND_BODY_SEGMENTS / ISLAND_IMPOSTOR_SEGMENTS;
     let min_radius = top_ring
@@ -2748,7 +2758,10 @@ fn island_impostor_mesh_uses_layered_color_and_silhouette() {
         .map(|position| normalized_radius(island, *position))
         .fold(f32::NEG_INFINITY, f32::max);
 
-    assert_eq!(mesh.count_vertices(), 2 + ISLAND_IMPOSTOR_SEGMENTS * 3);
+    assert_eq!(
+        mesh.count_vertices(),
+        EXPECTED_ISLAND_IMPOSTOR_MESH_VERTICES
+    );
     assert_eq!(colors.len(), impostor_positions.len());
     assert!(
         max_radius - min_radius > 0.08,

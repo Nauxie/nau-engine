@@ -1,5 +1,6 @@
 use super::constants::{
-    ISLAND_BODY_SEGMENTS, ISLAND_CLIFF_RINGS, ISLAND_IMPOSTOR_SEGMENTS,
+    ISLAND_BODY_SEGMENTS, ISLAND_CLIFF_RINGS, ISLAND_IMPOSTOR_CLIFF_RINGS,
+    ISLAND_IMPOSTOR_SEGMENTS, ISLAND_IMPOSTOR_TERRAIN_RINGS, ISLAND_IMPOSTOR_UNDERSIDE_RINGS,
     ISLAND_TERRAIN_EDGE_SKIRT_DEPTH_M, ISLAND_TERRAIN_RINGS, ISLAND_UNDERSIDE_RINGS,
 };
 use super::palette::{
@@ -123,7 +124,11 @@ pub(crate) fn island_impostor_mesh_diagnostics(
     island_index: usize,
     island: SkyIsland,
 ) -> IslandImpostorMeshDiagnostics {
-    let vertex_count = 2 + ISLAND_IMPOSTOR_SEGMENTS * 3;
+    let vertex_count = 1
+        + ISLAND_IMPOSTOR_TERRAIN_RINGS * ISLAND_IMPOSTOR_SEGMENTS
+        + (ISLAND_IMPOSTOR_CLIFF_RINGS + 1) * ISLAND_IMPOSTOR_SEGMENTS
+        + (ISLAND_IMPOSTOR_UNDERSIDE_RINGS + 1) * ISLAND_IMPOSTOR_SEGMENTS
+        + 1;
     let mut color_bands = HashSet::new();
     color_bands.insert(quantized_color_band(island_terrain_vertex_color(
         island_index,
@@ -132,30 +137,46 @@ pub(crate) fn island_impostor_mesh_diagnostics(
         0.0,
     )));
 
-    for segment in 0..ISLAND_IMPOSTOR_SEGMENTS {
-        let angle = segment as f32 / ISLAND_IMPOSTOR_SEGMENTS as f32 * std::f32::consts::TAU;
-        let contour_scale = island_silhouette_scale(island, angle);
-        let radius_x = island.half_extents.x * contour_scale;
-        let radius_z = island.half_extents.y * contour_scale;
-        let x = island.center.x + angle.cos() * radius_x;
-        let z = island.center.z + angle.sin() * radius_z;
-        let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z));
-        color_bands.insert(quantized_color_band(island_terrain_vertex_color(
-            island_index,
-            1.0,
-            angle,
-            y - island.mesh_top_y(),
-        )));
+    for ring in 1..=ISLAND_IMPOSTOR_TERRAIN_RINGS {
+        let radius = ring as f32 / ISLAND_IMPOSTOR_TERRAIN_RINGS as f32;
+        for segment in 0..ISLAND_IMPOSTOR_SEGMENTS {
+            let angle = segment as f32 / ISLAND_IMPOSTOR_SEGMENTS as f32 * std::f32::consts::TAU;
+            let edge_scale = island_silhouette_scale(island, angle);
+            let radius_scale = radius * (1.0 + radius.powf(1.35) * (edge_scale - 1.0));
+            let x = island.center.x + angle.cos() * island.half_extents.x * radius_scale;
+            let z = island.center.z + angle.sin() * island.half_extents.y * radius_scale;
+            let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z));
+            color_bands.insert(quantized_color_band(island_terrain_vertex_color(
+                island_index,
+                radius,
+                angle,
+                y - island.mesh_top_y(),
+            )));
+        }
     }
 
-    for (t, underside) in [(0.68_f32, false), (0.82_f32, true)] {
+    for ring in 0..=ISLAND_IMPOSTOR_CLIFF_RINGS {
+        let t = ring as f32 / ISLAND_IMPOSTOR_CLIFF_RINGS as f32;
         for segment in 0..ISLAND_IMPOSTOR_SEGMENTS {
             let angle = segment as f32 / ISLAND_IMPOSTOR_SEGMENTS as f32 * std::f32::consts::TAU;
             color_bands.insert(quantized_color_band(island_rock_vertex_color(
                 island_index,
                 angle,
                 t,
-                underside,
+                false,
+            )));
+        }
+    }
+
+    for ring in 0..=ISLAND_IMPOSTOR_UNDERSIDE_RINGS {
+        let t = ring as f32 / ISLAND_IMPOSTOR_UNDERSIDE_RINGS as f32;
+        for segment in 0..ISLAND_IMPOSTOR_SEGMENTS {
+            let angle = segment as f32 / ISLAND_IMPOSTOR_SEGMENTS as f32 * std::f32::consts::TAU;
+            color_bands.insert(quantized_color_band(island_rock_vertex_color(
+                island_index,
+                angle,
+                t,
+                true,
             )));
         }
     }
