@@ -1,12 +1,48 @@
 # Project Status
 
-Last updated: 2026-07-01
+Last updated: 2026-07-06
 
 ## Current Milestone
 
 First sky-island traversal slice.
 
 The project has a Bevy sandbox with a richer self-authored animated player fixture, playable ground movement, stronger camera-relative planar air control with tighter lateral body/travel heading coupling, smoothed body yaw/bank response, deployable glider wings with visible authored traversal response, one-launch-per-airtime modest vertical assist, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, multi-lobed drifting cloud banks with wisp-card and filament-ribbon detail plus layered high-cirrus clusters, visual `WindField` volumes that drive wind visuals, diagnostics, and bounded horizontal airborne current with force-to-flow alignment metrics, fourteen gameplay updrafts with separate `LiftField` vertical lift, cinematic lift ribbons, sixteen curved tapered crosswind lanes, marked recovery branch islands, a 41-island floating route with 19 named terrain archetypes, low cays, high summit islands, larger vertical spacing, route-aligned ravine/channel incisions, terrace/shelf/basin/ridge/needle/satellite variation, per-archetype footprint profiles, fine microrelief, higher-resolution vertex-colored terrain relief, world-space tiled terrain UVs, quantized terrain material-region identity, sharper terrain-specific procedural PBR textures with smoothed broad material noise, irregular visual/playable contours shared by terrain, ground containment, 16-segment terrain-rim collision, and four-panel terrain-body cliff collision, stratified generated cliff/underside body meshes, layered color-banded distant island impostors, batched tufted side-leaf ground-cover/detail props with raised mesh-density eval floors, deterministic multi-ring/root-flared trunk meshes, multi-lobed/detail-card near-LOD tree canopies, collidable trees/rocks/route landmarks, terrain-integrated collidable obstruction spires that replace the old visible cuboid camera blockers, wind-responsive ponds, complete declared glTF fixture coverage across asset residency classes, visible route-anchored authored world fixture scenes with stronger terrain, foliage, rock, water, route-marker, weather, and distant-impostor mesh/material floors, Bevy-native glTF scene/animation readiness hooks, repo-native asset fixture audits, background-safe terrain/export and sim/app eval coverage, and scripted evals for ground taxi control, generated-asset collision contact, terrain-rim/body collision contact, mouse camera control, yaw/strafe/turn camera stability, air-control response, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
+
+## 2026-07-06 Fresh-Session Handoff
+
+Do not merge the authored-world stack into `main` until the camera incident below is reproduced, isolated, fixed at the root, and covered by stronger app/manual-style evals. The latest branch state passes headless checks, but manual playtests found severe regressions that the harness did not catch.
+
+- Active handoff worktree: `/Users/abhinav/Dev/abhinav/nau-engine-pr3-shape-language`
+- Active handoff branch: `abhinav/performance-streaming-budget-pr8`
+- Pushed handoff commit before this docs update: `b30346a` (`Add route-wide streaming budget audit`)
+- Current open stack PR: `#387`, `abhinav/traversal-gamefeel-pr7` into `abhinav/cloud-atmosphere-pr6`; it is mechanically mergeable but should stay unmerged until camera stability is proven.
+- PR8 is pushed as `abhinav/performance-streaming-budget-pr8`; no PR has been opened for it yet.
+
+Manual regression report:
+
+- Camera has serious stutter/jitter and drifting during normal play, especially near objects.
+- Camera can feel loose, off-center, or unexpectedly zoomed out.
+- One playtest lost camera and player control enough to feel like the whole game glitched out.
+- These should be treated as stop-the-line traversal stability failures, not as polish issues.
+
+Likely eval gap:
+
+- Existing camera evals mostly prove scripted impulses, thresholded summary metrics, and specific obstruction cases. They did not sufficiently cover continuous manual orbit/input, dense object proximity, world streaming/content churn, lock-on/framing invariants, or hard recovery from invalid camera/player states.
+- Passing sim/headless routes is not enough for camera work. The next track needs real app-path reproduction, deterministic stress routes, foreground/manual review only when explicitly requested, and stronger invariants for camera target, boom distance, smoothing state, input capture, and player-control continuity.
+
+Recent stack slices:
+
+- PR7 (`70a2595`) added authored traversal lift-route contracts: 18 gameplay lift nodes with stage/purpose metadata, wind export route annotations, and audit gates for critical/recovery/optional lift-route coverage.
+- PR8 (`b30346a`) added a route-wide terrain streaming budget audit. Current exported budget sample count is 862, with 820 island-pair midpoint samples, max 25 active chunks, max 21 active islands, max 10 near-LOD islands, max 21 mid-LOD islands, max 40 far-LOD islands, max 40 visible terrain meshes, max 41 visible impostors, and max 200 terrain collision proxies.
+- PR7/PR8 verification before this handoff: `cargo fmt --all --check`, `cargo check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test`, `git diff --check`, conflict-marker scan, and relevant terrain/wind/content export audits.
+
+Fresh-session start checklist:
+
+1. `git fetch origin`.
+2. Inspect `main`, then inspect `abhinav/performance-streaming-budget-pr8`; do not merge either stack branch first.
+3. Reproduce camera behavior on current `main`, PR7, and PR8 to identify the first bad slice.
+4. Prioritize app-path camera instrumentation and deterministic stress scenarios over further visual/world expansion.
+5. Only resume authored-world PR slicing after camera stability and player-control continuity are proven.
 
 ## Last Known Good
 
@@ -26,7 +62,10 @@ The project has a Bevy sandbox with a richer self-authored animated player fixtu
 
 Use this section for milestone handoffs, not routine worktree changes.
 
-- Open PRs: consult GitHub
+- Stop-the-line priority: camera stability/player-control incident on the authored-world stack.
+- Active pushed branch for handoff: `abhinav/performance-streaming-budget-pr8`.
+- Open PR held for now: `#387` (`abhinav/traversal-gamefeel-pr7` into `abhinav/cloud-atmosphere-pr6`).
+- Do not open/merge later authored-world PRs until camera behavior is proven against `main` and the first bad slice is isolated.
 
 ## Current Course Correction
 
@@ -91,6 +130,7 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 
 ## Known Issues
 
+- Manual playtests on the authored-world stack reported serious camera regressions: stutter, jitter near objects, loose/off-center framing, unexpected zoom-out/drift, and at least one loss of camera/player control. Treat this as the current highest-severity bug even if scripted evals pass.
 - App-backed `air_control_response`, `pose_state_coverage`, and `updraft_route` now clear sustained wind-visual flow checks after eval-mode wind visuals were moved onto the deterministic eval frame clock. Runtime wind-quality gates also bound observed visual speed/acceleration and reject visible wrap/jump artifacts, while sim/app routes prove projected horizontal crosswind drift without requiring player input.
 - The character now has a self-authored animated glTF fixture with faceted body meshes, sculpted head shell, brow guard, nose bridge, jaw and cheek planes, temple guards, eye lenses/glints, belt hardware, gauntlet cuffs, knee guards, boots with toe caps, hand/finger grip pieces, shoulder guards, scarf pieces, side tunic flaps, bicep/tricep/calf/shin/instep/tendon/web/lace anatomy pieces, and named clip coverage, but it is still not a rigged production character.
 - Limb posing has grounded walk/run stride, readable launch/fall, airborne banking, glide, explicit-input dive, air-brake, landing-anticipation feet-forward absorption, bounded post-touchdown recovery crouch, landing crouch, turn-readable lean, and speed-responsive wing flex for generated fallback and named authored player nodes; authored nodes now capture their scene rest transforms once and apply procedural offsets relative to that rest pose, while the authored fixture proves retryable named-clip validation, graph readiness, distinct `fall` and directional `bank_left`/`bank_right` clip coverage, runtime bank transitions, and procedural pose parity. It is still approximate non-skeletal animation.
@@ -103,17 +143,17 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 
 ## Next Tasks
 
-1. Keep the lower-power launch route green in app and sim evals, especially `island_launch_to_landing`, `updraft_route`, and `pose_state_coverage`.
-2. Continue landing-pose fidelity after this pass: add rendered screenshot/video sidecars if leg readability still depends on numeric pose metrics.
-3. Review the new tree/prop obstruction screenshots and tune shoulder/transparent-blocker thresholds only if the fixed checkpoints show unreadable framing.
-4. Keep wind-current regression coverage green while improving airflow art direction; quality-visible export speed/acceleration, observed runtime speed/acceleration, jump, and projected crosswind drift metrics should remain part of every wind-facing PR.
-5. Replace the deepened temporary visible environment fixture scenes and faceted player fixture with authored or compatible production-quality glTF assets that satisfy the declared scene, visible world-fixture, and player animation clip readiness metrics.
+1. Stop further authored-world scope and reproduce the camera/player-control incident against `main`, PR7, and PR8.
+2. Instrument the app-path camera with always-on bounded diagnostics for target validity, boom distance, obstruction candidate choice, smoothing deltas, input capture state, player-control state, and invalid transform recovery.
+3. Add deterministic camera stress evals that mimic manual play: sustained mouse orbit while gliding, near-object orbit/strafe, high-speed traversal through dense route content, obstacle-adjacent landings, and streaming/LOD churn.
+4. Fix the first root cause that creates stutter, zoom-out, drift, off-center framing, or loss of control; do not paper over symptoms with looser thresholds.
+5. Keep existing movement, collision, wind, streaming, pose, and visual export audits green after the camera fix.
 
 ## Next Goal Draft
 
 Use this as the next 12-24 hour `/goal` seed when continuing toward the north-star traversal slice:
 
-From clean latest `main`, refine traversal feel around launch, glider dependency, authored lift, and landing readability. Keep launch as a modest grounded vertical assist with a small forward bonus rather than a route-completing burst; route completion should require glider use plus readable paired updraft/lift volumes. Tune island/updraft route placement only as needed to preserve intentional traversal. Fix landing anticipation/recovery so the legs stay human-readable through contact with bounded foot split, feet-forward absorption, and no broken-knee-looking spread. Add or maintain eval gates for launch upward/horizontal speed caps, island lift usage, dynamic lift application, landing anticipation/recovery coverage, landing max foot split, and zero unreadable key poses. Keep existing camera yaw/strafe/turn, movement, wind-current, collision, landing-pose, screenshot, and asset evals green. Finish with updated docs/status/eval spec as needed, a proprietary-reference source scan, full Rust gates, relevant sim/app/screenshot evals, `review naux` if the branch is nontrivial, `pr naux`, merge, and clean latest `main naux`.
+From clean latest `main`, run a stop-the-line camera stability incident track before merging any authored-world stack branches. Reproduce and compare manual camera/player-control behavior on `main`, PR7, and PR8; isolate the first bad slice; add app-path camera instrumentation for target validity, boom distance, obstruction candidate choice, smoothing deltas, input capture, control continuity, and invalid transform recovery; then fix the root cause so stutter, zoom-out, drift, off-center framing, and loss of player/camera control become structurally impossible or loudly fail. Add deterministic stress evals that cover sustained manual-style orbit/input, dense object proximity, high-speed glider traversal, obstacle-adjacent landing, and streaming/LOD churn. Do not rely only on sim/headless metrics. Keep existing movement, collision, wind, streaming, visual export, pose, and screenshot audits green, update docs/eval spec with the new camera contract, push the branch, and do not merge to `main` until the camera incident is demonstrably closed.
 
 ## Read First
 

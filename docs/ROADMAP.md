@@ -2,6 +2,10 @@
 
 This roadmap is horizon-based, not date-based. The point is to preserve direction across sessions without pretending we know the exact schedule.
 
+## Current Stop-The-Line Note
+
+As of 2026-07-06, camera stability supersedes further world/visual expansion. Manual playtests on the authored-world stack found camera stutter, object-proximity jitter, drift, unexpected zoom-out, off-center framing, and at least one loss of camera/player control. Do not merge the authored-world stack into `main` until the camera incident is reproduced against `main`/PR boundaries, fixed at the root, and covered by app-path stress evals that exercise manual-style orbit/input near dense objects and streaming/LOD churn.
+
 ## Horizon 0: Project Foundation
 
 Status: mostly complete.
