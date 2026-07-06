@@ -2,6 +2,10 @@
 
 This roadmap is horizon-based, not date-based. The point is to preserve direction across sessions without pretending we know the exact schedule.
 
+## Current Reset Note
+
+As of 2026-07-06, `main` is the clean baseline after merging PR1 `#384` and PR2 `#385`. The remaining draft PRs from the authored-world/camera/showcase stack were closed intentionally, with branches left intact only for reference. Restart future slices from current `main`; do not merge or restack the abandoned PR3+ world branch wholesale. Reintroduce useful ideas as narrow branches with app-path camera, stutter, collision, and route-eval evidence before stacking more work.
+
 ## Horizon 0: Project Foundation
 
 Status: mostly complete.

@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-07-01
+Last updated: 2026-07-06
 
 ## Current Milestone
 
@@ -8,25 +8,43 @@ First sky-island traversal slice.
 
 The project has a Bevy sandbox with a richer self-authored animated player fixture, playable ground movement, stronger camera-relative planar air control with tighter lateral body/travel heading coupling, smoothed body yaw/bank response, deployable glider wings with visible authored traversal response, one-launch-per-airtime modest vertical assist, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, multi-lobed drifting cloud banks with wisp-card and filament-ribbon detail plus layered high-cirrus clusters, visual `WindField` volumes that drive wind visuals, diagnostics, and bounded horizontal airborne current with force-to-flow alignment metrics, fourteen gameplay updrafts with separate `LiftField` vertical lift, cinematic lift ribbons, sixteen curved tapered crosswind lanes, marked recovery branch islands, a 41-island floating route with 19 named terrain archetypes, low cays, high summit islands, larger vertical spacing, route-aligned ravine/channel incisions, terrace/shelf/basin/ridge/needle/satellite variation, per-archetype footprint profiles, fine microrelief, higher-resolution vertex-colored terrain relief, world-space tiled terrain UVs, quantized terrain material-region identity, sharper terrain-specific procedural PBR textures with smoothed broad material noise, irregular visual/playable contours shared by terrain, ground containment, 16-segment terrain-rim collision, and four-panel terrain-body cliff collision, stratified generated cliff/underside body meshes, layered color-banded distant island impostors, batched tufted side-leaf ground-cover/detail props with raised mesh-density eval floors, deterministic multi-ring/root-flared trunk meshes, multi-lobed/detail-card near-LOD tree canopies, collidable trees/rocks/route landmarks, terrain-integrated collidable obstruction spires that replace the old visible cuboid camera blockers, wind-responsive ponds, complete declared glTF fixture coverage across asset residency classes, visible route-anchored authored world fixture scenes with stronger terrain, foliage, rock, water, route-marker, weather, and distant-impostor mesh/material floors, Bevy-native glTF scene/animation readiness hooks, repo-native asset fixture audits, background-safe terrain/export and sim/app eval coverage, and scripted evals for ground taxi control, generated-asset collision contact, terrain-rim/body collision contact, mouse camera control, yaw/strafe/turn camera stability, air-control response, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
 
+## 2026-07-06 Clean Queue Reset
+
+The project queue has been intentionally reset to a clean `main` baseline. PR1 `#384` and PR2 `#385` were merged into `main`; all remaining draft PRs were closed without deleting branches so future work can restart from current `main` instead of carrying a risky stacked branch forward.
+
+Closed draft PR intent notes:
+
+- `#380` authored island shape language: first risky post-PR2 stack slice and the first active boundary where the app-path camera regression was isolated. Reapproach shape language from clean `main` behind camera/stutter gates.
+- `#382` authored route sightline moments: world-readable composition beats and route-view staging. Reintroduce as a smaller main-based slice with explicit camera/perf verification.
+- `#383` painterly cloud strata cards: atmosphere/weather presentation work. Reapproach visuals after traversal/camera stability is protected.
+- `#386` high-fidelity island artifact kit: richer environment/detail assets. Reintroduce only with a smaller verified content budget and camera/stutter gate.
+- `#387` authored traversal lift-route contract: lift node metadata, route annotations, and lift-route audit coverage. Reapproach as a focused traversal slice after the camera baseline is locked.
+- `#388` camera stability and frame pacing contracts: high-island jump, obstruction reset, movement-heavy app-path stress coverage, and frame-pacing work. Useful contract pieces may be cherry-picked or reauthored onto a fresh main-based branch.
+- `#389` route-wide streaming budget audit: PR8 terrain/content streaming budget coverage. Reintroduce as a fresh narrow slice after camera/stutter contracts are stable.
+- `#377` visual showcase refresh: showcase images/docs plus a Bash 3.2-safe `tools/eval.sh` empty-array fix. It was closed because screenshot-backed `updraft_route` failed after rebasing onto `main` with `visible_island_detail_count=127` over the `116` threshold.
+
+Current restart rule: begin the next slice from latest `main`; keep each new PR narrow enough to verify manually and with app-path evals before stacking more work.
+
 ## Last Known Good
 
-- Commit: `816b52c`
-- Merged PR: `#353` - Fix landing pose gating and eval coverage
+- Commit: `de596c9`
+- Merged PRs: `#384` - Add collision truth and terrain seam gates; `#385` - Add authored archipelago composition plan
 - Verification:
+  - `./tools/eval.sh underbridge_under_route target/eval/main_post_pr1_pr2_underbridge`
   - `cargo fmt --all --check`
   - `cargo check`
   - `cargo clippy --all-targets --all-features -- -D warnings`
   - `cargo test`
-  - hidden app evals for `island_launch_to_landing` and `branch_recovery_route`
-  - sim-only evals for `pose_state_coverage`, `branch_recovery_route`, and `island_launch_to_landing`
-  - `./tools/player_pose_preview.sh target/player_pose_preview_landing_glide_gate_final`
-  - source scan for proprietary-reference terms, with only internal identifier false positives
+  - `git diff --check`
+  - conflict-marker scan across `docs`, `src`, and `tools`
+  - post-merge camera route passed with max camera distance `14.5422m`, max camera step `0.9756m`, max camera rotation delta `0.6392deg`, and zero obstruction snaps
 
 ## Active Work
 
 Use this section for milestone handoffs, not routine worktree changes.
 
-- Open PRs: consult GitHub
+- Open PRs: none after the clean queue reset.
+- Next slice should be cut from latest `main`; do not revive the closed draft stack wholesale.
 
 ## Current Course Correction
 
@@ -103,17 +121,17 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 
 ## Next Tasks
 
-1. Keep the lower-power launch route green in app and sim evals, especially `island_launch_to_landing`, `updraft_route`, and `pose_state_coverage`.
-2. Continue landing-pose fidelity after this pass: add rendered screenshot/video sidecars if leg readability still depends on numeric pose metrics.
-3. Review the new tree/prop obstruction screenshots and tune shoulder/transparent-blocker thresholds only if the fixed checkpoints show unreadable framing.
-4. Keep wind-current regression coverage green while improving airflow art direction; quality-visible export speed/acceleration, observed runtime speed/acceleration, jump, and projected crosswind drift metrics should remain part of every wind-facing PR.
-5. Replace the deepened temporary visible environment fixture scenes and faceted player fixture with authored or compatible production-quality glTF assets that satisfy the declared scene, visible world-fixture, and player animation clip readiness metrics.
+1. Start the next product slice from latest `main`, not from any closed draft stack branch.
+2. Keep `underbridge_under_route` camera metrics green whenever world/content density, collision, or streaming behavior changes.
+3. Reintroduce camera/stutter stress contracts before reattempting large world-shape, visual-density, or streaming-budget work.
+4. Keep the lower-power launch route green in app and sim evals, especially `island_launch_to_landing`, `updraft_route`, and `pose_state_coverage`.
+5. Continue landing-pose fidelity after this pass: add rendered screenshot/video sidecars if leg readability still depends on numeric pose metrics.
 
 ## Next Goal Draft
 
 Use this as the next 12-24 hour `/goal` seed when continuing toward the north-star traversal slice:
 
-From clean latest `main`, refine traversal feel around launch, glider dependency, authored lift, and landing readability. Keep launch as a modest grounded vertical assist with a small forward bonus rather than a route-completing burst; route completion should require glider use plus readable paired updraft/lift volumes. Tune island/updraft route placement only as needed to preserve intentional traversal. Fix landing anticipation/recovery so the legs stay human-readable through contact with bounded foot split, feet-forward absorption, and no broken-knee-looking spread. Add or maintain eval gates for launch upward/horizontal speed caps, island lift usage, dynamic lift application, landing anticipation/recovery coverage, landing max foot split, and zero unreadable key poses. Keep existing camera yaw/strafe/turn, movement, wind-current, collision, landing-pose, screenshot, and asset evals green. Finish with updated docs/status/eval spec as needed, a proprietary-reference source scan, full Rust gates, relevant sim/app/screenshot evals, `review naux` if the branch is nontrivial, `pr naux`, merge, and clean latest `main naux`.
+From clean latest `main`, drive one narrow traversal slice with explicit camera/stutter protection. Prefer rebuilding ideas from the closed drafts over resurrecting the old stacked branches. Keep `underbridge_under_route` camera metrics green, preserve the PR1/PR2 collision and route baseline, and add only the smallest app-path stress coverage needed for the chosen slice. If the slice touches world density, streaming, collision, or camera feel, include route eval evidence before opening a PR. Finish with updated docs/status/eval spec as needed, full Rust gates, relevant sim/app/screenshot evals, `review naux` if the branch is nontrivial, `pr naux`, merge, and clean latest `main naux`.
 
 ## Read First
 
