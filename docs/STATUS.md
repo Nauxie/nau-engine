@@ -12,12 +12,12 @@ The project has a Bevy sandbox with a richer self-authored animated player fixtu
 
 Do not merge the authored-world stack into `main` until the camera incident below is reproduced, isolated, fixed at the root, and covered by stronger app/manual-style evals. The latest branch state passes headless checks, but manual playtests found severe regressions that the harness did not catch.
 
-- Active handoff worktree: `/Users/abhinav/Dev/abhinav/nau-engine-pr3-shape-language`
+- Active stabilization worktree: `/Users/abhinav/Dev/abhinav/nau-engine`
 - Active handoff branch: `abhinav/performance-streaming-budget-pr8`
 - Current in-progress camera fix branch: `abhinav/camera-stability-contract-pr8`
 - Pushed handoff commit before this docs update: `b30346a` (`Add route-wide streaming budget audit`)
-- Current open stack PR: `#387`, `abhinav/traversal-gamefeel-pr7` into `abhinav/cloud-atmosphere-pr6`; it is mechanically mergeable but should stay unmerged until camera stability is proven.
-- PR8 is pushed as `abhinav/performance-streaming-budget-pr8`; no PR has been opened for it yet.
+- Cleaned PR queue state after stabilization snapshot `dcfdc68`: `#388` is the draft camera/frame-pacing stabilization PR from `abhinav/camera-stability-contract-pr8` into `abhinav/performance-streaming-budget-pr8`; `#389` is the draft PR8 route-wide streaming budget PR into PR7.
+- Canonical stack PRs: `#384` PR1 into `main`, `#385` PR2 into PR1, then draft-held `#380` PR3, `#386` PR4, `#382` PR5, `#383` PR6, `#387` PR7, `#389` PR8, and `#388` camera stabilization. Stale duplicate PRs `#378`, `#379`, and `#381` were closed without deleting branches.
 
 Manual regression report:
 
@@ -88,9 +88,9 @@ Performance/stutter audit update on `abhinav/camera-stability-contract-pr8`:
 Use this section for milestone handoffs, not routine worktree changes.
 
 - Stop-the-line priority: camera stability/player-control incident on the authored-world stack.
-- Active pushed branch for handoff: `abhinav/performance-streaming-budget-pr8`.
-- Open PR held for now: `#387` (`abhinav/traversal-gamefeel-pr7` into `abhinav/cloud-atmosphere-pr6`).
-- Do not open/merge later authored-world PRs until camera behavior is proven against `main` and the first bad slice is isolated.
+- Active pushed branch for handoff: `abhinav/camera-stability-contract-pr8`, draft PR `#388` into PR8.
+- PR8 is now draft PR `#389` into PR7. PR3 through PR8 plus the camera stabilization PR are draft-held; PR1 `#384` and PR2 `#385` remain the only non-draft stack PRs because the app-path camera regression was first isolated at PR3.
+- Do not merge PR3+ authored-world work into `main` until the camera contract is backported/restacked into the first bad slice or the full stack is treated as one validated integration batch.
 
 ## Current Course Correction
 
