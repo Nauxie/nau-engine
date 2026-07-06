@@ -12,7 +12,7 @@ use crate::{
 };
 
 pub const MAX_RESIDENT_ISLAND_VISUAL_FRACTION: f32 = 0.70;
-pub(super) const MAX_ENTITY_COUNT: usize = 3200;
+pub(super) const MAX_ENTITY_COUNT: usize = 5000;
 pub(super) const MAX_VISIBLE_ISLAND_DETAIL_COUNT: usize = 116;
 pub(super) const MAX_RESIDENT_ISLAND_VISUAL_COUNT: usize = 236;
 pub(super) const MIN_SKY_ISLAND_COUNT: usize = SKY_ROUTE_ISLAND_COUNT;
