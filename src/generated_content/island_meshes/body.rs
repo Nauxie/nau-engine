@@ -113,34 +113,18 @@ pub(crate) fn island_underside_mesh(island_index: usize, island: SkyIsland) -> M
     let mut indices = Vec::with_capacity(
         ISLAND_UNDERSIDE_RINGS * ISLAND_BODY_SEGMENTS * 6 + ISLAND_BODY_SEGMENTS * 3,
     );
-    let phase = island_index as f32 * 0.73;
     let top_y = island.mesh_top_y();
 
     for ring in 0..=ISLAND_UNDERSIDE_RINGS {
         let t = ring as f32 / ISLAND_UNDERSIDE_RINGS as f32;
         for segment in 0..ISLAND_BODY_SEGMENTS {
             let angle = segment as f32 / ISLAND_BODY_SEGMENTS as f32 * std::f32::consts::TAU;
-            if ring == 0 {
-                positions.push(island_cliff_surface_position(
-                    island_index,
-                    island,
-                    angle,
-                    1.0,
-                ));
-                uvs.push([0.5 + angle.cos() * 0.34, 0.5 + angle.sin() * 0.34]);
-                colors.push(island_rock_vertex_color(island_index, angle, t, true));
-                continue;
-            }
-
-            let twist = 0.045 * (angle * 6.0 + phase + t * 2.4).sin();
-            let radius_scale = island_silhouette_scale(island, angle)
-                * (0.66 * (1.0 - t).powf(1.35) + 0.18 * t)
-                * (1.0 + twist);
-            let y = top_y
-                - island.thickness * (0.82 + t * 0.58)
-                - island.thickness * 0.06 * (angle * 5.0 - phase).sin().abs();
-
-            positions.push(island_polar_position(island, angle, radius_scale, y));
+            positions.push(island_underside_surface_position(
+                island_index,
+                island,
+                angle,
+                t,
+            ));
             uvs.push([
                 0.5 + angle.cos() * (0.34 - t * 0.19),
                 0.5 + angle.sin() * (0.34 - t * 0.19),
@@ -199,12 +183,31 @@ pub(crate) fn island_underside_mesh(island_index: usize, island: SkyIsland) -> M
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
 }
 
+fn island_underside_surface_position(
+    island_index: usize,
+    island: SkyIsland,
+    angle: f32,
+    t: f32,
+) -> [f32; 3] {
+    if t <= f32::EPSILON {
+        return island_cliff_surface_position(island_index, island, angle, 1.0);
+    }
+
+    let phase = island_index as f32 * 0.73;
+    let twist = 0.045 * (angle * 6.0 + phase + t * 2.4).sin();
+    let radius_scale = island_silhouette_scale(island, angle)
+        * (0.66 * (1.0 - t).powf(1.35) + 0.18 * t)
+        * (1.0 + twist);
+    let y = island.mesh_top_y()
+        - island.thickness * (0.82 + t * 0.58)
+        - island.thickness * 0.06 * (angle * 5.0 - phase).sin().abs();
+
+    island_polar_position(island, angle, radius_scale, y)
+}
+
 pub(crate) fn island_impostor_mesh(island_index: usize, island: SkyIsland) -> Mesh {
-    let top_center_y = island.mesh_top_y() - 0.16;
-    let shoulder_center_y = top_center_y - island.thickness * 0.30;
-    let lower_center_y = top_center_y - island.thickness * 0.62;
-    let bottom_y = top_center_y - island.thickness * 0.92;
-    let phase = island_index as f32 * 0.71;
+    let top_center_y = island.mesh_top_y_at(island.center);
+    let bottom_y = island.mesh_top_y() - island.thickness * 1.58;
     let top_ring_start = 1;
     let shoulder_ring_start = top_ring_start + ISLAND_IMPOSTOR_SEGMENTS;
     let lower_ring_start = shoulder_ring_start + ISLAND_IMPOSTOR_SEGMENTS;
@@ -220,48 +223,42 @@ pub(crate) fn island_impostor_mesh(island_index: usize, island: SkyIsland) -> Me
 
     for segment in 0..ISLAND_IMPOSTOR_SEGMENTS {
         let angle = segment as f32 / ISLAND_IMPOSTOR_SEGMENTS as f32 * std::f32::consts::TAU;
-        let contour_scale = island_silhouette_scale(island, angle);
-        let edge_variation = 0.96 + 0.035 * (angle * 7.0 - phase).cos();
-        let radius_x = island.half_extents.x * 0.9 * contour_scale * edge_variation;
-        let radius_z = island.half_extents.y * 0.9 * contour_scale * edge_variation;
-        let x = island.center.x + angle.cos() * radius_x;
-        let z = island.center.z + angle.sin() * radius_z;
-        let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z)) - 0.18;
+        let [x, y, z] = island_cliff_surface_position(island_index, island, angle, 0.0);
 
         positions.push([x, y, z]);
         uvs.push([0.5 + angle.cos() * 0.45, 0.5 + angle.sin() * 0.45]);
         colors.push(island_terrain_vertex_color(
             island_index,
-            0.9,
+            1.0,
             angle,
             y - island.mesh_top_y(),
         ));
     }
 
-    for (ring, (center_y, radius_scale, t, underside)) in [
-        (shoulder_center_y, 0.72, 0.34, false),
-        (lower_center_y, 0.48, 0.78, true),
-    ]
-    .into_iter()
-    .enumerate()
+    for (ring, (position_t, color_t, underside)) in
+        [(0.68_f32, 0.68_f32, false), (0.62_f32, 0.82_f32, true)]
+            .into_iter()
+            .enumerate()
     {
         for segment in 0..ISLAND_IMPOSTOR_SEGMENTS {
             let angle = segment as f32 / ISLAND_IMPOSTOR_SEGMENTS as f32 * std::f32::consts::TAU;
-            let contour_scale = island_silhouette_scale(island, angle);
-            let edge_variation =
-                1.0 + 0.08 * (angle * 4.0 + phase).sin() - 0.035 * (angle * 8.0).cos();
-            let radius_x = island.half_extents.x * radius_scale * contour_scale * edge_variation;
-            let radius_z = island.half_extents.y * radius_scale * contour_scale * edge_variation;
-            let x = island.center.x + angle.cos() * radius_x;
-            let z = island.center.z + angle.sin() * radius_z;
-            let y = center_y - island.thickness * 0.05 * (angle * 5.0 + phase).sin().abs();
+            let [x, y, z] = if underside {
+                island_underside_surface_position(island_index, island, angle, position_t)
+            } else {
+                island_cliff_surface_position(island_index, island, angle, position_t)
+            };
 
             positions.push([x, y, z]);
             uvs.push([
                 0.5 + angle.cos() * (0.35 - ring as f32 * 0.11),
                 0.78 + angle.sin() * 0.11 + ring as f32 * 0.14,
             ]);
-            colors.push(island_rock_vertex_color(island_index, angle, t, underside));
+            colors.push(island_rock_vertex_color(
+                island_index,
+                angle,
+                color_t,
+                underside,
+            ));
         }
     }
 
