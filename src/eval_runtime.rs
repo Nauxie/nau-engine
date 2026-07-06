@@ -67,6 +67,9 @@ impl CliAction {
 pub(crate) struct EvalRun {
     pub(crate) scenario: EvalScenario,
     pub(crate) samples_path: PathBuf,
+    pub(crate) camera_player_trace_path: PathBuf,
+    pub(crate) obstruction_decision_trace_path: PathBuf,
+    pub(crate) frame_time_trace_path: PathBuf,
     pub(crate) summary_path: PathBuf,
     pub(crate) screenshot_path: Option<PathBuf>,
     pub(crate) checkpoint_captures: Vec<EvalCheckpointCapture>,
@@ -99,6 +102,10 @@ impl EvalRun {
         fs::create_dir_all(&options.output_dir)?;
 
         let samples_path = options.output_dir.join("samples.ndjson");
+        let camera_player_trace_path = options.output_dir.join("camera_player_trace.ndjson");
+        let obstruction_decision_trace_path =
+            options.output_dir.join("obstruction_decision_trace.ndjson");
+        let frame_time_trace_path = options.output_dir.join("frame_time_trace.ndjson");
         let summary_path = options.output_dir.join("summary.json");
         let screenshot_path = options
             .capture_screenshot
@@ -106,6 +113,10 @@ impl EvalRun {
         let mut checkpoint_captures = Vec::new();
 
         remove_existing_file(&summary_path)?;
+        remove_existing_file(&samples_path)?;
+        remove_existing_file(&camera_player_trace_path)?;
+        remove_existing_file(&obstruction_decision_trace_path)?;
+        remove_existing_file(&frame_time_trace_path)?;
         if let Some(path) = &screenshot_path {
             remove_existing_file(path)?;
         }
@@ -132,10 +143,16 @@ impl EvalRun {
                 .collect();
         }
         File::create(&samples_path)?;
+        File::create(&camera_player_trace_path)?;
+        File::create(&obstruction_decision_trace_path)?;
+        File::create(&frame_time_trace_path)?;
 
         Ok(Self {
             scenario: options.scenario,
             samples_path,
+            camera_player_trace_path,
+            obstruction_decision_trace_path,
+            frame_time_trace_path,
             summary_path,
             screenshot_path,
             checkpoint_captures,
@@ -151,7 +168,40 @@ impl EvalRun {
     pub(crate) fn record_sample(&mut self, sample: EvalSample) -> Result<(), std::io::Error> {
         let mut file = OpenOptions::new().append(true).open(&self.samples_path)?;
         writeln!(file, "{}", sample.to_json())?;
+        let mut camera_player_trace = OpenOptions::new()
+            .append(true)
+            .open(&self.camera_player_trace_path)?;
+        writeln!(
+            camera_player_trace,
+            "{}",
+            sample.to_camera_player_trace_json()
+        )?;
+        let mut obstruction_decision_trace = OpenOptions::new()
+            .append(true)
+            .open(&self.obstruction_decision_trace_path)?;
+        writeln!(
+            obstruction_decision_trace,
+            "{}",
+            sample.to_obstruction_decision_trace_json()
+        )?;
         self.accumulator.observe(sample);
+        Ok(())
+    }
+
+    pub(crate) fn record_frame_time_ms(
+        &mut self,
+        frame_time_ms: f32,
+    ) -> Result<(), std::io::Error> {
+        let mut file = OpenOptions::new()
+            .append(true)
+            .open(&self.frame_time_trace_path)?;
+        writeln!(
+            file,
+            "{{\"frame\":{},\"time_secs\":{:.4},\"frame_time_ms\":{:.4}}}",
+            self.frame,
+            self.frame as f32 * self.scenario.fixed_dt,
+            finite_trace_number(frame_time_ms),
+        )?;
         Ok(())
     }
 
@@ -176,6 +226,14 @@ impl EvalRun {
 
         fs::write(&self.summary_path, summary.to_json())?;
         Ok(passed)
+    }
+}
+
+fn finite_trace_number(value: f32) -> f32 {
+    if value.is_finite() {
+        value.max(0.0)
+    } else {
+        0.0
     }
 }
 

@@ -29,6 +29,8 @@ const TERRAIN_COLLISION_TRUTH_FAR_FIELD_MIN_CLEARANCE_M: f32 = TERRAIN_SIDE_COLL
 const TERRAIN_COLLISION_TRUTH_FAR_FIELD_OUTSET_STEP_M: f32 = 0.5;
 const TERRAIN_COLLISION_TRUTH_FAR_FIELD_MAX_OUTSET_M: f32 = TERRAIN_SIDE_COLLISION_BAND_M + 8.0;
 pub const TERRAIN_COLLISION_TRUTH_MAX_NEAR_CLIFF_PUSH_M: f32 = 0.24;
+const UNDER_ROUTE_COLLISION_CLEARANCE_PADDING_M: f32 = 10.0;
+const UNDER_ROUTE_TOP_SURFACE_CLEARANCE_FRACTION: f32 = 0.18;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WorldCollisionProxyKind {
@@ -559,12 +561,28 @@ fn skips_terrain_side_collision(position: Vec3, proxy: WorldCollisionProxy) -> b
         return false;
     };
 
+    if position_is_inside_under_route_collision_clearance(island, position) {
+        return true;
+    }
+
     let surface_y = island.terrain_surface_y_at(position);
     if position.y >= surface_y - TERRAIN_SIDE_SURFACE_CLEARANCE_M {
         return true;
     }
 
     distance_to_playable_contour_m(island, position) > TERRAIN_SIDE_COLLISION_BAND_M
+}
+
+fn position_is_inside_under_route_collision_clearance(island: SkyIsland, position: Vec3) -> bool {
+    let Some(segment) = island.under_route_segment() else {
+        return false;
+    };
+
+    let under_top_surface = position.y
+        < island.mesh_top_y() - island.thickness * UNDER_ROUTE_TOP_SURFACE_CLEARANCE_FRACTION;
+
+    under_top_surface
+        && segment.contains_clearance(position, UNDER_ROUTE_COLLISION_CLEARANCE_PADDING_M)
 }
 
 fn terrain_side_push_out(position: Vec3, proxy: WorldCollisionProxy) -> Option<(Vec3, f32)> {
@@ -946,6 +964,37 @@ mod tests {
         assert_eq!(far_resolution.terrain_rim_hit_count, 0);
         assert_eq!(far_resolution.terrain_body_hit_count, 0);
         assert_eq!(far_resolution.state.position, far_position);
+    }
+
+    #[test]
+    fn terrain_side_collision_respects_authored_under_route_clearance() {
+        let route = SkyRoute::default();
+        let island = route
+            .island_named("underbridge cay")
+            .expect("underbridge cay exists");
+        let segment = island
+            .under_route_segment()
+            .expect("underbridge cay has an authored under route");
+        let proxies = terrain_body_collision_proxies(island)
+            .into_iter()
+            .chain(terrain_rim_collision_proxies(island))
+            .collect::<Vec<_>>();
+        let under_route_state = FlightState::new(
+            segment.midpoint,
+            Vec3::new(8.0, -1.0, 8.0),
+            FlightController {
+                mode: crate::movement::FlightMode::Gliding,
+                launch_available: false,
+                ..Default::default()
+            },
+        );
+
+        let resolution = resolve_world_collisions(under_route_state, proxies.iter().copied());
+
+        assert_eq!(resolution.terrain_rim_hit_count, 0);
+        assert_eq!(resolution.terrain_body_hit_count, 0);
+        assert_eq!(resolution.state.position, under_route_state.position);
+        assert_eq!(resolution.state.velocity, under_route_state.velocity);
     }
 
     #[test]

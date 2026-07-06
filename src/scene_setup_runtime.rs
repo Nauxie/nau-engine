@@ -16,13 +16,15 @@ use crate::scene_setup_runtime::player::spawn_player_runtime;
 use crate::scene_setup_runtime::world::spawn_world_runtime;
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::eval::{
-    PLATEAU_ARRIVAL_CAMERA, TERRAIN_BODY_COLLISION_CONTACT, UNDERBRIDGE_UNDER_ROUTE,
+    CAMERA_OBSTRUCTION_RESET_STRESS, HIGH_ISLAND_JUMP_CAMERA, PLATEAU_ARRIVAL_CAMERA,
+    TERRAIN_BODY_COLLISION_CONTACT, UNDERBRIDGE_UNDER_ROUTE,
 };
 use nau_engine::world::{SkyRoute, route_obstruction_spires};
 
 pub(crate) use constants::{INITIAL_SKY_CLEAR_COLOR, PLAYER_START, WORLD_RADIUS};
 
 const PLATEAU_CAMERA_START_BACKOFF_M: f32 = 7.0;
+const HIGH_ISLAND_JUMP_START_INSET_M: f32 = 5.0;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn setup(
@@ -92,8 +94,16 @@ fn initial_player_position(eval_run: Option<&EvalRun>, route: &SkyRoute) -> Vec3
     if eval_run.is_some_and(|run| run.scenario.name == UNDERBRIDGE_UNDER_ROUTE) {
         return underbridge_under_route_start_position(route);
     }
-    if eval_run.is_some_and(|run| run.scenario.name == PLATEAU_ARRIVAL_CAMERA) {
+    if eval_run.is_some_and(|run| {
+        matches!(
+            run.scenario.name,
+            PLATEAU_ARRIVAL_CAMERA | CAMERA_OBSTRUCTION_RESET_STRESS
+        )
+    }) {
         return plateau_arrival_camera_start_position(route);
+    }
+    if eval_run.is_some_and(|run| run.scenario.name == HIGH_ISLAND_JUMP_CAMERA) {
+        return high_island_jump_camera_start_position(route);
     }
 
     PLAYER_START
@@ -114,6 +124,19 @@ fn plateau_arrival_camera_start_position(route: &SkyRoute) -> Vec3 {
         .find(|spire| spire.island_name == "great sky plateau")
         .map(|spire| spire.base_position + Vec3::NEG_Z * PLATEAU_CAMERA_START_BACKOFF_M)
         .unwrap_or_else(|| route.playtest_reset_position());
+    position.y = route.ground_at(position).floor_y;
+    position
+}
+
+fn high_island_jump_camera_start_position(route: &SkyRoute) -> Vec3 {
+    let Some(island) = route.island_named("great sky plateau") else {
+        return route.playtest_reset_position();
+    };
+    let center = Vec2::new(island.center.x, island.center.z);
+    let edge = island.footprint_contour_point(-std::f32::consts::FRAC_PI_2, false);
+    let inward = (center - edge).normalize_or_zero();
+    let start_xz = edge + inward * HIGH_ISLAND_JUMP_START_INSET_M;
+    let mut position = Vec3::new(start_xz.x, island.center.y, start_xz.y);
     position.y = route.ground_at(position).floor_y;
     position
 }

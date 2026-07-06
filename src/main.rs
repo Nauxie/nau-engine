@@ -17,7 +17,7 @@ use authored_assets::*;
 use bevy::app::AnimationSystems;
 use bevy::light::DirectionalLightShadowMap;
 use bevy::prelude::*;
-use bevy::window::CompositeAlphaMode;
+use bevy::window::{CompositeAlphaMode, PresentMode};
 use camera_runtime::*;
 #[cfg(test)]
 use content_export::mesh_uv0;
@@ -48,8 +48,8 @@ pub(crate) use player_runtime::{
     keyboard_flight_input, movement_facing,
 };
 use player_runtime::{
-    animate_character, eval_fly_player, fly_player, reset_player_to_playtest_position,
-    update_route_objectives,
+    animate_character, eval_fly_player, eval_reset_player_to_playtest_position, fly_player,
+    reset_player_to_playtest_position, update_route_objectives,
 };
 use player_runtime::{
     apply_authored_glider_pose, apply_authored_player_pose_nodes, reapply_authored_glider_pose,
@@ -66,6 +66,8 @@ use std::fs;
 #[cfg(test)]
 use std::path::PathBuf;
 use world_collision_runtime::*;
+
+const DIRECTIONAL_SHADOW_MAP_SIZE: usize = 1024;
 
 fn main() -> AppExit {
     let cli = match CliAction::from_env() {
@@ -144,7 +146,9 @@ fn main() -> AppExit {
             brightness: 360.0,
             ..default()
         })
-        .insert_resource(DirectionalLightShadowMap { size: 4096 })
+        .insert_resource(DirectionalLightShadowMap {
+            size: DIRECTIONAL_SHADOW_MAP_SIZE,
+        })
         .insert_resource(FlightTuning::default())
         .insert_resource(CameraControlTuning::default())
         .insert_resource(CameraControlState::default())
@@ -237,7 +241,12 @@ fn main() -> AppExit {
             .insert_resource(EvalMovementBasis::default())
             .insert_resource(VisiblePoseTemporalState::default())
             .insert_resource(ObservedWindVisualMotionState::default())
-            .add_systems(Update, eval_fly_player.in_set(GameSet::Movement))
+            .add_systems(
+                Update,
+                (eval_reset_player_to_playtest_position, eval_fly_player)
+                    .chain()
+                    .in_set(GameSet::Movement),
+            )
             .add_systems(
                 Update,
                 (
@@ -282,6 +291,7 @@ fn primary_window(eval: Option<&EvalOptions>) -> Window {
         title: "The NAU Engine Flight Sandbox".into(),
         resolution: (1280, 720).into(),
         composite_alpha_mode: CompositeAlphaMode::Opaque,
+        present_mode: PresentMode::AutoNoVsync,
         transparent: false,
         visible: !hidden_metric_eval,
         focused: !hidden_metric_eval,

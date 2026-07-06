@@ -3,12 +3,12 @@ use crate::authored_assets::VisualAssetRegistry;
 use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::eval_runtime::EvalRun;
 use crate::generated_content::{
-    CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, cloud_cluster_mesh, cloud_filament_ribbon_detail_count,
+    CLOUD_VEIL_LOBES, cloud_cluster_mesh, cloud_filament_ribbon_detail_count,
     crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh, mesh_y_range, mix_color,
     updraft_ribbon_mesh,
 };
 use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
-use bevy::light::VolumetricFog;
+use bevy::light::{NotShadowCaster, VolumetricFog};
 use bevy::prelude::*;
 use bevy::render::render_resource::BlendState;
 use nau_engine::animation::{Side, wing_airflow_strength};
@@ -22,16 +22,18 @@ use nau_engine::environment::{
 use nau_engine::movement::{FlightController, Velocity};
 use nau_engine::world::SkyIsland;
 
-pub(crate) const UPDRAFT_RIBBONS_PER_FIELD: usize = 6;
+pub(crate) const UPDRAFT_RIBBONS_PER_FIELD: usize = 4;
 pub(crate) const UPDRAFT_GUIDE_RING_LEVELS: [f32; 7] = [-0.86, -0.56, -0.24, 0.08, 0.4, 0.72, 0.94];
-pub(crate) const UPDRAFT_GUIDES_PER_RING: usize = 15;
-pub(crate) const CROSSWIND_RIBBONS_PER_FIELD: usize = 7;
-pub(crate) const CROSSWIND_GUIDES_PER_FIELD: usize = 60;
+pub(crate) const UPDRAFT_GUIDES_PER_RING: usize = 1;
+pub(crate) const CROSSWIND_RIBBONS_PER_FIELD: usize = 4;
+pub(crate) const CROSSWIND_GUIDES_PER_FIELD: usize = 10;
 pub(crate) const CROSSWIND_RIBBON_LENGTH_SCALE: f32 = 0.92;
 pub(crate) const CROSSWIND_RIBBON_CENTER_ADVANCE: f32 = 0.95;
 pub(crate) const WIND_VISUAL_COHERENCE_DT: f32 = 0.2;
 pub(crate) const WIND_VISUAL_ALIGNMENT_MIN_DOT: f32 = 0.55;
 pub(crate) const CINEMATIC_WEATHER_REVIEW_SAMPLE_COUNT: usize = 5;
+const RUNTIME_CLOUD_BANK_LOBES: usize = 18;
+const WEATHER_VEIL_ISLAND_STRIDE: usize = 6;
 const WIND_FIELD_METRIC_EPSILON: f32 = 0.001;
 const WIND_VISUAL_LOOP_FADE_FRACTION: f32 = 0.34;
 const WIND_VISUAL_QUALITY_MIN_SCALE: f32 = 0.5;
@@ -309,6 +311,7 @@ pub(crate) fn spawn_updraft_guide(
     commands.spawn((
         Mesh3d(meshes.add(Cylinder::new(radius * 0.34, height))),
         MeshMaterial3d(column_material),
+        NotShadowCaster,
         Transform::from_translation(lift.center),
         UpdraftColumn {
             field,
@@ -328,6 +331,7 @@ pub(crate) fn spawn_updraft_guide(
         commands.spawn((
             Mesh3d(meshes.add(updraft_ribbon_mesh(radius, height, mesh_phase))),
             MeshMaterial3d(ribbon_material.clone()),
+            NotShadowCaster,
             Transform {
                 translation: lift.center,
                 rotation: base_rotation,
@@ -364,6 +368,7 @@ pub(crate) fn spawn_updraft_guide(
             commands.spawn((
                 Mesh3d(marker_mesh.clone()),
                 MeshMaterial3d(marker_material.clone()),
+                NotShadowCaster,
                 Transform {
                     translation,
                     scale: updraft_guide_scale(&guide, translation, 0.0),
@@ -400,6 +405,7 @@ pub(crate) fn spawn_crosswind_guide(
         commands.spawn((
             Mesh3d(ribbon_mesh.clone()),
             MeshMaterial3d(ribbon_material.clone()),
+            NotShadowCaster,
             Transform {
                 translation: base_translation,
                 rotation: base_rotation * Quat::from_rotation_x(phase * std::f32::consts::TAU),
@@ -426,6 +432,7 @@ pub(crate) fn spawn_crosswind_guide(
         commands.spawn((
             Mesh3d(marker_mesh.clone()),
             MeshMaterial3d(marker_material.clone()),
+            NotShadowCaster,
             Transform {
                 translation,
                 rotation: crosswind_guide_rotation(&guide, translation, 0.0),
@@ -459,12 +466,13 @@ pub(crate) fn spawn_weather_layers(
             3.8 + (index % 3) as f32 * 0.55,
             island.half_extents.y * 0.26 + 8.0,
         );
-        let cloud_mesh_data = cloud_cluster_mesh(2_000 + index as u32 * 37, CLOUD_BANK_LOBES);
+        let cloud_mesh_data =
+            cloud_cluster_mesh(2_000 + index as u32 * 37, RUNTIME_CLOUD_BANK_LOBES);
         let cloud_depth_m = mesh_y_range(&cloud_mesh_data) * scale.y;
         content_diagnostics.record_generated_weather_cloud(
-            CLOUD_BANK_LOBES,
+            RUNTIME_CLOUD_BANK_LOBES,
             cloud_mesh_data.count_vertices(),
-            cloud_filament_ribbon_detail_count(CLOUD_BANK_LOBES),
+            cloud_filament_ribbon_detail_count(RUNTIME_CLOUD_BANK_LOBES),
             cloud_depth_m,
             true,
         );
@@ -473,6 +481,7 @@ pub(crate) fn spawn_weather_layers(
         commands.spawn((
             Mesh3d(cloud_mesh),
             MeshMaterial3d(cloud_material.clone()),
+            NotShadowCaster,
             Transform {
                 translation: origin,
                 scale,
@@ -491,7 +500,7 @@ pub(crate) fn spawn_weather_layers(
             Name::new("drifting cloud bank"),
         ));
 
-        if index % 2 == 0 {
+        if index % WEATHER_VEIL_ISLAND_STRIDE == 0 {
             let veil_anchor = island.center
                 + Vec3::new(
                     (phase * 1.3).cos() * island.half_extents.x,
@@ -529,6 +538,7 @@ pub(crate) fn spawn_weather_layers(
                 commands.spawn((
                     Mesh3d(veil_mesh),
                     MeshMaterial3d(cloud_veil_material.clone()),
+                    NotShadowCaster,
                     Transform {
                         translation: veil_origin,
                         scale: veil_scale,

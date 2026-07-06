@@ -1,4 +1,5 @@
 use super::{EvalSample, EvalThresholds, json_number, json_string};
+use std::path::Path;
 
 #[derive(Clone, Debug)]
 pub struct EvalArtifacts {
@@ -18,16 +19,31 @@ impl EvalArtifacts {
             .unwrap_or_else(|| "null".to_string());
         let checkpoint_screenshots = json_string_array(&self.checkpoint_screenshots);
         let checkpoint_marker_metadata = json_string_array(&self.checkpoint_marker_metadata);
+        let camera_player_trace =
+            sibling_artifact_path(&self.samples_ndjson, "camera_player_trace.ndjson");
+        let obstruction_decision_trace =
+            sibling_artifact_path(&self.samples_ndjson, "obstruction_decision_trace.ndjson");
+        let frame_time_trace =
+            sibling_artifact_path(&self.samples_ndjson, "frame_time_trace.ndjson");
 
         format!(
-            "{{\n{indent}  \"summary_json\": {},\n{indent}  \"samples_ndjson\": {},\n{indent}  \"screenshot_png\": {},\n{indent}  \"checkpoint_screenshots\": {},\n{indent}  \"checkpoint_marker_metadata\": {}\n{indent}}}",
+            "{{\n{indent}  \"summary_json\": {},\n{indent}  \"samples_ndjson\": {},\n{indent}  \"camera_player_trace_ndjson\": {},\n{indent}  \"obstruction_decision_trace_ndjson\": {},\n{indent}  \"frame_time_trace_ndjson\": {},\n{indent}  \"screenshot_png\": {},\n{indent}  \"checkpoint_screenshots\": {},\n{indent}  \"checkpoint_marker_metadata\": {}\n{indent}}}",
             json_string(&self.summary_json),
             json_string(&self.samples_ndjson),
+            json_string(&camera_player_trace),
+            json_string(&obstruction_decision_trace),
+            json_string(&frame_time_trace),
             screenshot,
             checkpoint_screenshots,
             checkpoint_marker_metadata,
         )
     }
+}
+
+fn sibling_artifact_path(path: &str, file_name: &str) -> String {
+    let mut path = Path::new(path).to_path_buf();
+    path.set_file_name(file_name);
+    path.to_string_lossy().into_owned()
 }
 
 #[derive(Clone, Debug)]
@@ -53,10 +69,17 @@ pub struct EvalMetricsSummary {
     pub max_launch_upward_speed_mps: f32,
     pub max_launch_horizontal_speed_mps: f32,
     pub max_camera_distance_m: f32,
+    pub max_camera_distance_frame: u32,
     pub min_camera_surface_clearance_m: f32,
     pub max_camera_player_angle_degrees: f32,
     pub max_camera_step_distance_m: f32,
+    pub max_camera_step_distance_frame: u32,
+    pub max_streaming_camera_step_distance_m: f32,
+    pub max_streaming_camera_step_distance_frame: u32,
     pub max_camera_rotation_delta_degrees: f32,
+    pub max_camera_rotation_delta_frame: u32,
+    pub max_streaming_camera_rotation_delta_degrees: f32,
+    pub max_streaming_camera_rotation_delta_frame: u32,
     pub max_camera_orbit_alignment_degrees: f32,
     pub avg_camera_follow_direction_error_degrees: f32,
     pub p95_camera_follow_direction_error_degrees: f32,
@@ -68,6 +91,15 @@ pub struct EvalMetricsSummary {
     pub max_camera_obstruction_hits: usize,
     pub min_camera_obstructed_distance_m: f32,
     pub camera_obstruction_snap_count: u32,
+    pub invalid_camera_target_samples: u32,
+    pub invalid_camera_transform_samples: u32,
+    pub invalid_player_control_samples: u32,
+    pub invalid_transform_samples: u32,
+    pub max_camera_obstruction_memory_age_frames: u32,
+    pub max_camera_obstruction_stale_memory_age_frames: u32,
+    pub max_camera_obstruction_stale_memory_age_frame: u32,
+    pub max_camera_boom_error_m: f32,
+    pub max_camera_boom_error_frame: u32,
     pub avg_desired_body_heading_error_degrees: f32,
     pub p95_desired_body_heading_error_degrees: f32,
     pub max_desired_body_heading_error_degrees: f32,
@@ -924,6 +956,28 @@ impl EvalMetricsSummary {
             self.min_island_body_mesh_vertices, body_mesh_key
         );
         let json = json.replacen(&body_mesh_key, &body_mesh_metrics, 1);
+        let camera_contract_key = format!("{indent}  \"avg_desired_body_heading_error_degrees\"");
+        let camera_contract_metrics = format!(
+            "{indent}  \"max_camera_distance_frame\": {},\n{indent}  \"max_camera_step_distance_frame\": {},\n{indent}  \"max_streaming_camera_step_distance_m\": {},\n{indent}  \"max_streaming_camera_step_distance_frame\": {},\n{indent}  \"max_camera_rotation_delta_frame\": {},\n{indent}  \"max_streaming_camera_rotation_delta_degrees\": {},\n{indent}  \"max_streaming_camera_rotation_delta_frame\": {},\n{indent}  \"invalid_camera_target_samples\": {},\n{indent}  \"invalid_camera_transform_samples\": {},\n{indent}  \"invalid_player_control_samples\": {},\n{indent}  \"invalid_transform_samples\": {},\n{indent}  \"max_camera_obstruction_memory_age_frames\": {},\n{indent}  \"max_camera_obstruction_stale_memory_age_frames\": {},\n{indent}  \"max_camera_obstruction_stale_memory_age_frame\": {},\n{indent}  \"max_camera_boom_error_m\": {},\n{indent}  \"max_camera_boom_error_frame\": {},\n{}",
+            self.max_camera_distance_frame,
+            self.max_camera_step_distance_frame,
+            json_number(self.max_streaming_camera_step_distance_m),
+            self.max_streaming_camera_step_distance_frame,
+            self.max_camera_rotation_delta_frame,
+            json_number(self.max_streaming_camera_rotation_delta_degrees),
+            self.max_streaming_camera_rotation_delta_frame,
+            self.invalid_camera_target_samples,
+            self.invalid_camera_transform_samples,
+            self.invalid_player_control_samples,
+            self.invalid_transform_samples,
+            self.max_camera_obstruction_memory_age_frames,
+            self.max_camera_obstruction_stale_memory_age_frames,
+            self.max_camera_obstruction_stale_memory_age_frame,
+            json_number(self.max_camera_boom_error_m),
+            self.max_camera_boom_error_frame,
+            camera_contract_key
+        );
+        let json = json.replacen(&camera_contract_key, &camera_contract_metrics, 1);
         let deferred_asset_key = format!("{indent}  \"max_queued_visual_asset_scene_count\"");
         let deferred_asset_metrics = format!(
             "{indent}  \"max_deferred_visual_asset_scene_count\": {},\n{}",

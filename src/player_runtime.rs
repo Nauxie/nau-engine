@@ -28,7 +28,7 @@ use nau_engine::camera::{
 use nau_engine::environment::{
     LiftField, WindField, WindForceApplication, apply_lift_fields, apply_wind_fields,
 };
-use nau_engine::eval::scripted_input;
+use nau_engine::eval::{scripted_input, scripted_playtest_reset_requested};
 use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
     face_flight_direction, step_flight,
@@ -349,6 +349,76 @@ pub(crate) fn reset_player_to_playtest_position(
         return;
     };
 
+    reset_player_and_camera_to_playtest_position(
+        &route,
+        &mut camera_control,
+        &mut transform,
+        &mut velocity,
+        &mut controller,
+        &mut animation,
+        &mut camera,
+    );
+}
+
+pub(crate) fn eval_reset_player_to_playtest_position(
+    run: Res<EvalRun>,
+    route: Res<SkyRoute>,
+    mut camera_control: ResMut<CameraControlState>,
+    mut player: Query<
+        (
+            &mut Transform,
+            &mut Velocity,
+            &mut FlightController,
+            &mut AnimationState,
+        ),
+        With<Player>,
+    >,
+    mut camera: Query<
+        (
+            &mut Transform,
+            &FollowCamera,
+            &mut FollowCameraState,
+            &mut CameraObstructionMemory,
+        ),
+        CameraFollowFilter,
+    >,
+) {
+    if run.finalized || !scripted_playtest_reset_requested(run.scenario, run.frame) {
+        return;
+    }
+    let Ok((mut transform, mut velocity, mut controller, mut animation)) = player.single_mut()
+    else {
+        return;
+    };
+
+    reset_player_and_camera_to_playtest_position(
+        &route,
+        &mut camera_control,
+        &mut transform,
+        &mut velocity,
+        &mut controller,
+        &mut animation,
+        &mut camera,
+    );
+}
+
+fn reset_player_and_camera_to_playtest_position(
+    route: &SkyRoute,
+    camera_control: &mut CameraControlState,
+    transform: &mut Transform,
+    velocity: &mut Velocity,
+    controller: &mut FlightController,
+    animation: &mut AnimationState,
+    camera: &mut Query<
+        (
+            &mut Transform,
+            &FollowCamera,
+            &mut FollowCameraState,
+            &mut CameraObstructionMemory,
+        ),
+        CameraFollowFilter,
+    >,
+) {
     let reset_position = route.playtest_reset_position();
     transform.translation = reset_position;
     transform.rotation = Quat::IDENTITY;

@@ -2,16 +2,18 @@ use crate::{camera::CameraInput, movement::FlightInput};
 use bevy::prelude::*;
 
 use super::{
-    AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, CAMERA_STRAFE_STABILITY,
-    CAMERA_TURN_STABILITY, CAMERA_YAW_STABILITY, EvalScenario, GREAT_SKY_PLATEAU_ROUTE,
-    GROUND_TAXI_CONTROL, ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, PLATEAU_ARRIVAL_CAMERA,
-    PLAYTEST_RESET, POSE_STATE_COVERAGE, RETURN_DESCENT_ROUTE, TERRAIN_BODY_COLLISION_CONTACT,
-    TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT, UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
-    WORLD_COLLISION_CONTACT,
+    AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL,
+    CAMERA_OBSTRUCTION_RESET_STRESS, CAMERA_STRAFE_STABILITY, CAMERA_TURN_STABILITY,
+    CAMERA_YAW_STABILITY, EvalScenario, GREAT_SKY_PLATEAU_ROUTE, GROUND_TAXI_CONTROL,
+    HIGH_ISLAND_JUMP_CAMERA, ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY,
+    PLATEAU_ARRIVAL_CAMERA, PLAYTEST_RESET, POSE_STATE_COVERAGE, RETURN_DESCENT_ROUTE,
+    TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT,
+    UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
 };
 
 pub fn scripted_playtest_reset_requested(scenario: EvalScenario, frame: u32) -> bool {
-    scenario.name == PLAYTEST_RESET && frame == 30
+    matches!(scenario.name, PLAYTEST_RESET if frame == 30)
+        || matches!(scenario.name, CAMERA_OBSTRUCTION_RESET_STRESS if frame == 150)
 }
 
 pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
@@ -181,6 +183,24 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
             ..default()
         };
     }
+    if scenario.name == CAMERA_OBSTRUCTION_RESET_STRESS {
+        return FlightInput {
+            forward: (0.05..=2.55).contains(&t) || (2.72..=5.85).contains(&t),
+            right: (0.65..=1.35).contains(&t) || (4.0..=4.65).contains(&t),
+            left: (1.55..=2.35).contains(&t) || (4.85..=5.35).contains(&t),
+            glide: false,
+            launch: false,
+            ..default()
+        };
+    }
+    if scenario.name == HIGH_ISLAND_JUMP_CAMERA {
+        return FlightInput {
+            forward: (0.05..=2.6).contains(&t),
+            glide: false,
+            launch: false,
+            ..default()
+        };
+    }
     if scenario.name == CAMERA_TURN_STABILITY {
         return FlightInput {
             forward: (0.05..=3.35).contains(&t),
@@ -236,6 +256,12 @@ pub fn scripted_camera_input(scenario: EvalScenario, frame: u32) -> CameraInput 
         PLATEAU_ARRIVAL_CAMERA if (3.2..=3.75).contains(&t) => Vec2::new(0.9, 0.0),
         PLATEAU_ARRIVAL_CAMERA if (4.05..=4.55).contains(&t) => Vec2::new(-0.9, 0.0),
         PLATEAU_ARRIVAL_CAMERA if (5.1..=5.45).contains(&t) => Vec2::new(0.6, 0.0),
+        CAMERA_OBSTRUCTION_RESET_STRESS if (0.18..=0.72).contains(&t) => Vec2::new(1.6, -1.5),
+        CAMERA_OBSTRUCTION_RESET_STRESS if (0.9..=1.35).contains(&t) => Vec2::new(-1.6, 1.0),
+        CAMERA_OBSTRUCTION_RESET_STRESS if (1.58..=2.2).contains(&t) => Vec2::new(1.3, -1.0),
+        CAMERA_OBSTRUCTION_RESET_STRESS if (2.78..=3.28).contains(&t) => Vec2::new(-1.2, 0.8),
+        CAMERA_OBSTRUCTION_RESET_STRESS if (3.65..=4.35).contains(&t) => Vec2::new(1.0, -0.8),
+        CAMERA_OBSTRUCTION_RESET_STRESS if (4.65..=5.35).contains(&t) => Vec2::new(-1.0, 0.7),
         _ => Vec2::ZERO,
     };
 

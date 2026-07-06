@@ -1,5 +1,6 @@
 use nau_engine::eval::EvalScenario;
 use serde_json::{Value, json};
+use std::path::Path;
 
 use super::super::{SimSample, round4, round4_f64, vec3_json};
 use super::{
@@ -251,6 +252,14 @@ impl SimResult {
             "artifacts": {
                 "summary_json": self.summary_path,
                 "samples_ndjson": self.samples_path,
+                "camera_player_trace_ndjson": sibling_artifact_path(
+                    &self.samples_path,
+                    "camera_player_trace.ndjson"
+                ),
+                "obstruction_decision_trace_ndjson": sibling_artifact_path(
+                    &self.samples_path,
+                    "obstruction_decision_trace.ndjson"
+                ),
                 "screenshot_png": Value::Null,
                 "checkpoint_screenshots": [],
                 "checkpoint_marker_metadata": [],
@@ -260,4 +269,10 @@ impl SimResult {
         .expect("summary json")
             + "\n"
     }
+}
+
+fn sibling_artifact_path(path: &str, file_name: &str) -> String {
+    let mut path = Path::new(path).to_path_buf();
+    path.set_file_name(file_name);
+    path.to_string_lossy().into_owned()
 }

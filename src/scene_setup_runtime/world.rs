@@ -22,6 +22,9 @@ use nau_engine::camera::CameraObstruction;
 use nau_engine::environment::{GAMEPLAY_LIFT_ROUTE, visual_crosswind_fields};
 use nau_engine::world::{IslandUnderRouteSegment, SkyRoute, route_obstruction_spires};
 
+const SUN_FIRST_CASCADE_FAR_BOUND_M: f32 = 18.0;
+const SUN_SHADOW_MAX_DISTANCE_M: f32 = 120.0;
+
 pub(super) fn spawn_world_runtime(
     commands: &mut Commands,
     route: &SkyRoute,
@@ -49,8 +52,8 @@ fn spawn_sun(commands: &mut Commands) {
         VolumetricLight,
         CinematicSun,
         CascadeShadowConfigBuilder {
-            first_cascade_far_bound: 20.0,
-            maximum_distance: 340.0,
+            first_cascade_far_bound: SUN_FIRST_CASCADE_FAR_BOUND_M,
+            maximum_distance: SUN_SHADOW_MAX_DISTANCE_M,
             ..default()
         }
         .build(),

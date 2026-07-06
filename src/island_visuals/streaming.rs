@@ -4,6 +4,7 @@ use super::types::{
 };
 use crate::Player;
 use crate::environment_visuals::WindResponsiveVisual;
+use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 use std::collections::HashSet;
 
@@ -51,6 +52,9 @@ fn spawn_island_visual_entry(
         && let Some(mesh) = mesh_handle_for_entry(meshes, stream_state, entry)
     {
         entity.insert((Mesh3d(mesh), MeshMaterial3d(material.clone())));
+        if !matches!(entry.layer, super::types::IslandVisualLayer::Terrain) {
+            entity.insert(NotShadowCaster);
+        }
     }
     if let Some(obstacle) = entry.obstacle {
         entity.insert(obstacle);

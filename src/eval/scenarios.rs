@@ -27,6 +27,8 @@ pub const BRANCH_RECOVERY_ROUTE: &str = "branch_recovery_route";
 pub const GREAT_SKY_PLATEAU_ROUTE: &str = "great_sky_plateau_route";
 pub const RETURN_DESCENT_ROUTE: &str = "return_descent_route";
 pub const PLATEAU_ARRIVAL_CAMERA: &str = "plateau_arrival_camera";
+pub const CAMERA_OBSTRUCTION_RESET_STRESS: &str = "camera_obstruction_reset_stress";
+pub const HIGH_ISLAND_JUMP_CAMERA: &str = "high_island_jump_camera";
 pub const UNDERBRIDGE_UNDER_ROUTE: &str = "underbridge_under_route";
 pub const SCENARIO_NAMES: &[&str] = &[
     BASELINE_ROUTE,
@@ -49,6 +51,8 @@ pub const SCENARIO_NAMES: &[&str] = &[
     GREAT_SKY_PLATEAU_ROUTE,
     RETURN_DESCENT_ROUTE,
     PLATEAU_ARRIVAL_CAMERA,
+    CAMERA_OBSTRUCTION_RESET_STRESS,
+    HIGH_ISLAND_JUMP_CAMERA,
     UNDERBRIDGE_UNDER_ROUTE,
 ];
 pub const APP_ONLY_SCENARIO_NAMES: &[&str] = &[
@@ -58,6 +62,8 @@ pub const APP_ONLY_SCENARIO_NAMES: &[&str] = &[
     TERRAIN_BODY_COLLISION_CONTACT,
     TERRAIN_EDGE_WALKOFF,
     RETURN_DESCENT_ROUTE,
+    CAMERA_OBSTRUCTION_RESET_STRESS,
+    HIGH_ISLAND_JUMP_CAMERA,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -151,6 +157,13 @@ pub fn scenario_named(name: &str) -> Option<EvalScenario> {
         PLATEAU_ARRIVAL_CAMERA | "plateau_camera" | "plateau_arrival" => {
             Some(traversal_scenarios::plateau_arrival_camera())
         }
+        CAMERA_OBSTRUCTION_RESET_STRESS
+        | "camera_obstruction_stress"
+        | "obstruction_reset"
+        | "camera_reset_stress" => Some(traversal_scenarios::camera_obstruction_reset_stress()),
+        HIGH_ISLAND_JUMP_CAMERA | "high_island_jump" | "high_jump_camera" => {
+            Some(traversal_scenarios::high_island_jump_camera())
+        }
         UNDERBRIDGE_UNDER_ROUTE | "underbridge_route" | "under_route" => {
             Some(traversal_scenarios::underbridge_under_route())
         }
@@ -226,6 +239,45 @@ mod tests {
             scripted_camera_input(scenario, 360).mouse_delta,
             bevy::prelude::Vec2::ZERO
         );
+        assert!(!scripted_input(scenario, 1).launch);
+    }
+
+    #[test]
+    fn camera_obstruction_reset_stress_targets_manual_reset_regression() {
+        let scenario =
+            scenario_named(CAMERA_OBSTRUCTION_RESET_STRESS).expect("camera stress scenario");
+        let alias = scenario_named("obstruction_reset").expect("camera stress alias");
+
+        assert_eq!(alias.name, CAMERA_OBSTRUCTION_RESET_STRESS);
+        assert!(APP_ONLY_SCENARIO_NAMES.contains(&CAMERA_OBSTRUCTION_RESET_STRESS));
+        assert_eq!(scenario.target_island_name, Some("great sky plateau"));
+        assert_eq!(scenario.sample_stride, 1);
+        assert!(scenario.frame_count >= 360);
+        assert!(
+            scenario
+                .checkpoints
+                .iter()
+                .any(|checkpoint| checkpoint.name == "obstruction_reset_recenter")
+        );
+        assert!(scripted_playtest_reset_requested(scenario, 150));
+        assert!(!scripted_playtest_reset_requested(scenario, 151));
+        assert!(scenario.thresholds.min_camera_obstruction_adjustment_m >= 4.0);
+        assert!(scenario.thresholds.min_camera_obstructed_distance_m >= 5.0);
+        assert!(scenario.thresholds.max_camera_step_distance_m <= 0.9);
+        assert!(scenario.thresholds.max_camera_rotation_delta_degrees <= 1.5);
+        assert_eq!(scenario.thresholds.max_camera_obstruction_snap_count, 0);
+        assert!(scenario.thresholds.min_abs_camera_yaw_degrees >= 12.0);
+        assert!(scenario.thresholds.min_camera_pitch_offset_degrees < 0.0);
+        assert!(scenario.thresholds.max_camera_pitch_offset_degrees > 0.0);
+        assert!(scripted_input(scenario, 30).forward);
+        assert!(scripted_input(scenario, 75).right);
+        assert!(scripted_input(scenario, 105).left);
+        assert!(scripted_input(scenario, 246).right);
+        assert!(scripted_input(scenario, 306).left);
+        assert!(scripted_camera_input(scenario, 30).mouse_delta.x > 0.0);
+        assert!(scripted_camera_input(scenario, 30).mouse_delta.y < 0.0);
+        assert!(scripted_camera_input(scenario, 70).mouse_delta.x < 0.0);
+        assert!(scripted_camera_input(scenario, 70).mouse_delta.y > 0.0);
         assert!(!scripted_input(scenario, 1).launch);
     }
 

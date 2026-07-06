@@ -7,9 +7,9 @@ use crate::{
     },
     eval::{
         scenarios::{
-            AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
-            EvalScenario, GREAT_SKY_PLATEAU_ROUTE, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE,
-            UPDRAFT_ROUTE,
+            AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE,
+            CAMERA_OBSTRUCTION_RESET_STRESS, CAMERA_STRAFE_STABILITY, EvalScenario,
+            GREAT_SKY_PLATEAU_ROUTE, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE, UPDRAFT_ROUTE,
         },
         summary::EvalCheck,
         thresholds::{EvalThresholds, *},
@@ -42,6 +42,7 @@ const AIR_CONTROL_MIN_AUTHORED_AIR_BRAKE_CLIP_SAMPLES: f32 = 4.0;
 const AIR_CONTROL_MIN_AUTHORED_GLIDER_DIVE_MOTION_M: f32 = 0.04;
 const TARGET_LANDING_MIN_AUTHORED_LAND_CLIP_SAMPLES: f32 = 2.0;
 const TARGET_LANDING_MIN_AUTHORED_GLIDER_MOTION_M: f32 = 0.04;
+const CAMERA_STRESS_MAX_LATERAL_INPUT_UNRESPONSIVE_SECS: f32 = 0.5;
 
 pub(super) fn append_scenario_checks(
     checks: &mut Vec<EvalCheck>,
@@ -483,6 +484,9 @@ pub(super) fn append_scenario_checks(
     }
     if scenario.name == CAMERA_STRAFE_STABILITY {
         append_camera_strafe_checks(checks, acc);
+    }
+    if scenario.name == CAMERA_OBSTRUCTION_RESET_STRESS {
+        append_camera_stress_control_checks(checks, acc);
     }
 }
 
@@ -1609,4 +1613,13 @@ fn append_camera_strafe_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccumulato
             "deg",
         ),
     ]);
+}
+
+fn append_camera_stress_control_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccumulator) {
+    checks.push(EvalCheck::at_most(
+        "camera_stress_lateral_input_unresponsive_duration",
+        acc.max_lateral_input_unresponsive_duration_secs,
+        CAMERA_STRESS_MAX_LATERAL_INPUT_UNRESPONSIVE_SECS,
+        "s",
+    ));
 }

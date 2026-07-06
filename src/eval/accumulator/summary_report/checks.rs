@@ -11,10 +11,11 @@ use crate::{
     environment::{GAMEPLAY_LIFT_ROUTE, VISUAL_CROSSWIND_FIELD_COUNT},
     eval::{
         scenarios::{
-            CAMERA_MOUSE_CONTROL, CAMERA_STRAFE_STABILITY, CAMERA_TURN_STABILITY,
-            CAMERA_YAW_STABILITY, EvalScenario, GROUND_TAXI_CONTROL, PLATEAU_ARRIVAL_CAMERA,
-            RETURN_DESCENT_ROUTE, TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_EDGE_WALKOFF,
-            TERRAIN_RIM_COLLISION_CONTACT, UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
+            CAMERA_MOUSE_CONTROL, CAMERA_OBSTRUCTION_RESET_STRESS, CAMERA_STRAFE_STABILITY,
+            CAMERA_TURN_STABILITY, CAMERA_YAW_STABILITY, EvalScenario, GROUND_TAXI_CONTROL,
+            HIGH_ISLAND_JUMP_CAMERA, PLATEAU_ARRIVAL_CAMERA, RETURN_DESCENT_ROUTE,
+            TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT,
+            UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
         },
         summary::EvalCheck,
         thresholds::*,
@@ -30,6 +31,8 @@ const EDGE_WALKOFF_MIN_NEAR_ISLAND_EDGE_SAMPLES: u32 = 16;
 const EDGE_WALKOFF_MIN_OUTSIDE_ISLAND_FOOTPRINT_SAMPLES: u32 = 8;
 const EDGE_WALKOFF_MIN_OUTSIDE_NEAR_ISLAND_EDGE_SAMPLES: u32 = 4;
 const TERRAIN_CONTACT_MIN_ROCK_WORLD_COLLISION_PROXY_COUNT: usize = 8;
+const MAX_CAMERA_BOOM_ERROR_M: f32 = 2.0;
+const MAX_CAMERA_OBSTRUCTION_STALE_MEMORY_FRAMES: f32 = 120.0;
 const SHORT_CONTACT_SKIPPED_CHECKS: &[&str] = &[
     "updraft_visual_rise",
     "crosswind_guide_flow_displacement",
@@ -45,16 +48,22 @@ pub(super) fn build_checks(
     derived: &SummaryDerivedMetrics,
 ) -> Vec<EvalCheck> {
     let thresholds = scenario.thresholds;
-    let min_tree_world_collision_proxy_count =
-        if matches!(scenario.name, PLATEAU_ARRIVAL_CAMERA | RETURN_DESCENT_ROUTE) {
-            PLATEAU_CAMERA_MIN_TREE_WORLD_COLLISION_PROXY_COUNT
-        } else {
-            MIN_TREE_WORLD_COLLISION_PROXY_COUNT
-        };
+    let min_tree_world_collision_proxy_count = if matches!(
+        scenario.name,
+        PLATEAU_ARRIVAL_CAMERA
+            | CAMERA_OBSTRUCTION_RESET_STRESS
+            | HIGH_ISLAND_JUMP_CAMERA
+            | RETURN_DESCENT_ROUTE
+    ) {
+        PLATEAU_CAMERA_MIN_TREE_WORLD_COLLISION_PROXY_COUNT
+    } else {
+        MIN_TREE_WORLD_COLLISION_PROXY_COUNT
+    };
     let min_rock_world_collision_proxy_count = match scenario.name {
-        PLATEAU_ARRIVAL_CAMERA | RETURN_DESCENT_ROUTE => {
-            PLATEAU_CAMERA_MIN_ROCK_WORLD_COLLISION_PROXY_COUNT
-        }
+        PLATEAU_ARRIVAL_CAMERA
+        | CAMERA_OBSTRUCTION_RESET_STRESS
+        | HIGH_ISLAND_JUMP_CAMERA
+        | RETURN_DESCENT_ROUTE => PLATEAU_CAMERA_MIN_ROCK_WORLD_COLLISION_PROXY_COUNT,
         WORLD_COLLISION_CONTACT => WORLD_CONTACT_MIN_ROCK_WORLD_COLLISION_PROXY_COUNT,
         CAMERA_MOUSE_CONTROL
         | CAMERA_YAW_STABILITY
@@ -794,8 +803,20 @@ pub(super) fn build_checks(
             "m",
         ),
         EvalCheck::at_most(
+            "max_streaming_camera_step_distance",
+            acc.max_camera_step_during_stream_change_m,
+            thresholds.max_camera_step_distance_m,
+            "m",
+        ),
+        EvalCheck::at_most(
             "max_camera_rotation_delta",
             acc.max_camera_rotation_delta_degrees,
+            thresholds.max_camera_rotation_delta_degrees,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "max_streaming_camera_rotation_delta",
+            acc.max_camera_rotation_during_stream_change_degrees,
             thresholds.max_camera_rotation_delta_degrees,
             "deg",
         ),
@@ -804,6 +825,42 @@ pub(super) fn build_checks(
             acc.max_camera_orbit_alignment_degrees,
             thresholds.max_camera_orbit_alignment_degrees,
             "deg",
+        ),
+        EvalCheck::at_most(
+            "max_camera_boom_error",
+            acc.max_camera_boom_error_m,
+            MAX_CAMERA_BOOM_ERROR_M,
+            "m",
+        ),
+        EvalCheck::at_most(
+            "invalid_camera_target_samples",
+            acc.invalid_camera_target_samples as f32,
+            0.0,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "invalid_camera_transform_samples",
+            acc.invalid_camera_transform_samples as f32,
+            0.0,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "invalid_player_control_samples",
+            acc.invalid_player_control_samples as f32,
+            0.0,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "invalid_transform_samples",
+            acc.invalid_transform_samples as f32,
+            0.0,
+            "transforms",
+        ),
+        EvalCheck::at_most(
+            "max_camera_obstruction_stale_memory_age",
+            acc.max_camera_obstruction_stale_memory_age_frames as f32,
+            MAX_CAMERA_OBSTRUCTION_STALE_MEMORY_FRAMES,
+            "frames",
         ),
         EvalCheck::at_most(
             "max_abs_camera_view_yaw",

@@ -780,8 +780,11 @@ fn limb_clearance(
 
 pub(crate) fn collect_eval_frame_time(time: Res<Time>, mut run: ResMut<EvalRun>) {
     if !run.finalized && run.frame >= EVAL_FRAME_TIME_WARMUP_FRAMES {
-        run.accumulator
-            .observe_frame_time_ms(frame_ms(time.delta_secs()));
+        let frame_time_ms = frame_ms(time.delta_secs());
+        run.accumulator.observe_frame_time_ms(frame_time_ms);
+        if let Err(error) = run.record_frame_time_ms(frame_time_ms) {
+            run.io_error = Some(format!("failed to write eval frame-time trace: {error}"));
+        }
     }
 }
 
@@ -801,6 +804,8 @@ pub(crate) fn collect_eval_metrics(
     let Ok((transform, velocity, controller, animation)) = scene.player.single() else {
         return;
     };
+    let camera_transform = scene.camera.single().ok();
+    let camera_transform_valid = camera_transform.map(transform_is_finite).unwrap_or(false);
     let (
         camera_distance_m,
         camera_surface_clearance_m,
@@ -808,29 +813,27 @@ pub(crate) fn collect_eval_metrics(
         camera_pitch_degrees,
         camera_view_yaw,
         camera_world_yaw,
-    ) = scene
-        .camera
-        .single()
-        .map(|camera_transform| {
-            let camera_floor_y = scene.route.ground_at(camera_transform.translation).floor_y;
-            let player_focus = transform.translation + Vec3::Y * CAMERA_PLAYER_FOCUS_HEIGHT;
-            (
-                camera_distance(camera_transform.translation, transform.translation),
-                camera_surface_clearance(camera_transform.translation, camera_floor_y),
-                camera_target_angle_degrees(
-                    camera_transform.translation,
-                    camera_transform.rotation,
-                    player_focus,
-                ),
-                camera_pitch_degrees(camera_transform.rotation),
-                camera_view_yaw_degrees(
-                    camera_transform.rotation,
-                    scene.camera_diagnostics.follow_direction,
-                ),
-                camera_view_yaw_degrees(camera_transform.rotation, Vec3::NEG_Z),
-            )
-        })
-        .unwrap_or_default();
+    ) = if let Some(camera_transform) = camera_transform.filter(|_| camera_transform_valid) {
+        let camera_floor_y = scene.route.ground_at(camera_transform.translation).floor_y;
+        let player_focus = transform.translation + Vec3::Y * CAMERA_PLAYER_FOCUS_HEIGHT;
+        (
+            camera_distance(camera_transform.translation, transform.translation),
+            camera_surface_clearance(camera_transform.translation, camera_floor_y),
+            camera_target_angle_degrees(
+                camera_transform.translation,
+                camera_transform.rotation,
+                player_focus,
+            ),
+            camera_pitch_degrees(camera_transform.rotation),
+            camera_view_yaw_degrees(
+                camera_transform.rotation,
+                scene.camera_diagnostics.follow_direction,
+            ),
+            camera_view_yaw_degrees(camera_transform.rotation, Vec3::NEG_Z),
+        )
+    } else {
+        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    };
     let visible_wind_fields =
         visible_fields_at(transform.translation, scene.wind_fields.iter().copied());
     let elapsed_secs = run.frame as f32 * run.scenario.fixed_dt;
@@ -1123,6 +1126,23 @@ pub(crate) fn collect_eval_metrics(
     )
     .with_camera_follow_metrics(scene.camera_diagnostics.follow_direction_error_degrees)
     .with_camera_world_yaw_metrics(camera_world_yaw)
+    .with_camera_trace_metrics(
+        scene.camera_diagnostics.position,
+        scene.camera_diagnostics.look_target,
+        scene.camera_diagnostics.desired_boom_length_m,
+        scene.camera_diagnostics.resolved_boom_length_m,
+        scene.camera_diagnostics.obstruction_active_hits,
+    )
+    .with_camera_contract_metrics(
+        scene.camera_diagnostics.target_valid,
+        scene.camera_diagnostics.camera_valid && camera_transform_valid,
+        scene.camera_diagnostics.player_control_valid,
+        scene.camera_diagnostics.invalid_transform_count
+            + u32::from(camera_transform.is_some() && !camera_transform_valid),
+        scene.camera_diagnostics.obstruction_memory_active,
+        scene.camera_diagnostics.obstruction_memory_age_frames,
+        scene.camera_diagnostics.obstruction_stale_memory_age_frames,
+    )
     .with_visual_foot_gap(visual_foot_gap_m)
     .with_wind_guide_visual_metrics(
         wind_guide_metrics.updraft_guide_count,
@@ -1679,7 +1699,9 @@ fn key_pose_transition_readability_floor(
     current_intent: PlayerPoseIntent,
     previous_intent: Option<PlayerPoseIntent>,
 ) -> f32 {
-    if air_brake_release_transition(current_intent, previous_intent) {
+    if air_brake_release_transition(current_intent, previous_intent)
+        || air_brake_to_dive_transition(current_intent, previous_intent)
+    {
         KEY_POSE_AIR_BRAKE_RELEASE_TRANSITION_READABILITY_FLOOR
     } else if landing_flip_transition(current_intent, previous_intent) {
         KEY_POSE_LANDING_FLIP_TRANSITION_READABILITY_FLOOR
@@ -1716,7 +1738,9 @@ fn key_pose_transition_grace_frames(
     current_intent: PlayerPoseIntent,
     previous_intent: Option<PlayerPoseIntent>,
 ) -> u32 {
-    if glide_to_dive_transition(current_intent, previous_intent) {
+    if glide_to_dive_transition(current_intent, previous_intent)
+        || air_brake_to_dive_transition(current_intent, previous_intent)
+    {
         KEY_POSE_EXTENDED_TRANSITION_GRACE_FRAMES
     } else if landing_flip_transition(current_intent, previous_intent)
         || landing_absorb_transition(current_intent, previous_intent)
@@ -1740,6 +1764,14 @@ fn air_brake_release_transition(
     previous_intent: Option<PlayerPoseIntent>,
 ) -> bool {
     current_intent == PlayerPoseIntent::Gliding
+        && previous_intent == Some(PlayerPoseIntent::AirBrake)
+}
+
+fn air_brake_to_dive_transition(
+    current_intent: PlayerPoseIntent,
+    previous_intent: Option<PlayerPoseIntent>,
+) -> bool {
+    current_intent == PlayerPoseIntent::Diving
         && previous_intent == Some(PlayerPoseIntent::AirBrake)
 }
 
@@ -1807,6 +1839,12 @@ fn key_pose_intent(intent: PlayerPoseIntent) -> bool {
             | PlayerPoseIntent::LandingAnticipation
             | PlayerPoseIntent::LandingRecovery
     )
+}
+
+fn transform_is_finite(transform: &Transform) -> bool {
+    transform.translation.is_finite()
+        && transform.rotation.is_finite()
+        && transform.scale.is_finite()
 }
 
 #[cfg(test)]
@@ -2785,6 +2823,56 @@ mod tests {
     }
 
     #[test]
+    fn transition_aware_pose_readability_accepts_bounded_air_brake_to_dive_blend() {
+        let raw = PoseReadabilityMetrics {
+            torso_pitch_degrees: 101.55,
+            arm_spread_degrees: 80.53,
+            leg_tuck_degrees: 89.47,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
+            landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
+            wing_airflow_strength: 0.0,
+            key_pose_readability_score: key_pose_readability_score(
+                PlayerPoseIntent::Diving,
+                101.55,
+                80.53,
+                89.47,
+                0.0,
+                0.0,
+                0.0,
+            ),
+            ..default()
+        };
+
+        let adjusted = transition_aware_pose_readability(
+            raw,
+            PlayerPoseIntent::Diving,
+            Some(PlayerPoseIntent::AirBrake),
+            KEY_POSE_TRANSITION_GRACE_FRAMES + 1,
+            &EvalPoseTemporalMetrics {
+                visible_pose_part_count: 15,
+                max_pose_part_rotation_delta_degrees: 30.77,
+                max_pose_part_translation_delta_m: 0.007,
+                min_pose_limb_clearance_m: 0.25,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.015,
+                pose_joint_gap_samples: 5,
+            },
+        );
+
+        assert!(raw.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert_eq!(
+            adjusted.metrics.key_pose_readability_score,
+            MIN_KEY_POSE_READABILITY_SCORE
+        );
+        assert!(adjusted.used_transition_grace);
+    }
+
+    #[test]
     fn transition_aware_pose_readability_accepts_bounded_dive_to_landing_flip() {
         let raw = PoseReadabilityMetrics {
             torso_pitch_degrees: 15.4,
@@ -3102,7 +3190,7 @@ mod tests {
             raw,
             PlayerPoseIntent::Diving,
             Some(PlayerPoseIntent::AirBrake),
-            KEY_POSE_TRANSITION_GRACE_FRAMES + 1,
+            KEY_POSE_EXTENDED_TRANSITION_GRACE_FRAMES + 1,
             &EvalPoseTemporalMetrics {
                 visible_pose_part_count: 5,
                 max_pose_part_rotation_delta_degrees: 8.0,

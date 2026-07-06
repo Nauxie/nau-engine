@@ -3,21 +3,65 @@ use crate::camera::CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M;
 use super::{EvalAccumulator, EvalSample};
 
 pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
-    accumulator.max_camera_distance_m = accumulator
-        .max_camera_distance_m
-        .max(sample.camera_distance_m);
+    if !sample.camera_target_valid {
+        accumulator.invalid_camera_target_samples += 1;
+    }
+    if !sample.camera_transform_valid {
+        accumulator.invalid_camera_transform_samples += 1;
+    }
+    if !sample.player_control_valid {
+        accumulator.invalid_player_control_samples += 1;
+    }
+    accumulator.invalid_transform_samples += sample.invalid_transform_count;
+    accumulator.max_camera_obstruction_memory_age_frames = accumulator
+        .max_camera_obstruction_memory_age_frames
+        .max(sample.camera_obstruction_memory_age_frames);
+    if sample.camera_obstruction_stale_memory_age_frames
+        > accumulator.max_camera_obstruction_stale_memory_age_frames
+    {
+        accumulator.max_camera_obstruction_stale_memory_age_frames =
+            sample.camera_obstruction_stale_memory_age_frames;
+        accumulator.max_camera_obstruction_stale_memory_age_frame = sample.frame;
+    }
+    if sample.camera_boom_error_m > accumulator.max_camera_boom_error_m {
+        accumulator.max_camera_boom_error_m = sample.camera_boom_error_m;
+        accumulator.max_camera_boom_error_frame = sample.frame;
+    }
+
+    if sample.camera_distance_m > accumulator.max_camera_distance_m {
+        accumulator.max_camera_distance_m = sample.camera_distance_m;
+        accumulator.max_camera_distance_frame = sample.frame;
+    }
     accumulator.min_camera_surface_clearance_m = accumulator
         .min_camera_surface_clearance_m
         .min(sample.camera_surface_clearance_m);
     accumulator.max_camera_player_angle_degrees = accumulator
         .max_camera_player_angle_degrees
         .max(sample.camera_player_angle_degrees);
-    accumulator.max_camera_step_distance_m = accumulator
-        .max_camera_step_distance_m
-        .max(sample.camera_step_distance_m);
-    accumulator.max_camera_rotation_delta_degrees = accumulator
-        .max_camera_rotation_delta_degrees
-        .max(sample.camera_rotation_delta_degrees);
+    if sample.camera_step_distance_m > accumulator.max_camera_step_distance_m {
+        accumulator.max_camera_step_distance_m = sample.camera_step_distance_m;
+        accumulator.max_camera_step_distance_frame = sample.frame;
+    }
+    let stream_change_count = sample.stream_visibility_changes_this_frame
+        + sample.stream_spawned_visuals_this_frame
+        + sample.stream_despawned_visuals_this_frame;
+    if stream_change_count > 0 {
+        if sample.camera_step_distance_m > accumulator.max_camera_step_during_stream_change_m {
+            accumulator.max_camera_step_during_stream_change_m = sample.camera_step_distance_m;
+            accumulator.max_camera_step_during_stream_change_frame = sample.frame;
+        }
+        if sample.camera_rotation_delta_degrees
+            > accumulator.max_camera_rotation_during_stream_change_degrees
+        {
+            accumulator.max_camera_rotation_during_stream_change_degrees =
+                sample.camera_rotation_delta_degrees;
+            accumulator.max_camera_rotation_during_stream_change_frame = sample.frame;
+        }
+    }
+    if sample.camera_rotation_delta_degrees > accumulator.max_camera_rotation_delta_degrees {
+        accumulator.max_camera_rotation_delta_degrees = sample.camera_rotation_delta_degrees;
+        accumulator.max_camera_rotation_delta_frame = sample.frame;
+    }
     accumulator.max_camera_orbit_alignment_degrees = accumulator
         .max_camera_orbit_alignment_degrees
         .max(sample.camera_orbit_alignment_degrees);

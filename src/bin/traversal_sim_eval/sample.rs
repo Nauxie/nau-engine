@@ -38,6 +38,8 @@ pub(crate) struct CameraStepSample {
 
 #[derive(Clone, Debug)]
 pub(crate) struct CameraDiagnosticsSample {
+    pub(crate) position: Vec3,
+    pub(crate) look_target: Vec3,
     pub(crate) distance_m: f32,
     pub(crate) surface_clearance_m: f32,
     pub(crate) player_angle_degrees: f32,
@@ -67,6 +69,8 @@ impl CameraDiagnosticsSample {
         let camera_floor_y = route.contact_ground_at(camera.translation).floor_y;
         let player_focus = player_position + Vec3::Y * CAMERA_PLAYER_FOCUS_HEIGHT;
         Self {
+            position: camera.translation,
+            look_target: player_focus,
             distance_m: camera_distance(camera.translation, player_position),
             surface_clearance_m: camera_surface_clearance(camera.translation, camera_floor_y),
             player_angle_degrees: camera_target_angle_degrees(
@@ -132,6 +136,8 @@ pub(crate) struct SimSample {
     pub(crate) lateral_input_active: bool,
     pub(crate) movement_input_lateral_axis: f32,
     pub(crate) movement_input_forward_axis: f32,
+    pub(crate) camera_position: Vec3,
+    pub(crate) camera_look_target: Vec3,
     pub(crate) camera_distance_m: f32,
     pub(crate) camera_surface_clearance_m: f32,
     pub(crate) camera_player_angle_degrees: f32,
@@ -315,6 +321,8 @@ impl SimSample {
             lateral_input_active,
             movement_input_lateral_axis: movement_axis.x,
             movement_input_forward_axis: movement_axis.y,
+            camera_position: camera.position,
+            camera_look_target: camera.look_target,
             camera_distance_m: camera.distance_m,
             camera_surface_clearance_m: camera.surface_clearance_m,
             camera_player_angle_degrees: camera.player_angle_degrees,
@@ -428,6 +436,8 @@ impl SimSample {
             "lateral_input_active": self.lateral_input_active,
             "movement_input_lateral_axis": round4(self.movement_input_lateral_axis),
             "movement_input_forward_axis": round4(self.movement_input_forward_axis),
+            "camera_position": vec3_json(self.camera_position),
+            "camera_look_target": vec3_json(self.camera_look_target),
             "camera_distance_m": round4(self.camera_distance_m),
             "camera_surface_clearance_m": round4(self.camera_surface_clearance_m),
             "camera_player_angle_degrees": round4(self.camera_player_angle_degrees),
@@ -499,6 +509,47 @@ impl SimSample {
             "active_power_up_effects": self.active_power_up_effects,
             "total_power_up_activations": self.total_power_up_activations,
             "visual_foot_gap_m": GROUND_VISUAL_FOOT_GAP_M,
+        })
+    }
+
+    pub(crate) fn to_camera_player_trace_json(&self) -> Value {
+        json!({
+            "frame": self.frame,
+            "time_secs": round4(self.time_secs),
+            "player_position": vec3_json(self.position),
+            "player_velocity": vec3_json(self.velocity),
+            "mode": self.mode,
+            "movement_input_lateral_axis": round4(self.movement_input_lateral_axis),
+            "movement_input_forward_axis": round4(self.movement_input_forward_axis),
+            "lateral_input_active": self.lateral_input_active,
+            "camera_position": vec3_json(self.camera_position),
+            "camera_look_target": vec3_json(self.camera_look_target),
+            "camera_distance_m": round4(self.camera_distance_m),
+            "camera_step_distance_m": round4(self.camera_step_distance_m),
+            "camera_rotation_delta_degrees": round4(self.camera_rotation_delta_degrees),
+            "camera_player_angle_degrees": round4(self.camera_player_angle_degrees),
+            "camera_follow_direction_error_degrees": round4(self.camera_follow_direction_error_degrees),
+            "active_island_count": self.active_island_count,
+            "near_lod_islands": self.near_lod_islands,
+            "mid_lod_islands": self.mid_lod_islands,
+            "far_lod_islands": self.far_lod_islands,
+        })
+    }
+
+    pub(crate) fn to_obstruction_decision_trace_json(&self) -> Value {
+        json!({
+            "frame": self.frame,
+            "time_secs": round4(self.time_secs),
+            "camera_position": vec3_json(self.camera_position),
+            "camera_look_target": vec3_json(self.camera_look_target),
+            "camera_distance_m": round4(self.camera_distance_m),
+            "camera_surface_clearance_m": round4(self.camera_surface_clearance_m),
+            "camera_step_distance_m": round4(self.camera_step_distance_m),
+            "camera_rotation_delta_degrees": round4(self.camera_rotation_delta_degrees),
+            "camera_obstruction_hits": self.camera_obstruction_hits,
+            "camera_obstruction_adjustment_m": round4(self.camera_obstruction_adjustment_m),
+            "camera_obstruction_snap_candidate": self.camera_obstruction_hits > 0
+                && self.camera_step_distance_m > 1.0,
         })
     }
 }

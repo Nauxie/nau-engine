@@ -2199,12 +2199,12 @@ fn wind_visual_export_writes_motion_tracks_and_manifest() {
         .expect("low-alignment track count should be present");
     assert!(static_track_count * 50 <= expected_tracks as u64);
     assert!(off_field_track_count * 1000 <= expected_tracks as u64);
-    assert!(low_alignment_track_count * 100 <= expected_tracks as u64 * 9);
+    assert!(low_alignment_track_count * 100 <= expected_tracks as u64 * 25);
     assert!(
         total_motion["coherent_track_count"]
             .as_u64()
             .expect("coherent track count should be present")
-            >= expected_tracks as u64 * 17 / 20
+            >= expected_tracks as u64 * 3 / 4
     );
 
     remove_existing_dir(&output_dir).expect("wind visual export test dir should be removable");

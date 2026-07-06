@@ -34,10 +34,19 @@ pub(super) fn build_metrics_summary(
         max_launch_upward_speed_mps: acc.max_launch_upward_speed_mps,
         max_launch_horizontal_speed_mps: acc.max_launch_horizontal_speed_mps,
         max_camera_distance_m: acc.max_camera_distance_m,
+        max_camera_distance_frame: acc.max_camera_distance_frame,
         min_camera_surface_clearance_m: acc.min_camera_surface_clearance_m,
         max_camera_player_angle_degrees: acc.max_camera_player_angle_degrees,
         max_camera_step_distance_m: acc.max_camera_step_distance_m,
+        max_camera_step_distance_frame: acc.max_camera_step_distance_frame,
+        max_streaming_camera_step_distance_m: acc.max_camera_step_during_stream_change_m,
+        max_streaming_camera_step_distance_frame: acc.max_camera_step_during_stream_change_frame,
         max_camera_rotation_delta_degrees: acc.max_camera_rotation_delta_degrees,
+        max_camera_rotation_delta_frame: acc.max_camera_rotation_delta_frame,
+        max_streaming_camera_rotation_delta_degrees: acc
+            .max_camera_rotation_during_stream_change_degrees,
+        max_streaming_camera_rotation_delta_frame: acc
+            .max_camera_rotation_during_stream_change_frame,
         max_camera_orbit_alignment_degrees: acc.max_camera_orbit_alignment_degrees,
         avg_camera_follow_direction_error_degrees: derived
             .avg_camera_follow_direction_error_degrees,
@@ -51,6 +60,17 @@ pub(super) fn build_metrics_summary(
         max_camera_obstruction_hits: acc.max_camera_obstruction_hits,
         min_camera_obstructed_distance_m: acc.min_camera_obstructed_distance_m.unwrap_or(0.0),
         camera_obstruction_snap_count: acc.camera_obstruction_snap_count,
+        invalid_camera_target_samples: acc.invalid_camera_target_samples,
+        invalid_camera_transform_samples: acc.invalid_camera_transform_samples,
+        invalid_player_control_samples: acc.invalid_player_control_samples,
+        invalid_transform_samples: acc.invalid_transform_samples,
+        max_camera_obstruction_memory_age_frames: acc.max_camera_obstruction_memory_age_frames,
+        max_camera_obstruction_stale_memory_age_frames: acc
+            .max_camera_obstruction_stale_memory_age_frames,
+        max_camera_obstruction_stale_memory_age_frame: acc
+            .max_camera_obstruction_stale_memory_age_frame,
+        max_camera_boom_error_m: acc.max_camera_boom_error_m,
+        max_camera_boom_error_frame: acc.max_camera_boom_error_frame,
         avg_desired_body_heading_error_degrees: derived.avg_desired_body_heading_error_degrees,
         p95_desired_body_heading_error_degrees: derived.p95_desired_body_heading_error_degrees,
         max_desired_body_heading_error_degrees: acc.max_desired_body_heading_error_degrees,

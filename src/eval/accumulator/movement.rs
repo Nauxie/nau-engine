@@ -160,8 +160,11 @@ fn observe_lateral_response(accumulator: &mut EvalAccumulator, sample: &EvalSamp
     let lateral_axis_active =
         sample.lateral_input_active || sample.movement_input_lateral_axis.abs() > f32::EPSILON;
     if !lateral_axis_active {
+        accumulator.current_lateral_input_unresponsive_start_secs = None;
         return;
     }
+
+    observe_lateral_input_response_continuity(accumulator, sample);
 
     if accumulator.first_lateral_input_time_secs.is_none() {
         accumulator.first_lateral_input_time_secs = Some(sample.time_secs);
@@ -196,6 +199,31 @@ fn observe_lateral_response(accumulator: &mut EvalAccumulator, sample: &EvalSamp
             accumulator.first_backward_lateral_response_time_secs = Some(sample.time_secs);
         }
     }
+}
+
+fn observe_lateral_input_response_continuity(
+    accumulator: &mut EvalAccumulator,
+    sample: &EvalSample,
+) {
+    if !sample.time_secs.is_finite() {
+        accumulator.current_lateral_input_unresponsive_start_secs = None;
+        return;
+    }
+
+    if sample.lateral_response_mps.is_finite()
+        && sample.lateral_response_mps >= AIR_CONTROL_RESPONSE_THRESHOLD_MPS
+    {
+        accumulator.current_lateral_input_unresponsive_start_secs = None;
+        return;
+    }
+
+    let start_secs = accumulator
+        .current_lateral_input_unresponsive_start_secs
+        .get_or_insert(sample.time_secs);
+    let unresponsive_duration_secs = (sample.time_secs - *start_secs).max(0.0);
+    accumulator.max_lateral_input_unresponsive_duration_secs = accumulator
+        .max_lateral_input_unresponsive_duration_secs
+        .max(unresponsive_duration_secs);
 }
 
 fn observe_right_lateral_response(accumulator: &mut EvalAccumulator, sample: &EvalSample) {

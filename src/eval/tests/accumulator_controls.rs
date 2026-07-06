@@ -1155,6 +1155,136 @@ fn accumulator_counts_obstruction_snaps_by_camera_step() {
 }
 
 #[test]
+fn accumulator_gates_invalid_camera_contract_samples() {
+    let scenario = scenario_named(CAMERA_MOUSE_CONTROL).expect("camera mouse route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(
+        content_metric_sample(scenario, 7, 12, 0, 64)
+            .with_camera_trace_metrics(Vec3::new(1.0, 2.0, 3.0), Vec3::ZERO, 12.0, 9.0, 0)
+            .with_camera_contract_metrics(false, false, false, 2, true, 37, 11),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.invalid_camera_target_samples, 1);
+    assert_eq!(summary.metrics.invalid_camera_transform_samples, 1);
+    assert_eq!(summary.metrics.invalid_player_control_samples, 1);
+    assert_eq!(summary.metrics.invalid_transform_samples, 2);
+    assert_eq!(summary.metrics.max_camera_obstruction_memory_age_frames, 37);
+    assert_eq!(
+        summary
+            .metrics
+            .max_camera_obstruction_stale_memory_age_frames,
+        11
+    );
+    assert_eq!(summary.metrics.max_camera_boom_error_m, 3.0);
+    assert_eq!(summary.metrics.max_camera_boom_error_frame, 7);
+    assert!(!named_check(&summary, "max_camera_boom_error").passed);
+    assert!(!named_check(&summary, "invalid_camera_target_samples").passed);
+    assert!(!named_check(&summary, "invalid_camera_transform_samples").passed);
+    assert!(!named_check(&summary, "invalid_player_control_samples").passed);
+    assert!(!named_check(&summary, "invalid_transform_samples").passed);
+}
+
+#[test]
+fn accumulator_gates_camera_jumps_on_streaming_change_frames() {
+    let scenario = scenario_named(CAMERA_MOUSE_CONTROL).expect("camera mouse route exists");
+    let mut accumulator = EvalAccumulator::default();
+    let mut sample = content_metric_sample(scenario, 12, 12, 0, 64);
+    sample.camera_step_distance_m = scenario.thresholds.max_camera_step_distance_m + 0.5;
+    sample.camera_rotation_delta_degrees =
+        scenario.thresholds.max_camera_rotation_delta_degrees + 0.5;
+    sample.stream_visibility_changes_this_frame = 2;
+    sample.stream_spawned_visuals_this_frame = 1;
+    sample.stream_despawned_visuals_this_frame = 1;
+    let expected_step = sample.camera_step_distance_m;
+    let expected_rotation = sample.camera_rotation_delta_degrees;
+
+    accumulator.observe(sample);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    let step_check = named_check(&summary, "max_streaming_camera_step_distance");
+    let rotation_check = named_check(&summary, "max_streaming_camera_rotation_delta");
+
+    assert_eq!(
+        summary.metrics.max_streaming_camera_step_distance_m,
+        expected_step
+    );
+    assert_eq!(summary.metrics.max_streaming_camera_step_distance_frame, 12);
+    assert_eq!(
+        summary.metrics.max_streaming_camera_rotation_delta_degrees,
+        expected_rotation
+    );
+    assert_eq!(
+        summary.metrics.max_streaming_camera_rotation_delta_frame,
+        12
+    );
+    assert_eq!(step_check.value, expected_step);
+    assert_eq!(rotation_check.value, expected_rotation);
+    assert!(!step_check.passed);
+    assert!(!rotation_check.passed);
+}
+
+#[test]
+fn accumulator_gates_stale_camera_obstruction_memory() {
+    let scenario = scenario_named(CAMERA_MOUSE_CONTROL).expect("camera mouse route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    accumulator.observe(
+        content_metric_sample(scenario, 9, 12, 0, 64)
+            .with_camera_contract_metrics(true, true, true, 0, true, 130, 121),
+    );
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    let check = named_check(&summary, "max_camera_obstruction_stale_memory_age");
+
+    assert_eq!(
+        summary
+            .metrics
+            .max_camera_obstruction_stale_memory_age_frames,
+        121
+    );
+    assert_eq!(
+        summary
+            .metrics
+            .max_camera_obstruction_stale_memory_age_frame,
+        9
+    );
+    assert_eq!(check.value, 121.0);
+    assert!(!check.passed);
+}
+
+#[test]
 fn accumulator_gates_ground_strafe_directional_response() {
     let scenario = scenario_named(CAMERA_STRAFE_STABILITY).expect("strafe route exists");
     let mut accumulator = EvalAccumulator::default();
@@ -1201,6 +1331,49 @@ fn accumulator_gates_ground_strafe_directional_response() {
     assert_eq!(summary.metrics.max_right_lateral_response_mps, 9.0);
     assert_eq!(summary.metrics.max_left_lateral_response_mps, 3.0);
     assert!(!left_check.passed);
+}
+
+#[test]
+fn accumulator_gates_camera_stress_lateral_input_dropout() {
+    let scenario =
+        scenario_named(CAMERA_OBSTRUCTION_RESET_STRESS).expect("camera stress route exists");
+    let mut accumulator = EvalAccumulator::default();
+
+    for frame in [0, 12, 24, 36] {
+        accumulator.observe(
+            content_metric_sample(scenario, frame, 12, 0, 64).with_movement_metrics(
+                EvalMovementMetrics {
+                    desired_body_yaw_error_degrees: f32::NAN,
+                    body_travel_heading_error_degrees: f32::NAN,
+                    body_roll_degrees: 0.0,
+                    desired_heading_alignment_mps: f32::NAN,
+                    desired_travel_heading_error_degrees: f32::NAN,
+                    lateral_response_mps: 0.0,
+                    lateral_input_active: true,
+                    movement_axis: Vec2::new(1.0, 0.0),
+                },
+            ),
+        );
+    }
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let check = named_check(
+        &summary,
+        "camera_stress_lateral_input_unresponsive_duration",
+    );
+
+    assert!((check.value - 0.6).abs() < 0.001);
+    assert_eq!(check.threshold, 0.5);
+    assert!(!check.passed);
 }
 
 #[test]

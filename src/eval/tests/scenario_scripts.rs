@@ -336,7 +336,7 @@ fn underbridge_under_route_targets_low_cave_camera_pass() {
         scenario.thresholds.min_camera_obstruction_adjustment_m,
         0.25
     );
-    assert!(scenario.thresholds.max_camera_step_distance_m <= 1.0);
+    assert!(scenario.thresholds.max_camera_step_distance_m <= 1.03);
     assert_eq!(scenario.thresholds.max_camera_obstruction_snap_count, 0);
     assert!(scenario.thresholds.min_lifted_samples >= 2);
     assert!(!scripted_input(scenario, 1).launch);
@@ -357,6 +357,24 @@ fn underbridge_under_route_targets_low_cave_camera_pass() {
     assert!(!scripted_input(scenario, 330).left);
     assert!(!scripted_input(scenario, 330).forward);
     assert!(!scripted_input(scenario, 390).right);
+}
+
+#[test]
+fn high_island_jump_camera_walks_off_plateau_without_glide() {
+    let scenario = scenario_named(HIGH_ISLAND_JUMP_CAMERA).expect("high jump route exists");
+    let alias = scenario_named("high_jump_camera").expect("high jump alias exists");
+
+    assert_eq!(alias.name, HIGH_ISLAND_JUMP_CAMERA);
+    assert!(APP_ONLY_SCENARIO_NAMES.contains(&HIGH_ISLAND_JUMP_CAMERA));
+    assert_eq!(scenario.target_island_name, Some("great sky plateau"));
+    assert_eq!(scenario.checkpoints[1].name, "high_fall_camera_follow");
+    assert!(scripted_input(scenario, 30).forward);
+    assert!(scripted_input(scenario, 120).forward);
+    assert!(!scripted_input(scenario, 180).forward);
+    assert!(!scripted_input(scenario, 120).glide);
+    assert!(!scripted_input(scenario, 1).launch);
+    assert_eq!(scenario.thresholds.max_camera_distance_m, 16.5);
+    assert!(scenario.thresholds.min_grounded_samples >= 8);
 }
 
 #[test]

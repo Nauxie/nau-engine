@@ -12,14 +12,14 @@ use nau_engine::{
         wind_lateral_load_from_delta,
     },
     camera::{
-        CAMERA_DISTANCE_CLAMP_STEP_GRACE_M, CAMERA_MAX_FOLLOW_FRAME_STEP_M,
-        CAMERA_MAX_OBSTRUCTION_FRAME_STEP_M, CAMERA_MAX_OBSTRUCTION_HANDOFF_FRAME_STEP_M,
-        CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES, CAMERA_MAX_PLAYER_DISTANCE_M,
-        CAMERA_OBSTRUCTION_MIN_ACTIVE_ADJUSTMENT_M, CAMERA_OBSTRUCTION_RELEASE_HANDOFF_FRAMES,
-        CameraControlState, CameraControlTuning, CameraObstruction,
-        CameraObstructionSmoothingState, FollowCamera, FollowCameraState, apply_camera_input,
-        avoid_camera_obstructions_with_preferred_offset, camera_obstruction_is_active,
-        camera_orbit_alignment_degrees, clamp_camera_offset_step, clamp_camera_player_distance,
+        CAMERA_MAX_FOLLOW_FRAME_STEP_M, CAMERA_MAX_OBSTRUCTION_FRAME_STEP_M,
+        CAMERA_MAX_OBSTRUCTION_HANDOFF_FRAME_STEP_M, CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES,
+        CAMERA_MAX_PLAYER_DISTANCE_M, CAMERA_OBSTRUCTION_MIN_ACTIVE_ADJUSTMENT_M,
+        CAMERA_OBSTRUCTION_RELEASE_HANDOFF_FRAMES, CameraControlState, CameraControlTuning,
+        CameraObstruction, CameraObstructionSmoothingState, FollowCamera, FollowCameraState,
+        apply_camera_input, avoid_camera_obstructions_with_preferred_offset,
+        camera_frame_step_budget, camera_obstruction_is_active, camera_orbit_alignment_degrees,
+        camera_rotation_step_budget, clamp_camera_offset_step, clamp_camera_player_distance,
         clamp_camera_rotation_step, clamp_camera_step, lift_camera_above_floor,
         movement_facing_from_follow_direction, movement_input_stable_follow_direction,
         revalidate_camera_obstruction, smooth_camera_obstruction, step_camera_with_direction,
@@ -191,7 +191,6 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
         let camera_step = step_camera_frame(
             camera_transform,
             state.position,
-            state.controller.mode,
             follow_direction,
             &follow,
             camera_control.orbit,
@@ -498,7 +497,6 @@ fn collect_aerial_power_ups(state: &mut FlightState, power_ups: &mut SimPowerUps
 fn step_camera_frame(
     current: Transform,
     player_position: Vec3,
-    player_mode: FlightMode,
     follow_direction: Vec3,
     follow: &FollowCamera,
     orbit: nau_engine::camera::CameraOrbit,
@@ -609,13 +607,14 @@ fn step_camera_frame(
     let pre_cap_rotation_delta_degrees =
         current.rotation.angle_between(frame.rotation).to_degrees();
     let obstruction_position_controlled = active_obstruction_hits > 0 || release_smoothing_active;
-    let max_camera_step_m = if obstruction_position_controlled {
+    let base_max_camera_step_m = if obstruction_position_controlled {
         CAMERA_MAX_OBSTRUCTION_FRAME_STEP_M
     } else if release_handoff_active {
         CAMERA_MAX_OBSTRUCTION_HANDOFF_FRAME_STEP_M
     } else {
         CAMERA_MAX_FOLLOW_FRAME_STEP_M
     };
+    let max_camera_step_m = camera_frame_step_budget(base_max_camera_step_m, dt);
     let frame = if reported_obstruction_hits > 0 {
         clamp_camera_offset_step(
             frame,
@@ -633,23 +632,12 @@ fn step_camera_frame(
         clamp_camera_rotation_step(
             frame,
             current.rotation,
-            CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES,
+            camera_rotation_step_budget(CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES, dt),
         )
     } else {
         frame
     };
-    let distance_clamped_frame =
-        clamp_camera_player_distance(frame, player_position, CAMERA_MAX_PLAYER_DISTANCE_M);
-    let frame = if player_mode == FlightMode::Gliding
-        || distance_clamped_frame
-            .position
-            .distance(current.translation)
-            <= CAMERA_MAX_FOLLOW_FRAME_STEP_M + CAMERA_DISTANCE_CLAMP_STEP_GRACE_M
-    {
-        distance_clamped_frame
-    } else {
-        frame
-    };
+    let frame = clamp_camera_player_distance(frame, player_position, CAMERA_MAX_PLAYER_DISTANCE_M);
     obstruction_smoothing.sync_resolved_frame(
         frame,
         active_obstruction_hits,
@@ -853,7 +841,6 @@ mod tests {
         let sample = step_camera_frame(
             current,
             START_POSITION,
-            FlightMode::Gliding,
             Vec3::NEG_Z,
             &follow,
             nau_engine::camera::CameraOrbit::default(),

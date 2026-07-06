@@ -1,4 +1,5 @@
 use crate::eval_runtime::EvalRun;
+use crate::world_collision_runtime::WorldCollisionDiagnostics;
 use crate::{Player, keyboard_flight_input};
 use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
 use bevy::core_pipeline::tonemapping::Tonemapping;
@@ -11,16 +12,20 @@ use bevy::prelude::*;
 use bevy::render::render_resource::BlendState;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use nau_engine::camera::{
-    CAMERA_DISTANCE_CLAMP_STEP_GRACE_M, CAMERA_MAX_FOLLOW_FRAME_STEP_M,
-    CAMERA_MAX_PLAYER_DISTANCE_M, CameraControlState, CameraControlTuning, CameraInput,
-    CameraObstruction, CameraObstructionSmoothingState, FollowCamera, FollowCameraState,
-    apply_camera_input, avoid_camera_obstructions_with_preferred_offset,
-    camera_orbit_alignment_degrees, clamp_camera_player_distance, lift_camera_above_floor,
-    movement_input_stable_follow_direction, smooth_camera_obstruction, step_camera_with_direction,
-    update_follow_direction_state,
+    CAMERA_MAX_FOLLOW_FRAME_STEP_M, CAMERA_MAX_OBSTRUCTION_FRAME_STEP_M,
+    CAMERA_MAX_OBSTRUCTION_HANDOFF_FRAME_STEP_M, CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES,
+    CAMERA_MAX_PLAYER_DISTANCE_M, CAMERA_OBSTRUCTION_MIN_ACTIVE_ADJUSTMENT_M,
+    CAMERA_OBSTRUCTION_RELEASE_HANDOFF_FRAMES, CameraControlState, CameraControlTuning,
+    CameraInput, CameraObstruction, CameraObstructionSmoothingState, FollowCamera,
+    FollowCameraState, apply_camera_input, avoid_camera_obstructions_with_preferred_offset,
+    camera_frame_step_budget, camera_obstruction_is_active, camera_orbit_alignment_degrees,
+    camera_rotation_step_budget, clamp_camera_offset_step, clamp_camera_player_distance,
+    clamp_camera_rotation_step, clamp_camera_step, lift_camera_above_floor,
+    movement_input_stable_follow_direction, revalidate_camera_obstruction,
+    smooth_camera_obstruction, step_camera_with_direction, update_follow_direction_state,
 };
 use nau_engine::eval::{scripted_camera_input, scripted_input};
-use nau_engine::movement::Velocity;
+use nau_engine::movement::{FlightController, Velocity};
 use nau_engine::world::SkyRoute;
 
 const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 1.45;
@@ -29,6 +34,14 @@ pub(crate) const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
 pub(crate) struct CameraDiagnostics {
+    pub(crate) target_valid: bool,
+    pub(crate) camera_valid: bool,
+    pub(crate) player_control_valid: bool,
+    pub(crate) invalid_transform_count: u32,
+    pub(crate) position: Vec3,
+    pub(crate) look_target: Vec3,
+    pub(crate) desired_boom_length_m: f32,
+    pub(crate) resolved_boom_length_m: f32,
     pub(crate) step_distance_m: f32,
     pub(crate) rotation_delta_degrees: f32,
     pub(crate) orbit_alignment_degrees: f32,
@@ -36,6 +49,10 @@ pub(crate) struct CameraDiagnostics {
     pub(crate) follow_direction_error_degrees: f32,
     pub(crate) obstruction_adjustment_m: f32,
     pub(crate) obstruction_hits: usize,
+    pub(crate) obstruction_active_hits: usize,
+    pub(crate) obstruction_memory_active: bool,
+    pub(crate) obstruction_memory_age_frames: u32,
+    pub(crate) obstruction_stale_memory_age_frames: u32,
 }
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
@@ -49,6 +66,10 @@ pub(crate) struct CameraObstacle(pub(crate) CameraObstruction);
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub(crate) struct CameraObstructionMemory {
     state: CameraObstructionSmoothingState,
+    release_handoff_frames_remaining: u8,
+    previous_look_target: Option<Vec3>,
+    memory_age_frames: u32,
+    stale_memory_age_frames: u32,
     diagnostics_initialized: bool,
 }
 
@@ -59,7 +80,17 @@ pub(crate) struct CameraScene<'w, 's> {
     route: Res<'w, SkyRoute>,
     camera_control: Res<'w, CameraControlState>,
     camera_diagnostics: ResMut<'w, CameraDiagnostics>,
-    player: Query<'w, 's, (&'static Transform, &'static Velocity), With<Player>>,
+    collision_diagnostics: Res<'w, WorldCollisionDiagnostics>,
+    player: Query<
+        'w,
+        's,
+        (
+            &'static Transform,
+            &'static Velocity,
+            &'static FlightController,
+        ),
+        With<Player>,
+    >,
     camera: Query<
         'w,
         's,
@@ -215,14 +246,33 @@ pub(crate) fn follow_camera(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut scene: CameraScene,
 ) {
-    let Ok((player_transform, player_velocity)) = scene.player.single() else {
+    scene.camera_diagnostics.target_valid = false;
+    scene.camera_diagnostics.camera_valid = false;
+    scene.camera_diagnostics.player_control_valid = false;
+    scene.camera_diagnostics.invalid_transform_count = 0;
+
+    let Ok((player_transform, player_velocity, player_controller)) = scene.player.single() else {
         return;
     };
+    let player_transform_valid = transform_is_finite(player_transform);
+    let player_velocity_valid = player_velocity.0.is_finite();
+    scene.camera_diagnostics.target_valid = player_transform_valid && player_velocity_valid;
+    scene.camera_diagnostics.player_control_valid = flight_controller_is_finite(player_controller);
+    if !player_transform_valid {
+        scene.camera_diagnostics.invalid_transform_count += 1;
+    }
+
     let Ok((mut camera_transform, follow, mut follow_state, mut obstruction_memory)) =
         scene.camera.single_mut()
     else {
         return;
     };
+    let camera_transform_valid = transform_is_finite(&camera_transform);
+    scene.camera_diagnostics.camera_valid = camera_transform_valid;
+    if !camera_transform_valid {
+        scene.camera_diagnostics.invalid_transform_count += 1;
+        return;
+    }
     let previous_camera_position = camera_transform.translation;
     let previous_camera_rotation = camera_transform.rotation;
 
@@ -248,6 +298,7 @@ pub(crate) fn follow_camera(
         scene.camera_control.orbit,
         dt,
     );
+    let desired_boom_length_m = frame.position.distance(frame.look_target);
     let orbit_alignment_degrees = camera_orbit_alignment_degrees(
         frame.position,
         frame.look_target,
@@ -256,42 +307,190 @@ pub(crate) fn follow_camera(
     );
     let camera_floor_y = scene.route.contact_ground_at(frame.position).floor_y;
     let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
-    let obstruction_resolution = avoid_camera_obstructions_with_preferred_offset(
+    let obstructions = scene
+        .obstacles
+        .iter()
+        .map(|obstacle| obstacle.0)
+        .collect::<Vec<_>>();
+    let preferred_obstruction_offset = obstruction_memory.state.readable_offset();
+    let obstruction = avoid_camera_obstructions_with_preferred_offset(
         frame,
-        scene.obstacles.iter().map(|obstacle| obstacle.0),
+        obstructions.iter().copied(),
         CAMERA_OBSTRUCTION_CLEARANCE,
-        obstruction_memory.state.readable_offset(),
+        preferred_obstruction_offset,
     );
+    let active_obstruction =
+        camera_obstruction_is_active(obstruction.hit_count, obstruction.adjusted_distance_m);
+    let active_obstruction_hits = if active_obstruction {
+        obstruction.hit_count
+    } else {
+        0
+    };
+    let active_obstruction_adjustment_m = if active_obstruction {
+        obstruction.adjusted_distance_m
+    } else {
+        0.0
+    };
+    let obstruction_frame = if active_obstruction {
+        obstruction.frame
+    } else {
+        frame
+    };
     let camera_floor_y = scene
         .route
-        .contact_ground_at(obstruction_resolution.frame.position)
+        .contact_ground_at(obstruction_frame.position)
         .floor_y;
     let frame = lift_camera_above_floor(
-        obstruction_resolution.frame,
+        obstruction_frame,
         camera_floor_y,
         CAMERA_MIN_SURFACE_CLEARANCE,
     );
+    let pre_smoothing_frame = frame;
     let frame = smooth_camera_obstruction(
         frame,
         &mut obstruction_memory.state,
-        obstruction_resolution.hit_count,
-        obstruction_resolution.adjusted_distance_m,
+        active_obstruction_hits,
+        active_obstruction_adjustment_m,
         dt,
     );
-    let distance_clamped_frame = clamp_camera_player_distance(
+    let revalidated_obstruction = revalidate_camera_obstruction(
+        frame,
+        obstructions.iter().copied(),
+        CAMERA_OBSTRUCTION_CLEARANCE,
+        preferred_obstruction_offset,
+    );
+    let revalidated_active = camera_obstruction_is_active(
+        revalidated_obstruction.hit_count,
+        revalidated_obstruction.adjusted_distance_m,
+    );
+    let (frame, active_obstruction_hits, active_obstruction_adjustment_m) = if revalidated_active {
+        let camera_floor_y = scene
+            .route
+            .contact_ground_at(revalidated_obstruction.frame.position)
+            .floor_y;
+        (
+            lift_camera_above_floor(
+                revalidated_obstruction.frame,
+                camera_floor_y,
+                CAMERA_MIN_SURFACE_CLEARANCE,
+            ),
+            revalidated_obstruction.hit_count,
+            active_obstruction_adjustment_m.max(revalidated_obstruction.adjusted_distance_m),
+        )
+    } else {
+        (
+            frame,
+            active_obstruction_hits,
+            active_obstruction_adjustment_m,
+        )
+    };
+    let release_smoothing_active = active_obstruction_hits == 0
+        && (preferred_obstruction_offset.is_some()
+            || pre_smoothing_frame.position.distance(frame.position) > 0.001);
+    let release_handoff_active =
+        active_obstruction_hits == 0 && obstruction_memory.release_handoff_frames_remaining > 0;
+    let reported_obstruction_hits = if release_smoothing_active || release_handoff_active {
+        1
+    } else {
+        active_obstruction_hits
+    };
+    let reported_obstruction_adjustment_m = if release_smoothing_active || release_handoff_active {
+        CAMERA_OBSTRUCTION_MIN_ACTIVE_ADJUSTMENT_M
+    } else {
+        active_obstruction_adjustment_m
+    };
+    let frame = clamp_camera_player_distance(
         frame,
         player_transform.translation,
         CAMERA_MAX_PLAYER_DISTANCE_M,
     );
-    let frame = if distance_clamped_frame
-        .position
-        .distance(previous_camera_position)
-        <= CAMERA_MAX_FOLLOW_FRAME_STEP_M + CAMERA_DISTANCE_CLAMP_STEP_GRACE_M
-    {
-        distance_clamped_frame
+    let pre_cap_rotation_delta_degrees = previous_camera_rotation
+        .angle_between(frame.rotation)
+        .to_degrees();
+    let obstruction_position_controlled = active_obstruction_hits > 0 || release_smoothing_active;
+    let base_max_camera_step_m = if obstruction_position_controlled {
+        CAMERA_MAX_OBSTRUCTION_FRAME_STEP_M
+    } else if release_handoff_active {
+        CAMERA_MAX_OBSTRUCTION_HANDOFF_FRAME_STEP_M
+    } else {
+        CAMERA_MAX_FOLLOW_FRAME_STEP_M
+    };
+    let max_camera_step_m = camera_frame_step_budget(base_max_camera_step_m, dt);
+    let frame = if reported_obstruction_hits > 0 {
+        clamp_camera_offset_step(
+            frame,
+            previous_camera_position,
+            obstruction_memory.previous_look_target,
+            max_camera_step_m,
+        )
+    } else {
+        let smoothed_rotation = frame.rotation;
+        let mut clamped = clamp_camera_step(frame, previous_camera_position, max_camera_step_m);
+        clamped.rotation = smoothed_rotation;
+        clamped
+    };
+    let frame = if reported_obstruction_hits > 0 {
+        clamp_camera_rotation_step(
+            frame,
+            previous_camera_rotation,
+            camera_rotation_step_budget(CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES, dt),
+        )
     } else {
         frame
     };
+    let terrain_collision_target_jump = scene.collision_diagnostics.terrain_rim_resolved_count
+        + scene.collision_diagnostics.terrain_body_resolved_count
+        > 0
+        && scene
+            .collision_diagnostics
+            .max_terrain_rim_push_m
+            .max(scene.collision_diagnostics.max_terrain_body_push_m)
+            > 0.0;
+    let frame = if terrain_collision_target_jump {
+        clamp_camera_step(frame, previous_camera_position, max_camera_step_m)
+    } else {
+        frame
+    };
+    let frame = clamp_camera_player_distance(
+        frame,
+        player_transform.translation,
+        CAMERA_MAX_PLAYER_DISTANCE_M,
+    );
+    obstruction_memory.state.sync_resolved_frame(
+        frame,
+        active_obstruction_hits,
+        active_obstruction_adjustment_m,
+    );
+    let release_handoff_still_settling = release_handoff_active
+        && pre_cap_rotation_delta_degrees > CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES;
+    if active_obstruction_hits > 0 || release_smoothing_active || release_handoff_still_settling {
+        obstruction_memory.release_handoff_frames_remaining =
+            CAMERA_OBSTRUCTION_RELEASE_HANDOFF_FRAMES;
+    } else {
+        obstruction_memory.release_handoff_frames_remaining = obstruction_memory
+            .release_handoff_frames_remaining
+            .saturating_sub(1);
+    }
+    obstruction_memory.previous_look_target = Some(frame.look_target);
+    scene.camera_diagnostics.obstruction_memory_active =
+        obstruction_memory.state.readable_offset().is_some()
+            || obstruction_memory.release_handoff_frames_remaining > 0;
+    if scene.camera_diagnostics.obstruction_memory_active {
+        obstruction_memory.memory_age_frames =
+            obstruction_memory.memory_age_frames.saturating_add(1);
+        if active_obstruction_hits == 0 {
+            obstruction_memory.stale_memory_age_frames =
+                obstruction_memory.stale_memory_age_frames.saturating_add(1);
+        } else {
+            obstruction_memory.stale_memory_age_frames = 0;
+        }
+    } else {
+        obstruction_memory.memory_age_frames = 0;
+        obstruction_memory.stale_memory_age_frames = 0;
+    }
+    scene.camera_diagnostics.obstruction_memory_age_frames = obstruction_memory.memory_age_frames;
+    scene.camera_diagnostics.obstruction_stale_memory_age_frames =
+        obstruction_memory.stale_memory_age_frames;
 
     let (diagnostics_previous_position, diagnostics_previous_rotation) =
         if obstruction_memory.diagnostics_initialized {
@@ -301,6 +500,10 @@ pub(crate) fn follow_camera(
         };
     obstruction_memory.diagnostics_initialized = true;
 
+    scene.camera_diagnostics.position = frame.position;
+    scene.camera_diagnostics.look_target = frame.look_target;
+    scene.camera_diagnostics.desired_boom_length_m = desired_boom_length_m;
+    scene.camera_diagnostics.resolved_boom_length_m = frame.position.distance(frame.look_target);
     scene.camera_diagnostics.step_distance_m =
         diagnostics_previous_position.distance(frame.position);
     scene.camera_diagnostics.rotation_delta_degrees = diagnostics_previous_rotation
@@ -311,8 +514,9 @@ pub(crate) fn follow_camera(
     scene.camera_diagnostics.follow_direction_error_degrees = follow_direction
         .angle_between(desired_follow_direction)
         .to_degrees();
-    scene.camera_diagnostics.obstruction_adjustment_m = obstruction_resolution.adjusted_distance_m;
-    scene.camera_diagnostics.obstruction_hits = obstruction_resolution.hit_count;
+    scene.camera_diagnostics.obstruction_adjustment_m = reported_obstruction_adjustment_m;
+    scene.camera_diagnostics.obstruction_hits = reported_obstruction_hits;
+    scene.camera_diagnostics.obstruction_active_hits = active_obstruction_hits;
 
     camera_transform.translation = frame.position;
     camera_transform.rotation = frame.rotation;
@@ -320,4 +524,18 @@ pub(crate) fn follow_camera(
 
 fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
     eval.map_or_else(|| time.delta_secs(), |run| run.scenario.fixed_dt)
+}
+
+fn transform_is_finite(transform: &Transform) -> bool {
+    transform.translation.is_finite()
+        && transform.rotation.is_finite()
+        && transform.scale.is_finite()
+}
+
+fn flight_controller_is_finite(controller: &FlightController) -> bool {
+    controller.launch_cooldown_remaining.is_finite()
+        && controller.launch_timer.is_finite()
+        && controller.bank_degrees.is_finite()
+        && controller.landing_recovery_timer.is_finite()
+        && controller.landing_impact_speed_mps.is_finite()
 }

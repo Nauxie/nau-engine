@@ -9,12 +9,14 @@ pub const CAMERA_OBSTRUCTION_VERTICAL_OFFSET_M: f32 = 2.4;
 pub const CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M: f32 = 1.5;
 pub const CAMERA_OBSTRUCTION_MIN_ACTIVE_ADJUSTMENT_M: f32 = 0.35;
 pub const CAMERA_MAX_PLAYER_DISTANCE_M: f32 = 16.49;
-pub const CAMERA_DISTANCE_CLAMP_STEP_GRACE_M: f32 = 0.25;
 pub const CAMERA_MAX_FOLLOW_FRAME_STEP_M: f32 = 1.10;
 pub const CAMERA_MAX_OBSTRUCTION_FRAME_STEP_M: f32 = 0.26;
 pub const CAMERA_MAX_OBSTRUCTION_HANDOFF_FRAME_STEP_M: f32 = 0.65;
 pub const CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES: f32 = 1.48;
 pub const CAMERA_OBSTRUCTION_RELEASE_HANDOFF_FRAMES: u8 = 10;
+const CAMERA_STEP_REFERENCE_DT_SECS: f32 = 1.0 / 60.0;
+const CAMERA_STEP_MIN_DT_SCALE: f32 = 0.5;
+const CAMERA_STEP_MAX_DT_SCALE: f32 = 3.0;
 const CAMERA_OBSTRUCTION_FRONT_CLEARANCE_M: f32 = 0.08;
 const CAMERA_OBSTRUCTION_RADIAL_OFFSET_SPEED_MPS: f32 = 12.0;
 const CAMERA_OBSTRUCTION_LATERAL_OFFSET_SPEED_MPS: f32 = 8.0;
@@ -68,6 +70,22 @@ pub fn lift_camera_above_floor(
     }
 
     frame
+}
+
+pub fn camera_frame_step_budget(max_step_m: f32, dt: f32) -> f32 {
+    max_step_m.max(0.0) * camera_step_dt_scale(dt)
+}
+
+pub fn camera_rotation_step_budget(max_step_degrees: f32, dt: f32) -> f32 {
+    max_step_degrees.max(0.0) * camera_step_dt_scale(dt)
+}
+
+fn camera_step_dt_scale(dt: f32) -> f32 {
+    if !dt.is_finite() || dt <= 0.0 {
+        return 1.0;
+    }
+
+    (dt / CAMERA_STEP_REFERENCE_DT_SECS).clamp(CAMERA_STEP_MIN_DT_SCALE, CAMERA_STEP_MAX_DT_SCALE)
 }
 
 pub fn clamp_camera_step(
@@ -886,6 +904,26 @@ mod tests {
         );
         assert_eq!(clamped.position, frame.position);
         assert_eq!(clamped.look_target, frame.look_target);
+    }
+
+    #[test]
+    fn camera_step_budget_scales_with_frame_time_and_caps_hitches() {
+        let frame_step = CAMERA_MAX_FOLLOW_FRAME_STEP_M;
+        let rotation_step = CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES;
+
+        assert!((camera_frame_step_budget(frame_step, 1.0 / 60.0) - frame_step).abs() <= 0.001);
+        assert!(
+            (camera_rotation_step_budget(rotation_step, 1.0 / 60.0) - rotation_step).abs() <= 0.001
+        );
+        assert!(
+            (camera_frame_step_budget(frame_step, 1.0 / 30.0) - frame_step * 2.0).abs() <= 0.001
+        );
+        assert!(
+            (camera_frame_step_budget(frame_step, 1.0 / 300.0) - frame_step * 0.5).abs() <= 0.001
+        );
+        assert!((camera_frame_step_budget(frame_step, 1.0) - frame_step * 3.0).abs() <= 0.001);
+        assert!((camera_frame_step_budget(frame_step, 0.0) - frame_step).abs() <= 0.001);
+        assert!((camera_frame_step_budget(frame_step, f32::NAN) - frame_step).abs() <= 0.001);
     }
 
     #[test]

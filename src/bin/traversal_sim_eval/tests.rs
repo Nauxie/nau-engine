@@ -1587,6 +1587,8 @@ fn sim_sample_measures_pure_backward_body_heading_intent() {
         .looking_to(Vec3::Z, Vec3::Y)
         .rotation;
     let camera = CameraDiagnosticsSample {
+        position: state.position + Vec3::new(0.0, 4.0, 12.0),
+        look_target: state.position + Vec3::Y * 1.4,
         distance_m: 14.0,
         surface_clearance_m: 5.0,
         player_angle_degrees: 0.0,
@@ -1642,6 +1644,8 @@ fn sim_sample_uses_resolved_pose_input_without_relabeling_movement_axis() {
         .looking_to(Vec3::Z, Vec3::Y)
         .rotation;
     let camera = CameraDiagnosticsSample {
+        position: state.position + Vec3::new(0.0, 4.0, 12.0),
+        look_target: state.position + Vec3::Y * 1.4,
         distance_m: 14.0,
         surface_clearance_m: 5.0,
         player_angle_degrees: 0.0,
@@ -2473,6 +2477,8 @@ fn sim_roll_sample(
         .rotation
         * Quat::from_rotation_z(roll_degrees.to_radians());
     let camera = CameraDiagnosticsSample {
+        position: state.position + Vec3::new(0.0, 4.0, 12.0),
+        look_target: state.position + Vec3::Y * 1.4,
         distance_m: 14.0,
         surface_clearance_m: 5.0,
         player_angle_degrees: 0.0,

@@ -94,10 +94,19 @@ pub(crate) fn run_and_write(options: SimOptions) -> Result<(), String> {
         .map_err(|error| format!("failed to create output directory: {error}"))?;
     let summary_path = options.output_dir.join("summary.json");
     let samples_path = options.output_dir.join("samples.ndjson");
+    let camera_player_trace_path = options.output_dir.join("camera_player_trace.ndjson");
+    let obstruction_decision_trace_path =
+        options.output_dir.join("obstruction_decision_trace.ndjson");
     remove_existing_file(&summary_path)?;
     remove_existing_file(&samples_path)?;
+    remove_existing_file(&camera_player_trace_path)?;
+    remove_existing_file(&obstruction_decision_trace_path)?;
     File::create(&samples_path)
         .map_err(|error| format!("failed to create samples file: {error}"))?;
+    File::create(&camera_player_trace_path)
+        .map_err(|error| format!("failed to create camera/player trace file: {error}"))?;
+    File::create(&obstruction_decision_trace_path)
+        .map_err(|error| format!("failed to create obstruction decision trace file: {error}"))?;
 
     let started = Instant::now();
     let mut result = run_simulation(options.scenario);
@@ -105,7 +114,12 @@ pub(crate) fn run_and_write(options: SimOptions) -> Result<(), String> {
     result.summary_path = path_string(&summary_path);
     result.samples_path = path_string(&samples_path);
 
-    write_samples(&samples_path, &result)?;
+    write_samples(
+        &samples_path,
+        &camera_player_trace_path,
+        &obstruction_decision_trace_path,
+        &result,
+    )?;
     fs::write(&summary_path, result.to_summary_json())
         .map_err(|error| format!("failed to write summary: {error}"))?;
 
@@ -120,14 +134,39 @@ pub(crate) fn run_and_write(options: SimOptions) -> Result<(), String> {
     }
 }
 
-fn write_samples(samples_path: &Path, result: &SimResult) -> Result<(), String> {
+fn write_samples(
+    samples_path: &Path,
+    camera_player_trace_path: &Path,
+    obstruction_decision_trace_path: &Path,
+    result: &SimResult,
+) -> Result<(), String> {
     let mut samples_file = OpenOptions::new()
         .append(true)
         .open(samples_path)
         .map_err(|error| format!("failed to open samples file: {error}"))?;
+    let mut camera_player_trace_file = OpenOptions::new()
+        .append(true)
+        .open(camera_player_trace_path)
+        .map_err(|error| format!("failed to open camera/player trace file: {error}"))?;
+    let mut obstruction_decision_trace_file = OpenOptions::new()
+        .append(true)
+        .open(obstruction_decision_trace_path)
+        .map_err(|error| format!("failed to open obstruction decision trace file: {error}"))?;
     for sample in &result.samples {
         writeln!(samples_file, "{}", sample.to_json())
             .map_err(|error| format!("failed to write sample: {error}"))?;
+        writeln!(
+            camera_player_trace_file,
+            "{}",
+            sample.to_camera_player_trace_json()
+        )
+        .map_err(|error| format!("failed to write camera/player trace: {error}"))?;
+        writeln!(
+            obstruction_decision_trace_file,
+            "{}",
+            sample.to_obstruction_decision_trace_json()
+        )
+        .map_err(|error| format!("failed to write obstruction decision trace: {error}"))?;
     }
     Ok(())
 }
@@ -147,7 +186,9 @@ fn path_string(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nau_engine::eval::{TERRAIN_BODY_COLLISION_CONTACT, WORLD_COLLISION_CONTACT};
+    use nau_engine::eval::{
+        CAMERA_OBSTRUCTION_RESET_STRESS, TERRAIN_BODY_COLLISION_CONTACT, WORLD_COLLISION_CONTACT,
+    };
 
     #[test]
     fn parse_args_rejects_app_only_collision_contact_route() {
@@ -155,13 +196,18 @@ mod tests {
             .expect_err("world collision contact should be app-only");
         let body_error = parse_args([TERRAIN_BODY_COLLISION_CONTACT.to_string()])
             .expect_err("terrain body collision contact should be app-only");
+        let camera_stress_error = parse_args([CAMERA_OBSTRUCTION_RESET_STRESS.to_string()])
+            .expect_err("camera obstruction reset stress should be app-only");
 
         assert!(error.contains("app-only"));
         assert!(body_error.contains("app-only"));
+        assert!(camera_stress_error.contains("app-only"));
         assert!(error.contains("NAU_EVAL_SIM_ONLY"));
         assert!(!simulation_scenario_names().contains(&WORLD_COLLISION_CONTACT));
         assert!(!simulation_scenario_names().contains(&TERRAIN_BODY_COLLISION_CONTACT));
+        assert!(!simulation_scenario_names().contains(&CAMERA_OBSTRUCTION_RESET_STRESS));
         assert!(usage().contains("App-only scenarios: world_collision_contact"));
         assert!(usage().contains("terrain_body_collision_contact"));
+        assert!(usage().contains("camera_obstruction_reset_stress"));
     }
 }

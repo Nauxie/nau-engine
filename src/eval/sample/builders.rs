@@ -149,7 +149,12 @@ impl EvalSample {
             lateral_input_active: false,
             movement_input_lateral_axis: 0.0,
             movement_input_forward_axis: 0.0,
+            camera_position: [0.0; 3],
+            camera_look_target: [0.0; 3],
             camera_distance_m,
+            camera_desired_boom_length_m: camera_distance_m,
+            camera_resolved_boom_length_m: camera_distance_m,
+            camera_boom_error_m: 0.0,
             camera_surface_clearance_m,
             camera_player_angle_degrees,
             camera_pitch_degrees,
@@ -163,6 +168,14 @@ impl EvalSample {
             camera_world_yaw_degrees: 0.0,
             camera_obstruction_adjustment_m,
             camera_obstruction_hits,
+            camera_obstruction_active_hits: camera_obstruction_hits,
+            camera_target_valid: true,
+            camera_transform_valid: true,
+            player_control_valid: true,
+            invalid_transform_count: 0,
+            camera_obstruction_memory_active: false,
+            camera_obstruction_memory_age_frames: 0,
+            camera_obstruction_stale_memory_age_frames: 0,
             visible_wind_fields,
             wind_field_count,
             dynamic_wind_flow_fields,
@@ -540,6 +553,55 @@ impl EvalSample {
         } else {
             0.0
         };
+        self
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_camera_contract_metrics(
+        mut self,
+        camera_target_valid: bool,
+        camera_transform_valid: bool,
+        player_control_valid: bool,
+        invalid_transform_count: u32,
+        camera_obstruction_memory_active: bool,
+        camera_obstruction_memory_age_frames: u32,
+        camera_obstruction_stale_memory_age_frames: u32,
+    ) -> Self {
+        self.camera_target_valid = camera_target_valid;
+        self.camera_transform_valid = camera_transform_valid;
+        self.player_control_valid = player_control_valid;
+        self.invalid_transform_count = invalid_transform_count;
+        self.camera_obstruction_memory_active = camera_obstruction_memory_active;
+        self.camera_obstruction_memory_age_frames = if camera_obstruction_memory_active {
+            camera_obstruction_memory_age_frames
+        } else {
+            0
+        };
+        self.camera_obstruction_stale_memory_age_frames = if camera_obstruction_memory_active {
+            camera_obstruction_stale_memory_age_frames
+        } else {
+            0
+        };
+        self
+    }
+
+    pub fn with_camera_trace_metrics(
+        mut self,
+        camera_position: Vec3,
+        camera_look_target: Vec3,
+        camera_desired_boom_length_m: f32,
+        camera_resolved_boom_length_m: f32,
+        camera_obstruction_active_hits: usize,
+    ) -> Self {
+        self.camera_position = vec3_array(camera_position);
+        self.camera_look_target = vec3_array(camera_look_target);
+        self.camera_desired_boom_length_m =
+            finite_nonnegative_or_zero(camera_desired_boom_length_m);
+        self.camera_resolved_boom_length_m =
+            finite_nonnegative_or_zero(camera_resolved_boom_length_m);
+        self.camera_boom_error_m =
+            (self.camera_resolved_boom_length_m - self.camera_desired_boom_length_m).abs();
+        self.camera_obstruction_active_hits = camera_obstruction_active_hits;
         self
     }
 
@@ -954,6 +1016,14 @@ fn finite_nonnegative_or_nan(value: f32) -> f32 {
         value.max(0.0)
     } else {
         f32::NAN
+    }
+}
+
+fn finite_nonnegative_or_zero(value: f32) -> f32 {
+    if value.is_finite() {
+        value.max(0.0)
+    } else {
+        0.0
     }
 }
 
