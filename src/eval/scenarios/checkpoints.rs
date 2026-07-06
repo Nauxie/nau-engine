@@ -42,6 +42,20 @@ pub(super) const GROUND_TAXI_CHECKPOINTS: &[EvalCheckpoint] = &[
         name: "reverse_check",
     },
 ];
+pub(super) const PLAYTEST_RESET_CHECKPOINTS: &[EvalCheckpoint] = &[
+    EvalCheckpoint {
+        frame: 24,
+        name: "pre_reset_drift",
+    },
+    EvalCheckpoint {
+        frame: 36,
+        name: "central_reset_settle",
+    },
+    EvalCheckpoint {
+        frame: 96,
+        name: "plateau_central_close_review",
+    },
+];
 pub(super) const WORLD_COLLISION_CONTACT_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
         frame: 80,
@@ -54,22 +68,32 @@ pub(super) const WORLD_COLLISION_CONTACT_CHECKPOINTS: &[EvalCheckpoint] = &[
 ];
 pub(super) const TERRAIN_RIM_COLLISION_CONTACT_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
-        frame: 90,
-        name: "approach_rim",
+        frame: 15,
+        name: "first_rim_contact",
     },
     EvalCheckpoint {
-        frame: 180,
-        name: "blocked_by_rim",
+        frame: 52,
+        name: "sustained_rim_contact",
     },
 ];
 pub(super) const TERRAIN_BODY_COLLISION_CONTACT_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
-        frame: 120,
-        name: "approach_cliff_body",
+        frame: 53,
+        name: "mid_body_contact",
     },
     EvalCheckpoint {
-        frame: 260,
-        name: "blocked_by_cliff_body",
+        frame: 120,
+        name: "low_body_contact",
+    },
+];
+pub(super) const TERRAIN_EDGE_WALKOFF_CHECKPOINTS: &[EvalCheckpoint] = &[
+    EvalCheckpoint {
+        frame: 60,
+        name: "edge_grounded_approach",
+    },
+    EvalCheckpoint {
+        frame: 180,
+        name: "edge_clean_walkoff",
     },
 ];
 pub(super) const UPDRAFT_CHECKPOINTS: &[EvalCheckpoint] = &[
@@ -204,20 +228,24 @@ pub(super) const LONG_GLIDE_CHECKPOINTS: &[EvalCheckpoint] = &[
 ];
 pub(super) const GREAT_SKY_PLATEAU_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
+        frame: 90,
+        name: "launch_review",
+    },
+    EvalCheckpoint {
         frame: 360,
         name: "upper_thermal_chain",
     },
     EvalCheckpoint {
-        frame: 780,
-        name: "stratos_to_summit_climb",
+        frame: 1500,
+        name: "waterfall_vista",
     },
     EvalCheckpoint {
         frame: 1260,
-        name: "high_archipelago_crossing",
+        name: "high_crown_tease",
     },
     EvalCheckpoint {
         frame: 1740,
-        name: "plateau_approach",
+        name: "plateau_arrival_reveal",
     },
 ];
 

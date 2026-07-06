@@ -1,5 +1,6 @@
-use super::types::{IslandVisualCatalog, IslandVisualLayer};
+use super::types::{IslandVisualCatalog, IslandVisualEntry, IslandVisualLayer};
 use crate::world_collision_runtime::WorldCollisionProxyKind;
+use bevy::prelude::{Vec2, Vec3};
 use nau_engine::world::{
     SkyRoute, TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND, TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND,
 };
@@ -14,14 +15,16 @@ struct SolidVisualRequirement {
     kind: WorldCollisionProxyKind,
 }
 
+#[derive(Clone, Copy)]
+struct NonBlockingVisualRequirement {
+    name: &'static str,
+    allow_camera_obstacle: bool,
+}
+
 const SOLID_VISUAL_REQUIREMENTS: &[SolidVisualRequirement] = &[
     SolidVisualRequirement {
         name: TERRAIN_BODY_NAME,
         kind: WorldCollisionProxyKind::TerrainBody,
-    },
-    SolidVisualRequirement {
-        name: "island ridge",
-        kind: WorldCollisionProxyKind::Landmark,
     },
     SolidVisualRequirement {
         name: "landing target marker",
@@ -73,21 +76,79 @@ const SOLID_VISUAL_REQUIREMENTS: &[SolidVisualRequirement] = &[
     },
 ];
 
+const NON_BLOCKING_VISUAL_REQUIREMENTS: &[NonBlockingVisualRequirement] = &[
+    NonBlockingVisualRequirement {
+        name: "under-route cave mouth arch",
+        allow_camera_obstacle: true,
+    },
+    NonBlockingVisualRequirement {
+        name: "under-route hanging shelf",
+        allow_camera_obstacle: true,
+    },
+    NonBlockingVisualRequirement {
+        name: "under-route hanging roots",
+        allow_camera_obstacle: false,
+    },
+    NonBlockingVisualRequirement {
+        name: "island pond",
+        allow_camera_obstacle: false,
+    },
+    NonBlockingVisualRequirement {
+        name: "plateau lake",
+        allow_camera_obstacle: false,
+    },
+    NonBlockingVisualRequirement {
+        name: "plateau waterfall ribbon",
+        allow_camera_obstacle: false,
+    },
+    NonBlockingVisualRequirement {
+        name: "plateau waterfall mist",
+        allow_camera_obstacle: false,
+    },
+    NonBlockingVisualRequirement {
+        name: "route waterfall ribbon",
+        allow_camera_obstacle: false,
+    },
+    NonBlockingVisualRequirement {
+        name: "route waterfall mist",
+        allow_camera_obstacle: false,
+    },
+    NonBlockingVisualRequirement {
+        name: "route lake",
+        allow_camera_obstacle: false,
+    },
+];
+
 const CAMERA_ONLY_ALLOWLIST: &[&str] = &[
     "island tree canopy",
     "launch camera tree canopy",
     "under-route cave mouth arch",
     "under-route hanging shelf",
 ];
+const SOLID_PROXY_MAX_FLOAT_ABOVE_SURFACE_M: f32 = 0.35;
+const SOLID_PROXY_MAX_BURY_BELOW_SURFACE_M: f32 = 1.25;
+const SOLID_PROXY_OBSTACLE_BOUNDS_TOLERANCE_M: f32 = 0.08;
+const SOLID_PROXY_FOOTPRINT_BOUNDS_TOLERANCE_M: f32 = 0.02;
 
 #[derive(Debug)]
 pub(crate) struct IslandCollisionCoverageAudit {
     pub(crate) passed: bool,
     pub(crate) checked_visual_count: usize,
     pub(crate) solid_visual_count: usize,
+    pub(crate) surface_supported_solid_proxy_count: usize,
+    pub(crate) footprint_bounded_solid_proxy_count: usize,
+    pub(crate) min_solid_proxy_edge_clearance_m: f32,
+    pub(crate) tree_solid_proxy_count: usize,
+    pub(crate) tree_footprint_bounded_proxy_count: usize,
+    pub(crate) rock_solid_proxy_count: usize,
+    pub(crate) rock_footprint_bounded_proxy_count: usize,
+    pub(crate) landmark_solid_proxy_count: usize,
+    pub(crate) landmark_footprint_bounded_proxy_count: usize,
+    pub(crate) obstacle_bounded_solid_proxy_count: usize,
     pub(crate) terrain_rim_proxy_count: usize,
     pub(crate) terrain_body_proxy_count: usize,
     pub(crate) camera_only_allowance_count: usize,
+    pub(crate) non_blocking_visual_count: usize,
     pub(crate) failures: Vec<String>,
 }
 
@@ -97,11 +158,25 @@ pub(crate) fn audit_island_collision_coverage(
 ) -> IslandCollisionCoverageAudit {
     let mut failures = Vec::new();
     let mut solid_visual_count = 0;
+    let mut surface_supported_solid_proxy_count = 0;
+    let mut footprint_bounded_solid_proxy_count = 0;
+    let mut min_solid_proxy_edge_clearance_m = f32::INFINITY;
+    let mut tree_solid_proxy_count = 0;
+    let mut tree_footprint_bounded_proxy_count = 0;
+    let mut rock_solid_proxy_count = 0;
+    let mut rock_footprint_bounded_proxy_count = 0;
+    let mut landmark_solid_proxy_count = 0;
+    let mut landmark_footprint_bounded_proxy_count = 0;
+    let mut obstacle_bounded_solid_proxy_count = 0;
     let mut terrain_rim_proxy_count = 0;
     let mut terrain_body_proxy_count = 0;
     let mut camera_only_allowance_count = 0;
+    let mut non_blocking_visual_count = 0;
     let mut required_name_counts = SOLID_VISUAL_REQUIREMENTS
         .iter()
+        .map(|requirement| (requirement.name, 0_usize))
+        .collect::<Vec<_>>();
+    let mut non_blocking_name_counts = non_blocking_requirements()
         .map(|requirement| (requirement.name, 0_usize))
         .collect::<Vec<_>>();
     let mut allowlisted_camera_only_counts = CAMERA_ONLY_ALLOWLIST
@@ -111,14 +186,28 @@ pub(crate) fn audit_island_collision_coverage(
 
     for entry in &catalog.entries {
         let expected_solid = solid_requirement(entry.name);
+        let expected_non_blocking = non_blocking_requirement(entry.name);
         if let Some((_, count)) = required_name_counts
             .iter_mut()
             .find(|(name, _)| *name == entry.name)
         {
             *count += 1;
         }
+        if let Some((_, count)) = non_blocking_name_counts
+            .iter_mut()
+            .find(|(name, _)| *name == entry.name)
+        {
+            *count += 1;
+            non_blocking_visual_count += 1;
+        }
 
         if let Some(collision) = entry.collision {
+            if expected_non_blocking.is_some() {
+                failures.push(format!(
+                    "{} on {} must remain non-player-blocking route/affordance visual",
+                    entry.name, entry.key.island_name
+                ));
+            }
             match collision.kind {
                 WorldCollisionProxyKind::TerrainRim => {
                     terrain_rim_proxy_count += 1;
@@ -167,6 +256,44 @@ pub(crate) fn audit_island_collision_coverage(
                 kind => {
                     if kind == WorldCollisionProxyKind::TerrainBody {
                         terrain_body_proxy_count += 1;
+                    } else {
+                        match kind {
+                            WorldCollisionProxyKind::Tree => tree_solid_proxy_count += 1,
+                            WorldCollisionProxyKind::Rock => rock_solid_proxy_count += 1,
+                            WorldCollisionProxyKind::Landmark => landmark_solid_proxy_count += 1,
+                            WorldCollisionProxyKind::TerrainRim
+                            | WorldCollisionProxyKind::TerrainBody => {}
+                        }
+                        surface_supported_solid_proxy_count += 1;
+                        append_solid_proxy_surface_failures(entry, collision, &mut failures);
+                        let edge_clearance_m = solid_proxy_min_edge_clearance_m(entry, collision);
+                        min_solid_proxy_edge_clearance_m =
+                            min_solid_proxy_edge_clearance_m.min(edge_clearance_m);
+                        if edge_clearance_m >= -SOLID_PROXY_FOOTPRINT_BOUNDS_TOLERANCE_M {
+                            footprint_bounded_solid_proxy_count += 1;
+                            match kind {
+                                WorldCollisionProxyKind::Tree => {
+                                    tree_footprint_bounded_proxy_count += 1;
+                                }
+                                WorldCollisionProxyKind::Rock => {
+                                    rock_footprint_bounded_proxy_count += 1;
+                                }
+                                WorldCollisionProxyKind::Landmark => {
+                                    landmark_footprint_bounded_proxy_count += 1;
+                                }
+                                WorldCollisionProxyKind::TerrainRim
+                                | WorldCollisionProxyKind::TerrainBody => {}
+                            }
+                        } else {
+                            failures.push(format!(
+                                "{} on {} has {:?} collision footprint extending {:.3}m past the visible island support",
+                                entry.name, entry.key.island_name, collision.kind, -edge_clearance_m
+                            ));
+                        }
+                        if entry.obstacle.is_some() {
+                            obstacle_bounded_solid_proxy_count += 1;
+                            append_solid_proxy_obstacle_failures(entry, collision, &mut failures);
+                        }
                     }
                     solid_visual_count += 1;
                     if !entry.has_visible_mesh() || entry.material.is_none() {
@@ -192,6 +319,16 @@ pub(crate) fn audit_island_collision_coverage(
             failures.push(format!(
                 "{} on {} is a named solid visual but has no {:?} collision proxy",
                 entry.name, entry.key.island_name, requirement.kind
+            ));
+        }
+
+        if let Some(requirement) = expected_non_blocking
+            && entry.obstacle.is_some()
+            && !requirement.allow_camera_obstacle
+        {
+            failures.push(format!(
+                "{} on {} should not block the player or camera",
+                entry.name, entry.key.island_name
             ));
         }
 
@@ -256,6 +393,14 @@ pub(crate) fn audit_island_collision_coverage(
         }
     }
 
+    for (name, count) in non_blocking_name_counts {
+        if count == 0 {
+            failures.push(format!(
+                "{name} is classified as non-player-blocking but is missing from the catalog"
+            ));
+        }
+    }
+
     for (name, count) in allowlisted_camera_only_counts {
         if count == 0 {
             failures.push(format!(
@@ -264,13 +409,30 @@ pub(crate) fn audit_island_collision_coverage(
         }
     }
 
+    let min_solid_proxy_edge_clearance_m = if min_solid_proxy_edge_clearance_m.is_finite() {
+        min_solid_proxy_edge_clearance_m
+    } else {
+        0.0
+    };
+
     IslandCollisionCoverageAudit {
         passed: failures.is_empty(),
         checked_visual_count: catalog.entries.len(),
         solid_visual_count,
+        surface_supported_solid_proxy_count,
+        footprint_bounded_solid_proxy_count,
+        min_solid_proxy_edge_clearance_m,
+        tree_solid_proxy_count,
+        tree_footprint_bounded_proxy_count,
+        rock_solid_proxy_count,
+        rock_footprint_bounded_proxy_count,
+        landmark_solid_proxy_count,
+        landmark_footprint_bounded_proxy_count,
+        obstacle_bounded_solid_proxy_count,
         terrain_rim_proxy_count,
         terrain_body_proxy_count,
         camera_only_allowance_count,
+        non_blocking_visual_count,
         failures,
     }
 }
@@ -280,6 +442,127 @@ fn solid_requirement(name: &str) -> Option<SolidVisualRequirement> {
         .iter()
         .copied()
         .find(|requirement| requirement.name == name)
+}
+
+fn non_blocking_requirement(name: &str) -> Option<NonBlockingVisualRequirement> {
+    non_blocking_requirements().find(|requirement| requirement.name == name)
+}
+
+fn non_blocking_requirements() -> impl Iterator<Item = NonBlockingVisualRequirement> {
+    NON_BLOCKING_VISUAL_REQUIREMENTS.iter().copied()
+}
+
+fn append_solid_proxy_surface_failures(
+    entry: &IslandVisualEntry,
+    collision: crate::world_collision_runtime::WorldCollisionProxy,
+    failures: &mut Vec<String>,
+) {
+    if !entry.island.contains_horizontal(collision.center) {
+        failures.push(format!(
+            "{} on {} has {:?} collision centered outside the visible island footprint",
+            entry.name, entry.key.island_name, collision.kind
+        ));
+        return;
+    }
+
+    let surface_y = entry.island.mesh_top_y_at(collision.center);
+    let bottom_y = collision.center.y - collision.half_extents.y;
+    let surface_delta_m = bottom_y - surface_y;
+    if surface_delta_m > SOLID_PROXY_MAX_FLOAT_ABOVE_SURFACE_M {
+        failures.push(format!(
+            "{} on {} has {:?} collision bottom {:.2}m above the visible surface",
+            entry.name, entry.key.island_name, collision.kind, surface_delta_m
+        ));
+    }
+    if surface_delta_m < -SOLID_PROXY_MAX_BURY_BELOW_SURFACE_M {
+        failures.push(format!(
+            "{} on {} has {:?} collision bottom {:.2}m below the visible surface",
+            entry.name, entry.key.island_name, collision.kind, -surface_delta_m
+        ));
+    }
+}
+
+fn append_solid_proxy_obstacle_failures(
+    entry: &IslandVisualEntry,
+    collision: crate::world_collision_runtime::WorldCollisionProxy,
+    failures: &mut Vec<String>,
+) {
+    let Some(obstacle) = entry.obstacle else {
+        return;
+    };
+
+    let obstacle = obstacle.0;
+    let tolerance = Vec3::splat(SOLID_PROXY_OBSTACLE_BOUNDS_TOLERANCE_M);
+    let collision_min = collision.center - collision.half_extents;
+    let collision_max = collision.center + collision.half_extents;
+    let obstacle_min = obstacle.center - obstacle.half_extents - tolerance;
+    let obstacle_max = obstacle.center + obstacle.half_extents + tolerance;
+
+    if collision_min.x < obstacle_min.x
+        || collision_min.y < obstacle_min.y
+        || collision_min.z < obstacle_min.z
+        || collision_max.x > obstacle_max.x
+        || collision_max.y > obstacle_max.y
+        || collision_max.z > obstacle_max.z
+    {
+        failures.push(format!(
+            "{} on {} has {:?} collision extending outside its visible obstacle envelope",
+            entry.name, entry.key.island_name, collision.kind
+        ));
+    }
+}
+
+fn solid_proxy_min_edge_clearance_m(
+    entry: &IslandVisualEntry,
+    collision: crate::world_collision_runtime::WorldCollisionProxy,
+) -> f32 {
+    solid_proxy_horizontal_samples(collision)
+        .into_iter()
+        .map(|sample| island_horizontal_edge_clearance_m(entry.island, sample))
+        .fold(f32::INFINITY, f32::min)
+}
+
+fn solid_proxy_horizontal_samples(
+    collision: crate::world_collision_runtime::WorldCollisionProxy,
+) -> [Vec3; 9] {
+    let center = collision.center;
+    let half_extents = collision.half_extents;
+    [
+        Vec3::new(
+            center.x - half_extents.x,
+            center.y,
+            center.z - half_extents.z,
+        ),
+        Vec3::new(center.x, center.y, center.z - half_extents.z),
+        Vec3::new(
+            center.x + half_extents.x,
+            center.y,
+            center.z - half_extents.z,
+        ),
+        Vec3::new(center.x - half_extents.x, center.y, center.z),
+        center,
+        Vec3::new(center.x + half_extents.x, center.y, center.z),
+        Vec3::new(
+            center.x - half_extents.x,
+            center.y,
+            center.z + half_extents.z,
+        ),
+        Vec3::new(center.x, center.y, center.z + half_extents.z),
+        Vec3::new(
+            center.x + half_extents.x,
+            center.y,
+            center.z + half_extents.z,
+        ),
+    ]
+}
+
+fn island_horizontal_edge_clearance_m(island: nau_engine::world::SkyIsland, position: Vec3) -> f32 {
+    let dx = (position.x - island.center.x) / island.half_extents.x.max(0.001);
+    let dz = (position.z - island.center.z) / island.half_extents.y.max(0.001);
+    let radius = Vec2::new(dx, dz).length();
+    let angle = dz.atan2(dx);
+
+    (island.playable_silhouette_scale(angle) - radius) * island.half_extents.min_element()
 }
 
 #[cfg(test)]
@@ -344,6 +627,59 @@ mod tests {
     }
 
     #[test]
+    fn audit_fails_non_blocking_visuals_with_player_collision() {
+        let route = SkyRoute::default();
+        let island = route.islands()[0];
+        let surface_y = island.mesh_top_y_at(island.center);
+        let collision = WorldCollisionProxy::new(
+            Vec3::new(island.center.x, surface_y + 0.5, island.center.z),
+            Vec3::splat(0.4),
+            WorldCollisionProxyKind::Landmark,
+        );
+        let catalog = IslandVisualCatalog {
+            entries: vec![audit_entry(
+                island,
+                "route waterfall ribbon",
+                IslandVisualLayer::Beacon,
+                None,
+                Some(collision),
+            )],
+        };
+
+        let audit = audit_island_collision_coverage(&catalog, &route);
+
+        assert!(!audit.passed);
+        assert!(audit.failures.iter().any(|failure| {
+            failure.contains("route waterfall ribbon")
+                && failure.contains("must remain non-player-blocking")
+        }));
+    }
+
+    #[test]
+    fn audit_fails_non_blocking_visuals_with_camera_obstacle() {
+        let route = SkyRoute::default();
+        let island = route.islands()[0];
+        let blocker = CameraObstacle(CameraObstruction::new(Vec3::ZERO, Vec3::ONE));
+        let catalog = IslandVisualCatalog {
+            entries: vec![audit_entry(
+                island,
+                "route lake",
+                IslandVisualLayer::Beacon,
+                Some(blocker),
+                None,
+            )],
+        };
+
+        let audit = audit_island_collision_coverage(&catalog, &route);
+
+        assert!(!audit.passed);
+        assert!(audit.failures.iter().any(|failure| {
+            failure.contains("route lake")
+                && failure.contains("should not block the player or camera")
+        }));
+    }
+
+    #[test]
     fn audit_fails_solid_visuals_with_wrong_proxy_kind() {
         let route = SkyRoute::default();
         let island = route.islands()[0];
@@ -363,6 +699,126 @@ mod tests {
         assert!(!audit.passed);
         assert!(audit.failures.iter().any(|failure| {
             failure.contains("island tree trunk") && failure.contains("expected Tree")
+        }));
+    }
+
+    #[test]
+    fn audit_fails_solid_visuals_outside_visible_island_footprint() {
+        let route = SkyRoute::default();
+        let island = route.islands()[0];
+        let outside = island.center + Vec3::new(island.half_extents.x * 3.0, 1.0, 0.0);
+        let collision =
+            WorldCollisionProxy::new(outside, Vec3::splat(0.4), WorldCollisionProxyKind::Rock);
+        let catalog = IslandVisualCatalog {
+            entries: vec![audit_entry(
+                island,
+                "island stone scatter",
+                IslandVisualLayer::Detail,
+                None,
+                Some(collision),
+            )],
+        };
+
+        let audit = audit_island_collision_coverage(&catalog, &route);
+
+        assert!(!audit.passed);
+        assert!(audit.failures.iter().any(|failure| {
+            failure.contains("island stone scatter")
+                && failure.contains("outside the visible island footprint")
+        }));
+    }
+
+    #[test]
+    fn audit_fails_solid_visuals_floating_above_visible_surface() {
+        let route = SkyRoute::default();
+        let island = route.islands()[0];
+        let surface_y = island.mesh_top_y_at(island.center);
+        let floating_center = Vec3::new(island.center.x, surface_y + 3.0, island.center.z);
+        let collision = WorldCollisionProxy::new(
+            floating_center,
+            Vec3::splat(0.4),
+            WorldCollisionProxyKind::Rock,
+        );
+        let catalog = IslandVisualCatalog {
+            entries: vec![audit_entry(
+                island,
+                "island stone scatter",
+                IslandVisualLayer::Detail,
+                None,
+                Some(collision),
+            )],
+        };
+
+        let audit = audit_island_collision_coverage(&catalog, &route);
+
+        assert!(!audit.passed);
+        assert!(audit.failures.iter().any(|failure| {
+            failure.contains("island stone scatter")
+                && failure.contains("above the visible surface")
+        }));
+    }
+
+    #[test]
+    fn audit_fails_solid_visual_collision_footprint_spilling_past_visible_edge() {
+        let route = SkyRoute::default();
+        let island = route.islands()[0];
+        let contour = island.footprint_contour_point(0.0, false);
+        let island_center = Vec2::new(island.center.x, island.center.z);
+        let outward = (contour - island_center).normalize_or_zero();
+        let center_2d = contour - outward * 0.04;
+        let surface_position = Vec3::new(center_2d.x, island.center.y, center_2d.y);
+        let surface_y = island.mesh_top_y_at(surface_position);
+        let collision = WorldCollisionProxy::new(
+            Vec3::new(center_2d.x, surface_y + 0.4, center_2d.y),
+            Vec3::splat(0.4),
+            WorldCollisionProxyKind::Rock,
+        );
+        let catalog = IslandVisualCatalog {
+            entries: vec![audit_entry(
+                island,
+                "island stone scatter",
+                IslandVisualLayer::Detail,
+                None,
+                Some(collision),
+            )],
+        };
+
+        let audit = audit_island_collision_coverage(&catalog, &route);
+
+        assert!(!audit.passed);
+        assert!(audit.min_solid_proxy_edge_clearance_m < -SOLID_PROXY_FOOTPRINT_BOUNDS_TOLERANCE_M);
+        assert!(audit.failures.iter().any(|failure| {
+            failure.contains("island stone scatter")
+                && failure.contains("collision footprint extending")
+                && failure.contains("past the visible island support")
+        }));
+    }
+
+    #[test]
+    fn audit_fails_solid_visual_collision_outside_obstacle_envelope() {
+        let route = SkyRoute::default();
+        let island = route.islands()[0];
+        let surface_y = island.mesh_top_y_at(island.center);
+        let center = Vec3::new(island.center.x, surface_y + 1.0, island.center.z);
+        let obstacle = CameraObstacle(CameraObstruction::new(center, Vec3::splat(0.45)));
+        let collision =
+            WorldCollisionProxy::new(center, Vec3::splat(0.9), WorldCollisionProxyKind::Tree);
+        let catalog = IslandVisualCatalog {
+            entries: vec![audit_entry(
+                island,
+                "island tree trunk",
+                IslandVisualLayer::Detail,
+                Some(obstacle),
+                Some(collision),
+            )],
+        };
+
+        let audit = audit_island_collision_coverage(&catalog, &route);
+
+        assert!(!audit.passed);
+        assert!(audit.failures.iter().any(|failure| {
+            failure.contains("island tree trunk")
+                && failure.contains("outside its visible obstacle envelope")
         }));
     }
 

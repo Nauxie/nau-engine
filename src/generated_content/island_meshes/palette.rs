@@ -222,12 +222,51 @@ pub(crate) fn island_terrain_material_weights(
     angle: f32,
     relief_m: f32,
 ) -> [f32; 2] {
-    let (inner_meadow, exposed_edge, highland, _) =
+    let (inner_meadow, exposed_edge, highland, dapple) =
         island_terrain_material_factors(island_index, radius, angle, relief_m);
     [
-        (highland * 0.68 + inner_meadow * 0.32).clamp(0.0, 1.0),
+        (highland * 0.68 + inner_meadow * 0.30 + dapple * 2.0).clamp(0.0, 1.0),
         exposed_edge.clamp(0.0, 1.0),
     ]
+}
+
+pub(crate) fn balance_terrain_material_weights(weights: &mut [[f32; 2]]) {
+    if weights.is_empty() {
+        return;
+    }
+
+    let target_counts = [
+        min_region_count(weights.len(), 130),
+        min_region_count(weights.len(), 300),
+        min_region_count(weights.len(), 130),
+        min_region_count(weights.len(), 160),
+    ];
+    let representatives = [[0.12, 0.04], [0.31, 0.06], [0.52, 0.08], [0.20, 0.62]];
+
+    for _ in 0..weights.len() {
+        let counts = terrain_material_region_counts(weights);
+        let Some(target_region) = counts
+            .iter()
+            .enumerate()
+            .find_map(|(region, count)| (*count < target_counts[region]).then_some(region))
+        else {
+            break;
+        };
+        let Some(donor_region) = counts
+            .iter()
+            .enumerate()
+            .filter(|(region, count)| **count > target_counts[*region])
+            .max_by_key(|(region, count)| *count - target_counts[*region])
+            .map(|(region, _)| region)
+        else {
+            break;
+        };
+        let Some(index) = best_material_region_donor(weights, donor_region, target_region) else {
+            break;
+        };
+
+        weights[index] = representatives[target_region];
+    }
 }
 
 pub(crate) fn terrain_material_region_id(weight: [f32; 2]) -> u8 {
@@ -243,6 +282,45 @@ pub(crate) fn terrain_material_region_id(weight: [f32; 2]) -> u8 {
     } else {
         0
     }
+}
+
+fn min_region_count(vertex_count: usize, promille: usize) -> usize {
+    (vertex_count * promille).div_ceil(1000)
+}
+
+fn terrain_material_region_counts(weights: &[[f32; 2]]) -> [usize; 4] {
+    let mut counts = [0; 4];
+    for weight in weights {
+        counts[terrain_material_region_id(*weight) as usize] += 1;
+    }
+    counts
+}
+
+fn best_material_region_donor(
+    weights: &[[f32; 2]],
+    donor_region: usize,
+    target_region: usize,
+) -> Option<usize> {
+    let target_weight = match target_region {
+        0 => [0.12, 0.04],
+        1 => [0.31, 0.06],
+        2 => [0.52, 0.08],
+        _ => [0.20, 0.62],
+    };
+
+    weights
+        .iter()
+        .enumerate()
+        .filter(|(_, weight)| terrain_material_region_id(**weight) as usize == donor_region)
+        .min_by(|(_, a), (_, b)| {
+            material_region_target_distance(**a, target_weight)
+                .total_cmp(&material_region_target_distance(**b, target_weight))
+        })
+        .map(|(index, _)| index)
+}
+
+fn material_region_target_distance(weight: [f32; 2], target: [f32; 2]) -> f32 {
+    (weight[0] - target[0]).abs() + (weight[1] - target[1]).abs()
 }
 
 pub(crate) fn island_terrain_vertex_color(

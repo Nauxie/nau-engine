@@ -1292,6 +1292,7 @@ pub(crate) fn collect_eval_metrics(
         content_metrics.generated_rock_count,
         content_metrics.min_rock_mesh_vertices,
         content_metrics.generated_landmark_count,
+        0,
         content_metrics.generated_route_cairn_count,
         content_metrics.generated_launch_beacon_count,
         content_metrics.generated_landing_garden_marker_count,

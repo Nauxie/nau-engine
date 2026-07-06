@@ -5,12 +5,24 @@ use super::{
     AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, CAMERA_STRAFE_STABILITY,
     CAMERA_TURN_STABILITY, CAMERA_YAW_STABILITY, EvalScenario, GREAT_SKY_PLATEAU_ROUTE,
     GROUND_TAXI_CONTROL, ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, PLATEAU_ARRIVAL_CAMERA,
-    POSE_STATE_COVERAGE, TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_RIM_COLLISION_CONTACT,
-    UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
+    PLAYTEST_RESET, POSE_STATE_COVERAGE, RETURN_DESCENT_ROUTE, TERRAIN_BODY_COLLISION_CONTACT,
+    TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT, UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
+    WORLD_COLLISION_CONTACT,
 };
+
+pub fn scripted_playtest_reset_requested(scenario: EvalScenario, frame: u32) -> bool {
+    scenario.name == PLAYTEST_RESET && frame == 30
+}
 
 pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
     let t = frame as f32 * scenario.fixed_dt;
+    if scenario.name == PLAYTEST_RESET {
+        return FlightInput {
+            forward: frame < 30 && t >= 0.05,
+            right: (0.18..=0.42).contains(&t),
+            ..default()
+        };
+    }
     if matches!(scenario.name, CAMERA_MOUSE_CONTROL | CAMERA_YAW_STABILITY) {
         return FlightInput::default();
     }
@@ -22,12 +34,12 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
         };
     }
     if scenario.name == AIR_CONTROL_RESPONSE {
-        let dive = (5.75..=6.0).contains(&t);
+        let dive = (5.35..=6.1).contains(&t);
         return FlightInput {
-            forward: (0.05..=1.55).contains(&t) || (6.1..=6.45).contains(&t),
+            forward: (0.05..=1.55).contains(&t) || (6.1..=6.75).contains(&t),
             right: (1.0..=2.45).contains(&t) || (4.0..=4.55).contains(&t),
             left: (2.65..=3.75).contains(&t) || (4.75..=5.3).contains(&t),
-            backward: (4.0..=5.65).contains(&t),
+            backward: (4.0..=5.45).contains(&t),
             glide: t >= 0.45,
             dive,
             launch: frame == 1,
@@ -67,13 +79,22 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
     }
     if scenario.name == TERRAIN_RIM_COLLISION_CONTACT {
         return FlightInput {
-            forward: (0.05..=4.8).contains(&t),
+            backward: (0.05..=4.8).contains(&t),
+            left: (0.05..=4.8).contains(&t),
             ..default()
         };
     }
     if scenario.name == TERRAIN_BODY_COLLISION_CONTACT {
         return FlightInput {
-            right: (0.05..=9.0).contains(&t),
+            left: (0.05..=9.0).contains(&t),
+            glide: (0.05..=9.0).contains(&t),
+            ..default()
+        };
+    }
+    if scenario.name == TERRAIN_EDGE_WALKOFF {
+        return FlightInput {
+            right: (0.05..=4.65).contains(&t),
+            glide: t >= 0.45,
             ..default()
         };
     }
@@ -132,17 +153,29 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
             left: (3.1..=4.5).contains(&t)
                 || (9.4..=10.4).contains(&t)
                 || (18.0..=21.6).contains(&t)
+                || (23.2..=25.8).contains(&t)
                 || (28.2..=30.4).contains(&t),
             glide: t >= 0.45,
             dive: (7.8..=8.45).contains(&t),
             launch: frame == 1,
         };
     }
+    if scenario.name == RETURN_DESCENT_ROUTE {
+        return FlightInput {
+            forward: t >= 0.05,
+            backward: false,
+            right: (11.8..=13.4).contains(&t),
+            left: (5.4..=9.8).contains(&t),
+            glide: t >= 0.35,
+            dive: (10.8..=11.4).contains(&t),
+            launch: frame == 1,
+        };
+    }
     if scenario.name == PLATEAU_ARRIVAL_CAMERA {
         return FlightInput {
-            forward: (0.05..=5.2).contains(&t),
-            right: (1.45..=3.35).contains(&t),
-            left: (4.15..=5.25).contains(&t),
+            forward: (0.05..=6.15).contains(&t),
+            right: (1.15..=2.75).contains(&t) || (4.85..=5.65).contains(&t),
+            left: (3.05..=4.45).contains(&t),
             glide: false,
             launch: false,
             ..default()
@@ -196,6 +229,13 @@ pub fn scripted_camera_input(scenario: EvalScenario, frame: u32) -> CameraInput 
         CAMERA_MOUSE_CONTROL if (1.5..=2.1).contains(&t) => Vec2::new(0.0, 8.0),
         CAMERA_MOUSE_CONTROL if (2.2..=2.55).contains(&t) => Vec2::new(0.0, -8.0),
         CAMERA_YAW_STABILITY if (0.2..=0.45).contains(&t) => Vec2::new(3.0, 0.0),
+        PLATEAU_ARRIVAL_CAMERA if (0.18..=0.75).contains(&t) => Vec2::new(1.3, 0.0),
+        PLATEAU_ARRIVAL_CAMERA if (0.9..=1.35).contains(&t) => Vec2::new(-1.5, 0.0),
+        PLATEAU_ARRIVAL_CAMERA if (1.55..=2.2).contains(&t) => Vec2::new(1.1, 0.0),
+        PLATEAU_ARRIVAL_CAMERA if (2.35..=2.9).contains(&t) => Vec2::new(-1.2, 0.0),
+        PLATEAU_ARRIVAL_CAMERA if (3.2..=3.75).contains(&t) => Vec2::new(0.9, 0.0),
+        PLATEAU_ARRIVAL_CAMERA if (4.05..=4.55).contains(&t) => Vec2::new(-0.9, 0.0),
+        PLATEAU_ARRIVAL_CAMERA if (5.1..=5.45).contains(&t) => Vec2::new(0.6, 0.0),
         _ => Vec2::ZERO,
     };
 

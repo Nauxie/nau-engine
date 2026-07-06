@@ -3,9 +3,9 @@ use crate::movement::{FlightMode, FlightState};
 use bevy::prelude::{Resource, Vec2, Vec3};
 
 use super::{
-    GROUND_CONTACT_EPSILON, GROUND_CONTACT_HORIZONTAL_DAMPING, GroundSurface, IslandPlateauRegion,
-    IslandUnderRouteSegment, LodBand, PLAYER_STANDING_OFFSET, RouteObjective, START_FLOOR_Y,
-    SkyIsland, StreamChunkCoord, StreamingLodStats,
+    GROUND_CONTACT_EPSILON, GROUND_CONTACT_HORIZONTAL_DAMPING, GROUND_CONTACT_VERTICAL_CAPTURE_M,
+    GroundSurface, IslandPlateauRegion, IslandUnderRouteSegment, LodBand, PLAYER_STANDING_OFFSET,
+    RouteObjective, START_FLOOR_Y, SkyIsland, StreamChunkCoord, StreamingLodStats,
 };
 
 pub const SKY_ROUTE_ISLAND_COUNT: usize = 41;
@@ -1133,7 +1133,10 @@ impl SkyRoute {
             .copied()
             .filter(|island| island.contains_horizontal(position))
             .filter(|island| !position_is_inside_under_route_clearance(*island, position))
-            .map(|island| GroundSurface::from_island_at(island, position))
+            .filter_map(|island| {
+                let ground = GroundSurface::from_island_at(island, position);
+                (position.y >= ground.floor_y - GROUND_CONTACT_VERTICAL_CAPTURE_M).then_some(ground)
+            })
             .max_by(|a, b| a.floor_y.total_cmp(&b.floor_y))
             .unwrap_or(GroundSurface {
                 floor_y: self.fallback_floor_y,

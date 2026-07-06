@@ -5,14 +5,16 @@ mod traversal_scenarios;
 
 use super::thresholds::EvalThresholds;
 
-pub use input::{scripted_camera_input, scripted_input};
+pub use input::{scripted_camera_input, scripted_input, scripted_playtest_reset_requested};
 
 pub const BASELINE_ROUTE: &str = "baseline_route";
 pub const ISLAND_LAUNCH_TO_LANDING: &str = "island_launch_to_landing";
 pub const GROUND_TAXI_CONTROL: &str = "ground_taxi_control";
+pub const PLAYTEST_RESET: &str = "playtest_reset";
 pub const WORLD_COLLISION_CONTACT: &str = "world_collision_contact";
 pub const TERRAIN_RIM_COLLISION_CONTACT: &str = "terrain_rim_collision_contact";
 pub const TERRAIN_BODY_COLLISION_CONTACT: &str = "terrain_body_collision_contact";
+pub const TERRAIN_EDGE_WALKOFF: &str = "terrain_edge_walkoff";
 pub const UPDRAFT_ROUTE: &str = "updraft_route";
 pub const CAMERA_MOUSE_CONTROL: &str = "camera_mouse_control";
 pub const CAMERA_YAW_STABILITY: &str = "camera_yaw_stability";
@@ -23,15 +25,18 @@ pub const POSE_STATE_COVERAGE: &str = "pose_state_coverage";
 pub const LONG_GLIDE_VISIBILITY: &str = "long_glide_visibility";
 pub const BRANCH_RECOVERY_ROUTE: &str = "branch_recovery_route";
 pub const GREAT_SKY_PLATEAU_ROUTE: &str = "great_sky_plateau_route";
+pub const RETURN_DESCENT_ROUTE: &str = "return_descent_route";
 pub const PLATEAU_ARRIVAL_CAMERA: &str = "plateau_arrival_camera";
 pub const UNDERBRIDGE_UNDER_ROUTE: &str = "underbridge_under_route";
 pub const SCENARIO_NAMES: &[&str] = &[
     BASELINE_ROUTE,
     ISLAND_LAUNCH_TO_LANDING,
     GROUND_TAXI_CONTROL,
+    PLAYTEST_RESET,
     WORLD_COLLISION_CONTACT,
     TERRAIN_RIM_COLLISION_CONTACT,
     TERRAIN_BODY_COLLISION_CONTACT,
+    TERRAIN_EDGE_WALKOFF,
     UPDRAFT_ROUTE,
     BRANCH_RECOVERY_ROUTE,
     CAMERA_MOUSE_CONTROL,
@@ -42,13 +47,17 @@ pub const SCENARIO_NAMES: &[&str] = &[
     POSE_STATE_COVERAGE,
     LONG_GLIDE_VISIBILITY,
     GREAT_SKY_PLATEAU_ROUTE,
+    RETURN_DESCENT_ROUTE,
     PLATEAU_ARRIVAL_CAMERA,
     UNDERBRIDGE_UNDER_ROUTE,
 ];
 pub const APP_ONLY_SCENARIO_NAMES: &[&str] = &[
     WORLD_COLLISION_CONTACT,
+    PLAYTEST_RESET,
     TERRAIN_RIM_COLLISION_CONTACT,
     TERRAIN_BODY_COLLISION_CONTACT,
+    TERRAIN_EDGE_WALKOFF,
+    RETURN_DESCENT_ROUTE,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -94,6 +103,7 @@ pub fn scenario_named(name: &str) -> Option<EvalScenario> {
         GROUND_TAXI_CONTROL | "ground_taxi" | "taxi" => {
             Some(control_scenarios::ground_taxi_control())
         }
+        PLAYTEST_RESET | "reset" | "central_reset" => Some(control_scenarios::playtest_reset()),
         WORLD_COLLISION_CONTACT | "collision_contact" | "asset_collision" => {
             Some(control_scenarios::world_collision_contact())
         }
@@ -104,6 +114,9 @@ pub fn scenario_named(name: &str) -> Option<EvalScenario> {
         | "terrain_body_contact"
         | "body_collision"
         | "cliff_collision" => Some(control_scenarios::terrain_body_collision_contact()),
+        TERRAIN_EDGE_WALKOFF | "edge_walkoff" | "edge_collision_truth" => {
+            Some(control_scenarios::terrain_edge_walkoff())
+        }
         UPDRAFT_ROUTE | "updraft" => Some(traversal_scenarios::updraft_route()),
         BRANCH_RECOVERY_ROUTE | "branch_recovery" | "recovery_route" => {
             Some(traversal_scenarios::branch_recovery_route())
@@ -132,6 +145,9 @@ pub fn scenario_named(name: &str) -> Option<EvalScenario> {
         GREAT_SKY_PLATEAU_ROUTE | "great_sky_plateau" | "plateau_route" => {
             Some(traversal_scenarios::great_sky_plateau_route())
         }
+        RETURN_DESCENT_ROUTE | "return_descent" | "descent_route" | "long_descent" => {
+            Some(traversal_scenarios::return_descent_route())
+        }
         PLATEAU_ARRIVAL_CAMERA | "plateau_camera" | "plateau_arrival" => {
             Some(traversal_scenarios::plateau_arrival_camera())
         }
@@ -147,6 +163,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn return_descent_route_targets_authored_handrail_regression() {
+        let scenario = scenario_named(RETURN_DESCENT_ROUTE).expect("return descent scenario");
+        let alias = scenario_named("long_descent").expect("return descent alias");
+
+        assert_eq!(alias.name, RETURN_DESCENT_ROUTE);
+        assert!(APP_ONLY_SCENARIO_NAMES.contains(&RETURN_DESCENT_ROUTE));
+        assert_eq!(scenario.target_island_name, Some("upper crown"));
+        assert_eq!(scenario.checkpoints[0].name, "return_descent_handrail");
+        assert!(
+            scenario
+                .checkpoints
+                .iter()
+                .any(|checkpoint| checkpoint.name == "upper_crown_descent_view")
+        );
+        assert!(scenario.frame_count >= 1_020);
+        assert!(scenario.thresholds.min_horizontal_distance_m >= 260.0);
+        assert!(scenario.thresholds.min_gliding_samples >= 100);
+        assert!(scenario.thresholds.min_objective_total_count >= 11);
+        assert_eq!(scenario.thresholds.max_camera_obstruction_snap_count, 0);
+        assert!(scripted_input(scenario, 1).launch);
+        assert!(scripted_input(scenario, 60).glide);
+        assert!(scripted_input(scenario, 120).forward);
+        assert!(!scripted_input(scenario, 120).left);
+        assert!(scripted_input(scenario, 360).left);
+        assert!(scripted_input(scenario, 720).right);
+        assert!(scripted_input(scenario, 780).right);
+    }
+
+    #[test]
     fn plateau_arrival_camera_targets_close_geometry_regression() {
         let scenario = scenario_named(PLATEAU_ARRIVAL_CAMERA).expect("plateau camera scenario");
         let alias = scenario_named("plateau_camera").expect("plateau camera alias");
@@ -157,12 +202,43 @@ mod tests {
             scenario.checkpoints[1].name,
             "plateau_spire_camera_obstruction"
         );
-        assert!(scenario.thresholds.min_camera_obstruction_adjustment_m >= 0.25);
-        assert!(scenario.thresholds.min_camera_obstructed_distance_m >= 1.0);
+        assert_eq!(scenario.sample_stride, 1);
+        assert!(scenario.frame_count >= 420);
+        assert!(scenario.thresholds.min_samples >= 360);
+        assert!(scenario.thresholds.min_camera_obstruction_adjustment_m >= 4.0);
+        assert!(scenario.thresholds.min_camera_obstructed_distance_m >= 5.0);
+        assert!(scenario.thresholds.max_camera_step_distance_m <= 0.75);
+        assert!(scenario.thresholds.max_camera_rotation_delta_degrees <= 1.5);
+        assert!(scenario.thresholds.max_camera_player_angle_degrees <= 1.5);
         assert_eq!(scenario.thresholds.max_camera_obstruction_snap_count, 0);
+        assert!(scenario.thresholds.min_abs_camera_yaw_degrees >= 10.0);
         assert!(scripted_input(scenario, 30).forward);
         assert!(scripted_input(scenario, 130).right);
-        assert!(scripted_input(scenario, 280).left);
+        assert!(scripted_input(scenario, 230).left);
+        assert!(scripted_input(scenario, 320).right);
+        assert!(scripted_camera_input(scenario, 20).mouse_delta.x > 0.0);
+        assert!(scripted_camera_input(scenario, 60).mouse_delta.x < 0.0);
+        assert!(scripted_camera_input(scenario, 110).mouse_delta.x > 0.0);
+        assert!(scripted_camera_input(scenario, 155).mouse_delta.x < 0.0);
+        assert!(scripted_camera_input(scenario, 205).mouse_delta.x > 0.0);
+        assert!(scripted_camera_input(scenario, 260).mouse_delta.x < 0.0);
+        assert_eq!(
+            scripted_camera_input(scenario, 360).mouse_delta,
+            bevy::prelude::Vec2::ZERO
+        );
         assert!(!scripted_input(scenario, 1).launch);
+    }
+
+    #[test]
+    fn terrain_edge_walkoff_targets_invisible_barrier_regression() {
+        let scenario = scenario_named(TERRAIN_EDGE_WALKOFF).expect("edge walkoff scenario");
+        let alias = scenario_named("edge_collision_truth").expect("edge collision alias");
+
+        assert_eq!(alias.name, TERRAIN_EDGE_WALKOFF);
+        assert!(APP_ONLY_SCENARIO_NAMES.contains(&TERRAIN_EDGE_WALKOFF));
+        assert!(scripted_input(scenario, 30).right);
+        assert!(!scripted_input(scenario, 30).launch);
+        assert_eq!(scenario.thresholds.max_camera_obstruction_snap_count, 0);
+        assert!(scenario.thresholds.min_grounded_samples >= 12);
     }
 }

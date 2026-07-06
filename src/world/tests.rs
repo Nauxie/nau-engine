@@ -899,6 +899,25 @@ fn under_route_ground_resolution_preserves_low_glide() {
 }
 
 #[test]
+fn grounded_under_route_walk_does_not_capture_high_island_top() {
+    let route = SkyRoute::default();
+    let low_route_position = Vec3::new(-121.1852, PLAYER_STANDING_OFFSET, -182.4107);
+    let state = FlightState::new(
+        low_route_position,
+        Vec3::new(9.0, 0.0, 6.2),
+        FlightController::default(),
+    );
+
+    let ground = route.ground_at(low_route_position);
+    let resolved = route.resolve_ground_contact_after_step(state, true);
+
+    assert_eq!(ground.island_name, None);
+    assert_eq!(ground.floor_y, PLAYER_STANDING_OFFSET);
+    assert_eq!(resolved.position.y, low_route_position.y);
+    assert_eq!(resolved.controller.mode, FlightMode::Grounded);
+}
+
+#[test]
 fn route_preserves_core_path_and_appends_satellite_islands() {
     let route = SkyRoute::default();
     let core_route_names = [

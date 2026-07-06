@@ -355,7 +355,7 @@ pub(super) fn append_scenario_checks(
             "m/s",
         ));
     }
-    if thresholds.min_lifted_samples > 0 {
+    if wind_force_scenario(scenario) {
         checks.push(EvalCheck::at_least(
             "updraft_swirl_force_samples",
             acc.updraft_swirl_force_samples as f32,

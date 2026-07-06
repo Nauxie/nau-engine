@@ -159,7 +159,6 @@ pub(super) struct IslandVisualEntry {
 }
 
 impl IslandVisualEntry {
-    #[cfg(test)]
     pub(super) fn has_visible_mesh(&self) -> bool {
         self.mesh.is_some() || self.mesh_recipe.is_some()
     }

@@ -1,10 +1,10 @@
 use super::constants::{
-    ISLAND_BODY_SEGMENTS, ISLAND_CLIFF_RINGS, ISLAND_IMPOSTOR_SEGMENTS, ISLAND_TERRAIN_RINGS,
-    ISLAND_UNDERSIDE_RINGS,
+    ISLAND_BODY_SEGMENTS, ISLAND_CLIFF_RINGS, ISLAND_IMPOSTOR_SEGMENTS,
+    ISLAND_TERRAIN_EDGE_SKIRT_DEPTH_M, ISLAND_TERRAIN_RINGS, ISLAND_UNDERSIDE_RINGS,
 };
 use super::palette::{
-    island_rock_vertex_color, island_terrain_material_weights, island_terrain_vertex_color,
-    terrain_material_region_id,
+    balance_terrain_material_weights, island_rock_vertex_color, island_terrain_material_weights,
+    island_terrain_vertex_color, terrain_material_region_id,
 };
 use super::shape::island_silhouette_scale;
 use bevy::prelude::*;
@@ -45,18 +45,13 @@ pub(crate) fn island_terrain_mesh_diagnostics(
     island_index: usize,
     island: SkyIsland,
 ) -> IslandTerrainMeshDiagnostics {
-    let vertex_count = 1 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS;
+    let vertex_count = 1 + (ISLAND_TERRAIN_RINGS + 1) * ISLAND_BODY_SEGMENTS;
     let mut color_bands = HashSet::new();
-    let mut material_weight_bands = HashSet::new();
-    let mut material_regions = HashSet::new();
+    let mut material_weights = Vec::with_capacity(vertex_count);
     let mut min_y = f32::INFINITY;
     let mut max_y = f32::NEG_INFINITY;
-    let mut base_material = false;
-    let mut lush_material = false;
-    let mut exposed_material = false;
 
-    let mut record_vertex = |radius: f32, angle: f32, x: f32, z: f32| {
-        let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z));
+    let mut record_vertex = |radius: f32, angle: f32, y: f32| {
         min_y = min_y.min(y);
         max_y = max_y.max(y);
 
@@ -65,17 +60,10 @@ pub(crate) fn island_terrain_mesh_diagnostics(
         color_bands.insert(quantized_color_band(color));
 
         let weight = island_terrain_material_weights(island_index, radius, angle, height_delta);
-        material_weight_bands.insert([
-            (weight[0].clamp(0.0, 1.0) * 15.0).round() as u8,
-            (weight[1].clamp(0.0, 1.0) * 15.0).round() as u8,
-        ]);
-        material_regions.insert(terrain_material_region_id(weight));
-        base_material |= weight[0] < 0.18 && weight[1] < 0.18;
-        lush_material |= weight[0] > 0.18;
-        exposed_material |= weight[1] > 0.18;
+        material_weights.push(weight);
     };
 
-    record_vertex(0.0, 0.0, island.center.x, island.center.z);
+    record_vertex(0.0, 0.0, island.mesh_top_y_at(island.center));
     for ring in 1..=ISLAND_TERRAIN_RINGS {
         let radius = ring as f32 / ISLAND_TERRAIN_RINGS as f32;
         for segment in 0..ISLAND_BODY_SEGMENTS {
@@ -84,8 +72,35 @@ pub(crate) fn island_terrain_mesh_diagnostics(
             let radius_scale = radius * (1.0 + radius.powf(1.35) * (edge_scale - 1.0));
             let x = island.center.x + angle.cos() * island.half_extents.x * radius_scale;
             let z = island.center.z + angle.sin() * island.half_extents.y * radius_scale;
-            record_vertex(radius, angle, x, z);
+            let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z));
+            record_vertex(radius, angle, y);
         }
+    }
+    for segment in 0..ISLAND_BODY_SEGMENTS {
+        let angle = segment as f32 / ISLAND_BODY_SEGMENTS as f32 * std::f32::consts::TAU;
+        let edge_scale = island_silhouette_scale(island, angle);
+        let x = island.center.x + angle.cos() * island.half_extents.x * edge_scale;
+        let z = island.center.z + angle.sin() * island.half_extents.y * edge_scale;
+        let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z))
+            - ISLAND_TERRAIN_EDGE_SKIRT_DEPTH_M;
+        record_vertex(1.0, angle, y);
+    }
+
+    balance_terrain_material_weights(&mut material_weights);
+    let mut material_weight_bands = HashSet::new();
+    let mut material_regions = HashSet::new();
+    let mut base_material = false;
+    let mut lush_material = false;
+    let mut exposed_material = false;
+    for weight in material_weights {
+        material_weight_bands.insert([
+            (weight[0].clamp(0.0, 1.0) * 15.0).round() as u8,
+            (weight[1].clamp(0.0, 1.0) * 15.0).round() as u8,
+        ]);
+        material_regions.insert(terrain_material_region_id(weight));
+        base_material |= weight[0] < 0.18 && weight[1] < 0.18;
+        lush_material |= weight[0] > 0.18;
+        exposed_material |= weight[1] > 0.18;
     }
 
     IslandTerrainMeshDiagnostics {

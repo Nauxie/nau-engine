@@ -16,6 +16,7 @@ pub(crate) struct ObjAudit {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct WeightCsvAudit {
     pub(crate) row_count: u64,
+    pub(crate) region_row_count: u64,
     pub(crate) material_weight_bands: u64,
     pub(crate) material_channels: u64,
     pub(crate) material_regions: u64,
@@ -191,12 +192,18 @@ fn silhouette_radius_band_count(positions: &[[f64; 3]]) -> u64 {
         .len() as u64
 }
 
-pub(crate) fn audit_weight_csv_path(path: &Path) -> Result<WeightCsvAudit, String> {
+pub(crate) fn audit_weight_csv_path(
+    path: &Path,
+    region_row_limit: Option<u64>,
+) -> Result<WeightCsvAudit, String> {
     let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
-    audit_weight_csv_text(&text)
+    audit_weight_csv_text(&text, region_row_limit)
 }
 
-pub(crate) fn audit_weight_csv_text(text: &str) -> Result<WeightCsvAudit, String> {
+pub(crate) fn audit_weight_csv_text(
+    text: &str,
+    region_row_limit: Option<u64>,
+) -> Result<WeightCsvAudit, String> {
     let mut lines = text.lines();
     let header = lines
         .next()
@@ -212,6 +219,8 @@ pub(crate) fn audit_weight_csv_text(text: &str) -> Result<WeightCsvAudit, String
     let mut exposed = false;
     let mut regions = HashSet::new();
     let mut region_counts = [0u64; TERRAIN_MATERIAL_REGION_COUNT];
+    let mut region_row_count = 0;
+    let region_row_limit = region_row_limit.unwrap_or(u64::MAX);
 
     for line in lines {
         let columns = line.split(',').collect::<Vec<_>>();
@@ -233,21 +242,25 @@ pub(crate) fn audit_weight_csv_text(text: &str) -> Result<WeightCsvAudit, String
         ]);
         let region = terrain_material_region_id(lush_highland, exposed_edge);
         regions.insert(region);
-        region_counts[region as usize] += 1;
+        if region_row_count < region_row_limit {
+            region_counts[region as usize] += 1;
+            region_row_count += 1;
+        }
         base |= lush_highland < 0.18 && exposed_edge < 0.18;
         lush |= lush_highland > 0.18;
         exposed |= exposed_edge > 0.18;
         row_count += 1;
     }
 
-    let region_promille = if row_count == 0 {
+    let region_promille = if region_row_count == 0 {
         [0; TERRAIN_MATERIAL_REGION_COUNT]
     } else {
-        region_counts.map(|count| count * 1000 / row_count)
+        region_counts.map(|count| count * 1000 / region_row_count)
     };
 
     Ok(WeightCsvAudit {
         row_count,
+        region_row_count,
         material_weight_bands: bands.len() as u64,
         material_channels: u64::from(base) + u64::from(lush) + u64::from(exposed),
         material_regions: regions.len() as u64,

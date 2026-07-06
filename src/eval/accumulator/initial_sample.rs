@@ -39,6 +39,7 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.min_generated_rock_count = sample.generated_rock_count;
     accumulator.min_rock_mesh_vertices = sample.min_rock_mesh_vertices;
     accumulator.min_generated_landmark_count = sample.generated_landmark_count;
+    accumulator.min_generated_ruin_cluster_count = sample.generated_ruin_cluster_count;
     accumulator.min_generated_route_cairn_count = sample.generated_route_cairn_count;
     accumulator.min_generated_launch_beacon_count = sample.generated_launch_beacon_count;
     accumulator.min_generated_landing_garden_marker_count =

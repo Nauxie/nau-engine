@@ -1,7 +1,10 @@
-use super::constants::{ISLAND_BODY_SEGMENTS, ISLAND_TERRAIN_RINGS};
+use super::constants::{
+    ISLAND_BODY_SEGMENTS, ISLAND_TERRAIN_EDGE_SKIRT_DEPTH_M, ISLAND_TERRAIN_RINGS,
+};
 use super::normals::smooth_normals_from_triangles;
 use super::palette::{
-    island_terrain_material_weights, island_terrain_uv, island_terrain_vertex_color,
+    balance_terrain_material_weights, island_terrain_material_weights, island_terrain_uv,
+    island_terrain_vertex_color,
 };
 use super::shape::island_silhouette_scale;
 use bevy::asset::RenderAssetUsages;
@@ -10,13 +13,13 @@ use bevy::prelude::*;
 use nau_engine::world::SkyIsland;
 
 pub(crate) fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mesh {
-    let vertex_count = 1 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS;
+    let vertex_count = 1 + (ISLAND_TERRAIN_RINGS + 1) * ISLAND_BODY_SEGMENTS;
     let mut positions = Vec::with_capacity(vertex_count);
     let mut uvs = Vec::with_capacity(vertex_count);
     let mut material_weights = Vec::with_capacity(vertex_count);
     let mut colors = Vec::with_capacity(vertex_count);
     let mut indices = Vec::with_capacity(
-        ISLAND_BODY_SEGMENTS * 3 + (ISLAND_TERRAIN_RINGS - 1) * ISLAND_BODY_SEGMENTS * 6,
+        ISLAND_BODY_SEGMENTS * 3 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS * 6,
     );
 
     let center_y = island.mesh_top_y_at(island.center);
@@ -67,6 +70,31 @@ pub(crate) fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mes
         }
     }
 
+    for segment in 0..ISLAND_BODY_SEGMENTS {
+        let angle = segment as f32 / ISLAND_BODY_SEGMENTS as f32 * std::f32::consts::TAU;
+        let edge_scale = island_silhouette_scale(island, angle);
+        let x = island.center.x + angle.cos() * island.half_extents.x * edge_scale;
+        let z = island.center.z + angle.sin() * island.half_extents.y * edge_scale;
+        let y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z))
+            - ISLAND_TERRAIN_EDGE_SKIRT_DEPTH_M;
+
+        positions.push([x, y, z]);
+        uvs.push(island_terrain_uv(island_index, island, x, z));
+        colors.push(island_terrain_vertex_color(
+            island_index,
+            1.0,
+            angle,
+            y - island.mesh_top_y(),
+        ));
+        material_weights.push(island_terrain_material_weights(
+            island_index,
+            1.0,
+            angle,
+            y - island.mesh_top_y(),
+        ));
+    }
+    balance_terrain_material_weights(&mut material_weights);
+
     let ring_index = |ring: usize, segment: usize| -> u32 {
         (1 + (ring - 1) * ISLAND_BODY_SEGMENTS + segment % ISLAND_BODY_SEGMENTS) as u32
     };
@@ -91,6 +119,26 @@ pub(crate) fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mes
                 outer_current,
             ]);
         }
+    }
+
+    let skirt_index = |segment: usize| -> u32 {
+        (1 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS + segment % ISLAND_BODY_SEGMENTS) as u32
+    };
+
+    for segment in 0..ISLAND_BODY_SEGMENTS {
+        let outer_current = ring_index(ISLAND_TERRAIN_RINGS, segment);
+        let outer_next = ring_index(ISLAND_TERRAIN_RINGS, segment + 1);
+        let skirt_current = skirt_index(segment);
+        let skirt_next = skirt_index(segment + 1);
+
+        indices.extend([
+            outer_current,
+            outer_next,
+            skirt_current,
+            outer_next,
+            skirt_next,
+            skirt_current,
+        ]);
     }
 
     let normals = smooth_normals_from_triangles(&positions, &indices);

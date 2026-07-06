@@ -88,6 +88,9 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     accumulator.min_generated_landmark_count = accumulator
         .min_generated_landmark_count
         .min(sample.generated_landmark_count);
+    accumulator.min_generated_ruin_cluster_count = accumulator
+        .min_generated_ruin_cluster_count
+        .min(sample.generated_ruin_cluster_count);
     accumulator.min_generated_route_cairn_count = accumulator
         .min_generated_route_cairn_count
         .min(sample.generated_route_cairn_count);

@@ -65,7 +65,7 @@ pub(super) fn write_terrain_material_weights_csv(path: &Path, mesh: &Mesh) -> st
     let mut file = File::create(path)?;
     writeln!(file, "vertex,lush_highland,exposed_edge")?;
     for (index, weight) in weights.iter().enumerate() {
-        writeln!(file, "{index},{:.4},{:.4}", weight[0], weight[1])?;
+        writeln!(file, "{index},{:.6},{:.6}", weight[0], weight[1])?;
     }
     Ok(())
 }

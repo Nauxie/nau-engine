@@ -1,5 +1,7 @@
 use crate::Player;
 use crate::eval_runtime::RunMode;
+use crate::world_collision_runtime::{WorldCollisionProxy, WorldCollisionProxyKind};
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use nau_engine::environment::{LiftField, WindField, WindFieldKind};
 use nau_engine::movement::Velocity;
@@ -7,13 +9,19 @@ use nau_engine::movement::Velocity;
 #[derive(Resource, Default)]
 pub(crate) struct DebugVisuals {
     pub(crate) enabled: bool,
+    pub(crate) collision_proxies_enabled: bool,
 }
 
 impl DebugVisuals {
     pub(crate) fn for_run_mode(run_mode: RunMode, suppress_for_screenshot: bool) -> Self {
         Self {
             enabled: run_mode.debug_visuals_enabled() && !suppress_for_screenshot,
+            collision_proxies_enabled: false,
         }
+    }
+
+    pub(crate) fn toggle_collision_proxies(&mut self) {
+        self.collision_proxies_enabled = !self.collision_proxies_enabled;
     }
 }
 
@@ -24,22 +32,31 @@ pub(crate) fn toggle_debug_visuals(
     if keyboard.just_pressed(KeyCode::F1) {
         visuals.enabled = !visuals.enabled;
     }
+    if keyboard.just_pressed(KeyCode::F2) {
+        visuals.toggle_collision_proxies();
+    }
+}
+
+#[derive(SystemParam)]
+pub(crate) struct DebugGizmoScene<'w, 's> {
+    player: Query<'w, 's, (&'static Transform, &'static Velocity), With<Player>>,
+    camera: Query<'w, 's, &'static Transform, (With<Camera3d>, Without<Player>)>,
+    wind_fields: Query<'w, 's, &'static WindField>,
+    lift_fields: Query<'w, 's, &'static LiftField>,
+    collision_proxies: Query<'w, 's, &'static WorldCollisionProxy>,
 }
 
 pub(crate) fn draw_debug_gizmos(
     mut gizmos: Gizmos,
     time: Res<Time>,
     visuals: Res<DebugVisuals>,
-    player: Query<(&Transform, &Velocity), With<Player>>,
-    camera: Query<&Transform, (With<Camera3d>, Without<Player>)>,
-    wind_fields: Query<&WindField>,
-    lift_fields: Query<&LiftField>,
+    scene: DebugGizmoScene,
 ) {
     if !visuals.enabled {
         return;
     }
 
-    let Ok((player_transform, velocity)) = player.single() else {
+    let Ok((player_transform, velocity)) = scene.player.single() else {
         return;
     };
 
@@ -63,7 +80,7 @@ pub(crate) fn draw_debug_gizmos(
         Color::srgb(0.55, 0.6, 0.62),
     );
 
-    if let Ok(camera_transform) = camera.single() {
+    if let Ok(camera_transform) = scene.camera.single() {
         gizmos.line(
             camera_transform.translation,
             origin,
@@ -72,11 +89,16 @@ pub(crate) fn draw_debug_gizmos(
     }
 
     let elapsed = time.elapsed_secs();
-    for field in &wind_fields {
+    for field in &scene.wind_fields {
         draw_wind_field(&mut gizmos, *field, elapsed);
     }
-    for field in &lift_fields {
+    for field in &scene.lift_fields {
         draw_lift_field(&mut gizmos, *field);
+    }
+    if visuals.collision_proxies_enabled {
+        for proxy in &scene.collision_proxies {
+            draw_collision_proxy(&mut gizmos, *proxy);
+        }
     }
 }
 
@@ -123,6 +145,15 @@ fn draw_lift_field(gizmos: &mut Gizmos, field: LiftField) {
             color,
         );
     }
+}
+
+fn draw_collision_proxy(gizmos: &mut Gizmos, proxy: WorldCollisionProxy) {
+    draw_wire_box(
+        gizmos,
+        proxy.center,
+        proxy.half_extents,
+        collision_color(proxy.kind),
+    );
 }
 
 fn draw_vector(gizmos: &mut Gizmos, start: Vec3, vector: Vec3, color: Color) {
@@ -180,5 +211,15 @@ fn wind_field_color(kind: WindFieldKind) -> Color {
     match kind {
         WindFieldKind::Crosswind => Color::srgb(0.0, 0.82, 1.0),
         WindFieldKind::Updraft => Color::srgb(0.25, 1.0, 0.45),
+    }
+}
+
+fn collision_color(kind: WorldCollisionProxyKind) -> Color {
+    match kind {
+        WorldCollisionProxyKind::TerrainRim => Color::srgb(1.0, 0.35, 0.10),
+        WorldCollisionProxyKind::TerrainBody => Color::srgb(0.95, 0.68, 0.18),
+        WorldCollisionProxyKind::Tree => Color::srgb(0.15, 0.85, 0.30),
+        WorldCollisionProxyKind::Rock => Color::srgb(0.56, 0.62, 0.70),
+        WorldCollisionProxyKind::Landmark => Color::srgb(0.25, 0.55, 1.0),
     }
 }

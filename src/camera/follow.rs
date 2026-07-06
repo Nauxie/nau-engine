@@ -180,6 +180,44 @@ pub fn step_camera_with_direction(
     }
 }
 
+pub fn clamp_camera_player_distance(
+    mut frame: CameraFrame,
+    player_position: Vec3,
+    max_distance_m: f32,
+) -> CameraFrame {
+    let max_distance_m = max_distance_m.max(0.0);
+    let offset = frame.position - player_position;
+    let distance = offset.length();
+    if distance <= max_distance_m || distance <= 0.001 || !distance.is_finite() {
+        return frame;
+    }
+
+    let vertical_offset = offset.y.clamp(-max_distance_m, max_distance_m);
+    let horizontal = Vec3::new(offset.x, 0.0, offset.z);
+    let horizontal_distance = horizontal.length();
+    let max_horizontal_distance_sq = max_distance_m.powi(2) - vertical_offset.powi(2);
+    if horizontal_distance <= 0.001 || max_horizontal_distance_sq <= 0.0 {
+        frame.position = player_position + Vec3::Y * vertical_offset;
+        frame.rotation = Transform::from_translation(frame.position)
+            .looking_at(frame.look_target, Vec3::Y)
+            .rotation;
+        return frame;
+    }
+
+    let max_horizontal_distance = max_horizontal_distance_sq.sqrt();
+    if horizontal_distance <= max_horizontal_distance {
+        return frame;
+    }
+
+    frame.position = player_position
+        + Vec3::Y * vertical_offset
+        + horizontal / horizontal_distance * max_horizontal_distance;
+    frame.rotation = Transform::from_translation(frame.position)
+        .looking_at(frame.look_target, Vec3::Y)
+        .rotation;
+    frame
+}
+
 pub fn horizontal_follow_direction(velocity: Vec3, player_forward: Vec3) -> Vec3 {
     let horizontal_velocity = Vec3::new(velocity.x, 0.0, velocity.z);
     if horizontal_velocity.length_squared() > 1.0 {
