@@ -23,10 +23,10 @@ pub(super) enum IslandVisualLayer {
 impl IslandVisualLayer {
     pub(super) fn is_resident_in(self, activation: StreamActivation, band: LodBand) -> bool {
         match self {
-            Self::Terrain => activation.is_active() && band == LodBand::Near,
+            Self::Terrain => activation.is_active() && band != LodBand::Far,
             Self::Detail => activation.is_active() && band == LodBand::Near,
             Self::Beacon => band != LodBand::Far,
-            Self::Impostor => !activation.is_active() || band != LodBand::Near,
+            Self::Impostor => !activation.is_active() || band == LodBand::Far,
             Self::Collision => activation.is_active() && band == LodBand::Near,
         }
     }
@@ -241,12 +241,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn terrain_detail_and_collision_are_near_lod_only() {
-        for layer in [
-            IslandVisualLayer::Terrain,
-            IslandVisualLayer::Detail,
-            IslandVisualLayer::Collision,
-        ] {
+    fn terrain_shell_streams_before_near_detail_and_collision() {
+        assert!(IslandVisualLayer::Terrain.is_resident_in(StreamActivation::Active, LodBand::Near));
+        assert!(IslandVisualLayer::Terrain.is_resident_in(StreamActivation::Active, LodBand::Mid));
+        assert!(!IslandVisualLayer::Terrain.is_resident_in(StreamActivation::Active, LodBand::Far));
+        assert!(
+            !IslandVisualLayer::Terrain.is_resident_in(StreamActivation::Inactive, LodBand::Near)
+        );
+
+        for layer in [IslandVisualLayer::Detail, IslandVisualLayer::Collision] {
             assert!(layer.is_resident_in(StreamActivation::Active, LodBand::Near));
             assert!(!layer.is_resident_in(StreamActivation::Active, LodBand::Mid));
             assert!(!layer.is_resident_in(StreamActivation::Active, LodBand::Far));
@@ -259,7 +262,9 @@ mod tests {
         assert!(
             !IslandVisualLayer::Impostor.is_resident_in(StreamActivation::Active, LodBand::Near)
         );
-        assert!(IslandVisualLayer::Impostor.is_resident_in(StreamActivation::Active, LodBand::Mid));
+        assert!(
+            !IslandVisualLayer::Impostor.is_resident_in(StreamActivation::Active, LodBand::Mid)
+        );
         assert!(IslandVisualLayer::Impostor.is_resident_in(StreamActivation::Active, LodBand::Far));
         assert!(
             IslandVisualLayer::Impostor.is_resident_in(StreamActivation::Inactive, LodBand::Near)
