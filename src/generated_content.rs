@@ -41,9 +41,10 @@ pub(crate) use island_meshes::{
     ISLAND_TERRAIN_RINGS, IslandDetailMaterials, TERRAIN_BIOME_PALETTE_COUNT,
     VERTICES_PER_GROUND_BLADE, biome_detail_color_set, biome_detail_materials,
     island_body_mesh_diagnostics, island_cliff_mesh, island_ground_cover_mesh,
-    island_impostor_mesh, island_impostor_mesh_diagnostics, island_playable_normalized_offset,
-    island_terrain_mesh, island_terrain_mesh_diagnostics, island_underside_mesh,
-    island_visual_surface_position, mesh_normal_slope_band_count,
+    island_impostor_cliff_mesh, island_impostor_mesh, island_impostor_mesh_diagnostics,
+    island_impostor_terrain_mesh, island_impostor_underside_mesh,
+    island_playable_normalized_offset, island_terrain_mesh, island_terrain_mesh_diagnostics,
+    island_underside_mesh, island_visual_surface_position, mesh_normal_slope_band_count,
     mesh_terrain_material_channel_count, mesh_terrain_material_region_count,
     mesh_terrain_material_weight_band_count, mesh_vertex_color_band_count,
     mesh_vertical_band_count, mesh_y_range, terrain_biome_palette,
@@ -51,7 +52,8 @@ pub(crate) use island_meshes::{
 #[cfg(test)]
 pub(crate) use island_meshes::{
     INDICES_PER_GROUND_BLADE, ISLAND_CLIFF_RINGS, ISLAND_CLIFF_STRATA_BANDS,
-    ISLAND_IMPOSTOR_COLOR_BANDS, ISLAND_IMPOSTOR_SEGMENTS, ISLAND_TERRAIN_COLOR_BANDS,
+    ISLAND_IMPOSTOR_CLIFF_RINGS, ISLAND_IMPOSTOR_COLOR_BANDS, ISLAND_IMPOSTOR_SEGMENTS,
+    ISLAND_IMPOSTOR_TERRAIN_RINGS, ISLAND_IMPOSTOR_UNDERSIDE_RINGS, ISLAND_TERRAIN_COLOR_BANDS,
     ISLAND_TERRAIN_HEIGHT_BANDS, ISLAND_TERRAIN_MATERIAL_CHANNELS, ISLAND_TERRAIN_MATERIAL_REGIONS,
     ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS, ISLAND_TERRAIN_NORMAL_SLOPE_BANDS,
     ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS, ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE,

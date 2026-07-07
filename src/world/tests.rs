@@ -1425,16 +1425,28 @@ fn streaming_lod_stats_track_active_window_and_distance_bands() {
 }
 
 #[test]
-fn island_lod_band_uses_route_distance_thresholds() {
-    let island = SkyIsland::new("test island", Vec3::ZERO, Vec2::new(10.0, 10.0), 4.0, false);
+fn island_lod_band_uses_visual_edge_distance_thresholds() {
+    let island = SkyIsland::new("test island", Vec3::ZERO, Vec2::new(80.0, 64.0), 4.0, false);
+    let edge_x = island.footprint_contour_point(0.0, true).x - island.center.x;
+    let position_at_edge_distance = |distance: f32| Vec3::new(edge_x + distance, 0.0, 0.0);
 
     assert_eq!(island.lod_band(Vec3::new(0.0, 0.0, 0.0)), LodBand::Near);
+    assert!(
+        position_at_edge_distance(LOD_NEAR_DISTANCE_M - 1.0).x > LOD_NEAR_DISTANCE_M,
+        "large islands should not wait for center-distance near LOD before preserving shell shape"
+    );
+    assert!(
+        (island.visual_edge_distance(position_at_edge_distance(LOD_NEAR_DISTANCE_M + 1.0))
+            - (LOD_NEAR_DISTANCE_M + 1.0))
+            .abs()
+            < 0.001
+    );
     assert_eq!(
-        island.lod_band(Vec3::new(LOD_NEAR_DISTANCE_M + 1.0, 0.0, 0.0)),
+        island.lod_band(position_at_edge_distance(LOD_NEAR_DISTANCE_M + 1.0)),
         LodBand::Mid
     );
     assert_eq!(
-        island.lod_band(Vec3::new(LOD_MID_DISTANCE_M + 1.0, 0.0, 0.0)),
+        island.lod_band(position_at_edge_distance(LOD_MID_DISTANCE_M + 1.0)),
         LodBand::Far
     );
 }
