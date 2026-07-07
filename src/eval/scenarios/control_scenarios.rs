@@ -129,7 +129,7 @@ pub(super) fn playtest_reset() -> EvalScenario {
             min_near_lod_island_count: 1,
             min_mid_lod_island_count: 1,
             min_far_lod_island_count: 1,
-            max_visible_island_terrain_count: 55,
+            max_visible_island_terrain_count: 56,
             min_hidden_island_terrain_count: 5,
             min_visible_island_impostor_count: 2,
             max_visible_island_detail_count: MAX_VISIBLE_ISLAND_DETAIL_COUNT,

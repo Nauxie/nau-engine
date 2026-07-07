@@ -48,8 +48,8 @@ pub(crate) use player_runtime::{
     keyboard_flight_input, movement_facing,
 };
 use player_runtime::{
-    animate_character, eval_fly_player, fly_player, reset_player_to_playtest_position,
-    update_route_objectives,
+    animate_character, eval_fly_player, eval_reset_player_to_playtest_position, fly_player,
+    reset_player_to_playtest_position, update_route_objectives,
 };
 use player_runtime::{
     apply_authored_glider_pose, apply_authored_player_pose_nodes, reapply_authored_glider_pose,
@@ -237,7 +237,12 @@ fn main() -> AppExit {
             .insert_resource(EvalMovementBasis::default())
             .insert_resource(VisiblePoseTemporalState::default())
             .insert_resource(ObservedWindVisualMotionState::default())
-            .add_systems(Update, eval_fly_player.in_set(GameSet::Movement))
+            .add_systems(
+                Update,
+                (eval_reset_player_to_playtest_position, eval_fly_player)
+                    .chain()
+                    .in_set(GameSet::Movement),
+            )
             .add_systems(
                 Update,
                 (

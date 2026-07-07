@@ -12,9 +12,9 @@ use bevy::render::render_resource::BlendState;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use nau_engine::camera::{
     CameraControlState, CameraControlTuning, CameraInput, CameraObstruction,
-    CameraObstructionSmoothingState, FollowCamera, FollowCameraState, apply_camera_input,
-    avoid_camera_obstructions_with_preferred_offset, camera_orbit_alignment_degrees,
-    lift_camera_above_floor, movement_input_stable_follow_direction, smooth_camera_obstruction,
+    CameraObstructionHandoffState, FollowCamera, FollowCameraState, apply_camera_input,
+    camera_orbit_alignment_degrees, lift_camera_above_floor,
+    movement_input_stable_follow_direction, resolve_camera_obstruction_handoff,
     step_camera_with_direction, update_follow_direction_state,
 };
 use nau_engine::eval::{scripted_camera_input, scripted_input};
@@ -46,7 +46,7 @@ pub(crate) struct CameraObstacle(pub(crate) CameraObstruction);
 
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub(crate) struct CameraObstructionMemory {
-    state: CameraObstructionSmoothingState,
+    state: CameraObstructionHandoffState,
     diagnostics_initialized: bool,
 }
 
@@ -254,28 +254,21 @@ pub(crate) fn follow_camera(
     );
     let camera_floor_y = scene.route.ground_at(frame.position).floor_y;
     let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
-    let obstruction_resolution = avoid_camera_obstructions_with_preferred_offset(
+    let obstruction_step = resolve_camera_obstruction_handoff(
         frame,
+        previous_camera_position,
+        previous_camera_rotation,
+        player_transform.translation,
         scene.obstacles.iter().map(|obstacle| obstacle.0),
         CAMERA_OBSTRUCTION_CLEARANCE,
-        obstruction_memory.state.readable_offset(),
-    );
-    let camera_floor_y = scene
-        .route
-        .ground_at(obstruction_resolution.frame.position)
-        .floor_y;
-    let frame = lift_camera_above_floor(
-        obstruction_resolution.frame,
-        camera_floor_y,
-        CAMERA_MIN_SURFACE_CLEARANCE,
-    );
-    let frame = smooth_camera_obstruction(
-        frame,
-        &mut obstruction_memory.state,
-        obstruction_resolution.hit_count,
-        obstruction_resolution.adjusted_distance_m,
         dt,
+        &mut obstruction_memory.state,
+        |frame| {
+            let camera_floor_y = scene.route.ground_at(frame.position).floor_y;
+            lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE)
+        },
     );
+    let frame = obstruction_step.frame;
 
     let (diagnostics_previous_position, diagnostics_previous_rotation) =
         if obstruction_memory.diagnostics_initialized {
@@ -295,8 +288,8 @@ pub(crate) fn follow_camera(
     scene.camera_diagnostics.follow_direction_error_degrees = follow_direction
         .angle_between(desired_follow_direction)
         .to_degrees();
-    scene.camera_diagnostics.obstruction_adjustment_m = obstruction_resolution.adjusted_distance_m;
-    scene.camera_diagnostics.obstruction_hits = obstruction_resolution.hit_count;
+    scene.camera_diagnostics.obstruction_adjustment_m = obstruction_step.obstruction_adjustment_m;
+    scene.camera_diagnostics.obstruction_hits = obstruction_step.obstruction_hits;
 
     camera_transform.translation = frame.position;
     camera_transform.rotation = frame.rotation;

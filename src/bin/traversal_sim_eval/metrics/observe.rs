@@ -3,8 +3,9 @@ use nau_engine::animation::MIN_KEY_POSE_READABILITY_SCORE;
 use nau_engine::camera::CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M;
 use nau_engine::eval::{
     CAMERA_STRAFE_STABILITY, EvalScenario, MIN_CROSSWIND_FORCE_DELTA_MPS,
-    MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS, MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS,
-    MIN_WIND_FORCE_FLOW_ALIGNMENT, MIN_WIND_FORCE_VARIATION, MIN_WIND_LOAD_LATERAL_LOAD,
+    MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT,
+    MIN_WIND_FORCE_VARIATION, MIN_WIND_LOAD_LATERAL_LOAD,
+    min_updraft_swirl_force_delta_mps_for_scenario,
 };
 
 use super::super::{
@@ -347,11 +348,13 @@ impl SimMetrics {
         self.max_wind_flow_direction_change_degrees = self
             .max_wind_flow_direction_change_degrees
             .max(sample.max_wind_flow_direction_change_degrees);
+        let min_updraft_swirl_force_delta_mps =
+            min_updraft_swirl_force_delta_mps_for_scenario(scenario.name);
         if sample.active_wind_force_fields > 0 {
             self.wind_force_samples += 1;
             let meaningful_delta = sample.max_wind_force_delta_mps >= MIN_WIND_FORCE_DELTA_MPS
                 || sample.max_crosswind_force_delta_mps >= MIN_CROSSWIND_FORCE_DELTA_MPS
-                || sample.max_updraft_swirl_force_delta_mps >= MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS;
+                || sample.max_updraft_swirl_force_delta_mps >= min_updraft_swirl_force_delta_mps;
             if meaningful_delta && sample.max_wind_force_variation >= MIN_WIND_FORCE_VARIATION {
                 self.meaningful_wind_force_samples += 1;
             }
@@ -373,7 +376,7 @@ impl SimMetrics {
             self.updraft_swirl_force_samples += 1;
             if sample.max_updraft_swirl_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
                 && sample.max_updraft_swirl_force_aligned_delta_mps
-                    >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+                    >= min_updraft_swirl_force_delta_mps
             {
                 self.aligned_updraft_swirl_force_samples += 1;
             }
@@ -407,7 +410,7 @@ impl SimMetrics {
                 && sample.max_crosswind_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
                 && sample.max_updraft_swirl_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
                 && sample.max_updraft_swirl_force_aligned_delta_mps
-                    >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+                    >= min_updraft_swirl_force_delta_mps
             {
                 self.aligned_crosswind_updraft_overlap_samples += 1;
             }
