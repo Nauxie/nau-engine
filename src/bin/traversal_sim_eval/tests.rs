@@ -31,8 +31,11 @@ use nau_engine::{
         LONG_GLIDE_VISIBILITY, MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT,
         MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M, MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS,
         MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE, MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES,
-        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
-        MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
+        MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M, MIN_PLAYER_WIND_SHEAR_LATERAL_OFFSET_M,
+        MIN_PLAYER_WIND_SHEAR_LENGTH_SCALE, MIN_PLAYER_WIND_SHEAR_VISUAL_COUNT,
+        MIN_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT, MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+        MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+        MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
         POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES,
         POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES, UNDER_ROUTE_MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
         UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE, scenario_named,
@@ -155,6 +158,14 @@ fn baseline_simulation_writes_windowless_artifacts() {
         "max_updraft_swirl_force_aligned_delta_mps",
         "wind_lateral_load",
         "wind_load_glider_response_degrees",
+        "player_wind_shear_visual_count",
+        "visible_player_wind_shear_visual_count",
+        "max_player_wind_shear_airflow",
+        "max_player_wind_shear_acceleration_pressure",
+        "max_player_wind_shear_lateral_shear",
+        "max_player_wind_shear_length_scale",
+        "max_player_wind_shear_lateral_offset_m",
+        "max_player_wind_shear_depth_offset_m",
     ] {
         assert!(
             last_sample_json.get(key).is_some(),
@@ -903,6 +914,23 @@ fn updraft_simulation_uses_readable_lift() {
             >= MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES
     );
     assert!(
+        result.metrics.max_player_wind_shear_visual_count >= MIN_PLAYER_WIND_SHEAR_VISUAL_COUNT
+    );
+    assert!(
+        result.metrics.max_visible_player_wind_shear_visual_count
+            >= MIN_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT
+    );
+    assert!(
+        result.metrics.max_player_wind_shear_length_scale >= MIN_PLAYER_WIND_SHEAR_LENGTH_SCALE
+    );
+    assert!(
+        result.metrics.max_player_wind_shear_lateral_offset_m
+            >= MIN_PLAYER_WIND_SHEAR_LATERAL_OFFSET_M
+    );
+    assert!(
+        result.metrics.max_player_wind_shear_depth_offset_m >= MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M
+    );
+    assert!(
         result.metrics.crosswind_neutral_drift_samples >= MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT
     );
     assert!(
@@ -943,6 +971,11 @@ fn updraft_simulation_uses_readable_lift() {
         "wind_load_lateral_load",
         "wind_load_pose_lean",
         "wind_load_glider_response",
+        "player_wind_shear_visual_count",
+        "visible_player_wind_shear_visual_count",
+        "player_wind_shear_length_scale",
+        "player_wind_shear_lateral_offset",
+        "player_wind_shear_depth_offset",
         "crosswind_neutral_drift_samples",
         "crosswind_neutral_horizontal_drift",
         "crosswind_neutral_horizontal_step",
@@ -1640,6 +1673,7 @@ fn sim_sample_measures_pure_backward_body_heading_intent() {
         scenario,
         0,
         state,
+        state.velocity,
         player_rotation,
         0.0,
         PlayerPoseIntent::AirBrake,
@@ -1705,6 +1739,7 @@ fn sim_sample_uses_resolved_pose_input_without_relabeling_movement_axis() {
         scenario,
         90,
         state,
+        state.velocity,
         player_rotation,
         0.0,
         PlayerPoseIntent::AirTurn,
@@ -2533,6 +2568,7 @@ fn sim_roll_sample(
         scenario,
         frame,
         state,
+        state.velocity,
         player_rotation,
         0.0,
         pose_intent,

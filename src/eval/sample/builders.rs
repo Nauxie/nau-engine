@@ -185,6 +185,11 @@ impl EvalSample {
             max_crosswind_force_aligned_delta_mps: 0.0,
             max_updraft_swirl_force_aligned_delta_mps: 0.0,
             wind_lateral_load: 0.0,
+            player_wind_shear_visual_count: 0,
+            visible_player_wind_shear_visual_count: 0,
+            max_player_wind_shear_length_scale: 0.0,
+            max_player_wind_shear_lateral_offset_m: 0.0,
+            max_player_wind_shear_depth_offset_m: 0.0,
             active_lift_fields,
             readable_lift_fields,
             lift_field_count,
@@ -602,6 +607,22 @@ impl EvalSample {
 
     pub fn with_wind_lateral_load(mut self, wind_lateral_load: f32) -> Self {
         self.wind_lateral_load = wind_lateral_load.clamp(-1.0, 1.0);
+        self
+    }
+
+    pub fn with_player_wind_shear_visual_metrics(
+        mut self,
+        visual_count: usize,
+        visible_visual_count: usize,
+        max_length_scale: f32,
+        max_lateral_offset_m: f32,
+        max_depth_offset_m: f32,
+    ) -> Self {
+        self.player_wind_shear_visual_count = visual_count;
+        self.visible_player_wind_shear_visual_count = visible_visual_count;
+        self.max_player_wind_shear_length_scale = max_length_scale.max(0.0);
+        self.max_player_wind_shear_lateral_offset_m = max_lateral_offset_m.max(0.0);
+        self.max_player_wind_shear_depth_offset_m = max_depth_offset_m.max(0.0);
         self
     }
 

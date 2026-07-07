@@ -1,5 +1,4 @@
 use crate::Player;
-use crate::authored_assets::VisualAssetRegistry;
 use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::eval_runtime::EvalRun;
 use crate::generated_content::{
@@ -11,8 +10,7 @@ use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
 use bevy::light::VolumetricFog;
 use bevy::prelude::*;
 use bevy::render::render_resource::BlendState;
-use nau_engine::animation::{Side, wing_airflow_strength};
-use nau_engine::asset_pipeline::VisualAssetKind;
+use nau_engine::animation::{PlayerWindShearResponse, Side, player_wind_shear_response};
 #[cfg(test)]
 use nau_engine::environment::wind_gust_front_progress;
 use nau_engine::environment::{
@@ -110,9 +108,37 @@ pub(crate) struct WindResponsiveVisual {
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GliderAirflowTrail {
+    pub(crate) kind: PlayerWindShearVisualKind,
     pub(crate) side: Side,
     pub(crate) base_translation: Vec3,
     pub(crate) base_rotation: Quat,
+    previous_velocity: Vec3,
+    previous_velocity_initialized: bool,
+}
+
+impl GliderAirflowTrail {
+    pub(crate) fn new(
+        kind: PlayerWindShearVisualKind,
+        side: Side,
+        base_translation: Vec3,
+        base_rotation: Quat,
+    ) -> Self {
+        Self {
+            kind,
+            side,
+            base_translation,
+            base_rotation,
+            previous_velocity: Vec3::ZERO,
+            previous_velocity_initialized: false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PlayerWindShearVisualKind {
+    Wingtip,
+    Shoulder,
+    Slipstream,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -939,33 +965,137 @@ fn transform_local_point(transform: &Transform, local_position: Vec3) -> Vec3 {
 
 pub(crate) fn update_glider_airflow_trails(
     time: Res<Time>,
-    visual_assets: Res<VisualAssetRegistry>,
-    player: Query<(&Velocity, &FlightController), With<Player>>,
-    mut trails: Query<(&GliderAirflowTrail, &mut Transform, &mut Visibility)>,
+    wind: Res<crate::WindForceDiagnostics>,
+    player: Query<(&Transform, &Velocity, &FlightController), With<Player>>,
+    mut trails: Query<(&mut GliderAirflowTrail, &mut Transform, &mut Visibility), Without<Player>>,
 ) {
-    let Ok((velocity, controller)) = player.single() else {
+    let Ok((player_transform, velocity, controller)) = player.single() else {
         return;
     };
 
-    let airflow = wing_airflow_strength(controller.mode, velocity.0);
-    let visible = airflow > 0.04 && !visual_assets.scene_ready(VisualAssetKind::Glider);
-    let pulse = (time.elapsed_secs() * 9.0).sin() * 0.04 * airflow;
+    let dt = time.delta_secs();
+    let elapsed = time.elapsed_secs();
 
-    for (trail, mut transform, mut visibility) in &mut trails {
-        *visibility = if visible {
+    for (mut trail, mut transform, mut visibility) in &mut trails {
+        let previous_velocity = trail
+            .previous_velocity_initialized
+            .then_some(trail.previous_velocity);
+        let response = player_wind_shear_response(
+            controller.mode,
+            velocity.0,
+            previous_velocity,
+            player_transform.rotation,
+            wind.wind_lateral_load,
+            wind.applied_delta_mps,
+            dt,
+            elapsed,
+        );
+        trail.previous_velocity = velocity.0;
+        trail.previous_velocity_initialized = true;
+
+        *visibility = if response.visible {
             Visibility::Visible
         } else {
             Visibility::Hidden
         };
 
-        let sign = trail.side.sign();
-        transform.translation =
-            trail.base_translation + Vec3::new(sign * airflow * 0.08, pulse, airflow * 0.55);
-        transform.rotation = trail.base_rotation
-            * Quat::from_rotation_y(sign * airflow * 0.14)
-            * Quat::from_rotation_x(-airflow * 0.07);
-        transform.scale = Vec3::new(0.24 + airflow * 0.38, 1.0, 0.12 + airflow * 2.2);
+        apply_player_wind_shear_transform(&trail, response, &mut transform);
     }
+}
+
+fn apply_player_wind_shear_transform(
+    trail: &GliderAirflowTrail,
+    response: PlayerWindShearResponse,
+    transform: &mut Transform,
+) {
+    let sign = trail.side.sign();
+    let shear = response.lateral_shear;
+    let pulse = (response.gust_pulse - 0.5) * response.airflow;
+    let wind_load = response.wind_load;
+
+    match trail.kind {
+        PlayerWindShearVisualKind::Wingtip => {
+            transform.translation = trail.base_translation
+                + Vec3::new(
+                    sign * (response.airflow * 0.10 + shear * 0.08),
+                    pulse * 0.06 - response.dive_pressure * 0.05,
+                    response.airflow * 0.62 + response.acceleration_pressure * 0.18,
+                );
+            transform.rotation = trail.base_rotation
+                * Quat::from_rotation_y(sign * (response.airflow * 0.18 + shear * 0.12))
+                * Quat::from_rotation_x(
+                    -response.airflow * 0.10 - response.dive_pressure * 0.18 + pulse * 0.04,
+                )
+                * Quat::from_rotation_z(sign * wind_load * 0.08);
+            transform.scale = Vec3::new(
+                0.24 + response.airflow * 0.52 + response.acceleration_pressure * 0.14,
+                1.0,
+                0.10 + response.airflow * 2.7 + response.dive_pressure * 0.75,
+            );
+        }
+        PlayerWindShearVisualKind::Shoulder => {
+            transform.translation = trail.base_translation
+                + Vec3::new(
+                    sign * (response.airflow * 0.04 + shear.abs() * 0.03),
+                    pulse * 0.035,
+                    response.airflow * 0.36 + response.acceleration_pressure * 0.24,
+                );
+            transform.rotation = trail.base_rotation
+                * Quat::from_rotation_y(sign * (0.08 + shear * 0.2) * response.airflow)
+                * Quat::from_rotation_x(-response.dive_pressure * 0.22 - pulse * 0.025)
+                * Quat::from_rotation_z(-sign * shear * 0.16);
+            transform.scale = Vec3::new(
+                0.12 + response.airflow * 0.26,
+                1.0,
+                0.08 + response.airflow * 1.45 + response.acceleration_pressure * 0.55,
+            );
+        }
+        PlayerWindShearVisualKind::Slipstream => {
+            transform.translation = trail.base_translation
+                + Vec3::new(
+                    shear * 0.22,
+                    pulse * 0.08 - response.dive_pressure * 0.08,
+                    response.airflow * 0.82 + response.acceleration_pressure * 0.34,
+                );
+            transform.rotation = trail.base_rotation
+                * Quat::from_rotation_y(shear * 0.22)
+                * Quat::from_rotation_x(-response.airflow * 0.12 - response.dive_pressure * 0.24)
+                * Quat::from_rotation_z(-wind_load * 0.10);
+            transform.scale = Vec3::new(
+                0.28 + response.airflow * 0.36,
+                1.0,
+                0.18 + response.airflow * 3.2 + response.dive_pressure * 1.1,
+            );
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct PlayerWindShearVisualMetrics {
+    pub(crate) visual_count: usize,
+    pub(crate) visible_visual_count: usize,
+    pub(crate) max_length_scale: f32,
+    pub(crate) max_lateral_offset_m: f32,
+    pub(crate) max_depth_offset_m: f32,
+}
+
+pub(crate) fn player_wind_shear_visual_metrics<'a>(
+    visuals: impl Iterator<Item = (&'a GliderAirflowTrail, &'a Transform, &'a Visibility)>,
+) -> PlayerWindShearVisualMetrics {
+    visuals.fold(
+        PlayerWindShearVisualMetrics::default(),
+        |mut metrics, (visual, transform, visibility)| {
+            metrics.visual_count += 1;
+            if matches!(*visibility, Visibility::Visible) {
+                let offset = transform.translation - visual.base_translation;
+                metrics.visible_visual_count += 1;
+                metrics.max_length_scale = metrics.max_length_scale.max(transform.scale.z);
+                metrics.max_lateral_offset_m = metrics.max_lateral_offset_m.max(offset.x.abs());
+                metrics.max_depth_offset_m = metrics.max_depth_offset_m.max(offset.z.abs());
+            }
+            metrics
+        },
+    )
 }
 
 pub(crate) fn wind_responsive_visual_metrics<'a>(

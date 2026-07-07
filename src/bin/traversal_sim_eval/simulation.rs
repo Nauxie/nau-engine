@@ -88,6 +88,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
             route.is_grounded_at(state.position) && state.controller.mode == FlightMode::Grounded;
         let mut frame_tuning = tuning;
         frame_tuning.floor_y = route.ground_at(state.position).floor_y;
+        let previous_velocity = state.velocity;
         let world_step = step_flight_with_world(
             state,
             input,
@@ -222,6 +223,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
                 scenario,
                 frame,
                 state,
+                previous_velocity,
                 player_rotation,
                 animation_phase,
                 pose_intent,

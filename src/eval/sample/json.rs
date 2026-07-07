@@ -214,7 +214,7 @@ impl EvalSample {
         );
         let wind_force_key = "\"active_lift_fields\"";
         let wind_force_metrics = format!(
-            "\"active_wind_force_fields\":{},\"crosswind_force_fields\":{},\"updraft_swirl_force_fields\":{},\"max_wind_force_delta_mps\":{},\"max_crosswind_force_delta_mps\":{},\"crosswind_force_delta\":{},\"max_updraft_swirl_force_delta_mps\":{},\"max_wind_force_flow_speed_mps\":{},\"max_wind_force_variation\":{},\"max_wind_force_flow_alignment\":{},\"max_crosswind_force_flow_alignment\":{},\"max_updraft_swirl_force_flow_alignment\":{},\"max_wind_force_aligned_delta_mps\":{},\"max_crosswind_force_aligned_delta_mps\":{},\"max_updraft_swirl_force_aligned_delta_mps\":{},\"wind_lateral_load\":{},{}",
+            "\"active_wind_force_fields\":{},\"crosswind_force_fields\":{},\"updraft_swirl_force_fields\":{},\"max_wind_force_delta_mps\":{},\"max_crosswind_force_delta_mps\":{},\"crosswind_force_delta\":{},\"max_updraft_swirl_force_delta_mps\":{},\"max_wind_force_flow_speed_mps\":{},\"max_wind_force_variation\":{},\"max_wind_force_flow_alignment\":{},\"max_crosswind_force_flow_alignment\":{},\"max_updraft_swirl_force_flow_alignment\":{},\"max_wind_force_aligned_delta_mps\":{},\"max_crosswind_force_aligned_delta_mps\":{},\"max_updraft_swirl_force_aligned_delta_mps\":{},\"wind_lateral_load\":{},\"player_wind_shear_visual_count\":{},\"visible_player_wind_shear_visual_count\":{},\"max_player_wind_shear_length_scale\":{},\"max_player_wind_shear_lateral_offset_m\":{},\"max_player_wind_shear_depth_offset_m\":{},{}",
             self.active_wind_force_fields,
             self.crosswind_force_fields,
             self.updraft_swirl_force_fields,
@@ -231,6 +231,11 @@ impl EvalSample {
             json_number(self.max_crosswind_force_aligned_delta_mps),
             json_number(self.max_updraft_swirl_force_aligned_delta_mps),
             json_number(self.wind_lateral_load),
+            self.player_wind_shear_visual_count,
+            self.visible_player_wind_shear_visual_count,
+            json_number(self.max_player_wind_shear_length_scale),
+            json_number(self.max_player_wind_shear_lateral_offset_m),
+            json_number(self.max_player_wind_shear_depth_offset_m),
             wind_force_key
         );
         let json = json.replacen(wind_force_key, &wind_force_metrics, 1);

@@ -1,5 +1,6 @@
 use crate::environment_visuals::{
-    crosswind_ribbon_scene_sample_positions, updraft_ribbon_scene_sample_positions,
+    PlayerWindShearVisualKind, crosswind_ribbon_scene_sample_positions,
+    updraft_ribbon_scene_sample_positions,
 };
 use crate::eval_app_runtime::scene::EvalScene;
 use crate::generated_content::{
@@ -161,8 +162,28 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
             });
         }
     }
+    for (visual, _, global_transform, visibility) in scene.player_wind_shear_visuals.iter() {
+        if !matches!(*visibility, Visibility::Visible) {
+            continue;
+        }
+        samples.push(SemanticSceneSample {
+            kind: "player_wind_shear_visual",
+            label: player_wind_shear_visual_label(visual.kind),
+            expected_material: "wind",
+            material_variant: "wind_player_shear",
+            world_position: global_transform.translation(),
+        });
+    }
 
     samples
+}
+
+fn player_wind_shear_visual_label(kind: PlayerWindShearVisualKind) -> &'static str {
+    match kind {
+        PlayerWindShearVisualKind::Wingtip => "player wind wingtip shear",
+        PlayerWindShearVisualKind::Shoulder => "player wind shoulder shear",
+        PlayerWindShearVisualKind::Slipstream => "player wind slipstream",
+    }
 }
 
 fn terrain_material_variant(island_index: usize) -> &'static str {

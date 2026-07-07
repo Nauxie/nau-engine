@@ -393,6 +393,11 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     assert!(summary_json.contains("\"max_wind_load_lateral_load\": 0.0000"));
     assert!(summary_json.contains("\"max_wind_load_pose_lean_degrees\": 0.0000"));
     assert!(summary_json.contains("\"max_wind_load_glider_response_degrees\": 0.0000"));
+    assert!(summary_json.contains("\"max_player_wind_shear_visual_count\": 0"));
+    assert!(summary_json.contains("\"max_visible_player_wind_shear_visual_count\": 0"));
+    assert!(summary_json.contains("\"max_player_wind_shear_length_scale\": 0.0000"));
+    assert!(summary_json.contains("\"max_player_wind_shear_lateral_offset_m\": 0.0000"));
+    assert!(summary_json.contains("\"max_player_wind_shear_depth_offset_m\": 0.0000"));
     assert!(summary_json.contains("\"max_world_collision_proxy_count\": 24"));
     assert!(summary_json.contains(&format!(
         "\"max_terrain_rim_collision_proxy_count\": {MIN_TERRAIN_RIM_COLLISION_PROXY_COUNT}"
@@ -1257,6 +1262,11 @@ fn sample_json_emits_wind_guide_visual_metrics() {
     assert!(sample_json.contains("\"max_crosswind_force_aligned_delta_mps\":0.0300"));
     assert!(sample_json.contains("\"max_updraft_swirl_force_aligned_delta_mps\":0.0300"));
     assert!(sample_json.contains("\"wind_lateral_load\":0.0000"));
+    assert!(sample_json.contains("\"player_wind_shear_visual_count\":0"));
+    assert!(sample_json.contains("\"visible_player_wind_shear_visual_count\":0"));
+    assert!(sample_json.contains("\"max_player_wind_shear_length_scale\":0.0000"));
+    assert!(sample_json.contains("\"max_player_wind_shear_lateral_offset_m\":0.0000"));
+    assert!(sample_json.contains("\"max_player_wind_shear_depth_offset_m\":0.0000"));
     assert!(sample_json.contains("\"nearest_island_edge_distance_m\":1.2500"));
     assert!(sample_json.contains("\"signed_island_edge_distance_m\":-1.2500"));
     assert!(sample_json.contains("\"near_island_edge\":true"));

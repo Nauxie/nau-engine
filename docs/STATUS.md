@@ -39,9 +39,25 @@ Generated tree trunks/canopies are now explicit soft local camera props: they ca
 
 The high-island reset/dive follow-up was traced to the shared obstruction helper applying its world-space follow step cap even when the camera had no active obstruction. During fast downward player motion, that consumed the cap on player movement and left the camera behind until the player-distance clamp read as a zoom-out/control-loss event. Clear follow frames now inherit player/look-target motion directly after the player-distance safety clamp; only active obstruction and release-handoff frames use bounded target-relative offset/rotation caps. App eval now also wires the scripted playtest reset request into the actual movement schedule, so `playtest_reset` verifies the same player/camera state reset path as manual `R`.
 
+## 2026-07-07 Player Wind Shear Rendering
+
+The player now has always-resident procedural wind-shear visuals that stay active with the authored glider instead of disappearing when authored assets finish loading. Five local ribbons cover both wingtips, both shoulders, and the body slipstream. Their response is shared between runtime and simulation: flight mode, speed pressure, dive pressure, acceleration pressure, body-local lateral shear, wind lateral load, applied wind delta, and deterministic eval time drive visibility, scale, offset, pitch, roll, and gust pulse.
+
+The airflow material is brighter and more cyan-saturated so player-relative wind reads in screenshot audits instead of existing only as barely visible translucent geometry. The eval sample, app accumulator, summary JSON, and `traversal_sim_eval` artifacts now report player wind-shear visual count, visible count, max length scale, max lateral offset, and max depth offset. `updraft_route` gates these during wind-load response so a future branch cannot keep the numeric wind force while losing the visible player reaction.
+
+Screenshot sidecars now emit `player_wind_shear_visual` semantic scene samples with `wind_player_shear` material identity. On the rendered baseline checkpoint set, all ten player wind-shear samples across `launch_clear` and `glide_midroute` are in viewport, visible, and have wind-like pixel hits after the material tuning.
+
+Verification notes from this handoff:
+
+- `cargo fmt --check`, `cargo check`, and `cargo clippy --all-targets --all-features -- -D warnings` pass.
+- `cargo test` passes after the final material tuning.
+- `NAU_EVAL_SIM_ONLY=1 ./tools/eval.sh updraft_route target/eval/updraft_route_player_wind_shear_final_sim` passed with `max_player_wind_shear_visual_count=5`, `max_visible_player_wind_shear_visual_count=5`, `max_player_wind_shear_length_scale=1.7724`, `max_player_wind_shear_lateral_offset_m=0.1693`, and `max_player_wind_shear_depth_offset_m=0.7481`.
+- `NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh baseline_route target/eval/baseline_route_player_wind_shear_screenshot_final` generated valid screenshot artifacts and player wind-shear samples, but the wrapper still fails the existing app-path island streaming caps: `visible_island_terrain_count=72 > 55`, `visible_island_detail_count=140 > 116`, and `resident_island_visual_count=315 > 236`.
+- Manual audits on that rendered artifact set pass: `marker_projection_audit`, `semantic_scene_audit`, `visual_audit`, and `asset_fixture_audit`.
+
 ## Last Known Good
 
-- Verified PR head: `c99bcb8`
+- Verified PR branch: `abhinav/player-wind-shear-effects` ready for merge
 - Merged PRs: `#384` - Add collision truth and terrain seam gates; `#385` - Add authored archipelago composition plan; `#391` - Stabilize island impostor LOD rendering
 - Verification:
   - `cargo check`
@@ -54,9 +70,9 @@ The high-island reset/dive follow-up was traced to the shared obstruction helper
 
 Use this section for milestone handoffs, not routine worktree changes.
 
-- Current PR candidate: camera obstruction handoff stabilization after `#391`, including the high-island reset/dive clear-follow cap follow-up.
+- Current PR candidate: player wind-shear rendering and eval coverage after the camera obstruction handoff branch.
 - Next slice should be cut from latest `main`; do not revive the closed draft stack wholesale.
-- The medium-seriousness camera obstruction issue is addressed on the current handoff-stabilization branch; after merge, new camera work should start from a fresh repro rather than reopening the old runtime/sim divergence.
+- After merge, investigate the existing app-path island streaming cap failures separately from player wind-shear work; the rendered baseline/updraft wrappers currently exceed terrain/detail/resident island visual caps while screenshots and player-shear semantic audits are otherwise valid.
 
 ## Current Course Correction
 
@@ -134,9 +150,9 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 ## Next Tasks
 
 1. Start the next product slice from latest `main`, not from any closed draft stack branch.
-2. If new camera feedback appears after the obstruction handoff fix, capture an exact repro route/input, identify whether it is follow-direction, obstruction, pitch/boom, player framing, or frame-step related, and add the narrowest regression coverage before changing feel.
-3. Keep `underbridge_under_route`, `camera_turn_stability`, `camera_strafe_stability`, and `camera_mouse_control` green whenever camera, world/content density, collision, or streaming behavior changes.
-4. Reintroduce broader camera/stutter stress contracts before reattempting large world-shape, visual-density, or streaming-budget work.
+2. Triage the app-path island streaming cap failures before treating screenshot eval wrappers as fully green again; compare current `main` against the caps for visible terrain, visible detail, and resident island visual count.
+3. If new camera feedback appears after the obstruction handoff fix, capture an exact repro route/input, identify whether it is follow-direction, obstruction, pitch/boom, player framing, or frame-step related, and add the narrowest regression coverage before changing feel.
+4. Keep `underbridge_under_route`, `camera_turn_stability`, `camera_strafe_stability`, and `camera_mouse_control` green whenever camera, world/content density, collision, or streaming behavior changes.
 5. Keep the lower-power launch route green in app and sim evals, especially `island_launch_to_landing`, `updraft_route`, and `pose_state_coverage`.
 6. Continue landing-pose fidelity after the camera handoff branch if leg readability still depends on numeric pose metrics.
 
@@ -144,7 +160,7 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 
 Use this as the next 12-24 hour `/goal` seed when continuing toward the north-star traversal slice:
 
-From clean latest `main` after the camera obstruction handoff PR lands, take the next product slice only after confirming no fresh camera repro is pending. If camera feedback appears, capture exact route/input, classify it against follow direction, obstruction resolution, boom/pitch, player framing, or frame-step behavior, and add the smallest regression coverage that would have caught it. Keep `underbridge_under_route`, `world_collision_contact`, `camera_turn_stability`, `camera_strafe_stability`, and `camera_mouse_control` green. Preserve the PR1/PR2 collision baseline, the PR `#391` island-impostor handoff, and the shared runtime/sim camera obstruction path. Finish with updated docs/status/eval spec as needed, full Rust gates, relevant sim/app/screenshot evals, `review naux` if the branch is nontrivial, `pr naux`, merge, and clean latest `main naux`.
+From clean latest `main` after the player wind-shear PR lands, first reconcile the app-path island streaming cap failures so screenshot eval wrappers can become authoritative again. Compare current `main` against the visible terrain/detail/resident visual caps, decide whether the content budget or thresholds are stale, and keep the wind-shear semantic samples intact while doing so. If camera feedback appears, capture exact route/input, classify it against follow direction, obstruction resolution, boom/pitch, player framing, or frame-step behavior, and add the smallest regression coverage that would have caught it. Keep `underbridge_under_route`, `world_collision_contact`, `camera_turn_stability`, `camera_strafe_stability`, and `camera_mouse_control` green. Preserve the PR1/PR2 collision baseline, the PR `#391` island-impostor handoff, the shared runtime/sim camera obstruction path, and the new player wind-shear gates. Finish with updated docs/status/eval spec as needed, full Rust gates, relevant sim/app/screenshot evals, `review naux` if the branch is nontrivial, `pr naux`, merge, and clean latest `main naux`.
 
 ## Read First
 

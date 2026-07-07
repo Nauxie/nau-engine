@@ -5,7 +5,7 @@ use crate::authored_assets::{
     AuthoredVisualScene, AuthoredVisualSceneRole, GeneratedPlayerPlaceholder,
     mark_authored_scene_ready,
 };
-use crate::environment_visuals::GliderAirflowTrail;
+use crate::environment_visuals::{GliderAirflowTrail, PlayerWindShearVisualKind};
 use crate::generated_content::glider_airflow_trail_mesh;
 use crate::player_runtime::{
     AuthoredGliderPose, authored_glider_scene_transform, authored_player_scene_transform,
@@ -115,6 +115,19 @@ pub(super) fn spawn_player_runtime(
                 );
             }
 
+            spawn_wind_shear_visual(
+                parent,
+                scene_materials,
+                glider_airflow_mesh.clone(),
+                WindShearVisualSpec {
+                    kind: PlayerWindShearVisualKind::Slipstream,
+                    side: Side::Right,
+                    translation: Vec3::new(0.0, 1.22, 0.70),
+                    rotation: Quat::from_rotation_x(0.02),
+                    scale: Vec3::new(0.28, 1.0, 0.12),
+                },
+            );
+
             parent.spawn((
                 Mesh3d(meshes.add(Cuboid::new(0.18, 0.18, 0.38))),
                 MeshMaterial3d(scene_materials.accent.clone()),
@@ -194,21 +207,55 @@ fn spawn_player_side(
         ),
     ));
 
-    let trail_translation = Vec3::new(sign * 1.74, 1.38, 0.86);
-    let trail_rotation = Quat::from_rotation_z(sign * 0.08) * Quat::from_rotation_x(0.04);
-    parent.spawn((
-        Mesh3d(glider_airflow_mesh),
-        MeshMaterial3d(scene_materials.glider_airflow.clone()),
-        Transform {
-            translation: trail_translation,
-            rotation: trail_rotation,
+    spawn_wind_shear_visual(
+        parent,
+        scene_materials,
+        glider_airflow_mesh.clone(),
+        WindShearVisualSpec {
+            kind: PlayerWindShearVisualKind::Wingtip,
+            side,
+            translation: Vec3::new(sign * 1.74, 1.38, 0.86),
+            rotation: Quat::from_rotation_z(sign * 0.08) * Quat::from_rotation_x(0.04),
             scale: Vec3::new(0.35, 1.0, 0.05),
         },
-        Visibility::Hidden,
-        GliderAirflowTrail {
+    );
+    spawn_wind_shear_visual(
+        parent,
+        scene_materials,
+        glider_airflow_mesh,
+        WindShearVisualSpec {
+            kind: PlayerWindShearVisualKind::Shoulder,
             side,
-            base_translation: trail_translation,
-            base_rotation: trail_rotation,
+            translation: Vec3::new(sign * 0.62, 1.36, 0.58),
+            rotation: Quat::from_rotation_z(sign * 0.12) * Quat::from_rotation_x(0.07),
+            scale: Vec3::new(0.16, 1.0, 0.05),
         },
+    );
+}
+
+struct WindShearVisualSpec {
+    kind: PlayerWindShearVisualKind,
+    side: Side,
+    translation: Vec3,
+    rotation: Quat,
+    scale: Vec3,
+}
+
+fn spawn_wind_shear_visual(
+    parent: &mut ChildSpawnerCommands,
+    scene_materials: &SceneMaterials,
+    mesh: Handle<Mesh>,
+    spec: WindShearVisualSpec,
+) {
+    parent.spawn((
+        Mesh3d(mesh),
+        MeshMaterial3d(scene_materials.glider_airflow.clone()),
+        Transform {
+            translation: spec.translation,
+            rotation: spec.rotation,
+            scale: spec.scale,
+        },
+        Visibility::Hidden,
+        GliderAirflowTrail::new(spec.kind, spec.side, spec.translation, spec.rotation),
     ));
 }

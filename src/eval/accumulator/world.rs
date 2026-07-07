@@ -156,6 +156,21 @@ pub(super) fn observe(
         accumulator.max_wind_load_glider_response_degrees = accumulator
             .max_wind_load_glider_response_degrees
             .max(sample.authored_glider_response_degrees);
+        accumulator.max_player_wind_shear_visual_count = accumulator
+            .max_player_wind_shear_visual_count
+            .max(sample.player_wind_shear_visual_count);
+        accumulator.max_visible_player_wind_shear_visual_count = accumulator
+            .max_visible_player_wind_shear_visual_count
+            .max(sample.visible_player_wind_shear_visual_count);
+        accumulator.max_player_wind_shear_length_scale = accumulator
+            .max_player_wind_shear_length_scale
+            .max(sample.max_player_wind_shear_length_scale);
+        accumulator.max_player_wind_shear_lateral_offset_m = accumulator
+            .max_player_wind_shear_lateral_offset_m
+            .max(sample.max_player_wind_shear_lateral_offset_m);
+        accumulator.max_player_wind_shear_depth_offset_m = accumulator
+            .max_player_wind_shear_depth_offset_m
+            .max(sample.max_player_wind_shear_depth_offset_m);
     }
     observe_crosswind_neutral_drift(accumulator, sample);
     accumulator.max_active_lift_fields = accumulator

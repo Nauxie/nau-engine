@@ -17,11 +17,13 @@ use nau_engine::eval::{
     MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M, MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS,
     MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE, MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES,
     MIN_DYNAMIC_WIND_FLOW_SPEED_MPS, MIN_DYNAMIC_WIND_FLOW_VARIATION,
-    MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE, MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
-    MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT, MIN_WIND_FORCE_FLOW_SPEED_MPS,
-    MIN_WIND_FORCE_SAMPLE_COUNT, MIN_WIND_FORCE_VARIATION, MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
-    MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_LOAD_POSE_LEAN_DEGREES,
-    MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
+    MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE, MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M,
+    MIN_PLAYER_WIND_SHEAR_LATERAL_OFFSET_M, MIN_PLAYER_WIND_SHEAR_LENGTH_SCALE,
+    MIN_PLAYER_WIND_SHEAR_VISUAL_COUNT, MIN_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT,
+    MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT,
+    MIN_WIND_FORCE_FLOW_SPEED_MPS, MIN_WIND_FORCE_SAMPLE_COUNT, MIN_WIND_FORCE_VARIATION,
+    MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
+    MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
     POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES, POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES,
     UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE, min_updraft_swirl_force_delta_mps_for_scenario,
 };
@@ -493,6 +495,36 @@ impl SimMetrics {
                 self.max_wind_load_glider_response_degrees,
                 MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
                 "deg",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_visual_count",
+                self.max_player_wind_shear_visual_count as f32,
+                MIN_PLAYER_WIND_SHEAR_VISUAL_COUNT as f32,
+                "visuals",
+            ));
+            checks.push(SimCheck::at_least(
+                "visible_player_wind_shear_visual_count",
+                self.max_visible_player_wind_shear_visual_count as f32,
+                MIN_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT as f32,
+                "visuals",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_length_scale",
+                self.max_player_wind_shear_length_scale,
+                MIN_PLAYER_WIND_SHEAR_LENGTH_SCALE,
+                "scale",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_lateral_offset",
+                self.max_player_wind_shear_lateral_offset_m,
+                MIN_PLAYER_WIND_SHEAR_LATERAL_OFFSET_M,
+                "m",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_depth_offset",
+                self.max_player_wind_shear_depth_offset_m,
+                MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M,
+                "m",
             ));
             checks.push(SimCheck::at_least(
                 "crosswind_neutral_drift_samples",

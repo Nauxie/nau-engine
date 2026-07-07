@@ -476,6 +476,36 @@ pub(super) fn append_scenario_checks(
             MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
             "deg",
         ));
+        checks.push(EvalCheck::at_least(
+            "player_wind_shear_visual_count",
+            acc.max_player_wind_shear_visual_count as f32,
+            MIN_PLAYER_WIND_SHEAR_VISUAL_COUNT as f32,
+            "visuals",
+        ));
+        checks.push(EvalCheck::at_least(
+            "visible_player_wind_shear_visual_count",
+            acc.max_visible_player_wind_shear_visual_count as f32,
+            MIN_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT as f32,
+            "visuals",
+        ));
+        checks.push(EvalCheck::at_least(
+            "player_wind_shear_length_scale",
+            acc.max_player_wind_shear_length_scale,
+            MIN_PLAYER_WIND_SHEAR_LENGTH_SCALE,
+            "scale",
+        ));
+        checks.push(EvalCheck::at_least(
+            "player_wind_shear_lateral_offset",
+            acc.max_player_wind_shear_lateral_offset_m,
+            MIN_PLAYER_WIND_SHEAR_LATERAL_OFFSET_M,
+            "m",
+        ));
+        checks.push(EvalCheck::at_least(
+            "player_wind_shear_depth_offset",
+            acc.max_player_wind_shear_depth_offset_m,
+            MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M,
+            "m",
+        ));
     }
     if scenario.name == AIR_CONTROL_RESPONSE {
         append_air_control_checks(checks, acc, derived);
