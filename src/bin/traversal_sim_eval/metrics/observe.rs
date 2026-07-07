@@ -471,6 +471,30 @@ impl SimMetrics {
             self.max_wind_load_glider_response_degrees = self
                 .max_wind_load_glider_response_degrees
                 .max(sample.wind_load_glider_response_degrees);
+            self.max_player_wind_shear_visual_count = self
+                .max_player_wind_shear_visual_count
+                .max(sample.player_wind_shear_visual_count);
+            self.max_visible_player_wind_shear_visual_count = self
+                .max_visible_player_wind_shear_visual_count
+                .max(sample.visible_player_wind_shear_visual_count);
+            self.max_player_wind_shear_airflow = self
+                .max_player_wind_shear_airflow
+                .max(sample.max_player_wind_shear_airflow);
+            self.max_player_wind_shear_acceleration_pressure = self
+                .max_player_wind_shear_acceleration_pressure
+                .max(sample.max_player_wind_shear_acceleration_pressure);
+            self.max_player_wind_shear_lateral_shear = self
+                .max_player_wind_shear_lateral_shear
+                .max(sample.max_player_wind_shear_lateral_shear);
+            self.max_player_wind_shear_length_scale = self
+                .max_player_wind_shear_length_scale
+                .max(sample.max_player_wind_shear_length_scale);
+            self.max_player_wind_shear_lateral_offset_m = self
+                .max_player_wind_shear_lateral_offset_m
+                .max(sample.max_player_wind_shear_lateral_offset_m);
+            self.max_player_wind_shear_depth_offset_m = self
+                .max_player_wind_shear_depth_offset_m
+                .max(sample.max_player_wind_shear_depth_offset_m);
         }
         self.observe_crosswind_neutral_drift(sample);
         self.max_paired_visual_lift_fields = self

@@ -8,8 +8,8 @@ use crate::environment_visuals::{
     CrosswindGuide, CrosswindRibbon, ObservedWindVisualMotionMetrics, UpdraftGuide, UpdraftRibbon,
     observe_crosswind_guide_frame_motion, observe_crosswind_ribbon_frame_motion,
     observe_updraft_guide_frame_motion, observe_updraft_ribbon_frame_motion,
-    observed_wind_visual_velocity, wind_guide_visual_metrics, wind_responsive_visual_metrics,
-    wind_visual_quality_visible,
+    observed_wind_visual_velocity, player_wind_shear_visual_metrics, wind_guide_visual_metrics,
+    wind_responsive_visual_metrics, wind_visual_quality_visible,
 };
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
 use crate::player_runtime::AuthoredGliderPose;
@@ -877,6 +877,12 @@ pub(crate) fn collect_eval_metrics(
     let content_metrics = *scene.content_diagnostics;
     let (environment_motion_visuals, max_environment_motion_offset_m) =
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
+    let player_wind_shear_metrics = player_wind_shear_visual_metrics(
+        scene
+            .player_wind_shear_visuals
+            .iter()
+            .map(|(visual, transform, _, visibility)| (visual, transform, visibility)),
+    );
     observed_wind_visual_motion_state.observe_frame(
         run.frame,
         elapsed_secs,
@@ -1208,6 +1214,13 @@ pub(crate) fn collect_eval_metrics(
     )
     .with_crosswind_force_delta(scene.wind_force_diagnostics.crosswind_delta)
     .with_wind_lateral_load(scene.wind_force_diagnostics.wind_lateral_load)
+    .with_player_wind_shear_visual_metrics(
+        player_wind_shear_metrics.visual_count,
+        player_wind_shear_metrics.visible_visual_count,
+        player_wind_shear_metrics.max_length_scale,
+        player_wind_shear_metrics.max_lateral_offset_m,
+        player_wind_shear_metrics.max_depth_offset_m,
+    )
     .with_world_collision_metrics(
         scene.collision_diagnostics.proxy_count,
         scene.collision_diagnostics.resolved_count,

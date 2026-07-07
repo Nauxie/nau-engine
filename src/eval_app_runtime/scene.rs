@@ -5,7 +5,7 @@ use crate::authored_assets::{
 use crate::camera_runtime::{CameraDiagnostics, CameraFollowFilter};
 use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::environment_visuals::{
-    CrosswindGuide, CrosswindRibbon, UpdraftGuide, UpdraftRibbon, WeatherDrift,
+    CrosswindGuide, CrosswindRibbon, GliderAirflowTrail, UpdraftGuide, UpdraftRibbon, WeatherDrift,
     WindResponsiveVisual,
 };
 use crate::island_visuals::IslandStreamDiagnostics;
@@ -77,6 +77,16 @@ pub(crate) struct EvalScene<'w, 's> {
     pub(crate) weather_clouds: Query<'w, 's, &'static Transform, With<WeatherDrift>>,
     pub(crate) wind_responsive_visuals:
         Query<'w, 's, (&'static WindResponsiveVisual, &'static Transform)>,
+    pub(crate) player_wind_shear_visuals: Query<
+        'w,
+        's,
+        (
+            &'static GliderAirflowTrail,
+            &'static Transform,
+            &'static GlobalTransform,
+            &'static Visibility,
+        ),
+    >,
     pub(crate) updraft_guides: Query<'w, 's, (Entity, &'static UpdraftGuide, &'static Transform)>,
     pub(crate) updraft_ribbons: Query<'w, 's, (Entity, &'static UpdraftRibbon, &'static Transform)>,
     pub(crate) crosswind_guides:

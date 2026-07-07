@@ -230,6 +230,11 @@ pub struct EvalMetricsSummary {
     pub max_wind_load_lateral_load: f32,
     pub max_wind_load_pose_lean_degrees: f32,
     pub max_wind_load_glider_response_degrees: f32,
+    pub max_player_wind_shear_visual_count: usize,
+    pub max_visible_player_wind_shear_visual_count: usize,
+    pub max_player_wind_shear_length_scale: f32,
+    pub max_player_wind_shear_lateral_offset_m: f32,
+    pub max_player_wind_shear_depth_offset_m: f32,
     pub crosswind_neutral_drift_samples: u32,
     pub crosswind_neutral_horizontal_drift_m: f32,
     pub max_crosswind_neutral_horizontal_step_m: f32,
@@ -703,7 +708,7 @@ impl EvalMetricsSummary {
         );
         let max_active_lift_fields_key = format!("{indent}  \"max_active_lift_fields\"");
         let wind_force_metrics = format!(
-            "{indent}  \"wind_force_samples\": {},\n{indent}  \"meaningful_wind_force_samples\": {},\n{indent}  \"aligned_wind_force_samples\": {},\n{indent}  \"crosswind_force_samples\": {},\n{indent}  \"aligned_crosswind_force_samples\": {},\n{indent}  \"updraft_swirl_force_samples\": {},\n{indent}  \"aligned_updraft_swirl_force_samples\": {},\n{indent}  \"layered_wind_force_samples\": {},\n{indent}  \"aligned_layered_wind_force_samples\": {},\n{indent}  \"crosswind_updraft_overlap_samples\": {},\n{indent}  \"aligned_crosswind_updraft_overlap_samples\": {},\n{indent}  \"max_active_wind_force_fields\": {},\n{indent}  \"max_crosswind_force_fields\": {},\n{indent}  \"max_updraft_swirl_force_fields\": {},\n{indent}  \"max_layered_wind_force_fields\": {},\n{indent}  \"max_wind_force_delta_mps\": {},\n{indent}  \"max_crosswind_force_delta_mps\": {},\n{indent}  \"max_updraft_swirl_force_delta_mps\": {},\n{indent}  \"max_layered_wind_force_delta_mps\": {},\n{indent}  \"max_wind_force_flow_speed_mps\": {},\n{indent}  \"max_wind_force_variation\": {},\n{indent}  \"max_wind_force_flow_alignment\": {},\n{indent}  \"max_crosswind_force_flow_alignment\": {},\n{indent}  \"max_updraft_swirl_force_flow_alignment\": {},\n{indent}  \"max_layered_wind_force_flow_alignment\": {},\n{indent}  \"max_wind_force_aligned_delta_mps\": {},\n{indent}  \"max_crosswind_force_aligned_delta_mps\": {},\n{indent}  \"max_updraft_swirl_force_aligned_delta_mps\": {},\n{indent}  \"max_layered_wind_force_aligned_delta_mps\": {},\n{indent}  \"wind_load_response_samples\": {},\n{indent}  \"max_wind_load_lateral_load\": {},\n{indent}  \"max_wind_load_pose_lean_degrees\": {},\n{indent}  \"max_wind_load_glider_response_degrees\": {},\n{indent}  \"crosswind_neutral_drift_samples\": {},\n{indent}  \"crosswind_neutral_horizontal_drift_m\": {},\n{indent}  \"max_crosswind_neutral_horizontal_step_m\": {},\n{}",
+            "{indent}  \"wind_force_samples\": {},\n{indent}  \"meaningful_wind_force_samples\": {},\n{indent}  \"aligned_wind_force_samples\": {},\n{indent}  \"crosswind_force_samples\": {},\n{indent}  \"aligned_crosswind_force_samples\": {},\n{indent}  \"updraft_swirl_force_samples\": {},\n{indent}  \"aligned_updraft_swirl_force_samples\": {},\n{indent}  \"layered_wind_force_samples\": {},\n{indent}  \"aligned_layered_wind_force_samples\": {},\n{indent}  \"crosswind_updraft_overlap_samples\": {},\n{indent}  \"aligned_crosswind_updraft_overlap_samples\": {},\n{indent}  \"max_active_wind_force_fields\": {},\n{indent}  \"max_crosswind_force_fields\": {},\n{indent}  \"max_updraft_swirl_force_fields\": {},\n{indent}  \"max_layered_wind_force_fields\": {},\n{indent}  \"max_wind_force_delta_mps\": {},\n{indent}  \"max_crosswind_force_delta_mps\": {},\n{indent}  \"max_updraft_swirl_force_delta_mps\": {},\n{indent}  \"max_layered_wind_force_delta_mps\": {},\n{indent}  \"max_wind_force_flow_speed_mps\": {},\n{indent}  \"max_wind_force_variation\": {},\n{indent}  \"max_wind_force_flow_alignment\": {},\n{indent}  \"max_crosswind_force_flow_alignment\": {},\n{indent}  \"max_updraft_swirl_force_flow_alignment\": {},\n{indent}  \"max_layered_wind_force_flow_alignment\": {},\n{indent}  \"max_wind_force_aligned_delta_mps\": {},\n{indent}  \"max_crosswind_force_aligned_delta_mps\": {},\n{indent}  \"max_updraft_swirl_force_aligned_delta_mps\": {},\n{indent}  \"max_layered_wind_force_aligned_delta_mps\": {},\n{indent}  \"wind_load_response_samples\": {},\n{indent}  \"max_wind_load_lateral_load\": {},\n{indent}  \"max_wind_load_pose_lean_degrees\": {},\n{indent}  \"max_wind_load_glider_response_degrees\": {},\n{indent}  \"max_player_wind_shear_visual_count\": {},\n{indent}  \"max_visible_player_wind_shear_visual_count\": {},\n{indent}  \"max_player_wind_shear_length_scale\": {},\n{indent}  \"max_player_wind_shear_lateral_offset_m\": {},\n{indent}  \"max_player_wind_shear_depth_offset_m\": {},\n{indent}  \"crosswind_neutral_drift_samples\": {},\n{indent}  \"crosswind_neutral_horizontal_drift_m\": {},\n{indent}  \"max_crosswind_neutral_horizontal_step_m\": {},\n{}",
             self.wind_force_samples,
             self.meaningful_wind_force_samples,
             self.aligned_wind_force_samples,
@@ -737,6 +742,11 @@ impl EvalMetricsSummary {
             json_number(self.max_wind_load_lateral_load),
             json_number(self.max_wind_load_pose_lean_degrees),
             json_number(self.max_wind_load_glider_response_degrees),
+            self.max_player_wind_shear_visual_count,
+            self.max_visible_player_wind_shear_visual_count,
+            json_number(self.max_player_wind_shear_length_scale),
+            json_number(self.max_player_wind_shear_lateral_offset_m),
+            json_number(self.max_player_wind_shear_depth_offset_m),
             self.crosswind_neutral_drift_samples,
             json_number(self.crosswind_neutral_horizontal_drift_m),
             json_number(self.max_crosswind_neutral_horizontal_step_m),

@@ -4887,6 +4887,11 @@ fn accumulator_gates_wind_load_response_metrics() {
         "wind_load_lateral_load",
         "wind_load_pose_lean",
         "wind_load_glider_response",
+        "player_wind_shear_visual_count",
+        "visible_player_wind_shear_visual_count",
+        "player_wind_shear_length_scale",
+        "player_wind_shear_lateral_offset",
+        "player_wind_shear_depth_offset",
         "crosswind_neutral_drift_samples",
         "crosswind_neutral_horizontal_drift",
         "crosswind_neutral_horizontal_step",
@@ -4911,6 +4916,26 @@ fn accumulator_gates_wind_load_response_metrics() {
     assert_eq!(
         summary.metrics.max_wind_load_glider_response_degrees,
         MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES
+    );
+    assert_eq!(
+        summary.metrics.max_player_wind_shear_visual_count,
+        MIN_PLAYER_WIND_SHEAR_VISUAL_COUNT
+    );
+    assert_eq!(
+        summary.metrics.max_visible_player_wind_shear_visual_count,
+        MIN_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT
+    );
+    assert_eq!(
+        summary.metrics.max_player_wind_shear_length_scale,
+        MIN_PLAYER_WIND_SHEAR_LENGTH_SCALE
+    );
+    assert_eq!(
+        summary.metrics.max_player_wind_shear_lateral_offset_m,
+        MIN_PLAYER_WIND_SHEAR_LATERAL_OFFSET_M
+    );
+    assert_eq!(
+        summary.metrics.max_player_wind_shear_depth_offset_m,
+        MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M
     );
     assert_eq!(
         summary.metrics.crosswind_neutral_drift_samples,
@@ -5061,6 +5086,11 @@ fn accumulator_rejects_wind_load_without_crosswind_force_evidence() {
         "wind_load_lateral_load",
         "wind_load_pose_lean",
         "wind_load_glider_response",
+        "player_wind_shear_visual_count",
+        "visible_player_wind_shear_visual_count",
+        "player_wind_shear_length_scale",
+        "player_wind_shear_lateral_offset",
+        "player_wind_shear_depth_offset",
     ] {
         assert!(
             !named_check(&summary, check_name).passed,
@@ -5103,6 +5133,11 @@ fn accumulator_rejects_low_variation_wind_load_response() {
         "wind_load_lateral_load",
         "wind_load_pose_lean",
         "wind_load_glider_response",
+        "player_wind_shear_visual_count",
+        "visible_player_wind_shear_visual_count",
+        "player_wind_shear_length_scale",
+        "player_wind_shear_lateral_offset",
+        "player_wind_shear_depth_offset",
     ] {
         assert!(
             !named_check(&summary, check_name).passed,
@@ -5136,6 +5171,11 @@ fn accumulator_rejects_missing_wind_load_response() {
         "wind_load_lateral_load",
         "wind_load_pose_lean",
         "wind_load_glider_response",
+        "player_wind_shear_visual_count",
+        "visible_player_wind_shear_visual_count",
+        "player_wind_shear_length_scale",
+        "player_wind_shear_lateral_offset",
+        "player_wind_shear_depth_offset",
     ] {
         assert!(
             !named_check(&summary, check_name).passed,
@@ -5177,6 +5217,13 @@ fn wind_load_metric_sample(
         key_pose_readability_score: 1.0,
     })
     .with_authored_glider_metrics(glider_response_degrees, 0.08)
+    .with_player_wind_shear_visual_metrics(
+        MIN_PLAYER_WIND_SHEAR_VISUAL_COUNT,
+        MIN_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT,
+        MIN_PLAYER_WIND_SHEAR_LENGTH_SCALE,
+        MIN_PLAYER_WIND_SHEAR_LATERAL_OFFSET_M,
+        MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M,
+    )
 }
 
 #[test]
