@@ -11,7 +11,6 @@ pub const CAMERA_OBSTRUCTION_SOFT_SHOULDER_OFFSET_M: f32 = 2.4;
 pub const CAMERA_OBSTRUCTION_VERTICAL_OFFSET_M: f32 = 2.4;
 pub const CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M: f32 = 1.5;
 pub const CAMERA_OBSTRUCTION_MIN_ACTIVE_ADJUSTMENT_M: f32 = 0.35;
-pub const CAMERA_MAX_FOLLOW_FRAME_STEP_M: f32 = 1.10;
 pub const CAMERA_MAX_OBSTRUCTION_FRAME_STEP_M: f32 = 0.26;
 pub const CAMERA_MAX_OBSTRUCTION_HANDOFF_FRAME_STEP_M: f32 = 0.65;
 pub const CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES: f32 = 1.48;
@@ -306,15 +305,12 @@ pub fn resolve_camera_obstruction_handoff(
     let frame = clamp_camera_player_distance(frame, player_position, CAMERA_MAX_PLAYER_DISTANCE_M);
     let pre_cap_rotation_delta_degrees =
         previous_rotation.angle_between(frame.rotation).to_degrees();
-    let obstruction_position_controlled = active_obstruction_hits > 0 || release_smoothing_active;
-    let max_camera_step_m = if obstruction_position_controlled {
-        CAMERA_MAX_OBSTRUCTION_FRAME_STEP_M
-    } else if release_handoff_active {
-        CAMERA_MAX_OBSTRUCTION_HANDOFF_FRAME_STEP_M
-    } else {
-        CAMERA_MAX_FOLLOW_FRAME_STEP_M
-    };
     let frame = if reported_obstruction_hits > 0 {
+        let max_camera_step_m = if active_obstruction_hits > 0 || release_smoothing_active {
+            CAMERA_MAX_OBSTRUCTION_FRAME_STEP_M
+        } else {
+            CAMERA_MAX_OBSTRUCTION_HANDOFF_FRAME_STEP_M
+        };
         clamp_camera_offset_step(
             frame,
             previous_position,
@@ -322,10 +318,7 @@ pub fn resolve_camera_obstruction_handoff(
             max_camera_step_m,
         )
     } else {
-        let smoothed_rotation = frame.rotation;
-        let mut clamped = clamp_camera_step(frame, previous_position, max_camera_step_m);
-        clamped.rotation = smoothed_rotation;
-        clamped
+        frame
     };
     let frame = if reported_obstruction_hits > 0 {
         clamp_camera_rotation_step(
@@ -1011,6 +1004,46 @@ mod tests {
         assert!(
             rotation_delta_degrees <= CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES + 0.001,
             "first hard-obstruction fallback should cap rotation; delta was {rotation_delta_degrees}"
+        );
+    }
+
+    #[test]
+    fn clear_follow_handoff_does_not_world_step_clamp_fast_player_motion() {
+        let previous_look_target = Vec3::new(0.0, 120.0, 0.0);
+        let previous_position = previous_look_target + Vec3::new(0.0, 5.0, 12.0);
+        let look_target = Vec3::new(0.0, 96.0, 0.0);
+        let frame = CameraFrame {
+            position: look_target + Vec3::new(0.0, 5.0, 12.0),
+            rotation: Transform::from_translation(look_target + Vec3::new(0.0, 5.0, 12.0))
+                .looking_at(look_target, Vec3::Y)
+                .rotation,
+            look_target,
+        };
+        let previous_rotation = Transform::from_translation(previous_position)
+            .looking_at(previous_look_target, Vec3::Y)
+            .rotation;
+        let mut handoff = CameraObstructionHandoffState {
+            previous_look_target: Some(previous_look_target),
+            ..Default::default()
+        };
+
+        let step = resolve_camera_obstruction_handoff(
+            frame,
+            previous_position,
+            previous_rotation,
+            look_target - Vec3::Y * 1.4,
+            [],
+            0.0,
+            1.0 / 60.0,
+            &mut handoff,
+            |frame| frame,
+        );
+
+        assert_eq!(step.obstruction_hits, 0);
+        assert_eq!(step.obstruction_adjustment_m, 0.0);
+        assert!(
+            step.frame.position.distance(frame.position) < 0.001,
+            "clear follow frames should inherit fast player motion instead of consuming it in the obstruction step cap"
         );
     }
 

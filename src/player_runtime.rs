@@ -28,7 +28,7 @@ use nau_engine::camera::{
 use nau_engine::environment::{
     LiftField, WindField, WindForceApplication, apply_lift_fields, apply_wind_fields,
 };
-use nau_engine::eval::scripted_input;
+use nau_engine::eval::{scripted_input, scripted_playtest_reset_requested};
 use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
     face_flight_direction, step_flight,
@@ -349,21 +349,107 @@ pub(crate) fn reset_player_to_playtest_position(
         return;
     };
 
+    let reset_position = reset_playtest_player(
+        &route,
+        &mut transform,
+        &mut velocity,
+        &mut controller,
+        &mut animation,
+    );
+    if let Ok((mut camera_transform, follow, mut follow_state, mut obstruction_memory)) =
+        camera.single_mut()
+    {
+        reset_playtest_camera(
+            reset_position,
+            &mut camera_control,
+            &mut camera_transform,
+            follow,
+            &mut follow_state,
+            &mut obstruction_memory,
+        );
+    }
+}
+
+pub(crate) fn eval_reset_player_to_playtest_position(
+    run: Res<EvalRun>,
+    route: Res<SkyRoute>,
+    mut camera_control: ResMut<CameraControlState>,
+    mut player: Query<
+        (
+            &mut Transform,
+            &mut Velocity,
+            &mut FlightController,
+            &mut AnimationState,
+        ),
+        With<Player>,
+    >,
+    mut camera: Query<
+        (
+            &mut Transform,
+            &FollowCamera,
+            &mut FollowCameraState,
+            &mut CameraObstructionMemory,
+        ),
+        CameraFollowFilter,
+    >,
+) {
+    if run.finalized || !scripted_playtest_reset_requested(run.scenario, run.frame) {
+        return;
+    }
+    let Ok((mut transform, mut velocity, mut controller, mut animation)) = player.single_mut()
+    else {
+        return;
+    };
+
+    let reset_position = reset_playtest_player(
+        &route,
+        &mut transform,
+        &mut velocity,
+        &mut controller,
+        &mut animation,
+    );
+    if let Ok((mut camera_transform, follow, mut follow_state, mut obstruction_memory)) =
+        camera.single_mut()
+    {
+        reset_playtest_camera(
+            reset_position,
+            &mut camera_control,
+            &mut camera_transform,
+            follow,
+            &mut follow_state,
+            &mut obstruction_memory,
+        );
+    }
+}
+
+fn reset_playtest_player(
+    route: &SkyRoute,
+    transform: &mut Transform,
+    velocity: &mut Velocity,
+    controller: &mut FlightController,
+    animation: &mut AnimationState,
+) -> Vec3 {
     let reset_position = route.playtest_reset_position();
     transform.translation = reset_position;
     transform.rotation = Quat::IDENTITY;
     velocity.0 = Vec3::ZERO;
     *controller = FlightController::default();
     *animation = AnimationState::default();
+    reset_position
+}
 
-    if let Ok((mut camera_transform, follow, mut follow_state, mut obstruction_memory)) =
-        camera.single_mut()
-    {
-        *camera_control = CameraControlState::default();
-        *follow_state = FollowCameraState::default();
-        *obstruction_memory = CameraObstructionMemory::default();
-        *camera_transform = follow_camera_transform(reset_position, follow);
-    }
+fn reset_playtest_camera(
+    reset_position: Vec3,
+    camera_control: &mut CameraControlState,
+    camera_transform: &mut Transform,
+    follow: &FollowCamera,
+    follow_state: &mut FollowCameraState,
+    obstruction_memory: &mut CameraObstructionMemory,
+) {
+    *camera_control = CameraControlState::default();
+    *follow_state = FollowCameraState::default();
+    *obstruction_memory = CameraObstructionMemory::default();
+    *camera_transform = follow_camera_transform(reset_position, follow);
 }
 
 pub(crate) fn keyboard_flight_input(keyboard: &ButtonInput<KeyCode>) -> FlightInput {
