@@ -151,7 +151,7 @@ impl EvalRun {
     pub(crate) fn record_sample(&mut self, sample: EvalSample) -> Result<(), std::io::Error> {
         let mut file = OpenOptions::new().append(true).open(&self.samples_path)?;
         writeln!(file, "{}", sample.to_json())?;
-        self.accumulator.observe(sample);
+        self.accumulator.observe_for_scenario(sample, self.scenario);
         Ok(())
     }
 

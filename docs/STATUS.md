@@ -31,6 +31,12 @@ PR `#391` stabilizes the distant-island handoff. Large islands now choose LOD ba
 
 The distant impostor is now a material-split low-LOD shell rather than a single generic proxy: terrain, cliff, and underside impostor meshes use the same footprint/depth envelope and material families as the real island shell. Runtime impostors are prebuilt handles, so first sight of a far island no longer pays deferred mesh generation, while real terrain/cliff/underside shell meshes still build lazily when the island becomes resident. Export and content diagnostics now track the richer 722-vertex combined impostor mesh instead of the old 146-vertex proxy.
 
+## 2026-07-07 Camera Obstruction Handoff Stabilization
+
+The tree/prop camera collision issue was traced to two root causes: runtime and `traversal_sim_eval` used different obstruction handoff paths, and generated tree blockers were treated as hard obstruction volumes that could create a fresh shoulder/vertical fallback when the player walked near them. Runtime and sim now share `resolve_camera_obstruction_handoff`, including obstruction smoothing, revalidation, player-distance clamp, bounded position step, bounded rotation step, release handoff, and final memory sync.
+
+Generated tree trunks/canopies are now explicit soft local camera props: they can preserve an already-readable held camera offset, but they do not create a new jarring fallback by themselves. Route spires, cave blockers, terrain, landmarks, and other broad blockers remain solid. The eval harness now has direct regressions for first-frame hard-obstruction caps, soft-local-prop transparency, app/runtime scenario-aware accumulation, and the underbridge sim-only threshold mismatch that previously let the CLI harness fail an aligned-updraft sample count despite passing the route-specific max-delta gate.
+
 ## Last Known Good
 
 - Verified PR head: `dd1941b`
@@ -46,9 +52,9 @@ The distant impostor is now a material-split low-LOD shell rather than a single 
 
 Use this section for milestone handoffs, not routine worktree changes.
 
-- Open PRs: none after `#391` lands.
+- Current PR candidate: camera obstruction handoff stabilization after `#391`.
 - Next slice should be cut from latest `main`; do not revive the closed draft stack wholesale.
-- A medium-seriousness camera issue is queued next; details are pending from playtest/user observation, so avoid starting unrelated content-density work before triaging it.
+- The medium-seriousness camera obstruction issue is addressed on the current handoff-stabilization branch; after merge, new camera work should start from a fresh repro rather than reopening the old runtime/sim divergence.
 
 ## Current Course Correction
 
@@ -77,7 +83,7 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 - Route-surface contact can land the player on an island and applies landing damping once instead of crushing standing WASD movement every frame.
 - Runtime movement is camera-relative from the stable camera follow direction plus explicit mouse orbit, with stronger airborne planar steering, input-aligned planar thrust, air-input orthogonal drift damping so lateral reversals shed stale forward/side velocity, faster horizontal velocity turning toward camera-relative lateral/rear-diagonal headings, targeted counter-steer authority for lateral reversals, stronger glide air-brake drag, pure backward air-brake control that bleeds sideways drift, rear-diagonal lateral steering while air-brake owns rearward slowdown, pure-backward body-facing intent without uncapped reverse velocity, body yaw and body bank smoothed toward intended movement, tighter body/travel coupling during lateral glide turns, body-local generated/authored pose lean, error-scaled turn recovery for large lateral input changes, and horizontal velocity as the no-input facing fallback.
 - Mouse camera control has player-centered orbit pitch, separate yaw and pitch sensitivity, pitch clamps, click-to-lock cursor capture, right-mouse temporary look, and `Esc` release.
-- Camera keeps smoothed mostly-forward follow direction independent from mouse orbit, exposes that stable follow direction as the movement basis, ignores sideways/backward movement for automatic follow-heading changes, avoids tagged obstruction volumes including route-integrated obstruction spires, uses shoulder/vertical fallback plus a readable boom floor near blockers, treats very near narrow prop blockers as transparent when all readable fallbacks are worse, caps post-obstruction camera step distance, and stays above the active ground surface.
+- Camera keeps smoothed mostly-forward follow direction independent from mouse orbit, exposes that stable follow direction as the movement basis, ignores sideways/backward movement for automatic follow-heading changes, avoids tagged obstruction volumes including route-integrated obstruction spires through a shared runtime/sim handoff, uses shoulder/vertical fallback plus a readable boom floor near hard blockers, treats generated tree-scale soft local props as transparent unless an already-readable held offset remains clear, revalidates smoothed obstruction frames, caps obstruction position and rotation handoffs, clamps max camera/player boom distance, and stays above the active ground surface.
 - Default debug sandbox HUD reports frame time, camera pitch, camera distance, player framing angle, camera motion, camera orbit alignment, obstruction adjustment, mouse yaw/pitch offsets, velocity, altitude, mode, launch state, target distance, visual asset admission/load/preload/scene/animation readiness, authored animation current/desired clip state, transition duration, visible authored world fixture count, visual wind-field count, active wind-force/crosswind/updraft-swirl field counts, total applied/crosswind/updraft-swirl force deltas, body-local wind load, active lift-field count, world-collision/terrain-rim/terrain-body proxy/resolution/push metrics, environment-motion count/offset, and sky-island count; `cargo run -- --play` starts a clean playable mode without the debug HUD or gizmos.
 - Authored glTF scene readiness and animation linking are split: `SceneInstanceReady` marks scene lifecycle state, then a retryable update path discovers nested `AnimationPlayer`s, validates the declared named clips, and attaches the animation graph once dependencies are present.
 - The seven non-player authored world glTF fixture scenes now spawn visibly on route islands after scene readiness, and evals gate their visible fixture-kind count separately from the existing load/spawn/ready scene lifecycle counters.
@@ -114,7 +120,6 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 ## Known Issues
 
 - App-backed `air_control_response`, `pose_state_coverage`, and `updraft_route` now clear sustained wind-visual flow checks after eval-mode wind visuals were moved onto the deterministic eval frame clock. Runtime wind-quality gates also bound observed visual speed/acceleration and reject visible wrap/jump artifacts, while sim/app routes prove projected horizontal crosswind drift without requiring player input.
-- A medium-seriousness camera issue remains to be triaged after the island-impostor PR merge. Treat the next camera pass as product-critical until the exact repro, route, and metric gap are known; keep camera changes behind targeted app/sim eval evidence.
 - The character now has a self-authored animated glTF fixture with faceted body meshes, sculpted head shell, brow guard, nose bridge, jaw and cheek planes, temple guards, eye lenses/glints, belt hardware, gauntlet cuffs, knee guards, boots with toe caps, hand/finger grip pieces, shoulder guards, scarf pieces, side tunic flaps, bicep/tricep/calf/shin/instep/tendon/web/lace anatomy pieces, and named clip coverage, but it is still not a rigged production character.
 - Limb posing has grounded walk/run stride, readable launch/fall, airborne banking, glide, explicit-input dive, air-brake, landing-anticipation feet-forward absorption, bounded post-touchdown recovery crouch, landing crouch, turn-readable lean, and speed-responsive wing flex for generated fallback and named authored player nodes; authored nodes now capture their scene rest transforms once and apply procedural offsets relative to that rest pose, while the authored fixture proves retryable named-clip validation, graph readiness, distinct `fall` and directional `bank_left`/`bank_right` clip coverage, runtime bank transitions, and procedural pose parity. It is still approximate non-skeletal animation.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep, but evals now cover both shared route spires and the generated launch-mesa tree/prop contact route for readable framing near blockers.
@@ -127,17 +132,17 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 ## Next Tasks
 
 1. Start the next product slice from latest `main`, not from any closed draft stack branch.
-2. Triage the pending medium-seriousness camera issue first: capture an exact repro route/input, identify whether it is follow-direction, obstruction, pitch/boom, player framing, or frame-step related, and add the narrowest regression coverage before changing feel.
+2. If new camera feedback appears after the obstruction handoff fix, capture an exact repro route/input, identify whether it is follow-direction, obstruction, pitch/boom, player framing, or frame-step related, and add the narrowest regression coverage before changing feel.
 3. Keep `underbridge_under_route`, `camera_turn_stability`, `camera_strafe_stability`, and `camera_mouse_control` green whenever camera, world/content density, collision, or streaming behavior changes.
 4. Reintroduce broader camera/stutter stress contracts before reattempting large world-shape, visual-density, or streaming-budget work.
 5. Keep the lower-power launch route green in app and sim evals, especially `island_launch_to_landing`, `updraft_route`, and `pose_state_coverage`.
-6. Continue landing-pose fidelity after the camera issue if leg readability still depends on numeric pose metrics.
+6. Continue landing-pose fidelity after the camera handoff branch if leg readability still depends on numeric pose metrics.
 
 ## Next Goal Draft
 
 Use this as the next 12-24 hour `/goal` seed when continuing toward the north-star traversal slice:
 
-From clean latest `main`, triage and fix the pending medium-seriousness camera issue before starting unrelated content work. Capture the exact repro route/input, classify the failure against follow direction, obstruction resolution, boom/pitch, player framing, or frame-step behavior, add the smallest regression coverage that would have caught it, and keep `underbridge_under_route`, `camera_turn_stability`, `camera_strafe_stability`, and `camera_mouse_control` green. Preserve the PR1/PR2 collision baseline and the PR `#391` island-impostor handoff. Finish with updated docs/status/eval spec as needed, full Rust gates, relevant sim/app/screenshot evals, `review naux` if the branch is nontrivial, `pr naux`, merge, and clean latest `main naux`.
+From clean latest `main` after the camera obstruction handoff PR lands, take the next product slice only after confirming no fresh camera repro is pending. If camera feedback appears, capture exact route/input, classify it against follow direction, obstruction resolution, boom/pitch, player framing, or frame-step behavior, and add the smallest regression coverage that would have caught it. Keep `underbridge_under_route`, `world_collision_contact`, `camera_turn_stability`, `camera_strafe_stability`, and `camera_mouse_control` green. Preserve the PR1/PR2 collision baseline, the PR `#391` island-impostor handoff, and the shared runtime/sim camera obstruction path. Finish with updated docs/status/eval spec as needed, full Rust gates, relevant sim/app/screenshot evals, `review naux` if the branch is nontrivial, `pr naux`, merge, and clean latest `main naux`.
 
 ## Read First
 

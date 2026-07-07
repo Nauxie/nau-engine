@@ -34,8 +34,8 @@ use nau_engine::{
         MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
         MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
         POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES,
-        POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES, UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
-        scenario_named,
+        POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES, UNDER_ROUTE_MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+        UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE, scenario_named,
     },
     movement::{Facing, FlightController, FlightInput, FlightMode, FlightState},
     world::{START_POSITION, SkyRoute},
@@ -1015,6 +1015,41 @@ fn updraft_simulation_uses_readable_lift() {
             >= MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS as f64
     );
     assert!(result.metrics.max_altitude_m >= scenario.thresholds.min_max_altitude_m);
+}
+
+#[test]
+fn underbridge_updraft_swirl_counts_route_specific_aligned_force_samples() {
+    let scenario = scenario_named(UNDERBRIDGE_UNDER_ROUTE).expect("scenario");
+    let route = SkyRoute::default();
+    let mut metrics = SimMetrics::new(&route);
+
+    for frame in 0..scenario.thresholds.min_lifted_samples {
+        let mut sample = sim_roll_sample(&route, scenario, frame, FlightMode::Gliding, 0.0, 0.0);
+        sample.active_wind_force_fields = 1;
+        sample.updraft_swirl_force_fields = 1;
+        sample.max_updraft_swirl_force_delta_mps = UNDER_ROUTE_MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS;
+        sample.max_updraft_swirl_force_flow_alignment = 1.0;
+        sample.max_updraft_swirl_force_aligned_delta_mps =
+            UNDER_ROUTE_MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS;
+        metrics.observe(&sample, scenario);
+    }
+
+    assert_eq!(
+        metrics.aligned_updraft_swirl_force_samples,
+        scenario.thresholds.min_lifted_samples
+    );
+    for check_name in [
+        "aligned_updraft_swirl_force_samples",
+        "updraft_swirl_force_delta",
+        "updraft_swirl_force_aligned_delta",
+    ] {
+        let check = metrics
+            .checks(scenario)
+            .into_iter()
+            .find(|check| check.name == check_name)
+            .unwrap_or_else(|| panic!("missing sim check {check_name}"));
+        assert!(check.passed, "{check_name} should pass: {check:?}");
+    }
 }
 
 #[test]

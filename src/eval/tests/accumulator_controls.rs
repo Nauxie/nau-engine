@@ -4569,6 +4569,54 @@ fn accumulator_gates_dynamic_wind_flow_for_lift_routes() {
 }
 
 #[test]
+fn accumulator_observe_for_scenario_uses_underbridge_updraft_swirl_delta() {
+    let scenario = scenario_named(UNDERBRIDGE_UNDER_ROUTE).expect("underbridge route exists");
+    let sample = content_metric_sample(scenario, 0, 12, 0, 96).with_wind_force_metrics(
+        1,
+        0,
+        1,
+        0.0,
+        0.0,
+        UNDER_ROUTE_MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+        6.0,
+        0.16,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        UNDER_ROUTE_MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+    );
+
+    let mut default_accumulator = EvalAccumulator::default();
+    default_accumulator.observe(sample.clone());
+
+    let mut scenario_accumulator = EvalAccumulator::default();
+    scenario_accumulator.observe_for_scenario(sample, scenario);
+
+    let artifacts = EvalArtifacts {
+        summary_json: "summary.json".to_string(),
+        samples_ndjson: "samples.ndjson".to_string(),
+        screenshot_png: None,
+        checkpoint_screenshots: Vec::new(),
+        checkpoint_marker_metadata: Vec::new(),
+    };
+    let default_summary = default_accumulator.summary(scenario, artifacts.clone());
+    let scenario_summary = scenario_accumulator.summary(scenario, artifacts);
+
+    assert_eq!(default_summary.metrics.meaningful_wind_force_samples, 0);
+    assert_eq!(
+        default_summary.metrics.aligned_updraft_swirl_force_samples,
+        0
+    );
+    assert_eq!(scenario_summary.metrics.meaningful_wind_force_samples, 1);
+    assert_eq!(
+        scenario_summary.metrics.aligned_updraft_swirl_force_samples,
+        1
+    );
+}
+
+#[test]
 fn accumulator_rejects_missing_updraft_swirl_force_metrics_for_lift_routes() {
     let scenario = scenario_named(UPDRAFT_ROUTE).expect("updraft route exists");
     let mut accumulator = EvalAccumulator::default();

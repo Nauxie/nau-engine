@@ -91,7 +91,7 @@ pub(super) fn queue_sky_island_details(
             meshes.add(trunk_mesh),
             detail_materials.trunk.clone(),
             Transform::from_translation(trunk_center),
-            Some(CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::soft_local_prop(
                 trunk_center,
                 Vec3::new(0.22, trunk_height * 0.5, 0.22),
             ))),
@@ -111,7 +111,7 @@ pub(super) fn queue_sky_island_details(
             meshes.add(canopy_mesh),
             detail_materials.foliage.clone(),
             Transform::from_translation(canopy_center),
-            Some(CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::soft_local_prop(
                 canopy_center,
                 Vec3::splat(canopy_radius),
             ))),
@@ -544,7 +544,7 @@ pub(super) fn queue_sky_island_details(
             meshes.add(launch_trunk_mesh),
             detail_materials.trunk,
             Transform::from_translation(launch_tree_center),
-            Some(CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::soft_local_prop(
                 launch_tree_center,
                 Vec3::new(0.35, launch_tree_height * 0.5, 0.35),
             ))),
@@ -564,7 +564,7 @@ pub(super) fn queue_sky_island_details(
             meshes.add(launch_canopy_mesh),
             detail_materials.foliage,
             Transform::from_translation(launch_canopy_center),
-            Some(CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::soft_local_prop(
                 launch_canopy_center,
                 Vec3::splat(launch_canopy_radius),
             ))),

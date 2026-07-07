@@ -12,17 +12,11 @@ use nau_engine::{
         wind_lateral_load_from_delta,
     },
     camera::{
-        CAMERA_MAX_FOLLOW_FRAME_STEP_M, CAMERA_MAX_OBSTRUCTION_FRAME_STEP_M,
-        CAMERA_MAX_OBSTRUCTION_HANDOFF_FRAME_STEP_M, CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES,
-        CAMERA_OBSTRUCTION_MIN_ACTIVE_ADJUSTMENT_M, CAMERA_OBSTRUCTION_RELEASE_HANDOFF_FRAMES,
-        CameraControlState, CameraControlTuning, CameraObstruction,
-        CameraObstructionSmoothingState, FollowCamera, FollowCameraState, apply_camera_input,
-        avoid_camera_obstructions_with_preferred_offset, camera_obstruction_is_active,
-        camera_orbit_alignment_degrees, clamp_camera_offset_step, clamp_camera_player_distance,
-        clamp_camera_rotation_step, clamp_camera_step, lift_camera_above_floor,
-        movement_facing_from_follow_direction, movement_input_stable_follow_direction,
-        revalidate_camera_obstruction, smooth_camera_obstruction, step_camera_with_direction,
-        update_follow_direction_state,
+        CameraControlState, CameraControlTuning, CameraObstruction, CameraObstructionHandoffState,
+        FollowCamera, FollowCameraState, apply_camera_input, camera_orbit_alignment_degrees,
+        lift_camera_above_floor, movement_facing_from_follow_direction,
+        movement_input_stable_follow_direction, resolve_camera_obstruction_handoff,
+        step_camera_with_direction, update_follow_direction_state,
     },
     environment::{
         AERIAL_POWER_UP_ROUTE, GAMEPLAY_LIFT_ROUTE, LiftApplication, LiftField, WindField,
@@ -41,7 +35,6 @@ use nau_engine::{
 };
 
 const PLATEAU_CAMERA_START_BACKOFF_M: f32 = 7.0;
-const CAMERA_MAX_PLAYER_DISTANCE: f32 = 16.45;
 
 pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     let route = SkyRoute::default();
@@ -79,9 +72,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
     );
     let mut camera_control = CameraControlState::default();
     let mut follow_state = FollowCameraState::default();
-    let mut camera_obstruction_smoothing = CameraObstructionSmoothingState::default();
-    let mut camera_obstruction_release_handoff_frames = 0;
-    let mut previous_camera_look_target = None;
+    let mut camera_obstruction_handoff = CameraObstructionHandoffState::default();
     let mut camera_diagnostics_initialized = false;
     let mut samples = Vec::new();
     let mut metrics = SimMetrics::new_at(&route, start_position);
@@ -197,9 +188,7 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
             camera_control.orbit,
             &route,
             &obstructions,
-            &mut camera_obstruction_smoothing,
-            &mut camera_obstruction_release_handoff_frames,
-            &mut previous_camera_look_target,
+            &mut camera_obstruction_handoff,
             scenario.fixed_dt,
         );
         camera_transform.translation = camera_step.position;
@@ -503,9 +492,7 @@ fn step_camera_frame(
     orbit: nau_engine::camera::CameraOrbit,
     route: &SkyRoute,
     obstructions: &[CameraObstruction],
-    obstruction_smoothing: &mut CameraObstructionSmoothingState,
-    release_handoff_frames_remaining: &mut u8,
-    previous_look_target: &mut Option<Vec3>,
+    obstruction_handoff: &mut CameraObstructionHandoffState,
     dt: f32,
 ) -> CameraStepSample {
     let frame = step_camera_with_direction(
@@ -521,142 +508,28 @@ fn step_camera_frame(
         camera_orbit_alignment_degrees(frame.position, frame.look_target, follow_direction, orbit);
     let camera_floor_y = route.ground_at(frame.position).floor_y;
     let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
-    let preferred_obstruction_offset = obstruction_smoothing.readable_offset();
-    let obstruction = avoid_camera_obstructions_with_preferred_offset(
+    let obstruction_step = resolve_camera_obstruction_handoff(
         frame,
+        current.translation,
+        current.rotation,
+        player_position,
         obstructions.iter().copied(),
         CAMERA_OBSTRUCTION_CLEARANCE,
-        preferred_obstruction_offset,
-    );
-    let active_obstruction =
-        camera_obstruction_is_active(obstruction.hit_count, obstruction.adjusted_distance_m);
-    let active_obstruction_hits = if active_obstruction {
-        obstruction.hit_count
-    } else {
-        0
-    };
-    let active_obstruction_adjustment_m = if active_obstruction {
-        obstruction.adjusted_distance_m
-    } else {
-        0.0
-    };
-    let obstruction_frame = if active_obstruction {
-        obstruction.frame
-    } else {
-        frame
-    };
-    let camera_floor_y = route.ground_at(obstruction_frame.position).floor_y;
-    let frame = lift_camera_above_floor(
-        obstruction_frame,
-        camera_floor_y,
-        CAMERA_MIN_SURFACE_CLEARANCE,
-    );
-    let pre_smoothing_frame = frame;
-    let frame = smooth_camera_obstruction(
-        frame,
-        obstruction_smoothing,
-        active_obstruction_hits,
-        active_obstruction_adjustment_m,
         dt,
+        obstruction_handoff,
+        |frame| {
+            let camera_floor_y = route.ground_at(frame.position).floor_y;
+            lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE)
+        },
     );
-    let revalidated_obstruction = revalidate_camera_obstruction(
-        frame,
-        obstructions.iter().copied(),
-        CAMERA_OBSTRUCTION_CLEARANCE,
-        preferred_obstruction_offset,
-    );
-    let revalidated_active = camera_obstruction_is_active(
-        revalidated_obstruction.hit_count,
-        revalidated_obstruction.adjusted_distance_m,
-    );
-    let (frame, active_obstruction_hits, active_obstruction_adjustment_m) = if revalidated_active {
-        let camera_floor_y = route
-            .ground_at(revalidated_obstruction.frame.position)
-            .floor_y;
-        (
-            lift_camera_above_floor(
-                revalidated_obstruction.frame,
-                camera_floor_y,
-                CAMERA_MIN_SURFACE_CLEARANCE,
-            ),
-            revalidated_obstruction.hit_count,
-            active_obstruction_adjustment_m.max(revalidated_obstruction.adjusted_distance_m),
-        )
-    } else {
-        (
-            frame,
-            active_obstruction_hits,
-            active_obstruction_adjustment_m,
-        )
-    };
-    let release_smoothing_active = active_obstruction_hits == 0
-        && (preferred_obstruction_offset.is_some()
-            || pre_smoothing_frame.position.distance(frame.position) > 0.001);
-    let release_handoff_active =
-        active_obstruction_hits == 0 && *release_handoff_frames_remaining > 0;
-    let reported_obstruction_hits = if release_smoothing_active || release_handoff_active {
-        1
-    } else {
-        active_obstruction_hits
-    };
-    let reported_obstruction_adjustment_m = if release_smoothing_active || release_handoff_active {
-        CAMERA_OBSTRUCTION_MIN_ACTIVE_ADJUSTMENT_M
-    } else {
-        active_obstruction_adjustment_m
-    };
-    let frame = clamp_camera_player_distance(frame, player_position, CAMERA_MAX_PLAYER_DISTANCE);
-    let pre_cap_rotation_delta_degrees =
-        current.rotation.angle_between(frame.rotation).to_degrees();
-    let obstruction_position_controlled = active_obstruction_hits > 0 || release_smoothing_active;
-    let max_camera_step_m = if obstruction_position_controlled {
-        CAMERA_MAX_OBSTRUCTION_FRAME_STEP_M
-    } else if release_handoff_active {
-        CAMERA_MAX_OBSTRUCTION_HANDOFF_FRAME_STEP_M
-    } else {
-        CAMERA_MAX_FOLLOW_FRAME_STEP_M
-    };
-    let frame = if reported_obstruction_hits > 0 {
-        clamp_camera_offset_step(
-            frame,
-            current.translation,
-            *previous_look_target,
-            max_camera_step_m,
-        )
-    } else {
-        let smoothed_rotation = frame.rotation;
-        let mut clamped = clamp_camera_step(frame, current.translation, max_camera_step_m);
-        clamped.rotation = smoothed_rotation;
-        clamped
-    };
-    let frame = if reported_obstruction_hits > 0 {
-        clamp_camera_rotation_step(
-            frame,
-            current.rotation,
-            CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES,
-        )
-    } else {
-        frame
-    };
-    obstruction_smoothing.sync_resolved_frame(
-        frame,
-        active_obstruction_hits,
-        active_obstruction_adjustment_m,
-    );
-    let release_handoff_still_settling = release_handoff_active
-        && pre_cap_rotation_delta_degrees > CAMERA_MAX_OBSTRUCTION_ROTATION_STEP_DEGREES;
-    if active_obstruction_hits > 0 || release_smoothing_active || release_handoff_still_settling {
-        *release_handoff_frames_remaining = CAMERA_OBSTRUCTION_RELEASE_HANDOFF_FRAMES;
-    } else {
-        *release_handoff_frames_remaining = (*release_handoff_frames_remaining).saturating_sub(1);
-    }
-    *previous_look_target = Some(frame.look_target);
+    let frame = obstruction_step.frame;
 
     CameraStepSample {
         position: frame.position,
         rotation: frame.rotation,
         orbit_alignment_degrees,
-        obstruction_adjustment_m: reported_obstruction_adjustment_m,
-        obstruction_hits: reported_obstruction_hits,
+        obstruction_adjustment_m: obstruction_step.obstruction_adjustment_m,
+        obstruction_hits: obstruction_step.obstruction_hits,
     }
 }
 
@@ -833,9 +706,7 @@ mod tests {
             route_obstruction_spires(&route)[0].center,
             route_obstruction_spires(&route)[0].half_extents,
         );
-        let mut obstruction_smoothing = CameraObstructionSmoothingState::default();
-        let mut release_handoff_frames_remaining = 0;
-        let mut previous_look_target = None;
+        let mut obstruction_handoff = CameraObstructionHandoffState::default();
 
         let sample = step_camera_frame(
             current,
@@ -845,9 +716,7 @@ mod tests {
             nau_engine::camera::CameraOrbit::default(),
             &route,
             &[blocker],
-            &mut obstruction_smoothing,
-            &mut release_handoff_frames_remaining,
-            &mut previous_look_target,
+            &mut obstruction_handoff,
             1.0 / 60.0,
         );
 

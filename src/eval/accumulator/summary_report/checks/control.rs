@@ -356,6 +356,8 @@ pub(super) fn append_scenario_checks(
         ));
     }
     if wind_force_scenario(scenario) {
+        let min_updraft_swirl_force_delta =
+            min_updraft_swirl_force_delta_mps_for_scenario(scenario.name);
         checks.push(EvalCheck::at_least(
             "updraft_swirl_force_samples",
             acc.updraft_swirl_force_samples as f32,
@@ -377,7 +379,7 @@ pub(super) fn append_scenario_checks(
         checks.push(EvalCheck::at_least(
             "updraft_swirl_force_delta",
             acc.max_updraft_swirl_force_delta_mps,
-            MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
+            min_updraft_swirl_force_delta,
             "m/s",
         ));
         checks.push(EvalCheck::at_least(
@@ -389,7 +391,7 @@ pub(super) fn append_scenario_checks(
         checks.push(EvalCheck::at_least(
             "updraft_swirl_force_aligned_delta",
             acc.max_updraft_swirl_force_aligned_delta_mps,
-            MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
+            min_updraft_swirl_force_delta,
             "m/s",
         ));
     }

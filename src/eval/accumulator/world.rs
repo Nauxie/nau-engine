@@ -13,15 +13,18 @@ use crate::eval::thresholds::{
     MIN_OBSERVED_UPDRAFT_VISUAL_FRAME_RISE_M,
     MIN_OBSERVED_UPDRAFT_VISUAL_FRAME_SWIRL_DISPLACEMENT_M, MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT,
     MIN_UPDRAFT_GUIDE_VISUAL_COUNT, MIN_UPDRAFT_RIBBON_VISUAL_COUNT,
-    MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS, MIN_UPDRAFT_VISUAL_DEPTH_SPAN_M,
-    MIN_UPDRAFT_VISUAL_MOTION_M, MIN_UPDRAFT_VISUAL_RISE_M, MIN_UPDRAFT_VISUAL_SCALE_PULSE,
-    MIN_UPDRAFT_VISUAL_SWIRL_DISPLACEMENT_M, MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
-    MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT, MIN_WIND_FORCE_VARIATION,
-    MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_VISUAL_FLOW_ALIGNMENT,
+    MIN_UPDRAFT_VISUAL_DEPTH_SPAN_M, MIN_UPDRAFT_VISUAL_MOTION_M, MIN_UPDRAFT_VISUAL_RISE_M,
+    MIN_UPDRAFT_VISUAL_SCALE_PULSE, MIN_UPDRAFT_VISUAL_SWIRL_DISPLACEMENT_M,
+    MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT,
+    MIN_WIND_FORCE_VARIATION, MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_VISUAL_FLOW_ALIGNMENT,
     MIN_WORLD_COLLISION_CONTACT_SAMPLE_PUSH_M, SUSTAINED_WIND_VISUAL_FLOW_FLOOR_RATIO,
 };
 
-pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
+pub(super) fn observe(
+    accumulator: &mut EvalAccumulator,
+    sample: &EvalSample,
+    min_updraft_swirl_force_delta_mps: f32,
+) {
     accumulator.max_visible_wind_fields = accumulator
         .max_visible_wind_fields
         .max(sample.visible_wind_fields);
@@ -41,7 +44,7 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
         accumulator.wind_force_samples += 1;
         let meaningful_delta = sample.max_wind_force_delta_mps >= MIN_WIND_FORCE_DELTA_MPS
             || sample.max_crosswind_force_delta_mps >= MIN_CROSSWIND_FORCE_DELTA_MPS
-            || sample.max_updraft_swirl_force_delta_mps >= MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS;
+            || sample.max_updraft_swirl_force_delta_mps >= min_updraft_swirl_force_delta_mps;
         if meaningful_delta && sample.max_wind_force_variation >= MIN_WIND_FORCE_VARIATION {
             accumulator.meaningful_wind_force_samples += 1;
         }
@@ -62,7 +65,7 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     if sample.updraft_swirl_force_fields > 0 {
         accumulator.updraft_swirl_force_samples += 1;
         if sample.max_updraft_swirl_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
-            && sample.max_updraft_swirl_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+            && sample.max_updraft_swirl_force_aligned_delta_mps >= min_updraft_swirl_force_delta_mps
         {
             accumulator.aligned_updraft_swirl_force_samples += 1;
         }
@@ -95,7 +98,7 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
         if sample.max_crosswind_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
             && sample.max_crosswind_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
             && sample.max_updraft_swirl_force_flow_alignment >= MIN_WIND_FORCE_FLOW_ALIGNMENT
-            && sample.max_updraft_swirl_force_aligned_delta_mps >= MIN_WIND_FORCE_ALIGNED_DELTA_MPS
+            && sample.max_updraft_swirl_force_aligned_delta_mps >= min_updraft_swirl_force_delta_mps
         {
             accumulator.aligned_crosswind_updraft_overlap_samples += 1;
         }

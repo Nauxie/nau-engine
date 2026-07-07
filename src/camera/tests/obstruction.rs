@@ -94,12 +94,21 @@ fn camera_obstruction_treats_near_narrow_prop_as_transparent_when_fallback_is_bl
     let resolved = avoid_camera_obstructions(
         frame,
         [
-            CameraObstruction::new(Vec3::new(0.0, 2.0, 4.0), Vec3::new(0.6, 2.0, 0.6)),
-            CameraObstruction::new(Vec3::new(1.6, 2.0, 4.0), Vec3::new(0.35, 2.0, 0.6)),
-            CameraObstruction::new(Vec3::new(-1.6, 2.0, 4.0), Vec3::new(0.35, 2.0, 0.6)),
-            CameraObstruction::new(Vec3::new(0.0, 2.8, 4.0), Vec3::new(0.6, 0.25, 0.6)),
-            CameraObstruction::new(Vec3::new(1.6, 2.5, 4.0), Vec3::new(0.35, 0.35, 0.6)),
-            CameraObstruction::new(Vec3::new(-1.6, 2.5, 4.0), Vec3::new(0.35, 0.35, 0.6)),
+            CameraObstruction::soft_local_prop(Vec3::new(0.0, 2.0, 4.0), Vec3::new(0.6, 2.0, 0.6)),
+            CameraObstruction::soft_local_prop(Vec3::new(1.6, 2.0, 4.0), Vec3::new(0.35, 2.0, 0.6)),
+            CameraObstruction::soft_local_prop(
+                Vec3::new(-1.6, 2.0, 4.0),
+                Vec3::new(0.35, 2.0, 0.6),
+            ),
+            CameraObstruction::soft_local_prop(Vec3::new(0.0, 2.8, 4.0), Vec3::new(0.6, 0.25, 0.6)),
+            CameraObstruction::soft_local_prop(
+                Vec3::new(1.6, 2.5, 4.0),
+                Vec3::new(0.35, 0.35, 0.6),
+            ),
+            CameraObstruction::soft_local_prop(
+                Vec3::new(-1.6, 2.5, 4.0),
+                Vec3::new(0.35, 0.35, 0.6),
+            ),
         ],
         0.45,
     );
