@@ -41,7 +41,7 @@ The high-island reset/dive follow-up was traced to the shared obstruction helper
 
 ## Last Known Good
 
-- Verified PR head: `754b78a`
+- Verified PR head: `c99bcb8`
 - Merged PRs: `#384` - Add collision truth and terrain seam gates; `#385` - Add authored archipelago composition plan; `#391` - Stabilize island impostor LOD rendering
 - Verification:
   - `cargo check`
