@@ -96,16 +96,37 @@ pub(crate) fn crosswind_flow_ribbon_centerline_offset(length: f32, phase: f32, t
     )
 }
 
-pub(crate) fn glider_airflow_trail_mesh() -> Mesh {
-    let positions = vec![
-        [-0.5, 0.0, -0.5],
-        [0.5, 0.0, -0.5],
-        [-0.14, 0.0, 0.5],
-        [0.14, 0.0, 0.5],
-    ];
-    let normals = vec![[0.0, 1.0, 0.0]; positions.len()];
-    let uvs = vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
-    let indices = vec![0, 1, 2, 1, 3, 2];
+pub(crate) fn player_airflow_streamline_mesh() -> Mesh {
+    const SEGMENTS: usize = 14;
+
+    let mut positions = Vec::with_capacity((SEGMENTS + 1) * 2);
+    let mut normals = Vec::with_capacity((SEGMENTS + 1) * 2);
+    let mut uvs = Vec::with_capacity((SEGMENTS + 1) * 2);
+    let mut indices = Vec::with_capacity(SEGMENTS * 6);
+
+    for segment in 0..=SEGMENTS {
+        let t = segment as f32 / SEGMENTS as f32;
+        let centered = t - 0.5;
+        let taper = (std::f32::consts::PI * t).sin().max(0.0).powf(0.6);
+        let curl = (t * std::f32::consts::TAU * 0.85).sin();
+        let center = Vec3::new(
+            curl * 0.055 * taper,
+            (t * std::f32::consts::TAU).cos() * 0.012,
+            centered,
+        );
+        let width = 0.24 * (0.10 + taper * 0.90);
+        let side = Vec3::X * width;
+        let normal = Vec3::new(curl * 0.08, 0.96, 0.18).normalize();
+
+        positions.extend([(center - side).to_array(), (center + side).to_array()]);
+        normals.extend([normal.to_array(), normal.to_array()]);
+        uvs.extend([[0.0, t], [1.0, t]]);
+
+        if segment < SEGMENTS {
+            let start = (segment * 2) as u32;
+            indices.extend([start, start + 1, start + 2, start + 1, start + 3, start + 2]);
+        }
+    }
 
     Mesh::new(
         PrimitiveTopology::TriangleList,
