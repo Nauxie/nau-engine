@@ -3,9 +3,9 @@ use nau_engine::animation::MIN_KEY_POSE_READABILITY_SCORE;
 use nau_engine::camera::CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M;
 use nau_engine::eval::{
     CAMERA_STRAFE_STABILITY, EvalScenario, MIN_CROSSWIND_FORCE_DELTA_MPS,
-    MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT,
-    MIN_WIND_FORCE_VARIATION, MIN_WIND_LOAD_LATERAL_LOAD,
-    min_updraft_swirl_force_delta_mps_for_scenario,
+    MIN_PLAYER_WIND_SHEAR_RELATIVE_AIR_SPEED_MPS, MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
+    MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT, MIN_WIND_FORCE_VARIATION,
+    MIN_WIND_LOAD_LATERAL_LOAD, min_updraft_swirl_force_delta_mps_for_scenario,
 };
 
 use super::super::{
@@ -460,6 +460,15 @@ impl SimMetrics {
         self.max_glider_response_degrees = self
             .max_glider_response_degrees
             .max(sample.wind_load_glider_response_degrees);
+        if sample.player_wind_shear_visual_count > 0
+            && sample.max_player_wind_shear_relative_air_speed_mps
+                < MIN_PLAYER_WIND_SHEAR_RELATIVE_AIR_SPEED_MPS
+        {
+            self.low_speed_player_wind_shear_samples += 1;
+            if sample.visible_player_wind_shear_visual_count > 0 {
+                self.low_speed_visible_player_wind_shear_samples += 1;
+            }
+        }
         if wind_load_response_sample(sample) {
             self.wind_load_response_samples += 1;
             self.max_wind_load_lateral_load = self
@@ -480,6 +489,9 @@ impl SimMetrics {
             self.max_player_wind_shear_airflow = self
                 .max_player_wind_shear_airflow
                 .max(sample.max_player_wind_shear_airflow);
+            self.max_player_wind_shear_dive_pressure = self
+                .max_player_wind_shear_dive_pressure
+                .max(sample.max_player_wind_shear_dive_pressure);
             self.max_player_wind_shear_acceleration_pressure = self
                 .max_player_wind_shear_acceleration_pressure
                 .max(sample.max_player_wind_shear_acceleration_pressure);
@@ -495,6 +507,48 @@ impl SimMetrics {
             self.max_player_wind_shear_depth_offset_m = self
                 .max_player_wind_shear_depth_offset_m
                 .max(sample.max_player_wind_shear_depth_offset_m);
+            self.max_player_wind_shear_angular_coverage_degrees = self
+                .max_player_wind_shear_angular_coverage_degrees
+                .max(sample.max_player_wind_shear_angular_coverage_degrees);
+            self.max_player_wind_shear_vertical_coverage_m = self
+                .max_player_wind_shear_vertical_coverage_m
+                .max(sample.max_player_wind_shear_vertical_coverage_m);
+            self.max_player_wind_shear_frame_motion_m = self
+                .max_player_wind_shear_frame_motion_m
+                .max(sample.max_player_wind_shear_frame_motion_m);
+            self.max_player_wind_shear_orbit_radius_m = self
+                .max_player_wind_shear_orbit_radius_m
+                .max(sample.max_player_wind_shear_orbit_radius_m);
+            self.max_player_wind_shear_pulse_scale = self
+                .max_player_wind_shear_pulse_scale
+                .max(sample.max_player_wind_shear_pulse_scale);
+            self.max_player_wind_shear_relative_air_speed_mps = self
+                .max_player_wind_shear_relative_air_speed_mps
+                .max(sample.max_player_wind_shear_relative_air_speed_mps);
+            self.max_player_wind_shear_flow_alignment = self
+                .max_player_wind_shear_flow_alignment
+                .max(sample.max_player_wind_shear_flow_alignment);
+            self.max_player_wind_shear_flow_travel_m = self
+                .max_player_wind_shear_flow_travel_m
+                .max(sample.max_player_wind_shear_flow_travel_m);
+            self.max_player_wind_shear_crosswind_deflection_m = self
+                .max_player_wind_shear_crosswind_deflection_m
+                .max(sample.max_player_wind_shear_crosswind_deflection_m);
+            if sample.min_player_wind_shear_body_clearance_m > 0.0 {
+                self.min_player_wind_shear_body_clearance_m =
+                    if self.min_player_wind_shear_body_clearance_m > 0.0 {
+                        self.min_player_wind_shear_body_clearance_m
+                            .min(sample.min_player_wind_shear_body_clearance_m)
+                    } else {
+                        sample.min_player_wind_shear_body_clearance_m
+                    };
+            }
+            self.max_player_wind_shear_field_span_m = self
+                .max_player_wind_shear_field_span_m
+                .max(sample.max_player_wind_shear_field_span_m);
+            self.max_visible_player_wind_shear_kind_count = self
+                .max_visible_player_wind_shear_kind_count
+                .max(sample.visible_player_wind_shear_kind_count);
         }
         self.observe_crosswind_neutral_drift(sample);
         self.max_paired_visual_lift_fields = self
