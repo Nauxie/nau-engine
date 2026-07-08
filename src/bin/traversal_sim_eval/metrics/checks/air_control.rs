@@ -28,6 +28,7 @@ use crate::{
     MIN_POSE_LIMB_CLEARANCE_M, MIN_POSE_SCARF_LATERAL_SWAY_M, MIN_POSE_SCARF_STREAM_M,
     MIN_POSE_SCARF_TAIL_FLEX_DEGREES, MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES,
 };
+use nau_engine::animation::DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT;
 use nau_engine::eval::AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES;
 
 use crate::metrics::util::{
@@ -438,6 +439,12 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             metrics.max_dive_pose_leg_tuck_degrees,
             AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES,
             "deg",
+        ),
+        SimCheck::at_least(
+            "air_control_dive_pose_head_gaze_down",
+            metrics.max_dive_pose_head_gaze_down_alignment,
+            DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
+            "dot",
         ),
         SimCheck::at_least(
             "air_control_pose_lateral_lean",
