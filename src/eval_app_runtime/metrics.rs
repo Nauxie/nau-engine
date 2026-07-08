@@ -16,9 +16,10 @@ use crate::player_runtime::AuthoredGliderPose;
 use crate::{grounded_visual_foot_gap_m, movement_facing};
 use bevy::prelude::*;
 use nau_engine::animation::{
-    CharacterPart, CharacterPartRole, MIN_KEY_POSE_READABILITY_SCORE, PlayerPoseContext,
-    PlayerPoseIntent, PoseReadabilityMetrics, PoseReadabilityPartTransforms, ScarfSegment, Side,
-    body_local_pose_velocity, key_pose_readability_score, pose_readability_metrics,
+    CharacterPart, CharacterPartRole, DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
+    MIN_KEY_POSE_READABILITY_SCORE, PlayerPoseContext, PlayerPoseIntent, PoseReadabilityMetrics,
+    PoseReadabilityPartTransforms, ScarfSegment, Side, body_local_pose_velocity,
+    key_pose_readability_score, pose_readability_metrics,
     pose_readability_metrics_from_part_transforms,
 };
 use nau_engine::camera::{
@@ -44,6 +45,7 @@ use std::collections::HashMap;
 pub(super) const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
 const BODY_TRAVEL_HEADING_MIN_PLANAR_SPEED_MPS: f32 = 6.0;
 const KEY_POSE_TRANSITION_READABILITY_FLOOR: f32 = 0.65;
+const KEY_POSE_AIR_BRAKE_TO_DIVE_TRANSITION_READABILITY_FLOOR: f32 = 0.55;
 const KEY_POSE_AIR_BRAKE_RELEASE_TRANSITION_READABILITY_FLOOR: f32 = 0.30;
 const KEY_POSE_LANDING_FLIP_TRANSITION_READABILITY_FLOOR: f32 = 0.28;
 const KEY_POSE_LANDING_RELEASE_TRANSITION_READABILITY_FLOOR: f32 = 0.35;
@@ -457,6 +459,7 @@ impl VisiblePosePartSet {
         Some(VisiblePosePartTransforms {
             hips: self.hips,
             torso: self.torso?,
+            head: self.head?,
             left_arm: self.left_arm?,
             right_arm: self.right_arm?,
             left_leg: self.left_leg?,
@@ -586,6 +589,7 @@ struct VisiblePoseAttachmentSet {
 struct VisiblePosePartTransforms {
     hips: Option<VisiblePosePartTransform>,
     torso: VisiblePosePartTransform,
+    head: VisiblePosePartTransform,
     left_arm: VisiblePosePartTransform,
     right_arm: VisiblePosePartTransform,
     left_leg: VisiblePosePartTransform,
@@ -609,6 +613,7 @@ impl VisiblePosePartTransforms {
                 torso_rotation: self.hips.map_or(self.torso.rotation, |hips| {
                     hips.rotation * self.torso.rotation
                 }),
+                head_rotation: self.head.rotation,
                 left_arm_rotation: self.left_arm.rotation,
                 right_arm_rotation: self.right_arm.rotation,
                 left_leg_rotation: self.left_leg.rotation,
@@ -1259,6 +1264,7 @@ pub(crate) fn collect_eval_metrics(
         torso_pitch_degrees: pose_readability.torso_pitch_degrees,
         arm_spread_degrees: pose_readability.arm_spread_degrees,
         leg_tuck_degrees: pose_readability.leg_tuck_degrees,
+        head_gaze_down_alignment: pose_readability.head_gaze_down_alignment,
         lateral_lean_degrees: pose_readability.lateral_lean_degrees,
         signed_lateral_lean_degrees: pose_readability.signed_lateral_lean_degrees,
         grounded_stride_foot_travel_m: pose_readability.grounded_stride_foot_travel_m,
@@ -1687,6 +1693,7 @@ fn transition_aware_pose_readability(
         && metrics.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE
         && transition_within_grace
         && transition_temporally_smooth
+        && transition_pose_direction_readable(current_intent, previous_transition_intent, metrics)
         && transition_readability_score >= transition_readability_floor
     {
         metrics.key_pose_readability_score = MIN_KEY_POSE_READABILITY_SCORE;
@@ -1705,7 +1712,9 @@ fn key_pose_transition_readability_floor(
     current_intent: PlayerPoseIntent,
     previous_intent: Option<PlayerPoseIntent>,
 ) -> f32 {
-    if air_brake_release_transition(current_intent, previous_intent) {
+    if air_brake_to_dive_transition(current_intent, previous_intent) {
+        KEY_POSE_AIR_BRAKE_TO_DIVE_TRANSITION_READABILITY_FLOOR
+    } else if air_brake_release_transition(current_intent, previous_intent) {
         KEY_POSE_AIR_BRAKE_RELEASE_TRANSITION_READABILITY_FLOOR
     } else if landing_flip_transition(current_intent, previous_intent) {
         KEY_POSE_LANDING_FLIP_TRANSITION_READABILITY_FLOOR
@@ -1716,6 +1725,15 @@ fn key_pose_transition_readability_floor(
     } else {
         KEY_POSE_TRANSITION_READABILITY_FLOOR
     }
+}
+
+fn transition_pose_direction_readable(
+    current_intent: PlayerPoseIntent,
+    previous_intent: Option<PlayerPoseIntent>,
+    metrics: PoseReadabilityMetrics,
+) -> bool {
+    !air_brake_to_dive_transition(current_intent, previous_intent)
+        || metrics.head_gaze_down_alignment >= DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT
 }
 
 fn key_pose_transition_temporal_limits(
@@ -1759,6 +1777,14 @@ fn glide_to_dive_transition(
     previous_intent: Option<PlayerPoseIntent>,
 ) -> bool {
     current_intent == PlayerPoseIntent::Diving && previous_intent == Some(PlayerPoseIntent::Gliding)
+}
+
+fn air_brake_to_dive_transition(
+    current_intent: PlayerPoseIntent,
+    previous_intent: Option<PlayerPoseIntent>,
+) -> bool {
+    current_intent == PlayerPoseIntent::Diving
+        && previous_intent == Some(PlayerPoseIntent::AirBrake)
 }
 
 fn air_brake_release_transition(
@@ -1907,6 +1933,11 @@ mod tests {
                 Visibility::Inherited,
             ),
             (
+                CharacterPart::new(CharacterPartRole::Head, Vec3::ZERO, Quat::IDENTITY),
+                Transform::default(),
+                Visibility::Inherited,
+            ),
+            (
                 CharacterPart::new(
                     CharacterPartRole::Arm(Side::Left),
                     Vec3::ZERO,
@@ -1970,6 +2001,11 @@ mod tests {
             (
                 CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY),
                 Transform::from_rotation(Quat::from_rotation_x(-0.32)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(CharacterPartRole::Head, Vec3::ZERO, Quat::IDENTITY),
+                Transform::default(),
                 Visibility::Inherited,
             ),
             (
@@ -2045,7 +2081,7 @@ mod tests {
             .readability_metrics(context)
             .expect("visible generated pose metrics");
 
-        assert_eq!(part_set.part_count(), 5);
+        assert_eq!(part_set.part_count(), 6);
         assert!(metrics.key_pose_readability_score > 0.9);
         assert!(metrics.scarf_stream_m > 0.37);
         assert!(metrics.scarf_lateral_sway_m > 0.08);
@@ -2130,6 +2166,11 @@ mod tests {
                 Visibility::Inherited,
             ),
             (
+                CharacterPart::new(CharacterPartRole::Head, Vec3::ZERO, Quat::IDENTITY),
+                Transform::default(),
+                Visibility::Inherited,
+            ),
+            (
                 CharacterPart::new(
                     CharacterPartRole::Arm(Side::Left),
                     Vec3::ZERO,
@@ -2207,6 +2248,11 @@ mod tests {
             (
                 CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY),
                 Transform::from_rotation(Quat::from_rotation_x(0.45)),
+                Visibility::Inherited,
+            ),
+            (
+                CharacterPart::new(CharacterPartRole::Head, Vec3::ZERO, Quat::IDENTITY),
+                Transform::default(),
                 Visibility::Inherited,
             ),
             (
@@ -2340,6 +2386,14 @@ mod tests {
                     Quat::IDENTITY,
                 )),
                 Transform::from_rotation(Quat::from_rotation_x(-0.32)),
+            ),
+            (
+                AuthoredPlayerPoseNode::new(CharacterPart::new(
+                    CharacterPartRole::Head,
+                    Vec3::new(0.0, 1.80, -0.02),
+                    Quat::IDENTITY,
+                )),
+                Transform::from_translation(Vec3::new(0.0, 1.80, -0.02)),
             ),
             (
                 AuthoredPlayerPoseNode::new(CharacterPart::new(
@@ -2505,6 +2559,7 @@ mod tests {
             torso_pitch_degrees: 5.0,
             arm_spread_degrees: 155.0,
             leg_tuck_degrees: 25.0,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -2552,6 +2607,7 @@ mod tests {
             torso_pitch_degrees: 16.0,
             arm_spread_degrees: 120.0,
             leg_tuck_degrees: 20.0,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -2590,6 +2646,7 @@ mod tests {
             torso_pitch_degrees: 5.0,
             arm_spread_degrees: 155.0,
             leg_tuck_degrees: 25.0,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -2637,6 +2694,7 @@ mod tests {
             torso_pitch_degrees: 1.0,
             arm_spread_degrees: 40.0,
             leg_tuck_degrees: 0.0,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -2675,6 +2733,7 @@ mod tests {
             torso_pitch_degrees: 39.0,
             arm_spread_degrees: 134.0,
             leg_tuck_degrees: 22.0,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -2711,11 +2770,93 @@ mod tests {
     }
 
     #[test]
+    fn transition_aware_pose_readability_accepts_late_air_brake_to_dive_arm_blend() {
+        let raw = PoseReadabilityMetrics {
+            torso_pitch_degrees: 99.14,
+            arm_spread_degrees: 80.53,
+            leg_tuck_degrees: 87.05,
+            head_gaze_down_alignment: 0.93,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
+            landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
+            wing_airflow_strength: 0.4,
+            key_pose_readability_score: 0.596,
+            ..default()
+        };
+
+        let adjusted = transition_aware_pose_readability(
+            raw,
+            PlayerPoseIntent::Diving,
+            Some(PlayerPoseIntent::AirBrake),
+            KEY_POSE_TRANSITION_GRACE_FRAMES,
+            &EvalPoseTemporalMetrics {
+                visible_pose_part_count: 15,
+                max_pose_part_rotation_delta_degrees: 29.95,
+                max_pose_part_translation_delta_m: 0.007,
+                min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
+            },
+        );
+
+        assert_eq!(
+            adjusted.metrics.key_pose_readability_score,
+            MIN_KEY_POSE_READABILITY_SCORE
+        );
+        assert!(adjusted.used_transition_grace);
+    }
+
+    #[test]
+    fn transition_aware_pose_readability_rejects_air_brake_to_dive_before_gaze_is_down() {
+        let raw = PoseReadabilityMetrics {
+            torso_pitch_degrees: 99.14,
+            arm_spread_degrees: 80.53,
+            leg_tuck_degrees: 87.05,
+            head_gaze_down_alignment: DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT - 0.01,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
+            landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
+            wing_airflow_strength: 0.4,
+            key_pose_readability_score: 0.596,
+            ..default()
+        };
+
+        let adjusted = transition_aware_pose_readability(
+            raw,
+            PlayerPoseIntent::Diving,
+            Some(PlayerPoseIntent::AirBrake),
+            KEY_POSE_TRANSITION_GRACE_FRAMES,
+            &EvalPoseTemporalMetrics {
+                visible_pose_part_count: 15,
+                max_pose_part_rotation_delta_degrees: 29.95,
+                max_pose_part_translation_delta_m: 0.007,
+                min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
+            },
+        );
+
+        assert!(adjusted.metrics.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(!adjusted.used_transition_grace);
+    }
+
+    #[test]
     fn transition_aware_pose_readability_accepts_extended_glide_to_dive_blend() {
         let raw = PoseReadabilityMetrics {
             torso_pitch_degrees: 58.29,
             arm_spread_degrees: 165.38,
             leg_tuck_degrees: 62.72,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -2766,6 +2907,7 @@ mod tests {
             torso_pitch_degrees: 1.47,
             arm_spread_degrees: 162.0,
             leg_tuck_degrees: 16.34,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -2816,6 +2958,7 @@ mod tests {
             torso_pitch_degrees: 15.4,
             arm_spread_degrees: 163.7,
             leg_tuck_degrees: 51.9,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -2867,6 +3010,7 @@ mod tests {
             torso_pitch_degrees: 28.25,
             arm_spread_degrees: 149.72,
             leg_tuck_degrees: 62.27,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -2918,6 +3062,7 @@ mod tests {
             torso_pitch_degrees: 68.0,
             arm_spread_degrees: 120.0,
             leg_tuck_degrees: 42.0,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -2969,6 +3114,7 @@ mod tests {
             torso_pitch_degrees: 15.4,
             arm_spread_degrees: 163.7,
             leg_tuck_degrees: 51.9,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -3016,6 +3162,7 @@ mod tests {
             torso_pitch_degrees: 6.72,
             arm_spread_degrees: 143.76,
             leg_tuck_degrees: 19.54,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -3066,6 +3213,7 @@ mod tests {
             torso_pitch_degrees: 6.72,
             arm_spread_degrees: 143.76,
             leg_tuck_degrees: 19.54,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -3112,6 +3260,7 @@ mod tests {
             torso_pitch_degrees: 39.0,
             arm_spread_degrees: 134.0,
             leg_tuck_degrees: 22.0,
+            head_gaze_down_alignment: 1.0,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
