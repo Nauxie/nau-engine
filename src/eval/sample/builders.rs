@@ -114,6 +114,7 @@ impl EvalSample {
             pose_torso_pitch_degrees: 0.0,
             pose_arm_spread_degrees: 0.0,
             pose_leg_tuck_degrees: 0.0,
+            pose_head_gaze_down_alignment: 0.0,
             pose_lateral_lean_degrees: 0.0,
             pose_signed_lateral_lean_degrees: 0.0,
             pose_grounded_stride_foot_travel_m: 0.0,
@@ -428,6 +429,7 @@ impl EvalSample {
         self.pose_torso_pitch_degrees = metrics.torso_pitch_degrees.max(0.0);
         self.pose_arm_spread_degrees = metrics.arm_spread_degrees.max(0.0);
         self.pose_leg_tuck_degrees = metrics.leg_tuck_degrees.max(0.0);
+        self.pose_head_gaze_down_alignment = metrics.head_gaze_down_alignment.clamp(-1.0, 1.0);
         self.pose_lateral_lean_degrees = metrics.lateral_lean_degrees.max(0.0);
         self.pose_signed_lateral_lean_degrees = if metrics.signed_lateral_lean_degrees.is_finite() {
             metrics.signed_lateral_lean_degrees
