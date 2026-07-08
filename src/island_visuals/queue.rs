@@ -434,7 +434,7 @@ pub(crate) fn queue_sky_island(
             meshes.add(Cuboid::new(2.2, 6.0, 2.2)),
             marker_material.clone(),
             Transform::from_translation(marker_center),
-            Some(CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::local_prop(
                 marker_center,
                 Vec3::new(1.1, 3.0, 1.1),
             ))),
@@ -530,7 +530,7 @@ fn queue_recovery_branch_marker(
             meshes.add(Cuboid::new(scale.x, scale.y, scale.z)),
             marker_material.clone(),
             Transform::from_translation(ring_center),
-            Some(CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::local_prop(
                 ring_center,
                 ring_half_extents,
             ))),
