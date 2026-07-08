@@ -129,6 +129,7 @@ pub(super) fn build_metrics_summary(
         max_dive_pose_torso_pitch_degrees: acc.max_dive_pose_torso_pitch_degrees,
         max_dive_pose_arm_spread_degrees: acc.max_dive_pose_arm_spread_degrees,
         max_dive_pose_leg_tuck_degrees: acc.max_dive_pose_leg_tuck_degrees,
+        max_dive_pose_head_gaze_down_alignment: acc.max_dive_pose_head_gaze_down_alignment,
         max_pose_lateral_lean_degrees: acc.max_pose_lateral_lean_degrees,
         max_right_pose_lateral_lean_degrees: acc.max_right_pose_lateral_lean_degrees,
         max_left_pose_lateral_lean_degrees: acc.max_left_pose_lateral_lean_degrees,
