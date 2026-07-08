@@ -731,6 +731,41 @@ mod tests {
     }
 
     #[test]
+    fn sim_camera_obstruction_ignores_tree_like_soft_local_props() {
+        let route = SkyRoute::default();
+        let follow = FollowCamera::default();
+        let current_position = START_POSITION + Vec3::Y * follow.height + Vec3::Z * follow.distance;
+        let look_target =
+            START_POSITION + Vec3::Y * follow.look_height + Vec3::NEG_Z * follow.look_ahead;
+        let current =
+            Transform::from_translation(current_position).looking_at(look_target, Vec3::Y);
+        let soft_tree = CameraObstruction::soft_local_prop(
+            look_target + (current_position - look_target) * 0.55,
+            Vec3::new(0.7, 2.8, 0.7),
+        );
+        let mut obstruction_handoff = CameraObstructionHandoffState::default();
+
+        let sample = step_camera_frame(
+            current,
+            START_POSITION,
+            Vec3::NEG_Z,
+            &follow,
+            nau_engine::camera::CameraOrbit::default(),
+            &route,
+            &[soft_tree],
+            &mut obstruction_handoff,
+            1.0 / 60.0,
+        );
+
+        assert_eq!(sample.obstruction_hits, 0);
+        assert_eq!(sample.obstruction_adjustment_m, 0.0);
+        assert!(
+            sample.position.distance(current_position) < 0.001,
+            "tree-like soft props should not shorten, shoulder-shift, or lag the camera boom"
+        );
+    }
+
+    #[test]
     fn world_lift_requires_gliding_mode() {
         let route = SkyRoute::default();
         let tuning = FlightTuning::default();
