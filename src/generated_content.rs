@@ -24,9 +24,9 @@ pub(crate) use detail_meshes::{
     TREE_ROOT_FLARE_COUNT, TREE_TRUNK_RING_COUNT, TREE_TRUNK_SEGMENTS, cliff_tooth_ridge_mesh,
     cloud_cluster_mesh, cloud_filament_ribbon_detail_count,
     crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh,
-    first_expedition_silhouette_specs, garden_ring_mesh, glider_airflow_trail_mesh,
-    island_lake_basin_visual_specs, island_under_route_visual_specs, island_water_visual_specs,
-    landing_garden_marker_mesh, launch_beacon_mesh, obstruction_spire_mesh, rock_scatter_mesh,
+    first_expedition_silhouette_specs, garden_ring_mesh, island_lake_basin_visual_specs,
+    island_under_route_visual_specs, island_water_visual_specs, landing_garden_marker_mesh,
+    launch_beacon_mesh, obstruction_spire_mesh, player_airflow_streamline_mesh, rock_scatter_mesh,
     route_cairn_mesh, ruin_arch_mesh, tree_canopy_mesh, tree_trunk_mesh, updraft_ribbon_mesh,
 };
 #[cfg(test)]
