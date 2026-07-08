@@ -5,8 +5,8 @@ use crate::authored_assets::{
 use crate::camera_runtime::{CameraDiagnostics, CameraFollowFilter};
 use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::environment_visuals::{
-    CrosswindGuide, CrosswindRibbon, GliderAirflowTrail, UpdraftGuide, UpdraftRibbon, WeatherDrift,
-    WindResponsiveVisual,
+    CrosswindGuide, CrosswindRibbon, PlayerAirflowVisual, UpdraftGuide, UpdraftRibbon,
+    WeatherDrift, WindResponsiveVisual,
 };
 use crate::island_visuals::IslandStreamDiagnostics;
 use crate::player_runtime::AuthoredGliderPose;
@@ -81,7 +81,7 @@ pub(crate) struct EvalScene<'w, 's> {
         'w,
         's,
         (
-            &'static GliderAirflowTrail,
+            &'static PlayerAirflowVisual,
             &'static Transform,
             &'static GlobalTransform,
             &'static Visibility,
