@@ -6,7 +6,7 @@ use crate::{
         MIN_DISTANT_ISLAND_PIXEL_COVERAGE, MIN_FOLIAGE_PIXEL_COVERAGE,
         MIN_PASSED_TERRAIN_MATERIAL_VARIANTS, MIN_SAMPLE_PIXEL_HITS,
         MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE, MIN_TERRAIN_PIXEL_COVERAGE,
-        MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS,
+        MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS, MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE,
     },
     types::{CheckpointAudit, SceneSampleAudit},
 };
@@ -392,6 +392,10 @@ fn visible_wind_samples_fail_report_and_checkpoint_coverage_without_wind_pixels(
         .iter()
         .find(|check| check.name == "wind_scene_sample_kind_pixel_hits")
         .expect("wind kind hit check");
+    let wind_checkpoint_hits = checks
+        .iter()
+        .find(|check| check.name == "wind_checkpoint_pixel_hits")
+        .expect("wind checkpoint hit check");
 
     assert!(audit.passed);
     assert_eq!(audit.visible_scene_sample_kind_count, 3);
@@ -405,7 +409,55 @@ fn visible_wind_samples_fail_report_and_checkpoint_coverage_without_wind_pixels(
     assert_eq!(wind_coverage.value, 0.0);
     assert!(!wind_kind_hits.passed);
     assert_eq!(wind_kind_hits.value, 0.0);
+    assert!(!wind_checkpoint_hits.passed);
+    assert_eq!(wind_checkpoint_hits.value, 0.0);
+    assert_eq!(wind_checkpoint_hits.threshold, 1.0);
     let _ = fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn report_checks_require_wind_pixels_at_each_visible_wind_checkpoint() {
+    let missed_wind = SceneSampleAudit {
+        kind: "player_wind_shear_visual".to_string(),
+        label: "player wind body wrap".to_string(),
+        expected_material: "wind".to_string(),
+        material_variant: "wind_player_shear".to_string(),
+        in_viewport: true,
+        visibility: "visible".to_string(),
+        screen_x: Some(12.0),
+        screen_y: Some(12.0),
+        semantic_pixel_hits: 0,
+        passed: false,
+    };
+    let hit_wind = scene_audit_sample(
+        "player_wind_shear_visual",
+        "player wind body wrap",
+        "wind",
+        "wind_player_shear",
+        MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE,
+    );
+    let checks = report_checks(&[
+        checkpoint_with_scene_samples("entry", vec![missed_wind]),
+        checkpoint_with_scene_samples("glide", vec![hit_wind]),
+    ]);
+    let aggregate_hits = checks
+        .iter()
+        .find(|check| check.name == "wind_scene_sample_pixel_hits")
+        .expect("aggregate wind hit check");
+    let aggregate_coverage = checks
+        .iter()
+        .find(|check| check.name == "wind_scene_sample_pixel_coverage")
+        .expect("aggregate wind coverage check");
+    let checkpoint_hits = checks
+        .iter()
+        .find(|check| check.name == "wind_checkpoint_pixel_hits")
+        .expect("checkpoint wind hit check");
+
+    assert!(aggregate_hits.passed);
+    assert!(aggregate_coverage.passed);
+    assert!(!checkpoint_hits.passed);
+    assert_eq!(checkpoint_hits.value, 1.0);
+    assert_eq!(checkpoint_hits.threshold, 2.0);
 }
 
 #[test]
@@ -927,6 +979,33 @@ fn scene_audit_sample(
         screen_y: Some(12.0),
         semantic_pixel_hits,
         passed: true,
+    }
+}
+
+fn checkpoint_with_scene_samples(
+    checkpoint: &str,
+    samples: Vec<SceneSampleAudit>,
+) -> CheckpointAudit {
+    let visible_scene_sample_count = samples.iter().filter(|sample| sample.is_visible()).count();
+    let scene_sample_pixel_hit_count = samples.iter().filter(|sample| sample.passed).count();
+    CheckpointAudit {
+        metadata_path: format!("{checkpoint}.markers.json"),
+        screenshot_path: format!("{checkpoint}.png"),
+        scenario: "default".to_string(),
+        checkpoint: checkpoint.to_string(),
+        in_viewport_scene_sample_count: visible_scene_sample_count,
+        occluded_scene_sample_count: 0,
+        visible_scene_sample_count,
+        scene_sample_pixel_hit_count,
+        visible_scene_material_count: 1,
+        scene_material_pixel_hit_count: usize::from(scene_sample_pixel_hit_count > 0),
+        visible_scene_sample_kind_count: 1,
+        scene_sample_kind_pixel_hit_count: usize::from(scene_sample_pixel_hit_count > 0),
+        visible_terrain_material_variant_count: 0,
+        terrain_material_variant_pixel_hit_count: 0,
+        passed: scene_sample_pixel_hit_count > 0,
+        samples,
+        materials: Vec::new(),
     }
 }
 
