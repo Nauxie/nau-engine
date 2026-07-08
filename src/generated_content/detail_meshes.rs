@@ -19,8 +19,8 @@ pub(crate) use clouds::{
 #[cfg(test)]
 pub(crate) use clouds::{CLOUD_FILAMENT_RIBBON_VERTICES, CLOUD_FILAMENT_RIBBONS_PER_LOBE};
 pub(crate) use effects::{
-    crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh, glider_airflow_trail_mesh,
-    updraft_ribbon_mesh,
+    crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh,
+    player_airflow_streamline_mesh, updraft_ribbon_mesh,
 };
 pub(crate) use landmarks::{
     FirstExpeditionSilhouetteKind, IslandWaterVisualKind, first_expedition_silhouette_specs,
