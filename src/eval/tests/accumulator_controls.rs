@@ -4870,6 +4870,29 @@ fn accumulator_gates_wind_load_response_metrics() {
         );
         accumulator.observe(sample);
     }
+    let low_speed_hidden_shear_sample =
+        content_metric_sample(scenario, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, 12, 0, 96)
+            .with_player_wind_shear_visual_metrics(
+                MIN_PLAYER_WIND_SHEAR_VISUAL_COUNT,
+                0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0,
+            );
+    accumulator.observe(low_speed_hidden_shear_sample);
 
     let summary = accumulator.summary(
         scenario,
@@ -4892,6 +4915,18 @@ fn accumulator_gates_wind_load_response_metrics() {
         "player_wind_shear_length_scale",
         "player_wind_shear_lateral_offset",
         "player_wind_shear_depth_offset",
+        "player_wind_shear_angular_coverage",
+        "player_wind_shear_vertical_coverage",
+        "player_wind_shear_frame_motion",
+        "player_wind_shear_orbit_radius",
+        "player_wind_shear_pulse_scale",
+        "player_wind_shear_relative_air_speed",
+        "player_wind_shear_flow_alignment",
+        "player_wind_shear_flow_travel",
+        "player_wind_shear_crosswind_deflection",
+        "player_wind_shear_body_clearance",
+        "player_wind_shear_field_span",
+        "visible_player_wind_shear_kind_count",
         "crosswind_neutral_drift_samples",
         "crosswind_neutral_horizontal_drift",
         "crosswind_neutral_horizontal_step",
@@ -4938,6 +4973,61 @@ fn accumulator_gates_wind_load_response_metrics() {
         MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M
     );
     assert_eq!(
+        summary
+            .metrics
+            .max_player_wind_shear_angular_coverage_degrees,
+        MIN_PLAYER_WIND_SHEAR_ANGULAR_COVERAGE_DEGREES
+    );
+    assert_eq!(
+        summary.metrics.max_player_wind_shear_vertical_coverage_m,
+        MIN_PLAYER_WIND_SHEAR_VERTICAL_COVERAGE_M
+    );
+    assert_eq!(
+        summary.metrics.max_player_wind_shear_frame_motion_m,
+        MIN_PLAYER_WIND_SHEAR_FRAME_MOTION_M
+    );
+    assert_eq!(
+        summary.metrics.max_player_wind_shear_orbit_radius_m,
+        MIN_PLAYER_WIND_SHEAR_ORBIT_RADIUS_M
+    );
+    assert_eq!(
+        summary.metrics.max_player_wind_shear_pulse_scale,
+        MIN_PLAYER_WIND_SHEAR_PULSE_SCALE
+    );
+    assert_eq!(
+        summary.metrics.max_player_wind_shear_relative_air_speed_mps,
+        MIN_PLAYER_WIND_SHEAR_RELATIVE_AIR_SPEED_MPS
+    );
+    assert_eq!(
+        summary.metrics.max_player_wind_shear_flow_alignment,
+        MIN_PLAYER_WIND_SHEAR_FLOW_ALIGNMENT
+    );
+    assert_eq!(
+        summary.metrics.max_player_wind_shear_flow_travel_m,
+        MIN_PLAYER_WIND_SHEAR_FLOW_TRAVEL_M
+    );
+    assert_eq!(
+        summary.metrics.max_player_wind_shear_crosswind_deflection_m,
+        MIN_PLAYER_WIND_SHEAR_CROSSWIND_DEFLECTION_M
+    );
+    assert_eq!(
+        summary.metrics.min_player_wind_shear_body_clearance_m,
+        MIN_PLAYER_WIND_SHEAR_BODY_CLEARANCE_M
+    );
+    assert_eq!(
+        summary.metrics.max_player_wind_shear_field_span_m,
+        MIN_PLAYER_WIND_SHEAR_FIELD_SPAN_M
+    );
+    assert!(summary.metrics.low_speed_player_wind_shear_samples > 0);
+    assert_eq!(
+        summary.metrics.low_speed_visible_player_wind_shear_samples,
+        MAX_LOW_SPEED_PLAYER_WIND_SHEAR_VISIBLE_SAMPLES
+    );
+    assert_eq!(
+        summary.metrics.max_visible_player_wind_shear_kind_count,
+        MIN_VISIBLE_PLAYER_WIND_SHEAR_KIND_COUNT
+    );
+    assert_eq!(
         summary.metrics.crosswind_neutral_drift_samples,
         MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT
     );
@@ -4949,6 +5039,62 @@ fn accumulator_gates_wind_load_response_metrics() {
         summary.metrics.max_crosswind_neutral_horizontal_step_m
             <= MAX_CROSSWIND_NEUTRAL_HORIZONTAL_STEP_M
     );
+}
+
+#[test]
+fn accumulator_gates_dive_compression_wind_shear_for_descent_routes() {
+    let scenario = scenario_named(LONG_GLIDE_VISIBILITY).expect("long glide route exists");
+    let mut passing_accumulator = EvalAccumulator::default();
+    passing_accumulator.observe(wind_load_metric_sample(
+        scenario,
+        0,
+        MIN_WIND_LOAD_LATERAL_LOAD,
+        MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+    ));
+    let passing_summary = passing_accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let passing_check = named_check(&passing_summary, "player_wind_shear_dive_pressure");
+
+    assert!(passing_check.passed);
+    assert_eq!(
+        passing_summary.metrics.max_player_wind_shear_dive_pressure,
+        MIN_PLAYER_WIND_SHEAR_DIVE_PRESSURE
+    );
+
+    let mut weak_sample = wind_load_metric_sample(
+        scenario,
+        0,
+        MIN_WIND_LOAD_LATERAL_LOAD,
+        MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+    );
+    weak_sample.max_player_wind_shear_dive_pressure = 0.0;
+    let mut failing_accumulator = EvalAccumulator::default();
+    failing_accumulator.observe(weak_sample);
+    let failing_summary = failing_accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+    let failing_check = named_check(&failing_summary, "player_wind_shear_dive_pressure");
+
+    assert!(!failing_check.passed);
+    assert_eq!(failing_check.value, 0.0);
+    assert_eq!(failing_check.threshold, MIN_PLAYER_WIND_SHEAR_DIVE_PRESSURE);
 }
 
 #[test]
@@ -5091,6 +5237,18 @@ fn accumulator_rejects_wind_load_without_crosswind_force_evidence() {
         "player_wind_shear_length_scale",
         "player_wind_shear_lateral_offset",
         "player_wind_shear_depth_offset",
+        "player_wind_shear_angular_coverage",
+        "player_wind_shear_vertical_coverage",
+        "player_wind_shear_frame_motion",
+        "player_wind_shear_orbit_radius",
+        "player_wind_shear_pulse_scale",
+        "player_wind_shear_relative_air_speed",
+        "player_wind_shear_flow_alignment",
+        "player_wind_shear_flow_travel",
+        "player_wind_shear_crosswind_deflection",
+        "player_wind_shear_body_clearance",
+        "player_wind_shear_field_span",
+        "visible_player_wind_shear_kind_count",
     ] {
         assert!(
             !named_check(&summary, check_name).passed,
@@ -5138,6 +5296,18 @@ fn accumulator_rejects_low_variation_wind_load_response() {
         "player_wind_shear_length_scale",
         "player_wind_shear_lateral_offset",
         "player_wind_shear_depth_offset",
+        "player_wind_shear_angular_coverage",
+        "player_wind_shear_vertical_coverage",
+        "player_wind_shear_frame_motion",
+        "player_wind_shear_orbit_radius",
+        "player_wind_shear_pulse_scale",
+        "player_wind_shear_relative_air_speed",
+        "player_wind_shear_flow_alignment",
+        "player_wind_shear_flow_travel",
+        "player_wind_shear_crosswind_deflection",
+        "player_wind_shear_body_clearance",
+        "player_wind_shear_field_span",
+        "visible_player_wind_shear_kind_count",
     ] {
         assert!(
             !named_check(&summary, check_name).passed,
@@ -5176,6 +5346,18 @@ fn accumulator_rejects_missing_wind_load_response() {
         "player_wind_shear_length_scale",
         "player_wind_shear_lateral_offset",
         "player_wind_shear_depth_offset",
+        "player_wind_shear_angular_coverage",
+        "player_wind_shear_vertical_coverage",
+        "player_wind_shear_frame_motion",
+        "player_wind_shear_orbit_radius",
+        "player_wind_shear_pulse_scale",
+        "player_wind_shear_relative_air_speed",
+        "player_wind_shear_flow_alignment",
+        "player_wind_shear_flow_travel",
+        "player_wind_shear_crosswind_deflection",
+        "player_wind_shear_body_clearance",
+        "player_wind_shear_field_span",
+        "visible_player_wind_shear_kind_count",
     ] {
         assert!(
             !named_check(&summary, check_name).passed,
@@ -5223,6 +5405,19 @@ fn wind_load_metric_sample(
         MIN_PLAYER_WIND_SHEAR_LENGTH_SCALE,
         MIN_PLAYER_WIND_SHEAR_LATERAL_OFFSET_M,
         MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M,
+        MIN_PLAYER_WIND_SHEAR_ANGULAR_COVERAGE_DEGREES,
+        MIN_PLAYER_WIND_SHEAR_VERTICAL_COVERAGE_M,
+        MIN_PLAYER_WIND_SHEAR_FRAME_MOTION_M,
+        MIN_PLAYER_WIND_SHEAR_ORBIT_RADIUS_M,
+        MIN_PLAYER_WIND_SHEAR_PULSE_SCALE,
+        MIN_PLAYER_WIND_SHEAR_DIVE_PRESSURE,
+        MIN_PLAYER_WIND_SHEAR_RELATIVE_AIR_SPEED_MPS,
+        MIN_PLAYER_WIND_SHEAR_FLOW_ALIGNMENT,
+        MIN_PLAYER_WIND_SHEAR_FLOW_TRAVEL_M,
+        MIN_PLAYER_WIND_SHEAR_CROSSWIND_DEFLECTION_M,
+        MIN_PLAYER_WIND_SHEAR_BODY_CLEARANCE_M,
+        MIN_PLAYER_WIND_SHEAR_FIELD_SPAN_M,
+        MIN_VISIBLE_PLAYER_WIND_SHEAR_KIND_COUNT,
     )
 }
 
