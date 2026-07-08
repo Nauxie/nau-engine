@@ -1,9 +1,9 @@
 use super::super::{super::EvalAccumulator, derived::SummaryDerivedMetrics};
 use crate::{
     animation::{
-        GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
-        GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
-        LANDING_MAX_FOOT_SPLIT_READABILITY_M,
+        DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT, GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M,
+        GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES, GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M,
+        GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES, LANDING_MAX_FOOT_SPLIT_READABILITY_M,
     },
     eval::{
         scenarios::{
@@ -888,6 +888,12 @@ fn append_air_control_checks(
             "deg",
         ),
         EvalCheck::at_least(
+            "air_control_dive_pose_head_gaze_down",
+            acc.max_dive_pose_head_gaze_down_alignment,
+            DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
+            "dot",
+        ),
+        EvalCheck::at_least(
             "air_control_pose_lateral_lean",
             acc.max_pose_lateral_lean_degrees,
             AIR_CONTROL_MIN_POSE_LATERAL_LEAN_DEGREES,
@@ -1542,6 +1548,12 @@ fn append_pose_state_coverage_checks(
             acc.max_dive_pose_leg_tuck_degrees,
             AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES,
             "deg",
+        ),
+        EvalCheck::at_least(
+            "pose_state_dive_pose_head_gaze_down",
+            acc.max_dive_pose_head_gaze_down_alignment,
+            DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
+            "dot",
         ),
         EvalCheck::at_least(
             "pose_state_landing_anticipation_samples",
