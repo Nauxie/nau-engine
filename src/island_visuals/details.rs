@@ -503,7 +503,7 @@ pub(super) fn queue_sky_island_details(
             meshes.add(beacon_mesh),
             flower_material,
             Transform::from_translation(beacon_center),
-            Some(CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::local_prop(
                 beacon_obstacle_center,
                 Vec3::new(0.8, 1.65, 0.8),
             ))),
@@ -715,7 +715,7 @@ fn queue_great_plateau_arrival_details(
                 rotation: Quat::from_rotation_y(yaw),
                 ..default()
             },
-            Some(CameraObstacle(CameraObstruction::new(
+            Some(CameraObstacle(CameraObstruction::local_prop(
                 hint_center,
                 Vec3::new(0.82, height * 0.50, 0.82),
             ))),
