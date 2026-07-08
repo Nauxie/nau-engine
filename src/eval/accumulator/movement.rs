@@ -471,6 +471,9 @@ fn observe_pose_readability(accumulator: &mut EvalAccumulator, sample: &EvalSamp
         accumulator.max_dive_pose_leg_tuck_degrees = accumulator
             .max_dive_pose_leg_tuck_degrees
             .max(sample.pose_leg_tuck_degrees);
+        accumulator.max_dive_pose_head_gaze_down_alignment = accumulator
+            .max_dive_pose_head_gaze_down_alignment
+            .max(sample.pose_head_gaze_down_alignment);
     }
     accumulator.max_pose_lateral_lean_degrees = accumulator
         .max_pose_lateral_lean_degrees
