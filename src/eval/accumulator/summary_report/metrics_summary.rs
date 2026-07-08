@@ -246,6 +246,25 @@ pub(super) fn build_metrics_summary(
         max_player_wind_shear_length_scale: acc.max_player_wind_shear_length_scale,
         max_player_wind_shear_lateral_offset_m: acc.max_player_wind_shear_lateral_offset_m,
         max_player_wind_shear_depth_offset_m: acc.max_player_wind_shear_depth_offset_m,
+        max_player_wind_shear_angular_coverage_degrees: acc
+            .max_player_wind_shear_angular_coverage_degrees,
+        max_player_wind_shear_vertical_coverage_m: acc.max_player_wind_shear_vertical_coverage_m,
+        max_player_wind_shear_frame_motion_m: acc.max_player_wind_shear_frame_motion_m,
+        max_player_wind_shear_orbit_radius_m: acc.max_player_wind_shear_orbit_radius_m,
+        max_player_wind_shear_pulse_scale: acc.max_player_wind_shear_pulse_scale,
+        max_player_wind_shear_dive_pressure: acc.max_player_wind_shear_dive_pressure,
+        max_player_wind_shear_relative_air_speed_mps: acc
+            .max_player_wind_shear_relative_air_speed_mps,
+        max_player_wind_shear_flow_alignment: acc.max_player_wind_shear_flow_alignment,
+        max_player_wind_shear_flow_travel_m: acc.max_player_wind_shear_flow_travel_m,
+        max_player_wind_shear_crosswind_deflection_m: acc
+            .max_player_wind_shear_crosswind_deflection_m,
+        min_player_wind_shear_body_clearance_m: acc.min_player_wind_shear_body_clearance_m,
+        max_player_wind_shear_field_span_m: acc.max_player_wind_shear_field_span_m,
+        low_speed_player_wind_shear_samples: acc.low_speed_player_wind_shear_samples,
+        low_speed_visible_player_wind_shear_samples: acc
+            .low_speed_visible_player_wind_shear_samples,
+        max_visible_player_wind_shear_kind_count: acc.max_visible_player_wind_shear_kind_count,
         crosswind_neutral_drift_samples: acc.crosswind_neutral_drift_samples,
         crosswind_neutral_horizontal_drift_m: acc.crosswind_neutral_horizontal_drift_m,
         max_crosswind_neutral_horizontal_step_m: acc.max_crosswind_neutral_horizontal_step_m,
