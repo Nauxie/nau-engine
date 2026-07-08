@@ -154,10 +154,10 @@ pub(crate) fn glider_airflow_material(
     materials: &mut Assets<StandardMaterial>,
 ) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial {
-        base_color: Color::srgba(0.22, 0.98, 1.0, 0.36),
-        emissive: LinearRgba::rgb(0.12, 0.62, 0.92),
-        emissive_exposure_weight: 0.24,
-        alpha_mode: AlphaMode::Add,
+        base_color: Color::srgba(1.0, 1.0, 0.96, 0.22),
+        emissive: LinearRgba::rgb(0.46, 0.50, 0.42),
+        emissive_exposure_weight: 0.05,
+        alpha_mode: AlphaMode::Blend,
         cull_mode: None,
         double_sided: true,
         unlit: true,
