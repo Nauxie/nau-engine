@@ -94,6 +94,7 @@ impl SimMetrics {
             "max_dive_pose_torso_pitch_degrees": round4(self.max_dive_pose_torso_pitch_degrees),
             "max_dive_pose_arm_spread_degrees": round4(self.max_dive_pose_arm_spread_degrees),
             "max_dive_pose_leg_tuck_degrees": round4(self.max_dive_pose_leg_tuck_degrees),
+            "max_dive_pose_head_gaze_down_alignment": round4(self.max_dive_pose_head_gaze_down_alignment),
             "max_pose_lateral_lean_degrees": round4(self.max_pose_lateral_lean_degrees),
             "max_right_pose_lateral_lean_degrees": round4(self.max_right_pose_lateral_lean_degrees),
             "max_left_pose_lateral_lean_degrees": round4(self.max_left_pose_lateral_lean_degrees),
