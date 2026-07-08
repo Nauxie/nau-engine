@@ -1,6 +1,6 @@
 use crate::environment_visuals::{
-    PlayerWindShearVisualKind, crosswind_ribbon_scene_sample_positions,
-    updraft_ribbon_scene_sample_positions,
+    PlayerAirflowVisualKind, crosswind_ribbon_scene_sample_positions,
+    player_airflow_scene_sample_positions, updraft_ribbon_scene_sample_positions,
 };
 use crate::eval_app_runtime::scene::EvalScene;
 use crate::generated_content::{
@@ -166,23 +166,29 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
         if !matches!(*visibility, Visibility::Visible) {
             continue;
         }
-        samples.push(SemanticSceneSample {
-            kind: "player_wind_shear_visual",
-            label: player_wind_shear_visual_label(visual.kind),
-            expected_material: "wind",
-            material_variant: "wind_player_shear",
-            world_position: global_transform.translation(),
-        });
+        let transform = global_transform.compute_transform();
+        for world_position in player_airflow_scene_sample_positions(visual, &transform) {
+            samples.push(SemanticSceneSample {
+                kind: "player_wind_shear_visual",
+                label: player_wind_shear_visual_label(visual.kind),
+                expected_material: "wind",
+                material_variant: "wind_player_shear",
+                world_position,
+            });
+        }
     }
 
     samples
 }
 
-fn player_wind_shear_visual_label(kind: PlayerWindShearVisualKind) -> &'static str {
+fn player_wind_shear_visual_label(kind: PlayerAirflowVisualKind) -> &'static str {
     match kind {
-        PlayerWindShearVisualKind::Wingtip => "player wind wingtip shear",
-        PlayerWindShearVisualKind::Shoulder => "player wind shoulder shear",
-        PlayerWindShearVisualKind::Slipstream => "player wind slipstream",
+        PlayerAirflowVisualKind::FrontPressure => "player wind front pressure",
+        PlayerAirflowVisualKind::BodyWrap => "player wind body wrap",
+        PlayerAirflowVisualKind::SideShear => "player wind side shear",
+        PlayerAirflowVisualKind::ShoulderVortex => "player wind shoulder vortex",
+        PlayerAirflowVisualKind::WingtipVortex => "player wind wingtip vortex",
+        PlayerAirflowVisualKind::WakeTurbulence => "player wind wake turbulence",
     }
 }
 
