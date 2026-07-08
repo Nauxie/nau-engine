@@ -12,18 +12,27 @@ use nau_engine::eval::{
     LANDING_MAX_POSE_BACKWARD_BEND_DEGREES, LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
     LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M, LANDING_MIN_POSE_FOOT_SPLIT_M,
     LANDING_MIN_POSE_FORWARD_FOLD_DEGREES, LONG_GLIDE_VISIBILITY,
-    MAX_CROSSWIND_NEUTRAL_HORIZONTAL_STEP_M, MIN_CROSSWIND_FORCE_DELTA_MPS,
+    MAX_CROSSWIND_NEUTRAL_HORIZONTAL_STEP_M, MAX_LOW_SPEED_PLAYER_WIND_SHEAR_VISIBLE_SAMPLES,
+    MAX_PLAYER_WIND_SHEAR_FRAME_MOTION_M, MAX_PLAYER_WIND_SHEAR_PULSE_SCALE,
+    MAX_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT, MIN_CROSSWIND_FORCE_DELTA_MPS,
     MIN_CROSSWIND_FORCE_SAMPLE_COUNT, MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT,
     MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M, MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS,
     MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE, MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES,
     MIN_DYNAMIC_WIND_FLOW_SPEED_MPS, MIN_DYNAMIC_WIND_FLOW_VARIATION,
-    MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE, MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M,
+    MIN_DYNAMIC_WIND_FLOW_VARIATION_RANGE, MIN_PLAYER_WIND_SHEAR_ANGULAR_COVERAGE_DEGREES,
+    MIN_PLAYER_WIND_SHEAR_BODY_CLEARANCE_M, MIN_PLAYER_WIND_SHEAR_CROSSWIND_DEFLECTION_M,
+    MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M, MIN_PLAYER_WIND_SHEAR_DIVE_PRESSURE,
+    MIN_PLAYER_WIND_SHEAR_FIELD_SPAN_M, MIN_PLAYER_WIND_SHEAR_FLOW_ALIGNMENT,
+    MIN_PLAYER_WIND_SHEAR_FLOW_TRAVEL_M, MIN_PLAYER_WIND_SHEAR_FRAME_MOTION_M,
     MIN_PLAYER_WIND_SHEAR_LATERAL_OFFSET_M, MIN_PLAYER_WIND_SHEAR_LENGTH_SCALE,
-    MIN_PLAYER_WIND_SHEAR_VISUAL_COUNT, MIN_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT,
-    MIN_WIND_FORCE_ALIGNED_DELTA_MPS, MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT,
-    MIN_WIND_FORCE_FLOW_SPEED_MPS, MIN_WIND_FORCE_SAMPLE_COUNT, MIN_WIND_FORCE_VARIATION,
-    MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
-    MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
+    MIN_PLAYER_WIND_SHEAR_ORBIT_RADIUS_M, MIN_PLAYER_WIND_SHEAR_PULSE_SCALE,
+    MIN_PLAYER_WIND_SHEAR_RELATIVE_AIR_SPEED_MPS, MIN_PLAYER_WIND_SHEAR_VERTICAL_COVERAGE_M,
+    MIN_PLAYER_WIND_SHEAR_VISUAL_COUNT, MIN_VISIBLE_PLAYER_WIND_SHEAR_KIND_COUNT,
+    MIN_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT, MIN_WIND_FORCE_ALIGNED_DELTA_MPS,
+    MIN_WIND_FORCE_DELTA_MPS, MIN_WIND_FORCE_FLOW_ALIGNMENT, MIN_WIND_FORCE_FLOW_SPEED_MPS,
+    MIN_WIND_FORCE_SAMPLE_COUNT, MIN_WIND_FORCE_VARIATION, MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
+    MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_LOAD_POSE_LEAN_DEGREES,
+    MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
     POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES, POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES,
     UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE, min_updraft_swirl_force_delta_mps_for_scenario,
 };
@@ -508,6 +517,12 @@ impl SimMetrics {
                 MIN_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT as f32,
                 "visuals",
             ));
+            checks.push(SimCheck::at_most(
+                "max_visible_player_wind_shear_visual_count",
+                self.max_visible_player_wind_shear_visual_count as f32,
+                MAX_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT as f32,
+                "visuals",
+            ));
             checks.push(SimCheck::at_least(
                 "player_wind_shear_length_scale",
                 self.max_player_wind_shear_length_scale,
@@ -527,6 +542,96 @@ impl SimMetrics {
                 "m",
             ));
             checks.push(SimCheck::at_least(
+                "player_wind_shear_angular_coverage",
+                self.max_player_wind_shear_angular_coverage_degrees,
+                MIN_PLAYER_WIND_SHEAR_ANGULAR_COVERAGE_DEGREES,
+                "deg",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_vertical_coverage",
+                self.max_player_wind_shear_vertical_coverage_m,
+                MIN_PLAYER_WIND_SHEAR_VERTICAL_COVERAGE_M,
+                "m",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_frame_motion",
+                self.max_player_wind_shear_frame_motion_m,
+                MIN_PLAYER_WIND_SHEAR_FRAME_MOTION_M,
+                "m",
+            ));
+            checks.push(SimCheck::at_most(
+                "player_wind_shear_frame_motion_ceiling",
+                self.max_player_wind_shear_frame_motion_m,
+                MAX_PLAYER_WIND_SHEAR_FRAME_MOTION_M,
+                "m",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_orbit_radius",
+                self.max_player_wind_shear_orbit_radius_m,
+                MIN_PLAYER_WIND_SHEAR_ORBIT_RADIUS_M,
+                "m",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_pulse_scale",
+                self.max_player_wind_shear_pulse_scale,
+                MIN_PLAYER_WIND_SHEAR_PULSE_SCALE,
+                "scale",
+            ));
+            checks.push(SimCheck::at_most(
+                "player_wind_shear_pulse_scale_ceiling",
+                self.max_player_wind_shear_pulse_scale,
+                MAX_PLAYER_WIND_SHEAR_PULSE_SCALE,
+                "scale",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_relative_air_speed",
+                self.max_player_wind_shear_relative_air_speed_mps,
+                MIN_PLAYER_WIND_SHEAR_RELATIVE_AIR_SPEED_MPS,
+                "m/s",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_flow_alignment",
+                self.max_player_wind_shear_flow_alignment,
+                MIN_PLAYER_WIND_SHEAR_FLOW_ALIGNMENT,
+                "dot",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_flow_travel",
+                self.max_player_wind_shear_flow_travel_m,
+                MIN_PLAYER_WIND_SHEAR_FLOW_TRAVEL_M,
+                "m/frame",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_crosswind_deflection",
+                self.max_player_wind_shear_crosswind_deflection_m,
+                MIN_PLAYER_WIND_SHEAR_CROSSWIND_DEFLECTION_M,
+                "m",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_body_clearance",
+                self.min_player_wind_shear_body_clearance_m,
+                MIN_PLAYER_WIND_SHEAR_BODY_CLEARANCE_M,
+                "m",
+            ));
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_field_span",
+                self.max_player_wind_shear_field_span_m,
+                MIN_PLAYER_WIND_SHEAR_FIELD_SPAN_M,
+                "m",
+            ));
+            checks.push(SimCheck::at_most(
+                "low_speed_visible_player_wind_shear_samples",
+                self.low_speed_visible_player_wind_shear_samples as f32,
+                MAX_LOW_SPEED_PLAYER_WIND_SHEAR_VISIBLE_SAMPLES as f32,
+                "samples",
+            ));
+            checks.push(SimCheck::at_least(
+                "visible_player_wind_shear_kind_count",
+                self.max_visible_player_wind_shear_kind_count as f32,
+                MIN_VISIBLE_PLAYER_WIND_SHEAR_KIND_COUNT as f32,
+                "kinds",
+            ));
+            checks.push(SimCheck::at_least(
                 "crosswind_neutral_drift_samples",
                 self.crosswind_neutral_drift_samples as f32,
                 MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT as f32,
@@ -543,6 +648,15 @@ impl SimMetrics {
                 self.max_crosswind_neutral_horizontal_step_m,
                 MAX_CROSSWIND_NEUTRAL_HORIZONTAL_STEP_M,
                 "m/sample",
+            ));
+        }
+
+        if dive_compression_scenario(scenario) {
+            checks.push(SimCheck::at_least(
+                "player_wind_shear_dive_pressure",
+                self.max_player_wind_shear_dive_pressure,
+                MIN_PLAYER_WIND_SHEAR_DIVE_PRESSURE,
+                "normalized",
             ));
         }
 
@@ -956,4 +1070,11 @@ fn layered_wind_force_scenario(scenario: EvalScenario) -> bool {
 
 fn wind_load_response_scenario(scenario: EvalScenario) -> bool {
     scenario.name == UPDRAFT_ROUTE
+}
+
+fn dive_compression_scenario(scenario: EvalScenario) -> bool {
+    matches!(
+        scenario.name,
+        BRANCH_RECOVERY_ROUTE | LONG_GLIDE_VISIBILITY | GREAT_SKY_PLATEAU_ROUTE
+    )
 }
