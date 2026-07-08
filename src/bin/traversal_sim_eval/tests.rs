@@ -28,14 +28,22 @@ use nau_engine::{
         LANDING_MAX_POSE_BACKWARD_BEND_DEGREES, LANDING_MAX_POSE_RECOVERY_BACKBEND_DEGREES,
         LANDING_MIN_POSE_FLARE_DEGREES, LANDING_MIN_POSE_FOOT_FORWARD_M,
         LANDING_MIN_POSE_FOOT_SPLIT_M, LANDING_MIN_POSE_FORWARD_FOLD_DEGREES,
-        LONG_GLIDE_VISIBILITY, MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT,
+        LONG_GLIDE_VISIBILITY, MAX_LOW_SPEED_PLAYER_WIND_SHEAR_VISIBLE_SAMPLES,
+        MAX_PLAYER_WIND_SHEAR_FRAME_MOTION_M, MAX_PLAYER_WIND_SHEAR_PULSE_SCALE,
+        MAX_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT, MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT,
         MIN_CROSSWIND_NEUTRAL_HORIZONTAL_DRIFT_M, MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS,
         MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE, MIN_DYNAMIC_WIND_FLOW_DIRECTION_CHANGE_DEGREES,
-        MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M, MIN_PLAYER_WIND_SHEAR_LATERAL_OFFSET_M,
-        MIN_PLAYER_WIND_SHEAR_LENGTH_SCALE, MIN_PLAYER_WIND_SHEAR_VISUAL_COUNT,
-        MIN_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT, MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES,
-        MIN_WIND_LOAD_LATERAL_LOAD, MIN_WIND_LOAD_POSE_LEAN_DEGREES,
-        MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
+        MIN_PLAYER_WIND_SHEAR_ANGULAR_COVERAGE_DEGREES, MIN_PLAYER_WIND_SHEAR_BODY_CLEARANCE_M,
+        MIN_PLAYER_WIND_SHEAR_CROSSWIND_DEFLECTION_M, MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M,
+        MIN_PLAYER_WIND_SHEAR_DIVE_PRESSURE, MIN_PLAYER_WIND_SHEAR_FIELD_SPAN_M,
+        MIN_PLAYER_WIND_SHEAR_FLOW_ALIGNMENT, MIN_PLAYER_WIND_SHEAR_FLOW_TRAVEL_M,
+        MIN_PLAYER_WIND_SHEAR_FRAME_MOTION_M, MIN_PLAYER_WIND_SHEAR_LATERAL_OFFSET_M,
+        MIN_PLAYER_WIND_SHEAR_LENGTH_SCALE, MIN_PLAYER_WIND_SHEAR_ORBIT_RADIUS_M,
+        MIN_PLAYER_WIND_SHEAR_PULSE_SCALE, MIN_PLAYER_WIND_SHEAR_RELATIVE_AIR_SPEED_MPS,
+        MIN_PLAYER_WIND_SHEAR_VERTICAL_COVERAGE_M, MIN_PLAYER_WIND_SHEAR_VISUAL_COUNT,
+        MIN_VISIBLE_PLAYER_WIND_SHEAR_KIND_COUNT, MIN_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT,
+        MIN_WIND_LOAD_GLIDER_RESPONSE_DEGREES, MIN_WIND_LOAD_LATERAL_LOAD,
+        MIN_WIND_LOAD_POSE_LEAN_DEGREES, MIN_WIND_LOAD_RESPONSE_SAMPLE_COUNT, POSE_STATE_COVERAGE,
         POSE_STATE_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES,
         POSE_STATE_MIN_DIRECTIONAL_AIR_TURN_SAMPLES, UNDER_ROUTE_MIN_UPDRAFT_SWIRL_FORCE_DELTA_MPS,
         UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE, scenario_named,
@@ -161,11 +169,24 @@ fn baseline_simulation_writes_windowless_artifacts() {
         "player_wind_shear_visual_count",
         "visible_player_wind_shear_visual_count",
         "max_player_wind_shear_airflow",
+        "max_player_wind_shear_dive_pressure",
         "max_player_wind_shear_acceleration_pressure",
         "max_player_wind_shear_lateral_shear",
         "max_player_wind_shear_length_scale",
         "max_player_wind_shear_lateral_offset_m",
         "max_player_wind_shear_depth_offset_m",
+        "max_player_wind_shear_angular_coverage_degrees",
+        "max_player_wind_shear_vertical_coverage_m",
+        "max_player_wind_shear_frame_motion_m",
+        "max_player_wind_shear_orbit_radius_m",
+        "max_player_wind_shear_pulse_scale",
+        "max_player_wind_shear_relative_air_speed_mps",
+        "max_player_wind_shear_flow_alignment",
+        "max_player_wind_shear_flow_travel_m",
+        "max_player_wind_shear_crosswind_deflection_m",
+        "min_player_wind_shear_body_clearance_m",
+        "max_player_wind_shear_field_span_m",
+        "visible_player_wind_shear_kind_count",
     ] {
         assert!(
             last_sample_json.get(key).is_some(),
@@ -921,6 +942,10 @@ fn updraft_simulation_uses_readable_lift() {
             >= MIN_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT
     );
     assert!(
+        result.metrics.max_visible_player_wind_shear_visual_count
+            <= MAX_VISIBLE_PLAYER_WIND_SHEAR_VISUAL_COUNT
+    );
+    assert!(
         result.metrics.max_player_wind_shear_length_scale >= MIN_PLAYER_WIND_SHEAR_LENGTH_SCALE
     );
     assert!(
@@ -929,6 +954,57 @@ fn updraft_simulation_uses_readable_lift() {
     );
     assert!(
         result.metrics.max_player_wind_shear_depth_offset_m >= MIN_PLAYER_WIND_SHEAR_DEPTH_OFFSET_M
+    );
+    assert!(
+        result
+            .metrics
+            .max_player_wind_shear_angular_coverage_degrees
+            >= MIN_PLAYER_WIND_SHEAR_ANGULAR_COVERAGE_DEGREES
+    );
+    assert!(
+        result.metrics.max_player_wind_shear_vertical_coverage_m
+            >= MIN_PLAYER_WIND_SHEAR_VERTICAL_COVERAGE_M
+    );
+    assert!(
+        result.metrics.max_player_wind_shear_frame_motion_m >= MIN_PLAYER_WIND_SHEAR_FRAME_MOTION_M
+    );
+    assert!(
+        result.metrics.max_player_wind_shear_frame_motion_m <= MAX_PLAYER_WIND_SHEAR_FRAME_MOTION_M
+    );
+    assert!(
+        result.metrics.max_player_wind_shear_orbit_radius_m >= MIN_PLAYER_WIND_SHEAR_ORBIT_RADIUS_M
+    );
+    assert!(result.metrics.max_player_wind_shear_pulse_scale >= MIN_PLAYER_WIND_SHEAR_PULSE_SCALE);
+    assert!(result.metrics.max_player_wind_shear_pulse_scale <= MAX_PLAYER_WIND_SHEAR_PULSE_SCALE);
+    assert!(
+        result.metrics.max_player_wind_shear_relative_air_speed_mps
+            >= MIN_PLAYER_WIND_SHEAR_RELATIVE_AIR_SPEED_MPS
+    );
+    assert!(
+        result.metrics.max_player_wind_shear_flow_alignment >= MIN_PLAYER_WIND_SHEAR_FLOW_ALIGNMENT
+    );
+    assert!(
+        result.metrics.max_player_wind_shear_flow_travel_m >= MIN_PLAYER_WIND_SHEAR_FLOW_TRAVEL_M
+    );
+    assert!(
+        result.metrics.max_player_wind_shear_crosswind_deflection_m
+            >= MIN_PLAYER_WIND_SHEAR_CROSSWIND_DEFLECTION_M
+    );
+    assert!(
+        result.metrics.min_player_wind_shear_body_clearance_m
+            >= MIN_PLAYER_WIND_SHEAR_BODY_CLEARANCE_M
+    );
+    assert!(
+        result.metrics.max_player_wind_shear_field_span_m >= MIN_PLAYER_WIND_SHEAR_FIELD_SPAN_M
+    );
+    assert!(result.metrics.low_speed_player_wind_shear_samples > 0);
+    assert_eq!(
+        result.metrics.low_speed_visible_player_wind_shear_samples,
+        MAX_LOW_SPEED_PLAYER_WIND_SHEAR_VISIBLE_SAMPLES
+    );
+    assert!(
+        result.metrics.max_visible_player_wind_shear_kind_count
+            >= MIN_VISIBLE_PLAYER_WIND_SHEAR_KIND_COUNT
     );
     assert!(
         result.metrics.crosswind_neutral_drift_samples >= MIN_CROSSWIND_NEUTRAL_DRIFT_SAMPLE_COUNT
@@ -973,9 +1049,25 @@ fn updraft_simulation_uses_readable_lift() {
         "wind_load_glider_response",
         "player_wind_shear_visual_count",
         "visible_player_wind_shear_visual_count",
+        "max_visible_player_wind_shear_visual_count",
         "player_wind_shear_length_scale",
         "player_wind_shear_lateral_offset",
         "player_wind_shear_depth_offset",
+        "player_wind_shear_angular_coverage",
+        "player_wind_shear_vertical_coverage",
+        "player_wind_shear_frame_motion",
+        "player_wind_shear_frame_motion_ceiling",
+        "player_wind_shear_orbit_radius",
+        "player_wind_shear_pulse_scale",
+        "player_wind_shear_pulse_scale_ceiling",
+        "player_wind_shear_relative_air_speed",
+        "player_wind_shear_flow_alignment",
+        "player_wind_shear_flow_travel",
+        "player_wind_shear_crosswind_deflection",
+        "player_wind_shear_body_clearance",
+        "player_wind_shear_field_span",
+        "low_speed_visible_player_wind_shear_samples",
+        "visible_player_wind_shear_kind_count",
         "crosswind_neutral_drift_samples",
         "crosswind_neutral_horizontal_drift",
         "crosswind_neutral_horizontal_step",
@@ -1161,6 +1253,9 @@ fn branch_recovery_simulation_completes_branch_objectives() {
     assert!(result.metrics.max_dynamic_lift_fields >= 1);
     assert!(result.metrics.max_lift_applied_delta_mps >= MIN_DYNAMIC_LIFT_APPLIED_DELTA_MPS);
     assert!(result.metrics.max_dynamic_lift_multiplier_range >= MIN_DYNAMIC_LIFT_MULTIPLIER_RANGE);
+    assert!(
+        result.metrics.max_player_wind_shear_dive_pressure >= MIN_PLAYER_WIND_SHEAR_DIVE_PRESSURE
+    );
 }
 
 #[test]
@@ -1239,6 +1334,9 @@ fn long_glide_simulation_collects_boosts_and_crosses_archipelago() {
     assert!(
         result.metrics.power_up_effect_samples >= scenario.thresholds.min_power_up_effect_samples
     );
+    assert!(
+        result.metrics.max_player_wind_shear_dive_pressure >= MIN_PLAYER_WIND_SHEAR_DIVE_PRESSURE
+    );
 }
 
 #[test]
@@ -1256,6 +1354,9 @@ fn great_sky_plateau_simulation_climbs_toward_plateau_chain() {
     assert!(
         result.metrics.max_altitude_m >= scenario.thresholds.min_max_altitude_m,
         "plateau route should climb into the upper island chain"
+    );
+    assert!(
+        result.metrics.max_player_wind_shear_dive_pressure >= MIN_PLAYER_WIND_SHEAR_DIVE_PRESSURE
     );
     assert!(
         result.metrics.max_completed_objective_count

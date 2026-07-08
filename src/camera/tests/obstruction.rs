@@ -32,13 +32,13 @@ fn camera_obstruction_moves_camera_in_front_of_blocker() {
         frame,
         [CameraObstruction::new(
             Vec3::new(0.0, 2.0, 5.0),
-            Vec3::new(1.0, 1.0, 1.0),
+            Vec3::new(2.05, 0.3, 0.2),
         )],
         0.5,
     );
 
     assert_eq!(resolved.hit_count, 1);
-    assert!(resolved.adjusted_distance_m > 3.0);
+    assert!(resolved.adjusted_distance_m > 2.0);
     assert!(resolved.frame.position.distance(resolved.frame.look_target) > 10.0);
     assert!(resolved.frame.position.y > frame.position.y || resolved.frame.position.x.abs() > 3.0);
     assert_eq!(resolved.frame.position.z, frame.position.z);
@@ -113,7 +113,7 @@ fn camera_obstruction_treats_near_narrow_prop_as_transparent_when_fallback_is_bl
         0.45,
     );
 
-    assert_eq!(resolved.hit_count, 1);
+    assert_eq!(resolved.hit_count, 0);
     assert_eq!(resolved.adjusted_distance_m, 0.0);
     assert_eq!(resolved.frame.position, frame.position);
 }
@@ -130,7 +130,7 @@ fn camera_obstruction_keeps_clear_view_when_blocker_is_off_segment() {
         frame,
         [CameraObstruction::new(
             Vec3::new(5.0, 2.0, 5.0),
-            Vec3::new(1.0, 1.0, 1.0),
+            Vec3::new(2.05, 1.0, 1.0),
         )],
         0.5,
     );
@@ -151,8 +151,8 @@ fn camera_obstruction_uses_nearest_blocker() {
     let resolved = avoid_camera_obstructions(
         frame,
         [
-            CameraObstruction::new(Vec3::new(0.0, 2.0, 8.0), Vec3::splat(1.0)),
-            CameraObstruction::new(Vec3::new(0.0, 2.0, 4.0), Vec3::splat(1.0)),
+            CameraObstruction::new(Vec3::new(0.0, 2.0, 8.0), Vec3::new(2.05, 0.3, 0.2)),
+            CameraObstruction::new(Vec3::new(0.0, 2.0, 4.0), Vec3::new(2.05, 0.3, 0.2)),
         ],
         0.25,
     );

@@ -5,8 +5,8 @@ use crate::authored_assets::{
     AuthoredVisualScene, AuthoredVisualSceneRole, GeneratedPlayerPlaceholder,
     mark_authored_scene_ready,
 };
-use crate::environment_visuals::{GliderAirflowTrail, PlayerWindShearVisualKind};
-use crate::generated_content::glider_airflow_trail_mesh;
+use crate::environment_visuals::{PlayerAirflowVisual, PlayerAirflowVisualKind};
+use crate::generated_content::player_airflow_streamline_mesh;
 use crate::player_runtime::{
     AuthoredGliderPose, authored_glider_scene_transform, authored_player_scene_transform,
 };
@@ -33,7 +33,7 @@ pub(super) fn spawn_player_runtime(
     let arm_mesh = meshes.add(Cuboid::new(0.2, 0.82, 0.2));
     let leg_mesh = meshes.add(Cuboid::new(0.24, 0.9, 0.24));
     let wing_mesh = meshes.add(Cuboid::new(2.15, 0.05, 0.75));
-    let glider_airflow_mesh = meshes.add(glider_airflow_trail_mesh());
+    let player_airflow_mesh = meshes.add(player_airflow_streamline_mesh());
     let mut player_scene_entity = None;
     let mut glider_scene_entity = None;
 
@@ -110,23 +110,11 @@ pub(super) fn spawn_player_runtime(
                     arm_mesh.clone(),
                     leg_mesh.clone(),
                     wing_mesh.clone(),
-                    glider_airflow_mesh.clone(),
                     side,
                 );
             }
 
-            spawn_wind_shear_visual(
-                parent,
-                scene_materials,
-                glider_airflow_mesh.clone(),
-                WindShearVisualSpec {
-                    kind: PlayerWindShearVisualKind::Slipstream,
-                    side: Side::Right,
-                    translation: Vec3::new(0.0, 1.22, 0.70),
-                    rotation: Quat::from_rotation_x(0.02),
-                    scale: Vec3::new(0.28, 1.0, 0.12),
-                },
-            );
+            spawn_player_airflow_volume(parent, scene_materials, player_airflow_mesh.clone());
 
             parent.spawn((
                 Mesh3d(meshes.add(Cuboid::new(0.18, 0.18, 0.38))),
@@ -148,14 +136,12 @@ pub(super) fn spawn_player_runtime(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn spawn_player_side(
     parent: &mut ChildSpawnerCommands,
     scene_materials: &SceneMaterials,
     arm_mesh: Handle<Mesh>,
     leg_mesh: Handle<Mesh>,
     wing_mesh: Handle<Mesh>,
-    glider_airflow_mesh: Handle<Mesh>,
     side: Side,
 ) {
     let sign = side.sign();
@@ -206,56 +192,144 @@ fn spawn_player_side(
             wing_rotation,
         ),
     ));
-
-    spawn_wind_shear_visual(
-        parent,
-        scene_materials,
-        glider_airflow_mesh.clone(),
-        WindShearVisualSpec {
-            kind: PlayerWindShearVisualKind::Wingtip,
-            side,
-            translation: Vec3::new(sign * 1.74, 1.38, 0.86),
-            rotation: Quat::from_rotation_z(sign * 0.08) * Quat::from_rotation_x(0.04),
-            scale: Vec3::new(0.35, 1.0, 0.05),
-        },
-    );
-    spawn_wind_shear_visual(
-        parent,
-        scene_materials,
-        glider_airflow_mesh,
-        WindShearVisualSpec {
-            kind: PlayerWindShearVisualKind::Shoulder,
-            side,
-            translation: Vec3::new(sign * 0.62, 1.36, 0.58),
-            rotation: Quat::from_rotation_z(sign * 0.12) * Quat::from_rotation_x(0.07),
-            scale: Vec3::new(0.16, 1.0, 0.05),
-        },
-    );
 }
 
-struct WindShearVisualSpec {
-    kind: PlayerWindShearVisualKind,
-    side: Side,
-    translation: Vec3,
-    rotation: Quat,
-    scale: Vec3,
+#[derive(Clone, Copy, Debug)]
+struct PlayerAirflowVisualSpec {
+    kind: PlayerAirflowVisualKind,
+    lane_index: usize,
+    lane_count: usize,
+    base_angle: f32,
+    base_height: f32,
+    base_radius: f32,
+    seed: f32,
 }
 
-fn spawn_wind_shear_visual(
+fn spawn_player_airflow_volume(
     parent: &mut ChildSpawnerCommands,
     scene_materials: &SceneMaterials,
     mesh: Handle<Mesh>,
-    spec: WindShearVisualSpec,
 ) {
-    parent.spawn((
-        Mesh3d(mesh),
-        MeshMaterial3d(scene_materials.glider_airflow.clone()),
-        Transform {
-            translation: spec.translation,
-            rotation: spec.rotation,
-            scale: spec.scale,
-        },
-        Visibility::Hidden,
-        GliderAirflowTrail::new(spec.kind, spec.side, spec.translation, spec.rotation),
-    ));
+    for spec in player_airflow_visual_specs() {
+        parent.spawn((
+            Mesh3d(mesh.clone()),
+            MeshMaterial3d(scene_materials.glider_airflow.clone()),
+            Transform::from_scale(Vec3::splat(0.01)),
+            Visibility::Hidden,
+            PlayerAirflowVisual::new(
+                spec.kind,
+                spec.lane_index,
+                spec.lane_count,
+                spec.base_angle,
+                spec.base_height,
+                spec.base_radius,
+                spec.seed,
+            ),
+        ));
+    }
+}
+
+fn player_airflow_visual_specs() -> Vec<PlayerAirflowVisualSpec> {
+    let mut specs = Vec::with_capacity(18);
+    let mut ordinal = 0_usize;
+
+    for index in 0..6 {
+        let lane_fraction = index as f32 / 6.0;
+        specs.push(PlayerAirflowVisualSpec {
+            kind: PlayerAirflowVisualKind::BodyWrap,
+            lane_index: index,
+            lane_count: 6,
+            base_angle: lane_fraction * std::f32::consts::TAU,
+            base_height: 0.72 + (index % 3) as f32 * 0.34,
+            base_radius: 1.06 + (index % 3) as f32 * 0.11,
+            seed: player_airflow_seed(ordinal),
+        });
+        ordinal += 1;
+    }
+
+    for index in 0..3 {
+        specs.push(PlayerAirflowVisualSpec {
+            kind: PlayerAirflowVisualKind::FrontPressure,
+            lane_index: index,
+            lane_count: 3,
+            base_angle: -std::f32::consts::FRAC_PI_2 + (index as f32 - 1.0) * 0.46,
+            base_height: 0.82 + index as f32 * 0.18,
+            base_radius: 1.02,
+            seed: player_airflow_seed(ordinal),
+        });
+        ordinal += 1;
+    }
+
+    for index in 0..2 {
+        let side_angle = if index % 2 == 0 {
+            0.0
+        } else {
+            std::f32::consts::PI
+        };
+        specs.push(PlayerAirflowVisualSpec {
+            kind: PlayerAirflowVisualKind::SideShear,
+            lane_index: index,
+            lane_count: 2,
+            base_angle: side_angle,
+            base_height: 0.92,
+            base_radius: 1.32,
+            seed: player_airflow_seed(ordinal),
+        });
+        ordinal += 1;
+    }
+
+    for index in 0..2 {
+        let side_angle = if index % 2 == 0 {
+            0.0
+        } else {
+            std::f32::consts::PI
+        };
+        specs.push(PlayerAirflowVisualSpec {
+            kind: PlayerAirflowVisualKind::ShoulderVortex,
+            lane_index: index,
+            lane_count: 2,
+            base_angle: side_angle,
+            base_height: 1.28,
+            base_radius: 1.18,
+            seed: player_airflow_seed(ordinal),
+        });
+        ordinal += 1;
+    }
+
+    for index in 0..2 {
+        let side_angle = if index % 2 == 0 {
+            0.0
+        } else {
+            std::f32::consts::PI
+        };
+        specs.push(PlayerAirflowVisualSpec {
+            kind: PlayerAirflowVisualKind::WingtipVortex,
+            lane_index: index,
+            lane_count: 2,
+            base_angle: side_angle,
+            base_height: 1.38,
+            base_radius: 1.72,
+            seed: player_airflow_seed(ordinal),
+        });
+        ordinal += 1;
+    }
+
+    for index in 0..3 {
+        specs.push(PlayerAirflowVisualSpec {
+            kind: PlayerAirflowVisualKind::WakeTurbulence,
+            lane_index: index,
+            lane_count: 3,
+            base_angle: std::f32::consts::FRAC_PI_2 + (index as f32 - 1.0) * 0.54,
+            base_height: 0.82 + index as f32 * 0.22,
+            base_radius: 1.18,
+            seed: player_airflow_seed(ordinal),
+        });
+        ordinal += 1;
+    }
+
+    specs
+}
+
+fn player_airflow_seed(ordinal: usize) -> f32 {
+    (0.137 + ordinal as f32 * 0.618_034).fract()
 }

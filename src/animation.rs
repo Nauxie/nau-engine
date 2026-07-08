@@ -139,10 +139,13 @@ pub const LANDING_MIN_TORSO_FORWARD_FOLD_DEGREES: f32 = 24.0;
 pub const PLAYER_WIND_SHEAR_MIN_AIRFLOW: f32 = 0.04;
 pub const PLAYER_WIND_SHEAR_FULL_SPEED_MPS: f32 = 64.0;
 pub const PLAYER_WIND_SHEAR_SPEED_FLOOR_MPS: f32 = 12.0;
+pub const PLAYER_WIND_SHEAR_VISIBLE_SPEED_FLOOR_MPS: f32 = 18.0;
 pub const PLAYER_WIND_SHEAR_FULL_ACCEL_MPS2: f32 = 38.0;
 pub const PLAYER_WIND_SHEAR_FULL_SIDESLIP_MPS: f32 = 18.0;
 pub const PLAYER_WIND_SHEAR_MAX_ACCEL_MPS2: f32 = 72.0;
-pub const PLAYER_WIND_SHEAR_VISUAL_COUNT: usize = 5;
+pub const PLAYER_WIND_SHEAR_VISUAL_COUNT: usize = 18;
+const PLAYER_WIND_SHEAR_VISIBLE_ESTIMATE_COUNT: usize = 12;
+pub const PLAYER_WIND_SHEAR_KIND_COUNT: usize = 6;
 const DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES: f32 = 82.0;
 const DIVE_MAX_ARM_SPREAD_READABILITY_DEGREES: f32 = 48.0;
 const DIVE_MIN_LEG_TUCK_READABILITY_DEGREES: f32 = 68.0;
@@ -301,6 +304,8 @@ pub fn wing_airflow_strength(mode: FlightMode, velocity: Vec3) -> f32 {
 pub struct PlayerWindShearResponse {
     pub visible: bool,
     pub airflow: f32,
+    pub relative_air_local: Vec3,
+    pub relative_air_speed_mps: f32,
     pub speed_pressure: f32,
     pub dive_pressure: f32,
     pub acceleration_pressure: f32,
@@ -314,11 +319,24 @@ pub struct PlayerWindShearVisualEstimate {
     pub visual_count: usize,
     pub visible_visual_count: usize,
     pub max_airflow: f32,
+    pub max_relative_air_speed_mps: f32,
+    pub max_flow_alignment: f32,
+    pub max_flow_travel_m: f32,
+    pub max_crosswind_deflection_m: f32,
+    pub min_body_clearance_m: f32,
+    pub max_field_span_m: f32,
+    pub max_dive_pressure: f32,
     pub max_acceleration_pressure: f32,
     pub max_abs_lateral_shear: f32,
     pub max_length_scale: f32,
     pub max_lateral_offset_m: f32,
     pub max_depth_offset_m: f32,
+    pub max_angular_coverage_degrees: f32,
+    pub max_vertical_coverage_m: f32,
+    pub max_frame_motion_m: f32,
+    pub max_orbit_radius_m: f32,
+    pub max_pulse_scale: f32,
+    pub visible_kind_count: usize,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -327,8 +345,8 @@ pub fn player_wind_shear_response(
     velocity: Vec3,
     previous_velocity: Option<Vec3>,
     player_rotation: Quat,
+    wind_delta: Vec3,
     wind_lateral_load: f32,
-    wind_force_delta_mps: f32,
     dt: f32,
     elapsed_secs: f32,
 ) -> PlayerWindShearResponse {
@@ -336,15 +354,18 @@ pub fn player_wind_shear_response(
         return default();
     }
 
-    let local_velocity = body_local_pose_velocity(velocity, player_rotation);
-    let horizontal_speed = Vec2::new(velocity.x, velocity.z).length();
-    let speed_pressure = ((horizontal_speed - PLAYER_WIND_SHEAR_SPEED_FLOOR_MPS)
+    let relative_air_world = wind_delta - velocity;
+    let relative_air_local = body_local_pose_velocity(relative_air_world, player_rotation);
+    let horizontal_relative_speed = Vec2::new(relative_air_world.x, relative_air_world.z).length();
+    let relative_air_speed_mps = relative_air_world.length();
+    let speed_pressure = ((horizontal_relative_speed - PLAYER_WIND_SHEAR_SPEED_FLOOR_MPS)
         / PLAYER_WIND_SHEAR_FULL_SPEED_MPS)
         .clamp(0.0, 1.0);
     let dive_pressure = (-velocity.y / 42.0).clamp(0.0, 1.0);
-    let lateral_shear = (local_velocity.x / PLAYER_WIND_SHEAR_FULL_SIDESLIP_MPS
+    let lateral_shear = (relative_air_local.x / PLAYER_WIND_SHEAR_FULL_SIDESLIP_MPS
         + wind_lateral_load * 0.72)
         .clamp(-1.0, 1.0);
+    let wind_force_delta_mps = wind_delta.length();
     let acceleration_pressure = previous_velocity
         .filter(|_| dt > 0.0)
         .map(|previous| {
@@ -359,15 +380,22 @@ pub fn player_wind_shear_response(
         .sin()
         * 0.5
         + 0.5;
-    let airflow = (speed_pressure * 0.68
-        + dive_pressure * 0.22
-        + acceleration_pressure * 0.16
-        + wind_force_delta_mps * 0.035)
-        .clamp(0.0, 1.0);
+    let base_airflow =
+        (speed_pressure * 0.70 + dive_pressure * 0.22 + wind_force_delta_mps * 0.035)
+            .clamp(0.0, 1.0);
+    let acceleration_boost = acceleration_pressure * base_airflow * 0.20;
+    let visibility_gate = smoothstep(
+        PLAYER_WIND_SHEAR_VISIBLE_SPEED_FLOOR_MPS,
+        PLAYER_WIND_SHEAR_VISIBLE_SPEED_FLOOR_MPS + 10.0,
+        relative_air_speed_mps,
+    );
+    let airflow = ((base_airflow + acceleration_boost) * visibility_gate).clamp(0.0, 1.0);
 
     PlayerWindShearResponse {
         visible: airflow >= PLAYER_WIND_SHEAR_MIN_AIRFLOW,
         airflow,
+        relative_air_local,
+        relative_air_speed_mps,
         speed_pressure,
         dive_pressure,
         acceleration_pressure,
@@ -380,42 +408,147 @@ pub fn player_wind_shear_response(
 pub fn player_wind_shear_visual_estimate(
     response: PlayerWindShearResponse,
 ) -> PlayerWindShearVisualEstimate {
-    let visible_visual_count = if response.visible {
-        PLAYER_WIND_SHEAR_VISUAL_COUNT
-    } else {
-        0
-    };
+    let visible_visual_count = player_wind_shear_visible_estimate_count(response);
     PlayerWindShearVisualEstimate {
         visual_count: PLAYER_WIND_SHEAR_VISUAL_COUNT,
         visible_visual_count,
         max_airflow: response.airflow,
+        max_relative_air_speed_mps: response.relative_air_speed_mps,
+        max_flow_alignment: player_wind_shear_flow_alignment(response),
+        max_flow_travel_m: player_wind_shear_flow_travel_m(response),
+        max_crosswind_deflection_m: player_wind_shear_crosswind_deflection_m(response),
+        min_body_clearance_m: player_wind_shear_min_body_clearance_m(response),
+        max_field_span_m: player_wind_shear_field_span_m(response),
+        max_dive_pressure: response.dive_pressure,
         max_acceleration_pressure: response.acceleration_pressure,
         max_abs_lateral_shear: response.lateral_shear.abs(),
         max_length_scale: player_wind_shear_max_length_scale(response),
         max_lateral_offset_m: player_wind_shear_max_lateral_offset_m(response),
         max_depth_offset_m: player_wind_shear_max_depth_offset_m(response),
+        max_angular_coverage_degrees: player_wind_shear_angular_coverage_degrees(response),
+        max_vertical_coverage_m: player_wind_shear_vertical_coverage_m(response),
+        max_frame_motion_m: player_wind_shear_frame_motion_m(response),
+        max_orbit_radius_m: player_wind_shear_orbit_radius_m(response),
+        max_pulse_scale: player_wind_shear_pulse_scale(response),
+        visible_kind_count: player_wind_shear_visible_kind_estimate_count(response),
     }
 }
 
+fn player_wind_shear_visible_estimate_count(response: PlayerWindShearResponse) -> usize {
+    if !response.visible {
+        return 0;
+    }
+
+    let intensity = ((response.airflow - PLAYER_WIND_SHEAR_MIN_AIRFLOW) / 0.46).clamp(0.0, 1.0);
+    let count = 3.0 + intensity * (PLAYER_WIND_SHEAR_VISIBLE_ESTIMATE_COUNT as f32 - 3.0);
+    count.round() as usize
+}
+
+fn player_wind_shear_visible_kind_estimate_count(response: PlayerWindShearResponse) -> usize {
+    if !response.visible {
+        return 0;
+    }
+
+    (1 + (response.airflow / 0.08).floor() as usize).min(PLAYER_WIND_SHEAR_KIND_COUNT)
+}
+
 pub fn player_wind_shear_max_length_scale(response: PlayerWindShearResponse) -> f32 {
-    let wingtip = 0.10 + response.airflow * 2.7 + response.dive_pressure * 0.75;
-    let shoulder = 0.08 + response.airflow * 1.45 + response.acceleration_pressure * 0.55;
-    let slipstream = 0.18 + response.airflow * 3.2 + response.dive_pressure * 1.1;
-    wingtip.max(shoulder).max(slipstream)
+    0.36 + response.airflow * 1.85 + response.dive_pressure * 0.65
 }
 
 pub fn player_wind_shear_max_lateral_offset_m(response: PlayerWindShearResponse) -> f32 {
-    let wingtip = response.airflow * 0.10 + response.lateral_shear.abs() * 0.08;
-    let shoulder = response.airflow * 0.04 + response.lateral_shear.abs() * 0.03;
-    let slipstream = response.lateral_shear.abs() * 0.22;
-    wingtip.max(shoulder).max(slipstream)
+    1.10 + response.airflow * 0.78 + response.lateral_shear.abs() * 0.52
 }
 
 pub fn player_wind_shear_max_depth_offset_m(response: PlayerWindShearResponse) -> f32 {
-    let wingtip = response.airflow * 0.62 + response.acceleration_pressure * 0.18;
-    let shoulder = response.airflow * 0.36 + response.acceleration_pressure * 0.24;
-    let slipstream = response.airflow * 0.82 + response.acceleration_pressure * 0.34;
-    wingtip.max(shoulder).max(slipstream)
+    1.65 + response.airflow * 1.20 + response.dive_pressure * 0.40
+}
+
+pub fn player_wind_shear_angular_coverage_degrees(response: PlayerWindShearResponse) -> f32 {
+    if response.visible {
+        (318.0 + response.airflow * 42.0).min(360.0)
+    } else {
+        0.0
+    }
+}
+
+pub fn player_wind_shear_vertical_coverage_m(response: PlayerWindShearResponse) -> f32 {
+    if response.visible {
+        1.35 + response.airflow * 0.82 + response.dive_pressure * 0.28
+    } else {
+        0.0
+    }
+}
+
+pub fn player_wind_shear_frame_motion_m(response: PlayerWindShearResponse) -> f32 {
+    if response.visible {
+        0.035 + response.airflow * 0.20 + response.acceleration_pressure * 0.04
+    } else {
+        0.0
+    }
+}
+
+pub fn player_wind_shear_flow_alignment(response: PlayerWindShearResponse) -> f32 {
+    if response.visible {
+        (0.78 + response.airflow * 0.18 + response.speed_pressure * 0.04
+            - response.lateral_shear.abs() * 0.05)
+            .clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+pub fn player_wind_shear_flow_travel_m(response: PlayerWindShearResponse) -> f32 {
+    if response.visible {
+        0.035 + response.relative_air_speed_mps * 0.0025 + response.airflow * 0.05
+    } else {
+        0.0
+    }
+}
+
+pub fn player_wind_shear_crosswind_deflection_m(response: PlayerWindShearResponse) -> f32 {
+    if response.visible {
+        0.36 + response.lateral_shear.abs() * 1.02 + response.wind_load.abs() * 0.36
+    } else {
+        0.0
+    }
+}
+
+pub fn player_wind_shear_min_body_clearance_m(response: PlayerWindShearResponse) -> f32 {
+    if response.visible {
+        1.24 + response.airflow * 0.18
+    } else {
+        0.0
+    }
+}
+
+pub fn player_wind_shear_field_span_m(response: PlayerWindShearResponse) -> f32 {
+    if response.visible {
+        3.80 + response.airflow * 2.40 + response.dive_pressure * 0.90
+    } else {
+        0.0
+    }
+}
+
+pub fn player_wind_shear_orbit_radius_m(response: PlayerWindShearResponse) -> f32 {
+    if response.visible {
+        1.05 + response.airflow * 0.62 + response.lateral_shear.abs() * 0.34
+    } else {
+        0.0
+    }
+}
+
+pub fn player_wind_shear_pulse_scale(response: PlayerWindShearResponse) -> f32 {
+    if response.visible {
+        1.0 + response.acceleration_pressure * 0.08 + response.gust_pulse * response.airflow * 0.08
+    } else {
+        0.0
+    }
+}
+
+fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }
 
 pub fn wind_lateral_load_from_delta(wind_delta: Vec3, player_rotation: Quat) -> f32 {
@@ -2026,7 +2159,7 @@ mod tests {
             Vec3::new(0.0, -24.0, -58.0),
             Some(Vec3::new(0.0, -18.0, -48.0)),
             Quat::IDENTITY,
-            0.0,
+            Vec3::ZERO,
             0.0,
             1.0 / 60.0,
             1.0,
@@ -2036,7 +2169,7 @@ mod tests {
             Vec3::new(0.0, 0.0, -58.0),
             None,
             Quat::IDENTITY,
-            0.0,
+            Vec3::ZERO,
             0.0,
             1.0 / 60.0,
             1.0,
@@ -2045,8 +2178,56 @@ mod tests {
         assert!(fast_dive.visible);
         assert!(fast_dive.speed_pressure > 0.6);
         assert!(fast_dive.dive_pressure > 0.5);
+        assert!(fast_dive.relative_air_local.z > 55.0);
         assert!(!slow_ground.visible);
         assert_eq!(slow_ground.airflow, 0.0);
+    }
+
+    #[test]
+    fn player_wind_shear_response_suppresses_low_speed_jump_acceleration() {
+        let response = player_wind_shear_response(
+            FlightMode::Airborne,
+            Vec3::new(0.0, 8.0, 0.0),
+            Some(Vec3::new(0.0, 0.0, 0.0)),
+            Quat::IDENTITY,
+            Vec3::ZERO,
+            0.0,
+            1.0 / 60.0,
+            1.0,
+        );
+
+        assert!(!response.visible);
+        assert_eq!(response.airflow, 0.0);
+        assert!(response.acceleration_pressure > 0.0);
+    }
+
+    #[test]
+    fn player_wind_shear_response_suppresses_low_speed_falling() {
+        let slow_fall = player_wind_shear_response(
+            FlightMode::Airborne,
+            Vec3::new(0.0, -8.0, 0.0),
+            Some(Vec3::new(0.0, -6.0, 0.0)),
+            Quat::IDENTITY,
+            Vec3::ZERO,
+            0.0,
+            1.0 / 60.0,
+            1.0,
+        );
+        let fast_fall = player_wind_shear_response(
+            FlightMode::Airborne,
+            Vec3::new(0.0, -28.0, 0.0),
+            Some(Vec3::new(0.0, -24.0, 0.0)),
+            Quat::IDENTITY,
+            Vec3::ZERO,
+            0.0,
+            1.0 / 60.0,
+            1.0,
+        );
+
+        assert!(!slow_fall.visible);
+        assert_eq!(slow_fall.airflow, 0.0);
+        assert!(fast_fall.visible);
+        assert!(fast_fall.airflow > PLAYER_WIND_SHEAR_MIN_AIRFLOW);
     }
 
     #[test]
@@ -2056,22 +2237,27 @@ mod tests {
             Vec3::new(9.0, -8.0, -42.0),
             Some(Vec3::new(2.0, -8.0, -38.0)),
             Quat::IDENTITY,
-            0.5,
-            0.08,
+            Vec3::new(12.0, 0.0, 0.0),
+            0.8,
             1.0 / 60.0,
             2.0,
         );
         let estimate = player_wind_shear_visual_estimate(response);
 
         assert!(response.acceleration_pressure > 0.5);
+        assert!(estimate.max_dive_pressure > 0.15);
         assert!(response.lateral_shear > 0.7);
-        assert_eq!(
-            estimate.visible_visual_count,
-            PLAYER_WIND_SHEAR_VISUAL_COUNT
-        );
+        assert!(estimate.visible_visual_count >= 8);
+        assert!(estimate.visible_visual_count <= PLAYER_WIND_SHEAR_VISIBLE_ESTIMATE_COUNT);
         assert!(estimate.max_length_scale > 1.0);
         assert!(estimate.max_lateral_offset_m > 0.15);
         assert!(estimate.max_depth_offset_m > 0.4);
+        assert!(estimate.max_relative_air_speed_mps > 40.0);
+        assert!(estimate.max_flow_alignment > 0.70);
+        assert!(estimate.max_flow_travel_m > 0.02);
+        assert!(estimate.max_crosswind_deflection_m > 0.35);
+        assert!(estimate.min_body_clearance_m > 1.15);
+        assert!(estimate.max_field_span_m > 4.2);
     }
 
     #[test]

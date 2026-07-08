@@ -10,7 +10,7 @@ use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
 use bevy::light::VolumetricFog;
 use bevy::prelude::*;
 use bevy::render::render_resource::BlendState;
-use nau_engine::animation::{PlayerWindShearResponse, Side, player_wind_shear_response};
+use nau_engine::animation::{PlayerWindShearResponse, player_wind_shear_response};
 #[cfg(test)]
 use nau_engine::environment::wind_gust_front_progress;
 use nau_engine::environment::{
@@ -32,6 +32,11 @@ pub(crate) const WIND_VISUAL_ALIGNMENT_MIN_DOT: f32 = 0.55;
 const WIND_FIELD_METRIC_EPSILON: f32 = 0.001;
 const WIND_VISUAL_LOOP_FADE_FRACTION: f32 = 0.24;
 const WIND_VISUAL_QUALITY_MIN_SCALE: f32 = 0.5;
+const PLAYER_AIRFLOW_RENDER_ALPHA_THRESHOLD: f32 = 0.006;
+const PLAYER_AIRFLOW_METRIC_ALPHA_THRESHOLD: f32 = 0.04;
+const PLAYER_AIRFLOW_LENGTH_FADE_FULL_ALPHA: f32 = 0.24;
+const PLAYER_AIRFLOW_PROMINENT_SPEED_START_MPS: f32 = 42.0;
+const PLAYER_AIRFLOW_PROMINENT_SPEED_FULL_MPS: f32 = 68.0;
 
 pub(crate) fn updraft_guide_ring_radius(field_radius: f32) -> f32 {
     (field_radius * 0.5).min(10.0)
@@ -107,38 +112,117 @@ pub(crate) struct WindResponsiveVisual {
 }
 
 #[derive(Component, Clone, Copy, Debug)]
-pub(crate) struct GliderAirflowTrail {
-    pub(crate) kind: PlayerWindShearVisualKind,
-    pub(crate) side: Side,
-    pub(crate) base_translation: Vec3,
-    pub(crate) base_rotation: Quat,
+pub(crate) struct PlayerAirflowVisual {
+    pub(crate) kind: PlayerAirflowVisualKind,
+    pub(crate) lane_index: usize,
+    pub(crate) lane_count: usize,
+    pub(crate) base_angle: f32,
+    pub(crate) base_height: f32,
+    pub(crate) base_radius: f32,
+    pub(crate) seed: f32,
     previous_velocity: Vec3,
     previous_velocity_initialized: bool,
+    previous_translation: Vec3,
+    previous_translation_initialized: bool,
+    previous_visual_alpha: f32,
+    flow_phase: f32,
+    flow_phase_initialized: bool,
+    smoothed_flow_dir: Vec3,
+    smoothed_airflow: f32,
+    smoothed_dive_pressure: f32,
+    smoothed_acceleration_pressure: f32,
+    smoothed_relative_air_speed_mps: f32,
+    smoothed_gust_pulse: f32,
+    smoothed_lateral_shear: f32,
+    smoothed_visibility_alpha: f32,
+    flow_smoothing_initialized: bool,
+    pub(crate) last_frame_motion_m: f32,
+    pub(crate) last_orbit_radius_m: f32,
+    pub(crate) last_pulse_scale: f32,
+    pub(crate) last_dive_pressure: f32,
+    pub(crate) last_relative_air_speed_mps: f32,
+    pub(crate) last_flow_alignment: f32,
+    pub(crate) last_flow_travel_m: f32,
+    pub(crate) last_crosswind_deflection_m: f32,
+    pub(crate) last_body_clearance_m: f32,
+    pub(crate) last_field_span_m: f32,
+    pub(crate) last_lifecycle_alpha: f32,
+    last_activation_alpha: f32,
+    last_visual_alpha: f32,
 }
 
-impl GliderAirflowTrail {
+impl PlayerAirflowVisual {
     pub(crate) fn new(
-        kind: PlayerWindShearVisualKind,
-        side: Side,
-        base_translation: Vec3,
-        base_rotation: Quat,
+        kind: PlayerAirflowVisualKind,
+        lane_index: usize,
+        lane_count: usize,
+        base_angle: f32,
+        base_height: f32,
+        base_radius: f32,
+        seed: f32,
     ) -> Self {
         Self {
             kind,
-            side,
-            base_translation,
-            base_rotation,
+            lane_index,
+            lane_count,
+            base_angle,
+            base_height,
+            base_radius,
+            seed,
             previous_velocity: Vec3::ZERO,
             previous_velocity_initialized: false,
+            previous_translation: Vec3::ZERO,
+            previous_translation_initialized: false,
+            previous_visual_alpha: 0.0,
+            flow_phase: 0.0,
+            flow_phase_initialized: false,
+            smoothed_flow_dir: Vec3::Z,
+            smoothed_airflow: 0.0,
+            smoothed_dive_pressure: 0.0,
+            smoothed_acceleration_pressure: 0.0,
+            smoothed_relative_air_speed_mps: 0.0,
+            smoothed_gust_pulse: 0.0,
+            smoothed_lateral_shear: 0.0,
+            smoothed_visibility_alpha: 0.0,
+            flow_smoothing_initialized: false,
+            last_frame_motion_m: 0.0,
+            last_orbit_radius_m: 0.0,
+            last_pulse_scale: 1.0,
+            last_dive_pressure: 0.0,
+            last_relative_air_speed_mps: 0.0,
+            last_flow_alignment: 0.0,
+            last_flow_travel_m: 0.0,
+            last_crosswind_deflection_m: 0.0,
+            last_body_clearance_m: 0.0,
+            last_field_span_m: 0.0,
+            last_lifecycle_alpha: 0.0,
+            last_activation_alpha: 0.0,
+            last_visual_alpha: 0.0,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PlayerWindShearVisualKind {
-    Wingtip,
-    Shoulder,
-    Slipstream,
+pub(crate) enum PlayerAirflowVisualKind {
+    FrontPressure,
+    BodyWrap,
+    SideShear,
+    ShoulderVortex,
+    WingtipVortex,
+    WakeTurbulence,
+}
+
+impl PlayerAirflowVisualKind {
+    fn metric_bit(self) -> u32 {
+        1 << match self {
+            Self::FrontPressure => 0,
+            Self::BodyWrap => 1,
+            Self::SideShear => 2,
+            Self::ShoulderVortex => 3,
+            Self::WingtipVortex => 4,
+            Self::WakeTurbulence => 5,
+        }
+    }
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -963,110 +1047,492 @@ fn transform_local_point(transform: &Transform, local_position: Vec3) -> Vec3 {
     transform.translation + transform.rotation * (local_position * transform.scale)
 }
 
-pub(crate) fn update_glider_airflow_trails(
+pub(crate) fn player_airflow_scene_sample_positions(
+    visual: &PlayerAirflowVisual,
+    transform: &Transform,
+) -> [Vec3; 3] {
+    let twist = (visual.seed * std::f32::consts::TAU).sin() * 0.08;
+    [
+        transform_local_point(transform, Vec3::new(-0.32, twist, -0.34)),
+        transform_local_point(transform, Vec3::ZERO),
+        transform_local_point(transform, Vec3::new(0.32, -twist, 0.34)),
+    ]
+}
+
+pub(crate) fn update_player_airflow_visuals(
     time: Res<Time>,
+    eval_run: Option<Res<EvalRun>>,
     wind: Res<crate::WindForceDiagnostics>,
     player: Query<(&Transform, &Velocity, &FlightController), With<Player>>,
-    mut trails: Query<(&mut GliderAirflowTrail, &mut Transform, &mut Visibility), Without<Player>>,
+    mut visuals: Query<
+        (&mut PlayerAirflowVisual, &mut Transform, &mut Visibility),
+        Without<Player>,
+    >,
 ) {
     let Ok((player_transform, velocity, controller)) = player.single() else {
         return;
     };
 
     let dt = time.delta_secs();
-    let elapsed = time.elapsed_secs();
+    let elapsed = wind_visual_elapsed_secs(&time, eval_run.as_deref());
 
-    for (mut trail, mut transform, mut visibility) in &mut trails {
-        let previous_velocity = trail
+    for (mut visual, mut transform, mut visibility) in &mut visuals {
+        let previous_velocity = visual
             .previous_velocity_initialized
-            .then_some(trail.previous_velocity);
+            .then_some(visual.previous_velocity);
         let response = player_wind_shear_response(
             controller.mode,
             velocity.0,
             previous_velocity,
             player_transform.rotation,
+            wind.applied_delta,
             wind.wind_lateral_load,
-            wind.applied_delta_mps,
             dt,
             elapsed,
         );
-        trail.previous_velocity = velocity.0;
-        trail.previous_velocity_initialized = true;
+        visual.previous_velocity = velocity.0;
+        visual.previous_velocity_initialized = true;
 
-        *visibility = if response.visible {
+        apply_player_airflow_transform(&mut visual, response, dt, elapsed, &mut transform);
+        *visibility = if player_airflow_should_render(&visual) {
             Visibility::Visible
         } else {
             Visibility::Hidden
         };
-
-        apply_player_wind_shear_transform(&trail, response, &mut transform);
     }
 }
 
-fn apply_player_wind_shear_transform(
-    trail: &GliderAirflowTrail,
+fn apply_player_airflow_transform(
+    visual: &mut PlayerAirflowVisual,
     response: PlayerWindShearResponse,
+    dt: f32,
+    elapsed: f32,
     transform: &mut Transform,
 ) {
-    let sign = trail.side.sign();
-    let shear = response.lateral_shear;
-    let pulse = (response.gust_pulse - 0.5) * response.airflow;
-    let wind_load = response.wind_load;
+    let dt = if dt.is_finite() {
+        dt.clamp(0.0, 1.0 / 30.0)
+    } else {
+        0.0
+    };
+    let lane_fraction = (visual.lane_index as f32 + 0.5) / visual.lane_count.max(1) as f32;
+    let target_flow_dir = player_airflow_direction(response.relative_air_local);
+    let flow_smoothing = 1.0 - (-dt * 7.0).exp();
+    let pressure_smoothing = 1.0
+        - (-dt
+            * if response.airflow >= visual.smoothed_airflow {
+                8.0
+            } else {
+                14.0
+            })
+        .exp();
+    if visual.flow_smoothing_initialized {
+        visual.smoothed_flow_dir = visual
+            .smoothed_flow_dir
+            .lerp(target_flow_dir, flow_smoothing)
+            .normalize_or_zero();
+        if visual.smoothed_flow_dir.length_squared() <= 0.0001 {
+            visual.smoothed_flow_dir = target_flow_dir;
+        }
+        let target_airflow = if response.visible {
+            response.airflow
+        } else {
+            0.0
+        };
+        visual.smoothed_airflow += (target_airflow - visual.smoothed_airflow) * pressure_smoothing;
+        visual.smoothed_dive_pressure +=
+            (response.dive_pressure - visual.smoothed_dive_pressure) * pressure_smoothing;
+        visual.smoothed_acceleration_pressure += (response.acceleration_pressure
+            - visual.smoothed_acceleration_pressure)
+            * pressure_smoothing;
+        visual.smoothed_relative_air_speed_mps += (response.relative_air_speed_mps
+            - visual.smoothed_relative_air_speed_mps)
+            * pressure_smoothing;
+        visual.smoothed_gust_pulse +=
+            (response.gust_pulse - visual.smoothed_gust_pulse) * pressure_smoothing;
+        visual.smoothed_lateral_shear +=
+            (response.lateral_shear - visual.smoothed_lateral_shear) * pressure_smoothing;
+    } else {
+        visual.smoothed_flow_dir = target_flow_dir;
+        visual.smoothed_airflow = if response.visible {
+            response.airflow
+        } else {
+            0.0
+        };
+        visual.smoothed_dive_pressure = response.dive_pressure;
+        visual.smoothed_acceleration_pressure = response.acceleration_pressure;
+        visual.smoothed_relative_air_speed_mps = response.relative_air_speed_mps;
+        visual.smoothed_gust_pulse = response.gust_pulse;
+        visual.smoothed_lateral_shear = response.lateral_shear;
+        visual.flow_smoothing_initialized = true;
+    }
 
-    match trail.kind {
-        PlayerWindShearVisualKind::Wingtip => {
-            transform.translation = trail.base_translation
-                + Vec3::new(
-                    sign * (response.airflow * 0.10 + shear * 0.08),
-                    pulse * 0.06 - response.dive_pressure * 0.05,
-                    response.airflow * 0.62 + response.acceleration_pressure * 0.18,
-                );
-            transform.rotation = trail.base_rotation
-                * Quat::from_rotation_y(sign * (response.airflow * 0.18 + shear * 0.12))
-                * Quat::from_rotation_x(
-                    -response.airflow * 0.10 - response.dive_pressure * 0.18 + pulse * 0.04,
-                )
-                * Quat::from_rotation_z(sign * wind_load * 0.08);
-            transform.scale = Vec3::new(
-                0.24 + response.airflow * 0.52 + response.acceleration_pressure * 0.14,
-                1.0,
-                0.10 + response.airflow * 2.7 + response.dive_pressure * 0.75,
-            );
+    let flow_dir = visual.smoothed_flow_dir;
+    let lateral_axis = player_airflow_lateral_axis(flow_dir);
+    let vertical_axis = flow_dir.cross(lateral_axis).normalize_or_zero();
+    let airflow = visual.smoothed_airflow;
+    let dive_pressure = visual.smoothed_dive_pressure;
+    let acceleration_pressure = visual.smoothed_acceleration_pressure;
+    let relative_air_speed_mps = visual.smoothed_relative_air_speed_mps;
+    let gust_pulse = visual.smoothed_gust_pulse;
+    let shear = visual.smoothed_lateral_shear;
+    let track_span = 3.8 + airflow * 2.4 + dive_pressure * 0.9 + relative_air_speed_mps * 0.006;
+    let upstream_m = 1.55 + airflow * 1.15 + dive_pressure * 0.35;
+    let flow_rate =
+        0.18 + relative_air_speed_mps * 0.016 + airflow * 0.24 + acceleration_pressure * 0.025;
+    let flow_phase_step = if visual.flow_phase_initialized {
+        flow_rate * dt.max(0.0)
+    } else {
+        0.0
+    };
+    if !visual.flow_phase_initialized {
+        visual.flow_phase =
+            (visual.seed + lane_fraction * 0.19 + visual.lane_index as f32 * 0.011).fract();
+        visual.flow_phase_initialized = true;
+    } else {
+        visual.flow_phase = (visual.flow_phase + flow_phase_step).fract();
+    }
+    let advect_t = visual.flow_phase;
+    let lifecycle_alpha = player_airflow_lifecycle_alpha(advect_t);
+    let activation_alpha = player_airflow_activation_alpha(visual, airflow, shear);
+    let target_visibility_alpha = if response.visible {
+        activation_alpha
+    } else {
+        0.0
+    };
+    let visibility_smoothing = 1.0
+        - (-dt
+            * if target_visibility_alpha >= visual.smoothed_visibility_alpha {
+                12.0
+            } else {
+                9.0
+            })
+        .exp();
+    visual.smoothed_visibility_alpha +=
+        (target_visibility_alpha - visual.smoothed_visibility_alpha) * visibility_smoothing;
+    let visual_alpha = lifecycle_alpha * visual.smoothed_visibility_alpha;
+    let high_speed_prominence = smoothstep(
+        PLAYER_AIRFLOW_PROMINENT_SPEED_START_MPS,
+        PLAYER_AIRFLOW_PROMINENT_SPEED_FULL_MPS,
+        relative_air_speed_mps,
+    );
+    let curl_phase = (advect_t * 1.6 + visual.seed + visual.flow_phase * (0.18 + airflow * 0.22))
+        * std::f32::consts::TAU;
+    let gust_wave = (curl_phase + gust_pulse * std::f32::consts::TAU).sin();
+    let pulse_scale = 1.0
+        + acceleration_pressure * 0.035
+        + gust_pulse * airflow * 0.035
+        + gust_wave.abs() * airflow * 0.03;
+    let shear_shift = lateral_axis * shear * (0.24 + airflow * 0.42);
+    let ring_angle = visual.base_angle
+        + shear * 0.22
+        + (visual.seed * 31.7 + elapsed * 0.28).sin() * airflow * 0.08;
+    let body_center = Vec3::Y * 1.08;
+
+    let point_on_flow =
+        |t: f32| body_center + flow_dir * (-upstream_m + track_span * t.clamp(0.0, 1.0));
+    let ring_offset = |angle: f32, radius: f32, vertical_radius: f32| {
+        lateral_axis * angle.cos() * radius + vertical_axis * angle.sin() * vertical_radius
+    };
+
+    let (translation, direction, width, length, roll) = match visual.kind {
+        PlayerAirflowVisualKind::FrontPressure => {
+            let t = advect_t * 0.24;
+            let radius = visual.base_radius + lane_fraction * 0.22 + dive_pressure * 0.12;
+            let offset = ring_offset(ring_angle, radius, radius * 0.68);
+            let compression = -flow_dir * (0.18 + dive_pressure * 0.24);
+            let direction = flow_dir
+                + offset.normalize_or_zero() * (0.08 + airflow * 0.08)
+                + shear_shift * 0.20;
+            (
+                point_on_flow(t) + offset + compression + shear_shift * 0.55,
+                direction,
+                0.09 + airflow * 0.13,
+                0.52 + airflow * 1.00 + dive_pressure * 0.36,
+                ring_angle.sin() * 0.16 - shear * 0.12,
+            )
         }
-        PlayerWindShearVisualKind::Shoulder => {
-            transform.translation = trail.base_translation
-                + Vec3::new(
-                    sign * (response.airflow * 0.04 + shear.abs() * 0.03),
-                    pulse * 0.035,
-                    response.airflow * 0.36 + response.acceleration_pressure * 0.24,
-                );
-            transform.rotation = trail.base_rotation
-                * Quat::from_rotation_y(sign * (0.08 + shear * 0.2) * response.airflow)
-                * Quat::from_rotation_x(-response.dive_pressure * 0.22 - pulse * 0.025)
-                * Quat::from_rotation_z(-sign * shear * 0.16);
-            transform.scale = Vec3::new(
-                0.12 + response.airflow * 0.26,
-                1.0,
-                0.08 + response.airflow * 1.45 + response.acceleration_pressure * 0.55,
-            );
+        PlayerAirflowVisualKind::BodyWrap => {
+            let radius = visual.base_radius * (1.0 + airflow * 0.20) + acceleration_pressure * 0.04;
+            let wrap = ring_offset(ring_angle, radius, radius * 0.72);
+            let tangent = (-lateral_axis * ring_angle.sin() + vertical_axis * ring_angle.cos())
+                .normalize_or_zero();
+            let direction = flow_dir * (0.94 + airflow * 0.16)
+                + tangent * (0.08 + airflow * 0.08)
+                + shear_shift * 0.18;
+            (
+                point_on_flow(advect_t) + wrap + shear_shift,
+                direction,
+                0.07 + airflow * 0.12,
+                0.60 + airflow * 1.25 + dive_pressure * 0.24,
+                gust_wave * 0.18 + shear * 0.12,
+            )
         }
-        PlayerWindShearVisualKind::Slipstream => {
-            transform.translation = trail.base_translation
-                + Vec3::new(
-                    shear * 0.22,
-                    pulse * 0.08 - response.dive_pressure * 0.08,
-                    response.airflow * 0.82 + response.acceleration_pressure * 0.34,
-                );
-            transform.rotation = trail.base_rotation
-                * Quat::from_rotation_y(shear * 0.22)
-                * Quat::from_rotation_x(-response.airflow * 0.12 - response.dive_pressure * 0.24)
-                * Quat::from_rotation_z(-wind_load * 0.10);
-            transform.scale = Vec3::new(
-                0.28 + response.airflow * 0.36,
-                1.0,
-                0.18 + response.airflow * 3.2 + response.dive_pressure * 1.1,
-            );
+        PlayerAirflowVisualKind::SideShear => {
+            let side = if visual.base_angle.cos() >= 0.0 {
+                1.0
+            } else {
+                -1.0
+            };
+            let t = player_airflow_track_t(advect_t, 1.0, lane_fraction * 0.15);
+            let side_offset =
+                lateral_axis * side * (visual.base_radius + airflow * 0.34 + shear.abs() * 0.38);
+            let curl = vertical_axis * gust_wave * (0.08 + airflow * 0.06);
+            let direction = flow_dir
+                + lateral_axis * side * (0.08 + shear.abs() * 0.22)
+                + vertical_axis * gust_wave * 0.04;
+            (
+                point_on_flow(t) + side_offset + curl + shear_shift,
+                direction,
+                0.08 + airflow * 0.13,
+                0.62 + airflow * 1.38 + acceleration_pressure * 0.18,
+                side * (0.22 + shear * 0.12) + gust_wave * 0.16,
+            )
         }
+        PlayerAirflowVisualKind::ShoulderVortex => {
+            let side = if visual.base_angle.cos() >= 0.0 {
+                1.0
+            } else {
+                -1.0
+            };
+            let t = player_airflow_track_t(advect_t, 0.78, 0.14);
+            let shoulder = lateral_axis * side * (visual.base_radius + airflow * 0.16)
+                + vertical_axis * (0.18 + lane_fraction * 0.12);
+            let vortex = lateral_axis * curl_phase.cos() * side * (0.06 + airflow * 0.06)
+                + vertical_axis * curl_phase.sin() * (0.07 + airflow * 0.05);
+            let direction = flow_dir
+                + (vortex + lateral_axis * side * 0.10).normalize_or_zero()
+                    * (0.10 + airflow * 0.10);
+            (
+                point_on_flow(t) + shoulder + vortex + shear_shift * 0.65,
+                direction,
+                0.08 + airflow * 0.12,
+                0.54 + airflow * 1.18 + acceleration_pressure * 0.18,
+                side * (curl_phase * 0.25).sin() * 0.42,
+            )
+        }
+        PlayerAirflowVisualKind::WingtipVortex => {
+            let side = if visual.base_angle.cos() >= 0.0 {
+                1.0
+            } else {
+                -1.0
+            };
+            let vortex_radius = 0.10 + airflow * 0.08;
+            let t = player_airflow_track_t(advect_t, 0.82, 0.22);
+            let wingtip = lateral_axis * side * (visual.base_radius + airflow * 0.20)
+                + vertical_axis * (visual.base_height - 1.08) * 0.55;
+            let swirl = lateral_axis * side * curl_phase.cos() * vortex_radius
+                + vertical_axis * curl_phase.sin() * vortex_radius
+                + flow_dir * (curl_phase * 0.65).cos() * 0.06;
+            let direction = flow_dir + swirl.normalize_or_zero() * (0.12 + airflow * 0.10);
+            (
+                point_on_flow(t) + wingtip + swirl + shear_shift * 0.75,
+                direction,
+                0.10 + airflow * 0.14,
+                0.72 + airflow * 1.65 + dive_pressure * 0.42,
+                side * (0.34 + gust_wave * 0.16),
+            )
+        }
+        PlayerAirflowVisualKind::WakeTurbulence => {
+            let t = 0.48 + advect_t * 0.52;
+            let spread = lateral_axis * (lane_fraction - 0.5) * (1.30 + airflow * 0.56);
+            let lift = vertical_axis * ((lane_fraction - 0.5) * 0.36 + visual.base_height - 1.04);
+            let churn = vertical_axis * gust_wave * (0.10 + airflow * 0.12)
+                + lateral_axis * shear * (0.24 + airflow * 0.30);
+            let direction = flow_dir + churn.normalize_or_zero() * (0.12 + airflow * 0.10);
+            (
+                point_on_flow(t) + spread + lift + churn + shear_shift,
+                direction,
+                0.09 + airflow * 0.12,
+                0.78 + airflow * 1.85 + dive_pressure * 0.52,
+                shear * 0.18 + gust_wave * 0.20,
+            )
+        }
+    };
+
+    let target_translation = player_airflow_clear_body_axis(
+        translation,
+        body_center,
+        flow_dir,
+        ring_offset(ring_angle, 1.0, 0.72),
+        1.24 + airflow * 0.18,
+    );
+    let step_limited_translation =
+        player_airflow_limit_visible_step(visual, target_translation, visual_alpha);
+    let cleared_translation = player_airflow_clear_body_axis(
+        step_limited_translation,
+        body_center,
+        flow_dir,
+        ring_offset(ring_angle, 1.0, 0.72),
+        1.24 + airflow * 0.18,
+    );
+    let translation = player_airflow_limit_visible_step(visual, cleared_translation, visual_alpha);
+    transform.translation = translation;
+    transform.rotation = player_airflow_rotation(direction, roll);
+    let width_prominence = 1.0 + high_speed_prominence * 0.46 + dive_pressure * 0.08;
+    let length_prominence = 1.0 + high_speed_prominence * 0.34 + dive_pressure * 0.06;
+    transform.scale = Vec3::new(
+        width * pulse_scale * visual_alpha * width_prominence,
+        1.0,
+        length
+            * pulse_scale
+            * smoothstep(0.0, PLAYER_AIRFLOW_LENGTH_FADE_FULL_ALPHA, visual_alpha)
+            * length_prominence,
+    );
+    visual.last_flow_travel_m = flow_phase_step * track_span;
+    visual.last_frame_motion_m = if visual.previous_translation_initialized {
+        if visual_alpha > PLAYER_AIRFLOW_RENDER_ALPHA_THRESHOLD
+            && visual.previous_visual_alpha > PLAYER_AIRFLOW_RENDER_ALPHA_THRESHOLD
+        {
+            transform.translation.distance(visual.previous_translation)
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+    visual.previous_translation = transform.translation;
+    visual.previous_translation_initialized = true;
+    visual.previous_visual_alpha = visual_alpha;
+    visual.last_orbit_radius_m =
+        Vec2::new(transform.translation.x, transform.translation.z).length();
+    visual.last_pulse_scale = pulse_scale;
+    visual.last_dive_pressure = response.dive_pressure;
+    visual.last_relative_air_speed_mps = response.relative_air_speed_mps;
+    visual.last_flow_alignment = direction.normalize_or_zero().dot(flow_dir).clamp(-1.0, 1.0);
+    visual.last_crosswind_deflection_m = transform.translation.dot(lateral_axis).abs();
+    let body_offset = transform.translation - body_center;
+    let along_flow = flow_dir * body_offset.dot(flow_dir);
+    visual.last_body_clearance_m = (body_offset - along_flow).length();
+    visual.last_field_span_m = track_span;
+    visual.last_lifecycle_alpha = lifecycle_alpha;
+    visual.last_activation_alpha = activation_alpha;
+    visual.last_visual_alpha = visual_alpha;
+}
+
+fn player_airflow_should_render(visual: &PlayerAirflowVisual) -> bool {
+    visual.last_visual_alpha > PLAYER_AIRFLOW_RENDER_ALPHA_THRESHOLD
+}
+
+fn player_airflow_activation_alpha(
+    visual: &PlayerAirflowVisual,
+    airflow: f32,
+    lateral_shear: f32,
+) -> f32 {
+    let lane_rank = if visual.lane_count > 1 {
+        visual.lane_index as f32 / (visual.lane_count - 1) as f32
+    } else {
+        0.0
+    };
+    let shear_bonus = lateral_shear.abs().min(1.0) * 0.04;
+    let threshold = match visual.kind {
+        PlayerAirflowVisualKind::BodyWrap => 0.07 + lane_rank * 0.13,
+        PlayerAirflowVisualKind::FrontPressure => 0.10 + lane_rank * 0.12,
+        PlayerAirflowVisualKind::WakeTurbulence => 0.16 + lane_rank * 0.26,
+        PlayerAirflowVisualKind::SideShear => 0.20 + lane_rank * 0.05 - shear_bonus,
+        PlayerAirflowVisualKind::ShoulderVortex => 0.25 + lane_rank * 0.05 - shear_bonus * 0.5,
+        PlayerAirflowVisualKind::WingtipVortex => 0.34 + lane_rank * 0.24,
+    };
+
+    smoothstep(threshold, threshold + 0.11, airflow)
+}
+
+fn player_airflow_lifecycle_alpha(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    smoothstep(0.06, 0.22, t) * (1.0 - smoothstep(0.78, 0.96, t))
+}
+
+fn player_airflow_track_t(advect_t: f32, scale: f32, offset: f32) -> f32 {
+    (advect_t * scale + offset).clamp(0.0, 1.0)
+}
+
+fn player_airflow_clear_body_axis(
+    translation: Vec3,
+    body_center: Vec3,
+    flow_dir: Vec3,
+    fallback_radial: Vec3,
+    min_clearance_m: f32,
+) -> Vec3 {
+    let body_offset = translation - body_center;
+    let along_flow = flow_dir * body_offset.dot(flow_dir);
+    let radial = body_offset - along_flow;
+    let clearance = radial.length();
+    if clearance >= min_clearance_m {
+        return translation;
+    }
+
+    let radial_dir = if clearance > 0.001 {
+        radial / clearance
+    } else {
+        fallback_radial.normalize_or_zero()
+    };
+    let radial_dir = if radial_dir.length_squared() > 0.0001 {
+        radial_dir
+    } else {
+        Vec3::X
+    };
+    body_center + along_flow + radial_dir * min_clearance_m
+}
+
+fn player_airflow_limit_visible_step(
+    visual: &PlayerAirflowVisual,
+    target_translation: Vec3,
+    visual_alpha: f32,
+) -> Vec3 {
+    if !visual.previous_translation_initialized
+        || visual_alpha <= PLAYER_AIRFLOW_RENDER_ALPHA_THRESHOLD
+        || visual.previous_visual_alpha <= PLAYER_AIRFLOW_RENDER_ALPHA_THRESHOLD
+    {
+        return target_translation;
+    }
+
+    let delta = target_translation - visual.previous_translation;
+    let distance = delta.length();
+    let max_step_m = player_airflow_max_visible_step_m(visual_alpha);
+    if distance <= max_step_m {
+        target_translation
+    } else {
+        visual.previous_translation + delta / distance * max_step_m
+    }
+}
+
+fn player_airflow_max_visible_step_m(visual_alpha: f32) -> f32 {
+    let fade_weight = smoothstep(
+        PLAYER_AIRFLOW_RENDER_ALPHA_THRESHOLD,
+        PLAYER_AIRFLOW_LENGTH_FADE_FULL_ALPHA,
+        visual_alpha,
+    );
+    0.025 + fade_weight * 0.215
+}
+
+fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+fn player_airflow_direction(relative_air_local: Vec3) -> Vec3 {
+    let direction = relative_air_local.normalize_or_zero();
+    if direction.length_squared() > 0.0001 {
+        direction
+    } else {
+        Vec3::Z
+    }
+}
+
+fn player_airflow_lateral_axis(flow_dir: Vec3) -> Vec3 {
+    let horizontal = Vec3::Y.cross(flow_dir).normalize_or_zero();
+    if horizontal.length_squared() > 0.0001 {
+        horizontal
+    } else {
+        Vec3::X
+    }
+}
+
+fn player_airflow_rotation(direction: Vec3, roll: f32) -> Quat {
+    let normalized_direction = direction.normalize_or_zero();
+    if normalized_direction.length_squared() <= 0.0001 {
+        Quat::from_rotation_z(roll)
+    } else {
+        Quat::from_rotation_arc(Vec3::Z, normalized_direction) * Quat::from_rotation_z(roll)
     }
 }
 
@@ -1077,25 +1543,104 @@ pub(crate) struct PlayerWindShearVisualMetrics {
     pub(crate) max_length_scale: f32,
     pub(crate) max_lateral_offset_m: f32,
     pub(crate) max_depth_offset_m: f32,
+    pub(crate) max_angular_coverage_degrees: f32,
+    pub(crate) max_vertical_coverage_m: f32,
+    pub(crate) max_frame_motion_m: f32,
+    pub(crate) max_orbit_radius_m: f32,
+    pub(crate) max_pulse_scale: f32,
+    pub(crate) max_dive_pressure: f32,
+    pub(crate) max_relative_air_speed_mps: f32,
+    pub(crate) max_flow_alignment: f32,
+    pub(crate) max_flow_travel_m: f32,
+    pub(crate) max_crosswind_deflection_m: f32,
+    pub(crate) min_body_clearance_m: f32,
+    pub(crate) max_field_span_m: f32,
+    pub(crate) visible_kind_count: usize,
 }
 
 pub(crate) fn player_wind_shear_visual_metrics<'a>(
-    visuals: impl Iterator<Item = (&'a GliderAirflowTrail, &'a Transform, &'a Visibility)>,
+    visuals: impl Iterator<Item = (&'a PlayerAirflowVisual, &'a Transform, &'a Visibility)>,
 ) -> PlayerWindShearVisualMetrics {
-    visuals.fold(
-        PlayerWindShearVisualMetrics::default(),
-        |mut metrics, (visual, transform, visibility)| {
-            metrics.visual_count += 1;
-            if matches!(*visibility, Visibility::Visible) {
-                let offset = transform.translation - visual.base_translation;
-                metrics.visible_visual_count += 1;
-                metrics.max_length_scale = metrics.max_length_scale.max(transform.scale.z);
-                metrics.max_lateral_offset_m = metrics.max_lateral_offset_m.max(offset.x.abs());
-                metrics.max_depth_offset_m = metrics.max_depth_offset_m.max(offset.z.abs());
-            }
-            metrics
-        },
-    )
+    let mut metrics = PlayerWindShearVisualMetrics::default();
+    let mut angular_positions = Vec::new();
+    let mut vertical_span = VisualSpan::default();
+    let mut kind_mask = 0_u32;
+    let mut min_body_clearance_m = f32::INFINITY;
+
+    for (visual, transform, visibility) in visuals {
+        metrics.visual_count += 1;
+        if !matches!(*visibility, Visibility::Visible) {
+            continue;
+        }
+
+        if visual.last_visual_alpha > PLAYER_AIRFLOW_RENDER_ALPHA_THRESHOLD {
+            metrics.max_frame_motion_m = metrics.max_frame_motion_m.max(visual.last_frame_motion_m);
+        }
+
+        if visual.last_visual_alpha <= PLAYER_AIRFLOW_METRIC_ALPHA_THRESHOLD {
+            continue;
+        }
+
+        metrics.visible_visual_count += 1;
+        metrics.max_length_scale = metrics.max_length_scale.max(transform.scale.z);
+        metrics.max_lateral_offset_m = metrics
+            .max_lateral_offset_m
+            .max(transform.translation.x.abs());
+        metrics.max_depth_offset_m = metrics
+            .max_depth_offset_m
+            .max(transform.translation.z.abs());
+        metrics.max_orbit_radius_m = metrics.max_orbit_radius_m.max(visual.last_orbit_radius_m);
+        metrics.max_pulse_scale = metrics.max_pulse_scale.max(visual.last_pulse_scale);
+        metrics.max_dive_pressure = metrics.max_dive_pressure.max(visual.last_dive_pressure);
+        metrics.max_relative_air_speed_mps = metrics
+            .max_relative_air_speed_mps
+            .max(visual.last_relative_air_speed_mps);
+        metrics.max_flow_alignment = metrics.max_flow_alignment.max(visual.last_flow_alignment);
+        metrics.max_flow_travel_m = metrics.max_flow_travel_m.max(visual.last_flow_travel_m);
+        metrics.max_crosswind_deflection_m = metrics
+            .max_crosswind_deflection_m
+            .max(visual.last_crosswind_deflection_m);
+        min_body_clearance_m = min_body_clearance_m.min(visual.last_body_clearance_m);
+        metrics.max_field_span_m = metrics.max_field_span_m.max(visual.last_field_span_m);
+        vertical_span.observe(transform.translation.y);
+        kind_mask |= visual.kind.metric_bit();
+
+        let horizontal = Vec2::new(transform.translation.x, transform.translation.z);
+        if horizontal.length_squared() > 0.0001 {
+            angular_positions.push(
+                horizontal
+                    .y
+                    .atan2(horizontal.x)
+                    .rem_euclid(std::f32::consts::TAU),
+            );
+        }
+    }
+
+    metrics.max_angular_coverage_degrees =
+        angular_coverage_degrees(&mut angular_positions).to_degrees();
+    metrics.max_vertical_coverage_m = vertical_span.span();
+    metrics.min_body_clearance_m = if metrics.visible_visual_count > 0 {
+        min_body_clearance_m
+    } else {
+        0.0
+    };
+    metrics.visible_kind_count = kind_mask.count_ones() as usize;
+    metrics
+}
+
+fn angular_coverage_degrees(angles: &mut [f32]) -> f32 {
+    if angles.len() < 2 {
+        return 0.0;
+    }
+
+    angles.sort_by(f32::total_cmp);
+    let mut largest_gap = 0.0_f32;
+    for pair in angles.windows(2) {
+        largest_gap = largest_gap.max(pair[1] - pair[0]);
+    }
+    let wrap_gap = angles[0] + std::f32::consts::TAU - angles[angles.len() - 1];
+    largest_gap = largest_gap.max(wrap_gap);
+    std::f32::consts::TAU - largest_gap
 }
 
 pub(crate) fn wind_responsive_visual_metrics<'a>(
@@ -2114,6 +2659,301 @@ mod tests {
         let elapsed = eval_wind_visual_elapsed_secs(99.0, Some((24, 1.0 / 60.0)));
         assert!((elapsed - 0.4).abs() < 0.0001);
         assert_eq!(eval_wind_visual_elapsed_secs(2.5, None), 2.5);
+    }
+
+    fn test_player_airflow_visual(kind: PlayerAirflowVisualKind) -> PlayerAirflowVisual {
+        PlayerAirflowVisual::new(kind, 0, 3, 0.0, 1.0, 1.2, 0.37)
+    }
+
+    fn test_player_wind_shear_response(airflow: f32, speed: f32) -> PlayerWindShearResponse {
+        PlayerWindShearResponse {
+            visible: airflow >= nau_engine::animation::PLAYER_WIND_SHEAR_MIN_AIRFLOW,
+            airflow,
+            relative_air_local: Vec3::Z * speed,
+            relative_air_speed_mps: speed,
+            speed_pressure: (speed / 64.0).clamp(0.0, 1.0),
+            dive_pressure: 0.2,
+            acceleration_pressure: 0.0,
+            lateral_shear: 0.0,
+            wind_load: 0.0,
+            gust_pulse: 0.5,
+        }
+    }
+
+    #[test]
+    fn player_airflow_activation_keeps_weak_flow_sparse() {
+        let body_wrap = test_player_airflow_visual(PlayerAirflowVisualKind::BodyWrap);
+        let wingtip = test_player_airflow_visual(PlayerAirflowVisualKind::WingtipVortex);
+
+        assert!(player_airflow_activation_alpha(&body_wrap, 0.10, 0.0) > 0.0);
+        assert!(player_airflow_activation_alpha(&body_wrap, 0.10, 0.0) < 0.5);
+        assert_eq!(player_airflow_activation_alpha(&wingtip, 0.10, 0.0), 0.0);
+        assert!(player_airflow_activation_alpha(&wingtip, 0.46, 0.0) > 0.9);
+    }
+
+    #[test]
+    fn player_airflow_phase_integrates_across_speed_changes() {
+        let mut visual = test_player_airflow_visual(PlayerAirflowVisualKind::BodyWrap);
+        let mut transform = Transform::default();
+        let dt = 1.0 / 60.0;
+
+        apply_player_airflow_transform(
+            &mut visual,
+            test_player_wind_shear_response(0.22, 24.0),
+            dt,
+            120.0,
+            &mut transform,
+        );
+        let first_phase = visual.flow_phase;
+
+        apply_player_airflow_transform(
+            &mut visual,
+            test_player_wind_shear_response(0.58, 58.0),
+            dt,
+            120.0 + dt,
+            &mut transform,
+        );
+        let advanced = (visual.flow_phase - first_phase).rem_euclid(1.0);
+
+        assert!(
+            advanced > 0.0 && advanced < 0.04,
+            "flow phase should advance continuously instead of being recomputed from elapsed time, advanced={advanced}"
+        );
+        assert!(
+            visual.last_frame_motion_m <= 0.34,
+            "visible airflow streams should not teleport when speed changes, motion={}",
+            visual.last_frame_motion_m
+        );
+    }
+
+    #[test]
+    fn player_airflow_high_speed_prominence_broadens_ribbons() {
+        let mut moderate_visual = test_player_airflow_visual(PlayerAirflowVisualKind::BodyWrap);
+        let mut high_speed_visual = test_player_airflow_visual(PlayerAirflowVisualKind::BodyWrap);
+        let mut moderate_transform = Transform::default();
+        let mut high_speed_transform = Transform::default();
+        let dt = 1.0 / 60.0;
+
+        apply_player_airflow_transform(
+            &mut moderate_visual,
+            test_player_wind_shear_response(0.58, 38.0),
+            dt,
+            8.0,
+            &mut moderate_transform,
+        );
+        apply_player_airflow_transform(
+            &mut high_speed_visual,
+            test_player_wind_shear_response(0.58, 72.0),
+            dt,
+            8.0,
+            &mut high_speed_transform,
+        );
+
+        assert!(
+            high_speed_transform.scale.x > moderate_transform.scale.x * 1.35,
+            "high-speed airflow should read as wider/brighter, moderate={}, high={}",
+            moderate_transform.scale.x,
+            high_speed_transform.scale.x
+        );
+        assert!(
+            high_speed_transform.scale.z > moderate_transform.scale.z * 1.25,
+            "high-speed airflow should read as longer/brighter, moderate={}, high={}",
+            moderate_transform.scale.z,
+            high_speed_transform.scale.z
+        );
+    }
+
+    #[test]
+    fn player_airflow_lane_offsets_do_not_wrap_while_visible() {
+        let lane_fraction = 0.75;
+        let lane_offset = lane_fraction * 0.15;
+        let before_tail = player_airflow_track_t(0.88, 1.0, lane_offset);
+        let after_tail = player_airflow_track_t(0.91, 1.0, lane_offset);
+
+        assert!(
+            before_tail > 0.98,
+            "test setup should put the lane near the back of the trail, t={before_tail}"
+        );
+        assert!(
+            after_tail >= before_tail,
+            "visible lane offsets should clamp at the back instead of wrapping side-to-side, before={before_tail}, after={after_tail}"
+        );
+        assert_eq!(after_tail, 1.0);
+    }
+
+    #[test]
+    fn player_airflow_response_drop_fades_before_hiding() {
+        let mut visual = test_player_airflow_visual(PlayerAirflowVisualKind::BodyWrap);
+        let mut transform = Transform::default();
+        let dt = 1.0 / 60.0;
+
+        apply_player_airflow_transform(
+            &mut visual,
+            test_player_wind_shear_response(0.58, 58.0),
+            dt,
+            8.0,
+            &mut transform,
+        );
+        let active_alpha = visual.last_visual_alpha;
+
+        apply_player_airflow_transform(
+            &mut visual,
+            test_player_wind_shear_response(0.0, 0.0),
+            dt,
+            8.0 + dt,
+            &mut transform,
+        );
+
+        assert!(
+            visual.last_visual_alpha > PLAYER_AIRFLOW_RENDER_ALPHA_THRESHOLD,
+            "airflow should fade after response drops instead of instantly hiding"
+        );
+        assert!(
+            visual.last_visual_alpha < active_alpha,
+            "airflow fade alpha should move toward hidden when response drops"
+        );
+        assert!(player_airflow_should_render(&visual));
+    }
+
+    #[test]
+    fn player_airflow_fade_collapses_length_before_hiding() {
+        let mut visual = test_player_airflow_visual(PlayerAirflowVisualKind::BodyWrap);
+        let mut transform = Transform::default();
+        let dt = 1.0 / 60.0;
+
+        apply_player_airflow_transform(
+            &mut visual,
+            test_player_wind_shear_response(0.58, 58.0),
+            dt,
+            8.0,
+            &mut transform,
+        );
+        let active_length = transform.scale.z;
+        let mut faded_length = None;
+
+        for frame in 1..=40 {
+            apply_player_airflow_transform(
+                &mut visual,
+                test_player_wind_shear_response(0.0, 0.0),
+                dt,
+                8.0 + dt * frame as f32,
+                &mut transform,
+            );
+            if visual.last_visual_alpha < PLAYER_AIRFLOW_METRIC_ALPHA_THRESHOLD
+                && visual.last_visual_alpha > PLAYER_AIRFLOW_RENDER_ALPHA_THRESHOLD
+            {
+                faded_length = Some(transform.scale.z);
+                break;
+            }
+        }
+
+        let faded_length =
+            faded_length.expect("airflow should pass through a visible fade band before hiding");
+        assert!(player_airflow_should_render(&visual));
+        assert!(
+            faded_length < active_length * 0.25,
+            "fading ribbon length should collapse instead of leaving a vibrating sliver, active={active_length}, faded={faded_length}"
+        );
+    }
+
+    #[test]
+    fn player_airflow_wraps_stream_while_faded_out() {
+        let mut visual = test_player_airflow_visual(PlayerAirflowVisualKind::BodyWrap);
+        let mut transform = Transform::default();
+        apply_player_airflow_transform(
+            &mut visual,
+            test_player_wind_shear_response(0.58, 58.0),
+            1.0 / 60.0,
+            4.0,
+            &mut transform,
+        );
+        visual.flow_phase = 0.985;
+
+        apply_player_airflow_transform(
+            &mut visual,
+            test_player_wind_shear_response(0.58, 58.0),
+            1.0 / 30.0,
+            4.0 + 1.0 / 30.0,
+            &mut transform,
+        );
+
+        assert!(
+            visual.flow_phase < 0.08,
+            "test setup should wrap the stream phase, phase={}",
+            visual.flow_phase
+        );
+        assert_eq!(
+            visual.last_frame_motion_m, 0.0,
+            "front/back stream reset should be excluded from visible motion while faded"
+        );
+        assert!(
+            visual.last_visual_alpha < PLAYER_AIRFLOW_RENDER_ALPHA_THRESHOLD,
+            "stream should be visually gone while wrapping, alpha={}",
+            visual.last_visual_alpha
+        );
+    }
+
+    #[test]
+    fn player_airflow_limits_rendered_fade_tail_motion() {
+        let mut visual = test_player_airflow_visual(PlayerAirflowVisualKind::BodyWrap);
+        let visual_alpha = PLAYER_AIRFLOW_RENDER_ALPHA_THRESHOLD * 2.0;
+        visual.previous_translation = Vec3::ZERO;
+        visual.previous_translation_initialized = true;
+        visual.previous_visual_alpha = visual_alpha;
+
+        let limited =
+            player_airflow_limit_visible_step(&visual, Vec3::new(8.0, 0.0, 0.0), visual_alpha);
+        let max_fade_step_m = player_airflow_max_visible_step_m(visual_alpha);
+
+        assert!(
+            limited.length() <= max_fade_step_m + 0.0001,
+            "rendered fade tails should still be motion-limited, limited={limited:?}"
+        );
+        assert!(max_fade_step_m < 0.04);
+    }
+
+    #[test]
+    fn player_wind_shear_metrics_track_rendered_fade_motion_without_counting_visible() {
+        let mut visual = test_player_airflow_visual(PlayerAirflowVisualKind::BodyWrap);
+        visual.last_visual_alpha = PLAYER_AIRFLOW_METRIC_ALPHA_THRESHOLD * 0.5;
+        visual.last_frame_motion_m = 2.0;
+        let mut transform = Transform::from_translation(Vec3::new(2.0, 1.0, 0.0));
+        transform.scale = Vec3::ONE;
+        let visibility = Visibility::Visible;
+
+        let metrics =
+            player_wind_shear_visual_metrics(std::iter::once((&visual, &transform, &visibility)));
+
+        assert_eq!(metrics.visual_count, 1);
+        assert_eq!(metrics.visible_visual_count, 0);
+        assert_eq!(metrics.max_frame_motion_m, 2.0);
+    }
+
+    #[test]
+    fn player_airflow_phase_caps_hitch_sized_frame_steps() {
+        let mut visual = test_player_airflow_visual(PlayerAirflowVisualKind::BodyWrap);
+        let mut transform = Transform::default();
+        apply_player_airflow_transform(
+            &mut visual,
+            test_player_wind_shear_response(0.58, 58.0),
+            1.0 / 60.0,
+            10.0,
+            &mut transform,
+        );
+
+        apply_player_airflow_transform(
+            &mut visual,
+            test_player_wind_shear_response(0.58, 58.0),
+            0.25,
+            10.25,
+            &mut transform,
+        );
+
+        assert!(
+            visual.last_flow_travel_m < 0.35,
+            "airflow should not jump by a screenshot or render hitch sized dt, travel={}",
+            visual.last_flow_travel_m
+        );
     }
 
     fn test_updraft_guide() -> UpdraftGuide {

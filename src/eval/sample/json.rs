@@ -214,7 +214,7 @@ impl EvalSample {
         );
         let wind_force_key = "\"active_lift_fields\"";
         let wind_force_metrics = format!(
-            "\"active_wind_force_fields\":{},\"crosswind_force_fields\":{},\"updraft_swirl_force_fields\":{},\"max_wind_force_delta_mps\":{},\"max_crosswind_force_delta_mps\":{},\"crosswind_force_delta\":{},\"max_updraft_swirl_force_delta_mps\":{},\"max_wind_force_flow_speed_mps\":{},\"max_wind_force_variation\":{},\"max_wind_force_flow_alignment\":{},\"max_crosswind_force_flow_alignment\":{},\"max_updraft_swirl_force_flow_alignment\":{},\"max_wind_force_aligned_delta_mps\":{},\"max_crosswind_force_aligned_delta_mps\":{},\"max_updraft_swirl_force_aligned_delta_mps\":{},\"wind_lateral_load\":{},\"player_wind_shear_visual_count\":{},\"visible_player_wind_shear_visual_count\":{},\"max_player_wind_shear_length_scale\":{},\"max_player_wind_shear_lateral_offset_m\":{},\"max_player_wind_shear_depth_offset_m\":{},{}",
+            "\"active_wind_force_fields\":{},\"crosswind_force_fields\":{},\"updraft_swirl_force_fields\":{},\"max_wind_force_delta_mps\":{},\"max_crosswind_force_delta_mps\":{},\"crosswind_force_delta\":{},\"max_updraft_swirl_force_delta_mps\":{},\"max_wind_force_flow_speed_mps\":{},\"max_wind_force_variation\":{},\"max_wind_force_flow_alignment\":{},\"max_crosswind_force_flow_alignment\":{},\"max_updraft_swirl_force_flow_alignment\":{},\"max_wind_force_aligned_delta_mps\":{},\"max_crosswind_force_aligned_delta_mps\":{},\"max_updraft_swirl_force_aligned_delta_mps\":{},\"wind_lateral_load\":{},\"player_wind_shear_visual_count\":{},\"visible_player_wind_shear_visual_count\":{},\"max_player_wind_shear_length_scale\":{},\"max_player_wind_shear_lateral_offset_m\":{},\"max_player_wind_shear_depth_offset_m\":{},\"max_player_wind_shear_angular_coverage_degrees\":{},\"max_player_wind_shear_vertical_coverage_m\":{},\"max_player_wind_shear_frame_motion_m\":{},\"max_player_wind_shear_orbit_radius_m\":{},\"max_player_wind_shear_pulse_scale\":{},\"max_player_wind_shear_dive_pressure\":{},\"max_player_wind_shear_relative_air_speed_mps\":{},\"max_player_wind_shear_flow_alignment\":{},\"max_player_wind_shear_flow_travel_m\":{},\"max_player_wind_shear_crosswind_deflection_m\":{},\"min_player_wind_shear_body_clearance_m\":{},\"max_player_wind_shear_field_span_m\":{},\"visible_player_wind_shear_kind_count\":{},{}",
             self.active_wind_force_fields,
             self.crosswind_force_fields,
             self.updraft_swirl_force_fields,
@@ -236,6 +236,19 @@ impl EvalSample {
             json_number(self.max_player_wind_shear_length_scale),
             json_number(self.max_player_wind_shear_lateral_offset_m),
             json_number(self.max_player_wind_shear_depth_offset_m),
+            json_number(self.max_player_wind_shear_angular_coverage_degrees),
+            json_number(self.max_player_wind_shear_vertical_coverage_m),
+            json_number(self.max_player_wind_shear_frame_motion_m),
+            json_number(self.max_player_wind_shear_orbit_radius_m),
+            json_number(self.max_player_wind_shear_pulse_scale),
+            json_number(self.max_player_wind_shear_dive_pressure),
+            json_number(self.max_player_wind_shear_relative_air_speed_mps),
+            json_number(self.max_player_wind_shear_flow_alignment),
+            json_number(self.max_player_wind_shear_flow_travel_m),
+            json_number(self.max_player_wind_shear_crosswind_deflection_m),
+            json_number(self.min_player_wind_shear_body_clearance_m),
+            json_number(self.max_player_wind_shear_field_span_m),
+            self.visible_player_wind_shear_kind_count,
             wind_force_key
         );
         let json = json.replacen(wind_force_key, &wind_force_metrics, 1);

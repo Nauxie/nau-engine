@@ -69,6 +69,22 @@ impl Check {
             unit,
         }
     }
+
+    pub(crate) fn at_most(
+        name: impl Into<String>,
+        value: f64,
+        threshold: f64,
+        unit: &'static str,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            passed: value <= threshold,
+            value,
+            comparator: "<=",
+            threshold,
+            unit,
+        }
+    }
 }
 
 impl SceneSampleAudit {

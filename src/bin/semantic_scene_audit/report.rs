@@ -3,10 +3,12 @@ use crate::{
     materials::min_material_sample_pixel_hit_count,
     thresholds::{
         EXPECTED_MATERIALS, EXPECTED_SCENE_SAMPLE_KINDS, EXPECTED_TERRAIN_MATERIAL_VARIANTS,
-        MIN_PASSED_TERRAIN_MATERIAL_VARIANTS, MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE,
-        MIN_VISIBLE_MATERIALS_PER_CHECKPOINT, MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT,
-        MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS, MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE,
-        expected_material_pixel_coverage_floor, expected_scene_kind_pixel_coverage_floor,
+        MAX_PLAYER_WIND_SHEAR_PIXEL_COVERAGE_PER_CHECKPOINT,
+        MAX_WIND_PIXEL_COVERAGE_PER_CHECKPOINT, MIN_PASSED_TERRAIN_MATERIAL_VARIANTS,
+        MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE, MIN_VISIBLE_MATERIALS_PER_CHECKPOINT,
+        MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT, MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS,
+        MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE, expected_material_pixel_coverage_floor,
+        expected_scene_kind_pixel_coverage_floor,
     },
     types::{Check, CheckpointAudit, MaterialAudit, SceneSampleAudit},
 };
@@ -154,6 +156,7 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
     let visible_wind_samples = *visible_material_counts.get("wind").unwrap_or(&0);
     if visible_wind_samples > 0 {
         let min_wind_pixel_hits = min_material_sample_pixel_hit_count(visible_wind_samples);
+        let visible_wind_checkpoints = visible_wind_checkpoint_count(checkpoints);
         checks.push(Check::at_least(
             "wind_visible_scene_samples",
             visible_wind_samples as f64,
@@ -172,11 +175,34 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
             (min_wind_pixel_hits * MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE) as f64,
             "pixels",
         ));
+        checks.push(Check::at_most(
+            "wind_scene_sample_pixel_coverage_ceiling",
+            *material_pixel_coverage.get("wind").unwrap_or(&0) as f64,
+            (checkpoints.len() * MAX_WIND_PIXEL_COVERAGE_PER_CHECKPOINT) as f64,
+            "pixels",
+        ));
+        let player_wind_shear_pixel_coverage = *kind_pixel_coverage
+            .get("player_wind_shear_visual")
+            .unwrap_or(&0);
+        if player_wind_shear_pixel_coverage > 0 {
+            checks.push(Check::at_most(
+                "player_wind_shear_scene_pixel_coverage_ceiling",
+                player_wind_shear_pixel_coverage as f64,
+                (checkpoints.len() * MAX_PLAYER_WIND_SHEAR_PIXEL_COVERAGE_PER_CHECKPOINT) as f64,
+                "pixels",
+            ));
+        }
         checks.push(Check::at_least(
             "wind_scene_sample_kind_pixel_hits",
             wind_sample_kind_hit_count(checkpoints) as f64,
             1.0,
             "sample_kinds",
+        ));
+        checks.push(Check::at_least(
+            "wind_checkpoint_pixel_hits",
+            wind_checkpoint_pixel_hit_count(checkpoints) as f64,
+            visible_wind_checkpoints as f64,
+            "checkpoints",
         ));
     }
 
@@ -365,6 +391,39 @@ pub(crate) fn wind_sample_kind_hit_count(checkpoints: &[CheckpointAudit]) -> usi
     }
 
     unique_hits.len()
+}
+
+pub(crate) fn visible_wind_checkpoint_count(checkpoints: &[CheckpointAudit]) -> usize {
+    checkpoints
+        .iter()
+        .filter(|checkpoint| {
+            checkpoint
+                .samples
+                .iter()
+                .any(|sample| sample.is_visible() && sample.expected_material == "wind")
+        })
+        .count()
+}
+
+pub(crate) fn wind_checkpoint_pixel_hit_count(checkpoints: &[CheckpointAudit]) -> usize {
+    checkpoints
+        .iter()
+        .filter(|checkpoint| {
+            let visible_wind_samples = checkpoint
+                .samples
+                .iter()
+                .filter(|sample| sample.is_visible() && sample.expected_material == "wind")
+                .count();
+            let hit_wind_samples = checkpoint
+                .samples
+                .iter()
+                .filter(|sample| sample.passed && sample.expected_material == "wind")
+                .count();
+
+            visible_wind_samples > 0
+                && hit_wind_samples >= min_material_sample_pixel_hit_count(visible_wind_samples)
+        })
+        .count()
 }
 
 pub(crate) fn terrain_material_variant_visible_counts(

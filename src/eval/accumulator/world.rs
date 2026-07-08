@@ -11,7 +11,8 @@ use crate::eval::thresholds::{
     MIN_OBSERVED_CROSSWIND_RIBBON_FRAME_FLOW_DISPLACEMENT_M,
     MIN_OBSERVED_CROSSWIND_VISUAL_FRAME_MOTION_M, MIN_OBSERVED_UPDRAFT_VISUAL_FRAME_MOTION_M,
     MIN_OBSERVED_UPDRAFT_VISUAL_FRAME_RISE_M,
-    MIN_OBSERVED_UPDRAFT_VISUAL_FRAME_SWIRL_DISPLACEMENT_M, MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT,
+    MIN_OBSERVED_UPDRAFT_VISUAL_FRAME_SWIRL_DISPLACEMENT_M,
+    MIN_PLAYER_WIND_SHEAR_RELATIVE_AIR_SPEED_MPS, MIN_UPDRAFT_FLOW_COHERENT_VISUAL_COUNT,
     MIN_UPDRAFT_GUIDE_VISUAL_COUNT, MIN_UPDRAFT_RIBBON_VISUAL_COUNT,
     MIN_UPDRAFT_VISUAL_DEPTH_SPAN_M, MIN_UPDRAFT_VISUAL_MOTION_M, MIN_UPDRAFT_VISUAL_RISE_M,
     MIN_UPDRAFT_VISUAL_SCALE_PULSE, MIN_UPDRAFT_VISUAL_SWIRL_DISPLACEMENT_M,
@@ -145,6 +146,15 @@ pub(super) fn observe(
     accumulator.max_updraft_swirl_force_aligned_delta_mps = accumulator
         .max_updraft_swirl_force_aligned_delta_mps
         .max(sample.max_updraft_swirl_force_aligned_delta_mps);
+    if sample.player_wind_shear_visual_count > 0
+        && sample.max_player_wind_shear_relative_air_speed_mps
+            < MIN_PLAYER_WIND_SHEAR_RELATIVE_AIR_SPEED_MPS
+    {
+        accumulator.low_speed_player_wind_shear_samples += 1;
+        if sample.visible_player_wind_shear_visual_count > 0 {
+            accumulator.low_speed_visible_player_wind_shear_samples += 1;
+        }
+    }
     if wind_load_response_sample(sample) {
         accumulator.wind_load_response_samples += 1;
         accumulator.max_wind_load_lateral_load = accumulator
@@ -171,6 +181,52 @@ pub(super) fn observe(
         accumulator.max_player_wind_shear_depth_offset_m = accumulator
             .max_player_wind_shear_depth_offset_m
             .max(sample.max_player_wind_shear_depth_offset_m);
+        accumulator.max_player_wind_shear_angular_coverage_degrees = accumulator
+            .max_player_wind_shear_angular_coverage_degrees
+            .max(sample.max_player_wind_shear_angular_coverage_degrees);
+        accumulator.max_player_wind_shear_vertical_coverage_m = accumulator
+            .max_player_wind_shear_vertical_coverage_m
+            .max(sample.max_player_wind_shear_vertical_coverage_m);
+        accumulator.max_player_wind_shear_frame_motion_m = accumulator
+            .max_player_wind_shear_frame_motion_m
+            .max(sample.max_player_wind_shear_frame_motion_m);
+        accumulator.max_player_wind_shear_orbit_radius_m = accumulator
+            .max_player_wind_shear_orbit_radius_m
+            .max(sample.max_player_wind_shear_orbit_radius_m);
+        accumulator.max_player_wind_shear_pulse_scale = accumulator
+            .max_player_wind_shear_pulse_scale
+            .max(sample.max_player_wind_shear_pulse_scale);
+        accumulator.max_player_wind_shear_dive_pressure = accumulator
+            .max_player_wind_shear_dive_pressure
+            .max(sample.max_player_wind_shear_dive_pressure);
+        accumulator.max_player_wind_shear_relative_air_speed_mps = accumulator
+            .max_player_wind_shear_relative_air_speed_mps
+            .max(sample.max_player_wind_shear_relative_air_speed_mps);
+        accumulator.max_player_wind_shear_flow_alignment = accumulator
+            .max_player_wind_shear_flow_alignment
+            .max(sample.max_player_wind_shear_flow_alignment);
+        accumulator.max_player_wind_shear_flow_travel_m = accumulator
+            .max_player_wind_shear_flow_travel_m
+            .max(sample.max_player_wind_shear_flow_travel_m);
+        accumulator.max_player_wind_shear_crosswind_deflection_m = accumulator
+            .max_player_wind_shear_crosswind_deflection_m
+            .max(sample.max_player_wind_shear_crosswind_deflection_m);
+        if sample.min_player_wind_shear_body_clearance_m > 0.0 {
+            accumulator.min_player_wind_shear_body_clearance_m =
+                if accumulator.min_player_wind_shear_body_clearance_m > 0.0 {
+                    accumulator
+                        .min_player_wind_shear_body_clearance_m
+                        .min(sample.min_player_wind_shear_body_clearance_m)
+                } else {
+                    sample.min_player_wind_shear_body_clearance_m
+                };
+        }
+        accumulator.max_player_wind_shear_field_span_m = accumulator
+            .max_player_wind_shear_field_span_m
+            .max(sample.max_player_wind_shear_field_span_m);
+        accumulator.max_visible_player_wind_shear_kind_count = accumulator
+            .max_visible_player_wind_shear_kind_count
+            .max(sample.visible_player_wind_shear_kind_count);
     }
     observe_crosswind_neutral_drift(accumulator, sample);
     accumulator.max_active_lift_fields = accumulator

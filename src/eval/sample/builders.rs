@@ -190,6 +190,19 @@ impl EvalSample {
             max_player_wind_shear_length_scale: 0.0,
             max_player_wind_shear_lateral_offset_m: 0.0,
             max_player_wind_shear_depth_offset_m: 0.0,
+            max_player_wind_shear_angular_coverage_degrees: 0.0,
+            max_player_wind_shear_vertical_coverage_m: 0.0,
+            max_player_wind_shear_frame_motion_m: 0.0,
+            max_player_wind_shear_orbit_radius_m: 0.0,
+            max_player_wind_shear_pulse_scale: 0.0,
+            max_player_wind_shear_dive_pressure: 0.0,
+            max_player_wind_shear_relative_air_speed_mps: 0.0,
+            max_player_wind_shear_flow_alignment: 0.0,
+            max_player_wind_shear_flow_travel_m: 0.0,
+            max_player_wind_shear_crosswind_deflection_m: 0.0,
+            min_player_wind_shear_body_clearance_m: 0.0,
+            max_player_wind_shear_field_span_m: 0.0,
+            visible_player_wind_shear_kind_count: 0,
             active_lift_fields,
             readable_lift_fields,
             lift_field_count,
@@ -610,6 +623,7 @@ impl EvalSample {
         self
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn with_player_wind_shear_visual_metrics(
         mut self,
         visual_count: usize,
@@ -617,12 +631,39 @@ impl EvalSample {
         max_length_scale: f32,
         max_lateral_offset_m: f32,
         max_depth_offset_m: f32,
+        max_angular_coverage_degrees: f32,
+        max_vertical_coverage_m: f32,
+        max_frame_motion_m: f32,
+        max_orbit_radius_m: f32,
+        max_pulse_scale: f32,
+        max_dive_pressure: f32,
+        max_relative_air_speed_mps: f32,
+        max_flow_alignment: f32,
+        max_flow_travel_m: f32,
+        max_crosswind_deflection_m: f32,
+        min_body_clearance_m: f32,
+        max_field_span_m: f32,
+        visible_kind_count: usize,
     ) -> Self {
         self.player_wind_shear_visual_count = visual_count;
         self.visible_player_wind_shear_visual_count = visible_visual_count;
         self.max_player_wind_shear_length_scale = max_length_scale.max(0.0);
         self.max_player_wind_shear_lateral_offset_m = max_lateral_offset_m.max(0.0);
         self.max_player_wind_shear_depth_offset_m = max_depth_offset_m.max(0.0);
+        self.max_player_wind_shear_angular_coverage_degrees =
+            max_angular_coverage_degrees.clamp(0.0, 360.0);
+        self.max_player_wind_shear_vertical_coverage_m = max_vertical_coverage_m.max(0.0);
+        self.max_player_wind_shear_frame_motion_m = max_frame_motion_m.max(0.0);
+        self.max_player_wind_shear_orbit_radius_m = max_orbit_radius_m.max(0.0);
+        self.max_player_wind_shear_pulse_scale = max_pulse_scale.max(0.0);
+        self.max_player_wind_shear_dive_pressure = max_dive_pressure.clamp(0.0, 1.0);
+        self.max_player_wind_shear_relative_air_speed_mps = max_relative_air_speed_mps.max(0.0);
+        self.max_player_wind_shear_flow_alignment = max_flow_alignment.clamp(-1.0, 1.0);
+        self.max_player_wind_shear_flow_travel_m = max_flow_travel_m.max(0.0);
+        self.max_player_wind_shear_crosswind_deflection_m = max_crosswind_deflection_m.max(0.0);
+        self.min_player_wind_shear_body_clearance_m = min_body_clearance_m.max(0.0);
+        self.max_player_wind_shear_field_span_m = max_field_span_m.max(0.0);
+        self.visible_player_wind_shear_kind_count = visible_kind_count;
         self
     }
 

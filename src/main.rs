@@ -187,7 +187,7 @@ fn main() -> AppExit {
                 update_authored_player_animation,
                 apply_authored_player_pose_nodes,
                 apply_authored_glider_pose,
-                update_glider_airflow_trails,
+                update_player_airflow_visuals,
                 follow_camera,
             )
                 .chain()

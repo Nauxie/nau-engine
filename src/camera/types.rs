@@ -99,6 +99,7 @@ pub struct CameraFrame {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CameraObstructionBehavior {
     Solid,
+    LocalProp,
     SoftLocalProp,
 }
 
@@ -126,6 +127,14 @@ impl CameraObstruction {
         }
     }
 
+    pub fn local_prop(center: Vec3, half_extents: Vec3) -> Self {
+        Self {
+            center,
+            half_extents: half_extents.abs(),
+            behavior: CameraObstructionBehavior::LocalProp,
+        }
+    }
+
     pub(super) fn expanded(self, clearance: f32) -> Self {
         Self {
             center: self.center,
@@ -134,8 +143,11 @@ impl CameraObstruction {
         }
     }
 
-    pub(super) fn is_soft_local_prop(self) -> bool {
-        self.behavior == CameraObstructionBehavior::SoftLocalProp
+    pub(super) fn is_local_prop(self) -> bool {
+        matches!(
+            self.behavior,
+            CameraObstructionBehavior::LocalProp | CameraObstructionBehavior::SoftLocalProp
+        )
     }
 
     pub(super) fn contains(self, point: Vec3) -> bool {
