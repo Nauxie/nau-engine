@@ -6,7 +6,8 @@ mod camera_strafe;
 mod core;
 
 use nau_engine::animation::{
-    DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT, LANDING_MAX_FOOT_SPLIT_READABILITY_M,
+    DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT, DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
+    LANDING_MAX_FOOT_SPLIT_READABILITY_M,
 };
 use nau_engine::eval::{
     AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
@@ -727,6 +728,11 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
     } else {
         f32::INFINITY
     };
+    let max_dive_pose_head_gaze_down_alignment = if metrics.gliding_dive_samples > 0 {
+        metrics.max_dive_pose_head_gaze_down_alignment
+    } else {
+        f32::INFINITY
+    };
     let min_pose_limb_clearance_m = metrics
         .min_pose_limb_clearance_m
         .unwrap_or(f32::NEG_INFINITY);
@@ -938,6 +944,12 @@ fn append_pose_state_coverage_checks(checks: &mut Vec<SimCheck>, metrics: &SimMe
             "pose_state_dive_pose_head_gaze_down",
             metrics.max_dive_pose_head_gaze_down_alignment,
             DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
+            "dot",
+        ),
+        SimCheck::at_most(
+            "pose_state_dive_pose_head_gaze_not_vertical",
+            max_dive_pose_head_gaze_down_alignment,
+            DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
             "dot",
         ),
         SimCheck::at_least(

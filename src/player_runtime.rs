@@ -16,9 +16,9 @@ use crate::world_collision_runtime::{
 };
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartPose, PartVisibility, PlayerPoseContext,
-    advance_phase, body_local_pose_velocity, glider_deployment_for_context, glider_traversal_pose,
-    part_pose_with_context, pose_blend_for_intent, resolve_pose_input, resolve_pose_intent,
-    wind_lateral_load_from_delta,
+    PlayerPoseIntent, advance_phase, body_local_pose_velocity, glider_deployment_for_context,
+    glider_traversal_pose, part_pose_with_context, pose_blend_for_intent, resolve_pose_input,
+    resolve_pose_intent, wind_lateral_load_from_delta,
 };
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::{
@@ -775,9 +775,10 @@ pub(crate) fn animate_character(
     let authored_glider_ready = visual_assets.scene_ready(VisualAssetKind::Glider);
 
     for (part, mut transform, mut visibility) in &mut parts {
-        let pose = part_pose_with_context(part, pose_context, animation.phase);
-        transform.translation = transform.translation.lerp(pose.translation, blend);
-        transform.rotation = transform.rotation.slerp(pose.rotation, blend);
+        let pose = runtime_part_pose_with_context(part, pose_context, animation.phase);
+        let part_blend = pose_smoothing_blend_for_part(part.role, animation.pose_intent, blend);
+        transform.translation = transform.translation.lerp(pose.translation, part_blend);
+        transform.rotation = transform.rotation.slerp(pose.rotation, part_blend);
 
         let replaced_by_authored_scene = match part.role {
             CharacterPartRole::Wing(_) => authored_glider_ready,
@@ -846,8 +847,16 @@ pub(crate) fn apply_authored_player_pose_nodes(
 
     for (mut node, mut transform) in &mut pose_nodes {
         node.capture_rest_transform(&transform);
-        let pose = part_pose_with_context(&node.part, pose_context, animation.phase);
-        apply_authored_pose_node_smoothing(&mut node, &mut transform, pose, pose_time_secs, blend);
+        let pose = runtime_part_pose_with_context(&node.part, pose_context, animation.phase);
+        let part_blend =
+            pose_smoothing_blend_for_part(node.part.role, animation.pose_intent, blend);
+        apply_authored_pose_node_smoothing(
+            &mut node,
+            &mut transform,
+            pose,
+            pose_time_secs,
+            part_blend,
+        );
     }
 }
 
@@ -970,6 +979,39 @@ fn reapply_smoothed_authored_glider_pose(glider: &AuthoredGliderPose, transform:
     transform.scale = glider.smoothed_scale;
 }
 
+fn runtime_part_pose_with_context(
+    part: &CharacterPart,
+    context: PlayerPoseContext,
+    phase: f32,
+) -> PartPose {
+    let mut pose = part_pose_with_context(part, context, phase);
+    if part.role == CharacterPartRole::Head && context.intent() == PlayerPoseIntent::Diving {
+        pose.rotation *=
+            Quat::from_rotation_x(-dive_head_upward_transition_relief(context.velocity.y) * 0.42);
+    }
+    pose
+}
+
+fn dive_head_upward_transition_relief(vertical_velocity_mps: f32) -> f32 {
+    (1.0 - ((vertical_velocity_mps - 15.0).abs() / 4.0)).clamp(0.0, 1.0)
+}
+
+fn pose_smoothing_blend_for_part(
+    role: CharacterPartRole,
+    intent: PlayerPoseIntent,
+    blend: f32,
+) -> f32 {
+    if intent != PlayerPoseIntent::Diving {
+        return blend;
+    }
+
+    match role {
+        CharacterPartRole::Head => 1.0,
+        CharacterPartRole::Hips | CharacterPartRole::Torso => blend * 0.90,
+        _ => blend,
+    }
+}
+
 fn authored_glider_deployment(context: PlayerPoseContext) -> f32 {
     glider_deployment_for_context(context)
 }
@@ -1004,7 +1046,10 @@ fn eval_pose_time_secs(time: &Time, eval: Option<&EvalRun>) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nau_engine::animation::Side;
+    use nau_engine::animation::{
+        DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT, DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
+        PoseReadabilityPartTransforms, Side, pose_readability_metrics_from_part_transforms,
+    };
 
     #[test]
     fn body_local_pose_velocity_uses_body_local_lateral_axis() {
@@ -1131,6 +1176,92 @@ mod tests {
         assert!(transform.translation.distance(node.part.base_translation) > 0.04);
         assert!(transform.translation.distance(pose.translation) < 0.0001);
         assert!((transform.rotation.dot(pose.rotation).abs() - 1.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn dive_head_pose_smoothing_leads_air_brake_to_dive_transition() {
+        let hips = CharacterPart::new(CharacterPartRole::Hips, Vec3::ZERO, Quat::IDENTITY);
+        let torso = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+        let head = CharacterPart::new(CharacterPartRole::Head, Vec3::ZERO, Quat::IDENTITY);
+        let limb = CharacterPart::new(
+            CharacterPartRole::Leg(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        let air_brake_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(10.0, -2.0, 14.0),
+            FlightInput {
+                backward: true,
+                right: true,
+                ..default()
+            },
+            50.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::AirBrake);
+        let dive_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(8.0, -12.0, 26.0),
+            FlightInput {
+                dive: true,
+                ..default()
+            },
+            50.0,
+        )
+        .with_resolved_intent(PlayerPoseIntent::Diving);
+        let mut hips_rotation = part_pose_with_context(&hips, air_brake_context, 0.0).rotation;
+        let mut torso_rotation = part_pose_with_context(&torso, air_brake_context, 0.0).rotation;
+        let mut head_rotation = part_pose_with_context(&head, air_brake_context, 0.0).rotation;
+        let target_hips_rotation =
+            runtime_part_pose_with_context(&hips, dive_context, 0.0).rotation;
+        let target_torso_rotation =
+            runtime_part_pose_with_context(&torso, dive_context, 0.0).rotation;
+        let target_head_rotation =
+            runtime_part_pose_with_context(&head, dive_context, 0.0).rotation;
+        let limb_rotation = part_pose_with_context(&limb, dive_context, 0.0).rotation;
+        let blend = pose_blend_for_intent(PlayerPoseIntent::Diving, 1.0 / 60.0);
+        let hips_blend =
+            pose_smoothing_blend_for_part(CharacterPartRole::Hips, PlayerPoseIntent::Diving, blend);
+        let torso_blend = pose_smoothing_blend_for_part(
+            CharacterPartRole::Torso,
+            PlayerPoseIntent::Diving,
+            blend,
+        );
+        let head_blend =
+            pose_smoothing_blend_for_part(CharacterPartRole::Head, PlayerPoseIntent::Diving, blend);
+        let mut max_head_gaze_down_alignment: f32 = 0.0;
+        let mut final_head_gaze_down_alignment = 0.0;
+
+        for _ in 0..5 {
+            hips_rotation = hips_rotation.slerp(target_hips_rotation, hips_blend);
+            torso_rotation = torso_rotation.slerp(target_torso_rotation, torso_blend);
+            head_rotation = head_rotation.slerp(target_head_rotation, head_blend);
+            let metrics = pose_readability_metrics_from_part_transforms(
+                dive_context,
+                PoseReadabilityPartTransforms {
+                    torso_rotation: hips_rotation * torso_rotation,
+                    head_rotation,
+                    left_arm_rotation: Quat::IDENTITY,
+                    right_arm_rotation: Quat::IDENTITY,
+                    left_leg_rotation: limb_rotation,
+                    right_leg_rotation: limb_rotation,
+                    left_leg_translation: Vec3::ZERO,
+                    right_leg_translation: Vec3::ZERO,
+                },
+            );
+            final_head_gaze_down_alignment = metrics.head_gaze_down_alignment;
+            max_head_gaze_down_alignment =
+                max_head_gaze_down_alignment.max(metrics.head_gaze_down_alignment);
+        }
+
+        assert!(
+            final_head_gaze_down_alignment >= DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
+            "final blended dive gaze should remain readable; alignment={final_head_gaze_down_alignment}"
+        );
+        assert!(
+            max_head_gaze_down_alignment <= DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
+            "air-brake to dive blend hit vertical lock; alignment={max_head_gaze_down_alignment}"
+        );
     }
 
     #[test]

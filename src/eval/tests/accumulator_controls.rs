@@ -1,8 +1,9 @@
 use super::*;
 use crate::animation::{
-    DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT, GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M,
-    GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES, GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M,
-    GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES, LANDING_MAX_FOOT_SPLIT_READABILITY_M,
+    DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT, DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
+    GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+    GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+    LANDING_MAX_FOOT_SPLIT_READABILITY_M,
 };
 use crate::camera::CAMERA_OBSTRUCTION_SNAP_DISTANCE_DELTA_M;
 use crate::movement::{LAUNCH_MAX_HORIZONTAL_SPEED_MPS, LAUNCH_MAX_UPWARD_SPEED_MPS};
@@ -2357,13 +2358,17 @@ fn accumulator_gates_air_control_pose_readability() {
         "air_control_dive_pose_arm_spread",
         "air_control_dive_pose_leg_tuck",
         "air_control_dive_pose_head_gaze_down",
+        "air_control_dive_pose_head_gaze_not_vertical",
         "air_control_pose_lateral_lean",
         "air_control_right_pose_lateral_lean",
         "air_control_left_pose_lateral_lean",
         "air_control_pose_wing_airflow",
     ] {
         let check = named_check(&summary, name);
-        if name == "air_control_dive_pose_arm_spread" {
+        if matches!(
+            name,
+            "air_control_dive_pose_arm_spread" | "air_control_dive_pose_head_gaze_not_vertical"
+        ) {
             assert!(check.value.is_infinite());
         } else {
             assert_eq!(check.value, 0.0);
@@ -2390,7 +2395,7 @@ fn accumulator_counts_gliding_air_control_dive_pose_readability() {
         torso_pitch_degrees: 80.0,
         arm_spread_degrees: 180.0,
         leg_tuck_degrees: 72.0,
-        head_gaze_down_alignment: 1.0,
+        head_gaze_down_alignment: DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
         lateral_lean_degrees: 0.0,
         signed_lateral_lean_degrees: 0.0,
         grounded_stride_foot_travel_m: 0.0,
@@ -2419,7 +2424,7 @@ fn accumulator_counts_gliding_air_control_dive_pose_readability() {
             torso_pitch_degrees: AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES,
             arm_spread_degrees: AIR_CONTROL_MAX_DIVE_POSE_ARM_SPREAD_DEGREES,
             leg_tuck_degrees: AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES,
-            head_gaze_down_alignment: 1.0,
+            head_gaze_down_alignment: DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -2459,10 +2464,14 @@ fn accumulator_counts_gliding_air_control_dive_pose_readability() {
     assert!(
         summary.metrics.max_dive_pose_head_gaze_down_alignment >= DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT
     );
+    assert!(
+        summary.metrics.max_dive_pose_head_gaze_down_alignment <= DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT
+    );
     assert!(named_check(&summary, "air_control_dive_pose_torso_pitch").passed);
     assert!(named_check(&summary, "air_control_dive_pose_arm_spread").passed);
     assert!(named_check(&summary, "air_control_dive_pose_leg_tuck").passed);
     assert!(named_check(&summary, "air_control_dive_pose_head_gaze_down").passed);
+    assert!(named_check(&summary, "air_control_dive_pose_head_gaze_not_vertical").passed);
 }
 
 #[test]
@@ -3727,6 +3736,7 @@ fn accumulator_gates_pose_state_coverage_samples() {
         "pose_state_dive_pose_arm_spread",
         "pose_state_dive_pose_leg_tuck",
         "pose_state_dive_pose_head_gaze_down",
+        "pose_state_dive_pose_head_gaze_not_vertical",
         "pose_state_landing_anticipation_samples",
         "pose_state_gliding_landing_anticipation_samples",
         "pose_state_landing_recovery_samples",
@@ -3982,6 +3992,7 @@ fn accumulator_rejects_thin_pose_state_coverage_samples() {
         "pose_state_dive_pose_arm_spread",
         "pose_state_dive_pose_leg_tuck",
         "pose_state_dive_pose_head_gaze_down",
+        "pose_state_dive_pose_head_gaze_not_vertical",
         "pose_state_landing_anticipation_samples",
         "pose_state_landing_recovery_samples",
         "pose_state_authored_land_clip_samples",
@@ -4305,6 +4316,7 @@ fn pose_state_readability_metrics_for_label(pose_intent_label: &str) -> EvalPose
             metrics.torso_pitch_degrees = AIR_CONTROL_MIN_DIVE_POSE_TORSO_PITCH_DEGREES;
             metrics.arm_spread_degrees = AIR_CONTROL_MAX_DIVE_POSE_ARM_SPREAD_DEGREES;
             metrics.leg_tuck_degrees = AIR_CONTROL_MIN_DIVE_POSE_LEG_TUCK_DEGREES;
+            metrics.head_gaze_down_alignment = DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT;
         }
         _ => {}
     }

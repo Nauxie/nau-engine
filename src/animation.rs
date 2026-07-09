@@ -150,7 +150,8 @@ pub const PLAYER_WIND_SHEAR_KIND_COUNT: usize = 6;
 const DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES: f32 = 82.0;
 const DIVE_MAX_ARM_SPREAD_READABILITY_DEGREES: f32 = 48.0;
 const DIVE_MIN_LEG_TUCK_READABILITY_DEGREES: f32 = 68.0;
-pub const DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT: f32 = 0.86;
+pub const DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT: f32 = 0.60;
+pub const DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT: f32 = 0.94;
 const CONNECTED_LIMB_MAX_TRANSLATION_M: f32 = 0.015;
 const FALL_POSE_MAX_UPWARD_VELOCITY_MPS: f32 = 0.75;
 const LANDING_ANTICIPATION_BASE_HEIGHT_M: f32 = 8.0;
@@ -1389,6 +1390,11 @@ pub fn part_pose_with_context(
     let brake_pressure = air_brake_pose_pressure(context, intent);
     let rearward_brake_pressure = rearward_air_brake_pressure(context, intent);
     let vertical_pitch = (-context.velocity.y * 0.004).clamp(-0.1, 0.1);
+    let dive_head_sink_alignment = if intent == PlayerPoseIntent::Diving {
+        ((-context.velocity.y - 2.0) / 16.0).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let mut translation = part.base_translation;
     let mut rotation = part.base_rotation;
     let mut visibility = PartVisibility::Inherited;
@@ -1508,7 +1514,10 @@ pub fn part_pose_with_context(
             let pitch = match intent {
                 PlayerPoseIntent::AirTurn => -0.10,
                 PlayerPoseIntent::Falling => 0.20 + vertical_pitch * 0.35,
-                PlayerPoseIntent::Diving => 0.82 + dive_pressure * 0.29 - dive_flutter * 0.035,
+                PlayerPoseIntent::Diving => {
+                    0.44 + dive_pressure * 0.08 + dive_head_sink_alignment * 0.30
+                        - dive_flutter * 0.035
+                }
                 PlayerPoseIntent::AirBrake => -0.14 - rearward_brake_pressure * 0.08,
                 PlayerPoseIntent::LandingAnticipation => -0.42 - landing_flip * 0.24,
                 PlayerPoseIntent::LandingRecovery => -0.08 - recovery_strength * 0.04,
@@ -3258,10 +3267,10 @@ mod tests {
             diving_body_rotation.angle_between(Quat::IDENTITY)
                 > gliding_body_rotation.angle_between(Quat::IDENTITY) + 0.45
         );
-        assert!(
-            head_gaze_down_alignment(diving_body_rotation, diving_head.rotation)
-                > DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT
-        );
+        let diving_head_gaze_down_alignment =
+            head_gaze_down_alignment(diving_body_rotation, diving_head.rotation);
+        assert!(diving_head_gaze_down_alignment > DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT);
+        assert!(diving_head_gaze_down_alignment < DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT);
         assert!(diving_arm.rotation.angle_between(gliding_arm.rotation) > 0.20);
         assert!(diving_arm.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
     }
@@ -3302,6 +3311,7 @@ mod tests {
         assert!(shallow_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
         assert!(fast_metrics.torso_pitch_degrees > shallow_metrics.torso_pitch_degrees + 7.0);
         assert!(fast_metrics.head_gaze_down_alignment > DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT);
+        assert!(fast_metrics.head_gaze_down_alignment < DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT);
         assert!(fast_metrics.arm_spread_degrees < DIVE_MAX_ARM_SPREAD_READABILITY_DEGREES);
         assert!(
             fast_metrics.leg_tuck_degrees > shallow_metrics.leg_tuck_degrees + 4.0,
@@ -3317,6 +3327,28 @@ mod tests {
                 > 2.0
         );
         assert!(fast_leg.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
+    }
+
+    #[test]
+    fn dive_head_gaze_tracks_sink_instead_of_snapping_vertical() {
+        let upward_transition_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(-29.0, 15.0, 0.0),
+            FlightInput {
+                dive: true,
+                ..default()
+            },
+            40.0,
+        );
+
+        let metrics = pose_readability_metrics(upward_transition_context, 0.0);
+
+        assert_eq!(upward_transition_context.intent(), PlayerPoseIntent::Diving);
+        assert!(
+            metrics.head_gaze_down_alignment < DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
+            "dive transition head gaze should stay below vertical lock; alignment={}",
+            metrics.head_gaze_down_alignment
+        );
     }
 
     #[test]

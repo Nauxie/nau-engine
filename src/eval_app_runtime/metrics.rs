@@ -16,10 +16,10 @@ use crate::player_runtime::AuthoredGliderPose;
 use crate::{grounded_visual_foot_gap_m, movement_facing};
 use bevy::prelude::*;
 use nau_engine::animation::{
-    CharacterPart, CharacterPartRole, DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
-    MIN_KEY_POSE_READABILITY_SCORE, PlayerPoseContext, PlayerPoseIntent, PoseReadabilityMetrics,
-    PoseReadabilityPartTransforms, ScarfSegment, Side, body_local_pose_velocity,
-    key_pose_readability_score, pose_readability_metrics,
+    CharacterPart, CharacterPartRole, DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
+    DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT, MIN_KEY_POSE_READABILITY_SCORE, PlayerPoseContext,
+    PlayerPoseIntent, PoseReadabilityMetrics, PoseReadabilityPartTransforms, ScarfSegment, Side,
+    body_local_pose_velocity, key_pose_readability_score, pose_readability_metrics,
     pose_readability_metrics_from_part_transforms,
 };
 use nau_engine::camera::{
@@ -1732,8 +1732,12 @@ fn transition_pose_direction_readable(
     previous_intent: Option<PlayerPoseIntent>,
     metrics: PoseReadabilityMetrics,
 ) -> bool {
-    !air_brake_to_dive_transition(current_intent, previous_intent)
-        || metrics.head_gaze_down_alignment >= DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT
+    if dive_entry_transition(current_intent, previous_intent) {
+        (DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT..=DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT)
+            .contains(&metrics.head_gaze_down_alignment)
+    } else {
+        true
+    }
 }
 
 fn key_pose_transition_temporal_limits(
@@ -1785,6 +1789,15 @@ fn air_brake_to_dive_transition(
 ) -> bool {
     current_intent == PlayerPoseIntent::Diving
         && previous_intent == Some(PlayerPoseIntent::AirBrake)
+}
+
+fn dive_entry_transition(
+    current_intent: PlayerPoseIntent,
+    previous_intent: Option<PlayerPoseIntent>,
+) -> bool {
+    current_intent == PlayerPoseIntent::Diving
+        && previous_intent.is_some()
+        && previous_intent != Some(PlayerPoseIntent::Diving)
 }
 
 fn air_brake_release_transition(
@@ -2733,7 +2746,7 @@ mod tests {
             torso_pitch_degrees: 39.0,
             arm_spread_degrees: 134.0,
             leg_tuck_degrees: 22.0,
-            head_gaze_down_alignment: 1.0,
+            head_gaze_down_alignment: DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT - 0.01,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -2851,12 +2864,51 @@ mod tests {
     }
 
     #[test]
+    fn transition_aware_pose_readability_rejects_air_brake_to_dive_vertical_gaze_lock() {
+        let raw = PoseReadabilityMetrics {
+            torso_pitch_degrees: 99.14,
+            arm_spread_degrees: 80.53,
+            leg_tuck_degrees: 87.05,
+            head_gaze_down_alignment: DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT + 0.01,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
+            landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
+            wing_airflow_strength: 0.4,
+            key_pose_readability_score: 0.596,
+            ..default()
+        };
+
+        let adjusted = transition_aware_pose_readability(
+            raw,
+            PlayerPoseIntent::Diving,
+            Some(PlayerPoseIntent::AirBrake),
+            KEY_POSE_TRANSITION_GRACE_FRAMES,
+            &EvalPoseTemporalMetrics {
+                visible_pose_part_count: 15,
+                max_pose_part_rotation_delta_degrees: 29.95,
+                max_pose_part_translation_delta_m: 0.007,
+                min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
+            },
+        );
+
+        assert!(adjusted.metrics.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(!adjusted.used_transition_grace);
+    }
+
+    #[test]
     fn transition_aware_pose_readability_accepts_extended_glide_to_dive_blend() {
         let raw = PoseReadabilityMetrics {
             torso_pitch_degrees: 58.29,
             arm_spread_degrees: 165.38,
             leg_tuck_degrees: 62.72,
-            head_gaze_down_alignment: 1.0,
+            head_gaze_down_alignment: DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT - 0.01,
             lateral_lean_degrees: 0.0,
             signed_lateral_lean_degrees: 0.0,
             grounded_stride_foot_travel_m: 0.0,
@@ -2899,6 +2951,53 @@ mod tests {
             MIN_KEY_POSE_READABILITY_SCORE
         );
         assert!(adjusted.used_transition_grace);
+    }
+
+    #[test]
+    fn transition_aware_pose_readability_rejects_glide_to_dive_vertical_gaze_lock() {
+        let raw = PoseReadabilityMetrics {
+            torso_pitch_degrees: 58.29,
+            arm_spread_degrees: 165.38,
+            leg_tuck_degrees: 62.72,
+            head_gaze_down_alignment: DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT + 0.01,
+            lateral_lean_degrees: 0.0,
+            signed_lateral_lean_degrees: 0.0,
+            grounded_stride_foot_travel_m: 0.0,
+            grounded_stride_leg_opposition_degrees: 0.0,
+            landing_crouch_m: 0.0,
+            landing_foot_forward_m: 0.0,
+            landing_recovery_flip_degrees: 0.0,
+            wing_airflow_strength: 0.07,
+            key_pose_readability_score: key_pose_readability_score(
+                PlayerPoseIntent::Diving,
+                58.29,
+                165.38,
+                62.72,
+                0.0,
+                0.0,
+                0.0,
+            ),
+            ..default()
+        };
+
+        let adjusted = transition_aware_pose_readability(
+            raw,
+            PlayerPoseIntent::Diving,
+            Some(PlayerPoseIntent::Gliding),
+            KEY_POSE_EXTENDED_TRANSITION_GRACE_FRAMES,
+            &EvalPoseTemporalMetrics {
+                visible_pose_part_count: 5,
+                max_pose_part_rotation_delta_degrees: 10.34,
+                max_pose_part_translation_delta_m: 0.05,
+                min_pose_limb_clearance_m: 0.12,
+                max_pose_limb_penetration_m: 0.0,
+                max_pose_joint_gap_m: 0.0,
+                pose_joint_gap_samples: 1,
+            },
+        );
+
+        assert!(adjusted.metrics.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(!adjusted.used_transition_grace);
     }
 
     #[test]

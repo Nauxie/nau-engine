@@ -28,7 +28,7 @@ use crate::{
     MIN_POSE_LIMB_CLEARANCE_M, MIN_POSE_SCARF_LATERAL_SWAY_M, MIN_POSE_SCARF_STREAM_M,
     MIN_POSE_SCARF_TAIL_FLEX_DEGREES, MOVEMENT_ONLY_MAX_CAMERA_WORLD_YAW_DRIFT_DEGREES,
 };
-use nau_engine::animation::DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT;
+use nau_engine::animation::{DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT, DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT};
 use nau_engine::eval::AIR_CONTROL_MAX_KEY_POSE_TRANSITION_GRACE_SAMPLES;
 
 use crate::metrics::util::{
@@ -41,6 +41,11 @@ const AIR_CONTROL_MIN_GLIDING_DIVE_SAMPLES: f32 = 1.0;
 pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
     let max_dive_pose_arm_spread_degrees = if metrics.gliding_dive_samples > 0 {
         metrics.max_dive_pose_arm_spread_degrees
+    } else {
+        f32::INFINITY
+    };
+    let max_dive_pose_head_gaze_down_alignment = if metrics.gliding_dive_samples > 0 {
+        metrics.max_dive_pose_head_gaze_down_alignment
     } else {
         f32::INFINITY
     };
@@ -444,6 +449,12 @@ pub(super) fn append_checks(checks: &mut Vec<SimCheck>, metrics: &SimMetrics) {
             "air_control_dive_pose_head_gaze_down",
             metrics.max_dive_pose_head_gaze_down_alignment,
             DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
+            "dot",
+        ),
+        SimCheck::at_most(
+            "air_control_dive_pose_head_gaze_not_vertical",
+            max_dive_pose_head_gaze_down_alignment,
+            DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
             "dot",
         ),
         SimCheck::at_least(

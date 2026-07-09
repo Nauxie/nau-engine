@@ -1,9 +1,10 @@
 use super::super::{super::EvalAccumulator, derived::SummaryDerivedMetrics};
 use crate::{
     animation::{
-        DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT, GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M,
-        GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES, GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M,
-        GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES, LANDING_MAX_FOOT_SPLIT_READABILITY_M,
+        DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT, DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
+        GROUNDED_RUN_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_RUN_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+        GROUNDED_WALK_STRIDE_MIN_FOOT_TRAVEL_M, GROUNDED_WALK_STRIDE_MIN_LEG_OPPOSITION_DEGREES,
+        LANDING_MAX_FOOT_SPLIT_READABILITY_M,
     },
     eval::{
         scenarios::{
@@ -662,6 +663,11 @@ fn append_air_control_checks(
     } else {
         f32::INFINITY
     };
+    let max_dive_pose_head_gaze_down_alignment = if acc.gliding_dive_samples > 0 {
+        acc.max_dive_pose_head_gaze_down_alignment
+    } else {
+        f32::INFINITY
+    };
     let min_pose_limb_clearance_m = acc.min_pose_limb_clearance_m.unwrap_or(f32::NEG_INFINITY);
 
     checks.extend([
@@ -891,6 +897,12 @@ fn append_air_control_checks(
             "air_control_dive_pose_head_gaze_down",
             acc.max_dive_pose_head_gaze_down_alignment,
             DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
+            "dot",
+        ),
+        EvalCheck::at_most(
+            "air_control_dive_pose_head_gaze_not_vertical",
+            max_dive_pose_head_gaze_down_alignment,
+            DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
             "dot",
         ),
         EvalCheck::at_least(
@@ -1280,6 +1292,11 @@ fn append_pose_state_coverage_checks(
     } else {
         f32::INFINITY
     };
+    let max_dive_pose_head_gaze_down_alignment = if acc.gliding_dive_samples > 0 {
+        acc.max_dive_pose_head_gaze_down_alignment
+    } else {
+        f32::INFINITY
+    };
     let min_pose_limb_clearance_m = acc.min_pose_limb_clearance_m.unwrap_or(f32::NEG_INFINITY);
 
     checks.extend([
@@ -1553,6 +1570,12 @@ fn append_pose_state_coverage_checks(
             "pose_state_dive_pose_head_gaze_down",
             acc.max_dive_pose_head_gaze_down_alignment,
             DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
+            "dot",
+        ),
+        EvalCheck::at_most(
+            "pose_state_dive_pose_head_gaze_not_vertical",
+            max_dive_pose_head_gaze_down_alignment,
+            DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
             "dot",
         ),
         EvalCheck::at_least(
