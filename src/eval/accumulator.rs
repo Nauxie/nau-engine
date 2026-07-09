@@ -124,6 +124,7 @@ pub struct EvalAccumulator {
     max_dive_pose_torso_pitch_degrees: f32,
     max_dive_pose_arm_spread_degrees: f32,
     max_dive_pose_leg_tuck_degrees: f32,
+    max_dive_pose_head_gaze_down_alignment: f32,
     max_pose_lateral_lean_degrees: f32,
     max_right_pose_lateral_lean_degrees: f32,
     max_left_pose_lateral_lean_degrees: f32,

@@ -101,6 +101,7 @@ pub struct PoseReadabilityMetrics {
     pub torso_backward_bend_degrees: f32,
     pub arm_spread_degrees: f32,
     pub leg_tuck_degrees: f32,
+    pub head_gaze_down_alignment: f32,
     pub lateral_lean_degrees: f32,
     pub signed_lateral_lean_degrees: f32,
     pub grounded_stride_foot_travel_m: f32,
@@ -149,6 +150,8 @@ pub const PLAYER_WIND_SHEAR_KIND_COUNT: usize = 6;
 const DIVE_MIN_TORSO_PITCH_READABILITY_DEGREES: f32 = 82.0;
 const DIVE_MAX_ARM_SPREAD_READABILITY_DEGREES: f32 = 48.0;
 const DIVE_MIN_LEG_TUCK_READABILITY_DEGREES: f32 = 68.0;
+pub const DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT: f32 = 0.60;
+pub const DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT: f32 = 0.94;
 const CONNECTED_LIMB_MAX_TRANSLATION_M: f32 = 0.015;
 const FALL_POSE_MAX_UPWARD_VELOCITY_MPS: f32 = 0.75;
 const LANDING_ANTICIPATION_BASE_HEIGHT_M: f32 = 8.0;
@@ -158,6 +161,7 @@ const LANDING_ANTICIPATION_SINK_LOOKAHEAD_SECS: f32 = 0.95;
 #[derive(Clone, Copy, Debug)]
 pub struct PoseReadabilityPartTransforms {
     pub torso_rotation: Quat,
+    pub head_rotation: Quat,
     pub left_arm_rotation: Quat,
     pub right_arm_rotation: Quat,
     pub left_leg_rotation: Quat,
@@ -1082,6 +1086,11 @@ fn torso_signed_backward_bend_degrees(rotation: Quat) -> f32 {
     local_up.z.atan2(local_up.y).to_degrees()
 }
 
+fn head_gaze_down_alignment(torso_rotation: Quat, head_rotation: Quat) -> f32 {
+    let gaze = torso_rotation * head_rotation * Vec3::NEG_Z;
+    gaze.dot(Vec3::NEG_Y).clamp(-1.0, 1.0)
+}
+
 fn launch_overhead_arm_score(
     intent: PlayerPoseIntent,
     left_arm_rotation: Quat,
@@ -1167,6 +1176,8 @@ pub fn pose_readability_metrics_from_part_transforms(
     } else {
         raw_leg_tuck_degrees
     };
+    let head_gaze_down_alignment =
+        head_gaze_down_alignment(parts.torso_rotation, parts.head_rotation);
     let grounded_stride_pose = matches!(
         context.intent(),
         PlayerPoseIntent::GroundedStride
@@ -1205,12 +1216,17 @@ pub fn pose_readability_metrics_from_part_transforms(
             ))
             .min((forward_fold_degrees / LANDING_MIN_TORSO_FORWARD_FOLD_DEGREES).clamp(0.0, 1.0));
     }
+    if context.intent() == PlayerPoseIntent::Diving {
+        key_pose_readability_score = key_pose_readability_score
+            .min((head_gaze_down_alignment / DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT).clamp(0.0, 1.0));
+    }
 
     PoseReadabilityMetrics {
         torso_pitch_degrees,
         torso_backward_bend_degrees,
         arm_spread_degrees,
         leg_tuck_degrees,
+        head_gaze_down_alignment,
         lateral_lean_degrees: torso_lateral_lean_degrees(parts.torso_rotation),
         signed_lateral_lean_degrees: torso_signed_lateral_lean_degrees(parts.torso_rotation),
         grounded_stride_foot_travel_m,
@@ -1263,6 +1279,7 @@ fn readable_triple_score(
 pub fn pose_readability_metrics(context: PlayerPoseContext, phase: f32) -> PoseReadabilityMetrics {
     let hips = CharacterPart::new(CharacterPartRole::Hips, Vec3::ZERO, Quat::IDENTITY);
     let torso = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+    let head = CharacterPart::new(CharacterPartRole::Head, Vec3::ZERO, Quat::IDENTITY);
     let left_arm = CharacterPart::new(
         CharacterPartRole::Arm(Side::Left),
         Vec3::ZERO,
@@ -1296,6 +1313,7 @@ pub fn pose_readability_metrics(context: PlayerPoseContext, phase: f32) -> PoseR
 
     let hips_pose = part_pose_with_context(&hips, context, phase);
     let torso_pose = part_pose_with_context(&torso, context, phase);
+    let head_pose = part_pose_with_context(&head, context, phase);
     let left_arm_pose = part_pose_with_context(&left_arm, context, phase);
     let right_arm_pose = part_pose_with_context(&right_arm, context, phase);
     let left_leg_pose = part_pose_with_context(&left_leg, context, phase);
@@ -1306,6 +1324,7 @@ pub fn pose_readability_metrics(context: PlayerPoseContext, phase: f32) -> PoseR
         context,
         PoseReadabilityPartTransforms {
             torso_rotation: hips_pose.rotation * torso_pose.rotation,
+            head_rotation: head_pose.rotation,
             left_arm_rotation: left_arm_pose.rotation,
             right_arm_rotation: right_arm_pose.rotation,
             left_leg_rotation: left_leg_pose.rotation,
@@ -1371,6 +1390,11 @@ pub fn part_pose_with_context(
     let brake_pressure = air_brake_pose_pressure(context, intent);
     let rearward_brake_pressure = rearward_air_brake_pressure(context, intent);
     let vertical_pitch = (-context.velocity.y * 0.004).clamp(-0.1, 0.1);
+    let dive_head_sink_alignment = if intent == PlayerPoseIntent::Diving {
+        ((-context.velocity.y - 2.0) / 16.0).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let mut translation = part.base_translation;
     let mut rotation = part.base_rotation;
     let mut visibility = PartVisibility::Inherited;
@@ -1392,7 +1416,7 @@ pub fn part_pose_with_context(
                 PlayerPoseIntent::Gliding => -0.04 + vertical_pitch * 0.12,
                 PlayerPoseIntent::AirTurn => -0.06 + vertical_pitch * 0.10,
                 PlayerPoseIntent::Diving => {
-                    -2.45 - dive_pressure * 0.18 + vertical_pitch * 0.03 + dive_flutter * 0.024
+                    -2.27 - dive_pressure * 0.39 + vertical_pitch * 0.04 + dive_flutter * 0.018
                 }
                 PlayerPoseIntent::AirBrake => 0.02 + rearward_brake_pressure * 0.06,
                 PlayerPoseIntent::LandingAnticipation => {
@@ -1490,7 +1514,10 @@ pub fn part_pose_with_context(
             let pitch = match intent {
                 PlayerPoseIntent::AirTurn => -0.10,
                 PlayerPoseIntent::Falling => 0.20 + vertical_pitch * 0.35,
-                PlayerPoseIntent::Diving => -0.12 + dive_pressure * 0.06 - dive_flutter * 0.035,
+                PlayerPoseIntent::Diving => {
+                    0.44 + dive_pressure * 0.08 + dive_head_sink_alignment * 0.30
+                        - dive_flutter * 0.035
+                }
                 PlayerPoseIntent::AirBrake => -0.14 - rearward_brake_pressure * 0.08,
                 PlayerPoseIntent::LandingAnticipation => -0.42 - landing_flip * 0.24,
                 PlayerPoseIntent::LandingRecovery => -0.08 - recovery_strength * 0.04,
@@ -2094,6 +2121,7 @@ mod tests {
             landing_context,
             PoseReadabilityPartTransforms {
                 torso_rotation: smoothed_hips_rotation * smoothed_torso_rotation,
+                head_rotation: Quat::IDENTITY,
                 left_arm_rotation: Quat::IDENTITY,
                 right_arm_rotation: Quat::IDENTITY,
                 left_leg_rotation: Quat::IDENTITY,
@@ -3198,6 +3226,7 @@ mod tests {
     fn dive_pose_streamlines_torso_and_arms() {
         let hips = CharacterPart::new(CharacterPartRole::Hips, Vec3::ZERO, Quat::IDENTITY);
         let torso = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+        let head = CharacterPart::new(CharacterPartRole::Head, Vec3::ZERO, Quat::IDENTITY);
         let left_arm = CharacterPart::new(
             CharacterPartRole::Arm(Side::Left),
             Vec3::ZERO,
@@ -3224,18 +3253,24 @@ mod tests {
         let gliding_torso = part_pose_with_context(&torso, gliding_context, 0.0);
         let diving_hips = part_pose_with_context(&hips, diving_context, 0.0);
         let diving_torso = part_pose_with_context(&torso, diving_context, 0.0);
+        let diving_head = part_pose_with_context(&head, diving_context, 0.0);
         let gliding_arm = part_pose_with_context(&left_arm, gliding_context, 0.0);
         let diving_arm = part_pose_with_context(&left_arm, diving_context, 0.0);
         let gliding_body_rotation = gliding_hips.rotation * gliding_torso.rotation;
         let diving_body_rotation = diving_hips.rotation * diving_torso.rotation;
 
-        assert!(diving_hips.rotation.angle_between(Quat::IDENTITY) > 1.8);
+        assert!(diving_hips.rotation.angle_between(Quat::IDENTITY) > 2.35);
         assert!(diving_torso.rotation.angle_between(Quat::IDENTITY) < 0.75);
-        assert!(diving_body_rotation.angle_between(Quat::IDENTITY) > 0.8);
+        assert!(diving_body_rotation.angle_between(Quat::IDENTITY) > 2.85);
+        assert!(diving_body_rotation.angle_between(Quat::IDENTITY) < std::f32::consts::PI);
         assert!(
             diving_body_rotation.angle_between(Quat::IDENTITY)
                 > gliding_body_rotation.angle_between(Quat::IDENTITY) + 0.45
         );
+        let diving_head_gaze_down_alignment =
+            head_gaze_down_alignment(diving_body_rotation, diving_head.rotation);
+        assert!(diving_head_gaze_down_alignment > DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT);
+        assert!(diving_head_gaze_down_alignment < DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT);
         assert!(diving_arm.rotation.angle_between(gliding_arm.rotation) > 0.20);
         assert!(diving_arm.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
     }
@@ -3275,6 +3310,8 @@ mod tests {
         assert_eq!(fast_context.intent(), PlayerPoseIntent::Diving);
         assert!(shallow_metrics.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
         assert!(fast_metrics.torso_pitch_degrees > shallow_metrics.torso_pitch_degrees + 7.0);
+        assert!(fast_metrics.head_gaze_down_alignment > DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT);
+        assert!(fast_metrics.head_gaze_down_alignment < DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT);
         assert!(fast_metrics.arm_spread_degrees < DIVE_MAX_ARM_SPREAD_READABILITY_DEGREES);
         assert!(
             fast_metrics.leg_tuck_degrees > shallow_metrics.leg_tuck_degrees + 4.0,
@@ -3290,6 +3327,28 @@ mod tests {
                 > 2.0
         );
         assert!(fast_leg.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
+    }
+
+    #[test]
+    fn dive_head_gaze_tracks_sink_instead_of_snapping_vertical() {
+        let upward_transition_context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(-29.0, 15.0, 0.0),
+            FlightInput {
+                dive: true,
+                ..default()
+            },
+            40.0,
+        );
+
+        let metrics = pose_readability_metrics(upward_transition_context, 0.0);
+
+        assert_eq!(upward_transition_context.intent(), PlayerPoseIntent::Diving);
+        assert!(
+            metrics.head_gaze_down_alignment < DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
+            "dive transition head gaze should stay below vertical lock; alignment={}",
+            metrics.head_gaze_down_alignment
+        );
     }
 
     #[test]
@@ -3431,6 +3490,50 @@ mod tests {
         assert!(weak_arm_score < MIN_KEY_POSE_READABILITY_SCORE);
         assert!(weak_leg_score < MIN_KEY_POSE_READABILITY_SCORE);
         assert!(readable_score >= MIN_KEY_POSE_READABILITY_SCORE);
+    }
+
+    #[test]
+    fn dive_readability_rejects_head_gaze_that_misses_ground() {
+        let context = PlayerPoseContext::new(
+            FlightMode::Gliding,
+            Vec3::new(0.0, -24.0, -42.0),
+            FlightInput {
+                dive: true,
+                ..default()
+            },
+            40.0,
+        );
+        let readable = pose_readability_metrics_from_part_transforms(
+            context,
+            PoseReadabilityPartTransforms {
+                torso_rotation: Quat::from_rotation_x(-1.58),
+                head_rotation: Quat::IDENTITY,
+                left_arm_rotation: Quat::IDENTITY,
+                right_arm_rotation: Quat::IDENTITY,
+                left_leg_rotation: Quat::IDENTITY,
+                right_leg_rotation: Quat::IDENTITY,
+                left_leg_translation: Vec3::ZERO,
+                right_leg_translation: Vec3::ZERO,
+            },
+        );
+        let head_level = pose_readability_metrics_from_part_transforms(
+            context,
+            PoseReadabilityPartTransforms {
+                torso_rotation: Quat::from_rotation_x(-1.58),
+                head_rotation: Quat::from_rotation_x(1.58),
+                left_arm_rotation: Quat::IDENTITY,
+                right_arm_rotation: Quat::IDENTITY,
+                left_leg_rotation: Quat::IDENTITY,
+                right_leg_rotation: Quat::IDENTITY,
+                left_leg_translation: Vec3::ZERO,
+                right_leg_translation: Vec3::ZERO,
+            },
+        );
+
+        assert!(readable.head_gaze_down_alignment > DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT);
+        assert!(readable.key_pose_readability_score >= MIN_KEY_POSE_READABILITY_SCORE);
+        assert!(head_level.head_gaze_down_alignment < 0.1);
+        assert!(head_level.key_pose_readability_score < MIN_KEY_POSE_READABILITY_SCORE);
     }
 
     #[test]
@@ -4282,6 +4385,7 @@ mod tests {
             context,
             PoseReadabilityPartTransforms {
                 torso_rotation: part_pose_with_context(&torso, context, 0.0).rotation,
+                head_rotation: Quat::IDENTITY,
                 left_arm_rotation: part_pose_with_context(&left_arm, context, 0.0).rotation,
                 right_arm_rotation: part_pose_with_context(&right_arm, context, 0.0).rotation,
                 left_leg_rotation: left_leg_pose.rotation,

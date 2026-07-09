@@ -227,6 +227,9 @@ impl SimMetrics {
             self.max_dive_pose_leg_tuck_degrees = self
                 .max_dive_pose_leg_tuck_degrees
                 .max(sample.pose_leg_tuck_degrees);
+            self.max_dive_pose_head_gaze_down_alignment = self
+                .max_dive_pose_head_gaze_down_alignment
+                .max(sample.pose_head_gaze_down_alignment);
         }
         self.max_pose_lateral_lean_degrees = self
             .max_pose_lateral_lean_degrees
