@@ -4,7 +4,7 @@ This roadmap is horizon-based, not date-based. The point is to preserve directio
 
 ## Current Reset Note
 
-As of 2026-07-06, `main` is the clean baseline after merging PR1 `#384` and PR2 `#385`. The remaining draft PRs from the authored-world/camera/showcase stack were closed intentionally, with branches left intact only for reference. Restart future slices from current `main`; do not merge or restack the abandoned PR3+ world branch wholesale. Reintroduce useful ideas as narrow branches with app-path camera, stutter, collision, and route-eval evidence before stacking more work.
+As of 2026-07-08, `main` is the clean baseline after the July queue reset and subsequent narrow traversal/camera/visual PRs through `#395`. The reset policy still holds: restart future slices from current `main`; do not merge or restack the abandoned PR3+ world branch wholesale. Reintroduce useful ideas as narrow branches with app-path camera, stutter, collision, traversal-feel, and route-eval evidence before stacking more work.
 
 ## Horizon 0: Project Foundation
 
