@@ -71,9 +71,16 @@ Validation notes from the merge:
 
 ## 2026-07-09 Open Sandbox Performance Freeze
 
-The open-source sandbox checkpoint now treats `cargo run --release -- --play` as the default feel/performance path and keeps debug HUD/gizmos on the explicit debug path. Fresh release app evals were captured under `target/eval/perf_freeze_20260709_004522` for `baseline_route`, `long_glide_visibility`, `air_control_response`, and `pose_state_coverage`.
+The open-source sandbox checkpoint now treats `cargo run --release -- --play` as the default feel/performance path and keeps debug HUD/gizmos on the explicit debug path. Fresh release app evals were captured under `target/eval/perf_freeze_20260709_004522` for stale-cap evidence, then verified with the new script under `target/eval/perf_baseline/freeze_verify_20260709`.
 
 The release run showed the visual-count failures were stale absolute caps rather than an always-resident streaming regression: max entity count stayed under the existing `5000` gate, resident island visual fraction stayed between `0.2860` and `0.3776` against the `0.70` cap, and the only failures were visible terrain/detail/resident visual count ceilings from older content density. The required release scenarios now use measured peaks plus small headroom: terrain `60/76/90` depending on route, visible detail `160`, and resident island visuals `340`.
+
+Verified release baseline metrics:
+
+- `baseline_route`: avg/p95/p99/max frame `13.5037/26.1507/26.4619/26.8992 ms`; max entity `4924`; max visible terrain/detail `72/140`; max resident visuals `315`.
+- `long_glide_visibility`: avg/p95/p99/max frame `14.0719/26.4274/29.2270/33.6313 ms`; max entity `4955`; max visible terrain/detail `84/150`; max resident visuals `327`.
+- `air_control_response`: avg/p95/p99/max frame `14.3777/25.5987/26.9027/28.6750 ms`; max entity `4760`; max visible terrain/detail `56/79`; max resident visuals `246`.
+- `pose_state_coverage`: avg/p95/p99/max frame `11.6464/25.7003/26.2774/28.4875 ms`; max entity `4924`; max visible terrain/detail `72/140`; max resident visuals `315`.
 
 Use `./tools/perf_baseline.sh` for future release-only perf baselines. It writes per-scenario app eval artifacts plus `perf_summary.json`, `perf_summary.tsv`, and interpretation notes under `target/eval/perf_baseline/`.
 
