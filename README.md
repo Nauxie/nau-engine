@@ -41,10 +41,10 @@ See [Showcase](SHOWCASE.md) for the fuller image set.
 Install Rust with `rustup`, then:
 
 ```sh
-cargo run
+cargo run --release -- --play
 ```
 
-Debug mode keeps the readout and gizmos available:
+Use release mode for judging play feel and performance. Debug mode keeps the readout and gizmos available for development:
 
 ```sh
 cargo run -- --debug
@@ -64,6 +64,14 @@ cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 ```
+
+Release performance baseline:
+
+```sh
+./tools/perf_baseline.sh
+```
+
+The perf baseline writes per-scenario app eval artifacts plus `perf_summary.json`, `perf_summary.tsv`, and interpretation notes under `target/eval/perf_baseline/`.
 
 Visual and fixture artifacts:
 

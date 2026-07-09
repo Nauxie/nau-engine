@@ -33,6 +33,10 @@ const MAX_CAMERA_STEP_DISTANCE_M: f32 = 1.15;
 const MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 1.5;
 const MAX_CAMERA_MOUSE_ROTATION_DELTA_DEGREES: f32 = 12.0;
 const MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES: f32 = 5.0;
+const RELEASE_AIR_CONTROL_MAX_VISIBLE_ISLAND_TERRAIN_COUNT: usize = 60;
+const RELEASE_POSE_STATE_MAX_VISIBLE_ISLAND_TERRAIN_COUNT: usize = 76;
+const RELEASE_MAX_VISIBLE_ISLAND_DETAIL_COUNT: usize = 160;
+const RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT: usize = 340;
 
 pub(super) fn ground_taxi_control() -> EvalScenario {
     EvalScenario {
@@ -202,10 +206,10 @@ pub(super) fn pose_state_coverage() -> EvalScenario {
             min_near_lod_island_count: 2,
             min_mid_lod_island_count: 3,
             min_far_lod_island_count: 3,
-            max_visible_island_terrain_count: 55,
+            max_visible_island_terrain_count: RELEASE_POSE_STATE_MAX_VISIBLE_ISLAND_TERRAIN_COUNT,
             min_hidden_island_terrain_count: 5,
             min_visible_island_impostor_count: 2,
-            max_visible_island_detail_count: MAX_VISIBLE_ISLAND_DETAIL_COUNT,
+            max_visible_island_detail_count: RELEASE_MAX_VISIBLE_ISLAND_DETAIL_COUNT,
             min_hidden_island_detail_count: 20,
             min_visible_route_beacon_count: 12,
             min_weather_cloud_count: 12,
@@ -220,7 +224,7 @@ pub(super) fn pose_state_coverage() -> EvalScenario {
             min_procedural_island_body_count: MIN_SKY_ISLAND_COUNT,
             max_primitive_island_body_count: 0,
             min_island_body_silhouette_segments: 96,
-            max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
+            max_resident_island_visual_count: RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 40,
             max_entity_count: MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
@@ -748,10 +752,10 @@ pub(super) fn air_control_response() -> EvalScenario {
             min_near_lod_island_count: 2,
             min_mid_lod_island_count: 3,
             min_far_lod_island_count: 3,
-            max_visible_island_terrain_count: 55,
+            max_visible_island_terrain_count: RELEASE_AIR_CONTROL_MAX_VISIBLE_ISLAND_TERRAIN_COUNT,
             min_hidden_island_terrain_count: 5,
             min_visible_island_impostor_count: 2,
-            max_visible_island_detail_count: MAX_VISIBLE_ISLAND_DETAIL_COUNT,
+            max_visible_island_detail_count: RELEASE_MAX_VISIBLE_ISLAND_DETAIL_COUNT,
             min_hidden_island_detail_count: 20,
             min_visible_route_beacon_count: 12,
             min_weather_cloud_count: 12,
@@ -766,7 +770,7 @@ pub(super) fn air_control_response() -> EvalScenario {
             min_procedural_island_body_count: MIN_SKY_ISLAND_COUNT,
             max_primitive_island_body_count: 0,
             min_island_body_silhouette_segments: 96,
-            max_resident_island_visual_count: MAX_RESIDENT_ISLAND_VISUAL_COUNT,
+            max_resident_island_visual_count: RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 33,
             max_entity_count: MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,

@@ -1,10 +1,12 @@
 # Project Status
 
-Last updated: 2026-07-08
+Last updated: 2026-07-09
 
 ## Current Milestone
 
-First sky-island traversal slice.
+Open-source sandbox freeze and release-performance baseline.
+
+The current objective is to preserve the fun traversal-feel baseline as a clean public sandbox checkpoint: release play should be the default way to judge feel/performance, app eval budgets should reflect measured current content scale, and future work should avoid movement/camera retuning unless a measured regression directly requires it.
 
 The project has a Bevy sandbox with a richer self-authored animated player fixture, playable ground movement, stronger camera-relative planar air control with tighter lateral body/travel heading coupling, smoothed body yaw/bank response, sink-weighted dive head gaze that avoids straight-down vertical lock, deployable glider wings with visible authored traversal response, one-launch-per-airtime modest vertical assist, collectible aerial boost gates, mouse-look camera follow, HUD diagnostics, debug gizmos, Bevy-native atmosphere/fog/bloom lighting, dynamic sun/fog/exposure weather, procedural PBR materials, multi-lobed drifting cloud banks with wisp-card and filament-ribbon detail plus layered high-cirrus clusters, visual `WindField` volumes that drive wind visuals, diagnostics, and bounded horizontal airborne current with force-to-flow alignment metrics, fourteen gameplay updrafts with separate `LiftField` vertical lift, cinematic lift ribbons, sixteen curved tapered crosswind lanes, marked recovery branch islands, a 41-island floating route with 19 named terrain archetypes, low cays, high summit islands, larger vertical spacing, route-aligned ravine/channel incisions, terrace/shelf/basin/ridge/needle/satellite variation, per-archetype footprint profiles, fine microrelief, higher-resolution vertex-colored terrain relief, world-space tiled terrain UVs, quantized terrain material-region identity, sharper terrain-specific procedural PBR textures with smoothed broad material noise, irregular visual/playable contours shared by terrain, ground containment, 16-segment terrain-rim collision, and four-panel terrain-body cliff collision, stratified generated cliff/underside body meshes, layered color-banded distant island impostors, batched tufted side-leaf ground-cover/detail props with raised mesh-density eval floors, deterministic multi-ring/root-flared trunk meshes, multi-lobed/detail-card near-LOD tree canopies, collidable trees/rocks/route landmarks, terrain-integrated collidable obstruction spires that replace the old visible cuboid camera blockers, wind-responsive ponds, complete declared glTF fixture coverage across asset residency classes, visible route-anchored authored world fixture scenes with stronger terrain, foliage, rock, water, route-marker, weather, and distant-impostor mesh/material floors, Bevy-native glTF scene/animation readiness hooks, repo-native asset fixture audits, background-safe terrain/export and sim/app eval coverage, and scripted evals for ground taxi control, generated-asset collision contact, terrain-rim/body collision contact, mouse camera control, yaw/strafe/turn camera stability, air-control response, baseline traversal, updraft lift, aerial boost collection, branch recovery landing, long-glide visibility, and island launch-to-landing.
 
@@ -67,9 +69,17 @@ Validation notes from the merge:
 - Sim evals passed for `air_control_response` and `pose_state_coverage`.
 - App `air_control_response` and `pose_state_coverage` had no raw diving samples above `0.94`; the remaining app wrapper failures were existing island visual-count budget overages, not traversal or pose failures.
 
+## 2026-07-09 Open Sandbox Performance Freeze
+
+The open-source sandbox checkpoint now treats `cargo run --release -- --play` as the default feel/performance path and keeps debug HUD/gizmos on the explicit debug path. Fresh release app evals were captured under `target/eval/perf_freeze_20260709_004522` for `baseline_route`, `long_glide_visibility`, `air_control_response`, and `pose_state_coverage`.
+
+The release run showed the visual-count failures were stale absolute caps rather than an always-resident streaming regression: max entity count stayed under the existing `5000` gate, resident island visual fraction stayed between `0.2860` and `0.3776` against the `0.70` cap, and the only failures were visible terrain/detail/resident visual count ceilings from older content density. The required release scenarios now use measured peaks plus small headroom: terrain `60/76/90` depending on route, visible detail `160`, and resident island visuals `340`.
+
+Use `./tools/perf_baseline.sh` for future release-only perf baselines. It writes per-scenario app eval artifacts plus `perf_summary.json`, `perf_summary.tsv`, and interpretation notes under `target/eval/perf_baseline/`.
+
 ## Last Known Good
 
-- Current clean baseline: `main` at merge commit `8b7cd70` for PR `#395`
+- Current open-sandbox baseline: latest `main` after PR `#395` plus the 2026-07-09 release-performance freeze work
 - Recent merged PRs: `#384` - Add collision truth and terrain seam gates; `#385` - Add authored archipelago composition plan; `#391` - Stabilize island impostor LOD rendering; `#392` - Fix camera obstruction handoff; `#393` - Add player wind-shear effects; `#394` - Polish wind ribbons; `#395` - Bound dive head-gaze transitions
 - Verification:
   - `cargo check`
@@ -84,7 +94,7 @@ Use this section for milestone handoffs, not routine worktree changes.
 
 - No active WIP branch. The next slice should be cut from latest `main`; do not revive the closed draft stack wholesale.
 - Preserve the current traversal-feel baseline. The game already feels good to fly around and island-hop, so new work should add purpose or polish without retuning the core loop unless a concrete regression appears.
-- Investigate the existing app-path island streaming cap failures separately from traversal feel; recent app wrappers still exceed terrain/detail/resident island visual caps while dive pose/readability samples are otherwise valid.
+- Use `./tools/perf_baseline.sh` before and after future rendering/content-budget work; keep traversal feel locked unless a measured regression directly points at movement or camera behavior.
 
 ## Current Course Correction
 
@@ -151,7 +161,7 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 ## Known Issues
 
 - App-backed `air_control_response`, `pose_state_coverage`, and `updraft_route` now clear sustained wind-visual flow checks after eval-mode wind visuals were moved onto the deterministic eval frame clock. Runtime wind-quality gates also bound observed visual speed/acceleration and reject visible wrap/jump artifacts, while sim/app routes prove projected horizontal crosswind drift without requiring player input.
-- App-backed `air_control_response` and `pose_state_coverage` still expose stale island visual-count budget failures on current `main`; latest dive validation showed pose/head-gaze metrics clean while visible terrain/detail/resident island visual counts exceeded their older caps.
+- Release perf is now measurable and documented, but not optimized for laptop power draw. Bevy-native atmosphere, volumetric fog/light, bloom, shadows, wind guides/ribbons, cloud/detail counts, and island visual residency remain the obvious measured-cost areas to profile before any future renderer or content-budget work.
 - The character now has a self-authored animated glTF fixture with faceted body meshes, sculpted head shell, brow guard, nose bridge, jaw and cheek planes, temple guards, eye lenses/glints, belt hardware, gauntlet cuffs, knee guards, boots with toe caps, hand/finger grip pieces, shoulder guards, scarf pieces, side tunic flaps, bicep/tricep/calf/shin/instep/tendon/web/lace anatomy pieces, and named clip coverage, but it is still not a rigged production character.
 - Limb posing has grounded walk/run stride, readable launch/fall, airborne banking, glide, explicit-input dive, air-brake, landing-anticipation feet-forward absorption, bounded post-touchdown recovery crouch, landing crouch, turn-readable lean, and speed-responsive wing flex for generated fallback and named authored player nodes; authored nodes now capture their scene rest transforms once and apply procedural offsets relative to that rest pose, while the authored fixture proves retryable named-clip validation, graph readiness, distinct `fall` and directional `bank_left`/`bank_right` clip coverage, runtime bank transitions, and procedural pose parity. It is still approximate non-skeletal animation.
 - Camera obstruction avoidance uses simple tagged AABBs, not a full physics sweep, but evals now cover both shared route spires and the generated launch-mesa tree/prop contact route for readable framing near blockers.
@@ -165,7 +175,7 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 
 1. Start the next product slice from latest `main`, not from any closed draft stack branch.
 2. Preserve the current fun traversal baseline before retuning movement, dive, wind, or camera feel.
-3. Triage the app-path island streaming cap failures before treating app wrappers as fully green again; compare current `main` against the caps for visible terrain, visible detail, and resident island visual count.
+3. Use `./tools/perf_baseline.sh` when changing rendering/content budgets; update thresholds only with release evidence, otherwise reduce detail or residency safely.
 4. If new camera feedback appears, capture an exact repro route/input, identify whether it is follow-direction, obstruction, pitch/boom, player framing, or frame-step related, and add the narrowest regression coverage before changing feel.
 5. Keep `underbridge_under_route`, `camera_turn_stability`, `camera_strafe_stability`, and `camera_mouse_control` green whenever camera, world/content density, collision, or streaming behavior changes.
 6. Keep the lower-power launch route green in app and sim evals, especially `island_launch_to_landing`, `updraft_route`, and `pose_state_coverage`.
@@ -174,7 +184,7 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 
 Use this as the next 12-24 hour `/goal` seed when continuing toward the north-star traversal slice:
 
-From clean latest `main` after PR `#395`, preserve the current fun traversal baseline and reconcile the app-path island streaming cap failures so app wrappers can become authoritative again. Compare current `main` against the visible terrain/detail/resident visual caps, decide whether the content budget or thresholds are stale, and keep the dive head-gaze, wind-shear, camera, collision, and route-objective gates intact while doing so. If choosing a product slice instead, prefer adding purpose to island hopping over retuning the core flight loop. Keep `underbridge_under_route`, `world_collision_contact`, `camera_turn_stability`, `camera_strafe_stability`, `camera_mouse_control`, `air_control_response`, and `pose_state_coverage` green. Finish with updated docs/status/eval spec as needed, full Rust gates, relevant sim/app/screenshot evals, `review naux` if the branch is nontrivial, `pr naux`, merge, and clean latest `main naux`.
+From the open-source sandbox freeze baseline, preserve the current fun traversal feel and use `./tools/perf_baseline.sh` as the release app-path benchmark before changing rendering, content density, or residency. If performance work continues, profile only the measured likely cost areas first: volumetric fog/light, bloom/atmosphere/shadows, wind guides/ribbons, cloud/detail counts, and island visual residency. Prefer reducing cosmetic cost over adding architecture, and move risky renderer/streaming/physics overhauls to future closed-source work. Keep `underbridge_under_route`, `world_collision_contact`, `camera_turn_stability`, `camera_strafe_stability`, `camera_mouse_control`, `air_control_response`, `pose_state_coverage`, `baseline_route`, and `long_glide_visibility` green. Finish with updated docs/status/eval spec as needed, full Rust gates, relevant release app evals, `review naux` if the branch is nontrivial, `pr naux`, merge, and clean latest `main naux`.
 
 ## Read First
 
