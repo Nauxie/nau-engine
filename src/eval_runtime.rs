@@ -1,3 +1,4 @@
+use crate::play_profile_runtime::PlayProfileScript;
 use bevy::prelude::*;
 use nau_engine::{
     eval::{
@@ -17,6 +18,14 @@ pub(crate) struct EvalOptions {
     pub(crate) scenario: EvalScenario,
     pub(crate) output_dir: PathBuf,
     pub(crate) capture_screenshot: bool,
+    pub(crate) visible_window: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PlayProfileOptions {
+    pub(crate) output_path: PathBuf,
+    pub(crate) duration_secs: Option<f64>,
+    pub(crate) script: Option<PlayProfileScript>,
 }
 
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,6 +53,7 @@ pub(crate) enum CliAction {
     Run {
         eval: Option<Box<EvalOptions>>,
         mode: RunMode,
+        play_profile: Option<PlayProfileOptions>,
     },
     ExportTerrain {
         output_dir: PathBuf,
@@ -185,8 +195,13 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
     let mut export_terrain_output = None;
     let mut export_visual_content_output = None;
     let mut export_wind_visuals_output = None;
+    let mut play_profile_output = None;
+    let mut play_profile_duration_secs = None;
+    let mut play_profile_script = None;
     let mut capture_screenshot = true;
+    let mut visible_window = false;
     let mut saw_eval = false;
+    let mut saw_eval_option = false;
     let mut requested_run_mode = None;
     let mut args = args.into_iter();
 
@@ -207,14 +222,41 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
             saw_eval = true;
             eval_name = Some(value.to_string());
         } else if arg == "--eval-output" {
+            saw_eval_option = true;
             eval_output =
                 Some(PathBuf::from(args.next().ok_or_else(|| {
                     "--eval-output requires a path".to_string()
                 })?));
         } else if let Some(value) = arg.strip_prefix("--eval-output=") {
+            saw_eval_option = true;
             eval_output = Some(PathBuf::from(value));
         } else if arg == "--eval-no-screenshot" {
+            saw_eval_option = true;
             capture_screenshot = false;
+        } else if arg == "--eval-visible-window" {
+            saw_eval_option = true;
+            visible_window = true;
+        } else if arg == "--play-profile" {
+            play_profile_output =
+                Some(PathBuf::from(args.next().ok_or_else(|| {
+                    "--play-profile requires an output file".to_string()
+                })?));
+        } else if let Some(value) = arg.strip_prefix("--play-profile=") {
+            play_profile_output = Some(PathBuf::from(value));
+        } else if arg == "--play-profile-duration" {
+            play_profile_duration_secs =
+                Some(parse_play_profile_duration(&args.next().ok_or_else(
+                    || "--play-profile-duration requires seconds".to_string(),
+                )?)?);
+        } else if let Some(value) = arg.strip_prefix("--play-profile-duration=") {
+            play_profile_duration_secs = Some(parse_play_profile_duration(value)?);
+        } else if arg == "--play-profile-script" {
+            play_profile_script =
+                Some(PlayProfileScript::parse(&args.next().ok_or_else(
+                    || "--play-profile-script requires a script name".to_string(),
+                )?)?);
+        } else if let Some(value) = arg.strip_prefix("--play-profile-script=") {
+            play_profile_script = Some(PlayProfileScript::parse(value)?);
         } else if arg == "--export-terrain" {
             export_terrain_output =
                 Some(PathBuf::from(args.next().ok_or_else(|| {
@@ -253,6 +295,24 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
     if requested_run_mode.is_some() && export_path_count > 0 {
         return Err("run mode flags cannot be combined with export commands".to_string());
     }
+    if saw_eval_option && !saw_eval {
+        return Err("eval options require --eval".to_string());
+    }
+    if play_profile_duration_secs.is_some() && play_profile_output.is_none() {
+        return Err("--play-profile-duration requires --play-profile".to_string());
+    }
+    if play_profile_script.is_some() && play_profile_output.is_none() {
+        return Err("--play-profile-script requires --play-profile".to_string());
+    }
+    if play_profile_output.is_some() && saw_eval {
+        return Err("--play-profile cannot be combined with --eval".to_string());
+    }
+    if play_profile_output.is_some() && export_path_count > 0 {
+        return Err("--play-profile cannot be combined with export commands".to_string());
+    }
+    if play_profile_output.is_some() && requested_run_mode == Some(RunMode::Debug) {
+        return Err("--play-profile requires --play mode".to_string());
+    }
 
     if let Some(output_dir) = export_terrain_output {
         if saw_eval {
@@ -287,6 +347,7 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
             scenario,
             output_dir,
             capture_screenshot,
+            visible_window,
         }))
     } else {
         None
@@ -295,14 +356,31 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
     Ok(CliAction::Run {
         eval,
         mode: requested_run_mode.unwrap_or(RunMode::Play),
+        play_profile: play_profile_output.map(|output_path| PlayProfileOptions {
+            output_path,
+            duration_secs: play_profile_duration_secs,
+            script: play_profile_script,
+        }),
     })
 }
 
 pub(crate) fn usage() -> String {
     format!(
-        "Usage:\n  cargo run\n  cargo run -- --debug\n  cargo run -- --play\n  cargo run -- --eval <scenario> [--eval-output <dir>] [--eval-no-screenshot] [--debug]\n  cargo run -- --export-terrain <dir>\n  cargo run -- --export-visual-content <dir>\n  cargo run -- --export-wind-visuals <dir>\n\nScenarios: {}",
+        "Usage:\n  cargo run\n  cargo run -- --debug\n  cargo run -- --play\n  cargo run --release -- --play --play-profile <file> [--play-profile-duration <seconds>] [--play-profile-script <freeflight|ground_traversal>]\n  cargo run -- --eval <scenario> [--eval-output <dir>] [--eval-no-screenshot] [--eval-visible-window] [--debug]\n  cargo run -- --export-terrain <dir>\n  cargo run -- --export-visual-content <dir>\n  cargo run -- --export-wind-visuals <dir>\n\nScenarios: {}",
         SCENARIO_NAMES.join(", ")
     )
+}
+
+fn parse_play_profile_duration(value: &str) -> Result<f64, String> {
+    let duration_secs = value.parse::<f64>().map_err(|_| {
+        "--play-profile-duration requires a positive finite number of seconds".to_string()
+    })?;
+
+    if duration_secs.is_finite() && duration_secs > 0.0 {
+        Ok(duration_secs)
+    } else {
+        Err("--play-profile-duration requires a positive finite number of seconds".to_string())
+    }
 }
 
 fn set_requested_run_mode(

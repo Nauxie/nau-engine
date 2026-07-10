@@ -14,6 +14,16 @@ fn route_reports_highest_island_surface_under_player() {
 }
 
 #[test]
+fn route_fallback_ground_matches_world_terrain_sampler() {
+    let route = SkyRoute::default();
+    let position = Vec3::new(2_400.0, 100.0, 2_100.0);
+    let ground = route.ground_at(position);
+
+    assert_eq!(ground.island_name, None);
+    assert_eq!(ground.floor_y, world_terrain_floor_y_at(position));
+}
+
+#[test]
 fn route_surface_follows_island_relief() {
     let route = SkyRoute::default();
     let island = route.islands()[0];
@@ -902,7 +912,8 @@ fn under_route_ground_resolution_preserves_low_glide() {
 #[test]
 fn grounded_under_route_walk_does_not_capture_high_island_top() {
     let route = SkyRoute::default();
-    let low_route_position = Vec3::new(-121.1852, PLAYER_STANDING_OFFSET, -182.4107);
+    let mut low_route_position = Vec3::new(-121.1852, 0.0, -182.4107);
+    low_route_position.y = world_terrain_floor_y_at(low_route_position);
     let state = FlightState::new(
         low_route_position,
         Vec3::new(9.0, 0.0, 6.2),
@@ -913,7 +924,7 @@ fn grounded_under_route_walk_does_not_capture_high_island_top() {
     let resolved = route.resolve_ground_contact_after_step(state, true);
 
     assert_eq!(ground.island_name, None);
-    assert_eq!(ground.floor_y, PLAYER_STANDING_OFFSET);
+    assert_eq!(ground.floor_y, world_terrain_floor_y_at(low_route_position));
     assert_eq!(resolved.position.y, low_route_position.y);
     assert_eq!(resolved.controller.mode, FlightMode::Grounded);
 }
@@ -1503,6 +1514,37 @@ fn already_grounded_route_contact_does_not_damp_wasd_motion() {
     assert_eq!(resolved.velocity.x, state.velocity.x);
     assert_eq!(resolved.velocity.z, state.velocity.z);
     assert_eq!(resolved.controller.mode, FlightMode::Grounded);
+}
+
+#[test]
+fn grounded_world_terrain_motion_follows_uphill_and_downhill_slopes() {
+    let route = SkyRoute::default();
+    let mut endpoints = None;
+    for x in (2_000..2_800).step_by(20) {
+        let a = Vec3::new(x as f32, 0.0, 2_400.0);
+        let b = Vec3::new(x as f32 + 12.0, 0.0, 2_400.0);
+        let a_y = world_terrain_floor_y_at(a);
+        let b_y = world_terrain_floor_y_at(b);
+        if (a_y - b_y).abs() > 0.08 {
+            endpoints = Some((Vec3::new(a.x, a_y, a.z), Vec3::new(b.x, b_y, b.z)));
+            break;
+        }
+    }
+    let (a, b) = endpoints.expect("terrain fixture should contain a readable slope");
+
+    for (start, destination) in [(a, b), (b, a)] {
+        let state = FlightState::new(
+            Vec3::new(destination.x, start.y, destination.z),
+            Vec3::new(6.0, 0.0, 0.0),
+            FlightController::default(),
+        );
+
+        let resolved = route.resolve_ground_contact_after_step(state, true);
+
+        assert_eq!(resolved.controller.mode, FlightMode::Grounded);
+        assert!((resolved.position.y - destination.y).abs() < 0.0001);
+        assert_eq!(resolved.velocity.x, state.velocity.x);
+    }
 }
 
 #[test]

@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-07-09
+Last updated: 2026-07-10
 
 ## Current Milestone
 
@@ -84,6 +84,32 @@ Verified release baseline metrics:
 
 Use `./tools/perf_baseline.sh` for future release-only perf baselines. It writes per-scenario app eval artifacts plus `perf_summary.json`, `perf_summary.tsv`, and interpretation notes under `target/eval/perf_baseline/`.
 
+## 2026-07-10 World Floor Accepted Checkpoint
+
+The playable world-floor checkpoint is accepted. Prior one-tile, visual-only, or automated-waiver results are superseded and are not acceptance evidence for this checkpoint.
+
+The required product shape is:
+
+- Playable world-floor terrain with approximately the original terrain richness, not a decorative plane at `y=-260`.
+- One deterministic terrain sampler shared by render mesh generation and gameplay grounding/collision.
+- Existing islands remain authoritative wherever island and world-floor surfaces overlap.
+- A player-centered streamed `3x3` visible window with no holes during traversal, backed by a reusable pool bounded to `25` tiles.
+- Instrumentation for frame time, hitches, entities, meshes, materials, triangles, visible tiles, pool occupancy, and stream churn.
+
+Automated readiness is complete for the final committed source identity. `cargo fmt --check`, `cargo check --all-targets`, the full test suite, Clippy with warnings denied, script syntax, central-island reset, land-then-relaunch regressions, fresh quiet-host main-vs-candidate release app perf, both foreground profiles, screenshot review, and the world-floor candidate/readiness gates pass. The evidence must be regenerated after any behavioral source change.
+
+Final manual evidence is complete. The human release playtest covered world-floor landing and grounded traversal, relaunch and island traversal, visual quality, camera/movement feel, and frame-rate feel. The tester reported the overall experience and frame rate as good. The playtest exposed the temporary grounded-reset regression; the central-island `R` contract was restored and accepted in the follow-up.
+
+Current acceptance state: **accepted**. See `docs/DECISIONS/0002-world-floor-perf-first.md`, `docs/world-floor-requirements-audit.md`, and `docs/world-floor-acceptance-report.md`.
+
+Current source implementation now uses `src/world/terrain.rs` as the shared gameplay/render terrain sampler, keeps island surfaces authoritative through `SkyRoute::ground_at`, renders a `3x3` active window, reuses nearby tiles through a pool capped at `25`, and includes streamed biome-colored terrain plus restrained ground-cover detail. Focused sampler, seam, slope-following, island-edge, visible-window, pool-eviction, ground-cover footing, and budget tests pass.
+
+Fresh exact-source quiet-host `ground_traversal` remained fully grounded over `493.150 m`. Candidate steady avg/p95/p99 measured `16.666/17.781/18.634 ms` with `1/0` frames above `50/100 ms`. Candidate terrain initialized the required `9`-tile window, held `15` peak resident tiles, capped post-startup runtime churn at `1/1` spawn/despawn per frame, and used `31,969` visible terrain/detail vertices and `33,152` visible terrain/detail triangles.
+
+Fresh exact-source quiet-host app-path comparisons also pass. Candidate `baseline_route` averaged `14.760 ms` versus main `15.873 ms`; candidate `long_glide_visibility` averaged `15.324 ms` versus main `17.594 ms`. Both scenarios stay within the hard frame-time, hitch, entity, mesh, triangle, island-residency, and stream-churn budgets. Exact one-frame maxima remain advisory because both main and candidate captures show occasional external scheduler spikes.
+
+The first human 45-second manual profile covered `218.097 m`, spent `81.4%` of samples grounded, and felt smooth to the tester. Average/p95/p99 frame time measured `12.043/19.972/21.496 ms`. The profile exceeded the strict isolated-hitch count with eight frames above `50 ms`, mostly at an unchanged grounded position with no terrain or island streaming work; the tester did not perceive a frame-rate problem. This playtest exposed one product regression instead: grounded `R` no longer returned to the Great Sky Plateau. The central-island reset contract was restored, its unit regression and focused release `playtest_reset` app eval pass, and the follow-up experience was accepted.
+
 ## Last Known Good
 
 - Current open-sandbox baseline: latest `main` after PR `#395` plus the 2026-07-09 release-performance freeze work
@@ -99,7 +125,7 @@ Use `./tools/perf_baseline.sh` for future release-only perf baselines. It writes
 
 Use this section for milestone handoffs, not routine worktree changes.
 
-- No active WIP branch. The next slice should be cut from latest `main`; do not revive the closed draft stack wholesale.
+- The accepted world-floor checkpoint is ready to merge. The next slice should start from updated `main`; do not continue stacking unrelated work on the world-floor branch.
 - Preserve the current traversal-feel baseline. The game already feels good to fly around and island-hop, so new work should add purpose or polish without retuning the core loop unless a concrete regression appears.
 - Use `./tools/perf_baseline.sh` before and after future rendering/content-budget work; keep traversal feel locked unless a measured regression directly points at movement or camera behavior.
 

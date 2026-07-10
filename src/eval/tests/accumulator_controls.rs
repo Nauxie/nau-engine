@@ -32,14 +32,33 @@ fn accumulator_summarizes_frame_time_percentiles() {
     assert_eq!(summary.metrics.p95_frame_time_ms, 250.0);
     assert_eq!(summary.metrics.p99_frame_time_ms, 250.0);
     assert_eq!(summary.metrics.max_frame_time_ms, 250.0);
+    assert_eq!(summary.metrics.frames_over_16_67ms, 3);
+    assert_eq!(summary.metrics.frames_over_33_34ms, 2);
+    assert_eq!(summary.metrics.frames_over_50ms, 1);
+    assert_eq!(summary.metrics.frames_over_100ms, 1);
     assert_eq!(summary.metrics.runtime_frame_time_sample_count, 4);
     assert_eq!(summary.metrics.avg_runtime_frame_time_ms, 26.75);
     assert_eq!(summary.metrics.p95_runtime_frame_time_ms, 50.0);
     assert_eq!(summary.metrics.p99_runtime_frame_time_ms, 50.0);
     assert_eq!(summary.metrics.max_runtime_frame_time_ms, 50.0);
+    assert_eq!(summary.metrics.runtime_frames_over_16_67ms, 2);
+    assert_eq!(summary.metrics.runtime_frames_over_33_34ms, 1);
+    assert_eq!(summary.metrics.runtime_frames_over_50ms, 0);
+    assert_eq!(summary.metrics.runtime_frames_over_100ms, 0);
     assert_eq!(summary.metrics.eval_artifact_frame_time_sample_count, 1);
     assert_eq!(summary.metrics.eval_artifact_frame_time_spike_count, 1);
     assert_eq!(summary.metrics.max_eval_artifact_frame_time_ms, 250.0);
+
+    let summary_json: serde_json::Value =
+        serde_json::from_str(&summary.to_json()).expect("summary json parses");
+    assert_eq!(summary_json["metrics"]["frames_over_16_67ms"], 3);
+    assert_eq!(summary_json["metrics"]["frames_over_33_34ms"], 2);
+    assert_eq!(summary_json["metrics"]["frames_over_50ms"], 1);
+    assert_eq!(summary_json["metrics"]["frames_over_100ms"], 1);
+    assert_eq!(summary_json["metrics"]["runtime_frames_over_16_67ms"], 2);
+    assert_eq!(summary_json["metrics"]["runtime_frames_over_33_34ms"], 1);
+    assert_eq!(summary_json["metrics"]["runtime_frames_over_50ms"], 0);
+    assert_eq!(summary_json["metrics"]["runtime_frames_over_100ms"], 0);
 }
 
 #[test]
@@ -96,6 +115,10 @@ fn accumulator_gates_entity_count_as_performance_ceiling() {
     let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
     let mut sample = content_metric_sample(scenario, 0, MIN_SKY_ISLAND_COUNT, 0, 96);
     sample.entity_count = scenario.thresholds.max_entity_count + 1;
+    sample.mesh_count = 123;
+    sample.material_count = 45;
+    sample.loaded_mesh_vertices = 12_345;
+    sample.loaded_mesh_triangles = 4_321;
 
     let mut accumulator = EvalAccumulator::default();
     accumulator.observe(sample);
@@ -116,6 +139,16 @@ fn accumulator_gates_entity_count_as_performance_ceiling() {
         summary.metrics.max_entity_count,
         scenario.thresholds.max_entity_count + 1
     );
+    assert_eq!(summary.metrics.max_mesh_count, 123);
+    assert_eq!(summary.metrics.max_material_count, 45);
+    assert_eq!(summary.metrics.max_loaded_mesh_vertices, 12_345);
+    assert_eq!(summary.metrics.max_loaded_mesh_triangles, 4_321);
+    let summary_json: serde_json::Value =
+        serde_json::from_str(&summary.to_json()).expect("summary json should parse");
+    assert_eq!(summary_json["metrics"]["max_mesh_count"], 123);
+    assert_eq!(summary_json["metrics"]["max_material_count"], 45);
+    assert_eq!(summary_json["metrics"]["max_loaded_mesh_vertices"], 12_345);
+    assert_eq!(summary_json["metrics"]["max_loaded_mesh_triangles"], 4_321);
     assert_eq!(check.comparator, "<=");
     assert_eq!(check.threshold, scenario.thresholds.max_entity_count as f32);
     assert!(!check.passed);

@@ -9,10 +9,12 @@ mod eval_app_runtime;
 mod eval_runtime;
 mod generated_content;
 mod island_visuals;
+mod play_profile_runtime;
 mod player_runtime;
 mod power_up_runtime;
 mod scene_setup_runtime;
 mod world_collision_runtime;
+mod world_floor_runtime;
 use authored_assets::*;
 use bevy::app::AnimationSystems;
 use bevy::light::DirectionalLightShadowMap;
@@ -43,13 +45,14 @@ use nau_engine::movement::FlightTuning;
 #[cfg(test)]
 use nau_engine::world::SkyIsland;
 use nau_engine::world::SkyRoute;
+use play_profile_runtime::{PlayProfileRun, collect_play_profile_sample};
 pub(crate) use player_runtime::{
     Player, RouteObjectiveTracker, WindForceDiagnostics, grounded_visual_foot_gap_m,
     keyboard_flight_input, movement_facing,
 };
 use player_runtime::{
     animate_character, eval_fly_player, eval_reset_player_to_playtest_position, fly_player,
-    reset_player_to_playtest_position, update_route_objectives,
+    reset_player_to_playtest_position, scripted_play_profile_fly_player, update_route_objectives,
 };
 use player_runtime::{
     apply_authored_glider_pose, apply_authored_player_pose_nodes, reapply_authored_glider_pose,
@@ -66,6 +69,7 @@ use std::fs;
 #[cfg(test)]
 use std::path::PathBuf;
 use world_collision_runtime::*;
+use world_floor_runtime::*;
 
 fn main() -> AppExit {
     let cli = match CliAction::from_env() {
@@ -77,8 +81,12 @@ fn main() -> AppExit {
         }
     };
 
-    let (eval, run_mode) = match cli {
-        CliAction::Run { eval, mode } => (eval, mode),
+    let (eval, run_mode, play_profile) = match cli {
+        CliAction::Run {
+            eval,
+            mode,
+            play_profile,
+        } => (eval, mode, play_profile),
         CliAction::ExportTerrain { output_dir } => {
             return match export_terrain_inspection(&output_dir) {
                 Ok(report) => {
@@ -136,6 +144,16 @@ fn main() -> AppExit {
     let screenshot_eval = eval
         .as_deref()
         .is_some_and(|options| options.capture_screenshot);
+    let scripted_play_profile = play_profile
+        .as_ref()
+        .is_some_and(|options| options.script.is_some());
+
+    if play_profile.is_some() && cfg!(debug_assertions) {
+        eprintln!(
+            "--play-profile requires a release build; run cargo run --release -- --play --play-profile <file>"
+        );
+        return AppExit::from_code(2);
+    }
 
     let mut app = App::new();
     app.insert_resource(ClearColor(INITIAL_SKY_CLEAR_COLOR))
@@ -157,6 +175,7 @@ fn main() -> AppExit {
         .insert_resource(RouteObjectiveTracker::default())
         .insert_resource(PowerUpCollectionState::default())
         .insert_resource(WorldCollisionDiagnostics::default())
+        .insert_resource(WorldFloorDiagnostics::default())
         .insert_resource(WindForceDiagnostics::default())
         .insert_resource(MouseLookState::default())
         .insert_resource(DebugVisuals::for_run_mode(run_mode, screenshot_eval))
@@ -206,6 +225,7 @@ fn main() -> AppExit {
             Update,
             (
                 update_island_stream_visibility,
+                update_world_floor_streaming,
                 update_cinematic_weather,
                 update_weather_drift,
                 update_wind_responsive_visuals,
@@ -224,6 +244,23 @@ fn main() -> AppExit {
                 .in_set(GameSet::Diagnostics),
         );
 
+    if let Some(play_profile_options) = play_profile {
+        let play_profile_run = match PlayProfileRun::new(
+            play_profile_options.output_path,
+            play_profile_options.duration_secs,
+            play_profile_options.script,
+        ) {
+            Ok(play_profile_run) => play_profile_run,
+            Err(error) => {
+                eprintln!("failed to prepare play profile output: {error}");
+                return AppExit::from_code(2);
+            }
+        };
+
+        app.insert_resource(play_profile_run)
+            .add_systems(Update, collect_play_profile_sample.in_set(GameSet::Eval));
+    }
+
     if let Some(eval_options) = eval {
         let eval_run = match EvalRun::new(*eval_options) {
             Ok(eval_run) => eval_run,
@@ -237,6 +274,7 @@ fn main() -> AppExit {
             .insert_resource(EvalMovementBasis::default())
             .insert_resource(VisiblePoseTemporalState::default())
             .insert_resource(ObservedWindVisualMotionState::default())
+            .insert_resource(RuntimeAssetCostState::default())
             .add_systems(
                 Update,
                 (eval_reset_player_to_playtest_position, eval_fly_player)
@@ -256,7 +294,12 @@ fn main() -> AppExit {
                     .in_set(GameSet::Eval),
             );
     } else {
-        if run_mode.debug_visual_toggle_enabled() {
+        if scripted_play_profile {
+            app.add_systems(
+                Update,
+                scripted_play_profile_fly_player.in_set(GameSet::Movement),
+            );
+        } else if run_mode.debug_visual_toggle_enabled() {
             app.add_systems(
                 Update,
                 (
@@ -281,7 +324,8 @@ fn main() -> AppExit {
 }
 
 fn primary_window(eval: Option<&EvalOptions>) -> Window {
-    let hidden_metric_eval = eval.is_some_and(|options| !options.capture_screenshot);
+    let hidden_metric_eval =
+        eval.is_some_and(|options| !options.capture_screenshot && !options.visible_window);
 
     Window {
         title: "The NAU Engine Flight Sandbox".into(),

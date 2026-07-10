@@ -4,14 +4,15 @@ use bevy::prelude::{Resource, Vec2, Vec3};
 
 use super::{
     GROUND_CONTACT_EPSILON, GROUND_CONTACT_HORIZONTAL_DAMPING, GROUND_CONTACT_VERTICAL_CAPTURE_M,
-    GroundSurface, IslandPlateauRegion, IslandUnderRouteSegment, LodBand, PLAYER_STANDING_OFFSET,
-    RouteObjective, START_FLOOR_Y, SkyIsland, StreamChunkCoord, StreamingLodStats,
+    GroundSurface, IslandPlateauRegion, IslandUnderRouteSegment, LodBand, RouteObjective,
+    START_FLOOR_Y, SkyIsland, StreamChunkCoord, StreamingLodStats, world_terrain_floor_y_at,
 };
 
 pub const SKY_ROUTE_ISLAND_COUNT: usize = 41;
 pub const PLAYTEST_RESET_ISLAND_NAME: &str = "great sky plateau";
 const UNDER_ROUTE_GROUND_CLEARANCE_PADDING_M: f32 = 10.0;
 const UNDER_ROUTE_TOP_SURFACE_CLEARANCE_FRACTION: f32 = 0.18;
+const GROUNDED_SURFACE_FOLLOW_MAX_STEP_M: f32 = 1.25;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FirstExpeditionBeatKind {
@@ -1296,14 +1297,12 @@ const FIRST_EXPEDITION_NAVIGATION_LANDMARK_SPECS: [FirstExpeditionNavigationLand
 
 #[derive(Resource, Clone, Debug)]
 pub struct SkyRoute {
-    pub fallback_floor_y: f32,
     islands: Vec<SkyIsland>,
 }
 
 impl Default for SkyRoute {
     fn default() -> Self {
         Self {
-            fallback_floor_y: PLAYER_STANDING_OFFSET,
             islands: vec![
                 SkyIsland::new(
                     "launch mesa",
@@ -1844,7 +1843,7 @@ impl SkyRoute {
             })
             .max_by(|a, b| a.floor_y.total_cmp(&b.floor_y))
             .unwrap_or(GroundSurface {
-                floor_y: self.fallback_floor_y,
+                floor_y: world_terrain_floor_y_at(position),
                 is_target: false,
                 island_name: None,
             })
@@ -1856,7 +1855,7 @@ impl SkyRoute {
     }
 
     pub fn resolve_ground_contact(&self, state: FlightState) -> FlightState {
-        self.resolve_ground_contact_with_landing(state, true)
+        self.resolve_ground_contact_with_landing(state, true, false)
     }
 
     pub fn resolve_ground_contact_after_step(
@@ -1864,7 +1863,7 @@ impl SkyRoute {
         state: FlightState,
         was_grounded: bool,
     ) -> FlightState {
-        self.resolve_ground_contact_with_landing(state, !was_grounded)
+        self.resolve_ground_contact_with_landing(state, !was_grounded, was_grounded)
     }
 
     pub fn resolve_grounded_after_horizontal_correction(
@@ -1891,9 +1890,13 @@ impl SkyRoute {
         &self,
         mut state: FlightState,
         apply_landing_damping: bool,
+        follow_nearby_ground: bool,
     ) -> FlightState {
         let ground = self.ground_at(state.position);
-        if state.position.y <= ground.floor_y + GROUND_CONTACT_EPSILON {
+        let follows_nearby_surface = follow_nearby_ground
+            && state.controller.mode == FlightMode::Grounded
+            && (state.position.y - ground.floor_y).abs() <= GROUNDED_SURFACE_FOLLOW_MAX_STEP_M;
+        if state.position.y <= ground.floor_y + GROUND_CONTACT_EPSILON || follows_nearby_surface {
             let impact_speed_mps = (-state.velocity.y).max(0.0);
             state.position.y = ground.floor_y;
             if apply_landing_damping {

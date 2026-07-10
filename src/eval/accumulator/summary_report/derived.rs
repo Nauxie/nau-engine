@@ -8,6 +8,10 @@ pub(super) struct EvalFrameTimeStats {
     pub(super) p95_ms: f32,
     pub(super) p99_ms: f32,
     pub(super) max_ms: f32,
+    pub(super) frames_over_16_ms: u32,
+    pub(super) frames_over_33_ms: u32,
+    pub(super) frames_over_50_ms: u32,
+    pub(super) frames_over_100_ms: u32,
 }
 
 impl EvalFrameTimeStats {
@@ -26,6 +30,10 @@ impl EvalFrameTimeStats {
             p95_ms: percentile(&sorted, 0.95),
             p99_ms: percentile(&sorted, 0.99),
             max_ms: *sorted.last().unwrap_or(&0.0),
+            frames_over_16_ms: sorted.iter().filter(|sample| **sample > 16.67).count() as u32,
+            frames_over_33_ms: sorted.iter().filter(|sample| **sample > 33.34).count() as u32,
+            frames_over_50_ms: sorted.iter().filter(|sample| **sample > 50.0).count() as u32,
+            frames_over_100_ms: sorted.iter().filter(|sample| **sample > 100.0).count() as u32,
         }
     }
 }

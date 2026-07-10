@@ -65,13 +65,25 @@ cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
-Release performance baseline:
+The world-floor revamp checkpoint is accepted. It provides playable near-original-level terrain, uses one shared terrain sampler for rendering and gameplay, preserves island-surface precedence, and maintains a streamed `3x3` visible window backed by a pool bounded to `25` tiles.
+
+Automated tooling:
 
 ```sh
-./tools/perf_baseline.sh
+./tools/world_floor_full_gate.sh
+./tools/world_floor_candidate_gate.sh
 ```
 
-The perf baseline writes per-scenario app eval artifacts plus `perf_summary.json`, `perf_summary.tsv`, and interpretation notes under `target/eval/perf_baseline/`.
+The accepted checkpoint has clean main-vs-candidate app perf results plus both mandatory foreground profiles:
+
+```sh
+NAU_PLAY_PROFILE_SCRIPT=freeflight ./tools/scripted_play_profile.sh target/eval/play_profile/candidate_scripted_freeflight.json
+NAU_PLAY_PROFILE_SCRIPT=ground_traversal ./tools/scripted_play_profile.sh target/eval/play_profile/candidate_scripted_ground_traversal.json
+```
+
+Automation must verify sampler parity, island precedence, visible-window coverage, the `25`-tile pool bound, frame-time and hitch budgets, mesh/material/triangle cost, and stream churn. Screenshots support visual review but cannot accept the feature.
+
+The final gate is a human release playtest on the target Mac: land on the world floor, walk, run, launch, and fly back into traversal while checking collision/grounding, transitions, camera feel, visible coverage, frame pacing, fan, and heat. This manual sequence was completed for the accepted checkpoint and remains mandatory after future behavioral changes; it has no automated waiver. A visual-only plane at `y=-260`, a one-tile floor, or a report generated only from automated evidence is not success.
 
 Visual and fixture artifacts:
 

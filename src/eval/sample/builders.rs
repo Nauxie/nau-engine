@@ -345,6 +345,10 @@ impl EvalSample {
             total_stream_spawned_visuals,
             total_stream_despawned_visuals,
             entity_count,
+            mesh_count: 0,
+            material_count: 0,
+            loaded_mesh_vertices: 0,
+            loaded_mesh_triangles: 0,
             visual_asset_slot_count,
             gltf_scene_asset_slot_count,
             ready_visual_asset_slot_count,
@@ -391,6 +395,20 @@ impl EvalSample {
             total_power_up_activations,
             visual_foot_gap_m: 0.0,
         }
+    }
+
+    pub fn with_runtime_asset_costs(
+        mut self,
+        mesh_count: usize,
+        material_count: usize,
+        loaded_mesh_vertices: usize,
+        loaded_mesh_triangles: usize,
+    ) -> Self {
+        self.mesh_count = mesh_count;
+        self.material_count = material_count;
+        self.loaded_mesh_vertices = loaded_mesh_vertices;
+        self.loaded_mesh_triangles = loaded_mesh_triangles;
+        self
     }
 
     pub fn with_movement_metrics(mut self, metrics: EvalMovementMetrics) -> Self {

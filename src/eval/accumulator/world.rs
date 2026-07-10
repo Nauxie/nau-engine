@@ -538,6 +538,14 @@ pub(super) fn observe(
         .total_stream_despawned_visuals
         .max(sample.total_stream_despawned_visuals);
     accumulator.max_entity_count = accumulator.max_entity_count.max(sample.entity_count);
+    accumulator.max_mesh_count = accumulator.max_mesh_count.max(sample.mesh_count);
+    accumulator.max_material_count = accumulator.max_material_count.max(sample.material_count);
+    accumulator.max_loaded_mesh_vertices = accumulator
+        .max_loaded_mesh_vertices
+        .max(sample.loaded_mesh_vertices);
+    accumulator.max_loaded_mesh_triangles = accumulator
+        .max_loaded_mesh_triangles
+        .max(sample.loaded_mesh_triangles);
 }
 
 fn wind_load_response_sample(sample: &EvalSample) -> bool {
