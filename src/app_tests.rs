@@ -3,7 +3,7 @@ use bevy::gltf::Gltf;
 use bevy::mesh::{Indices, VertexAttributeValues};
 use bevy::pbr::ScatteringMedium;
 use nau_engine::animation::PlayerPoseIntent;
-use nau_engine::environment::{LiftField, WindField};
+use nau_engine::environment::{AERIAL_POWER_UP_ROUTE, LiftField, WindField};
 use nau_engine::movement::FlightInput;
 use nau_engine::world::{
     IslandLandmarkRole, IslandPlateauRegion, IslandScaleClass, IslandTerrainArchetype,
@@ -18,6 +18,35 @@ fn test_island() -> SkyIsland {
         12.0,
         false,
     )
+}
+
+#[test]
+fn aerial_power_up_gates_clear_the_world_surface() {
+    let route = SkyRoute::default();
+
+    for power_up in AERIAL_POWER_UP_ROUTE {
+        let samples = std::iter::once(power_up.center).chain((0..8).map(|sample_index| {
+            let angle = sample_index as f32 / 8.0 * std::f32::consts::TAU;
+            power_up.center
+                + Vec3::new(
+                    angle.cos() * power_up.radius_m,
+                    0.0,
+                    angle.sin() * power_up.radius_m,
+                )
+        }));
+        for (sample_index, sample) in samples.enumerate() {
+            let ground = route.ground_at(sample);
+            assert!(
+                power_up.center.y - power_up.radius_m > ground.floor_y + 2.0,
+                "{} should clear the world surface at sample {}, center_y={}, floor_y={}, radius={}",
+                power_up.name,
+                sample_index,
+                power_up.center.y,
+                ground.floor_y,
+                power_up.radius_m
+            );
+        }
+    }
 }
 
 fn positions(mesh: &Mesh) -> &[[f32; 3]] {
@@ -772,12 +801,14 @@ fn parse_cli_args_rejects_run_mode_and_export_together() {
 
 #[test]
 fn clean_play_mode_starts_world_without_debug_readout_or_gizmos() {
-    let mut app = setup_headless_runtime_app(RunMode::Play, false);
+    let mut app = setup_headless_runtime_app(RunMode::Play, false, true);
     let world = app.world_mut();
     let route_island_count = world.resource::<SkyRoute>().islands().len();
     let content_metrics = *world.resource::<crate::content_diagnostics::IslandContentDiagnostics>();
 
     assert_eq!(component_count::<DebugReadout>(world), 0);
+    assert_eq!(component_count::<GameHudRoot>(world), 1);
+    assert_eq!(component_count::<GameMenuOverlay>(world), 0);
     assert!(!world.resource::<DebugVisuals>().enabled);
     assert_eq!(component_count::<Player>(world), 1);
     assert_eq!(component_count::<Camera3d>(world), 1);
@@ -798,10 +829,11 @@ fn clean_play_mode_starts_world_without_debug_readout_or_gizmos() {
 
 #[test]
 fn debug_mode_starts_with_debug_readout_and_toggleable_gizmos() {
-    let mut app = setup_headless_runtime_app(RunMode::Debug, false);
+    let mut app = setup_headless_runtime_app(RunMode::Debug, false, true);
     let world = app.world_mut();
 
     assert_eq!(component_count::<DebugReadout>(world), 1);
+    assert_eq!(component_count::<GameHudRoot>(world), 1);
     assert!(world.resource::<DebugVisuals>().enabled);
     assert_eq!(component_count::<Player>(world), 1);
     assert_eq!(component_count::<Camera3d>(world), 1);
@@ -814,9 +846,30 @@ fn screenshot_eval_suppresses_debug_gizmos_even_in_debug_mode() {
     assert!(!debug_visuals.enabled);
 }
 
+#[test]
+fn eval_and_profile_style_runs_can_suppress_game_ui() {
+    let mut app = setup_headless_runtime_app(RunMode::Play, false, false);
+    let world = app.world_mut();
+
+    assert_eq!(component_count::<GameHudRoot>(world), 0);
+    assert_eq!(component_count::<GameMenuOverlay>(world), 0);
+}
+
+#[test]
+fn clean_play_ui_keeps_only_the_compact_hud_resident() {
+    let mut app_with_ui = setup_headless_runtime_app(RunMode::Play, false, true);
+    let mut app_without_ui = setup_headless_runtime_app(RunMode::Play, false, false);
+
+    assert_eq!(
+        live_entity_count(app_with_ui.world_mut()) - live_entity_count(app_without_ui.world_mut()),
+        3
+    );
+}
+
 fn setup_headless_runtime_app(
     run_mode: RunMode,
     suppress_debug_visuals_for_screenshot: bool,
+    game_ui_enabled: bool,
 ) -> App {
     let mut app = App::new();
     app.insert_resource(run_mode)
@@ -825,6 +878,7 @@ fn setup_headless_runtime_app(
             suppress_debug_visuals_for_screenshot,
         ))
         .insert_resource(SkyRoute::default())
+        .insert_resource(GameUiState::new(game_ui_enabled))
         .add_plugins((MinimalPlugins, AssetPlugin::default()))
         .init_resource::<Assets<Mesh>>()
         .init_resource::<Assets<StandardMaterial>>()
@@ -839,6 +893,11 @@ fn setup_headless_runtime_app(
 
 fn component_count<T: Component>(world: &mut World) -> usize {
     let mut query = world.query_filtered::<Entity, With<T>>();
+    query.iter(world).count()
+}
+
+fn live_entity_count(world: &mut World) -> usize {
+    let mut query = world.query::<Entity>();
     query.iter(world).count()
 }
 

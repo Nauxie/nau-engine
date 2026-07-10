@@ -4,7 +4,7 @@ use crate::{Player, keyboard_flight_input};
 use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::system::SystemParam;
-use bevy::input::mouse::MouseMotion;
+use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::light::{AtmosphereEnvironmentMapLight, VolumetricFog};
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
 use bevy::post_process::bloom::Bloom;
@@ -54,10 +54,10 @@ pub(crate) struct CameraObstructionMemory {
 pub(crate) type CameraFollowFilter = (With<Camera3d>, Without<Player>);
 
 #[derive(SystemParam)]
-pub(crate) struct CameraControlInputSources<'w, 's> {
+pub(crate) struct CameraControlInputSources<'w> {
     mouse_buttons: Res<'w, ButtonInput<MouseButton>>,
     mouse_look: Res<'w, MouseLookState>,
-    mouse_motion: MessageReader<'w, 's, MouseMotion>,
+    mouse_motion: Res<'w, AccumulatedMouseMotion>,
 }
 
 #[derive(SystemParam)]
@@ -145,7 +145,6 @@ pub(crate) fn follow_camera_transform(player_position: Vec3, follow: &FollowCame
 
 pub(crate) fn update_mouse_look_capture(
     eval: Option<Res<EvalRun>>,
-    keyboard: Res<ButtonInput<KeyCode>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut mouse_look: ResMut<MouseLookState>,
     mut window: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
@@ -157,10 +156,6 @@ pub(crate) fn update_mouse_look_capture(
     if mouse_buttons.just_pressed(MouseButton::Left) {
         mouse_look.captured = true;
     }
-    if keyboard.just_pressed(KeyCode::Escape) {
-        mouse_look.captured = false;
-    }
-
     let Ok((window, mut cursor)) = window.single_mut() else {
         return;
     };
@@ -189,7 +184,7 @@ pub(crate) fn update_camera_control(
     profile: Option<Res<PlayProfileRun>>,
     tuning: Res<CameraControlTuning>,
     mut state: ResMut<CameraControlState>,
-    mut sources: CameraControlInputSources,
+    sources: CameraControlInputSources,
 ) {
     let input = if let Some(run) = eval.as_deref() {
         scripted_camera_input(run.scenario, run.frame)
@@ -199,10 +194,7 @@ pub(crate) fn update_camera_control(
     {
         input
     } else {
-        let mouse_delta = sources
-            .mouse_motion
-            .read()
-            .fold(Vec2::ZERO, |delta, motion| delta + motion.delta);
+        let mouse_delta = sources.mouse_motion.delta;
 
         CameraInput {
             mouse_delta: if sources.mouse_look.captured

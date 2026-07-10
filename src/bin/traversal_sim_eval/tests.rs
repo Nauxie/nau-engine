@@ -1335,6 +1335,14 @@ fn long_glide_simulation_collects_boosts_and_crosses_archipelago() {
         result.metrics.max_collected_power_up_count
             >= scenario.thresholds.min_collected_power_up_count
     );
+    assert_eq!(
+        result.metrics.max_collected_power_up_count,
+        scenario.thresholds.min_collected_power_up_count
+    );
+    assert_eq!(
+        result.metrics.total_power_up_activations,
+        scenario.thresholds.min_collected_power_up_count
+    );
     assert!(
         result.metrics.power_up_effect_samples >= scenario.thresholds.min_power_up_effect_samples
     );

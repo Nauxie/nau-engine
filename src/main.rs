@@ -7,6 +7,7 @@ mod debug_visuals;
 mod environment_visuals;
 mod eval_app_runtime;
 mod eval_runtime;
+mod game_ui_runtime;
 mod generated_content;
 mod island_visuals;
 mod play_profile_runtime;
@@ -33,6 +34,7 @@ use eval_app_runtime::*;
 use eval_runtime::{CliAction, EvalMovementBasis, EvalOptions, EvalRun, path_string, usage};
 #[cfg(test)]
 use eval_runtime::{RunMode, parse_cli_args, remove_existing_dir};
+use game_ui_runtime::*;
 #[cfg(test)]
 use generated_content::*;
 use island_visuals::*;
@@ -147,6 +149,7 @@ fn main() -> AppExit {
     let scripted_play_profile = play_profile
         .as_ref()
         .is_some_and(|options| options.script.is_some());
+    let game_ui_enabled = eval.is_none() && play_profile.is_none();
 
     if play_profile.is_some() && cfg!(debug_assertions) {
         eprintln!(
@@ -178,6 +181,7 @@ fn main() -> AppExit {
         .insert_resource(WorldFloorDiagnostics::default())
         .insert_resource(WindForceDiagnostics::default())
         .insert_resource(MouseLookState::default())
+        .insert_resource(GameUiState::new(game_ui_enabled))
         .insert_resource(DebugVisuals::for_run_mode(run_mode, screenshot_eval))
         .insert_resource(SkyRoute::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -187,14 +191,21 @@ fn main() -> AppExit {
         .configure_sets(
             Update,
             (
-                GameSet::Movement,
-                GameSet::Camera,
-                GameSet::Diagnostics,
+                GameSet::Ui,
+                GameSet::Movement.run_if(gameplay_input_active),
+                GameSet::Camera.run_if(gameplay_input_active),
+                GameSet::Diagnostics.run_if(gameplay_input_active),
                 GameSet::Eval,
             )
                 .chain(),
         )
         .add_systems(Startup, setup)
+        .add_systems(
+            Update,
+            (toggle_game_menu, handle_game_menu_buttons, sync_game_ui)
+                .chain()
+                .in_set(GameSet::Ui),
+        )
         .add_systems(
             Update,
             (
@@ -340,6 +351,7 @@ fn primary_window(eval: Option<&EvalOptions>) -> Window {
 
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 enum GameSet {
+    Ui,
     Movement,
     Camera,
     Diagnostics,

@@ -909,7 +909,7 @@ impl AerialPowerUp {
     }
 }
 
-pub const AERIAL_POWER_UP_ROUTE: [AerialPowerUp; 3] = [
+pub const AERIAL_POWER_UP_ROUTE: [AerialPowerUp; 5] = [
     AerialPowerUp {
         name: "midair gust gate",
         center: Vec3::new(26.0, 92.0, -126.0),
@@ -938,6 +938,26 @@ pub const AERIAL_POWER_UP_ROUTE: [AerialPowerUp; 3] = [
         forward_speed_boost: 6.0,
         upward_speed_boost: 5.0,
         max_upward_speed: 18.0,
+        effect_duration_secs: 0.75,
+    },
+    AerialPowerUp {
+        name: "low reef slingshot gate",
+        center: Vec3::new(116.0, 76.0, -252.0),
+        radius_m: 24.0,
+        forward_direction: Vec3::new(0.02, 0.0, -1.0),
+        forward_speed_boost: 5.5,
+        upward_speed_boost: 5.0,
+        max_upward_speed: 19.0,
+        effect_duration_secs: 0.75,
+    },
+    AerialPowerUp {
+        name: "upper thermal exit gate",
+        center: Vec3::new(116.0, 176.0, -566.0),
+        radius_m: 28.0,
+        forward_direction: Vec3::new(-0.23, 0.0, -0.97),
+        forward_speed_boost: 6.5,
+        upward_speed_boost: 4.5,
+        max_upward_speed: 22.0,
         effect_duration_secs: 0.75,
     },
 ];
@@ -1735,12 +1755,22 @@ mod tests {
 
     #[test]
     fn aerial_power_up_route_is_collectible_and_directional() {
-        for power_up in AERIAL_POWER_UP_ROUTE {
+        for (index, power_up) in AERIAL_POWER_UP_ROUTE.into_iter().enumerate() {
             assert!(power_up.contains(power_up.center));
             assert!(power_up.radius_m >= 20.0);
             assert!(power_up.forward_speed_boost > 0.0);
             assert!(power_up.upward_speed_boost > 0.0);
             assert!(power_up.effect_duration_secs > 0.0);
+
+            for other in AERIAL_POWER_UP_ROUTE.iter().skip(index + 1) {
+                assert_ne!(power_up.name, other.name);
+                assert!(
+                    power_up.center.distance(other.center) > power_up.radius_m + other.radius_m,
+                    "{} and {} should not stack collection volumes",
+                    power_up.name,
+                    other.name
+                );
+            }
         }
     }
 
