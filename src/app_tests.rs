@@ -262,9 +262,14 @@ fn parse_cli_args_defaults_to_clean_play_run_mode() {
         .expect("empty args should run the clean play sandbox");
 
     match action {
-        CliAction::Run { eval, mode } => {
+        CliAction::Run {
+            eval,
+            mode,
+            play_profile,
+        } => {
             assert!(eval.is_none());
             assert_eq!(mode, RunMode::Play);
+            assert!(play_profile.is_none());
             assert!(!mode.debug_readout_enabled());
             assert!(!mode.debug_visuals_enabled());
             assert!(!mode.debug_visual_toggle_enabled());
@@ -279,9 +284,14 @@ fn parse_cli_args_accepts_play_mode() {
         parse_cli_args(["--play"].into_iter().map(str::to_string)).expect("play args should parse");
 
     match action {
-        CliAction::Run { eval, mode } => {
+        CliAction::Run {
+            eval,
+            mode,
+            play_profile,
+        } => {
             assert!(eval.is_none());
             assert_eq!(mode, RunMode::Play);
+            assert!(play_profile.is_none());
             assert!(!mode.debug_readout_enabled());
             assert!(!mode.debug_visuals_enabled());
             assert!(!mode.debug_visual_toggle_enabled());
@@ -296,9 +306,14 @@ fn parse_cli_args_accepts_debug_mode() {
         .expect("debug args should parse");
 
     match action {
-        CliAction::Run { eval, mode } => {
+        CliAction::Run {
+            eval,
+            mode,
+            play_profile,
+        } => {
             assert!(eval.is_none());
             assert_eq!(mode, RunMode::Debug);
+            assert!(play_profile.is_none());
             assert!(mode.debug_readout_enabled());
             assert!(mode.debug_visuals_enabled());
             assert!(mode.debug_visual_toggle_enabled());
@@ -308,18 +323,250 @@ fn parse_cli_args_accepts_debug_mode() {
 }
 
 #[test]
+fn parse_cli_args_accepts_manual_play_profile() {
+    let action = parse_cli_args(
+        [
+            "--play",
+            "--play-profile",
+            "target/eval/manual_play/profile.json",
+        ]
+        .into_iter()
+        .map(str::to_string),
+    )
+    .expect("play profile args should parse");
+
+    match action {
+        CliAction::Run {
+            eval,
+            mode,
+            play_profile,
+        } => {
+            let play_profile = play_profile.expect("play profile options");
+            assert!(eval.is_none());
+            assert_eq!(mode, RunMode::Play);
+            assert_eq!(
+                play_profile.output_path,
+                PathBuf::from("target/eval/manual_play/profile.json")
+            );
+            assert_eq!(play_profile.duration_secs, None);
+            assert_eq!(play_profile.script, None);
+        }
+        _ => panic!("expected play profile run action"),
+    }
+}
+
+#[test]
+fn parse_cli_args_accepts_timed_manual_play_profile() {
+    let action = parse_cli_args(
+        [
+            "--play",
+            "--play-profile",
+            "target/eval/manual_play/profile.json",
+            "--play-profile-duration",
+            "45",
+        ]
+        .into_iter()
+        .map(str::to_string),
+    )
+    .expect("timed play profile args should parse");
+
+    match action {
+        CliAction::Run {
+            eval,
+            mode,
+            play_profile,
+        } => {
+            let play_profile = play_profile.expect("play profile options");
+            assert!(eval.is_none());
+            assert_eq!(mode, RunMode::Play);
+            assert_eq!(
+                play_profile.output_path,
+                PathBuf::from("target/eval/manual_play/profile.json")
+            );
+            assert_eq!(play_profile.duration_secs, Some(45.0));
+            assert_eq!(play_profile.script, None);
+        }
+        _ => panic!("expected play profile run action"),
+    }
+}
+
+#[test]
+fn parse_cli_args_accepts_scripted_play_profile() {
+    let action = parse_cli_args(
+        [
+            "--play",
+            "--play-profile",
+            "target/eval/play_profile/candidate_freeflight.json",
+            "--play-profile-duration",
+            "45",
+            "--play-profile-script",
+            "freeflight",
+        ]
+        .into_iter()
+        .map(str::to_string),
+    )
+    .expect("scripted play profile args should parse");
+
+    match action {
+        CliAction::Run {
+            eval,
+            mode,
+            play_profile,
+        } => {
+            let play_profile = play_profile.expect("play profile options");
+            assert!(eval.is_none());
+            assert_eq!(mode, RunMode::Play);
+            assert_eq!(
+                play_profile.output_path,
+                PathBuf::from("target/eval/play_profile/candidate_freeflight.json")
+            );
+            assert_eq!(play_profile.duration_secs, Some(45.0));
+            assert_eq!(
+                play_profile.script,
+                Some(crate::play_profile_runtime::PlayProfileScript::Freeflight)
+            );
+        }
+        _ => panic!("expected scripted play profile run action"),
+    }
+}
+
+#[test]
+fn parse_cli_args_rejects_profile_options_without_output() {
+    let error = parse_cli_args(
+        ["--play", "--play-profile-duration", "45"]
+            .into_iter()
+            .map(str::to_string),
+    )
+    .expect_err("timed manual profile without output should be rejected");
+
+    assert!(error.contains("--play-profile-duration requires --play-profile"));
+
+    let error = parse_cli_args(
+        ["--play", "--play-profile-script", "freeflight"]
+            .into_iter()
+            .map(str::to_string),
+    )
+    .expect_err("scripted profile without output should be rejected");
+
+    assert!(error.contains("--play-profile-script requires --play-profile"));
+}
+
+#[test]
+fn parse_cli_args_rejects_invalid_manual_play_profile_duration() {
+    for duration in ["0", "-1", "nan", "inf", "abc"] {
+        let error = parse_cli_args(
+            [
+                "--play",
+                "--play-profile",
+                "target/eval/manual_play/profile.json",
+                "--play-profile-duration",
+                duration,
+            ]
+            .into_iter()
+            .map(str::to_string),
+        )
+        .expect_err("invalid timed manual profile duration should be rejected");
+
+        assert!(error.contains("--play-profile-duration requires a positive finite number"));
+    }
+}
+
+#[test]
+fn parse_cli_args_rejects_unknown_play_profile_script() {
+    let error = parse_cli_args(
+        [
+            "--play",
+            "--play-profile",
+            "target/eval/play_profile/profile.json",
+            "--play-profile-script",
+            "unknown",
+        ]
+        .into_iter()
+        .map(str::to_string),
+    )
+    .expect_err("unknown scripted profile should be rejected");
+
+    assert!(error.contains("unknown play profile script"));
+}
+
+#[test]
+fn parse_cli_args_rejects_debug_manual_play_profile() {
+    let error = parse_cli_args(
+        [
+            "--debug",
+            "--play-profile",
+            "target/eval/manual_play/profile.json",
+        ]
+        .into_iter()
+        .map(str::to_string),
+    )
+    .expect_err("debug manual profile should be rejected");
+
+    assert!(error.contains("--play-profile requires --play mode"));
+}
+
+#[test]
 fn parse_cli_args_eval_defaults_to_clean_play_mode() {
     let action = parse_cli_args(["--eval", "baseline_route"].into_iter().map(str::to_string))
         .expect("eval args should parse");
 
     match action {
-        CliAction::Run { eval, mode } => {
+        CliAction::Run {
+            eval,
+            mode,
+            play_profile,
+        } => {
             assert!(eval.is_some());
             assert_eq!(mode, RunMode::Play);
+            assert!(play_profile.is_none());
             assert!(!mode.debug_readout_enabled());
             assert!(!mode.debug_visuals_enabled());
         }
         _ => panic!("expected eval run action"),
+    }
+}
+
+#[test]
+fn parse_cli_args_accepts_visible_metric_eval_window() {
+    let action = parse_cli_args(
+        [
+            "--eval",
+            "baseline_route",
+            "--eval-no-screenshot",
+            "--eval-visible-window",
+        ]
+        .into_iter()
+        .map(str::to_string),
+    )
+    .expect("visible metric eval args should parse");
+
+    match action {
+        CliAction::Run {
+            eval,
+            mode,
+            play_profile,
+        } => {
+            let eval = eval.expect("eval options");
+            assert_eq!(mode, RunMode::Play);
+            assert!(play_profile.is_none());
+            assert!(!eval.capture_screenshot);
+            assert!(eval.visible_window);
+        }
+        _ => panic!("expected eval run action"),
+    }
+}
+
+#[test]
+fn parse_cli_args_rejects_eval_only_flags_without_eval() {
+    for args in [
+        vec!["--eval-output", "target/eval/baseline_route"],
+        vec!["--eval-no-screenshot"],
+        vec!["--eval-visible-window"],
+    ] {
+        let error = parse_cli_args(args.into_iter().map(str::to_string))
+            .expect_err("eval-only flag should require --eval");
+
+        assert!(error.contains("eval options require --eval"));
     }
 }
 
@@ -333,9 +580,14 @@ fn parse_cli_args_accepts_debug_eval_mode() {
     .expect("debug eval args should parse");
 
     match action {
-        CliAction::Run { eval, mode } => {
+        CliAction::Run {
+            eval,
+            mode,
+            play_profile,
+        } => {
             assert!(eval.is_some());
             assert_eq!(mode, RunMode::Debug);
+            assert!(play_profile.is_none());
             assert!(mode.debug_readout_enabled());
             assert!(mode.debug_visuals_enabled());
         }
@@ -441,6 +693,40 @@ fn parse_cli_args_rejects_eval_and_wind_visual_export_together() {
         .map(str::to_string),
     )
     .expect_err("eval and wind visual export should be mutually exclusive");
+
+    assert!(error.contains("cannot be combined"));
+}
+
+#[test]
+fn parse_cli_args_rejects_eval_and_play_profile_together() {
+    let error = parse_cli_args(
+        [
+            "--eval",
+            "baseline_route",
+            "--play-profile",
+            "target/eval/manual_play/profile.json",
+        ]
+        .into_iter()
+        .map(str::to_string),
+    )
+    .expect_err("eval and play profile should be mutually exclusive");
+
+    assert!(error.contains("cannot be combined"));
+}
+
+#[test]
+fn parse_cli_args_rejects_export_and_play_profile_together() {
+    let error = parse_cli_args(
+        [
+            "--export-terrain",
+            "target/terrain_export",
+            "--play-profile",
+            "target/eval/manual_play/profile.json",
+        ]
+        .into_iter()
+        .map(str::to_string),
+    )
+    .expect_err("export and play profile should be mutually exclusive");
 
     assert!(error.contains("cannot be combined"));
 }
@@ -563,6 +849,7 @@ fn metric_only_eval_window_is_hidden_and_unfocused() {
         scenario,
         output_dir: PathBuf::from("target/eval/test_hidden_window"),
         capture_screenshot: false,
+        visible_window: false,
     };
 
     let window = primary_window(Some(&options));
@@ -574,12 +861,31 @@ fn metric_only_eval_window_is_hidden_and_unfocused() {
 }
 
 #[test]
+fn metric_only_profile_eval_window_can_remain_visible_and_focused() {
+    let scenario = scenario_named("baseline_route").expect("baseline scenario should exist");
+    let options = EvalOptions {
+        scenario,
+        output_dir: PathBuf::from("target/eval/test_visible_metric_window"),
+        capture_screenshot: false,
+        visible_window: true,
+    };
+
+    let window = primary_window(Some(&options));
+
+    assert!(window.visible);
+    assert!(window.focused);
+    assert!(!window.transparent);
+    assert_eq!(window.composite_alpha_mode, CompositeAlphaMode::Opaque);
+}
+
+#[test]
 fn screenshot_eval_window_remains_visible_for_capture() {
     let scenario = scenario_named("baseline_route").expect("baseline scenario should exist");
     let options = EvalOptions {
         scenario,
         output_dir: PathBuf::from("target/eval/test_visible_window"),
         capture_screenshot: true,
+        visible_window: false,
     };
 
     let window = primary_window(Some(&options));

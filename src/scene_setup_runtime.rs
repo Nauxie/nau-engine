@@ -10,6 +10,7 @@ use bevy::prelude::*;
 use crate::authored_assets::{VisualAssetRegistry, prepare_visual_asset_registry};
 use crate::camera_runtime::spawn_follow_camera;
 use crate::eval_runtime::{EvalRun, RunMode};
+use crate::play_profile_runtime::PlayProfileRun;
 use crate::scene_setup_runtime::hud::spawn_debug_readout;
 use crate::scene_setup_runtime::materials::prepare_scene_materials;
 use crate::scene_setup_runtime::player::spawn_player_runtime;
@@ -34,6 +35,7 @@ pub(crate) fn setup(
     mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
     asset_server: Res<AssetServer>,
     eval_run: Option<Res<EvalRun>>,
+    play_profile: Option<Res<PlayProfileRun>>,
     run_mode: Res<RunMode>,
 ) {
     let mut visual_asset_registry = prepare_visual_asset_registry(&asset_server);
@@ -43,7 +45,8 @@ pub(crate) fn setup(
     let screenshot_eval = eval_run
         .as_deref()
         .is_some_and(|run| run.screenshot_path.is_some());
-    let player_start = initial_player_position(eval_run.as_deref(), &route);
+    let player_start =
+        initial_player_position(eval_run.as_deref(), play_profile.as_deref(), &route);
     let authored_world_fixture_scene_entities = spawn_world_runtime(
         &mut commands,
         &route,
@@ -82,7 +85,11 @@ pub(crate) fn setup(
     }
 }
 
-fn initial_player_position(eval_run: Option<&EvalRun>, route: &SkyRoute) -> Vec3 {
+fn initial_player_position(
+    eval_run: Option<&EvalRun>,
+    play_profile: Option<&PlayProfileRun>,
+    route: &SkyRoute,
+) -> Vec3 {
     if eval_run.is_some_and(|run| run.scenario.name == TERRAIN_BODY_COLLISION_CONTACT) {
         // Keep the body-contact route in a clean east-cliff lane so rocks/ridges cannot satisfy it.
         let mut start = Vec3::new(30.0, PLAYER_START.y, 8.0);
@@ -94,6 +101,12 @@ fn initial_player_position(eval_run: Option<&EvalRun>, route: &SkyRoute) -> Vec3
     }
     if eval_run.is_some_and(|run| run.scenario.name == PLATEAU_ARRIVAL_CAMERA) {
         return plateau_arrival_camera_start_position(route);
+    }
+    if eval_run.is_none()
+        && let Some(position) =
+            play_profile.and_then(|profile| profile.scripted_start_position(route))
+    {
+        return position;
     }
 
     PLAYER_START

@@ -9,6 +9,7 @@ use crate::camera_runtime::{
     CameraDiagnostics, CameraFollowFilter, CameraObstructionMemory, follow_camera_transform,
 };
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
+use crate::play_profile_runtime::PlayProfileRun;
 use crate::power_up_runtime::{PowerUpCollectionState, collect_aerial_power_ups};
 use crate::world_collision_runtime::{
     WorldCollisionDiagnostics, WorldCollisionProxy, WorldCollisionProxyKind,
@@ -290,6 +291,76 @@ pub(crate) fn fly_player(
         wind_diagnostics: &mut world.wind_diagnostics,
     };
     let input = keyboard_flight_input(&keyboard);
+
+    {
+        let mut kinematics = PlayerKinematics {
+            transform: &mut transform,
+            velocity: &mut velocity,
+            controller: &mut controller,
+        };
+        step_player(
+            dt,
+            elapsed_secs,
+            input,
+            facing,
+            &mut context,
+            &mut kinematics,
+        );
+    }
+    record_animation_context(
+        &mut animation,
+        input,
+        &controller,
+        AnimationKinematics::new(
+            &world.route,
+            &transform,
+            &velocity,
+            world.wind_diagnostics.wind_lateral_load,
+            dt,
+        ),
+    );
+}
+
+pub(crate) fn scripted_play_profile_fly_player(
+    time: Res<Time>,
+    profile: Res<PlayProfileRun>,
+    tuning: Res<FlightTuning>,
+    camera: MovementCamera,
+    mut world: MovementWorld,
+    mut player: Query<
+        (
+            &mut Transform,
+            &mut Velocity,
+            &mut FlightController,
+            &mut AnimationState,
+        ),
+        With<Player>,
+    >,
+) {
+    let Some(input) = profile.scripted_flight_input() else {
+        return;
+    };
+    let Ok((mut transform, mut velocity, mut controller, mut animation)) = player.single_mut()
+    else {
+        return;
+    };
+    let facing = camera.facing(&transform);
+    let dt = time.delta_secs();
+    let elapsed_secs = time.elapsed_secs();
+    let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
+    let visual_wind_fields = world.visual_wind_fields.iter().copied().collect::<Vec<_>>();
+    let collision_proxies = world.collision_proxies.iter().copied().collect::<Vec<_>>();
+    world.power_ups.begin_frame(dt);
+    let mut context = PlayerStepContext {
+        tuning: &tuning,
+        route: &world.route,
+        lift_fields: &lift_fields,
+        visual_wind_fields: &visual_wind_fields,
+        power_ups: &mut world.power_ups,
+        collision_proxies: &collision_proxies,
+        collision_diagnostics: &mut world.collision_diagnostics,
+        wind_diagnostics: &mut world.wind_diagnostics,
+    };
 
     {
         let mut kinematics = PlayerKinematics {
@@ -1076,6 +1147,108 @@ mod tests {
             grounded_visual_foot_gap_m(28.0, 28.0, FlightMode::Grounded),
             0.0
         );
+    }
+
+    #[test]
+    fn world_terrain_reset_preserves_the_central_island_contract() {
+        let route = SkyRoute::default();
+        let mut transform = Transform::from_translation(Vec3::new(2500.0, 80.0, -340.0));
+        let mut velocity = Velocity(Vec3::new(4.0, -8.0, 2.0));
+        let mut controller = FlightController::default();
+        let mut animation = AnimationState::default();
+        let expected = route.playtest_reset_position();
+        let reset = reset_playtest_player(
+            &route,
+            &mut transform,
+            &mut velocity,
+            &mut controller,
+            &mut animation,
+        );
+
+        assert_eq!(reset, expected);
+        assert_eq!(transform.translation, expected);
+        assert_eq!(velocity.0, Vec3::ZERO);
+        assert_eq!(
+            route.ground_at(reset).island_name,
+            Some(nau_engine::world::PLAYTEST_RESET_ISLAND_NAME)
+        );
+    }
+
+    #[test]
+    fn world_terrain_landing_can_relaunch_through_the_player_pipeline() {
+        let route = SkyRoute::default();
+        let tuning = FlightTuning::default();
+        let mut power_ups = PowerUpCollectionState::default();
+        let mut collision_diagnostics = WorldCollisionDiagnostics::default();
+        let mut wind_diagnostics = WindForceDiagnostics::default();
+        let sample = Vec3::new(2500.0, 0.0, -340.0);
+        let floor_y = route.ground_at(sample).floor_y;
+        let mut transform =
+            Transform::from_translation(Vec3::new(sample.x, floor_y + 0.05, sample.z));
+        let mut velocity = Velocity(Vec3::new(0.0, -6.0, 0.0));
+        let mut controller = FlightController {
+            mode: FlightMode::Airborne,
+            launch_available: false,
+            ..default()
+        };
+        let mut context = PlayerStepContext {
+            tuning: &tuning,
+            route: &route,
+            lift_fields: &[],
+            visual_wind_fields: &[],
+            power_ups: &mut power_ups,
+            collision_proxies: &[],
+            collision_diagnostics: &mut collision_diagnostics,
+            wind_diagnostics: &mut wind_diagnostics,
+        };
+        let facing = Facing::new(Vec3::NEG_Z, Vec3::X);
+
+        {
+            let mut player = PlayerKinematics {
+                transform: &mut transform,
+                velocity: &mut velocity,
+                controller: &mut controller,
+            };
+            step_player(
+                1.0 / 60.0,
+                0.0,
+                FlightInput::default(),
+                facing,
+                &mut context,
+                &mut player,
+            );
+        }
+
+        assert_eq!(controller.mode, FlightMode::Grounded);
+        assert!(controller.launch_available);
+        assert_eq!(
+            transform.translation.y,
+            route.ground_at(transform.translation).floor_y
+        );
+        assert_eq!(route.ground_at(transform.translation).island_name, None);
+
+        {
+            let mut player = PlayerKinematics {
+                transform: &mut transform,
+                velocity: &mut velocity,
+                controller: &mut controller,
+            };
+            step_player(
+                1.0 / 60.0,
+                1.0 / 60.0,
+                FlightInput {
+                    launch: true,
+                    ..default()
+                },
+                facing,
+                &mut context,
+                &mut player,
+            );
+        }
+
+        assert_eq!(controller.mode, FlightMode::Launching);
+        assert!(velocity.0.y > 0.0);
+        assert!(transform.translation.y > floor_y);
     }
 
     #[test]

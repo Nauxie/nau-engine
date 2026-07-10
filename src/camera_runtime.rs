@@ -1,4 +1,5 @@
 use crate::eval_runtime::EvalRun;
+use crate::play_profile_runtime::PlayProfileRun;
 use crate::{Player, keyboard_flight_input};
 use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
 use bevy::core_pipeline::tonemapping::Tonemapping;
@@ -51,6 +52,13 @@ pub(crate) struct CameraObstructionMemory {
 }
 
 pub(crate) type CameraFollowFilter = (With<Camera3d>, Without<Player>);
+
+#[derive(SystemParam)]
+pub(crate) struct CameraControlInputSources<'w, 's> {
+    mouse_buttons: Res<'w, ButtonInput<MouseButton>>,
+    mouse_look: Res<'w, MouseLookState>,
+    mouse_motion: MessageReader<'w, 's, MouseMotion>,
+}
 
 #[derive(SystemParam)]
 pub(crate) struct CameraScene<'w, 's> {
@@ -178,21 +186,28 @@ pub(crate) fn update_mouse_look_capture(
 pub(crate) fn update_camera_control(
     time: Res<Time>,
     eval: Option<Res<EvalRun>>,
+    profile: Option<Res<PlayProfileRun>>,
     tuning: Res<CameraControlTuning>,
-    mouse_buttons: Res<ButtonInput<MouseButton>>,
-    mouse_look: Res<MouseLookState>,
     mut state: ResMut<CameraControlState>,
-    mut mouse_motion: MessageReader<MouseMotion>,
+    mut sources: CameraControlInputSources,
 ) {
     let input = if let Some(run) = eval.as_deref() {
         scripted_camera_input(run.scenario, run.frame)
+    } else if let Some(input) = profile
+        .as_deref()
+        .and_then(PlayProfileRun::scripted_camera_input)
+    {
+        input
     } else {
-        let mouse_delta = mouse_motion
+        let mouse_delta = sources
+            .mouse_motion
             .read()
             .fold(Vec2::ZERO, |delta, motion| delta + motion.delta);
 
         CameraInput {
-            mouse_delta: if mouse_look.captured || mouse_buttons.pressed(MouseButton::Right) {
+            mouse_delta: if sources.mouse_look.captured
+                || sources.mouse_buttons.pressed(MouseButton::Right)
+            {
                 mouse_delta
             } else {
                 Vec2::ZERO
@@ -210,6 +225,7 @@ pub(crate) fn update_camera_control(
 pub(crate) fn follow_camera(
     time: Res<Time>,
     eval: Option<Res<EvalRun>>,
+    profile: Option<Res<PlayProfileRun>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut scene: CameraScene,
 ) {
@@ -225,10 +241,16 @@ pub(crate) fn follow_camera(
     let previous_camera_rotation = camera_transform.rotation;
 
     let dt = eval_dt(&time, eval.as_deref());
-    let movement_input = eval.as_deref().map_or_else(
-        || keyboard_flight_input(&keyboard),
-        |run| scripted_input(run.scenario, run.frame),
-    );
+    let movement_input = if let Some(run) = eval.as_deref() {
+        scripted_input(run.scenario, run.frame)
+    } else if let Some(input) = profile
+        .as_deref()
+        .and_then(PlayProfileRun::scripted_flight_input)
+    {
+        input
+    } else {
+        keyboard_flight_input(&keyboard)
+    };
     let desired_follow_direction = movement_input_stable_follow_direction(
         player_velocity.0,
         *player_transform.forward(),

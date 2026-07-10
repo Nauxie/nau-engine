@@ -5,6 +5,7 @@ mod obstruction_spires;
 mod route;
 mod streaming;
 mod surface;
+mod terrain;
 
 #[cfg(test)]
 mod tests;
@@ -37,6 +38,10 @@ pub use route::{
 };
 pub use streaming::{LodBand, StreamActivation, StreamChunkCoord, StreamingLodStats};
 pub use surface::GroundSurface;
+pub use terrain::{
+    WORLD_TERRAIN_GRID_SPACING_M, WORLD_TERRAIN_GRID_SUBDIVISIONS, WORLD_TERRAIN_TILE_SIZE_M,
+    world_terrain_floor_y_at, world_terrain_visual_y_at,
+};
 
 pub const PLAYER_STANDING_OFFSET: f32 = 0.24;
 pub const START_FLOOR_Y: f32 = 28.0;

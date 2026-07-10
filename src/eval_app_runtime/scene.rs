@@ -62,6 +62,8 @@ pub(crate) struct EvalScene<'w, 's> {
     pub(crate) stream_diagnostics: Res<'w, IslandStreamDiagnostics>,
     pub(crate) content_diagnostics: Res<'w, IslandContentDiagnostics>,
     pub(crate) asset_diagnostics: Res<'w, VisualAssetDiagnostics>,
+    pub(crate) meshes: Res<'w, Assets<Mesh>>,
+    pub(crate) materials: Res<'w, Assets<StandardMaterial>>,
     pub(crate) route_objectives: Res<'w, RouteObjectiveTracker>,
     pub(crate) power_ups: Res<'w, PowerUpCollectionState>,
     pub(crate) collision_diagnostics: Res<'w, WorldCollisionDiagnostics>,

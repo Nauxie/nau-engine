@@ -10,6 +10,7 @@ no_screenshot_requested="${NAU_EVAL_NO_SCREENSHOT:-0}"
 sim_only_requested="${NAU_EVAL_SIM_ONLY:-0}"
 visual_audit_requested="${NAU_EVAL_VISUAL_AUDIT:-1}"
 asset_audit_requested="${NAU_EVAL_ASSET_AUDIT:-1}"
+semantic_scene_audit_requested="${NAU_EVAL_SEMANTIC_SCENE_AUDIT:-1}"
 visual_audit_path="${output_dir}/visual_audit.json"
 marker_projection_audit_path="${output_dir}/marker_projection_audit.json"
 semantic_scene_audit_path="${output_dir}/semantic_scene_audit.json"
@@ -146,11 +147,13 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
     marker_projection_audit_status=$?
     set -e
 
-    set +e
-    cargo run --quiet --bin semantic_scene_audit -- "${marker_metadata_artifacts[@]}" \
-      > "${semantic_scene_audit_path}"
-    semantic_scene_audit_status=$?
-    set -e
+    if [[ "${semantic_scene_audit_requested}" != "0" ]]; then
+      set +e
+      cargo run --quiet --bin semantic_scene_audit -- "${marker_metadata_artifacts[@]}" \
+        > "${semantic_scene_audit_path}"
+      semantic_scene_audit_status=$?
+      set -e
+    fi
   fi
 
   if [[ "${visual_audit_requested}" != "0" && "${#screenshot_artifacts[@]}" -gt 0 ]]; then

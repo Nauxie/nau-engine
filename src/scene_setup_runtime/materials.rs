@@ -6,6 +6,7 @@ use crate::generated_content::{
     terrain_surface_material, textured_material, updraft_column_material, updraft_ribbon_material,
     water_surface_material,
 };
+use crate::world_floor_runtime::WorldFloorMaterials;
 
 pub(super) struct SceneMaterials {
     pub(super) suit: Handle<StandardMaterial>,
@@ -25,7 +26,7 @@ pub(super) struct SceneMaterials {
     pub(super) biome_detail_sets: Vec<IslandDetailMaterials>,
     pub(super) flower: Handle<StandardMaterial>,
     pub(super) water: Handle<StandardMaterial>,
-    pub(super) ground: Handle<StandardMaterial>,
+    pub(super) world_floor: WorldFloorMaterials,
     pub(super) cloud: Handle<StandardMaterial>,
     pub(super) cloud_veil: Handle<StandardMaterial>,
     pub(super) updraft_column: Handle<StandardMaterial>,
@@ -181,16 +182,19 @@ pub(super) fn prepare_scene_materials(
         LinearRgba::rgb(1.2, 0.25, 0.45),
     );
     let water = water_surface_material(images, materials);
-    let ground = textured_material(
-        images,
-        materials,
-        [42, 94, 52, 255],
-        [24, 60, 40, 255],
-        [92, 130, 68, 255],
-        71,
-        0.96,
-        0.18,
-    );
+    let world_floor_base = world_floor_material(images, materials);
+    let world_floor_ground_cover = biome_detail_sets
+        .first()
+        .expect("world floor requires at least one detail material set")
+        .ground_cover
+        .clone();
+    let world_floor = WorldFloorMaterials {
+        ocean: world_floor_base.clone(),
+        lowland: world_floor_base.clone(),
+        ridge: world_floor_base.clone(),
+        mountain: world_floor_base,
+        ground_cover: world_floor_ground_cover,
+    };
     let cloud = cloud_surface_material(materials);
     let cloud_veil = cloud_veil_material(materials);
     let updraft_column = updraft_column_material(materials);
@@ -243,7 +247,7 @@ pub(super) fn prepare_scene_materials(
         biome_detail_sets,
         flower,
         water,
-        ground,
+        world_floor,
         cloud,
         cloud_veil,
         updraft_column,
@@ -252,4 +256,21 @@ pub(super) fn prepare_scene_materials(
         power_up,
         terrain_texture_detail_bands,
     }
+}
+
+fn world_floor_material(
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
+) -> Handle<StandardMaterial> {
+    terrain_surface_material(
+        images,
+        materials,
+        [114, 144, 76, 255],
+        [58, 94, 62, 255],
+        [176, 158, 98, 255],
+        97,
+        0.96,
+        0.16,
+    )
+    .0
 }

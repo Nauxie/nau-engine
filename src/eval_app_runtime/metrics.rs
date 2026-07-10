@@ -14,6 +14,8 @@ use crate::environment_visuals::{
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
 use crate::player_runtime::AuthoredGliderPose;
 use crate::{grounded_visual_foot_gap_m, movement_facing};
+use bevy::ecs::system::SystemParam;
+use bevy::mesh::Indices;
 use bevy::prelude::*;
 use nau_engine::animation::{
     CharacterPart, CharacterPartRole, DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
@@ -57,6 +59,70 @@ const KEY_POSE_TRANSITION_MAX_ROTATION_DELTA_DEGREES: f32 = 60.0;
 const KEY_POSE_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.15;
 const KEY_POSE_LANDING_TRANSITION_MAX_ROTATION_DELTA_DEGREES: f32 = 60.0;
 const KEY_POSE_LANDING_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.25;
+
+#[derive(Clone, Copy, Debug, Default)]
+struct RuntimeAssetCosts {
+    mesh_count: usize,
+    material_count: usize,
+    loaded_mesh_vertices: usize,
+    loaded_mesh_triangles: usize,
+}
+
+#[derive(Resource, Default)]
+pub(crate) struct RuntimeAssetCostState {
+    initialized: bool,
+    costs: RuntimeAssetCosts,
+}
+
+#[derive(SystemParam)]
+pub(crate) struct EvalMetricState<'w> {
+    pose_temporal_state: ResMut<'w, VisiblePoseTemporalState>,
+    observed_wind_visual_motion_state: ResMut<'w, ObservedWindVisualMotionState>,
+    runtime_asset_cost_state: ResMut<'w, RuntimeAssetCostState>,
+}
+
+impl RuntimeAssetCostState {
+    fn observe(
+        &mut self,
+        meshes: &Assets<Mesh>,
+        materials: &Assets<StandardMaterial>,
+    ) -> RuntimeAssetCosts {
+        let asset_counts_changed =
+            self.costs.mesh_count != meshes.len() || self.costs.material_count != materials.len();
+        if !self.initialized || asset_counts_changed {
+            self.costs = runtime_asset_costs(meshes, materials);
+            self.initialized = true;
+        }
+        self.costs
+    }
+}
+
+fn runtime_asset_costs(
+    meshes: &Assets<Mesh>,
+    materials: &Assets<StandardMaterial>,
+) -> RuntimeAssetCosts {
+    let mut loaded_mesh_vertices = 0;
+    let mut loaded_mesh_triangles = 0;
+    for (_id, mesh) in meshes.iter() {
+        loaded_mesh_vertices += mesh.count_vertices();
+        loaded_mesh_triangles += mesh_triangle_count(mesh);
+    }
+
+    RuntimeAssetCosts {
+        mesh_count: meshes.len(),
+        material_count: materials.len(),
+        loaded_mesh_vertices,
+        loaded_mesh_triangles,
+    }
+}
+
+fn mesh_triangle_count(mesh: &Mesh) -> usize {
+    match mesh.indices() {
+        Some(Indices::U16(indices)) => indices.len() / 3,
+        Some(Indices::U32(indices)) => indices.len() / 3,
+        None => mesh.count_vertices() / 3,
+    }
+}
 
 #[derive(Resource, Default)]
 pub(crate) struct VisiblePoseTemporalState {
@@ -794,11 +860,16 @@ pub(crate) fn collect_eval_metrics(
     mut run: ResMut<EvalRun>,
     camera_control: Res<CameraControlState>,
     movement_basis: Res<EvalMovementBasis>,
-    mut pose_temporal_state: ResMut<VisiblePoseTemporalState>,
-    mut observed_wind_visual_motion_state: ResMut<ObservedWindVisualMotionState>,
+    metric_state: EvalMetricState,
     authored_animation_diagnostics: Option<Res<AuthoredAnimationDiagnostics>>,
     scene: EvalScene,
 ) {
+    let EvalMetricState {
+        mut pose_temporal_state,
+        mut observed_wind_visual_motion_state,
+        mut runtime_asset_cost_state,
+    } = metric_state;
+
     if run.finalized {
         return;
     }
@@ -880,6 +951,7 @@ pub(crate) fn collect_eval_metrics(
         authored_animation_sample_metrics(authored_animation_diagnostics.as_deref());
     let authored_glider_metrics = visible_authored_glider_metrics(scene.authored_gliders.iter());
     let content_metrics = *scene.content_diagnostics;
+    let runtime_asset_costs = runtime_asset_cost_state.observe(&scene.meshes, &scene.materials);
     let (environment_motion_visuals, max_environment_motion_offset_m) =
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
     let player_wind_shear_metrics = player_wind_shear_visual_metrics(
@@ -1111,6 +1183,12 @@ pub(crate) fn collect_eval_metrics(
         scene.power_ups.collected_count(),
         scene.power_ups.active_effects(),
         scene.power_ups.total_activations(),
+    )
+    .with_runtime_asset_costs(
+        runtime_asset_costs.mesh_count,
+        runtime_asset_costs.material_count,
+        runtime_asset_costs.loaded_mesh_vertices,
+        runtime_asset_costs.loaded_mesh_triangles,
     )
     .with_visible_authored_world_fixture_count(scene.asset_diagnostics.visible_world_fixture_count)
     .with_deferred_visual_asset_scene_count(asset_metrics.deferred_scene_count)

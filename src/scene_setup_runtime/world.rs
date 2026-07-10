@@ -14,9 +14,9 @@ use crate::environment_visuals::{
 use crate::generated_content::{TERRAIN_BIOME_PALETTE_COUNT, obstruction_spire_mesh};
 use crate::island_visuals::{IslandVisualCatalog, queue_sky_island, spawn_initial_island_visuals};
 use crate::power_up_runtime::spawn_power_up_guides;
-use crate::scene_setup_runtime::constants::WORLD_RADIUS;
 use crate::scene_setup_runtime::materials::SceneMaterials;
 use crate::world_collision_runtime::{WorldCollisionProxy, WorldCollisionProxyKind};
+use crate::world_floor_runtime::spawn_world_floor;
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::CameraObstruction;
 use nau_engine::environment::{GAMEPLAY_LIFT_ROUTE, visual_crosswind_fields};
@@ -31,7 +31,7 @@ pub(super) fn spawn_world_runtime(
     player_start: Vec3,
 ) -> Vec<(VisualAssetKind, Entity)> {
     spawn_sun(commands);
-    spawn_ground(commands, meshes, scene_materials);
+    spawn_world_floor(commands, meshes, &scene_materials.world_floor, player_start);
     spawn_island_visuals(commands, route, meshes, scene_materials, player_start);
     spawn_camera_obstacles(commands, route, meshes, scene_materials);
     spawn_environment_volumes(commands, meshes, scene_materials);
@@ -54,24 +54,6 @@ fn spawn_sun(commands: &mut Commands) {
             ..default()
         }
         .build(),
-    ));
-}
-
-fn spawn_ground(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    scene_materials: &SceneMaterials,
-) {
-    commands.spawn((
-        Mesh3d(
-            meshes.add(
-                Plane3d::default()
-                    .mesh()
-                    .size(WORLD_RADIUS * 2.0, WORLD_RADIUS * 2.0),
-            ),
-        ),
-        MeshMaterial3d(scene_materials.ground.clone()),
-        Transform::default(),
     ));
 }
 
