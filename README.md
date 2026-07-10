@@ -105,12 +105,15 @@ NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh updraft_route target/eval/updraft_route
 |`A` / `D`|Strafe/steer|
 |Mouse|Look while locked or while right mouse is held|
 |Left click|Lock and hide the mouse cursor|
-|Esc|Release the mouse cursor|
+|Esc|Open the pause menu; return from controls|
 |`Space`|Deploy glider while airborne|
 |`E`|Launch upward from the ground|
 |`Shift`|Dive|
 |`R`|Reset to the central playtest island|
 |`F1`|Toggle debug gizmos in `--debug` mode|
+
+The top-right HUD tracks unique aerial boost gates collected during the current session. Open
+the compact pause menu for the same score, the controls reference, resume, and quit actions.
 
 ## Docs
 

@@ -155,4 +155,13 @@ pub(super) fn append_asset_checks(
             "samples",
         ),
     ]);
+
+    if thresholds.min_collected_power_up_count > 0 {
+        checks.push(EvalCheck::at_most(
+            "collected_power_up_count_ceiling",
+            acc.max_collected_power_up_count as f32,
+            thresholds.min_collected_power_up_count as f32,
+            "power-ups",
+        ));
+    }
 }

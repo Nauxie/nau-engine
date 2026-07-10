@@ -187,6 +187,15 @@ pub(super) fn append_checks(
         ),
     ]);
 
+    if thresholds.min_collected_power_up_count > 0 {
+        checks.push(SimCheck::at_most(
+            "collected_power_up_count_ceiling",
+            metrics.max_collected_power_up_count as f32,
+            thresholds.min_collected_power_up_count as f32,
+            "powerups",
+        ));
+    }
+
     if thresholds.min_camera_obstruction_adjustment_m > 0.0
         || thresholds.min_camera_obstructed_distance_m > 0.0
     {

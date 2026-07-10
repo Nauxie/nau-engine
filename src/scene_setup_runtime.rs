@@ -10,6 +10,7 @@ use bevy::prelude::*;
 use crate::authored_assets::{VisualAssetRegistry, prepare_visual_asset_registry};
 use crate::camera_runtime::spawn_follow_camera;
 use crate::eval_runtime::{EvalRun, RunMode};
+use crate::game_ui_runtime::{GameUiState, spawn_game_ui};
 use crate::play_profile_runtime::PlayProfileRun;
 use crate::scene_setup_runtime::hud::spawn_debug_readout;
 use crate::scene_setup_runtime::materials::prepare_scene_materials;
@@ -37,6 +38,7 @@ pub(crate) fn setup(
     eval_run: Option<Res<EvalRun>>,
     play_profile: Option<Res<PlayProfileRun>>,
     run_mode: Res<RunMode>,
+    game_ui: Res<GameUiState>,
 ) {
     let mut visual_asset_registry = prepare_visual_asset_registry(&asset_server);
     let player_scene_handle = visual_asset_registry.scene_handle(VisualAssetKind::PlayerCharacter);
@@ -83,6 +85,7 @@ pub(crate) fn setup(
     if run_mode.debug_readout_enabled() && !screenshot_eval {
         spawn_debug_readout(&mut commands);
     }
+    spawn_game_ui(&mut commands, &game_ui);
 }
 
 fn initial_player_position(
