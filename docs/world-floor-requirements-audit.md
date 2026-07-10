@@ -16,7 +16,7 @@ Overall status: **accepted**. Automated readiness and the required human release
 ## Product Requirements
 
 - Playable near-original-level terrain: `Complete (automated)`.
-  Evidence: shared terrain spans approximately `26.9 m` of relief with four biomes, six terrain feature classes, ground cover, and measured fully grounded traversal over `493.150 m`. The real player pipeline has direct land-then-relaunch coverage, while manual and scripted `R` reset behavior retains the established central-island contract.
+  Evidence: shared terrain spans approximately `26.5 m` of relief with four biomes, six terrain feature classes, ground cover, and measured fully grounded traversal over `493.407 m`. The real player pipeline has direct land-then-relaunch coverage, while manual and scripted `R` reset behavior retains the established central-island contract.
 
 - Shared render/gameplay terrain sampler: `Complete`.
   Evidence: mesh generation and gameplay grounding query `src/world/terrain.rs`; triangle interpolation, render/gameplay parity, representative points, and tile-boundary continuity are covered by tests.
@@ -39,7 +39,7 @@ Overall status: **accepted**. Automated readiness and the required human release
   Evidence: the 35-second main and exact-source 45-second candidate quiet-host profiles pass absolute and relative frame-time, hitch, asset-cost, island, and streaming gates.
 
 - Scripted `ground_traversal` profile: `Complete for the final committed candidate source`.
-  Evidence: the exact-source 45-second candidate profile remains `100%` grounded over `493.150 m`; candidate crosses streamed terrain while staying inside all floor budgets.
+  Evidence: the exact-source 45-second candidate profile remains `100%` grounded over `493.407 m`; candidate crosses streamed terrain while staying inside all floor budgets.
 
 - No meaningful release regression: `Complete for the final committed candidate source`.
   Evidence: readiness passes every hard comparison; candidate app-path averages improve on main, while both foreground profiles remain inside their absolute and relative frame-time and hitch budgets.
