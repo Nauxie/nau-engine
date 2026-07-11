@@ -122,8 +122,9 @@ Both windowless and app-backed `long_glide_visibility` preserve exactly three ma
 
 ## Last Known Good
 
-- Current open-sandbox baseline: latest `main` after merged PR `#396`, including the accepted world-floor checkpoint
-- Recent merged PRs: `#391` - Stabilize island impostor LOD rendering; `#392` - Fix camera obstruction handoff; `#393` - Add player wind-shear effects; `#394` - Polish wind ribbons; `#395` - Bound dive head-gaze transitions; `#396` - Add playable streamed world terrain
+- Current merged open-sandbox baseline: latest `main` after PR `#397`, including the accepted world-floor checkpoint and compact game UI
+- Active candidate: PR `#398` expands the objective route to twelve gates while reducing resident gate-marker entities
+- Recent merged PRs: `#391` - Stabilize island impostor LOD rendering; `#392` - Fix camera obstruction handoff; `#393` - Add player wind-shear effects; `#394` - Polish wind ribbons; `#395` - Bound dive head-gaze transitions; `#396` - Add playable streamed world terrain; `#397` - Add compact game UI and aerial gate score
 - Verification:
   - `cargo check`
   - `cargo fmt --check`
@@ -173,7 +174,7 @@ Use these notes to steer the next long `/goal` run. They are product-quality fee
 - The seven non-player authored world glTF fixture scenes now spawn visibly on route islands after scene readiness, and evals gate their visible fixture-kind count separately from the existing load/spawn/ready scene lifecycle counters.
 - `F1` toggles debug gizmos for player vectors, camera line, visual wind/updraft stream fields, and gameplay lift fields in the default debug sandbox.
 - Visual `WindField` volumes now drive both readable airflow visuals/diagnostics and bounded horizontal airborne current: crosswinds push laterally, updraft swirl bends horizontal motion, gust-varied wind load from the total applied wind-current delta feeds readable body/glider reaction, every gameplay updraft route node overlaps an angled crosswind layer, wind guide/ribbon visual motion, stream variation, depth span, scale pulse, coherence, ribbon-specific advected scene-sample flow, wind-load pose/glider response, and force-to-flow alignment are checked against shared `WindField::flow_at` vectors, and paired vertical climb uses the same updraft flow for thermal-core/gust/edge lift modulation while remaining capped by `LiftField`.
-- Five authored aerial boost gates are visible as glowing route rings, apply capped forward/upward boosts while airborne, disappear after collection, and report visible/collected/active-effect counters in the game HUD and eval metrics. The original three remain on the main glide corridor; the low-reef and upper-thermal additions reward optional recovery and high-route exploration.
+- Twelve authored aerial boost gates are visible as glowing route rings, apply capped forward/upward boosts while airborne, disappear after collection, and report visible/collected/active-effect counters in the game HUD and eval metrics. The original three remain on the main glide corridor; nine optional gates reward low-reef, upper-thermal, and high-altitude route exploration.
 - `sunlit terrace` and `western refuge` are marked as recovery branch islands with visible mast/ring beacons.
 - Reusable logic now lives in dedicated modules for asset readiness, movement, environment, camera, route-surface/world math, diagnostics, eval metrics, and richer pose math.
 - `ground_taxi_control` eval proves pre-launch camera-relative WASD moves the player across the launch island without leaving grounded mode.
