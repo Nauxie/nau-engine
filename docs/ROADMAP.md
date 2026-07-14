@@ -1,137 +1,151 @@
 # Roadmap
 
-This roadmap is horizon-based, not date-based. The point is to preserve direction across sessions without pretending we know the exact schedule.
+This roadmap is horizon-based, not date-based. It describes product direction from the current playable baseline rather than tracking branches or pull requests.
 
-## Current Reset Note
+## Current Position
 
-As of 2026-07-08, `main` is the clean baseline after the July queue reset and subsequent narrow traversal/camera/visual PRs through `#395`. The reset policy still holds: restart future slices from current `main`; do not merge or restack the abandoned PR3+ world branch wholesale. Reintroduce useful ideas as narrow branches with app-path camera, stutter, collision, traversal-feel, and route-eval evidence before stacking more work.
+The foundation, core traversal loop, first large route, streamed world floor, compact UI, and measurement tooling are in place. The main product risk is no longer whether NAU can render a large sky-island sandbox; it is whether the existing traversal can become a coherent, replayable expedition with stronger character and world presentation.
 
-## Horizon 0: Project Foundation
+Do not add world scale for its own sake. Prefer work that makes the current route easier to read, more purposeful to fly, and more satisfying to complete.
 
-Status: mostly complete.
+## Horizon 0: Playable Baseline
 
-- Rust/Bevy project scaffold
-- public GitHub repo
-- Mac-first wgpu/Metal path
-- primitive flight sandbox
-- testable movement/camera/animation modules
-- basic project docs
+Status: complete and maintained.
 
-Exit criteria:
+Current capability:
 
-- `cargo fmt --all --check`, `cargo check`, `cargo test`, and clippy pass on `main`.
-- A future session can understand the project by reading `docs/STATUS.md`, `docs/ARCHITECTURE.md`, and `docs/MECHANICS/flight.md`.
+- Mac-first Rust/Bevy app through wgpu/Metal
+- launch, glide, steer, dive, brake, land, recover, and relaunch loop
+- camera-relative movement, mouse orbit, camera obstruction handling, debug metrics, and gizmos
+- 41-island route, 20 terrain archetypes, island LOD/residency, distant impostors, and a streamed playable world floor
+- visible and mechanical wind, 18 lift routes, 20 crosswind fields, and 12 one-shot aerial gates
+- self-authored player/glider fixtures with traversal pose and clip coverage
+- app/simulation evals, content exports, screenshot audits, play profiles, and release performance baselines
 
-## Horizon 1: Traversal Feel
+Maintenance criteria:
 
-Goal: make the core launch/glide/dive loop feel deliberate and measurable.
+- Core Rust checks remain green.
+- Movement and camera feel are not retuned without a reproducible regression.
+- Rendering, content-density, collision, and streaming changes include the relevant app-path and human release checks.
 
-Work:
+## Horizon 1: Expedition Clarity
 
-- Runtime debug overlay for camera pitch, camera distance, frame time, velocity, altitude, glide state, launch state, and visual wind-field count. Initial version complete.
-- Debug gizmos for player vectors, camera line, and visual wind/updraft stream fields. Initial version complete.
-- Visual wind/updraft fields after baseline gliding is stable. Initial version complete.
-- Fixed camera checkpoint screenshots, initial camera obstruction avoidance, and camera jerk metrics. Initial version complete.
-- Simple aerial boost/power-up gates along the long-glide route. Initial version complete.
-- Add manual test routes: launch, glide, dive, low-altitude recovery, landing, obstacle pass.
-- Add camera mode profiles for launch, glide, dive, and ground.
-- Add bank/turn behavior that feels like glider traversal rather than free flight. Initial signed pose-lean and body-bank eval coverage complete.
+Status: next.
 
-Exit criteria:
-
-- From a standing start, the player can launch, deploy glider, steer, dive, land, and repeat without obvious camera snaps or limb jitter.
-- The glider cannot gain altitude without a defined force such as launch or a future accepted updraft mechanic.
-- Known feel regressions are captured by tests or debug metrics.
-
-## Horizon 2: Character And Animation Pipeline
-
-Goal: replace the primitive character with a believable humanoid traversal avatar.
+Goal: turn the existing world data and traversal mechanics into a clear player-facing journey.
 
 Work:
 
-- Import a rigged glTF humanoid.
-- Define animation clips and blend states.
-- Add glider mesh attachment points.
-- Add launch, fall, glide, dive, turn, land, grounded walk/run, and idle states. Generated/authored pose-intent parity for walk/run, launch/fall, dive, air-brake, turn lean, landing flare/crouch, recovery, and visible authored glider traversal response is initially covered by eval metrics.
-- Add animation debugging for current clip/state/weight.
+- Expose an understandable route progression using the existing expedition beats, landmarks, lift nodes, landing targets, and optional detours.
+- Distinguish the main route, recovery choices, and high-risk branches through world composition and restrained UI feedback.
+- Define completion, retry, and replay behavior for the twelve-gate route.
+- Make landing targets and recovery routes useful gameplay decisions rather than eval-only knowledge.
+- Add launch sources, hazards, checkpoints, or timing only when they improve the route's choices and feedback.
 
 Exit criteria:
 
-- The character reads as human-like at gameplay camera distance.
-- Glider deployment is visually attached to the character.
-- State transitions do not pop or visibly detach limbs/gear.
+- A new player can infer where to go and why without debug overlays.
+- Main-route completion and optional exploration are both legible.
+- Failure has a clear recovery or retry path.
+- The route remains fun when judged without metric tooling visible.
 
-## Horizon 3: Physics And World Interaction
+## Horizon 2: Character And Glider Fidelity
 
-Goal: make terrain, collision, and immersive forces real enough to build worlds on.
+Status: prototype complete; production-quality work remains.
 
-Work:
+Current capability:
 
-- Spike Rapier and Avian.
-- Choose kinematic character controller vs custom controller with physics queries.
-- Add terrain collision and slope/ground detection.
-- Add trigger volumes for launch sources, wind, updrafts, hazards, and checkpoints.
-- Replace prototype power-up intersection checks with explicit trigger-volume/collision queries.
-- Add basic dynamic objects that react to wind or impact.
+- self-authored glTF player and multi-part glider
+- named grounded, launch, fall, bank, glide, dive, brake, and landing clips
+- procedural pose refinement, glider attachment checks, transition checks, and pose-preview audits
 
-Exit criteria:
+Next work:
 
-- Player movement queries real collision geometry.
-- Wind current and vertical lift stay readable, bounded, and separated between visual `WindField` horizontal response and `LiftField` climb.
-- Physics debug visualization can be toggled on.
-
-## Horizon 4: Island Slice
-
-Goal: build one high-quality island route before attempting a massive world.
-
-Work:
-
-- Import or generate an island terrain mesh. Initial generated visual relief, irregular rims, cliff/underside body meshes, and simple generated prop collision proxies are complete; collision is still a route surface plus AABB proxies rather than full physics geometry.
-- Add water plane, sky, fog, lighting, shadows, and PBR materials.
-- Add launch point, glide route, landing target, and recovery path.
-- Add simple vegetation/rocks/landmarks.
-- Add route timing and traversal metrics.
+- Choose and implement a real skeletal rig and skinning pipeline when the current fixture blocks visible quality.
+- Replace approximate limb posing with authored animation and controlled runtime blending.
+- Preserve distinct fall, glide, dive, braking, turning, landing, and recovery silhouettes through transitions.
+- Improve cloth/scarf and glider response only after attachment and readability remain stable.
 
 Exit criteria:
 
-- One island can be launched into, crossed, descended onto, and visually inspected.
-- The environment supports the traversal loop rather than just looking decorative.
+- The character reads as a believable human-scale traversal avatar at gameplay distance.
+- Limbs, gear, and glider remain attached and readable through fast transitions.
+- Animation quality no longer depends on non-skeletal procedural offsets.
 
-## Horizon 5: Scale
+## Horizon 3: World Interaction And Physics
 
-Goal: support large-world sky-island traversal distances without pretending the whole world is active.
+Status: functional prototype.
 
-Work:
+Current capability:
 
-- Chunk streaming.
-- Terrain and prop LOD.
-- Distant impostors.
-- Floating origin or origin rebase.
-- Async asset loading.
-- Visibility/culling rules.
-- Per-chunk collision activation.
+- deterministic island and world-floor grounding
+- terrain-rim and cliff-body collision proxies
+- AABB collision for generated and authored solid props
+- camera obstruction bounds and collision-proxy debug visualization
 
-Exit criteria:
+Next work:
 
-- The player can fly far enough that streaming and LOD are exercised.
-- Memory and frame time remain observable and bounded.
-- Distant views look coherent from glider altitude.
-
-## Horizon 6: High-Fidelity Environment Systems
-
-Goal: support wind, weather, atmosphere, water, vegetation, and effects as systems.
-
-Work:
-
-- Visual wind on grass, cloth/glider, particles, clouds, and water.
-- Gameplay wind fields integrated with traversal. Initial bounded horizontal airborne response complete.
-- Atmospheric fog and distance haze.
-- Volumetric or layered cloud experiments.
-- Water shader and shoreline treatment.
-- Lighting and time-of-day experiments.
+- Identify concrete gameplay cases that the current terrain/AABB model cannot support.
+- Evaluate Rapier or Avian against those cases before selecting a physics layer.
+- Introduce a kinematic controller, shape queries, slope handling, authored colliders, or dynamic bodies only as required by accepted gameplay.
+- Move gate, lift, hazard, and checkpoint interactions to explicit query/trigger semantics if route complexity demands it.
 
 Exit criteria:
 
-- Wind is both visible and mechanically meaningful. Initial crosswind push and updraft swirl current complete.
-- The player can read wind/updraft opportunities from the environment while vertical climb remains explicit `LiftField` support.
-- Environment fidelity does not hide traversal readability.
+- Collision behavior matches visible geometry for the accepted route.
+- Grounding, slopes, blockers, triggers, and camera queries share a coherent representation.
+- Added physics cost is observable and justified by gameplay.
+
+## Horizon 4: Scalable World Runtime
+
+Status: partially complete.
+
+Current capability:
+
+- active island chunk windows
+- near/mid/far island LOD with material-split distant impostors
+- lazy cached island shell meshes
+- player-centered `3x3` world-floor window with a 25-tile resident pool
+- stream churn, residency, entity, mesh, triangle, and frame-time diagnostics
+
+Next work:
+
+- Move synchronous detail and authored-fixture preparation behind measured budgets.
+- Add asynchronous asset loading only when current loading produces a demonstrated hitch or memory problem.
+- Add floating-origin/rebase support only when an accepted route exceeds current coordinate precision.
+- Activate collision and high-detail content by chunk when the gameplay route requires more scale.
+
+Exit criteria:
+
+- Long traversal keeps frame time, memory, and stream churn bounded.
+- New content does not become permanently resident by default.
+- Distant views remain coherent while nearby collision and detail stay authoritative.
+
+## Horizon 5: Environment Fidelity
+
+Status: broad prototype systems exist.
+
+Current capability:
+
+- Bevy atmosphere, fog, volumetric light, bloom, shadows, weather variation, procedural PBR materials, layered clouds, ponds, vegetation, landmarks, wind guides, ribbons, motes, and player airflow
+- shared wind-flow math connecting visuals, gameplay response, exports, and eval gates
+
+Next work:
+
+- Improve the art direction of existing systems before adding more effect families.
+- Replace generated cues with authored particles, vegetation motion, glider/cloth response, water treatment, and weather layers where they materially improve readability.
+- Profile atmosphere, fog/light, shadows, clouds, wind visuals, and island detail before increasing density.
+
+Exit criteria:
+
+- Wind and lift opportunities are readable without debug geometry.
+- Environment fidelity reinforces route decisions and depth perception.
+- Visual improvements remain inside accepted release performance and power budgets.
+
+## Guardrails
+
+- Keep the current traversal feel unless evidence shows a regression.
+- Add abstractions only after two concrete systems need the same shape.
+- Keep gameplay forces, route constants, and performance budgets visible and testable.
+- Use the smallest representative route and eval set for iteration, then finish with release play.
+- Treat generated content and audits as development infrastructure, not a substitute for production art judgment.
