@@ -45,7 +45,7 @@ host_wait_secs="${NAU_PERF_HOST_WAIT_SECS:-0}"
 host_wait_interval_secs="${NAU_PERF_HOST_WAIT_POLL_SECS:-5}"
 visible_window="${NAU_PERF_VISIBLE_WINDOW:-1}"
 capture_screenshot="${NAU_PERF_CAPTURE_SCREENSHOT:-0}"
-default_ignore_process_pattern="${NAU_PERF_DEFAULT_IGNORE_PROCESS_PATTERN-cmux|codex}"
+default_ignore_process_pattern="${NAU_PERF_DEFAULT_IGNORE_PROCESS_PATTERN-}"
 ignore_process_pattern="${NAU_PERF_IGNORE_PROCESS_PATTERN-${default_ignore_process_pattern}}"
 
 case "${allow_busy_host}" in
