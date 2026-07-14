@@ -1,0 +1,114 @@
+diff --git a/src/metal/surface.rs b/src/metal/surface.rs
+index 2a705cd..c3e5d7c 100644
+--- a/src/metal/surface.rs
++++ b/src/metal/surface.rs
+@@ -8,7 +8,10 @@ use core_graphics_types::{
+     base::CGFloat,
+     geometry::{CGRect, CGSize},
+ };
+-use metal::{foreign_types::ForeignType, MTLTextureType};
++use metal::{
++    foreign_types::{ForeignType, ForeignTypeRef},
++    MTLTextureType,
++};
+ use objc::{
+     class, msg_send,
+     rc::{autoreleasepool, StrongPtr},
+@@ -16,12 +19,53 @@ use objc::{
+     sel, sel_impl,
+ };
+ use parking_lot::{Mutex, RwLock};
++#[cfg(target_os = "macos")]
++use std::sync::OnceLock;
++#[cfg(target_os = "macos")]
++use std::time::Instant;
+ 
+ use crate::metal::layer_observer::new_observer_layer;
+ 
+ #[link(name = "QuartzCore", kind = "framework")]
+ extern "C" {}
+ 
++#[cfg(target_os = "macos")]
++#[derive(Debug, Default)]
++struct WindowPresentationState {
++    visible: Option<bool>,
++    occlusion_state: Option<usize>,
++    occlusion_visible: Option<bool>,
++}
++
++#[cfg(target_os = "macos")]
++unsafe fn window_presentation_state(
++    render_layer: &metal::MetalLayerRef,
++) -> WindowPresentationState {
++    let mut current_layer = render_layer.as_ptr().cast::<Object>();
++    while !current_layer.is_null() {
++        let delegate: *mut Object = unsafe { msg_send![current_layer, delegate] };
++        if !delegate.is_null() {
++            let responds_to_window: BOOL =
++                unsafe { msg_send![delegate, respondsToSelector: sel!(window)] };
++            if responds_to_window != NO {
++                let window: *mut Object = unsafe { msg_send![delegate, window] };
++                if !window.is_null() {
++                    let visible: BOOL = unsafe { msg_send![window, isVisible] };
++                    let occlusion_state: usize =
++                        unsafe { msg_send![window, occlusionState] };
++                    return WindowPresentationState {
++                        visible: Some(visible != NO),
++                        occlusion_state: Some(occlusion_state),
++                        occlusion_visible: Some((occlusion_state & (1 << 1)) != 0),
++                    };
++                }
++            }
++        }
++        current_layer = unsafe { msg_send![current_layer, superlayer] };
++    }
++    WindowPresentationState::default()
++}
++
+ impl super::Surface {
+     fn new(layer: metal::MetalLayer) -> Self {
+         Self {
+@@ -195,11 +239,34 @@ impl crate::Surface for super::Surface {
+         _fence: &super::Fence,
+     ) -> Result<Option<crate::AcquiredSurfaceTexture<super::Api>>, crate::SurfaceError> {
+         let render_layer = self.render_layer.lock();
+-        let (drawable, texture) = match autoreleasepool(|| {
++        #[cfg(target_os = "macos")]
++        let window_state = unsafe { window_presentation_state(&render_layer) };
++        #[cfg(target_os = "macos")]
++        let probe_started_at = *ACQUIRE_PROBE_STARTED_AT.get_or_init(Instant::now);
++        #[cfg(target_os = "macos")]
++        let acquire_started_at = Instant::now();
++        let acquired = autoreleasepool(|| {
+             render_layer
+                 .next_drawable()
+                 .map(|drawable| (drawable.to_owned(), drawable.texture().to_owned()))
+-        }) {
++        });
++        #[cfg(target_os = "macos")]
++        {
++            let acquire_duration = acquire_started_at.elapsed();
++            if acquire_duration.as_millis() >= 20 {
++                eprintln!(
++                    "NAU_WGPU_METAL_ACQUIRE elapsed_ms={:.3} duration_ms={:.3} \
++                     window_visible={:?} occlusion_state={:?} occlusion_visible={:?} drawable={}",
++                    probe_started_at.elapsed().as_secs_f64() * 1000.0,
++                    acquire_duration.as_secs_f64() * 1000.0,
++                    window_state.visible,
++                    window_state.occlusion_state,
++                    window_state.occlusion_visible,
++                    acquired.is_some(),
++                );
++            }
++        }
++        let (drawable, texture) = match acquired {
+             Some(pair) => pair,
+             None => return Ok(None),
+         };
+@@ -231,3 +298,6 @@ impl crate::Surface for super::Surface {
+ 
+     unsafe fn discard_texture(&self, _texture: super::SurfaceTexture) {}
+ }
++
++#[cfg(target_os = "macos")]
++static ACQUIRE_PROBE_STARTED_AT: OnceLock<Instant> = OnceLock::new();
