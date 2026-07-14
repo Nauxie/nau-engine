@@ -20,7 +20,7 @@ max_host_total_cpu_percent="${NAU_MANUAL_PROFILE_MAX_HOST_TOTAL_CPU_PERCENT:-${N
 allow_busy_host="${NAU_MANUAL_PROFILE_ALLOW_BUSY_HOST:-0}"
 require_quiet_host_after="${NAU_MANUAL_PROFILE_REQUIRE_QUIET_HOST_AFTER:-1}"
 allow_failed_checks="${NAU_PLAY_PROFILE_ALLOW_FAILED_CHECKS:-0}"
-default_ignore_process_pattern="${NAU_PERF_DEFAULT_IGNORE_PROCESS_PATTERN-cmux|codex}"
+default_ignore_process_pattern="${NAU_PERF_DEFAULT_IGNORE_PROCESS_PATTERN-}"
 if [[ "${NAU_MANUAL_PROFILE_IGNORE_PROCESS_PATTERN+x}" == "x" ]]; then
   ignore_process_pattern="${NAU_MANUAL_PROFILE_IGNORE_PROCESS_PATTERN}"
 elif [[ "${NAU_PERF_IGNORE_PROCESS_PATTERN+x}" == "x" ]]; then
@@ -196,6 +196,7 @@ if [[ -n "${profile_script}" ]]; then
 else
   echo "Manual profile: play normally in the foreground until the profile duration completes."
 fi
+echo "Keep the game window foregrounded; measurement arms after focused movement."
 echo
 
 command=(cargo run --release -- --play --play-profile "${profile_path}")
@@ -313,6 +314,7 @@ jq '{
   warmup_excluded_secs,
   checks,
   activity,
+  window_focus,
   frame_time,
   steady_frame_time,
   hitch_event_threshold_ms,
@@ -324,6 +326,7 @@ jq '{
       severity,
       steady,
       player_position: .snapshot.player_position,
+      window: .snapshot.window,
       entity_count: .snapshot.entity_count,
       streaming: .snapshot.streaming,
       streaming_lod: .snapshot.streaming_lod,

@@ -6,7 +6,7 @@ max_host_total_cpu_percent="${NAU_PERF_MAX_HOST_TOTAL_CPU_PERCENT:-160}"
 wait_secs="${NAU_PERF_HOST_PREFLIGHT_WAIT_SECS:-0}"
 poll_secs="${NAU_PERF_HOST_PREFLIGHT_POLL_SECS:-15}"
 output_path="${NAU_PERF_HOST_PREFLIGHT_OUTPUT:-target/eval/perf_host_preflight/latest.txt}"
-default_ignore_process_pattern="${NAU_PERF_DEFAULT_IGNORE_PROCESS_PATTERN-cmux|codex}"
+default_ignore_process_pattern="${NAU_PERF_DEFAULT_IGNORE_PROCESS_PATTERN-}"
 ignore_process_pattern="${NAU_PERF_IGNORE_PROCESS_PATTERN-${default_ignore_process_pattern}}"
 
 for value_name in max_host_process_cpu_percent max_host_total_cpu_percent wait_secs poll_secs; do

@@ -29,7 +29,7 @@ allow_missing_host_snapshots="${NAU_MANUAL_PROFILE_ALLOW_MISSING_HOST_SNAPSHOTS:
 require_quiet_host_after="${NAU_MANUAL_PROFILE_REQUIRE_QUIET_HOST_AFTER:-1}"
 require_baseline_absolute_checks="${NAU_MANUAL_PROFILE_REQUIRE_BASELINE_ABSOLUTE_CHECKS:-1}"
 require_candidate_absolute_checks="${NAU_MANUAL_PROFILE_REQUIRE_CANDIDATE_ABSOLUTE_CHECKS:-1}"
-default_ignore_process_pattern="${NAU_PERF_DEFAULT_IGNORE_PROCESS_PATTERN-cmux|codex}"
+default_ignore_process_pattern="${NAU_PERF_DEFAULT_IGNORE_PROCESS_PATTERN-}"
 if [[ "${NAU_MANUAL_PROFILE_IGNORE_PROCESS_PATTERN+x}" == "x" ]]; then
   ignore_process_pattern="${NAU_MANUAL_PROFILE_IGNORE_PROCESS_PATTERN}"
 elif [[ "${NAU_PERF_IGNORE_PROCESS_PATTERN+x}" == "x" ]]; then
@@ -208,6 +208,7 @@ validate_profile() {
   local duration_passed
   local io_clean
   local require_absolute_checks
+  local schema_version
 
   profile_kind="$(jq -r '.profile_kind // ""' "${profile}")"
   control_source="$(jq -r '.control_source // ""' "${profile}")"
@@ -215,6 +216,13 @@ validate_profile() {
   duration_passed="$(jq -r '.duration_secs >= 30' "${profile}")"
   io_clean="$(jq -r '.io_error == null' "${profile}")"
   require_absolute_checks="$(profile_requires_absolute_checks "${label}")"
+  schema_version="$(jq -r '.schema_version // 1' "${profile}")"
+
+  if ! [[ "${schema_version}" =~ ^[0-9]+$ ]]; then
+    echo "${label} has invalid schema_version: ${schema_version}" >&2
+    failed=1
+    schema_version=1
+  fi
 
   printf '%s_kind\t%s\n' "${label}" "${profile_kind}"
   printf '%s_control_source\t%s\n' "${label}" "${control_source}"
@@ -224,6 +232,7 @@ validate_profile() {
   printf '%s_duration_at_least_30s\t%s\n' "${label}" "${duration_passed}"
   printf '%s_io_clean\t%s\n' "${label}" "${io_clean}"
   printf '%s_absolute_checks_required\t%s\n' "${label}" "${require_absolute_checks}"
+  printf '%s_schema_version\t%s\n' "${label}" "${schema_version}"
 
   if ! accepted_profile_kind "${profile_kind}"; then
     failed=1
@@ -247,6 +256,22 @@ validate_profile() {
       fi
     fi
   done
+
+  if (( schema_version >= 2 )); then
+    if profile_check_passed "${profile}" "play_profile_window_focused_ratio"; then
+      printf '%s_check\tplay_profile_window_focused_ratio\tpassed=true\trequired=%s\n' \
+        "${label}" "${require_absolute_checks}"
+    else
+      printf '%s_check\tplay_profile_window_focused_ratio\tpassed=false\trequired=%s\n' \
+        "${label}" "${require_absolute_checks}"
+      if [[ "${require_absolute_checks}" == "1" ]]; then
+        failed=1
+      fi
+    fi
+  else
+    printf '%s_check\tplay_profile_window_focused_ratio\tpassed=not_available\trequired=false\treason=schema_v1\n' \
+      "${label}"
+  fi
 
   validate_profile_host_snapshots "${label}" "${profile}"
 }

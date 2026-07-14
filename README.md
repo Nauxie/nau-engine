@@ -51,12 +51,14 @@ cargo naux
 |`A` / `D`|Strafe/steer|
 |Mouse|Look while locked or while right mouse is held|
 |Left click|Lock and hide the mouse cursor|
+|Right mouse|Temporarily enable mouse look|
 |`Esc`|Open the pause menu; return from controls|
 |`Space`|Deploy the glider while airborne|
 |`E`|Launch upward from the ground|
 |`Shift`|Dive|
 |`R`|Reset to the central playtest island|
 |`F1`|Toggle debug gizmos in `--debug` mode|
+|`F2`|Toggle collision proxies in `--debug` mode|
 
 Air gates score once per session and disappear after collection. The HUD and pause menu show the same authoritative total.
 
@@ -65,7 +67,7 @@ Air gates score once per session and disappear after collection. The HUD and pau
 Core Rust checks:
 
 ```sh
-cargo check
+cargo check --all-targets
 cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
@@ -75,6 +77,8 @@ Representative measured tooling (`jq` is required by the aggregate scripts):
 
 ```sh
 ./tools/manual_play_profile.sh target/eval/play_profile/manual.json
+NAU_PLAY_PROFILE_DURATION_SECS=300 NAU_PLAY_PROFILE_SCRIPT=freeflight \
+  ./tools/manual_play_profile.sh target/eval/play_profile/freeflight-5min.json
 ./tools/eval_sim_suite.sh target/eval/sim_suite
 cargo run -- --eval long_glide_visibility --eval-output target/eval/long_glide_visibility
 ./tools/player_pose_preview.sh target/player_pose_preview
@@ -84,6 +88,8 @@ cargo run -- --eval long_glide_visibility --eval-output target/eval/long_glide_v
 ```
 
 Release comparison and world-floor regression gates remain available through `./tools/perf_baseline.sh`, `./tools/world_floor_full_gate.sh`, and `./tools/world_floor_candidate_gate.sh`. Human release play remains part of acceptance after behavioral changes; the linked acceptance documents define the full contract.
+
+Resolved diagnostic note: a host-specific Apple Silicon presentation hitch was isolated below NAU gameplay and required no game workaround; the probe and evidence live in [`tools/frame_hitch_probe`](tools/frame_hitch_probe/README.md).
 
 ## Docs
 

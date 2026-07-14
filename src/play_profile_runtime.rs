@@ -6,6 +6,7 @@ use crate::world_floor_runtime::WorldFloorDiagnostics;
 use bevy::ecs::system::SystemParam;
 use bevy::mesh::Indices;
 use bevy::prelude::*;
+use bevy::window::{Monitor, PresentMode, PrimaryMonitor, PrimaryWindow, Window};
 use nau_engine::{
     asset_pipeline::VisualAssetPipelineMetrics,
     camera::CameraInput,
@@ -30,7 +31,8 @@ const PROFILE_MAX_P95_FRAME_TIME_MS: f64 = 45.0;
 const PROFILE_MAX_P99_FRAME_TIME_MS: f64 = 80.0;
 const PROFILE_MAX_STEADY_50MS_HITCH_COUNT: usize = 3;
 const PROFILE_MAX_STEADY_100MS_HITCH_COUNT: usize = 1;
-const PROFILE_HITCH_EVENT_THRESHOLD_MS: f64 = 33.34;
+const PROFILE_MIN_FOCUSED_WINDOW_RATIO: f64 = 0.95;
+const PROFILE_HITCH_EVENT_THRESHOLD_MS: f64 = 25.0;
 const PROFILE_MAX_HITCH_EVENTS: usize = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,6 +85,11 @@ pub(crate) struct PlayProfileRun {
     write_accumulator_secs: f64,
     grounded_samples: usize,
     airborne_samples: usize,
+    focused_window_samples: usize,
+    unfocused_window_samples: usize,
+    focused_window_secs: f64,
+    unfocused_window_secs: f64,
+    previous_window_focused: Option<bool>,
     activity: PlayProfileActivity,
     latest: PlayProfileSnapshot,
     max: PlayProfileMaxima,
@@ -116,6 +123,11 @@ impl PlayProfileRun {
             write_accumulator_secs: 0.0,
             grounded_samples: 0,
             airborne_samples: 0,
+            focused_window_samples: 0,
+            unfocused_window_samples: 0,
+            focused_window_secs: 0.0,
+            unfocused_window_secs: 0.0,
+            previous_window_focused: None,
             activity: PlayProfileActivity::default(),
             latest: PlayProfileSnapshot::default(),
             max: PlayProfileMaxima::default(),
@@ -143,13 +155,18 @@ impl PlayProfileRun {
         if !self.armed {
             self.arming_elapsed_secs += delta_secs;
             self.write_accumulator_secs += delta_secs;
-            self.arming_activity
-                .observe_position(snapshot.player_position);
 
-            if !self
+            let window_focused = snapshot.window.focused != Some(false);
+            if window_focused {
+                self.arming_activity
+                    .observe_position(snapshot.player_position);
+            } else {
+                self.arming_activity = PlayProfileActivity::default();
+            }
+            let active_play_detected = self
                 .arming_activity
-                .has_horizontal_travel(PROFILE_ARMING_HORIZONTAL_TRAVEL_M)
-            {
+                .has_horizontal_travel(PROFILE_ARMING_HORIZONTAL_TRAVEL_M);
+            if !active_play_detected || !window_focused {
                 snapshot.elapsed_secs = 0.0;
                 self.latest = snapshot;
                 let should_write =
@@ -173,6 +190,22 @@ impl PlayProfileRun {
             Some(_) => self.airborne_samples += 1,
             None => {}
         }
+        let interval_focused = match (self.previous_window_focused, snapshot.window.focused) {
+            (Some(previous), Some(current)) => Some(previous && current),
+            (None, current) => current,
+            _ => None,
+        };
+        match snapshot.window.focused {
+            Some(true) => self.focused_window_samples += 1,
+            Some(false) => self.unfocused_window_samples += 1,
+            None => {}
+        }
+        match interval_focused {
+            Some(true) => self.focused_window_secs += delta_secs,
+            Some(false) => self.unfocused_window_secs += delta_secs,
+            None => {}
+        }
+        self.previous_window_focused = snapshot.window.focused;
 
         snapshot.frame = self.frame;
         snapshot.elapsed_secs = self.elapsed_secs;
@@ -197,26 +230,35 @@ impl PlayProfileRun {
         self.target_duration_secs.is_none() && self.script.is_none()
     }
 
+    fn should_refresh_assets_during_run(&self) -> bool {
+        self.latest.runtime_assets.mesh_count == 0 || self.should_write_summary_during_run()
+    }
+
     fn write_summary(&self) -> std::io::Result<()> {
         let frame_stats = PlayProfileFrameStats::from_frame_times(&self.frame_times_ms);
         let steady_frame_times =
             frame_times_after_warmup(&self.frame_times_ms, PROFILE_WARMUP_EXCLUDED_SECS);
         let steady_frame_stats = PlayProfileFrameStats::from_frame_times(&steady_frame_times);
-        let checks = play_profile_checks(self.elapsed_secs, self.activity, steady_frame_stats);
+        let mut checks = play_profile_checks(self.elapsed_secs, self.activity, steady_frame_stats);
+        checks.push(play_profile_window_focus_check(
+            self.focused_window_secs,
+            self.unfocused_window_secs,
+        ));
         let passed = checks.iter().all(|check| check.passed);
         let checks_json = checks
             .iter()
             .copied()
             .map(PlayProfileCheck::to_json)
             .collect::<Vec<_>>();
-        let hitch_events = self
-            .hitch_events
+        let mut retained_hitch_events = self.hitch_events.clone();
+        retained_hitch_events.sort_by_key(|event| event.snapshot.frame);
+        let hitch_events = retained_hitch_events
             .iter()
             .copied()
             .map(PlayProfileHitchEvent::to_json)
             .collect::<Vec<_>>();
         let report = json!({
-            "schema_version": 1,
+            "schema_version": 2,
             "profile_kind": self.profile_kind(),
             "control_source": self.control_source(),
             "script": self.script.map(PlayProfileScript::name),
@@ -228,6 +270,7 @@ impl PlayProfileRun {
                 "elapsed_secs": round3(self.arming_elapsed_secs),
                 "max_wait_secs": round3(PROFILE_MAX_ARMING_WAIT_SECS),
                 "required_horizontal_travel_m": round3(PROFILE_ARMING_HORIZONTAL_TRAVEL_M),
+                "required_window_focused": true,
                 "activity": self.arming_activity.to_json(),
             },
             "sample_count": frame_stats.sample_count,
@@ -242,6 +285,16 @@ impl PlayProfileRun {
                     self.grounded_samples as f64
                         / (self.grounded_samples + self.airborne_samples).max(1) as f64
                 ),
+            },
+            "window_focus": {
+                "focused_samples": self.focused_window_samples,
+                "unfocused_samples": self.unfocused_window_samples,
+                "focused_secs": round3(self.focused_window_secs),
+                "unfocused_secs": round3(self.unfocused_window_secs),
+                "focused_ratio": round6(focused_window_ratio(
+                    self.focused_window_secs,
+                    self.unfocused_window_secs,
+                )),
             },
             "frame_time": frame_stats.to_json(),
             "steady_frame_time": steady_frame_stats.to_json(),
@@ -283,6 +336,11 @@ impl PlayProfileRun {
         self.write_accumulator_secs = 0.0;
         self.grounded_samples = 0;
         self.airborne_samples = 0;
+        self.focused_window_samples = 0;
+        self.unfocused_window_samples = 0;
+        self.focused_window_secs = 0.0;
+        self.unfocused_window_secs = 0.0;
+        self.previous_window_focused = None;
         self.frame_times_ms.clear();
         self.activity = PlayProfileActivity::default();
         self.max = PlayProfileMaxima::default();
@@ -290,16 +348,30 @@ impl PlayProfileRun {
     }
 
     fn observe_hitch_event(&mut self, frame_time_ms: f64, snapshot: PlayProfileSnapshot) {
-        if frame_time_ms < PROFILE_HITCH_EVENT_THRESHOLD_MS
-            || self.hitch_events.len() >= PROFILE_MAX_HITCH_EVENTS
-        {
+        if frame_time_ms <= PROFILE_HITCH_EVENT_THRESHOLD_MS {
             return;
         }
 
-        self.hitch_events.push(PlayProfileHitchEvent {
+        let hitch_event = PlayProfileHitchEvent {
             frame_time_ms,
             snapshot,
-        });
+        };
+        if self.hitch_events.len() < PROFILE_MAX_HITCH_EVENTS {
+            self.hitch_events.push(hitch_event);
+            return;
+        }
+
+        let Some((least_severe_index, least_severe_event)) = self
+            .hitch_events
+            .iter()
+            .enumerate()
+            .min_by(|(_, left), (_, right)| left.frame_time_ms.total_cmp(&right.frame_time_ms))
+        else {
+            return;
+        };
+        if frame_time_ms > least_severe_event.frame_time_ms {
+            self.hitch_events[least_severe_index] = hitch_event;
+        }
     }
 
     fn control_elapsed_secs(&self) -> f64 {
@@ -379,16 +451,42 @@ pub(crate) fn collect_play_profile_sample(
         .map(|position| scene.route.streaming_lod_stats(position))
         .unwrap_or_default();
     let frame_time_ms = time.delta_secs_f64() * 1000.0;
-    let runtime_assets = if frame_time_ms >= PROFILE_HITCH_EVENT_THRESHOLD_MS {
-        RuntimeAssetSnapshot::from_assets(&scene.meshes, &scene.materials)
-    } else {
-        profile.latest.runtime_assets
-    };
+    let runtime_assets = profile.latest.runtime_assets;
+    let primary_window = scene.primary_window.single().ok();
+    let mut monitor_count = 0;
+    let mut min_monitor_refresh_rate_hz: Option<f64> = None;
+    let mut max_monitor_refresh_rate_hz: Option<f64> = None;
+    for monitor in &scene.monitors {
+        monitor_count += 1;
+        let Some(refresh_rate_millihertz) = monitor.refresh_rate_millihertz else {
+            continue;
+        };
+        let refresh_rate_hz = refresh_rate_millihertz as f64 / 1000.0;
+        min_monitor_refresh_rate_hz = Some(
+            min_monitor_refresh_rate_hz.map_or(refresh_rate_hz, |min| min.min(refresh_rate_hz)),
+        );
+        max_monitor_refresh_rate_hz = Some(
+            max_monitor_refresh_rate_hz.map_or(refresh_rate_hz, |max| max.max(refresh_rate_hz)),
+        );
+    }
     let snapshot = PlayProfileSnapshot {
         frame: 0,
         elapsed_secs: 0.0,
         player_position,
         player_mode: player_state.map(|(_position, mode)| mode),
+        window: PlayProfileWindowSnapshot {
+            focused: primary_window.map(|window| window.focused),
+            present_mode: primary_window.map(|window| window.present_mode),
+            monitor_count,
+            min_monitor_refresh_rate_hz,
+            max_monitor_refresh_rate_hz,
+            primary_monitor_refresh_rate_hz: scene
+                .primary_monitor
+                .single()
+                .ok()
+                .and_then(|monitor| monitor.refresh_rate_millihertz)
+                .map(|refresh_rate_millihertz| refresh_rate_millihertz as f64 / 1000.0),
+        },
         entity_count: scene.all_entities.iter().count(),
         streaming_lod,
         lod_visuals: scene.stream_diagnostics.counts,
@@ -401,10 +499,14 @@ pub(crate) fn collect_play_profile_sample(
     };
 
     if profile.observe_frame(frame_time_ms, snapshot) {
-        profile.observe_assets(RuntimeAssetSnapshot::from_assets(
-            &scene.meshes,
-            &scene.materials,
-        ));
+        if profile.should_refresh_assets_during_run() {
+            let sampled_at_frame = profile.frame;
+            profile.observe_assets(RuntimeAssetSnapshot::from_assets(
+                &scene.meshes,
+                &scene.materials,
+                sampled_at_frame,
+            ));
+        }
         if profile.should_write_summary_during_run()
             && let Err(error) = profile.write_summary()
         {
@@ -413,9 +515,11 @@ pub(crate) fn collect_play_profile_sample(
     }
 
     if profile.target_duration_reached() {
+        let sampled_at_frame = profile.frame;
         profile.observe_assets(RuntimeAssetSnapshot::from_assets(
             &scene.meshes,
             &scene.materials,
+            sampled_at_frame,
         ));
         if let Err(error) = profile.write_summary() {
             profile.record_io_error(error);
@@ -436,7 +540,20 @@ pub(crate) struct PlayProfileScene<'w, 's> {
     meshes: Res<'w, Assets<Mesh>>,
     materials: Res<'w, Assets<StandardMaterial>>,
     player: Query<'w, 's, (&'static Transform, &'static FlightController), With<Player>>,
+    primary_window: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
+    monitors: Query<'w, 's, &'static Monitor>,
+    primary_monitor: Query<'w, 's, &'static Monitor, With<PrimaryMonitor>>,
     all_entities: Query<'w, 's, Entity>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct PlayProfileWindowSnapshot {
+    focused: Option<bool>,
+    present_mode: Option<PresentMode>,
+    monitor_count: usize,
+    min_monitor_refresh_rate_hz: Option<f64>,
+    max_monitor_refresh_rate_hz: Option<f64>,
+    primary_monitor_refresh_rate_hz: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -445,6 +562,7 @@ struct PlayProfileSnapshot {
     elapsed_secs: f64,
     player_position: Option<Vec3>,
     player_mode: Option<FlightMode>,
+    window: PlayProfileWindowSnapshot,
     entity_count: usize,
     streaming_lod: StreamingLodStats,
     lod_visuals: IslandLodVisualCounts,
@@ -463,12 +581,29 @@ impl PlayProfileSnapshot {
             "elapsed_secs": round3(self.elapsed_secs),
             "player_position": vec3_json(self.player_position),
             "player_mode": self.player_mode.map(FlightMode::label),
+            "window": {
+                "focused": self.window.focused,
+                "present_mode": self.window.present_mode.map(present_mode_label),
+                "monitor_count": self.window.monitor_count,
+                "min_monitor_refresh_rate_hz": self
+                    .window
+                    .min_monitor_refresh_rate_hz
+                    .map(round3),
+                "max_monitor_refresh_rate_hz": self
+                    .window
+                    .max_monitor_refresh_rate_hz
+                    .map(round3),
+                "primary_monitor_refresh_rate_hz": self
+                    .window
+                    .primary_monitor_refresh_rate_hz
+                    .map(round3),
+            },
             "entity_count": self.entity_count,
             "streaming_lod": streaming_lod_json(self.streaming_lod),
             "island_visuals": island_lod_visuals_json(self.lod_visuals),
             "streaming": stream_diagnostics_json(self.stream_diagnostics),
             "world_floor": world_floor_diagnostics_json(self.world_floor),
-            "runtime_assets": runtime_assets_json(self.runtime_assets),
+            "runtime_assets": runtime_assets_json(self.runtime_assets, self.frame),
             "visual_asset_pipeline": visual_asset_metrics_json(
                 self.visual_asset_metrics,
                 self.visible_authored_world_fixture_count,
@@ -554,9 +689,22 @@ impl PlayProfileHitchEvent {
             "over_100ms"
         } else if self.frame_time_ms > 50.0 {
             "over_50ms"
-        } else {
+        } else if self.frame_time_ms > 33.34 {
             "over_33_34ms"
+        } else {
+            "over_25ms"
         }
+    }
+}
+
+fn present_mode_label(present_mode: PresentMode) -> &'static str {
+    match present_mode {
+        PresentMode::AutoVsync => "auto_vsync",
+        PresentMode::AutoNoVsync => "auto_no_vsync",
+        PresentMode::Fifo => "fifo",
+        PresentMode::FifoRelaxed => "fifo_relaxed",
+        PresentMode::Immediate => "immediate",
+        PresentMode::Mailbox => "mailbox",
     }
 }
 
@@ -778,10 +926,15 @@ struct RuntimeAssetSnapshot {
     material_count: usize,
     loaded_mesh_vertices: usize,
     loaded_mesh_triangles: usize,
+    sampled_at_frame: u64,
 }
 
 impl RuntimeAssetSnapshot {
-    fn from_assets(meshes: &Assets<Mesh>, materials: &Assets<StandardMaterial>) -> Self {
+    fn from_assets(
+        meshes: &Assets<Mesh>,
+        materials: &Assets<StandardMaterial>,
+        sampled_at_frame: u64,
+    ) -> Self {
         let mut loaded_mesh_vertices = 0;
         let mut loaded_mesh_triangles = 0;
         for (_, mesh) in meshes.iter() {
@@ -794,6 +947,7 @@ impl RuntimeAssetSnapshot {
             material_count: materials.len(),
             loaded_mesh_vertices,
             loaded_mesh_triangles,
+            sampled_at_frame,
         }
     }
 }
@@ -873,12 +1027,13 @@ struct PlayProfileCheck {
 
 impl PlayProfileCheck {
     fn to_json(self) -> Value {
+        let round_value = if self.unit == "ratio" { round6 } else { round3 };
         json!({
             "name": self.name,
             "passed": self.passed,
-            "value": round3(self.value),
+            "value": round_value(self.value),
             "comparator": self.comparator,
-            "threshold": round3(self.threshold),
+            "threshold": round_value(self.threshold),
             "unit": self.unit,
         })
     }
@@ -939,6 +1094,24 @@ fn play_profile_checks(
             "frames",
         ),
     ]
+}
+
+fn play_profile_window_focus_check(focused_secs: f64, unfocused_secs: f64) -> PlayProfileCheck {
+    min_check(
+        "play_profile_window_focused_ratio",
+        focused_window_ratio(focused_secs, unfocused_secs),
+        PROFILE_MIN_FOCUSED_WINDOW_RATIO,
+        "ratio",
+    )
+}
+
+fn focused_window_ratio(focused_secs: f64, unfocused_secs: f64) -> f64 {
+    let total_secs = focused_secs + unfocused_secs;
+    if total_secs > 0.0 {
+        focused_secs / total_secs
+    } else {
+        0.0
+    }
 }
 
 fn min_check(
@@ -1063,12 +1236,14 @@ fn world_floor_diagnostics_json(diagnostics: WorldFloorDiagnostics) -> Value {
     })
 }
 
-fn runtime_assets_json(assets: RuntimeAssetSnapshot) -> Value {
+fn runtime_assets_json(assets: RuntimeAssetSnapshot, current_frame: u64) -> Value {
     json!({
         "mesh_count": assets.mesh_count,
         "material_count": assets.material_count,
         "loaded_mesh_vertices": assets.loaded_mesh_vertices,
         "loaded_mesh_triangles": assets.loaded_mesh_triangles,
+        "sampled_at_frame": assets.sampled_at_frame,
+        "sample_age_frames": current_frame.saturating_sub(assets.sampled_at_frame),
     })
 }
 
@@ -1161,6 +1336,10 @@ fn fps_from_frame_time_ms(frame_time_ms: f64) -> f64 {
 
 fn round3(value: f64) -> f64 {
     (value * 1000.0).round() / 1000.0
+}
+
+fn round6(value: f64) -> f64 {
+    (value * 1_000_000.0).round() / 1_000_000.0
 }
 
 fn path_string(path: &Path) -> String {
@@ -1290,6 +1469,14 @@ mod tests {
                 16.0,
                 PlayProfileSnapshot {
                     player_position: Some(Vec3::new(2.0 + frame as f32 * 0.05, 0.0, 0.0)),
+                    window: PlayProfileWindowSnapshot {
+                        focused: Some(true),
+                        present_mode: Some(PresentMode::Fifo),
+                        monitor_count: 2,
+                        min_monitor_refresh_rate_hz: Some(100.0),
+                        max_monitor_refresh_rate_hz: Some(120.0),
+                        primary_monitor_refresh_rate_hz: Some(120.0),
+                    },
                     world_floor: WorldFloorDiagnostics {
                         initial_spawned_tile_count: 9,
                         ..default()
@@ -1304,6 +1491,7 @@ mod tests {
             material_count: 2,
             loaded_mesh_vertices: 300,
             loaded_mesh_triangles: 100,
+            sampled_at_frame: 2000,
         });
         profile
             .write_summary()
@@ -1324,22 +1512,45 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        assert_eq!(report["schema_version"], 1);
+        assert_eq!(report["schema_version"], 2);
         assert_eq!(report["profile_kind"], "manual_play_foreground");
         assert_eq!(report["control_source"], "manual");
         assert_eq!(report["script"], serde_json::Value::Null);
         assert_eq!(report["armed"], true);
         assert_eq!(report["arming"]["required_horizontal_travel_m"], 1.0);
+        assert_eq!(report["arming"]["required_window_focused"], true);
         assert_eq!(report["passed"], true);
         assert_eq!(report["duration_secs"], 32.0);
         assert_eq!(report["target_duration_secs"], serde_json::Value::Null);
         assert_eq!(report["activity"]["horizontal_travel_m"], 99.95);
         assert_eq!(report["activity"]["max_horizontal_displacement_m"], 99.95);
+        assert_eq!(report["window_focus"]["focused_samples"], 2000);
+        assert_eq!(report["window_focus"]["unfocused_samples"], 0);
+        assert_eq!(report["window_focus"]["focused_secs"], 32.0);
+        assert_eq!(report["window_focus"]["unfocused_secs"], 0.0);
+        assert_eq!(report["window_focus"]["focused_ratio"], 1.0);
         assert_eq!(report["frame_time"]["sample_count"], 2000);
         assert_eq!(report["steady_frame_time"]["avg_ms"], 16.0);
         assert_eq!(report["steady_frame_time"]["frames_over_100ms"], 0);
-        assert_eq!(report["hitch_event_threshold_ms"], 33.34);
+        assert_eq!(report["hitch_event_threshold_ms"], 25.0);
         assert_eq!(report["max_hitch_events"], PROFILE_MAX_HITCH_EVENTS);
+        assert_eq!(report["latest"]["window"]["focused"], true);
+        assert_eq!(report["latest"]["window"]["present_mode"], "fifo");
+        assert_eq!(report["latest"]["window"]["monitor_count"], 2);
+        assert_eq!(
+            report["latest"]["window"]["min_monitor_refresh_rate_hz"],
+            100.0
+        );
+        assert_eq!(
+            report["latest"]["window"]["max_monitor_refresh_rate_hz"],
+            120.0
+        );
+        assert_eq!(
+            report["latest"]["window"]["primary_monitor_refresh_rate_hz"],
+            120.0
+        );
+        assert_eq!(report["latest"]["runtime_assets"]["sampled_at_frame"], 2000);
+        assert_eq!(report["latest"]["runtime_assets"]["sample_age_frames"], 0);
         assert_eq!(
             report["hitch_events"]
                 .as_array()
@@ -1358,6 +1569,7 @@ mod tests {
         assert!(check_names.contains(&"play_profile_steady_p99_frame_time_budget"));
         assert!(check_names.contains(&"play_profile_steady_50ms_hitch_count"));
         assert!(check_names.contains(&"play_profile_steady_100ms_hitch_count"));
+        assert!(check_names.contains(&"play_profile_window_focused_ratio"));
 
         fs::remove_file(output_path).expect("profile report should be removable");
     }
@@ -1374,6 +1586,40 @@ mod tests {
 
         assert_eq!(profile.scripted_flight_input(), None);
         assert_eq!(profile.scripted_camera_input(), None);
+
+        let _ = fs::remove_file(output_path);
+    }
+
+    #[test]
+    fn timed_play_profiles_refresh_deep_asset_metrics_only_at_boundaries() {
+        let output_path = std::env::temp_dir().join(format!(
+            "nau_play_profile_report_{}_{}.json",
+            std::process::id(),
+            "timed_asset_refresh"
+        ));
+        let mut timed_profile = PlayProfileRun::new(output_path.clone(), Some(30.0), None)
+            .expect("timed profile output should initialize");
+        assert!(timed_profile.should_refresh_assets_during_run());
+
+        timed_profile.observe_assets(RuntimeAssetSnapshot {
+            mesh_count: 10,
+            material_count: 4,
+            loaded_mesh_vertices: 100,
+            loaded_mesh_triangles: 50,
+            sampled_at_frame: 1,
+        });
+        assert!(!timed_profile.should_refresh_assets_during_run());
+
+        let mut continuous_profile = PlayProfileRun::new(output_path.clone(), None, None)
+            .expect("continuous profile output should initialize");
+        continuous_profile.observe_assets(RuntimeAssetSnapshot {
+            mesh_count: 10,
+            material_count: 4,
+            loaded_mesh_vertices: 100,
+            loaded_mesh_triangles: 50,
+            sampled_at_frame: 1,
+        });
+        assert!(continuous_profile.should_refresh_assets_during_run());
 
         let _ = fs::remove_file(output_path);
     }
@@ -1416,6 +1662,7 @@ mod tests {
                         material_count: 4,
                         loaded_mesh_vertices: 1000,
                         loaded_mesh_triangles: 500,
+                        sampled_at_frame: frame as u64 + 1,
                     },
                     ..default()
                 },
@@ -1446,6 +1693,278 @@ mod tests {
         );
 
         fs::remove_file(output_path).expect("profile report should be removable");
+    }
+
+    #[test]
+    fn play_profile_retains_late_severe_hitches_after_event_buffer_fills() {
+        let output_path = std::env::temp_dir().join(format!(
+            "nau_play_profile_report_{}_{}.json",
+            std::process::id(),
+            "late_severe_hitch"
+        ));
+        let _ = fs::remove_file(&output_path);
+        let mut profile = PlayProfileRun::new(output_path.clone(), None, None)
+            .expect("profile output should initialize");
+
+        for frame in 0..PROFILE_MAX_HITCH_EVENTS {
+            profile.observe_hitch_event(
+                PROFILE_HITCH_EVENT_THRESHOLD_MS + frame as f64,
+                PlayProfileSnapshot {
+                    frame: frame as u64 + 1,
+                    elapsed_secs: frame as f64,
+                    ..default()
+                },
+            );
+        }
+        profile.observe_hitch_event(
+            200.0,
+            PlayProfileSnapshot {
+                frame: 100,
+                elapsed_secs: 10.0,
+                ..default()
+            },
+        );
+        profile.observe_hitch_event(
+            PROFILE_HITCH_EVENT_THRESHOLD_MS,
+            PlayProfileSnapshot {
+                frame: 101,
+                elapsed_secs: 11.0,
+                ..default()
+            },
+        );
+
+        profile
+            .write_summary()
+            .expect("profile report should be written");
+        let report: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(&output_path).expect("profile report should exist"),
+        )
+        .expect("profile report should be valid json");
+        let hitches = report["hitch_events"]
+            .as_array()
+            .expect("hitch events should be an array");
+
+        assert_eq!(hitches.len(), PROFILE_MAX_HITCH_EVENTS);
+        assert_eq!(hitches[0]["frame"], 2);
+        assert_eq!(
+            hitches.last().expect("late hitch should be retained")["frame"],
+            100
+        );
+        assert!(
+            hitches.iter().any(|hitch| hitch["frame_time_ms"] == 200.0),
+            "the late severe hitch should replace the least severe retained event"
+        );
+        assert!(
+            hitches.iter().all(|hitch| hitch["frame"] != 101),
+            "a later hitch no worse than the retained set should be discarded"
+        );
+
+        fs::remove_file(output_path).expect("profile report should be removable");
+    }
+
+    #[test]
+    fn play_profile_records_25ms_hitches_with_window_context() {
+        let output_path = std::env::temp_dir().join(format!(
+            "nau_play_profile_report_{}_{}",
+            std::process::id(),
+            "minor_hitch.json"
+        ));
+        let _ = fs::remove_file(&output_path);
+        let mut profile = PlayProfileRun::new(output_path.clone(), None, None)
+            .expect("profile output should initialize");
+
+        profile.observe_frame(
+            16.0,
+            PlayProfileSnapshot {
+                player_position: Some(Vec3::ZERO),
+                ..default()
+            },
+        );
+        profile.observe_frame(
+            16.0,
+            PlayProfileSnapshot {
+                player_position: Some(Vec3::new(2.0, 0.0, 0.0)),
+                ..default()
+            },
+        );
+        profile.observe_hitch_event(25.0, PlayProfileSnapshot::default());
+        assert!(profile.hitch_events.is_empty());
+        profile.observe_frame(
+            25.1,
+            PlayProfileSnapshot {
+                player_position: Some(Vec3::new(3.0, 0.0, 0.0)),
+                window: PlayProfileWindowSnapshot {
+                    focused: Some(true),
+                    present_mode: Some(PresentMode::Fifo),
+                    monitor_count: 2,
+                    min_monitor_refresh_rate_hz: Some(100.0),
+                    max_monitor_refresh_rate_hz: Some(120.0),
+                    primary_monitor_refresh_rate_hz: Some(120.0),
+                },
+                ..default()
+            },
+        );
+        profile
+            .write_summary()
+            .expect("profile report should be written");
+
+        let report: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(&output_path).expect("profile report should exist"),
+        )
+        .expect("profile report should be valid json");
+        let hitch = &report["hitch_events"][0];
+        assert_eq!(hitch["severity"], "over_25ms");
+        assert_eq!(hitch["frame_time_ms"], 25.1);
+        assert_eq!(hitch["snapshot"]["window"]["focused"], true);
+        assert_eq!(hitch["snapshot"]["window"]["present_mode"], "fifo");
+        assert_eq!(hitch["snapshot"]["window"]["monitor_count"], 2);
+        assert_eq!(
+            hitch["snapshot"]["window"]["min_monitor_refresh_rate_hz"],
+            100.0
+        );
+        assert_eq!(
+            hitch["snapshot"]["window"]["max_monitor_refresh_rate_hz"],
+            120.0
+        );
+        assert_eq!(
+            hitch["snapshot"]["window"]["primary_monitor_refresh_rate_hz"],
+            120.0
+        );
+
+        fs::remove_file(output_path).expect("profile report should be removable");
+    }
+
+    #[test]
+    fn play_profile_focus_gate_weights_elapsed_time_not_frame_count() {
+        let output_path = std::env::temp_dir().join(format!(
+            "nau_play_profile_report_{}_{}.json",
+            std::process::id(),
+            "time_weighted_focus"
+        ));
+        let mut profile =
+            PlayProfileRun::new(output_path, None, None).expect("profile output should initialize");
+
+        profile.observe_frame(
+            10.0,
+            PlayProfileSnapshot {
+                player_position: Some(Vec3::ZERO),
+                window: PlayProfileWindowSnapshot {
+                    focused: Some(true),
+                    ..default()
+                },
+                ..default()
+            },
+        );
+        for frame in 0..19 {
+            profile.observe_frame(
+                10.0,
+                PlayProfileSnapshot {
+                    player_position: Some(Vec3::new(2.0 + frame as f32, 0.0, 0.0)),
+                    window: PlayProfileWindowSnapshot {
+                        focused: Some(true),
+                        ..default()
+                    },
+                    ..default()
+                },
+            );
+        }
+        profile.observe_frame(
+            100.0,
+            PlayProfileSnapshot {
+                player_position: Some(Vec3::new(22.0, 0.0, 0.0)),
+                window: PlayProfileWindowSnapshot {
+                    focused: Some(false),
+                    ..default()
+                },
+                ..default()
+            },
+        );
+
+        assert_eq!(profile.focused_window_samples, 19);
+        assert_eq!(profile.unfocused_window_samples, 1);
+        assert_eq!(
+            focused_window_ratio(
+                profile.focused_window_samples as f64,
+                profile.unfocused_window_samples as f64,
+            ),
+            0.95
+        );
+        assert!(
+            !play_profile_window_focus_check(
+                profile.focused_window_secs,
+                profile.unfocused_window_secs,
+            )
+            .passed
+        );
+    }
+
+    #[test]
+    fn play_profile_window_focus_check_rejects_unfocused_runs() {
+        let check = play_profile_window_focus_check(94.0, 6.0);
+
+        assert!(!check.passed);
+        assert_eq!(check.value, 0.94);
+        assert_eq!(check.threshold, PROFILE_MIN_FOCUSED_WINDOW_RATIO);
+
+        let near_threshold = play_profile_window_focus_check(94.99, 5.01);
+        let near_threshold_json = near_threshold.to_json();
+        assert!(!near_threshold.passed);
+        assert_eq!(near_threshold_json["value"], 0.9499);
+        assert_eq!(near_threshold_json["threshold"], 0.95);
+    }
+
+    #[test]
+    fn play_profile_arming_waits_for_foreground_focus() {
+        let output_path = std::env::temp_dir().join(format!(
+            "nau_play_profile_report_{}_{}.json",
+            std::process::id(),
+            "focus_arming"
+        ));
+        let mut profile = PlayProfileRun::new(output_path, Some(30.0), None)
+            .expect("profile output should initialize");
+
+        for position_x in [0.0, 2.0] {
+            profile.observe_frame(
+                16.0,
+                PlayProfileSnapshot {
+                    player_position: Some(Vec3::new(position_x, 0.0, 0.0)),
+                    window: PlayProfileWindowSnapshot {
+                        focused: Some(false),
+                        ..default()
+                    },
+                    ..default()
+                },
+            );
+        }
+        assert!(!profile.armed);
+
+        profile.observe_frame(
+            16.0,
+            PlayProfileSnapshot {
+                player_position: Some(Vec3::new(3.0, 0.0, 0.0)),
+                window: PlayProfileWindowSnapshot {
+                    focused: Some(true),
+                    ..default()
+                },
+                ..default()
+            },
+        );
+        assert!(!profile.armed);
+
+        profile.observe_frame(
+            16.0,
+            PlayProfileSnapshot {
+                player_position: Some(Vec3::new(4.1, 0.0, 0.0)),
+                window: PlayProfileWindowSnapshot {
+                    focused: Some(true),
+                    ..default()
+                },
+                ..default()
+            },
+        );
+        assert!(profile.armed);
+        assert_eq!(profile.focused_window_samples, 1);
+        assert_eq!(profile.unfocused_window_samples, 0);
     }
 
     #[test]
