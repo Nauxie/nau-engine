@@ -97,6 +97,19 @@ fn continuity_and_performance_gates_fail_closed_on_incomplete_or_failed_evidence
 }
 
 #[test]
+fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
+    let performance = include_str!("../../../tools/dev_play_performance_gate.sh");
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_AVG_FRAME_TIME_MS:-24"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_P95_FRAME_TIME_MS:-30"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_DEBUG_RELEASE_AVG_RATIO:-1.25"));
+
+    let workflow = include_str!("../../../.github/workflows/camera-continuity.yml");
+    assert!(workflow.contains("NAU_DEV_PLAY_PERF_MAX_AVG_FRAME_TIME_MS: \"70\""));
+    assert!(workflow.contains("NAU_DEV_PLAY_PERF_MAX_P95_FRAME_TIME_MS: \"90\""));
+    assert!(workflow.contains("branches:\n      - main"));
+}
+
+#[test]
 fn scenarios_require_exact_expected_sample_coverage() {
     for name in SCENARIO_NAMES {
         let scenario = scenario_named(name).expect("scenario exists");

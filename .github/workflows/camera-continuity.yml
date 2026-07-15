@@ -2,6 +2,8 @@ name: Camera continuity
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
 
@@ -39,6 +41,9 @@ jobs:
         run: cargo test --all-targets --all-features
 
       - name: Development play performance gate
+        env:
+          NAU_DEV_PLAY_PERF_MAX_AVG_FRAME_TIME_MS: "70"
+          NAU_DEV_PLAY_PERF_MAX_P95_FRAME_TIME_MS: "90"
         run: ./tools/dev_play_performance_gate.sh target/eval/dev_play_performance/ci
 
       - name: Camera continuity gate
