@@ -64,6 +64,12 @@ Run the long-glide archipelago route:
 ./tools/eval.sh long_glide_visibility target/eval/long_glide_visibility
 ```
 
+Run the authored great-plateau arrival and waterfall vista route:
+
+```sh
+./tools/eval.sh great_sky_plateau_vistas target/eval/great_sky_plateau_vistas
+```
+
 Run the mouse-camera control route:
 
 ```sh
@@ -126,13 +132,37 @@ Run the app directly without screenshot capture. This skips PNG capture but stil
 cargo run -- --eval baseline_route --eval-output target/eval/baseline_route --eval-no-screenshot
 ```
 
+Run the world-content gate:
+
+```sh
+./tools/world_content_gate.sh target/world_content_gate
+```
+
+This runs the focused world tests, terrain/layout export audit, visual-content export audit, simulation-only long-glide plus great-plateau routes, the native movement-plus-mouse camera regression, and the app-only great-plateau vista audit. It is the default iteration gate for island layout, scale, terrain, vegetation, landmark, traversal-content, and launch-area camera changes; release app profiling and human play remain required before accepting rendering-density or camera-feel changes.
+
+Run the camera/player continuity gate:
+
+```sh
+./tools/camera_continuity_gate.sh target/eval/camera_continuity
+```
+
+This combines deterministic 30/60/120/144 Hz and 50/100 ms hitch contracts with native app scenarios for mouse response, obstruction transitions, reset handoff, world/terrain collision, and floor-boundary traversal. It requires exact sample coverage, bounded and attributed camera/player corrections, zero unclassified corrections, and a fault-injection proof that a one-frame snap is rejected.
+
+Run the ordinary development-play performance gate:
+
+```sh
+./tools/dev_play_performance_gate.sh target/eval/dev_play_performance
+```
+
+This builds and runs the same full-content native scenario through debug and release, verifies identical entity/mesh/triangle evidence, enforces debug and release average/p95 frame-time ceilings, and limits the debug-to-release average frame-time ratio. Its static companion test locks the Cargo development optimization contract so Bevy cannot silently return to an unplayable `opt-level = 0` path.
+
 Export the generated island substrate for offline terrain/material inspection without creating a native window:
 
 ```sh
 ./tools/terrain_export.sh target/terrain_export
 ```
 
-The export writes `manifest.json`, per-island terrain/cliff/underside/impostor OBJ meshes, `*_terrain_material_weights.csv` sidecars, and `audit.json`. The audit validates schema, mesh/material/texture-detail/texture-edge/impostor floors, artifact presence, OBJ vertex/face/color counts, terrain-archetype diversity, terrain/body silhouette radius variation, island-body vertical range, impostor vertical range and horizontal radius variation, terrain material-weight CSV rows/bands/channels, derived material-region coverage, per-island base/transition/highland/exposed presence floors, and aggregate archipelago material-region distribution. This is still an offline structural gate rather than a final art-quality score.
+The export writes `manifest.json`, per-island terrain/cliff/underside/impostor OBJ meshes, `*_terrain_material_weights.csv` sidecars, and `audit.json`. The audit validates schema, mesh/material/texture-detail/texture-edge/impostor floors, artifact presence, OBJ vertex/face/color counts, terrain-archetype diversity, terrain/body silhouette radius variation, island-body vertical range, impostor vertical range and horizontal radius variation, archipelago X/Y/Z spread, horizontal sector coverage, positive-depth branches, island-size bands and area ratio, terrain material-weight CSV rows/bands/channels, derived material-region coverage, per-island base/transition/highland/exposed presence floors, and aggregate archipelago material-region distribution. This is still an offline structural gate rather than a final art-quality score.
 
 Export the generated vegetation/cloud/detail substrate for offline shape inspection without creating a native window:
 
@@ -140,7 +170,7 @@ Export the generated vegetation/cloud/detail substrate for offline shape inspect
 ./tools/visual_content_export.sh target/visual_content_export
 ```
 
-The export writes `manifest.json`, generated ground-cover/tree/cloud/landmark OBJ meshes, and `audit.json`. The audit validates schema, artifact presence, OBJ vertex/face counts, total generated mesh scale, ground-cover patch/blade density and blade-height variance, multi-ring trunk mesh floors, trunk taper, branch reach/count, root-flare count, canopy lobe/detail-card structure, tree height/canopy-radius variation, cloud veil count, cloud lobe/wisp-card/filament-ribbon counts, cloud-bank depth/span, route-cairn/launch-beacon/landing-marker/pond-surface count and mesh/span floors, obstruction-spire count/mesh/vertical-span and height/radius/normal-slope band floors, and terrain/detail palette diversity. This complements screenshot audit coverage by making primitive vegetation/cloud/route-prop/camera-blocker regressions fail in a deterministic background-safe path.
+The export writes `manifest.json`, generated ground-cover/tree/rock/cloud/water/ruin/artifact/landmark OBJ meshes, and `audit.json`. The audit validates schema, artifact presence, OBJ vertex/face counts, total generated mesh scale, ground-cover patch/blade density and blade-height variance, multi-ring trunk mesh floors, trunk taper, branch reach/count, root-flare count, canopy lobe/detail-card structure, tree height/canopy-radius variation, rock count and mesh floors, seven surface-artifact families, ruin-cluster coverage, pond/river/lake/waterfall coverage and spans, cloud veil/lobe/wisp/filament structure, cloud-bank depth/span, route-cairn/launch-beacon/landing-marker floors, obstruction-spire shape floors, and terrain/detail palette diversity. This complements screenshot audit coverage by making primitive vegetation/cloud/route-prop/camera-blocker regressions fail in a deterministic background-safe path.
 
 Export player fixture pose silhouettes for human review without creating a native window:
 
@@ -243,16 +273,24 @@ The export writes `manifest.json`, `wind_tracks/wind_visual_tracks.obj`, `wind_t
 - the route must keep altitude high enough for a sustained glide across distant islands
 - sky-island, active chunk, LOD bucket, and entity-count thresholds must catch accidental content or scale-signal collapse
 
+`great_sky_plateau_vistas` is the app-only authored-composition eval:
+
+- fixed grounded spawn in the great plateau's Broken Edge precinct
+- deterministic camera framing captures the arrival ruin shelf and the real contour-mounted waterfall lip
+- screenshot, marker-projection, and semantic-scene audits require readable plateau architecture, water, and landmark evidence without pretending unrelated off-camera content is visible
+- camera distance, framing, and transition thresholds keep the two vista poses stable while still exercising the live rendered world
+
 `camera_mouse_control` is the camera-input regression test:
 
 - fixed spawn on the launch island
-- no movement input, so camera regressions are not hidden by traversal
+- overlapping forward movement and mouse yaw prove movement uses the current frame's camera heading
 - scripted mouse X input must produce yaw offset
 - scripted mouse Y input must produce both upward and downward pitch offsets
 - final input settles closer to level so the screenshot artifact remains useful
 - camera surface clearance must stay above the active ground surface
 - camera-to-player framing angle must stay below threshold so pitch cannot push the player out of frame
 - launch-side obstruction avoidance must produce a measurable camera adjustment
+- camera position and rotation must remain below tight per-frame jerk limits through obstruction release and floor-clearance correction
 - camera orbit alignment must stay below threshold so yaw is not reapplied every frame
 
 `camera_yaw_stability` is the isolated no-drift mouse regression test:
@@ -830,6 +868,7 @@ The thin-slice target should eventually have these evals:
 - `updraft_route`: current gameplay lift regression test.
 - `branch_recovery_route`: current named branch landing and recovery-route test.
 - `long_glide_visibility`: current larger-archipelago traversal, aerial boost-gate, and content-scale test.
+- `great_sky_plateau_vistas`: current app-only authored arrival-precinct and contour-waterfall composition test.
 - `camera_mouse_control`: current mouse X/Y regression test.
 - `camera_yaw_stability`: current small-yaw no-drift regression test.
 - `camera_turn_stability`: current rapid air-turn and air-brake camera stability test.
@@ -863,7 +902,7 @@ The repo should remain the durable memory. Do not depend on a past chat session 
 - Camera obstruction checks now prove avoidance, bounded step/rotation, minimum readable obstructed camera distance, and zero repeated obstruction snaps on the shared route-spire route plus the generated launch-mesa tree/prop contact route. They still use simple tagged AABBs and tolerant fixed checkpoints, so exact occlusion quality, final composition, and art-direction review still need human/agent screenshot inspection before treating the camera as production-final.
 - Screenshot evals now run a lightweight image and scene-composition audit, including basic player visibility, scene detail tile frequency, flat low-detail scene-tile dominance, dominant low-detail scene-component dominance, severe border-clipping, route-marker readability, route-marker component identity, route-marker hue-family diversity, distant horizon/impostor component readability/color-bucket/span identity, terrain/material family diversity, terrain material coverage/color/tile spread, foliage coverage/tile spread, and cloud-layer coverage/component/span identity. Checkpoint marker sidecars classify known route beacons, route objectives, uncollected aerial power-ups, and projected terrain/foliage/cloud/distant-island semantic scene samples as visible, occluded, offscreen, or behind-camera; `terrain_surface` samples carry terrain material variant identity; `marker_projection_audit.json` verifies marker-colored pixels near non-occluded projected visible markers; and `semantic_scene_audit.json` verifies each visible terrain/foliage/cloud/distant-island material family has enough material-like pixels in each checkpoint, verifies enough distinct visible scene sample kinds per checkpoint, requires enough visible terrain material variants to have matching variant-class terrain pixels plus tolerant per-hit coverage, requires visible projected samples/hits for `terrain_surface`, `tree_canopy`, `weather_cloud`, and `distant_island` across the checkpoint sequence, and requires aggregate material/kind pixel coverage plus terrain material/biome variant diversity so projected world samples cannot pass as nearly absent specks or single-variant terrain. The generated-tree obstruction route uses close-obstruction profiles: `world_collision_contact` sidecars keep terrain/foliage/distant-island close-frame material/kind evidence but do not require clouds or broad terrain-variant sequence coverage, and the visual audit relaxes broad route-marker, top-sky, and foliage-coverage sequence checks while keeping per-image quality, player visibility, terrain, distant-scene, cloud, and foliage tile-spread checks. The terrain check is now variant-aware for `lush_meadow`, `gold_meadow`, `copper_clay`, `alpine_mist`, and `highland_grass`, but it remains a tolerant projected-sample diversity gate rather than exact per-pixel world semantics or a production material classifier. Exact 3D occlusion, distant-impostor art direction, exact per-pixel material ownership, and final art quality still need human/agent inspection. Headless terrain export audit covers the first terrain-material identity floor by requiring every exported island to retain base, transition, highland, and exposed material-region coverage, plus procedural albedo edge-frequency and manifest/OBJ height-band/normal-slope-band floors for blurry or flattened terrain fills; visual-content export audit covers generated vegetation/cloud/landmark structural quality through blade, multi-ring trunk, branch, root-flare, canopy-card, tree-size variation, cloud veil/depth-span, cloud-wisp, route cairn, launch beacon, landing marker, pond-surface, obstruction-spire count/mesh/shape-band floors, and palette-diversity floors; wind-visual export audit covers guide/ribbon field coverage plus deterministic temporal motion, artifact count, field-containment, and flow-alignment floors without opening the native app; runtime and export/audit metric gates now cover the first terrain/body/impostor/vegetation/cloud/route-prop/camera-blocker/wind-current primitive-shape substrate floors. These improve the generated island substrate but still describe generated placeholder art, not production AAA assets.
 - The simulation-only binary intentionally skips renderer, screenshots, frame-time, asset-server, generated-asset collision contact, terrain-rim collision contact, terrain-body collision contact, and visual content checks, but it does cover the bounded wind-current response gates. Pair it with app/screenshot/export audits before treating a branch as fully verified.
-- Frame-time metrics skip the first few warmup frames and are recorded as local native-window runtime telemetry; they are useful for trend spotting, not stable cross-machine pass/fail thresholds.
+- Release baseline and play-profile frame-time metrics skip warmup and remain local native-window trend evidence rather than portable cross-machine truth. The development-play gate is narrower: it uses a same-host debug/release A/B plus generous absolute ceilings on the macOS CI runner to protect the ordinary `cargo run` path.
 - Island collision follows deterministic authored terrain relief and per-archetype footprint profiles, and obvious generated plus solid authored-fixture obstacles now use simple AABB world-collision proxies. Near-LOD islands also spawn 16 invisible terrain-rim AABB contour segments and four broad terrain-body cliff panels sampled from the playable footprint. Runtime evals gate aggregate proxy presence, split solid non-rim proxies by tree/rock/landmark kind so terrain-rim segments cannot mask missing asset blockers, split terrain-body proxy/resolution/push metrics so cliff contact cannot be hidden by rim contact, report resolved samples, meaningful contact samples, and push distance, use `world_collision_contact` to prove the player is pushed by a generated launch-mesa obstacle, use `terrain_rim_collision_contact` to prove the player is pushed by a launch-mesa rim, use `terrain_body_collision_contact` to prove visible launch-mesa cliff/body contact resolves through terrain-body world collision with zero rim contact on that route, and use `ground_taxi_control` to reject false rim contacts during normal ground control. The island-visual catalog unit audit checks named generated solid visuals before spawning, requires per-island rim and body proxy parity, and forces camera-only blockers such as foliage canopies to remain explicit exemptions. The procedural island ridge, recovery ring pieces, solid authored world fixtures, and shared route obstruction spires also carry AABB collision/camera-obstacle coverage. The collision model is still a route-surface clamp plus horizontal proxy push-out rather than full rigid-body physics, continuous terrain collision, or production imported colliders.
 - `active_chunk_count` and `active_island_count` drive resident terrain/detail entities, and visual asset slots are declared, counted, split by residency class, and passed through a deterministic load-admission budget. This is an explicit policy surface for future asset streaming, not full asynchronous distance streaming yet.
 - Missing glTF files are counted as placeholders and intentionally do not trigger load errors; deferred glTF files are also placeholder-backed but do not allocate Bevy `AssetServer` handles. Only admitted files that exist under `assets/` are queued through Bevy's `AssetServer`, and queued handles then report queued/loading/loaded/failed state. `ready_visual_asset_slot_count` means Bevy has loaded the scene asset, not merely that the file exists. `dependency_loaded_visual_asset_scene_count` and `preload_ready_visual_asset_scene_count` use Bevy's recursive dependency readiness so textures/buffers/subassets cannot lag behind a top-level scene handle without showing in evals; the always/streaming preload-ready counters split that signal by residency class. `spawned_visual_asset_scene_count` and `ready_visual_asset_scene_count` track Bevy scene-instance lifecycle separately from load state. The eval checks require all nine declared slots to be admitted, load, dependency-preload, spawn, and report ready, require all seven non-player world fixture kinds to be visibly placed, and fail if any current fixture disappears or is deferred; the self-authored player, glider, terrain, foliage, rock, water, route-marker, weather-layer, and distant-impostor fixtures are the current minimum viable asset pipeline surface. `asset_fixture_audit.json` now carries registry-aligned `extras.nau` metadata checks, semantic component-name, mesh/material/vertex/triangle, normal/UV, blend-material, provenance, named-player-clip checks including `Fall_Loop`, `Bank_Left`, and `Bank_Right`, distinct fall/bank clip motion checks, stricter player hand/finger/toe/bridge/sleeve/seamless/flex detail fragments, hand-pivot wiring output, organic major-limb volume audit output, reusable extremity volume audit output, pose contact output, pose-transition contact output, bridge-sleeve contact audit output, moving flex-cover seam contact audit output, major-joint deformation envelope output, rest-pose non-adjacent/shoulder worst-overlap output, and the stricter world-fixture detail fragments for erosion/path, roots/ferns/moss, lily/specular water detail, rust/shale rock detail, route glyphs/pebbles, cloud haze/filaments, and distant waterfall/broken-cliff detail. `declared_animation_clip_count`, `ready_animation_clip_count`, `animation_player_count`, and `animation_graph_count` track the player scene's named clip/graph path separately from scene readiness; the eval checks gate the declared and ready clip inventory so the player animation contract cannot silently disappear.

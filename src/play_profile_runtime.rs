@@ -141,9 +141,9 @@ impl PlayProfileRun {
             .map(|script| scripted_profile_input(script, self.control_elapsed_secs()))
     }
 
-    pub(crate) fn scripted_camera_input(&self) -> Option<CameraInput> {
+    pub(crate) fn scripted_camera_input(&self, dt: f32) -> Option<CameraInput> {
         self.script
-            .map(|script| scripted_profile_camera_input(script, self.control_elapsed_secs()))
+            .map(|script| scripted_profile_camera_input(script, self.control_elapsed_secs(), dt))
     }
 
     pub(crate) fn scripted_start_position(&self, route: &SkyRoute) -> Option<Vec3> {
@@ -423,8 +423,8 @@ fn scripted_profile_input(script: PlayProfileScript, t: f64) -> FlightInput {
     }
 }
 
-fn scripted_profile_camera_input(script: PlayProfileScript, t: f64) -> CameraInput {
-    let mouse_delta = match script {
+fn scripted_profile_camera_input(script: PlayProfileScript, t: f64, dt: f32) -> CameraInput {
+    let mouse_delta_per_60hz_frame = match script {
         PlayProfileScript::Freeflight if (6.0..=6.8).contains(&t) => Vec2::new(1.1, 0.0),
         PlayProfileScript::Freeflight if (14.0..=14.8).contains(&t) => Vec2::new(-1.0, 0.0),
         PlayProfileScript::Freeflight if (28.0..=29.0).contains(&t) => Vec2::new(0.0, -0.8),
@@ -432,7 +432,9 @@ fn scripted_profile_camera_input(script: PlayProfileScript, t: f64) -> CameraInp
         PlayProfileScript::GroundTraversal => Vec2::ZERO,
         _ => Vec2::ZERO,
     };
-    CameraInput { mouse_delta }
+    CameraInput {
+        mouse_delta: mouse_delta_per_60hz_frame * (dt.max(0.0) * 60.0),
+    }
 }
 
 pub(crate) fn collect_play_profile_sample(
@@ -1585,9 +1587,26 @@ mod tests {
             .expect("manual profile output should initialize");
 
         assert_eq!(profile.scripted_flight_input(), None);
-        assert_eq!(profile.scripted_camera_input(), None);
+        assert_eq!(profile.scripted_camera_input(1.0 / 60.0), None);
 
         let _ = fs::remove_file(output_path);
+    }
+
+    #[test]
+    fn scripted_camera_motion_integrates_equally_across_frame_rates() {
+        let mut integrated = Vec::new();
+        for frame_rate in [30.0, 60.0, 120.0, 144.0] {
+            let dt = 1.0 / frame_rate;
+            let delta = (0..frame_rate as usize).fold(Vec2::ZERO, |sum, _| {
+                sum + scripted_profile_camera_input(PlayProfileScript::Freeflight, 6.4, dt)
+                    .mouse_delta
+            });
+            integrated.push(delta);
+        }
+
+        for delta in integrated.iter().skip(1) {
+            assert!((*delta - integrated[0]).length() <= 0.01);
+        }
     }
 
     #[test]

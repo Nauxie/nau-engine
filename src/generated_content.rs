@@ -1,8 +1,15 @@
+mod detail_layout;
 mod detail_meshes;
 mod island_meshes;
 mod materials;
 mod textures;
 
+const _: usize = island_meshes::GROUND_COVER_PATCHES;
+
+pub(crate) use detail_layout::{
+    IslandDetailBudget, IslandRockSpec, IslandRuinSpec, IslandTreeSpec, island_detail_budget,
+    island_rock_specs, island_ruin_specs, island_tree_specs,
+};
 #[cfg(test)]
 pub(crate) use detail_meshes::pond_surface_mesh;
 #[cfg(test)]
@@ -20,14 +27,15 @@ pub(crate) use detail_meshes::{
 };
 pub(crate) use detail_meshes::{
     CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, CLOUD_WISP_CARDS_PER_LOBE, FirstExpeditionSilhouetteKind,
-    IslandUnderRouteVisualKind, IslandWaterVisualKind, TREE_BRANCH_COUNT, TREE_CANOPY_CARD_COUNT,
-    TREE_ROOT_FLARE_COUNT, TREE_TRUNK_RING_COUNT, TREE_TRUNK_SEGMENTS, cliff_tooth_ridge_mesh,
-    cloud_cluster_mesh, cloud_filament_ribbon_detail_count,
+    IslandArtifactMaterial, IslandUnderRouteVisualKind, IslandWaterVisualKind, TREE_BRANCH_COUNT,
+    TREE_CANOPY_CARD_COUNT, TREE_ROOT_FLARE_COUNT, TREE_TRUNK_RING_COUNT, TREE_TRUNK_SEGMENTS,
+    cliff_tooth_ridge_mesh, cloud_cluster_mesh, cloud_filament_ribbon_detail_count,
     crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh,
-    first_expedition_silhouette_specs, garden_ring_mesh, island_lake_basin_visual_specs,
-    island_under_route_visual_specs, island_water_visual_specs, landing_garden_marker_mesh,
-    launch_beacon_mesh, obstruction_spire_mesh, player_airflow_streamline_mesh, rock_scatter_mesh,
-    route_cairn_mesh, ruin_arch_mesh, tree_canopy_mesh, tree_trunk_mesh, updraft_ribbon_mesh,
+    first_expedition_silhouette_specs, garden_ring_mesh, island_artifact_visual_specs,
+    island_lake_basin_visual_specs, island_under_route_visual_specs, island_water_visual_specs,
+    landing_garden_marker_mesh, launch_beacon_mesh, obstruction_spire_mesh,
+    player_airflow_streamline_mesh, rock_scatter_mesh, route_cairn_mesh, ruin_arch_mesh,
+    tree_canopy_mesh, tree_trunk_mesh, updraft_ribbon_mesh,
 };
 #[cfg(test)]
 pub(crate) use detail_meshes::{
@@ -37,12 +45,11 @@ pub(crate) use detail_meshes::{
 #[cfg(test)]
 pub(crate) use island_meshes::ISLAND_TERRAIN_EDGE_SKIRT_DEPTH_M;
 pub(crate) use island_meshes::{
-    GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES, ISLAND_BODY_SEGMENTS,
-    ISLAND_TERRAIN_RINGS, IslandDetailMaterials, TERRAIN_BIOME_PALETTE_COUNT,
-    VERTICES_PER_GROUND_BLADE, biome_detail_color_set, biome_detail_materials,
-    island_body_mesh_diagnostics, island_cliff_mesh, island_ground_cover_mesh,
-    island_impostor_cliff_mesh, island_impostor_mesh, island_impostor_mesh_diagnostics,
-    island_impostor_terrain_mesh, island_impostor_underside_mesh,
+    GROUND_COVER_BLADES_PER_PATCH, ISLAND_BODY_SEGMENTS, ISLAND_TERRAIN_RINGS,
+    IslandDetailMaterials, TERRAIN_BIOME_PALETTE_COUNT, VERTICES_PER_GROUND_BLADE,
+    biome_detail_color_set, biome_detail_materials, island_body_mesh_diagnostics,
+    island_cliff_mesh, island_ground_cover_mesh, island_impostor_cliff_mesh, island_impostor_mesh,
+    island_impostor_mesh_diagnostics, island_impostor_terrain_mesh, island_impostor_underside_mesh,
     island_playable_normalized_offset, island_terrain_mesh, island_terrain_mesh_diagnostics,
     island_underside_mesh, island_visual_surface_position, mesh_normal_slope_band_count,
     mesh_terrain_material_channel_count, mesh_terrain_material_region_count,

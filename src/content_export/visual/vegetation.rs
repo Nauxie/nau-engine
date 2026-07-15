@@ -3,7 +3,7 @@ use crate::{
     content_export::shared::mesh_positions,
     generated_content::{
         TREE_BRANCH_COUNT, TREE_ROOT_FLARE_COUNT, TREE_TRUNK_RING_COUNT, TREE_TRUNK_SEGMENTS,
-        VERTICES_PER_GROUND_BLADE,
+        VERTICES_PER_GROUND_BLADE, island_tree_specs,
     },
 };
 use bevy::prelude::*;
@@ -14,7 +14,7 @@ pub(super) struct VisualTreeSpec {
     pub(super) label: String,
     pub(super) trunk_radius_m: f32,
     pub(super) trunk_height_m: f32,
-    pub(super) seed: u32,
+    pub(super) trunk_seed: u32,
     pub(super) canopy_radius_m: f32,
     pub(super) canopy_seed: u32,
 }
@@ -23,28 +23,25 @@ pub(super) fn visual_content_tree_specs(
     island_index: usize,
     island: SkyIsland,
 ) -> Vec<VisualTreeSpec> {
-    let mut specs = Vec::new();
-
-    for tree_index in 0..3 {
-        if island.is_target && tree_index == 1 {
-            continue;
-        }
-        specs.push(VisualTreeSpec {
+    let mut specs = island_tree_specs(island_index, island)
+        .into_iter()
+        .enumerate()
+        .map(|(tree_index, tree)| VisualTreeSpec {
             label: format!("detail tree {tree_index}"),
-            trunk_radius_m: 0.22,
-            trunk_height_m: 2.1 + tree_index as f32 * 0.25,
-            seed: 5_000 + island_index as u32 * 97 + tree_index as u32 * 13,
-            canopy_radius_m: 1.05 + tree_index as f32 * 0.08,
-            canopy_seed: 6_000 + island_index as u32 * 101 + tree_index as u32 * 17,
-        });
-    }
+            trunk_radius_m: tree.trunk_radius_m,
+            trunk_height_m: tree.trunk_height_m,
+            trunk_seed: tree.trunk_seed,
+            canopy_radius_m: tree.canopy_radius_m,
+            canopy_seed: tree.canopy_seed,
+        })
+        .collect::<Vec<_>>();
 
     if island.name == "launch mesa" {
         specs.push(VisualTreeSpec {
             label: "launch tree".to_string(),
             trunk_radius_m: 0.35,
             trunk_height_m: 4.4,
-            seed: 7_000 + island_index as u32 * 97,
+            trunk_seed: 7_000 + island_index as u32 * 97,
             canopy_radius_m: 1.55,
             canopy_seed: 8_000 + island_index as u32 * 101,
         });
@@ -52,6 +49,7 @@ pub(super) fn visual_content_tree_specs(
 
     specs
 }
+
 pub(super) fn ground_cover_blade_stats(mesh: &Mesh) -> GroundCoverBladeStats {
     let positions = mesh_positions(mesh);
     let mut blade_count = 0usize;

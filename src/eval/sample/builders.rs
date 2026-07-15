@@ -150,6 +150,7 @@ impl EvalSample {
             lateral_input_active: false,
             movement_input_lateral_axis: 0.0,
             movement_input_forward_axis: 0.0,
+            movement_camera_heading_error_degrees: f32::NAN,
             camera_distance_m,
             camera_surface_clearance_m,
             camera_player_angle_degrees,
@@ -157,6 +158,15 @@ impl EvalSample {
             camera_yaw_offset_degrees,
             camera_pitch_offset_degrees,
             camera_step_distance_m,
+            camera_player_relative_step_m: f32::NAN,
+            camera_player_relative_linear_velocity_mps: f32::NAN,
+            camera_player_relative_linear_acceleration_mps2: f32::NAN,
+            camera_player_relative_angular_velocity_degrees_per_sec: f32::NAN,
+            camera_player_relative_angular_acceleration_degrees_per_sec2: f32::NAN,
+            player_integration_residual_m: f32::NAN,
+            camera_correction_source: "none",
+            camera_continuity_offset_limited: false,
+            camera_continuity_rotation_limited: false,
             camera_rotation_delta_degrees,
             camera_orbit_alignment_degrees,
             camera_follow_direction_error_degrees: 0.0,
@@ -422,6 +432,54 @@ impl EvalSample {
         self.lateral_input_active = metrics.lateral_input_active;
         self.movement_input_lateral_axis = metrics.movement_axis.x;
         self.movement_input_forward_axis = metrics.movement_axis.y;
+        self
+    }
+
+    pub fn with_movement_camera_heading_error_degrees(mut self, error_degrees: f32) -> Self {
+        self.movement_camera_heading_error_degrees = if error_degrees.is_finite() {
+            error_degrees.abs()
+        } else {
+            f32::NAN
+        };
+        self
+    }
+
+    pub fn with_camera_player_relative_step_m(mut self, step_m: f32) -> Self {
+        self.camera_player_relative_step_m = if step_m.is_finite() {
+            step_m.max(0.0)
+        } else {
+            f32::NAN
+        };
+        self
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_camera_player_continuity_metrics(
+        mut self,
+        relative_step_m: f32,
+        relative_linear_velocity_mps: f32,
+        relative_linear_acceleration_mps2: f32,
+        relative_angular_velocity_degrees_per_sec: f32,
+        relative_angular_acceleration_degrees_per_sec2: f32,
+        player_integration_residual_m: f32,
+        camera_correction_source: &'static str,
+        camera_continuity_offset_limited: bool,
+        camera_continuity_rotation_limited: bool,
+    ) -> Self {
+        self.camera_player_relative_step_m = finite_nonnegative_or_nan(relative_step_m);
+        self.camera_player_relative_linear_velocity_mps =
+            finite_nonnegative_or_nan(relative_linear_velocity_mps);
+        self.camera_player_relative_linear_acceleration_mps2 =
+            finite_nonnegative_or_nan(relative_linear_acceleration_mps2);
+        self.camera_player_relative_angular_velocity_degrees_per_sec =
+            finite_nonnegative_or_nan(relative_angular_velocity_degrees_per_sec);
+        self.camera_player_relative_angular_acceleration_degrees_per_sec2 =
+            finite_nonnegative_or_nan(relative_angular_acceleration_degrees_per_sec2);
+        self.player_integration_residual_m =
+            finite_nonnegative_or_nan(player_integration_residual_m);
+        self.camera_correction_source = camera_correction_source;
+        self.camera_continuity_offset_limited = camera_continuity_offset_limited;
+        self.camera_continuity_rotation_limited = camera_continuity_rotation_limited;
         self
     }
 

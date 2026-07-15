@@ -1,4 +1,116 @@
 use super::*;
+use std::collections::BTreeSet;
+
+fn shell_array<'a>(script: &'a str, name: &str) -> Vec<&'a str> {
+    let marker = format!("{name}=(");
+    let body = script
+        .split_once(&marker)
+        .unwrap_or_else(|| panic!("{name} shell array exists"))
+        .1;
+
+    body.lines()
+        .take_while(|line| line.trim() != ")")
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| line.trim_matches('"'))
+        .collect()
+}
+
+#[test]
+fn eval_sim_suite_covers_every_simulation_scenario() {
+    let script = include_str!("../../../tools/eval_sim_suite.sh");
+    let actual = shell_array(script, "scenarios");
+    let expected = SCENARIO_NAMES
+        .iter()
+        .copied()
+        .filter(|name| !APP_ONLY_SCENARIO_NAMES.contains(name))
+        .collect::<Vec<_>>();
+
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn camera_continuity_gate_covers_the_required_surface_and_timing_contract() {
+    let script = include_str!("../../../tools/camera_continuity_gate.sh");
+    let actual = shell_array(script, "simulation_scenarios")
+        .into_iter()
+        .chain(shell_array(script, "app_scenarios"))
+        .collect::<BTreeSet<_>>();
+    let expected = [
+        CAMERA_MOUSE_CONTROL,
+        CAMERA_YAW_STABILITY,
+        CAMERA_TURN_STABILITY,
+        CAMERA_STRAFE_STABILITY,
+        AIR_CONTROL_RESPONSE,
+        GREAT_SKY_PLATEAU_ROUTE,
+        PLATEAU_ARRIVAL_CAMERA,
+        UNDERBRIDGE_UNDER_ROUTE,
+        PLAYTEST_RESET,
+        WORLD_COLLISION_CONTACT,
+        TERRAIN_RIM_COLLISION_CONTACT,
+        TERRAIN_BODY_COLLISION_CONTACT,
+        TERRAIN_EDGE_WALKOFF,
+    ]
+    .into_iter()
+    .collect::<BTreeSet<_>>();
+
+    assert_eq!(actual, expected);
+    assert!(script.contains("requested_refresh_rates=(30 60 120 144)"));
+    assert!(script.contains("requested_hitches_ms=(50 100)"));
+    assert!(script.contains(".metrics.sample_count == $expected_samples"));
+    assert!(script.contains(".metrics.max_world_collision_push_m <= $max_push"));
+    assert!(script.contains(".metrics.max_terrain_rim_collision_push_m <= $max_push"));
+    assert!(script.contains(".metrics.max_terrain_body_collision_push_m <= $max_push"));
+    assert!(
+        script.contains("NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ANGULAR_VELOCITY_DEGREES_PER_SEC:-180")
+    );
+    assert!(script.contains(
+        "NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ANGULAR_ACCELERATION_DEGREES_PER_SEC2:-15000"
+    ));
+    assert!(
+        script.contains(".metrics.max_camera_player_relative_angular_velocity_degrees_per_sec")
+    );
+    assert!(
+        script
+            .contains(".metrics.max_camera_player_relative_angular_acceleration_degrees_per_sec2")
+    );
+    assert!(script.contains("fault_injection_proof_json=\"$(jq -cn"));
+    assert!(script.contains("ran: ($ran == 1)"));
+    assert!(script.contains("tests: (if $ran == 1 then ["));
+    assert!(script.contains("] else [] end"));
+    assert!(script.contains("--argjson fault_injection_proof"));
+}
+
+#[test]
+fn continuity_and_performance_gates_fail_closed_on_incomplete_or_failed_evidence() {
+    let continuity = include_str!("../../../tools/camera_continuity_gate.sh");
+    assert!(continuity.contains("if (( eval_status != 0 )); then"));
+    assert!(continuity.contains("exit \"${eval_status}\""));
+    assert!(continuity.contains("exit 1"));
+
+    let performance = include_str!("../../../tools/dev_play_performance_gate.sh");
+    assert!(performance.contains("$debug_eval_status == 0"));
+    assert!(performance.contains("and $release_eval_status == 0"));
+    assert!(performance.contains("and $debug[0].passed == true"));
+    assert!(performance.contains("and $release[0].passed == true"));
+    assert!(performance.contains("if ! jq -e '.passed == true'"));
+}
+
+#[test]
+fn scenarios_require_exact_expected_sample_coverage() {
+    for name in SCENARIO_NAMES {
+        let scenario = scenario_named(name).expect("scenario exists");
+        let observed_schedule_count = (0..=scenario.frame_count)
+            .filter(|frame| scenario.should_sample(*frame))
+            .count() as u32;
+
+        assert_eq!(observed_schedule_count, scenario.expected_sample_count());
+        assert_eq!(
+            scenario.thresholds.min_samples, observed_schedule_count,
+            "{name} should fail if any deterministic sample is omitted"
+        );
+    }
+}
 
 #[test]
 fn baseline_route_has_scripted_launch_and_glide() {
@@ -47,8 +159,13 @@ fn playtest_reset_script_triggers_the_central_reset_command() {
             .is_some_and(|checkpoint| { checkpoint.name == "plateau_central_close_review" })
     );
     assert_eq!(scenario.frame_count, 180);
+    assert_eq!(scenario.thresholds.min_samples, 181);
+    assert!(scenario.thresholds.min_horizontal_distance_m >= 2_000.0);
+    assert!(scenario.thresholds.min_max_speed_mps >= 8.0);
+    assert!(scenario.thresholds.min_grounded_samples >= 170);
+    assert!(!scenario.thresholds.require_target_landing);
     assert!(scenario.thresholds.min_target_landing_samples >= 140);
-    assert!(scenario.thresholds.max_final_target_distance_m <= 16.5);
+    assert!(scenario.thresholds.max_final_target_distance_m <= 0.05);
 }
 
 #[test]
@@ -61,6 +178,7 @@ fn world_collision_contact_script_taxis_into_launch_tree() {
     assert!(!scripted_input(scenario, 60).glide);
     assert_eq!(scenario.thresholds.max_abs_camera_view_yaw_degrees, 32.0);
     assert!(scenario.thresholds.max_camera_rotation_delta_degrees <= 1.5);
+    assert_eq!(scenario.thresholds.min_camera_obstructed_distance_m, 3.4);
     assert_eq!(scenario.thresholds.max_camera_obstruction_snap_count, 0);
 }
 
@@ -68,12 +186,12 @@ fn world_collision_contact_script_taxis_into_launch_tree() {
 fn terrain_rim_collision_contact_script_presses_into_visible_launch_rim() {
     let scenario = scenario_named(TERRAIN_RIM_COLLISION_CONTACT).expect("rim route exists");
 
-    assert!(scripted_input(scenario, 15).backward);
-    assert!(scripted_input(scenario, 52).backward);
+    assert!(scripted_input(scenario, 15).forward);
+    assert!(scripted_input(scenario, 52).forward);
     assert!(scripted_input(scenario, 52).left);
     assert!(!scripted_input(scenario, 1).launch);
     assert!(!scripted_input(scenario, 52).glide);
-    assert!(!scripted_input(scenario, 52).forward);
+    assert!(!scripted_input(scenario, 52).backward);
     assert_eq!(scenario.thresholds.min_grounded_samples, 0);
     assert_eq!(scenario.frame_count, 56);
 }
@@ -159,11 +277,15 @@ fn camera_mouse_script_exercises_x_and_y_axes() {
     assert!(scripted_camera_input(scenario, 30).mouse_delta.x > 0.0);
     assert!(scripted_camera_input(scenario, 70).mouse_delta.y < 0.0);
     assert!(scripted_camera_input(scenario, 105).mouse_delta.y > 0.0);
+    assert!(scripted_input(scenario, 30).forward);
+    assert!(!scripted_input(scenario, 70).forward);
+    assert!(scenario.thresholds.min_horizontal_distance_m >= 3.0);
     assert_eq!(
-        scripted_input(scenario, 1),
-        FlightInput::default(),
-        "camera eval should not hide mouse regressions behind movement"
+        scenario.thresholds.min_samples,
+        scenario.expected_sample_count()
     );
+    assert!(scenario.thresholds.max_camera_step_distance_m <= 0.7);
+    assert!(scenario.thresholds.max_camera_rotation_delta_degrees <= 1.75);
 }
 
 #[test]
@@ -300,8 +422,8 @@ fn great_sky_plateau_route_targets_long_vertical_chain() {
         [
             "launch_review",
             "upper_thermal_chain",
-            "waterfall_vista",
             "high_crown_tease",
+            "waterfall_vista",
             "plateau_arrival_reveal",
         ]
     );
@@ -322,6 +444,36 @@ fn great_sky_plateau_route_targets_long_vertical_chain() {
     assert!(scripted_input(scenario, 1980).glide);
     assert!(scripted_input(scenario, 1980).forward);
     assert!(!scripted_input(scenario, 1980).backward);
+}
+
+#[test]
+fn great_sky_plateau_vistas_is_a_grounded_pixel_review() {
+    let scenario =
+        scenario_named(GREAT_SKY_PLATEAU_VISTAS).expect("plateau vistas scenario exists");
+    let alias = scenario_named("plateau_showcase").expect("plateau vistas alias exists");
+
+    assert_eq!(alias.name, GREAT_SKY_PLATEAU_VISTAS);
+    assert!(APP_ONLY_SCENARIO_NAMES.contains(&GREAT_SKY_PLATEAU_VISTAS));
+    assert_eq!(scenario.target_island_name, Some("great sky plateau"));
+    assert_eq!(
+        scenario
+            .checkpoints
+            .iter()
+            .map(|checkpoint| checkpoint.name)
+            .collect::<Vec<_>>(),
+        ["plateau_arrival_reveal", "waterfall_vista"]
+    );
+    assert!(scenario.thresholds.min_grounded_samples >= 280);
+    assert!(scenario.thresholds.max_final_target_distance_m <= 220.0);
+    assert_eq!(scripted_input(scenario, 120), FlightInput::default());
+    assert_eq!(
+        scripted_camera_input(scenario, 120).mouse_delta,
+        bevy::prelude::Vec2::ZERO
+    );
+    assert_eq!(
+        scripted_camera_input(scenario, 240).mouse_delta,
+        bevy::prelude::Vec2::ZERO
+    );
 }
 
 #[test]
@@ -367,23 +519,37 @@ fn scenario_camera_thresholds_guard_follow_distance_and_jitter() {
     for name in SCENARIO_NAMES {
         let scenario = scenario_named(name).expect("scenario exists");
         let mouse_camera = *name == CAMERA_MOUSE_CONTROL;
+        let cinematic_vista = *name == GREAT_SKY_PLATEAU_VISTAS;
 
         assert!(
-            scenario.thresholds.max_camera_distance_m <= 16.5,
+            scenario.thresholds.max_camera_distance_m <= if cinematic_vista { 220.0 } else { 16.5 },
             "{name} should fail if the follow camera drifts into a zoomed-out view"
         );
         assert!(
-            scenario.thresholds.max_camera_step_distance_m <= 1.15,
+            scenario.thresholds.max_camera_step_distance_m
+                <= if cinematic_vista { 6.0 } else { 1.15 },
             "{name} should fail large per-frame camera jumps"
         );
         assert!(
             scenario.thresholds.max_camera_player_angle_degrees
-                <= if mouse_camera { 6.0 } else { 3.0 },
+                <= if mouse_camera {
+                    6.0
+                } else if cinematic_vista {
+                    90.0
+                } else {
+                    3.0
+                },
             "{name} should keep the player focus centered"
         );
         assert!(
             scenario.thresholds.max_camera_rotation_delta_degrees
-                <= if mouse_camera { 12.0 } else { 1.5 },
+                <= if mouse_camera {
+                    1.75
+                } else if cinematic_vista {
+                    3.5
+                } else {
+                    1.5
+                },
             "{name} should fail camera rotation jitter"
         );
         assert!(
@@ -405,9 +571,178 @@ fn scenarios_define_non_final_camera_checkpoints() {
                 .iter()
                 .all(|checkpoint| checkpoint.frame < scenario.frame_count)
         );
+        assert!(
+            scenario
+                .checkpoints
+                .windows(2)
+                .all(|pair| pair[0].frame < pair[1].frame),
+            "{name} checkpoint frames should be strictly increasing"
+        );
         assert_eq!(
             scenario.checkpoint_at(scenario.checkpoints[0].frame),
             Some(scenario.checkpoints[0])
         );
     }
+}
+
+#[test]
+fn camera_continuity_fault_injection_rejects_nominally_unsampled_one_frame_snap() {
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let fault_frame = 1_u32;
+
+    assert!(!fault_frame.is_multiple_of(scenario.sample_stride));
+    assert!(!scenario.should_sample(fault_frame));
+
+    let summary_for = |injected_fault_frame: Option<u32>| {
+        let mut accumulator = EvalAccumulator::default();
+        for frame in 0..=scenario.frame_count {
+            let camera_step_distance_m = if injected_fault_frame == Some(frame) {
+                scenario.thresholds.max_camera_step_distance_m + 0.25
+            } else {
+                0.1
+            };
+            accumulator.observe_continuity(
+                frame,
+                12.0,
+                camera_step_distance_m,
+                camera_step_distance_m,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0,
+                "follow",
+                false,
+                false,
+                0.0,
+                0.0,
+                0.0,
+                None,
+            );
+            if !scenario.should_sample(frame) {
+                continue;
+            }
+            let mut sample = content_metric_sample(scenario, frame, 12, 0, 64);
+            sample.movement_camera_heading_error_degrees = 0.0;
+            accumulator.observe(sample);
+        }
+        accumulator.summary(
+            scenario,
+            EvalArtifacts {
+                summary_json: "summary.json".to_string(),
+                samples_ndjson: "samples.ndjson".to_string(),
+                screenshot_png: None,
+                checkpoint_screenshots: Vec::new(),
+                checkpoint_marker_metadata: Vec::new(),
+            },
+        )
+    };
+
+    let passing = summary_for(None);
+    assert_eq!(
+        passing.metrics.sample_count,
+        scenario.expected_sample_count()
+    );
+    assert!(named_check(&passing, "sample_count").passed);
+    assert!(named_check(&passing, "max_camera_step_distance").passed);
+
+    let faulted = summary_for(Some(fault_frame));
+    assert_eq!(
+        faulted.metrics.max_camera_step_distance_m,
+        scenario.thresholds.max_camera_step_distance_m + 0.25
+    );
+    assert!(named_check(&faulted, "sample_count").passed);
+    assert!(!named_check(&faulted, "max_camera_step_distance").passed);
+}
+
+#[test]
+fn camera_continuity_rotation_fault_injection_rejects_one_frame_snap() {
+    const MAX_ANGULAR_VELOCITY_DEGREES_PER_SEC: f32 = 180.0;
+    const MAX_ANGULAR_ACCELERATION_DEGREES_PER_SEC2: f32 = 15_000.0;
+
+    let scenario = scenario_named(AIR_CONTROL_RESPONSE).expect("air control route exists");
+    let fault_frame = 1_u32;
+
+    assert!(!scenario.should_sample(fault_frame));
+
+    let summary_for = |injected_fault_frame: Option<u32>| {
+        let mut accumulator = EvalAccumulator::default();
+        for frame in 0..=scenario.frame_count {
+            let (angular_velocity, angular_acceleration) = if injected_fault_frame == Some(frame) {
+                (720.0, 36_900.0)
+            } else {
+                (105.0, 6_300.0)
+            };
+            accumulator.observe_continuity(
+                frame,
+                12.0,
+                0.1,
+                0.1,
+                1.0,
+                0.0,
+                0.0,
+                angular_velocity,
+                angular_acceleration,
+                0.0,
+                0,
+                "follow",
+                false,
+                false,
+                0.0,
+                0.0,
+                0.0,
+                None,
+            );
+            if !scenario.should_sample(frame) {
+                continue;
+            }
+            let mut sample = content_metric_sample(scenario, frame, 12, 0, 64);
+            sample.movement_camera_heading_error_degrees = 0.0;
+            accumulator.observe(sample);
+        }
+        accumulator.summary(
+            scenario,
+            EvalArtifacts {
+                summary_json: "summary.json".to_string(),
+                samples_ndjson: "samples.ndjson".to_string(),
+                screenshot_png: None,
+                checkpoint_screenshots: Vec::new(),
+                checkpoint_marker_metadata: Vec::new(),
+            },
+        )
+    };
+    let angular_gate_passes = |summary: &EvalSummary| {
+        summary
+            .metrics
+            .max_camera_player_relative_angular_velocity_degrees_per_sec
+            <= MAX_ANGULAR_VELOCITY_DEGREES_PER_SEC
+            && summary
+                .metrics
+                .max_camera_player_relative_angular_acceleration_degrees_per_sec2
+                <= MAX_ANGULAR_ACCELERATION_DEGREES_PER_SEC2
+    };
+
+    let passing = summary_for(None);
+    assert!(angular_gate_passes(&passing));
+    assert!(named_check(&passing, "max_camera_step_distance").passed);
+    assert!(named_check(&passing, "air_control_camera_rotation_delta").passed);
+
+    let faulted = summary_for(Some(fault_frame));
+    assert_eq!(
+        faulted
+            .metrics
+            .max_camera_player_relative_angular_velocity_degrees_per_sec,
+        720.0
+    );
+    assert_eq!(
+        faulted
+            .metrics
+            .max_camera_player_relative_angular_acceleration_degrees_per_sec2,
+        36_900.0
+    );
+    assert!(!angular_gate_passes(&faulted));
+    assert!(named_check(&faulted, "max_camera_step_distance").passed);
+    assert!(named_check(&faulted, "air_control_camera_rotation_delta").passed);
 }

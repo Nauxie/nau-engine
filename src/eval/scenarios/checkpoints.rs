@@ -236,12 +236,12 @@ pub(super) const GREAT_SKY_PLATEAU_CHECKPOINTS: &[EvalCheckpoint] = &[
         name: "upper_thermal_chain",
     },
     EvalCheckpoint {
-        frame: 1500,
-        name: "waterfall_vista",
-    },
-    EvalCheckpoint {
         frame: 1260,
         name: "high_crown_tease",
+    },
+    EvalCheckpoint {
+        frame: 1500,
+        name: "waterfall_vista",
     },
     EvalCheckpoint {
         frame: 1740,

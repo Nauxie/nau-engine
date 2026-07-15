@@ -37,6 +37,13 @@ use nau_engine::movement::{
 use nau_engine::world::{SkyRoute, TERRAIN_VISUAL_FOOTING_OFFSET_M};
 
 const ATTACHED_PLAYER_VISUAL_OFFSET_Y: f32 = -TERRAIN_VISUAL_FOOTING_OFFSET_M;
+const MAX_PLAYER_FRAME_DT_SECS: f32 = 1.0 / 30.0;
+const MAX_PLAYER_FRAME_TRAVEL_M: f32 = 2.0;
+const MAX_PLAYER_SUBSTEP_DT_SECS: f32 = 1.0 / 60.0;
+const MAX_PLAYER_SUBSTEP_TRAVEL_M: f32 = 1.0;
+const MAX_PLAYER_SUBSTEPS: usize = 2;
+const MAX_PLAYER_WORLD_CORRECTION_PER_FRAME_M: f32 = 8.0;
+const MAX_PLAYER_COLLISION_CORRECTION_PER_FRAME_M: f32 = 1.0;
 
 pub(crate) fn authored_player_scene_transform() -> Transform {
     Transform::from_xyz(0.0, ATTACHED_PLAYER_VISUAL_OFFSET_Y, 0.0)
@@ -96,6 +103,18 @@ impl AuthoredGliderPose {
     pub(crate) fn motion_m(self, transform: &Transform) -> f32 {
         transform.translation.distance(self.base_translation)
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PlayerDisplacementKind {
+    Continuous,
+    IntentionalReset,
+}
+
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub(crate) struct PlayerDisplacementDiagnostics {
+    pub(crate) world_correction_m: f32,
+    pub(crate) collision_correction_m: f32,
 }
 
 #[derive(Component)]
@@ -166,6 +185,7 @@ pub(crate) struct MovementWorld<'w, 's> {
     power_ups: ResMut<'w, PowerUpCollectionState>,
     collision_diagnostics: ResMut<'w, WorldCollisionDiagnostics>,
     wind_diagnostics: ResMut<'w, WindForceDiagnostics>,
+    displacement_diagnostics: ResMut<'w, PlayerDisplacementDiagnostics>,
 }
 
 #[derive(SystemParam)]
@@ -190,6 +210,29 @@ struct PlayerKinematics<'a> {
     transform: &'a mut Transform,
     velocity: &'a mut Velocity,
     controller: &'a mut FlightController,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PlayerDisplacementReport {
+    kind: PlayerDisplacementKind,
+    displacement_m: f32,
+    world_correction_m: f32,
+    collision_correction_m: f32,
+}
+
+impl From<PlayerDisplacementReport> for PlayerDisplacementDiagnostics {
+    fn from(report: PlayerDisplacementReport) -> Self {
+        Self {
+            world_correction_m: report.world_correction_m,
+            collision_correction_m: report.collision_correction_m,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PlaytestReset {
+    position: Vec3,
+    displacement: PlayerDisplacementReport,
 }
 
 struct PlayerStepContext<'a> {
@@ -298,7 +341,7 @@ pub(crate) fn fly_player(
             velocity: &mut velocity,
             controller: &mut controller,
         };
-        step_player(
+        let displacement = step_player(
             dt,
             elapsed_secs,
             input,
@@ -306,6 +349,7 @@ pub(crate) fn fly_player(
             &mut context,
             &mut kinematics,
         );
+        *world.displacement_diagnostics = displacement.into();
     }
     record_animation_context(
         &mut animation,
@@ -368,7 +412,7 @@ pub(crate) fn scripted_play_profile_fly_player(
             velocity: &mut velocity,
             controller: &mut controller,
         };
-        step_player(
+        let displacement = step_player(
             dt,
             elapsed_secs,
             input,
@@ -376,6 +420,7 @@ pub(crate) fn scripted_play_profile_fly_player(
             &mut context,
             &mut kinematics,
         );
+        *world.displacement_diagnostics = displacement.into();
     }
     record_animation_context(
         &mut animation,
@@ -394,7 +439,9 @@ pub(crate) fn scripted_play_profile_fly_player(
 pub(crate) fn reset_player_to_playtest_position(
     keyboard: Res<ButtonInput<KeyCode>>,
     route: Res<SkyRoute>,
+    mut displacement_diagnostics: ResMut<PlayerDisplacementDiagnostics>,
     mut camera_control: ResMut<CameraControlState>,
+    mut camera_diagnostics: ResMut<CameraDiagnostics>,
     mut player: Query<
         (
             &mut Transform,
@@ -422,18 +469,25 @@ pub(crate) fn reset_player_to_playtest_position(
         return;
     };
 
-    let reset_position = reset_playtest_player(
+    let reset = reset_playtest_player(
         &route,
         &mut transform,
         &mut velocity,
         &mut controller,
         &mut animation,
     );
+    debug_assert_eq!(
+        reset.displacement.kind,
+        PlayerDisplacementKind::IntentionalReset
+    );
+    debug_assert!(reset.displacement.displacement_m.is_finite());
+    *displacement_diagnostics = reset.displacement.into();
+    *camera_diagnostics = CameraDiagnostics::default();
     if let Ok((mut camera_transform, follow, mut follow_state, mut obstruction_memory)) =
         camera.single_mut()
     {
         reset_playtest_camera(
-            reset_position,
+            reset.position,
             &mut camera_control,
             &mut camera_transform,
             follow,
@@ -446,7 +500,9 @@ pub(crate) fn reset_player_to_playtest_position(
 pub(crate) fn eval_reset_player_to_playtest_position(
     run: Res<EvalRun>,
     route: Res<SkyRoute>,
+    mut displacement_diagnostics: ResMut<PlayerDisplacementDiagnostics>,
     mut camera_control: ResMut<CameraControlState>,
+    mut camera_diagnostics: ResMut<CameraDiagnostics>,
     mut player: Query<
         (
             &mut Transform,
@@ -474,18 +530,25 @@ pub(crate) fn eval_reset_player_to_playtest_position(
         return;
     };
 
-    let reset_position = reset_playtest_player(
+    let reset = reset_playtest_player(
         &route,
         &mut transform,
         &mut velocity,
         &mut controller,
         &mut animation,
     );
+    debug_assert_eq!(
+        reset.displacement.kind,
+        PlayerDisplacementKind::IntentionalReset
+    );
+    debug_assert!(reset.displacement.displacement_m.is_finite());
+    *displacement_diagnostics = reset.displacement.into();
+    *camera_diagnostics = CameraDiagnostics::default();
     if let Ok((mut camera_transform, follow, mut follow_state, mut obstruction_memory)) =
         camera.single_mut()
     {
         reset_playtest_camera(
-            reset_position,
+            reset.position,
             &mut camera_control,
             &mut camera_transform,
             follow,
@@ -501,14 +564,23 @@ fn reset_playtest_player(
     velocity: &mut Velocity,
     controller: &mut FlightController,
     animation: &mut AnimationState,
-) -> Vec3 {
+) -> PlaytestReset {
+    let previous_position = transform.translation;
     let reset_position = route.playtest_reset_position();
     transform.translation = reset_position;
     transform.rotation = Quat::IDENTITY;
     velocity.0 = Vec3::ZERO;
     *controller = FlightController::default();
     *animation = AnimationState::default();
-    reset_position
+    PlaytestReset {
+        position: reset_position,
+        displacement: PlayerDisplacementReport {
+            kind: PlayerDisplacementKind::IntentionalReset,
+            displacement_m: previous_position.distance(reset_position),
+            world_correction_m: 0.0,
+            collision_correction_m: 0.0,
+        },
+    }
 }
 
 fn reset_playtest_camera(
@@ -561,10 +633,12 @@ pub(crate) fn eval_fly_player(
     else {
         return;
     };
+    let follow_direction = camera.diagnostics.follow_direction;
     let facing = camera.facing(&transform);
     *movement_basis = EvalMovementBasis {
         frame: run.frame,
         facing: Some(facing),
+        follow_direction: Some(follow_direction),
     };
     let dt = run.scenario.fixed_dt;
     let elapsed_secs = run.frame as f32 * dt;
@@ -590,7 +664,7 @@ pub(crate) fn eval_fly_player(
             velocity: &mut velocity,
             controller: &mut controller,
         };
-        step_player(
+        let displacement = step_player(
             dt,
             elapsed_secs,
             input,
@@ -598,6 +672,7 @@ pub(crate) fn eval_fly_player(
             &mut context,
             &mut kinematics,
         );
+        *world.displacement_diagnostics = displacement.into();
     }
     record_animation_context(
         &mut animation,
@@ -620,54 +695,88 @@ fn step_player(
     facing: Facing,
     context: &mut PlayerStepContext,
     player: &mut PlayerKinematics,
-) {
+) -> PlayerDisplacementReport {
+    let dt = bounded_player_step_dt(dt, player.velocity.0);
+    let substep_count = player_substep_count(dt, player.velocity.0);
+    let substep_dt = dt / substep_count as f32;
     let mut tuning = *context.tuning;
-    let was_grounded = context.route.is_grounded_at(player.transform.translation)
-        && player.controller.mode == FlightMode::Grounded;
-    tuning.floor_y = context
-        .route
-        .ground_at(player.transform.translation)
-        .floor_y;
-    let next = step_flight(
-        FlightState::new(
-            player.transform.translation,
-            player.velocity.0,
-            *player.controller,
-        ),
-        input,
-        facing,
-        &tuning,
-        dt,
+    let mut next = FlightState::new(
+        player.transform.translation,
+        player.velocity.0,
+        *player.controller,
     );
-    let mut next = next;
-    let lift_enabled = next.controller.mode == FlightMode::Gliding;
-    let lift = apply_lift_fields(
-        next.position,
-        next.velocity,
-        context.lift_fields.iter().copied(),
-        context.visual_wind_fields.iter().copied(),
-        elapsed_secs,
-        dt,
-        lift_enabled,
+    let frame_start_position = next.position;
+    let mut frame_wind = WindForceApplication {
+        velocity: next.velocity,
+        ..default()
+    };
+    let mut resolved_count = 0;
+    let mut terrain_rim_resolved_count = 0;
+    let mut terrain_body_resolved_count = 0;
+    let mut max_push_m = 0.0_f32;
+    let mut max_terrain_rim_push_m = 0.0_f32;
+    let mut max_terrain_body_push_m = 0.0_f32;
+    let mut world_correction_m = 0.0_f32;
+    let mut collision_correction_m = 0.0_f32;
+
+    for substep_index in 0..substep_count {
+        let was_grounded = context.route.is_grounded_at(next.position)
+            && next.controller.mode == FlightMode::Grounded;
+        tuning.floor_y = context.route.ground_at(next.position).floor_y;
+        let mut substep_input = input;
+        substep_input.launch &= substep_index == 0;
+        next = step_flight(next, substep_input, facing, &tuning, substep_dt);
+        let lift_enabled = next.controller.mode == FlightMode::Gliding;
+        let lift = apply_lift_fields(
+            next.position,
+            next.velocity,
+            context.lift_fields.iter().copied(),
+            context.visual_wind_fields.iter().copied(),
+            elapsed_secs,
+            substep_dt,
+            lift_enabled,
+        );
+        next.velocity = lift.velocity;
+        let wind = apply_wind_fields(
+            next.position,
+            next.velocity,
+            context.visual_wind_fields.iter().copied(),
+            elapsed_secs,
+            substep_dt,
+            next.controller.mode != FlightMode::Grounded,
+        );
+        next.velocity = wind.velocity;
+        accumulate_wind_application(&mut frame_wind, wind);
+        collect_aerial_power_ups(&mut next, context.power_ups);
+        let pre_ground_position = next.position;
+        next = context
+            .route
+            .resolve_ground_contact_after_step(next, was_grounded);
+        world_correction_m += next.position.distance(pre_ground_position);
+        let collision = resolve_world_collisions(next, context.collision_proxies.iter().copied());
+        collision_correction_m += collision.correction_distance_m;
+        resolved_count += collision.hit_count;
+        terrain_rim_resolved_count += collision.terrain_rim_hit_count;
+        terrain_body_resolved_count += collision.terrain_body_hit_count;
+        max_push_m = max_push_m.max(collision.max_push_m);
+        max_terrain_rim_push_m = max_terrain_rim_push_m.max(collision.max_terrain_rim_push_m);
+        max_terrain_body_push_m = max_terrain_body_push_m.max(collision.max_terrain_body_push_m);
+        let pre_ground_follow_position = collision.state.position;
+        next = context
+            .route
+            .resolve_grounded_after_horizontal_correction(collision.state);
+        world_correction_m += next.position.distance(pre_ground_follow_position);
+    }
+
+    debug_assert!(
+        world_correction_m <= MAX_PLAYER_WORLD_CORRECTION_PER_FRAME_M + 0.001,
+        "world correction exceeded the continuous-frame bound: {world_correction_m}"
     );
-    next.velocity = lift.velocity;
-    let wind = apply_wind_fields(
-        next.position,
-        next.velocity,
-        context.visual_wind_fields.iter().copied(),
-        elapsed_secs,
-        dt,
-        next.controller.mode != FlightMode::Grounded,
+    debug_assert!(
+        collision_correction_m <= MAX_PLAYER_COLLISION_CORRECTION_PER_FRAME_M + 0.001,
+        "collision correction exceeded the continuous-frame bound: {collision_correction_m}"
     );
-    next.velocity = wind.velocity;
-    collect_aerial_power_ups(&mut next, context.power_ups);
-    let next = context
-        .route
-        .resolve_ground_contact_after_step(next, was_grounded);
-    let collision = resolve_world_collisions(next, context.collision_proxies.iter().copied());
-    let next = context
-        .route
-        .resolve_grounded_after_horizontal_correction(collision.state);
+
     let mut tree_proxy_count = 0;
     let mut rock_proxy_count = 0;
     let mut landmark_proxy_count = 0;
@@ -690,12 +799,12 @@ fn step_player(
     context.collision_diagnostics.tree_proxy_count = tree_proxy_count;
     context.collision_diagnostics.rock_proxy_count = rock_proxy_count;
     context.collision_diagnostics.landmark_proxy_count = landmark_proxy_count;
-    context.collision_diagnostics.resolved_count = collision.hit_count;
-    context.collision_diagnostics.terrain_rim_resolved_count = collision.terrain_rim_hit_count;
-    context.collision_diagnostics.terrain_body_resolved_count = collision.terrain_body_hit_count;
-    context.collision_diagnostics.max_push_m = collision.max_push_m;
-    context.collision_diagnostics.max_terrain_rim_push_m = collision.max_terrain_rim_push_m;
-    context.collision_diagnostics.max_terrain_body_push_m = collision.max_terrain_body_push_m;
+    context.collision_diagnostics.resolved_count = resolved_count;
+    context.collision_diagnostics.terrain_rim_resolved_count = terrain_rim_resolved_count;
+    context.collision_diagnostics.terrain_body_resolved_count = terrain_body_resolved_count;
+    context.collision_diagnostics.max_push_m = max_push_m;
+    context.collision_diagnostics.max_terrain_rim_push_m = max_terrain_rim_push_m;
+    context.collision_diagnostics.max_terrain_body_push_m = max_terrain_body_push_m;
 
     player.transform.translation = next.position;
     player.velocity.0 = next.velocity;
@@ -709,10 +818,74 @@ fn step_player(
         &tuning,
         dt,
     );
-    let wind = wind.for_airborne_diagnostics(player.controller.mode != FlightMode::Grounded);
+    let wind = frame_wind.for_airborne_diagnostics(player.controller.mode != FlightMode::Grounded);
     let wind_lateral_load =
         wind_lateral_load_from_delta(wind.applied_delta, player.transform.rotation);
     *context.wind_diagnostics = WindForceDiagnostics::from_application(wind, wind_lateral_load);
+
+    let displacement = PlayerDisplacementReport {
+        kind: PlayerDisplacementKind::Continuous,
+        displacement_m: frame_start_position.distance(next.position),
+        world_correction_m,
+        collision_correction_m,
+    };
+    debug_assert_eq!(displacement.kind, PlayerDisplacementKind::Continuous);
+    debug_assert!(displacement.displacement_m.is_finite());
+    debug_assert!(
+        displacement.world_correction_m <= MAX_PLAYER_WORLD_CORRECTION_PER_FRAME_M + 0.001
+    );
+    debug_assert!(
+        displacement.collision_correction_m <= MAX_PLAYER_COLLISION_CORRECTION_PER_FRAME_M + 0.001
+    );
+    displacement
+}
+
+fn bounded_player_step_dt(dt: f32, velocity: Vec3) -> f32 {
+    let dt = dt.clamp(0.0, MAX_PLAYER_FRAME_DT_SECS);
+    let speed_mps = velocity.length();
+    if speed_mps <= f32::EPSILON {
+        dt
+    } else {
+        dt.min(MAX_PLAYER_FRAME_TRAVEL_M / speed_mps)
+    }
+}
+
+fn player_substep_count(dt: f32, velocity: Vec3) -> usize {
+    if dt <= f32::EPSILON {
+        return 1;
+    }
+
+    let time_steps = (dt / MAX_PLAYER_SUBSTEP_DT_SECS).ceil() as usize;
+    let travel_steps = (velocity.length() * dt / MAX_PLAYER_SUBSTEP_TRAVEL_M).ceil() as usize;
+    time_steps.max(travel_steps).clamp(1, MAX_PLAYER_SUBSTEPS)
+}
+
+fn accumulate_wind_application(frame: &mut WindForceApplication, step: WindForceApplication) {
+    frame.velocity = step.velocity;
+    frame.active_fields = frame.active_fields.max(step.active_fields);
+    frame.crosswind_fields = frame.crosswind_fields.max(step.crosswind_fields);
+    frame.updraft_swirl_fields = frame.updraft_swirl_fields.max(step.updraft_swirl_fields);
+    frame.applied_delta += step.applied_delta;
+    frame.crosswind_delta += step.crosswind_delta;
+    frame.updraft_swirl_delta += step.updraft_swirl_delta;
+    frame.max_flow_speed_mps = frame.max_flow_speed_mps.max(step.max_flow_speed_mps);
+    frame.max_variation = frame.max_variation.max(step.max_variation);
+    frame.max_flow_alignment = frame.max_flow_alignment.max(step.max_flow_alignment);
+    frame.max_crosswind_flow_alignment = frame
+        .max_crosswind_flow_alignment
+        .max(step.max_crosswind_flow_alignment);
+    frame.max_updraft_swirl_flow_alignment = frame
+        .max_updraft_swirl_flow_alignment
+        .max(step.max_updraft_swirl_flow_alignment);
+    frame.max_flow_aligned_delta_mps = frame
+        .max_flow_aligned_delta_mps
+        .max(step.max_flow_aligned_delta_mps);
+    frame.max_crosswind_flow_aligned_delta_mps = frame
+        .max_crosswind_flow_aligned_delta_mps
+        .max(step.max_crosswind_flow_aligned_delta_mps);
+    frame.max_updraft_swirl_flow_aligned_delta_mps = frame
+        .max_updraft_swirl_flow_aligned_delta_mps
+        .max(step.max_updraft_swirl_flow_aligned_delta_mps);
 }
 
 #[derive(Clone, Copy)]
@@ -1121,6 +1294,7 @@ mod tests {
         DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT, DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT,
         PoseReadabilityPartTransforms, Side, pose_readability_metrics_from_part_transforms,
     };
+    use std::time::Duration;
 
     #[test]
     fn body_local_pose_velocity_uses_body_local_lateral_axis() {
@@ -1165,13 +1339,77 @@ mod tests {
             &mut animation,
         );
 
-        assert_eq!(reset, expected);
+        assert_eq!(reset.position, expected);
+        assert_eq!(
+            reset.displacement.kind,
+            PlayerDisplacementKind::IntentionalReset
+        );
+        assert!(reset.displacement.displacement_m > 1_000.0);
+        assert_eq!(reset.displacement.world_correction_m, 0.0);
+        assert_eq!(reset.displacement.collision_correction_m, 0.0);
         assert_eq!(transform.translation, expected);
         assert_eq!(velocity.0, Vec3::ZERO);
         assert_eq!(
-            route.ground_at(reset).island_name,
+            route.ground_at(reset.position).island_name,
             Some(nau_engine::world::PLAYTEST_RESET_ISLAND_NAME)
         );
+    }
+
+    #[test]
+    fn reset_with_held_movement_uses_reset_camera_basis_same_frame() {
+        let route = SkyRoute::default();
+        let reset_position = route.playtest_reset_position();
+        let mut time = Time::<()>::default();
+        time.advance_by(Duration::from_secs_f32(1.0 / 60.0));
+        let mut keyboard = ButtonInput::<KeyCode>::default();
+        keyboard.press(KeyCode::KeyR);
+        keyboard.press(KeyCode::KeyW);
+        let mut app = App::new();
+        app.insert_resource(time);
+        app.insert_resource(keyboard);
+        app.insert_resource(route);
+        app.insert_resource(FlightTuning::default());
+        app.insert_resource(CameraControlState::default());
+        app.insert_resource(CameraDiagnostics {
+            follow_direction: Vec3::X,
+            ..default()
+        });
+        app.insert_resource(PowerUpCollectionState::default());
+        app.insert_resource(PlayerDisplacementDiagnostics::default());
+        app.insert_resource(WorldCollisionDiagnostics::default());
+        app.insert_resource(WindForceDiagnostics::default());
+        app.world_mut().spawn((
+            Player,
+            Transform::from_translation(Vec3::new(2_500.0, 80.0, -340.0)),
+            Velocity(Vec3::new(20.0, -8.0, 4.0)),
+            FlightController::default(),
+            AnimationState::default(),
+        ));
+        app.world_mut().spawn((
+            Camera3d::default(),
+            Transform::default(),
+            FollowCamera::default(),
+            FollowCameraState::default(),
+            CameraObstructionMemory::default(),
+        ));
+        app.add_systems(
+            Update,
+            (reset_player_to_playtest_position, fly_player).chain(),
+        );
+
+        app.update();
+
+        let diagnostics = app.world().resource::<CameraDiagnostics>();
+        assert_eq!(diagnostics.follow_direction, Vec3::ZERO);
+        let world = app.world_mut();
+        let mut player = world.query_filtered::<(&Transform, &Velocity), With<Player>>();
+        let (transform, velocity) = player.single(world).expect("player should exist");
+        let movement = transform.translation - reset_position;
+
+        assert!(movement.z < -0.001);
+        assert!(movement.x.abs() < 0.001);
+        assert!(velocity.0.z < 0.0);
+        assert!(velocity.0.x.abs() < 0.001);
     }
 
     #[test]
@@ -1249,6 +1487,59 @@ mod tests {
         assert_eq!(controller.mode, FlightMode::Launching);
         assert!(velocity.0.y > 0.0);
         assert!(transform.translation.y > floor_y);
+    }
+
+    #[test]
+    fn one_frame_launch_input_does_not_relaunch_after_substep_landing() {
+        for dt in [1.0 / 30.0, 1.0 / 60.0] {
+            let route = SkyRoute::default();
+            let tuning = FlightTuning::default();
+            let mut power_ups = PowerUpCollectionState::default();
+            let mut collision_diagnostics = WorldCollisionDiagnostics::default();
+            let mut wind_diagnostics = WindForceDiagnostics::default();
+            let sample = Vec3::new(2500.0, 0.0, -340.0);
+            let floor_y = route.ground_at(sample).floor_y;
+            let mut transform =
+                Transform::from_translation(Vec3::new(sample.x, floor_y + 0.05, sample.z));
+            let mut velocity = Velocity(Vec3::new(0.0, -6.0, 0.0));
+            let mut controller = FlightController {
+                mode: FlightMode::Airborne,
+                launch_available: false,
+                ..default()
+            };
+            let mut context = PlayerStepContext {
+                tuning: &tuning,
+                route: &route,
+                lift_fields: &[],
+                visual_wind_fields: &[],
+                power_ups: &mut power_ups,
+                collision_proxies: &[],
+                collision_diagnostics: &mut collision_diagnostics,
+                wind_diagnostics: &mut wind_diagnostics,
+            };
+            let mut player = PlayerKinematics {
+                transform: &mut transform,
+                velocity: &mut velocity,
+                controller: &mut controller,
+            };
+
+            step_player(
+                dt,
+                0.0,
+                FlightInput {
+                    launch: true,
+                    ..default()
+                },
+                Facing::new(Vec3::NEG_Z, Vec3::X),
+                &mut context,
+                &mut player,
+            );
+
+            assert_eq!(controller.mode, FlightMode::Grounded, "dt={dt}");
+            assert!(controller.launch_available, "dt={dt}");
+            assert_eq!(velocity.0.y, 0.0, "dt={dt}");
+            assert_eq!(transform.translation.y, floor_y, "dt={dt}");
+        }
     }
 
     #[test]
@@ -1610,5 +1901,65 @@ mod tests {
         assert!(collision_diagnostics.max_push_m > 0.0);
         assert!(transform.translation.x >= 0.25 + 0.42);
         assert_eq!(velocity.0.x, 0.0);
+    }
+
+    #[test]
+    fn hitch_sized_high_speed_step_substeps_collision_without_pop() {
+        let route = SkyRoute::default();
+        let tuning = FlightTuning::default();
+        let mut power_ups = PowerUpCollectionState::default();
+        let mut collision_diagnostics = WorldCollisionDiagnostics::default();
+        let mut wind_diagnostics = WindForceDiagnostics::default();
+        let proxies = [WorldCollisionProxy::new(
+            Vec3::new(0.0, 100.9, 0.0),
+            Vec3::new(0.25, 0.9, 0.25),
+            WorldCollisionProxyKind::Tree,
+        )];
+        let start = Vec3::new(-1.0, 100.0, 0.0);
+        let mut transform = Transform::from_translation(start);
+        let mut velocity = Velocity(Vec3::new(58.0, 0.0, 0.0));
+        let mut controller = FlightController {
+            mode: FlightMode::Airborne,
+            launch_available: false,
+            ..default()
+        };
+        let mut context = PlayerStepContext {
+            tuning: &tuning,
+            route: &route,
+            lift_fields: &[],
+            visual_wind_fields: &[],
+            power_ups: &mut power_ups,
+            collision_proxies: &proxies,
+            collision_diagnostics: &mut collision_diagnostics,
+            wind_diagnostics: &mut wind_diagnostics,
+        };
+        let mut player = PlayerKinematics {
+            transform: &mut transform,
+            velocity: &mut velocity,
+            controller: &mut controller,
+        };
+
+        let step = step_player(
+            0.2,
+            0.2,
+            FlightInput::default(),
+            Facing::new(Vec3::X, Vec3::Z),
+            &mut context,
+            &mut player,
+        );
+
+        assert!(collision_diagnostics.resolved_count >= 1);
+        assert!(
+            collision_diagnostics.max_push_m <= 0.5,
+            "collision correction should stay bounded"
+        );
+        assert!(transform.translation.x <= -0.25 - 0.42 + 0.001);
+        assert!(transform.translation.distance(start) <= MAX_PLAYER_FRAME_TRAVEL_M);
+        assert!(velocity.0.x.abs() < 0.001);
+        assert_eq!(step.kind, PlayerDisplacementKind::Continuous);
+        assert!(step.displacement_m <= MAX_PLAYER_FRAME_TRAVEL_M);
+        assert!(step.world_correction_m <= MAX_PLAYER_WORLD_CORRECTION_PER_FRAME_M);
+        assert!(step.collision_correction_m > 0.0);
+        assert!(step.collision_correction_m <= MAX_PLAYER_COLLISION_CORRECTION_PER_FRAME_M);
     }
 }

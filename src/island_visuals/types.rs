@@ -4,7 +4,7 @@ use crate::generated_content::{island_cliff_mesh, island_terrain_mesh, island_un
 use crate::world_collision_runtime::WorldCollisionProxy;
 use bevy::prelude::*;
 use nau_engine::world::{LodBand, SkyIsland, StreamActivation};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(super) struct IslandLodVisual;
@@ -13,6 +13,7 @@ pub(super) struct IslandLodVisual;
 pub(super) enum IslandVisualLayer {
     Terrain,
     Detail,
+    Vista,
     Beacon,
     Impostor,
     Collision,
@@ -23,6 +24,7 @@ impl IslandVisualLayer {
         match self {
             Self::Terrain => activation.is_active() && band != LodBand::Far,
             Self::Detail => activation.is_active() && band == LodBand::Near,
+            Self::Vista => band != LodBand::Far,
             Self::Beacon => band != LodBand::Far,
             Self::Impostor => !activation.is_active() || band == LodBand::Far,
             Self::Collision => activation.is_active() && band == LodBand::Near,
@@ -48,6 +50,8 @@ impl IslandLodVisualCounts {
             (IslandVisualLayer::Terrain, true) => self.hidden_terrain_count += 1,
             (IslandVisualLayer::Detail, false) => self.visible_detail_count += 1,
             (IslandVisualLayer::Detail, true) => self.hidden_detail_count += 1,
+            (IslandVisualLayer::Vista, false) => self.visible_detail_count += 1,
+            (IslandVisualLayer::Vista, true) => self.hidden_detail_count += 1,
             (IslandVisualLayer::Beacon, false) => self.visible_beacon_count += 1,
             (IslandVisualLayer::Beacon, true) => {}
             (IslandVisualLayer::Impostor, false) => self.visible_impostor_count += 1,
@@ -188,10 +192,7 @@ impl IslandVisualCatalog {
                 entry
                     .collision
                     .is_some_and(|collision| collision.kind == kind)
-                    && entry.layer.is_resident_in(
-                        entry.island.stream_activation(player_position),
-                        entry.island.lod_band(player_position),
-                    )
+                    && super::streaming::island_entry_is_resident(entry, player_position)
             })
             .count()
     }
@@ -216,6 +217,7 @@ impl IslandVisualCatalog {
 #[derive(Resource, Default)]
 pub(crate) struct IslandStreamState {
     pub(super) spawned: HashMap<IslandVisualKey, Entity>,
+    pub(super) visual_resident: HashSet<IslandVisualKey>,
     pub(super) loaded_meshes: HashMap<IslandVisualKey, Handle<Mesh>>,
 }
 
@@ -269,5 +271,27 @@ mod tests {
         assert!(
             !IslandVisualLayer::Beacon.is_resident_in(StreamActivation::Inactive, LodBand::Far)
         );
+    }
+
+    #[test]
+    fn vistas_stay_visible_through_mid_lod_independent_of_activation() {
+        assert!(IslandVisualLayer::Vista.is_resident_in(StreamActivation::Active, LodBand::Near));
+        assert!(IslandVisualLayer::Vista.is_resident_in(StreamActivation::Inactive, LodBand::Near));
+        assert!(IslandVisualLayer::Vista.is_resident_in(StreamActivation::Active, LodBand::Mid));
+        assert!(IslandVisualLayer::Vista.is_resident_in(StreamActivation::Inactive, LodBand::Mid));
+        assert!(!IslandVisualLayer::Vista.is_resident_in(StreamActivation::Active, LodBand::Far));
+        assert!(!IslandVisualLayer::Vista.is_resident_in(StreamActivation::Inactive, LodBand::Far));
+    }
+
+    #[test]
+    fn vistas_count_toward_detail_diagnostics() {
+        let mut counts = IslandLodVisualCounts::default();
+
+        counts.record(IslandVisualLayer::Vista, false);
+        counts.record(IslandVisualLayer::Vista, true);
+
+        assert_eq!(counts.visible_detail_count, 1);
+        assert_eq!(counts.hidden_detail_count, 1);
+        assert_eq!(counts.catalog_count(), 2);
     }
 }

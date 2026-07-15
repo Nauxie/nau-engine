@@ -12,11 +12,12 @@ use nau_engine::{
         wind_lateral_load_from_delta,
     },
     camera::{
-        CameraControlState, CameraControlTuning, CameraObstruction, CameraObstructionHandoffState,
-        FollowCamera, FollowCameraState, apply_camera_input, camera_orbit_alignment_degrees,
-        lift_camera_above_floor, movement_facing_from_follow_direction,
-        movement_input_stable_follow_direction, resolve_camera_obstruction_handoff,
-        step_camera_with_direction, update_follow_direction_state,
+        CameraControlState, CameraControlTuning, CameraInput, CameraObstruction,
+        CameraObstructionHandoffState, FollowCamera, FollowCameraState,
+        camera_orbit_alignment_degrees, lift_camera_above_floor,
+        movement_facing_from_follow_direction, movement_input_stable_follow_direction,
+        resolve_camera_obstruction_handoff, step_camera_control,
+        step_camera_with_direction_and_input, update_follow_direction_state,
     },
     environment::{
         AERIAL_POWER_UP_ROUTE, GAMEPLAY_LIFT_ROUTE, LiftApplication, LiftField, WindField,
@@ -79,10 +80,15 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
 
     for frame in 0..=scenario.frame_count {
         let input = scripted_input(scenario, frame);
+        let camera_input = scripted_camera_input(scenario, frame);
+        let facing = step_simulation_camera_control_for_movement(
+            &mut camera_control,
+            camera_input,
+            &camera_tuning,
+            scenario.fixed_dt,
+            follow_state.direction,
+        );
         power_ups.begin_frame(scenario.fixed_dt);
-        let (movement_forward, movement_right) =
-            movement_facing_from_follow_direction(follow_state.direction, camera_control.orbit);
-        let facing = Facing::new(movement_forward, movement_right);
         let movement_facing = facing;
         let was_grounded =
             route.is_grounded_at(state.position) && state.controller.mode == FlightMode::Grounded;
@@ -161,11 +167,6 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
             key_pose_intent_age_frames = 0;
         }
 
-        let camera_input = scripted_camera_input(scenario, frame);
-        if camera_input.mouse_delta.length_squared() > 0.0 {
-            camera_control.orbit =
-                apply_camera_input(camera_control.orbit, camera_input, &camera_tuning);
-        }
         let previous_camera_position = camera_transform.translation;
         let previous_camera_rotation = camera_transform.rotation;
         let player_forward = player_rotation * Vec3::NEG_Z;
@@ -181,12 +182,16 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
             &follow,
             scenario.fixed_dt,
         );
+        camera_obstruction_handoff.set_intentional_camera_motion(
+            camera_control.input_active || !camera_diagnostics_initialized,
+        );
         let camera_step = step_camera_frame(
             camera_transform,
             state.position,
             follow_direction,
             &follow,
             camera_control.orbit,
+            camera_control.input_active,
             &route,
             &obstructions,
             &mut camera_obstruction_handoff,
@@ -263,6 +268,19 @@ pub(crate) fn run_simulation(scenario: EvalScenario) -> SimResult {
         summary_path: String::new(),
         samples_path: String::new(),
     }
+}
+
+fn step_simulation_camera_control_for_movement(
+    camera_control: &mut CameraControlState,
+    input: CameraInput,
+    tuning: &CameraControlTuning,
+    dt: f32,
+    follow_direction: Vec3,
+) -> Facing {
+    step_camera_control(camera_control, input, tuning, dt);
+    let (movement_forward, movement_right) =
+        movement_facing_from_follow_direction(follow_direction, camera_control.orbit);
+    Facing::new(movement_forward, movement_right)
 }
 
 fn simulation_start_position(route: &SkyRoute, scenario: EvalScenario) -> Vec3 {
@@ -492,22 +510,22 @@ fn step_camera_frame(
     follow_direction: Vec3,
     follow: &FollowCamera,
     orbit: nau_engine::camera::CameraOrbit,
+    input_active: bool,
     route: &SkyRoute,
     obstructions: &[CameraObstruction],
     obstruction_handoff: &mut CameraObstructionHandoffState,
     dt: f32,
 ) -> CameraStepSample {
-    let frame = step_camera_with_direction(
+    let frame = step_camera_with_direction_and_input(
         current.translation,
         current.rotation,
         player_position,
         follow_direction,
         follow,
         orbit,
+        input_active,
         dt,
     );
-    let orbit_alignment_degrees =
-        camera_orbit_alignment_degrees(frame.position, frame.look_target, follow_direction, orbit);
     let camera_floor_y = route.ground_at(frame.position).floor_y;
     let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
     let obstruction_step = resolve_camera_obstruction_handoff(
@@ -525,6 +543,8 @@ fn step_camera_frame(
         },
     );
     let frame = obstruction_step.frame;
+    let orbit_alignment_degrees =
+        camera_orbit_alignment_degrees(frame.position, frame.look_target, follow_direction, orbit);
 
     CameraStepSample {
         position: frame.position,
@@ -593,6 +613,54 @@ fn under_route_segment_camera_obstructions(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::prelude::Vec2;
+
+    #[test]
+    fn simulation_camera_control_precedes_movement_and_settles_across_timesteps() {
+        let tuning = CameraControlTuning::default();
+        let target_input = CameraInput {
+            mouse_delta: Vec2::new(-240.0, -80.0),
+        };
+        let (stale_forward, _) =
+            movement_facing_from_follow_direction(Vec3::NEG_Z, CameraControlState::default().orbit);
+        let mut settled_forwards = Vec::new();
+
+        for frame_rate in [30.0, 60.0, 120.0] {
+            let dt = 1.0 / frame_rate;
+            let mut control = CameraControlState::default();
+            let first_facing = step_simulation_camera_control_for_movement(
+                &mut control,
+                target_input,
+                &tuning,
+                dt,
+                Vec3::NEG_Z,
+            );
+            assert!(
+                first_facing
+                    .forward
+                    .angle_between(stale_forward)
+                    .to_degrees()
+                    > 0.01,
+                "same-frame movement must see the stepped camera orbit"
+            );
+
+            let mut facing = first_facing;
+            for _ in 1..(frame_rate as usize * 2) {
+                facing = step_simulation_camera_control_for_movement(
+                    &mut control,
+                    CameraInput::default(),
+                    &tuning,
+                    dt,
+                    Vec3::NEG_Z,
+                );
+            }
+            settled_forwards.push(facing.forward);
+        }
+
+        for forward in settled_forwards.iter().skip(1) {
+            assert!(forward.angle_between(settled_forwards[0]).to_degrees() <= 0.01);
+        }
+    }
 
     #[test]
     fn sim_camera_obstructions_are_enabled_for_obstruction_gated_scenarios() {
@@ -716,6 +784,7 @@ mod tests {
             Vec3::NEG_Z,
             &follow,
             nau_engine::camera::CameraOrbit::default(),
+            false,
             &route,
             &[blocker],
             &mut obstruction_handoff,
@@ -751,6 +820,7 @@ mod tests {
             Vec3::NEG_Z,
             &follow,
             nau_engine::camera::CameraOrbit::default(),
+            false,
             &route,
             &[soft_tree],
             &mut obstruction_handoff,

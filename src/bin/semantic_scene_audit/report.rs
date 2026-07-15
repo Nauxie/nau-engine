@@ -17,6 +17,8 @@ use std::collections::{BTreeMap, HashSet};
 const CLOSE_OBSTRUCTION_EXPECTED_MATERIALS: &[&str] = &["terrain", "foliage", "distant_island"];
 const CLOSE_OBSTRUCTION_EXPECTED_SAMPLE_KINDS: &[&str] =
     &["terrain_surface", "tree_canopy", "distant_island"];
+const PLATEAU_VISTA_EXPECTED_MATERIALS: &[&str] = &["stone", "water"];
+const PLATEAU_VISTA_EXPECTED_SAMPLE_KINDS: &[&str] = &["plateau_arrival_ruin", "waterfall_water"];
 
 #[derive(Clone, Copy)]
 struct AuditProfile {
@@ -26,6 +28,7 @@ struct AuditProfile {
     expected_materials: &'static [&'static str],
     expected_scene_sample_kinds: &'static [&'static str],
     require_terrain_material_variants: bool,
+    require_all_visible_families: bool,
 }
 
 pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
@@ -39,7 +42,11 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
         .filter(|checkpoint| {
             checkpoint.visible_scene_material_count >= profile.min_visible_materials_per_checkpoint
                 && checkpoint.scene_material_pixel_hit_count
-                    >= checkpoint.visible_scene_material_count
+                    >= if profile.require_all_visible_families {
+                        checkpoint.visible_scene_material_count
+                    } else {
+                        profile.min_visible_materials_per_checkpoint
+                    }
         })
         .count();
     let min_visible_material_count = checkpoints
@@ -72,7 +79,11 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
             checkpoint.visible_scene_sample_kind_count
                 >= profile.min_visible_sample_kinds_per_checkpoint
                 && checkpoint.scene_sample_kind_pixel_hit_count
-                    >= checkpoint.visible_scene_sample_kind_count
+                    >= if profile.require_all_visible_families {
+                        checkpoint.visible_scene_sample_kind_count
+                    } else {
+                        profile.min_visible_sample_kinds_per_checkpoint
+                    }
         })
         .count();
     let min_visible_kind_count = checkpoints
@@ -257,6 +268,22 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
 }
 
 fn audit_profile(checkpoints: &[CheckpointAudit]) -> AuditProfile {
+    let plateau_vistas = !checkpoints.is_empty()
+        && checkpoints
+            .iter()
+            .all(|checkpoint| checkpoint.scenario == "great_sky_plateau_vistas");
+    if plateau_vistas {
+        return AuditProfile {
+            name: "plateau_vistas",
+            min_visible_materials_per_checkpoint: 2,
+            min_visible_sample_kinds_per_checkpoint: 2,
+            expected_materials: PLATEAU_VISTA_EXPECTED_MATERIALS,
+            expected_scene_sample_kinds: PLATEAU_VISTA_EXPECTED_SAMPLE_KINDS,
+            require_terrain_material_variants: false,
+            require_all_visible_families: false,
+        };
+    }
+
     let close_obstruction = !checkpoints.is_empty()
         && checkpoints
             .iter()
@@ -270,6 +297,7 @@ fn audit_profile(checkpoints: &[CheckpointAudit]) -> AuditProfile {
             expected_materials: CLOSE_OBSTRUCTION_EXPECTED_MATERIALS,
             expected_scene_sample_kinds: CLOSE_OBSTRUCTION_EXPECTED_SAMPLE_KINDS,
             require_terrain_material_variants: false,
+            require_all_visible_families: true,
         };
     }
 
@@ -280,6 +308,7 @@ fn audit_profile(checkpoints: &[CheckpointAudit]) -> AuditProfile {
         expected_materials: &EXPECTED_MATERIALS,
         expected_scene_sample_kinds: &EXPECTED_SCENE_SAMPLE_KINDS,
         require_terrain_material_variants: true,
+        require_all_visible_families: true,
     }
 }
 
@@ -508,11 +537,12 @@ pub(crate) fn report_json(
 
 fn audit_profile_json(profile: AuditProfile) -> String {
     format!(
-        "{{\"name\": {}, \"expected_materials\": {}, \"expected_scene_sample_kinds\": {}, \"require_terrain_material_variants\": {}}}",
+        "{{\"name\": {}, \"expected_materials\": {}, \"expected_scene_sample_kinds\": {}, \"require_terrain_material_variants\": {}, \"require_all_visible_families\": {}}}",
         json_string(profile.name),
         json_string_array(profile.expected_materials),
         json_string_array(profile.expected_scene_sample_kinds),
-        profile.require_terrain_material_variants
+        profile.require_terrain_material_variants,
+        profile.require_all_visible_families
     )
 }
 

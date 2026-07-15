@@ -8,6 +8,31 @@ use nau_engine::world::{
 const TERRAIN_RIM_NAME: &str = "island terrain rim collision";
 const TERRAIN_BODY_NAME: &str = "island procedural cliff body";
 const TERRAIN_BODY_COLLISION_NAME: &str = "island procedural cliff body collision";
+const ARTIFACT_STAIR_NAME: &str = "ancient stair run";
+const ARTIFACT_RETAINING_WALL_NAME: &str = "retaining wall fragment";
+const ARTIFACT_GLYPH_SLAB_NAME: &str = "glyph stone slab";
+const ARTIFACT_BRIDGE_FRAGMENT_NAME: &str = "broken bridge fragment";
+const ARTIFACT_BANNER_NAME: &str = "weathered banner strips";
+const ARTIFACT_PEBBLE_FIELD_NAME: &str = "pebble field";
+const ARTIFACT_REED_PATCH_NAME: &str = "reed patch";
+const ARTIFACT_VISUAL_FAMILY_NAMES: &[&str] = &[
+    ARTIFACT_STAIR_NAME,
+    ARTIFACT_RETAINING_WALL_NAME,
+    ARTIFACT_GLYPH_SLAB_NAME,
+    ARTIFACT_BRIDGE_FRAGMENT_NAME,
+    ARTIFACT_BANNER_NAME,
+    ARTIFACT_PEBBLE_FIELD_NAME,
+    ARTIFACT_REED_PATCH_NAME,
+];
+const ARTIFACT_ROUTE_AFFORDANCE_NAMES: &[&str] =
+    &[ARTIFACT_STAIR_NAME, ARTIFACT_BRIDGE_FRAGMENT_NAME];
+const ARTIFACT_DECORATIVE_NAMES: &[&str] = &[
+    ARTIFACT_BANNER_NAME,
+    ARTIFACT_PEBBLE_FIELD_NAME,
+    ARTIFACT_REED_PATCH_NAME,
+];
+const REQUIRED_SOLID_CAMERA_OBSTACLES: &[&str] =
+    &[ARTIFACT_RETAINING_WALL_NAME, ARTIFACT_GLYPH_SLAB_NAME];
 
 #[derive(Clone, Copy)]
 struct SolidVisualRequirement {
@@ -74,6 +99,14 @@ const SOLID_VISUAL_REQUIREMENTS: &[SolidVisualRequirement] = &[
         name: "plateau cave route hint",
         kind: WorldCollisionProxyKind::Landmark,
     },
+    SolidVisualRequirement {
+        name: ARTIFACT_RETAINING_WALL_NAME,
+        kind: WorldCollisionProxyKind::Landmark,
+    },
+    SolidVisualRequirement {
+        name: ARTIFACT_GLYPH_SLAB_NAME,
+        kind: WorldCollisionProxyKind::Landmark,
+    },
 ];
 
 const NON_BLOCKING_VISUAL_REQUIREMENTS: &[NonBlockingVisualRequirement] = &[
@@ -115,6 +148,30 @@ const NON_BLOCKING_VISUAL_REQUIREMENTS: &[NonBlockingVisualRequirement] = &[
     },
     NonBlockingVisualRequirement {
         name: "route lake",
+        allow_camera_obstacle: false,
+    },
+    NonBlockingVisualRequirement {
+        name: "river channel",
+        allow_camera_obstacle: false,
+    },
+    NonBlockingVisualRequirement {
+        name: ARTIFACT_STAIR_NAME,
+        allow_camera_obstacle: false,
+    },
+    NonBlockingVisualRequirement {
+        name: ARTIFACT_BRIDGE_FRAGMENT_NAME,
+        allow_camera_obstacle: false,
+    },
+    NonBlockingVisualRequirement {
+        name: ARTIFACT_BANNER_NAME,
+        allow_camera_obstacle: false,
+    },
+    NonBlockingVisualRequirement {
+        name: ARTIFACT_PEBBLE_FIELD_NAME,
+        allow_camera_obstacle: false,
+    },
+    NonBlockingVisualRequirement {
+        name: ARTIFACT_REED_PATCH_NAME,
         allow_camera_obstacle: false,
     },
 ];
@@ -187,6 +244,15 @@ pub(crate) fn audit_island_collision_coverage(
     for entry in &catalog.entries {
         let expected_solid = solid_requirement(entry.name);
         let expected_non_blocking = non_blocking_requirement(entry.name);
+        if ARTIFACT_VISUAL_FAMILY_NAMES.contains(&entry.name)
+            && expected_solid.is_none()
+            && expected_non_blocking.is_none()
+        {
+            failures.push(format!(
+                "{} on {} is an artifact family without an explicit collision classification",
+                entry.name, entry.key.island_name
+            ));
+        }
         if let Some((_, count)) = required_name_counts
             .iter_mut()
             .find(|(name, _)| *name == entry.name)
@@ -203,9 +269,11 @@ pub(crate) fn audit_island_collision_coverage(
 
         if let Some(collision) = entry.collision {
             if expected_non_blocking.is_some() {
+                let classification =
+                    non_blocking_artifact_classification(entry.name).unwrap_or("route/affordance");
                 failures.push(format!(
-                    "{} on {} must remain non-player-blocking route/affordance visual",
-                    entry.name, entry.key.island_name
+                    "{} on {} must remain non-player-blocking {classification} visual",
+                    entry.name, entry.key.island_name,
                 ));
             }
             match collision.kind {
@@ -320,6 +388,30 @@ pub(crate) fn audit_island_collision_coverage(
                 "{} on {} is a named solid visual but has no {:?} collision proxy",
                 entry.name, entry.key.island_name, requirement.kind
             ));
+        }
+
+        if requires_solid_camera_obstacle(entry.name) {
+            match (entry.collision, entry.obstacle) {
+                (Some(collision), Some(obstacle)) => {
+                    if !is_bounded_aabb(collision.center, collision.half_extents) {
+                        failures.push(format!(
+                            "{} on {} must use a finite positive player-collision AABB",
+                            entry.name, entry.key.island_name
+                        ));
+                    }
+                    if !is_bounded_aabb(obstacle.0.center, obstacle.0.half_extents) {
+                        failures.push(format!(
+                            "{} on {} must use a finite positive camera-obstruction AABB",
+                            entry.name, entry.key.island_name
+                        ));
+                    }
+                }
+                (_, None) => failures.push(format!(
+                    "{} on {} is a solid artifact but has no camera-obstruction AABB",
+                    entry.name, entry.key.island_name
+                )),
+                (None, Some(_)) => {}
+            }
         }
 
         if let Some(requirement) = expected_non_blocking
@@ -450,6 +542,28 @@ fn non_blocking_requirement(name: &str) -> Option<NonBlockingVisualRequirement> 
 
 fn non_blocking_requirements() -> impl Iterator<Item = NonBlockingVisualRequirement> {
     NON_BLOCKING_VISUAL_REQUIREMENTS.iter().copied()
+}
+
+fn requires_solid_camera_obstacle(name: &str) -> bool {
+    REQUIRED_SOLID_CAMERA_OBSTACLES.contains(&name)
+}
+
+fn non_blocking_artifact_classification(name: &str) -> Option<&'static str> {
+    if ARTIFACT_ROUTE_AFFORDANCE_NAMES.contains(&name) {
+        Some("route-affordance")
+    } else if ARTIFACT_DECORATIVE_NAMES.contains(&name) {
+        Some("decorative")
+    } else {
+        None
+    }
+}
+
+fn is_bounded_aabb(center: Vec3, half_extents: Vec3) -> bool {
+    center.is_finite()
+        && half_extents.is_finite()
+        && half_extents.x > 0.0
+        && half_extents.y > 0.0
+        && half_extents.z > 0.0
 }
 
 fn append_solid_proxy_surface_failures(
@@ -627,6 +741,39 @@ mod tests {
     }
 
     #[test]
+    fn artifact_families_have_exhaustive_collision_requirements() {
+        assert_eq!(ARTIFACT_VISUAL_FAMILY_NAMES.len(), 7);
+        assert_eq!(REQUIRED_SOLID_CAMERA_OBSTACLES.len(), 2);
+        assert_eq!(ARTIFACT_ROUTE_AFFORDANCE_NAMES.len(), 2);
+        assert_eq!(ARTIFACT_DECORATIVE_NAMES.len(), 3);
+
+        for name in ARTIFACT_VISUAL_FAMILY_NAMES {
+            let is_solid = solid_requirement(name).is_some();
+            let is_route_affordance = ARTIFACT_ROUTE_AFFORDANCE_NAMES.contains(name);
+            let is_decorative = ARTIFACT_DECORATIVE_NAMES.contains(name);
+            assert_eq!(
+                usize::from(is_solid)
+                    + usize::from(is_route_affordance)
+                    + usize::from(is_decorative),
+                1,
+                "{name} must have exactly one artifact collision classification"
+            );
+
+            if is_solid {
+                assert_eq!(
+                    solid_requirement(name).map(|requirement| requirement.kind),
+                    Some(WorldCollisionProxyKind::Landmark)
+                );
+                assert!(requires_solid_camera_obstacle(name));
+            } else {
+                let requirement =
+                    non_blocking_requirement(name).expect("non-blocking artifact requirement");
+                assert!(!requirement.allow_camera_obstacle);
+            }
+        }
+    }
+
+    #[test]
     fn audit_fails_non_blocking_visuals_with_player_collision() {
         let route = SkyRoute::default();
         let island = route.islands()[0];
@@ -639,7 +786,7 @@ mod tests {
         let catalog = IslandVisualCatalog {
             entries: vec![audit_entry(
                 island,
-                "route waterfall ribbon",
+                ARTIFACT_STAIR_NAME,
                 IslandVisualLayer::Beacon,
                 None,
                 Some(collision),
@@ -650,8 +797,9 @@ mod tests {
 
         assert!(!audit.passed);
         assert!(audit.failures.iter().any(|failure| {
-            failure.contains("route waterfall ribbon")
+            failure.contains(ARTIFACT_STAIR_NAME)
                 && failure.contains("must remain non-player-blocking")
+                && failure.contains("route-affordance")
         }));
     }
 
@@ -663,7 +811,7 @@ mod tests {
         let catalog = IslandVisualCatalog {
             entries: vec![audit_entry(
                 island,
-                "route lake",
+                ARTIFACT_BANNER_NAME,
                 IslandVisualLayer::Beacon,
                 Some(blocker),
                 None,
@@ -674,8 +822,69 @@ mod tests {
 
         assert!(!audit.passed);
         assert!(audit.failures.iter().any(|failure| {
-            failure.contains("route lake")
+            failure.contains(ARTIFACT_BANNER_NAME)
                 && failure.contains("should not block the player or camera")
+        }));
+    }
+
+    #[test]
+    fn audit_requires_solid_artifact_camera_obstruction() {
+        let route = SkyRoute::default();
+        let island = route.islands()[0];
+        let surface_y = island.mesh_top_y_at(island.center);
+        let collision = WorldCollisionProxy::new(
+            Vec3::new(island.center.x, surface_y + 0.5, island.center.z),
+            Vec3::splat(0.5),
+            WorldCollisionProxyKind::Landmark,
+        );
+        let catalog = IslandVisualCatalog {
+            entries: vec![audit_entry(
+                island,
+                ARTIFACT_RETAINING_WALL_NAME,
+                IslandVisualLayer::Detail,
+                None,
+                Some(collision),
+            )],
+        };
+
+        let audit = audit_island_collision_coverage(&catalog, &route);
+
+        assert!(!audit.passed);
+        assert!(audit.failures.iter().any(|failure| {
+            failure.contains(ARTIFACT_RETAINING_WALL_NAME)
+                && failure.contains("no camera-obstruction AABB")
+        }));
+    }
+
+    #[test]
+    fn audit_rejects_unbounded_solid_artifact_aabbs() {
+        let route = SkyRoute::default();
+        let island = route.islands()[0];
+        let surface_y = island.mesh_top_y_at(island.center);
+        let center = Vec3::new(island.center.x, surface_y, island.center.z);
+        let collision =
+            WorldCollisionProxy::new(center, Vec3::ZERO, WorldCollisionProxyKind::Landmark);
+        let obstacle = CameraObstacle(CameraObstruction::new(center, Vec3::ZERO));
+        let catalog = IslandVisualCatalog {
+            entries: vec![audit_entry(
+                island,
+                ARTIFACT_GLYPH_SLAB_NAME,
+                IslandVisualLayer::Detail,
+                Some(obstacle),
+                Some(collision),
+            )],
+        };
+
+        let audit = audit_island_collision_coverage(&catalog, &route);
+
+        assert!(!audit.passed);
+        assert!(audit.failures.iter().any(|failure| {
+            failure.contains(ARTIFACT_GLYPH_SLAB_NAME)
+                && failure.contains("finite positive player-collision AABB")
+        }));
+        assert!(audit.failures.iter().any(|failure| {
+            failure.contains(ARTIFACT_GLYPH_SLAB_NAME)
+                && failure.contains("finite positive camera-obstruction AABB")
         }));
     }
 

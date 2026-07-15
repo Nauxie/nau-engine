@@ -8,9 +8,9 @@ use crate::{
     },
     eval::{
         scenarios::{
-            AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_STRAFE_STABILITY,
-            EvalScenario, GREAT_SKY_PLATEAU_ROUTE, LONG_GLIDE_VISIBILITY, POSE_STATE_COVERAGE,
-            UPDRAFT_ROUTE,
+            AIR_CONTROL_RESPONSE, BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL,
+            CAMERA_STRAFE_STABILITY, EvalScenario, GREAT_SKY_PLATEAU_ROUTE, LONG_GLIDE_VISIBILITY,
+            PLAYTEST_RESET, POSE_STATE_COVERAGE, UPDRAFT_ROUTE,
         },
         summary::EvalCheck,
         thresholds::{EvalThresholds, *},
@@ -110,7 +110,7 @@ pub(super) fn append_scenario_checks(
             "m/s",
         ));
     }
-    if thresholds.require_target_landing {
+    if thresholds.require_target_landing || scenario.name == PLAYTEST_RESET {
         checks.push(EvalCheck::at_most(
             "final_target_distance",
             derived.final_target_distance_m,
@@ -123,6 +123,8 @@ pub(super) fn append_scenario_checks(
             thresholds.min_target_landing_samples as f32,
             "samples",
         ));
+    }
+    if thresholds.require_target_landing {
         checks.push(EvalCheck::at_least(
             "pose_landing_anticipation_samples",
             acc.pose_landing_anticipation_samples as f32,
@@ -617,6 +619,9 @@ pub(super) fn append_scenario_checks(
     }
     if scenario.name == POSE_STATE_COVERAGE {
         append_pose_state_coverage_checks(checks, acc, derived);
+    }
+    if scenario.name == CAMERA_MOUSE_CONTROL && !acc.runtime_frame_times_ms.is_empty() {
+        append_camera_mouse_checks(checks, acc);
     }
     if scenario.name == CAMERA_STRAFE_STABILITY {
         append_camera_strafe_checks(checks, acc);
@@ -1758,6 +1763,29 @@ fn append_pose_state_coverage_checks(
 fn max_landing_foot_split_m(acc: &EvalAccumulator) -> f32 {
     acc.max_pose_landing_foot_split_m
         .max(acc.max_pose_landing_distal_foot_split_m)
+}
+
+fn append_camera_mouse_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccumulator) {
+    checks.extend([
+        EvalCheck::at_least(
+            "camera_mouse_movement_camera_heading_samples",
+            acc.movement_camera_heading_samples as f32,
+            CAMERA_MOUSE_MIN_MOVEMENT_CAMERA_HEADING_SAMPLES as f32,
+            "samples",
+        ),
+        EvalCheck::at_most(
+            "camera_mouse_movement_camera_heading_error",
+            acc.max_movement_camera_heading_error_degrees,
+            CAMERA_MOUSE_MAX_MOVEMENT_CAMERA_HEADING_ERROR_DEGREES,
+            "deg",
+        ),
+        EvalCheck::at_most(
+            "camera_mouse_player_relative_step",
+            acc.max_camera_player_relative_step_m,
+            CAMERA_MOUSE_MAX_CAMERA_PLAYER_RELATIVE_STEP_M,
+            "m",
+        ),
+    ]);
 }
 
 fn append_camera_strafe_checks(checks: &mut Vec<EvalCheck>, acc: &EvalAccumulator) {

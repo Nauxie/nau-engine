@@ -154,8 +154,8 @@ fn air_control_metric_sample(
     .with_terrain_material_metrics(36, 3, 4, 64)
     .with_generated_visual_shape_metrics(
         MIN_GENERATED_GROUND_COVER_PATCH_COUNT,
-        220,
-        1320,
+        MIN_GROUND_COVER_BLADE_COUNT,
+        MIN_GROUND_COVER_MESH_VERTICES,
         MIN_GENERATED_TREE_TRUNK_COUNT,
         MIN_GENERATED_TREE_CANOPY_COUNT,
         196,

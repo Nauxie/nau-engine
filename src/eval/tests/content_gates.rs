@@ -269,15 +269,25 @@ fn summary_json_exposes_terrain_detail_thresholds() {
     )));
     assert!(summary_json.contains("\"min_island_cliff_color_bands\": 9"));
     assert!(summary_json.contains("\"min_island_body_mesh_vertices\": 1633"));
-    assert!(summary_json.contains("\"min_generated_ground_cover_patch_count\": 800"));
-    assert!(summary_json.contains("\"min_ground_cover_blade_count\": 220"));
-    assert!(summary_json.contains("\"min_ground_cover_mesh_vertices\": 1320"));
+    assert!(summary_json.contains(&format!(
+        "\"min_generated_ground_cover_patch_count\": {MIN_GENERATED_GROUND_COVER_PATCH_COUNT}"
+    )));
+    assert!(summary_json.contains(&format!(
+        "\"min_ground_cover_blade_count\": {MIN_GROUND_COVER_BLADE_COUNT}"
+    )));
+    assert!(summary_json.contains(&format!(
+        "\"min_ground_cover_mesh_vertices\": {MIN_GROUND_COVER_MESH_VERTICES}"
+    )));
     assert!(summary_json.contains("\"min_tree_canopy_mesh_vertices\": 460"));
     assert!(summary_json.contains("\"min_detail_biome_palette_count\": 5"));
-    assert!(summary_json.contains("\"min_generated_rock_count\": 90"));
+    assert!(summary_json.contains(&format!(
+        "\"min_generated_rock_count\": {MIN_GENERATED_ROCK_COUNT}"
+    )));
     assert!(summary_json.contains("\"min_rock_mesh_vertices\": 74"));
     assert!(summary_json.contains("\"min_generated_landmark_count\": 40"));
-    assert!(summary_json.contains("\"min_generated_ruin_cluster_count\": 0"));
+    assert!(summary_json.contains(&format!(
+        "\"min_generated_ruin_cluster_count\": {MIN_GENERATED_RUIN_CLUSTER_COUNT}"
+    )));
     assert!(summary_json.contains("\"min_generated_route_cairn_count\": 16"));
     assert!(summary_json.contains("\"min_generated_launch_beacon_count\": 1"));
     assert!(summary_json.contains("\"min_generated_landing_garden_marker_count\": 4"));
@@ -1465,7 +1475,7 @@ fn accumulator_fails_generated_visual_shape_regression() {
     assert_eq!(rock_vertex_check.value, 12.0);
     assert!(!landmark_count_check.passed);
     assert_eq!(landmark_count_check.value, 0.0);
-    assert!(ruin_cluster_count_check.passed);
+    assert!(!ruin_cluster_count_check.passed);
     assert_eq!(ruin_cluster_count_check.value, 0.0);
     assert!(!route_cairn_count_check.passed);
     assert_eq!(route_cairn_count_check.value, 0.0);
@@ -1493,7 +1503,7 @@ fn accumulator_fails_generated_visual_shape_regression() {
 
 #[test]
 fn accumulator_marks_current_baseline_shape_as_passing() {
-    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
     let mut accumulator = EvalAccumulator::default();
     let objective = EvalObjectiveProgress::new(0, 2, "near route updraft", 140.0, false);
 
@@ -1861,6 +1871,7 @@ fn accumulator_marks_current_baseline_shape_as_passing() {
             ),
         );
     }
+    scenario.thresholds.min_samples = required_flow_samples + 2;
 
     let summary = accumulator.summary(
         scenario,
@@ -1919,8 +1930,8 @@ fn observe_current_content(accumulator: &mut EvalAccumulator, sample: EvalSample
             .with_terrain_material_metrics(36, 3, 4, 64)
             .with_generated_visual_shape_metrics(
                 MIN_GENERATED_GROUND_COVER_PATCH_COUNT,
-                220,
-                1320,
+                MIN_GROUND_COVER_BLADE_COUNT,
+                MIN_GROUND_COVER_MESH_VERTICES,
                 MIN_GENERATED_TREE_TRUNK_COUNT,
                 MIN_GENERATED_TREE_CANOPY_COUNT,
                 196,

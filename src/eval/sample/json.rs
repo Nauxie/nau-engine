@@ -355,6 +355,40 @@ impl EvalSample {
             self.min_island_body_mesh_vertices, body_mesh_key
         );
         let json = json.replacen(body_mesh_key, &body_mesh_metrics, 1);
+        let movement_input_forward_key = format!(
+            "\"movement_input_forward_axis\":{}",
+            json_number(self.movement_input_forward_axis)
+        );
+        let movement_camera_heading_metric = format!(
+            "{movement_input_forward_key},\"movement_camera_heading_error_degrees\":{}",
+            json_number(self.movement_camera_heading_error_degrees)
+        );
+        let json = json.replacen(
+            &movement_input_forward_key,
+            &movement_camera_heading_metric,
+            1,
+        );
+        let camera_step_distance_key = format!(
+            "\"camera_step_distance_m\":{}",
+            json_number(self.camera_step_distance_m)
+        );
+        let camera_player_continuity_metrics = format!(
+            "{camera_step_distance_key},\"camera_player_relative_step_m\":{},\"camera_player_relative_linear_velocity_mps\":{},\"camera_player_relative_linear_acceleration_mps2\":{},\"camera_player_relative_angular_velocity_degrees_per_sec\":{},\"camera_player_relative_angular_acceleration_degrees_per_sec2\":{},\"player_integration_residual_m\":{},\"camera_correction_source\":{},\"camera_continuity_offset_limited\":{},\"camera_continuity_rotation_limited\":{}",
+            json_number(self.camera_player_relative_step_m),
+            json_number(self.camera_player_relative_linear_velocity_mps),
+            json_number(self.camera_player_relative_linear_acceleration_mps2),
+            json_number(self.camera_player_relative_angular_velocity_degrees_per_sec),
+            json_number(self.camera_player_relative_angular_acceleration_degrees_per_sec2),
+            json_number(self.player_integration_residual_m),
+            json_string(self.camera_correction_source),
+            self.camera_continuity_offset_limited,
+            self.camera_continuity_rotation_limited
+        );
+        let json = json.replacen(
+            &camera_step_distance_key,
+            &camera_player_continuity_metrics,
+            1,
+        );
         let deferred_asset_key = "\"queued_visual_asset_scene_count\"";
         let deferred_asset_metrics = format!(
             "\"deferred_visual_asset_scene_count\":{},{}",

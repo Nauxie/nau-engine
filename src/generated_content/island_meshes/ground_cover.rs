@@ -1,7 +1,6 @@
 use super::super::random_unit;
 use super::constants::{
-    GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES, INDICES_PER_GROUND_BLADE,
-    VERTICES_PER_GROUND_BLADE,
+    GROUND_COVER_BLADES_PER_PATCH, INDICES_PER_GROUND_BLADE, VERTICES_PER_GROUND_BLADE,
 };
 use super::shape::island_playable_normalized_offset;
 use bevy::asset::RenderAssetUsages;
@@ -9,15 +8,19 @@ use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use nau_engine::world::SkyIsland;
 
-pub(crate) fn island_ground_cover_mesh(island_index: usize, island: SkyIsland) -> Mesh {
-    let blade_count = GROUND_COVER_PATCHES * GROUND_COVER_BLADES_PER_PATCH;
+pub(crate) fn island_ground_cover_mesh(
+    island_index: usize,
+    island: SkyIsland,
+    patch_count: usize,
+) -> Mesh {
+    let blade_count = patch_count * GROUND_COVER_BLADES_PER_PATCH;
     let mut positions = Vec::with_capacity(blade_count * VERTICES_PER_GROUND_BLADE);
     let mut normals = Vec::with_capacity(blade_count * VERTICES_PER_GROUND_BLADE);
     let mut uvs = Vec::with_capacity(blade_count * VERTICES_PER_GROUND_BLADE);
     let mut indices = Vec::with_capacity(blade_count * INDICES_PER_GROUND_BLADE);
     let seed = island_index as u32 * 41 + 503;
 
-    for patch in 0..GROUND_COVER_PATCHES {
+    for patch in 0..patch_count {
         let base_angle = random_unit(seed, patch as u32, 3) * std::f32::consts::TAU;
         let radius = random_unit(seed, patch as u32, 11).sqrt() * 0.90;
         let jitter = Vec2::new(

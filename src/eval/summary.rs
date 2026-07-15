@@ -64,6 +64,15 @@ pub struct EvalMetricsSummary {
     pub min_camera_surface_clearance_m: f32,
     pub max_camera_player_angle_degrees: f32,
     pub max_camera_step_distance_m: f32,
+    pub max_camera_player_relative_step_m: f32,
+    pub max_camera_player_relative_linear_velocity_mps: f32,
+    pub max_camera_player_relative_linear_acceleration_mps2: f32,
+    pub max_camera_player_relative_angular_velocity_degrees_per_sec: f32,
+    pub max_camera_player_relative_angular_acceleration_degrees_per_sec2: f32,
+    pub max_player_integration_residual_m: f32,
+    pub max_player_integration_residual_without_world_collision_m: f32,
+    pub max_player_world_correction_m: f32,
+    pub max_player_collision_correction_m: f32,
     pub max_camera_rotation_delta_degrees: f32,
     pub max_camera_orbit_alignment_degrees: f32,
     pub avg_camera_follow_direction_error_degrees: f32,
@@ -76,6 +85,14 @@ pub struct EvalMetricsSummary {
     pub max_camera_obstruction_hits: usize,
     pub min_camera_obstructed_distance_m: f32,
     pub camera_obstruction_snap_count: u32,
+    pub camera_follow_correction_frames: u32,
+    pub camera_floor_correction_frames: u32,
+    pub camera_obstruction_correction_frames: u32,
+    pub camera_distance_correction_frames: u32,
+    pub camera_scripted_correction_frames: u32,
+    pub camera_unclassified_correction_frames: u32,
+    pub camera_continuity_offset_limited_frames: u32,
+    pub camera_continuity_rotation_limited_frames: u32,
     pub avg_desired_body_heading_error_degrees: f32,
     pub p95_desired_body_heading_error_degrees: f32,
     pub max_desired_body_heading_error_degrees: f32,
@@ -103,6 +120,8 @@ pub struct EvalMetricsSummary {
     pub max_pure_air_turn_sideways_body_travel_heading_error_degrees: f32,
     pub p95_pure_air_turn_sideways_desired_travel_heading_error_degrees: f32,
     pub max_pure_air_turn_sideways_desired_travel_heading_error_degrees: f32,
+    pub movement_camera_heading_sample_count: u32,
+    pub max_movement_camera_heading_error_degrees: f32,
     pub max_body_yaw_error_step_degrees: f32,
     pub body_yaw_oscillation_count: u32,
     pub max_body_roll_step_degrees: f32,
@@ -712,9 +731,34 @@ impl EvalMetricsSummary {
             self.left_pose_air_turn_samples
         );
         let json = json.replacen(&pose_gliding_samples_key, &pose_turn_sample_metrics, 1);
+        let max_camera_step_distance_key = format!(
+            "{indent}  \"max_camera_step_distance_m\": {}",
+            json_number(self.max_camera_step_distance_m)
+        );
+        let camera_continuity_metrics = format!(
+            "{max_camera_step_distance_key},\n{indent}  \"max_camera_player_relative_step_m\": {},\n{indent}  \"max_camera_player_relative_linear_velocity_mps\": {},\n{indent}  \"max_camera_player_relative_linear_acceleration_mps2\": {},\n{indent}  \"max_camera_player_relative_angular_velocity_degrees_per_sec\": {},\n{indent}  \"max_camera_player_relative_angular_acceleration_degrees_per_sec2\": {},\n{indent}  \"max_player_integration_residual_m\": {},\n{indent}  \"max_player_integration_residual_without_world_collision_m\": {},\n{indent}  \"max_player_world_correction_m\": {},\n{indent}  \"max_player_collision_correction_m\": {},\n{indent}  \"camera_follow_correction_frames\": {},\n{indent}  \"camera_floor_correction_frames\": {},\n{indent}  \"camera_obstruction_correction_frames\": {},\n{indent}  \"camera_distance_correction_frames\": {},\n{indent}  \"camera_scripted_correction_frames\": {},\n{indent}  \"camera_unclassified_correction_frames\": {},\n{indent}  \"camera_continuity_offset_limited_frames\": {},\n{indent}  \"camera_continuity_rotation_limited_frames\": {}",
+            json_number(self.max_camera_player_relative_step_m),
+            json_number(self.max_camera_player_relative_linear_velocity_mps),
+            json_number(self.max_camera_player_relative_linear_acceleration_mps2),
+            json_number(self.max_camera_player_relative_angular_velocity_degrees_per_sec),
+            json_number(self.max_camera_player_relative_angular_acceleration_degrees_per_sec2),
+            json_number(self.max_player_integration_residual_m),
+            json_number(self.max_player_integration_residual_without_world_collision_m),
+            json_number(self.max_player_world_correction_m),
+            json_number(self.max_player_collision_correction_m),
+            self.camera_follow_correction_frames,
+            self.camera_floor_correction_frames,
+            self.camera_obstruction_correction_frames,
+            self.camera_distance_correction_frames,
+            self.camera_scripted_correction_frames,
+            self.camera_unclassified_correction_frames,
+            self.camera_continuity_offset_limited_frames,
+            self.camera_continuity_rotation_limited_frames
+        );
+        let json = json.replacen(&max_camera_step_distance_key, &camera_continuity_metrics, 1);
         let max_body_yaw_error_step_key = format!("{indent}  \"max_body_yaw_error_step_degrees\"");
         let body_travel_heading_metrics = format!(
-            "{indent}  \"lateral_body_travel_heading_sample_count\": {},\n{indent}  \"right_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"left_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"p95_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"max_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"backward_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_right_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_left_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"p95_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"max_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"desired_travel_heading_sample_count\": {},\n{indent}  \"right_desired_travel_heading_sample_count\": {},\n{indent}  \"left_desired_travel_heading_sample_count\": {},\n{indent}  \"backward_right_desired_travel_heading_sample_count\": {},\n{indent}  \"backward_left_desired_travel_heading_sample_count\": {},\n{indent}  \"p95_desired_travel_heading_error_degrees\": {},\n{indent}  \"max_desired_travel_heading_error_degrees\": {},\n{indent}  \"pure_air_turn_sideways_sample_count\": {},\n{indent}  \"right_pure_air_turn_sideways_sample_count\": {},\n{indent}  \"left_pure_air_turn_sideways_sample_count\": {},\n{indent}  \"p95_pure_air_turn_sideways_body_travel_heading_error_degrees\": {},\n{indent}  \"max_pure_air_turn_sideways_body_travel_heading_error_degrees\": {},\n{indent}  \"p95_pure_air_turn_sideways_desired_travel_heading_error_degrees\": {},\n{indent}  \"max_pure_air_turn_sideways_desired_travel_heading_error_degrees\": {},\n{}",
+            "{indent}  \"lateral_body_travel_heading_sample_count\": {},\n{indent}  \"right_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"left_lateral_body_travel_heading_sample_count\": {},\n{indent}  \"p95_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"max_lateral_body_travel_heading_error_degrees\": {},\n{indent}  \"backward_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_right_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"backward_left_diagonal_body_travel_heading_sample_count\": {},\n{indent}  \"p95_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"max_backward_diagonal_body_travel_heading_error_degrees\": {},\n{indent}  \"desired_travel_heading_sample_count\": {},\n{indent}  \"right_desired_travel_heading_sample_count\": {},\n{indent}  \"left_desired_travel_heading_sample_count\": {},\n{indent}  \"backward_right_desired_travel_heading_sample_count\": {},\n{indent}  \"backward_left_desired_travel_heading_sample_count\": {},\n{indent}  \"p95_desired_travel_heading_error_degrees\": {},\n{indent}  \"max_desired_travel_heading_error_degrees\": {},\n{indent}  \"pure_air_turn_sideways_sample_count\": {},\n{indent}  \"right_pure_air_turn_sideways_sample_count\": {},\n{indent}  \"left_pure_air_turn_sideways_sample_count\": {},\n{indent}  \"p95_pure_air_turn_sideways_body_travel_heading_error_degrees\": {},\n{indent}  \"max_pure_air_turn_sideways_body_travel_heading_error_degrees\": {},\n{indent}  \"p95_pure_air_turn_sideways_desired_travel_heading_error_degrees\": {},\n{indent}  \"max_pure_air_turn_sideways_desired_travel_heading_error_degrees\": {},\n{indent}  \"movement_camera_heading_sample_count\": {},\n{indent}  \"max_movement_camera_heading_error_degrees\": {},\n{}",
             self.lateral_body_travel_heading_sample_count,
             self.right_lateral_body_travel_heading_sample_count,
             self.left_lateral_body_travel_heading_sample_count,
@@ -739,6 +783,8 @@ impl EvalMetricsSummary {
             json_number(self.max_pure_air_turn_sideways_body_travel_heading_error_degrees),
             json_number(self.p95_pure_air_turn_sideways_desired_travel_heading_error_degrees),
             json_number(self.max_pure_air_turn_sideways_desired_travel_heading_error_degrees),
+            self.movement_camera_heading_sample_count,
+            json_number(self.max_movement_camera_heading_error_degrees),
             max_body_yaw_error_step_key
         );
         let json = json.replacen(

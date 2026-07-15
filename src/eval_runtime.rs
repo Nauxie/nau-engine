@@ -92,6 +92,7 @@ pub(crate) struct EvalRun {
 pub(crate) struct EvalMovementBasis {
     pub(crate) frame: u32,
     pub(crate) facing: Option<Facing>,
+    pub(crate) follow_direction: Option<Vec3>,
 }
 
 #[derive(Debug)]

@@ -11,11 +11,13 @@ candidate_freeflight_profile="${NAU_WORLD_FLOOR_CANDIDATE_FREEFLIGHT_PROFILE:-${
 baseline_ground_profile="${NAU_WORLD_FLOOR_BASELINE_GROUND_TRAVERSAL_PROFILE:-${NAU_WORLD_FLOOR_BASELINE_GROUND_PROFILE:-target/eval/play_profile/main_scripted_ground_traversal.json}}"
 candidate_ground_profile="${NAU_WORLD_FLOOR_CANDIDATE_GROUND_TRAVERSAL_PROFILE:-${NAU_WORLD_FLOOR_CANDIDATE_GROUND_PROFILE:-target/eval/play_profile/candidate_scripted_ground_traversal.json}}"
 run_rust_gates="${NAU_WORLD_FLOOR_RUN_RUST_GATES:-1}"
+run_camera_continuity="${NAU_WORLD_FLOOR_RUN_CAMERA_CONTINUITY_GATE:-1}"
 run_candidate_perf="${NAU_WORLD_FLOOR_RUN_CANDIDATE_PERF:-1}"
 run_candidate_profile="${NAU_WORLD_FLOOR_RUN_CANDIDATE_PROFILE:-1}"
 candidate_profile_attempts="${NAU_WORLD_FLOOR_CANDIDATE_PROFILE_ATTEMPTS:-2}"
 world_floor_host_wait_secs="${NAU_WORLD_FLOOR_HOST_WAIT_SECS:-900}"
 require_quiet_host_after="${NAU_WORLD_FLOOR_REQUIRE_QUIET_HOST_AFTER:-0}"
+camera_continuity_output="${NAU_WORLD_FLOOR_CAMERA_CONTINUITY_OUTPUT:-target/eval/camera_continuity/world_floor_candidate}"
 
 case "${run_rust_gates}" in
   0 | 1) ;;
@@ -29,6 +31,14 @@ case "${run_candidate_perf}" in
   0 | 1) ;;
   *)
     echo "NAU_WORLD_FLOOR_RUN_CANDIDATE_PERF must be 0 or 1" >&2
+    exit 2
+    ;;
+esac
+
+case "${run_camera_continuity}" in
+  0 | 1) ;;
+  *)
+    echo "NAU_WORLD_FLOOR_RUN_CAMERA_CONTINUITY_GATE must be 0 or 1" >&2
     exit 2
     ;;
 esac
@@ -81,6 +91,10 @@ if [[ "${run_rust_gates}" == "1" ]]; then
   cargo check --all-targets
   cargo test --quiet
   cargo clippy --all-targets --all-features -- -D warnings
+fi
+
+if [[ "${run_camera_continuity}" == "1" ]]; then
+  ./tools/camera_continuity_gate.sh "${camera_continuity_output}"
 fi
 
 if [[ "${run_candidate_perf}" == "1" ]]; then

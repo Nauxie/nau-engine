@@ -140,6 +140,29 @@ pub fn step_camera_with_direction(
     orbit: CameraOrbit,
     dt: f32,
 ) -> CameraFrame {
+    step_camera_with_direction_and_input(
+        current_position,
+        current_rotation,
+        player_position,
+        follow_direction,
+        follow,
+        orbit,
+        false,
+        dt,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn step_camera_with_direction_and_input(
+    current_position: Vec3,
+    current_rotation: Quat,
+    player_position: Vec3,
+    follow_direction: Vec3,
+    follow: &FollowCamera,
+    orbit: CameraOrbit,
+    input_active: bool,
+    dt: f32,
+) -> CameraFrame {
     let direction = horizontal_or(follow_direction, Vec3::NEG_Z);
     let direction = yawed_horizontal_direction(direction, orbit.yaw);
     let look_target =
@@ -168,10 +191,14 @@ pub fn step_camera_with_direction(
     let target_rotation = Transform::from_translation(position)
         .looking_at(look_target, Vec3::Y)
         .rotation;
-    let rotation = current_rotation.slerp(
-        target_rotation,
-        smoothing_factor(follow.rotation_smoothing, dt),
-    );
+    let rotation = if input_active {
+        target_rotation
+    } else {
+        current_rotation.slerp(
+            target_rotation,
+            smoothing_factor(follow.rotation_smoothing, dt),
+        )
+    };
 
     CameraFrame {
         position,

@@ -59,6 +59,8 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Generated tree trunks, rocks, route cairns, launch beacons, recovery masts, target markers, and route-integrated obstruction spires expose simple world-collision proxies; player movement resolves horizontally out of those proxies and clears velocity into the collision normal.
 - Route-integrated obstruction spires also expose camera-obstruction bounds so camera avoidance is tested against generated world objects rather than standalone cuboid blockers.
 - Player facing follows desired airborne steering direction with exponential smoothing and bank response, falling back to horizontal velocity when no steering input is active.
+- Mouse-look deltas are consumed as direct current-frame orbit intent; they are not multiplied by delta time or delayed through response smoothing.
+- Follow, obstruction, floor-clearance, collision, streaming, and reset corrections use the shared bounded continuity contract and must report an explicit correction source.
 
 ## Forbidden Behaviors
 
@@ -143,7 +145,8 @@ Current tests cover:
 - visual field bounds and stream origins are deterministic
 - smoothing factors do not overshoot
 - camera ignores vertical-only launch velocity and sideways/backward movement for automatic follow-heading changes
-- camera mouse X/Y input, pitch clamps, pitch/distance/framing helpers, surface-clearance lift, obstruction avoidance, route-spire obstruction exercise, and a bounded post-obstruction camera step so blockers cannot pull the camera into a one-frame snap
+- camera mouse X/Y input, same-frame movement-basis response, pitch clamps, pitch/distance/framing helpers, surface-clearance lift, obstruction avoidance, route-spire obstruction exercise, and bounded attributed correction steps so blockers, floor boundaries, collisions, streaming, or resets cannot create an unclassified one-frame snap
+- camera/player continuity contracts are exercised across 30/60/120/144 Hz, 50/100 ms hitches, obstruction release, terrain boundaries, collisions, streaming, reset, and an intentionally injected one-frame snap that the gate must reject
 - camera follow direction smoothing limits rapid turn snaps
 - lateral air input steers velocity toward the camera-relative plane
 - pure backward air input brakes planar drift, while backward plus lateral input steers into rear-diagonal glide control with a directional skid/cupped-limb air-brake pose
@@ -153,7 +156,7 @@ Current tests cover:
 - idle breathing, glide airflow micro-motion, pressure-scaled dive flattening/arms-out limb trail, sink-weighted dive head gaze, wind-reactive scarf streaming for generated and authored player nodes, and deployed-glider dive wing sweep are phase-driven and covered by pose unit tests
 - wing visibility tracks glide mode
 - `updraft_route` eval tracks `active_lift_fields`, `readable_lift_fields`, readable lift samples, unreadable lift samples, dynamic readable lift samples, wind-flow speed/variation/range, wind-guide depth/pulse/coherence, per-field visual coverage, sustained visual-flow sample windows, layered dynamic flow fields, and simultaneous crosswind-plus-updraft swirl force response so active lift must overlap a paired visible updraft with changing flow, layered aligned visual airflow, and lateral current
-- `camera_mouse_control` eval tracks yaw/pitch offsets and route-spire obstruction adjustment without player movement in both app and simulation coverage
+- `camera_mouse_control` eval overlaps forward movement with yaw/pitch input, tracks route-spire obstruction release and floor-clearance camera jerk, and verifies movement uses the current frame's camera heading in app coverage
 - `camera_yaw_stability` eval tracks stopped-input yaw stability
 - `camera_strafe_stability` eval tracks right/left lateral movement without camera auto-orbit, including view-yaw and world-yaw drift
 - `camera_turn_stability` eval tracks camera step/rotation deltas through rapid air turns and air braking while the scripted forward input stays active long enough to make the distance gate non-vacuous

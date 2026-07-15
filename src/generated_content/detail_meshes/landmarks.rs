@@ -1,9 +1,13 @@
-use super::{super::random_unit, shared::append_ellipsoid_lobe};
+use super::{
+    super::random_unit,
+    shared::{append_double_sided_detail_card, append_ellipsoid_lobe},
+};
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use nau_engine::world::{
-    IslandPlateauRegion, IslandTerrainArchetype, IslandWaterFeature, SkyIsland,
+    IslandLandmarkRole, IslandPlateauRegion, IslandRouteRole, IslandTerrainArchetype,
+    IslandWaterFeature, SkyIsland,
 };
 
 pub(crate) const ROUTE_CAIRN_STONE_COUNT: usize = 5;
@@ -16,9 +20,18 @@ pub(crate) const LAKE_BASIN_RIM_SEGMENTS: usize = 48;
 pub(crate) const LAKE_BASIN_RIM_BANDS: usize = 5;
 pub(crate) const POND_SURFACE_SEGMENTS: usize = 32;
 pub(crate) const LAKE_SURFACE_SEGMENTS: usize = 48;
+pub(crate) const RIVER_CHANNEL_SEGMENTS: usize = 18;
+pub(crate) const RIVER_CHANNEL_COLUMNS: usize = 3;
 pub(crate) const WATERFALL_RIBBON_COLUMNS: usize = 8;
 pub(crate) const WATERFALL_RIBBON_ROWS: usize = 18;
 pub(crate) const WATERFALL_MIST_LOBES: usize = 7;
+pub(crate) const ARTIFACT_STAIR_STEP_COUNT: usize = 9;
+pub(crate) const ARTIFACT_RETAINING_WALL_SEGMENTS: usize = 8;
+pub(crate) const ARTIFACT_GLYPH_STROKE_COUNT: usize = 7;
+pub(crate) const ARTIFACT_BRIDGE_FRAGMENT_COUNT: usize = 9;
+pub(crate) const ARTIFACT_BANNER_STRIP_COUNT: usize = 6;
+pub(crate) const ARTIFACT_PEBBLE_COUNT: usize = 18;
+pub(crate) const ARTIFACT_REED_COUNT: usize = 16;
 
 const LANDMARK_LOBE_LATITUDE_SEGMENTS: usize = 4;
 const LANDMARK_LOBE_LONGITUDE_SEGMENTS: usize = 9;
@@ -33,6 +46,7 @@ pub(crate) enum IslandWaterVisualKind {
     RouteWaterfallRibbon,
     RouteWaterfallMist,
     RouteLakeSurface,
+    RiverChannel,
 }
 
 impl IslandWaterVisualKind {
@@ -45,6 +59,7 @@ impl IslandWaterVisualKind {
             Self::RouteWaterfallRibbon => "route_waterfall_ribbon",
             Self::RouteWaterfallMist => "route_waterfall_mist",
             Self::RouteLakeSurface => "route_lake_surface",
+            Self::RiverChannel => "river_channel",
         }
     }
 
@@ -57,16 +72,35 @@ impl IslandWaterVisualKind {
             Self::RouteWaterfallRibbon => "route waterfall ribbon",
             Self::RouteWaterfallMist => "route waterfall mist",
             Self::RouteLakeSurface => "route lake",
+            Self::RiverChannel => "river channel",
         }
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum IslandWaterVisualMesh {
-    PondSurface { radius_x: f32, radius_z: f32 },
-    LakeSurface { radius_x: f32, radius_z: f32 },
-    WaterfallRibbon { width: f32, height: f32, depth: f32 },
-    WaterfallMist { radius: f32, height: f32 },
+    PondSurface {
+        radius_x: f32,
+        radius_z: f32,
+    },
+    LakeSurface {
+        radius_x: f32,
+        radius_z: f32,
+    },
+    RiverChannel {
+        length: f32,
+        width: f32,
+        elevation_drop: f32,
+    },
+    WaterfallRibbon {
+        width: f32,
+        height: f32,
+        depth: f32,
+    },
+    WaterfallMist {
+        radius: f32,
+        height: f32,
+    },
 }
 
 impl IslandWaterVisualMesh {
@@ -74,6 +108,11 @@ impl IslandWaterVisualMesh {
         match self {
             Self::PondSurface { radius_x, radius_z } => pond_surface_mesh(radius_x, radius_z, seed),
             Self::LakeSurface { radius_x, radius_z } => lake_surface_mesh(radius_x, radius_z, seed),
+            Self::RiverChannel {
+                length,
+                width,
+                elevation_drop,
+            } => river_channel_surface_mesh(length, width, elevation_drop, seed),
             Self::WaterfallRibbon {
                 width,
                 height,
@@ -131,6 +170,15 @@ struct PlateauWaterfallFeatureSpec {
     region: IslandPlateauRegion,
     ribbon_label: &'static str,
     mist_label: &'static str,
+    width_scale: f32,
+    index: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct RiverChannelFeatureSpec {
+    label: &'static str,
+    source_offset: Vec2,
+    outlet_offset: Vec2,
     width_scale: f32,
     index: u32,
 }
@@ -216,6 +264,207 @@ enum FirstExpeditionSilhouetteMesh {
     GardenRing {
         radius: f32,
         band_width: f32,
+        height: f32,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum IslandArtifactVisualKind {
+    AncientStairRun,
+    RetainingWall,
+    GlyphSlab,
+    BridgeFragment,
+    BannerStrips,
+    PebbleField,
+    ReedPatch,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum IslandArtifactCollisionPolicy {
+    SolidAabb,
+    NonBlockingRouteAffordance,
+    NonBlockingDecoration,
+}
+
+impl IslandArtifactVisualKind {
+    #[cfg(test)]
+    const ALL: [Self; 7] = [
+        Self::AncientStairRun,
+        Self::RetainingWall,
+        Self::GlyphSlab,
+        Self::BridgeFragment,
+        Self::BannerStrips,
+        Self::PebbleField,
+        Self::ReedPatch,
+    ];
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::AncientStairRun => "artifact_ancient_stair",
+            Self::RetainingWall => "artifact_retaining_wall",
+            Self::GlyphSlab => "artifact_glyph_slab",
+            Self::BridgeFragment => "artifact_bridge_fragment",
+            Self::BannerStrips => "artifact_banner_strips",
+            Self::PebbleField => "artifact_pebble_field",
+            Self::ReedPatch => "artifact_reed_patch",
+        }
+    }
+
+    pub(crate) fn visual_name(self) -> &'static str {
+        match self {
+            Self::AncientStairRun => "ancient stair run",
+            Self::RetainingWall => "retaining wall fragment",
+            Self::GlyphSlab => "glyph stone slab",
+            Self::BridgeFragment => "broken bridge fragment",
+            Self::BannerStrips => "weathered banner strips",
+            Self::PebbleField => "pebble field",
+            Self::ReedPatch => "reed patch",
+        }
+    }
+
+    fn collision_policy(self) -> IslandArtifactCollisionPolicy {
+        match self {
+            Self::RetainingWall | Self::GlyphSlab => IslandArtifactCollisionPolicy::SolidAabb,
+            Self::AncientStairRun | Self::BridgeFragment => {
+                IslandArtifactCollisionPolicy::NonBlockingRouteAffordance
+            }
+            Self::BannerStrips | Self::PebbleField | Self::ReedPatch => {
+                IslandArtifactCollisionPolicy::NonBlockingDecoration
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum IslandArtifactMaterial {
+    Stone,
+    Foliage,
+    Trunk,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct IslandArtifactVisualSpec {
+    pub(crate) kind: IslandArtifactVisualKind,
+    pub(crate) label: &'static str,
+    pub(crate) translation: Vec3,
+    pub(crate) rotation_y: f32,
+    pub(crate) material: IslandArtifactMaterial,
+    mesh: IslandArtifactVisualMesh,
+    seed: u32,
+}
+
+impl IslandArtifactVisualSpec {
+    pub(crate) fn build_mesh(self) -> Mesh {
+        match self.mesh {
+            IslandArtifactVisualMesh::AncientStairRun {
+                length,
+                width,
+                rise,
+            } => artifact_stair_run_mesh(length, width, rise, self.seed),
+            IslandArtifactVisualMesh::RetainingWall {
+                length,
+                height,
+                depth,
+            } => artifact_retaining_wall_mesh(length, height, depth, self.seed),
+            IslandArtifactVisualMesh::GlyphSlab {
+                width,
+                height,
+                depth,
+            } => artifact_glyph_slab_mesh(width, height, depth, self.seed),
+            IslandArtifactVisualMesh::BridgeFragment {
+                length,
+                width,
+                thickness,
+            } => artifact_bridge_fragment_mesh(length, width, thickness, self.seed),
+            IslandArtifactVisualMesh::BannerStrips { width, height } => {
+                artifact_banner_strips_mesh(width, height, self.seed)
+            }
+            IslandArtifactVisualMesh::PebbleField { radius } => {
+                artifact_pebble_field_mesh(radius, self.seed)
+            }
+            IslandArtifactVisualMesh::ReedPatch { radius, height } => {
+                artifact_reed_patch_mesh(radius, height, self.seed)
+            }
+        }
+    }
+
+    pub(crate) fn solid_world_aabb(self) -> Option<(Vec3, Vec3)> {
+        let local_aabb = match self.mesh {
+            IslandArtifactVisualMesh::AncientStairRun { .. } => None,
+            IslandArtifactVisualMesh::RetainingWall {
+                length,
+                height,
+                depth,
+            } => Some((
+                Vec3::new(0.0, height * 0.5, 0.0),
+                Vec3::new(length * 0.48, height * 0.5, depth * 0.48),
+            )),
+            IslandArtifactVisualMesh::GlyphSlab {
+                width,
+                height,
+                depth,
+            } => Some((
+                Vec3::new(0.0, height * 0.5, 0.0),
+                Vec3::new(width * 0.48, height * 0.5, depth * 0.48),
+            )),
+            IslandArtifactVisualMesh::BridgeFragment { .. }
+            | IslandArtifactVisualMesh::BannerStrips { .. }
+            | IslandArtifactVisualMesh::PebbleField { .. }
+            | IslandArtifactVisualMesh::ReedPatch { .. } => None,
+        };
+        debug_assert_eq!(
+            local_aabb.is_some(),
+            self.kind.collision_policy() == IslandArtifactCollisionPolicy::SolidAabb,
+            "{} collision policy must match its mesh family",
+            self.kind.visual_name()
+        );
+
+        local_aabb.map(|(local_center, local_half_extents)| {
+            let rotation = Quat::from_rotation_y(self.rotation_y);
+            let center = self.translation + rotation * local_center;
+            let yaw_sin = self.rotation_y.sin().abs();
+            let yaw_cos = self.rotation_y.cos().abs();
+            let half_extents = Vec3::new(
+                local_half_extents.x * yaw_cos + local_half_extents.z * yaw_sin,
+                local_half_extents.y,
+                local_half_extents.x * yaw_sin + local_half_extents.z * yaw_cos,
+            );
+            (center, half_extents)
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum IslandArtifactVisualMesh {
+    AncientStairRun {
+        length: f32,
+        width: f32,
+        rise: f32,
+    },
+    RetainingWall {
+        length: f32,
+        height: f32,
+        depth: f32,
+    },
+    GlyphSlab {
+        width: f32,
+        height: f32,
+        depth: f32,
+    },
+    BridgeFragment {
+        length: f32,
+        width: f32,
+        thickness: f32,
+    },
+    BannerStrips {
+        width: f32,
+        height: f32,
+    },
+    PebbleField {
+        radius: f32,
+    },
+    ReedPatch {
+        radius: f32,
         height: f32,
     },
 }
@@ -337,31 +586,302 @@ pub(crate) fn first_expedition_silhouette_specs(
     }
 }
 
+pub(crate) fn island_artifact_visual_specs(
+    island_index: usize,
+    island: SkyIsland,
+) -> Vec<IslandArtifactVisualSpec> {
+    if island.is_great_plateau_anchor() {
+        return great_plateau_artifact_visual_specs(island_index, island);
+    }
+
+    let mut specs = Vec::new();
+    let scale = island.half_extents.min_element();
+    let base_seed = 61_000 + island_index as u32 * 283;
+
+    if artifact_has_stair_run(island) {
+        specs.push(IslandArtifactVisualSpec {
+            kind: IslandArtifactVisualKind::AncientStairRun,
+            label: "ancient stair run",
+            translation: island_water_surface_position(island, Vec2::new(-0.18, -0.26))
+                + Vec3::Y * 0.04,
+            rotation_y: -0.34 + island_index as f32 * 0.027,
+            material: IslandArtifactMaterial::Stone,
+            mesh: IslandArtifactVisualMesh::AncientStairRun {
+                length: (scale * 0.30).clamp(5.8, 18.0),
+                width: (scale * 0.105).clamp(1.9, 5.6),
+                rise: (island.thickness * 0.085).clamp(1.4, 5.2),
+            },
+            seed: base_seed + 1,
+        });
+    }
+
+    if artifact_has_ruin_stonework(island) {
+        specs.push(IslandArtifactVisualSpec {
+            kind: IslandArtifactVisualKind::RetainingWall,
+            label: "retaining wall fragment",
+            translation: island_water_surface_position(island, Vec2::new(0.28, -0.18))
+                + Vec3::Y * 0.03,
+            rotation_y: 0.72 + island_index as f32 * 0.019,
+            material: IslandArtifactMaterial::Stone,
+            mesh: IslandArtifactVisualMesh::RetainingWall {
+                length: (scale * 0.24).clamp(5.0, 16.0),
+                height: (island.thickness * 0.080).clamp(1.2, 4.8),
+                depth: (scale * 0.050).clamp(0.8, 2.6),
+            },
+            seed: base_seed + 11,
+        });
+        specs.push(IslandArtifactVisualSpec {
+            kind: IslandArtifactVisualKind::GlyphSlab,
+            label: "glyph stone slab",
+            translation: island_water_surface_position(island, Vec2::new(-0.30, 0.18))
+                + Vec3::Y * 0.05,
+            rotation_y: -0.94 + island_index as f32 * 0.031,
+            material: IslandArtifactMaterial::Stone,
+            mesh: IslandArtifactVisualMesh::GlyphSlab {
+                width: (scale * 0.080).clamp(1.4, 4.4),
+                height: (island.thickness * 0.13).clamp(2.0, 7.0),
+                depth: (scale * 0.035).clamp(0.45, 1.6),
+            },
+            seed: base_seed + 23,
+        });
+    }
+
+    if artifact_has_bridge_fragment(island) {
+        specs.push(IslandArtifactVisualSpec {
+            kind: IslandArtifactVisualKind::BridgeFragment,
+            label: "broken bridge fragment",
+            translation: island_water_surface_position(island, Vec2::new(0.08, 0.42))
+                + Vec3::Y * 0.06,
+            rotation_y: 1.08 + island_index as f32 * 0.021,
+            material: IslandArtifactMaterial::Stone,
+            mesh: IslandArtifactVisualMesh::BridgeFragment {
+                length: (scale * 0.34).clamp(6.0, 20.0),
+                width: (scale * 0.095).clamp(1.8, 5.2),
+                thickness: (island.thickness * 0.030).clamp(0.38, 1.2),
+            },
+            seed: base_seed + 37,
+        });
+    }
+
+    if artifact_has_wind_cloth(island) {
+        specs.push(IslandArtifactVisualSpec {
+            kind: IslandArtifactVisualKind::BannerStrips,
+            label: "weathered banner strips",
+            translation: island_water_surface_position(island, Vec2::new(0.34, 0.12))
+                + Vec3::Y * (island.thickness * 0.075).clamp(1.4, 4.5),
+            rotation_y: 0.18 + island_index as f32 * 0.044,
+            material: IslandArtifactMaterial::Trunk,
+            mesh: IslandArtifactVisualMesh::BannerStrips {
+                width: (scale * 0.12).clamp(2.0, 6.4),
+                height: (island.thickness * 0.10).clamp(2.4, 5.8),
+            },
+            seed: base_seed + 53,
+        });
+    }
+
+    if artifact_has_reeds(island) {
+        specs.push(IslandArtifactVisualSpec {
+            kind: IslandArtifactVisualKind::ReedPatch,
+            label: "reed patch",
+            translation: island_water_surface_position(island, Vec2::new(-0.12, 0.22))
+                + Vec3::Y * 0.06,
+            rotation_y: island_index as f32 * 0.058,
+            material: IslandArtifactMaterial::Foliage,
+            mesh: IslandArtifactVisualMesh::ReedPatch {
+                radius: (scale * 0.060).clamp(1.0, 3.8),
+                height: (island.thickness * 0.055).clamp(0.9, 3.0),
+            },
+            seed: base_seed + 71,
+        });
+    }
+
+    if artifact_has_pebble_field(island) {
+        specs.push(IslandArtifactVisualSpec {
+            kind: IslandArtifactVisualKind::PebbleField,
+            label: "pebble field",
+            translation: island_water_surface_position(island, Vec2::new(0.18, -0.38))
+                + Vec3::Y * 0.025,
+            rotation_y: island_index as f32 * 0.073,
+            material: IslandArtifactMaterial::Stone,
+            mesh: IslandArtifactVisualMesh::PebbleField {
+                radius: (scale * 0.090).clamp(1.3, 5.0),
+            },
+            seed: base_seed + 89,
+        });
+    }
+
+    specs
+}
+
+fn great_plateau_artifact_visual_specs(
+    island_index: usize,
+    island: SkyIsland,
+) -> Vec<IslandArtifactVisualSpec> {
+    let base_seed = 61_000 + island_index as u32 * 283;
+    vec![
+        IslandArtifactVisualSpec {
+            kind: IslandArtifactVisualKind::AncientStairRun,
+            label: "ancient stair run",
+            translation: island_water_surface_position(island, Vec2::new(-0.40, 0.28))
+                + Vec3::Y * 0.06,
+            rotation_y: -0.88,
+            material: IslandArtifactMaterial::Stone,
+            mesh: IslandArtifactVisualMesh::AncientStairRun {
+                length: 28.0,
+                width: 7.2,
+                rise: 6.4,
+            },
+            seed: base_seed + 1,
+        },
+        IslandArtifactVisualSpec {
+            kind: IslandArtifactVisualKind::RetainingWall,
+            label: "retaining wall fragment",
+            translation: island_water_surface_position(island, Vec2::new(-0.58, 0.12))
+                + Vec3::Y * 0.05,
+            rotation_y: 0.18,
+            material: IslandArtifactMaterial::Stone,
+            mesh: IslandArtifactVisualMesh::RetainingWall {
+                length: 34.0,
+                height: 7.2,
+                depth: 3.4,
+            },
+            seed: base_seed + 11,
+        },
+        IslandArtifactVisualSpec {
+            kind: IslandArtifactVisualKind::GlyphSlab,
+            label: "glyph stone slab",
+            translation: island_water_surface_position(island, Vec2::new(-0.34, 0.36))
+                + Vec3::Y * 0.08,
+            rotation_y: -0.64,
+            material: IslandArtifactMaterial::Stone,
+            mesh: IslandArtifactVisualMesh::GlyphSlab {
+                width: 5.4,
+                height: 8.2,
+                depth: 1.8,
+            },
+            seed: base_seed + 23,
+        },
+        IslandArtifactVisualSpec {
+            kind: IslandArtifactVisualKind::BridgeFragment,
+            label: "broken bridge fragment",
+            translation: island_water_surface_position(island, Vec2::new(0.48, 0.12))
+                + Vec3::Y * 0.08,
+            rotation_y: -0.52,
+            material: IslandArtifactMaterial::Stone,
+            mesh: IslandArtifactVisualMesh::BridgeFragment {
+                length: 27.0,
+                width: 7.0,
+                thickness: 1.5,
+            },
+            seed: base_seed + 37,
+        },
+        IslandArtifactVisualSpec {
+            kind: IslandArtifactVisualKind::ReedPatch,
+            label: "reed patch",
+            translation: island_water_surface_position(island, Vec2::new(0.18, -0.34))
+                + Vec3::Y * 0.07,
+            rotation_y: 0.22,
+            material: IslandArtifactMaterial::Foliage,
+            mesh: IslandArtifactVisualMesh::ReedPatch {
+                radius: 7.2,
+                height: 4.2,
+            },
+            seed: base_seed + 71,
+        },
+        IslandArtifactVisualSpec {
+            kind: IslandArtifactVisualKind::PebbleField,
+            label: "pebble field",
+            translation: island_water_surface_position(island, Vec2::new(0.44, -0.44))
+                + Vec3::Y * 0.035,
+            rotation_y: -0.28,
+            material: IslandArtifactMaterial::Stone,
+            mesh: IslandArtifactVisualMesh::PebbleField { radius: 9.0 },
+            seed: base_seed + 89,
+        },
+    ]
+}
+
+fn artifact_has_stair_run(island: SkyIsland) -> bool {
+    matches!(
+        island.terrain_archetype,
+        IslandTerrainArchetype::TerracedSpur
+            | IslandTerrainArchetype::BrokenStair
+            | IslandTerrainArchetype::SkyPlateau
+            | IslandTerrainArchetype::LaunchMesa
+    )
+}
+
+fn artifact_has_ruin_stonework(island: SkyIsland) -> bool {
+    matches!(
+        island.world_tags.landmark_role,
+        IslandLandmarkRole::RuinArch
+            | IslandLandmarkRole::CaveMouth
+            | IslandLandmarkRole::HighCrown
+    ) || island.is_great_plateau_anchor()
+}
+
+fn artifact_has_bridge_fragment(island: SkyIsland) -> bool {
+    matches!(
+        island.terrain_archetype,
+        IslandTerrainArchetype::MistArch
+            | IslandTerrainArchetype::CloudGate
+            | IslandTerrainArchetype::MistStep
+            | IslandTerrainArchetype::BrokenStair
+    )
+}
+
+fn artifact_has_wind_cloth(island: SkyIsland) -> bool {
+    matches!(
+        island.world_tags.landmark_role,
+        IslandLandmarkRole::WindGate | IslandLandmarkRole::HighCrown
+    ) || island.world_tags.route_role == IslandRouteRole::UpdraftHub
+}
+
+fn artifact_has_reeds(island: SkyIsland) -> bool {
+    matches!(
+        island.world_tags.water_feature,
+        IslandWaterFeature::LakeBasin | IslandWaterFeature::WaterfallSource
+    ) || island.is_great_plateau_anchor()
+}
+
+fn artifact_has_pebble_field(island: SkyIsland) -> bool {
+    !matches!(
+        island.terrain_archetype,
+        IslandTerrainArchetype::Needle | IslandTerrainArchetype::MistStep
+    )
+}
+
 pub(crate) fn island_water_visual_specs(
     island_index: usize,
     island: SkyIsland,
 ) -> Vec<IslandWaterVisualSpec> {
     let mut specs = Vec::new();
-    let pond_offset = if island.is_target {
-        Vec2::new(-0.34, 0.18)
-    } else {
-        Vec2::new(0.18, 0.28)
-    };
-    specs.push(IslandWaterVisualSpec {
-        kind: IslandWaterVisualKind::PondSurface,
-        label: "pond surface",
-        translation: island_water_surface_position(island, pond_offset) + Vec3::Y * 0.055,
-        rotation_y: 0.0,
-        wind_phase: 3.4,
-        wind_motion_scale: 1.0,
-        mesh: IslandWaterVisualMesh::PondSurface {
-            radius_x: island.half_extents.x * 0.12,
-            radius_z: island.half_extents.y * 0.08,
-        },
-        seed: 11_000 + island_index as u32 * 149,
-    });
+    if island.world_tags.water_feature == IslandWaterFeature::Pond
+        && !island.is_great_plateau_anchor()
+    {
+        let pond_offset = if island.is_target {
+            Vec2::new(-0.34, 0.18)
+        } else {
+            Vec2::new(0.18, 0.28)
+        };
+        specs.push(IslandWaterVisualSpec {
+            kind: IslandWaterVisualKind::PondSurface,
+            label: "pond surface",
+            translation: island_water_surface_position(island, pond_offset) + Vec3::Y * 0.055,
+            rotation_y: 0.0,
+            wind_phase: 3.4,
+            wind_motion_scale: 1.0,
+            mesh: IslandWaterVisualMesh::PondSurface {
+                radius_x: island.half_extents.x * 0.12,
+                radius_z: island.half_extents.y * 0.08,
+            },
+            seed: 11_000 + island_index as u32 * 149,
+        });
+    }
 
     if island.is_great_plateau_anchor() {
+        let broken_edge_lip = plateau_waterfall_lip_offset(island, IslandPlateauRegion::BrokenEdge);
+        let north_rim_lip = plateau_waterfall_lip_offset(island, IslandPlateauRegion::CliffRim);
         if let Some(low_basin) = island.plateau_region_position(IslandPlateauRegion::LowBasin) {
             specs.push(IslandWaterVisualSpec {
                 kind: IslandWaterVisualKind::PlateauLakeSurface,
@@ -392,19 +912,51 @@ pub(crate) fn island_water_visual_specs(
                 seed: 32_000 + island_index as u32 * 193,
             });
         }
-        for waterfall in [
-            PlateauWaterfallFeatureSpec {
-                region: IslandPlateauRegion::CliffRim,
-                ribbon_label: "north rim waterfall",
-                mist_label: "north rim waterfall mist",
-                width_scale: 0.18,
+        for channel in [
+            RiverChannelFeatureSpec {
+                label: "high shelf spillway",
+                source_offset: IslandPlateauRegion::HighShelf.sample_offset(),
+                outlet_offset: Vec2::new(-0.20, 0.10),
+                width_scale: 0.030,
                 index: 0,
             },
+            RiverChannelFeatureSpec {
+                label: "meadow runnel",
+                source_offset: Vec2::new(-0.20, 0.10),
+                outlet_offset: IslandPlateauRegion::LowBasin.sample_offset(),
+                width_scale: 0.028,
+                index: 1,
+            },
+            RiverChannelFeatureSpec {
+                label: "broken edge outflow",
+                source_offset: IslandPlateauRegion::LowBasin.sample_offset(),
+                outlet_offset: broken_edge_lip,
+                width_scale: 0.032,
+                index: 2,
+            },
+            RiverChannelFeatureSpec {
+                label: "north rim overflow",
+                source_offset: IslandPlateauRegion::HighShelf.sample_offset(),
+                outlet_offset: north_rim_lip,
+                width_scale: 0.026,
+                index: 3,
+            },
+        ] {
+            push_river_channel_spec(&mut specs, island_index, island, channel);
+        }
+        for waterfall in [
             PlateauWaterfallFeatureSpec {
                 region: IslandPlateauRegion::BrokenEdge,
                 ribbon_label: "broken edge waterfall",
                 mist_label: "broken edge waterfall mist",
-                width_scale: 0.14,
+                width_scale: 0.17,
+                index: 0,
+            },
+            PlateauWaterfallFeatureSpec {
+                region: IslandPlateauRegion::CliffRim,
+                ribbon_label: "north rim waterfall",
+                mist_label: "north rim waterfall mist",
+                width_scale: 0.13,
                 index: 1,
             },
         ] {
@@ -415,12 +967,42 @@ pub(crate) fn island_water_visual_specs(
     if island.world_tags.water_feature == IslandWaterFeature::WaterfallSource
         && !island.is_great_plateau_anchor()
     {
+        push_river_channel_spec(
+            &mut specs,
+            island_index,
+            island,
+            RiverChannelFeatureSpec {
+                label: "waterfall feeder channel",
+                source_offset: Vec2::new(0.04, -0.08),
+                outlet_offset: Vec2::new(-0.42, 0.16),
+                width_scale: 0.045,
+                index: 0,
+            },
+        );
         push_route_edge_waterfall_specs(&mut specs, island_index, island);
     }
     if island.world_tags.water_feature == IslandWaterFeature::LakeBasin
         && !island.is_great_plateau_anchor()
     {
         push_route_lake_surface_specs(&mut specs, island_index, island);
+        let lake_offset = route_lake_basin_offset(island);
+        let source_offset = if lake_offset.x >= 0.0 {
+            Vec2::new(-0.34, 0.28)
+        } else {
+            Vec2::new(0.30, -0.26)
+        };
+        push_river_channel_spec(
+            &mut specs,
+            island_index,
+            island,
+            RiverChannelFeatureSpec {
+                label: "lake inlet channel",
+                source_offset,
+                outlet_offset: lake_offset.lerp(source_offset, 0.42),
+                width_scale: 0.040,
+                index: 0,
+            },
+        );
     }
 
     specs
@@ -842,6 +1424,82 @@ pub(crate) fn lake_surface_mesh(radius_x: f32, radius_z: f32, seed: u32) -> Mesh
     )
 }
 
+pub(crate) fn river_channel_surface_mesh(
+    length: f32,
+    width: f32,
+    elevation_drop: f32,
+    seed: u32,
+) -> Mesh {
+    let length = length.max(0.1);
+    let width = width.max(0.05);
+    let elevation_drop = elevation_drop.max(0.0);
+    let row_count = RIVER_CHANNEL_SEGMENTS + 1;
+    let mut positions = Vec::with_capacity(row_count * RIVER_CHANNEL_COLUMNS);
+    let mut normals = Vec::with_capacity(positions.capacity());
+    let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut indices = Vec::with_capacity(RIVER_CHANNEL_SEGMENTS * (RIVER_CHANNEL_COLUMNS - 1) * 6);
+    let bend_sign = if random_unit(seed, 0, 971) < 0.5 {
+        -1.0
+    } else {
+        1.0
+    };
+    let primary_bend = bend_sign * width * (0.48 + random_unit(seed, 1, 977) * 0.34);
+    let wave_phase = random_unit(seed, 2, 983) * std::f32::consts::TAU;
+
+    for segment in 0..=RIVER_CHANNEL_SEGMENTS {
+        let t = segment as f32 / RIVER_CHANNEL_SEGMENTS as f32;
+        let longitudinal = (t - 0.5) * length;
+        let envelope = (t * std::f32::consts::PI).sin();
+        let envelope_derivative = std::f32::consts::PI * (t * std::f32::consts::PI).cos();
+        let wander_phase = t * std::f32::consts::TAU + wave_phase;
+        let center_x = envelope * primary_bend + envelope * wander_phase.sin() * width * 0.16;
+        let center_derivative = envelope_derivative * primary_bend
+            + width
+                * 0.16
+                * (envelope_derivative * wander_phase.sin()
+                    + envelope * std::f32::consts::TAU * wander_phase.cos());
+        let lateral_slope = center_derivative / length;
+        let tangent = Vec3::new(lateral_slope, -elevation_drop / length, 1.0).normalize_or_zero();
+        let across = Vec3::new(1.0, 0.0, -lateral_slope).normalize_or_zero();
+        let mut normal = tangent.cross(across).normalize_or_zero();
+        if normal.y < 0.0 {
+            normal = -normal;
+        }
+        let width_jitter = (random_unit(seed, segment as u32, 991) - 0.5) * 0.10;
+        let local_width = width * (0.84 + envelope * 0.16 + width_jitter);
+        let center_y = elevation_drop * (0.5 - t)
+            + envelope * (t * std::f32::consts::TAU * 3.0 + wave_phase).sin() * width * 0.006;
+
+        for column in 0..RIVER_CHANNEL_COLUMNS {
+            let u = column as f32 / (RIVER_CHANNEL_COLUMNS - 1) as f32;
+            let side = (u - 0.5) * local_width;
+            let cross_ripple = (u * std::f32::consts::PI).sin()
+                * envelope
+                * (wander_phase + u * 1.7).sin()
+                * width
+                * 0.004;
+            let position =
+                Vec3::new(center_x, center_y + cross_ripple, longitudinal) + across * side;
+
+            positions.push(position.to_array());
+            normals.push(normal.to_array());
+            uvs.push([u, t]);
+        }
+    }
+
+    for segment in 0..RIVER_CHANNEL_SEGMENTS {
+        for column in 0..RIVER_CHANNEL_COLUMNS - 1 {
+            let current = (segment * RIVER_CHANNEL_COLUMNS + column) as u32;
+            let right = current + 1;
+            let next = current + RIVER_CHANNEL_COLUMNS as u32;
+            let next_right = next + 1;
+            indices.extend([current, next, right, right, next, next_right]);
+        }
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
 pub(crate) fn waterfall_ribbon_mesh(width: f32, height: f32, depth: f32, seed: u32) -> Mesh {
     let mut positions = Vec::with_capacity(WATERFALL_RIBBON_COLUMNS * WATERFALL_RIBBON_ROWS);
     let mut normals = Vec::with_capacity(positions.capacity());
@@ -999,17 +1657,64 @@ fn irregular_water_surface_mesh(
     build_mesh(positions, normals, uvs, indices)
 }
 
+fn push_river_channel_spec(
+    specs: &mut Vec<IslandWaterVisualSpec>,
+    island_index: usize,
+    island: SkyIsland,
+    channel: RiverChannelFeatureSpec,
+) {
+    let source = island_water_surface_position(island, channel.source_offset);
+    let outlet = island_water_surface_position(island, channel.outlet_offset);
+    let horizontal_delta = Vec2::new(outlet.x - source.x, outlet.z - source.z);
+    let length = horizontal_delta.length();
+    if length <= 0.5 {
+        return;
+    }
+
+    let direction = horizontal_delta / length;
+    let width = (island.half_extents.min_element() * channel.width_scale).clamp(1.2, 5.0);
+    let elevation_drop = (source.y - outlet.y).max(width * 0.018).min(length * 0.08);
+    let midpoint = (source + outlet) * 0.5;
+
+    specs.push(IslandWaterVisualSpec {
+        kind: IslandWaterVisualKind::RiverChannel,
+        label: channel.label,
+        translation: Vec3::new(
+            midpoint.x,
+            source.y + 0.08 - elevation_drop * 0.5,
+            midpoint.z,
+        ),
+        rotation_y: direction.x.atan2(direction.y),
+        wind_phase: 5.5 + island_index as f32 * 0.029 + channel.index as f32 * 0.43,
+        wind_motion_scale: 1.18,
+        mesh: IslandWaterVisualMesh::RiverChannel {
+            length,
+            width,
+            elevation_drop,
+        },
+        seed: 40_000 + island_index as u32 * 227 + channel.index * 521,
+    });
+}
+
 fn push_plateau_waterfall_specs(
     specs: &mut Vec<IslandWaterVisualSpec>,
     island_index: usize,
     island: SkyIsland,
     waterfall: PlateauWaterfallFeatureSpec,
 ) {
-    let Some(surface) = island.plateau_region_position(waterfall.region) else {
+    let Some(region_surface) = island.plateau_region_position(waterfall.region) else {
         return;
     };
     let sample = waterfall.region.sample_offset();
-    let outward = Vec2::new(sample.x, sample.y).normalize_or_zero();
+    let angle = sample.y.atan2(sample.x);
+    let contour = island.footprint_contour_point(angle, false);
+    let edge_surface = Vec3::new(
+        contour.x,
+        island.terrain_surface_y_at(Vec3::new(contour.x, region_surface.y, contour.y)),
+        contour.y,
+    );
+    let outward = (Vec2::new(contour.x, contour.y) - Vec2::new(island.center.x, island.center.z))
+        .normalize_or_zero();
     let outward = if outward.length_squared() > 0.001 {
         outward
     } else {
@@ -1019,12 +1724,14 @@ fn push_plateau_waterfall_specs(
     let height = island.thickness * 0.84;
     let width = island.half_extents.min_element() * waterfall.width_scale;
     let outward3 = Vec3::new(outward.x, 0.0, outward.y);
+    let ribbon_clearance = (width * 0.15).max(3.0);
+    let mist_clearance = (width * 0.25).max(5.0);
     let seed_base = 33_000 + island_index as u32 * 197 + waterfall.index * 1_009;
 
     specs.push(IslandWaterVisualSpec {
         kind: IslandWaterVisualKind::PlateauWaterfallRibbon,
         label: waterfall.ribbon_label,
-        translation: surface + outward3 * 6.0 - Vec3::Y * (height * 0.48),
+        translation: edge_surface + outward3 * ribbon_clearance - Vec3::Y * (height * 0.48),
         rotation_y: yaw,
         wind_phase: 6.1 + waterfall.index as f32 * 0.7,
         wind_motion_scale: 1.8,
@@ -1038,16 +1745,27 @@ fn push_plateau_waterfall_specs(
     specs.push(IslandWaterVisualSpec {
         kind: IslandWaterVisualKind::PlateauWaterfallMist,
         label: waterfall.mist_label,
-        translation: surface + outward3 * 9.0 - Vec3::Y * (height * 0.94),
+        translation: edge_surface + outward3 * mist_clearance - Vec3::Y * (height * 0.94),
         rotation_y: yaw,
         wind_phase: 6.8 + waterfall.index as f32 * 0.9,
         wind_motion_scale: 1.55,
         mesh: IslandWaterVisualMesh::WaterfallMist {
-            radius: width * 0.42,
+            radius: (width * 0.52).max(13.5),
             height: island.thickness * 0.08,
         },
         seed: seed_base + 503,
     });
+}
+
+fn plateau_waterfall_lip_offset(island: SkyIsland, region: IslandPlateauRegion) -> Vec2 {
+    let sample = region.sample_offset();
+    let angle = sample.y.atan2(sample.x);
+    let contour = island.footprint_contour_point(angle, false);
+
+    Vec2::new(
+        (contour.x - island.center.x) / island.half_extents.x.max(0.001),
+        (contour.y - island.center.z) / island.half_extents.y.max(0.001),
+    ) * 0.98
 }
 
 fn push_route_lake_surface_specs(
@@ -1123,6 +1841,292 @@ fn route_lake_basin_offset(island: SkyIsland) -> Vec2 {
     } else {
         Vec2::new(-0.08, 0.12)
     }
+}
+
+pub(crate) fn artifact_stair_run_mesh(length: f32, width: f32, rise: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+
+    let step_depth = length / ARTIFACT_STAIR_STEP_COUNT as f32;
+    for step in 0..ARTIFACT_STAIR_STEP_COUNT {
+        let t = step as f32 / (ARTIFACT_STAIR_STEP_COUNT - 1) as f32;
+        let wobble = random_unit(seed, step as u32, 2_011) - 0.5;
+        let step_height = rise * (0.12 + t * 0.88);
+        let center = Vec3::new(
+            wobble * width * 0.035,
+            step_height * 0.5,
+            -length * 0.5 + step_depth * (step as f32 + 0.5),
+        );
+        append_oriented_box(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            center,
+            Vec3::new(
+                width * (0.46 + random_unit(seed, step as u32, 2_019) * 0.06),
+                step_height * 0.5,
+                step_depth * (0.43 + random_unit(seed, step as u32, 2_023) * 0.08),
+            ),
+            wobble * 0.08,
+        );
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+pub(crate) fn artifact_retaining_wall_mesh(
+    length: f32,
+    height: f32,
+    depth: f32,
+    seed: u32,
+) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+
+    let segment_length = length / ARTIFACT_RETAINING_WALL_SEGMENTS as f32;
+    for segment in 0..ARTIFACT_RETAINING_WALL_SEGMENTS {
+        let centered = segment as f32 - (ARTIFACT_RETAINING_WALL_SEGMENTS - 1) as f32 * 0.5;
+        let segment_height = height * (0.58 + random_unit(seed, segment as u32, 2_101) * 0.45);
+        let chip = random_unit(seed, segment as u32, 2_107) - 0.5;
+        append_oriented_box(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            Vec3::new(
+                centered * segment_length + chip * segment_length * 0.14,
+                segment_height * 0.5,
+                chip * depth * 0.10,
+            ),
+            Vec3::new(
+                segment_length * (0.47 + random_unit(seed, segment as u32, 2_111) * 0.08),
+                segment_height * 0.5,
+                depth * (0.42 + random_unit(seed, segment as u32, 2_117) * 0.14),
+            ),
+            chip * 0.16,
+        );
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+pub(crate) fn artifact_glyph_slab_mesh(width: f32, height: f32, depth: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+
+    append_oriented_box(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        Vec3::new(0.0, height * 0.5, 0.0),
+        Vec3::new(width * 0.5, height * 0.5, depth * 0.5),
+        (random_unit(seed, 0, 2_201) - 0.5) * 0.06,
+    );
+
+    for stroke in 0..ARTIFACT_GLYPH_STROKE_COUNT {
+        let t = stroke as f32 / (ARTIFACT_GLYPH_STROKE_COUNT - 1) as f32;
+        let centered = t - 0.5;
+        let horizontal = stroke % 3 == 0;
+        let stroke_width = if horizontal {
+            width * 0.18
+        } else {
+            width * 0.045
+        };
+        let stroke_height = if horizontal {
+            height * 0.030
+        } else {
+            height * (0.13 + random_unit(seed, stroke as u32, 2_211) * 0.05)
+        };
+        let x = (random_unit(seed, stroke as u32, 2_217) - 0.5) * width * 0.42;
+        let y = height * (0.20 + t * 0.58);
+        append_oriented_box(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            Vec3::new(x, y, depth * 0.54),
+            Vec3::new(stroke_width, stroke_height, depth * 0.055),
+            centered * 0.34,
+        );
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+pub(crate) fn artifact_bridge_fragment_mesh(
+    length: f32,
+    width: f32,
+    thickness: f32,
+    seed: u32,
+) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+
+    let block_length = length / ARTIFACT_BRIDGE_FRAGMENT_COUNT as f32;
+    for block in 0..ARTIFACT_BRIDGE_FRAGMENT_COUNT {
+        if block == 2 || block == 6 {
+            continue;
+        }
+        let missing_sag = if block > 2 && block < 6 {
+            -thickness * 0.30
+        } else {
+            0.0
+        };
+        let centered = block as f32 - (ARTIFACT_BRIDGE_FRAGMENT_COUNT - 1) as f32 * 0.5;
+        let chip = random_unit(seed, block as u32, 2_301) - 0.5;
+        append_oriented_box(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            Vec3::new(
+                centered * block_length,
+                thickness * 0.5 + missing_sag,
+                chip * width * 0.04,
+            ),
+            Vec3::new(
+                block_length * (0.44 + random_unit(seed, block as u32, 2_307) * 0.10),
+                thickness * (0.42 + random_unit(seed, block as u32, 2_311) * 0.18),
+                width * (0.42 + random_unit(seed, block as u32, 2_317) * 0.10),
+            ),
+            chip * 0.10,
+        );
+    }
+
+    for rail_side in [-1.0_f32, 1.0] {
+        for post in [0_usize, 4, 8] {
+            let centered = post as f32 - (ARTIFACT_BRIDGE_FRAGMENT_COUNT - 1) as f32 * 0.5;
+            append_oriented_box(
+                &mut positions,
+                &mut normals,
+                &mut uvs,
+                &mut indices,
+                Vec3::new(
+                    centered * block_length,
+                    thickness * 1.45,
+                    rail_side * width * 0.47,
+                ),
+                Vec3::new(block_length * 0.16, thickness * 0.72, thickness * 0.18),
+                rail_side * 0.06,
+            );
+        }
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+pub(crate) fn artifact_banner_strips_mesh(width: f32, height: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+
+    append_oriented_box(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(width * 0.54, height * 0.018, height * 0.020),
+        0.0,
+    );
+
+    for strip in 0..ARTIFACT_BANNER_STRIP_COUNT {
+        let t = strip as f32 / (ARTIFACT_BANNER_STRIP_COUNT - 1) as f32;
+        let x = (t - 0.5) * width;
+        let strip_height = height * (0.56 + random_unit(seed, strip as u32, 2_401) * 0.38);
+        let wind_lean = (random_unit(seed, strip as u32, 2_407) - 0.5) * width * 0.11;
+        append_double_sided_detail_card(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            Vec3::new(x + wind_lean, -strip_height * 0.48, 0.0),
+            Vec3::X,
+            Vec3::Y,
+            width * (0.030 + random_unit(seed, strip as u32, 2_411) * 0.018),
+            strip_height * 0.5,
+        );
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+pub(crate) fn artifact_pebble_field_mesh(radius: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+
+    for pebble in 0..ARTIFACT_PEBBLE_COUNT {
+        let angle = random_unit(seed, pebble as u32, 2_501) * std::f32::consts::TAU;
+        let distance = radius * random_unit(seed, pebble as u32, 2_503).sqrt();
+        let pebble_radius = radius * (0.035 + random_unit(seed, pebble as u32, 2_509) * 0.045);
+        append_ellipsoid_lobe(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            Vec3::new(
+                angle.cos() * distance,
+                pebble_radius * 0.34,
+                angle.sin() * distance,
+            ),
+            Vec3::new(
+                pebble_radius * (1.2 + random_unit(seed, pebble as u32, 2_521) * 0.8),
+                pebble_radius * (0.34 + random_unit(seed, pebble as u32, 2_523) * 0.24),
+                pebble_radius * (0.8 + random_unit(seed, pebble as u32, 2_527) * 0.7),
+            ),
+            3,
+            7,
+            seed.wrapping_add(pebble as u32 * 41),
+            0.22,
+        );
+    }
+
+    build_mesh(positions, normals, uvs, indices)
+}
+
+pub(crate) fn artifact_reed_patch_mesh(radius: f32, height: f32, seed: u32) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+
+    for reed in 0..ARTIFACT_REED_COUNT {
+        let angle = random_unit(seed, reed as u32, 2_601) * std::f32::consts::TAU;
+        let distance = radius * random_unit(seed, reed as u32, 2_607).sqrt();
+        let reed_height = height * (0.62 + random_unit(seed, reed as u32, 2_611) * 0.56);
+        let center = Vec3::new(
+            angle.cos() * distance,
+            reed_height * 0.5,
+            angle.sin() * distance,
+        );
+        let tangent_angle = angle + std::f32::consts::FRAC_PI_2;
+        append_double_sided_detail_card(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            center,
+            Vec3::new(tangent_angle.cos(), 0.0, tangent_angle.sin()),
+            Vec3::Y,
+            radius * (0.010 + random_unit(seed, reed as u32, 2_617) * 0.008),
+            reed_height * 0.5,
+        );
+    }
+
+    build_mesh(positions, normals, uvs, indices)
 }
 
 fn island_water_surface_position(island: SkyIsland, normalized_offset: Vec2) -> Vec3 {
@@ -1253,6 +2257,98 @@ fn append_crystal_shard(
     }
 }
 
+fn append_oriented_box(
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    uvs: &mut Vec<[f32; 2]>,
+    indices: &mut Vec<u32>,
+    center: Vec3,
+    half_extents: Vec3,
+    yaw: f32,
+) {
+    let right = Vec3::new(yaw.cos(), 0.0, -yaw.sin());
+    let up = Vec3::Y;
+    let forward = Vec3::new(yaw.sin(), 0.0, yaw.cos());
+    let top_tilt = (0.05 + half_extents.y / (half_extents.x + half_extents.z).max(0.1) * 0.18)
+        .clamp(0.04, 0.28);
+    let top_normal = (up + forward * top_tilt + right * yaw.sin() * 0.18).normalize();
+    let corner = |sx: f32, sy: f32, sz: f32| {
+        center
+            + right * half_extents.x * sx
+            + up * half_extents.y * sy
+            + forward * half_extents.z * sz
+    };
+    let faces = [
+        (
+            right,
+            [
+                corner(1.0, -1.0, -1.0),
+                corner(1.0, -1.0, 1.0),
+                corner(1.0, 1.0, 1.0),
+                corner(1.0, 1.0, -1.0),
+            ],
+        ),
+        (
+            -right,
+            [
+                corner(-1.0, -1.0, 1.0),
+                corner(-1.0, -1.0, -1.0),
+                corner(-1.0, 1.0, -1.0),
+                corner(-1.0, 1.0, 1.0),
+            ],
+        ),
+        (
+            top_normal,
+            [
+                corner(-1.0, 1.0, -1.0),
+                corner(1.0, 1.0, -1.0),
+                corner(1.0, 1.0, 1.0),
+                corner(-1.0, 1.0, 1.0),
+            ],
+        ),
+        (
+            -up,
+            [
+                corner(-1.0, -1.0, 1.0),
+                corner(1.0, -1.0, 1.0),
+                corner(1.0, -1.0, -1.0),
+                corner(-1.0, -1.0, -1.0),
+            ],
+        ),
+        (
+            forward,
+            [
+                corner(1.0, -1.0, 1.0),
+                corner(-1.0, -1.0, 1.0),
+                corner(-1.0, 1.0, 1.0),
+                corner(1.0, 1.0, 1.0),
+            ],
+        ),
+        (
+            -forward,
+            [
+                corner(-1.0, -1.0, -1.0),
+                corner(1.0, -1.0, -1.0),
+                corner(1.0, 1.0, -1.0),
+                corner(-1.0, 1.0, -1.0),
+            ],
+        ),
+    ];
+
+    for (normal, face_positions) in faces {
+        let start = positions.len() as u32;
+        for (uv, position) in [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+            .into_iter()
+            .zip(face_positions)
+        {
+            positions.push(position.to_array());
+            normals.push(normal.to_array());
+            uvs.push(uv);
+        }
+        indices.extend([start, start + 1, start + 2, start, start + 2, start + 3]);
+    }
+}
+
 fn build_mesh(
     positions: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
@@ -1267,4 +2363,519 @@ fn build_mesh(
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::shared::DETAIL_CARD_VERTICES;
+    use super::*;
+    use bevy::mesh::VertexAttributeValues;
+
+    fn positions(mesh: &Mesh) -> &[[f32; 3]] {
+        match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
+            Some(VertexAttributeValues::Float32x3(values)) => values,
+            _ => panic!("mesh should expose Float32x3 positions"),
+        }
+    }
+
+    fn axis_range(positions: &[[f32; 3]], axis: usize) -> f32 {
+        let (min, max) = positions.iter().fold(
+            (f32::INFINITY, f32::NEG_INFINITY),
+            |(min, max), position| (min.min(position[axis]), max.max(position[axis])),
+        );
+        max - min
+    }
+
+    fn radial_range(positions: &[[f32; 3]]) -> f32 {
+        let (min, max) = positions.iter().fold(
+            (f32::INFINITY, f32::NEG_INFINITY),
+            |(min, max), position| {
+                let radius = Vec2::new(position[0], position[2]).length();
+                (min.min(radius), max.max(radius))
+            },
+        );
+        max - min
+    }
+
+    fn u32_indices(mesh: &Mesh) -> &[u32] {
+        match mesh.indices() {
+            Some(Indices::U32(values)) => values,
+            _ => panic!("mesh should expose U32 indices"),
+        }
+    }
+
+    fn channel_endpoints(spec: IslandWaterVisualSpec) -> (Vec2, Vec2) {
+        let mesh = spec.build_mesh();
+        let channel_positions = positions(&mesh);
+        let center_column = RIVER_CHANNEL_COLUMNS / 2;
+        let rotation = Quat::from_rotation_y(spec.rotation_y);
+        let start =
+            spec.translation + rotation * Vec3::from_array(channel_positions[center_column]);
+        let end = spec.translation
+            + rotation
+                * Vec3::from_array(
+                    channel_positions
+                        [RIVER_CHANNEL_SEGMENTS * RIVER_CHANNEL_COLUMNS + center_column],
+                );
+        (Vec2::new(start.x, start.z), Vec2::new(end.x, end.z))
+    }
+
+    fn normalized_xz(island: SkyIsland, position: Vec3) -> Vec2 {
+        Vec2::new(
+            (position.x - island.center.x) / island.half_extents.x,
+            (position.z - island.center.z) / island.half_extents.y,
+        )
+    }
+
+    #[test]
+    fn river_channel_surface_is_curved_low_profile_and_deterministic() {
+        let first = river_channel_surface_mesh(30.0, 3.0, 0.6, 40_111);
+        let second = river_channel_surface_mesh(30.0, 3.0, 0.6, 40_111);
+        let first_positions = positions(&first);
+
+        assert_eq!(
+            first.count_vertices(),
+            (RIVER_CHANNEL_SEGMENTS + 1) * RIVER_CHANNEL_COLUMNS
+        );
+        assert_eq!(
+            u32_indices(&first).len(),
+            RIVER_CHANNEL_SEGMENTS * (RIVER_CHANNEL_COLUMNS - 1) * 6
+        );
+        assert_eq!(first_positions, positions(&second));
+        assert!(axis_range(first_positions, 2) > 29.0);
+        assert!(axis_range(first_positions, 1) < 0.75);
+
+        let center_column = RIVER_CHANNEL_COLUMNS / 2;
+        let centerline = (0..=RIVER_CHANNEL_SEGMENTS)
+            .map(|segment| first_positions[segment * RIVER_CHANNEL_COLUMNS + center_column][0])
+            .collect::<Vec<_>>();
+        let centerline_range = centerline
+            .iter()
+            .copied()
+            .fold((f32::INFINITY, f32::NEG_INFINITY), |(min, max), x| {
+                (min.min(x), max.max(x))
+            });
+        assert!(centerline_range.1 - centerline_range.0 > 1.0);
+    }
+
+    #[test]
+    fn water_visual_specs_follow_water_tags_and_authored_channel_routes() {
+        let dry = SkyIsland::new(
+            "launch mesa",
+            Vec3::ZERO,
+            Vec2::new(56.0, 42.0),
+            11.0,
+            false,
+        );
+        assert!(island_water_visual_specs(0, dry).is_empty());
+
+        let pond = SkyIsland::new(
+            "landing garden",
+            Vec3::ZERO,
+            Vec2::new(72.0, 52.0),
+            12.0,
+            true,
+        );
+        let pond_specs = island_water_visual_specs(1, pond);
+        assert_eq!(pond_specs.len(), 1);
+        assert_eq!(pond_specs[0].kind, IslandWaterVisualKind::PondSurface);
+
+        let lake = SkyIsland::new(
+            "sapphire basin",
+            Vec3::ZERO,
+            Vec2::new(100.0, 64.0),
+            20.0,
+            false,
+        );
+        let lake_specs = island_water_visual_specs(2, lake);
+        assert_eq!(
+            lake_specs
+                .iter()
+                .filter(|spec| spec.kind == IslandWaterVisualKind::RouteLakeSurface)
+                .count(),
+            1
+        );
+        assert_eq!(
+            lake_specs
+                .iter()
+                .filter(|spec| spec.kind == IslandWaterVisualKind::RiverChannel)
+                .count(),
+            1
+        );
+        assert!(
+            lake_specs
+                .iter()
+                .all(|spec| spec.kind != IslandWaterVisualKind::PondSurface)
+        );
+        let lake_channel = lake_specs
+            .iter()
+            .find(|spec| spec.label == "lake inlet channel")
+            .expect("lake basin should receive an inlet channel");
+        let lake_offset = route_lake_basin_offset(lake);
+        let source_offset = Vec2::new(-0.34, 0.28);
+        let outlet_offset = lake_offset.lerp(source_offset, 0.42);
+        let source = island_water_surface_position(lake, source_offset);
+        let outlet = island_water_surface_position(lake, outlet_offset);
+        let (channel_start, channel_end) = channel_endpoints(*lake_channel);
+        assert!(channel_start.distance(Vec2::new(source.x, source.z)) < 0.15);
+        assert!(channel_end.distance(Vec2::new(outlet.x, outlet.z)) < 0.15);
+
+        let waterfall = SkyIsland::new(
+            "cloudfall meadow",
+            Vec3::ZERO,
+            Vec2::new(90.0, 64.0),
+            28.0,
+            false,
+        );
+        let waterfall_specs = island_water_visual_specs(3, waterfall);
+        for kind in [
+            IslandWaterVisualKind::RiverChannel,
+            IslandWaterVisualKind::RouteWaterfallRibbon,
+            IslandWaterVisualKind::RouteWaterfallMist,
+        ] {
+            assert_eq!(
+                waterfall_specs
+                    .iter()
+                    .filter(|spec| spec.kind == kind)
+                    .count(),
+                1
+            );
+        }
+        assert!(
+            waterfall_specs
+                .iter()
+                .all(|spec| spec.kind != IslandWaterVisualKind::PondSurface)
+        );
+        assert!(
+            waterfall_specs
+                .iter()
+                .any(|spec| spec.label == "waterfall feeder channel")
+        );
+
+        let plateau = SkyIsland::new(
+            "great sky plateau",
+            Vec3::ZERO,
+            Vec2::new(230.0, 155.0),
+            72.0,
+            false,
+        );
+        let plateau_specs = island_water_visual_specs(4, plateau);
+        assert_eq!(
+            plateau_specs
+                .iter()
+                .filter(|spec| spec.kind == IslandWaterVisualKind::PondSurface)
+                .count(),
+            0
+        );
+        assert_eq!(
+            plateau_specs
+                .iter()
+                .filter(|spec| spec.kind == IslandWaterVisualKind::RiverChannel)
+                .count(),
+            4
+        );
+        assert_eq!(
+            plateau_specs
+                .iter()
+                .filter(|spec| spec.kind == IslandWaterVisualKind::PlateauLakeSurface)
+                .count(),
+            2
+        );
+        assert_eq!(
+            plateau_specs
+                .iter()
+                .filter(|spec| spec.kind == IslandWaterVisualKind::PlateauWaterfallRibbon)
+                .count(),
+            2
+        );
+        assert_eq!(
+            plateau_specs
+                .iter()
+                .filter(|spec| spec.kind == IslandWaterVisualKind::PlateauWaterfallMist)
+                .count(),
+            2
+        );
+        for label in [
+            "high shelf spillway",
+            "meadow runnel",
+            "broken edge outflow",
+            "broken edge waterfall",
+            "north rim overflow",
+            "north rim waterfall",
+        ] {
+            assert!(plateau_specs.iter().any(|spec| spec.label == label));
+        }
+
+        let high_shelf_spillway = *plateau_specs
+            .iter()
+            .find(|spec| spec.label == "high shelf spillway")
+            .expect("plateau should drain its high shelf pool");
+        let meadow_runnel = *plateau_specs
+            .iter()
+            .find(|spec| spec.label == "meadow runnel")
+            .expect("plateau should carry water across the meadow");
+        let broken_edge_outflow = *plateau_specs
+            .iter()
+            .find(|spec| spec.label == "broken edge outflow")
+            .expect("plateau should drain the low basin toward the broken edge");
+        let north_rim_overflow = *plateau_specs
+            .iter()
+            .find(|spec| spec.label == "north rim overflow")
+            .expect("plateau should branch its high-shelf water toward the north rim");
+        let (high_start, high_end) = channel_endpoints(high_shelf_spillway);
+        let (meadow_start, meadow_end) = channel_endpoints(meadow_runnel);
+        let (outflow_start, outflow_end) = channel_endpoints(broken_edge_outflow);
+        let (north_start, north_end) = channel_endpoints(north_rim_overflow);
+        let high_shelf =
+            island_water_surface_position(plateau, IslandPlateauRegion::HighShelf.sample_offset());
+        let low_basin =
+            island_water_surface_position(plateau, IslandPlateauRegion::LowBasin.sample_offset());
+        let broken_edge_lip = island_water_surface_position(
+            plateau,
+            plateau_waterfall_lip_offset(plateau, IslandPlateauRegion::BrokenEdge),
+        );
+        let north_rim_lip = island_water_surface_position(
+            plateau,
+            plateau_waterfall_lip_offset(plateau, IslandPlateauRegion::CliffRim),
+        );
+
+        assert!(high_start.distance(Vec2::new(high_shelf.x, high_shelf.z)) < 0.15);
+        assert!(north_start.distance(Vec2::new(high_shelf.x, high_shelf.z)) < 0.15);
+        assert!(high_end.distance(meadow_start) < 0.15);
+        assert!(meadow_end.distance(Vec2::new(low_basin.x, low_basin.z)) < 0.15);
+        assert!(meadow_end.distance(outflow_start) < 0.15);
+        assert!(outflow_end.distance(Vec2::new(broken_edge_lip.x, broken_edge_lip.z)) < 0.15);
+        assert!(north_end.distance(Vec2::new(north_rim_lip.x, north_rim_lip.z)) < 0.15);
+
+        for spec in lake_specs
+            .iter()
+            .chain(&waterfall_specs)
+            .chain(&plateau_specs)
+            .filter(|spec| spec.kind == IslandWaterVisualKind::RiverChannel)
+        {
+            let mesh = spec.build_mesh();
+            assert_eq!(
+                mesh.count_vertices(),
+                (RIVER_CHANNEL_SEGMENTS + 1) * RIVER_CHANNEL_COLUMNS
+            );
+        }
+    }
+
+    #[test]
+    fn great_plateau_artifacts_form_large_authored_precincts() {
+        let plateau = SkyIsland::new(
+            "great sky plateau",
+            Vec3::new(12.0, 80.0, -18.0),
+            Vec2::new(230.0, 155.0),
+            72.0,
+            false,
+        );
+        let specs = island_artifact_visual_specs(31, plateau);
+
+        assert_eq!(specs.len(), 6);
+        for kind in [
+            IslandArtifactVisualKind::AncientStairRun,
+            IslandArtifactVisualKind::RetainingWall,
+            IslandArtifactVisualKind::GlyphSlab,
+            IslandArtifactVisualKind::BridgeFragment,
+            IslandArtifactVisualKind::ReedPatch,
+            IslandArtifactVisualKind::PebbleField,
+        ] {
+            assert_eq!(specs.iter().filter(|spec| spec.kind == kind).count(), 1);
+        }
+
+        let stair = specs
+            .iter()
+            .find(|spec| spec.kind == IslandArtifactVisualKind::AncientStairRun)
+            .expect("plateau should have an arrival stair");
+        let wall = specs
+            .iter()
+            .find(|spec| spec.kind == IslandArtifactVisualKind::RetainingWall)
+            .expect("plateau should have high-shelf retaining stonework");
+        let bridge = specs
+            .iter()
+            .find(|spec| spec.kind == IslandArtifactVisualKind::BridgeFragment)
+            .expect("plateau should have a broken-edge bridge fragment");
+        let reeds = specs
+            .iter()
+            .find(|spec| spec.kind == IslandArtifactVisualKind::ReedPatch)
+            .expect("plateau should have a low-basin reed bed");
+        let pebbles = specs
+            .iter()
+            .find(|spec| spec.kind == IslandArtifactVisualKind::PebbleField)
+            .expect("plateau should have a low-basin pebble shore");
+
+        assert!(normalized_xz(plateau, stair.translation).x < -0.30);
+        assert!(normalized_xz(plateau, wall.translation).x < -0.50);
+        assert!(normalized_xz(plateau, bridge.translation).x > 0.40);
+        assert_eq!(
+            plateau.plateau_region_at_normalized_offset(normalized_xz(plateau, reeds.translation)),
+            Some(IslandPlateauRegion::LowBasin)
+        );
+        assert_eq!(
+            plateau
+                .plateau_region_at_normalized_offset(normalized_xz(plateau, pebbles.translation)),
+            Some(IslandPlateauRegion::LowBasin)
+        );
+
+        assert!(matches!(
+            stair.mesh,
+            IslandArtifactVisualMesh::AncientStairRun {
+                length,
+                width,
+                rise
+            } if length >= 28.0 && width >= 7.0 && rise >= 6.0
+        ));
+        assert!(matches!(
+            wall.mesh,
+            IslandArtifactVisualMesh::RetainingWall {
+                length,
+                height,
+                depth
+            } if length >= 34.0 && height >= 7.0 && depth >= 3.0
+        ));
+        assert!(matches!(
+            bridge.mesh,
+            IslandArtifactVisualMesh::BridgeFragment {
+                length,
+                width,
+                thickness
+            } if length >= 27.0 && width >= 7.0 && thickness >= 1.5
+        ));
+        assert!(matches!(
+            reeds.mesh,
+            IslandArtifactVisualMesh::ReedPatch { radius, height }
+                if radius >= 7.0 && height >= 4.0
+        ));
+        assert!(matches!(
+            pebbles.mesh,
+            IslandArtifactVisualMesh::PebbleField { radius } if radius >= 9.0
+        ));
+    }
+
+    #[test]
+    fn artifact_collision_policies_cover_every_family() {
+        assert_eq!(IslandArtifactVisualKind::ALL.len(), 7);
+        for kind in IslandArtifactVisualKind::ALL {
+            let expected = match kind {
+                IslandArtifactVisualKind::RetainingWall | IslandArtifactVisualKind::GlyphSlab => {
+                    IslandArtifactCollisionPolicy::SolidAabb
+                }
+                IslandArtifactVisualKind::AncientStairRun
+                | IslandArtifactVisualKind::BridgeFragment => {
+                    IslandArtifactCollisionPolicy::NonBlockingRouteAffordance
+                }
+                IslandArtifactVisualKind::BannerStrips
+                | IslandArtifactVisualKind::PebbleField
+                | IslandArtifactVisualKind::ReedPatch => {
+                    IslandArtifactCollisionPolicy::NonBlockingDecoration
+                }
+            };
+            assert_eq!(kind.collision_policy(), expected);
+        }
+    }
+
+    #[test]
+    fn solid_artifact_aabbs_are_grounded_and_bounded() {
+        let plateau = SkyIsland::new(
+            "great sky plateau",
+            Vec3::new(12.0, 80.0, -18.0),
+            Vec2::new(230.0, 155.0),
+            72.0,
+            false,
+        );
+        let specs = island_artifact_visual_specs(31, plateau);
+
+        for spec in specs {
+            let aabb = spec.solid_world_aabb();
+            assert_eq!(
+                aabb.is_some(),
+                spec.kind.collision_policy() == IslandArtifactCollisionPolicy::SolidAabb,
+                "{} must follow its explicit collision policy",
+                spec.kind.visual_name()
+            );
+            let Some((center, half_extents)) = aabb else {
+                continue;
+            };
+            assert!(center.is_finite());
+            assert!(half_extents.is_finite());
+            assert!(half_extents.cmpgt(Vec3::ZERO).all());
+            assert!((center.y - half_extents.y - spec.translation.y).abs() < 0.001);
+            assert!(plateau.contains_horizontal(center));
+            assert!(half_extents.x < plateau.half_extents.x);
+            assert!(half_extents.z < plateau.half_extents.y);
+        }
+    }
+
+    #[test]
+    fn artifact_visual_specs_are_deterministic() {
+        let island = SkyIsland::new(
+            "broken stair",
+            Vec3::new(12.0, 40.0, -8.0),
+            Vec2::new(22.0, 15.0),
+            12.0,
+            false,
+        );
+        let first = island_artifact_visual_specs(7, island);
+        let second = island_artifact_visual_specs(7, island);
+
+        assert!(!first.is_empty());
+        assert_eq!(first.len(), second.len());
+        for (first, second) in first.into_iter().zip(second) {
+            assert_eq!(first.kind, second.kind);
+            assert_eq!(first.kind.visual_name(), first.label);
+            assert_eq!(first.kind.label(), second.kind.label());
+            assert_eq!(first.translation, second.translation);
+            assert_eq!(first.rotation_y, second.rotation_y);
+            assert_eq!(first.material, second.material);
+
+            let first_mesh = first.build_mesh();
+            let second_mesh = second.build_mesh();
+            assert_eq!(positions(&first_mesh), positions(&second_mesh));
+        }
+    }
+
+    #[test]
+    fn artifact_mesh_generators_preserve_high_fidelity_density() {
+        let stair = artifact_stair_run_mesh(9.0, 2.4, 2.2, 61_111);
+        assert_eq!(stair.count_vertices(), ARTIFACT_STAIR_STEP_COUNT * 24);
+        assert!(axis_range(positions(&stair), 1) > 2.0);
+        assert!(axis_range(positions(&stair), 2) > 8.0);
+
+        let wall = artifact_retaining_wall_mesh(8.0, 2.4, 1.1, 61_222);
+        assert_eq!(wall.count_vertices(), ARTIFACT_RETAINING_WALL_SEGMENTS * 24);
+        assert!(axis_range(positions(&wall), 0) > 7.0);
+        assert!(axis_range(positions(&wall), 1) > 1.8);
+
+        let glyph = artifact_glyph_slab_mesh(2.2, 4.0, 0.7, 61_333);
+        assert_eq!(
+            glyph.count_vertices(),
+            (1 + ARTIFACT_GLYPH_STROKE_COUNT) * 24
+        );
+        assert!(axis_range(positions(&glyph), 1) > 3.8);
+
+        let bridge = artifact_bridge_fragment_mesh(10.0, 2.6, 0.6, 61_444);
+        assert!(bridge.count_vertices() >= ARTIFACT_BRIDGE_FRAGMENT_COUNT * 18);
+        assert!(axis_range(positions(&bridge), 0) > 9.0);
+        assert!(axis_range(positions(&bridge), 1) > 0.8);
+
+        let banners = artifact_banner_strips_mesh(3.8, 2.8, 61_555);
+        assert_eq!(
+            banners.count_vertices(),
+            24 + ARTIFACT_BANNER_STRIP_COUNT * DETAIL_CARD_VERTICES
+        );
+        assert!(axis_range(positions(&banners), 1) > 1.5);
+
+        let pebbles = artifact_pebble_field_mesh(2.2, 61_666);
+        assert!(pebbles.count_vertices() >= ARTIFACT_PEBBLE_COUNT * 30);
+        assert!(radial_range(positions(&pebbles)) > 1.5);
+
+        let reeds = artifact_reed_patch_mesh(1.8, 1.6, 61_777);
+        assert_eq!(
+            reeds.count_vertices(),
+            ARTIFACT_REED_COUNT * DETAIL_CARD_VERTICES
+        );
+        assert!(axis_range(positions(&reeds), 1) > 0.8);
+        assert!(radial_range(positions(&reeds)) > 1.0);
+    }
 }

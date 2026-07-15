@@ -36,6 +36,7 @@ pub(crate) struct IslandContentDiagnostics {
     pub(crate) generated_rock_count: usize,
     pub(crate) min_rock_mesh_vertices: usize,
     pub(crate) generated_landmark_count: usize,
+    pub(crate) generated_ruin_cluster_count: usize,
     pub(crate) generated_route_cairn_count: usize,
     pub(crate) generated_launch_beacon_count: usize,
     pub(crate) generated_landing_garden_marker_count: usize,
@@ -216,6 +217,10 @@ impl IslandContentDiagnostics {
         self.generated_rock_count += 1;
     }
 
+    pub(crate) fn record_generated_ruin_cluster(&mut self) {
+        self.generated_ruin_cluster_count += 1;
+    }
+
     pub(crate) fn record_generated_landmark(
         &mut self,
         kind: GeneratedLandmarkKind,
@@ -240,6 +245,7 @@ impl IslandContentDiagnostics {
             GeneratedLandmarkKind::LakeBasin => {}
             GeneratedLandmarkKind::WaterFeature => {}
             GeneratedLandmarkKind::CaveFeature => {}
+            GeneratedLandmarkKind::ArtifactDetail => {}
         }
     }
 
@@ -294,6 +300,7 @@ pub(crate) enum GeneratedLandmarkKind {
     LakeBasin,
     WaterFeature,
     CaveFeature,
+    ArtifactDetail,
 }
 
 impl GeneratedLandmarkKind {
@@ -309,7 +316,8 @@ impl GeneratedLandmarkKind {
             | IslandWaterVisualKind::PlateauWaterfallMist
             | IslandWaterVisualKind::RouteWaterfallRibbon
             | IslandWaterVisualKind::RouteWaterfallMist
-            | IslandWaterVisualKind::RouteLakeSurface => Self::WaterFeature,
+            | IslandWaterVisualKind::RouteLakeSurface
+            | IslandWaterVisualKind::RiverChannel => Self::WaterFeature,
         }
     }
 }
@@ -380,6 +388,7 @@ mod tests {
         diagnostics.record_generated_rock(80);
         diagnostics.record_generated_landmark(GeneratedLandmarkKind::RouteCairn, 250);
         diagnostics.record_generated_landmark(GeneratedLandmarkKind::RuinArch, 550);
+        diagnostics.record_generated_ruin_cluster();
         diagnostics.record_generated_landmark(GeneratedLandmarkKind::LaunchBeacon, 306);
         diagnostics.record_generated_landmark(GeneratedLandmarkKind::LandingGardenMarker, 39);
         diagnostics.record_generated_landmark(GeneratedLandmarkKind::PondSurface, 65);
@@ -402,6 +411,7 @@ mod tests {
         assert_eq!(diagnostics.generated_rock_count, 2);
         assert_eq!(diagnostics.min_rock_mesh_vertices, 74);
         assert_eq!(diagnostics.generated_landmark_count, 10);
+        assert_eq!(diagnostics.generated_ruin_cluster_count, 1);
         assert_eq!(diagnostics.generated_route_cairn_count, 1);
         assert_eq!(diagnostics.generated_launch_beacon_count, 1);
         assert_eq!(diagnostics.generated_landing_garden_marker_count, 1);

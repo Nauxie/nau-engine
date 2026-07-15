@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use super::types::{AuthoredVisualScene, AuthoredVisualSceneRole};
-use crate::Player;
+use crate::{Player, eval_runtime::EvalRun};
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PlayerPoseIntent, ScarfSegment, Side,
 };
@@ -654,6 +654,7 @@ fn authored_player_air_turn_clip(input: FlightInput) -> AuthoredPlayerClip {
 
 pub(crate) fn update_authored_player_animation(
     time: Res<Time>,
+    eval: Option<Res<EvalRun>>,
     player: Query<(&Velocity, &AnimationState), With<Player>>,
     mut authored_players: Query<(
         &mut AnimationPlayer,
@@ -675,7 +676,7 @@ pub(crate) fn update_authored_player_animation(
         desired_clip: Some(desired),
         ..default()
     };
-    let dt = time.delta_secs();
+    let dt = eval.map_or_else(|| time.delta_secs(), |run| run.scenario.fixed_dt);
 
     for (mut animation_player, mut transitions, mut authored_animation) in &mut authored_players {
         next_diagnostics.player_count += 1;

@@ -52,6 +52,7 @@ struct CheckpointAudit {
     metadata_path: String,
     screenshot_path: String,
     checkpoint: String,
+    route_marker_projection_required: bool,
     in_viewport_marker_count: usize,
     occluded_marker_count: usize,
     visible_marker_count: usize,
@@ -92,7 +93,15 @@ fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, String> {
         .filter(|marker| marker.visibility == "visible")
         .count();
     let marker_pixel_hit_count = markers.iter().filter(|marker| marker.passed).count();
-    let passed = visible_marker_count > 0 && marker_pixel_hit_count > 0;
+    let route_marker_projection_required = parsed
+        .get("route_marker_projection_required")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let passed = if visible_marker_count > 0 {
+        marker_pixel_hit_count > 0
+    } else {
+        !route_marker_projection_required
+    };
     let checkpoint = parsed
         .get("checkpoint")
         .and_then(Value::as_str)
@@ -103,6 +112,7 @@ fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, String> {
         metadata_path: path.to_string_lossy().into_owned(),
         screenshot_path: screenshot_path.to_string_lossy().into_owned(),
         checkpoint,
+        route_marker_projection_required,
         in_viewport_marker_count,
         occluded_marker_count,
         visible_marker_count,
@@ -301,10 +311,11 @@ fn checkpoint_json(checkpoint: &CheckpointAudit) -> String {
         .collect::<Vec<_>>()
         .join(",\n");
     format!(
-        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"checkpoint\": {},\n      \"passed\": {},\n      \"in_viewport_marker_count\": {},\n      \"occluded_marker_count\": {},\n      \"visible_marker_count\": {},\n      \"marker_pixel_hit_count\": {},\n      \"markers\": [\n{}\n      ]\n    }}",
+        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"checkpoint\": {},\n      \"route_marker_projection_required\": {},\n      \"passed\": {},\n      \"in_viewport_marker_count\": {},\n      \"occluded_marker_count\": {},\n      \"visible_marker_count\": {},\n      \"marker_pixel_hit_count\": {},\n      \"markers\": [\n{}\n      ]\n    }}",
         json_string(&checkpoint.metadata_path),
         json_string(&checkpoint.screenshot_path),
         json_string(&checkpoint.checkpoint),
+        checkpoint.route_marker_projection_required,
         checkpoint.passed,
         checkpoint.in_viewport_marker_count,
         checkpoint.occluded_marker_count,
@@ -408,6 +419,30 @@ mod tests {
     }
 
     #[test]
+    fn marker_projection_audit_checks_visible_markers_when_projection_is_optional() {
+        let temp_dir = unique_temp_dir("marker_projection_optional_visible");
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let screenshot_path = temp_dir.join("checkpoint.png");
+        let metadata_path = temp_dir.join("checkpoint.markers.json");
+        RgbImage::from_pixel(80, 60, Rgb([72, 118, 172]))
+            .save(&screenshot_path)
+            .expect("screenshot");
+        fs::write(
+            &metadata_path,
+            marker_metadata_json_with_viewport(&screenshot_path, 40.0, 30.0, 0.0, 0.0, false),
+        )
+        .expect("metadata");
+
+        let audit = audit_checkpoint_path(&metadata_path).expect("audit");
+
+        assert!(!audit.passed);
+        assert!(!audit.route_marker_projection_required);
+        assert_eq!(audit.visible_marker_count, 1);
+        assert_eq!(audit.marker_pixel_hit_count, 0);
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
     fn marker_projection_audit_scales_logical_viewport_to_retina_screenshot() {
         let temp_dir = unique_temp_dir("marker_projection_retina");
         fs::create_dir_all(&temp_dir).expect("temp dir");
@@ -419,7 +454,7 @@ mod tests {
         image.save(&screenshot_path).expect("screenshot");
         fs::write(
             &metadata_path,
-            marker_metadata_json_with_viewport(&screenshot_path, 40.0, 30.0, 80.0, 60.0),
+            marker_metadata_json_with_viewport(&screenshot_path, 40.0, 30.0, 80.0, 60.0, true),
         )
         .expect("metadata");
 
@@ -458,6 +493,54 @@ mod tests {
         let _ = fs::remove_dir_all(temp_dir);
     }
 
+    #[test]
+    fn marker_projection_audit_accepts_optional_markerless_checkpoint() {
+        let temp_dir = unique_temp_dir("marker_projection_optional_markerless");
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let screenshot_path = temp_dir.join("checkpoint.png");
+        let metadata_path = temp_dir.join("checkpoint.markers.json");
+        RgbImage::from_pixel(80, 60, Rgb([72, 118, 172]))
+            .save(&screenshot_path)
+            .expect("screenshot");
+        fs::write(
+            &metadata_path,
+            markerless_metadata_json(&screenshot_path, false),
+        )
+        .expect("metadata");
+
+        let audit = audit_checkpoint_path(&metadata_path).expect("audit");
+
+        assert!(audit.passed);
+        assert!(!audit.route_marker_projection_required);
+        assert_eq!(audit.visible_marker_count, 0);
+        assert_eq!(audit.marker_pixel_hit_count, 0);
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn marker_projection_audit_rejects_required_markerless_checkpoint() {
+        let temp_dir = unique_temp_dir("marker_projection_required_markerless");
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let screenshot_path = temp_dir.join("checkpoint.png");
+        let metadata_path = temp_dir.join("checkpoint.markers.json");
+        RgbImage::from_pixel(80, 60, Rgb([72, 118, 172]))
+            .save(&screenshot_path)
+            .expect("screenshot");
+        fs::write(
+            &metadata_path,
+            markerless_metadata_json(&screenshot_path, true),
+        )
+        .expect("metadata");
+
+        let audit = audit_checkpoint_path(&metadata_path).expect("audit");
+
+        assert!(!audit.passed);
+        assert!(audit.route_marker_projection_required);
+        assert_eq!(audit.visible_marker_count, 0);
+        assert_eq!(audit.marker_pixel_hit_count, 0);
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
     fn unique_temp_dir(name: &str) -> PathBuf {
         env::temp_dir().join(format!(
             "nau_{name}_{}_{}",
@@ -467,7 +550,7 @@ mod tests {
     }
 
     fn marker_metadata_json(screenshot_path: &Path, x: f64, y: f64) -> String {
-        marker_metadata_json_with_viewport(screenshot_path, x, y, 0.0, 0.0)
+        marker_metadata_json_with_viewport(screenshot_path, x, y, 0.0, 0.0, true)
     }
 
     fn marker_metadata_json_with_viewport(
@@ -476,6 +559,7 @@ mod tests {
         y: f64,
         viewport_width: f64,
         viewport_height: f64,
+        route_marker_projection_required: bool,
     ) -> String {
         let viewport_json = if viewport_width > 0.0 && viewport_height > 0.0 {
             format!(
@@ -487,9 +571,10 @@ mod tests {
             String::new()
         };
         format!(
-            "{{\"passed\": true, \"checkpoint\": \"test\", \"screenshot\": {}{}, \"markers\": [{{\"kind\": \"route_cairn\", \"label\": \"test\", \"current_objective\": false, \"in_viewport\": true, \"visibility\": \"visible\", \"screen\": {{\"x\": {}, \"y\": {}}}}}]}}",
+            "{{\"passed\": true, \"checkpoint\": \"test\", \"screenshot\": {}{}, \"route_marker_projection_required\": {}, \"markers\": [{{\"kind\": \"route_cairn\", \"label\": \"test\", \"current_objective\": false, \"in_viewport\": true, \"visibility\": \"visible\", \"screen\": {{\"x\": {}, \"y\": {}}}}}]}}",
             json_string(&screenshot_path.to_string_lossy()),
             viewport_json,
+            route_marker_projection_required,
             json_number(x),
             json_number(y)
         )
@@ -497,8 +582,19 @@ mod tests {
 
     fn marker_metadata_json_with_visibility(screenshot_path: &Path) -> String {
         format!(
-            "{{\"passed\": true, \"checkpoint\": \"test\", \"screenshot\": {}, \"markers\": [{{\"kind\": \"route_cairn\", \"label\": \"visible\", \"current_objective\": false, \"in_viewport\": true, \"visibility\": \"visible\", \"screen\": {{\"x\": 40.0000, \"y\": 30.0000}}}}, {{\"kind\": \"route_cairn\", \"label\": \"occluded\", \"current_objective\": false, \"in_viewport\": true, \"visibility\": \"occluded\", \"screen\": {{\"x\": 20.0000, \"y\": 15.0000}}, \"occluder\": {{\"kind\": \"sky_island\", \"label\": \"test\", \"distance_m\": 12.0000}}}}]}}",
+            "{{\"passed\": true, \"checkpoint\": \"test\", \"screenshot\": {}, \"route_marker_projection_required\": true, \"markers\": [{{\"kind\": \"route_cairn\", \"label\": \"visible\", \"current_objective\": false, \"in_viewport\": true, \"visibility\": \"visible\", \"screen\": {{\"x\": 40.0000, \"y\": 30.0000}}}}, {{\"kind\": \"route_cairn\", \"label\": \"occluded\", \"current_objective\": false, \"in_viewport\": true, \"visibility\": \"occluded\", \"screen\": {{\"x\": 20.0000, \"y\": 15.0000}}, \"occluder\": {{\"kind\": \"sky_island\", \"label\": \"test\", \"distance_m\": 12.0000}}}}]}}",
             json_string(&screenshot_path.to_string_lossy())
+        )
+    }
+
+    fn markerless_metadata_json(
+        screenshot_path: &Path,
+        route_marker_projection_required: bool,
+    ) -> String {
+        format!(
+            "{{\"passed\": true, \"checkpoint\": \"test\", \"screenshot\": {}, \"route_marker_projection_required\": {}, \"markers\": []}}",
+            json_string(&screenshot_path.to_string_lossy()),
+            route_marker_projection_required
         )
     }
 }

@@ -3,7 +3,7 @@ use super::semantics::capture_due_checkpoint_screenshots;
 use crate::eval_runtime::{EvalRun, path_string};
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
-use std::{fs, path::Path};
+use std::{fs, io::ErrorKind, path::Path};
 
 const EVAL_SCREENSHOT_TIMEOUT_FRAMES: u32 = 180;
 
@@ -22,19 +22,40 @@ pub(crate) fn finish_eval_frame(
 
     if run.finalized {
         if let Some(exit_success) = run.pending_screenshot_exit_success {
-            if run
-                .screenshot_path
-                .as_deref()
-                .is_some_and(screenshot_file_ready)
-            {
-                run.pending_screenshot_exit_success = None;
-                let exit = if exit_success {
+            if run.screenshot_path.is_none() {
+                app_exit.write(if exit_success {
                     AppExit::Success
                 } else {
                     AppExit::error()
-                };
-                app_exit.write(exit);
+                });
                 return;
+            }
+
+            let screenshot_path = run
+                .screenshot_path
+                .clone()
+                .expect("screenshot path checked above");
+            match screenshot_file_ready(&screenshot_path) {
+                Ok(true) => {
+                    run.pending_screenshot_exit_success = None;
+                    let exit = if exit_success {
+                        AppExit::Success
+                    } else {
+                        AppExit::error()
+                    };
+                    app_exit.write(exit);
+                    return;
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    run.pending_screenshot_exit_success = None;
+                    eprintln!(
+                        "failed to read eval screenshot {}: {error}",
+                        path_string(&screenshot_path)
+                    );
+                    app_exit.write(AppExit::error());
+                    return;
+                }
             }
 
             run.screenshot_wait_frames += 1;
@@ -84,23 +105,96 @@ pub(crate) fn finish_eval_frame(
             },
         );
     } else if passed {
+        run.pending_screenshot_exit_success = Some(true);
         app_exit.write(AppExit::Success);
     } else {
+        run.pending_screenshot_exit_success = Some(false);
         app_exit.write(AppExit::error());
     }
 }
 
-fn screenshot_file_ready(path: &Path) -> bool {
-    let Ok(metadata) = fs::metadata(path) else {
-        return false;
+fn screenshot_file_ready(path: &Path) -> Result<bool, String> {
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if retryable_screenshot_io_error(error.kind()) => return Ok(false),
+        Err(error) => return Err(error.to_string()),
     };
     if metadata.len() == 0 {
-        return false;
+        return Ok(false);
     }
 
-    image::ImageReader::open(path)
-        .and_then(|reader| reader.with_guessed_format())
-        .ok()
-        .and_then(|reader| reader.decode().ok())
-        .is_some_and(|image| image.width() > 0 && image.height() > 0)
+    let reader = match image::ImageReader::open(path) {
+        Ok(reader) => reader,
+        Err(error) if retryable_screenshot_io_error(error.kind()) => return Ok(false),
+        Err(error) => return Err(error.to_string()),
+    };
+    let reader = match reader.with_guessed_format() {
+        Ok(reader) => reader,
+        Err(error) if retryable_screenshot_io_error(error.kind()) => return Ok(false),
+        Err(error) => return Err(error.to_string()),
+    };
+
+    match reader.decode() {
+        Ok(image) => Ok(image.width() > 0 && image.height() > 0),
+        Err(image::ImageError::IoError(error)) if retryable_screenshot_io_error(error.kind()) => {
+            Ok(false)
+        }
+        Err(image::ImageError::IoError(error)) => Err(error.to_string()),
+        Err(_) => Ok(false),
+    }
+}
+
+fn retryable_screenshot_io_error(kind: ErrorKind) -> bool {
+    matches!(
+        kind,
+        ErrorKind::NotFound
+            | ErrorKind::Interrupted
+            | ErrorKind::UnexpectedEof
+            | ErrorKind::WouldBlock
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::screenshot_file_ready;
+    use image::{Rgb, RgbImage};
+    use std::{env, fs, process};
+
+    #[test]
+    fn final_screenshot_readiness_requires_a_decodable_image() {
+        let temp_dir = env::temp_dir().join(format!(
+            "nau_final_screenshot_readiness_{}_{}",
+            process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let screenshot_path = temp_dir.join("final.png");
+
+        assert!(!screenshot_file_ready(&screenshot_path).expect("missing file is pending"));
+        fs::write(&screenshot_path, b"not a complete png").expect("partial screenshot");
+        assert!(!screenshot_file_ready(&screenshot_path).expect("invalid image is pending"));
+
+        RgbImage::from_pixel(2, 2, Rgb([12, 34, 56]))
+            .save(&screenshot_path)
+            .expect("valid screenshot");
+        assert!(screenshot_file_ready(&screenshot_path).expect("readable screenshot"));
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn final_screenshot_readiness_surfaces_filesystem_errors() {
+        let temp_dir = env::temp_dir().join(format!(
+            "nau_final_screenshot_io_error_{}_{}",
+            process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let parent_file = temp_dir.join("not-a-directory");
+        fs::write(&parent_file, b"file").expect("parent file");
+
+        assert!(screenshot_file_ready(&parent_file.join("final.png")).is_err());
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
 }

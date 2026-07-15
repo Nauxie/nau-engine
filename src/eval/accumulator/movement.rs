@@ -21,6 +21,7 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     observe_launch_velocity(accumulator, sample);
 
     observe_grounded_visual_footing(accumulator, sample);
+    observe_movement_camera_heading(accumulator, sample);
     observe_body_heading(accumulator, sample);
     observe_body_roll(accumulator, sample);
     observe_desired_heading_alignment(accumulator, sample);
@@ -33,6 +34,15 @@ pub(super) fn observe(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
     observe_authored_clip_coverage(accumulator, sample);
     observe_pose_intent_counts(accumulator, sample);
     observe_mode_counts(accumulator, sample);
+}
+
+fn observe_movement_camera_heading(accumulator: &mut EvalAccumulator, sample: &EvalSample) {
+    if sample.movement_camera_heading_error_degrees.is_finite() {
+        accumulator.movement_camera_heading_samples += 1;
+        accumulator.max_movement_camera_heading_error_degrees = accumulator
+            .max_movement_camera_heading_error_degrees
+            .max(sample.movement_camera_heading_error_degrees);
+    }
 }
 
 fn observe_launch_velocity(accumulator: &mut EvalAccumulator, sample: &EvalSample) {

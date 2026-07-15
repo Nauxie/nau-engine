@@ -3,7 +3,9 @@ use super::{
     landmarks::visual_content_landmark_summaries,
     metrics::{finite_range_f32, finite_ratio, min_finite_f32, visual_content_mesh_summary},
     palette::visual_content_palette_summary,
-    types::{VisualContentExportReport, VisualGroundCoverSummary, VisualTreeSummary},
+    types::{
+        VisualContentExportReport, VisualGroundCoverSummary, VisualRockSummary, VisualTreeSummary,
+    },
     vegetation::{
         ground_cover_blade_stats, tree_canopy_lobe_count, tree_trunk_shape_metrics,
         visual_content_tree_specs,
@@ -13,8 +15,9 @@ use crate::{
     content_export::shared::{terrain_export_slug, write_mesh_obj},
     eval_runtime::remove_existing_dir,
     generated_content::{
-        GROUND_COVER_PATCHES, TERRAIN_BIOME_PALETTE_COUNT, TREE_CANOPY_CARD_COUNT,
-        island_ground_cover_mesh, tree_canopy_mesh, tree_trunk_mesh,
+        TERRAIN_BIOME_PALETTE_COUNT, TREE_CANOPY_CARD_COUNT, island_detail_budget,
+        island_ground_cover_mesh, island_rock_specs, island_ruin_specs, rock_scatter_mesh,
+        tree_canopy_mesh, tree_trunk_mesh,
     },
 };
 use nau_engine::world::{IslandScaleClass, SkyRoute};
@@ -35,12 +38,15 @@ pub(crate) fn export_visual_content_inspection(
     let route = SkyRoute::default();
     let mut ground_cover = Vec::with_capacity(route.islands().len());
     let mut trees = Vec::new();
+    let mut rocks = Vec::new();
     let mut clouds = Vec::new();
     let mut landmarks = Vec::new();
 
     for (island_index, island) in route.islands().iter().copied().enumerate() {
         let island_slug = terrain_export_slug(island.name);
-        let ground_mesh = island_ground_cover_mesh(island_index, island);
+        let detail_budget = island_detail_budget(island);
+        let ground_mesh =
+            island_ground_cover_mesh(island_index, island, detail_budget.ground_cover_patch_count);
         let ground_obj = PathBuf::from("visuals")
             .join(format!("{island_index:02}_{island_slug}_ground_cover.obj"));
         write_mesh_obj(&output_dir.join(&ground_obj), &ground_mesh, "ground cover")?;
@@ -49,7 +55,7 @@ pub(crate) fn export_visual_content_inspection(
             island_name: island.name,
             island_slug: island_slug.clone(),
             mesh: visual_content_mesh_summary(ground_obj, &ground_mesh),
-            patch_count: GROUND_COVER_PATCHES,
+            patch_count: detail_budget.ground_cover_patch_count,
             blade_count: blade_stats.blade_count,
             min_blade_height_m: blade_stats.min_height_m,
             max_blade_height_m: blade_stats.max_height_m,
@@ -58,7 +64,8 @@ pub(crate) fn export_visual_content_inspection(
 
         for tree in visual_content_tree_specs(island_index, island) {
             let tree_slug = terrain_export_slug(&tree.label);
-            let trunk_mesh = tree_trunk_mesh(tree.trunk_radius_m, tree.trunk_height_m, tree.seed);
+            let trunk_mesh =
+                tree_trunk_mesh(tree.trunk_radius_m, tree.trunk_height_m, tree.trunk_seed);
             let canopy_mesh = tree_canopy_mesh(tree.canopy_radius_m, tree.canopy_seed);
             let trunk_obj = PathBuf::from("visuals").join(format!(
                 "{island_index:02}_{island_slug}_{tree_slug}_trunk.obj"
@@ -91,6 +98,24 @@ pub(crate) fn export_visual_content_inspection(
                 canopy_lobe_count: tree_canopy_lobe_count(),
                 canopy_detail_card_count: TREE_CANOPY_CARD_COUNT,
                 canopy_vertical_to_horizontal_ratio,
+            });
+        }
+
+        for (rock_index, rock) in island_rock_specs(island_index, island)
+            .into_iter()
+            .enumerate()
+        {
+            let label = format!("rock scatter {rock_index}");
+            let rock_slug = terrain_export_slug(&label);
+            let mesh = rock_scatter_mesh(rock.scale_m, rock.seed);
+            let obj = PathBuf::from("visuals")
+                .join(format!("{island_index:02}_{island_slug}_{rock_slug}.obj"));
+            write_mesh_obj(&output_dir.join(&obj), &mesh, "rock scatter")?;
+            rocks.push(VisualRockSummary {
+                island_name: island.name,
+                label,
+                mesh: visual_content_mesh_summary(obj, &mesh),
+                scale_m: rock.scale_m,
             });
         }
 
@@ -131,6 +156,16 @@ pub(crate) fn export_visual_content_inspection(
         .map(|summary| summary.kind)
         .collect::<HashSet<_>>()
         .len();
+    let artifact_detail_count = landmarks
+        .iter()
+        .filter(|summary| summary.kind.starts_with("artifact_"))
+        .count();
+    let artifact_detail_kind_count = landmarks
+        .iter()
+        .filter(|summary| summary.kind.starts_with("artifact_"))
+        .map(|summary| summary.kind)
+        .collect::<HashSet<_>>()
+        .len();
     let small_island_count = route
         .islands()
         .iter()
@@ -165,6 +200,10 @@ pub(crate) fn export_visual_content_inspection(
         .iter()
         .filter(|summary| summary.kind == "route_lake_surface")
         .count();
+    let river_channel_count = landmarks
+        .iter()
+        .filter(|summary| summary.kind == "river_channel")
+        .count();
     let under_route_visual_count = landmarks
         .iter()
         .filter(|summary| summary.kind.starts_with("under_route_"))
@@ -173,8 +212,16 @@ pub(crate) fn export_visual_content_inspection(
         .iter()
         .filter(|summary| summary.kind == "under_route_cave_mouth")
         .count();
+    let ruin_cluster_count = route
+        .islands()
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|(island_index, island)| !island_ruin_specs(*island_index, *island).is_empty())
+        .count();
 
-    let mesh_count = ground_cover.len() + trees.len() * 2 + clouds.len() + landmarks.len();
+    let mesh_count =
+        ground_cover.len() + trees.len() * 2 + rocks.len() + clouds.len() + landmarks.len();
     let total_vertex_count = ground_cover
         .iter()
         .map(|summary| summary.mesh.vertex_count)
@@ -183,6 +230,7 @@ pub(crate) fn export_visual_content_inspection(
                 .iter()
                 .flat_map(|summary| [summary.trunk.vertex_count, summary.canopy.vertex_count]),
         )
+        .chain(rocks.iter().map(|summary| summary.mesh.vertex_count))
         .chain(clouds.iter().map(|summary| summary.mesh.vertex_count))
         .chain(landmarks.iter().map(|summary| summary.mesh.vertex_count))
         .sum();
@@ -194,6 +242,7 @@ pub(crate) fn export_visual_content_inspection(
                 .iter()
                 .flat_map(|summary| [summary.trunk.triangle_count, summary.canopy.triangle_count]),
         )
+        .chain(rocks.iter().map(|summary| summary.mesh.triangle_count))
         .chain(clouds.iter().map(|summary| summary.mesh.triangle_count))
         .chain(landmarks.iter().map(|summary| summary.mesh.triangle_count))
         .sum();
@@ -209,6 +258,7 @@ pub(crate) fn export_visual_content_inspection(
         ground_cover_blade_total: ground_cover.iter().map(|summary| summary.blade_count).sum(),
         tree_trunk_count: trees.len(),
         tree_canopy_count: trees.len(),
+        rock_count: rocks.len(),
         weather_cloud_count: clouds.len(),
         weather_cloud_bank_count: clouds.iter().filter(|summary| summary.bank).count(),
         weather_cloud_veil_count: clouds
@@ -217,6 +267,36 @@ pub(crate) fn export_visual_content_inspection(
             .count(),
         landmark_count: landmarks.len(),
         landmark_kind_count,
+        artifact_detail_count,
+        artifact_detail_kind_count,
+        artifact_stair_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_ancient_stair")
+            .count(),
+        artifact_bridge_fragment_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_bridge_fragment")
+            .count(),
+        artifact_glyph_slab_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_glyph_slab")
+            .count(),
+        artifact_retaining_wall_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_retaining_wall")
+            .count(),
+        artifact_banner_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_banner_strips")
+            .count(),
+        artifact_pebble_field_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_pebble_field")
+            .count(),
+        artifact_reed_patch_count: landmarks
+            .iter()
+            .filter(|summary| summary.kind == "artifact_reed_patch")
+            .count(),
         small_island_count,
         plateau_landmark_count,
         plateau_waterfall_ribbon_count,
@@ -224,8 +304,10 @@ pub(crate) fn export_visual_content_inspection(
         route_waterfall_ribbon_count,
         route_waterfall_mist_count,
         route_lake_surface_count,
+        river_channel_count,
         under_route_visual_count,
         under_route_cave_mouth_count,
+        ruin_cluster_count,
         ruin_arch_count: landmarks
             .iter()
             .filter(|summary| summary.kind == "ruin_arch")
@@ -250,6 +332,11 @@ pub(crate) fn export_visual_content_inspection(
             .iter()
             .filter(|summary| summary.kind == "obstruction_spire")
             .count(),
+        min_ground_cover_patch_count: ground_cover
+            .iter()
+            .map(|summary| summary.patch_count)
+            .min()
+            .unwrap_or(0),
         min_ground_cover_mesh_vertices: ground_cover
             .iter()
             .map(|summary| summary.mesh.vertex_count)
@@ -316,6 +403,14 @@ pub(crate) fn export_visual_content_inspection(
         ),
         tree_canopy_radius_range_m: finite_range_f32(
             trees.iter().map(|summary| summary.canopy_radius_m),
+        ),
+        min_rock_mesh_vertices: rocks
+            .iter()
+            .map(|summary| summary.mesh.vertex_count)
+            .min()
+            .unwrap_or(0),
+        min_rock_vertical_span_m: min_finite_f32(
+            rocks.iter().map(|summary| summary.mesh.vertical_span_m),
         ),
         min_weather_cloud_mesh_vertices: clouds
             .iter()
@@ -389,11 +484,51 @@ pub(crate) fn export_visual_content_inspection(
             &landmarks,
             "route_lake_surface",
         ),
+        min_river_channel_horizontal_span_m: min_landmark_planar_span(&landmarks, "river_channel"),
         min_under_route_visual_vertical_span_m: min_finite_f32(
             landmarks
                 .iter()
                 .filter(|summary| summary.kind.starts_with("under_route_"))
                 .map(|summary| summary.mesh.vertical_span_m),
+        ),
+        artifact_detail_vertex_total: landmarks
+            .iter()
+            .filter(|summary| summary.kind.starts_with("artifact_"))
+            .map(|summary| summary.mesh.vertex_count)
+            .sum(),
+        min_artifact_detail_mesh_vertices: landmarks
+            .iter()
+            .filter(|summary| summary.kind.starts_with("artifact_"))
+            .map(|summary| summary.mesh.vertex_count)
+            .min()
+            .unwrap_or(0),
+        min_artifact_stone_mesh_vertices: landmarks
+            .iter()
+            .filter(|summary| is_artifact_stone_kind(summary.kind))
+            .map(|summary| summary.mesh.vertex_count)
+            .min()
+            .unwrap_or(0),
+        min_artifact_stone_normal_slope_band_count: landmarks
+            .iter()
+            .filter(|summary| is_artifact_faceted_stone_kind(summary.kind))
+            .map(|summary| summary.normal_slope_band_count)
+            .min()
+            .unwrap_or(0),
+        min_artifact_stair_horizontal_span_m: min_landmark_planar_span(
+            &landmarks,
+            "artifact_ancient_stair",
+        ),
+        min_artifact_bridge_horizontal_span_m: min_landmark_planar_span(
+            &landmarks,
+            "artifact_bridge_fragment",
+        ),
+        min_artifact_banner_vertical_span_m: min_landmark_vertical_span(
+            &landmarks,
+            "artifact_banner_strips",
+        ),
+        min_artifact_reed_vertical_span_m: min_landmark_vertical_span(
+            &landmarks,
+            "artifact_reed_patch",
         ),
         min_ruin_arch_mesh_vertices: min_landmark_vertices(&landmarks, "ruin_arch"),
         min_ruin_arch_vertical_span_m: min_landmark_vertical_span(&landmarks, "ruin_arch"),
@@ -428,6 +563,7 @@ pub(crate) fn export_visual_content_inspection(
         stone_palette_count,
         ground_cover,
         trees,
+        rocks,
         clouds,
         landmarks,
         palettes,
@@ -444,6 +580,21 @@ fn min_landmark_vertices(landmarks: &[super::types::VisualLandmarkSummary], kind
         .map(|summary| summary.mesh.vertex_count)
         .min()
         .unwrap_or(0)
+}
+
+fn is_artifact_stone_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "artifact_ancient_stair"
+            | "artifact_retaining_wall"
+            | "artifact_glyph_slab"
+            | "artifact_bridge_fragment"
+            | "artifact_pebble_field"
+    )
+}
+
+fn is_artifact_faceted_stone_kind(kind: &str) -> bool {
+    kind == "artifact_pebble_field"
 }
 
 fn min_landmark_triangles(landmarks: &[super::types::VisualLandmarkSummary], kind: &str) -> usize {
@@ -476,6 +627,20 @@ fn min_landmark_horizontal_span(
             .iter()
             .filter(|summary| summary.kind == kind)
             .map(|summary| summary.mesh.horizontal_span_m),
+    )
+}
+
+fn min_landmark_planar_span(landmarks: &[super::types::VisualLandmarkSummary], kind: &str) -> f32 {
+    min_finite_f32(
+        landmarks
+            .iter()
+            .filter(|summary| summary.kind == kind)
+            .map(|summary| {
+                summary
+                    .mesh
+                    .horizontal_span_m
+                    .max(summary.mesh.depth_span_m)
+            }),
     )
 }
 

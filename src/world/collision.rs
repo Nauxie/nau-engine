@@ -5,10 +5,13 @@ use super::{ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT, SkyIsland, TERRAIN_MAX_RISE_M
 
 const PLAYER_COLLISION_RADIUS_M: f32 = 0.42;
 const PLAYER_COLLISION_HEIGHT_M: f32 = 1.85;
+const MAX_COLLISION_CORRECTION_PER_STEP_M: f32 = 0.5;
 const BASE_COLLISION_SKIN_M: f32 = 0.002;
 const TERRAIN_SIDE_COLLISION_RADIUS_M: f32 = 0.24;
 const TERRAIN_SIDE_SURFACE_CLEARANCE_M: f32 = 0.55;
 const TERRAIN_SIDE_COLLISION_BAND_M: f32 = TERRAIN_SIDE_COLLISION_RADIUS_M + 0.85;
+const TERRAIN_CONTACT_PROBE_OUTSET_M: f32 = 0.12;
+const TERRAIN_CONTACT_PROBE_DEPTH_M: f32 = TERRAIN_SIDE_SURFACE_CLEARANCE_M + 0.18;
 pub const TERRAIN_COLLISION_TRUTH_CONTOUR_SAMPLES_PER_ISLAND: usize = 32;
 pub const TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND: usize = ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT;
 pub const TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND: usize = 4;
@@ -73,6 +76,59 @@ pub fn terrain_body_collision_proxies(
     island: SkyIsland,
 ) -> [WorldCollisionProxy; TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND] {
     std::array::from_fn(|segment| terrain_body_collision_proxy(island, segment))
+}
+
+pub fn terrain_collision_contact_probe_position(
+    island: SkyIsland,
+    kind: WorldCollisionProxyKind,
+    preferred_outward: Vec2,
+) -> Option<Vec3> {
+    if !matches!(
+        kind,
+        WorldCollisionProxyKind::TerrainRim | WorldCollisionProxyKind::TerrainBody
+    ) {
+        return None;
+    }
+
+    let preferred_outward = preferred_outward.normalize_or_zero();
+    let proxies = terrain_body_collision_proxies(island)
+        .into_iter()
+        .chain(terrain_rim_collision_proxies(island))
+        .collect::<Vec<_>>();
+    let mut best_probe = None;
+    let mut best_alignment = f32::NEG_INFINITY;
+
+    for sample in 0..TERRAIN_SIDE_CONTOUR_DISTANCE_SAMPLES {
+        let angle =
+            sample as f32 / TERRAIN_SIDE_CONTOUR_DISTANCE_SAMPLES as f32 * std::f32::consts::TAU;
+        let contour = island.footprint_contour_point(angle, false);
+        let Some(outward) = playable_contour_outward_normal(island, angle) else {
+            continue;
+        };
+        let horizontal = contour + outward * TERRAIN_CONTACT_PROBE_OUTSET_M;
+        let mut probe = Vec3::new(horizontal.x, 0.0, horizontal.y);
+        probe.y = island.terrain_surface_y_at(probe) - TERRAIN_CONTACT_PROBE_DEPTH_M;
+        let resolution = resolve_world_collisions(
+            FlightState::new(probe, Vec3::ZERO, FlightController::default()),
+            proxies.iter().copied(),
+        );
+        let matches_kind = match kind {
+            WorldCollisionProxyKind::TerrainRim => {
+                resolution.terrain_rim_hit_count > 0 && resolution.terrain_body_hit_count == 0
+            }
+            WorldCollisionProxyKind::TerrainBody => resolution.terrain_body_hit_count > 0,
+            WorldCollisionProxyKind::Tree
+            | WorldCollisionProxyKind::Rock
+            | WorldCollisionProxyKind::Landmark => false,
+        };
+        let alignment = outward.dot(preferred_outward);
+        if matches_kind && alignment > best_alignment {
+            best_probe = Some(probe);
+            best_alignment = alignment;
+        }
+    }
+
+    best_probe
 }
 
 fn terrain_rim_collision_proxy(island: SkyIsland, segment: usize) -> WorldCollisionProxy {
@@ -147,6 +203,7 @@ pub struct WorldCollisionResolution {
     pub hit_count: usize,
     pub terrain_rim_hit_count: usize,
     pub terrain_body_hit_count: usize,
+    pub correction_distance_m: f32,
     pub max_push_m: f32,
     pub max_terrain_rim_push_m: f32,
     pub max_terrain_body_push_m: f32,
@@ -426,12 +483,17 @@ pub fn resolve_world_collisions(
     let mut hit_count = 0;
     let mut terrain_rim_hit_count = 0;
     let mut terrain_body_hit_count = 0;
+    let mut correction_distance_m = 0.0_f32;
     let mut max_push_m = 0.0_f32;
     let mut max_terrain_rim_push_m = 0.0_f32;
     let mut max_terrain_body_push_m = 0.0_f32;
     let mut resolved_terrain_side_islands = Vec::new();
+    let mut remaining_correction_m = MAX_COLLISION_CORRECTION_PER_STEP_M;
 
     for proxy in proxies {
+        if remaining_correction_m <= f32::EPSILON {
+            break;
+        }
         if skips_landing_recovery_collision(proxy.kind, state.controller.landing_recovery_timer) {
             continue;
         }
@@ -450,8 +512,11 @@ pub fn resolve_world_collisions(
         let Some((normal, push_m)) = player_proxy_push_out(state.position, proxy) else {
             continue;
         };
+        let push_m = push_m.min(remaining_correction_m);
 
         state.position += normal * push_m;
+        remaining_correction_m -= push_m;
+        correction_distance_m += push_m;
         let inward_speed = state.velocity.dot(normal);
         if inward_speed < 0.0 {
             state.velocity -= normal * inward_speed;
@@ -475,6 +540,7 @@ pub fn resolve_world_collisions(
         hit_count,
         terrain_rim_hit_count,
         terrain_body_hit_count,
+        correction_distance_m,
         max_push_m,
         max_terrain_rim_push_m,
         max_terrain_body_push_m,
@@ -705,6 +771,29 @@ mod tests {
     }
 
     #[test]
+    fn deep_collision_correction_is_bounded_per_step() {
+        let state = FlightState::new(
+            Vec3::ZERO,
+            Vec3::new(12.0, 0.0, 0.0),
+            FlightController::default(),
+        );
+        let proxy = WorldCollisionProxy::new(
+            Vec3::new(0.0, 0.9, 0.0),
+            Vec3::new(4.0, 0.9, 4.0),
+            WorldCollisionProxyKind::Landmark,
+        );
+
+        let resolution = resolve_world_collisions(state, [proxy]);
+
+        assert_eq!(resolution.hit_count, 1);
+        assert_eq!(resolution.max_push_m, MAX_COLLISION_CORRECTION_PER_STEP_M);
+        assert!(
+            resolution.state.position.distance(state.position)
+                <= MAX_COLLISION_CORRECTION_PER_STEP_M
+        );
+    }
+
+    #[test]
     fn terrain_rim_collision_pushes_side_contacts_without_blocking_top_surface() {
         let proxy = WorldCollisionProxy::new(
             Vec3::new(0.0, 5.0, 0.0),
@@ -862,6 +951,47 @@ mod tests {
         }
 
         assert!(occupied_octants.len() >= 7);
+    }
+
+    #[test]
+    fn terrain_contact_probes_track_authored_rim_and_body_geometry() {
+        let route = SkyRoute::default();
+        let island = route
+            .island_named("launch mesa")
+            .expect("launch island should exist");
+        let proxies = terrain_body_collision_proxies(island)
+            .into_iter()
+            .chain(terrain_rim_collision_proxies(island))
+            .collect::<Vec<_>>();
+
+        for (kind, preferred_outward) in [
+            (WorldCollisionProxyKind::TerrainRim, Vec2::new(1.0, 0.75)),
+            (WorldCollisionProxyKind::TerrainBody, Vec2::X),
+        ] {
+            let probe = terrain_collision_contact_probe_position(island, kind, preferred_outward)
+                .expect("authored terrain should expose the requested contact lane");
+            let resolution = resolve_world_collisions(
+                FlightState::new(probe, Vec3::ZERO, FlightController::default()),
+                proxies.iter().copied(),
+            );
+
+            match kind {
+                WorldCollisionProxyKind::TerrainRim => {
+                    assert_eq!(resolution.terrain_rim_hit_count, 1);
+                    assert_eq!(resolution.terrain_body_hit_count, 0);
+                    assert!(resolution.max_terrain_rim_push_m <= 0.15);
+                }
+                WorldCollisionProxyKind::TerrainBody => {
+                    assert_eq!(resolution.terrain_body_hit_count, 1);
+                    assert_eq!(resolution.terrain_rim_hit_count, 0);
+                    assert!(resolution.max_terrain_body_push_m <= 0.15);
+                }
+                WorldCollisionProxyKind::Tree
+                | WorldCollisionProxyKind::Rock
+                | WorldCollisionProxyKind::Landmark => unreachable!(),
+            }
+            assert!(resolution.max_push_m >= 0.04);
+        }
     }
 
     #[test]

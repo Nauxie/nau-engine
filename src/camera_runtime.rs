@@ -13,18 +13,47 @@ use bevy::render::render_resource::BlendState;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use nau_engine::camera::{
     CameraControlState, CameraControlTuning, CameraInput, CameraObstruction,
-    CameraObstructionHandoffState, FollowCamera, FollowCameraState, apply_camera_input,
-    camera_orbit_alignment_degrees, lift_camera_above_floor,
-    movement_input_stable_follow_direction, resolve_camera_obstruction_handoff,
-    step_camera_with_direction, update_follow_direction_state,
+    CameraObstructionHandoffState, FollowCamera, FollowCameraState, camera_orbit_alignment_degrees,
+    lift_camera_above_floor, movement_input_stable_follow_direction,
+    resolve_camera_obstruction_handoff, step_camera_control, step_camera_with_direction_and_input,
+    update_follow_direction_state,
 };
-use nau_engine::eval::{scripted_camera_input, scripted_input};
+use nau_engine::eval::{GREAT_SKY_PLATEAU_VISTAS, scripted_camera_input, scripted_input};
 use nau_engine::movement::Velocity;
-use nau_engine::world::SkyRoute;
+use nau_engine::world::{IslandPlateauRegion, SkyRoute, world_terrain_floor_y_at};
 
 const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
 const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
+const CAMERA_CAPTURE_STALE_DELTA_THRESHOLD_PX: f32 = 64.0;
+const PLATEAU_VISTA_TRANSITION_START_FRAME: u32 = 90;
+const PLATEAU_VISTA_TRANSITION_END_FRAME: u32 = 150;
 pub(crate) const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum CameraCorrectionSource {
+    #[default]
+    None,
+    Input,
+    Follow,
+    Floor,
+    Obstruction,
+    Distance,
+    Scripted,
+}
+
+impl CameraCorrectionSource {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Input => "input",
+            Self::Follow => "follow",
+            Self::Floor => "floor",
+            Self::Obstruction => "obstruction",
+            Self::Distance => "distance",
+            Self::Scripted => "scripted",
+        }
+    }
+}
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
 pub(crate) struct CameraDiagnostics {
@@ -35,6 +64,9 @@ pub(crate) struct CameraDiagnostics {
     pub(crate) follow_direction_error_degrees: f32,
     pub(crate) obstruction_adjustment_m: f32,
     pub(crate) obstruction_hits: usize,
+    pub(crate) correction_source: CameraCorrectionSource,
+    pub(crate) continuity_offset_limited: bool,
+    pub(crate) continuity_rotation_limited: bool,
 }
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
@@ -87,7 +119,24 @@ pub(crate) fn spawn_follow_camera(
     world_radius: f32,
     clear_color: Color,
 ) {
-    let follow_camera = FollowCamera::default();
+    spawn_follow_camera_with_settings(
+        commands,
+        scattering_mediums,
+        player_start,
+        FollowCamera::default(),
+        world_radius,
+        clear_color,
+    );
+}
+
+pub(crate) fn spawn_follow_camera_with_settings(
+    commands: &mut Commands,
+    scattering_mediums: &mut ResMut<Assets<ScatteringMedium>>,
+    player_start: Vec3,
+    follow_camera: FollowCamera,
+    world_radius: f32,
+    clear_color: Color,
+) {
     commands.spawn((
         Camera3d::default(),
         Camera {
@@ -185,33 +234,25 @@ pub(crate) fn update_camera_control(
     tuning: Res<CameraControlTuning>,
     mut state: ResMut<CameraControlState>,
     sources: CameraControlInputSources,
+    mut manual_look_active_last_frame: Local<bool>,
 ) {
     let input = if let Some(run) = eval.as_deref() {
+        *manual_look_active_last_frame = false;
         scripted_camera_input(run.scenario, run.frame)
     } else if let Some(input) = profile
         .as_deref()
-        .and_then(PlayProfileRun::scripted_camera_input)
+        .and_then(|profile| profile.scripted_camera_input(eval_dt(&time, eval.as_deref())))
     {
+        *manual_look_active_last_frame = false;
         input
     } else {
         let mouse_delta = sources.mouse_motion.delta;
-
-        CameraInput {
-            mouse_delta: if sources.mouse_look.captured
-                || sources.mouse_buttons.pressed(MouseButton::Right)
-            {
-                mouse_delta
-            } else {
-                Vec2::ZERO
-            },
-        }
+        let look_active =
+            sources.mouse_look.captured || sources.mouse_buttons.pressed(MouseButton::Right);
+        manual_camera_input(mouse_delta, look_active, &mut manual_look_active_last_frame)
     };
 
-    if input.mouse_delta.length_squared() <= 0.0 || time.delta_secs() <= 0.0 {
-        return;
-    }
-
-    state.orbit = apply_camera_input(state.orbit, input, &tuning);
+    step_camera_control(&mut state, input, &tuning, eval_dt(&time, eval.as_deref()));
 }
 
 pub(crate) fn follow_camera(
@@ -251,23 +292,26 @@ pub(crate) fn follow_camera(
     );
     let follow_direction =
         update_follow_direction_state(&mut follow_state, desired_follow_direction, follow, dt);
-    let frame = step_camera_with_direction(
+    let frame = step_camera_with_direction_and_input(
         camera_transform.translation,
         camera_transform.rotation,
         player_transform.translation,
         follow_direction,
         follow,
         scene.camera_control.orbit,
+        scene.camera_control.input_active,
         dt,
     );
-    let orbit_alignment_degrees = camera_orbit_alignment_degrees(
-        frame.position,
-        frame.look_target,
-        follow_direction,
-        scene.camera_control.orbit,
-    );
-    let camera_floor_y = scene.route.ground_at(frame.position).floor_y;
-    let frame = lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
+    let pre_floor_position = frame.position;
+    let initial_camera_floor_y =
+        camera_floor_y(&scene.route, frame.position, previous_camera_position);
+    let frame =
+        lift_camera_above_floor(frame, initial_camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE);
+    let floor_lifted = frame.position.distance(pre_floor_position) > 0.0001;
+    let camera_initializing = !obstruction_memory.diagnostics_initialized;
+    obstruction_memory
+        .state
+        .set_intentional_camera_motion(scene.camera_control.input_active || camera_initializing);
     let obstruction_step = resolve_camera_obstruction_handoff(
         frame,
         previous_camera_position,
@@ -278,11 +322,18 @@ pub(crate) fn follow_camera(
         dt,
         &mut obstruction_memory.state,
         |frame| {
-            let camera_floor_y = scene.route.ground_at(frame.position).floor_y;
+            let camera_floor_y =
+                camera_floor_y(&scene.route, frame.position, previous_camera_position);
             lift_camera_above_floor(frame, camera_floor_y, CAMERA_MIN_SURFACE_CLEARANCE)
         },
     );
     let frame = obstruction_step.frame;
+    let orbit_alignment_degrees = camera_orbit_alignment_degrees(
+        frame.position,
+        frame.look_target,
+        follow_direction,
+        scene.camera_control.orbit,
+    );
 
     let (diagnostics_previous_position, diagnostics_previous_rotation) =
         if obstruction_memory.diagnostics_initialized {
@@ -304,11 +355,184 @@ pub(crate) fn follow_camera(
         .to_degrees();
     scene.camera_diagnostics.obstruction_adjustment_m = obstruction_step.obstruction_adjustment_m;
     scene.camera_diagnostics.obstruction_hits = obstruction_step.obstruction_hits;
+    scene.camera_diagnostics.correction_source = if scene.camera_control.input_active {
+        CameraCorrectionSource::Input
+    } else if obstruction_step.obstruction_hits > 0 {
+        CameraCorrectionSource::Obstruction
+    } else if floor_lifted {
+        CameraCorrectionSource::Floor
+    } else if obstruction_step.distance_clamped {
+        CameraCorrectionSource::Distance
+    } else {
+        CameraCorrectionSource::Follow
+    };
+    scene.camera_diagnostics.continuity_offset_limited = obstruction_step.continuity_offset_limited;
+    scene.camera_diagnostics.continuity_rotation_limited =
+        obstruction_step.continuity_rotation_limited;
 
     camera_transform.translation = frame.position;
     camera_transform.rotation = frame.rotation;
 }
 
+pub(crate) fn direct_plateau_vista_camera(
+    eval: Option<Res<EvalRun>>,
+    route: Res<SkyRoute>,
+    mut diagnostics: ResMut<CameraDiagnostics>,
+    mut camera: Query<&mut Transform, CameraFollowFilter>,
+    mut previous_pose: Local<Option<(Vec3, Quat)>>,
+) {
+    let Some(run) = eval.as_deref() else {
+        *previous_pose = None;
+        return;
+    };
+    if run.scenario.name != GREAT_SKY_PLATEAU_VISTAS {
+        *previous_pose = None;
+        return;
+    }
+    let Some(plateau) = route.island_named("great sky plateau") else {
+        return;
+    };
+    let Some(broken_edge) = plateau.plateau_region_position(IslandPlateauRegion::BrokenEdge) else {
+        return;
+    };
+    let Ok(mut camera_transform) = camera.single_mut() else {
+        return;
+    };
+
+    let arrival_position = plateau.center + Vec3::new(95.0, 30.0, 100.0);
+    let arrival_target = plateau.center + Vec3::new(-18.0, 1.5, 5.0);
+    let broken_edge_offset = IslandPlateauRegion::BrokenEdge.sample_offset();
+    let broken_edge_angle = broken_edge_offset.y.atan2(broken_edge_offset.x);
+    let broken_edge_contour = plateau.footprint_contour_point(broken_edge_angle, false);
+    let waterfall_lip = Vec3::new(
+        broken_edge_contour.x,
+        plateau.terrain_surface_y_at(Vec3::new(
+            broken_edge_contour.x,
+            broken_edge.y,
+            broken_edge_contour.y,
+        )),
+        broken_edge_contour.y,
+    );
+    let outward = (waterfall_lip - plateau.center)
+        .with_y(0.0)
+        .normalize_or(Vec3::X);
+    let tangent = Vec3::new(-outward.z, 0.0, outward.x);
+    let waterfall_position = waterfall_lip + outward * 165.0 + tangent * 35.0 + Vec3::Y * 24.0;
+    let waterfall_target = waterfall_lip + outward * 4.0 - Vec3::Y * (plateau.thickness * 0.22);
+
+    let arrival_rotation = Transform::from_translation(arrival_position)
+        .looking_at(arrival_target, Vec3::Y)
+        .rotation;
+    let waterfall_rotation = Transform::from_translation(waterfall_position)
+        .looking_at(waterfall_target, Vec3::Y)
+        .rotation;
+    let transition = ((run
+        .frame
+        .saturating_sub(PLATEAU_VISTA_TRANSITION_START_FRAME)) as f32
+        / (PLATEAU_VISTA_TRANSITION_END_FRAME - PLATEAU_VISTA_TRANSITION_START_FRAME) as f32)
+        .clamp(0.0, 1.0);
+    let transition = transition * transition * (3.0 - 2.0 * transition);
+    let position = arrival_position.lerp(waterfall_position, transition);
+    let rotation = arrival_rotation.slerp(waterfall_rotation, transition);
+
+    if let Some((previous_position, previous_rotation)) = *previous_pose {
+        diagnostics.step_distance_m = previous_position.distance(position);
+        diagnostics.rotation_delta_degrees = previous_rotation.angle_between(rotation).to_degrees();
+    } else {
+        diagnostics.step_distance_m = 0.0;
+        diagnostics.rotation_delta_degrees = 0.0;
+    }
+    let view_direction = rotation * Vec3::NEG_Z;
+    diagnostics.orbit_alignment_degrees = 0.0;
+    diagnostics.follow_direction =
+        Vec3::new(view_direction.x, 0.0, view_direction.z).normalize_or(Vec3::NEG_Z);
+    diagnostics.follow_direction_error_degrees = 0.0;
+    diagnostics.obstruction_adjustment_m = 0.0;
+    diagnostics.obstruction_hits = 0;
+    diagnostics.correction_source = CameraCorrectionSource::Scripted;
+    diagnostics.continuity_offset_limited = false;
+    diagnostics.continuity_rotation_limited = false;
+
+    camera_transform.translation = position;
+    camera_transform.rotation = rotation;
+    *previous_pose = Some((position, rotation));
+}
+
 fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
     eval.map_or_else(|| time.delta_secs(), |run| run.scenario.fixed_dt)
+}
+
+fn camera_floor_y(route: &SkyRoute, position: Vec3, previous_camera_position: Vec3) -> f32 {
+    let ground = route.ground_at(position);
+    let approaching_island_from_below = ground.island_name.is_some()
+        && previous_camera_position.y < ground.floor_y
+        && position.y < ground.floor_y;
+    if approaching_island_from_below {
+        world_terrain_floor_y_at(position)
+    } else {
+        ground.floor_y
+    }
+}
+
+fn manual_camera_input(
+    mouse_delta: Vec2,
+    look_active: bool,
+    look_active_last_frame: &mut bool,
+) -> CameraInput {
+    let activated_this_frame = look_active && !*look_active_last_frame;
+    *look_active_last_frame = look_active;
+    let stale_capture_delta =
+        activated_this_frame && mouse_delta.length() > CAMERA_CAPTURE_STALE_DELTA_THRESHOLD_PX;
+    CameraInput {
+        mouse_delta: if look_active && mouse_delta.is_finite() && !stale_capture_delta {
+            mouse_delta
+        } else {
+            Vec2::ZERO
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_mouse_delta_after_look_capture_quarantines_only_implausible_spikes() {
+        let mut active_last_frame = false;
+        let stale_ui_delta = Vec2::new(120.0, -45.0);
+
+        assert_eq!(
+            manual_camera_input(stale_ui_delta, true, &mut active_last_frame),
+            CameraInput::default()
+        );
+        assert_eq!(
+            manual_camera_input(Vec2::new(4.0, -2.0), true, &mut active_last_frame),
+            CameraInput {
+                mouse_delta: Vec2::new(4.0, -2.0)
+            }
+        );
+
+        let mut fresh_capture = false;
+        assert_eq!(
+            manual_camera_input(Vec2::new(4.0, -2.0), true, &mut fresh_capture),
+            CameraInput {
+                mouse_delta: Vec2::new(4.0, -2.0)
+            },
+            "ordinary click-drag motion must be responsive on the capture frame"
+        );
+    }
+
+    #[test]
+    fn camera_floor_does_not_capture_an_island_from_below() {
+        let route = SkyRoute::default();
+        let island = route.islands()[0];
+        let mut position = island.center;
+        let island_floor_y = route.ground_at(position).floor_y;
+        position.y = island_floor_y - 1.0;
+
+        assert_eq!(
+            camera_floor_y(&route, position, position),
+            world_terrain_floor_y_at(position)
+        );
+    }
 }

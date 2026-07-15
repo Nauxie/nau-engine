@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 ## Current Milestone
 
@@ -8,9 +8,10 @@ Playable traversal baseline.
 
 NAU is a working Mac-first Bevy sandbox, not a general-purpose engine or a production game. The current priority is to preserve the enjoyable launch/glide/dive/land loop while adding clearer route purpose, stronger authored presentation, and only the infrastructure that those improvements require.
 
-Release play is the default feel and performance reference:
+Ordinary development play is configured to keep Bevy and rendering dependencies optimized while preserving debug assertions. Release play remains the final feel and performance reference:
 
 ```sh
+cargo run -- --play
 cargo run --release -- --play
 ```
 
@@ -24,7 +25,8 @@ cargo run --release -- --play
 
 ### World
 
-- The route contains 41 floating islands using 20 terrain archetypes, deterministic relief, irregular playable contours, generated cliff/underside bodies, vegetation, rocks, ponds, landmarks, and distant material-split impostors.
+- The route contains 41 floating islands spread across 1.68 km of X, 1.02 km of Y, and 3.94 km of Z. Six footprint tiers, seven occupied horizontal sectors, rear launch branches, side arcs, and a colossal plateau create a broader archipelago than the original forward corridor.
+- Area- and biome-driven detail budgets currently generate 2,732 ground-cover patches, 171 trees, 282 rocks, six ruin clusters, 91 surface artifacts across seven families, nine river channels, five ponds, plateau lakes and waterfalls, cave-route structures, 208 generated landmarks, and distant material-split impostors.
 - Island visuals use active chunk windows plus near/mid/far LOD residency. Terrain, cliff, and underside meshes are created from cached recipes as islands become resident; detail preparation is still mostly synchronous.
 - A playable biome-colored world floor streams a player-centered `3x3` visible tile window from a pool capped at 25 tiles. The same terrain sampler drives rendering and gameplay grounding, while island surfaces remain authoritative where they overlap.
 
@@ -39,7 +41,8 @@ cargo run --release -- --play
 
 - The self-authored player and glider glTF fixtures support named idle, walk, run, launch, fall, bank, glide, dive, air-brake, and land states with procedural pose refinement and attachment/readability audits.
 - The character is still an approximate non-skeletal prototype, not a production rig.
-- Mouse orbit, stable movement-facing direction, obstruction avoidance, boom limits, ground clearance, and reset handoff are implemented. Broad blockers remain solid; tree-scale local props use a softer camera policy to avoid abrupt framing changes.
+- Mouse orbit applies the full current-frame input without frame-time scaling or response smoothing, and movement consumes the resulting camera heading in the same update.
+- Follow, obstruction, floor-clearance, collision, streaming, and reset handoffs share bounded frame-rate-independent continuity with attributed full-rate diagnostics. Broad blockers remain solid; tree-scale local props use a softer camera policy to avoid abrupt framing changes.
 
 ### Collision And Debugging
 
@@ -51,6 +54,8 @@ cargo run --release -- --play
 ## Accepted Baseline
 
 The streamed world-floor checkpoint is accepted for the current sandbox. It supports landing, grounded traversal, relaunch, bounded tile residency, and measured stream churn. The compact game UI and twelve-gate objective route are part of the current baseline, not active candidates.
+
+Camera/player continuity and ordinary development-play performance are also accepted baselines. The camera gate covers deterministic 30/60/120/144 Hz behavior, 50/100 ms hitches, native mouse response, obstruction transitions, floor boundaries, collisions, streaming, and resets. The development-play gate compares the same full-content scenario in debug and release and fails if debug frame time exceeds its absolute budget or materially trails release.
 
 World-floor contract and evidence:
 
@@ -75,8 +80,9 @@ Representative behavior and content gates:
 - `air_control_response`, `pose_state_coverage`, and `updraft_route`
 - `camera_mouse_control`, `camera_turn_stability`, `camera_strafe_stability`, and `underbridge_under_route`
 - `world_collision_contact`, `terrain_rim_collision_contact`, and `terrain_body_collision_contact`
-- `baseline_route`, `branch_recovery_route`, `long_glide_visibility`, and `great_sky_plateau_route`
+- `baseline_route`, `branch_recovery_route`, `long_glide_visibility`, `great_sky_plateau_route`, and `great_sky_plateau_vistas`
 - terrain, visual-content, wind-visual, player-pose, asset-fixture, screenshot, marker-projection, and semantic-scene audits
+- `tools/camera_continuity_gate.sh` and `tools/dev_play_performance_gate.sh` on macOS
 - release app baselines, scripted/manual play profiles, and world-floor comparison gates
 
 ## Known Limits
@@ -86,15 +92,17 @@ Representative behavior and content gates:
 - Collision is terrain sampling plus AABB proxies. There is no selected Rapier/Avian integration, dynamic rigid-body layer, slope-aware capsule controller, or imported collider pipeline.
 - Island/world-floor residency is bounded and observable, but full asynchronous asset streaming, floating-origin support, and per-chunk physics activation are not implemented.
 - Atmosphere, volumetric fog/light, bloom, shadows, clouds, wind visuals, and island detail are measurable performance costs and are not optimized for laptop power draw.
+- The development-play gate protects the ordinary `cargo run` path and same-host debug/release parity, but it is not a substitute for GPU timestamps, Metal counters, or longer foreground release profiles.
 - Human release play remains required after changes to movement, camera, content density, rendering, collision, or streaming.
 
 ## Active Priorities
 
 1. Turn the existing route data, lift network, recovery branches, landmarks, and gates into a clearer player-facing expedition with meaningful choices and completion feedback.
-2. Improve player/glider animation fidelity without losing current pose readability, attachment integrity, or traversal feel.
-3. Replace prototype collision pieces only when a concrete gameplay need justifies a physics/query layer.
-4. Keep streaming and rendering work evidence-driven; prefer reducing cosmetic cost or residency before adding architecture.
-5. Preserve the current movement and camera baseline unless a reproducible regression requires retuning.
+2. Keep refining large-island surface composition, landmark framing, and player-scale visual density through the combined world gate plus screenshot and release-play review.
+3. Improve player/glider animation fidelity without losing current pose readability, attachment integrity, or traversal feel.
+4. Replace prototype collision pieces only when a concrete gameplay need justifies a physics/query layer.
+5. Keep streaming and rendering work evidence-driven; prefer reducing cosmetic cost or residency before adding architecture.
+6. Preserve the current movement and camera baseline unless a reproducible regression requires retuning.
 
 ## Read First
 

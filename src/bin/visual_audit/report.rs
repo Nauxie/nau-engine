@@ -8,6 +8,7 @@ use super::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum VisualAuditProfile {
     Default,
+    RouteMarkerOptional,
     CloseObstruction,
 }
 
@@ -15,6 +16,7 @@ impl VisualAuditProfile {
     pub(super) fn parse(name: &str) -> Option<Self> {
         match name {
             "default" => Some(Self::Default),
+            "route_marker_optional" => Some(Self::RouteMarkerOptional),
             "close_obstruction" => Some(Self::CloseObstruction),
             _ => None,
         }
@@ -23,6 +25,7 @@ impl VisualAuditProfile {
     fn name(self) -> &'static str {
         match self {
             Self::Default => "default",
+            Self::RouteMarkerOptional => "route_marker_optional",
             Self::CloseObstruction => "close_obstruction",
         }
     }
@@ -30,6 +33,11 @@ impl VisualAuditProfile {
     fn relaxed_checks(self) -> &'static [&'static str] {
         match self {
             Self::Default => &[],
+            Self::RouteMarkerOptional => &[
+                "max_route_marker_fraction",
+                "max_route_marker_component_count",
+                "max_route_marker_hue_family_count",
+            ],
             Self::CloseObstruction => &[
                 "max_top_sky_fraction",
                 "max_route_marker_fraction",

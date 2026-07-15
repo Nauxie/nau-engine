@@ -8,13 +8,14 @@ use std::{
 };
 
 const MIN_GROUND_COVER_COUNT: u64 = 20;
-const MIN_GROUND_COVER_PATCH_TOTAL: u64 = 800;
-const MIN_GROUND_COVER_BLADE_TOTAL: u64 = 4000;
-const MIN_GROUND_COVER_MESH_VERTICES: u64 = 1200;
-const MIN_GROUND_COVER_BLADE_COUNT: u64 = 200;
+const MIN_GROUND_COVER_PATCH_TOTAL: u64 = 2_400;
+const MIN_GROUND_COVER_BLADE_TOTAL: u64 = 12_000;
+const MIN_GROUND_COVER_PATCH_COUNT: u64 = 24;
+const MIN_GROUND_COVER_MESH_VERTICES: u64 = 720;
+const MIN_GROUND_COVER_BLADE_COUNT: u64 = 120;
 const MIN_GROUND_COVER_BLADE_HEIGHT_RANGE_M: f64 = 0.70;
-const MIN_TREE_TRUNK_COUNT: u64 = 55;
-const MIN_TREE_CANOPY_COUNT: u64 = 55;
+const MIN_TREE_TRUNK_COUNT: u64 = 160;
+const MIN_TREE_CANOPY_COUNT: u64 = 160;
 const MIN_TREE_TRUNK_MESH_VERTICES: u64 = 190;
 const MIN_TREE_TRUNK_TAPER_RATIO: f64 = 1.35;
 const MIN_TREE_BRANCH_REACH_RATIO: f64 = 1.80;
@@ -25,6 +26,9 @@ const MIN_TREE_CANOPY_MESH_VERTICES: u64 = 450;
 const MIN_TREE_CANOPY_LOBE_COUNT: u64 = 6;
 const MIN_TREE_CANOPY_DETAIL_CARD_COUNT: u64 = 18;
 const MIN_TREE_CANOPY_VERTICAL_TO_HORIZONTAL_RATIO: f64 = 0.45;
+const MIN_ROCK_COUNT: u64 = 230;
+const MIN_ROCK_MESH_VERTICES: u64 = 70;
+const MIN_ROCK_VERTICAL_SPAN_M: f64 = 0.40;
 const MIN_WEATHER_CLOUD_COUNT: u64 = 40;
 const MIN_WEATHER_CLOUD_BANK_COUNT: u64 = 20;
 const MIN_WEATHER_CLOUD_VEIL_COUNT: u64 = 30;
@@ -39,6 +43,15 @@ const MIN_TREE_TRUNK_HEIGHT_RANGE_M: f64 = 1.5;
 const MIN_TREE_CANOPY_RADIUS_RANGE_M: f64 = 0.35;
 const MIN_LANDMARK_COUNT: u64 = 60;
 const MIN_LANDMARK_KIND_COUNT: u64 = 18;
+const MIN_ARTIFACT_DETAIL_COUNT: u64 = 55;
+const MIN_ARTIFACT_DETAIL_KIND_COUNT: u64 = 7;
+const MIN_ARTIFACT_STAIR_COUNT: u64 = 8;
+const MIN_ARTIFACT_BRIDGE_FRAGMENT_COUNT: u64 = 6;
+const MIN_ARTIFACT_GLYPH_SLAB_COUNT: u64 = 8;
+const MIN_ARTIFACT_RETAINING_WALL_COUNT: u64 = 8;
+const MIN_ARTIFACT_BANNER_COUNT: u64 = 6;
+const MIN_ARTIFACT_PEBBLE_FIELD_COUNT: u64 = 30;
+const MIN_ARTIFACT_REED_PATCH_COUNT: u64 = 4;
 const MIN_SMALL_ISLAND_COUNT: u64 = 10;
 const MIN_PLATEAU_LANDMARK_COUNT: u64 = 15;
 const MIN_PLATEAU_WATERFALL_RIBBON_COUNT: u64 = 2;
@@ -46,13 +59,15 @@ const MIN_PLATEAU_WATERFALL_MIST_COUNT: u64 = 2;
 const MIN_ROUTE_WATERFALL_RIBBON_COUNT: u64 = 1;
 const MIN_ROUTE_WATERFALL_MIST_COUNT: u64 = 1;
 const MIN_ROUTE_LAKE_SURFACE_COUNT: u64 = 3;
+const MIN_RIVER_CHANNEL_COUNT: u64 = 6;
 const MIN_UNDER_ROUTE_VISUAL_COUNT: u64 = 8;
 const MIN_UNDER_ROUTE_CAVE_MOUTH_COUNT: u64 = 4;
+const MIN_RUIN_CLUSTER_COUNT: u64 = 6;
 const MIN_RUIN_ARCH_COUNT: u64 = 4;
 const MIN_ROUTE_CAIRN_COUNT: u64 = 16;
 const MIN_LAUNCH_BEACON_COUNT: u64 = 1;
 const MIN_LANDING_GARDEN_MARKER_COUNT: u64 = 4;
-const MIN_POND_SURFACE_COUNT: u64 = 20;
+const MIN_POND_SURFACE_COUNT: u64 = 5;
 const MIN_OBSTRUCTION_SPIRE_COUNT: u64 = 20;
 const MIN_ROUTE_CAIRN_MESH_VERTICES: u64 = 240;
 const MIN_ROUTE_CAIRN_VERTICAL_SPAN_M: f64 = 3.0;
@@ -67,7 +82,16 @@ const MIN_MAX_PLATEAU_LANDMARK_MESH_VERTICES: u64 = 600;
 const MIN_PLATEAU_WATERFALL_VERTICAL_SPAN_M: f64 = 45.0;
 const MIN_ROUTE_WATERFALL_VERTICAL_SPAN_M: f64 = 18.0;
 const MIN_ROUTE_LAKE_SURFACE_HORIZONTAL_SPAN_M: f64 = 18.0;
+const MIN_RIVER_CHANNEL_HORIZONTAL_SPAN_M: f64 = 4.0;
 const MIN_UNDER_ROUTE_VISUAL_VERTICAL_SPAN_M: f64 = 4.0;
+const MIN_ARTIFACT_DETAIL_VERTEX_TOTAL: u64 = 16_000;
+const MIN_ARTIFACT_DETAIL_MESH_VERTICES: u64 = 60;
+const MIN_ARTIFACT_STONE_MESH_VERTICES: u64 = 140;
+const MIN_ARTIFACT_STONE_NORMAL_SLOPE_BANDS: u64 = 3;
+const MIN_ARTIFACT_STAIR_HORIZONTAL_SPAN_M: f64 = 5.0;
+const MIN_ARTIFACT_BRIDGE_HORIZONTAL_SPAN_M: f64 = 5.0;
+const MIN_ARTIFACT_BANNER_VERTICAL_SPAN_M: f64 = 1.5;
+const MIN_ARTIFACT_REED_VERTICAL_SPAN_M: f64 = 0.8;
 const MIN_RUIN_ARCH_MESH_VERTICES: u64 = 500;
 const MIN_RUIN_ARCH_VERTICAL_SPAN_M: f64 = 4.5;
 const MIN_RUIN_ARCH_RADIUS_BANDS: u64 = 8;
@@ -188,6 +212,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "meshes",
     ));
     checks.push(check_at_least_u64(
+        "rock_count",
+        value_u64(counts, "rock_count"),
+        MIN_ROCK_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
         "weather_cloud_count",
         value_u64(counts, "weather_cloud_count"),
         MIN_WEATHER_CLOUD_COUNT,
@@ -216,6 +246,60 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         value_u64(counts, "landmark_kind_count"),
         MIN_LANDMARK_KIND_COUNT,
         "kinds",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_detail_count",
+        value_u64(counts, "artifact_detail_count"),
+        MIN_ARTIFACT_DETAIL_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_detail_kind_count",
+        value_u64(counts, "artifact_detail_kind_count"),
+        MIN_ARTIFACT_DETAIL_KIND_COUNT,
+        "kinds",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_stair_count",
+        value_u64(counts, "artifact_stair_count"),
+        MIN_ARTIFACT_STAIR_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_bridge_fragment_count",
+        value_u64(counts, "artifact_bridge_fragment_count"),
+        MIN_ARTIFACT_BRIDGE_FRAGMENT_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_glyph_slab_count",
+        value_u64(counts, "artifact_glyph_slab_count"),
+        MIN_ARTIFACT_GLYPH_SLAB_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_retaining_wall_count",
+        value_u64(counts, "artifact_retaining_wall_count"),
+        MIN_ARTIFACT_RETAINING_WALL_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_banner_count",
+        value_u64(counts, "artifact_banner_count"),
+        MIN_ARTIFACT_BANNER_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_pebble_field_count",
+        value_u64(counts, "artifact_pebble_field_count"),
+        MIN_ARTIFACT_PEBBLE_FIELD_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_reed_patch_count",
+        value_u64(counts, "artifact_reed_patch_count"),
+        MIN_ARTIFACT_REED_PATCH_COUNT,
+        "meshes",
     ));
     checks.push(check_at_least_u64(
         "small_island_count",
@@ -260,6 +344,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "meshes",
     ));
     checks.push(check_at_least_u64(
+        "river_channel_count",
+        value_u64(counts, "river_channel_count"),
+        MIN_RIVER_CHANNEL_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
         "under_route_visual_count",
         value_u64(counts, "under_route_visual_count"),
         MIN_UNDER_ROUTE_VISUAL_COUNT,
@@ -270,6 +360,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         value_u64(counts, "under_route_cave_mouth_count"),
         MIN_UNDER_ROUTE_CAVE_MOUTH_COUNT,
         "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "ruin_cluster_count",
+        value_u64(counts, "ruin_cluster_count"),
+        MIN_RUIN_CLUSTER_COUNT,
+        "clusters",
     ));
     checks.push(check_at_least_u64(
         "ruin_arch_count",
@@ -306,6 +402,12 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         value_u64(counts, "obstruction_spire_count"),
         MIN_OBSTRUCTION_SPIRE_COUNT,
         "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "ground_cover_patch_count",
+        value_u64(minimums, "ground_cover_patch_count"),
+        MIN_GROUND_COVER_PATCH_COUNT,
+        "patches",
     ));
     checks.push(check_at_least_u64(
         "ground_cover_mesh_vertices",
@@ -395,6 +497,18 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "tree_canopy_radius_range",
         value_f64(minimums, "tree_canopy_radius_range_m"),
         MIN_TREE_CANOPY_RADIUS_RANGE_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "rock_mesh_vertices",
+        value_u64(minimums, "rock_mesh_vertices"),
+        MIN_ROCK_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_f64(
+        "rock_vertical_span",
+        value_f64(minimums, "rock_vertical_span_m"),
+        MIN_ROCK_VERTICAL_SPAN_M,
         "m",
     ));
     checks.push(check_at_least_u64(
@@ -518,9 +632,63 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "m",
     ));
     checks.push(check_at_least_f64(
+        "river_channel_horizontal_span",
+        value_f64(minimums, "river_channel_horizontal_span_m"),
+        MIN_RIVER_CHANNEL_HORIZONTAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
         "under_route_visual_vertical_span",
         value_f64(minimums, "under_route_visual_vertical_span_m"),
         MIN_UNDER_ROUTE_VISUAL_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_detail_vertex_total",
+        value_u64(minimums, "artifact_detail_vertex_total"),
+        MIN_ARTIFACT_DETAIL_VERTEX_TOTAL,
+        "vertices",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_detail_mesh_vertices",
+        value_u64(minimums, "artifact_detail_mesh_vertices"),
+        MIN_ARTIFACT_DETAIL_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_stone_mesh_vertices",
+        value_u64(minimums, "artifact_stone_mesh_vertices"),
+        MIN_ARTIFACT_STONE_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_u64(
+        "artifact_stone_normal_slope_bands",
+        value_u64(minimums, "artifact_stone_normal_slope_band_count"),
+        MIN_ARTIFACT_STONE_NORMAL_SLOPE_BANDS,
+        "bands",
+    ));
+    checks.push(check_at_least_f64(
+        "artifact_stair_horizontal_span",
+        value_f64(minimums, "artifact_stair_horizontal_span_m"),
+        MIN_ARTIFACT_STAIR_HORIZONTAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "artifact_bridge_horizontal_span",
+        value_f64(minimums, "artifact_bridge_horizontal_span_m"),
+        MIN_ARTIFACT_BRIDGE_HORIZONTAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "artifact_banner_vertical_span",
+        value_f64(minimums, "artifact_banner_vertical_span_m"),
+        MIN_ARTIFACT_BANNER_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "artifact_reed_vertical_span",
+        value_f64(minimums, "artifact_reed_vertical_span_m"),
+        MIN_ARTIFACT_REED_VERTICAL_SPAN_M,
         "m",
     ));
     checks.push(check_at_least_u64(
@@ -611,6 +779,13 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
     );
     audit_tree_array(
         manifest.get("trees").and_then(Value::as_array),
+        root_dir,
+        &mut artifact_counters,
+        &mut artifacts,
+    );
+    audit_mesh_array(
+        manifest.get("rocks").and_then(Value::as_array),
+        "mesh",
         root_dir,
         &mut artifact_counters,
         &mut artifacts,
@@ -867,6 +1042,22 @@ mod tests {
     use std::io::Write;
 
     #[test]
+    fn detail_layout_thresholds_match_export_contract() {
+        assert_eq!(MIN_GROUND_COVER_PATCH_TOTAL, 2_400);
+        assert_eq!(MIN_GROUND_COVER_BLADE_TOTAL, 12_000);
+        assert_eq!(MIN_GROUND_COVER_PATCH_COUNT, 24);
+        assert_eq!(MIN_GROUND_COVER_BLADE_COUNT, 120);
+        assert_eq!(MIN_GROUND_COVER_MESH_VERTICES, 720);
+        assert_eq!(MIN_TREE_TRUNK_COUNT, 160);
+        assert_eq!(MIN_TREE_CANOPY_COUNT, 160);
+        assert_eq!(MIN_ROCK_COUNT, 230);
+        assert_eq!(MIN_RUIN_CLUSTER_COUNT, 6);
+        assert_eq!(MIN_RIVER_CHANNEL_COUNT, 6);
+        assert_eq!(MIN_RIVER_CHANNEL_HORIZONTAL_SPAN_M, 4.0);
+        assert_eq!(MIN_POND_SURFACE_COUNT, 5);
+    }
+
+    #[test]
     fn audit_rejects_low_shape_manifest() {
         let manifest = json!({
             "schema": "nau_visual_content_export.v1",
@@ -879,11 +1070,21 @@ mod tests {
                 "ground_cover_blade_total": 20,
                 "tree_trunk_count": 1,
                 "tree_canopy_count": 1,
+                "rock_count": 1,
                 "weather_cloud_count": 1,
                 "weather_cloud_bank_count": 0,
                 "weather_cloud_veil_count": 0,
                 "landmark_count": 1,
                 "landmark_kind_count": 1,
+                "artifact_detail_count": 0,
+                "artifact_detail_kind_count": 0,
+                "artifact_stair_count": 0,
+                "artifact_bridge_fragment_count": 0,
+                "artifact_glyph_slab_count": 0,
+                "artifact_retaining_wall_count": 0,
+                "artifact_banner_count": 0,
+                "artifact_pebble_field_count": 0,
+                "artifact_reed_patch_count": 0,
                 "small_island_count": 1,
                 "plateau_landmark_count": 1,
                 "plateau_waterfall_ribbon_count": 0,
@@ -891,8 +1092,10 @@ mod tests {
                 "route_waterfall_ribbon_count": 0,
                 "route_waterfall_mist_count": 0,
                 "route_lake_surface_count": 0,
+                "river_channel_count": 0,
                 "under_route_visual_count": 0,
                 "under_route_cave_mouth_count": 0,
+                "ruin_cluster_count": 0,
                 "ruin_arch_count": 0,
                 "route_cairn_count": 0,
                 "launch_beacon_count": 0,
@@ -901,6 +1104,7 @@ mod tests {
                 "obstruction_spire_count": 0
             },
             "minimums": {
+                "ground_cover_patch_count": 1,
                 "ground_cover_mesh_vertices": 10,
                 "ground_cover_blade_count": 5,
                 "ground_cover_blade_height_range_m": 0.1,
@@ -916,6 +1120,8 @@ mod tests {
                 "tree_canopy_detail_card_count": 0,
                 "tree_canopy_vertical_to_horizontal_ratio": 0.1,
                 "tree_canopy_radius_range_m": 0.1,
+                "rock_mesh_vertices": 8,
+                "rock_vertical_span_m": 0.1,
                 "weather_cloud_mesh_vertices": 45,
                 "weather_cloud_lobe_count": 1,
                 "weather_cloud_wisp_card_count": 0,
@@ -936,7 +1142,16 @@ mod tests {
                 "plateau_waterfall_vertical_span_m": 3.0,
                 "route_waterfall_vertical_span_m": 2.0,
                 "route_lake_surface_horizontal_span_m": 4.0,
+                "river_channel_horizontal_span_m": 0.5,
                 "under_route_visual_vertical_span_m": 0.5,
+                "artifact_detail_vertex_total": 10,
+                "artifact_detail_mesh_vertices": 4,
+                "artifact_stone_mesh_vertices": 8,
+                "artifact_stone_normal_slope_band_count": 1,
+                "artifact_stair_horizontal_span_m": 0.5,
+                "artifact_bridge_horizontal_span_m": 0.5,
+                "artifact_banner_vertical_span_m": 0.2,
+                "artifact_reed_vertical_span_m": 0.1,
                 "ruin_arch_mesh_vertices": 10,
                 "ruin_arch_vertical_span_m": 0.4,
                 "ruin_arch_radius_band_count": 1,
@@ -953,6 +1168,7 @@ mod tests {
             },
             "ground_cover": [],
             "trees": [],
+            "rocks": [],
             "clouds": [],
             "landmarks": []
         });
@@ -997,8 +1213,27 @@ mod tests {
                 .is_some_and(|check| { !check.get("passed").and_then(Value::as_bool).unwrap() })
         );
         for name in [
+            "ground_cover_patch_total",
+            "ground_cover_blade_total",
+            "tree_trunk_count",
+            "tree_canopy_count",
+            "rock_count",
+            "ground_cover_patch_count",
+            "ground_cover_mesh_vertices",
+            "ground_cover_blade_count",
+            "rock_mesh_vertices",
+            "rock_vertical_span",
             "landmark_count",
             "landmark_kind_count",
+            "artifact_detail_count",
+            "artifact_detail_kind_count",
+            "artifact_stair_count",
+            "artifact_bridge_fragment_count",
+            "artifact_glyph_slab_count",
+            "artifact_retaining_wall_count",
+            "artifact_banner_count",
+            "artifact_pebble_field_count",
+            "artifact_reed_patch_count",
             "small_island_count",
             "plateau_landmark_count",
             "plateau_waterfall_ribbon_count",
@@ -1006,8 +1241,10 @@ mod tests {
             "route_waterfall_ribbon_count",
             "route_waterfall_mist_count",
             "route_lake_surface_count",
+            "river_channel_count",
             "under_route_visual_count",
             "under_route_cave_mouth_count",
+            "ruin_cluster_count",
             "ruin_arch_count",
             "route_cairn_count",
             "launch_beacon_count",
@@ -1027,7 +1264,16 @@ mod tests {
             "plateau_waterfall_vertical_span",
             "route_waterfall_vertical_span",
             "route_lake_surface_horizontal_span",
+            "river_channel_horizontal_span",
             "under_route_visual_vertical_span",
+            "artifact_detail_vertex_total",
+            "artifact_detail_mesh_vertices",
+            "artifact_stone_mesh_vertices",
+            "artifact_stone_normal_slope_bands",
+            "artifact_stair_horizontal_span",
+            "artifact_bridge_horizontal_span",
+            "artifact_banner_vertical_span",
+            "artifact_reed_vertical_span",
             "ruin_arch_mesh_vertices",
             "ruin_arch_vertical_span",
             "ruin_arch_radius_bands",

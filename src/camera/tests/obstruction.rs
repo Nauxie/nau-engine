@@ -17,6 +17,7 @@ fn camera_surface_clearance_lifts_clipping_frame() {
     let lifted = lift_camera_above_floor(frame, 2.5, 2.0);
 
     assert_eq!(lifted.position.y, 4.5);
+    assert_eq!(lifted.rotation, frame.rotation);
     assert_eq!(camera_surface_clearance(lifted.position, 2.5), 2.0);
 }
 
@@ -52,7 +53,7 @@ fn camera_obstruction_moves_camera_in_front_of_blocker() {
 }
 
 #[test]
-fn camera_obstruction_clears_broad_blocker_when_readable_fallback_is_blocked() {
+fn camera_obstruction_preserves_readable_distance_when_broad_blocker_has_no_fallback() {
     let frame = CameraFrame {
         position: Vec3::new(0.0, 2.0, 12.0),
         rotation: Quat::IDENTITY,
@@ -70,10 +71,11 @@ fn camera_obstruction_clears_broad_blocker_when_readable_fallback_is_blocked() {
 
     assert_eq!(resolved.hit_count, 1);
     assert!(
-        resolved.frame.position.distance(resolved.frame.look_target)
-            < CAMERA_MIN_READABLE_OBSTRUCTION_DISTANCE_M
+        (resolved.frame.position.distance(resolved.frame.look_target)
+            - CAMERA_MIN_READABLE_OBSTRUCTION_DISTANCE_M)
+            .abs()
+            <= 0.001
     );
-    assert!(resolved.frame.position.z < 2.75);
     assert!(
         camera_target_angle_degrees(
             resolved.frame.position,

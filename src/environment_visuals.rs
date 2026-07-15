@@ -631,7 +631,7 @@ pub(crate) fn update_cinematic_weather(
         Color::srgb(0.72, 0.68, 0.60),
         warm,
     );
-    ambient.brightness = 260.0 + warm * 170.0 - storm * 80.0;
+    ambient.brightness = 420.0 + warm * 260.0 - storm * 70.0;
 
     for (mut light, mut transform) in &mut sun {
         light.color = mix_color(cool_light, warm_light, warm);
@@ -647,7 +647,7 @@ pub(crate) fn update_cinematic_weather(
             blend_state: Some(BlendState::REPLACE),
             clear_color: ClearColorConfig::Custom(sky_color),
         };
-        exposure.ev100 = 12.35 + warm * 0.42 - storm * 0.2;
+        exposure.ev100 = 11.65 + warm * 0.35 - storm * 0.15;
         fog.color = mix_color(
             Color::srgba(0.44, 0.52, 0.66, 0.58),
             Color::srgba(0.60, 0.74, 0.92, 0.42),
@@ -1073,7 +1073,9 @@ pub(crate) fn update_player_airflow_visuals(
         return;
     };
 
-    let dt = time.delta_secs();
+    let dt = eval_run
+        .as_deref()
+        .map_or_else(|| time.delta_secs(), |run| run.scenario.fixed_dt);
     let elapsed = wind_visual_elapsed_secs(&time, eval_run.as_deref());
 
     for (mut visual, mut transform, mut visibility) in &mut visuals {

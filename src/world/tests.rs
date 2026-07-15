@@ -4,6 +4,54 @@ use crate::movement::{FlightController, FlightMode, FlightState};
 use bevy::prelude::{Vec2, Vec3};
 use std::collections::{BTreeSet, VecDeque};
 
+fn horizontal_support_m(island: SkyIsland, direction: Vec2) -> f32 {
+    (0..128)
+        .map(|step| {
+            let angle = step as f32 / 128.0 * std::f32::consts::TAU;
+            let contour = island.footprint_contour_point(angle, false);
+            (contour - Vec2::new(island.center.x, island.center.z)).dot(direction)
+        })
+        .fold(0.0_f32, f32::max)
+}
+
+fn horizontal_edge_gap_m(a: SkyIsland, b: SkyIsland) -> f32 {
+    let center_delta = Vec2::new(b.center.x - a.center.x, b.center.z - a.center.z);
+    let center_distance = center_delta.length();
+    if center_distance <= f32::EPSILON {
+        return 0.0;
+    }
+
+    let direction = center_delta / center_distance;
+    (center_distance - horizontal_support_m(a, direction) - horizontal_support_m(b, -direction))
+        .max(0.0)
+}
+
+fn assert_authored_branch_spacing(route: &SkyRoute, branch_name: &str, island_names: &[&str]) {
+    for pair in island_names.windows(2) {
+        let from = route
+            .island_named(pair[0])
+            .unwrap_or_else(|| panic!("{branch_name} should include {}", pair[0]));
+        let to = route
+            .island_named(pair[1])
+            .unwrap_or_else(|| panic!("{branch_name} should include {}", pair[1]));
+        let horizontal_gap = horizontal_edge_gap_m(from, to);
+        let vertical_delta = (to.center.y - from.center.y).abs();
+
+        assert!(
+            horizontal_gap <= 400.0,
+            "{branch_name} gap {} -> {} is {horizontal_gap:.1}m",
+            from.name,
+            to.name
+        );
+        assert!(
+            vertical_delta <= 180.0,
+            "{branch_name} vertical delta {} -> {} is {vertical_delta:.1}m",
+            from.name,
+            to.name
+        );
+    }
+}
+
 #[test]
 fn route_reports_highest_island_surface_under_player() {
     let route = SkyRoute::default();
@@ -603,6 +651,40 @@ fn route_objective_completion_tracks_flythrough_and_landing() {
 }
 
 #[test]
+fn landing_garden_footprint_never_resolves_to_wind_overlook() {
+    let route = SkyRoute::default();
+    let target = route.target_island().expect("target island exists");
+    let overlook = route
+        .island_named("wind overlook")
+        .expect("wind overlook exists");
+
+    for radial_step in 0..=12 {
+        let radius = radial_step as f32 / 12.0 * 0.999;
+        for angle_step in 0..96 {
+            let angle = angle_step as f32 / 96.0 * std::f32::consts::TAU;
+            let scale = target.playable_silhouette_scale(angle) * radius;
+            let mut position = Vec3::new(
+                target.center.x + angle.cos() * target.half_extents.x * scale,
+                target.floor_y(),
+                target.center.z + angle.sin() * target.half_extents.y * scale,
+            );
+            position.y = target.terrain_surface_y_at(position);
+
+            assert!(target.contains_horizontal(position));
+            assert!(
+                !overlook.contains_horizontal(position),
+                "landing sample at {position:?} overlaps wind overlook"
+            );
+            assert_eq!(
+                route.ground_at(position).island_name,
+                Some(target.name),
+                "landing sample at {position:?} resolved to another island"
+            );
+        }
+    }
+}
+
+#[test]
 fn route_has_archipelago_scale_and_distant_landmarks() {
     let route = SkyRoute::default();
     let farthest_z = route
@@ -613,6 +695,118 @@ fn route_has_archipelago_scale_and_distant_landmarks() {
 
     assert_eq!(route.islands().len(), SKY_ROUTE_ISLAND_COUNT);
     assert!(farthest_z < -3100.0);
+}
+
+#[test]
+fn island_scale_classes_use_six_authored_area_bands() {
+    let cases = [
+        (0.0, IslandScaleClass::Tiny),
+        (499.0, IslandScaleClass::Tiny),
+        (500.0, IslandScaleClass::Small),
+        (1_199.0, IslandScaleClass::Small),
+        (1_200.0, IslandScaleClass::Medium),
+        (2_599.0, IslandScaleClass::Medium),
+        (2_600.0, IslandScaleClass::Large),
+        (5_999.0, IslandScaleClass::Large),
+        (6_000.0, IslandScaleClass::Vast),
+        (17_999.0, IslandScaleClass::Vast),
+        (18_000.0, IslandScaleClass::HugePlateau),
+    ];
+    let classes = [
+        (IslandScaleClass::Tiny, "tiny"),
+        (IslandScaleClass::Small, "small"),
+        (IslandScaleClass::Medium, "medium"),
+        (IslandScaleClass::Large, "large"),
+        (IslandScaleClass::Vast, "vast"),
+        (IslandScaleClass::HugePlateau, "huge_plateau"),
+    ];
+
+    assert_eq!(IslandScaleClass::COUNT, classes.len());
+    for (area, expected) in cases {
+        assert_eq!(IslandScaleClass::from_footprint_area(area), expected);
+    }
+    for (scale_class, expected_label) in classes {
+        assert_eq!(scale_class.label(), expected_label);
+    }
+}
+
+#[test]
+fn authored_archipelago_meets_world_span_sector_and_scale_targets() {
+    let route = SkyRoute::default();
+    let launch = route
+        .island_named("launch mesa")
+        .expect("launch mesa should exist");
+    let mut min_x = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut min_y = f32::INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+    let mut min_z = f32::INFINITY;
+    let mut max_z = f32::NEG_INFINITY;
+    let mut smallest_area = f32::INFINITY;
+    let mut largest_area = f32::NEG_INFINITY;
+    let mut positive_z_count = 0;
+    let mut horizontal_sector_mask = 0_u8;
+
+    assert_eq!(route.islands().len(), 41);
+
+    for island in route.islands() {
+        min_x = min_x.min(island.center.x);
+        max_x = max_x.max(island.center.x);
+        min_y = min_y.min(island.center.y);
+        max_y = max_y.max(island.center.y);
+        min_z = min_z.min(island.center.z);
+        max_z = max_z.max(island.center.z);
+        smallest_area = smallest_area.min(island.base_area_m2());
+        largest_area = largest_area.max(island.base_area_m2());
+        positive_z_count += usize::from(island.center.z > 0.0);
+
+        if island.name != launch.name {
+            let offset = Vec2::new(
+                island.center.x - launch.center.x,
+                island.center.z - launch.center.z,
+            );
+            let angle = offset.y.atan2(offset.x).rem_euclid(std::f32::consts::TAU);
+            let sector = (angle / (std::f32::consts::TAU / 8.0)).floor() as u32;
+            horizontal_sector_mask |= 1_u8 << sector;
+        }
+    }
+
+    assert!(max_x - min_x >= 1_600.0);
+    assert!(max_y - min_y >= 1_000.0);
+    assert!(max_z - min_z >= 3_400.0);
+    assert!(positive_z_count >= 3);
+    assert!(horizontal_sector_mask.count_ones() >= 7);
+    assert!(largest_area / smallest_area >= 175.0);
+}
+
+#[test]
+fn west_rear_branch_has_authored_traversal_spacing() {
+    let route = SkyRoute::default();
+    assert_authored_branch_spacing(
+        &route,
+        "west rear",
+        &["launch mesa", "garden apron", "quiet lower garden"],
+    );
+}
+
+#[test]
+fn east_arc_branch_has_authored_traversal_spacing() {
+    let route = SkyRoute::default();
+    assert_authored_branch_spacing(
+        &route,
+        "east arc",
+        &[
+            "launch mesa",
+            "launch spur",
+            "low reef",
+            "lowwind shelf",
+            "orchard spur",
+            "needle crownlet",
+            "mist stepping stone",
+            "highgate stair",
+            "east windchain",
+        ],
+    );
 }
 
 #[test]
@@ -631,7 +825,7 @@ fn route_has_wide_vertical_and_scale_variation() {
         let base_area = island.half_extents.x * island.half_extents.y;
         smallest_base_area = smallest_base_area.min(base_area);
         largest_base_area = largest_base_area.max(base_area);
-        low_island_count += usize::from(island.center.y <= 24.0);
+        low_island_count += usize::from(island.center.y <= 30.0);
         high_island_count += usize::from(island.center.y >= 140.0);
     }
 
@@ -692,7 +886,7 @@ fn route_has_named_great_sky_plateau_anchor() {
         plateau.world_tags.landmark_role,
         IslandLandmarkRole::CaveMouth
     );
-    assert!(plateau.base_area_m2() >= largest_non_plateau * 4.0);
+    assert!(plateau.base_area_m2() >= largest_non_plateau * 2.0);
     assert!(plateau.longest_span_m() >= 450.0);
     assert!(plateau.thickness >= 68.0);
 }
@@ -1275,6 +1469,7 @@ fn route_includes_plateau_scale_water_cave_spire_and_stepping_stone_roles() {
     let mut small_count = 0;
     let mut medium_count = 0;
     let mut large_count = 0;
+    let mut vast_count = 0;
     let mut huge_plateau_count = 0;
     let mut lake_basin_count = 0;
     let mut waterfall_source_count = 0;
@@ -1289,6 +1484,7 @@ fn route_includes_plateau_scale_water_cave_spire_and_stepping_stone_roles() {
         small_count += usize::from(tags.scale_class == IslandScaleClass::Small);
         medium_count += usize::from(tags.scale_class == IslandScaleClass::Medium);
         large_count += usize::from(tags.scale_class == IslandScaleClass::Large);
+        vast_count += usize::from(tags.scale_class == IslandScaleClass::Vast);
         huge_plateau_count += usize::from(tags.scale_class == IslandScaleClass::HugePlateau);
         lake_basin_count += usize::from(tags.water_feature == IslandWaterFeature::LakeBasin);
         waterfall_source_count +=
@@ -1300,10 +1496,11 @@ fn route_includes_plateau_scale_water_cave_spire_and_stepping_stone_roles() {
     }
 
     assert!(tiny_count >= 5);
-    assert!(small_count >= 5);
+    assert!(small_count >= 4);
     assert!(medium_count >= 8);
-    assert!(large_count >= 10);
-    assert!(huge_plateau_count >= 1);
+    assert!(large_count >= 6);
+    assert!(vast_count >= 8);
+    assert_eq!(huge_plateau_count, 1);
     assert!(lake_basin_count >= 3);
     assert!(waterfall_source_count >= 1);
     assert!(cave_or_underhang_count >= 2);
@@ -1422,6 +1619,17 @@ fn island_horizontal_containment_follows_playable_silhouette() {
 }
 
 #[test]
+fn signed_playable_edge_distance_distinguishes_inside_and_outside() {
+    let island = SkyRoute::default().islands()[0];
+    let contour = island.footprint_contour_point(0.0, false);
+    let inside = Vec3::new(contour.x - 1.25, island.floor_y(), contour.y);
+    let outside = Vec3::new(contour.x + 1.25, island.floor_y(), contour.y);
+
+    assert!((island.signed_playable_edge_distance(inside) + 1.25).abs() <= 0.001);
+    assert!((island.signed_playable_edge_distance(outside) - 1.25).abs() <= 0.001);
+}
+
+#[test]
 fn streaming_lod_stats_track_active_window_and_distance_bands() {
     let route = SkyRoute::default();
     let stats = route.streaming_lod_stats(START_POSITION);
@@ -1497,6 +1705,32 @@ fn ground_contact_marks_target_landing_as_grounded() {
     assert!(resolved.velocity.z < state.velocity.z);
     assert_eq!(resolved.controller.mode, FlightMode::Grounded);
     assert!(route.on_landing_target(resolved.position, resolved.controller.mode));
+}
+
+#[test]
+fn upward_underside_crossing_does_not_capture_island_top() {
+    let route = SkyRoute::default();
+    let island = route.islands()[0];
+    let state = FlightState::new(
+        Vec3::new(island.center.x, island.floor_y() - 1.0, island.center.z),
+        Vec3::new(0.0, 14.0, 0.0),
+        FlightController {
+            mode: FlightMode::Airborne,
+            launch_available: false,
+            ..Default::default()
+        },
+    );
+
+    assert_eq!(
+        route.ground_at(state.position).island_name,
+        Some(island.name)
+    );
+
+    let resolved = route.resolve_ground_contact(state);
+
+    assert_eq!(resolved.position, state.position);
+    assert_eq!(resolved.velocity, state.velocity);
+    assert_eq!(resolved.controller.mode, FlightMode::Airborne);
 }
 
 #[test]

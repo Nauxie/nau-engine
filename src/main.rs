@@ -49,8 +49,8 @@ use nau_engine::world::SkyIsland;
 use nau_engine::world::SkyRoute;
 use play_profile_runtime::{PlayProfileRun, collect_play_profile_sample};
 pub(crate) use player_runtime::{
-    Player, RouteObjectiveTracker, WindForceDiagnostics, grounded_visual_foot_gap_m,
-    keyboard_flight_input, movement_facing,
+    Player, PlayerDisplacementDiagnostics, RouteObjectiveTracker, WindForceDiagnostics,
+    grounded_visual_foot_gap_m, keyboard_flight_input, movement_facing,
 };
 use player_runtime::{
     animate_character, eval_fly_player, eval_reset_player_to_playtest_position, fly_player,
@@ -177,6 +177,7 @@ fn main() -> AppExit {
         .insert_resource(IslandStreamDiagnostics::default())
         .insert_resource(RouteObjectiveTracker::default())
         .insert_resource(PowerUpCollectionState::default())
+        .insert_resource(PlayerDisplacementDiagnostics::default())
         .insert_resource(WorldCollisionDiagnostics::default())
         .insert_resource(WorldFloorDiagnostics::default())
         .insert_resource(WindForceDiagnostics::default())
@@ -192,6 +193,7 @@ fn main() -> AppExit {
             Update,
             (
                 GameSet::Ui,
+                GameSet::CameraInput.run_if(gameplay_input_active),
                 GameSet::Movement.run_if(gameplay_input_active),
                 GameSet::Camera.run_if(gameplay_input_active),
                 GameSet::Diagnostics.run_if(gameplay_input_active),
@@ -208,9 +210,13 @@ fn main() -> AppExit {
         )
         .add_systems(
             Update,
+            (update_mouse_look_capture, update_camera_control)
+                .chain()
+                .in_set(GameSet::CameraInput),
+        )
+        .add_systems(
+            Update,
             (
-                update_mouse_look_capture,
-                update_camera_control,
                 animate_character,
                 link_ready_authored_animations,
                 tag_authored_player_pose_nodes,
@@ -219,6 +225,7 @@ fn main() -> AppExit {
                 apply_authored_glider_pose,
                 update_player_airflow_visuals,
                 follow_camera,
+                direct_plateau_vista_camera,
             )
                 .chain()
                 .in_set(GameSet::Camera),
@@ -352,6 +359,7 @@ fn primary_window(eval: Option<&EvalOptions>) -> Window {
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 enum GameSet {
     Ui,
+    CameraInput,
     Movement,
     Camera,
     Diagnostics,
