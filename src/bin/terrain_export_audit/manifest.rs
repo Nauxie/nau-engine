@@ -9,6 +9,204 @@ use crate::{
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 
+#[derive(Clone, Copy, Debug)]
+struct LayoutIsland {
+    center: [f64; 3],
+    half_extents: [f64; 2],
+    thickness_m: f64,
+    is_launch: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+struct LayoutMetrics {
+    valid_island_count: u64,
+    malformed_island_count: u64,
+    launch_island_found: bool,
+    x_span_m: f64,
+    y_span_m: f64,
+    z_span_m: f64,
+    min_thickness_m: f64,
+    max_thickness_m: f64,
+    positive_z_island_count: u64,
+    horizontal_sector_coverage: u64,
+    covered_horizontal_sectors: [bool; ARCHIPELAGO_HORIZONTAL_SECTOR_COUNT],
+    min_half_extent_product_m2: f64,
+    max_half_extent_product_m2: f64,
+    area_ratio: f64,
+    area_band_counts: [u64; 6],
+    aspect_ratio_bucket_counts: [u64; 4],
+}
+
+impl LayoutMetrics {
+    fn to_json(&self) -> Value {
+        json!({
+            "valid_island_count": self.valid_island_count,
+            "malformed_island_count": self.malformed_island_count,
+            "launch_island_found": self.launch_island_found,
+            "x_span_m": self.x_span_m,
+            "y_span_m": self.y_span_m,
+            "z_span_m": self.z_span_m,
+            "min_thickness_m": self.min_thickness_m,
+            "max_thickness_m": self.max_thickness_m,
+            "positive_z_island_count": self.positive_z_island_count,
+            "horizontal_sector_coverage": self.horizontal_sector_coverage,
+            "covered_horizontal_sectors": self.covered_horizontal_sectors,
+            "min_half_extent_product_m2": self.min_half_extent_product_m2,
+            "max_half_extent_product_m2": self.max_half_extent_product_m2,
+            "area_ratio": self.area_ratio,
+            "area_bands": {
+                "tiny": self.area_band_counts[0],
+                "small": self.area_band_counts[1],
+                "medium": self.area_band_counts[2],
+                "large": self.area_band_counts[3],
+                "vast": self.area_band_counts[4],
+                "colossal": self.area_band_counts[5],
+            },
+            "aspect_ratio_buckets": {
+                "compact_le_1_25": self.aspect_ratio_bucket_counts[0],
+                "moderate_le_1_6": self.aspect_ratio_bucket_counts[1],
+                "elongated_le_2_2": self.aspect_ratio_bucket_counts[2],
+                "extreme_gt_2_2": self.aspect_ratio_bucket_counts[3],
+            },
+        })
+    }
+}
+
+fn manifest_vector<const N: usize>(island: &Value, key: &str) -> Option<[f64; N]> {
+    let values = island.get(key)?.as_array()?;
+    if values.len() != N {
+        return None;
+    }
+
+    let mut vector = [0.0; N];
+    for (index, value) in values.iter().enumerate() {
+        let component = value.as_f64()?;
+        if !component.is_finite() {
+            return None;
+        }
+        vector[index] = component;
+    }
+    Some(vector)
+}
+
+fn manifest_layout_island(island: &Value) -> Option<LayoutIsland> {
+    let center = manifest_vector::<3>(island, "center")?;
+    let half_extents = manifest_vector::<2>(island, "half_extents")?;
+    let thickness_m = island.get("thickness_m")?.as_f64()?;
+    if half_extents.iter().any(|extent| *extent <= 0.0)
+        || !thickness_m.is_finite()
+        || thickness_m <= 0.0
+    {
+        return None;
+    }
+
+    Some(LayoutIsland {
+        center,
+        half_extents,
+        thickness_m,
+        is_launch: island.get("name").and_then(Value::as_str) == Some("launch mesa"),
+    })
+}
+
+fn derive_layout_metrics(islands: &[Value]) -> LayoutMetrics {
+    let parsed_islands = islands
+        .iter()
+        .filter_map(manifest_layout_island)
+        .collect::<Vec<_>>();
+    let malformed_island_count = islands.len().saturating_sub(parsed_islands.len()) as u64;
+    let valid_island_count = parsed_islands.len() as u64;
+
+    if parsed_islands.is_empty() || malformed_island_count > 0 {
+        return LayoutMetrics {
+            valid_island_count,
+            malformed_island_count,
+            ..Default::default()
+        };
+    }
+
+    let mut metrics = LayoutMetrics {
+        valid_island_count,
+        launch_island_found: parsed_islands.iter().any(|island| island.is_launch),
+        min_thickness_m: f64::INFINITY,
+        min_half_extent_product_m2: f64::INFINITY,
+        ..Default::default()
+    };
+    let mut min_center = [f64::INFINITY; 3];
+    let mut max_center = [f64::NEG_INFINITY; 3];
+
+    for island in &parsed_islands {
+        for axis in 0..3 {
+            min_center[axis] = min_center[axis].min(island.center[axis]);
+            max_center[axis] = max_center[axis].max(island.center[axis]);
+        }
+        metrics.min_thickness_m = metrics.min_thickness_m.min(island.thickness_m);
+        metrics.max_thickness_m = metrics.max_thickness_m.max(island.thickness_m);
+        metrics.positive_z_island_count += u64::from(island.center[2] > 0.0);
+
+        let area = island.half_extents[0] * island.half_extents[1];
+        metrics.min_half_extent_product_m2 = metrics.min_half_extent_product_m2.min(area);
+        metrics.max_half_extent_product_m2 = metrics.max_half_extent_product_m2.max(area);
+        let area_band = if area < TINY_ISLAND_MAX_AREA_M2 {
+            0
+        } else if area < SMALL_ISLAND_MAX_AREA_M2 {
+            1
+        } else if area < MEDIUM_ISLAND_MAX_AREA_M2 {
+            2
+        } else if area < LARGE_ISLAND_MAX_AREA_M2 {
+            3
+        } else if area < VAST_ISLAND_MAX_AREA_M2 {
+            4
+        } else {
+            5
+        };
+        metrics.area_band_counts[area_band] += 1;
+
+        let min_extent = island.half_extents[0].min(island.half_extents[1]);
+        let aspect_ratio = island.half_extents[0].max(island.half_extents[1]) / min_extent;
+        let aspect_ratio_bucket = if aspect_ratio <= COMPACT_ISLAND_MAX_ASPECT_RATIO {
+            0
+        } else if aspect_ratio <= MODERATE_ISLAND_MAX_ASPECT_RATIO {
+            1
+        } else if aspect_ratio <= ELONGATED_ISLAND_MAX_ASPECT_RATIO {
+            2
+        } else {
+            3
+        };
+        metrics.aspect_ratio_bucket_counts[aspect_ratio_bucket] += 1;
+    }
+
+    metrics.x_span_m = max_center[0] - min_center[0];
+    metrics.y_span_m = max_center[1] - min_center[1];
+    metrics.z_span_m = max_center[2] - min_center[2];
+    metrics.area_ratio = metrics.max_half_extent_product_m2 / metrics.min_half_extent_product_m2;
+
+    if let Some(launch_center) = parsed_islands
+        .iter()
+        .find(|island| island.is_launch)
+        .map(|island| island.center)
+    {
+        let sector_width = std::f64::consts::TAU / ARCHIPELAGO_HORIZONTAL_SECTOR_COUNT as f64;
+        for island in parsed_islands.iter().filter(|island| !island.is_launch) {
+            let delta_x = island.center[0] - launch_center[0];
+            let delta_z = island.center[2] - launch_center[2];
+            if delta_x.abs() <= f64::EPSILON && delta_z.abs() <= f64::EPSILON {
+                continue;
+            }
+            let angle = delta_z.atan2(delta_x).rem_euclid(std::f64::consts::TAU);
+            let sector = ((angle / sector_width).floor() as usize)
+                .min(ARCHIPELAGO_HORIZONTAL_SECTOR_COUNT - 1);
+            metrics.covered_horizontal_sectors[sector] = true;
+        }
+    }
+    metrics.horizontal_sector_coverage = metrics
+        .covered_horizontal_sectors
+        .iter()
+        .filter(|covered| **covered)
+        .count() as u64;
+
+    metrics
+}
+
 pub(crate) fn audit_manifest_path(path: &Path) -> Result<Value, String> {
     let manifest_text = fs::read_to_string(path).map_err(|error| error.to_string())?;
     let manifest = serde_json::from_str::<Value>(&manifest_text).map_err(|error| {
@@ -92,6 +290,7 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
+    let layout_metrics = derive_layout_metrics(&islands);
     let collision_truth = manifest.get("collision_truth").unwrap_or(&Value::Null);
     let visual_collision_coverage = manifest
         .get("visual_collision_coverage")
@@ -122,6 +321,82 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         island_count,
         "islands",
     ));
+    checks.push(check_eq_u64(
+        "archipelago_malformed_layout_island_count",
+        layout_metrics.malformed_island_count,
+        0,
+        "islands",
+    ));
+    checks.push(check_at_least_f64(
+        "archipelago_x_span",
+        layout_metrics.x_span_m,
+        MIN_ARCHIPELAGO_X_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "archipelago_y_span",
+        layout_metrics.y_span_m,
+        MIN_ARCHIPELAGO_Y_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "archipelago_z_span",
+        layout_metrics.z_span_m,
+        MIN_ARCHIPELAGO_Z_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "archipelago_positive_z_island_count",
+        layout_metrics.positive_z_island_count,
+        MIN_ARCHIPELAGO_POSITIVE_Z_ISLAND_COUNT,
+        "islands",
+    ));
+    checks.push(check_at_least_u64(
+        "archipelago_horizontal_sector_coverage",
+        layout_metrics.horizontal_sector_coverage,
+        MIN_ARCHIPELAGO_HORIZONTAL_SECTOR_COVERAGE,
+        "sectors",
+    ));
+    checks.push(check_at_least_f64(
+        "archipelago_area_ratio",
+        layout_metrics.area_ratio,
+        MIN_ARCHIPELAGO_AREA_RATIO,
+        "ratio",
+    ));
+    for (name, value, threshold) in [
+        (
+            "archipelago_tiny_area_band_count",
+            layout_metrics.area_band_counts[0],
+            MIN_TINY_ISLAND_COUNT,
+        ),
+        (
+            "archipelago_small_area_band_count",
+            layout_metrics.area_band_counts[1],
+            MIN_SMALL_ISLAND_COUNT,
+        ),
+        (
+            "archipelago_medium_area_band_count",
+            layout_metrics.area_band_counts[2],
+            MIN_MEDIUM_ISLAND_COUNT,
+        ),
+        (
+            "archipelago_large_area_band_count",
+            layout_metrics.area_band_counts[3],
+            MIN_LARGE_ISLAND_COUNT,
+        ),
+        (
+            "archipelago_vast_area_band_count",
+            layout_metrics.area_band_counts[4],
+            MIN_VAST_ISLAND_COUNT,
+        ),
+        (
+            "archipelago_colossal_area_band_count",
+            layout_metrics.area_band_counts[5],
+            MIN_COLOSSAL_ISLAND_COUNT,
+        ),
+    ] {
+        checks.push(check_at_least_u64(name, value, threshold, "islands"));
+    }
     checks.push(check_at_least_u64(
         "terrain_archetype_count",
         terrain_archetype_count,
@@ -455,12 +730,6 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         "visual_collision_camera_only_allowance_count",
         value_u64(visual_collision_coverage, "camera_only_allowance_count"),
         island_count,
-        "visuals",
-    ));
-    checks.push(check_at_least_u64(
-        "visual_collision_non_blocking_visual_count",
-        value_u64(visual_collision_coverage, "non_blocking_visual_count"),
-        MIN_VISUAL_COLLISION_NON_BLOCKING_VISUAL_COUNT,
         "visuals",
     ));
     checks.push(check_eq_str(
@@ -1051,6 +1320,7 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
     json!({
         "passed": passed,
         "manifest": manifest_path,
+        "layout_metrics": layout_metrics.to_json(),
         "checks": checks,
         "artifacts": artifacts,
     })

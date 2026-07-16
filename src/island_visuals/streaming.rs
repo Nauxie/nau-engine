@@ -5,6 +5,7 @@ use super::types::{
 use crate::Player;
 use crate::environment_visuals::WindResponsiveVisual;
 use bevy::prelude::*;
+use nau_engine::world::PLAYTEST_RESET_ISLAND_NAME;
 use std::collections::HashSet;
 
 const ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET: usize = 32;
@@ -20,6 +21,16 @@ fn island_visual_is_resident(entry: &IslandVisualEntry, player_position: Vec3) -
     entry.layer.is_resident_in(activation, band)
 }
 
+fn reset_destination_proxy_is_resident(entry: &IslandVisualEntry) -> bool {
+    entry.island.name == PLAYTEST_RESET_ISLAND_NAME
+        && (entry.collision.is_some() || entry.obstacle.is_some())
+}
+
+#[cfg(test)]
+pub(super) fn island_entry_is_resident(entry: &IslandVisualEntry, player_position: Vec3) -> bool {
+    island_visual_is_resident(entry, player_position) || reset_destination_proxy_is_resident(entry)
+}
+
 pub(crate) fn spawn_initial_island_visuals(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -28,13 +39,18 @@ pub(crate) fn spawn_initial_island_visuals(
 ) -> IslandStreamState {
     let mut state = IslandStreamState::default();
 
-    for entry in catalog
-        .entries
-        .iter()
-        .filter(|entry| island_visual_is_resident(entry, player_position))
-    {
-        let entity = spawn_island_visual_entry(commands, meshes, &mut state, entry);
+    for entry in &catalog.entries {
+        let visual_resident = island_visual_is_resident(entry, player_position);
+        if !visual_resident && !reset_destination_proxy_is_resident(entry) {
+            continue;
+        }
+
+        let entity =
+            spawn_island_visual_entry(commands, meshes, &mut state, entry, visual_resident);
         state.spawned.insert(entry.key, entity);
+        if visual_resident {
+            state.visual_resident.insert(entry.key);
+        }
     }
 
     state
@@ -45,18 +61,40 @@ fn spawn_island_visual_entry(
     meshes: &mut Assets<Mesh>,
     stream_state: &mut IslandStreamState,
     entry: &IslandVisualEntry,
+    visual_resident: bool,
 ) -> Entity {
-    let mut entity = commands.spawn((entry.transform, IslandLodVisual, Name::new(entry.name)));
-    if let Some(material) = entry.material.as_ref()
-        && let Some(mesh) = mesh_handle_for_entry(meshes, stream_state, entry)
-    {
-        entity.insert((Mesh3d(mesh), MeshMaterial3d(material.clone())));
+    let entity = {
+        let mut entity = commands.spawn((entry.transform, IslandLodVisual, Name::new(entry.name)));
+        if let Some(obstacle) = entry.obstacle {
+            entity.insert(obstacle);
+        }
+        if let Some(collision) = entry.collision {
+            entity.insert(collision);
+        }
+        entity.id()
+    };
+
+    if visual_resident {
+        insert_island_visual_components(commands, meshes, stream_state, entity, entry);
     }
-    if let Some(obstacle) = entry.obstacle {
-        entity.insert(obstacle);
-    }
-    if let Some(collision) = entry.collision {
-        entity.insert(collision);
+
+    entity
+}
+
+fn insert_island_visual_components(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    stream_state: &mut IslandStreamState,
+    entity: Entity,
+    entry: &IslandVisualEntry,
+) {
+    let mesh_and_material = entry.material.as_ref().and_then(|material| {
+        mesh_handle_for_entry(meshes, stream_state, entry).map(|mesh| (mesh, material.clone()))
+    });
+    let mut entity = commands.entity(entity);
+
+    if let Some((mesh, material)) = mesh_and_material {
+        entity.insert((Mesh3d(mesh), MeshMaterial3d(material)));
     }
     if let Some(motion) = entry.wind_motion {
         entity.insert(WindResponsiveVisual {
@@ -66,8 +104,6 @@ fn spawn_island_visual_entry(
             motion,
         });
     }
-
-    entity.id()
 }
 
 fn mesh_handle_for_entry(
@@ -107,26 +143,74 @@ pub(crate) fn update_island_stream_visibility(
     let mut despawned_visual_count = 0;
 
     for entry in &catalog.entries {
-        let resident = island_visual_is_resident(entry, player_transform.translation);
-        counts.record(entry.layer, !resident);
+        let visual_resident = island_visual_is_resident(entry, player_transform.translation);
+        let entry_resident = visual_resident || reset_destination_proxy_is_resident(entry);
+        counts.record(entry.layer, !visual_resident);
 
-        if resident {
-            desired_keys.insert(entry.key);
-            if !stream_state.spawned.contains_key(&entry.key) {
-                let applied_changes = spawned_visuals + despawned_visual_count;
-                if stream_change_budget_allows(diagnostics.initialized, applied_changes) {
-                    let entity = spawn_island_visual_entry(
-                        &mut commands,
-                        &mut meshes,
-                        &mut stream_state,
-                        entry,
-                    );
-                    stream_state.spawned.insert(entry.key, entity);
+        if !entry_resident {
+            continue;
+        }
+
+        desired_keys.insert(entry.key);
+        match stream_state.spawned.get(&entry.key).copied() {
+            None => {
+                if visual_resident {
+                    let applied_changes = spawned_visuals + despawned_visual_count;
+                    if !stream_change_budget_allows(diagnostics.initialized, applied_changes) {
+                        continue;
+                    }
+                }
+
+                let entity = spawn_island_visual_entry(
+                    &mut commands,
+                    &mut meshes,
+                    &mut stream_state,
+                    entry,
+                    visual_resident,
+                );
+                stream_state.spawned.insert(entry.key, entity);
+                if visual_resident {
+                    stream_state.visual_resident.insert(entry.key);
                     if diagnostics.initialized {
                         spawned_visuals += 1;
                     }
                 }
             }
+            Some(entity)
+                if visual_resident && !stream_state.visual_resident.contains(&entry.key) =>
+            {
+                let applied_changes = spawned_visuals + despawned_visual_count;
+                if stream_change_budget_allows(diagnostics.initialized, applied_changes) {
+                    insert_island_visual_components(
+                        &mut commands,
+                        &mut meshes,
+                        &mut stream_state,
+                        entity,
+                        entry,
+                    );
+                    stream_state.visual_resident.insert(entry.key);
+                    if diagnostics.initialized {
+                        spawned_visuals += 1;
+                    }
+                }
+            }
+            Some(entity)
+                if !visual_resident && stream_state.visual_resident.contains(&entry.key) =>
+            {
+                let applied_changes = spawned_visuals + despawned_visual_count;
+                if stream_change_budget_allows(diagnostics.initialized, applied_changes) {
+                    commands.entity(entity).remove::<(
+                        Mesh3d,
+                        MeshMaterial3d<StandardMaterial>,
+                        WindResponsiveVisual,
+                    )>();
+                    stream_state.visual_resident.remove(&entry.key);
+                    if diagnostics.initialized {
+                        despawned_visual_count += 1;
+                    }
+                }
+            }
+            Some(_) => {}
         }
     }
 
@@ -137,14 +221,18 @@ pub(crate) fn update_island_stream_visibility(
         .collect::<Vec<_>>();
 
     for (key, entity) in despawned_visuals {
+        let visual_was_resident = stream_state.visual_resident.contains(&key);
         let applied_changes = spawned_visuals + despawned_visual_count;
-        if !stream_change_budget_allows(diagnostics.initialized, applied_changes) {
+        if visual_was_resident
+            && !stream_change_budget_allows(diagnostics.initialized, applied_changes)
+        {
             break;
         }
 
         commands.entity(entity).despawn();
         stream_state.spawned.remove(&key);
-        if diagnostics.initialized {
+        stream_state.visual_resident.remove(&key);
+        if visual_was_resident && diagnostics.initialized {
             despawned_visual_count += 1;
         }
     }
@@ -171,8 +259,13 @@ pub(crate) fn update_island_stream_visibility(
 
 #[cfg(test)]
 mod tests {
+    use super::super::types::{IslandVisualKey, IslandVisualLayer, IslandVisualMeshRecipe};
     use super::*;
-    use nau_engine::world::SkyIsland;
+    use crate::camera_runtime::CameraObstacle;
+    use crate::environment_visuals::wind_visual_motion;
+    use crate::world_collision_runtime::{WorldCollisionProxy, WorldCollisionProxyKind};
+    use nau_engine::camera::CameraObstruction;
+    use nau_engine::world::{START_POSITION, SkyIsland, SkyRoute};
 
     fn resident_entry(index: usize) -> IslandVisualEntry {
         let island = SkyIsland::new(
@@ -250,6 +343,136 @@ mod tests {
         assert_eq!(
             app.world().resource::<IslandStreamState>().spawned.len(),
             ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET + 3
+        );
+    }
+
+    #[test]
+    fn reset_destination_proxies_reside_without_visuals_until_lod_residency() {
+        let route = SkyRoute::default();
+        let island = route
+            .island_named(PLAYTEST_RESET_ISLAND_NAME)
+            .expect("reset island should exist");
+        let layer = IslandVisualLayer::Detail;
+        let key = IslandVisualKey {
+            island_name: PLAYTEST_RESET_ISLAND_NAME,
+            layer,
+            index: 0,
+        };
+        let entry = IslandVisualEntry {
+            key,
+            island,
+            layer,
+            mesh: None,
+            mesh_recipe: Some(IslandVisualMeshRecipe::Terrain {
+                island_index: 0,
+                island,
+            }),
+            material: Some(Handle::default()),
+            transform: Transform::from_translation(island.center),
+            obstacle: Some(CameraObstacle(CameraObstruction::new(
+                island.center,
+                Vec3::ONE,
+            ))),
+            collision: Some(WorldCollisionProxy::new(
+                island.center,
+                Vec3::ONE,
+                WorldCollisionProxyKind::Landmark,
+            )),
+            wind_motion: Some(wind_visual_motion(0, 0.0, 0.2, 0.1, 1.0)),
+            name: "reset-proxy-with-deferred-visual",
+        };
+        assert!(!island_visual_is_resident(&entry, START_POSITION));
+        assert!(island_visual_is_resident(&entry, island.center));
+
+        let catalog = IslandVisualCatalog {
+            entries: vec![entry],
+        };
+        let mut meshes = Assets::<Mesh>::default();
+        let mut world = World::new();
+
+        let state = {
+            let mut commands = world.commands();
+            spawn_initial_island_visuals(&mut commands, &mut meshes, &catalog, START_POSITION)
+        };
+        world.flush();
+
+        let entity = state.spawned[&key];
+        assert_eq!(state.loaded_mesh_count(), 0);
+        assert!(!state.visual_resident.contains(&key));
+        assert!(world.get::<CameraObstacle>(entity).is_some());
+        assert!(world.get::<WorldCollisionProxy>(entity).is_some());
+        assert!(world.get::<Mesh3d>(entity).is_none());
+        assert!(
+            world
+                .get::<MeshMaterial3d<StandardMaterial>>(entity)
+                .is_none()
+        );
+        assert!(world.get::<WindResponsiveVisual>(entity).is_none());
+
+        world.insert_resource(meshes);
+        world.insert_resource(catalog);
+        world.insert_resource(state);
+        world.insert_resource(IslandStreamDiagnostics::default());
+        let player = world
+            .spawn((crate::Player, Transform::from_translation(START_POSITION)))
+            .id();
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_island_stream_visibility);
+
+        schedule.run(&mut world);
+        assert_eq!(
+            world
+                .resource::<IslandStreamDiagnostics>()
+                .counts
+                .hidden_detail_count,
+            1
+        );
+
+        world
+            .entity_mut(player)
+            .get_mut::<Transform>()
+            .expect("player should have a transform")
+            .translation = island.center;
+        schedule.run(&mut world);
+
+        assert!(world.get::<CameraObstacle>(entity).is_some());
+        assert!(world.get::<WorldCollisionProxy>(entity).is_some());
+        assert!(world.get::<Mesh3d>(entity).is_some());
+        assert!(
+            world
+                .get::<MeshMaterial3d<StandardMaterial>>(entity)
+                .is_some()
+        );
+        assert!(world.get::<WindResponsiveVisual>(entity).is_some());
+        assert_eq!(
+            world
+                .resource::<IslandStreamDiagnostics>()
+                .spawned_visuals_this_frame,
+            1
+        );
+        assert_eq!(world.resource::<IslandStreamState>().loaded_mesh_count(), 1);
+
+        world
+            .entity_mut(player)
+            .get_mut::<Transform>()
+            .expect("player should have a transform")
+            .translation = START_POSITION;
+        schedule.run(&mut world);
+
+        assert!(world.get::<CameraObstacle>(entity).is_some());
+        assert!(world.get::<WorldCollisionProxy>(entity).is_some());
+        assert!(world.get::<Mesh3d>(entity).is_none());
+        assert!(
+            world
+                .get::<MeshMaterial3d<StandardMaterial>>(entity)
+                .is_none()
+        );
+        assert!(world.get::<WindResponsiveVisual>(entity).is_none());
+        assert_eq!(
+            world
+                .resource::<IslandStreamDiagnostics>()
+                .despawned_visuals_this_frame,
+            1
         );
     }
 }

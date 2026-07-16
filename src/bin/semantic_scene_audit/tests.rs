@@ -773,6 +773,66 @@ fn world_collision_contact_report_profile_focuses_close_obstruction_scene() {
 }
 
 #[test]
+fn plateau_vista_report_profile_focuses_authored_landmarks() {
+    let checkpoints = vec![
+        checkpoint_with_scene_samples(
+            "plateau_arrival_reveal",
+            vec![
+                scene_audit_sample(
+                    "plateau_arrival_ruin",
+                    "plateau arrival ruin marker",
+                    "stone",
+                    "stone_ruin",
+                    MIN_SAMPLE_PIXEL_HITS,
+                ),
+                terrain_audit_sample("great sky plateau", "terrain_alpine_mist"),
+            ],
+        ),
+        checkpoint_with_scene_samples(
+            "waterfall_vista",
+            vec![
+                scene_audit_sample(
+                    "waterfall_water",
+                    "broken edge waterfall",
+                    "water",
+                    "water",
+                    MIN_SAMPLE_PIXEL_HITS,
+                ),
+                terrain_audit_sample("great sky plateau", "terrain_alpine_mist"),
+            ],
+        ),
+    ]
+    .into_iter()
+    .map(|mut checkpoint| {
+        checkpoint.scenario = "great_sky_plateau_vistas".to_string();
+        checkpoint.visible_scene_material_count = 2;
+        checkpoint.scene_material_pixel_hit_count = 2;
+        checkpoint.visible_scene_sample_kind_count = 2;
+        checkpoint.scene_sample_kind_pixel_hit_count = 2;
+        checkpoint
+    })
+    .collect::<Vec<_>>();
+
+    let checks = report_checks(&checkpoints);
+    let report =
+        serde_json::from_str::<Value>(&report_json(true, &checks, &checkpoints)).expect("report");
+    let profile = report.get("profile").expect("profile");
+
+    assert!(checks.iter().all(|check| check.passed));
+    assert!(!checks.iter().any(|check| check.name.contains("cloud")));
+    assert_eq!(
+        profile.get("name").and_then(Value::as_str),
+        Some("plateau_vistas")
+    );
+    assert_eq!(
+        profile
+            .get("require_all_visible_families")
+            .and_then(Value::as_bool),
+        Some(false)
+    );
+}
+
+#[test]
 fn semantic_scene_audit_scales_logical_viewport_to_retina_screenshot() {
     let temp_dir = unique_temp_dir("semantic_scene_retina");
     fs::create_dir_all(&temp_dir).expect("temp dir");
@@ -928,6 +988,324 @@ fn checkpoint_requires_visible_scene_sample_kind_diversity() {
     assert_eq!(audit.visible_scene_sample_kind_count, 1);
     assert_eq!(audit.scene_sample_kind_pixel_hit_count, 1);
     let _ = fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn water_stone_and_plateau_shelf_materials_match_generated_palette_colors() {
+    for color in [
+        [54.0, 154.0, 210.0],
+        [22.0, 92.0, 156.0],
+        [160.0, 220.0, 244.0],
+    ] {
+        assert!(material_matches("water", color[0], color[1], color[2]));
+    }
+    for color in [[104.0, 82.0, 48.0], [92.0, 74.0, 46.0], [74.0, 68.0, 62.0]] {
+        assert!(material_matches("stone", color[0], color[1], color[2]));
+    }
+    for color in [
+        [210.0, 50.0, 96.0],
+        [124.0, 28.0, 80.0],
+        [255.0, 126.0, 162.0],
+    ] {
+        assert!(material_matches("flower", color[0], color[1], color[2]));
+    }
+    assert!(!material_matches("water", 130.0, 170.0, 220.0));
+    assert!(!material_matches("water", 97.0, 122.0, 163.0));
+}
+
+#[test]
+fn checkpoint_honors_false_top_level_sidecar_result() {
+    let (temp_dir, metadata_path) =
+        checkpoint_fixture("sidecar_false", false, "default", "test", Vec::new(), &[]);
+
+    let audit = audit_checkpoint_path(&metadata_path).expect("audit");
+
+    assert!(!audit.passed);
+    assert_eq!(audit.scene_material_pixel_hit_count, 3);
+    let _ = fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn plateau_landmark_requirements_do_not_change_generic_scenarios() {
+    for checkpoint in ["waterfall_vista", "plateau_arrival_reveal"] {
+        let name = format!("generic_{checkpoint}");
+        let (temp_dir, metadata_path) =
+            checkpoint_fixture(&name, true, "default", checkpoint, Vec::new(), &[]);
+
+        assert!(audit_checkpoint_path(&metadata_path).expect("audit").passed);
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+}
+
+#[test]
+fn visible_conditional_materials_contribute_to_checkpoint_counts() {
+    let water_sample = projected_sample("water_surface", "low basin lake", "water", 280.0, 150.0);
+    let (temp_dir, metadata_path) = checkpoint_fixture(
+        "visible_conditional_material",
+        true,
+        "default",
+        "test",
+        vec![water_sample],
+        &[],
+    );
+
+    let audit = audit_checkpoint_path(&metadata_path).expect("audit");
+    let water = audit
+        .materials
+        .iter()
+        .find(|material| material.expected_material == "water")
+        .expect("visible water material audit");
+
+    assert_eq!(audit.visible_scene_material_count, 4);
+    assert_eq!(audit.scene_material_pixel_hit_count, 3);
+    assert_eq!(water.visible_sample_count, 1);
+    assert!(!water.passed);
+    assert!(!audit.passed);
+    let _ = fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn waterfall_vista_requires_a_pixel_backed_waterfall_sample() {
+    let (missing_dir, missing_path) = checkpoint_fixture(
+        "waterfall_missing",
+        true,
+        "great_sky_plateau_route",
+        "waterfall_vista",
+        Vec::new(),
+        &[],
+    );
+    assert!(
+        !audit_checkpoint_path(&missing_path)
+            .expect("missing audit")
+            .passed
+    );
+
+    let waterfall = projected_sample(
+        "waterfall_water",
+        "north rim waterfall",
+        "water",
+        280.0,
+        150.0,
+    );
+    let water_pixels = [
+        (279, 150, Rgb([30, 88, 150])),
+        (280, 150, Rgb([22, 92, 156])),
+        (281, 150, Rgb([40, 94, 160])),
+    ];
+    let (hit_dir, hit_path) = checkpoint_fixture(
+        "waterfall_hit",
+        true,
+        "great_sky_plateau_route",
+        "waterfall_vista",
+        vec![waterfall],
+        &water_pixels,
+    );
+    assert!(audit_checkpoint_path(&hit_path).expect("hit audit").passed);
+
+    let _ = fs::remove_dir_all(missing_dir);
+    let _ = fs::remove_dir_all(hit_dir);
+}
+
+#[test]
+fn waterfall_vista_rejects_sky_colored_pixels_at_projected_sample() {
+    let waterfall = projected_sample(
+        "waterfall_water",
+        "north rim waterfall",
+        "water",
+        280.0,
+        150.0,
+    );
+    let sky_pixels = [
+        (279, 150, Rgb([54, 154, 210])),
+        (280, 150, Rgb([70, 130, 175])),
+        (281, 150, Rgb([160, 220, 244])),
+    ];
+    let (temp_dir, metadata_path) = checkpoint_fixture(
+        "waterfall_sky_false_positive",
+        true,
+        "great_sky_plateau_route",
+        "waterfall_vista",
+        vec![waterfall],
+        &sky_pixels,
+    );
+
+    assert!(
+        !audit_checkpoint_path(&metadata_path)
+            .expect("sky-colored waterfall audit")
+            .passed
+    );
+
+    let _ = fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn plateau_arrival_reveal_accepts_pixel_backed_ruin_or_landing_shelf() {
+    let (missing_dir, missing_path) = checkpoint_fixture(
+        "plateau_arrival_missing",
+        true,
+        "great_sky_plateau_route",
+        "plateau_arrival_reveal",
+        Vec::new(),
+        &[],
+    );
+    assert!(
+        !audit_checkpoint_path(&missing_path)
+            .expect("missing audit")
+            .passed
+    );
+
+    let ruin = projected_sample(
+        "plateau_arrival_ruin",
+        "plateau arrival ruin marker",
+        "stone",
+        280.0,
+        150.0,
+    );
+    let stone_pixels = [
+        (279, 150, Rgb([104, 82, 48])),
+        (280, 150, Rgb([92, 74, 46])),
+        (281, 150, Rgb([74, 68, 62])),
+    ];
+    let (ruin_dir, ruin_path) = checkpoint_fixture(
+        "plateau_arrival_ruin",
+        true,
+        "great_sky_plateau_route",
+        "plateau_arrival_reveal",
+        vec![ruin],
+        &stone_pixels,
+    );
+    assert!(
+        audit_checkpoint_path(&ruin_path)
+            .expect("ruin audit")
+            .passed
+    );
+
+    let shelf = projected_sample(
+        "plateau_arrival_shelf",
+        "plateau meadow landing shelf",
+        "flower",
+        280.0,
+        150.0,
+    );
+    let flower_pixels = [
+        (279, 150, Rgb([210, 50, 96])),
+        (280, 150, Rgb([124, 28, 80])),
+        (281, 150, Rgb([255, 126, 162])),
+    ];
+    let (shelf_dir, shelf_path) = checkpoint_fixture(
+        "plateau_arrival_shelf",
+        true,
+        "great_sky_plateau_route",
+        "plateau_arrival_reveal",
+        vec![shelf],
+        &flower_pixels,
+    );
+    assert!(
+        audit_checkpoint_path(&shelf_path)
+            .expect("shelf audit")
+            .passed
+    );
+
+    let _ = fs::remove_dir_all(missing_dir);
+    let _ = fs::remove_dir_all(ruin_dir);
+    let _ = fs::remove_dir_all(shelf_dir);
+}
+
+#[test]
+fn plateau_vista_checkpoint_allows_unrelated_visible_sample_misses() {
+    let ruin = projected_sample(
+        "plateau_arrival_ruin",
+        "plateau arrival ruin marker",
+        "stone",
+        280.0,
+        150.0,
+    );
+    let missed_water = projected_sample("water_surface", "off-axis pool", "water", 280.0, 175.0);
+    let stone_pixels = [
+        (279, 150, Rgb([104, 82, 48])),
+        (280, 150, Rgb([92, 74, 46])),
+        (281, 150, Rgb([74, 68, 62])),
+    ];
+    let (temp_dir, metadata_path) = checkpoint_fixture(
+        "plateau_vista_partial_family",
+        true,
+        "great_sky_plateau_vistas",
+        "plateau_arrival_reveal",
+        vec![ruin, missed_water],
+        &stone_pixels,
+    );
+
+    assert!(
+        audit_checkpoint_path(&metadata_path)
+            .expect("plateau vista audit")
+            .passed
+    );
+    let _ = fs::remove_dir_all(temp_dir);
+}
+
+fn checkpoint_fixture(
+    name: &str,
+    sidecar_passed: bool,
+    scenario: &str,
+    checkpoint: &str,
+    extra_samples: Vec<Value>,
+    extra_pixels: &[(u32, u32, Rgb<u8>)],
+) -> (PathBuf, PathBuf) {
+    let temp_dir = unique_temp_dir(name);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let screenshot_path = temp_dir.join("checkpoint.png");
+    let metadata_path = temp_dir.join("checkpoint.markers.json");
+    let mut image = RgbImage::from_pixel(320, 200, Rgb([130, 170, 220]));
+    for (x, y, color) in [
+        (39, 40, Rgb([54, 128, 70])),
+        (40, 40, Rgb([34, 100, 62])),
+        (41, 40, Rgb([70, 150, 94])),
+        (119, 40, Rgb([44, 126, 32])),
+        (120, 40, Rgb([48, 132, 36])),
+        (121, 40, Rgb([52, 138, 34])),
+        (199, 40, Rgb([158, 166, 174])),
+        (200, 40, Rgb([166, 174, 184])),
+        (201, 40, Rgb([148, 158, 168])),
+    ] {
+        image.put_pixel(x, y, color);
+    }
+    for &(x, y, color) in extra_pixels {
+        image.put_pixel(x, y, color);
+    }
+    image.save(&screenshot_path).expect("screenshot");
+
+    let mut scene_samples = vec![
+        projected_sample("terrain_surface", "launch mesa", "terrain", 40.0, 40.0),
+        projected_sample("tree_canopy", "foliage", "foliage", 120.0, 40.0),
+        projected_sample("weather_cloud", "cloud", "cloud", 200.0, 40.0),
+    ];
+    scene_samples.extend(extra_samples);
+    let metadata = serde_json::json!({
+        "passed": sidecar_passed,
+        "scenario": scenario,
+        "checkpoint": checkpoint,
+        "screenshot": screenshot_path.to_string_lossy(),
+        "viewport": {"width": 320, "height": 200},
+        "scene_samples": scene_samples,
+    });
+    fs::write(
+        &metadata_path,
+        serde_json::to_string(&metadata).expect("metadata json"),
+    )
+    .expect("metadata");
+
+    (temp_dir, metadata_path)
+}
+
+fn projected_sample(kind: &str, label: &str, expected_material: &str, x: f64, y: f64) -> Value {
+    serde_json::json!({
+        "kind": kind,
+        "label": label,
+        "expected_material": expected_material,
+        "in_viewport": true,
+        "visibility": "visible",
+        "screen": {"x": x, "y": y},
+    })
 }
 
 fn unique_temp_dir(name: &str) -> PathBuf {

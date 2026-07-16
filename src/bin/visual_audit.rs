@@ -18,21 +18,19 @@ use report::{
     VisualAuditProfile, audit_report_json_for_profile, report_checks_for_profile, report_passed,
 };
 
+const USAGE: &str = "Usage: cargo run --bin visual_audit -- [--profile default|route_marker_optional|close_obstruction] <png> [<png> ...]";
+
 fn main() {
     let (profile, paths) = match parse_args(env::args().skip(1)) {
         Ok(parsed) => parsed,
         Err(error) => {
             eprintln!("{error}");
-            eprintln!(
-                "Usage: cargo run --bin visual_audit -- [--profile default|close_obstruction] <png> [<png> ...]"
-            );
+            eprintln!("{USAGE}");
             process::exit(2);
         }
     };
     if paths.is_empty() {
-        eprintln!(
-            "Usage: cargo run --bin visual_audit -- [--profile default|close_obstruction] <png> [<png> ...]"
-        );
+        eprintln!("{USAGE}");
         process::exit(2);
     }
 

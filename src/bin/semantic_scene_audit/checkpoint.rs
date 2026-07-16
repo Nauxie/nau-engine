@@ -53,14 +53,6 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
     let visible_terrain_material_variant_count = visible_terrain_material_variant_count(&samples);
     let terrain_material_variant_pixel_hit_count =
         terrain_material_variant_pixel_hit_count(&samples);
-    let passed = visible_scene_sample_count >= MIN_VISIBLE_SAMPLES_PER_CHECKPOINT
-        && scene_sample_pixel_hit_count >= MIN_PASSED_SAMPLES_PER_CHECKPOINT
-        && visible_scene_material_count >= MIN_VISIBLE_MATERIALS_PER_CHECKPOINT
-        && scene_material_pixel_hit_count >= visible_scene_material_count
-        && visible_scene_sample_kind_count >= MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT
-        && scene_sample_kind_pixel_hit_count >= visible_scene_sample_kind_count
-        && terrain_material_variant_pixel_hit_count
-            >= min_terrain_material_variant_hit_count(visible_terrain_material_variant_count);
     let checkpoint = parsed
         .get("checkpoint")
         .and_then(Value::as_str)
@@ -71,6 +63,31 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
         .and_then(Value::as_str)
         .unwrap_or("unknown")
         .to_string();
+    let sidecar_passed = parsed
+        .get("passed")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let passed = if scenario == "great_sky_plateau_vistas" {
+        sidecar_passed
+            && visible_scene_sample_count >= 2
+            && scene_sample_pixel_hit_count >= 1
+            && visible_scene_material_count >= 2
+            && scene_material_pixel_hit_count >= 2
+            && visible_scene_sample_kind_count >= 2
+            && scene_sample_kind_pixel_hit_count >= 2
+            && checkpoint_landmark_requirement_met(&scenario, &checkpoint, &samples)
+    } else {
+        sidecar_passed
+            && visible_scene_sample_count >= MIN_VISIBLE_SAMPLES_PER_CHECKPOINT
+            && scene_sample_pixel_hit_count >= MIN_PASSED_SAMPLES_PER_CHECKPOINT
+            && visible_scene_material_count >= MIN_VISIBLE_MATERIALS_PER_CHECKPOINT
+            && scene_material_pixel_hit_count >= visible_scene_material_count
+            && visible_scene_sample_kind_count >= MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT
+            && scene_sample_kind_pixel_hit_count >= visible_scene_sample_kind_count
+            && terrain_material_variant_pixel_hit_count
+                >= min_terrain_material_variant_hit_count(visible_terrain_material_variant_count)
+            && checkpoint_landmark_requirement_met(&scenario, &checkpoint, &samples)
+    };
 
     Ok(CheckpointAudit {
         metadata_path: path.to_string_lossy().into_owned(),
@@ -120,6 +137,32 @@ pub(crate) fn scene_sample_kind_pixel_hit_count(samples: &[SceneSampleAudit]) ->
 
 fn sample_counts_toward_visible_kind(sample: &SceneSampleAudit) -> bool {
     sample.is_visible() && (sample.expected_material != "wind" || sample.passed)
+}
+
+fn checkpoint_landmark_requirement_met(
+    scenario: &str,
+    checkpoint: &str,
+    samples: &[SceneSampleAudit],
+) -> bool {
+    match (scenario, checkpoint) {
+        ("great_sky_plateau_route" | "great_sky_plateau_vistas", "waterfall_vista") => {
+            samples.iter().any(|sample| {
+                sample.passed
+                    && sample.kind == "waterfall_water"
+                    && sample.expected_material == "water"
+            })
+        }
+        ("great_sky_plateau_route" | "great_sky_plateau_vistas", "plateau_arrival_reveal") => {
+            samples.iter().any(|sample| {
+                sample.passed
+                    && matches!(
+                        sample.kind.as_str(),
+                        "plateau_arrival_ruin" | "plateau_arrival_shelf"
+                    )
+            })
+        }
+        _ => true,
+    }
 }
 
 pub(crate) fn visible_terrain_material_variant_count(samples: &[SceneSampleAudit]) -> usize {
@@ -270,6 +313,10 @@ pub(crate) fn default_scene_sample_material_variant(
             "cloud" => "cloud",
             "distant_island" => "distant_island",
             "wind" => "wind",
+            "water" => "water",
+            "stone" => "stone_ruin",
+            "wood" => "wood",
+            "flower" => "flower",
             _ => "unknown",
         };
     }

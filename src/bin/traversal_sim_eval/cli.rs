@@ -161,7 +161,8 @@ mod tests {
         assert!(error.contains("NAU_EVAL_SIM_ONLY"));
         assert!(!simulation_scenario_names().contains(&WORLD_COLLISION_CONTACT));
         assert!(!simulation_scenario_names().contains(&TERRAIN_BODY_COLLISION_CONTACT));
-        assert!(usage().contains("App-only scenarios: world_collision_contact"));
+        assert!(usage().contains("App-only scenarios:"));
+        assert!(usage().contains(WORLD_COLLISION_CONTACT));
         assert!(usage().contains("terrain_body_collision_contact"));
     }
 }

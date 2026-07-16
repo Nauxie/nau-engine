@@ -16,7 +16,8 @@ pub use collision::{
     TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND, TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND,
     TerrainCollisionTruthReport, WorldCollisionProxy, WorldCollisionProxyKind,
     WorldCollisionResolution, resolve_world_collisions, terrain_body_collision_proxies,
-    terrain_collision_truth_report, terrain_rim_collision_proxies,
+    terrain_collision_contact_probe_position, terrain_collision_truth_report,
+    terrain_rim_collision_proxies,
 };
 pub use island::{
     ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT, IslandBiome, IslandFootprintProfile, IslandLandmarkRole,

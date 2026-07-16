@@ -7,19 +7,19 @@ use crate::camera_runtime::CameraObstacle;
 use crate::content_diagnostics::{GeneratedLandmarkKind, IslandContentDiagnostics};
 use crate::environment_visuals::wind_visual_motion;
 use crate::generated_content::{
-    FirstExpeditionSilhouetteKind, GROUND_COVER_BLADES_PER_PATCH, GROUND_COVER_PATCHES,
-    IslandDetailMaterials, IslandUnderRouteVisualKind, cliff_tooth_ridge_mesh,
-    first_expedition_silhouette_specs, garden_ring_mesh, island_ground_cover_mesh,
-    island_lake_basin_visual_specs, island_playable_normalized_offset,
-    island_under_route_visual_specs, island_visual_surface_position, island_water_visual_specs,
-    landing_garden_marker_mesh, launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh,
-    ruin_arch_mesh, tree_canopy_mesh, tree_trunk_mesh,
+    FirstExpeditionSilhouetteKind, GROUND_COVER_BLADES_PER_PATCH, IslandArtifactMaterial,
+    IslandDetailBudget, IslandDetailMaterials, IslandRockSpec, IslandRuinSpec, IslandTreeSpec,
+    IslandUnderRouteVisualKind, cliff_tooth_ridge_mesh, first_expedition_silhouette_specs,
+    garden_ring_mesh, island_artifact_visual_specs, island_detail_budget, island_ground_cover_mesh,
+    island_lake_basin_visual_specs, island_playable_normalized_offset, island_rock_specs,
+    island_ruin_specs, island_tree_specs, island_under_route_visual_specs,
+    island_visual_surface_position, island_water_visual_specs, landing_garden_marker_mesh,
+    launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh, ruin_arch_mesh, tree_canopy_mesh,
+    tree_trunk_mesh,
 };
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
-use nau_engine::world::{
-    IslandLandmarkRole, IslandPlateauRegion, IslandTerrainArchetype, SkyIsland,
-};
+use nau_engine::world::{IslandPlateauRegion, IslandTerrainArchetype, SkyIsland};
 
 use crate::world_collision_runtime::{WorldCollisionProxy, WorldCollisionProxyKind};
 
@@ -36,11 +36,18 @@ pub(super) fn queue_sky_island_details(
     island: SkyIsland,
 ) {
     let detail_phase = island_index as f32 * 0.77;
+    let detail_budget: IslandDetailBudget = island_detail_budget(island);
+    let plateau_authored_layer = if island.is_great_plateau_anchor() {
+        IslandVisualLayer::Vista
+    } else {
+        IslandVisualLayer::Detail
+    };
     content_diagnostics.record_detail_biome_palette(island_index);
-    let ground_cover_mesh = island_ground_cover_mesh(island_index, island);
+    let ground_cover_mesh =
+        island_ground_cover_mesh(island_index, island, detail_budget.ground_cover_patch_count);
     content_diagnostics.record_generated_ground_cover(
-        GROUND_COVER_PATCHES,
-        GROUND_COVER_PATCHES * GROUND_COVER_BLADES_PER_PATCH,
+        detail_budget.ground_cover_patch_count,
+        detail_budget.ground_cover_patch_count * GROUND_COVER_BLADES_PER_PATCH,
         ground_cover_mesh.count_vertices(),
     );
     queue_island_visual(
@@ -55,32 +62,14 @@ pub(super) fn queue_sky_island_details(
         "island ground cover",
     );
 
-    let tree_offsets = [
-        Vec2::new(-0.42, -0.24),
-        Vec2::new(0.34, -0.36),
-        Vec2::new(0.24, 0.32),
-    ];
-
-    for (index, offset) in tree_offsets.into_iter().enumerate() {
-        if island.is_target && index == 1 {
-            continue;
-        }
-        let sway = (detail_phase + index as f32).sin() * 0.08;
-        let surface = island_visual_surface_position(island, Vec2::new(offset.x + sway, offset.y));
-        let trunk_height = 2.1 + index as f32 * 0.25;
-        let trunk_center = surface + Vec3::Y * (trunk_height * 0.5);
-        let canopy_radius = 1.05 + index as f32 * 0.08;
-        let canopy_center = surface + Vec3::Y * (trunk_height + 0.72);
-        let trunk_mesh = tree_trunk_mesh(
-            0.22,
-            trunk_height,
-            5_000 + island_index as u32 * 97 + index as u32 * 13,
-        );
+    let tree_specs: Vec<IslandTreeSpec> = island_tree_specs(island_index, island);
+    for (tree_index, tree) in tree_specs.into_iter().enumerate() {
+        let surface = island_visual_surface_position(island, tree.normalized_offset);
+        let trunk_center = surface + Vec3::Y * (tree.trunk_height_m * 0.5);
+        let canopy_center = surface + Vec3::Y * (tree.trunk_height_m + tree.canopy_radius_m * 0.68);
+        let trunk_mesh = tree_trunk_mesh(tree.trunk_radius_m, tree.trunk_height_m, tree.trunk_seed);
         content_diagnostics.record_generated_tree_trunk(trunk_mesh.count_vertices());
-        let canopy_mesh = tree_canopy_mesh(
-            canopy_radius,
-            6_000 + island_index as u32 * 101 + index as u32 * 17,
-        );
+        let canopy_mesh = tree_canopy_mesh(tree.canopy_radius_m, tree.canopy_seed);
         content_diagnostics.record_generated_tree_canopy(canopy_mesh.count_vertices());
 
         queue_collidable_wind_island_visual(
@@ -93,14 +82,22 @@ pub(super) fn queue_sky_island_details(
             Transform::from_translation(trunk_center),
             Some(CameraObstacle(CameraObstruction::soft_local_prop(
                 trunk_center,
-                Vec3::new(0.22, trunk_height * 0.5, 0.22),
+                Vec3::new(
+                    tree.trunk_radius_m,
+                    tree.trunk_height_m * 0.5,
+                    tree.trunk_radius_m,
+                ),
             ))),
             WorldCollisionProxy::new(
                 trunk_center,
-                Vec3::new(0.24, trunk_height * 0.5, 0.24),
+                Vec3::new(
+                    tree.trunk_radius_m + 0.02,
+                    tree.trunk_height_m * 0.5,
+                    tree.trunk_radius_m + 0.02,
+                ),
                 WorldCollisionProxyKind::Tree,
             ),
-            wind_visual_motion(island_index, index as f32 * 0.61, 0.025, 0.018, 0.9),
+            wind_visual_motion(island_index, tree_index as f32 * 0.61, 0.025, 0.018, 0.9),
             "island tree trunk",
         );
         queue_wind_island_visual(
@@ -113,29 +110,28 @@ pub(super) fn queue_sky_island_details(
             Transform::from_translation(canopy_center),
             Some(CameraObstacle(CameraObstruction::soft_local_prop(
                 canopy_center,
-                Vec3::splat(canopy_radius),
+                Vec3::splat(tree.canopy_radius_m),
             ))),
-            wind_visual_motion(island_index, index as f32 * 0.83 + 1.7, 0.22, 0.075, 1.35),
+            wind_visual_motion(
+                island_index,
+                tree_index as f32 * 0.83 + 1.7,
+                0.22,
+                0.075,
+                1.35,
+            ),
             "island tree canopy",
         );
     }
 
-    for index in 0..4 {
-        let angle = detail_phase + index as f32 * 1.37;
-        let radius = if index % 2 == 0 { 0.52 } else { 0.72 };
-        let normalized_offset =
-            island_playable_normalized_offset(island, Vec2::new(angle.cos(), angle.sin()) * radius);
-        let x = island.center.x + normalized_offset.x * island.half_extents.x;
-        let z = island.center.z + normalized_offset.y * island.half_extents.y;
-        let stone_scale = 0.45 + index as f32 * 0.08;
+    let rock_specs: Vec<IslandRockSpec> = island_rock_specs(island_index, island);
+    for rock in rock_specs {
+        let x = island.center.x + rock.normalized_offset.x * island.half_extents.x;
+        let z = island.center.z + rock.normalized_offset.y * island.half_extents.y;
         let surface_y = island.mesh_top_y_at(Vec3::new(x, island.center.y, z));
-        let rock_mesh = rock_scatter_mesh(
-            stone_scale,
-            9_000 + island_index as u32 * 131 + index as u32 * 19,
-        );
+        let rock_mesh = rock_scatter_mesh(rock.scale_m, rock.seed);
         content_diagnostics.record_generated_rock(rock_mesh.count_vertices());
 
-        let rock_center = Vec3::new(x, surface_y + stone_scale * 0.5, z);
+        let rock_center = Vec3::new(x, surface_y + rock.scale_m * 0.5, z);
         queue_collidable_island_visual(
             entries,
             visual_index,
@@ -147,7 +143,11 @@ pub(super) fn queue_sky_island_details(
             None,
             WorldCollisionProxy::new(
                 rock_center,
-                Vec3::new(stone_scale * 0.52, stone_scale * 0.45, stone_scale * 0.52),
+                Vec3::new(
+                    rock.scale_m * 0.52,
+                    rock.scale_m * 0.45,
+                    rock.scale_m * 0.52,
+                ),
                 WorldCollisionProxyKind::Rock,
             ),
             "island stone scatter",
@@ -196,7 +196,7 @@ pub(super) fn queue_sky_island_details(
             entries,
             visual_index,
             island,
-            IslandVisualLayer::Detail,
+            plateau_authored_layer,
             meshes.add(mesh),
             water_material.clone(),
             Transform {
@@ -224,7 +224,7 @@ pub(super) fn queue_sky_island_details(
             entries,
             visual_index,
             island,
-            IslandVisualLayer::Detail,
+            plateau_authored_layer,
             meshes.add(mesh),
             detail_materials.stone.clone(),
             Transform {
@@ -235,6 +235,52 @@ pub(super) fn queue_sky_island_details(
             None,
             "lake basin",
         );
+    }
+
+    for artifact in island_artifact_visual_specs(island_index, island) {
+        let solid_aabb = artifact.solid_world_aabb();
+        let mesh = artifact.build_mesh();
+        content_diagnostics.record_generated_landmark(
+            GeneratedLandmarkKind::ArtifactDetail,
+            mesh.count_vertices(),
+        );
+        let material = match artifact.material {
+            IslandArtifactMaterial::Stone => detail_materials.stone.clone(),
+            IslandArtifactMaterial::Foliage => detail_materials.foliage.clone(),
+            IslandArtifactMaterial::Trunk => detail_materials.trunk.clone(),
+        };
+        let mesh = meshes.add(mesh);
+        let transform = Transform {
+            translation: artifact.translation,
+            rotation: Quat::from_rotation_y(artifact.rotation_y),
+            ..default()
+        };
+        if let Some((center, half_extents)) = solid_aabb {
+            queue_collidable_island_visual(
+                entries,
+                visual_index,
+                island,
+                plateau_authored_layer,
+                mesh,
+                material,
+                transform,
+                Some(CameraObstacle(CameraObstruction::new(center, half_extents))),
+                WorldCollisionProxy::new(center, half_extents, WorldCollisionProxyKind::Landmark),
+                artifact.kind.visual_name(),
+            );
+        } else {
+            queue_island_visual(
+                entries,
+                visual_index,
+                island,
+                plateau_authored_layer,
+                mesh,
+                material,
+                transform,
+                None,
+                artifact.kind.visual_name(),
+            );
+        }
     }
 
     if island.is_great_plateau_anchor() {
@@ -330,25 +376,13 @@ pub(super) fn queue_sky_island_details(
         );
     }
 
-    if island.world_tags.landmark_role == IslandLandmarkRole::RuinArch {
-        let arch_width = (island.half_extents.x * 0.24).clamp(5.5, 18.0);
-        let arch_height = (island.thickness * 0.38).clamp(4.8, 12.0);
-        let arch_depth = (island.half_extents.y * 0.08).clamp(1.2, 3.2);
-        let offset_phase = detail_phase + 0.9;
-        let normalized_offset = island_playable_normalized_offset(
-            island,
-            Vec2::new(
-                0.24 + offset_phase.sin() * 0.08,
-                -0.20 + offset_phase.cos() * 0.06,
-            ),
-        );
-        let surface = island_visual_surface_position(island, normalized_offset);
-        let arch_mesh = ruin_arch_mesh(
-            arch_width,
-            arch_height,
-            arch_depth,
-            15_000 + island_index as u32 * 181,
-        );
+    let ruin_specs: Vec<IslandRuinSpec> = island_ruin_specs(island_index, island);
+    if !ruin_specs.is_empty() {
+        content_diagnostics.record_generated_ruin_cluster();
+    }
+    for ruin in ruin_specs {
+        let surface = island_visual_surface_position(island, ruin.normalized_offset);
+        let arch_mesh = ruin_arch_mesh(ruin.width_m, ruin.height_m, ruin.depth_m, ruin.seed);
         content_diagnostics
             .record_generated_landmark(GeneratedLandmarkKind::RuinArch, arch_mesh.count_vertices());
         queue_island_visual(
@@ -359,8 +393,8 @@ pub(super) fn queue_sky_island_details(
             meshes.add(arch_mesh),
             detail_materials.stone.clone(),
             Transform {
-                translation: surface + Vec3::Y * (arch_height * 0.46),
-                rotation: Quat::from_rotation_y(offset_phase * 0.31),
+                translation: surface + Vec3::Y * (ruin.height_m * 0.46),
+                rotation: Quat::from_rotation_y(ruin.rotation_y),
                 ..default()
             },
             None,
@@ -387,7 +421,7 @@ pub(super) fn queue_sky_island_details(
             entries,
             visual_index,
             island,
-            IslandVisualLayer::Detail,
+            IslandVisualLayer::Vista,
             meshes.add(silhouette_mesh),
             material,
             Transform {
@@ -625,7 +659,7 @@ fn queue_great_plateau_arrival_details(
         entries,
         visual_index,
         island,
-        IslandVisualLayer::Detail,
+        IslandVisualLayer::Vista,
         meshes.add(shelf_mesh),
         flower_material.clone(),
         Transform {
@@ -655,7 +689,7 @@ fn queue_great_plateau_arrival_details(
         entries,
         visual_index,
         island,
-        IslandVisualLayer::Detail,
+        IslandVisualLayer::Vista,
         meshes.add(ruin_mesh),
         stone_material.clone(),
         Transform {

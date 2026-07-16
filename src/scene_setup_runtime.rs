@@ -8,7 +8,7 @@ use bevy::pbr::ScatteringMedium;
 use bevy::prelude::*;
 
 use crate::authored_assets::{VisualAssetRegistry, prepare_visual_asset_registry};
-use crate::camera_runtime::spawn_follow_camera;
+use crate::camera_runtime::{spawn_follow_camera, spawn_follow_camera_with_settings};
 use crate::eval_runtime::{EvalRun, RunMode};
 use crate::game_ui_runtime::{GameUiState, spawn_game_ui};
 use crate::play_profile_runtime::PlayProfileRun;
@@ -17,10 +17,15 @@ use crate::scene_setup_runtime::materials::prepare_scene_materials;
 use crate::scene_setup_runtime::player::spawn_player_runtime;
 use crate::scene_setup_runtime::world::spawn_world_runtime;
 use nau_engine::asset_pipeline::VisualAssetKind;
+use nau_engine::camera::FollowCamera;
 use nau_engine::eval::{
-    PLATEAU_ARRIVAL_CAMERA, TERRAIN_BODY_COLLISION_CONTACT, UNDERBRIDGE_UNDER_ROUTE,
+    GREAT_SKY_PLATEAU_VISTAS, PLATEAU_ARRIVAL_CAMERA, TERRAIN_BODY_COLLISION_CONTACT,
+    TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT, UNDERBRIDGE_UNDER_ROUTE,
 };
-use nau_engine::world::{SkyRoute, route_obstruction_spires};
+use nau_engine::world::{
+    SkyRoute, WorldCollisionProxyKind, route_obstruction_spires,
+    terrain_collision_contact_probe_position,
+};
 
 pub(crate) use constants::{INITIAL_SKY_CLEAR_COLOR, PLAYER_START, WORLD_RADIUS};
 
@@ -74,13 +79,27 @@ pub(crate) fn setup(
     );
     commands.insert_resource(visual_asset_registry);
 
-    spawn_follow_camera(
-        &mut commands,
-        &mut scattering_mediums,
-        player_start,
-        WORLD_RADIUS,
-        INITIAL_SKY_CLEAR_COLOR,
-    );
+    if eval_run
+        .as_deref()
+        .is_some_and(|run| run.scenario.name == GREAT_SKY_PLATEAU_VISTAS)
+    {
+        spawn_follow_camera_with_settings(
+            &mut commands,
+            &mut scattering_mediums,
+            player_start,
+            plateau_vista_follow_camera(),
+            WORLD_RADIUS,
+            INITIAL_SKY_CLEAR_COLOR,
+        );
+    } else {
+        spawn_follow_camera(
+            &mut commands,
+            &mut scattering_mediums,
+            player_start,
+            WORLD_RADIUS,
+            INITIAL_SKY_CLEAR_COLOR,
+        );
+    }
 
     if run_mode.debug_readout_enabled() && !screenshot_eval {
         spawn_debug_readout(&mut commands);
@@ -93,17 +112,31 @@ fn initial_player_position(
     play_profile: Option<&PlayProfileRun>,
     route: &SkyRoute,
 ) -> Vec3 {
+    if eval_run.is_some_and(|run| run.scenario.name == TERRAIN_RIM_COLLISION_CONTACT) {
+        return terrain_collision_eval_start_position(
+            route,
+            WorldCollisionProxyKind::TerrainRim,
+            Vec2::new(1.0, 0.75),
+        );
+    }
     if eval_run.is_some_and(|run| run.scenario.name == TERRAIN_BODY_COLLISION_CONTACT) {
-        // Keep the body-contact route in a clean east-cliff lane so rocks/ridges cannot satisfy it.
-        let mut start = Vec3::new(30.0, PLAYER_START.y, 8.0);
-        start.y = route.ground_at(start).floor_y;
-        return start;
+        return terrain_collision_eval_start_position(
+            route,
+            WorldCollisionProxyKind::TerrainBody,
+            Vec2::X,
+        );
+    }
+    if eval_run.is_some_and(|run| run.scenario.name == TERRAIN_EDGE_WALKOFF) {
+        return terrain_edge_walkoff_start_position(route);
     }
     if eval_run.is_some_and(|run| run.scenario.name == UNDERBRIDGE_UNDER_ROUTE) {
         return underbridge_under_route_start_position(route);
     }
     if eval_run.is_some_and(|run| run.scenario.name == PLATEAU_ARRIVAL_CAMERA) {
         return plateau_arrival_camera_start_position(route);
+    }
+    if eval_run.is_some_and(|run| run.scenario.name == GREAT_SKY_PLATEAU_VISTAS) {
+        return plateau_vista_start_position(route);
     }
     if eval_run.is_none()
         && let Some(position) =
@@ -113,6 +146,31 @@ fn initial_player_position(
     }
 
     PLAYER_START
+}
+
+fn terrain_collision_eval_start_position(
+    route: &SkyRoute,
+    kind: WorldCollisionProxyKind,
+    preferred_outward: Vec2,
+) -> Vec3 {
+    route
+        .island_named("launch mesa")
+        .and_then(|island| {
+            terrain_collision_contact_probe_position(island, kind, preferred_outward)
+        })
+        .unwrap_or(PLAYER_START)
+}
+
+fn terrain_edge_walkoff_start_position(route: &SkyRoute) -> Vec3 {
+    let Some(island) = route.island_named("launch mesa") else {
+        return PLAYER_START;
+    };
+    let contour = island.footprint_contour_point(0.0, false);
+    let outward = (contour - Vec2::new(island.center.x, island.center.z)).normalize_or_zero();
+    let horizontal = contour - outward * 8.0;
+    let mut position = Vec3::new(horizontal.x, 0.0, horizontal.y);
+    position.y = island.terrain_surface_y_at(position);
+    position
 }
 
 fn underbridge_under_route_start_position(route: &SkyRoute) -> Vec3 {
@@ -132,6 +190,30 @@ fn plateau_arrival_camera_start_position(route: &SkyRoute) -> Vec3 {
         .unwrap_or_else(|| route.playtest_reset_position());
     position.y = route.ground_at(position).floor_y;
     position
+}
+
+fn plateau_vista_start_position(route: &SkyRoute) -> Vec3 {
+    let Some(plateau) = route.island_named("great sky plateau") else {
+        return route.playtest_reset_position();
+    };
+    let mut position = plateau
+        .plateau_region_position(nau_engine::world::IslandPlateauRegion::BrokenEdge)
+        .unwrap_or(plateau.center);
+    position.y = route.ground_at(position + Vec3::Y * 1_000.0).floor_y;
+    position
+}
+
+fn plateau_vista_follow_camera() -> FollowCamera {
+    FollowCamera {
+        distance: 24.0,
+        height: 11.0,
+        look_height: 2.4,
+        look_ahead: 70.0,
+        position_smoothing: 16.0,
+        rotation_smoothing: 18.0,
+        direction_smoothing: 1.0,
+        min_height: 2.0,
+    }
 }
 
 fn mark_spawned_scenes(

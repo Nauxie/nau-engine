@@ -7,8 +7,18 @@ use crate::{
 };
 use image::RgbImage;
 
+const CONDITIONAL_MATERIALS: [&str; 4] = ["water", "stone", "wood", "flower"];
+
 pub(crate) fn material_audits(samples: &[SceneSampleAudit]) -> Vec<MaterialAudit> {
     let mut expected_materials = EXPECTED_MATERIALS.to_vec();
+    for expected_material in CONDITIONAL_MATERIALS {
+        if samples
+            .iter()
+            .any(|sample| sample.is_visible() && sample.expected_material == expected_material)
+        {
+            expected_materials.push(expected_material);
+        }
+    }
     if samples
         .iter()
         .any(|sample| sample.passed && sample.expected_material == "wind")
@@ -52,7 +62,7 @@ fn min_material_sample_pixel_hit_count_for(
     expected_material: &str,
     visible_sample_count: usize,
 ) -> usize {
-    if expected_material == "wind" {
+    if expected_material == "wind" || CONDITIONAL_MATERIALS.contains(&expected_material) {
         return visible_sample_count.min(1);
     }
     if expected_material == "terrain" {
@@ -145,6 +155,12 @@ pub(crate) fn material_variant_matches(
     if expected_material == "terrain" {
         return terrain_variant_matches(material_variant, r, g, b);
     }
+    if expected_material == "water" {
+        let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        if is_sky_like(r, g, b, luma) {
+            return false;
+        }
+    }
 
     material_matches(expected_material, r, g, b)
 }
@@ -158,6 +174,10 @@ pub(crate) fn material_matches(expected_material: &str, r: f64, g: f64, b: f64) 
         "cloud" => is_cloud_like(r, g, b, luma, sky_like),
         "distant_island" => is_distant_scene_like(r, g, b, luma, sky_like),
         "wind" => is_wind_like(r, g, b, luma),
+        "water" => is_water_like(r, g, b, luma),
+        "stone" => is_stone_like(r, g, b, luma, sky_like),
+        "wood" => is_wood_like(r, g, b, luma, sky_like),
+        "flower" => is_flower_like(r, g, b, luma),
         _ => false,
     }
 }
@@ -275,6 +295,41 @@ pub(crate) fn is_earth_like(r: f64, g: f64, b: f64) -> bool {
 
 pub(crate) fn is_rock_or_shadow_like(r: f64, g: f64, b: f64, luma: f64) -> bool {
     (18.0..=155.0).contains(&luma) && (r - g).abs() <= 50.0 && b <= r.max(g) + 20.0
+}
+
+pub(crate) fn is_water_like(r: f64, g: f64, b: f64, luma: f64) -> bool {
+    if !(38.0..=235.0).contains(&luma) {
+        return false;
+    }
+
+    let deep_blue = r <= 105.0 && g >= 65.0 && b >= 120.0 && g >= r + 35.0 && b >= g + 28.0;
+    let bright_cyan = g >= r + 45.0 && b >= g + 8.0 && b <= g + 48.0 && b >= 150.0;
+    deep_blue || bright_cyan
+}
+
+pub(crate) fn is_stone_like(r: f64, g: f64, b: f64, luma: f64, sky_like: bool) -> bool {
+    if sky_like || !(18.0..=210.0).contains(&luma) || is_water_like(r, g, b, luma) {
+        return false;
+    }
+
+    let green_foliage = g >= r + 22.0 && g >= b + 18.0;
+    !green_foliage
+        && (is_rock_or_shadow_like(r, g, b, luma)
+            || (is_earth_like(r, g, b) && r.max(g).max(b) - r.min(g).min(b) <= 105.0))
+}
+
+pub(crate) fn is_wood_like(r: f64, g: f64, b: f64, luma: f64, sky_like: bool) -> bool {
+    !sky_like
+        && (20.0..=190.0).contains(&luma)
+        && r >= 48.0
+        && g >= 30.0
+        && r >= g * 0.92
+        && r >= b + 12.0
+        && g >= b * 0.62
+}
+
+pub(crate) fn is_flower_like(r: f64, g: f64, b: f64, luma: f64) -> bool {
+    (35.0..=225.0).contains(&luma) && r >= 105.0 && r >= g + 35.0 && r >= b + 35.0 && b >= g + 16.0
 }
 
 pub(crate) fn is_cloud_like(r: f64, g: f64, b: f64, luma: f64, sky_like: bool) -> bool {

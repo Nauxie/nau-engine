@@ -16,7 +16,15 @@ scenarios=(
   air_control_response
   pose_state_coverage
   long_glide_visibility
+  great_sky_plateau_route
+  plateau_arrival_camera
+  underbridge_under_route
 )
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq is required by the simulation suite" >&2
+  exit 2
+fi
 
 mkdir -p "${output_root}"
 
@@ -28,11 +36,18 @@ summary_paths=()
 for scenario in "${scenarios[@]}"; do
   scenario_output="${output_root}/${scenario}"
   NAU_EVAL_SIM_ONLY=1 NAU_EVAL_ASSET_AUDIT=0 ./tools/eval.sh "${scenario}" "${scenario_output}"
+  if ! jq -e '
+    ([.checks[] | select(.name == "sample_count")][0].threshold) as $expected_samples
+    | .metrics.sample_count == $expected_samples
+  ' \
+    "${scenario_output}/summary.json" >/dev/null; then
+    echo "simulation did not record its exact expected sample count: ${scenario}" >&2
+    exit 1
+  fi
   summary_paths+=("${scenario_output}/summary.json")
 done
 
-if command -v jq >/dev/null 2>&1; then
-  jq -s '
+jq -s '
     {
       schema: "nau_sim_suite.v1",
       passed: all(.[]; .passed == true),
@@ -78,6 +93,11 @@ if command -v jq >/dev/null 2>&1; then
           max_pure_air_turn_sideways_body_travel_heading_error_degrees: .metrics.max_pure_air_turn_sideways_body_travel_heading_error_degrees,
           p95_pure_air_turn_sideways_desired_travel_heading_error_degrees: .metrics.p95_pure_air_turn_sideways_desired_travel_heading_error_degrees,
           max_pure_air_turn_sideways_desired_travel_heading_error_degrees: .metrics.max_pure_air_turn_sideways_desired_travel_heading_error_degrees,
+          movement_camera_heading_sample_count: .metrics.movement_camera_heading_sample_count,
+          max_movement_camera_heading_error_degrees: .metrics.max_movement_camera_heading_error_degrees,
+          max_camera_player_relative_step_m: .metrics.max_camera_player_relative_step_m,
+          avg_camera_follow_direction_error_degrees: .metrics.avg_camera_follow_direction_error_degrees,
+          p95_camera_follow_direction_error_degrees: .metrics.p95_camera_follow_direction_error_degrees,
           pose_air_brake_samples: .metrics.pose_air_brake_samples,
           right_pose_air_brake_samples: .metrics.right_pose_air_brake_samples,
           left_pose_air_brake_samples: .metrics.left_pose_air_brake_samples,
@@ -137,7 +157,4 @@ if command -v jq >/dev/null 2>&1; then
       })
     }
   ' "${summary_paths[@]}" > "${output_root}/summary.json"
-  jq '{passed, scenario_count, native_window_created_any, scenarios}' "${output_root}/summary.json"
-else
-  printf 'wrote simulation summaries under %s\n' "${output_root}"
-fi
+jq '{passed, scenario_count, native_window_created_any, scenarios}' "${output_root}/summary.json"

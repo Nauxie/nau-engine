@@ -158,9 +158,14 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
 
   if [[ "${visual_audit_requested}" != "0" && "${#screenshot_artifacts[@]}" -gt 0 ]]; then
     visual_audit_args=()
-    if [[ "${scenario}" == "world_collision_contact" ]]; then
-      visual_audit_args+=(--profile close_obstruction)
-    fi
+    case "${scenario}" in
+      plateau_arrival_camera|great_sky_plateau_vistas)
+        visual_audit_args+=(--profile route_marker_optional)
+        ;;
+      world_collision_contact)
+        visual_audit_args+=(--profile close_obstruction)
+        ;;
+    esac
     set +e
     cargo run --quiet --bin visual_audit -- "${visual_audit_args[@]}" "${screenshot_artifacts[@]}" \
       > "${visual_audit_path}"

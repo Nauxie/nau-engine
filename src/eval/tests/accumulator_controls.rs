@@ -1153,6 +1153,61 @@ fn accumulator_gates_movement_only_camera_view_yaw_drift() {
 }
 
 #[test]
+fn accumulator_gates_camera_mouse_same_frame_heading_and_player_relative_step() {
+    let scenario = scenario_named(CAMERA_MOUSE_CONTROL).expect("camera mouse route exists");
+
+    let summary_for = |heading_error_degrees: f32, player_relative_step_m: f32| {
+        let mut accumulator = EvalAccumulator::default();
+        accumulator.observe_frame_time_ms(16.0);
+        for frame in 0..CAMERA_MOUSE_MIN_MOVEMENT_CAMERA_HEADING_SAMPLES {
+            let mut sample = content_metric_sample(scenario, frame, 12, 0, 64);
+            sample.movement_camera_heading_error_degrees = heading_error_degrees;
+            sample.camera_player_relative_step_m = player_relative_step_m;
+            accumulator.observe(sample);
+        }
+        accumulator.summary(
+            scenario,
+            EvalArtifacts {
+                summary_json: "summary.json".to_string(),
+                samples_ndjson: "samples.ndjson".to_string(),
+                screenshot_png: None,
+                checkpoint_screenshots: Vec::new(),
+                checkpoint_marker_metadata: Vec::new(),
+            },
+        )
+    };
+
+    let passing = summary_for(0.0, 0.379);
+    assert_eq!(
+        passing.metrics.movement_camera_heading_sample_count,
+        CAMERA_MOUSE_MIN_MOVEMENT_CAMERA_HEADING_SAMPLES
+    );
+    assert_eq!(
+        passing.metrics.max_movement_camera_heading_error_degrees,
+        0.0
+    );
+    assert_eq!(passing.metrics.max_camera_player_relative_step_m, 0.379);
+    assert!(named_check(&passing, "camera_mouse_movement_camera_heading_samples").passed);
+    assert!(named_check(&passing, "camera_mouse_movement_camera_heading_error").passed);
+    assert!(named_check(&passing, "camera_mouse_player_relative_step").passed);
+
+    let stale = summary_for(1.2, 0.65);
+    assert!(!named_check(&stale, "camera_mouse_movement_camera_heading_error").passed);
+    assert!(!named_check(&stale, "camera_mouse_player_relative_step").passed);
+
+    let summary_json: serde_json::Value =
+        serde_json::from_str(&passing.to_json()).expect("summary json parses");
+    assert_eq!(
+        summary_json["metrics"]["movement_camera_heading_sample_count"],
+        CAMERA_MOUSE_MIN_MOVEMENT_CAMERA_HEADING_SAMPLES
+    );
+    assert_eq!(
+        summary_json["metrics"]["max_camera_player_relative_step_m"],
+        0.379
+    );
+}
+
+#[test]
 fn accumulator_counts_obstruction_snaps_by_camera_step() {
     let scenario = scenario_named(CAMERA_MOUSE_CONTROL).expect("camera mouse route exists");
     let mut accumulator = EvalAccumulator::default();

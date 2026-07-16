@@ -3,15 +3,15 @@ use crate::{
     content_export::shared::{mesh_positions, terrain_export_slug, write_mesh_obj},
     generated_content::{
         cliff_tooth_ridge_mesh, first_expedition_silhouette_specs, garden_ring_mesh,
-        island_lake_basin_visual_specs, island_under_route_visual_specs, island_water_visual_specs,
-        landing_garden_marker_mesh, launch_beacon_mesh, mesh_normal_slope_band_count,
-        mesh_vertical_band_count, obstruction_spire_mesh, route_cairn_mesh, ruin_arch_mesh,
+        island_artifact_visual_specs, island_lake_basin_visual_specs, island_ruin_specs,
+        island_under_route_visual_specs, island_water_visual_specs, landing_garden_marker_mesh,
+        launch_beacon_mesh, mesh_normal_slope_band_count, mesh_vertical_band_count,
+        obstruction_spire_mesh, route_cairn_mesh, ruin_arch_mesh,
     },
 };
 use bevy::prelude::*;
 use nau_engine::world::{
-    IslandLandmarkRole, IslandPlateauRegion, IslandTerrainArchetype, SkyIsland,
-    route_obstruction_spire,
+    IslandPlateauRegion, IslandTerrainArchetype, SkyIsland, route_obstruction_spire,
 };
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -63,6 +63,19 @@ pub(super) fn visual_content_landmark_summaries(
         )?);
     }
 
+    for artifact in island_artifact_visual_specs(island_index, island) {
+        let mesh = artifact.build_mesh();
+        landmarks.push(write_visual_landmark_summary(
+            output_dir,
+            island.name,
+            artifact.kind.label(),
+            artifact.label,
+            island_index,
+            island_slug,
+            &mesh,
+        )?);
+    }
+
     for silhouette in first_expedition_silhouette_specs(island_index, island) {
         let mesh = silhouette.build_mesh();
         landmarks.push(write_visual_landmark_summary(
@@ -86,18 +99,16 @@ pub(super) fn visual_content_landmark_summaries(
         )?;
     }
 
-    if island.world_tags.landmark_role == IslandLandmarkRole::RuinArch {
-        let mesh = ruin_arch_mesh(
-            (island.half_extents.x * 0.24).clamp(5.5, 18.0),
-            (island.thickness * 0.38).clamp(4.8, 12.0),
-            (island.half_extents.y * 0.08).clamp(1.2, 3.2),
-            15_000 + island_index as u32 * 181,
-        );
+    for (ruin_index, ruin) in island_ruin_specs(island_index, island)
+        .into_iter()
+        .enumerate()
+    {
+        let mesh = ruin_arch_mesh(ruin.width_m, ruin.height_m, ruin.depth_m, ruin.seed);
         landmarks.push(write_visual_landmark_summary(
             output_dir,
             island.name,
             "ruin_arch",
-            "ruin arch",
+            &format!("ruin arch {ruin_index}"),
             island_index,
             island_slug,
             &mesh,

@@ -17,6 +17,7 @@ use crate::{grounded_visual_foot_gap_m, movement_facing};
 use bevy::ecs::system::SystemParam;
 use bevy::mesh::Indices;
 use bevy::prelude::*;
+use bevy::transform::helper::TransformHelper;
 use nau_engine::animation::{
     CharacterPart, CharacterPartRole, DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
     DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT, MIN_KEY_POSE_READABILITY_SCORE, PlayerPoseContext,
@@ -25,8 +26,9 @@ use nau_engine::animation::{
     pose_readability_metrics_from_part_transforms,
 };
 use nau_engine::camera::{
-    CameraControlState, camera_distance, camera_pitch_degrees, camera_surface_clearance,
-    camera_target_angle_degrees, camera_view_yaw_degrees,
+    CameraControlState, CameraInput, camera_distance, camera_pitch_degrees,
+    camera_surface_clearance, camera_target_angle_degrees, camera_view_yaw_degrees,
+    movement_facing_from_follow_direction,
 };
 use nau_engine::diagnostics::frame_ms;
 use nau_engine::environment::{
@@ -35,13 +37,15 @@ use nau_engine::environment::{
 };
 use nau_engine::eval::{
     EvalMovementMetrics, EvalObjectiveProgress, EvalPoseReadabilityMetrics,
-    EvalPoseTemporalMetrics, EvalSample, scripted_input,
+    EvalPoseTemporalMetrics, EvalSample, scripted_camera_input, scripted_input,
+    scripted_playtest_reset_requested,
 };
 use nau_engine::movement::{
     FlightInput, FlightMode, body_roll_degrees, body_yaw_error_degrees,
     desired_heading_alignment_speed, desired_planar_movement_direction,
     desired_planar_travel_heading_error_degrees, lateral_response_speed,
 };
+use nau_engine::world::SkyIsland;
 use std::collections::HashMap;
 
 pub(super) const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
@@ -59,6 +63,7 @@ const KEY_POSE_TRANSITION_MAX_ROTATION_DELTA_DEGREES: f32 = 60.0;
 const KEY_POSE_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.15;
 const KEY_POSE_LANDING_TRANSITION_MAX_ROTATION_DELTA_DEGREES: f32 = 60.0;
 const KEY_POSE_LANDING_TRANSITION_MAX_TRANSLATION_DELTA_M: f32 = 0.25;
+const ISLAND_EDGE_NEAR_DISTANCE_M: f32 = 2.0;
 
 #[derive(Clone, Copy, Debug, Default)]
 struct RuntimeAssetCosts {
@@ -849,6 +854,19 @@ fn limb_clearance(
     a.global_translation.distance(b.global_translation) - a_radius_m - b_radius_m
 }
 
+fn nearest_island_edge_metrics(islands: &[SkyIsland], position: Vec3) -> (f32, bool, bool) {
+    let signed_distance_m = islands
+        .iter()
+        .map(|island| island.signed_playable_edge_distance(position))
+        .min_by(|a, b| a.abs().total_cmp(&b.abs()))
+        .unwrap_or_default();
+    (
+        signed_distance_m,
+        signed_distance_m.abs() <= ISLAND_EDGE_NEAR_DISTANCE_M,
+        signed_distance_m > 0.0,
+    )
+}
+
 pub(crate) fn collect_eval_frame_time(time: Res<Time>, mut run: ResMut<EvalRun>) {
     if !run.finalized && run.frame >= EVAL_FRAME_TIME_WARMUP_FRAMES {
         run.accumulator
@@ -856,12 +874,28 @@ pub(crate) fn collect_eval_frame_time(time: Res<Time>, mut run: ResMut<EvalRun>)
     }
 }
 
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(crate) fn collect_eval_metrics(
     mut run: ResMut<EvalRun>,
     camera_control: Res<CameraControlState>,
     movement_basis: Res<EvalMovementBasis>,
+    mut continuity_state: Local<CameraPlayerContinuityState>,
     metric_state: EvalMetricState,
     authored_animation_diagnostics: Option<Res<AuthoredAnimationDiagnostics>>,
+    authored_pose_nodes: Query<(
+        Entity,
+        &AuthoredPlayerPoseNode,
+        &Transform,
+        Option<&Visibility>,
+        Option<&InheritedVisibility>,
+    )>,
+    authored_attachment_markers: Query<(
+        Entity,
+        &AuthoredPlayerAttachmentMarker,
+        Option<&Visibility>,
+        Option<&InheritedVisibility>,
+    )>,
+    transform_helper: TransformHelper,
     scene: EvalScene,
 ) {
     let EvalMetricState {
@@ -877,6 +911,14 @@ pub(crate) fn collect_eval_metrics(
     let Ok((transform, velocity, controller, animation)) = scene.player.single() else {
         return;
     };
+    let frame = run.frame;
+    let fixed_dt = run.scenario.fixed_dt;
+    if scripted_playtest_reset_requested(run.scenario, frame) {
+        continuity_state.reset();
+    }
+    let camera_transform = scene.camera.single().ok();
+    let continuity =
+        continuity_state.observe(frame, fixed_dt, transform, velocity.0, camera_transform);
     let (
         camera_distance_m,
         camera_surface_clearance_m,
@@ -884,9 +926,7 @@ pub(crate) fn collect_eval_metrics(
         camera_pitch_degrees,
         camera_view_yaw,
         camera_world_yaw,
-    ) = scene
-        .camera
-        .single()
+    ) = camera_transform
         .map(|camera_transform| {
             let camera_floor_y = scene.route.ground_at(camera_transform.translation).floor_y;
             let player_focus = transform.translation + Vec3::Y * CAMERA_PLAYER_FOCUS_HEIGHT;
@@ -907,6 +947,28 @@ pub(crate) fn collect_eval_metrics(
             )
         })
         .unwrap_or_default();
+    let camera_correction_source = scene.camera_diagnostics.correction_source.label();
+    run.accumulator.observe_continuity(
+        frame,
+        camera_distance_m,
+        scene.camera_diagnostics.step_distance_m,
+        continuity.camera_player_relative_step_m,
+        scene.camera_diagnostics.rotation_delta_degrees,
+        continuity.camera_player_relative_linear_velocity_mps,
+        continuity.camera_player_relative_linear_acceleration_mps2,
+        continuity.camera_player_relative_angular_velocity_degrees_per_sec,
+        continuity.camera_player_relative_angular_acceleration_degrees_per_sec2,
+        scene.camera_diagnostics.obstruction_adjustment_m,
+        scene.camera_diagnostics.obstruction_hits,
+        camera_correction_source,
+        scene.camera_diagnostics.continuity_offset_limited,
+        scene.camera_diagnostics.continuity_rotation_limited,
+        continuity.player_integration_residual_m,
+        scene.player_displacement_diagnostics.world_correction_m,
+        scene.player_displacement_diagnostics.collision_correction_m,
+        (scene.collision_diagnostics.resolved_count > 0)
+            .then_some(scene.collision_diagnostics.max_push_m),
+    );
     let visible_wind_fields =
         visible_fields_at(transform.translation, scene.wind_fields.iter().copied());
     let elapsed_secs = run.frame as f32 * run.scenario.fixed_dt;
@@ -1001,15 +1063,50 @@ pub(crate) fn collect_eval_metrics(
     )
     .with_resolved_intent(animation.pose_intent);
     let fallback_pose_readability = pose_readability_metrics(pose_context, animation.phase);
+    let mut current_authored_pose_nodes =
+        Vec::with_capacity(scene.authored_player_pose_nodes.iter().count());
+    current_authored_pose_nodes.extend(authored_pose_nodes.iter().filter_map(
+        |(entity, node, transform, visibility, inherited_visibility)| {
+            transform_helper
+                .compute_global_transform(entity)
+                .ok()
+                .map(|global_transform| {
+                    (
+                        node,
+                        transform,
+                        global_transform.translation(),
+                        visibility,
+                        inherited_visibility,
+                    )
+                })
+        },
+    ));
+    let mut current_authored_attachment_markers =
+        Vec::with_capacity(scene.authored_player_attachment_markers.iter().count());
+    current_authored_attachment_markers.extend(authored_attachment_markers.iter().filter_map(
+        |(entity, marker, visibility, inherited_visibility)| {
+            transform_helper
+                .compute_global_transform(entity)
+                .ok()
+                .map(|global_transform| {
+                    (
+                        marker,
+                        global_transform.translation(),
+                        visibility,
+                        inherited_visibility,
+                    )
+                })
+        },
+    ));
     let generated_pose_parts =
         visible_generated_pose_part_set(scene.generated_character_parts.iter());
     let visible_pose_parts = if generated_pose_parts.part_count() > 0 {
         generated_pose_parts
     } else {
-        visible_authored_pose_part_set(scene.authored_player_pose_nodes.iter())
+        visible_authored_pose_part_set(current_authored_pose_nodes.iter().copied())
     };
     let visible_pose_attachments =
-        visible_authored_pose_attachment_set(scene.authored_player_attachment_markers.iter());
+        visible_authored_pose_attachment_set(current_authored_attachment_markers.iter().copied());
     pose_temporal_state.observe_frame(
         run.frame,
         pose_context.intent(),
@@ -1029,7 +1126,7 @@ pub(crate) fn collect_eval_metrics(
         .readability_metrics(pose_context)
         .unwrap_or_else(|| {
             let authored_metrics = visible_authored_pose_readability_metrics(
-                scene.authored_player_pose_nodes.iter(),
+                current_authored_pose_nodes.iter().copied(),
                 pose_context,
             )
             .unwrap_or_else(|| {
@@ -1055,6 +1152,13 @@ pub(crate) fn collect_eval_metrics(
     );
     let pose_readability = transition_pose_readability.metrics;
     let movement_axis = movement_input.planar_axis();
+    let movement_camera_heading_error_degrees = movement_camera_heading_error_degrees(
+        &movement_basis,
+        run.frame,
+        &camera_control,
+        movement_input,
+        scripted_camera_input(run.scenario, run.frame),
+    );
     let movement_facing = if movement_basis.frame == run.frame {
         movement_basis
             .facing
@@ -1092,6 +1196,8 @@ pub(crate) fn collect_eval_metrics(
     } else {
         0.0
     };
+    let (signed_island_edge_distance_m, near_island_edge, outside_island_footprint) =
+        nearest_island_edge_metrics(scene.route.islands(), transform.translation);
     let sample = EvalSample::new(
         run.frame,
         run.scenario.fixed_dt,
@@ -1322,6 +1428,11 @@ pub(crate) fn collect_eval_metrics(
         scene.collision_diagnostics.resolved_count,
         scene.collision_diagnostics.max_push_m,
     )
+    .with_island_edge_metrics(
+        signed_island_edge_distance_m,
+        near_island_edge,
+        outside_island_footprint,
+    )
     .with_terrain_rim_collision_metrics(
         scene.collision_diagnostics.terrain_rim_proxy_count,
         scene.collision_diagnostics.terrain_rim_resolved_count,
@@ -1402,7 +1513,7 @@ pub(crate) fn collect_eval_metrics(
         content_metrics.generated_rock_count,
         content_metrics.min_rock_mesh_vertices,
         content_metrics.generated_landmark_count,
-        0,
+        content_metrics.generated_ruin_cluster_count,
         content_metrics.generated_route_cairn_count,
         content_metrics.generated_launch_beacon_count,
         content_metrics.generated_landing_garden_marker_count,
@@ -1425,7 +1536,19 @@ pub(crate) fn collect_eval_metrics(
         lateral_response_mps,
         lateral_input_active,
         movement_axis,
-    });
+    })
+    .with_movement_camera_heading_error_degrees(movement_camera_heading_error_degrees)
+    .with_camera_player_continuity_metrics(
+        continuity.camera_player_relative_step_m,
+        continuity.camera_player_relative_linear_velocity_mps,
+        continuity.camera_player_relative_linear_acceleration_mps2,
+        continuity.camera_player_relative_angular_velocity_degrees_per_sec,
+        continuity.camera_player_relative_angular_acceleration_degrees_per_sec2,
+        continuity.player_integration_residual_m,
+        camera_correction_source,
+        scene.camera_diagnostics.continuity_offset_limited,
+        scene.camera_diagnostics.continuity_rotation_limited,
+    );
 
     if let Err(error) = run.record_sample(sample) {
         run.io_error = Some(format!("failed to write eval sample: {error}"));
@@ -1514,6 +1637,172 @@ fn body_travel_heading_error_degrees(
     body_yaw_error_degrees(player_rotation, horizontal_velocity).abs()
 }
 
+fn movement_camera_heading_error_degrees(
+    movement_basis: &EvalMovementBasis,
+    frame: u32,
+    camera_control: &CameraControlState,
+    movement_input: FlightInput,
+    camera_input: CameraInput,
+) -> f32 {
+    if movement_basis.frame != frame
+        || !movement_input.forward
+        || camera_input.mouse_delta.x.abs() <= f32::EPSILON
+    {
+        return f32::NAN;
+    }
+    let Some(actual_facing) = movement_basis.facing else {
+        return f32::NAN;
+    };
+    let Some(follow_direction) = movement_basis.follow_direction else {
+        return f32::NAN;
+    };
+
+    let (expected_forward, _) =
+        movement_facing_from_follow_direction(follow_direction, camera_control.orbit);
+    actual_facing
+        .forward
+        .angle_between(expected_forward)
+        .to_degrees()
+}
+
+#[derive(Default)]
+pub(crate) struct CameraPlayerContinuityState {
+    previous: Option<CameraPlayerContinuitySnapshot>,
+}
+
+#[derive(Clone, Copy)]
+struct CameraPlayerContinuitySnapshot {
+    frame: u32,
+    player_position: Vec3,
+    player_velocity: Vec3,
+    camera_player_offset: Option<Vec3>,
+    camera_rotation: Option<Quat>,
+    relative_linear_velocity: Option<Vec3>,
+    relative_angular_velocity_degrees_per_sec: Option<Vec3>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CameraPlayerContinuityMetrics {
+    camera_player_relative_step_m: f32,
+    camera_player_relative_linear_velocity_mps: f32,
+    camera_player_relative_linear_acceleration_mps2: f32,
+    camera_player_relative_angular_velocity_degrees_per_sec: f32,
+    camera_player_relative_angular_acceleration_degrees_per_sec2: f32,
+    player_integration_residual_m: f32,
+}
+
+impl Default for CameraPlayerContinuityMetrics {
+    fn default() -> Self {
+        Self {
+            camera_player_relative_step_m: f32::NAN,
+            camera_player_relative_linear_velocity_mps: f32::NAN,
+            camera_player_relative_linear_acceleration_mps2: f32::NAN,
+            camera_player_relative_angular_velocity_degrees_per_sec: f32::NAN,
+            camera_player_relative_angular_acceleration_degrees_per_sec2: f32::NAN,
+            player_integration_residual_m: f32::NAN,
+        }
+    }
+}
+
+impl CameraPlayerContinuityState {
+    fn reset(&mut self) {
+        self.previous = None;
+    }
+
+    fn observe(
+        &mut self,
+        frame: u32,
+        dt: f32,
+        player: &Transform,
+        player_velocity: Vec3,
+        camera: Option<&Transform>,
+    ) -> CameraPlayerContinuityMetrics {
+        let camera_player_offset = camera.map(|camera| camera.translation - player.translation);
+        let camera_rotation = camera.map(|camera| camera.rotation);
+        let previous = self
+            .previous
+            .filter(|previous| previous.frame.checked_add(1) == Some(frame));
+        let valid_dt = dt.is_finite() && dt > f32::EPSILON;
+        let mut metrics = CameraPlayerContinuityMetrics::default();
+
+        if camera_player_offset.is_some() {
+            metrics.camera_player_relative_step_m = previous
+                .and_then(|previous| previous.camera_player_offset)
+                .map_or(0.0, |previous_offset| {
+                    previous_offset.distance(camera_player_offset.unwrap())
+                });
+        }
+        if valid_dt && let Some(previous) = previous {
+            let expected_player_step = (previous.player_velocity + player_velocity) * (0.5 * dt);
+            metrics.player_integration_residual_m =
+                (player.translation - previous.player_position - expected_player_step).length();
+        }
+
+        let relative_linear_velocity = if valid_dt {
+            previous
+                .and_then(|previous| previous.camera_player_offset)
+                .zip(camera_player_offset)
+                .map(|(previous_offset, current_offset)| (current_offset - previous_offset) / dt)
+        } else {
+            None
+        };
+        if let Some(relative_linear_velocity) = relative_linear_velocity {
+            metrics.camera_player_relative_linear_velocity_mps = relative_linear_velocity.length();
+            if let Some(previous_relative_velocity) =
+                previous.and_then(|previous| previous.relative_linear_velocity)
+            {
+                metrics.camera_player_relative_linear_acceleration_mps2 =
+                    (relative_linear_velocity - previous_relative_velocity).length() / dt;
+            }
+        }
+
+        let relative_angular_velocity_degrees_per_sec = if valid_dt {
+            previous
+                .and_then(|previous| previous.camera_rotation)
+                .zip(camera_rotation)
+                .map(|(previous_rotation, current_rotation)| {
+                    angular_velocity_degrees_per_sec(previous_rotation, current_rotation, dt)
+                })
+        } else {
+            None
+        };
+        if let Some(relative_angular_velocity) = relative_angular_velocity_degrees_per_sec {
+            metrics.camera_player_relative_angular_velocity_degrees_per_sec =
+                relative_angular_velocity.length();
+            if let Some(previous_relative_velocity) =
+                previous.and_then(|previous| previous.relative_angular_velocity_degrees_per_sec)
+            {
+                metrics.camera_player_relative_angular_acceleration_degrees_per_sec2 =
+                    (relative_angular_velocity - previous_relative_velocity).length() / dt;
+            }
+        }
+
+        self.previous = Some(CameraPlayerContinuitySnapshot {
+            frame,
+            player_position: player.translation,
+            player_velocity,
+            camera_player_offset,
+            camera_rotation,
+            relative_linear_velocity,
+            relative_angular_velocity_degrees_per_sec,
+        });
+        metrics
+    }
+}
+
+fn angular_velocity_degrees_per_sec(previous: Quat, current: Quat, dt: f32) -> Vec3 {
+    let mut delta = (current * previous.inverse()).normalize();
+    if delta.w < 0.0 {
+        delta = Quat::from_xyzw(-delta.x, -delta.y, -delta.z, -delta.w);
+    }
+    let (axis, angle) = delta.to_axis_angle();
+    if axis.is_finite() && angle.is_finite() {
+        axis * (angle.to_degrees() / dt)
+    } else {
+        Vec3::ZERO
+    }
+}
+
 #[cfg(test)]
 fn visible_generated_pose_readability_metrics<'a>(
     parts: impl Iterator<Item = (&'a CharacterPart, &'a Transform, &'a Visibility)>,
@@ -1567,7 +1856,7 @@ fn visible_authored_pose_readability_metrics<'a>(
         Item = (
             &'a AuthoredPlayerPoseNode,
             &'a Transform,
-            &'a GlobalTransform,
+            Vec3,
             Option<&'a Visibility>,
             Option<&'a InheritedVisibility>,
         ),
@@ -1582,7 +1871,7 @@ fn visible_authored_pose_part_set<'a>(
         Item = (
             &'a AuthoredPlayerPoseNode,
             &'a Transform,
-            &'a GlobalTransform,
+            Vec3,
             Option<&'a Visibility>,
             Option<&'a InheritedVisibility>,
         ),
@@ -1590,15 +1879,12 @@ fn visible_authored_pose_part_set<'a>(
 ) -> VisiblePosePartSet {
     let mut parts_set = VisiblePosePartSet::default();
 
-    for (node, transform, global_transform, visibility, inherited_visibility) in nodes {
+    for (node, transform, global_translation, visibility, inherited_visibility) in nodes {
         if !authored_pose_part_visible(visibility, inherited_visibility) {
             continue;
         }
-        let pose_part = VisiblePosePartTransform::from_part(
-            &node.part,
-            transform,
-            global_transform.translation(),
-        );
+        let pose_part =
+            VisiblePosePartTransform::from_part(&node.part, transform, global_translation);
         match node.part.role {
             CharacterPartRole::Hips => parts_set.hips = Some(pose_part),
             CharacterPartRole::Torso => parts_set.torso = Some(pose_part),
@@ -1632,7 +1918,7 @@ fn visible_authored_pose_attachment_set<'a>(
     markers: impl Iterator<
         Item = (
             &'a AuthoredPlayerAttachmentMarker,
-            &'a GlobalTransform,
+            Vec3,
             Option<&'a Visibility>,
             Option<&'a InheritedVisibility>,
         ),
@@ -1640,11 +1926,10 @@ fn visible_authored_pose_attachment_set<'a>(
 ) -> VisiblePoseAttachmentSet {
     let mut attachments = VisiblePoseAttachmentSet::default();
 
-    for (marker, global_transform, visibility, inherited_visibility) in markers {
+    for (marker, translation, visibility, inherited_visibility) in markers {
         if !authored_pose_part_visible(visibility, inherited_visibility) {
             continue;
         }
-        let translation = global_transform.translation();
         match *marker {
             AuthoredPlayerAttachmentMarker::Neck => attachments.neck = Some(translation),
             AuthoredPlayerAttachmentMarker::Shoulder(Side::Left) => {
@@ -1957,7 +2242,269 @@ mod tests {
     use super::*;
     use crate::authored_assets::AuthoredPlayerClip;
     use nau_engine::animation::LANDING_MAX_FOOT_SPLIT_READABILITY_M;
-    use nau_engine::movement::{FlightInput, FlightMode};
+    use nau_engine::movement::{Facing, FlightInput, FlightMode};
+    use nau_engine::world::SkyRoute;
+
+    #[test]
+    fn nearest_island_edge_metrics_tracks_signed_boundary_crossing() {
+        let route = SkyRoute::default();
+        let island = route.islands()[0];
+        let contour = island.footprint_contour_point(0.0, false);
+        let inside = Vec3::new(contour.x - 1.0, island.floor_y(), contour.y);
+        let outside = Vec3::new(contour.x + 1.0, island.floor_y(), contour.y);
+        let far_outside = Vec3::new(contour.x + 8.0, island.floor_y(), contour.y);
+
+        let (inside_distance, inside_near, inside_outside) =
+            nearest_island_edge_metrics(route.islands(), inside);
+        assert!((inside_distance + 1.0).abs() <= 0.001);
+        assert!(inside_near);
+        assert!(!inside_outside);
+
+        let (outside_distance, outside_near, outside_outside) =
+            nearest_island_edge_metrics(route.islands(), outside);
+        assert!((outside_distance - 1.0).abs() <= 0.001);
+        assert!(outside_near);
+        assert!(outside_outside);
+
+        let (_, far_near, far_outside_flag) =
+            nearest_island_edge_metrics(route.islands(), far_outside);
+        assert!(!far_near);
+        assert!(far_outside_flag);
+    }
+
+    #[test]
+    fn movement_camera_heading_error_detects_a_stale_camera_orbit() {
+        let frame = 24;
+        let follow_direction = Vec3::NEG_Z;
+        let movement_input = FlightInput {
+            forward: true,
+            ..default()
+        };
+        let camera_input = CameraInput {
+            mouse_delta: Vec2::new(5.0, 0.0),
+        };
+        let mut current_control = CameraControlState::default();
+        current_control.orbit.yaw = 1.2_f32.to_radians();
+
+        let (stale_forward, stale_right) = movement_facing_from_follow_direction(
+            follow_direction,
+            CameraControlState::default().orbit,
+        );
+        let stale_basis = EvalMovementBasis {
+            frame,
+            facing: Some(Facing::new(stale_forward, stale_right)),
+            follow_direction: Some(follow_direction),
+        };
+        let stale_error = movement_camera_heading_error_degrees(
+            &stale_basis,
+            frame,
+            &current_control,
+            movement_input,
+            camera_input,
+        );
+        assert!((stale_error - 1.2).abs() < 0.01);
+
+        let (current_forward, current_right) =
+            movement_facing_from_follow_direction(follow_direction, current_control.orbit);
+        let current_basis = EvalMovementBasis {
+            frame,
+            facing: Some(Facing::new(current_forward, current_right)),
+            follow_direction: Some(follow_direction),
+        };
+        let current_error = movement_camera_heading_error_degrees(
+            &current_basis,
+            frame,
+            &current_control,
+            movement_input,
+            camera_input,
+        );
+        assert!(current_error <= 0.01);
+        assert!(
+            movement_camera_heading_error_degrees(
+                &current_basis,
+                frame,
+                &current_control,
+                movement_input,
+                CameraInput::default(),
+            )
+            .is_nan()
+        );
+    }
+
+    #[test]
+    fn camera_player_relative_step_ignores_shared_translation() {
+        let initial_offset = Vec3::new(0.0, 6.0, 12.0);
+        let dt = 1.0 / 60.0;
+        let mut state = CameraPlayerContinuityState::default();
+        let player = Transform::default();
+        let camera = Transform::from_translation(initial_offset);
+
+        assert_eq!(
+            state
+                .observe(0, dt, &player, Vec3::ZERO, Some(&camera))
+                .camera_player_relative_step_m,
+            0.0
+        );
+        let translated_player = Transform::from_translation(Vec3::X * 8.0);
+        let translated_camera = Transform::from_translation(Vec3::X * 8.0 + initial_offset);
+        assert_eq!(
+            state
+                .observe(
+                    1,
+                    dt,
+                    &translated_player,
+                    Vec3::X * (8.0 / dt),
+                    Some(&translated_camera),
+                )
+                .camera_player_relative_step_m,
+            0.0
+        );
+        let snapped_camera =
+            Transform::from_translation(Vec3::X * 8.0 + initial_offset + Vec3::X * 0.65);
+        let snap = state.observe(2, dt, &translated_player, Vec3::ZERO, Some(&snapped_camera));
+        assert!((snap.camera_player_relative_step_m - 0.65).abs() < 0.0001);
+    }
+
+    #[test]
+    fn camera_angular_continuity_ignores_player_body_turns() {
+        let dt = 1.0 / 60.0;
+        let camera = Transform::from_rotation(Quat::from_rotation_y(0.35));
+        let mut state = CameraPlayerContinuityState::default();
+
+        state.observe(0, dt, &Transform::default(), Vec3::ZERO, Some(&camera));
+        let initialized_turn = state.observe(
+            1,
+            dt,
+            &Transform::from_rotation(Quat::from_rotation_y(120.0_f32.to_radians())),
+            Vec3::ZERO,
+            Some(&camera),
+        );
+        let continued_turn = state.observe(
+            2,
+            dt,
+            &Transform::from_rotation(Quat::from_rotation_y(-90.0_f32.to_radians())),
+            Vec3::ZERO,
+            Some(&camera),
+        );
+
+        assert!(
+            initialized_turn.camera_player_relative_angular_velocity_degrees_per_sec
+                <= f32::EPSILON
+        );
+        assert!(
+            continued_turn.camera_player_relative_angular_velocity_degrees_per_sec <= f32::EPSILON
+        );
+        assert!(
+            continued_turn.camera_player_relative_angular_acceleration_degrees_per_sec2
+                <= f32::EPSILON
+        );
+    }
+
+    #[test]
+    fn camera_angular_continuity_passes_same_frame_response_and_detects_a_snap() {
+        const GATE_MAX_ANGULAR_VELOCITY_DEGREES_PER_SEC: f32 = 180.0;
+        const GATE_MAX_ANGULAR_ACCELERATION_DEGREES_PER_SEC2: f32 = 15_000.0;
+
+        let dt = 1.0 / 60.0;
+        let mut state = CameraPlayerContinuityState::default();
+        let player = Transform::default();
+        let camera = Transform::default();
+
+        state.observe(0, dt, &player, Vec3::ZERO, Some(&camera));
+        state.observe(1, dt, &player, Vec3::ZERO, Some(&camera));
+        let normal_response = state.observe(
+            2,
+            dt,
+            &Transform::from_rotation(Quat::from_rotation_y(0.8)),
+            Vec3::ZERO,
+            Some(&Transform::from_rotation(Quat::from_rotation_y(
+                1.75_f32.to_radians(),
+            ))),
+        );
+        let snapped = state.observe(
+            3,
+            dt,
+            &Transform::from_rotation(Quat::from_rotation_y(1.6)),
+            Vec3::ZERO,
+            Some(&Transform::from_rotation(Quat::from_rotation_y(
+                13.75_f32.to_radians(),
+            ))),
+        );
+
+        assert!(
+            normal_response.camera_player_relative_angular_velocity_degrees_per_sec
+                < GATE_MAX_ANGULAR_VELOCITY_DEGREES_PER_SEC
+        );
+        assert!(
+            normal_response.camera_player_relative_angular_acceleration_degrees_per_sec2
+                < GATE_MAX_ANGULAR_ACCELERATION_DEGREES_PER_SEC2
+        );
+        assert!(
+            snapped.camera_player_relative_angular_velocity_degrees_per_sec
+                > GATE_MAX_ANGULAR_VELOCITY_DEGREES_PER_SEC
+        );
+        assert!(
+            snapped.camera_player_relative_angular_acceleration_degrees_per_sec2
+                > GATE_MAX_ANGULAR_ACCELERATION_DEGREES_PER_SEC2
+        );
+    }
+
+    #[test]
+    fn continuity_derivatives_and_player_residual_are_timestep_invariant() {
+        for dt in [1.0 / 30.0, 1.0 / 60.0, 1.0 / 120.0] {
+            let linear_acceleration_mps2 = 4.0;
+            let angular_acceleration_degrees_per_sec2 = 30.0;
+            let player_acceleration_mps2 = 2.0;
+            let mut state = CameraPlayerContinuityState::default();
+            let mut metrics = CameraPlayerContinuityMetrics::default();
+
+            for frame in 0..=3 {
+                let time_secs = frame as f32 * dt;
+                let player_position =
+                    Vec3::X * (0.5 * player_acceleration_mps2 * time_secs * time_secs);
+                let player_velocity = Vec3::X * (player_acceleration_mps2 * time_secs);
+                let relative_offset = Vec3::new(
+                    0.5 * linear_acceleration_mps2 * time_secs * time_secs,
+                    6.0,
+                    12.0,
+                );
+                let relative_yaw =
+                    (0.5 * angular_acceleration_degrees_per_sec2 * time_secs * time_secs)
+                        .to_radians();
+                let player = Transform::from_translation(player_position);
+                let camera = Transform::from_translation(player_position + relative_offset)
+                    .with_rotation(Quat::from_rotation_y(relative_yaw));
+                metrics = state.observe(frame, dt, &player, player_velocity, Some(&camera));
+            }
+
+            let sample_midpoint_secs = 3.0 * dt - 0.5 * dt;
+            assert!(
+                (metrics.camera_player_relative_linear_velocity_mps
+                    - linear_acceleration_mps2 * sample_midpoint_secs)
+                    .abs()
+                    < 0.001
+            );
+            assert!(
+                (metrics.camera_player_relative_linear_acceleration_mps2
+                    - linear_acceleration_mps2)
+                    .abs()
+                    < 0.001
+            );
+            assert!(
+                (metrics.camera_player_relative_angular_velocity_degrees_per_sec
+                    - angular_acceleration_degrees_per_sec2 * sample_midpoint_secs)
+                    .abs()
+                    < 0.01
+            );
+            assert!(
+                (metrics.camera_player_relative_angular_acceleration_degrees_per_sec2
+                    - angular_acceleration_degrees_per_sec2)
+                    .abs()
+                    < 0.05
+            );
+            assert!(metrics.player_integration_residual_m < 0.0001);
+        }
+    }
 
     #[test]
     fn authored_animation_sample_metrics_use_available_diagnostics() {
@@ -2551,17 +3098,10 @@ mod tests {
                 },
             ),
         ];
-        let global_transforms = nodes
-            .iter()
-            .map(|(_, transform)| GlobalTransform::from(*transform))
-            .collect::<Vec<_>>();
-
         let metrics = visible_authored_pose_readability_metrics(
-            nodes.iter().zip(global_transforms.iter()).map(
-                |((node, transform), global_transform)| {
-                    (node, transform, global_transform, None, None)
-                },
-            ),
+            nodes
+                .iter()
+                .map(|(node, transform)| (node, transform, transform.translation, None, None)),
             context,
         )
         .expect("visible authored pose metrics");
@@ -2582,14 +3122,13 @@ mod tests {
             Quat::IDENTITY,
         ));
         let transform = Transform::default();
-        let global_transform = GlobalTransform::from(transform);
         let visibility = Visibility::Inherited;
         let inherited_visibility = InheritedVisibility::HIDDEN;
 
         let parts = visible_authored_pose_part_set(std::iter::once((
             &node,
             &transform,
-            &global_transform,
+            transform.translation,
             Some(&visibility),
             Some(&inherited_visibility),
         )));

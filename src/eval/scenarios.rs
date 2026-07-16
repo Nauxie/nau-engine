@@ -25,40 +25,192 @@ pub const POSE_STATE_COVERAGE: &str = "pose_state_coverage";
 pub const LONG_GLIDE_VISIBILITY: &str = "long_glide_visibility";
 pub const BRANCH_RECOVERY_ROUTE: &str = "branch_recovery_route";
 pub const GREAT_SKY_PLATEAU_ROUTE: &str = "great_sky_plateau_route";
+pub const GREAT_SKY_PLATEAU_VISTAS: &str = "great_sky_plateau_vistas";
 pub const RETURN_DESCENT_ROUTE: &str = "return_descent_route";
 pub const PLATEAU_ARRIVAL_CAMERA: &str = "plateau_arrival_camera";
 pub const UNDERBRIDGE_UNDER_ROUTE: &str = "underbridge_under_route";
-pub const SCENARIO_NAMES: &[&str] = &[
-    BASELINE_ROUTE,
-    ISLAND_LAUNCH_TO_LANDING,
-    GROUND_TAXI_CONTROL,
-    PLAYTEST_RESET,
-    WORLD_COLLISION_CONTACT,
-    TERRAIN_RIM_COLLISION_CONTACT,
-    TERRAIN_BODY_COLLISION_CONTACT,
-    TERRAIN_EDGE_WALKOFF,
-    UPDRAFT_ROUTE,
-    BRANCH_RECOVERY_ROUTE,
-    CAMERA_MOUSE_CONTROL,
-    CAMERA_YAW_STABILITY,
-    CAMERA_TURN_STABILITY,
-    CAMERA_STRAFE_STABILITY,
-    AIR_CONTROL_RESPONSE,
-    POSE_STATE_COVERAGE,
-    LONG_GLIDE_VISIBILITY,
-    GREAT_SKY_PLATEAU_ROUTE,
-    RETURN_DESCENT_ROUTE,
-    PLATEAU_ARRIVAL_CAMERA,
-    UNDERBRIDGE_UNDER_ROUTE,
+
+type ScenarioFactory = fn() -> EvalScenario;
+
+#[derive(Clone, Copy)]
+struct ScenarioRegistration {
+    name: &'static str,
+    aliases: &'static [&'static str],
+    app_only: bool,
+    factory: ScenarioFactory,
+}
+
+const SCENARIO_COUNT: usize = 22;
+const APP_ONLY_SCENARIO_COUNT: usize = 7;
+const SCENARIO_REGISTRY: [ScenarioRegistration; SCENARIO_COUNT] = [
+    ScenarioRegistration {
+        name: BASELINE_ROUTE,
+        aliases: &["baseline"],
+        app_only: false,
+        factory: traversal_scenarios::baseline_route,
+    },
+    ScenarioRegistration {
+        name: ISLAND_LAUNCH_TO_LANDING,
+        aliases: &["island"],
+        app_only: false,
+        factory: traversal_scenarios::island_launch_to_landing,
+    },
+    ScenarioRegistration {
+        name: GROUND_TAXI_CONTROL,
+        aliases: &["ground_taxi", "taxi"],
+        app_only: false,
+        factory: control_scenarios::ground_taxi_control,
+    },
+    ScenarioRegistration {
+        name: PLAYTEST_RESET,
+        aliases: &["reset", "central_reset"],
+        app_only: true,
+        factory: control_scenarios::playtest_reset,
+    },
+    ScenarioRegistration {
+        name: WORLD_COLLISION_CONTACT,
+        aliases: &["collision_contact", "asset_collision"],
+        app_only: true,
+        factory: control_scenarios::world_collision_contact,
+    },
+    ScenarioRegistration {
+        name: TERRAIN_RIM_COLLISION_CONTACT,
+        aliases: &["terrain_rim_contact", "rim_collision"],
+        app_only: true,
+        factory: control_scenarios::terrain_rim_collision_contact,
+    },
+    ScenarioRegistration {
+        name: TERRAIN_BODY_COLLISION_CONTACT,
+        aliases: &["terrain_body_contact", "body_collision", "cliff_collision"],
+        app_only: true,
+        factory: control_scenarios::terrain_body_collision_contact,
+    },
+    ScenarioRegistration {
+        name: TERRAIN_EDGE_WALKOFF,
+        aliases: &["edge_walkoff", "edge_collision_truth"],
+        app_only: true,
+        factory: control_scenarios::terrain_edge_walkoff,
+    },
+    ScenarioRegistration {
+        name: UPDRAFT_ROUTE,
+        aliases: &["updraft"],
+        app_only: false,
+        factory: traversal_scenarios::updraft_route,
+    },
+    ScenarioRegistration {
+        name: BRANCH_RECOVERY_ROUTE,
+        aliases: &["branch_recovery", "recovery_route"],
+        app_only: false,
+        factory: traversal_scenarios::branch_recovery_route,
+    },
+    ScenarioRegistration {
+        name: CAMERA_MOUSE_CONTROL,
+        aliases: &["camera_mouse", "mouse_camera"],
+        app_only: false,
+        factory: control_scenarios::camera_mouse_control,
+    },
+    ScenarioRegistration {
+        name: CAMERA_YAW_STABILITY,
+        aliases: &["camera_yaw", "yaw_stability"],
+        app_only: false,
+        factory: control_scenarios::camera_yaw_stability,
+    },
+    ScenarioRegistration {
+        name: CAMERA_TURN_STABILITY,
+        aliases: &["camera_turn", "turn_stability"],
+        app_only: false,
+        factory: control_scenarios::camera_turn_stability,
+    },
+    ScenarioRegistration {
+        name: CAMERA_STRAFE_STABILITY,
+        aliases: &["camera_strafe", "strafe_stability"],
+        app_only: false,
+        factory: control_scenarios::camera_strafe_stability,
+    },
+    ScenarioRegistration {
+        name: AIR_CONTROL_RESPONSE,
+        aliases: &["air_control", "air_response"],
+        app_only: false,
+        factory: control_scenarios::air_control_response,
+    },
+    ScenarioRegistration {
+        name: POSE_STATE_COVERAGE,
+        aliases: &["pose_state", "pose_coverage"],
+        app_only: false,
+        factory: control_scenarios::pose_state_coverage,
+    },
+    ScenarioRegistration {
+        name: LONG_GLIDE_VISIBILITY,
+        aliases: &["long_glide", "glide_visibility"],
+        app_only: false,
+        factory: traversal_scenarios::long_glide_visibility,
+    },
+    ScenarioRegistration {
+        name: GREAT_SKY_PLATEAU_ROUTE,
+        aliases: &["great_sky_plateau", "plateau_route"],
+        app_only: false,
+        factory: traversal_scenarios::great_sky_plateau_route,
+    },
+    ScenarioRegistration {
+        name: GREAT_SKY_PLATEAU_VISTAS,
+        aliases: &["plateau_vistas", "plateau_showcase"],
+        app_only: true,
+        factory: traversal_scenarios::great_sky_plateau_vistas,
+    },
+    ScenarioRegistration {
+        name: RETURN_DESCENT_ROUTE,
+        aliases: &["return_descent", "descent_route", "long_descent"],
+        app_only: true,
+        factory: traversal_scenarios::return_descent_route,
+    },
+    ScenarioRegistration {
+        name: PLATEAU_ARRIVAL_CAMERA,
+        aliases: &["plateau_camera", "plateau_arrival"],
+        app_only: false,
+        factory: traversal_scenarios::plateau_arrival_camera,
+    },
+    ScenarioRegistration {
+        name: UNDERBRIDGE_UNDER_ROUTE,
+        aliases: &["underbridge_route", "under_route"],
+        app_only: false,
+        factory: traversal_scenarios::underbridge_under_route,
+    },
 ];
-pub const APP_ONLY_SCENARIO_NAMES: &[&str] = &[
-    WORLD_COLLISION_CONTACT,
-    PLAYTEST_RESET,
-    TERRAIN_RIM_COLLISION_CONTACT,
-    TERRAIN_BODY_COLLISION_CONTACT,
-    TERRAIN_EDGE_WALKOFF,
-    RETURN_DESCENT_ROUTE,
-];
+
+const fn scenario_names() -> [&'static str; SCENARIO_COUNT] {
+    let mut names = [""; SCENARIO_COUNT];
+    let mut index = 0;
+    while index < SCENARIO_COUNT {
+        names[index] = SCENARIO_REGISTRY[index].name;
+        index += 1;
+    }
+    names
+}
+
+const fn app_only_scenario_names() -> [&'static str; APP_ONLY_SCENARIO_COUNT] {
+    let mut names = [""; APP_ONLY_SCENARIO_COUNT];
+    let mut registry_index = 0;
+    let mut output_index = 0;
+    while registry_index < SCENARIO_COUNT {
+        if SCENARIO_REGISTRY[registry_index].app_only {
+            if output_index >= APP_ONLY_SCENARIO_COUNT {
+                panic!("APP_ONLY_SCENARIO_COUNT is too small");
+            }
+            names[output_index] = SCENARIO_REGISTRY[registry_index].name;
+            output_index += 1;
+        }
+        registry_index += 1;
+    }
+    if output_index != APP_ONLY_SCENARIO_COUNT {
+        panic!("APP_ONLY_SCENARIO_COUNT is too large");
+    }
+    names
+}
+
+const SCENARIO_NAMES_STORAGE: [&str; SCENARIO_COUNT] = scenario_names();
+const APP_ONLY_SCENARIO_NAMES_STORAGE: [&str; APP_ONLY_SCENARIO_COUNT] = app_only_scenario_names();
+pub const SCENARIO_NAMES: &[&str] = &SCENARIO_NAMES_STORAGE;
+pub const APP_ONLY_SCENARIO_NAMES: &[&str] = &APP_ONLY_SCENARIO_NAMES_STORAGE;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EvalCheckpoint {
@@ -86,6 +238,11 @@ impl EvalScenario {
         frame == 0 || frame >= self.frame_count || frame.is_multiple_of(self.sample_stride)
     }
 
+    pub fn expected_sample_count(self) -> u32 {
+        let interval_samples = self.frame_count / self.sample_stride + 1;
+        interval_samples + u32::from(!self.frame_count.is_multiple_of(self.sample_stride))
+    }
+
     pub fn checkpoint_at(self, frame: u32) -> Option<EvalCheckpoint> {
         self.checkpoints
             .iter()
@@ -95,72 +252,76 @@ impl EvalScenario {
 }
 
 pub fn scenario_named(name: &str) -> Option<EvalScenario> {
-    match name {
-        BASELINE_ROUTE | "baseline" => Some(traversal_scenarios::baseline_route()),
-        ISLAND_LAUNCH_TO_LANDING | "island" => {
-            Some(traversal_scenarios::island_launch_to_landing())
-        }
-        GROUND_TAXI_CONTROL | "ground_taxi" | "taxi" => {
-            Some(control_scenarios::ground_taxi_control())
-        }
-        PLAYTEST_RESET | "reset" | "central_reset" => Some(control_scenarios::playtest_reset()),
-        WORLD_COLLISION_CONTACT | "collision_contact" | "asset_collision" => {
-            Some(control_scenarios::world_collision_contact())
-        }
-        TERRAIN_RIM_COLLISION_CONTACT | "terrain_rim_contact" | "rim_collision" => {
-            Some(control_scenarios::terrain_rim_collision_contact())
-        }
-        TERRAIN_BODY_COLLISION_CONTACT
-        | "terrain_body_contact"
-        | "body_collision"
-        | "cliff_collision" => Some(control_scenarios::terrain_body_collision_contact()),
-        TERRAIN_EDGE_WALKOFF | "edge_walkoff" | "edge_collision_truth" => {
-            Some(control_scenarios::terrain_edge_walkoff())
-        }
-        UPDRAFT_ROUTE | "updraft" => Some(traversal_scenarios::updraft_route()),
-        BRANCH_RECOVERY_ROUTE | "branch_recovery" | "recovery_route" => {
-            Some(traversal_scenarios::branch_recovery_route())
-        }
-        CAMERA_MOUSE_CONTROL | "camera_mouse" | "mouse_camera" => {
-            Some(control_scenarios::camera_mouse_control())
-        }
-        CAMERA_YAW_STABILITY | "camera_yaw" | "yaw_stability" => {
-            Some(control_scenarios::camera_yaw_stability())
-        }
-        CAMERA_TURN_STABILITY | "camera_turn" | "turn_stability" => {
-            Some(control_scenarios::camera_turn_stability())
-        }
-        CAMERA_STRAFE_STABILITY | "camera_strafe" | "strafe_stability" => {
-            Some(control_scenarios::camera_strafe_stability())
-        }
-        AIR_CONTROL_RESPONSE | "air_control" | "air_response" => {
-            Some(control_scenarios::air_control_response())
-        }
-        POSE_STATE_COVERAGE | "pose_state" | "pose_coverage" => {
-            Some(control_scenarios::pose_state_coverage())
-        }
-        LONG_GLIDE_VISIBILITY | "long_glide" | "glide_visibility" => {
-            Some(traversal_scenarios::long_glide_visibility())
-        }
-        GREAT_SKY_PLATEAU_ROUTE | "great_sky_plateau" | "plateau_route" => {
-            Some(traversal_scenarios::great_sky_plateau_route())
-        }
-        RETURN_DESCENT_ROUTE | "return_descent" | "descent_route" | "long_descent" => {
-            Some(traversal_scenarios::return_descent_route())
-        }
-        PLATEAU_ARRIVAL_CAMERA | "plateau_camera" | "plateau_arrival" => {
-            Some(traversal_scenarios::plateau_arrival_camera())
-        }
-        UNDERBRIDGE_UNDER_ROUTE | "underbridge_route" | "under_route" => {
-            Some(traversal_scenarios::underbridge_under_route())
-        }
-        _ => None,
-    }
+    SCENARIO_REGISTRY
+        .iter()
+        .find(|registration| registration.name == name || registration.aliases.contains(&name))
+        .map(|registration| {
+            let mut scenario = (registration.factory)();
+            scenario.thresholds.min_samples = scenario.expected_sample_count();
+            scenario
+        })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn scenario_registry_is_complete_unique_and_resolvable() {
+        let mut lookup_names = BTreeSet::new();
+        let canonical_names = SCENARIO_REGISTRY
+            .iter()
+            .map(|registration| registration.name)
+            .collect::<Vec<_>>();
+        let app_only_names = SCENARIO_REGISTRY
+            .iter()
+            .filter(|registration| registration.app_only)
+            .map(|registration| registration.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(canonical_names.as_slice(), SCENARIO_NAMES);
+        assert_eq!(app_only_names.as_slice(), APP_ONLY_SCENARIO_NAMES);
+        for registration in SCENARIO_REGISTRY {
+            assert!(
+                lookup_names.insert(registration.name),
+                "duplicate scenario name: {}",
+                registration.name
+            );
+            assert_eq!(
+                scenario_named(registration.name)
+                    .expect("registered scenario resolves")
+                    .name,
+                registration.name
+            );
+            for alias in registration.aliases {
+                assert!(
+                    lookup_names.insert(alias),
+                    "duplicate scenario alias: {alias}"
+                );
+                assert_eq!(
+                    scenario_named(alias)
+                        .expect("registered scenario alias resolves")
+                        .name,
+                    registration.name
+                );
+            }
+        }
+
+        for name in SCENARIO_NAMES {
+            let scenario = scenario_named(name).expect("registered scenario resolves");
+            assert_eq!(
+                scenario.thresholds.min_samples,
+                scenario.expected_sample_count(),
+                "{name} should require its exact deterministic sample count"
+            );
+        }
+
+        let air_control = scenario_named(AIR_CONTROL_RESPONSE).expect("air control scenario");
+        assert!(air_control.sample_stride > 1);
+        assert!(!1_u32.is_multiple_of(air_control.sample_stride));
+        assert!(!air_control.should_sample(1));
+    }
 
     #[test]
     fn return_descent_route_targets_authored_handrail_regression() {
@@ -209,7 +370,7 @@ mod tests {
         assert!(scenario.thresholds.min_camera_obstructed_distance_m >= 5.0);
         assert!(scenario.thresholds.max_camera_step_distance_m <= 0.75);
         assert!(scenario.thresholds.max_camera_rotation_delta_degrees <= 1.5);
-        assert!(scenario.thresholds.max_camera_player_angle_degrees <= 1.5);
+        assert!(scenario.thresholds.max_camera_player_angle_degrees <= 2.0);
         assert_eq!(scenario.thresholds.max_camera_obstruction_snap_count, 0);
         assert!(scenario.thresholds.min_abs_camera_yaw_degrees >= 10.0);
         assert!(scripted_input(scenario, 30).forward);

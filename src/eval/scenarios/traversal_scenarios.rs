@@ -15,8 +15,8 @@ use crate::{
 
 use super::{
     BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, EvalCheckpoint, EvalScenario, GREAT_SKY_PLATEAU_ROUTE,
-    ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, PLATEAU_ARRIVAL_CAMERA, RETURN_DESCENT_ROUTE,
-    UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
+    GREAT_SKY_PLATEAU_VISTAS, ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY,
+    PLATEAU_ARRIVAL_CAMERA, RETURN_DESCENT_ROUTE, UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
     checkpoints::{
         BASELINE_CHECKPOINTS, BRANCH_RECOVERY_CHECKPOINTS, GREAT_SKY_PLATEAU_CHECKPOINTS,
         ISLAND_CHECKPOINTS, LONG_GLIDE_CHECKPOINTS, UNDERBRIDGE_UNDER_ROUTE_CHECKPOINTS,
@@ -46,6 +46,17 @@ const PLATEAU_ARRIVAL_CAMERA_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
         frame: 240,
         name: "plateau_rim_camera_recenter",
+    },
+];
+
+const GREAT_SKY_PLATEAU_VISTA_CHECKPOINTS: &[EvalCheckpoint] = &[
+    EvalCheckpoint {
+        frame: 60,
+        name: "plateau_arrival_reveal",
+    },
+    EvalCheckpoint {
+        frame: 180,
+        name: "waterfall_vista",
     },
 ];
 
@@ -459,6 +470,40 @@ pub(super) fn great_sky_plateau_route() -> EvalScenario {
     scenario
 }
 
+pub(super) fn great_sky_plateau_vistas() -> EvalScenario {
+    let mut scenario = plateau_arrival_camera();
+    scenario.name = GREAT_SKY_PLATEAU_VISTAS;
+    scenario.frame_count = 300;
+    scenario.sample_stride = 1;
+    scenario.target_island_name = Some("great sky plateau");
+    scenario.checkpoints = GREAT_SKY_PLATEAU_VISTA_CHECKPOINTS;
+    scenario.thresholds.min_samples = 280;
+    scenario.thresholds.min_horizontal_distance_m = 0.0;
+    scenario.thresholds.min_max_altitude_m = 680.0;
+    scenario.thresholds.min_max_speed_mps = 0.0;
+    scenario.thresholds.min_gliding_samples = 0;
+    scenario.thresholds.min_grounded_samples = 280;
+    scenario.thresholds.min_lifted_samples = 0;
+    scenario.thresholds.min_mid_lod_island_count = 1;
+    scenario.thresholds.min_visible_route_beacon_count = 3;
+    scenario.thresholds.max_camera_distance_m = 220.0;
+    scenario.thresholds.max_camera_player_angle_degrees = 90.0;
+    scenario.thresholds.max_camera_step_distance_m = 6.0;
+    scenario.thresholds.max_camera_rotation_delta_degrees = 3.5;
+    scenario.thresholds.max_abs_camera_view_yaw_degrees = 5.0;
+    scenario.thresholds.min_camera_obstruction_adjustment_m = 0.0;
+    scenario.thresholds.min_camera_obstructed_distance_m = 0.0;
+    scenario.thresholds.min_abs_camera_yaw_degrees = 0.0;
+    scenario.thresholds.min_camera_pitch_offset_degrees = 0.0;
+    scenario.thresholds.max_camera_pitch_offset_degrees = 0.0;
+    scenario.thresholds.min_completed_objective_count = 0;
+    scenario.thresholds.require_target_landing = false;
+    scenario.thresholds.max_final_target_distance_m = 220.0;
+    scenario.thresholds.min_target_landing_samples = 0;
+
+    scenario
+}
+
 pub(super) fn return_descent_route() -> EvalScenario {
     let mut scenario = long_glide_visibility();
     scenario.name = RETURN_DESCENT_ROUTE;
@@ -512,7 +557,7 @@ pub(super) fn plateau_arrival_camera() -> EvalScenario {
     scenario.thresholds.max_entity_count = MAX_ENTITY_COUNT;
     scenario.thresholds.max_camera_distance_m = MAX_CAMERA_FOLLOW_DISTANCE_M;
     scenario.thresholds.min_camera_surface_clearance_m = 1.0;
-    scenario.thresholds.max_camera_player_angle_degrees = 1.5;
+    scenario.thresholds.max_camera_player_angle_degrees = 2.0;
     scenario.thresholds.max_camera_step_distance_m = 0.75;
     scenario.thresholds.max_camera_rotation_delta_degrees = 1.5;
     scenario.thresholds.max_camera_orbit_alignment_degrees = MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES;

@@ -25,13 +25,19 @@ See the [Showcase](SHOWCASE.md) for gameplay, world scale, UI, and player/glider
 
 ## Run
 
-Install Rust with `rustup`, then use release mode for play-feel and performance review:
+Install Rust with `rustup`. Ordinary development play keeps Bevy and rendering dependencies optimized while retaining debug assertions:
+
+```sh
+cargo run -- --play
+```
+
+Use release mode for final play-feel and performance review:
 
 ```sh
 cargo run --release -- --play
 ```
 
-Debug mode enables the diagnostic readout and gizmos:
+The first development build is slower because it compiles optimized dependencies; later builds remain incremental. Debug mode enables the diagnostic readout and gizmos:
 
 ```sh
 cargo run -- --debug
@@ -76,16 +82,22 @@ cargo clippy --all-targets --all-features -- -D warnings
 Representative measured tooling (`jq` is required by the aggregate scripts):
 
 ```sh
+./tools/dev_play_performance_gate.sh target/eval/dev_play_performance
+./tools/camera_continuity_gate.sh target/eval/camera_continuity
 ./tools/manual_play_profile.sh target/eval/play_profile/manual.json
 NAU_PLAY_PROFILE_DURATION_SECS=300 NAU_PLAY_PROFILE_SCRIPT=freeflight \
   ./tools/manual_play_profile.sh target/eval/play_profile/freeflight-5min.json
 ./tools/eval_sim_suite.sh target/eval/sim_suite
 cargo run -- --eval long_glide_visibility --eval-output target/eval/long_glide_visibility
+./tools/eval.sh great_sky_plateau_vistas target/eval/great_sky_plateau_vistas
 ./tools/player_pose_preview.sh target/player_pose_preview
+./tools/world_content_gate.sh target/world_content_gate
 ./tools/terrain_export.sh target/terrain_export
 ./tools/visual_content_export.sh target/visual_content_export
 ./tools/wind_visual_export.sh target/wind_visual_export
 ```
+
+The development-play gate runs the same full-content native scenario in debug and release, enforces frame-time ceilings, and rejects debug builds that drift materially behind release. The camera-continuity gate covers deterministic 30/60/120/144 Hz and hitch contracts plus native mouse, reset, collision, obstruction, and floor-boundary scenarios. Both are required by the macOS CI workflow.
 
 Release comparison and world-floor regression gates remain available through `./tools/perf_baseline.sh`, `./tools/world_floor_full_gate.sh`, and `./tools/world_floor_candidate_gate.sh`. Human release play remains part of acceptance after behavioral changes; the linked acceptance documents define the full contract.
 

@@ -125,13 +125,15 @@ pub(crate) fn water_surface_material(
     materials: &mut Assets<StandardMaterial>,
 ) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial {
-        base_color: Color::srgba(0.22, 0.58, 0.86, 0.76),
+        base_color: Color::srgba(0.40, 0.82, 1.0, 0.90),
         base_color_texture: Some(images.add(procedural_surface_texture(
-            [54, 154, 210, 210],
-            [22, 92, 156, 210],
-            [160, 220, 244, 210],
+            [95, 205, 245, 240],
+            [48, 155, 215, 240],
+            [200, 245, 255, 240],
             79,
         ))),
+        emissive: LinearRgba::rgb(0.35, 1.35, 2.80),
+        emissive_exposure_weight: 0.08,
         metallic_roughness_texture: Some(images.add(procedural_material_map(1_079, 0.22))),
         depth_map: Some(images.add(procedural_depth_map(1_113, ImageFilterMode::Linear))),
         parallax_depth_scale: 0.018,

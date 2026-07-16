@@ -4,10 +4,10 @@ use bevy::prelude::*;
 use super::{
     AIR_CONTROL_RESPONSE, BRANCH_RECOVERY_ROUTE, CAMERA_MOUSE_CONTROL, CAMERA_STRAFE_STABILITY,
     CAMERA_TURN_STABILITY, CAMERA_YAW_STABILITY, EvalScenario, GREAT_SKY_PLATEAU_ROUTE,
-    GROUND_TAXI_CONTROL, ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY, PLATEAU_ARRIVAL_CAMERA,
-    PLAYTEST_RESET, POSE_STATE_COVERAGE, RETURN_DESCENT_ROUTE, TERRAIN_BODY_COLLISION_CONTACT,
-    TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT, UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
-    WORLD_COLLISION_CONTACT,
+    GREAT_SKY_PLATEAU_VISTAS, GROUND_TAXI_CONTROL, ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY,
+    PLATEAU_ARRIVAL_CAMERA, PLAYTEST_RESET, POSE_STATE_COVERAGE, RETURN_DESCENT_ROUTE,
+    TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT,
+    UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
 };
 
 pub fn scripted_playtest_reset_requested(scenario: EvalScenario, frame: u32) -> bool {
@@ -23,7 +23,16 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
             ..default()
         };
     }
-    if matches!(scenario.name, CAMERA_MOUSE_CONTROL | CAMERA_YAW_STABILITY) {
+    if scenario.name == CAMERA_MOUSE_CONTROL {
+        return FlightInput {
+            forward: (0.15..=0.85).contains(&t),
+            ..default()
+        };
+    }
+    if scenario.name == CAMERA_YAW_STABILITY {
+        return FlightInput::default();
+    }
+    if scenario.name == GREAT_SKY_PLATEAU_VISTAS {
         return FlightInput::default();
     }
     if scenario.name == CAMERA_STRAFE_STABILITY {
@@ -79,7 +88,7 @@ pub fn scripted_input(scenario: EvalScenario, frame: u32) -> FlightInput {
     }
     if scenario.name == TERRAIN_RIM_COLLISION_CONTACT {
         return FlightInput {
-            backward: (0.05..=4.8).contains(&t),
+            forward: (0.05..=4.8).contains(&t),
             left: (0.05..=4.8).contains(&t),
             ..default()
         };
@@ -239,5 +248,7 @@ pub fn scripted_camera_input(scenario: EvalScenario, frame: u32) -> CameraInput 
         _ => Vec2::ZERO,
     };
 
-    CameraInput { mouse_delta }
+    CameraInput {
+        mouse_delta: mouse_delta * (scenario.fixed_dt.max(0.0) * 60.0),
+    }
 }

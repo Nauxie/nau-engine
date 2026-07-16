@@ -694,7 +694,7 @@ pub const GAMEPLAY_LIFT_ROUTE: [LiftRouteNode; 18] = [
     },
     LiftRouteNode {
         name: "low reef updraft",
-        center: Vec3::new(110.0, 44.0, -210.0),
+        center: Vec3::new(218.0, 44.0, 198.0),
         half_extents: Vec3::new(36.0, 34.0, 36.0),
         lift_accel: 20.0,
         max_upward_speed: 19.0,

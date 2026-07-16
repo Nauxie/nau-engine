@@ -124,8 +124,10 @@ fn write_checkpoint_marker_metadata(
             )
         })
         .unwrap_or_else(|| "null".to_string());
+    let route_marker_projection_required =
+        checkpoint_requires_route_marker_projection(scenario, checkpoint.name);
     let passed = markers.len() >= expected_objective_count
-        && visible_count > 0
+        && (!route_marker_projection_required || visible_count > 0)
         && scene_samples.len() >= 4
         && visible_scene_sample_count > 0
         && (!checkpoint_requires_wind_visual_sample(scenario, checkpoint.name)
@@ -136,7 +138,7 @@ fn write_checkpoint_marker_metadata(
         .map(terrain_export_json_string)
         .unwrap_or_else(|| "null".to_string());
     let json = format!(
-        "{{\n  \"passed\": {},\n  \"scenario\": {},\n  \"target_island\": {},\n  \"frame\": {},\n  \"checkpoint\": {},\n  \"screenshot\": {},\n  \"viewport\": {},\n  \"semantic_marker_count\": {},\n  \"expected_objective_marker_count\": {},\n  \"in_viewport_semantic_marker_count\": {},\n  \"occluded_semantic_marker_count\": {},\n  \"visible_semantic_marker_count\": {},\n  \"current_objective_visible\": {},\n  \"semantic_scene_sample_count\": {},\n  \"in_viewport_semantic_scene_sample_count\": {},\n  \"occluded_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_material_count\": {},\n  \"visible_wind_scene_sample_count\": {},\n  \"markers\": [\n{}\n  ],\n  \"scene_samples\": [\n{}\n  ]\n}}\n",
+        "{{\n  \"passed\": {},\n  \"scenario\": {},\n  \"target_island\": {},\n  \"frame\": {},\n  \"checkpoint\": {},\n  \"screenshot\": {},\n  \"viewport\": {},\n  \"route_marker_projection_required\": {},\n  \"semantic_marker_count\": {},\n  \"expected_objective_marker_count\": {},\n  \"in_viewport_semantic_marker_count\": {},\n  \"occluded_semantic_marker_count\": {},\n  \"visible_semantic_marker_count\": {},\n  \"current_objective_visible\": {},\n  \"semantic_scene_sample_count\": {},\n  \"in_viewport_semantic_scene_sample_count\": {},\n  \"occluded_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_sample_count\": {},\n  \"visible_semantic_scene_material_count\": {},\n  \"visible_wind_scene_sample_count\": {},\n  \"markers\": [\n{}\n  ],\n  \"scene_samples\": [\n{}\n  ]\n}}\n",
         passed,
         terrain_export_json_string(scenario.name),
         target_island,
@@ -144,6 +146,7 @@ fn write_checkpoint_marker_metadata(
         terrain_export_json_string(checkpoint.name),
         terrain_export_json_string(&path_string(&checkpoint.path)),
         viewport_json,
+        route_marker_projection_required,
         markers.len(),
         expected_objective_count,
         in_viewport_marker_count,
@@ -171,6 +174,21 @@ fn write_checkpoint_marker_metadata(
     fs::write(path, json)
 }
 
+fn checkpoint_requires_route_marker_projection(
+    scenario: EvalScenario,
+    checkpoint_name: &str,
+) -> bool {
+    !matches!(
+        (scenario.name, checkpoint_name),
+        ("plateau_arrival_camera", _)
+            | ("great_sky_plateau_vistas", _)
+            | (
+                "great_sky_plateau_route",
+                "waterfall_vista" | "plateau_arrival_reveal"
+            )
+    )
+}
+
 fn checkpoint_requires_wind_visual_sample(scenario: EvalScenario, checkpoint_name: &str) -> bool {
     matches!(
         (scenario.name, checkpoint_name),
@@ -190,6 +208,46 @@ fn checkpoint_requires_wind_visual_sample(scenario: EvalScenario, checkpoint_nam
 mod tests {
     use super::*;
     use nau_engine::eval::scenario_named;
+
+    #[test]
+    fn route_marker_projection_is_optional_only_at_plateau_arrival_views() {
+        let plateau_camera =
+            scenario_named("plateau_arrival_camera").expect("plateau camera scenario");
+        let plateau_route =
+            scenario_named("great_sky_plateau_route").expect("plateau route scenario");
+        let plateau_vistas =
+            scenario_named("great_sky_plateau_vistas").expect("plateau vistas scenario");
+        let updraft = scenario_named("updraft_route").expect("updraft scenario");
+
+        assert!(!checkpoint_requires_route_marker_projection(
+            plateau_camera,
+            "settled_view"
+        ));
+        assert!(!checkpoint_requires_route_marker_projection(
+            plateau_camera,
+            "any_checkpoint"
+        ));
+        assert!(!checkpoint_requires_route_marker_projection(
+            plateau_route,
+            "waterfall_vista"
+        ));
+        assert!(!checkpoint_requires_route_marker_projection(
+            plateau_route,
+            "plateau_arrival_reveal"
+        ));
+        assert!(!checkpoint_requires_route_marker_projection(
+            plateau_vistas,
+            "waterfall_vista"
+        ));
+        assert!(checkpoint_requires_route_marker_projection(
+            plateau_route,
+            "plateau_approach"
+        ));
+        assert!(checkpoint_requires_route_marker_projection(
+            updraft,
+            "updraft_entry"
+        ));
+    }
 
     #[test]
     fn wind_visual_sidecar_gate_only_applies_to_wind_critical_checkpoints() {

@@ -45,6 +45,20 @@ pub(super) fn build_metrics_summary(
         min_camera_surface_clearance_m: acc.min_camera_surface_clearance_m,
         max_camera_player_angle_degrees: acc.max_camera_player_angle_degrees,
         max_camera_step_distance_m: acc.max_camera_step_distance_m,
+        max_camera_player_relative_step_m: acc.max_camera_player_relative_step_m,
+        max_camera_player_relative_linear_velocity_mps: acc
+            .max_camera_player_relative_linear_velocity_mps,
+        max_camera_player_relative_linear_acceleration_mps2: acc
+            .max_camera_player_relative_linear_acceleration_mps2,
+        max_camera_player_relative_angular_velocity_degrees_per_sec: acc
+            .max_camera_player_relative_angular_velocity_degrees_per_sec,
+        max_camera_player_relative_angular_acceleration_degrees_per_sec2: acc
+            .max_camera_player_relative_angular_acceleration_degrees_per_sec2,
+        max_player_integration_residual_m: acc.max_player_integration_residual_m,
+        max_player_integration_residual_without_world_collision_m: acc
+            .max_player_integration_residual_without_world_collision_m,
+        max_player_world_correction_m: acc.max_player_world_correction_m,
+        max_player_collision_correction_m: acc.max_player_collision_correction_m,
         max_camera_rotation_delta_degrees: acc.max_camera_rotation_delta_degrees,
         max_camera_orbit_alignment_degrees: acc.max_camera_orbit_alignment_degrees,
         avg_camera_follow_direction_error_degrees: derived
@@ -59,6 +73,14 @@ pub(super) fn build_metrics_summary(
         max_camera_obstruction_hits: acc.max_camera_obstruction_hits,
         min_camera_obstructed_distance_m: acc.min_camera_obstructed_distance_m.unwrap_or(0.0),
         camera_obstruction_snap_count: acc.camera_obstruction_snap_count,
+        camera_follow_correction_frames: acc.camera_follow_correction_frames,
+        camera_floor_correction_frames: acc.camera_floor_correction_frames,
+        camera_obstruction_correction_frames: acc.camera_obstruction_correction_frames,
+        camera_distance_correction_frames: acc.camera_distance_correction_frames,
+        camera_scripted_correction_frames: acc.camera_scripted_correction_frames,
+        camera_unclassified_correction_frames: acc.camera_unclassified_correction_frames,
+        camera_continuity_offset_limited_frames: acc.camera_continuity_offset_limited_frames,
+        camera_continuity_rotation_limited_frames: acc.camera_continuity_rotation_limited_frames,
         avg_desired_body_heading_error_degrees: derived.avg_desired_body_heading_error_degrees,
         p95_desired_body_heading_error_degrees: derived.p95_desired_body_heading_error_degrees,
         max_desired_body_heading_error_degrees: acc.max_desired_body_heading_error_degrees,
@@ -106,6 +128,8 @@ pub(super) fn build_metrics_summary(
             .p95_pure_air_turn_sideways_desired_travel_heading_error_degrees,
         max_pure_air_turn_sideways_desired_travel_heading_error_degrees: acc
             .max_pure_air_turn_sideways_desired_travel_heading_error_degrees,
+        movement_camera_heading_sample_count: acc.movement_camera_heading_samples,
+        max_movement_camera_heading_error_degrees: acc.max_movement_camera_heading_error_degrees,
         max_body_yaw_error_step_degrees: acc.max_body_yaw_error_step_degrees,
         body_yaw_oscillation_count: acc.body_yaw_oscillation_count,
         max_body_roll_step_degrees: acc.max_body_roll_step_degrees,

@@ -19,8 +19,8 @@ impl Default for FollowCamera {
             height: 5.0,
             look_height: 1.4,
             look_ahead: 0.5,
-            position_smoothing: 22.0,
-            rotation_smoothing: 24.0,
+            position_smoothing: 36.0,
+            rotation_smoothing: 36.0,
             direction_smoothing: 1.0,
             min_height: 1.6,
         }
@@ -66,6 +66,7 @@ impl Default for CameraControlTuning {
 #[derive(Resource, Clone, Copy, Debug, Default)]
 pub struct CameraControlState {
     pub orbit: CameraOrbit,
+    pub input_active: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

@@ -587,6 +587,12 @@ pub(super) fn build_checks(
                 MIN_WORLD_COLLISION_CONTACT_PUSH_M,
                 "m",
             ),
+            EvalCheck::at_most(
+                "world_collision_push_ceiling",
+                acc.max_world_collision_push_m,
+                MAX_WORLD_COLLISION_CONTACT_PUSH_M,
+                "m",
+            ),
         ]);
     }
     if scenario.name == TERRAIN_RIM_COLLISION_CONTACT {
@@ -603,6 +609,12 @@ pub(super) fn build_checks(
                 MIN_WORLD_COLLISION_CONTACT_PUSH_M,
                 "m",
             ),
+            EvalCheck::at_most(
+                "terrain_rim_collision_push_ceiling",
+                acc.max_terrain_rim_collision_push_m,
+                MAX_TERRAIN_RIM_COLLISION_CONTACT_PUSH_M,
+                "m",
+            ),
         ]);
     }
     if scenario.name == TERRAIN_BODY_COLLISION_CONTACT {
@@ -617,6 +629,12 @@ pub(super) fn build_checks(
                 "terrain_body_collision_push",
                 acc.max_terrain_body_collision_push_m,
                 MIN_TERRAIN_BODY_COLLISION_CONTACT_PUSH_M,
+                "m",
+            ),
+            EvalCheck::at_most(
+                "terrain_body_collision_push_ceiling",
+                acc.max_terrain_body_collision_push_m,
+                MAX_TERRAIN_BODY_COLLISION_CONTACT_PUSH_M,
                 "m",
             ),
             EvalCheck::at_most(

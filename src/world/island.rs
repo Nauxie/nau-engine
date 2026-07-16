@@ -877,11 +877,12 @@ pub enum IslandScaleClass {
     Small,
     Medium,
     Large,
+    Vast,
     HugePlateau,
 }
 
 impl IslandScaleClass {
-    pub const COUNT: usize = 5;
+    pub const COUNT: usize = 6;
 
     pub fn label(self) -> &'static str {
         match self {
@@ -889,18 +890,21 @@ impl IslandScaleClass {
             Self::Small => "small",
             Self::Medium => "medium",
             Self::Large => "large",
+            Self::Vast => "vast",
             Self::HugePlateau => "huge_plateau",
         }
     }
 
     pub fn from_footprint_area(area_m2: f32) -> Self {
-        if area_m2 >= 6_000.0 {
+        if area_m2 >= 18_000.0 {
             Self::HugePlateau
+        } else if area_m2 >= 6_000.0 {
+            Self::Vast
         } else if area_m2 >= 2_600.0 {
             Self::Large
         } else if area_m2 >= 1_200.0 {
             Self::Medium
-        } else if area_m2 >= 600.0 {
+        } else if area_m2 >= 500.0 {
             Self::Small
         } else {
             Self::Tiny
@@ -1243,7 +1247,12 @@ fn island_vertical_profile_for(
     if scale_class == IslandScaleClass::HugePlateau || name.contains("anvil") {
         return IslandVerticalProfile::Plateau;
     }
-    if thickness >= 34.0 && matches!(scale_class, IslandScaleClass::Large) {
+    if thickness >= 34.0
+        && matches!(
+            scale_class,
+            IslandScaleClass::Large | IslandScaleClass::Vast
+        )
+    {
         return IslandVerticalProfile::Plateau;
     }
 
@@ -1670,6 +1679,17 @@ impl SkyIsland {
 
     pub fn horizontal_distance(self, position: Vec3) -> f32 {
         Vec2::new(position.x - self.center.x, position.z - self.center.z).length()
+    }
+
+    pub fn signed_playable_edge_distance(self, position: Vec3) -> f32 {
+        let horizontal = Vec2::new(position.x - self.center.x, position.z - self.center.z);
+        let normalized = Vec2::new(
+            horizontal.x / self.half_extents.x.max(0.001),
+            horizontal.y / self.half_extents.y.max(0.001),
+        );
+        let angle = normalized.y.atan2(normalized.x);
+        let contour = self.footprint_contour_point(angle, false);
+        horizontal.length() - contour.distance(Vec2::new(self.center.x, self.center.z))
     }
 
     pub fn visual_edge_distance(self, position: Vec3) -> f32 {

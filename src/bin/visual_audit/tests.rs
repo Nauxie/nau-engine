@@ -1,5 +1,7 @@
 use super::{
+    USAGE,
     analysis::{audit_image, audit_image_with_alpha},
+    parse_args,
     report::{
         VisualAuditProfile, json_string, report_checks, report_checks_for_profile, report_passed,
     },
@@ -776,6 +778,54 @@ fn close_obstruction_profile_relaxes_route_marker_and_broad_foliage_gates() {
             .iter()
             .any(|check| check.name == "max_foliage_scene_tile_count" && check.passed)
     );
+}
+
+#[test]
+fn route_marker_optional_profile_relaxes_only_route_marker_report_checks() {
+    let default_checks = report_checks_for_profile(&[], VisualAuditProfile::Default);
+    let optional_checks = report_checks_for_profile(&[], VisualAuditProfile::RouteMarkerOptional);
+    let relaxed_checks = [
+        "max_route_marker_fraction",
+        "max_route_marker_component_count",
+        "max_route_marker_hue_family_count",
+    ];
+
+    assert_eq!(
+        optional_checks.len(),
+        default_checks.len() - relaxed_checks.len()
+    );
+    for default_check in &default_checks {
+        let optional_check = optional_checks
+            .iter()
+            .find(|check| check.name == default_check.name);
+        if relaxed_checks.contains(&default_check.name) {
+            assert!(
+                optional_check.is_none(),
+                "{} should be omitted",
+                default_check.name
+            );
+        } else {
+            assert!(
+                optional_check.is_some(),
+                "{} should be preserved",
+                default_check.name
+            );
+        }
+    }
+}
+
+#[test]
+fn cli_parses_route_marker_optional_profile_and_documents_it() {
+    let (profile, paths) = parse_args([
+        "--profile".to_string(),
+        "route_marker_optional".to_string(),
+        "plateau.png".to_string(),
+    ])
+    .expect("profile should parse");
+
+    assert_eq!(profile, VisualAuditProfile::RouteMarkerOptional);
+    assert_eq!(paths, [std::path::PathBuf::from("plateau.png")]);
+    assert!(USAGE.contains("route_marker_optional"));
 }
 
 #[test]

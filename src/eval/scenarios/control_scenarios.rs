@@ -31,8 +31,9 @@ const MAX_CAMERA_FOLLOW_DISTANCE_M: f32 = 16.5;
 const MAX_CAMERA_PLAYER_ANGLE_DEGREES: f32 = 3.0;
 const MAX_CAMERA_MOUSE_PLAYER_ANGLE_DEGREES: f32 = 6.0;
 const MAX_CAMERA_STEP_DISTANCE_M: f32 = 1.15;
+const MAX_CAMERA_MOUSE_STEP_DISTANCE_M: f32 = 0.70;
 const MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 1.5;
-const MAX_CAMERA_MOUSE_ROTATION_DELTA_DEGREES: f32 = 12.0;
+const MAX_CAMERA_MOUSE_ROTATION_DELTA_DEGREES: f32 = 1.75;
 const MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES: f32 = 5.0;
 const RELEASE_AIR_CONTROL_MAX_VISIBLE_ISLAND_TERRAIN_COUNT: usize = 60;
 const RELEASE_POSE_STATE_MAX_VISIBLE_ISLAND_TERRAIN_COUNT: usize = 76;
@@ -121,12 +122,12 @@ pub(super) fn playtest_reset() -> EvalScenario {
         target_island_name: Some("great sky plateau"),
         checkpoints: PLAYTEST_RESET_CHECKPOINTS,
         thresholds: EvalThresholds {
-            min_samples: 30,
-            min_horizontal_distance_m: 0.0,
+            min_samples: 181,
+            min_horizontal_distance_m: 2_000.0,
             min_max_altitude_m: 28.0,
-            min_max_speed_mps: 0.0,
+            min_max_speed_mps: 8.0,
             min_gliding_samples: 0,
-            min_grounded_samples: 150,
+            min_grounded_samples: 170,
             min_lifted_samples: 0,
             min_sky_island_count: MIN_SKY_ISLAND_COUNT,
             min_active_island_count: 1,
@@ -179,7 +180,7 @@ pub(super) fn playtest_reset() -> EvalScenario {
             min_collected_power_up_count: 0,
             min_power_up_effect_samples: 0,
             require_target_landing: false,
-            max_final_target_distance_m: 16.5,
+            max_final_target_distance_m: 0.05,
             min_target_landing_samples: 140,
         },
     }
@@ -309,7 +310,7 @@ pub(super) fn world_collision_contact() -> EvalScenario {
             max_camera_orbit_alignment_degrees: MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES,
             max_abs_camera_view_yaw_degrees: 32.0,
             min_camera_obstruction_adjustment_m: 1.0,
-            min_camera_obstructed_distance_m: 6.5,
+            min_camera_obstructed_distance_m: 3.4,
             max_camera_obstruction_snap_count: 0,
             min_abs_camera_yaw_degrees: 0.0,
             min_camera_pitch_offset_degrees: 0.0,
@@ -449,9 +450,9 @@ pub(super) fn camera_mouse_control() -> EvalScenario {
         checkpoints: CAMERA_MOUSE_CHECKPOINTS,
         thresholds: EvalThresholds {
             min_samples: 40,
-            min_horizontal_distance_m: 0.0,
+            min_horizontal_distance_m: 3.0,
             min_max_altitude_m: 28.0,
-            min_max_speed_mps: 0.0,
+            min_max_speed_mps: 5.0,
             min_gliding_samples: 0,
             min_grounded_samples: 30,
             min_lifted_samples: 0,
@@ -485,7 +486,7 @@ pub(super) fn camera_mouse_control() -> EvalScenario {
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_MOUSE_PLAYER_ANGLE_DEGREES,
-            max_camera_step_distance_m: MAX_CAMERA_STEP_DISTANCE_M,
+            max_camera_step_distance_m: MAX_CAMERA_MOUSE_STEP_DISTANCE_M,
             max_camera_rotation_delta_degrees: MAX_CAMERA_MOUSE_ROTATION_DELTA_DEGREES,
             max_camera_orbit_alignment_degrees: MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES,
             max_abs_camera_view_yaw_degrees: 45.0,

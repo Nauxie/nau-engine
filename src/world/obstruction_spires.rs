@@ -3,6 +3,9 @@ use bevy::prelude::{Vec2, Vec3};
 use super::{SkyIsland, SkyRoute};
 
 pub const ROUTE_OBSTRUCTION_SPIRES_PER_ISLAND: usize = 1;
+const OBSTRUCTION_SPIRE_PROXY_RADIUS_SCALE: f32 = 1.55;
+const OBSTRUCTION_SPIRE_PROXY_VERTICAL_PADDING_M: f32 = 0.001;
+const OBSTRUCTION_SPIRE_VISIBLE_TIP_RADIUS_SCALE: f32 = 0.24;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RouteObstructionSpire {
@@ -32,8 +35,13 @@ pub fn route_obstruction_spire(island_index: usize, island: SkyIsland) -> RouteO
     let base_position = island_surface_position(island, normalized_offset);
     let height_m = 4.8 + (island_index % 4) as f32 * 0.75 + island.thickness * 0.035;
     let radius_m = 0.92 + (island_index % 3) as f32 * 0.12;
-    let center = base_position + Vec3::Y * (height_m * 0.5);
-    let half_extents = Vec3::new(radius_m * 0.68, height_m * 0.5, radius_m * 0.68);
+    let proxy_height_m = height_m + radius_m * OBSTRUCTION_SPIRE_VISIBLE_TIP_RADIUS_SCALE;
+    let center = base_position + Vec3::Y * (proxy_height_m * 0.5);
+    let half_extents = Vec3::new(
+        radius_m * OBSTRUCTION_SPIRE_PROXY_RADIUS_SCALE,
+        proxy_height_m * 0.5 + OBSTRUCTION_SPIRE_PROXY_VERTICAL_PADDING_M,
+        radius_m * OBSTRUCTION_SPIRE_PROXY_RADIUS_SCALE,
+    );
 
     RouteObstructionSpire {
         island_index,
@@ -50,7 +58,7 @@ pub fn route_obstruction_spire(island_index: usize, island: SkyIsland) -> RouteO
 
 fn obstruction_spire_offset(island_index: usize, island: SkyIsland) -> Vec2 {
     if island.name == "launch mesa" {
-        return Vec2::new(0.0, 0.34);
+        return Vec2::new(0.0, (9.5 / island.half_extents.y).clamp(0.18, 0.34));
     }
 
     let angle = island_index as f32 * 2.399_963 + 0.72;
@@ -103,7 +111,21 @@ mod tests {
             assert!(spire.radius_m >= 0.9);
             assert_eq!(
                 spire.center,
-                spire.base_position + Vec3::Y * (spire.height_m * 0.5)
+                spire.base_position
+                    + Vec3::Y
+                        * ((spire.height_m
+                            + spire.radius_m * OBSTRUCTION_SPIRE_VISIBLE_TIP_RADIUS_SCALE)
+                            * 0.5)
+            );
+            assert!(
+                spire.half_extents.x / spire.radius_m >= 1.485,
+                "proxy must contain the visible rib reach and width"
+            );
+            assert!(
+                spire.center.y + spire.half_extents.y
+                    >= spire.base_position.y
+                        + spire.height_m
+                        + spire.radius_m * OBSTRUCTION_SPIRE_VISIBLE_TIP_RADIUS_SCALE
             );
         }
     }

@@ -40,6 +40,100 @@ fn passing_seam_coverage(island_count: u64) -> Value {
     })
 }
 
+fn layout_island(
+    name: impl Into<String>,
+    center: [f64; 3],
+    half_extents: [f64; 2],
+    thickness_m: f64,
+) -> Value {
+    json!({
+        "name": name.into(),
+        "center": center,
+        "half_extents": half_extents,
+        "thickness_m": thickness_m,
+    })
+}
+
+fn layout_manifest(islands: Vec<Value>) -> Value {
+    let island_count = islands.len() as u64;
+    json!({
+        "schema": "nau_terrain_export.v1",
+        "island_count": island_count,
+        "islands": islands,
+    })
+}
+
+fn passing_layout_islands() -> Vec<Value> {
+    let half_extents = [
+        (10.0, 10.0),
+        (10.0, 20.0),
+        (5.0, 40.0),
+        (15.0, 20.0),
+        (18.0, 24.0),
+        (20.0, 25.0),
+        (20.0, 40.0),
+        (25.0, 40.0),
+        (30.0, 39.0),
+        (30.0, 40.0),
+        (30.0, 50.0),
+        (35.0, 50.0),
+        (40.0, 50.0),
+        (40.0, 60.0),
+        (45.0, 55.0),
+        (35.0, 70.0),
+        (30.0, 85.0),
+        (50.0, 52.0),
+        (50.0, 70.0),
+        (60.0, 75.0),
+        (50.0, 100.0),
+        (70.0, 80.0),
+        (40.0, 145.0),
+        (60.0, 100.0),
+        (80.0, 100.0),
+        (75.0, 120.0),
+        (70.0, 160.0),
+        (100.0, 120.0),
+        (100.0, 150.0),
+        (120.0, 140.0),
+        (80.0, 220.0),
+        (100.0, 200.0),
+    ];
+    let sector_centers = [
+        [1_000.0, 40.0, 200.0],
+        [800.0, 80.0, 800.0],
+        [-200.0, 1_050.0, 1_800.0],
+        [-800.0, 120.0, 800.0],
+        [-1_000.0, 160.0, -200.0],
+        [-800.0, 200.0, -800.0],
+        [200.0, 240.0, -1_800.0],
+        [800.0, 280.0, -800.0],
+    ];
+
+    half_extents
+        .into_iter()
+        .enumerate()
+        .map(|(index, (half_x, half_z))| {
+            let name = if index == 0 {
+                "launch mesa".to_string()
+            } else {
+                format!("layout island {index}")
+            };
+            let center = if index == 0 {
+                [0.0, 0.0, 0.0]
+            } else if index <= sector_centers.len() {
+                sector_centers[index - 1]
+            } else {
+                [
+                    (index as f64 % 7.0 - 3.0) * 80.0,
+                    80.0 + (index as f64 % 11.0) * 35.0,
+                    -300.0 - index as f64 * 40.0,
+                ]
+            };
+            layout_island(name, center, [half_x, half_z], 10.0 + (index % 5) as f64)
+        })
+        .collect()
+}
+
 #[test]
 fn obj_audit_counts_vertices_faces_and_vertex_colors() {
     let audit = audit_obj_text(
@@ -635,10 +729,190 @@ fn audit_manifest_rejects_visual_collision_coverage_regressions() {
         &report,
         "visual_collision_camera_only_allowance_count"
     ));
+}
+
+#[test]
+fn audit_manifest_accepts_diverse_archipelago_layout_metrics() {
+    let manifest = layout_manifest(passing_layout_islands());
+    let report = audit_manifest(&manifest, Path::new("."), "manifest.json");
+
+    for check in [
+        "archipelago_malformed_layout_island_count",
+        "archipelago_x_span",
+        "archipelago_y_span",
+        "archipelago_z_span",
+        "archipelago_positive_z_island_count",
+        "archipelago_horizontal_sector_coverage",
+        "archipelago_area_ratio",
+        "archipelago_tiny_area_band_count",
+        "archipelago_small_area_band_count",
+        "archipelago_medium_area_band_count",
+        "archipelago_large_area_band_count",
+        "archipelago_vast_area_band_count",
+        "archipelago_colossal_area_band_count",
+    ] {
+        assert!(audit_check_passed(&report, check), "{check} should pass");
+    }
+
+    let metrics = report
+        .get("layout_metrics")
+        .expect("layout metrics should be present");
+    assert_eq!(
+        metrics.get("x_span_m").and_then(Value::as_f64),
+        Some(2_000.0)
+    );
+    assert_eq!(
+        metrics.get("y_span_m").and_then(Value::as_f64),
+        Some(1_050.0)
+    );
+    assert_eq!(
+        metrics.get("z_span_m").and_then(Value::as_f64),
+        Some(3_600.0)
+    );
+    assert_eq!(
+        metrics
+            .get("horizontal_sector_coverage")
+            .and_then(Value::as_u64),
+        Some(8)
+    );
+    assert_eq!(
+        metrics.get("area_ratio").and_then(Value::as_f64),
+        Some(200.0)
+    );
+    assert_eq!(
+        metrics.get("area_bands"),
+        Some(&json!({
+            "tiny": 5,
+            "small": 4,
+            "medium": 8,
+            "large": 6,
+            "vast": 8,
+            "colossal": 1,
+        }))
+    );
+    let aspect_buckets = metrics
+        .get("aspect_ratio_buckets")
+        .and_then(Value::as_object)
+        .expect("aspect-ratio buckets should be present");
+    assert_eq!(
+        aspect_buckets
+            .values()
+            .filter_map(Value::as_u64)
+            .sum::<u64>(),
+        32
+    );
+    assert!(
+        aspect_buckets
+            .values()
+            .all(|count| count.as_u64().unwrap_or(0) > 0)
+    );
+}
+
+#[test]
+fn audit_manifest_rejects_collapsed_corridor_and_size_regression() {
+    let islands = (0..32)
+        .map(|index| {
+            layout_island(
+                if index == 0 {
+                    "launch mesa".to_string()
+                } else {
+                    format!("corridor island {index}")
+                },
+                [0.0, 0.0, -(index as f64) * 120.0],
+                [40.0, 40.0],
+                12.0,
+            )
+        })
+        .collect();
+    let report = audit_manifest(&layout_manifest(islands), Path::new("."), "manifest.json");
+
+    assert!(audit_check_passed(
+        &report,
+        "archipelago_malformed_layout_island_count"
+    ));
+    assert!(!audit_check_passed(&report, "archipelago_x_span"));
+    assert!(!audit_check_passed(&report, "archipelago_y_span"));
+    assert!(audit_check_passed(&report, "archipelago_z_span"));
     assert!(!audit_check_passed(
         &report,
-        "visual_collision_non_blocking_visual_count"
+        "archipelago_positive_z_island_count"
     ));
+    assert!(!audit_check_passed(
+        &report,
+        "archipelago_horizontal_sector_coverage"
+    ));
+    assert!(!audit_check_passed(&report, "archipelago_area_ratio"));
+    assert!(!audit_check_passed(
+        &report,
+        "archipelago_tiny_area_band_count"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "archipelago_small_area_band_count"
+    ));
+    assert!(audit_check_passed(
+        &report,
+        "archipelago_medium_area_band_count"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "archipelago_large_area_band_count"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "archipelago_vast_area_band_count"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "archipelago_colossal_area_band_count"
+    ));
+}
+
+#[test]
+fn audit_manifest_zeroes_layout_metrics_for_missing_or_malformed_vectors() {
+    let manifest = layout_manifest(vec![
+        layout_island("launch mesa", [0.0, 0.0, 0.0], [10.0, 10.0], 10.0),
+        json!({
+            "name": "malformed center",
+            "center": [1.0, "bad", 3.0],
+            "half_extents": [10.0, 10.0],
+            "thickness_m": 10.0,
+        }),
+        json!({
+            "name": "missing extents",
+            "center": [1.0, 2.0, 3.0],
+            "thickness_m": 10.0,
+        }),
+    ]);
+    let report = audit_manifest(&manifest, Path::new("."), "manifest.json");
+    let metrics = report
+        .get("layout_metrics")
+        .expect("layout metrics should be present");
+
+    assert!(!audit_check_passed(
+        &report,
+        "archipelago_malformed_layout_island_count"
+    ));
+    assert_eq!(
+        metrics
+            .get("malformed_island_count")
+            .and_then(Value::as_u64),
+        Some(2)
+    );
+    for metric in ["x_span_m", "y_span_m", "z_span_m", "area_ratio"] {
+        assert_eq!(metrics.get(metric).and_then(Value::as_f64), Some(0.0));
+    }
+    assert_eq!(
+        metrics.get("area_bands"),
+        Some(&json!({
+            "tiny": 0,
+            "small": 0,
+            "medium": 0,
+            "large": 0,
+            "vast": 0,
+            "colossal": 0,
+        }))
+    );
 }
 
 #[test]

@@ -6,8 +6,7 @@ use nau_engine::animation::PlayerPoseIntent;
 use nau_engine::environment::{AERIAL_POWER_UP_ROUTE, LiftField, WindField};
 use nau_engine::movement::FlightInput;
 use nau_engine::world::{
-    IslandLandmarkRole, IslandPlateauRegion, IslandScaleClass, IslandTerrainArchetype,
-    IslandWaterFeature,
+    IslandPlateauRegion, IslandScaleClass, IslandTerrainArchetype, IslandWaterFeature,
 };
 
 fn test_island() -> SkyIsland {
@@ -803,7 +802,20 @@ fn parse_cli_args_rejects_run_mode_and_export_together() {
 fn clean_play_mode_starts_world_without_debug_readout_or_gizmos() {
     let mut app = setup_headless_runtime_app(RunMode::Play, false, true);
     let world = app.world_mut();
-    let route_island_count = world.resource::<SkyRoute>().islands().len();
+    let (route_island_count, expected_pond_surface_count) = {
+        let route = world.resource::<SkyRoute>();
+        (
+            route.islands().len(),
+            route
+                .islands()
+                .iter()
+                .copied()
+                .enumerate()
+                .flat_map(|(index, island)| island_water_visual_specs(index, island))
+                .filter(|feature| feature.kind == IslandWaterVisualKind::PondSurface)
+                .count(),
+        )
+    };
     let content_metrics = *world.resource::<crate::content_diagnostics::IslandContentDiagnostics>();
 
     assert_eq!(component_count::<DebugReadout>(world), 0);
@@ -820,6 +832,19 @@ fn clean_play_mode_starts_world_without_debug_readout_or_gizmos() {
     );
     assert!(content_metrics.generated_launch_beacon_count >= 1);
     assert!(content_metrics.generated_route_cairn_count >= route_island_count);
+    assert!(content_metrics.generated_ground_cover_patch_count >= 2_400);
+    assert!(content_metrics.generated_tree_trunk_count >= 160);
+    assert!(content_metrics.generated_tree_canopy_count >= 160);
+    assert!(content_metrics.generated_rock_count >= 230);
+    assert!(content_metrics.generated_ruin_cluster_count >= 6);
+    assert!(
+        expected_pond_surface_count >= 5,
+        "expected at least five generated pond surfaces"
+    );
+    assert_eq!(
+        content_metrics.generated_pond_surface_count,
+        expected_pond_surface_count
+    );
     assert!(component_count::<WindField>(world) > 0);
     assert!(component_count::<LiftField>(world) > 0);
     assert!(component_count::<UpdraftGuide>(world) > 0);
@@ -1104,7 +1129,7 @@ fn great_sky_plateau_water_specs_span_basin_cliffs_and_falls() {
             .iter()
             .filter(|feature| feature.kind == IslandWaterVisualKind::PondSurface)
             .count(),
-        1
+        0
     );
     assert_eq!(
         water_features
@@ -1344,10 +1369,9 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     let launch_cloud = output_dir.join("visuals/00_launch_mesa_bank_0.obj");
     let launch_beacon = output_dir.join("visuals/00_launch_mesa_launch_beacon.obj");
     let midpoint_cairn = output_dir.join("visuals/01_midpoint_shelf_route_cairn.obj");
-    let launch_pond = output_dir.join("visuals/00_launch_mesa_pond_surface.obj");
+    let landing_pond = output_dir.join("visuals/02_landing_garden_pond_surface.obj");
     let launch_spire = output_dir.join("visuals/00_launch_mesa_obstruction_spire.obj");
     let landing_marker = output_dir.join("visuals/02_landing_garden_landing_garden_marker_0.obj");
-    let broken_stair_ruin = output_dir.join("visuals/12_broken_stair_ruin_arch.obj");
     let plateau_roots = output_dir.join("visuals/38_great_sky_plateau_hanging_root_curtain.obj");
     let plateau_arrival_shelf =
         output_dir.join("visuals/38_great_sky_plateau_meadow_landing_shelf.obj");
@@ -1368,6 +1392,15 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     let high_crown = output_dir.join("visuals/40_upper_crown_high_crown_silhouette.obj");
     let route = SkyRoute::default();
     let island_count = route.islands().len();
+    let pond_surface_count = route
+        .islands()
+        .iter()
+        .copied()
+        .enumerate()
+        .flat_map(|(index, island)| island_water_visual_specs(index, island))
+        .filter(|feature| feature.kind == IslandWaterVisualKind::PondSurface)
+        .count();
+    assert!(pond_surface_count >= 5);
     let small_island_count = route
         .islands()
         .iter()
@@ -1378,11 +1411,40 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
             )
         })
         .count();
-    let ruin_arch_count = route
+    let ground_cover_patch_total = route
         .islands()
         .iter()
-        .filter(|island| island.world_tags.landmark_role == IslandLandmarkRole::RuinArch)
+        .copied()
+        .map(island_detail_budget)
+        .map(|budget| budget.ground_cover_patch_count)
+        .sum::<usize>();
+    let generated_rock_count = route
+        .islands()
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(index, island)| island_rock_specs(index, island).len())
+        .sum::<usize>();
+    let ruin_cluster_count = route
+        .islands()
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|(index, island)| !island_ruin_specs(*index, *island).is_empty())
         .count();
+    let runtime_ruin_specs = route
+        .islands()
+        .iter()
+        .copied()
+        .enumerate()
+        .flat_map(|(island_index, island)| {
+            island_ruin_specs(island_index, island)
+                .into_iter()
+                .enumerate()
+                .map(move |(ruin_index, spec)| (island_index, island.name, ruin_index, spec))
+        })
+        .collect::<Vec<_>>();
+    let ruin_arch_count = runtime_ruin_specs.len();
     let cliff_teeth_count = route
         .islands()
         .iter()
@@ -1418,10 +1480,18 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .enumerate()
         .map(|(index, island)| first_expedition_silhouette_specs(index, *island).len())
         .sum();
+    let artifact_detail_count: usize = route
+        .islands()
+        .iter()
+        .enumerate()
+        .map(|(index, island)| island_artifact_visual_specs(index, *island).len())
+        .sum();
     let route_lake_surface_count = route
         .islands()
         .iter()
-        .filter(|island| island.world_tags.water_feature == IslandWaterFeature::LakeBasin)
+        .enumerate()
+        .flat_map(|(index, island)| island_water_visual_specs(index, *island))
+        .filter(|feature| feature.kind == IslandWaterVisualKind::RouteLakeSurface)
         .count();
     let route_waterfall_source_count = route
         .islands()
@@ -1429,7 +1499,21 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .filter(|island| island.world_tags.water_feature == IslandWaterFeature::WaterfallSource)
         .count();
     let route_waterfall_visual_count = route_waterfall_source_count * 2;
-    let generated_tree_count = island_count * 3;
+    let river_channel_count = route
+        .islands()
+        .iter()
+        .enumerate()
+        .flat_map(|(index, island)| island_water_visual_specs(index, *island))
+        .filter(|feature| feature.kind == IslandWaterVisualKind::RiverChannel)
+        .count();
+    let generated_tree_count = route
+        .islands()
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(index, island)| island_tree_specs(index, island).len())
+        .sum::<usize>()
+        + 1;
     let weather_veil_count = island_count.div_ceil(2) * 3;
     let route_cairn_count = island_count - 2;
     let plateau_extra_water_count = 6;
@@ -1458,7 +1542,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(under_route_shelf_count, 2);
     assert_eq!(under_route_root_count, 2);
     assert_eq!(first_expedition_silhouette_count, 7);
-    let landmark_count = island_count * 2
+    let landmark_count = island_count
+        + pond_surface_count
         + route_cairn_count
         + 1
         + 4
@@ -1471,19 +1556,20 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         + garden_ring_count
         + lake_basin_count
         + route_lake_surface_count
-        + route_waterfall_visual_count;
+        + route_waterfall_visual_count
+        + river_channel_count
+        + artifact_detail_count;
 
     assert_eq!(report.ground_cover_count, island_count);
-    assert_eq!(
-        report.ground_cover_patch_total,
-        island_count * GROUND_COVER_PATCHES
-    );
+    assert_eq!(report.ground_cover_patch_total, ground_cover_patch_total);
     assert_eq!(
         report.ground_cover_blade_total,
-        island_count * GROUND_COVER_PATCHES * GROUND_COVER_BLADES_PER_PATCH
+        ground_cover_patch_total * GROUND_COVER_BLADES_PER_PATCH
     );
     assert_eq!(report.tree_trunk_count, generated_tree_count);
     assert_eq!(report.tree_canopy_count, generated_tree_count);
+    assert_eq!(report.rock_count, generated_rock_count);
+    assert!(report.rock_count >= 230);
     assert_eq!(
         report.weather_cloud_count,
         island_count + weather_veil_count
@@ -1494,7 +1580,12 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.landmark_kind_count >= 28);
     assert_eq!(report.small_island_count, small_island_count);
     assert!(report.small_island_count >= 10);
-    assert_eq!(report.plateau_landmark_count, 19);
+    let plateau_landmark_count = report
+        .landmarks
+        .iter()
+        .filter(|summary| summary.island_name == "great sky plateau")
+        .count();
+    assert_eq!(report.plateau_landmark_count, plateau_landmark_count);
     assert_eq!(report.plateau_waterfall_ribbon_count, 2);
     assert_eq!(report.plateau_waterfall_mist_count, 2);
     assert_eq!(
@@ -1506,16 +1597,51 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         route_waterfall_source_count
     );
     assert_eq!(report.route_lake_surface_count, route_lake_surface_count);
+    assert_eq!(report.river_channel_count, river_channel_count);
     assert_eq!(report.under_route_visual_count, under_route_visual_count);
     assert_eq!(
         report.under_route_cave_mouth_count,
         under_route_cave_mouth_count
     );
+    assert_eq!(report.ruin_cluster_count, ruin_cluster_count);
+    assert!(report.ruin_cluster_count >= 6);
     assert_eq!(report.ruin_arch_count, ruin_arch_count);
+    let exported_ruin_arches = report
+        .landmarks
+        .iter()
+        .filter(|summary| summary.kind == "ruin_arch")
+        .collect::<Vec<_>>();
+    assert_eq!(exported_ruin_arches.len(), runtime_ruin_specs.len());
+    for ((_, island_name, ruin_index, spec), summary) in
+        runtime_ruin_specs.iter().zip(&exported_ruin_arches)
+    {
+        assert_eq!(summary.island_name, *island_name);
+        assert_eq!(summary.label, format!("ruin arch {ruin_index}"));
+
+        let expected_mesh = ruin_arch_mesh(spec.width_m, spec.height_m, spec.depth_m, spec.seed);
+        let mut expected_min = Vec3::splat(f32::INFINITY);
+        let mut expected_max = Vec3::splat(f32::NEG_INFINITY);
+        for position in positions(&expected_mesh) {
+            let position = Vec3::from_array(*position);
+            expected_min = expected_min.min(position);
+            expected_max = expected_max.max(position);
+        }
+        let expected_span = expected_max - expected_min;
+
+        assert_eq!(summary.mesh.vertex_count, expected_mesh.count_vertices());
+        assert_eq!(
+            summary.mesh.triangle_count,
+            u32_indices(&expected_mesh).len() / 3
+        );
+        assert_eq!(summary.mesh.horizontal_span_m, expected_span.x);
+        assert_eq!(summary.mesh.vertical_span_m, expected_span.y);
+        assert_eq!(summary.mesh.depth_span_m, expected_span.z);
+        assert!(output_dir.join(&summary.mesh.obj_path).exists());
+    }
     assert_eq!(report.route_cairn_count, route_cairn_count);
     assert_eq!(report.launch_beacon_count, 1);
     assert_eq!(report.landing_garden_marker_count, 4);
-    assert_eq!(report.pond_surface_count, island_count);
+    assert_eq!(report.pond_surface_count, pond_surface_count);
     assert_eq!(report.obstruction_spire_count, island_count);
     assert_eq!(
         report
@@ -1657,13 +1783,15 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         report.mesh_count,
         report.ground_cover_count
             + report.tree_trunk_count * 2
+            + report.rock_count
             + report.weather_cloud_count
             + report.landmark_count
     );
     assert!(report.total_vertex_count > 70_000);
     assert!(report.total_triangle_count > 75_000);
-    assert!(report.min_ground_cover_mesh_vertices >= 1320);
-    assert!(report.min_ground_cover_blade_count >= 220);
+    assert!(report.min_ground_cover_mesh_vertices >= 720);
+    assert!(report.min_ground_cover_patch_count >= 24);
+    assert!(report.min_ground_cover_blade_count >= 120);
     assert!(report.min_ground_cover_blade_height_range_m >= 0.7);
     assert!(report.min_tree_trunk_mesh_vertices >= 190);
     assert!(report.min_tree_trunk_taper_ratio >= 1.35);
@@ -1677,6 +1805,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_tree_canopy_detail_card_count >= 18);
     assert!(report.min_tree_canopy_vertical_to_horizontal_ratio >= 0.45);
     assert!(report.tree_canopy_radius_range_m >= 0.35);
+    assert!(report.min_rock_mesh_vertices >= 70);
+    assert!(report.min_rock_vertical_span_m > 0.25);
     assert!(report.min_weather_cloud_mesh_vertices >= 2500);
     assert!(report.min_weather_cloud_lobe_count >= 12);
     assert!(report.min_weather_cloud_wisp_card_count >= 60);
@@ -1719,10 +1849,9 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(launch_cloud.exists());
     assert!(launch_beacon.exists());
     assert!(midpoint_cairn.exists());
-    assert!(launch_pond.exists());
+    assert!(landing_pond.exists());
     assert!(launch_spire.exists());
     assert!(landing_marker.exists());
-    assert!(broken_stair_ruin.exists());
     assert!(plateau_roots.exists());
     assert!(plateau_arrival_shelf.exists());
     assert!(plateau_arrival_ruin.exists());
@@ -1939,7 +2068,9 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains(&format!("\"landmark_count\": {landmark_count}")));
     assert!(manifest.contains("\"landmark_kind_count\""));
     assert!(manifest.contains(&format!("\"small_island_count\": {small_island_count}")));
-    assert!(manifest.contains("\"plateau_landmark_count\": 19"));
+    assert!(manifest.contains(&format!(
+        "\"plateau_landmark_count\": {plateau_landmark_count}"
+    )));
     assert!(manifest.contains("\"plateau_waterfall_ribbon_count\": 2"));
     assert!(manifest.contains("\"plateau_waterfall_mist_count\": 2"));
     assert!(manifest.contains(&format!(
@@ -1951,17 +2082,20 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains(&format!(
         "\"route_lake_surface_count\": {route_lake_surface_count}"
     )));
+    assert!(manifest.contains(&format!("\"river_channel_count\": {river_channel_count}")));
     assert!(manifest.contains(&format!(
         "\"under_route_visual_count\": {under_route_visual_count}"
     )));
     assert!(manifest.contains(&format!(
         "\"under_route_cave_mouth_count\": {under_route_cave_mouth_count}"
     )));
+    assert!(manifest.contains(&format!("\"ruin_cluster_count\": {ruin_cluster_count}")));
     assert!(manifest.contains(&format!("\"ruin_arch_count\": {ruin_arch_count}")));
+    assert!(manifest.contains(&format!("\"rock_count\": {generated_rock_count}")));
     assert!(manifest.contains(&format!("\"route_cairn_count\": {route_cairn_count}")));
     assert!(manifest.contains("\"launch_beacon_count\": 1"));
     assert!(manifest.contains("\"landing_garden_marker_count\": 4"));
-    assert!(manifest.contains(&format!("\"pond_surface_count\": {island_count}")));
+    assert!(manifest.contains(&format!("\"pond_surface_count\": {pond_surface_count}")));
     assert!(manifest.contains(&format!("\"obstruction_spire_count\": {island_count}")));
     assert!(manifest.contains("\"route_cairn_vertical_span_m\""));
     assert!(manifest.contains("\"launch_beacon_vertical_span_m\""));
@@ -2016,7 +2150,6 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("underbridge_cay_underhang_entry_arch.obj"));
     assert!(manifest.contains("underbridge_cay_underside_glide_shelf.obj"));
     assert!(manifest.contains("underbridge_cay_hanging_root_curtain.obj"));
-    assert!(manifest.contains("broken_stair_ruin_arch.obj"));
     assert!(manifest.contains("storm_porch_cliff_teeth.obj"));
     assert!(manifest.contains("landing_garden_garden_ring.obj"));
     assert!(manifest.contains("great_sky_plateau_low_basin_lake_basin.obj"));
@@ -2238,19 +2371,10 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         .iter()
         .filter(|proxy| proxy.kind == WorldCollisionProxyKind::TerrainBody)
         .count();
-    let expected_spawned_near_island_count = route
-        .islands()
-        .iter()
-        .filter(|island| {
-            island
-                .stream_activation(nau_engine::world::START_POSITION)
-                .is_active()
-                && island.lod_band(nau_engine::world::START_POSITION)
-                    == nau_engine::world::LodBand::Near
-        })
-        .count();
-    let expected_spawned_terrain_rim_proxy_count = expected_spawned_near_island_count
-        * nau_engine::world::TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND;
+    let expected_spawned_terrain_rim_proxy_count = catalog.resident_collision_proxy_count(
+        nau_engine::world::START_POSITION,
+        WorldCollisionProxyKind::TerrainRim,
+    );
     let expected_spawned_terrain_body_proxy_count = catalog.resident_collision_proxy_count(
         nau_engine::world::START_POSITION,
         WorldCollisionProxyKind::TerrainBody,
@@ -2258,6 +2382,14 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
     let expected_spawned_landmark_proxy_count = catalog.resident_collision_proxy_count(
         nau_engine::world::START_POSITION,
         WorldCollisionProxyKind::Landmark,
+    );
+    let expected_spawned_tree_proxy_count = catalog.resident_collision_proxy_count(
+        nau_engine::world::START_POSITION,
+        WorldCollisionProxyKind::Tree,
+    );
+    let expected_spawned_rock_proxy_count = catalog.resident_collision_proxy_count(
+        nau_engine::world::START_POSITION,
+        WorldCollisionProxyKind::Rock,
     );
     let tree_proxy_count = proxies
         .iter()
@@ -2272,9 +2404,11 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
         .filter(|proxy| proxy.kind == WorldCollisionProxyKind::Landmark)
         .count();
     assert!(proxies.len() >= 24);
-    assert!(tree_proxy_count >= 10);
-    assert!(rock_proxy_count >= 12);
+    assert!(tree_proxy_count > 0);
+    assert!(rock_proxy_count > 0);
     assert!(landmark_proxy_count >= 24);
+    assert_eq!(tree_proxy_count, expected_spawned_tree_proxy_count);
+    assert_eq!(rock_proxy_count, expected_spawned_rock_proxy_count);
     assert_eq!(landmark_proxy_count, expected_spawned_landmark_proxy_count);
     assert_eq!(
         terrain_rim_proxy_count,
@@ -2548,10 +2682,12 @@ fn cloud_cluster_mesh_has_painterly_warm_and_cool_color_wash() {
 
 #[test]
 fn ground_cover_mesh_uses_dense_curved_blades() {
-    let mesh = island_ground_cover_mesh(2, test_island());
+    let island = test_island();
+    let patch_count = island_detail_budget(island).ground_cover_patch_count;
+    let mesh = island_ground_cover_mesh(2, island, patch_count);
     let positions = positions(&mesh);
     let indices = u32_indices(&mesh);
-    let blade_count = GROUND_COVER_PATCHES * GROUND_COVER_BLADES_PER_PATCH;
+    let blade_count = patch_count * GROUND_COVER_BLADES_PER_PATCH;
     let mut side_leaf_count = 0usize;
     let min_y = positions
         .iter()
