@@ -19,9 +19,10 @@ The current world combines **41 floating islands** with a streamed playable worl
 - Traverse authored updrafts, crosswind lanes, visible airflow cues, and gust-varied wind that affects both player motion and glider response.
 - Fly a self-authored player/glider fixture with grounded, launch, fall, bank, glide, dive, brake, landing-anticipation, and recovery animation states.
 - Collide with island terrain, cliff bodies, trees, rocks, landmarks, and world-floor terrain; use the central-island reset when a route breaks down.
+- Read distinct island ecologies and histories through species-varied trees, dense flora clusters, ruin precincts, geological formations, and water-linked shoreline and waterfall detail.
 - Review movement, camera, collision, route progress, streaming, visual readability, fixture integrity, and release performance through measured sim/app evals, screenshot audits, exports, and scripted play profiles.
 
-See the [Showcase](SHOWCASE.md) for gameplay, world scale, UI, and player/glider review captures. Detailed world-floor acceptance mechanics and evidence live in the [decision record](docs/DECISIONS/0002-world-floor-perf-first.md), [requirements audit](docs/world-floor-requirements-audit.md), and [acceptance report](docs/world-floor-acceptance-report.md).
+See the [Showcase](SHOWCASE.md) for gameplay, world scale, UI, and player/glider review captures. The [island-surface content contract](docs/ISLAND_SURFACE_CONTENT.md) documents the generated ecology, ruins, geology, water detail, budgets, and regression coverage. Detailed world-floor acceptance mechanics and evidence live in the [decision record](docs/DECISIONS/0002-world-floor-perf-first.md), [requirements audit](docs/world-floor-requirements-audit.md), and [acceptance report](docs/world-floor-acceptance-report.md).
 
 ## Run
 
@@ -90,6 +91,8 @@ NAU_PLAY_PROFILE_DURATION_SECS=300 NAU_PLAY_PROFILE_SCRIPT=freeflight \
 ./tools/eval_sim_suite.sh target/eval/sim_suite
 cargo run -- --eval long_glide_visibility --eval-output target/eval/long_glide_visibility
 ./tools/eval.sh great_sky_plateau_vistas target/eval/great_sky_plateau_vistas
+NAU_EVAL_SCREENSHOT=1 NAU_EVAL_ASSET_AUDIT=0 \
+  ./tools/eval.sh island_surface_review target/eval/island_surface_review
 ./tools/player_pose_preview.sh target/player_pose_preview
 ./tools/world_content_gate.sh target/world_content_gate
 ./tools/terrain_export.sh target/terrain_export
@@ -108,6 +111,7 @@ Resolved diagnostic note: a host-specific Apple Silicon presentation hitch was i
 - [Architecture](docs/ARCHITECTURE.md)
 - [Project Status](docs/STATUS.md)
 - [Eval Spec](docs/EVAL_SPEC.md)
+- [Island Surface Content](docs/ISLAND_SURFACE_CONTENT.md)
 - [Flight Mechanics](docs/MECHANICS/flight.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Showcase](SHOWCASE.md)

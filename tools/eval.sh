@@ -159,7 +159,7 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
   if [[ "${visual_audit_requested}" != "0" && "${#screenshot_artifacts[@]}" -gt 0 ]]; then
     visual_audit_args=()
     case "${scenario}" in
-      plateau_arrival_camera|great_sky_plateau_vistas)
+      plateau_arrival_camera|great_sky_plateau_vistas|island_surface_review)
         visual_audit_args+=(--profile route_marker_optional)
         ;;
       world_collision_contact)

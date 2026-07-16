@@ -1,5 +1,6 @@
 #[derive(Clone, Debug)]
 pub(crate) struct SceneSampleAudit {
+    pub(crate) island_name: Option<String>,
     pub(crate) kind: String,
     pub(crate) label: String,
     pub(crate) expected_material: String,

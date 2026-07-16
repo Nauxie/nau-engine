@@ -1,12 +1,16 @@
-use super::{metrics::visual_content_mesh_summary, types::VisualLandmarkSummary};
+use super::{
+    metrics::visual_content_mesh_summary,
+    types::{VisualLandmarkSummary, VisualSurfaceFeatureFamily},
+};
 use crate::{
     content_export::shared::{mesh_positions, terrain_export_slug, write_mesh_obj},
     generated_content::{
         cliff_tooth_ridge_mesh, first_expedition_silhouette_specs, garden_ring_mesh,
-        island_artifact_visual_specs, island_lake_basin_visual_specs, island_ruin_specs,
-        island_under_route_visual_specs, island_water_visual_specs, landing_garden_marker_mesh,
-        launch_beacon_mesh, mesh_normal_slope_band_count, mesh_vertical_band_count,
-        obstruction_spire_mesh, route_cairn_mesh, ruin_arch_mesh,
+        island_artifact_visual_specs, island_flora_visual_specs, island_lake_basin_visual_specs,
+        island_rock_formation_specs, island_ruin_complex_specs, island_ruin_specs,
+        island_under_route_visual_specs, island_water_detail_specs, island_water_visual_specs,
+        landing_garden_marker_mesh, launch_beacon_mesh, mesh_normal_slope_band_count,
+        mesh_vertical_band_count, obstruction_spire_mesh, route_cairn_mesh, ruin_arch_mesh,
     },
 };
 use bevy::prelude::*;
@@ -24,7 +28,8 @@ pub(super) fn visual_content_landmark_summaries(
 ) -> std::io::Result<Vec<VisualLandmarkSummary>> {
     let mut landmarks = Vec::new();
 
-    for water_feature in island_water_visual_specs(island_index, island) {
+    let water_features = island_water_visual_specs(island_index, island);
+    for water_feature in water_features.iter().copied() {
         let mesh = water_feature.build_mesh();
         landmarks.push(write_visual_landmark_summary(
             output_dir,
@@ -34,6 +39,79 @@ pub(super) fn visual_content_landmark_summaries(
             island_index,
             island_slug,
             &mesh,
+        )?);
+    }
+
+    for (feature_index, flora) in island_flora_visual_specs(island_index, island)
+        .into_iter()
+        .enumerate()
+    {
+        let mesh = flora.build_mesh();
+        landmarks.push(write_visual_surface_feature_summary(
+            output_dir,
+            island.name,
+            flora.kind.label(),
+            flora.label,
+            island_index,
+            island_slug,
+            &mesh,
+            VisualSurfaceFeatureFamily::FloraCluster,
+            feature_index,
+        )?);
+    }
+
+    for (feature_index, ruin_complex) in island_ruin_complex_specs(island_index, island)
+        .into_iter()
+        .enumerate()
+    {
+        let mesh = ruin_complex.build_mesh();
+        landmarks.push(write_visual_surface_feature_summary(
+            output_dir,
+            island.name,
+            ruin_complex.kind.label(),
+            ruin_complex.label,
+            island_index,
+            island_slug,
+            &mesh,
+            VisualSurfaceFeatureFamily::RuinComplex,
+            feature_index,
+        )?);
+    }
+
+    for (feature_index, rock_formation) in island_rock_formation_specs(island_index, island)
+        .into_iter()
+        .enumerate()
+    {
+        let mesh = rock_formation.build_mesh();
+        landmarks.push(write_visual_surface_feature_summary(
+            output_dir,
+            island.name,
+            rock_formation.kind.label(),
+            rock_formation.label,
+            island_index,
+            island_slug,
+            &mesh,
+            VisualSurfaceFeatureFamily::RockFormation,
+            feature_index,
+        )?);
+    }
+
+    for (feature_index, water_detail) in
+        island_water_detail_specs(island_index, island, &water_features)
+            .into_iter()
+            .enumerate()
+    {
+        let mesh = water_detail.build_mesh();
+        landmarks.push(write_visual_surface_feature_summary(
+            output_dir,
+            island.name,
+            water_detail.kind.label(),
+            water_detail.label,
+            island_index,
+            island_slug,
+            &mesh,
+            VisualSurfaceFeatureFamily::WaterDetail,
+            feature_index,
         )?);
     }
 
@@ -309,7 +387,47 @@ fn write_visual_landmark_summary(
         height_band_count: mesh_vertical_band_count(mesh),
         radius_band_count: landmark_radius_band_count(mesh),
         normal_slope_band_count: mesh_normal_slope_band_count(mesh),
+        surface_feature_family: None,
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_visual_surface_feature_summary(
+    output_dir: &Path,
+    island_name: &'static str,
+    kind: &'static str,
+    label: &str,
+    island_index: usize,
+    island_slug: &str,
+    mesh: &Mesh,
+    family: VisualSurfaceFeatureFamily,
+    feature_index: usize,
+) -> std::io::Result<VisualLandmarkSummary> {
+    let export_label = format!(
+        "{} {feature_index} {label}",
+        surface_feature_family_label(family)
+    );
+    let mut summary = write_visual_landmark_summary(
+        output_dir,
+        island_name,
+        kind,
+        &export_label,
+        island_index,
+        island_slug,
+        mesh,
+    )?;
+    summary.label = label.to_string();
+    summary.surface_feature_family = Some(family);
+    Ok(summary)
+}
+
+fn surface_feature_family_label(family: VisualSurfaceFeatureFamily) -> &'static str {
+    match family {
+        VisualSurfaceFeatureFamily::FloraCluster => "flora cluster",
+        VisualSurfaceFeatureFamily::RuinComplex => "ruin complex",
+        VisualSurfaceFeatureFamily::RockFormation => "rock formation",
+        VisualSurfaceFeatureFamily::WaterDetail => "water detail",
+    }
 }
 
 fn landmark_radius_band_count(mesh: &Mesh) -> usize {

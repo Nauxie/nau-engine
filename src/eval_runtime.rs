@@ -84,6 +84,7 @@ pub(crate) struct EvalRun {
     pub(crate) frame: u32,
     pub(crate) finalized: bool,
     pub(crate) screenshot_wait_frames: u32,
+    pub(crate) screenshot_ready_frames: u32,
     pub(crate) pending_screenshot_exit_success: Option<bool>,
     pub(crate) io_error: Option<String>,
 }
@@ -154,6 +155,7 @@ impl EvalRun {
             frame: 0,
             finalized: false,
             screenshot_wait_frames: 0,
+            screenshot_ready_frames: 0,
             pending_screenshot_exit_success: None,
             io_error: None,
         })

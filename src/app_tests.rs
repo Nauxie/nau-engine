@@ -1365,7 +1365,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .expect("visual content export should succeed");
     let manifest = fs::read_to_string(&report.manifest_path).expect("manifest should be readable");
     let launch_ground_cover = output_dir.join("visuals/00_launch_mesa_ground_cover.obj");
-    let launch_tree_trunk = output_dir.join("visuals/00_launch_mesa_launch_tree_trunk.obj");
+    let launch_tree_trunk =
+        output_dir.join("visuals/00_launch_mesa_launch_tree_broad_canopy_trunk.obj");
     let launch_cloud = output_dir.join("visuals/00_launch_mesa_bank_0.obj");
     let launch_beacon = output_dir.join("visuals/00_launch_mesa_launch_beacon.obj");
     let midpoint_cairn = output_dir.join("visuals/01_midpoint_shelf_route_cairn.obj");
@@ -1486,6 +1487,35 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .enumerate()
         .map(|(index, island)| island_artifact_visual_specs(index, *island).len())
         .sum();
+    let flora_cluster_count: usize = route
+        .islands()
+        .iter()
+        .enumerate()
+        .map(|(index, island)| island_flora_visual_specs(index, *island).len())
+        .sum();
+    let ruin_complex_count: usize = route
+        .islands()
+        .iter()
+        .enumerate()
+        .map(|(index, island)| island_ruin_complex_specs(index, *island).len())
+        .sum();
+    let rock_formation_count: usize = route
+        .islands()
+        .iter()
+        .enumerate()
+        .map(|(index, island)| island_rock_formation_specs(index, *island).len())
+        .sum();
+    let water_detail_count: usize = route
+        .islands()
+        .iter()
+        .enumerate()
+        .map(|(index, island)| {
+            let water_features = island_water_visual_specs(index, *island);
+            island_water_detail_specs(index, *island, &water_features).len()
+        })
+        .sum();
+    let surface_feature_count =
+        flora_cluster_count + ruin_complex_count + rock_formation_count + water_detail_count;
     let route_lake_surface_count = route
         .islands()
         .iter()
@@ -1558,7 +1588,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         + route_lake_surface_count
         + route_waterfall_visual_count
         + river_channel_count
-        + artifact_detail_count;
+        + artifact_detail_count
+        + surface_feature_count;
 
     assert_eq!(report.ground_cover_count, island_count);
     assert_eq!(report.ground_cover_patch_total, ground_cover_patch_total);
@@ -1577,6 +1608,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.weather_cloud_bank_count, island_count);
     assert_eq!(report.weather_cloud_veil_count, weather_veil_count);
     assert_eq!(report.landmark_count, landmark_count);
+    assert_eq!(report.flora_cluster_count, flora_cluster_count);
+    assert_eq!(report.ruin_complex_count, ruin_complex_count);
+    assert_eq!(report.rock_formation_count, rock_formation_count);
+    assert_eq!(report.water_detail_count, water_detail_count);
     assert!(report.landmark_kind_count >= 28);
     assert_eq!(report.small_island_count, small_island_count);
     assert!(report.small_island_count >= 10);
@@ -2058,6 +2093,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"tree_root_flare_count\": 5"));
     assert!(manifest.contains("\"tree_trunk_ring_count\": 5"));
     assert!(manifest.contains("\"tree_trunk_height_range_m\""));
+    assert!(manifest.contains("\"surface_feature_family\": \"flora_cluster\""));
+    assert!(manifest.contains("\"surface_feature_family\": \"ruin_complex\""));
+    assert!(manifest.contains("\"surface_feature_family\": \"rock_formation\""));
+    assert!(manifest.contains("\"surface_feature_family\": \"water_detail\""));
     assert!(manifest.contains("\"tree_canopy_radius_range_m\""));
     assert!(manifest.contains(&format!(
         "\"weather_cloud_veil_count\": {weather_veil_count}"

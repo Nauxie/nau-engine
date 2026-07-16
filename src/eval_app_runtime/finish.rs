@@ -3,7 +3,12 @@ use super::semantics::capture_due_checkpoint_screenshots;
 use crate::eval_runtime::{EvalRun, path_string};
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
-use std::{fs, io::ErrorKind, path::Path};
+use std::{
+    fs,
+    io::{ErrorKind, Write},
+    path::Path,
+    process,
+};
 
 const EVAL_SCREENSHOT_TIMEOUT_FRAMES: u32 = 180;
 
@@ -11,11 +16,15 @@ pub(crate) fn finish_eval_frame(
     mut commands: Commands,
     mut run: ResMut<EvalRun>,
     scene: EvalScene,
+    screenshots: Query<(), With<Screenshot>>,
     mut app_exit: MessageWriter<AppExit>,
 ) {
     if let Some(error) = run.io_error.clone() {
         eprintln!("{error}");
         run.finalized = true;
+        if run.screenshot_path.is_some() {
+            terminate_screenshot_eval(false);
+        }
         app_exit.write(AppExit::error());
         return;
     }
@@ -35,16 +44,14 @@ pub(crate) fn finish_eval_frame(
                 .screenshot_path
                 .clone()
                 .expect("screenshot path checked above");
-            match screenshot_file_ready(&screenshot_path) {
+            match screenshot_ready_to_exit(
+                &screenshot_path,
+                !screenshots.is_empty(),
+                &mut run.screenshot_ready_frames,
+            ) {
                 Ok(true) => {
                     run.pending_screenshot_exit_success = None;
-                    let exit = if exit_success {
-                        AppExit::Success
-                    } else {
-                        AppExit::error()
-                    };
-                    app_exit.write(exit);
-                    return;
+                    terminate_screenshot_eval(exit_success);
                 }
                 Ok(false) => {}
                 Err(error) => {
@@ -53,8 +60,7 @@ pub(crate) fn finish_eval_frame(
                         "failed to read eval screenshot {}: {error}",
                         path_string(&screenshot_path)
                     );
-                    app_exit.write(AppExit::error());
-                    return;
+                    terminate_screenshot_eval(false);
                 }
             }
 
@@ -65,7 +71,7 @@ pub(crate) fn finish_eval_frame(
                     "eval screenshot did not finish within {} frames",
                     EVAL_SCREENSHOT_TIMEOUT_FRAMES
                 );
-                app_exit.write(AppExit::error());
+                terminate_screenshot_eval(false);
             }
         }
         return;
@@ -88,6 +94,9 @@ pub(crate) fn finish_eval_frame(
         Err(error) => {
             eprintln!("failed to write eval summary: {error}");
             run.finalized = true;
+            if run.screenshot_path.is_some() {
+                terminate_screenshot_eval(false);
+            }
             app_exit.write(AppExit::error());
             return;
         }
@@ -98,6 +107,7 @@ pub(crate) fn finish_eval_frame(
 
     if let Some(screenshot_path) = run.screenshot_path.clone() {
         run.screenshot_wait_frames = 0;
+        run.screenshot_ready_frames = 0;
         run.pending_screenshot_exit_success = Some(passed);
         commands.spawn(Screenshot::primary_window()).observe(
             move |captured: On<ScreenshotCaptured>| {
@@ -110,6 +120,30 @@ pub(crate) fn finish_eval_frame(
     } else {
         run.pending_screenshot_exit_success = Some(false);
         app_exit.write(AppExit::error());
+    }
+}
+
+fn terminate_screenshot_eval(exit_success: bool) -> ! {
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+    process::exit(eval_process_exit_code(exit_success));
+}
+
+const fn eval_process_exit_code(exit_success: bool) -> i32 {
+    if exit_success { 0 } else { 1 }
+}
+
+fn screenshot_ready_to_exit(
+    path: &Path,
+    screenshot_in_flight: bool,
+    ready_frames: &mut u32,
+) -> Result<bool, String> {
+    if screenshot_file_ready(path)? && !screenshot_in_flight {
+        *ready_frames += 1;
+        Ok(*ready_frames >= 2)
+    } else {
+        *ready_frames = 0;
+        Ok(false)
     }
 }
 
@@ -156,7 +190,7 @@ fn retryable_screenshot_io_error(kind: ErrorKind) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::screenshot_file_ready;
+    use super::{eval_process_exit_code, screenshot_file_ready, screenshot_ready_to_exit};
     use image::{Rgb, RgbImage};
     use std::{env, fs, process};
 
@@ -180,6 +214,42 @@ mod tests {
         assert!(screenshot_file_ready(&screenshot_path).expect("readable screenshot"));
 
         let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn final_screenshot_waits_for_entity_and_render_cleanup_before_exit() {
+        let temp_dir = env::temp_dir().join(format!(
+            "nau_final_screenshot_cleanup_{}_{}",
+            process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let screenshot_path = temp_dir.join("final.png");
+        RgbImage::from_pixel(2, 2, Rgb([12, 34, 56]))
+            .save(&screenshot_path)
+            .expect("valid screenshot");
+        let mut ready_frames = 0;
+
+        assert!(
+            !screenshot_ready_to_exit(&screenshot_path, true, &mut ready_frames)
+                .expect("screenshot entity still present")
+        );
+        assert!(
+            !screenshot_ready_to_exit(&screenshot_path, false, &mut ready_frames)
+                .expect("first render cleanup frame")
+        );
+        assert!(
+            screenshot_ready_to_exit(&screenshot_path, false, &mut ready_frames)
+                .expect("second render cleanup frame")
+        );
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn screenshot_eval_exit_code_preserves_pass_or_fail_status() {
+        assert_eq!(eval_process_exit_code(true), 0);
+        assert_eq!(eval_process_exit_code(false), 1);
     }
 
     #[test]

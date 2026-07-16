@@ -182,6 +182,7 @@ fn checkpoint_requires_route_marker_projection(
         (scenario.name, checkpoint_name),
         ("plateau_arrival_camera", _)
             | ("great_sky_plateau_vistas", _)
+            | ("island_surface_review", _)
             | (
                 "great_sky_plateau_route",
                 "waterfall_vista" | "plateau_arrival_reveal"
@@ -210,13 +211,15 @@ mod tests {
     use nau_engine::eval::scenario_named;
 
     #[test]
-    fn route_marker_projection_is_optional_only_at_plateau_arrival_views() {
+    fn route_marker_projection_is_optional_at_cinematic_review_views() {
         let plateau_camera =
             scenario_named("plateau_arrival_camera").expect("plateau camera scenario");
         let plateau_route =
             scenario_named("great_sky_plateau_route").expect("plateau route scenario");
         let plateau_vistas =
             scenario_named("great_sky_plateau_vistas").expect("plateau vistas scenario");
+        let surface_review =
+            scenario_named("island_surface_review").expect("surface review scenario");
         let updraft = scenario_named("updraft_route").expect("updraft scenario");
 
         assert!(!checkpoint_requires_route_marker_projection(
@@ -239,6 +242,16 @@ mod tests {
             plateau_vistas,
             "waterfall_vista"
         ));
+        for checkpoint in [
+            "ruins_and_rock_detail",
+            "dense_flora_detail",
+            "lake_river_waterfall_detail",
+        ] {
+            assert!(!checkpoint_requires_route_marker_projection(
+                surface_review,
+                checkpoint
+            ));
+        }
         assert!(checkpoint_requires_route_marker_projection(
             plateau_route,
             "plateau_approach"
@@ -255,6 +268,8 @@ mod tests {
         let island = scenario_named("island_launch_to_landing").expect("island scenario");
         let branch = scenario_named("branch_recovery_route").expect("branch scenario");
         let camera = scenario_named("camera_mouse_control").expect("camera scenario");
+        let surface_review =
+            scenario_named("island_surface_review").expect("surface review scenario");
 
         assert!(checkpoint_requires_wind_visual_sample(
             updraft,
@@ -288,5 +303,15 @@ mod tests {
             camera,
             "settled_view"
         ));
+        for checkpoint in [
+            "ruins_and_rock_detail",
+            "dense_flora_detail",
+            "lake_river_waterfall_detail",
+        ] {
+            assert!(!checkpoint_requires_wind_visual_sample(
+                surface_review,
+                checkpoint
+            ));
+        }
     }
 }

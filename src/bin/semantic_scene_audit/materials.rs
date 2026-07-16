@@ -157,7 +157,12 @@ pub(crate) fn material_variant_matches(
     }
     if expected_material == "water" {
         let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        if is_sky_like(r, g, b, luma) {
+        let lit_surface_water = (78.0..=150.0).contains(&r)
+            && luma <= 190.0
+            && g >= r + 45.0
+            && b >= g + 8.0
+            && b <= g + 48.0;
+        if is_sky_like(r, g, b, luma) && !lit_surface_water {
             return false;
         }
     }

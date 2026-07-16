@@ -15,8 +15,9 @@ use crate::{
 
 use super::{
     BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, EvalCheckpoint, EvalScenario, GREAT_SKY_PLATEAU_ROUTE,
-    GREAT_SKY_PLATEAU_VISTAS, ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY,
-    PLATEAU_ARRIVAL_CAMERA, RETURN_DESCENT_ROUTE, UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
+    GREAT_SKY_PLATEAU_VISTAS, ISLAND_LAUNCH_TO_LANDING, ISLAND_SURFACE_REVIEW,
+    LONG_GLIDE_VISIBILITY, PLATEAU_ARRIVAL_CAMERA, RETURN_DESCENT_ROUTE, UNDERBRIDGE_UNDER_ROUTE,
+    UPDRAFT_ROUTE,
     checkpoints::{
         BASELINE_CHECKPOINTS, BRANCH_RECOVERY_CHECKPOINTS, GREAT_SKY_PLATEAU_CHECKPOINTS,
         ISLAND_CHECKPOINTS, LONG_GLIDE_CHECKPOINTS, UNDERBRIDGE_UNDER_ROUTE_CHECKPOINTS,
@@ -57,6 +58,21 @@ const GREAT_SKY_PLATEAU_VISTA_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
         frame: 180,
         name: "waterfall_vista",
+    },
+];
+
+const ISLAND_SURFACE_REVIEW_CHECKPOINTS: &[EvalCheckpoint] = &[
+    EvalCheckpoint {
+        frame: 60,
+        name: "ruins_and_rock_detail",
+    },
+    EvalCheckpoint {
+        frame: 180,
+        name: "dense_flora_detail",
+    },
+    EvalCheckpoint {
+        frame: 300,
+        name: "lake_river_waterfall_detail",
     },
 ];
 
@@ -499,6 +515,30 @@ pub(super) fn great_sky_plateau_vistas() -> EvalScenario {
     scenario.thresholds.min_completed_objective_count = 0;
     scenario.thresholds.require_target_landing = false;
     scenario.thresholds.max_final_target_distance_m = 220.0;
+    scenario.thresholds.min_target_landing_samples = 0;
+
+    scenario
+}
+
+pub(super) fn island_surface_review() -> EvalScenario {
+    let mut scenario = great_sky_plateau_vistas();
+    scenario.name = ISLAND_SURFACE_REVIEW;
+    scenario.frame_count = 360;
+    scenario.sample_stride = 1;
+    scenario.target_island_name = Some("great sky plateau");
+    scenario.checkpoints = ISLAND_SURFACE_REVIEW_CHECKPOINTS;
+    scenario.thresholds.min_samples = 361;
+    scenario.thresholds.min_horizontal_distance_m = 0.0;
+    scenario.thresholds.min_max_speed_mps = 0.0;
+    scenario.thresholds.min_gliding_samples = 0;
+    scenario.thresholds.min_grounded_samples = 340;
+    scenario.thresholds.min_lifted_samples = 0;
+    scenario.thresholds.max_camera_distance_m = 360.0;
+    scenario.thresholds.max_camera_step_distance_m = 6.0;
+    scenario.thresholds.max_camera_rotation_delta_degrees = 3.5;
+    scenario.thresholds.max_camera_player_angle_degrees = 90.0;
+    scenario.thresholds.require_target_landing = false;
+    scenario.thresholds.max_final_target_distance_m = 8.0;
     scenario.thresholds.min_target_landing_samples = 0;
 
     scenario

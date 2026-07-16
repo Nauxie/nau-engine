@@ -22,6 +22,14 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) weather_cloud_veil_count: usize,
     pub(crate) landmark_count: usize,
     pub(crate) landmark_kind_count: usize,
+    pub(crate) flora_cluster_count: usize,
+    pub(crate) flora_cluster_kind_count: usize,
+    pub(crate) ruin_complex_count: usize,
+    pub(crate) ruin_complex_kind_count: usize,
+    pub(crate) rock_formation_count: usize,
+    pub(crate) rock_formation_kind_count: usize,
+    pub(crate) water_detail_count: usize,
+    pub(crate) water_detail_kind_count: usize,
     pub(crate) artifact_detail_count: usize,
     pub(crate) artifact_detail_kind_count: usize,
     pub(crate) artifact_stair_count: usize,
@@ -88,6 +96,19 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) min_route_lake_surface_horizontal_span_m: f32,
     pub(crate) min_river_channel_horizontal_span_m: f32,
     pub(crate) min_under_route_visual_vertical_span_m: f32,
+    pub(crate) surface_feature_vertex_total: usize,
+    pub(crate) min_flora_cluster_mesh_vertices: usize,
+    pub(crate) min_flora_cluster_horizontal_span_m: f32,
+    pub(crate) min_flora_cluster_vertical_span_m: f32,
+    pub(crate) min_ruin_complex_mesh_vertices: usize,
+    pub(crate) min_ruin_complex_horizontal_span_m: f32,
+    pub(crate) min_ruin_complex_vertical_span_m: f32,
+    pub(crate) min_rock_formation_mesh_vertices: usize,
+    pub(crate) min_rock_formation_horizontal_span_m: f32,
+    pub(crate) min_rock_formation_vertical_span_m: f32,
+    pub(crate) min_water_detail_mesh_vertices: usize,
+    pub(crate) min_water_detail_horizontal_span_m: f32,
+    pub(crate) min_water_detail_vertical_span_m: f32,
     pub(crate) artifact_detail_vertex_total: usize,
     pub(crate) min_artifact_detail_mesh_vertices: usize,
     pub(crate) min_artifact_stone_mesh_vertices: usize,
@@ -196,6 +217,26 @@ pub(crate) struct VisualLandmarkSummary {
     pub(crate) height_band_count: usize,
     pub(crate) radius_band_count: usize,
     pub(crate) normal_slope_band_count: usize,
+    pub(crate) surface_feature_family: Option<VisualSurfaceFeatureFamily>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum VisualSurfaceFeatureFamily {
+    FloraCluster,
+    RuinComplex,
+    RockFormation,
+    WaterDetail,
+}
+
+impl VisualSurfaceFeatureFamily {
+    fn label(self) -> &'static str {
+        match self {
+            Self::FloraCluster => "flora_cluster",
+            Self::RuinComplex => "ruin_complex",
+            Self::RockFormation => "rock_formation",
+            Self::WaterDetail => "water_detail",
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -264,6 +305,14 @@ impl VisualContentExportReport {
                 "    \"weather_cloud_veil_count\": {},\n",
                 "    \"landmark_count\": {},\n",
                 "    \"landmark_kind_count\": {},\n",
+                "    \"flora_cluster_count\": {},\n",
+                "    \"flora_cluster_kind_count\": {},\n",
+                "    \"ruin_complex_count\": {},\n",
+                "    \"ruin_complex_kind_count\": {},\n",
+                "    \"rock_formation_count\": {},\n",
+                "    \"rock_formation_kind_count\": {},\n",
+                "    \"water_detail_count\": {},\n",
+                "    \"water_detail_kind_count\": {},\n",
                 "    \"artifact_detail_count\": {},\n",
                 "    \"artifact_detail_kind_count\": {},\n",
                 "    \"artifact_stair_count\": {},\n",
@@ -332,6 +381,19 @@ impl VisualContentExportReport {
                 "    \"route_lake_surface_horizontal_span_m\": {},\n",
                 "    \"river_channel_horizontal_span_m\": {},\n",
                 "    \"under_route_visual_vertical_span_m\": {},\n",
+                "    \"surface_feature_vertex_total\": {},\n",
+                "    \"flora_cluster_mesh_vertices\": {},\n",
+                "    \"flora_cluster_horizontal_span_m\": {},\n",
+                "    \"flora_cluster_vertical_span_m\": {},\n",
+                "    \"ruin_complex_mesh_vertices\": {},\n",
+                "    \"ruin_complex_horizontal_span_m\": {},\n",
+                "    \"ruin_complex_vertical_span_m\": {},\n",
+                "    \"rock_formation_mesh_vertices\": {},\n",
+                "    \"rock_formation_horizontal_span_m\": {},\n",
+                "    \"rock_formation_vertical_span_m\": {},\n",
+                "    \"water_detail_mesh_vertices\": {},\n",
+                "    \"water_detail_horizontal_span_m\": {},\n",
+                "    \"water_detail_vertical_span_m\": {},\n",
                 "    \"artifact_detail_vertex_total\": {},\n",
                 "    \"artifact_detail_mesh_vertices\": {},\n",
                 "    \"artifact_stone_mesh_vertices\": {},\n",
@@ -388,6 +450,14 @@ impl VisualContentExportReport {
             self.weather_cloud_veil_count,
             self.landmark_count,
             self.landmark_kind_count,
+            self.flora_cluster_count,
+            self.flora_cluster_kind_count,
+            self.ruin_complex_count,
+            self.ruin_complex_kind_count,
+            self.rock_formation_count,
+            self.rock_formation_kind_count,
+            self.water_detail_count,
+            self.water_detail_kind_count,
             self.artifact_detail_count,
             self.artifact_detail_kind_count,
             self.artifact_stair_count,
@@ -454,6 +524,19 @@ impl VisualContentExportReport {
             terrain_export_json_number(self.min_route_lake_surface_horizontal_span_m),
             terrain_export_json_number(self.min_river_channel_horizontal_span_m),
             terrain_export_json_number(self.min_under_route_visual_vertical_span_m),
+            self.surface_feature_vertex_total,
+            self.min_flora_cluster_mesh_vertices,
+            terrain_export_json_number(self.min_flora_cluster_horizontal_span_m),
+            terrain_export_json_number(self.min_flora_cluster_vertical_span_m),
+            self.min_ruin_complex_mesh_vertices,
+            terrain_export_json_number(self.min_ruin_complex_horizontal_span_m),
+            terrain_export_json_number(self.min_ruin_complex_vertical_span_m),
+            self.min_rock_formation_mesh_vertices,
+            terrain_export_json_number(self.min_rock_formation_horizontal_span_m),
+            terrain_export_json_number(self.min_rock_formation_vertical_span_m),
+            self.min_water_detail_mesh_vertices,
+            terrain_export_json_number(self.min_water_detail_horizontal_span_m),
+            terrain_export_json_number(self.min_water_detail_vertical_span_m),
             self.artifact_detail_vertex_total,
             self.min_artifact_detail_mesh_vertices,
             self.min_artifact_stone_mesh_vertices,
@@ -612,11 +695,16 @@ impl VisualCloudSummary {
 
 impl VisualLandmarkSummary {
     fn to_json(&self, indent: &str) -> String {
+        let surface_feature_family = self.surface_feature_family.map_or_else(
+            || "null".to_string(),
+            |family| terrain_export_json_string(family.label()),
+        );
         format!(
             "{indent}{{\n\
              {indent}  \"island\": {},\n\
              {indent}  \"kind\": {},\n\
              {indent}  \"label\": {},\n\
+             {indent}  \"surface_feature_family\": {},\n\
              {indent}  \"mesh\": {},\n\
              {indent}  \"height_band_count\": {},\n\
              {indent}  \"radius_band_count\": {},\n\
@@ -625,6 +713,7 @@ impl VisualLandmarkSummary {
             terrain_export_json_string(self.island_name),
             terrain_export_json_string(self.kind),
             terrain_export_json_string(&self.label),
+            surface_feature_family,
             self.mesh.to_json(),
             self.height_band_count,
             self.radius_band_count,

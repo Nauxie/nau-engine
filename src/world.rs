@@ -35,7 +35,7 @@ pub use route::{
     FirstExpeditionNavigationLandmarkKind, FirstExpeditionOptionalDetour,
     FirstExpeditionRecoveryAffordance, FirstExpeditionRouteBeat, FirstExpeditionTraversalMode,
     IslandComposition, IslandCompositionFamily, IslandTraversalPurpose, IslandVisualMotif,
-    PLAYTEST_RESET_ISLAND_NAME, SKY_ROUTE_ISLAND_COUNT, SkyRoute,
+    PLAYTEST_RESET_ISLAND_NAME, SKY_ROUTE_ISLAND_COUNT, SkyRoute, authored_island_composition,
 };
 pub use streaming::{LodBand, StreamActivation, StreamChunkCoord, StreamingLodStats};
 pub use surface::GroundSurface;

@@ -1,10 +1,19 @@
 use super::island_playable_normalized_offset;
 use super::random_unit;
 use bevy::prelude::*;
-use nau_engine::world::{IslandBiome, IslandLandmarkRole, SkyIsland};
+use nau_engine::world::{
+    IslandBiome, IslandLandmarkRole, IslandScaleClass, IslandTerrainArchetype, IslandVisualMotif,
+    IslandWaterFeature, SkyIsland, authored_island_composition,
+};
 
 const GOLDEN_ANGLE_RADIANS: f32 = 2.399_963_1;
 const MAX_TREE_COUNT: usize = 12;
+const TREE_SPECIES_SEED_PREFIX_MASK: u32 = 0xff00_0000;
+const TREE_SPECIES_SEED_PREFIX: u32 = 0xa500_0000;
+const TREE_SPECIES_SEED_INDEX_MASK: u32 = 0x00e0_0000;
+const TREE_SPECIES_SEED_INDEX_SHIFT: u32 = 21;
+const TREE_SPECIES_SEED_PAYLOAD_MASK: u32 = 0x001f_ffff;
+const TREE_FORM_DIRECTION_MASK: u32 = 0x001f_0000;
 const GREAT_PLATEAU_TREE_OFFSETS: [[f32; 2]; 14] = [
     [-0.64, 0.16],
     [-0.58, 0.34],
@@ -31,8 +40,98 @@ pub(crate) struct IslandDetailBudget {
     pub(crate) ruin_arch_count: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[repr(u8)]
+pub(crate) enum TreeSpecies {
+    BroadCanopy,
+    WindBent,
+    Orchard,
+    Cypress,
+    Willow,
+    AlpinePine,
+}
+
+impl TreeSpecies {
+    #[cfg(test)]
+    pub(crate) const ALL: [Self; 6] = [
+        Self::BroadCanopy,
+        Self::WindBent,
+        Self::Orchard,
+        Self::Cypress,
+        Self::Willow,
+        Self::AlpinePine,
+    ];
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::BroadCanopy => "broad_canopy",
+            Self::WindBent => "wind_bent",
+            Self::Orchard => "orchard",
+            Self::Cypress => "cypress",
+            Self::Willow => "willow",
+            Self::AlpinePine => "alpine_pine",
+        }
+    }
+
+    pub(crate) fn visual_name(self) -> &'static str {
+        match self {
+            Self::BroadCanopy => "broad-canopy tree",
+            Self::WindBent => "wind-bent tree",
+            Self::Orchard => "orchard tree",
+            Self::Cypress => "cypress tree",
+            Self::Willow => "willow tree",
+            Self::AlpinePine => "alpine pine",
+        }
+    }
+
+    pub(crate) fn trunk_visual_name(self) -> &'static str {
+        match self {
+            Self::BroadCanopy => "broad-canopy tree trunk",
+            Self::WindBent => "wind-bent tree trunk",
+            Self::Orchard => "orchard tree trunk",
+            Self::Cypress => "cypress tree trunk",
+            Self::Willow => "willow tree trunk",
+            Self::AlpinePine => "alpine pine trunk",
+        }
+    }
+
+    pub(crate) fn canopy_visual_name(self) -> &'static str {
+        match self {
+            Self::BroadCanopy => "broad-canopy tree canopy",
+            Self::WindBent => "wind-bent tree canopy",
+            Self::Orchard => "orchard tree canopy",
+            Self::Cypress => "cypress tree canopy",
+            Self::Willow => "willow tree canopy",
+            Self::AlpinePine => "alpine pine canopy",
+        }
+    }
+
+    pub(crate) fn mesh_seed(self, seed: u32) -> u32 {
+        TREE_SPECIES_SEED_PREFIX
+            | ((self as u32) << TREE_SPECIES_SEED_INDEX_SHIFT)
+            | (seed & TREE_SPECIES_SEED_PAYLOAD_MASK)
+    }
+
+    pub(crate) fn from_mesh_seed(seed: u32) -> Option<Self> {
+        if seed & TREE_SPECIES_SEED_PREFIX_MASK != TREE_SPECIES_SEED_PREFIX {
+            return None;
+        }
+
+        match (seed & TREE_SPECIES_SEED_INDEX_MASK) >> TREE_SPECIES_SEED_INDEX_SHIFT {
+            0 => Some(Self::BroadCanopy),
+            1 => Some(Self::WindBent),
+            2 => Some(Self::Orchard),
+            3 => Some(Self::Cypress),
+            4 => Some(Self::Willow),
+            5 => Some(Self::AlpinePine),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct IslandTreeSpec {
+    pub(crate) species: TreeSpecies,
     pub(crate) normalized_offset: Vec2,
     pub(crate) trunk_radius_m: f32,
     pub(crate) trunk_height_m: f32,
@@ -117,6 +216,7 @@ pub(crate) fn island_tree_specs(island_index: usize, island: SkyIsland) -> Vec<I
     (0..count)
         .map(|tree_index| {
             let sample = tree_index as u32;
+            let species = tree_species_for(island, tree_index, count, layout_seed);
             let normalized_offset = if island.is_great_plateau_anchor() {
                 island_playable_normalized_offset(
                     island,
@@ -147,14 +247,21 @@ pub(crate) fn island_tree_specs(island_index: usize, island: SkyIsland) -> Vec<I
             let canopy_radius_m = (0.95 + random_unit(layout_seed, sample, 67) * 0.50)
                 * canopy_scale
                 * plateau_canopy_scale;
+            let form_seed = mixed_seed(layout_seed ^ sample.wrapping_mul(0x27d4_eb2d) ^ 0x4000);
+            let form_direction = form_seed & TREE_FORM_DIRECTION_MASK;
+            let trunk_seed = mixed_seed(layout_seed ^ sample.wrapping_mul(0x9e37_79b9) ^ 0x5000);
+            let canopy_seed = mixed_seed(layout_seed ^ sample.wrapping_mul(0x85eb_ca6b) ^ 0x6000);
 
             IslandTreeSpec {
+                species,
                 normalized_offset,
                 trunk_radius_m,
                 trunk_height_m,
                 canopy_radius_m,
-                trunk_seed: mixed_seed(layout_seed ^ sample.wrapping_mul(0x9e37_79b9) ^ 0x5000),
-                canopy_seed: mixed_seed(layout_seed ^ sample.wrapping_mul(0x85eb_ca6b) ^ 0x6000),
+                trunk_seed: species
+                    .mesh_seed((trunk_seed & !TREE_FORM_DIRECTION_MASK) | form_direction),
+                canopy_seed: species
+                    .mesh_seed((canopy_seed & !TREE_FORM_DIRECTION_MASK) | form_direction),
             }
         })
         .collect()
@@ -268,6 +375,180 @@ fn distributed_offset(
     island_playable_normalized_offset(island, direction * radius + tangent * jitter)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TreeSpeciesPalette {
+    primary: TreeSpecies,
+    secondary: TreeSpecies,
+    accent: TreeSpecies,
+}
+
+fn tree_species_for(island: SkyIsland, tree_index: usize, count: usize, seed: u32) -> TreeSpecies {
+    let palette = tree_species_palette(island);
+    if tree_index == 0 || count <= 1 {
+        return palette.primary;
+    }
+
+    let phase = mixed_seed(seed ^ 0x71c4_8a2d) as usize;
+    let secondary_period = match island.world_tags.scale_class {
+        IslandScaleClass::Tiny => None,
+        IslandScaleClass::Small => Some(5),
+        IslandScaleClass::Medium | IslandScaleClass::Large => Some(4),
+        IslandScaleClass::Vast | IslandScaleClass::HugePlateau => Some(3),
+    };
+    let accent_period = match island.world_tags.scale_class {
+        IslandScaleClass::Large => Some(9),
+        IslandScaleClass::Vast => Some(7),
+        IslandScaleClass::HugePlateau => Some(6),
+        IslandScaleClass::Tiny | IslandScaleClass::Small | IslandScaleClass::Medium => None,
+    };
+
+    if count >= 7
+        && palette.accent != palette.primary
+        && palette.accent != palette.secondary
+        && accent_period
+            .is_some_and(|period| (tree_index + phase) % period == period.saturating_sub(1))
+    {
+        return palette.accent;
+    }
+    if palette.secondary != palette.primary
+        && secondary_period
+            .is_some_and(|period| (tree_index + phase) % period == period.saturating_sub(1))
+    {
+        return palette.secondary;
+    }
+
+    palette.primary
+}
+
+fn tree_species_palette(island: SkyIsland) -> TreeSpeciesPalette {
+    let motif_species = authored_island_composition(island.name)
+        .map(|composition| tree_species_for_motif(composition.visual_motif));
+    let archetype_species = tree_species_for_archetype(island.terrain_archetype);
+    let water_species =
+        (island.world_tags.water_feature != IslandWaterFeature::Dry).then_some(TreeSpecies::Willow);
+    let biome_primary = tree_species_for_biome(island.world_tags.biome);
+    let biome_accent = tree_accent_species_for_biome(island.world_tags.biome);
+    let primary = match island.world_tags.biome {
+        IslandBiome::Meadow => motif_species.unwrap_or(archetype_species),
+        IslandBiome::Garden => {
+            if motif_species == Some(TreeSpecies::Orchard) {
+                TreeSpecies::Orchard
+            } else {
+                TreeSpecies::BroadCanopy
+            }
+        }
+        IslandBiome::Mist if water_species.is_some() => TreeSpecies::Willow,
+        IslandBiome::Storm
+        | IslandBiome::Orchard
+        | IslandBiome::Lake
+        | IslandBiome::Mist
+        | IslandBiome::Alpine
+        | IslandBiome::Ruin => biome_primary,
+    };
+    let secondary = [
+        water_species,
+        Some(archetype_species),
+        motif_species,
+        Some(biome_accent),
+        Some(TreeSpecies::BroadCanopy),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|species| *species != primary)
+    .unwrap_or(primary);
+    let accent = [
+        motif_species,
+        Some(biome_accent),
+        Some(archetype_species),
+        water_species,
+        Some(TreeSpecies::WindBent),
+        Some(TreeSpecies::Cypress),
+        Some(TreeSpecies::Orchard),
+        Some(TreeSpecies::AlpinePine),
+        Some(TreeSpecies::BroadCanopy),
+        Some(TreeSpecies::Willow),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|species| *species != primary && *species != secondary)
+    .unwrap_or(secondary);
+
+    TreeSpeciesPalette {
+        primary,
+        secondary,
+        accent,
+    }
+}
+
+fn tree_species_for_biome(biome: IslandBiome) -> TreeSpecies {
+    match biome {
+        IslandBiome::Meadow | IslandBiome::Garden => TreeSpecies::BroadCanopy,
+        IslandBiome::Storm => TreeSpecies::WindBent,
+        IslandBiome::Orchard => TreeSpecies::Orchard,
+        IslandBiome::Lake => TreeSpecies::Willow,
+        IslandBiome::Mist | IslandBiome::Ruin => TreeSpecies::Cypress,
+        IslandBiome::Alpine => TreeSpecies::AlpinePine,
+    }
+}
+
+fn tree_accent_species_for_biome(biome: IslandBiome) -> TreeSpecies {
+    match biome {
+        IslandBiome::Meadow => TreeSpecies::WindBent,
+        IslandBiome::Garden => TreeSpecies::Orchard,
+        IslandBiome::Storm => TreeSpecies::AlpinePine,
+        IslandBiome::Orchard => TreeSpecies::BroadCanopy,
+        IslandBiome::Lake => TreeSpecies::Cypress,
+        IslandBiome::Mist => TreeSpecies::Willow,
+        IslandBiome::Alpine | IslandBiome::Ruin => TreeSpecies::WindBent,
+    }
+}
+
+fn tree_species_for_motif(motif: IslandVisualMotif) -> TreeSpecies {
+    match motif {
+        IslandVisualMotif::LaunchBeacon
+        | IslandVisualMotif::CairnShelf
+        | IslandVisualMotif::GardenRing => TreeSpecies::BroadCanopy,
+        IslandVisualMotif::WindRibbon
+        | IslandVisualMotif::StormStone
+        | IslandVisualMotif::ThermalRing => TreeSpecies::WindBent,
+        IslandVisualMotif::OrchardGrove => TreeSpecies::Orchard,
+        IslandVisualMotif::RuinStair
+        | IslandVisualMotif::MistArch
+        | IslandVisualMotif::CaveMouth => TreeSpecies::Cypress,
+        IslandVisualMotif::LakeBasin | IslandVisualMotif::WaterfallMeadow => TreeSpecies::Willow,
+        IslandVisualMotif::NeedleSpire
+        | IslandVisualMotif::PlateauRim
+        | IslandVisualMotif::CrownPerch => TreeSpecies::AlpinePine,
+    }
+}
+
+fn tree_species_for_archetype(archetype: IslandTerrainArchetype) -> TreeSpecies {
+    match archetype {
+        IslandTerrainArchetype::LaunchMesa
+        | IslandTerrainArchetype::Shelf
+        | IslandTerrainArchetype::GardenBasin
+        | IslandTerrainArchetype::RefugeTableland
+        | IslandTerrainArchetype::GardenApron
+        | IslandTerrainArchetype::SkyPlateau => TreeSpecies::BroadCanopy,
+        IslandTerrainArchetype::WindOverlook
+        | IslandTerrainArchetype::StormRavine
+        | IslandTerrainArchetype::LaunchSpur
+        | IslandTerrainArchetype::StormShard => TreeSpecies::WindBent,
+        IslandTerrainArchetype::OrchardBasin | IslandTerrainArchetype::OrchardSpur => {
+            TreeSpecies::Orchard
+        }
+        IslandTerrainArchetype::MistArch
+        | IslandTerrainArchetype::BrokenStair
+        | IslandTerrainArchetype::CloudGate
+        | IslandTerrainArchetype::MistStep => TreeSpecies::Cypress,
+        IslandTerrainArchetype::SapphireBasin => TreeSpecies::Willow,
+        IslandTerrainArchetype::CrownRidge | IslandTerrainArchetype::Needle => {
+            TreeSpecies::AlpinePine
+        }
+        IslandTerrainArchetype::TerracedSpur => TreeSpecies::Cypress,
+    }
+}
+
 fn tree_biome_scales(biome: IslandBiome) -> (f32, f32, f32) {
     match biome {
         IslandBiome::Meadow => (1.0, 1.0, 1.0),
@@ -319,6 +600,7 @@ fn mixed_seed(mut value: u32) -> u32 {
 mod tests {
     use super::*;
     use nau_engine::world::{IslandLandmarkRole, IslandPlateauRegion, SkyRoute};
+    use std::collections::HashSet;
 
     fn test_island(name: &'static str, half_extents: Vec2) -> SkyIsland {
         SkyIsland::new(name, Vec3::ZERO, half_extents, 18.0, false)
@@ -383,12 +665,60 @@ mod tests {
     fn generated_detail_specs_are_deterministic() {
         let island = test_island("high orchard", Vec2::new(72.0, 46.0));
 
-        assert_eq!(island_tree_specs(9, island), island_tree_specs(9, island));
+        let tree_specs = island_tree_specs(9, island);
+        assert_eq!(tree_specs, island_tree_specs(9, island));
+        for tree in tree_specs {
+            assert_eq!(
+                TreeSpecies::from_mesh_seed(tree.trunk_seed),
+                Some(tree.species)
+            );
+            assert_eq!(
+                TreeSpecies::from_mesh_seed(tree.canopy_seed),
+                Some(tree.species)
+            );
+        }
         assert_eq!(island_rock_specs(9, island), island_rock_specs(9, island));
         assert_eq!(
             island_ruin_specs(9, test_island("mist arch", Vec2::new(78.0, 34.0))),
             island_ruin_specs(9, test_island("mist arch", Vec2::new(78.0, 34.0)))
         );
+    }
+
+    #[test]
+    fn route_tree_species_cover_every_silhouette_with_coherent_island_palettes() {
+        let route = SkyRoute::default();
+        let mut route_species = HashSet::new();
+
+        for (island_index, island) in route.islands().iter().copied().enumerate() {
+            let specs = island_tree_specs(island_index, island);
+            let island_species = specs
+                .iter()
+                .map(|tree| tree.species)
+                .collect::<HashSet<_>>();
+            let primary = tree_species_palette(island).primary;
+            let primary_count = specs.iter().filter(|tree| tree.species == primary).count();
+
+            assert_eq!(specs.len(), island_detail_budget(island).tree_count);
+            assert!(
+                island_species.len() <= 3,
+                "{} should keep a coherent tree family mix",
+                island.name
+            );
+            assert!(
+                primary_count * 2 >= specs.len(),
+                "{} should be led by its primary tree family",
+                island.name
+            );
+            route_species.extend(island_species);
+        }
+
+        for species in TreeSpecies::ALL {
+            assert!(
+                route_species.contains(&species),
+                "{} should appear somewhere on the authored route",
+                species.visual_name()
+            );
+        }
     }
 
     #[test]

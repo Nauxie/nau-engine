@@ -26,6 +26,7 @@ pub const LONG_GLIDE_VISIBILITY: &str = "long_glide_visibility";
 pub const BRANCH_RECOVERY_ROUTE: &str = "branch_recovery_route";
 pub const GREAT_SKY_PLATEAU_ROUTE: &str = "great_sky_plateau_route";
 pub const GREAT_SKY_PLATEAU_VISTAS: &str = "great_sky_plateau_vistas";
+pub const ISLAND_SURFACE_REVIEW: &str = "island_surface_review";
 pub const RETURN_DESCENT_ROUTE: &str = "return_descent_route";
 pub const PLATEAU_ARRIVAL_CAMERA: &str = "plateau_arrival_camera";
 pub const UNDERBRIDGE_UNDER_ROUTE: &str = "underbridge_under_route";
@@ -40,8 +41,8 @@ struct ScenarioRegistration {
     factory: ScenarioFactory,
 }
 
-const SCENARIO_COUNT: usize = 22;
-const APP_ONLY_SCENARIO_COUNT: usize = 7;
+const SCENARIO_COUNT: usize = 23;
+const APP_ONLY_SCENARIO_COUNT: usize = 8;
 const SCENARIO_REGISTRY: [ScenarioRegistration; SCENARIO_COUNT] = [
     ScenarioRegistration {
         name: BASELINE_ROUTE,
@@ -156,6 +157,12 @@ const SCENARIO_REGISTRY: [ScenarioRegistration; SCENARIO_COUNT] = [
         aliases: &["plateau_vistas", "plateau_showcase"],
         app_only: true,
         factory: traversal_scenarios::great_sky_plateau_vistas,
+    },
+    ScenarioRegistration {
+        name: ISLAND_SURFACE_REVIEW,
+        aliases: &["surface_review", "island_details"],
+        app_only: true,
+        factory: traversal_scenarios::island_surface_review,
     },
     ScenarioRegistration {
         name: RETURN_DESCENT_ROUTE,

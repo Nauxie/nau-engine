@@ -70,6 +70,13 @@ Run the authored great-plateau arrival and waterfall vista route:
 ./tools/eval.sh great_sky_plateau_vistas target/eval/great_sky_plateau_vistas
 ```
 
+Run the dedicated island-surface review:
+
+```sh
+NAU_EVAL_SCREENSHOT=1 NAU_EVAL_ASSET_AUDIT=0 \
+  ./tools/eval.sh island_surface_review target/eval/island_surface_review
+```
+
 Run the mouse-camera control route:
 
 ```sh
@@ -113,6 +120,7 @@ NAU_EVAL_SCREENSHOT=1 ./tools/eval.sh camera_turn_stability target/eval/camera_t
 ```
 
 Screenshot artifact validation in `tools/eval.sh` requires `jq` so the script can read artifact paths from `summary.json`.
+The app decodes the final PNG, waits for the screenshot entity to despawn, allows a full render-cleanup frame, and then terminates the eval process directly so macOS/wgpu device teardown cannot deadlock a completed capture.
 
 Collect screenshots without running the image audit:
 
@@ -138,7 +146,7 @@ Run the world-content gate:
 ./tools/world_content_gate.sh target/world_content_gate
 ```
 
-This runs the focused world tests, terrain/layout export audit, visual-content export audit, simulation-only long-glide plus great-plateau routes, the native movement-plus-mouse camera regression, and the app-only great-plateau vista audit. It is the default iteration gate for island layout, scale, terrain, vegetation, landmark, traversal-content, and launch-area camera changes; release app profiling and human play remain required before accepting rendering-density or camera-feel changes.
+This runs the focused world and generated-content tests, terrain/layout export audit, visual-content export audit, simulation-only long-glide plus great-plateau routes, the native movement-plus-mouse camera regression, the app-only great-plateau vista audit, and the dedicated `island_surface_review` screenshot/semantic audit. It is the default iteration gate for island layout, scale, terrain, vegetation, flora, ruins, geological formations, waterscapes, landmarks, traversal content, and launch-area camera changes; release app profiling and human play remain required before accepting rendering-density or camera-feel changes.
 
 Run the camera/player continuity gate:
 
@@ -170,7 +178,7 @@ Export the generated vegetation/cloud/detail substrate for offline shape inspect
 ./tools/visual_content_export.sh target/visual_content_export
 ```
 
-The export writes `manifest.json`, generated ground-cover/tree/rock/cloud/water/ruin/artifact/landmark OBJ meshes, and `audit.json`. The audit validates schema, artifact presence, OBJ vertex/face counts, total generated mesh scale, ground-cover patch/blade density and blade-height variance, multi-ring trunk mesh floors, trunk taper, branch reach/count, root-flare count, canopy lobe/detail-card structure, tree height/canopy-radius variation, rock count and mesh floors, seven surface-artifact families, ruin-cluster coverage, pond/river/lake/waterfall coverage and spans, cloud veil/lobe/wisp/filament structure, cloud-bank depth/span, route-cairn/launch-beacon/landing-marker floors, obstruction-spire shape floors, and terrain/detail palette diversity. This complements screenshot audit coverage by making primitive vegetation/cloud/route-prop/camera-blocker regressions fail in a deterministic background-safe path.
+The export writes `manifest.json`, generated ground-cover/tree/rock/cloud/water/ruin/artifact/landmark OBJ meshes, composition-driven flora/ruin/formation/water-detail OBJ meshes, and `audit.json`. The audit validates schema, artifact presence, OBJ vertex/face counts, total generated mesh scale, ground-cover patch/blade density and blade-height variance, multi-ring trunk mesh floors, trunk taper, branch reach/count, root-flare count, canopy lobe/detail-card structure, tree height/canopy-radius variation, rock count and mesh floors, six flora families, five ruin-complex families, five geological-formation families, six water-detail families, aggregate surface-feature complexity, seven legacy surface-artifact families, legacy ruin-cluster coverage, pond/river/lake/waterfall coverage and spans, cloud veil/lobe/wisp/filament structure, cloud-bank depth/span, route-cairn/launch-beacon/landing-marker floors, obstruction-spire shape floors, and terrain/detail palette diversity. This complements screenshot audit coverage by making generated island-surface, vegetation, cloud, route-prop, and camera-blocker regressions fail in a deterministic background-safe path.
 
 Export player fixture pose silhouettes for human review without creating a native window:
 
@@ -279,6 +287,15 @@ The export writes `manifest.json`, `wind_tracks/wind_visual_tracks.obj`, `wind_t
 - deterministic camera framing captures the arrival ruin shelf and the real contour-mounted waterfall lip
 - screenshot, marker-projection, and semantic-scene audits require readable plateau architecture, water, and landmark evidence without pretending unrelated off-camera content is visible
 - camera distance, framing, and transition thresholds keep the two vista poses stable while still exercising the live rendered world
+
+`island_surface_review` is the app-only surface-detail composition eval:
+
+- fixed grounded spawn on the great plateau with zero movement input, preserving the gameplay state while the camera reviews authored content
+- deterministic camera framing captures ruin/geology, dense flora, and lake/channel/waterfall checkpoints
+- bounded semantic samples identify flora clusters, ruin complexes, rock formations, water details, lakes, channels, and waterfalls near each checkpoint
+- marker-projection, semantic-scene, and screenshot audits require pixel-backed evidence for the content intended to be visible instead of accepting route-wide counts alone
+- the app-only camera has a dedicated 360 m framing cap for the plateau's 450+ m span while retaining strict per-frame translation and rotation limits; gameplay camera tuning is unchanged
+- grounded-player, camera-distance, camera-step, camera-rotation, and final-target thresholds ensure the review path cannot hide a movement or camera regression
 
 `camera_mouse_control` is the camera-input regression test:
 

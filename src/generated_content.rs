@@ -7,8 +7,8 @@ mod textures;
 const _: usize = island_meshes::GROUND_COVER_PATCHES;
 
 pub(crate) use detail_layout::{
-    IslandDetailBudget, IslandRockSpec, IslandRuinSpec, IslandTreeSpec, island_detail_budget,
-    island_rock_specs, island_ruin_specs, island_tree_specs,
+    IslandDetailBudget, IslandRockSpec, IslandRuinSpec, IslandTreeSpec, TreeSpecies,
+    island_detail_budget, island_rock_specs, island_ruin_specs, island_tree_specs,
 };
 #[cfg(test)]
 pub(crate) use detail_meshes::pond_surface_mesh;
@@ -35,7 +35,15 @@ pub(crate) use detail_meshes::{
     island_lake_basin_visual_specs, island_under_route_visual_specs, island_water_visual_specs,
     landing_garden_marker_mesh, launch_beacon_mesh, obstruction_spire_mesh,
     player_airflow_streamline_mesh, rock_scatter_mesh, route_cairn_mesh, ruin_arch_mesh,
-    tree_canopy_mesh, tree_trunk_mesh, updraft_ribbon_mesh,
+    tree_canopy_mesh, tree_canopy_mesh_for_species, tree_trunk_mesh, tree_trunk_mesh_for_species,
+    updraft_ribbon_mesh,
+};
+#[allow(unused_imports)]
+pub(crate) use detail_meshes::{
+    FloraMaterialRole, FloraVisualKind, IslandFloraVisualSpec, IslandRockFormationSpec,
+    IslandRuinComplexSpec, IslandWaterDetailSpec, RockFormationKind, RuinComplexKind,
+    WaterDetailKind, WaterDetailMaterialRole, island_flora_visual_specs,
+    island_rock_formation_specs, island_ruin_complex_specs, island_water_detail_specs,
 };
 #[cfg(test)]
 pub(crate) use detail_meshes::{

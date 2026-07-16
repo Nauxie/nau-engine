@@ -40,6 +40,9 @@ jobs:
       - name: Tests
         run: cargo test --all-targets --all-features
 
+      - name: World content gate
+        run: ./tools/world_content_gate.sh target/eval/world_content_gate/ci
+
       - name: Development play performance gate
         env:
           NAU_DEV_PLAY_PERF_MAX_AVG_FRAME_TIME_MS: "70"

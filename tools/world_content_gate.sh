@@ -5,6 +5,7 @@ output_root="${1:-target/world_content_gate}"
 
 mkdir -p "${output_root}"
 
+cargo test generated_content::
 cargo test world::tests
 ./tools/terrain_export.sh "${output_root}/terrain"
 ./tools/visual_content_export.sh "${output_root}/visual_content"
@@ -19,5 +20,8 @@ NAU_EVAL_ASSET_AUDIT=0 \
 
 NAU_EVAL_SCREENSHOT=1 NAU_EVAL_ASSET_AUDIT=0 \
   ./tools/eval.sh great_sky_plateau_vistas "${output_root}/great_sky_plateau_vistas"
+
+NAU_EVAL_SCREENSHOT=1 NAU_EVAL_ASSET_AUDIT=0 \
+  ./tools/eval.sh island_surface_review "${output_root}/island_surface_review"
 
 echo "world content gate: ${output_root}"

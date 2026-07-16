@@ -33,6 +33,11 @@ const ARTIFACT_DECORATIVE_NAMES: &[&str] = &[
 ];
 const REQUIRED_SOLID_CAMERA_OBSTACLES: &[&str] =
     &[ARTIFACT_RETAINING_WALL_NAME, ARTIFACT_GLYPH_SLAB_NAME];
+const SOLID_SURFACE_FEATURE_NAMES: &[&str] = &[
+    "collapsed watchtower",
+    "stacked leaning monoliths",
+    "faceted crystal outcrop",
+];
 
 #[derive(Clone, Copy)]
 struct SolidVisualRequirement {
@@ -64,7 +69,27 @@ const SOLID_VISUAL_REQUIREMENTS: &[SolidVisualRequirement] = &[
         kind: WorldCollisionProxyKind::Landmark,
     },
     SolidVisualRequirement {
-        name: "island tree trunk",
+        name: "broad-canopy tree trunk",
+        kind: WorldCollisionProxyKind::Tree,
+    },
+    SolidVisualRequirement {
+        name: "wind-bent tree trunk",
+        kind: WorldCollisionProxyKind::Tree,
+    },
+    SolidVisualRequirement {
+        name: "orchard tree trunk",
+        kind: WorldCollisionProxyKind::Tree,
+    },
+    SolidVisualRequirement {
+        name: "cypress tree trunk",
+        kind: WorldCollisionProxyKind::Tree,
+    },
+    SolidVisualRequirement {
+        name: "willow tree trunk",
+        kind: WorldCollisionProxyKind::Tree,
+    },
+    SolidVisualRequirement {
+        name: "alpine pine trunk",
         kind: WorldCollisionProxyKind::Tree,
     },
     SolidVisualRequirement {
@@ -105,6 +130,18 @@ const SOLID_VISUAL_REQUIREMENTS: &[SolidVisualRequirement] = &[
     },
     SolidVisualRequirement {
         name: ARTIFACT_GLYPH_SLAB_NAME,
+        kind: WorldCollisionProxyKind::Landmark,
+    },
+    SolidVisualRequirement {
+        name: "collapsed watchtower",
+        kind: WorldCollisionProxyKind::Landmark,
+    },
+    SolidVisualRequirement {
+        name: "stacked leaning monoliths",
+        kind: WorldCollisionProxyKind::Landmark,
+    },
+    SolidVisualRequirement {
+        name: "faceted crystal outcrop",
         kind: WorldCollisionProxyKind::Landmark,
     },
 ];
@@ -177,10 +214,22 @@ const NON_BLOCKING_VISUAL_REQUIREMENTS: &[NonBlockingVisualRequirement] = &[
 ];
 
 const CAMERA_ONLY_ALLOWLIST: &[&str] = &[
-    "island tree canopy",
+    "broad-canopy tree canopy",
+    "wind-bent tree canopy",
+    "orchard tree canopy",
+    "cypress tree canopy",
+    "willow tree canopy",
+    "alpine pine canopy",
     "launch camera tree canopy",
     "under-route cave mouth arch",
     "under-route hanging shelf",
+    "ruined perimeter colonnade",
+    "sunken open-air sanctum",
+    "broken aqueduct arcade",
+    "processional ruin stairs",
+    "clustered basalt crown",
+    "weathered rock arch",
+    "fractured boulder spine",
 ];
 const SOLID_PROXY_MAX_FLOAT_ABOVE_SURFACE_M: f32 = 0.35;
 const SOLID_PROXY_MAX_BURY_BELOW_SURFACE_M: f32 = 1.25;
@@ -545,7 +594,7 @@ fn non_blocking_requirements() -> impl Iterator<Item = NonBlockingVisualRequirem
 }
 
 fn requires_solid_camera_obstacle(name: &str) -> bool {
-    REQUIRED_SOLID_CAMERA_OBSTACLES.contains(&name)
+    REQUIRED_SOLID_CAMERA_OBSTACLES.contains(&name) || SOLID_SURFACE_FEATURE_NAMES.contains(&name)
 }
 
 fn non_blocking_artifact_classification(name: &str) -> Option<&'static str> {
@@ -896,7 +945,7 @@ mod tests {
         let catalog = IslandVisualCatalog {
             entries: vec![audit_entry(
                 island,
-                "island tree trunk",
+                "broad-canopy tree trunk",
                 IslandVisualLayer::Detail,
                 None,
                 Some(collision),
@@ -907,7 +956,7 @@ mod tests {
 
         assert!(!audit.passed);
         assert!(audit.failures.iter().any(|failure| {
-            failure.contains("island tree trunk") && failure.contains("expected Tree")
+            failure.contains("broad-canopy tree trunk") && failure.contains("expected Tree")
         }));
     }
 
@@ -1015,7 +1064,7 @@ mod tests {
         let catalog = IslandVisualCatalog {
             entries: vec![audit_entry(
                 island,
-                "island tree trunk",
+                "broad-canopy tree trunk",
                 IslandVisualLayer::Detail,
                 Some(obstacle),
                 Some(collision),
@@ -1026,7 +1075,7 @@ mod tests {
 
         assert!(!audit.passed);
         assert!(audit.failures.iter().any(|failure| {
-            failure.contains("island tree trunk")
+            failure.contains("broad-canopy tree trunk")
                 && failure.contains("outside its visible obstacle envelope")
         }));
     }

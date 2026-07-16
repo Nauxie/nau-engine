@@ -3,7 +3,7 @@ use crate::{
     content_export::shared::mesh_positions,
     generated_content::{
         TREE_BRANCH_COUNT, TREE_ROOT_FLARE_COUNT, TREE_TRUNK_RING_COUNT, TREE_TRUNK_SEGMENTS,
-        VERTICES_PER_GROUND_BLADE, island_tree_specs,
+        TreeSpecies, VERTICES_PER_GROUND_BLADE, island_tree_specs,
     },
 };
 use bevy::prelude::*;
@@ -27,7 +27,7 @@ pub(super) fn visual_content_tree_specs(
         .into_iter()
         .enumerate()
         .map(|(tree_index, tree)| VisualTreeSpec {
-            label: format!("detail tree {tree_index}"),
+            label: format!("detail tree {tree_index} {}", tree.species.visual_name()),
             trunk_radius_m: tree.trunk_radius_m,
             trunk_height_m: tree.trunk_height_m,
             trunk_seed: tree.trunk_seed,
@@ -37,13 +37,14 @@ pub(super) fn visual_content_tree_specs(
         .collect::<Vec<_>>();
 
     if island.name == "launch mesa" {
+        let species = TreeSpecies::BroadCanopy;
         specs.push(VisualTreeSpec {
-            label: "launch tree".to_string(),
+            label: format!("launch tree {}", species.label()),
             trunk_radius_m: 0.35,
             trunk_height_m: 4.4,
-            trunk_seed: 7_000 + island_index as u32 * 97,
+            trunk_seed: species.mesh_seed(7_000 + island_index as u32 * 97),
             canopy_radius_m: 1.55,
-            canopy_seed: 8_000 + island_index as u32 * 101,
+            canopy_seed: species.mesh_seed(8_000 + island_index as u32 * 101),
         });
     }
 

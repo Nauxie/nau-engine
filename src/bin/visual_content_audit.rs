@@ -2,6 +2,7 @@
 
 use serde_json::{Value, json};
 use std::{
+    collections::HashSet,
     env, fs,
     path::{Path, PathBuf},
     process,
@@ -43,6 +44,14 @@ const MIN_TREE_TRUNK_HEIGHT_RANGE_M: f64 = 1.5;
 const MIN_TREE_CANOPY_RADIUS_RANGE_M: f64 = 0.35;
 const MIN_LANDMARK_COUNT: u64 = 60;
 const MIN_LANDMARK_KIND_COUNT: u64 = 18;
+const MIN_FLORA_CLUSTER_COUNT: u64 = 36;
+const MIN_FLORA_CLUSTER_KIND_COUNT: u64 = 5;
+const MIN_RUIN_COMPLEX_COUNT: u64 = 8;
+const MIN_RUIN_COMPLEX_KIND_COUNT: u64 = 4;
+const MIN_ROCK_FORMATION_COUNT: u64 = 20;
+const MIN_ROCK_FORMATION_KIND_COUNT: u64 = 4;
+const MIN_WATER_DETAIL_COUNT: u64 = 10;
+const MIN_WATER_DETAIL_KIND_COUNT: u64 = 5;
 const MIN_ARTIFACT_DETAIL_COUNT: u64 = 55;
 const MIN_ARTIFACT_DETAIL_KIND_COUNT: u64 = 7;
 const MIN_ARTIFACT_STAIR_COUNT: u64 = 8;
@@ -84,6 +93,19 @@ const MIN_ROUTE_WATERFALL_VERTICAL_SPAN_M: f64 = 18.0;
 const MIN_ROUTE_LAKE_SURFACE_HORIZONTAL_SPAN_M: f64 = 18.0;
 const MIN_RIVER_CHANNEL_HORIZONTAL_SPAN_M: f64 = 4.0;
 const MIN_UNDER_ROUTE_VISUAL_VERTICAL_SPAN_M: f64 = 4.0;
+const MIN_SURFACE_FEATURE_VERTEX_TOTAL: u64 = 15_000;
+const MIN_FLORA_CLUSTER_MESH_VERTICES: u64 = 240;
+const MIN_FLORA_CLUSTER_HORIZONTAL_SPAN_M: f64 = 1.25;
+const MIN_FLORA_CLUSTER_VERTICAL_SPAN_M: f64 = 0.45;
+const MIN_RUIN_COMPLEX_MESH_VERTICES: u64 = 300;
+const MIN_RUIN_COMPLEX_HORIZONTAL_SPAN_M: f64 = 2.5;
+const MIN_RUIN_COMPLEX_VERTICAL_SPAN_M: f64 = 1.8;
+const MIN_ROCK_FORMATION_MESH_VERTICES: u64 = 48;
+const MIN_ROCK_FORMATION_HORIZONTAL_SPAN_M: f64 = 1.5;
+const MIN_ROCK_FORMATION_VERTICAL_SPAN_M: f64 = 1.1;
+const MIN_WATER_DETAIL_MESH_VERTICES: u64 = 40;
+const MIN_WATER_DETAIL_HORIZONTAL_SPAN_M: f64 = 1.25;
+const MIN_WATER_DETAIL_VERTICAL_SPAN_M: f64 = 0.1;
 const MIN_ARTIFACT_DETAIL_VERTEX_TOTAL: u64 = 16_000;
 const MIN_ARTIFACT_DETAIL_MESH_VERTICES: u64 = 60;
 const MIN_ARTIFACT_STONE_MESH_VERTICES: u64 = 140;
@@ -119,6 +141,37 @@ struct ArtifactCounters {
 struct ObjAudit {
     vertex_count: u64,
     face_count: u64,
+    horizontal_span_m: f64,
+    vertical_span_m: f64,
+    depth_span_m: f64,
+}
+
+#[derive(Default)]
+struct SurfaceFeatureStats {
+    count: u64,
+    kinds: HashSet<String>,
+    vertex_total: u64,
+    min_mesh_vertices: Option<u64>,
+    min_horizontal_span_m: Option<f64>,
+    min_vertical_span_m: Option<f64>,
+}
+
+impl SurfaceFeatureStats {
+    fn kind_count(&self) -> u64 {
+        self.kinds.len() as u64
+    }
+
+    fn min_mesh_vertices(&self) -> u64 {
+        self.min_mesh_vertices.unwrap_or(0)
+    }
+
+    fn min_horizontal_span_m(&self) -> f64 {
+        self.min_horizontal_span_m.unwrap_or(0.0)
+    }
+
+    fn min_vertical_span_m(&self) -> f64 {
+        self.min_vertical_span_m.unwrap_or(0.0)
+    }
 }
 
 fn main() {
@@ -180,6 +233,15 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
     let total_triangle_count = value_u64(manifest, "total_triangle_count");
     let counts = manifest.get("counts").unwrap_or(&Value::Null);
     let minimums = manifest.get("minimums").unwrap_or(&Value::Null);
+    let landmarks = manifest.get("landmarks").and_then(Value::as_array);
+    let flora_stats = surface_feature_stats(landmarks, "flora_cluster", root_dir);
+    let ruin_stats = surface_feature_stats(landmarks, "ruin_complex", root_dir);
+    let formation_stats = surface_feature_stats(landmarks, "rock_formation", root_dir);
+    let water_detail_stats = surface_feature_stats(landmarks, "water_detail", root_dir);
+    let surface_feature_vertex_total = flora_stats.vertex_total
+        + ruin_stats.vertex_total
+        + formation_stats.vertex_total
+        + water_detail_stats.vertex_total;
 
     checks.push(check_at_least_u64(
         "ground_cover_count",
@@ -245,6 +307,102 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "landmark_kind_count",
         value_u64(counts, "landmark_kind_count"),
         MIN_LANDMARK_KIND_COUNT,
+        "kinds",
+    ));
+    checks.push(check_at_least_u64(
+        "flora_cluster_count",
+        flora_stats.count,
+        MIN_FLORA_CLUSTER_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "flora_cluster_kind_count",
+        flora_stats.kind_count(),
+        MIN_FLORA_CLUSTER_KIND_COUNT,
+        "kinds",
+    ));
+    checks.push(check_at_least_u64(
+        "ruin_complex_count",
+        ruin_stats.count,
+        MIN_RUIN_COMPLEX_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "ruin_complex_kind_count",
+        ruin_stats.kind_count(),
+        MIN_RUIN_COMPLEX_KIND_COUNT,
+        "kinds",
+    ));
+    checks.push(check_at_least_u64(
+        "rock_formation_count",
+        formation_stats.count,
+        MIN_ROCK_FORMATION_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "rock_formation_kind_count",
+        formation_stats.kind_count(),
+        MIN_ROCK_FORMATION_KIND_COUNT,
+        "kinds",
+    ));
+    checks.push(check_at_least_u64(
+        "water_detail_count",
+        water_detail_stats.count,
+        MIN_WATER_DETAIL_COUNT,
+        "meshes",
+    ));
+    checks.push(check_at_least_u64(
+        "water_detail_kind_count",
+        water_detail_stats.kind_count(),
+        MIN_WATER_DETAIL_KIND_COUNT,
+        "kinds",
+    ));
+    checks.push(check_eq_u64(
+        "flora_cluster_count_manifest_parity",
+        value_u64(counts, "flora_cluster_count"),
+        flora_stats.count,
+        "meshes",
+    ));
+    checks.push(check_eq_u64(
+        "flora_cluster_kind_count_manifest_parity",
+        value_u64(counts, "flora_cluster_kind_count"),
+        flora_stats.kind_count(),
+        "kinds",
+    ));
+    checks.push(check_eq_u64(
+        "ruin_complex_count_manifest_parity",
+        value_u64(counts, "ruin_complex_count"),
+        ruin_stats.count,
+        "meshes",
+    ));
+    checks.push(check_eq_u64(
+        "ruin_complex_kind_count_manifest_parity",
+        value_u64(counts, "ruin_complex_kind_count"),
+        ruin_stats.kind_count(),
+        "kinds",
+    ));
+    checks.push(check_eq_u64(
+        "rock_formation_count_manifest_parity",
+        value_u64(counts, "rock_formation_count"),
+        formation_stats.count,
+        "meshes",
+    ));
+    checks.push(check_eq_u64(
+        "rock_formation_kind_count_manifest_parity",
+        value_u64(counts, "rock_formation_kind_count"),
+        formation_stats.kind_count(),
+        "kinds",
+    ));
+    checks.push(check_eq_u64(
+        "water_detail_count_manifest_parity",
+        value_u64(counts, "water_detail_count"),
+        water_detail_stats.count,
+        "meshes",
+    ));
+    checks.push(check_eq_u64(
+        "water_detail_kind_count_manifest_parity",
+        value_u64(counts, "water_detail_kind_count"),
+        water_detail_stats.kind_count(),
         "kinds",
     ));
     checks.push(check_at_least_u64(
@@ -644,6 +802,114 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "m",
     ));
     checks.push(check_at_least_u64(
+        "surface_feature_vertex_total",
+        surface_feature_vertex_total,
+        MIN_SURFACE_FEATURE_VERTEX_TOTAL,
+        "vertices",
+    ));
+    checks.push(check_at_least_u64(
+        "flora_cluster_mesh_vertices",
+        flora_stats.min_mesh_vertices(),
+        MIN_FLORA_CLUSTER_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_f64(
+        "flora_cluster_horizontal_span",
+        flora_stats.min_horizontal_span_m(),
+        MIN_FLORA_CLUSTER_HORIZONTAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "flora_cluster_vertical_span",
+        flora_stats.min_vertical_span_m(),
+        MIN_FLORA_CLUSTER_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "ruin_complex_mesh_vertices",
+        ruin_stats.min_mesh_vertices(),
+        MIN_RUIN_COMPLEX_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_f64(
+        "ruin_complex_horizontal_span",
+        ruin_stats.min_horizontal_span_m(),
+        MIN_RUIN_COMPLEX_HORIZONTAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "ruin_complex_vertical_span",
+        ruin_stats.min_vertical_span_m(),
+        MIN_RUIN_COMPLEX_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "rock_formation_mesh_vertices",
+        formation_stats.min_mesh_vertices(),
+        MIN_ROCK_FORMATION_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_f64(
+        "rock_formation_horizontal_span",
+        formation_stats.min_horizontal_span_m(),
+        MIN_ROCK_FORMATION_HORIZONTAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "rock_formation_vertical_span",
+        formation_stats.min_vertical_span_m(),
+        MIN_ROCK_FORMATION_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_u64(
+        "water_detail_mesh_vertices",
+        water_detail_stats.min_mesh_vertices(),
+        MIN_WATER_DETAIL_MESH_VERTICES,
+        "vertices",
+    ));
+    checks.push(check_at_least_f64(
+        "water_detail_horizontal_span",
+        water_detail_stats.min_horizontal_span_m(),
+        MIN_WATER_DETAIL_HORIZONTAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_at_least_f64(
+        "water_detail_vertical_span",
+        water_detail_stats.min_vertical_span_m(),
+        MIN_WATER_DETAIL_VERTICAL_SPAN_M,
+        "m",
+    ));
+    checks.push(check_eq_u64(
+        "surface_feature_vertex_total_manifest_parity",
+        value_u64(minimums, "surface_feature_vertex_total"),
+        surface_feature_vertex_total,
+        "vertices",
+    ));
+    append_surface_feature_minimum_parity_checks(
+        &mut checks,
+        minimums,
+        "flora_cluster",
+        &flora_stats,
+    );
+    append_surface_feature_minimum_parity_checks(
+        &mut checks,
+        minimums,
+        "ruin_complex",
+        &ruin_stats,
+    );
+    append_surface_feature_minimum_parity_checks(
+        &mut checks,
+        minimums,
+        "rock_formation",
+        &formation_stats,
+    );
+    append_surface_feature_minimum_parity_checks(
+        &mut checks,
+        minimums,
+        "water_detail",
+        &water_detail_stats,
+    );
+    checks.push(check_at_least_u64(
         "artifact_detail_vertex_total",
         value_u64(minimums, "artifact_detail_vertex_total"),
         MIN_ARTIFACT_DETAIL_VERTEX_TOTAL,
@@ -960,23 +1226,126 @@ fn audit_mesh_value(
     }
 }
 
+fn surface_feature_stats(
+    entries: Option<&Vec<Value>>,
+    family: &str,
+    root_dir: &Path,
+) -> SurfaceFeatureStats {
+    let mut stats = SurfaceFeatureStats::default();
+    let Some(entries) = entries else {
+        return stats;
+    };
+
+    for entry in entries {
+        if entry.get("surface_feature_family").and_then(Value::as_str) != Some(family) {
+            continue;
+        }
+
+        stats.count += 1;
+        if let Some(kind) = entry.get("kind").and_then(Value::as_str) {
+            stats.kinds.insert(kind.to_string());
+        }
+
+        let mesh = entry.get("mesh").unwrap_or(&Value::Null);
+        let Some(obj_path) = relative_path(mesh, "obj") else {
+            continue;
+        };
+        let Ok(obj) = audit_obj_path(&root_dir.join(obj_path)) else {
+            continue;
+        };
+
+        let horizontal_span_m = obj.horizontal_span_m.max(obj.depth_span_m);
+        stats.vertex_total += obj.vertex_count;
+        stats.min_mesh_vertices = Some(
+            stats
+                .min_mesh_vertices
+                .map_or(obj.vertex_count, |minimum| minimum.min(obj.vertex_count)),
+        );
+        stats.min_horizontal_span_m = Some(
+            stats
+                .min_horizontal_span_m
+                .map_or(horizontal_span_m, |minimum| minimum.min(horizontal_span_m)),
+        );
+        stats.min_vertical_span_m = Some(
+            stats
+                .min_vertical_span_m
+                .map_or(obj.vertical_span_m, |minimum| {
+                    minimum.min(obj.vertical_span_m)
+                }),
+        );
+    }
+
+    stats
+}
+
+fn append_surface_feature_minimum_parity_checks(
+    checks: &mut Vec<Value>,
+    minimums: &Value,
+    family: &str,
+    stats: &SurfaceFeatureStats,
+) {
+    checks.push(check_eq_u64(
+        &format!("{family}_mesh_vertices_manifest_parity"),
+        value_u64(minimums, &format!("{family}_mesh_vertices")),
+        stats.min_mesh_vertices(),
+        "vertices",
+    ));
+    checks.push(check_approx_eq_f64(
+        &format!("{family}_horizontal_span_manifest_parity"),
+        value_f64(minimums, &format!("{family}_horizontal_span_m")),
+        stats.min_horizontal_span_m(),
+        0.001,
+        "m",
+    ));
+    checks.push(check_approx_eq_f64(
+        &format!("{family}_vertical_span_manifest_parity"),
+        value_f64(minimums, &format!("{family}_vertical_span_m")),
+        stats.min_vertical_span_m(),
+        0.001,
+        "m",
+    ));
+}
+
 fn audit_obj_path(path: &Path) -> Result<ObjAudit, String> {
     let text = fs::read_to_string(path)
         .map_err(|error| format!("could not read {}: {error}", path.display()))?;
     let mut vertex_count = 0;
     let mut face_count = 0;
+    let mut min = [f64::INFINITY; 3];
+    let mut max = [f64::NEG_INFINITY; 3];
 
     for line in text.lines() {
-        if line.starts_with("v ") {
+        if let Some(vertex) = line.strip_prefix("v ") {
+            let coordinates = vertex
+                .split_whitespace()
+                .take(3)
+                .map(str::parse::<f64>)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| format!("invalid OBJ vertex in {}: {error}", path.display()))?;
+            if coordinates.len() != 3 {
+                return Err(format!("incomplete OBJ vertex in {}", path.display()));
+            }
+            for axis in 0..3 {
+                min[axis] = min[axis].min(coordinates[axis]);
+                max[axis] = max[axis].max(coordinates[axis]);
+            }
             vertex_count += 1;
         } else if line.starts_with("f ") {
             face_count += 1;
         }
     }
 
+    let span = if vertex_count > 0 {
+        [max[0] - min[0], max[1] - min[1], max[2] - min[2]]
+    } else {
+        [0.0; 3]
+    };
     Ok(ObjAudit {
         vertex_count,
         face_count,
+        horizontal_span_m: span[0],
+        vertical_span_m: span[1],
+        depth_span_m: span[2],
     })
 }
 
@@ -1010,6 +1379,24 @@ fn check_eq_u64(name: &str, value: u64, threshold: u64, unit: &str) -> Value {
         "value": value,
         "comparator": "==",
         "threshold": threshold,
+        "unit": unit,
+    })
+}
+
+fn check_approx_eq_f64(
+    name: &str,
+    value: f64,
+    threshold: f64,
+    tolerance: f64,
+    unit: &str,
+) -> Value {
+    json!({
+        "name": name,
+        "passed": (value - threshold).abs() <= tolerance,
+        "value": value,
+        "comparator": "~=",
+        "threshold": threshold,
+        "tolerance": tolerance,
         "unit": unit,
     })
 }
@@ -1055,6 +1442,15 @@ mod tests {
         assert_eq!(MIN_RIVER_CHANNEL_COUNT, 6);
         assert_eq!(MIN_RIVER_CHANNEL_HORIZONTAL_SPAN_M, 4.0);
         assert_eq!(MIN_POND_SURFACE_COUNT, 5);
+        assert_eq!(MIN_FLORA_CLUSTER_COUNT, 36);
+        assert_eq!(MIN_FLORA_CLUSTER_KIND_COUNT, 5);
+        assert_eq!(MIN_RUIN_COMPLEX_COUNT, 8);
+        assert_eq!(MIN_RUIN_COMPLEX_KIND_COUNT, 4);
+        assert_eq!(MIN_ROCK_FORMATION_COUNT, 20);
+        assert_eq!(MIN_ROCK_FORMATION_KIND_COUNT, 4);
+        assert_eq!(MIN_WATER_DETAIL_COUNT, 10);
+        assert_eq!(MIN_WATER_DETAIL_KIND_COUNT, 5);
+        assert_eq!(MIN_SURFACE_FEATURE_VERTEX_TOTAL, 15_000);
     }
 
     #[test]
@@ -1076,6 +1472,14 @@ mod tests {
                 "weather_cloud_veil_count": 0,
                 "landmark_count": 1,
                 "landmark_kind_count": 1,
+                "flora_cluster_count": 1,
+                "flora_cluster_kind_count": 1,
+                "ruin_complex_count": 1,
+                "ruin_complex_kind_count": 1,
+                "rock_formation_count": 1,
+                "rock_formation_kind_count": 1,
+                "water_detail_count": 1,
+                "water_detail_kind_count": 1,
                 "artifact_detail_count": 0,
                 "artifact_detail_kind_count": 0,
                 "artifact_stair_count": 0,
@@ -1144,6 +1548,19 @@ mod tests {
                 "route_lake_surface_horizontal_span_m": 4.0,
                 "river_channel_horizontal_span_m": 0.5,
                 "under_route_visual_vertical_span_m": 0.5,
+                "surface_feature_vertex_total": 12,
+                "flora_cluster_mesh_vertices": 3,
+                "flora_cluster_horizontal_span_m": 0.1,
+                "flora_cluster_vertical_span_m": 0.0,
+                "ruin_complex_mesh_vertices": 3,
+                "ruin_complex_horizontal_span_m": 0.1,
+                "ruin_complex_vertical_span_m": 0.0,
+                "rock_formation_mesh_vertices": 3,
+                "rock_formation_horizontal_span_m": 0.1,
+                "rock_formation_vertical_span_m": 0.0,
+                "water_detail_mesh_vertices": 3,
+                "water_detail_horizontal_span_m": 0.1,
+                "water_detail_vertical_span_m": 0.0,
                 "artifact_detail_vertex_total": 10,
                 "artifact_detail_mesh_vertices": 4,
                 "artifact_stone_mesh_vertices": 8,
@@ -1225,6 +1642,14 @@ mod tests {
             "rock_vertical_span",
             "landmark_count",
             "landmark_kind_count",
+            "flora_cluster_count",
+            "flora_cluster_kind_count",
+            "ruin_complex_count",
+            "ruin_complex_kind_count",
+            "rock_formation_count",
+            "rock_formation_kind_count",
+            "water_detail_count",
+            "water_detail_kind_count",
             "artifact_detail_count",
             "artifact_detail_kind_count",
             "artifact_stair_count",
@@ -1266,6 +1691,19 @@ mod tests {
             "route_lake_surface_horizontal_span",
             "river_channel_horizontal_span",
             "under_route_visual_vertical_span",
+            "surface_feature_vertex_total",
+            "flora_cluster_mesh_vertices",
+            "flora_cluster_horizontal_span",
+            "flora_cluster_vertical_span",
+            "ruin_complex_mesh_vertices",
+            "ruin_complex_horizontal_span",
+            "ruin_complex_vertical_span",
+            "rock_formation_mesh_vertices",
+            "rock_formation_horizontal_span",
+            "rock_formation_vertical_span",
+            "water_detail_mesh_vertices",
+            "water_detail_horizontal_span",
+            "water_detail_vertical_span",
             "artifact_detail_vertex_total",
             "artifact_detail_mesh_vertices",
             "artifact_stone_mesh_vertices",
@@ -1290,6 +1728,166 @@ mod tests {
                     !check.get("passed").and_then(Value::as_bool).unwrap()
                 }),
                 "{name} should fail for primitive landmark regressions"
+            );
+        }
+    }
+
+    #[test]
+    fn audit_rejects_missing_surface_feature_fields() {
+        let manifest = json!({
+            "schema": "nau_visual_content_export.v1",
+            "counts": {},
+            "minimums": {},
+            "ground_cover": [],
+            "trees": [],
+            "rocks": [],
+            "clouds": [],
+            "landmarks": []
+        });
+
+        let report = audit_manifest(&manifest, Path::new("."), "manifest.json");
+        let checks = report.get("checks").and_then(Value::as_array).unwrap();
+        for name in [
+            "flora_cluster_count",
+            "flora_cluster_kind_count",
+            "ruin_complex_count",
+            "ruin_complex_kind_count",
+            "rock_formation_count",
+            "rock_formation_kind_count",
+            "water_detail_count",
+            "water_detail_kind_count",
+            "surface_feature_vertex_total",
+            "flora_cluster_mesh_vertices",
+            "flora_cluster_horizontal_span",
+            "flora_cluster_vertical_span",
+            "ruin_complex_mesh_vertices",
+            "ruin_complex_horizontal_span",
+            "ruin_complex_vertical_span",
+            "rock_formation_mesh_vertices",
+            "rock_formation_horizontal_span",
+            "rock_formation_vertical_span",
+            "water_detail_mesh_vertices",
+            "water_detail_horizontal_span",
+            "water_detail_vertical_span",
+        ] {
+            assert!(
+                check_named(checks, name).is_some_and(|check| {
+                    !check.get("passed").and_then(Value::as_bool).unwrap()
+                }),
+                "{name} should fail when surface feature input is missing"
+            );
+        }
+    }
+
+    #[test]
+    fn audit_checks_surface_feature_landmark_obj_parity() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "nau-visual-content-audit-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&temp_dir).expect("temp directory should be creatable");
+        let obj_path = temp_dir.join("flora_cluster.obj");
+        let mut file = fs::File::create(&obj_path).expect("obj should be creatable");
+        writeln!(file, "v 0 0 0").unwrap();
+        writeln!(file, "v 1 0 0").unwrap();
+        writeln!(file, "v 0 1 0").unwrap();
+        writeln!(file, "f 1 2 3").unwrap();
+
+        let manifest = json!({
+            "schema": "nau_visual_content_export.v1",
+            "mesh_count": 1,
+            "counts": {},
+            "minimums": {},
+            "ground_cover": [],
+            "trees": [],
+            "rocks": [],
+            "clouds": [],
+            "landmarks": [{
+                "kind": "flora_cluster_test",
+                "surface_feature_family": "flora_cluster",
+                "mesh": {
+                    "obj": "flora_cluster.obj",
+                    "vertex_count": 4,
+                    "triangle_count": 2
+                }
+            }]
+        });
+
+        let report = audit_manifest(&manifest, &temp_dir, "manifest.json");
+        let artifacts = report.get("artifacts").unwrap();
+        assert_eq!(
+            value_u64(artifacts, "vertex_mismatch_count"),
+            1,
+            "surface feature OBJ vertices should match the manifest"
+        );
+        assert_eq!(
+            value_u64(artifacts, "face_mismatch_count"),
+            1,
+            "surface feature OBJ faces should match the manifest"
+        );
+
+        fs::remove_dir_all(temp_dir).expect("temp directory should be removable");
+    }
+
+    #[test]
+    fn audit_rejects_surface_feature_claims_without_landmark_entries() {
+        let manifest = json!({
+            "schema": "nau_visual_content_export.v1",
+            "mesh_count": 0,
+            "counts": {
+                "flora_cluster_count": 1,
+                "flora_cluster_kind_count": 1,
+                "ruin_complex_count": 1,
+                "ruin_complex_kind_count": 1,
+                "rock_formation_count": 1,
+                "rock_formation_kind_count": 1,
+                "water_detail_count": 1,
+                "water_detail_kind_count": 1
+            },
+            "minimums": {
+                "surface_feature_vertex_total": 100,
+                "flora_cluster_mesh_vertices": 25,
+                "flora_cluster_horizontal_span_m": 2.0,
+                "flora_cluster_vertical_span_m": 1.0,
+                "ruin_complex_mesh_vertices": 25,
+                "ruin_complex_horizontal_span_m": 2.0,
+                "ruin_complex_vertical_span_m": 1.0,
+                "rock_formation_mesh_vertices": 25,
+                "rock_formation_horizontal_span_m": 2.0,
+                "rock_formation_vertical_span_m": 1.0,
+                "water_detail_mesh_vertices": 25,
+                "water_detail_horizontal_span_m": 2.0,
+                "water_detail_vertical_span_m": 1.0
+            },
+            "ground_cover": [],
+            "trees": [],
+            "rocks": [],
+            "clouds": [],
+            "landmarks": []
+        });
+
+        let report = audit_manifest(&manifest, Path::new("."), "manifest.json");
+        let checks = report.get("checks").and_then(Value::as_array).unwrap();
+        for name in [
+            "flora_cluster_count_manifest_parity",
+            "ruin_complex_count_manifest_parity",
+            "rock_formation_count_manifest_parity",
+            "water_detail_count_manifest_parity",
+            "surface_feature_vertex_total_manifest_parity",
+            "flora_cluster_mesh_vertices_manifest_parity",
+            "ruin_complex_horizontal_span_manifest_parity",
+            "rock_formation_vertical_span_manifest_parity",
+            "water_detail_mesh_vertices_manifest_parity",
+        ] {
+            assert!(
+                check_named(checks, name).is_some_and(|check| {
+                    !check.get("passed").and_then(Value::as_bool).unwrap()
+                }),
+                "{name} should reject claims without exported feature landmarks"
             );
         }
     }

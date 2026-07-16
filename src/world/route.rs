@@ -1626,6 +1626,13 @@ fn is_route_objective_lift_node(name: &str) -> bool {
     )
 }
 
+pub fn authored_island_composition(island_name: &str) -> Option<IslandComposition> {
+    ISLAND_COMPOSITION_SPECS
+        .iter()
+        .copied()
+        .find(|composition| composition.island_name == island_name)
+}
+
 impl SkyRoute {
     pub fn islands(&self) -> &[SkyIsland] {
         &self.islands

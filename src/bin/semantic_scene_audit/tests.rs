@@ -1,6 +1,9 @@
 use crate::{
     checkpoint::{audit_checkpoint_path, audit_scene_sample, terrain_material_variant_for_label},
-    materials::{material_matches, sample_pixel_hits, sample_pixel_hits_with_variant},
+    materials::{
+        material_matches, material_variant_matches, sample_pixel_hits,
+        sample_pixel_hits_with_variant,
+    },
     report::{json_number, json_string, report_checks, report_json},
     thresholds::{
         MIN_DISTANT_ISLAND_PIXEL_COVERAGE, MIN_FOLIAGE_PIXEL_COVERAGE,
@@ -275,6 +278,7 @@ fn occluded_projected_scene_samples_do_not_count_as_hits() {
 #[test]
 fn report_checks_require_visible_material_samples_before_pixel_hits() {
     let visible_terrain = SceneSampleAudit {
+        island_name: None,
         kind: "terrain_surface".to_string(),
         label: "foreground".to_string(),
         expected_material: "terrain".to_string(),
@@ -287,6 +291,7 @@ fn report_checks_require_visible_material_samples_before_pixel_hits() {
         passed: true,
     };
     let occluded_cloud = SceneSampleAudit {
+        island_name: None,
         kind: "weather_cloud".to_string(),
         label: "blocked cloud".to_string(),
         expected_material: "cloud".to_string(),
@@ -418,6 +423,7 @@ fn visible_wind_samples_fail_report_and_checkpoint_coverage_without_wind_pixels(
 #[test]
 fn report_checks_require_wind_pixels_at_each_visible_wind_checkpoint() {
     let missed_wind = SceneSampleAudit {
+        island_name: None,
         kind: "player_wind_shear_visual".to_string(),
         label: "player wind body wrap".to_string(),
         expected_material: "wind".to_string(),
@@ -514,6 +520,7 @@ fn sparse_translucent_wind_sample_hit_satisfies_checkpoint_material_audit() {
 #[test]
 fn report_checks_require_scene_pixel_coverage_not_just_hit_counts() {
     let thin_terrain = SceneSampleAudit {
+        island_name: None,
         kind: "terrain_surface".to_string(),
         label: "foreground".to_string(),
         expected_material: "terrain".to_string(),
@@ -833,6 +840,131 @@ fn plateau_vista_report_profile_focuses_authored_landmarks() {
 }
 
 #[test]
+fn island_surface_review_report_profile_focuses_surface_details() {
+    let checkpoints = island_surface_review_report_checkpoints();
+    let checks = report_checks(&checkpoints);
+    let report =
+        serde_json::from_str::<Value>(&report_json(true, &checks, &checkpoints)).expect("report");
+    let profile = report.get("profile").expect("profile");
+
+    assert!(checks.iter().all(|check| check.passed));
+    assert_eq!(
+        profile.get("name").and_then(Value::as_str),
+        Some("island_surface_review")
+    );
+    assert_eq!(
+        profile.get("expected_materials"),
+        Some(&serde_json::json!(["stone", "foliage", "water"]))
+    );
+    assert_eq!(
+        profile.get("conditional_expected_materials"),
+        Some(&serde_json::json!(["flower"]))
+    );
+    assert_eq!(
+        profile
+            .get("expected_scene_sample_kinds")
+            .and_then(Value::as_array)
+            .map(Vec::len),
+        Some(8)
+    );
+    assert_eq!(
+        profile
+            .get("require_terrain_material_variants")
+            .and_then(Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(
+        profile
+            .get("audit_visible_wind_samples")
+            .and_then(Value::as_bool),
+        Some(false)
+    );
+}
+
+#[test]
+fn island_surface_review_requires_visible_flower_pixels_but_not_wind_pixels() {
+    let mut checkpoints = island_surface_review_report_checkpoints();
+    checkpoints[1].samples = vec![
+        scene_audit_sample(
+            "flora_cluster",
+            "fern grove",
+            "foliage",
+            "foliage",
+            MIN_SAMPLE_PIXEL_HITS,
+        ),
+        scene_audit_sample(
+            "flora_cluster",
+            "reed bed",
+            "foliage",
+            "foliage",
+            MIN_SAMPLE_PIXEL_HITS,
+        ),
+        scene_audit_sample(
+            "flora_cluster",
+            "broadleaf patch",
+            "foliage",
+            "foliage",
+            MIN_SAMPLE_PIXEL_HITS,
+        ),
+        visible_failed_scene_audit_sample("flora_cluster", "flower thicket", "flower", "flower"),
+        visible_failed_scene_audit_sample(
+            "updraft_wind_visual",
+            "updraft wind mote",
+            "wind",
+            "wind_updraft",
+        ),
+    ];
+
+    let checks = report_checks(&checkpoints);
+    let flower_hits = checks
+        .iter()
+        .find(|check| check.name == "flower_scene_sample_pixel_hits")
+        .expect("conditional flower check");
+
+    assert!(!flower_hits.passed);
+    assert!(!checks.iter().any(|check| check.name.starts_with("wind_")));
+}
+
+#[test]
+fn island_surface_review_report_does_not_let_rich_checkpoint_mask_sparse_flora() {
+    let mut checkpoints = island_surface_review_report_checkpoints();
+    checkpoints[0].samples.extend([
+        scene_audit_sample(
+            "flora_cluster",
+            "extra fern grove",
+            "foliage",
+            "foliage",
+            MIN_SAMPLE_PIXEL_HITS,
+        ),
+        scene_audit_sample(
+            "flora_cluster",
+            "extra reed bed",
+            "foliage",
+            "foliage",
+            MIN_SAMPLE_PIXEL_HITS,
+        ),
+        scene_audit_sample(
+            "flora_cluster",
+            "extra flower thicket",
+            "flower",
+            "flower",
+            MIN_SAMPLE_PIXEL_HITS,
+        ),
+    ]);
+    checkpoints[1].samples.pop();
+
+    let checks = report_checks(&checkpoints);
+    let flora_hits = checks
+        .iter()
+        .find(|check| check.name == "dense_flora_detail_flora_cluster_pixel_hits")
+        .expect("checkpoint-local flora check");
+
+    assert!(!flora_hits.passed);
+    assert_eq!(flora_hits.value, 2.0);
+    assert_eq!(flora_hits.threshold, 3.0);
+}
+
+#[test]
 fn semantic_scene_audit_scales_logical_viewport_to_retina_screenshot() {
     let temp_dir = unique_temp_dir("semantic_scene_retina");
     fs::create_dir_all(&temp_dir).expect("temp dir");
@@ -1011,6 +1143,24 @@ fn water_stone_and_plateau_shelf_materials_match_generated_palette_colors() {
     }
     assert!(!material_matches("water", 130.0, 170.0, 220.0));
     assert!(!material_matches("water", 97.0, 122.0, 163.0));
+}
+
+#[test]
+fn water_variant_accepts_lit_surface_water_without_accepting_sky() {
+    for [r, g, b] in [
+        [87.0, 142.0, 184.0],
+        [111.0, 168.0, 198.0],
+        [119.0, 170.0, 199.0],
+    ] {
+        assert!(material_variant_matches("water", "water", r, g, b));
+    }
+    for [r, g, b] in [
+        [54.0, 154.0, 210.0],
+        [70.0, 130.0, 175.0],
+        [160.0, 220.0, 244.0],
+    ] {
+        assert!(!material_variant_matches("water", "water", r, g, b));
+    }
 }
 
 #[test]
@@ -1243,6 +1393,291 @@ fn plateau_vista_checkpoint_allows_unrelated_visible_sample_misses() {
     let _ = fs::remove_dir_all(temp_dir);
 }
 
+#[test]
+fn island_surface_review_ruin_checkpoint_requires_both_landmark_families() {
+    let samples = vec![
+        projected_sample(
+            "ruin_complex",
+            "ruined perimeter colonnade",
+            "stone",
+            80.0,
+            150.0,
+        ),
+        projected_sample(
+            "rock_formation",
+            "clustered basalt crown",
+            "stone",
+            240.0,
+            150.0,
+        ),
+    ];
+    let stone_pixels = [
+        semantic_material_pixels("stone", 80, 150),
+        semantic_material_pixels("stone", 240, 150),
+    ];
+    let all_pixels = stone_pixels.into_iter().flatten().collect::<Vec<_>>();
+    let (pass_dir, pass_path) = checkpoint_fixture(
+        "surface_review_ruins_pass",
+        true,
+        "island_surface_review",
+        "ruins_and_rock_detail",
+        samples.clone(),
+        &all_pixels,
+    );
+    assert!(
+        audit_checkpoint_path(&pass_path)
+            .expect("pass audit")
+            .passed
+    );
+
+    for (name, pixels) in [
+        (
+            "surface_review_ruin_missing",
+            semantic_material_pixels("stone", 240, 150).to_vec(),
+        ),
+        (
+            "surface_review_rock_missing",
+            semantic_material_pixels("stone", 80, 150).to_vec(),
+        ),
+    ] {
+        let (temp_dir, metadata_path) = checkpoint_fixture(
+            name,
+            true,
+            "island_surface_review",
+            "ruins_and_rock_detail",
+            samples.clone(),
+            &pixels,
+        );
+        assert!(!audit_checkpoint_path(&metadata_path).expect("audit").passed);
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    let _ = fs::remove_dir_all(pass_dir);
+}
+
+#[test]
+fn island_surface_review_flora_checkpoint_requires_three_hits_and_label_diversity() {
+    let samples = vec![
+        projected_sample("flora_cluster", "fern grove", "foliage", 60.0, 150.0),
+        projected_sample("flora_cluster", "reed bed", "foliage", 160.0, 150.0),
+        projected_sample("flora_cluster", "flower thicket", "flower", 260.0, 150.0),
+    ];
+    let pixel_groups = [
+        semantic_material_pixels("foliage", 60, 150),
+        semantic_material_pixels("foliage", 160, 150),
+        semantic_material_pixels("flower", 260, 150),
+    ];
+    let all_pixels = pixel_groups.into_iter().flatten().collect::<Vec<_>>();
+    let (pass_dir, pass_path) = checkpoint_fixture(
+        "surface_review_flora_pass",
+        true,
+        "island_surface_review",
+        "dense_flora_detail",
+        samples.clone(),
+        &all_pixels,
+    );
+    assert!(
+        audit_checkpoint_path(&pass_path)
+            .expect("pass audit")
+            .passed
+    );
+
+    let two_hit_pixels = [
+        semantic_material_pixels("foliage", 60, 150),
+        semantic_material_pixels("foliage", 160, 150),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    let (two_dir, two_path) = checkpoint_fixture(
+        "surface_review_flora_two_hits",
+        true,
+        "island_surface_review",
+        "dense_flora_detail",
+        samples,
+        &two_hit_pixels,
+    );
+    assert!(
+        !audit_checkpoint_path(&two_path)
+            .expect("two-hit audit")
+            .passed
+    );
+
+    let repeated_label_samples = vec![
+        projected_sample("flora_cluster", "fern grove", "foliage", 60.0, 150.0),
+        projected_sample("flora_cluster", "fern grove", "foliage", 160.0, 150.0),
+        projected_sample("flora_cluster", "fern grove", "foliage", 260.0, 150.0),
+        projected_sample("flora_cluster", "flower thicket", "flower", 300.0, 100.0),
+    ];
+    let repeated_label_pixels = [
+        semantic_material_pixels("foliage", 60, 150),
+        semantic_material_pixels("foliage", 160, 150),
+        semantic_material_pixels("foliage", 260, 150),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    let (diversity_dir, diversity_path) = checkpoint_fixture(
+        "surface_review_flora_diversity",
+        true,
+        "island_surface_review",
+        "dense_flora_detail",
+        repeated_label_samples,
+        &repeated_label_pixels,
+    );
+    assert!(
+        !audit_checkpoint_path(&diversity_path)
+            .expect("diversity audit")
+            .passed
+    );
+
+    let one_label_samples = vec![
+        projected_sample("flora_cluster", "fern grove", "foliage", 60.0, 150.0),
+        projected_sample("flora_cluster", "fern grove", "foliage", 160.0, 150.0),
+        projected_sample("flora_cluster", "fern grove", "foliage", 260.0, 150.0),
+    ];
+    let one_label_pixels = [
+        semantic_material_pixels("foliage", 60, 150),
+        semantic_material_pixels("foliage", 160, 150),
+        semantic_material_pixels("foliage", 260, 150),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    let (one_label_dir, one_label_path) = checkpoint_fixture(
+        "surface_review_flora_one_label",
+        true,
+        "island_surface_review",
+        "dense_flora_detail",
+        one_label_samples,
+        &one_label_pixels,
+    );
+    assert!(
+        !audit_checkpoint_path(&one_label_path)
+            .expect("one-label audit")
+            .passed
+    );
+
+    let _ = fs::remove_dir_all(pass_dir);
+    let _ = fs::remove_dir_all(two_dir);
+    let _ = fs::remove_dir_all(diversity_dir);
+    let _ = fs::remove_dir_all(one_label_dir);
+}
+
+#[test]
+fn island_surface_review_water_checkpoint_requires_every_water_form_and_two_details() {
+    let samples = vec![
+        projected_sample("water_surface", "low basin lake", "water", 40.0, 150.0),
+        projected_sample("river_channel", "meadow runnel", "water", 100.0, 150.0),
+        projected_sample(
+            "waterfall_water",
+            "broken edge waterfall",
+            "water",
+            160.0,
+            150.0,
+        ),
+        projected_sample(
+            "water_detail_waterfall_lip",
+            "waterfall lip rocks",
+            "stone",
+            220.0,
+            150.0,
+        ),
+        projected_sample(
+            "water_detail_plunge_pool",
+            "plunge pool ripples",
+            "water",
+            280.0,
+            150.0,
+        ),
+    ];
+    let pixel_groups = [
+        semantic_material_pixels("water", 40, 150),
+        semantic_material_pixels("water", 100, 150),
+        semantic_material_pixels("water", 160, 150),
+        semantic_material_pixels("stone", 220, 150),
+        semantic_material_pixels("water", 280, 150),
+    ];
+    let all_pixels = pixel_groups.iter().flatten().copied().collect::<Vec<_>>();
+    let (pass_dir, pass_path) = checkpoint_fixture(
+        "surface_review_water_pass",
+        true,
+        "island_surface_review",
+        "lake_river_waterfall_detail",
+        samples.clone(),
+        &all_pixels,
+    );
+    assert!(
+        audit_checkpoint_path(&pass_path)
+            .expect("pass audit")
+            .passed
+    );
+
+    for (name, missing_group) in [
+        ("surface_review_lake_missing", 0),
+        ("surface_review_channel_missing", 1),
+        ("surface_review_waterfall_missing", 2),
+        ("surface_review_second_detail_missing", 4),
+    ] {
+        let pixels = pixel_groups
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| *index != missing_group)
+            .flat_map(|(_, pixels)| pixels.iter().copied())
+            .collect::<Vec<_>>();
+        let (temp_dir, metadata_path) = checkpoint_fixture(
+            name,
+            true,
+            "island_surface_review",
+            "lake_river_waterfall_detail",
+            samples.clone(),
+            &pixels,
+        );
+        assert!(!audit_checkpoint_path(&metadata_path).expect("audit").passed);
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    let _ = fs::remove_dir_all(pass_dir);
+}
+
+#[test]
+fn island_surface_review_rejects_matching_features_from_another_island() {
+    let mut ruin = projected_sample(
+        "ruin_complex",
+        "ruined perimeter colonnade",
+        "stone",
+        80.0,
+        150.0,
+    );
+    let mut rock = projected_sample(
+        "rock_formation",
+        "clustered basalt crown",
+        "stone",
+        240.0,
+        150.0,
+    );
+    ruin["island"] = Value::String("neighboring island".to_string());
+    rock["island"] = Value::String("neighboring island".to_string());
+    let pixels = [
+        semantic_material_pixels("stone", 80, 150),
+        semantic_material_pixels("stone", 240, 150),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    let (temp_dir, metadata_path) = checkpoint_fixture(
+        "surface_review_off_target_island",
+        true,
+        "island_surface_review",
+        "ruins_and_rock_detail",
+        vec![ruin, rock],
+        &pixels,
+    );
+
+    assert!(!audit_checkpoint_path(&metadata_path).expect("audit").passed);
+    let _ = fs::remove_dir_all(temp_dir);
+}
+
 fn checkpoint_fixture(
     name: &str,
     sidecar_passed: bool,
@@ -1299,6 +1734,7 @@ fn checkpoint_fixture(
 
 fn projected_sample(kind: &str, label: &str, expected_material: &str, x: f64, y: f64) -> Value {
     serde_json::json!({
+        "island": "great sky plateau",
         "kind": kind,
         "label": label,
         "expected_material": expected_material,
@@ -1306,6 +1742,21 @@ fn projected_sample(kind: &str, label: &str, expected_material: &str, x: f64, y:
         "visibility": "visible",
         "screen": {"x": x, "y": y},
     })
+}
+
+fn semantic_material_pixels(expected_material: &str, x: u32, y: u32) -> [(u32, u32, Rgb<u8>); 3] {
+    let colors = match expected_material {
+        "foliage" => [Rgb([44, 126, 32]), Rgb([48, 132, 36]), Rgb([52, 138, 34])],
+        "flower" => [Rgb([210, 50, 96]), Rgb([124, 28, 80]), Rgb([255, 126, 162])],
+        "stone" => [Rgb([104, 82, 48]), Rgb([92, 74, 46]), Rgb([74, 68, 62])],
+        "water" => [Rgb([30, 88, 150]), Rgb([22, 92, 156]), Rgb([40, 94, 160])],
+        _ => panic!("unsupported semantic material: {expected_material}"),
+    };
+    [
+        (x - 1, y, colors[0]),
+        (x, y, colors[1]),
+        (x + 1, y, colors[2]),
+    ]
 }
 
 fn unique_temp_dir(name: &str) -> PathBuf {
@@ -1326,6 +1777,7 @@ fn terrain_audit_sample_with_hits(
     semantic_pixel_hits: usize,
 ) -> SceneSampleAudit {
     SceneSampleAudit {
+        island_name: None,
         kind: "terrain_surface".to_string(),
         label: label.to_string(),
         expected_material: "terrain".to_string(),
@@ -1347,6 +1799,7 @@ fn scene_audit_sample(
     semantic_pixel_hits: usize,
 ) -> SceneSampleAudit {
     SceneSampleAudit {
+        island_name: Some("great sky plateau".to_string()),
         kind: kind.to_string(),
         label: label.to_string(),
         expected_material: expected_material.to_string(),
@@ -1358,6 +1811,124 @@ fn scene_audit_sample(
         semantic_pixel_hits,
         passed: true,
     }
+}
+
+fn visible_failed_scene_audit_sample(
+    kind: &str,
+    label: &str,
+    expected_material: &str,
+    material_variant: &str,
+) -> SceneSampleAudit {
+    SceneSampleAudit {
+        island_name: Some("great sky plateau".to_string()),
+        kind: kind.to_string(),
+        label: label.to_string(),
+        expected_material: expected_material.to_string(),
+        material_variant: material_variant.to_string(),
+        in_viewport: true,
+        visibility: "visible".to_string(),
+        screen_x: Some(12.0),
+        screen_y: Some(12.0),
+        semantic_pixel_hits: 0,
+        passed: false,
+    }
+}
+
+fn island_surface_review_report_checkpoints() -> Vec<CheckpointAudit> {
+    [
+        (
+            "ruins_and_rock_detail",
+            vec![
+                scene_audit_sample(
+                    "ruin_complex",
+                    "ruined perimeter colonnade",
+                    "stone",
+                    "stone_ruin",
+                    MIN_SAMPLE_PIXEL_HITS,
+                ),
+                scene_audit_sample(
+                    "rock_formation",
+                    "clustered basalt crown",
+                    "stone",
+                    "stone_ruin",
+                    MIN_SAMPLE_PIXEL_HITS,
+                ),
+            ],
+        ),
+        (
+            "dense_flora_detail",
+            vec![
+                scene_audit_sample(
+                    "flora_cluster",
+                    "fern grove",
+                    "foliage",
+                    "foliage",
+                    MIN_SAMPLE_PIXEL_HITS,
+                ),
+                scene_audit_sample(
+                    "flora_cluster",
+                    "reed bed",
+                    "foliage",
+                    "foliage",
+                    MIN_SAMPLE_PIXEL_HITS,
+                ),
+                scene_audit_sample(
+                    "flora_cluster",
+                    "flower thicket",
+                    "flower",
+                    "flower",
+                    MIN_SAMPLE_PIXEL_HITS,
+                ),
+            ],
+        ),
+        (
+            "lake_river_waterfall_detail",
+            vec![
+                scene_audit_sample(
+                    "water_surface",
+                    "low basin lake",
+                    "water",
+                    "water",
+                    MIN_SAMPLE_PIXEL_HITS,
+                ),
+                scene_audit_sample(
+                    "river_channel",
+                    "meadow runnel",
+                    "water",
+                    "water",
+                    MIN_SAMPLE_PIXEL_HITS,
+                ),
+                scene_audit_sample(
+                    "waterfall_water",
+                    "broken edge waterfall",
+                    "water",
+                    "water",
+                    MIN_SAMPLE_PIXEL_HITS,
+                ),
+                scene_audit_sample(
+                    "water_detail_waterfall_lip",
+                    "waterfall lip rocks",
+                    "stone",
+                    "stone_ruin",
+                    MIN_SAMPLE_PIXEL_HITS,
+                ),
+                scene_audit_sample(
+                    "water_detail_plunge_pool",
+                    "plunge pool ripples",
+                    "water",
+                    "water",
+                    MIN_SAMPLE_PIXEL_HITS,
+                ),
+            ],
+        ),
+    ]
+    .into_iter()
+    .map(|(checkpoint, samples)| {
+        let mut checkpoint = checkpoint_with_scene_samples(checkpoint, samples);
+        checkpoint.scenario = "island_surface_review".to_string();
+        checkpoint
+    })
+    .collect()
 }
 
 fn checkpoint_with_scene_samples(
@@ -1389,6 +1960,7 @@ fn checkpoint_with_scene_samples(
 
 fn visible_failed_terrain_audit_sample(label: &str, material_variant: &str) -> SceneSampleAudit {
     SceneSampleAudit {
+        island_name: None,
         kind: "terrain_surface".to_string(),
         label: label.to_string(),
         expected_material: "terrain".to_string(),

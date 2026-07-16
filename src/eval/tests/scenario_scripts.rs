@@ -490,6 +490,71 @@ fn great_sky_plateau_vistas_is_a_grounded_pixel_review() {
 }
 
 #[test]
+fn island_surface_review_is_registered_as_app_only_with_aliases() {
+    let scenario =
+        scenario_named(ISLAND_SURFACE_REVIEW).expect("island surface review scenario exists");
+
+    assert_eq!(SCENARIO_NAMES.len(), 23);
+    assert_eq!(APP_ONLY_SCENARIO_NAMES.len(), 8);
+    assert!(APP_ONLY_SCENARIO_NAMES.contains(&ISLAND_SURFACE_REVIEW));
+    assert_eq!(
+        scenario_named("surface_review")
+            .expect("surface review alias exists")
+            .name,
+        ISLAND_SURFACE_REVIEW
+    );
+    assert_eq!(
+        scenario_named("island_details")
+            .expect("island details alias exists")
+            .name,
+        ISLAND_SURFACE_REVIEW
+    );
+    assert_eq!(scenario.target_island_name, Some("great sky plateau"));
+}
+
+#[test]
+fn island_surface_review_has_grounded_detail_checkpoints_and_zero_input() {
+    let scenario =
+        scenario_named(ISLAND_SURFACE_REVIEW).expect("island surface review scenario exists");
+
+    assert_eq!(scenario.frame_count, 360);
+    assert_eq!(scenario.sample_stride, 1);
+    assert_eq!(scenario.thresholds.min_samples, 361);
+    assert_eq!(
+        scenario
+            .checkpoints
+            .iter()
+            .map(|checkpoint| (checkpoint.frame, checkpoint.name))
+            .collect::<Vec<_>>(),
+        [
+            (60, "ruins_and_rock_detail"),
+            (180, "dense_flora_detail"),
+            (300, "lake_river_waterfall_detail"),
+        ]
+    );
+    assert!(scenario.thresholds.min_grounded_samples >= 340);
+    assert_eq!(scenario.thresholds.min_horizontal_distance_m, 0.0);
+    assert_eq!(scenario.thresholds.min_max_speed_mps, 0.0);
+    assert_eq!(scenario.thresholds.min_gliding_samples, 0);
+    assert_eq!(scenario.thresholds.min_lifted_samples, 0);
+    assert_eq!(scenario.thresholds.max_camera_distance_m, 360.0);
+    assert_eq!(scenario.thresholds.max_camera_step_distance_m, 6.0);
+    assert_eq!(scenario.thresholds.max_camera_rotation_delta_degrees, 3.5);
+    assert_eq!(scenario.thresholds.max_camera_player_angle_degrees, 90.0);
+    assert!(!scenario.thresholds.require_target_landing);
+    assert_eq!(scenario.thresholds.min_target_landing_samples, 0);
+    assert_eq!(scenario.thresholds.max_final_target_distance_m, 8.0);
+
+    for frame in [0, 60, 120, 180, 240, 300, 360] {
+        assert_eq!(scripted_input(scenario, frame), FlightInput::default());
+        assert_eq!(
+            scripted_camera_input(scenario, frame),
+            CameraInput::default()
+        );
+    }
+}
+
+#[test]
 fn underbridge_under_route_targets_low_cave_camera_pass() {
     let scenario = scenario_named(UNDERBRIDGE_UNDER_ROUTE).expect("underbridge route exists");
     let alias = scenario_named("under_route").expect("under-route alias exists");
@@ -532,11 +597,16 @@ fn scenario_camera_thresholds_guard_follow_distance_and_jitter() {
     for name in SCENARIO_NAMES {
         let scenario = scenario_named(name).expect("scenario exists");
         let mouse_camera = *name == CAMERA_MOUSE_CONTROL;
-        let cinematic_vista = *name == GREAT_SKY_PLATEAU_VISTAS;
+        let cinematic_vista = matches!(*name, GREAT_SKY_PLATEAU_VISTAS | ISLAND_SURFACE_REVIEW);
+        let max_camera_distance_m = match *name {
+            ISLAND_SURFACE_REVIEW => 360.0,
+            GREAT_SKY_PLATEAU_VISTAS => 220.0,
+            _ => 16.5,
+        };
 
         assert!(
-            scenario.thresholds.max_camera_distance_m <= if cinematic_vista { 220.0 } else { 16.5 },
-            "{name} should fail if the follow camera drifts into a zoomed-out view"
+            scenario.thresholds.max_camera_distance_m <= max_camera_distance_m,
+            "{name} should fail if its camera exceeds the intended framing distance"
         );
         assert!(
             scenario.thresholds.max_camera_step_distance_m

@@ -179,9 +179,14 @@ pub(super) fn checkpoint_scene_sample_projection_json(
                 .unwrap_or_else(|| "null".to_string());
             let occluder_json = occluder_json(occlusion);
             let camera_distance_m = sample.world_position.distance(camera_position);
+            let island_json = sample
+                .island_name
+                .map(terrain_export_json_string)
+                .unwrap_or_else(|| "null".to_string());
 
             format!(
-                "{{\"kind\": {}, \"label\": {}, \"expected_material\": {}, \"material_variant\": {}, \"world\": {}, \"screen\": {}, \"in_viewport\": {}, \"visibility\": {}, \"occluder\": {}, \"camera_distance_m\": {}}}",
+                "{{\"island\": {}, \"kind\": {}, \"label\": {}, \"expected_material\": {}, \"material_variant\": {}, \"world\": {}, \"screen\": {}, \"in_viewport\": {}, \"visibility\": {}, \"occluder\": {}, \"camera_distance_m\": {}}}",
+                island_json,
                 terrain_export_json_string(sample.kind),
                 terrain_export_json_string(sample.label),
                 terrain_export_json_string(sample.expected_material),
@@ -239,6 +244,14 @@ fn waterfall_attached_to_occluding_island(
     occlusion: SemanticMarkerOcclusion,
     islands: &[SkyIsland],
 ) -> bool {
+    if sample.island_name != Some(occlusion.island_name) {
+        return false;
+    }
+    if matches!(sample.kind, "water_surface" | "river_channel")
+        || sample.kind.starts_with("water_detail_")
+    {
+        return true;
+    }
     if sample.kind != "waterfall_water" {
         return false;
     }
@@ -269,7 +282,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn owning_island_coarse_volume_does_not_hide_edge_waterfall_samples() {
+    fn owning_island_coarse_volume_does_not_hide_attached_water_samples() {
         let plateau = SkyIsland::new(
             "great sky plateau",
             Vec3::ZERO,
@@ -278,6 +291,7 @@ mod tests {
             false,
         );
         let sample = SemanticSceneSample {
+            island_name: Some("great sky plateau"),
             kind: "waterfall_water",
             label: "broken edge waterfall",
             expected_material: "water",
@@ -295,6 +309,42 @@ mod tests {
 
         assert!(waterfall_attached_to_occluding_island(
             &sample,
+            owning_occlusion,
+            &[plateau]
+        ));
+        for kind in ["water_detail_waterfall_lip", "water_detail_plunge_pool"] {
+            let edge_detail = SemanticSceneSample { kind, ..sample };
+            assert!(waterfall_attached_to_occluding_island(
+                &edge_detail,
+                owning_occlusion,
+                &[plateau]
+            ));
+        }
+        let lake_detail = SemanticSceneSample {
+            kind: "water_detail_lily_pad",
+            ..sample
+        };
+        assert!(waterfall_attached_to_occluding_island(
+            &lake_detail,
+            owning_occlusion,
+            &[plateau]
+        ));
+        let lake_surface = SemanticSceneSample {
+            kind: "water_surface",
+            world_position: Vec3::ZERO,
+            ..sample
+        };
+        assert!(waterfall_attached_to_occluding_island(
+            &lake_surface,
+            owning_occlusion,
+            &[plateau]
+        ));
+        let terrain = SemanticSceneSample {
+            kind: "terrain_surface",
+            ..sample
+        };
+        assert!(!waterfall_attached_to_occluding_island(
+            &terrain,
             owning_occlusion,
             &[plateau]
         ));

@@ -19,8 +19,9 @@ use crate::scene_setup_runtime::world::spawn_world_runtime;
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::FollowCamera;
 use nau_engine::eval::{
-    GREAT_SKY_PLATEAU_VISTAS, PLATEAU_ARRIVAL_CAMERA, TERRAIN_BODY_COLLISION_CONTACT,
-    TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT, UNDERBRIDGE_UNDER_ROUTE,
+    GREAT_SKY_PLATEAU_VISTAS, ISLAND_SURFACE_REVIEW, PLATEAU_ARRIVAL_CAMERA,
+    TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT,
+    UNDERBRIDGE_UNDER_ROUTE,
 };
 use nau_engine::world::{
     SkyRoute, WorldCollisionProxyKind, route_obstruction_spires,
@@ -79,10 +80,12 @@ pub(crate) fn setup(
     );
     commands.insert_resource(visual_asset_registry);
 
-    if eval_run
-        .as_deref()
-        .is_some_and(|run| run.scenario.name == GREAT_SKY_PLATEAU_VISTAS)
-    {
+    if eval_run.as_deref().is_some_and(|run| {
+        matches!(
+            run.scenario.name,
+            GREAT_SKY_PLATEAU_VISTAS | ISLAND_SURFACE_REVIEW
+        )
+    }) {
         spawn_follow_camera_with_settings(
             &mut commands,
             &mut scattering_mediums,
@@ -134,6 +137,9 @@ fn initial_player_position(
     }
     if eval_run.is_some_and(|run| run.scenario.name == PLATEAU_ARRIVAL_CAMERA) {
         return plateau_arrival_camera_start_position(route);
+    }
+    if eval_run.is_some_and(|run| run.scenario.name == ISLAND_SURFACE_REVIEW) {
+        return route.playtest_reset_position();
     }
     if eval_run.is_some_and(|run| run.scenario.name == GREAT_SKY_PLATEAU_VISTAS) {
         return plateau_vista_start_position(route);

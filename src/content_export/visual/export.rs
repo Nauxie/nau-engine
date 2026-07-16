@@ -4,7 +4,8 @@ use super::{
     metrics::{finite_range_f32, finite_ratio, min_finite_f32, visual_content_mesh_summary},
     palette::visual_content_palette_summary,
     types::{
-        VisualContentExportReport, VisualGroundCoverSummary, VisualRockSummary, VisualTreeSummary,
+        VisualContentExportReport, VisualGroundCoverSummary, VisualLandmarkSummary,
+        VisualRockSummary, VisualSurfaceFeatureFamily, VisualTreeSummary,
     },
     vegetation::{
         ground_cover_blade_stats, tree_canopy_lobe_count, tree_trunk_shape_metrics,
@@ -156,6 +157,22 @@ pub(crate) fn export_visual_content_inspection(
         .map(|summary| summary.kind)
         .collect::<HashSet<_>>()
         .len();
+    let flora_cluster_count =
+        surface_feature_count(&landmarks, VisualSurfaceFeatureFamily::FloraCluster);
+    let flora_cluster_kind_count =
+        surface_feature_kind_count(&landmarks, VisualSurfaceFeatureFamily::FloraCluster);
+    let ruin_complex_count =
+        surface_feature_count(&landmarks, VisualSurfaceFeatureFamily::RuinComplex);
+    let ruin_complex_kind_count =
+        surface_feature_kind_count(&landmarks, VisualSurfaceFeatureFamily::RuinComplex);
+    let rock_formation_count =
+        surface_feature_count(&landmarks, VisualSurfaceFeatureFamily::RockFormation);
+    let rock_formation_kind_count =
+        surface_feature_kind_count(&landmarks, VisualSurfaceFeatureFamily::RockFormation);
+    let water_detail_count =
+        surface_feature_count(&landmarks, VisualSurfaceFeatureFamily::WaterDetail);
+    let water_detail_kind_count =
+        surface_feature_kind_count(&landmarks, VisualSurfaceFeatureFamily::WaterDetail);
     let artifact_detail_count = landmarks
         .iter()
         .filter(|summary| summary.kind.starts_with("artifact_"))
@@ -267,6 +284,14 @@ pub(crate) fn export_visual_content_inspection(
             .count(),
         landmark_count: landmarks.len(),
         landmark_kind_count,
+        flora_cluster_count,
+        flora_cluster_kind_count,
+        ruin_complex_count,
+        ruin_complex_kind_count,
+        rock_formation_count,
+        rock_formation_kind_count,
+        water_detail_count,
+        water_detail_kind_count,
         artifact_detail_count,
         artifact_detail_kind_count,
         artifact_stair_count: landmarks
@@ -491,6 +516,59 @@ pub(crate) fn export_visual_content_inspection(
                 .filter(|summary| summary.kind.starts_with("under_route_"))
                 .map(|summary| summary.mesh.vertical_span_m),
         ),
+        surface_feature_vertex_total: landmarks
+            .iter()
+            .filter(|summary| summary.surface_feature_family.is_some())
+            .map(|summary| summary.mesh.vertex_count)
+            .sum(),
+        min_flora_cluster_mesh_vertices: min_surface_feature_vertices(
+            &landmarks,
+            VisualSurfaceFeatureFamily::FloraCluster,
+        ),
+        min_flora_cluster_horizontal_span_m: min_surface_feature_horizontal_span(
+            &landmarks,
+            VisualSurfaceFeatureFamily::FloraCluster,
+        ),
+        min_flora_cluster_vertical_span_m: min_surface_feature_vertical_span(
+            &landmarks,
+            VisualSurfaceFeatureFamily::FloraCluster,
+        ),
+        min_ruin_complex_mesh_vertices: min_surface_feature_vertices(
+            &landmarks,
+            VisualSurfaceFeatureFamily::RuinComplex,
+        ),
+        min_ruin_complex_horizontal_span_m: min_surface_feature_horizontal_span(
+            &landmarks,
+            VisualSurfaceFeatureFamily::RuinComplex,
+        ),
+        min_ruin_complex_vertical_span_m: min_surface_feature_vertical_span(
+            &landmarks,
+            VisualSurfaceFeatureFamily::RuinComplex,
+        ),
+        min_rock_formation_mesh_vertices: min_surface_feature_vertices(
+            &landmarks,
+            VisualSurfaceFeatureFamily::RockFormation,
+        ),
+        min_rock_formation_horizontal_span_m: min_surface_feature_horizontal_span(
+            &landmarks,
+            VisualSurfaceFeatureFamily::RockFormation,
+        ),
+        min_rock_formation_vertical_span_m: min_surface_feature_vertical_span(
+            &landmarks,
+            VisualSurfaceFeatureFamily::RockFormation,
+        ),
+        min_water_detail_mesh_vertices: min_surface_feature_vertices(
+            &landmarks,
+            VisualSurfaceFeatureFamily::WaterDetail,
+        ),
+        min_water_detail_horizontal_span_m: min_surface_feature_horizontal_span(
+            &landmarks,
+            VisualSurfaceFeatureFamily::WaterDetail,
+        ),
+        min_water_detail_vertical_span_m: min_surface_feature_vertical_span(
+            &landmarks,
+            VisualSurfaceFeatureFamily::WaterDetail,
+        ),
         artifact_detail_vertex_total: landmarks
             .iter()
             .filter(|summary| summary.kind.starts_with("artifact_"))
@@ -573,7 +651,70 @@ pub(crate) fn export_visual_content_inspection(
     Ok(report)
 }
 
-fn min_landmark_vertices(landmarks: &[super::types::VisualLandmarkSummary], kind: &str) -> usize {
+fn surface_feature_count(
+    landmarks: &[VisualLandmarkSummary],
+    family: VisualSurfaceFeatureFamily,
+) -> usize {
+    landmarks
+        .iter()
+        .filter(|summary| summary.surface_feature_family == Some(family))
+        .count()
+}
+
+fn surface_feature_kind_count(
+    landmarks: &[VisualLandmarkSummary],
+    family: VisualSurfaceFeatureFamily,
+) -> usize {
+    landmarks
+        .iter()
+        .filter(|summary| summary.surface_feature_family == Some(family))
+        .map(|summary| summary.kind)
+        .collect::<HashSet<_>>()
+        .len()
+}
+
+fn min_surface_feature_vertices(
+    landmarks: &[VisualLandmarkSummary],
+    family: VisualSurfaceFeatureFamily,
+) -> usize {
+    landmarks
+        .iter()
+        .filter(|summary| summary.surface_feature_family == Some(family))
+        .map(|summary| summary.mesh.vertex_count)
+        .min()
+        .unwrap_or(0)
+}
+
+fn min_surface_feature_horizontal_span(
+    landmarks: &[VisualLandmarkSummary],
+    family: VisualSurfaceFeatureFamily,
+) -> f32 {
+    min_finite_f32(
+        landmarks
+            .iter()
+            .filter(|summary| summary.surface_feature_family == Some(family))
+            .map(|summary| {
+                summary
+                    .mesh
+                    .horizontal_span_m
+                    .max(summary.mesh.depth_span_m)
+            }),
+    )
+}
+
+fn min_surface_feature_vertical_span(
+    landmarks: &[VisualLandmarkSummary],
+    family: VisualSurfaceFeatureFamily,
+) -> f32 {
+    min_finite_f32(
+        landmarks
+            .iter()
+            .filter(|summary| summary.surface_feature_family == Some(family))
+            .map(|summary| summary.mesh.vertical_span_m),
+    )
+}
+
+fn min_landmark_vertices(landmarks: &[VisualLandmarkSummary], kind: &str) -> usize {
     landmarks
         .iter()
         .filter(|summary| summary.kind == kind)
@@ -597,7 +738,7 @@ fn is_artifact_faceted_stone_kind(kind: &str) -> bool {
     kind == "artifact_pebble_field"
 }
 
-fn min_landmark_triangles(landmarks: &[super::types::VisualLandmarkSummary], kind: &str) -> usize {
+fn min_landmark_triangles(landmarks: &[VisualLandmarkSummary], kind: &str) -> usize {
     landmarks
         .iter()
         .filter(|summary| summary.kind == kind)
@@ -606,10 +747,7 @@ fn min_landmark_triangles(landmarks: &[super::types::VisualLandmarkSummary], kin
         .unwrap_or(0)
 }
 
-fn min_landmark_vertical_span(
-    landmarks: &[super::types::VisualLandmarkSummary],
-    kind: &str,
-) -> f32 {
+fn min_landmark_vertical_span(landmarks: &[VisualLandmarkSummary], kind: &str) -> f32 {
     min_finite_f32(
         landmarks
             .iter()
@@ -618,10 +756,7 @@ fn min_landmark_vertical_span(
     )
 }
 
-fn min_landmark_horizontal_span(
-    landmarks: &[super::types::VisualLandmarkSummary],
-    kind: &str,
-) -> f32 {
+fn min_landmark_horizontal_span(landmarks: &[VisualLandmarkSummary], kind: &str) -> f32 {
     min_finite_f32(
         landmarks
             .iter()
@@ -630,7 +765,7 @@ fn min_landmark_horizontal_span(
     )
 }
 
-fn min_landmark_planar_span(landmarks: &[super::types::VisualLandmarkSummary], kind: &str) -> f32 {
+fn min_landmark_planar_span(landmarks: &[VisualLandmarkSummary], kind: &str) -> f32 {
     min_finite_f32(
         landmarks
             .iter()
@@ -644,10 +779,7 @@ fn min_landmark_planar_span(landmarks: &[super::types::VisualLandmarkSummary], k
     )
 }
 
-fn min_landmark_height_bands(
-    landmarks: &[super::types::VisualLandmarkSummary],
-    kind: &str,
-) -> usize {
+fn min_landmark_height_bands(landmarks: &[VisualLandmarkSummary], kind: &str) -> usize {
     landmarks
         .iter()
         .filter(|summary| summary.kind == kind)
@@ -656,10 +788,7 @@ fn min_landmark_height_bands(
         .unwrap_or(0)
 }
 
-fn min_landmark_radius_bands(
-    landmarks: &[super::types::VisualLandmarkSummary],
-    kind: &str,
-) -> usize {
+fn min_landmark_radius_bands(landmarks: &[VisualLandmarkSummary], kind: &str) -> usize {
     landmarks
         .iter()
         .filter(|summary| summary.kind == kind)
@@ -668,10 +797,7 @@ fn min_landmark_radius_bands(
         .unwrap_or(0)
 }
 
-fn min_landmark_normal_slope_bands(
-    landmarks: &[super::types::VisualLandmarkSummary],
-    kind: &str,
-) -> usize {
+fn min_landmark_normal_slope_bands(landmarks: &[VisualLandmarkSummary], kind: &str) -> usize {
     landmarks
         .iter()
         .filter(|summary| summary.kind == kind)
