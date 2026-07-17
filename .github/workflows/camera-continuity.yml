@@ -57,7 +57,55 @@ jobs:
         env:
           NAU_DEV_PLAY_PERF_MAX_AVG_FRAME_TIME_MS: "70"
           NAU_DEV_PLAY_PERF_MAX_P95_FRAME_TIME_MS: "90"
+          NAU_DEV_PLAY_PERF_MAX_FRAME_TIME_MS: "500"
+          NAU_DEV_PLAY_PERF_MAX_FRAMES_OVER_16_67MS: "201"
+          NAU_DEV_PLAY_PERF_MAX_MATERIAL_COUNT: "116"
+          NAU_DEV_PLAY_PERF_RUN_HOST_PREFLIGHT: "0"
         run: ./tools/dev_play_performance_gate.sh target/eval/dev_play_performance/ci
+
+      - name: Compare PR performance with base
+        if: github.event_name == 'pull_request'
+        env:
+          NAU_PERF_ALLOW_BUSY_HOST: "1"
+          NAU_PERF_REQUIRE_QUIET_HOST_AFTER: "0"
+          NAU_PERF_MAX_AVG_FRAME_TIME_MS: "70"
+          NAU_PERF_MAX_P95_FRAME_TIME_MS: "90"
+          NAU_PERF_MAX_P99_FRAME_TIME_MS: "150"
+          NAU_PERF_SUMMARY_MAX_COUNT_REGRESSION_RATIO: "2.0"
+        run: |
+          baseline_worktree="${RUNNER_TEMP}/nau-engine-perf-base"
+          baseline_target="${RUNNER_TEMP}/nau-engine-perf-base-target"
+          baseline_output="${GITHUB_WORKSPACE}/target/eval/perf_compare/base"
+          candidate_output="${GITHUB_WORKSPACE}/target/eval/perf_compare/candidate"
+
+          git fetch --no-tags origin "${{ github.event.pull_request.base.sha }}"
+          rm -rf "${baseline_worktree}" "${baseline_target}"
+          git worktree add --detach \
+            "${baseline_worktree}" \
+            "${{ github.event.pull_request.base.sha }}"
+
+          (
+            cd "${baseline_worktree}"
+            CARGO_TARGET_DIR="${baseline_target}" \
+              NAU_PERF_OUTPUT_DIR="${baseline_output}" \
+              ./tools/perf_baseline.sh \
+                baseline_route \
+                long_glide_visibility \
+                camera_mouse_control
+          )
+
+          NAU_PERF_BUILD_FIRST=0 \
+            NAU_PERF_OUTPUT_DIR="${candidate_output}" \
+            ./tools/perf_baseline.sh \
+              baseline_route \
+              long_glide_visibility \
+              camera_mouse_control
+
+          ./tools/compare_perf_summaries.sh \
+            "${baseline_output}/perf_summary.json" \
+            "${candidate_output}/perf_summary.json"
+
+          git worktree remove --force "${baseline_worktree}"
 
       - name: Camera continuity gate
         run: ./tools/camera_continuity_gate.sh target/eval/camera_continuity/ci
