@@ -130,6 +130,10 @@ fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
             "NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_AVG_FRAME_TIME_REGRESSION_RATIO: \"1.15\""
         )
     );
+    assert!(
+        workflow
+            .contains("NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_HITCH_COUNT_REGRESSION_RATIO: \"1.25\"")
+    );
     assert!(!workflow.contains("NAU_PERF_SUMMARY_MAX_COUNT_REGRESSION_RATIO: \"2.0\""));
     assert!(workflow.contains("Compare PR performance with base"));
     assert!(workflow.contains("github.event.pull_request.base.sha"));
@@ -148,12 +152,21 @@ fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
     assert!(comparison.contains(
         "NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_AVG_FRAME_TIME_REGRESSION_RATIO:-${max_frame_time_ratio}"
     ));
+    assert!(comparison.contains(
+        "NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_HITCH_COUNT_REGRESSION_RATIO:-${max_count_ratio}"
+    ));
     assert!(comparison.contains("if [[ \"${scenario}\" == \"camera_mouse_control\" ]]; then"));
     assert!(comparison.contains(
         "compare_metric \"${scenario}\" \"avg_frame_time_ms\" \\\n    \"${scenario_avg_frame_time_ratio}\""
     ));
     assert!(comparison.contains(
         "compare_metric \"${scenario}\" \"p95_frame_time_ms\" \\\n    \"${max_frame_time_ratio}\""
+    ));
+    assert!(comparison.contains(
+        "compare_optional_count_metric \"${scenario}\" \"runtime_frames_over_50ms\" \\\n    \"${scenario_hitch_count_ratio}\""
+    ));
+    assert!(comparison.contains(
+        "compare_metric \"${scenario}\" \"max_entity_count\" \\\n    \"${max_count_ratio}\""
     ));
 }
 
