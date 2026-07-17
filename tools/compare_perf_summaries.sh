@@ -20,6 +20,7 @@ max_p95_frame_time_ms="${NAU_PERF_SUMMARY_MAX_P95_FRAME_TIME_REGRESSION_MS:-4}"
 max_p99_frame_time_ms="${NAU_PERF_SUMMARY_MAX_P99_FRAME_TIME_REGRESSION_MS:-3}"
 max_count_ratio="${NAU_PERF_SUMMARY_MAX_COUNT_REGRESSION_RATIO:-1.10}"
 max_count_abs="${NAU_PERF_SUMMARY_MAX_COUNT_REGRESSION_ABS:-5}"
+camera_mouse_max_hitch_count_ratio="${NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_HITCH_COUNT_REGRESSION_RATIO:-${max_count_ratio}}"
 summary_max_avg_frame_time_ms="${NAU_PERF_MAX_AVG_FRAME_TIME_MS:-24}"
 summary_max_p95_frame_time_ms="${NAU_PERF_MAX_P95_FRAME_TIME_MS:-45}"
 summary_max_p99_frame_time_ms="${NAU_PERF_MAX_P99_FRAME_TIME_MS:-80}"
@@ -423,6 +424,10 @@ while IFS= read -r scenario; do
   if [[ "${scenario}" == "camera_mouse_control" ]]; then
     scenario_avg_frame_time_ratio="${camera_mouse_max_avg_frame_time_ratio}"
   fi
+  scenario_hitch_count_ratio="${max_count_ratio}"
+  if [[ "${scenario}" == "camera_mouse_control" ]]; then
+    scenario_hitch_count_ratio="${camera_mouse_max_hitch_count_ratio}"
+  fi
   compare_metric "${scenario}" "avg_frame_time_ms" \
     "${scenario_avg_frame_time_ratio}" "${max_frame_time_ms}"
   compare_metric "${scenario}" "p95_frame_time_ms" \
@@ -435,11 +440,11 @@ while IFS= read -r scenario; do
   compare_advisory_metric "${scenario}" "max_frame_time_ms" \
     "${max_frame_time_ratio}" "${max_frame_time_ms}"
   compare_optional_count_metric "${scenario}" "runtime_frames_over_33_34ms" \
-    "${max_count_ratio}" "${max_count_abs}"
+    "${scenario_hitch_count_ratio}" "${max_count_abs}"
   compare_optional_count_metric "${scenario}" "runtime_frames_over_50ms" \
-    "${max_count_ratio}" "${max_count_abs}"
+    "${scenario_hitch_count_ratio}" "${max_count_abs}"
   compare_optional_count_metric "${scenario}" "runtime_frames_over_100ms" \
-    "${max_count_ratio}" "${max_count_abs}"
+    "${scenario_hitch_count_ratio}" "${max_count_abs}"
   compare_metric "${scenario}" "max_entity_count" \
     "${max_count_ratio}" "${max_count_abs}"
   compare_metric "${scenario}" "max_mesh_count" \
