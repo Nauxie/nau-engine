@@ -15,10 +15,11 @@ use std::{env, path::PathBuf, process};
 
 use analysis::audit_path;
 use report::{
-    VisualAuditProfile, audit_report_json_for_profile, report_checks_for_profile, report_passed,
+    VisualAuditProfile, audit_report_json_for_profile, report_checks_for_profile,
+    report_passed_for_profile,
 };
 
-const USAGE: &str = "Usage: cargo run --bin visual_audit -- [--profile default|route_marker_optional|close_obstruction] <png> [<png> ...]";
+const USAGE: &str = "Usage: cargo run --bin visual_audit -- [--profile default|route_marker_optional|close_obstruction|island_gallery] <png> [<png> ...]";
 
 fn main() {
     let (profile, paths) = match parse_args(env::args().skip(1)) {
@@ -46,10 +47,10 @@ fn main() {
     }
 
     let report_checks = report_checks_for_profile(&audits, profile);
-    let passed = report_passed(&audits, &report_checks);
+    let passed = report_passed_for_profile(&audits, &report_checks, profile);
     println!(
         "{}",
-        audit_report_json_for_profile(passed, &report_checks, &audits, profile)
+        audit_report_json_for_profile(&report_checks, &audits, profile)
     );
     if !passed {
         process::exit(1);

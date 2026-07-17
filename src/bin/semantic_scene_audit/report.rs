@@ -1,24 +1,41 @@
 use crate::{
-    checkpoint::min_terrain_material_variant_hit_count,
+    checkpoint::{island_water_story_sample_matches, min_terrain_material_variant_hit_count},
     materials::min_material_sample_pixel_hit_count,
     thresholds::{
         EXPECTED_MATERIALS, EXPECTED_SCENE_SAMPLE_KINDS, EXPECTED_TERRAIN_MATERIAL_VARIANTS,
         MAX_PLAYER_WIND_SHEAR_PIXEL_COVERAGE_PER_CHECKPOINT,
         MAX_WIND_PIXEL_COVERAGE_PER_CHECKPOINT, MIN_PASSED_TERRAIN_MATERIAL_VARIANTS,
-        MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE, MIN_VISIBLE_MATERIALS_PER_CHECKPOINT,
-        MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT, MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS,
-        MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE, expected_material_pixel_coverage_floor,
-        expected_scene_kind_pixel_coverage_floor,
+        MIN_SAMPLE_PIXEL_HITS, MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE,
+        MIN_VISIBLE_MATERIALS_PER_CHECKPOINT, MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT,
+        MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS, MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE,
+        expected_material_pixel_coverage_floor, expected_scene_kind_pixel_coverage_floor,
     },
     types::{Check, CheckpointAudit, MaterialAudit, SceneSampleAudit},
 };
-use std::collections::{BTreeMap, HashSet};
+use nau_engine::world::{IslandWaterStory, island_art_directions};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
+const ISLAND_HERO_GALLERY_TARGET_COUNT: usize = 41;
+const ISLAND_HERO_GALLERY_CHECKPOINT_COUNT: usize = 123;
+const ISLAND_HERO_GALLERY_VIEWS: [&str; 3] = ["near", "mid", "traversal"];
 const CLOSE_OBSTRUCTION_EXPECTED_MATERIALS: &[&str] = &["terrain", "foliage", "distant_island"];
 const CLOSE_OBSTRUCTION_EXPECTED_SAMPLE_KINDS: &[&str] =
     &["terrain_surface", "tree_canopy", "distant_island"];
 const PLATEAU_VISTA_EXPECTED_MATERIALS: &[&str] = &["stone", "water"];
 const PLATEAU_VISTA_EXPECTED_SAMPLE_KINDS: &[&str] = &["plateau_arrival_ruin", "waterfall_water"];
+const ISLAND_SURFACE_REVIEW_EXPECTED_MATERIALS: &[&str] = &["stone", "foliage", "water"];
+const ISLAND_SURFACE_REVIEW_CONDITIONAL_MATERIALS: &[&str] = &["flower"];
+const ISLAND_SURFACE_REVIEW_ISLAND: &str = "great sky plateau";
+const ISLAND_SURFACE_REVIEW_EXPECTED_SAMPLE_KINDS: &[&str] = &[
+    "ruin_complex",
+    "rock_formation",
+    "flora_cluster",
+    "water_surface",
+    "river_channel",
+    "waterfall_water",
+    "water_detail_waterfall_lip",
+    "water_detail_plunge_pool",
+];
 
 #[derive(Clone, Copy)]
 struct AuditProfile {
@@ -26,9 +43,11 @@ struct AuditProfile {
     min_visible_materials_per_checkpoint: usize,
     min_visible_sample_kinds_per_checkpoint: usize,
     expected_materials: &'static [&'static str],
+    conditional_expected_materials: &'static [&'static str],
     expected_scene_sample_kinds: &'static [&'static str],
     require_terrain_material_variants: bool,
     require_all_visible_families: bool,
+    audit_visible_wind_samples: bool,
 }
 
 pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
@@ -159,13 +178,39 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
         checks.push(Check::at_least(
             format!("{material}_scene_sample_pixel_coverage"),
             *material_pixel_coverage.get(material).unwrap_or(&0) as f64,
-            expected_material_pixel_coverage_floor(material) as f64,
+            profile_material_pixel_coverage_floor(profile, material) as f64,
+            "pixels",
+        ));
+    }
+
+    for material in profile.conditional_expected_materials {
+        let visible_sample_count = *visible_material_counts.get(material).unwrap_or(&0);
+        if visible_sample_count == 0 {
+            continue;
+        }
+        let min_pixel_hits = min_material_sample_pixel_hit_count(visible_sample_count);
+        checks.push(Check::at_least(
+            format!("{material}_visible_scene_samples"),
+            visible_sample_count as f64,
+            1.0,
+            "samples",
+        ));
+        checks.push(Check::at_least(
+            format!("{material}_scene_sample_pixel_hits"),
+            *material_counts.get(material).unwrap_or(&0) as f64,
+            min_pixel_hits as f64,
+            "samples",
+        ));
+        checks.push(Check::at_least(
+            format!("{material}_scene_sample_pixel_coverage"),
+            *material_pixel_coverage.get(material).unwrap_or(&0) as f64,
+            (min_pixel_hits * MIN_SAMPLE_PIXEL_HITS) as f64,
             "pixels",
         ));
     }
 
     let visible_wind_samples = *visible_material_counts.get("wind").unwrap_or(&0);
-    if visible_wind_samples > 0 {
+    if profile.audit_visible_wind_samples && visible_wind_samples > 0 {
         let min_wind_pixel_hits = min_material_sample_pixel_hit_count(visible_wind_samples);
         let visible_wind_checkpoints = visible_wind_checkpoint_count(checkpoints);
         checks.push(Check::at_least(
@@ -233,9 +278,16 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
         checks.push(Check::at_least(
             format!("scene_kind_{kind}_pixel_coverage"),
             *kind_pixel_coverage.get(kind).unwrap_or(&0) as f64,
-            expected_scene_kind_pixel_coverage_floor(kind) as f64,
+            profile_scene_kind_pixel_coverage_floor(profile, kind) as f64,
             "pixels",
         ));
+    }
+
+    if profile.name == "island_surface_review" {
+        checks.extend(island_surface_review_checkpoint_checks(checkpoints));
+    }
+    if profile.name == "island_hero_gallery" {
+        checks.extend(island_hero_gallery_report_checks(checkpoints));
     }
 
     if profile.require_terrain_material_variants {
@@ -268,6 +320,42 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
 }
 
 fn audit_profile(checkpoints: &[CheckpointAudit]) -> AuditProfile {
+    let island_hero_gallery = !checkpoints.is_empty()
+        && checkpoints
+            .iter()
+            .all(|checkpoint| checkpoint.scenario == "island_hero_gallery");
+    if island_hero_gallery {
+        return AuditProfile {
+            name: "island_hero_gallery",
+            min_visible_materials_per_checkpoint: 0,
+            min_visible_sample_kinds_per_checkpoint: 0,
+            expected_materials: &[],
+            conditional_expected_materials: &[],
+            expected_scene_sample_kinds: &[],
+            require_terrain_material_variants: false,
+            require_all_visible_families: false,
+            audit_visible_wind_samples: false,
+        };
+    }
+
+    let island_surface_review = !checkpoints.is_empty()
+        && checkpoints
+            .iter()
+            .all(|checkpoint| checkpoint.scenario == "island_surface_review");
+    if island_surface_review {
+        return AuditProfile {
+            name: "island_surface_review",
+            min_visible_materials_per_checkpoint: 1,
+            min_visible_sample_kinds_per_checkpoint: 1,
+            expected_materials: ISLAND_SURFACE_REVIEW_EXPECTED_MATERIALS,
+            conditional_expected_materials: ISLAND_SURFACE_REVIEW_CONDITIONAL_MATERIALS,
+            expected_scene_sample_kinds: ISLAND_SURFACE_REVIEW_EXPECTED_SAMPLE_KINDS,
+            require_terrain_material_variants: false,
+            require_all_visible_families: false,
+            audit_visible_wind_samples: false,
+        };
+    }
+
     let plateau_vistas = !checkpoints.is_empty()
         && checkpoints
             .iter()
@@ -278,9 +366,11 @@ fn audit_profile(checkpoints: &[CheckpointAudit]) -> AuditProfile {
             min_visible_materials_per_checkpoint: 2,
             min_visible_sample_kinds_per_checkpoint: 2,
             expected_materials: PLATEAU_VISTA_EXPECTED_MATERIALS,
+            conditional_expected_materials: &[],
             expected_scene_sample_kinds: PLATEAU_VISTA_EXPECTED_SAMPLE_KINDS,
             require_terrain_material_variants: false,
             require_all_visible_families: false,
+            audit_visible_wind_samples: true,
         };
     }
 
@@ -295,9 +385,11 @@ fn audit_profile(checkpoints: &[CheckpointAudit]) -> AuditProfile {
             min_visible_materials_per_checkpoint: 3,
             min_visible_sample_kinds_per_checkpoint: 3,
             expected_materials: CLOSE_OBSTRUCTION_EXPECTED_MATERIALS,
+            conditional_expected_materials: &[],
             expected_scene_sample_kinds: CLOSE_OBSTRUCTION_EXPECTED_SAMPLE_KINDS,
             require_terrain_material_variants: false,
             require_all_visible_families: true,
+            audit_visible_wind_samples: true,
         };
     }
 
@@ -306,10 +398,425 @@ fn audit_profile(checkpoints: &[CheckpointAudit]) -> AuditProfile {
         min_visible_materials_per_checkpoint: MIN_VISIBLE_MATERIALS_PER_CHECKPOINT,
         min_visible_sample_kinds_per_checkpoint: MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT,
         expected_materials: &EXPECTED_MATERIALS,
+        conditional_expected_materials: &[],
         expected_scene_sample_kinds: &EXPECTED_SCENE_SAMPLE_KINDS,
         require_terrain_material_variants: true,
         require_all_visible_families: true,
+        audit_visible_wind_samples: true,
     }
+}
+
+fn profile_material_pixel_coverage_floor(profile: AuditProfile, material: &str) -> usize {
+    if profile.name == "island_surface_review" {
+        MIN_SAMPLE_PIXEL_HITS
+    } else {
+        expected_material_pixel_coverage_floor(material)
+    }
+}
+
+fn profile_scene_kind_pixel_coverage_floor(profile: AuditProfile, kind: &str) -> usize {
+    if profile.name == "island_surface_review" {
+        MIN_SAMPLE_PIXEL_HITS
+    } else {
+        expected_scene_kind_pixel_coverage_floor(kind)
+    }
+}
+
+fn island_surface_review_checkpoint_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
+    let mut checks = Vec::new();
+    for (checkpoint, kind, expected_materials, threshold) in [
+        ("ruins_and_rock_detail", "ruin_complex", &["stone"][..], 1),
+        ("ruins_and_rock_detail", "rock_formation", &["stone"][..], 1),
+        (
+            "dense_flora_detail",
+            "flora_cluster",
+            &["foliage", "flower"][..],
+            3,
+        ),
+        (
+            "lake_river_waterfall_detail",
+            "water_surface",
+            &["water"][..],
+            1,
+        ),
+        (
+            "lake_river_waterfall_detail",
+            "river_channel",
+            &["water"][..],
+            1,
+        ),
+        (
+            "lake_river_waterfall_detail",
+            "waterfall_water",
+            &["water"][..],
+            1,
+        ),
+        (
+            "lake_river_waterfall_detail",
+            "water_detail_waterfall_lip",
+            &["stone"][..],
+            1,
+        ),
+        (
+            "lake_river_waterfall_detail",
+            "water_detail_plunge_pool",
+            &["water"][..],
+            1,
+        ),
+    ] {
+        checks.push(Check::at_least(
+            format!("{checkpoint}_{kind}_pixel_hits"),
+            minimum_checkpoint_kind_hit_count(checkpoints, checkpoint, kind, expected_materials)
+                as f64,
+            threshold as f64,
+            "samples",
+        ));
+    }
+
+    let dense_flora_checkpoints = checkpoints
+        .iter()
+        .filter(|checkpoint| {
+            checkpoint.scenario == "island_surface_review"
+                && checkpoint.checkpoint == "dense_flora_detail"
+        })
+        .collect::<Vec<_>>();
+    let distinct_label_checkpoint_count = dense_flora_checkpoints
+        .iter()
+        .filter(|checkpoint| {
+            let passed = distinct_kind_label_count(
+                &checkpoint.samples,
+                "flora_cluster",
+                &["foliage", "flower"],
+                true,
+            );
+            passed >= 2
+        })
+        .count();
+    checks.push(Check::at_least(
+        "dense_flora_detail_distinct_flora_labels",
+        distinct_label_checkpoint_count as f64,
+        dense_flora_checkpoints.len().max(1) as f64,
+        "checkpoints",
+    ));
+
+    checks
+}
+
+fn island_hero_gallery_report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
+    let profiles = island_art_directions();
+    let authored_targets = profiles
+        .iter()
+        .map(|profile| profile.island_name.to_string())
+        .collect::<HashSet<_>>();
+    let expected_heroes = profiles
+        .iter()
+        .map(|profile| {
+            (
+                profile.island_name.to_string(),
+                profile.hero_landmark.label().to_string(),
+            )
+        })
+        .collect::<HashSet<_>>();
+    let expected_flora = profiles
+        .iter()
+        .flat_map(|profile| {
+            profile
+                .flora_kinds
+                .iter()
+                .take(usize::from(profile.flora_count))
+                .map(|kind| (profile.island_name.to_string(), kind.label().to_string()))
+        })
+        .collect::<HashSet<_>>();
+    let expected_formations = profiles
+        .iter()
+        .flat_map(|profile| {
+            profile
+                .formation_kinds
+                .iter()
+                .take(usize::from(profile.formation_count))
+                .map(|kind| (profile.island_name.to_string(), kind.label().to_string()))
+        })
+        .collect::<HashSet<_>>();
+    let expected_ruins = profiles
+        .iter()
+        .flat_map(|profile| {
+            profile
+                .ruin_kinds
+                .iter()
+                .take(usize::from(profile.ruin_count))
+                .map(|kind| (profile.island_name.to_string(), kind.label().to_string()))
+        })
+        .collect::<HashSet<_>>();
+    let expected_water_islands = profiles
+        .iter()
+        .filter(|profile| profile.water_story != IslandWaterStory::DryWindCarved)
+        .map(|profile| profile.island_name.to_string())
+        .collect::<HashSet<_>>();
+    let water_story_by_target = profiles
+        .iter()
+        .map(|profile| (profile.island_name, profile.water_story))
+        .collect::<HashMap<_, _>>();
+
+    let mut targets = HashSet::new();
+    let mut authored_target_hits = HashSet::new();
+    let mut target_view_pairs = HashSet::new();
+    let mut views_by_target = HashMap::<String, Vec<String>>::new();
+    let mut metadata_checkpoint_count = 0;
+    let mut terrain_islands = HashSet::new();
+    let mut hero_hits = HashSet::new();
+    let mut flora_hits = HashSet::new();
+    let mut formation_hits = HashSet::new();
+    let mut ruin_hits = HashSet::new();
+    let mut water_islands = HashSet::new();
+
+    for checkpoint in checkpoints {
+        let (Some(target), Some(view)) = (
+            checkpoint.target_island.as_deref(),
+            checkpoint.review_view.as_deref(),
+        ) else {
+            continue;
+        };
+        targets.insert(target.to_string());
+        if authored_targets.contains(target) {
+            authored_target_hits.insert(target.to_string());
+        }
+        if ISLAND_HERO_GALLERY_VIEWS.contains(&view) {
+            metadata_checkpoint_count += 1;
+            target_view_pairs.insert((target.to_string(), view.to_string()));
+            views_by_target
+                .entry(target.to_string())
+                .or_default()
+                .push(view.to_string());
+        }
+        let near_view = view == "near";
+
+        for sample in checkpoint
+            .samples
+            .iter()
+            .filter(|sample| sample.passed && sample.island_name.as_deref() == Some(target))
+        {
+            let target_label = (target.to_string(), sample.label.clone());
+            match sample.kind.as_str() {
+                "terrain_surface" if sample.expected_material == "terrain" => {
+                    terrain_islands.insert(target.to_string());
+                }
+                "hero_landmark" if expected_heroes.contains(&target_label) => {
+                    hero_hits.insert(target_label);
+                }
+                "flora_cluster" if near_view => {
+                    if let Some(label) = canonical_flora_label(&sample.label) {
+                        let feature = (target.to_string(), label.to_string());
+                        if expected_flora.contains(&feature) {
+                            flora_hits.insert(feature);
+                        }
+                    }
+                }
+                "rock_formation" if near_view => {
+                    if let Some(label) = canonical_formation_label(&sample.label) {
+                        let feature = (target.to_string(), label.to_string());
+                        if expected_formations.contains(&feature) {
+                            formation_hits.insert(feature);
+                        }
+                    }
+                }
+                "ruin_complex" if near_view => {
+                    if let Some(label) = canonical_ruin_label(&sample.label) {
+                        let feature = (target.to_string(), label.to_string());
+                        if expected_ruins.contains(&feature) {
+                            ruin_hits.insert(feature);
+                        }
+                    }
+                }
+                _ if near_view
+                    && water_story_by_target
+                        .get(target)
+                        .is_some_and(|story| island_water_story_sample_matches(*story, sample)) =>
+                {
+                    water_islands.insert(target.to_string());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let targets_with_all_views = profiles
+        .iter()
+        .filter(|profile| {
+            let Some(views) = views_by_target.get(profile.island_name) else {
+                return false;
+            };
+            views.len() == ISLAND_HERO_GALLERY_VIEWS.len()
+                && ISLAND_HERO_GALLERY_VIEWS
+                    .iter()
+                    .all(|view| views.iter().any(|candidate| candidate == view))
+        })
+        .count();
+    let passing_checkpoint_count = checkpoints
+        .iter()
+        .filter(|checkpoint| checkpoint.passed)
+        .count();
+
+    vec![
+        Check::exactly(
+            "island_hero_gallery_checkpoint_count",
+            checkpoints.len() as f64,
+            ISLAND_HERO_GALLERY_CHECKPOINT_COUNT as f64,
+            "checkpoints",
+        ),
+        Check::exactly(
+            "island_hero_gallery_passing_checkpoint_count",
+            passing_checkpoint_count as f64,
+            ISLAND_HERO_GALLERY_CHECKPOINT_COUNT as f64,
+            "checkpoints",
+        ),
+        Check::exactly(
+            "island_hero_gallery_checkpoint_metadata_count",
+            metadata_checkpoint_count as f64,
+            ISLAND_HERO_GALLERY_CHECKPOINT_COUNT as f64,
+            "checkpoints",
+        ),
+        Check::exactly(
+            "island_hero_gallery_unique_target_count",
+            targets.len() as f64,
+            ISLAND_HERO_GALLERY_TARGET_COUNT as f64,
+            "islands",
+        ),
+        Check::exactly(
+            "island_hero_gallery_authored_target_count",
+            authored_target_hits.len() as f64,
+            ISLAND_HERO_GALLERY_TARGET_COUNT as f64,
+            "islands",
+        ),
+        Check::exactly(
+            "island_hero_gallery_unique_target_view_count",
+            target_view_pairs.len() as f64,
+            ISLAND_HERO_GALLERY_CHECKPOINT_COUNT as f64,
+            "views",
+        ),
+        Check::exactly(
+            "island_hero_gallery_targets_with_all_views",
+            targets_with_all_views as f64,
+            ISLAND_HERO_GALLERY_TARGET_COUNT as f64,
+            "islands",
+        ),
+        Check::exactly(
+            "island_hero_gallery_target_terrain_coverage",
+            terrain_islands.len() as f64,
+            ISLAND_HERO_GALLERY_TARGET_COUNT as f64,
+            "islands",
+        ),
+        Check::exactly(
+            "island_hero_gallery_authored_hero_coverage",
+            hero_hits.len() as f64,
+            expected_heroes.len() as f64,
+            "features",
+        ),
+        Check::exactly(
+            "island_hero_gallery_authored_flora_coverage",
+            flora_hits.len() as f64,
+            expected_flora.len() as f64,
+            "features",
+        ),
+        Check::exactly(
+            "island_hero_gallery_authored_formation_coverage",
+            formation_hits.len() as f64,
+            expected_formations.len() as f64,
+            "features",
+        ),
+        Check::exactly(
+            "island_hero_gallery_authored_ruin_coverage",
+            ruin_hits.len() as f64,
+            expected_ruins.len() as f64,
+            "features",
+        ),
+        Check::exactly(
+            "island_hero_gallery_authored_water_coverage",
+            water_islands.len() as f64,
+            expected_water_islands.len() as f64,
+            "islands",
+        ),
+    ]
+}
+
+fn canonical_flora_label(label: &str) -> Option<&'static str> {
+    match label {
+        "fern_grove" | "fern grove" => Some("fern_grove"),
+        "flower_thicket" | "flower thicket" => Some("flower_thicket"),
+        "reed_bed" | "reed bed" => Some("reed_bed"),
+        "wind_shrub" | "wind-shaped shrub" => Some("wind_shrub"),
+        "broadleaf_patch" | "broadleaf patch" => Some("broadleaf_patch"),
+        "mushroom_ring" | "mushroom ring" => Some("mushroom_ring"),
+        _ => None,
+    }
+}
+
+fn canonical_formation_label(label: &str) -> Option<&'static str> {
+    match label {
+        "basalt_crown" | "clustered basalt crown" => Some("basalt_crown"),
+        "weathered_arch" | "weathered rock arch" => Some("weathered_arch"),
+        "boulder_spine" | "fractured boulder spine" => Some("boulder_spine"),
+        "stacked_monoliths" | "stacked leaning monoliths" => Some("stacked_monoliths"),
+        "crystal_outcrop" | "faceted crystal outcrop" => Some("crystal_outcrop"),
+        _ => None,
+    }
+}
+
+fn canonical_ruin_label(label: &str) -> Option<&'static str> {
+    match label {
+        "colonnade" | "ruined perimeter colonnade" => Some("colonnade"),
+        "sunken_sanctum" | "sunken open-air sanctum" => Some("sunken_sanctum"),
+        "watchtower" | "collapsed watchtower" => Some("watchtower"),
+        "broken_aqueduct" | "broken aqueduct arcade" => Some("broken_aqueduct"),
+        "processional_stairs" | "processional ruin stairs" => Some("processional_stairs"),
+        _ => None,
+    }
+}
+
+fn minimum_checkpoint_kind_hit_count(
+    checkpoints: &[CheckpointAudit],
+    checkpoint_name: &str,
+    kind: &str,
+    expected_materials: &[&str],
+) -> usize {
+    checkpoints
+        .iter()
+        .filter(|checkpoint| {
+            checkpoint.scenario == "island_surface_review"
+                && checkpoint.checkpoint == checkpoint_name
+        })
+        .map(|checkpoint| {
+            checkpoint
+                .samples
+                .iter()
+                .filter(|sample| {
+                    sample.passed
+                        && sample.island_name.as_deref() == Some(ISLAND_SURFACE_REVIEW_ISLAND)
+                        && sample.kind == kind
+                        && expected_materials.contains(&sample.expected_material.as_str())
+                })
+                .count()
+        })
+        .min()
+        .unwrap_or(0)
+}
+
+fn distinct_kind_label_count(
+    samples: &[SceneSampleAudit],
+    kind: &str,
+    expected_materials: &[&str],
+    passed_only: bool,
+) -> usize {
+    samples
+        .iter()
+        .filter(|sample| {
+            (!passed_only || sample.passed)
+                && sample.island_name.as_deref() == Some(ISLAND_SURFACE_REVIEW_ISLAND)
+                && sample.kind == kind
+                && expected_materials.contains(&sample.expected_material.as_str())
+        })
+        .map(|sample| sample.label.as_str())
+        .collect::<HashSet<_>>()
+        .len()
 }
 
 pub(crate) fn material_visible_counts(checkpoints: &[CheckpointAudit]) -> BTreeMap<&str, usize> {
@@ -537,12 +1044,14 @@ pub(crate) fn report_json(
 
 fn audit_profile_json(profile: AuditProfile) -> String {
     format!(
-        "{{\"name\": {}, \"expected_materials\": {}, \"expected_scene_sample_kinds\": {}, \"require_terrain_material_variants\": {}, \"require_all_visible_families\": {}}}",
+        "{{\"name\": {}, \"expected_materials\": {}, \"conditional_expected_materials\": {}, \"expected_scene_sample_kinds\": {}, \"require_terrain_material_variants\": {}, \"require_all_visible_families\": {}, \"audit_visible_wind_samples\": {}}}",
         json_string(profile.name),
         json_string_array(profile.expected_materials),
+        json_string_array(profile.conditional_expected_materials),
         json_string_array(profile.expected_scene_sample_kinds),
         profile.require_terrain_material_variants,
-        profile.require_all_visible_families
+        profile.require_all_visible_families,
+        profile.audit_visible_wind_samples
     )
 }
 
@@ -559,12 +1068,24 @@ pub(crate) fn checkpoint_json(checkpoint: &CheckpointAudit) -> String {
         .map(material_json)
         .collect::<Vec<_>>()
         .join(",\n");
+    let target_island = checkpoint
+        .target_island
+        .as_deref()
+        .map(json_string)
+        .unwrap_or_else(|| "null".to_string());
+    let review_view = checkpoint
+        .review_view
+        .as_deref()
+        .map(json_string)
+        .unwrap_or_else(|| "null".to_string());
     format!(
-        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"scenario\": {},\n      \"checkpoint\": {},\n      \"passed\": {},\n      \"in_viewport_scene_sample_count\": {},\n      \"occluded_scene_sample_count\": {},\n      \"visible_scene_sample_count\": {},\n      \"scene_sample_pixel_hit_count\": {},\n      \"visible_scene_material_count\": {},\n      \"scene_material_pixel_hit_count\": {},\n      \"visible_scene_sample_kind_count\": {},\n      \"scene_sample_kind_pixel_hit_count\": {},\n      \"visible_terrain_material_variant_count\": {},\n      \"terrain_material_variant_pixel_hit_count\": {},\n      \"materials\": [\n{}\n      ],\n      \"samples\": [\n{}\n      ]\n    }}",
+        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"scenario\": {},\n      \"checkpoint\": {},\n      \"target_island\": {},\n      \"review_view\": {},\n      \"passed\": {},\n      \"in_viewport_scene_sample_count\": {},\n      \"occluded_scene_sample_count\": {},\n      \"visible_scene_sample_count\": {},\n      \"scene_sample_pixel_hit_count\": {},\n      \"visible_scene_material_count\": {},\n      \"scene_material_pixel_hit_count\": {},\n      \"visible_scene_sample_kind_count\": {},\n      \"scene_sample_kind_pixel_hit_count\": {},\n      \"visible_terrain_material_variant_count\": {},\n      \"terrain_material_variant_pixel_hit_count\": {},\n      \"materials\": [\n{}\n      ],\n      \"samples\": [\n{}\n      ]\n    }}",
         json_string(&checkpoint.metadata_path),
         json_string(&checkpoint.screenshot_path),
         json_string(&checkpoint.scenario),
         json_string(&checkpoint.checkpoint),
+        target_island,
+        review_view,
         checkpoint.passed,
         checkpoint.in_viewport_scene_sample_count,
         checkpoint.occluded_scene_sample_count,
@@ -594,12 +1115,18 @@ pub(crate) fn material_json(material: &MaterialAudit) -> String {
 }
 
 pub(crate) fn sample_json(sample: &SceneSampleAudit) -> String {
+    let island = sample
+        .island_name
+        .as_deref()
+        .map(json_string)
+        .unwrap_or_else(|| "null".to_string());
     let screen = match (sample.screen_x, sample.screen_y) {
         (Some(x), Some(y)) => format!("{{\"x\": {}, \"y\": {}}}", json_number(x), json_number(y)),
         _ => "null".to_string(),
     };
     format!(
-        "        {{\"kind\": {}, \"label\": {}, \"expected_material\": {}, \"material_variant\": {}, \"in_viewport\": {}, \"visibility\": {}, \"screen\": {}, \"semantic_pixel_hits\": {}, \"passed\": {}}}",
+        "        {{\"island\": {}, \"kind\": {}, \"label\": {}, \"expected_material\": {}, \"material_variant\": {}, \"in_viewport\": {}, \"visibility\": {}, \"screen\": {}, \"semantic_pixel_hits\": {}, \"passed\": {}}}",
+        island,
         json_string(&sample.kind),
         json_string(&sample.label),
         json_string(&sample.expected_material),

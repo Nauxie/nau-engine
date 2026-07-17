@@ -1,9 +1,14 @@
-use super::palette::visual_content_json_u8_triplet;
+use super::palette::{
+    visual_content_coarse_color_count, visual_content_distinct_palette_count,
+    visual_content_json_u8_triplet,
+};
 use crate::{
     content_export::shared::{terrain_export_json_number, terrain_export_json_string},
     eval_runtime::path_string,
 };
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
+
+pub(super) const VISUAL_CONTENT_EXPORT_SCHEMA: &str = "nau_visual_content_export.v2";
 
 #[derive(Debug)]
 pub(crate) struct VisualContentExportReport {
@@ -22,6 +27,14 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) weather_cloud_veil_count: usize,
     pub(crate) landmark_count: usize,
     pub(crate) landmark_kind_count: usize,
+    pub(crate) flora_cluster_count: usize,
+    pub(crate) flora_cluster_kind_count: usize,
+    pub(crate) ruin_complex_count: usize,
+    pub(crate) ruin_complex_kind_count: usize,
+    pub(crate) rock_formation_count: usize,
+    pub(crate) rock_formation_kind_count: usize,
+    pub(crate) water_detail_count: usize,
+    pub(crate) water_detail_kind_count: usize,
     pub(crate) artifact_detail_count: usize,
     pub(crate) artifact_detail_kind_count: usize,
     pub(crate) artifact_stair_count: usize,
@@ -88,6 +101,19 @@ pub(crate) struct VisualContentExportReport {
     pub(crate) min_route_lake_surface_horizontal_span_m: f32,
     pub(crate) min_river_channel_horizontal_span_m: f32,
     pub(crate) min_under_route_visual_vertical_span_m: f32,
+    pub(crate) surface_feature_vertex_total: usize,
+    pub(crate) min_flora_cluster_mesh_vertices: usize,
+    pub(crate) min_flora_cluster_horizontal_span_m: f32,
+    pub(crate) min_flora_cluster_vertical_span_m: f32,
+    pub(crate) min_ruin_complex_mesh_vertices: usize,
+    pub(crate) min_ruin_complex_horizontal_span_m: f32,
+    pub(crate) min_ruin_complex_vertical_span_m: f32,
+    pub(crate) min_rock_formation_mesh_vertices: usize,
+    pub(crate) min_rock_formation_horizontal_span_m: f32,
+    pub(crate) min_rock_formation_vertical_span_m: f32,
+    pub(crate) min_water_detail_mesh_vertices: usize,
+    pub(crate) min_water_detail_horizontal_span_m: f32,
+    pub(crate) min_water_detail_vertical_span_m: f32,
     pub(crate) artifact_detail_vertex_total: usize,
     pub(crate) min_artifact_detail_mesh_vertices: usize,
     pub(crate) min_artifact_stone_mesh_vertices: usize,
@@ -196,11 +222,44 @@ pub(crate) struct VisualLandmarkSummary {
     pub(crate) height_band_count: usize,
     pub(crate) radius_band_count: usize,
     pub(crate) normal_slope_band_count: usize,
+    pub(crate) surface_feature_family: Option<VisualSurfaceFeatureFamily>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum VisualSurfaceFeatureFamily {
+    FloraCluster,
+    RuinComplex,
+    RockFormation,
+    WaterDetail,
+}
+
+impl VisualSurfaceFeatureFamily {
+    fn label(self) -> &'static str {
+        match self {
+            Self::FloraCluster => "flora_cluster",
+            Self::RuinComplex => "ruin_complex",
+            Self::RockFormation => "rock_formation",
+            Self::WaterDetail => "water_detail",
+        }
+    }
 }
 
 #[derive(Debug)]
 pub(crate) struct VisualPaletteSummary {
     pub(crate) index: usize,
+    pub(crate) island_name: &'static str,
+    pub(crate) epithet: &'static str,
+    pub(crate) palette_family: &'static str,
+    pub(crate) surface_pattern: &'static str,
+    pub(crate) hero_landmark: &'static str,
+    pub(crate) water_story: &'static str,
+    pub(crate) art_direction_signature: u64,
+    pub(crate) flora_kinds: [&'static str; 3],
+    pub(crate) flora_count: usize,
+    pub(crate) formation_kinds: [&'static str; 2],
+    pub(crate) formation_count: usize,
+    pub(crate) ruin_kinds: [&'static str; 2],
+    pub(crate) ruin_count: usize,
     pub(crate) terrain_key: [u8; 3],
     pub(crate) foliage_key: [u8; 3],
     pub(crate) stone_key: [u8; 3],
@@ -244,11 +303,55 @@ impl VisualContentExportReport {
             .map(|summary| summary.to_json("    "))
             .collect::<Vec<_>>()
             .join(",\n");
+        let landmark_count = self.landmarks.len();
+        let landmark_kind_count = self
+            .landmarks
+            .iter()
+            .map(|summary| summary.kind)
+            .collect::<HashSet<_>>()
+            .len();
+        let palette_count = self.palettes.len();
+        let distinct_palette_count = visual_content_distinct_palette_count(&self.palettes);
+        let terrain_biome_palette_count = self
+            .palettes
+            .iter()
+            .map(|palette| palette.terrain_key)
+            .collect::<HashSet<_>>()
+            .len();
+        let foliage_palette_count = self
+            .palettes
+            .iter()
+            .map(|palette| palette.foliage_key)
+            .collect::<HashSet<_>>()
+            .len();
+        let stone_palette_count = self
+            .palettes
+            .iter()
+            .map(|palette| palette.stone_key)
+            .collect::<HashSet<_>>()
+            .len();
+        let coarse_terrain_biome_palette_count = visual_content_coarse_color_count(
+            self.palettes.iter().map(|palette| palette.terrain_key),
+        );
+        let coarse_foliage_palette_count = visual_content_coarse_color_count(
+            self.palettes.iter().map(|palette| palette.foliage_key),
+        );
+        let coarse_stone_palette_count = visual_content_coarse_color_count(
+            self.palettes.iter().map(|palette| palette.stone_key),
+        );
+        debug_assert_eq!(self.landmark_count, landmark_count);
+        debug_assert_eq!(self.landmark_kind_count, landmark_kind_count);
+        debug_assert_eq!(
+            self.terrain_biome_palette_count,
+            terrain_biome_palette_count
+        );
+        debug_assert_eq!(self.foliage_palette_count, foliage_palette_count);
+        debug_assert_eq!(self.stone_palette_count, stone_palette_count);
 
         format!(
             concat!(
                 "{{\n",
-                "  \"schema\": \"nau_visual_content_export.v1\",\n",
+                "  \"schema\": {},\n",
                 "  \"mesh_count\": {},\n",
                 "  \"total_vertex_count\": {},\n",
                 "  \"total_triangle_count\": {},\n",
@@ -264,6 +367,16 @@ impl VisualContentExportReport {
                 "    \"weather_cloud_veil_count\": {},\n",
                 "    \"landmark_count\": {},\n",
                 "    \"landmark_kind_count\": {},\n",
+                "    \"palette_count\": {},\n",
+                "    \"distinct_palette_count\": {},\n",
+                "    \"flora_cluster_count\": {},\n",
+                "    \"flora_cluster_kind_count\": {},\n",
+                "    \"ruin_complex_count\": {},\n",
+                "    \"ruin_complex_kind_count\": {},\n",
+                "    \"rock_formation_count\": {},\n",
+                "    \"rock_formation_kind_count\": {},\n",
+                "    \"water_detail_count\": {},\n",
+                "    \"water_detail_kind_count\": {},\n",
                 "    \"artifact_detail_count\": {},\n",
                 "    \"artifact_detail_kind_count\": {},\n",
                 "    \"artifact_stair_count\": {},\n",
@@ -332,6 +445,19 @@ impl VisualContentExportReport {
                 "    \"route_lake_surface_horizontal_span_m\": {},\n",
                 "    \"river_channel_horizontal_span_m\": {},\n",
                 "    \"under_route_visual_vertical_span_m\": {},\n",
+                "    \"surface_feature_vertex_total\": {},\n",
+                "    \"flora_cluster_mesh_vertices\": {},\n",
+                "    \"flora_cluster_horizontal_span_m\": {},\n",
+                "    \"flora_cluster_vertical_span_m\": {},\n",
+                "    \"ruin_complex_mesh_vertices\": {},\n",
+                "    \"ruin_complex_horizontal_span_m\": {},\n",
+                "    \"ruin_complex_vertical_span_m\": {},\n",
+                "    \"rock_formation_mesh_vertices\": {},\n",
+                "    \"rock_formation_horizontal_span_m\": {},\n",
+                "    \"rock_formation_vertical_span_m\": {},\n",
+                "    \"water_detail_mesh_vertices\": {},\n",
+                "    \"water_detail_horizontal_span_m\": {},\n",
+                "    \"water_detail_vertical_span_m\": {},\n",
                 "    \"artifact_detail_vertex_total\": {},\n",
                 "    \"artifact_detail_mesh_vertices\": {},\n",
                 "    \"artifact_stone_mesh_vertices\": {},\n",
@@ -352,7 +478,10 @@ impl VisualContentExportReport {
                 "    \"obstruction_spire_normal_slope_band_count\": {},\n",
                 "    \"terrain_biome_palette_count\": {},\n",
                 "    \"foliage_palette_count\": {},\n",
-                "    \"stone_palette_count\": {}\n",
+                "    \"stone_palette_count\": {},\n",
+                "    \"coarse_terrain_biome_palette_count\": {},\n",
+                "    \"coarse_foliage_palette_count\": {},\n",
+                "    \"coarse_stone_palette_count\": {}\n",
                 "  }},\n",
                 "  \"ground_cover\": [\n",
                 "{}\n",
@@ -374,6 +503,7 @@ impl VisualContentExportReport {
                 "  ]\n",
                 "}}\n"
             ),
+            terrain_export_json_string(VISUAL_CONTENT_EXPORT_SCHEMA),
             self.mesh_count,
             self.total_vertex_count,
             self.total_triangle_count,
@@ -386,8 +516,18 @@ impl VisualContentExportReport {
             self.weather_cloud_count,
             self.weather_cloud_bank_count,
             self.weather_cloud_veil_count,
-            self.landmark_count,
-            self.landmark_kind_count,
+            landmark_count,
+            landmark_kind_count,
+            palette_count,
+            distinct_palette_count,
+            self.flora_cluster_count,
+            self.flora_cluster_kind_count,
+            self.ruin_complex_count,
+            self.ruin_complex_kind_count,
+            self.rock_formation_count,
+            self.rock_formation_kind_count,
+            self.water_detail_count,
+            self.water_detail_kind_count,
             self.artifact_detail_count,
             self.artifact_detail_kind_count,
             self.artifact_stair_count,
@@ -454,6 +594,19 @@ impl VisualContentExportReport {
             terrain_export_json_number(self.min_route_lake_surface_horizontal_span_m),
             terrain_export_json_number(self.min_river_channel_horizontal_span_m),
             terrain_export_json_number(self.min_under_route_visual_vertical_span_m),
+            self.surface_feature_vertex_total,
+            self.min_flora_cluster_mesh_vertices,
+            terrain_export_json_number(self.min_flora_cluster_horizontal_span_m),
+            terrain_export_json_number(self.min_flora_cluster_vertical_span_m),
+            self.min_ruin_complex_mesh_vertices,
+            terrain_export_json_number(self.min_ruin_complex_horizontal_span_m),
+            terrain_export_json_number(self.min_ruin_complex_vertical_span_m),
+            self.min_rock_formation_mesh_vertices,
+            terrain_export_json_number(self.min_rock_formation_horizontal_span_m),
+            terrain_export_json_number(self.min_rock_formation_vertical_span_m),
+            self.min_water_detail_mesh_vertices,
+            terrain_export_json_number(self.min_water_detail_horizontal_span_m),
+            terrain_export_json_number(self.min_water_detail_vertical_span_m),
             self.artifact_detail_vertex_total,
             self.min_artifact_detail_mesh_vertices,
             self.min_artifact_stone_mesh_vertices,
@@ -472,9 +625,12 @@ impl VisualContentExportReport {
             self.min_obstruction_spire_height_band_count,
             self.min_obstruction_spire_radius_band_count,
             self.min_obstruction_spire_normal_slope_band_count,
-            self.terrain_biome_palette_count,
-            self.foliage_palette_count,
-            self.stone_palette_count,
+            terrain_biome_palette_count,
+            foliage_palette_count,
+            stone_palette_count,
+            coarse_terrain_biome_palette_count,
+            coarse_foliage_palette_count,
+            coarse_stone_palette_count,
             ground_cover,
             trees,
             rocks,
@@ -612,11 +768,16 @@ impl VisualCloudSummary {
 
 impl VisualLandmarkSummary {
     fn to_json(&self, indent: &str) -> String {
+        let surface_feature_family = self.surface_feature_family.map_or_else(
+            || "null".to_string(),
+            |family| terrain_export_json_string(family.label()),
+        );
         format!(
             "{indent}{{\n\
              {indent}  \"island\": {},\n\
              {indent}  \"kind\": {},\n\
              {indent}  \"label\": {},\n\
+             {indent}  \"surface_feature_family\": {},\n\
              {indent}  \"mesh\": {},\n\
              {indent}  \"height_band_count\": {},\n\
              {indent}  \"radius_band_count\": {},\n\
@@ -625,6 +786,7 @@ impl VisualLandmarkSummary {
             terrain_export_json_string(self.island_name),
             terrain_export_json_string(self.kind),
             terrain_export_json_string(&self.label),
+            surface_feature_family,
             self.mesh.to_json(),
             self.height_band_count,
             self.radius_band_count,
@@ -635,12 +797,93 @@ impl VisualLandmarkSummary {
 
 impl VisualPaletteSummary {
     fn to_json(&self, indent: &str) -> String {
+        let flora_kinds = self.flora_kinds[..self.flora_count]
+            .iter()
+            .map(|kind| terrain_export_json_string(kind))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let formation_kinds = self.formation_kinds[..self.formation_count]
+            .iter()
+            .map(|kind| terrain_export_json_string(kind))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let ruin_kinds = self.ruin_kinds[..self.ruin_count]
+            .iter()
+            .map(|kind| terrain_export_json_string(kind))
+            .collect::<Vec<_>>()
+            .join(", ");
         format!(
-            "{indent}{{\"index\": {}, \"terrain_key\": {}, \"foliage_key\": {}, \"stone_key\": {}}}",
+            "{indent}{{\n\
+             {indent}  \"index\": {},\n\
+             {indent}  \"island\": {},\n\
+             {indent}  \"epithet\": {},\n\
+             {indent}  \"palette_family\": {},\n\
+             {indent}  \"surface_pattern\": {},\n\
+             {indent}  \"hero_landmark\": {},\n\
+             {indent}  \"water_story\": {},\n\
+             {indent}  \"art_direction_signature\": {},\n\
+             {indent}  \"flora_kinds\": [{}],\n\
+             {indent}  \"formation_kinds\": [{}],\n\
+             {indent}  \"ruin_kinds\": [{}],\n\
+             {indent}  \"terrain_key\": {},\n\
+             {indent}  \"foliage_key\": {},\n\
+             {indent}  \"stone_key\": {}\n\
+             {indent}}}",
             self.index,
+            terrain_export_json_string(self.island_name),
+            terrain_export_json_string(self.epithet),
+            terrain_export_json_string(self.palette_family),
+            terrain_export_json_string(self.surface_pattern),
+            terrain_export_json_string(self.hero_landmark),
+            terrain_export_json_string(self.water_story),
+            terrain_export_json_string(&self.art_direction_signature.to_string()),
+            flora_kinds,
+            formation_kinds,
+            ruin_kinds,
             visual_content_json_u8_triplet(self.terrain_key),
             visual_content_json_u8_triplet(self.foliage_key),
             visual_content_json_u8_triplet(self.stone_key)
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    #[test]
+    fn visual_manifest_schema_is_versioned_for_palette_metadata() {
+        assert_eq!(VISUAL_CONTENT_EXPORT_SCHEMA, "nau_visual_content_export.v2");
+    }
+
+    #[test]
+    fn art_direction_signatures_serialize_as_lossless_decimal_strings() {
+        let summary = VisualPaletteSummary {
+            index: 0,
+            island_name: "test island",
+            epithet: "Test",
+            palette_family: "test",
+            surface_pattern: "test",
+            hero_landmark: "test",
+            water_story: "test",
+            art_direction_signature: u64::MAX,
+            flora_kinds: ["flora"; 3],
+            flora_count: 0,
+            formation_kinds: ["formation"; 2],
+            formation_count: 0,
+            ruin_kinds: ["ruin"; 2],
+            ruin_count: 0,
+            terrain_key: [1, 2, 3],
+            foliage_key: [4, 5, 6],
+            stone_key: [7, 8, 9],
+        };
+
+        let json = serde_json::from_str::<Value>(&summary.to_json(""))
+            .expect("palette summary should serialize as valid JSON");
+        assert_eq!(
+            json["art_direction_signature"],
+            Value::String(u64::MAX.to_string())
+        );
     }
 }

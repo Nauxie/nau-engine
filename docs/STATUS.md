@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 ## Current Milestone
 
@@ -26,7 +26,8 @@ cargo run --release -- --play
 ### World
 
 - The route contains 41 floating islands spread across 1.68 km of X, 1.02 km of Y, and 3.94 km of Z. Six footprint tiers, seven occupied horizontal sectors, rear launch branches, side arcs, and a colossal plateau create a broader archipelago than the original forward corridor.
-- Area- and biome-driven detail budgets currently generate 2,732 ground-cover patches, 171 trees, 282 rocks, six ruin clusters, 91 surface artifacts across seven families, nine river channels, five ponds, plateau lakes and waterfalls, cave-route structures, 208 generated landmarks, and distant material-split impostors.
+- Every route island now has an ordered `IslandArtDirection` profile with its own epithet, story, palette tuple, surface pattern, hero landmark, ecology, geology, ruin inventory, and water story. Art-direction signatures, palette tuples, and aggregate visual signatures are unique; individual grammar families intentionally recur across the route. The accepted export contains 2,732 ground-cover patches, 171 species-varied trees, 282 rocks, 102 dense flora clusters across six families, 46 ruin complexes across five families, 69 geological formations across five families, 56 water-detail clusters across six families, six legacy ruin clusters, 101 surface artifacts, nine river channels, ten ponds, plateau lakes and waterfalls, cave-route structures, 578 exported landmark entries, and distant material-split impostors.
+- Runtime surface rendering maps those 41 authored profiles onto nine bounded palette-family material sets. Per-island geometry and content remain distinct without recreating four render materials for every island.
 - Island visuals use active chunk windows plus near/mid/far LOD residency. Terrain, cliff, and underside meshes are created from cached recipes as islands become resident; detail preparation is still mostly synchronous.
 - A playable biome-colored world floor streams a player-centered `3x3` visible tile window from a pool capped at 25 tiles. The same terrain sampler drives rendering and gameplay grounding, while island surfaces remain authoritative where they overlap.
 
@@ -42,6 +43,7 @@ cargo run --release -- --play
 - The self-authored player and glider glTF fixtures support named idle, walk, run, launch, fall, bank, glide, dive, air-brake, and land states with procedural pose refinement and attachment/readability audits.
 - The character is still an approximate non-skeletal prototype, not a production rig.
 - Mouse orbit applies the full current-frame input without frame-time scaling or response smoothing, and movement consumes the resulting camera heading in the same update.
+- The play window uses display-synchronized presentation, which preserves the built-in ProMotion display's 120 Hz path on the validated Mac. Pausing or releasing mouse look clears capture history before resume so accumulated desktop motion cannot become delayed camera input.
 - Follow, obstruction, floor-clearance, collision, streaming, and reset handoffs share bounded frame-rate-independent continuity with attributed full-rate diagnostics. Broad blockers remain solid; tree-scale local props use a softer camera policy to avoid abrupt framing changes.
 
 ### Collision And Debugging
@@ -55,13 +57,24 @@ cargo run --release -- --play
 
 The streamed world-floor checkpoint is accepted for the current sandbox. It supports landing, grounded traversal, relaunch, bounded tile residency, and measured stream churn. The compact game UI and twelve-gate objective route are part of the current baseline, not active candidates.
 
-Camera/player continuity and ordinary development-play performance are also accepted baselines. The camera gate covers deterministic 30/60/120/144 Hz behavior, 50/100 ms hitches, native mouse response, obstruction transitions, floor boundaries, collisions, streaming, and resets. The development-play gate compares the same full-content scenario in debug and release and fails if debug frame time exceeds its absolute budget or materially trails release.
+Camera/player continuity, ordinary development-play performance, and the individually authored 41-island surface pass are also accepted baselines. The camera gate covers deterministic 30/60/120/144 Hz behavior, 50/100 ms hitches, native mouse response, obstruction transitions, floor boundaries, collisions, streaming, and resets. The development-play gate compares the same full-content scenario in debug and release and fails if debug frame time exceeds its absolute budget or materially trails release. The island contract requires accepted full-profile signatures, unique art and palette signatures, one matching hero landmark per island, exact feature and tree/rock budgets, correct water presence, large-island authored-feature coverage, and pixel-backed near/mid/traversal review for all 123 island views while preserving route clearance and movement/camera behavior. Hero evidence now comes from real landmark triangles, island semantic occlusion uses authored silhouettes, and route-edge waterfalls share their placement with the stricter story-aware review framing.
+
+The July 2026 severe camera-feel regression was render pacing rather than camera interpolation: per-island surface palette allocation increased live materials from 100 to 244 and raised the measured full-content average frame time from 9.77 ms to 15.63 ms. Palette-family reuse restored the full 1.23-million-triangle scene to about 8.6 ms and 116 materials in the accepted native eval. A follow-up `AutoNoVsync` experiment was rejected because it degraded that same fixed scene to 14-16 ms on Metal/ProMotion; display-synchronized presentation restored the 120 Hz path. Local performance acceptance now includes warmup, quiet-host preflight, average/p95/max/slow-frame ceilings, and a material-count budget; pull requests also compare the candidate with its base revision on the same runner.
 
 World-floor contract and evidence:
 
 - `docs/DECISIONS/0002-world-floor-perf-first.md`
 - `docs/world-floor-requirements-audit.md`
 - `docs/world-floor-acceptance-report.md`
+
+Island-surface contract and evidence:
+
+- `docs/ISLAND_ART_DIRECTION.md`
+- `docs/ISLAND_SURFACE_CONTENT.md`
+- `tools/island_art_direction_gate.sh`
+- `tools/island_hero_gallery_gate.sh`
+- `island_surface_review`
+- `tools/world_content_gate.sh`
 
 ## Verification Surface
 
@@ -80,8 +93,8 @@ Representative behavior and content gates:
 - `air_control_response`, `pose_state_coverage`, and `updraft_route`
 - `camera_mouse_control`, `camera_turn_stability`, `camera_strafe_stability`, and `underbridge_under_route`
 - `world_collision_contact`, `terrain_rim_collision_contact`, and `terrain_body_collision_contact`
-- `baseline_route`, `branch_recovery_route`, `long_glide_visibility`, `great_sky_plateau_route`, and `great_sky_plateau_vistas`
-- terrain, visual-content, wind-visual, player-pose, asset-fixture, screenshot, marker-projection, and semantic-scene audits
+- `baseline_route`, `branch_recovery_route`, `long_glide_visibility`, `great_sky_plateau_route`, `great_sky_plateau_vistas`, and `island_surface_review`
+- terrain, visual-content, island-art-direction, 123-view hero-gallery, wind-visual, player-pose, asset-fixture, screenshot, marker-projection, and semantic-scene audits
 - `tools/camera_continuity_gate.sh` and `tools/dev_play_performance_gate.sh` on macOS
 - release app baselines, scripted/manual play profiles, and world-floor comparison gates
 
@@ -98,7 +111,7 @@ Representative behavior and content gates:
 ## Active Priorities
 
 1. Turn the existing route data, lift network, recovery branches, landmarks, and gates into a clearer player-facing expedition with meaningful choices and completion feedback.
-2. Keep refining large-island surface composition, landmark framing, and player-scale visual density through the combined world gate plus screenshot and release-play review.
+2. Preserve all 41 accepted island identities, hero landmarks, exact inventories, 123 review views, route clearance, and frame pacing through the required world, camera, and performance gates plus human release play.
 3. Improve player/glider animation fidelity without losing current pose readability, attachment integrity, or traversal feel.
 4. Replace prototype collision pieces only when a concrete gameplay need justifies a physics/query layer.
 5. Keep streaming and rendering work evidence-driven; prefer reducing cosmetic cost or residency before adding architecture.
@@ -111,5 +124,7 @@ Representative behavior and content gates:
 - `docs/ARCHITECTURE.md`
 - `docs/MECHANICS/flight.md`
 - `docs/EVAL_SPEC.md`
+- `docs/ISLAND_ART_DIRECTION.md`
+- `docs/ISLAND_SURFACE_CONTENT.md`
 
 Update this file when the playable baseline, accepted limitations, or active priorities change. Do not use it as a branch log or PR diary.

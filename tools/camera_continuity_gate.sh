@@ -23,6 +23,7 @@ contract_tests=(
   obstruction_release
   approaching_launch_spire_does_not_oscillate_camera_yaw
   first_mouse_delta_after_look_capture_quarantines_only_implausible_spikes
+  inactive_look_resets_capture_history_before_resume
   camera_floor_does_not_capture_an_island_from_below
   upward_underside_crossing_does_not_capture_island_top
   deep_collision_correction_is_bounded_per_step
@@ -54,9 +55,9 @@ world_collision_max_push_m="${NAU_CAMERA_CONTINUITY_WORLD_COLLISION_MAX_PUSH_M:-
 terrain_rim_max_push_m="${NAU_CAMERA_CONTINUITY_TERRAIN_RIM_MAX_PUSH_M:-0.15}"
 terrain_body_max_push_m="${NAU_CAMERA_CONTINUITY_TERRAIN_BODY_MAX_PUSH_M:-0.15}"
 max_relative_velocity_mps="${NAU_CAMERA_CONTINUITY_MAX_RELATIVE_VELOCITY_MPS:-24.1}"
-max_relative_acceleration_mps2="${NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ACCELERATION_MPS2:-3000}"
+max_relative_acceleration_mps2="${NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ACCELERATION_MPS2:-1300}"
 max_relative_angular_velocity_degrees_per_sec="${NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ANGULAR_VELOCITY_DEGREES_PER_SEC:-180}"
-max_relative_angular_acceleration_degrees_per_sec2="${NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ANGULAR_ACCELERATION_DEGREES_PER_SEC2:-15000}"
+max_relative_angular_acceleration_degrees_per_sec2="${NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ANGULAR_ACCELERATION_DEGREES_PER_SEC2:-6000}"
 max_player_residual_m="${NAU_CAMERA_CONTINUITY_MAX_PLAYER_RESIDUAL_M:-0.02}"
 max_player_world_correction_m="${NAU_CAMERA_CONTINUITY_MAX_PLAYER_WORLD_CORRECTION_M:-0.50}"
 max_player_collision_correction_m="${NAU_CAMERA_CONTINUITY_MAX_PLAYER_COLLISION_CORRECTION_M:-1.0}"

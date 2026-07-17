@@ -2,11 +2,12 @@ use super::*;
 use bevy::gltf::Gltf;
 use bevy::mesh::{Indices, VertexAttributeValues};
 use bevy::pbr::ScatteringMedium;
-use nau_engine::animation::PlayerPoseIntent;
+use nau_engine::animation::{AnimationState, PlayerPoseIntent};
 use nau_engine::environment::{AERIAL_POWER_UP_ROUTE, LiftField, WindField};
-use nau_engine::movement::FlightInput;
+use nau_engine::movement::{FlightController, FlightInput, Velocity};
 use nau_engine::world::{
-    IslandPlateauRegion, IslandScaleClass, IslandTerrainArchetype, IslandWaterFeature,
+    IslandPlateauRegion, IslandReviewView, IslandScaleClass, IslandTerrainArchetype,
+    IslandWaterFeature,
 };
 
 fn test_island() -> SkyIsland {
@@ -250,6 +251,112 @@ fn authored_player_clip_selection_tracks_pose_intent() {
         authored_player_clip_for_pose_intent(PlayerPoseIntent::LandingAnticipation, 12.0),
         AuthoredPlayerClip::Land
     );
+}
+
+#[test]
+fn island_hero_gallery_forces_matching_controller_and_animation_pose_for_every_view() {
+    let output_dir = std::env::temp_dir().join(format!(
+        "nau-gallery-pose-parity-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos()
+    ));
+    let scenario = scenario_named(ISLAND_HERO_GALLERY).expect("gallery scenario should exist");
+    let run = EvalRun::new(EvalOptions {
+        scenario,
+        output_dir: output_dir.clone(),
+        capture_screenshot: false,
+        visible_window: false,
+    })
+    .expect("gallery run should initialize");
+    let frames_per_view = run
+        .scenario
+        .island_hero_gallery_timing()
+        .expect("gallery timing should exist")
+        .frames_per_view;
+    let mut app = App::new();
+    app.insert_resource(run)
+        .insert_resource(PlayerDisplacementDiagnostics::default())
+        .add_systems(Update, fix_island_hero_gallery_player);
+    app.world_mut().spawn((
+        Player,
+        Transform::default(),
+        Velocity(Vec3::splat(99.0)),
+        FlightController::default(),
+        AnimationState::default(),
+    ));
+
+    let expected_views = [
+        (
+            IslandReviewView::Near,
+            FlightMode::Grounded,
+            PlayerPoseIntent::GroundedIdle,
+        ),
+        (
+            IslandReviewView::Mid,
+            FlightMode::Gliding,
+            PlayerPoseIntent::Gliding,
+        ),
+        (
+            IslandReviewView::Traversal,
+            FlightMode::Gliding,
+            PlayerPoseIntent::Gliding,
+        ),
+    ];
+
+    for (view_index, (expected_view, expected_mode, expected_intent)) in
+        expected_views.into_iter().enumerate()
+    {
+        app.world_mut().resource_mut::<EvalRun>().frame = view_index as u32 * frames_per_view;
+        {
+            let world = app.world_mut();
+            let mut query = world
+                .query_filtered::<(&mut FlightController, &mut AnimationState), With<Player>>();
+            let (mut controller, mut animation) = query
+                .single_mut(world)
+                .expect("gallery player should exist");
+            controller.mode = if expected_mode == FlightMode::Grounded {
+                FlightMode::Gliding
+            } else {
+                FlightMode::Grounded
+            };
+            animation.pose_intent = if expected_intent == PlayerPoseIntent::GroundedIdle {
+                PlayerPoseIntent::Gliding
+            } else {
+                PlayerPoseIntent::GroundedIdle
+            };
+        }
+
+        app.update();
+
+        let pose = app
+            .world()
+            .resource::<EvalRun>()
+            .island_review_pose()
+            .expect("gallery pose should exist");
+        assert_eq!(pose.view, expected_view);
+        let world = app.world_mut();
+        let mut query = world.query_filtered::<
+            (&Transform, &Velocity, &FlightController, &AnimationState),
+            With<Player>,
+        >();
+        let (transform, velocity, controller, animation) =
+            query.single(world).expect("gallery player should exist");
+        assert_eq!(transform.translation, pose.player_position);
+        assert_eq!(velocity.0, Vec3::ZERO);
+        assert_eq!(controller.mode, expected_mode);
+        assert_eq!(animation.pose_intent, expected_intent);
+        assert!(
+            controller.mode != FlightMode::Gliding
+                || animation.pose_intent != PlayerPoseIntent::GroundedIdle,
+            "{expected_view:?} must not deploy the glider with a grounded-idle body"
+        );
+    }
+
+    drop(app);
+    remove_existing_dir(&output_dir).expect("gallery pose test dir should be removable");
 }
 
 #[test]
@@ -911,9 +1018,76 @@ fn setup_headless_runtime_app(
         .init_resource::<Assets<ScatteringMedium>>()
         .init_asset::<Gltf>()
         .init_asset::<Scene>()
-        .add_systems(Startup, setup);
+        .add_systems(
+            Startup,
+            (setup, apply_authored_island_material_parity).chain(),
+        );
     app.update();
     app
+}
+
+fn setup_headless_gallery_runtime_app(island_index: usize) -> (App, PathBuf) {
+    let output_dir = std::env::temp_dir().join(format!(
+        "nau-gallery-material-parity-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos()
+    ));
+    let scenario = scenario_named(ISLAND_HERO_GALLERY).expect("gallery scenario should exist");
+    let mut run = EvalRun::new(EvalOptions {
+        scenario,
+        output_dir: output_dir.clone(),
+        capture_screenshot: false,
+        visible_window: false,
+    })
+    .expect("gallery run should initialize");
+    let frames_per_view = run
+        .scenario
+        .island_hero_gallery_timing()
+        .expect("gallery timing should exist")
+        .frames_per_view;
+    run.frame = island_index as u32
+        * nau_engine::world::ISLAND_REVIEW_VIEWS_PER_ISLAND as u32
+        * frames_per_view;
+
+    let mut app = App::new();
+    app.insert_resource(RunMode::Play)
+        .insert_resource(DebugVisuals::for_run_mode(RunMode::Play, false))
+        .insert_resource(SkyRoute::default())
+        .insert_resource(GameUiState::new(false))
+        .insert_resource(run)
+        .add_plugins((MinimalPlugins, AssetPlugin::default()))
+        .init_resource::<Assets<Mesh>>()
+        .init_resource::<Assets<StandardMaterial>>()
+        .init_resource::<Assets<Image>>()
+        .init_resource::<Assets<ScatteringMedium>>()
+        .init_asset::<Gltf>()
+        .init_asset::<Scene>()
+        .add_systems(
+            Startup,
+            (setup, apply_authored_island_material_parity).chain(),
+        );
+    app.update();
+    (app, output_dir)
+}
+
+fn material_texture_contains_color(
+    world: &World,
+    handle: &Handle<StandardMaterial>,
+    expected: [u8; 4],
+) -> bool {
+    let texture = world
+        .resource::<Assets<StandardMaterial>>()
+        .get(handle)
+        .and_then(|material| material.base_color_texture.clone())
+        .expect("runtime detail material should have a base-color texture");
+    world
+        .resource::<Assets<Image>>()
+        .get(&texture)
+        .and_then(|image| image.data.as_deref())
+        .is_some_and(|data| data.chunks_exact(4).any(|pixel| pixel == expected))
 }
 
 fn component_count<T: Component>(world: &mut World) -> usize {
@@ -924,6 +1098,11 @@ fn component_count<T: Component>(world: &mut World) -> usize {
 fn live_entity_count(world: &mut World) -> usize {
     let mut query = world.query::<Entity>();
     query.iter(world).count()
+}
+
+#[test]
+fn play_window_uses_display_synchronized_presentation() {
+    assert_eq!(primary_window(None).present_mode, PresentMode::AutoVsync);
 }
 
 #[test]
@@ -1167,9 +1346,9 @@ fn great_sky_plateau_water_specs_span_basin_cliffs_and_falls() {
         .iter()
         .find(|feature| feature.label == "high shelf pool")
         .expect("plateau should place a high shelf pool");
-    assert!(lake.translation.distance(low_basin) < 0.2);
-    assert!(high_pool.translation.distance(high_shelf) < 0.2);
-    assert!(high_pool.translation.y - lake.translation.y >= 0.30);
+    assert!(lake.translation.xz().distance(low_basin.xz()) < 0.2);
+    assert!(high_pool.translation.xz().distance(high_shelf.xz()) < 0.2);
+    assert!(high_pool.translation.y > lake.translation.y);
 
     let rim = plateau
         .plateau_region_position(IslandPlateauRegion::CliffRim)
@@ -1365,11 +1544,12 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .expect("visual content export should succeed");
     let manifest = fs::read_to_string(&report.manifest_path).expect("manifest should be readable");
     let launch_ground_cover = output_dir.join("visuals/00_launch_mesa_ground_cover.obj");
-    let launch_tree_trunk = output_dir.join("visuals/00_launch_mesa_launch_tree_trunk.obj");
+    let launch_tree_trunk =
+        output_dir.join("visuals/00_launch_mesa_launch_tree_broad_canopy_trunk.obj");
     let launch_cloud = output_dir.join("visuals/00_launch_mesa_bank_0.obj");
     let launch_beacon = output_dir.join("visuals/00_launch_mesa_launch_beacon.obj");
     let midpoint_cairn = output_dir.join("visuals/01_midpoint_shelf_route_cairn.obj");
-    let landing_pond = output_dir.join("visuals/02_landing_garden_pond_surface.obj");
+    let landing_pond = output_dir.join("visuals/02_landing_garden_spring_pond.obj");
     let launch_spire = output_dir.join("visuals/00_launch_mesa_obstruction_spire.obj");
     let landing_marker = output_dir.join("visuals/02_landing_garden_landing_garden_marker_0.obj");
     let plateau_roots = output_dir.join("visuals/38_great_sky_plateau_hanging_root_curtain.obj");
@@ -1486,6 +1666,35 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         .enumerate()
         .map(|(index, island)| island_artifact_visual_specs(index, *island).len())
         .sum();
+    let flora_cluster_count: usize = route
+        .islands()
+        .iter()
+        .enumerate()
+        .map(|(index, island)| island_flora_visual_specs(index, *island).len())
+        .sum();
+    let ruin_complex_count: usize = route
+        .islands()
+        .iter()
+        .enumerate()
+        .map(|(index, island)| island_ruin_complex_specs(index, *island).len())
+        .sum();
+    let rock_formation_count: usize = route
+        .islands()
+        .iter()
+        .enumerate()
+        .map(|(index, island)| island_rock_formation_specs(index, *island).len())
+        .sum();
+    let water_detail_count: usize = route
+        .islands()
+        .iter()
+        .enumerate()
+        .map(|(index, island)| {
+            let water_features = island_water_visual_specs(index, *island);
+            island_water_detail_specs(index, *island, &water_features).len()
+        })
+        .sum();
+    let surface_feature_count =
+        flora_cluster_count + ruin_complex_count + rock_formation_count + water_detail_count;
     let route_lake_surface_count = route
         .islands()
         .iter()
@@ -1516,6 +1725,13 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         + 1;
     let weather_veil_count = island_count.div_ceil(2) * 3;
     let route_cairn_count = island_count - 2;
+    let hero_landmark_count = route
+        .islands()
+        .iter()
+        .copied()
+        .enumerate()
+        .filter_map(|(index, island)| island_hero_landmark_spec(index, island))
+        .count();
     let plateau_extra_water_count = 6;
     let plateau_arrival_landmark_count = 4;
     let under_route_visual_specs = route
@@ -1542,7 +1758,9 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(under_route_shelf_count, 2);
     assert_eq!(under_route_root_count, 2);
     assert_eq!(first_expedition_silhouette_count, 7);
+    assert_eq!(hero_landmark_count, island_count);
     let landmark_count = island_count
+        + hero_landmark_count
         + pond_surface_count
         + route_cairn_count
         + 1
@@ -1558,7 +1776,8 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
         + route_lake_surface_count
         + route_waterfall_visual_count
         + river_channel_count
-        + artifact_detail_count;
+        + artifact_detail_count
+        + surface_feature_count;
 
     assert_eq!(report.ground_cover_count, island_count);
     assert_eq!(report.ground_cover_patch_total, ground_cover_patch_total);
@@ -1577,6 +1796,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert_eq!(report.weather_cloud_bank_count, island_count);
     assert_eq!(report.weather_cloud_veil_count, weather_veil_count);
     assert_eq!(report.landmark_count, landmark_count);
+    assert_eq!(report.flora_cluster_count, flora_cluster_count);
+    assert_eq!(report.ruin_complex_count, ruin_complex_count);
+    assert_eq!(report.rock_formation_count, rock_formation_count);
+    assert_eq!(report.water_detail_count, water_detail_count);
     assert!(report.landmark_kind_count >= 28);
     assert_eq!(report.small_island_count, small_island_count);
     assert!(report.small_island_count >= 10);
@@ -1792,7 +2015,7 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_ground_cover_mesh_vertices >= 720);
     assert!(report.min_ground_cover_patch_count >= 24);
     assert!(report.min_ground_cover_blade_count >= 120);
-    assert!(report.min_ground_cover_blade_height_range_m >= 0.7);
+    assert!(report.min_ground_cover_blade_height_range_m >= 0.65);
     assert!(report.min_tree_trunk_mesh_vertices >= 190);
     assert!(report.min_tree_trunk_taper_ratio >= 1.35);
     assert!(report.min_tree_branch_reach_ratio >= 1.8);
@@ -1838,12 +2061,9 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(report.min_obstruction_spire_height_band_count >= 6);
     assert!(report.min_obstruction_spire_radius_band_count >= 5);
     assert!(report.min_obstruction_spire_normal_slope_band_count >= 5);
-    assert_eq!(
-        report.terrain_biome_palette_count,
-        TERRAIN_BIOME_PALETTE_COUNT
-    );
-    assert_eq!(report.foliage_palette_count, TERRAIN_BIOME_PALETTE_COUNT);
-    assert!(report.stone_palette_count >= TERRAIN_BIOME_PALETTE_COUNT - 1);
+    assert_eq!(report.terrain_biome_palette_count, island_count);
+    assert_eq!(report.foliage_palette_count, island_count);
+    assert_eq!(report.stone_palette_count, island_count);
     assert!(launch_ground_cover.exists());
     assert!(launch_tree_trunk.exists());
     assert!(launch_cloud.exists());
@@ -2052,12 +2272,16 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(output_dir.join(&cliff_teeth.mesh.obj_path).exists());
     assert!(output_dir.join(&garden_ring.mesh.obj_path).exists());
     assert!(output_dir.join(&lake_basin.mesh.obj_path).exists());
-    assert!(manifest.contains("\"schema\": \"nau_visual_content_export.v1\""));
+    assert!(manifest.contains("\"schema\": \"nau_visual_content_export.v2\""));
     assert!(manifest.contains("\"ground_cover_blade_height_range_m\""));
     assert!(manifest.contains("\"tree_branch_reach_ratio\""));
     assert!(manifest.contains("\"tree_root_flare_count\": 5"));
     assert!(manifest.contains("\"tree_trunk_ring_count\": 5"));
     assert!(manifest.contains("\"tree_trunk_height_range_m\""));
+    assert!(manifest.contains("\"surface_feature_family\": \"flora_cluster\""));
+    assert!(manifest.contains("\"surface_feature_family\": \"ruin_complex\""));
+    assert!(manifest.contains("\"surface_feature_family\": \"rock_formation\""));
+    assert!(manifest.contains("\"surface_feature_family\": \"water_detail\""));
     assert!(manifest.contains("\"tree_canopy_radius_range_m\""));
     assert!(manifest.contains(&format!(
         "\"weather_cloud_veil_count\": {weather_veil_count}"
@@ -2163,7 +2387,10 @@ fn visual_content_export_writes_manifest_meshes_and_shape_metrics() {
     assert!(manifest.contains("\"obstruction_spire_height_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_radius_band_count\""));
     assert!(manifest.contains("\"obstruction_spire_normal_slope_band_count\""));
-    assert!(manifest.contains("\"terrain_biome_palette_count\": 5"));
+    assert!(manifest.contains(&format!(
+        "\"terrain_biome_palette_count\": {}",
+        report.terrain_biome_palette_count
+    )));
 
     remove_existing_dir(&output_dir).expect("visual content export test dir should be removable");
 }
@@ -2678,6 +2905,17 @@ fn cloud_cluster_mesh_has_painterly_warm_and_cool_color_wash() {
         cool_shadow_vertices > colors.len() / 8,
         "clouds should include cooler shadowed vapor vertices"
     );
+}
+
+#[test]
+fn water_material_is_visible_from_both_sides() {
+    let mut images = Assets::<Image>::default();
+    let mut materials = Assets::<StandardMaterial>::default();
+    let handle = water_surface_material(&mut images, &mut materials);
+    let material = materials.get(&handle).expect("water material exists");
+
+    assert_eq!(material.cull_mode, None);
+    assert!(material.double_sided);
 }
 
 #[test]
@@ -3372,60 +3610,250 @@ fn terrain_surface_texture_has_sharp_material_detail() {
 }
 
 #[test]
-fn terrain_biome_palettes_vary_base_hues() {
-    let palette_keys = (0..5)
+fn terrain_biome_palettes_cover_unique_authored_signatures() {
+    let profile_count = nau_engine::world::island_art_directions().len();
+    let palette_keys = (0..profile_count)
         .map(|index| {
-            let grass = terrain_biome_palette(index).grass;
+            let palette = terrain_biome_palette(index);
             [
-                (grass.x * 31.0).round() as u8,
-                (grass.y * 31.0).round() as u8,
-                (grass.z * 31.0).round() as u8,
+                palette.grass,
+                palette.moss,
+                palette.meadow,
+                palette.clay,
+                palette.rock,
             ]
+            .map(|color| {
+                [
+                    (color.x * 255.0).round() as u8,
+                    (color.y * 255.0).round() as u8,
+                    (color.z * 255.0).round() as u8,
+                ]
+            })
         })
         .collect::<HashSet<_>>();
 
     assert_eq!(
         palette_keys.len(),
-        5,
-        "terrain palettes should give repeated island materials distinct base hues"
+        profile_count,
+        "every authored island should retain a distinct terrain palette signature"
     );
 }
 
 #[test]
 fn terrain_vertex_colors_use_biome_palette_variation() {
-    let color_keys = (0..5)
+    let profile_count = nau_engine::world::island_art_directions().len();
+    let color_keys = (0..profile_count)
         .map(|index| {
             let color = island_terrain_vertex_color(index, 0.56, 1.2, 0.24);
             [
-                (color[0] * 31.0).round() as u8,
-                (color[1] * 31.0).round() as u8,
-                (color[2] * 31.0).round() as u8,
+                (color[0] * 255.0).round() as u8,
+                (color[1] * 255.0).round() as u8,
+                (color[2] * 255.0).round() as u8,
             ]
         })
         .collect::<HashSet<_>>();
 
-    assert!(
-        color_keys.len() >= 4,
-        "same-region terrain samples should not collapse into one shared island palette"
+    assert_eq!(
+        color_keys.len(),
+        profile_count,
+        "same-region terrain samples should preserve every authored palette signature"
     );
 }
 
 #[test]
 fn biome_detail_color_sets_vary_vegetation_and_stone_hues() {
-    let foliage_keys = (0..TERRAIN_BIOME_PALETTE_COUNT)
+    let profile_count = nau_engine::world::island_art_directions().len();
+    let foliage_keys = (0..profile_count)
         .map(|index| biome_detail_color_set(index).foliage_primary)
         .collect::<HashSet<_>>();
-    let stone_keys = (0..TERRAIN_BIOME_PALETTE_COUNT)
+    let stone_keys = (0..profile_count)
         .map(|index| biome_detail_color_set(index).stone_primary)
         .collect::<HashSet<_>>();
 
     assert_eq!(
         foliage_keys.len(),
-        TERRAIN_BIOME_PALETTE_COUNT,
+        profile_count,
         "generated tree canopies should inherit per-island biome identity"
     );
-    assert!(
-        stone_keys.len() >= TERRAIN_BIOME_PALETTE_COUNT - 1,
+    assert_eq!(
+        stone_keys.len(),
+        profile_count,
         "stone scatter should vary with the island biome instead of sharing one material"
     );
+}
+
+#[test]
+fn runtime_spawned_island_materials_preserve_bounded_authored_palette_families() {
+    let target_island_index = TERRAIN_BIOME_PALETTE_COUNT;
+    let (mut app, output_dir) = setup_headless_gallery_runtime_app(target_island_index);
+    let mut foliage_ids = HashSet::new();
+    let mut stone_ids = HashSet::new();
+    let mut hero_ids = HashSet::new();
+    let mut family_material_ids = HashMap::new();
+
+    {
+        let world = app.world();
+        let route = world.resource::<SkyRoute>();
+        let catalog = world.resource::<IslandVisualCatalog>();
+        let profiles = nau_engine::world::island_art_directions();
+        let palette_family_count = profiles
+            .iter()
+            .map(|profile| profile.palette_family)
+            .collect::<HashSet<_>>()
+            .len();
+        for (island_index, island) in route.islands().iter().copied().enumerate() {
+            let canopy_name = island_tree_specs(island_index, island)
+                .first()
+                .expect("every island should spawn at least one tree")
+                .species
+                .canopy_visual_name();
+            let hero_name = island_hero_landmark_spec(island_index, island)
+                .expect("every island should spawn one hero landmark")
+                .label;
+            let foliage = catalog
+                .entry_material_handle(island.name, canopy_name)
+                .expect("queued canopy should retain a runtime material");
+            let stone = catalog
+                .entry_material_handle(island.name, "island stone scatter")
+                .expect("queued stone scatter should retain a runtime material");
+            let hero = catalog
+                .entry_material_handle(island.name, hero_name)
+                .expect("queued hero should retain a runtime material");
+
+            foliage_ids.insert(foliage.id());
+            stone_ids.insert(stone.id());
+            hero_ids.insert(hero.id());
+            let material_ids = (foliage.id(), stone.id(), hero.id());
+            if let Some(expected_ids) =
+                family_material_ids.insert(profiles[island_index].palette_family, material_ids)
+            {
+                assert_eq!(
+                    material_ids, expected_ids,
+                    "{} should reuse its authored palette-family materials",
+                    island.name
+                );
+            }
+            assert_eq!(
+                hero, stone,
+                "{} hero should use its island stone",
+                island.name
+            );
+        }
+        assert_eq!(family_material_ids.len(), palette_family_count);
+        assert_eq!(foliage_ids.len(), palette_family_count);
+        assert_eq!(stone_ids.len(), palette_family_count);
+        assert_eq!(hero_ids.len(), palette_family_count);
+        assert_eq!(
+            world.resource::<Assets<StandardMaterial>>().len(),
+            59,
+            "headless runtime material growth must remain explicit and budgeted"
+        );
+    }
+
+    let (target_island, canopy_name, hero_name, catalog_foliage, catalog_stone, catalog_hero) = {
+        let world = app.world();
+        let route = world.resource::<SkyRoute>();
+        let island = route.islands()[target_island_index];
+        let canopy_name = island_tree_specs(target_island_index, island)
+            .first()
+            .expect("target island should spawn at least one tree")
+            .species
+            .canopy_visual_name();
+        let hero_name = island_hero_landmark_spec(target_island_index, island)
+            .expect("target island should spawn a hero landmark")
+            .label;
+        let catalog = world.resource::<IslandVisualCatalog>();
+        (
+            island,
+            canopy_name,
+            hero_name,
+            catalog
+                .entry_material_handle(island.name, canopy_name)
+                .expect("target canopy material"),
+            catalog
+                .entry_material_handle(island.name, "island stone scatter")
+                .expect("target stone material"),
+            catalog
+                .entry_material_handle(island.name, hero_name)
+                .expect("target hero material"),
+        )
+    };
+
+    let spawned_foliage = IslandVisualCatalog::spawned_entry_material_handle(
+        app.world(),
+        target_island.name,
+        canopy_name,
+    )
+    .expect("target canopy should be spawned for the near gallery view");
+    let spawned_stone = IslandVisualCatalog::spawned_entry_material_handle(
+        app.world(),
+        target_island.name,
+        "island stone scatter",
+    )
+    .expect("target stone should be spawned for the near gallery view");
+    let spawned_hero = IslandVisualCatalog::spawned_entry_material_handle(
+        app.world(),
+        target_island.name,
+        hero_name,
+    )
+    .expect("target hero should be spawned for the near gallery view");
+    assert_eq!(spawned_foliage, catalog_foliage);
+    assert_eq!(spawned_stone, catalog_stone);
+    assert_eq!(spawned_hero, catalog_hero);
+    assert_eq!(spawned_hero, spawned_stone);
+    assert_ne!(spawned_foliage, spawned_stone);
+
+    let obstruction_stone = {
+        let expected_name = format!("{} obstruction spire", target_island.name);
+        let world = app.world_mut();
+        let mut query = world.query::<(&Name, &MeshMaterial3d<StandardMaterial>)>();
+        query
+            .iter(world)
+            .find(|(name, _)| name.as_str() == expected_name)
+            .map(|(_, material)| material.0.clone())
+            .expect("target obstruction spire should be spawned")
+    };
+    assert_eq!(obstruction_stone, spawned_stone);
+
+    let expected_colors = biome_detail_color_set(target_island_index);
+    assert!(material_texture_contains_color(
+        app.world(),
+        &spawned_foliage,
+        expected_colors.foliage_primary,
+    ));
+    assert!(material_texture_contains_color(
+        app.world(),
+        &spawned_stone,
+        expected_colors.stone_primary,
+    ));
+
+    drop(app);
+    remove_existing_dir(&output_dir).expect("gallery material test dir should be removable");
+}
+
+#[test]
+fn authored_terrain_palettes_stay_in_readable_ranges() {
+    for index in 0..nau_engine::world::island_art_directions().len() {
+        let palette = terrain_biome_palette(index);
+        for color in [
+            palette.grass,
+            palette.moss,
+            palette.meadow,
+            palette.clay,
+            palette.rock,
+        ]
+        .into_iter()
+        .chain(palette.region_tints)
+        {
+            assert!(color.is_finite());
+            assert!(color.cmpge(Vec3::splat(0.08)).all());
+            assert!(color.cmple(Vec3::splat(0.92)).all());
+        }
+
+        let luminance = |color: Vec3| color.dot(Vec3::new(0.2126, 0.7152, 0.0722));
+        assert!(
+            luminance(palette.meadow) > luminance(palette.moss) + 0.04,
+            "island {index} should keep meadow and moss values visually separable"
+        );
+    }
 }

@@ -1,5 +1,6 @@
 #[derive(Clone, Debug)]
 pub(crate) struct SceneSampleAudit {
+    pub(crate) island_name: Option<String>,
     pub(crate) kind: String,
     pub(crate) label: String,
     pub(crate) expected_material: String,
@@ -18,6 +19,8 @@ pub(crate) struct CheckpointAudit {
     pub(crate) screenshot_path: String,
     pub(crate) scenario: String,
     pub(crate) checkpoint: String,
+    pub(crate) target_island: Option<String>,
+    pub(crate) review_view: Option<String>,
     pub(crate) in_viewport_scene_sample_count: usize,
     pub(crate) occluded_scene_sample_count: usize,
     pub(crate) visible_scene_sample_count: usize,
@@ -54,6 +57,22 @@ pub(crate) struct Check {
 }
 
 impl Check {
+    pub(crate) fn exactly(
+        name: impl Into<String>,
+        value: f64,
+        threshold: f64,
+        unit: &'static str,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            passed: value == threshold,
+            value,
+            comparator: "==",
+            threshold,
+            unit,
+        }
+    }
+
     pub(crate) fn at_least(
         name: impl Into<String>,
         value: f64,

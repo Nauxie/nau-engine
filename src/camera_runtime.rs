@@ -1,4 +1,4 @@
-use crate::eval_runtime::EvalRun;
+use crate::eval_runtime::{EvalRun, ISLAND_HERO_GALLERY};
 use crate::play_profile_runtime::PlayProfileRun;
 use crate::{Player, keyboard_flight_input};
 use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
@@ -18,7 +18,9 @@ use nau_engine::camera::{
     resolve_camera_obstruction_handoff, step_camera_control, step_camera_with_direction_and_input,
     update_follow_direction_state,
 };
-use nau_engine::eval::{GREAT_SKY_PLATEAU_VISTAS, scripted_camera_input, scripted_input};
+use nau_engine::eval::{
+    GREAT_SKY_PLATEAU_VISTAS, ISLAND_SURFACE_REVIEW, scripted_camera_input, scripted_input,
+};
 use nau_engine::movement::Velocity;
 use nau_engine::world::{IslandPlateauRegion, SkyRoute, world_terrain_floor_y_at};
 
@@ -27,7 +29,59 @@ const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
 const CAMERA_CAPTURE_STALE_DELTA_THRESHOLD_PX: f32 = 64.0;
 const PLATEAU_VISTA_TRANSITION_START_FRAME: u32 = 90;
 const PLATEAU_VISTA_TRANSITION_END_FRAME: u32 = 150;
+const SURFACE_REVIEW_FIRST_TRANSITION_START_FRAME: u32 = 75;
+const SURFACE_REVIEW_FIRST_TRANSITION_END_FRAME: u32 = 165;
+const SURFACE_REVIEW_SECOND_TRANSITION_START_FRAME: u32 = 195;
+const SURFACE_REVIEW_SECOND_TRANSITION_END_FRAME: u32 = 285;
 pub(crate) const CAMERA_PLAYER_FOCUS_HEIGHT: f32 = 1.4;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct DirectCameraPose {
+    position: Vec3,
+    target: Vec3,
+}
+
+impl DirectCameraPose {
+    fn interpolate(self, next: Self, amount: f32) -> Self {
+        if amount <= 0.0 {
+            self
+        } else if amount >= 1.0 {
+            next
+        } else {
+            let position = self.position.lerp(next.position, amount);
+            let rotation = self.rotation().slerp(next.rotation(), amount);
+            let look_distance = self
+                .position
+                .distance(self.target)
+                .lerp(next.position.distance(next.target), amount);
+            Self {
+                position,
+                target: position + rotation * Vec3::NEG_Z * look_distance,
+            }
+        }
+    }
+
+    fn rotation(self) -> Quat {
+        Transform::from_translation(self.position)
+            .looking_at(self.target, Vec3::Y)
+            .rotation
+    }
+}
+
+const ISLAND_SURFACE_REVIEW_CAMERA_POSES: [DirectCameraPose; 3] = [
+    DirectCameraPose {
+        position: Vec3::new(-306.2, 729.7, -2694.5),
+        target: Vec3::new(-221.2, 695.7, -2629.5),
+    },
+    DirectCameraPose {
+        position: Vec3::new(-150.0, 720.0, -2482.0),
+        target: Vec3::new(-225.0, 692.0, -2566.0),
+    },
+    DirectCameraPose {
+        position: Vec3::new(205.0, 725.0, -2482.0),
+        target: Vec3::new(-20.0, 675.0, -2605.0),
+    },
+];
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) enum CameraCorrectionSource {
@@ -385,55 +439,75 @@ pub(crate) fn direct_plateau_vista_camera(
         *previous_pose = None;
         return;
     };
-    if run.scenario.name != GREAT_SKY_PLATEAU_VISTAS {
+    if !matches!(
+        run.scenario.name,
+        GREAT_SKY_PLATEAU_VISTAS | ISLAND_SURFACE_REVIEW | ISLAND_HERO_GALLERY
+    ) {
         *previous_pose = None;
         return;
     }
-    let Some(plateau) = route.island_named("great sky plateau") else {
-        return;
-    };
-    let Some(broken_edge) = plateau.plateau_region_position(IslandPlateauRegion::BrokenEdge) else {
-        return;
-    };
     let Ok(mut camera_transform) = camera.single_mut() else {
         return;
     };
 
-    let arrival_position = plateau.center + Vec3::new(95.0, 30.0, 100.0);
-    let arrival_target = plateau.center + Vec3::new(-18.0, 1.5, 5.0);
-    let broken_edge_offset = IslandPlateauRegion::BrokenEdge.sample_offset();
-    let broken_edge_angle = broken_edge_offset.y.atan2(broken_edge_offset.x);
-    let broken_edge_contour = plateau.footprint_contour_point(broken_edge_angle, false);
-    let waterfall_lip = Vec3::new(
-        broken_edge_contour.x,
-        plateau.terrain_surface_y_at(Vec3::new(
+    let (position, rotation) = if run.scenario.name == ISLAND_HERO_GALLERY {
+        let Some(pose) = run.island_review_pose() else {
+            return;
+        };
+        let rotation = Transform::from_translation(pose.camera_position)
+            .looking_at(pose.camera_target, Vec3::Y)
+            .rotation;
+        (pose.camera_position, rotation)
+    } else if run.scenario.name == ISLAND_SURFACE_REVIEW {
+        let pose = island_surface_review_camera_pose(run.frame);
+        (pose.position, pose.rotation())
+    } else {
+        let Some(plateau) = route.island_named("great sky plateau") else {
+            return;
+        };
+        let Some(broken_edge) = plateau.plateau_region_position(IslandPlateauRegion::BrokenEdge)
+        else {
+            return;
+        };
+        let arrival_position = plateau.center + Vec3::new(95.0, 30.0, 100.0);
+        let arrival_target = plateau.center + Vec3::new(-18.0, 7.5, 5.0);
+        let broken_edge_offset = IslandPlateauRegion::BrokenEdge.sample_offset();
+        let broken_edge_angle = broken_edge_offset.y.atan2(broken_edge_offset.x);
+        let broken_edge_contour = plateau.footprint_contour_point(broken_edge_angle, false);
+        let waterfall_lip = Vec3::new(
             broken_edge_contour.x,
-            broken_edge.y,
+            plateau.terrain_surface_y_at(Vec3::new(
+                broken_edge_contour.x,
+                broken_edge.y,
+                broken_edge_contour.y,
+            )),
             broken_edge_contour.y,
-        )),
-        broken_edge_contour.y,
-    );
-    let outward = (waterfall_lip - plateau.center)
-        .with_y(0.0)
-        .normalize_or(Vec3::X);
-    let tangent = Vec3::new(-outward.z, 0.0, outward.x);
-    let waterfall_position = waterfall_lip + outward * 165.0 + tangent * 35.0 + Vec3::Y * 24.0;
-    let waterfall_target = waterfall_lip + outward * 4.0 - Vec3::Y * (plateau.thickness * 0.22);
+        );
+        let outward = (waterfall_lip - plateau.center)
+            .with_y(0.0)
+            .normalize_or(Vec3::X);
+        let tangent = Vec3::new(-outward.z, 0.0, outward.x);
+        let waterfall_position = waterfall_lip + outward * 165.0 + tangent * 35.0 + Vec3::Y * 24.0;
+        let waterfall_target = waterfall_lip + outward * 4.0 - Vec3::Y * (plateau.thickness * 0.22);
+        let arrival_rotation = Transform::from_translation(arrival_position)
+            .looking_at(arrival_target, Vec3::Y)
+            .rotation;
+        let waterfall_rotation = Transform::from_translation(waterfall_position)
+            .looking_at(waterfall_target, Vec3::Y)
+            .rotation;
+        let transition = ((run
+            .frame
+            .saturating_sub(PLATEAU_VISTA_TRANSITION_START_FRAME))
+            as f32
+            / (PLATEAU_VISTA_TRANSITION_END_FRAME - PLATEAU_VISTA_TRANSITION_START_FRAME) as f32)
+            .clamp(0.0, 1.0);
+        let transition = transition * transition * (3.0 - 2.0 * transition);
 
-    let arrival_rotation = Transform::from_translation(arrival_position)
-        .looking_at(arrival_target, Vec3::Y)
-        .rotation;
-    let waterfall_rotation = Transform::from_translation(waterfall_position)
-        .looking_at(waterfall_target, Vec3::Y)
-        .rotation;
-    let transition = ((run
-        .frame
-        .saturating_sub(PLATEAU_VISTA_TRANSITION_START_FRAME)) as f32
-        / (PLATEAU_VISTA_TRANSITION_END_FRAME - PLATEAU_VISTA_TRANSITION_START_FRAME) as f32)
-        .clamp(0.0, 1.0);
-    let transition = transition * transition * (3.0 - 2.0 * transition);
-    let position = arrival_position.lerp(waterfall_position, transition);
-    let rotation = arrival_rotation.slerp(waterfall_rotation, transition);
+        (
+            arrival_position.lerp(waterfall_position, transition),
+            arrival_rotation.slerp(waterfall_rotation, transition),
+        )
+    };
 
     if let Some((previous_position, previous_rotation)) = *previous_pose {
         diagnostics.step_distance_m = previous_position.distance(position);
@@ -456,6 +530,34 @@ pub(crate) fn direct_plateau_vista_camera(
     camera_transform.translation = position;
     camera_transform.rotation = rotation;
     *previous_pose = Some((position, rotation));
+}
+
+fn island_surface_review_camera_pose(frame: u32) -> DirectCameraPose {
+    if frame < SURFACE_REVIEW_SECOND_TRANSITION_START_FRAME {
+        ISLAND_SURFACE_REVIEW_CAMERA_POSES[0].interpolate(
+            ISLAND_SURFACE_REVIEW_CAMERA_POSES[1],
+            smoothstep_frame_progress(
+                frame,
+                SURFACE_REVIEW_FIRST_TRANSITION_START_FRAME,
+                SURFACE_REVIEW_FIRST_TRANSITION_END_FRAME,
+            ),
+        )
+    } else {
+        ISLAND_SURFACE_REVIEW_CAMERA_POSES[1].interpolate(
+            ISLAND_SURFACE_REVIEW_CAMERA_POSES[2],
+            smoothstep_frame_progress(
+                frame,
+                SURFACE_REVIEW_SECOND_TRANSITION_START_FRAME,
+                SURFACE_REVIEW_SECOND_TRANSITION_END_FRAME,
+            ),
+        )
+    }
+}
+
+fn smoothstep_frame_progress(frame: u32, start_frame: u32, end_frame: u32) -> f32 {
+    let progress = (frame.saturating_sub(start_frame)) as f32 / (end_frame - start_frame) as f32;
+    let progress = progress.clamp(0.0, 1.0);
+    progress * progress * (3.0 - 2.0 * progress)
 }
 
 fn eval_dt(time: &Time, eval: Option<&EvalRun>) -> f32 {
@@ -523,6 +625,22 @@ mod tests {
     }
 
     #[test]
+    fn inactive_look_resets_capture_history_before_resume() {
+        let mut active_last_frame = true;
+
+        assert_eq!(
+            manual_camera_input(Vec2::new(18.0, -6.0), false, &mut active_last_frame),
+            CameraInput::default()
+        );
+        assert!(!active_last_frame);
+        assert_eq!(
+            manual_camera_input(Vec2::new(120.0, -45.0), true, &mut active_last_frame),
+            CameraInput::default(),
+            "resume must quarantine mouse motion accumulated while look was inactive"
+        );
+    }
+
+    #[test]
     fn camera_floor_does_not_capture_an_island_from_below() {
         let route = SkyRoute::default();
         let island = route.islands()[0];
@@ -533,6 +651,78 @@ mod tests {
         assert_eq!(
             camera_floor_y(&route, position, position),
             world_terrain_floor_y_at(position)
+        );
+    }
+
+    #[test]
+    fn island_surface_review_camera_holds_requested_checkpoint_poses() {
+        for (frame, expected_position, expected_target) in [
+            (
+                60,
+                Vec3::new(-306.2, 729.7, -2694.5),
+                Vec3::new(-221.2, 695.7, -2629.5),
+            ),
+            (
+                180,
+                Vec3::new(-150.0, 720.0, -2482.0),
+                Vec3::new(-225.0, 692.0, -2566.0),
+            ),
+            (
+                300,
+                Vec3::new(205.0, 725.0, -2482.0),
+                Vec3::new(-20.0, 675.0, -2605.0),
+            ),
+        ] {
+            let pose = island_surface_review_camera_pose(frame);
+            assert_eq!(pose.position, expected_position);
+            assert_eq!(pose.target, expected_target);
+        }
+
+        assert_eq!(
+            island_surface_review_camera_pose(75),
+            ISLAND_SURFACE_REVIEW_CAMERA_POSES[0]
+        );
+        assert_eq!(
+            island_surface_review_camera_pose(165),
+            ISLAND_SURFACE_REVIEW_CAMERA_POSES[1]
+        );
+        assert_eq!(
+            island_surface_review_camera_pose(195),
+            ISLAND_SURFACE_REVIEW_CAMERA_POSES[1]
+        );
+        assert_eq!(
+            island_surface_review_camera_pose(285),
+            ISLAND_SURFACE_REVIEW_CAMERA_POSES[2]
+        );
+    }
+
+    #[test]
+    fn island_surface_review_camera_transitions_stay_within_motion_bounds() {
+        let initial_pose = island_surface_review_camera_pose(0);
+        let mut previous_position = initial_pose.position;
+        let mut previous_rotation = initial_pose.rotation();
+        let mut max_step_distance_m = 0.0_f32;
+        let mut max_rotation_delta_degrees = 0.0_f32;
+
+        for frame in 1..=360 {
+            let pose = island_surface_review_camera_pose(frame);
+            let rotation = pose.rotation();
+            max_step_distance_m =
+                max_step_distance_m.max(previous_position.distance(pose.position));
+            max_rotation_delta_degrees = max_rotation_delta_degrees
+                .max(previous_rotation.angle_between(rotation).to_degrees());
+            previous_position = pose.position;
+            previous_rotation = rotation;
+        }
+
+        assert!(max_step_distance_m > 0.0);
+        assert!(
+            max_step_distance_m <= 6.0,
+            "surface review camera step reached {max_step_distance_m}m"
+        );
+        assert!(
+            max_rotation_delta_degrees <= 3.5,
+            "surface review camera rotation reached {max_rotation_delta_degrees}deg"
         );
     }
 }

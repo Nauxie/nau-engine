@@ -246,6 +246,7 @@ impl IslandContentDiagnostics {
             GeneratedLandmarkKind::WaterFeature => {}
             GeneratedLandmarkKind::CaveFeature => {}
             GeneratedLandmarkKind::ArtifactDetail => {}
+            GeneratedLandmarkKind::SurfaceFeature => {}
         }
     }
 
@@ -301,6 +302,7 @@ pub(crate) enum GeneratedLandmarkKind {
     WaterFeature,
     CaveFeature,
     ArtifactDetail,
+    SurfaceFeature,
 }
 
 impl GeneratedLandmarkKind {

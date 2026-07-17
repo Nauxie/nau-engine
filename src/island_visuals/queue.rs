@@ -1,4 +1,5 @@
 use super::details::queue_sky_island_details;
+use super::surface_details::queue_island_surface_details;
 use super::types::{
     IslandVisualCatalog, IslandVisualEntry, IslandVisualKey, IslandVisualLayer,
     IslandVisualMeshRecipe,
@@ -457,6 +458,17 @@ pub(crate) fn queue_sky_island(
     }
 
     queue_sky_island_details(
+        entries,
+        &mut visual_index,
+        content_diagnostics,
+        meshes,
+        detail_materials.clone(),
+        flower_material.clone(),
+        water_material.clone(),
+        island_index,
+        island,
+    );
+    queue_island_surface_details(
         entries,
         &mut visual_index,
         content_diagnostics,

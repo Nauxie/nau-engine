@@ -8,12 +8,15 @@ use crate::{
     types::{CheckpointAudit, SceneSampleAudit},
 };
 use image::{ImageReader, RgbImage};
+use nau_engine::world::{IslandWaterStory, authored_island_art_direction};
 use serde_json::Value;
 use std::{
     collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
 };
+
+const ISLAND_SURFACE_REVIEW_ISLAND: &str = "great sky plateau";
 
 pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, String> {
     let metadata = fs::read_to_string(path).map_err(|error| error.to_string())?;
@@ -63,11 +66,27 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
         .and_then(Value::as_str)
         .unwrap_or("unknown")
         .to_string();
+    let target_island = parsed
+        .get("target_island")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let review_view = parsed
+        .get("review_view")
+        .or_else(|| parsed.get("target_view"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
     let sidecar_passed = parsed
         .get("passed")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let passed = if scenario == "great_sky_plateau_vistas" {
+    let passed = if scenario == "island_hero_gallery" {
+        sidecar_passed
+            && island_hero_gallery_requirement_met(
+                target_island.as_deref(),
+                review_view.as_deref(),
+                &samples,
+            )
+    } else if scenario == "great_sky_plateau_vistas" {
         sidecar_passed
             && visible_scene_sample_count >= 2
             && scene_sample_pixel_hit_count >= 1
@@ -76,6 +95,8 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
             && visible_scene_sample_kind_count >= 2
             && scene_sample_kind_pixel_hit_count >= 2
             && checkpoint_landmark_requirement_met(&scenario, &checkpoint, &samples)
+    } else if scenario == "island_surface_review" {
+        sidecar_passed && checkpoint_landmark_requirement_met(&scenario, &checkpoint, &samples)
     } else {
         sidecar_passed
             && visible_scene_sample_count >= MIN_VISIBLE_SAMPLES_PER_CHECKPOINT
@@ -94,6 +115,8 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
         screenshot_path: screenshot_path.to_string_lossy().into_owned(),
         scenario,
         checkpoint,
+        target_island,
+        review_view,
         in_viewport_scene_sample_count,
         occluded_scene_sample_count,
         visible_scene_sample_count,
@@ -108,6 +131,120 @@ pub(crate) fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, Stri
         samples,
         materials,
     })
+}
+
+fn island_hero_gallery_requirement_met(
+    target_island: Option<&str>,
+    review_view: Option<&str>,
+    samples: &[SceneSampleAudit],
+) -> bool {
+    let (Some(target_island), Some(review_view)) = (target_island, review_view) else {
+        return false;
+    };
+    let Some(profile) = authored_island_art_direction(target_island) else {
+        return false;
+    };
+    let target_sample = |sample: &&SceneSampleAudit| {
+        sample.passed && sample.island_name.as_deref() == Some(target_island)
+    };
+    let target_terrain = samples
+        .iter()
+        .filter(target_sample)
+        .any(|sample| sample.kind == "terrain_surface" && sample.expected_material == "terrain");
+    let target_hero = samples.iter().filter(target_sample).any(|sample| {
+        sample.kind == "hero_landmark" && sample.label == profile.hero_landmark.label()
+    });
+    if !target_terrain || !target_hero {
+        return false;
+    }
+
+    match review_view {
+        "mid" | "traversal" => true,
+        "near" => {
+            let target_flora = samples.iter().filter(target_sample).any(|sample| {
+                sample.kind == "flora_cluster"
+                    && matches!(sample.expected_material.as_str(), "foliage" | "flower")
+            });
+            let target_formation = samples.iter().filter(target_sample).any(|sample| {
+                sample.kind == "rock_formation" && sample.expected_material == "stone"
+            });
+            let target_ruin = profile.ruin_count == 0
+                || samples.iter().filter(target_sample).any(|sample| {
+                    sample.kind == "ruin_complex" && sample.expected_material == "stone"
+                });
+            let target_water = match profile.water_story {
+                IslandWaterStory::DryWindCarved => !samples
+                    .iter()
+                    .filter(target_sample)
+                    .any(is_gallery_water_sample),
+                story => samples
+                    .iter()
+                    .filter(target_sample)
+                    .any(|sample| island_water_story_sample_matches(story, sample)),
+            };
+
+            target_flora && target_formation && target_ruin && target_water
+        }
+        _ => false,
+    }
+}
+
+fn is_gallery_water_sample(sample: &SceneSampleAudit) -> bool {
+    sample.expected_material == "water"
+        && matches!(
+            sample.kind.as_str(),
+            "water_surface" | "river_channel" | "waterfall_water" | "waterfall_mist"
+        )
+}
+
+pub(crate) fn island_water_story_sample_matches(
+    story: IslandWaterStory,
+    sample: &SceneSampleAudit,
+) -> bool {
+    if sample.expected_material != "water" {
+        return false;
+    }
+
+    match story {
+        IslandWaterStory::DryWindCarved => false,
+        IslandWaterStory::SpringPond => {
+            sample.kind == "water_surface"
+                && matches!(sample.label.as_str(), "spring pond" | "spring_pond")
+        }
+        IslandWaterStory::ReflectingBasin => {
+            sample.kind == "water_surface"
+                && matches!(
+                    sample.label.as_str(),
+                    "route lake surface" | "reflecting_basin"
+                )
+        }
+        IslandWaterStory::ReedyLake => {
+            sample.kind == "water_surface"
+                && matches!(sample.label.as_str(), "route lake surface" | "reedy_lake")
+        }
+        IslandWaterStory::CascadeRun => {
+            sample.kind == "river_channel"
+                && matches!(sample.label.as_str(), "cascade run" | "cascade_run")
+        }
+        IslandWaterStory::WaterfallGarden => {
+            sample.kind == "waterfall_water"
+                && matches!(
+                    sample.label.as_str(),
+                    "route edge waterfall"
+                        | "broken edge waterfall"
+                        | "north rim waterfall"
+                        | "waterfall_garden"
+                )
+        }
+        IslandWaterStory::MistPool => {
+            sample.kind == "water_surface"
+                && matches!(sample.label.as_str(), "mist pool" | "mist_pool")
+        }
+        IslandWaterStory::CaveSeep => {
+            sample.kind == "water_surface"
+                && matches!(sample.label.as_str(), "cave seep pool" | "cave_seep")
+        }
+    }
 }
 
 pub(crate) fn min_terrain_material_variant_hit_count(visible_variant_count: usize) -> usize {
@@ -161,8 +298,62 @@ fn checkpoint_landmark_requirement_met(
                     )
             })
         }
+        ("island_surface_review", "ruins_and_rock_detail") => {
+            passed_kind_material_count(samples, "ruin_complex", &["stone"]) >= 1
+                && passed_kind_material_count(samples, "rock_formation", &["stone"]) >= 1
+        }
+        ("island_surface_review", "dense_flora_detail") => {
+            let passed_labels =
+                distinct_kind_labels(samples, "flora_cluster", &["foliage", "flower"], true);
+            passed_kind_material_count(samples, "flora_cluster", &["foliage", "flower"]) >= 3
+                && passed_labels >= 2
+        }
+        ("island_surface_review", "lake_river_waterfall_detail") => {
+            passed_kind_material_count(samples, "water_surface", &["water"]) >= 1
+                && passed_kind_material_count(samples, "river_channel", &["water"]) >= 1
+                && passed_kind_material_count(samples, "waterfall_water", &["water"]) >= 1
+                && passed_kind_material_count(samples, "water_detail_waterfall_lip", &["stone"])
+                    >= 1
+                && passed_kind_material_count(samples, "water_detail_plunge_pool", &["water"]) >= 1
+        }
+        ("island_surface_review", _) => false,
         _ => true,
     }
+}
+
+fn passed_kind_material_count(
+    samples: &[SceneSampleAudit],
+    kind: &str,
+    expected_materials: &[&str],
+) -> usize {
+    samples
+        .iter()
+        .filter(|sample| {
+            sample.passed
+                && sample.island_name.as_deref() == Some(ISLAND_SURFACE_REVIEW_ISLAND)
+                && sample.kind == kind
+                && expected_materials.contains(&sample.expected_material.as_str())
+        })
+        .count()
+}
+
+fn distinct_kind_labels(
+    samples: &[SceneSampleAudit],
+    kind: &str,
+    expected_materials: &[&str],
+    passed_only: bool,
+) -> usize {
+    samples
+        .iter()
+        .filter(|sample| {
+            (!passed_only || sample.passed)
+                && sample.island_name.as_deref() == Some(ISLAND_SURFACE_REVIEW_ISLAND)
+                && sample.kind == kind
+                && expected_materials.contains(&sample.expected_material.as_str())
+        })
+        .map(|sample| sample.label.as_str())
+        .collect::<BTreeSet<_>>()
+        .len()
 }
 
 pub(crate) fn visible_terrain_material_variant_count(samples: &[SceneSampleAudit]) -> usize {
@@ -237,6 +428,10 @@ pub(crate) fn audit_scene_sample(
     image: &RgbImage,
     screenshot_scale: (f64, f64),
 ) -> Result<SceneSampleAudit, String> {
+    let island_name = sample
+        .get("island")
+        .and_then(Value::as_str)
+        .map(str::to_string);
     let kind = sample
         .get("kind")
         .and_then(Value::as_str)
@@ -290,6 +485,7 @@ pub(crate) fn audit_scene_sample(
     };
 
     Ok(SceneSampleAudit {
+        island_name,
         kind,
         label,
         expected_material,

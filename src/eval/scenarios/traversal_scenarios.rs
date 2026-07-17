@@ -15,8 +15,9 @@ use crate::{
 
 use super::{
     BASELINE_ROUTE, BRANCH_RECOVERY_ROUTE, EvalCheckpoint, EvalScenario, GREAT_SKY_PLATEAU_ROUTE,
-    GREAT_SKY_PLATEAU_VISTAS, ISLAND_LAUNCH_TO_LANDING, LONG_GLIDE_VISIBILITY,
-    PLATEAU_ARRIVAL_CAMERA, RETURN_DESCENT_ROUTE, UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
+    GREAT_SKY_PLATEAU_VISTAS, ISLAND_HERO_GALLERY, ISLAND_HERO_GALLERY_FRAME_COUNT,
+    ISLAND_LAUNCH_TO_LANDING, ISLAND_SURFACE_REVIEW, LONG_GLIDE_VISIBILITY, PLATEAU_ARRIVAL_CAMERA,
+    RETURN_DESCENT_ROUTE, UNDERBRIDGE_UNDER_ROUTE, UPDRAFT_ROUTE,
     checkpoints::{
         BASELINE_CHECKPOINTS, BRANCH_RECOVERY_CHECKPOINTS, GREAT_SKY_PLATEAU_CHECKPOINTS,
         ISLAND_CHECKPOINTS, LONG_GLIDE_CHECKPOINTS, UNDERBRIDGE_UNDER_ROUTE_CHECKPOINTS,
@@ -31,8 +32,14 @@ const MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 1.5;
 const MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES: f32 = 5.0;
 const RELEASE_BASELINE_MAX_VISIBLE_ISLAND_TERRAIN_COUNT: usize = 76;
 const RELEASE_LONG_GLIDE_MAX_VISIBLE_ISLAND_TERRAIN_COUNT: usize = 90;
-const RELEASE_MAX_VISIBLE_ISLAND_DETAIL_COUNT: usize = 160;
-const RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT: usize = 340;
+const RELEASE_MAX_VISIBLE_ISLAND_DETAIL_COUNT: usize = 260;
+const RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT: usize = 430;
+const RELEASE_MAX_ENTITY_COUNT: usize = 5_500;
+const ISLAND_HERO_GALLERY_MAX_VISIBLE_ISLAND_DETAIL_COUNT: usize =
+    RELEASE_MAX_VISIBLE_ISLAND_DETAIL_COUNT;
+const ISLAND_HERO_GALLERY_MAX_RESIDENT_ISLAND_VISUAL_COUNT: usize =
+    RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT;
+const ISLAND_HERO_GALLERY_MAX_ENTITY_COUNT: usize = RELEASE_MAX_ENTITY_COUNT;
 
 const PLATEAU_ARRIVAL_CAMERA_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
@@ -57,6 +64,21 @@ const GREAT_SKY_PLATEAU_VISTA_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
         frame: 180,
         name: "waterfall_vista",
+    },
+];
+
+const ISLAND_SURFACE_REVIEW_CHECKPOINTS: &[EvalCheckpoint] = &[
+    EvalCheckpoint {
+        frame: 60,
+        name: "ruins_and_rock_detail",
+    },
+    EvalCheckpoint {
+        frame: 180,
+        name: "dense_flora_detail",
+    },
+    EvalCheckpoint {
+        frame: 300,
+        name: "lake_river_waterfall_detail",
     },
 ];
 
@@ -121,7 +143,7 @@ pub(super) fn baseline_route() -> EvalScenario {
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 32,
-            max_entity_count: MAX_ENTITY_COUNT,
+            max_entity_count: RELEASE_MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_PLAYER_ANGLE_DEGREES,
@@ -413,7 +435,7 @@ pub(super) fn long_glide_visibility() -> EvalScenario {
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 32,
-            max_entity_count: MAX_ENTITY_COUNT,
+            max_entity_count: RELEASE_MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_PLAYER_ANGLE_DEGREES,
@@ -499,6 +521,65 @@ pub(super) fn great_sky_plateau_vistas() -> EvalScenario {
     scenario.thresholds.min_completed_objective_count = 0;
     scenario.thresholds.require_target_landing = false;
     scenario.thresholds.max_final_target_distance_m = 220.0;
+    scenario.thresholds.min_target_landing_samples = 0;
+
+    scenario
+}
+
+pub(super) fn island_surface_review() -> EvalScenario {
+    let mut scenario = great_sky_plateau_vistas();
+    scenario.name = ISLAND_SURFACE_REVIEW;
+    scenario.frame_count = 360;
+    scenario.sample_stride = 1;
+    scenario.target_island_name = Some("great sky plateau");
+    scenario.checkpoints = ISLAND_SURFACE_REVIEW_CHECKPOINTS;
+    scenario.thresholds.min_samples = 361;
+    scenario.thresholds.min_horizontal_distance_m = 0.0;
+    scenario.thresholds.min_max_speed_mps = 0.0;
+    scenario.thresholds.min_gliding_samples = 0;
+    scenario.thresholds.min_grounded_samples = 340;
+    scenario.thresholds.min_lifted_samples = 0;
+    scenario.thresholds.max_camera_distance_m = 360.0;
+    scenario.thresholds.max_camera_step_distance_m = 6.0;
+    scenario.thresholds.max_camera_rotation_delta_degrees = 3.5;
+    scenario.thresholds.max_camera_player_angle_degrees = 90.0;
+    scenario.thresholds.require_target_landing = false;
+    scenario.thresholds.max_final_target_distance_m = 8.0;
+    scenario.thresholds.min_target_landing_samples = 0;
+
+    scenario
+}
+
+pub(super) fn island_hero_gallery() -> EvalScenario {
+    let mut scenario = island_surface_review();
+    scenario.name = ISLAND_HERO_GALLERY;
+    scenario.frame_count = ISLAND_HERO_GALLERY_FRAME_COUNT;
+    scenario.sample_stride = 1;
+    scenario.target_island_name = None;
+    scenario.checkpoints = &[];
+    scenario.thresholds.min_samples = ISLAND_HERO_GALLERY_FRAME_COUNT + 1;
+    scenario.thresholds.min_horizontal_distance_m = 0.0;
+    scenario.thresholds.min_max_altitude_m = 0.0;
+    scenario.thresholds.min_max_speed_mps = 0.0;
+    scenario.thresholds.min_gliding_samples = 0;
+    scenario.thresholds.min_grounded_samples = 0;
+    scenario.thresholds.min_lifted_samples = 0;
+    scenario.thresholds.max_camera_distance_m = 1_000.0;
+    scenario.thresholds.min_camera_surface_clearance_m = -10_000.0;
+    scenario.thresholds.max_camera_player_angle_degrees = 180.0;
+    scenario.thresholds.max_camera_step_distance_m = 20_000.0;
+    scenario.thresholds.max_camera_rotation_delta_degrees = 180.0;
+    scenario.thresholds.max_camera_orbit_alignment_degrees = 180.0;
+    scenario.thresholds.max_abs_camera_view_yaw_degrees = 180.0;
+    scenario.thresholds.max_visible_island_detail_count =
+        ISLAND_HERO_GALLERY_MAX_VISIBLE_ISLAND_DETAIL_COUNT;
+    scenario.thresholds.max_resident_island_visual_count =
+        ISLAND_HERO_GALLERY_MAX_RESIDENT_ISLAND_VISUAL_COUNT;
+    scenario.thresholds.max_entity_count = ISLAND_HERO_GALLERY_MAX_ENTITY_COUNT;
+    scenario.thresholds.min_objective_total_count = 0;
+    scenario.thresholds.min_completed_objective_count = 0;
+    scenario.thresholds.require_target_landing = false;
+    scenario.thresholds.max_final_target_distance_m = 100_000.0;
     scenario.thresholds.min_target_landing_samples = 0;
 
     scenario

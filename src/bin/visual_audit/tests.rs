@@ -2,8 +2,10 @@ use super::{
     USAGE,
     analysis::{audit_image, audit_image_with_alpha},
     parse_args,
+    pixel_rules::{is_lower_scene_like, is_scene_like, is_sky_like},
     report::{
-        VisualAuditProfile, json_string, report_checks, report_checks_for_profile, report_passed,
+        VisualAuditProfile, audit_report_json_for_profile, json_string, report_checks,
+        report_checks_for_profile, report_passed, report_passed_for_profile,
     },
     thresholds::*,
 };
@@ -815,6 +817,123 @@ fn route_marker_optional_profile_relaxes_only_route_marker_report_checks() {
 }
 
 #[test]
+fn island_gallery_profile_preserves_scene_checks_and_relaxes_route_markers() {
+    let default_checks = report_checks_for_profile(&[], VisualAuditProfile::Default);
+    let gallery_checks = report_checks_for_profile(&[], VisualAuditProfile::IslandGallery);
+    let relaxed_checks = [
+        "max_route_marker_fraction",
+        "max_route_marker_component_count",
+        "max_route_marker_hue_family_count",
+    ];
+
+    assert_eq!(
+        gallery_checks.len(),
+        default_checks.len() - relaxed_checks.len()
+    );
+    for default_check in &default_checks {
+        let gallery_check = gallery_checks
+            .iter()
+            .find(|check| check.name == default_check.name);
+        if relaxed_checks.contains(&default_check.name) {
+            assert!(
+                gallery_check.is_none(),
+                "{} should be omitted",
+                default_check.name
+            );
+        } else {
+            assert!(
+                gallery_check.is_some(),
+                "{} should be preserved",
+                default_check.name
+            );
+        }
+    }
+}
+
+#[test]
+fn island_gallery_serializes_truthful_profile_adjusted_image_results() {
+    let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    paint_high_sky_textured_scene(&mut image);
+    paint_readability_signals(&mut image);
+    let mut audit = audit_image("gallery.png".to_string(), image).expect("audit should load");
+    assert!(audit.passed, "{audit:?}");
+
+    let player_check = audit
+        .checks
+        .iter_mut()
+        .find(|check| check.name == "player_focus_fraction")
+        .expect("player focus check");
+    player_check.passed = false;
+    player_check.value = 0.0;
+    audit.passed = false;
+
+    assert!(!report_passed_for_profile(
+        std::slice::from_ref(&audit),
+        &[],
+        VisualAuditProfile::Default
+    ));
+    assert!(report_passed_for_profile(
+        std::slice::from_ref(&audit),
+        &[],
+        VisualAuditProfile::IslandGallery
+    ));
+
+    let report = audit_report_json_for_profile(&[], &[audit], VisualAuditProfile::IslandGallery);
+    let report: serde_json::Value =
+        serde_json::from_str(&report).expect("report should be valid json");
+    assert_eq!(report["passed"], true);
+    assert_eq!(report["images"][0]["passed"], true);
+    assert!(
+        report["images"][0]["checks"]
+            .as_array()
+            .expect("image checks")
+            .iter()
+            .all(|check| check["name"] != "player_focus_fraction" && check["passed"] == true)
+    );
+    assert_eq!(report["profile"]["name"], "island_gallery");
+    assert_eq!(
+        report["profile"]["relaxed_checks"],
+        serde_json::json!([
+            "max_route_marker_fraction",
+            "max_route_marker_component_count",
+            "max_route_marker_hue_family_count",
+            "player_focus_fraction"
+        ])
+    );
+}
+
+#[test]
+fn island_gallery_still_fails_and_serializes_scene_quality_failures() {
+    let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    paint_high_sky_textured_scene(&mut image);
+    paint_readability_signals(&mut image);
+    let mut audit = audit_image("flat_gallery.png".to_string(), image).expect("audit should load");
+    let detail_check = audit
+        .checks
+        .iter_mut()
+        .find(|check| check.name == "scene_detail_tile_fraction")
+        .expect("scene detail check");
+    detail_check.passed = false;
+    detail_check.value = 0.0;
+    audit.passed = false;
+
+    let report = audit_report_json_for_profile(&[], &[audit], VisualAuditProfile::IslandGallery);
+    let report: serde_json::Value =
+        serde_json::from_str(&report).expect("report should be valid json");
+    assert_eq!(report["passed"], false);
+    assert_eq!(report["images"][0]["passed"], false);
+    assert!(
+        report["images"][0]["checks"]
+            .as_array()
+            .expect("image checks")
+            .iter()
+            .any(|check| {
+                check["name"] == "scene_detail_tile_fraction" && check["passed"] == false
+            })
+    );
+}
+
+#[test]
 fn cli_parses_route_marker_optional_profile_and_documents_it() {
     let (profile, paths) = parse_args([
         "--profile".to_string(),
@@ -826,6 +945,20 @@ fn cli_parses_route_marker_optional_profile_and_documents_it() {
     assert_eq!(profile, VisualAuditProfile::RouteMarkerOptional);
     assert_eq!(paths, [std::path::PathBuf::from("plateau.png")]);
     assert!(USAGE.contains("route_marker_optional"));
+}
+
+#[test]
+fn cli_parses_island_gallery_profile_and_documents_it() {
+    let (profile, paths) = parse_args([
+        "--profile".to_string(),
+        "island_gallery".to_string(),
+        "island.png".to_string(),
+    ])
+    .expect("profile should parse");
+
+    assert_eq!(profile, VisualAuditProfile::IslandGallery);
+    assert_eq!(paths, [std::path::PathBuf::from("island.png")]);
+    assert!(USAGE.contains("island_gallery"));
 }
 
 #[test]
@@ -915,6 +1048,33 @@ fn audit_rejects_sky_only_frame() {
             .iter()
             .any(|check| check.name == "lower_scene_fraction" && !check.passed)
     );
+}
+
+#[test]
+fn lower_scene_classifier_counts_dark_terrain_without_counting_black_or_sky() {
+    let dark_terrain = (14.0, 16.0, 13.0);
+    let dark_terrain_luma =
+        0.2126 * dark_terrain.0 + 0.7152 * dark_terrain.1 + 0.0722 * dark_terrain.2;
+    assert!(!is_scene_like(
+        dark_terrain.0,
+        dark_terrain.1,
+        dark_terrain.2,
+        dark_terrain_luma,
+        false,
+    ));
+    assert!(is_lower_scene_like(
+        dark_terrain.0,
+        dark_terrain.1,
+        dark_terrain.2,
+        dark_terrain_luma,
+        false,
+    ));
+    assert!(!is_lower_scene_like(0.0, 0.0, 0.0, 0.0, false));
+
+    let sky = (136.0, 170.0, 208.0);
+    let sky_luma = 0.2126 * sky.0 + 0.7152 * sky.1 + 0.0722 * sky.2;
+    assert!(is_sky_like(sky.0, sky.1, sky.2, sky_luma));
+    assert!(!is_lower_scene_like(sky.0, sky.1, sky.2, sky_luma, true,));
 }
 
 #[test]

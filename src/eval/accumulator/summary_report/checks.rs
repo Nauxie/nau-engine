@@ -12,9 +12,10 @@ use crate::{
     eval::{
         scenarios::{
             CAMERA_MOUSE_CONTROL, CAMERA_STRAFE_STABILITY, CAMERA_TURN_STABILITY,
-            CAMERA_YAW_STABILITY, EvalScenario, GROUND_TAXI_CONTROL, PLATEAU_ARRIVAL_CAMERA,
-            RETURN_DESCENT_ROUTE, TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_EDGE_WALKOFF,
-            TERRAIN_RIM_COLLISION_CONTACT, UPDRAFT_ROUTE, WORLD_COLLISION_CONTACT,
+            CAMERA_YAW_STABILITY, EvalScenario, GROUND_TAXI_CONTROL, ISLAND_HERO_GALLERY,
+            PLATEAU_ARRIVAL_CAMERA, RETURN_DESCENT_ROUTE, TERRAIN_BODY_COLLISION_CONTACT,
+            TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT, UPDRAFT_ROUTE,
+            WORLD_COLLISION_CONTACT,
         },
         summary::EvalCheck,
         thresholds::*,
@@ -38,6 +39,25 @@ const SHORT_CONTACT_SKIPPED_CHECKS: &[&str] = &[
     "sustained_updraft_visual_flow_samples",
     "sustained_crosswind_visual_flow_samples",
 ];
+const ISLAND_HERO_GALLERY_SKIPPED_CHECKS: &[&str] = &[
+    "world_collision_proxy_count",
+    "terrain_rim_collision_proxy_count",
+    "terrain_body_collision_proxy_count",
+    "solid_world_collision_proxy_count",
+    "tree_world_collision_proxy_count",
+    "rock_world_collision_proxy_count",
+    "landmark_world_collision_proxy_count",
+];
+
+impl EvalAccumulator {
+    pub fn reclassify_latest_runtime_frame_as_eval_artifact(&mut self) -> bool {
+        let Some(frame_time_ms) = self.runtime_frame_times_ms.pop() else {
+            return false;
+        };
+        self.eval_artifact_frame_times_ms.push(frame_time_ms);
+        true
+    }
+}
 
 pub(super) fn build_checks(
     acc: &EvalAccumulator,
@@ -899,5 +919,58 @@ pub(super) fn build_checks(
     ) {
         checks.retain(|check| !SHORT_CONTACT_SKIPPED_CHECKS.contains(&check.name));
     }
+    if scenario.name == ISLAND_HERO_GALLERY {
+        checks.retain(|check| !ISLAND_HERO_GALLERY_SKIPPED_CHECKS.contains(&check.name));
+    }
     checks
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::eval::scenario_named;
+
+    #[test]
+    fn artifact_frame_reclassification_excludes_runtime_timing_without_losing_total_timing() {
+        let scenario = scenario_named(ISLAND_HERO_GALLERY).expect("gallery scenario");
+        let mut accumulator = EvalAccumulator::default();
+        accumulator.observe_frame_time_ms(240.0);
+
+        assert!(accumulator.reclassify_latest_runtime_frame_as_eval_artifact());
+        assert!(!accumulator.reclassify_latest_runtime_frame_as_eval_artifact());
+
+        let derived = SummaryDerivedMetrics::from_accumulator(&accumulator, scenario);
+        assert_eq!(derived.frame_time_stats.sample_count, 1);
+        assert_eq!(derived.runtime_frame_time_stats.sample_count, 0);
+        assert_eq!(derived.eval_artifact_frame_time_stats.sample_count, 1);
+        assert_eq!(derived.eval_artifact_frame_time_stats.max_ms, 240.0);
+    }
+
+    #[test]
+    fn gallery_rejects_the_old_grounded_foot_gap_instead_of_skipping_it() {
+        let scenario = scenario_named(ISLAND_HERO_GALLERY).expect("gallery scenario");
+        let mut accumulator = EvalAccumulator {
+            max_grounded_visual_foot_gap_m: 0.24,
+            grounded_samples: scenario.thresholds.min_grounded_samples,
+            ..Default::default()
+        };
+        let derived = SummaryDerivedMetrics::from_accumulator(&accumulator, scenario);
+        let checks = build_checks(&accumulator, scenario, &derived);
+        let foot_gap = checks
+            .iter()
+            .find(|check| check.name == "grounded_visual_foot_gap")
+            .expect("gallery foot-gap check");
+
+        assert!(!foot_gap.passed);
+        accumulator.max_grounded_visual_foot_gap_m = 0.0;
+        let derived = SummaryDerivedMetrics::from_accumulator(&accumulator, scenario);
+        let checks = build_checks(&accumulator, scenario, &derived);
+        assert!(
+            checks
+                .iter()
+                .find(|check| check.name == "grounded_visual_foot_gap")
+                .expect("gallery foot-gap check")
+                .passed
+        );
+    }
 }

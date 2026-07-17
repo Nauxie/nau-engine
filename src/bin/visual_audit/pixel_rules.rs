@@ -29,6 +29,11 @@ pub(super) fn is_scene_like(r: f64, g: f64, b: f64, luma: f64, sky_like: bool) -
     foliage || earth || rock_or_shadow
 }
 
+pub(super) fn is_lower_scene_like(r: f64, g: f64, b: f64, luma: f64, sky_like: bool) -> bool {
+    is_scene_like(r, g, b, luma, sky_like)
+        || (!sky_like && (13.0..18.0).contains(&luma) && (r - g).abs() <= 45.0)
+}
+
 pub(super) fn is_wind_effect_like(r: f64, g: f64, b: f64, luma: f64) -> bool {
     if !(55.0..=230.0).contains(&luma) {
         return false;

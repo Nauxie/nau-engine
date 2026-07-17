@@ -1,10 +1,15 @@
 mod caves;
 mod clouds;
 mod effects;
+mod flora;
+mod formations;
+mod hero_landmarks;
 mod landmarks;
 mod rocks;
+mod ruins;
 mod shared;
 mod trees;
+mod waterscapes;
 
 #[cfg(test)]
 pub(crate) use caves::{
@@ -22,6 +27,16 @@ pub(crate) use effects::{
     crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh,
     player_airflow_streamline_mesh, updraft_ribbon_mesh,
 };
+#[allow(unused_imports)]
+pub(crate) use flora::{
+    FloraMaterialRole, FloraVisualKind, IslandFloraVisualSpec, island_flora_visual_specs,
+};
+#[allow(unused_imports)]
+pub(crate) use formations::{
+    IslandRockFormationSpec, RockFormationKind, island_rock_formation_specs,
+};
+#[allow(unused_imports)]
+pub(crate) use hero_landmarks::{IslandHeroLandmarkSpec, island_hero_landmark_spec};
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use landmarks::{
@@ -32,9 +47,10 @@ pub(crate) use landmarks::{
     artifact_retaining_wall_mesh, artifact_stair_run_mesh,
 };
 pub(crate) use landmarks::{
-    FirstExpeditionSilhouetteKind, IslandWaterVisualKind, first_expedition_silhouette_specs,
-    garden_ring_mesh, island_lake_basin_visual_specs, island_water_visual_specs,
-    landing_garden_marker_mesh, launch_beacon_mesh, route_cairn_mesh, ruin_arch_mesh,
+    FirstExpeditionSilhouetteKind, IslandWaterFootprint, IslandWaterVisualKind,
+    first_expedition_silhouette_specs, garden_ring_mesh, island_lake_basin_visual_specs,
+    island_water_visual_specs, landing_garden_marker_mesh, launch_beacon_mesh, route_cairn_mesh,
+    ruin_arch_mesh,
 };
 #[cfg(test)]
 pub(crate) use landmarks::{
@@ -64,14 +80,21 @@ pub(crate) use rocks::{
     OBSTRUCTION_SPIRE_RINGS, OBSTRUCTION_SPIRE_SEGMENTS, ROCK_MESH_RINGS, ROCK_MESH_SEGMENTS,
 };
 pub(crate) use rocks::{cliff_tooth_ridge_mesh, obstruction_spire_mesh, rock_scatter_mesh};
+#[allow(unused_imports)]
+pub(crate) use ruins::{IslandRuinComplexSpec, RuinComplexKind, island_ruin_complex_specs};
 #[cfg(test)]
 pub(crate) use shared::DETAIL_CARD_VERTICES;
 pub(crate) use trees::{
     TREE_BRANCH_COUNT, TREE_CANOPY_CARD_COUNT, TREE_ROOT_FLARE_COUNT, TREE_TRUNK_RING_COUNT,
-    TREE_TRUNK_SEGMENTS, tree_canopy_mesh, tree_trunk_mesh,
+    TREE_TRUNK_SEGMENTS, tree_canopy_mesh, tree_canopy_mesh_for_species, tree_trunk_mesh,
+    tree_trunk_mesh_for_species,
 };
 #[cfg(test)]
 pub(crate) use trees::{
     TREE_BRANCH_SEGMENTS, TREE_CANOPY_LATITUDE_SEGMENTS, TREE_CANOPY_LONGITUDE_SEGMENTS,
     TREE_ROOT_FLARE_SEGMENTS,
+};
+#[allow(unused_imports)]
+pub(crate) use waterscapes::{
+    IslandWaterDetailSpec, WaterDetailKind, WaterDetailMaterialRole, island_water_detail_specs,
 };

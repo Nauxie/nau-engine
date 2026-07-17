@@ -10,6 +10,7 @@ pub(super) enum VisualAuditProfile {
     Default,
     RouteMarkerOptional,
     CloseObstruction,
+    IslandGallery,
 }
 
 impl VisualAuditProfile {
@@ -18,6 +19,7 @@ impl VisualAuditProfile {
             "default" => Some(Self::Default),
             "route_marker_optional" => Some(Self::RouteMarkerOptional),
             "close_obstruction" => Some(Self::CloseObstruction),
+            "island_gallery" => Some(Self::IslandGallery),
             _ => None,
         }
     }
@@ -27,13 +29,14 @@ impl VisualAuditProfile {
             Self::Default => "default",
             Self::RouteMarkerOptional => "route_marker_optional",
             Self::CloseObstruction => "close_obstruction",
+            Self::IslandGallery => "island_gallery",
         }
     }
 
-    fn relaxed_checks(self) -> &'static [&'static str] {
+    fn relaxed_report_checks(self) -> &'static [&'static str] {
         match self {
             Self::Default => &[],
-            Self::RouteMarkerOptional => &[
+            Self::RouteMarkerOptional | Self::IslandGallery => &[
                 "max_route_marker_fraction",
                 "max_route_marker_component_count",
                 "max_route_marker_hue_family_count",
@@ -45,6 +48,13 @@ impl VisualAuditProfile {
                 "max_route_marker_hue_family_count",
                 "max_foliage_scene_fraction",
             ],
+        }
+    }
+
+    fn relaxed_image_checks(self) -> &'static [&'static str] {
+        match self {
+            Self::IslandGallery => &["player_focus_fraction"],
+            Self::Default | Self::RouteMarkerOptional | Self::CloseObstruction => &[],
         }
     }
 }
@@ -260,20 +270,32 @@ pub(super) fn report_checks_for_profile(
             "ratio",
         ),
     ];
-    checks.retain(|check| !profile.relaxed_checks().contains(&check.name));
+    checks.retain(|check| !profile.relaxed_report_checks().contains(&check.name));
     checks
 }
 
+#[cfg(test)]
 pub(super) fn report_passed(audits: &[ImageAudit], report_checks: &[Check]) -> bool {
-    audits.iter().all(|audit| audit.passed) && report_checks.iter().all(|check| check.passed)
+    report_passed_for_profile(audits, report_checks, VisualAuditProfile::Default)
+}
+
+pub(super) fn report_passed_for_profile(
+    audits: &[ImageAudit],
+    report_checks: &[Check],
+    profile: VisualAuditProfile,
+) -> bool {
+    audits
+        .iter()
+        .all(|audit| image_passed_for_profile(audit, profile))
+        && report_checks.iter().all(|check| check.passed)
 }
 
 pub(super) fn audit_report_json_for_profile(
-    passed: bool,
     report_checks: &[Check],
     audits: &[ImageAudit],
     profile: VisualAuditProfile,
 ) -> String {
+    let passed = report_passed_for_profile(audits, report_checks, profile);
     let checks = report_checks
         .iter()
         .map(check_json)
@@ -281,7 +303,7 @@ pub(super) fn audit_report_json_for_profile(
         .join(",\n    ");
     let images = audits
         .iter()
-        .map(image_audit_json)
+        .map(|audit| image_audit_json(audit, profile))
         .collect::<Vec<_>>()
         .join(",\n    ");
     format!(
@@ -299,25 +321,39 @@ fn profile_json(profile: VisualAuditProfile) -> String {
         "{{\"name\": {}, \"relaxed_checks\": [{}]}}",
         json_string(profile.name()),
         profile
-            .relaxed_checks()
+            .relaxed_report_checks()
             .iter()
+            .chain(profile.relaxed_image_checks())
             .map(|check| json_string(check))
             .collect::<Vec<_>>()
             .join(", ")
     )
 }
 
-fn image_audit_json(audit: &ImageAudit) -> String {
+fn image_passed_for_profile(audit: &ImageAudit, profile: VisualAuditProfile) -> bool {
+    if profile.relaxed_image_checks().is_empty() {
+        return audit.passed;
+    }
+
+    audit
+        .checks
+        .iter()
+        .filter(|check| !profile.relaxed_image_checks().contains(&check.name))
+        .all(|check| check.passed)
+}
+
+fn image_audit_json(audit: &ImageAudit, profile: VisualAuditProfile) -> String {
     let checks = audit
         .checks
         .iter()
+        .filter(|check| !profile.relaxed_image_checks().contains(&check.name))
         .map(check_json)
         .collect::<Vec<_>>()
         .join(",\n      ");
     format!(
         "{{\n      \"path\": {},\n      \"passed\": {},\n      \"width\": {},\n      \"height\": {},\n      \"mean_luma\": {},\n      \"luma_stddev\": {},\n      \"colorfulness\": {},\n      \"quantized_colors\": {},\n      \"edge_density\": {},\n      \"top_sky_fraction\": {},\n      \"lower_scene_fraction\": {},\n      \"center_scene_fraction\": {},\n      \"center_edge_density\": {},\n      \"scene_detail_tile_fraction\": {},\n      \"flat_scene_tile_fraction\": {},\n      \"dominant_low_detail_scene_component_fraction\": {},\n      \"scene_detail_tile_count\": {},\n      \"flat_scene_tile_count\": {},\n      \"scene_candidate_tile_count\": {},\n      \"player_focus_fraction\": {},\n      \"player_warm_focus_fraction\": {},\n      \"route_marker_fraction\": {},\n      \"route_marker_component_count\": {},\n      \"route_marker_hue_family_count\": {},\n      \"distant_scene_fraction\": {},\n      \"distant_scene_component_count\": {},\n      \"distant_scene_color_bucket_count\": {},\n      \"distant_scene_horizontal_span_fraction\": {},\n      \"distant_scene_vertical_span_fraction\": {},\n      \"scene_material_family_count\": {},\n      \"terrain_scene_fraction\": {},\n      \"terrain_scene_tile_count\": {},\n      \"terrain_scene_color_bucket_count\": {},\n      \"foliage_scene_fraction\": {},\n      \"foliage_scene_tile_count\": {},\n      \"cloud_layer_fraction\": {},\n      \"cloud_layer_component_count\": {},\n      \"cloud_layer_horizontal_span_fraction\": {},\n      \"cloud_layer_vertical_span_fraction\": {},\n      \"severe_clipping_fraction\": {},\n      \"transparent_pixel_fraction\": {},\n      \"foreign_canvas_fraction\": {},\n      \"hud_text_fraction\": {},\n      \"checks\": [\n      {}\n      ]\n    }}",
         json_string(&audit.path),
-        audit.passed,
+        image_passed_for_profile(audit, profile),
         audit.width,
         audit.height,
         json_number(audit.mean_luma),

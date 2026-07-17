@@ -1,4 +1,8 @@
 use super::*;
+use crate::eval::scenarios::{
+    ISLAND_HERO_GALLERY_FRAMES_PER_VIEW, ISLAND_HERO_GALLERY_HOLD_FRAMES,
+    ISLAND_HERO_GALLERY_SETTLE_FRAMES,
+};
 use std::collections::BTreeSet;
 
 fn shell_array<'a>(script: &'a str, name: &str) -> Vec<&'a str> {
@@ -57,6 +61,7 @@ fn camera_continuity_gate_covers_the_required_surface_and_timing_contract() {
     assert_eq!(actual, expected);
     assert!(script.contains("requested_refresh_rates=(30 60 120 144)"));
     assert!(script.contains("requested_hitches_ms=(50 100)"));
+    assert!(script.contains("inactive_look_resets_capture_history_before_resume"));
     assert!(script.contains(".metrics.sample_count == $expected_samples"));
     assert!(script.contains(".metrics.max_world_collision_push_m <= $max_push"));
     assert!(script.contains(".metrics.max_terrain_rim_collision_push_m <= $max_push"));
@@ -64,8 +69,9 @@ fn camera_continuity_gate_covers_the_required_surface_and_timing_contract() {
     assert!(
         script.contains("NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ANGULAR_VELOCITY_DEGREES_PER_SEC:-180")
     );
+    assert!(script.contains("NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ACCELERATION_MPS2:-1300"));
     assert!(script.contains(
-        "NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ANGULAR_ACCELERATION_DEGREES_PER_SEC2:-15000"
+        "NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ANGULAR_ACCELERATION_DEGREES_PER_SEC2:-6000"
     ));
     assert!(
         script.contains(".metrics.max_camera_player_relative_angular_velocity_degrees_per_sec")
@@ -99,14 +105,108 @@ fn continuity_and_performance_gates_fail_closed_on_incomplete_or_failed_evidence
 #[test]
 fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
     let performance = include_str!("../../../tools/dev_play_performance_gate.sh");
-    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_AVG_FRAME_TIME_MS:-24"));
-    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_P95_FRAME_TIME_MS:-30"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_VISIBLE_WINDOW:-0"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_AVG_FRAME_TIME_MS:-12"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_P95_FRAME_TIME_MS:-18"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_FRAME_TIME_MS:-35"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_FRAMES_OVER_16_67MS:-24"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_MATERIAL_COUNT:-128"));
     assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_DEBUG_RELEASE_AVG_RATIO:-1.25"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_RUN_WARMUP:-1"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_RUN_HOST_PREFLIGHT:-1"));
 
     let workflow = include_str!("../../../.github/workflows/camera-continuity.yml");
     assert!(workflow.contains("NAU_DEV_PLAY_PERF_MAX_AVG_FRAME_TIME_MS: \"70\""));
     assert!(workflow.contains("NAU_DEV_PLAY_PERF_MAX_P95_FRAME_TIME_MS: \"90\""));
+    assert!(workflow.contains("NAU_DEV_PLAY_PERF_MAX_MATERIAL_COUNT: \"116\""));
+    assert!(workflow.contains("NAU_DEV_PLAY_PERF_RUN_HOST_PREFLIGHT: \"0\""));
+    assert!(workflow.contains(
+        "NAU_PERF_MAX_AVG_FRAME_TIME_MS: \"500\"\n          \
+         NAU_PERF_MAX_P95_FRAME_TIME_MS: \"500\"\n          \
+         NAU_PERF_MAX_P99_FRAME_TIME_MS: \"500\""
+    ));
+    assert!(workflow.contains("NAU_PERF_SUMMARY_MAX_COUNT_REGRESSION_RATIO: \"2.0\""));
+    assert!(workflow.contains("Compare PR performance with base"));
+    assert!(workflow.contains("github.event.pull_request.base.sha"));
+    assert!(workflow.contains("./tools/perf_baseline.sh"));
+    assert!(workflow.contains("camera_mouse_control"));
+    assert!(workflow.contains("./tools/compare_perf_summaries.sh"));
+    assert!(workflow.contains(") || baseline_status=$?"));
+    assert!(workflow.contains("camera_mouse_control || candidate_status=$?"));
+    assert!(workflow.contains("\"${candidate_output}/perf_summary.json\" || comparison_status=$?"));
+    assert!(workflow.contains(
+        "if (( baseline_status != 0 || candidate_status != 0 || comparison_status != 0 )); then"
+    ));
     assert!(workflow.contains("branches:\n      - main"));
+}
+
+#[test]
+fn development_performance_gate_enforces_camera_feel_budgets_for_both_profiles() {
+    let performance = include_str!("../../../tools/dev_play_performance_gate.sh");
+
+    assert!(performance.contains("max_frame_time_ms \\\n  max_debug_release_avg_ratio"));
+    assert!(
+        performance
+            .contains("if ! [[ \"${max_frames_over_16_67ms}\" =~ ^(0|[1-9][0-9]*)$ ]]; then")
+    );
+    assert!(performance.contains("if ! [[ \"${max_material_count}\" =~ ^[1-9][0-9]*$ ]]; then"));
+    assert!(performance.contains("and (.metrics.max_frame_time_ms | type) == \"number\""));
+    assert!(performance.contains("and (.metrics.frames_over_16_67ms | type) == \"number\""));
+    assert!(performance.contains("and (.metrics.max_material_count | type) == \"number\""));
+    assert!(performance.contains("local warmup_dir=\"${output_root}/${profile}_warmup\""));
+    assert!(performance.contains("./tools/perf_host_preflight.sh"));
+    assert!(performance.contains("warmup_run: ($run_warmup == 1)"));
+    assert!(performance.contains("host_preflight: ($run_host_preflight == 1)"));
+
+    for (profile_field, metric, threshold) in [
+        (
+            "avg_frame_time_ms",
+            "avg_frame_time_ms",
+            "max_avg_frame_time_ms",
+        ),
+        (
+            "p95_frame_time_ms",
+            "p95_frame_time_ms",
+            "max_p95_frame_time_ms",
+        ),
+        (
+            "max_frame_time_ms",
+            "max_frame_time_ms",
+            "max_frame_time_ms",
+        ),
+        (
+            "frames_over_16_67ms",
+            "frames_over_16_67ms",
+            "max_frames_over_16_67ms",
+        ),
+        (
+            "max_material_count",
+            "max_material_count",
+            "max_material_count",
+        ),
+    ] {
+        assert!(performance.contains(&format!("{threshold}: ${threshold}")));
+        for profile in ["debug", "release"] {
+            assert!(performance.contains(&format!(
+                "and ${profile}[0].metrics.{metric} <= ${threshold}"
+            )));
+            assert!(
+                performance.contains(&format!("{profile_field}: ${profile}[0].metrics.{metric}"))
+            );
+        }
+    }
+
+    assert!(performance.contains("and $avg_ratio <= $max_debug_release_avg_ratio"));
+    assert!(performance.contains(
+        "and $debug[0].metrics.max_entity_count == $release[0].metrics.max_entity_count"
+    ));
+    assert!(
+        performance
+            .contains("and $debug[0].metrics.max_mesh_count == $release[0].metrics.max_mesh_count")
+    );
+    assert!(performance.contains(
+        "and $debug[0].metrics.max_loaded_mesh_triangles\n          == $release[0].metrics.max_loaded_mesh_triangles"
+    ));
 }
 
 #[test]
@@ -134,6 +234,17 @@ fn baseline_route_has_scripted_launch_and_glide() {
     assert!(scripted_input(scenario, 60).glide);
     assert!(scripted_input(scenario, 390).glide);
     assert!(scripted_input(scenario, 390).dive);
+}
+
+#[test]
+fn release_traversal_content_budgets_cover_authored_island_density() {
+    for name in [BASELINE_ROUTE, LONG_GLIDE_VISIBILITY] {
+        let scenario = scenario_named(name).expect("release traversal route exists");
+
+        assert_eq!(scenario.thresholds.max_visible_island_detail_count, 260);
+        assert_eq!(scenario.thresholds.max_resident_island_visual_count, 430);
+        assert_eq!(scenario.thresholds.max_entity_count, 5_500);
+    }
 }
 
 #[test]
@@ -490,6 +601,107 @@ fn great_sky_plateau_vistas_is_a_grounded_pixel_review() {
 }
 
 #[test]
+fn island_surface_review_is_registered_as_app_only_with_aliases() {
+    let scenario =
+        scenario_named(ISLAND_SURFACE_REVIEW).expect("island surface review scenario exists");
+
+    assert_eq!(SCENARIO_NAMES.len(), 24);
+    assert_eq!(APP_ONLY_SCENARIO_NAMES.len(), 9);
+    assert!(APP_ONLY_SCENARIO_NAMES.contains(&ISLAND_SURFACE_REVIEW));
+    assert_eq!(
+        scenario_named("surface_review")
+            .expect("surface review alias exists")
+            .name,
+        ISLAND_SURFACE_REVIEW
+    );
+    assert_eq!(
+        scenario_named("island_details")
+            .expect("island details alias exists")
+            .name,
+        ISLAND_SURFACE_REVIEW
+    );
+    assert_eq!(scenario.target_island_name, Some("great sky plateau"));
+}
+
+#[test]
+fn island_hero_gallery_is_catalog_driven_app_only_and_transition_lenient() {
+    use crate::world::{ISLAND_REVIEW_VIEWS_PER_ISLAND, IslandReviewPlan, SkyRoute};
+
+    let scenario = scenario_named("island_hero_gallery").expect("hero gallery scenario exists");
+    let alias = scenario_named("all_islands").expect("hero gallery alias exists");
+    let plan = IslandReviewPlan::from_route(&SkyRoute::default());
+    let expected_capture_count = plan.islands.len() * ISLAND_REVIEW_VIEWS_PER_ISLAND;
+
+    assert_eq!(alias.name, scenario.name);
+    assert!(APP_ONLY_SCENARIO_NAMES.contains(&scenario.name));
+    assert_eq!(plan.islands.len(), 41);
+    assert_eq!(expected_capture_count, 123);
+    assert_eq!(ISLAND_HERO_GALLERY_SETTLE_FRAMES, 32);
+    assert_eq!(ISLAND_HERO_GALLERY_HOLD_FRAMES, 4);
+    assert_eq!(ISLAND_HERO_GALLERY_FRAMES_PER_VIEW, 36);
+    assert_eq!(
+        scenario.frame_count,
+        expected_capture_count as u32 * ISLAND_HERO_GALLERY_FRAMES_PER_VIEW - 1
+    );
+    assert_eq!(scenario.thresholds.min_samples, scenario.frame_count + 1);
+    assert!(scenario.checkpoints.is_empty());
+    assert_eq!(scenario.target_island_name, None);
+    assert_eq!(scenario.thresholds.min_horizontal_distance_m, 0.0);
+    assert_eq!(scenario.thresholds.max_camera_step_distance_m, 20_000.0);
+    assert_eq!(scenario.thresholds.max_camera_rotation_delta_degrees, 180.0);
+    assert_eq!(scenario.thresholds.max_camera_player_angle_degrees, 180.0);
+    assert_eq!(
+        scenario.thresholds.max_camera_orbit_alignment_degrees,
+        180.0
+    );
+    assert_eq!(scenario.thresholds.max_visible_island_detail_count, 260);
+    assert_eq!(scenario.thresholds.max_resident_island_visual_count, 430);
+    assert_eq!(scenario.thresholds.max_entity_count, 5_500);
+}
+
+#[test]
+fn island_surface_review_has_grounded_detail_checkpoints_and_zero_input() {
+    let scenario =
+        scenario_named(ISLAND_SURFACE_REVIEW).expect("island surface review scenario exists");
+
+    assert_eq!(scenario.frame_count, 360);
+    assert_eq!(scenario.sample_stride, 1);
+    assert_eq!(scenario.thresholds.min_samples, 361);
+    assert_eq!(
+        scenario
+            .checkpoints
+            .iter()
+            .map(|checkpoint| (checkpoint.frame, checkpoint.name))
+            .collect::<Vec<_>>(),
+        [
+            (60, "ruins_and_rock_detail"),
+            (180, "dense_flora_detail"),
+            (300, "lake_river_waterfall_detail"),
+        ]
+    );
+    assert!(scenario.thresholds.min_grounded_samples >= 340);
+    assert_eq!(scenario.thresholds.min_horizontal_distance_m, 0.0);
+    assert_eq!(scenario.thresholds.min_max_speed_mps, 0.0);
+    assert_eq!(scenario.thresholds.min_gliding_samples, 0);
+    assert_eq!(scenario.thresholds.min_lifted_samples, 0);
+    assert_eq!(scenario.thresholds.max_camera_distance_m, 360.0);
+    assert_eq!(scenario.thresholds.max_camera_step_distance_m, 6.0);
+    assert_eq!(scenario.thresholds.max_camera_rotation_delta_degrees, 3.5);
+    assert_eq!(scenario.thresholds.max_camera_player_angle_degrees, 90.0);
+    assert!(!scenario.thresholds.require_target_landing);
+    assert_eq!(scenario.thresholds.min_target_landing_samples, 0);
+    assert_eq!(scenario.thresholds.max_final_target_distance_m, 8.0);
+
+    for frame in [0, 60, 120, 180, 240, 300, 360] {
+        assert_eq!(scripted_input(scenario, frame), FlightInput::default());
+        assert_eq!(
+            scripted_camera_input(scenario, frame),
+            CameraInput::default()
+        );
+    }
+}
+
+#[test]
 fn underbridge_under_route_targets_low_cave_camera_pass() {
     let scenario = scenario_named(UNDERBRIDGE_UNDER_ROUTE).expect("underbridge route exists");
     let alias = scenario_named("under_route").expect("under-route alias exists");
@@ -532,21 +744,36 @@ fn scenario_camera_thresholds_guard_follow_distance_and_jitter() {
     for name in SCENARIO_NAMES {
         let scenario = scenario_named(name).expect("scenario exists");
         let mouse_camera = *name == CAMERA_MOUSE_CONTROL;
-        let cinematic_vista = *name == GREAT_SKY_PLATEAU_VISTAS;
+        let gallery = *name == "island_hero_gallery";
+        let cinematic_vista = matches!(*name, GREAT_SKY_PLATEAU_VISTAS | ISLAND_SURFACE_REVIEW);
+        let max_camera_distance_m = match *name {
+            "island_hero_gallery" => 1_000.0,
+            ISLAND_SURFACE_REVIEW => 360.0,
+            GREAT_SKY_PLATEAU_VISTAS => 220.0,
+            _ => 16.5,
+        };
 
         assert!(
-            scenario.thresholds.max_camera_distance_m <= if cinematic_vista { 220.0 } else { 16.5 },
-            "{name} should fail if the follow camera drifts into a zoomed-out view"
+            scenario.thresholds.max_camera_distance_m <= max_camera_distance_m,
+            "{name} should fail if its camera exceeds the intended framing distance"
         );
         assert!(
             scenario.thresholds.max_camera_step_distance_m
-                <= if cinematic_vista { 6.0 } else { 1.15 },
+                <= if gallery {
+                    20_000.0
+                } else if cinematic_vista {
+                    6.0
+                } else {
+                    1.15
+                },
             "{name} should fail large per-frame camera jumps"
         );
         assert!(
             scenario.thresholds.max_camera_player_angle_degrees
                 <= if mouse_camera {
                     6.0
+                } else if gallery {
+                    180.0
                 } else if cinematic_vista {
                     90.0
                 } else {
@@ -558,6 +785,8 @@ fn scenario_camera_thresholds_guard_follow_distance_and_jitter() {
             scenario.thresholds.max_camera_rotation_delta_degrees
                 <= if mouse_camera {
                     1.75
+                } else if gallery {
+                    180.0
                 } else if cinematic_vista {
                     3.5
                 } else {
@@ -566,7 +795,8 @@ fn scenario_camera_thresholds_guard_follow_distance_and_jitter() {
             "{name} should fail camera rotation jitter"
         );
         assert!(
-            scenario.thresholds.max_camera_orbit_alignment_degrees <= 5.0,
+            scenario.thresholds.max_camera_orbit_alignment_degrees
+                <= if gallery { 180.0 } else { 5.0 },
             "{name} should fail broad orbit misalignment"
         );
     }
@@ -577,6 +807,10 @@ fn scenarios_define_non_final_camera_checkpoints() {
     for name in SCENARIO_NAMES {
         let scenario = scenario_named(name).expect("scenario exists");
 
+        if *name == "island_hero_gallery" {
+            assert!(scenario.checkpoints.is_empty());
+            continue;
+        }
         assert!(!scenario.checkpoints.is_empty());
         assert!(
             scenario

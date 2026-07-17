@@ -9,21 +9,26 @@ use bevy::prelude::*;
 
 use crate::authored_assets::{VisualAssetRegistry, prepare_visual_asset_registry};
 use crate::camera_runtime::{spawn_follow_camera, spawn_follow_camera_with_settings};
-use crate::eval_runtime::{EvalRun, RunMode};
+use crate::eval_runtime::{EvalRun, ISLAND_HERO_GALLERY, RunMode};
 use crate::game_ui_runtime::{GameUiState, spawn_game_ui};
+use crate::island_visuals::{IslandStreamState, IslandVisualCatalog};
 use crate::play_profile_runtime::PlayProfileRun;
 use crate::scene_setup_runtime::hud::spawn_debug_readout;
 use crate::scene_setup_runtime::materials::prepare_scene_materials;
 use crate::scene_setup_runtime::player::spawn_player_runtime;
 use crate::scene_setup_runtime::world::spawn_world_runtime;
+use crate::{Player, PlayerDisplacementDiagnostics};
+use nau_engine::animation::{AnimationState, PlayerPoseIntent};
 use nau_engine::asset_pipeline::VisualAssetKind;
 use nau_engine::camera::FollowCamera;
 use nau_engine::eval::{
-    GREAT_SKY_PLATEAU_VISTAS, PLATEAU_ARRIVAL_CAMERA, TERRAIN_BODY_COLLISION_CONTACT,
-    TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT, UNDERBRIDGE_UNDER_ROUTE,
+    GREAT_SKY_PLATEAU_VISTAS, ISLAND_SURFACE_REVIEW, PLATEAU_ARRIVAL_CAMERA,
+    TERRAIN_BODY_COLLISION_CONTACT, TERRAIN_EDGE_WALKOFF, TERRAIN_RIM_COLLISION_CONTACT,
+    UNDERBRIDGE_UNDER_ROUTE,
 };
+use nau_engine::movement::{FlightController, FlightMode, Velocity};
 use nau_engine::world::{
-    SkyRoute, WorldCollisionProxyKind, route_obstruction_spires,
+    IslandReviewView, SkyRoute, WorldCollisionProxyKind, route_obstruction_spires,
     terrain_collision_contact_probe_position,
 };
 
@@ -79,10 +84,12 @@ pub(crate) fn setup(
     );
     commands.insert_resource(visual_asset_registry);
 
-    if eval_run
-        .as_deref()
-        .is_some_and(|run| run.scenario.name == GREAT_SKY_PLATEAU_VISTAS)
-    {
+    if eval_run.as_deref().is_some_and(|run| {
+        matches!(
+            run.scenario.name,
+            GREAT_SKY_PLATEAU_VISTAS | ISLAND_SURFACE_REVIEW | ISLAND_HERO_GALLERY
+        )
+    }) {
         spawn_follow_camera_with_settings(
             &mut commands,
             &mut scattering_mediums,
@@ -107,11 +114,90 @@ pub(crate) fn setup(
     spawn_game_ui(&mut commands, &game_ui);
 }
 
+pub(crate) fn apply_authored_island_material_parity(
+    route: Res<SkyRoute>,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut catalog: ResMut<IslandVisualCatalog>,
+    stream_state: Res<IslandStreamState>,
+    mut spawned_materials: Query<(Option<&Name>, &mut MeshMaterial3d<StandardMaterial>)>,
+) {
+    let (spawned_updates, obstruction_stones) =
+        catalog.apply_authored_detail_materials(&route, &mut images, &mut materials, &stream_state);
+
+    for (entity, replacement) in spawned_updates {
+        if let Ok((_, mut material)) = spawned_materials.get_mut(entity) {
+            material.0 = replacement;
+        }
+    }
+
+    for (name, mut material) in &mut spawned_materials {
+        let Some(island_name) = name
+            .map(Name::as_str)
+            .and_then(|name| name.strip_suffix(" obstruction spire"))
+        else {
+            continue;
+        };
+        if let Some((_, replacement)) = obstruction_stones
+            .iter()
+            .find(|(candidate, _)| *candidate == island_name)
+        {
+            material.0 = replacement.clone();
+        }
+    }
+}
+
+pub(crate) fn fix_island_hero_gallery_player(
+    run: Res<EvalRun>,
+    mut displacement: ResMut<PlayerDisplacementDiagnostics>,
+    mut player: Query<
+        (
+            &mut Transform,
+            &mut Velocity,
+            &mut FlightController,
+            &mut AnimationState,
+        ),
+        With<Player>,
+    >,
+) {
+    if run.scenario.name != ISLAND_HERO_GALLERY {
+        return;
+    }
+    let Some(pose) = run.island_review_pose() else {
+        return;
+    };
+    let Ok((mut transform, mut velocity, mut controller, mut animation)) = player.single_mut()
+    else {
+        return;
+    };
+    let (mode, pose_intent) = match pose.view {
+        IslandReviewView::Near => (FlightMode::Grounded, PlayerPoseIntent::GroundedIdle),
+        IslandReviewView::Mid | IslandReviewView::Traversal => {
+            (FlightMode::Gliding, PlayerPoseIntent::Gliding)
+        }
+    };
+
+    transform.translation = pose.player_position;
+    transform.rotation = Transform::from_translation(pose.player_position)
+        .looking_at(pose.camera_target, Vec3::Y)
+        .rotation;
+    velocity.0 = Vec3::ZERO;
+    *controller = FlightController { mode, ..default() };
+    *animation = AnimationState {
+        pose_intent,
+        ..default()
+    };
+    *displacement = PlayerDisplacementDiagnostics::default();
+}
+
 fn initial_player_position(
     eval_run: Option<&EvalRun>,
     play_profile: Option<&PlayProfileRun>,
     route: &SkyRoute,
 ) -> Vec3 {
+    if let Some(pose) = eval_run.and_then(EvalRun::island_review_pose) {
+        return pose.player_position;
+    }
     if eval_run.is_some_and(|run| run.scenario.name == TERRAIN_RIM_COLLISION_CONTACT) {
         return terrain_collision_eval_start_position(
             route,
@@ -134,6 +220,9 @@ fn initial_player_position(
     }
     if eval_run.is_some_and(|run| run.scenario.name == PLATEAU_ARRIVAL_CAMERA) {
         return plateau_arrival_camera_start_position(route);
+    }
+    if eval_run.is_some_and(|run| run.scenario.name == ISLAND_SURFACE_REVIEW) {
+        return route.playtest_reset_position();
     }
     if eval_run.is_some_and(|run| run.scenario.name == GREAT_SKY_PLATEAU_VISTAS) {
         return plateau_vista_start_position(route);

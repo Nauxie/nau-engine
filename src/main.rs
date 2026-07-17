@@ -20,7 +20,7 @@ use authored_assets::*;
 use bevy::app::AnimationSystems;
 use bevy::light::DirectionalLightShadowMap;
 use bevy::prelude::*;
-use bevy::window::CompositeAlphaMode;
+use bevy::window::{CompositeAlphaMode, PresentMode};
 use camera_runtime::*;
 #[cfg(test)]
 use content_export::mesh_uv0;
@@ -31,7 +31,9 @@ use debug_readout_runtime::*;
 use debug_visuals::*;
 use environment_visuals::*;
 use eval_app_runtime::*;
-use eval_runtime::{CliAction, EvalMovementBasis, EvalOptions, EvalRun, path_string, usage};
+use eval_runtime::{
+    CliAction, EvalMovementBasis, EvalOptions, EvalRun, ISLAND_HERO_GALLERY, path_string, usage,
+};
 #[cfg(test)]
 use eval_runtime::{RunMode, parse_cli_args, remove_existing_dir};
 use game_ui_runtime::*;
@@ -61,7 +63,10 @@ use player_runtime::{
     reapply_authored_player_pose_nodes,
 };
 use power_up_runtime::*;
-use scene_setup_runtime::{INITIAL_SKY_CLEAR_COLOR, WORLD_RADIUS, setup};
+use scene_setup_runtime::{
+    INITIAL_SKY_CLEAR_COLOR, WORLD_RADIUS, apply_authored_island_material_parity,
+    fix_island_hero_gallery_player, setup,
+};
 #[cfg(test)]
 use std::collections::HashMap;
 #[cfg(test)]
@@ -193,7 +198,7 @@ fn main() -> AppExit {
             Update,
             (
                 GameSet::Ui,
-                GameSet::CameraInput.run_if(gameplay_input_active),
+                GameSet::CameraInput,
                 GameSet::Movement.run_if(gameplay_input_active),
                 GameSet::Camera.run_if(gameplay_input_active),
                 GameSet::Diagnostics.run_if(gameplay_input_active),
@@ -201,7 +206,10 @@ fn main() -> AppExit {
             )
                 .chain(),
         )
-        .add_systems(Startup, setup)
+        .add_systems(
+            Startup,
+            (setup, apply_authored_island_material_parity).chain(),
+        )
         .add_systems(
             Update,
             (toggle_game_menu, handle_game_menu_buttons, sync_game_ui)
@@ -210,7 +218,10 @@ fn main() -> AppExit {
         )
         .add_systems(
             Update,
-            (update_mouse_look_capture, update_camera_control)
+            (
+                update_mouse_look_capture.run_if(gameplay_input_active),
+                update_camera_control,
+            )
                 .chain()
                 .in_set(GameSet::CameraInput),
         )
@@ -295,7 +306,12 @@ fn main() -> AppExit {
             .insert_resource(RuntimeAssetCostState::default())
             .add_systems(
                 Update,
-                (eval_reset_player_to_playtest_position, eval_fly_player)
+                (
+                    (eval_reset_player_to_playtest_position, eval_fly_player)
+                        .chain()
+                        .run_if(eval_gameplay_movement_active),
+                    fix_island_hero_gallery_player,
+                )
                     .chain()
                     .in_set(GameSet::Movement),
             )
@@ -341,6 +357,10 @@ fn main() -> AppExit {
     app.run()
 }
 
+fn eval_gameplay_movement_active(run: Res<EvalRun>) -> bool {
+    run.scenario.name != ISLAND_HERO_GALLERY
+}
+
 fn primary_window(eval: Option<&EvalOptions>) -> Window {
     let hidden_metric_eval =
         eval.is_some_and(|options| !options.capture_screenshot && !options.visible_window);
@@ -348,6 +368,7 @@ fn primary_window(eval: Option<&EvalOptions>) -> Window {
     Window {
         title: "The NAU Engine Flight Sandbox".into(),
         resolution: (1280, 720).into(),
+        present_mode: PresentMode::AutoVsync,
         composite_alpha_mode: CompositeAlphaMode::Opaque,
         transparent: false,
         visible: !hidden_metric_eval,

@@ -2,6 +2,7 @@ mod collision_audit;
 mod details;
 mod queue;
 mod streaming;
+mod surface_details;
 mod types;
 
 pub(crate) use collision_audit::{IslandCollisionCoverageAudit, audit_island_collision_coverage};

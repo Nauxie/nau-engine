@@ -1,10 +1,20 @@
 use super::island_playable_normalized_offset;
 use super::random_unit;
 use bevy::prelude::*;
-use nau_engine::world::{IslandBiome, IslandLandmarkRole, SkyIsland};
+use nau_engine::world::{
+    IslandArtDirection, IslandBiome, IslandFloraIdentity, IslandLandmarkRole, IslandPaletteFamily,
+    IslandScaleClass, IslandSurfacePattern, IslandTerrainArchetype, IslandVisualMotif,
+    IslandWaterFeature, SkyIsland, authored_island_art_direction, authored_island_composition,
+};
 
 const GOLDEN_ANGLE_RADIANS: f32 = 2.399_963_1;
 const MAX_TREE_COUNT: usize = 12;
+const TREE_SPECIES_SEED_PREFIX_MASK: u32 = 0xff00_0000;
+const TREE_SPECIES_SEED_PREFIX: u32 = 0xa500_0000;
+const TREE_SPECIES_SEED_INDEX_MASK: u32 = 0x00e0_0000;
+const TREE_SPECIES_SEED_INDEX_SHIFT: u32 = 21;
+const TREE_SPECIES_SEED_PAYLOAD_MASK: u32 = 0x001f_ffff;
+const TREE_FORM_DIRECTION_MASK: u32 = 0x001f_0000;
 const GREAT_PLATEAU_TREE_OFFSETS: [[f32; 2]; 14] = [
     [-0.64, 0.16],
     [-0.58, 0.34],
@@ -31,8 +41,98 @@ pub(crate) struct IslandDetailBudget {
     pub(crate) ruin_arch_count: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[repr(u8)]
+pub(crate) enum TreeSpecies {
+    BroadCanopy,
+    WindBent,
+    Orchard,
+    Cypress,
+    Willow,
+    AlpinePine,
+}
+
+impl TreeSpecies {
+    #[cfg(test)]
+    pub(crate) const ALL: [Self; 6] = [
+        Self::BroadCanopy,
+        Self::WindBent,
+        Self::Orchard,
+        Self::Cypress,
+        Self::Willow,
+        Self::AlpinePine,
+    ];
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::BroadCanopy => "broad_canopy",
+            Self::WindBent => "wind_bent",
+            Self::Orchard => "orchard",
+            Self::Cypress => "cypress",
+            Self::Willow => "willow",
+            Self::AlpinePine => "alpine_pine",
+        }
+    }
+
+    pub(crate) fn visual_name(self) -> &'static str {
+        match self {
+            Self::BroadCanopy => "broad-canopy tree",
+            Self::WindBent => "wind-bent tree",
+            Self::Orchard => "orchard tree",
+            Self::Cypress => "cypress tree",
+            Self::Willow => "willow tree",
+            Self::AlpinePine => "alpine pine",
+        }
+    }
+
+    pub(crate) fn trunk_visual_name(self) -> &'static str {
+        match self {
+            Self::BroadCanopy => "broad-canopy tree trunk",
+            Self::WindBent => "wind-bent tree trunk",
+            Self::Orchard => "orchard tree trunk",
+            Self::Cypress => "cypress tree trunk",
+            Self::Willow => "willow tree trunk",
+            Self::AlpinePine => "alpine pine trunk",
+        }
+    }
+
+    pub(crate) fn canopy_visual_name(self) -> &'static str {
+        match self {
+            Self::BroadCanopy => "broad-canopy tree canopy",
+            Self::WindBent => "wind-bent tree canopy",
+            Self::Orchard => "orchard tree canopy",
+            Self::Cypress => "cypress tree canopy",
+            Self::Willow => "willow tree canopy",
+            Self::AlpinePine => "alpine pine canopy",
+        }
+    }
+
+    pub(crate) fn mesh_seed(self, seed: u32) -> u32 {
+        TREE_SPECIES_SEED_PREFIX
+            | ((self as u32) << TREE_SPECIES_SEED_INDEX_SHIFT)
+            | (seed & TREE_SPECIES_SEED_PAYLOAD_MASK)
+    }
+
+    pub(crate) fn from_mesh_seed(seed: u32) -> Option<Self> {
+        if seed & TREE_SPECIES_SEED_PREFIX_MASK != TREE_SPECIES_SEED_PREFIX {
+            return None;
+        }
+
+        match (seed & TREE_SPECIES_SEED_INDEX_MASK) >> TREE_SPECIES_SEED_INDEX_SHIFT {
+            0 => Some(Self::BroadCanopy),
+            1 => Some(Self::WindBent),
+            2 => Some(Self::Orchard),
+            3 => Some(Self::Cypress),
+            4 => Some(Self::Willow),
+            5 => Some(Self::AlpinePine),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct IslandTreeSpec {
+    pub(crate) species: TreeSpecies,
     pub(crate) normalized_offset: Vec2,
     pub(crate) trunk_radius_m: f32,
     pub(crate) trunk_height_m: f32,
@@ -113,23 +213,40 @@ pub(crate) fn island_tree_specs(island_index: usize, island: SkyIsland) -> Vec<I
     let count = island_detail_budget(island).tree_count;
     let layout_seed = detail_seed(island_index, island, 0x51a7_3e2d);
     let (height_scale, canopy_scale, trunk_scale) = tree_biome_scales(island.world_tags.biome);
+    let art_direction = authored_island_art_direction(island.name);
 
     (0..count)
         .map(|tree_index| {
             let sample = tree_index as u32;
+            let species = tree_species_for(island, tree_index, count, layout_seed);
             let normalized_offset = if island.is_great_plateau_anchor() {
                 island_playable_normalized_offset(
                     island,
                     Vec2::from_array(GREAT_PLATEAU_TREE_OFFSETS[tree_index]),
                 )
             } else {
-                distributed_offset(
-                    island,
-                    tree_index,
-                    count,
-                    layout_seed,
-                    if island.is_target { 0.48 } else { 0.30 },
-                    0.82,
+                art_direction.map_or_else(
+                    || {
+                        distributed_offset(
+                            island,
+                            tree_index,
+                            count,
+                            layout_seed,
+                            if island.is_target { 0.48 } else { 0.30 },
+                            0.82,
+                        )
+                    },
+                    |profile| {
+                        art_directed_offset(
+                            island,
+                            tree_index,
+                            count,
+                            layout_seed,
+                            profile,
+                            Vec2::from_array(profile.flora_anchor),
+                            0x7100,
+                        )
+                    },
                 )
             };
             let (plateau_height_scale, plateau_canopy_scale, plateau_trunk_scale) =
@@ -147,14 +264,21 @@ pub(crate) fn island_tree_specs(island_index: usize, island: SkyIsland) -> Vec<I
             let canopy_radius_m = (0.95 + random_unit(layout_seed, sample, 67) * 0.50)
                 * canopy_scale
                 * plateau_canopy_scale;
+            let form_seed = mixed_seed(layout_seed ^ sample.wrapping_mul(0x27d4_eb2d) ^ 0x4000);
+            let form_direction = form_seed & TREE_FORM_DIRECTION_MASK;
+            let trunk_seed = mixed_seed(layout_seed ^ sample.wrapping_mul(0x9e37_79b9) ^ 0x5000);
+            let canopy_seed = mixed_seed(layout_seed ^ sample.wrapping_mul(0x85eb_ca6b) ^ 0x6000);
 
             IslandTreeSpec {
+                species,
                 normalized_offset,
                 trunk_radius_m,
                 trunk_height_m,
                 canopy_radius_m,
-                trunk_seed: mixed_seed(layout_seed ^ sample.wrapping_mul(0x9e37_79b9) ^ 0x5000),
-                canopy_seed: mixed_seed(layout_seed ^ sample.wrapping_mul(0x85eb_ca6b) ^ 0x6000),
+                trunk_seed: species
+                    .mesh_seed((trunk_seed & !TREE_FORM_DIRECTION_MASK) | form_direction),
+                canopy_seed: species
+                    .mesh_seed((canopy_seed & !TREE_FORM_DIRECTION_MASK) | form_direction),
             }
         })
         .collect()
@@ -164,19 +288,29 @@ pub(crate) fn island_rock_specs(island_index: usize, island: SkyIsland) -> Vec<I
     let count = island_detail_budget(island).rock_count;
     let layout_seed = detail_seed(island_index, island, 0x8c63_19f5);
     let biome_scale = rock_biome_scale(island.world_tags.biome);
+    let art_direction = authored_island_art_direction(island.name);
 
     (0..count)
         .map(|rock_index| {
             let sample = rock_index as u32;
             IslandRockSpec {
-                normalized_offset: distributed_offset(
-                    island,
-                    rock_index,
-                    count,
-                    layout_seed,
-                    0.48,
-                    0.86,
-                ) * ROCK_FOOTPRINT_INSET_SCALE,
+                normalized_offset: art_direction.map_or_else(
+                    || {
+                        distributed_offset(island, rock_index, count, layout_seed, 0.48, 0.86)
+                            * ROCK_FOOTPRINT_INSET_SCALE
+                    },
+                    |profile| {
+                        art_directed_offset(
+                            island,
+                            rock_index,
+                            count,
+                            layout_seed,
+                            profile,
+                            Vec2::from_array(profile.formation_anchor),
+                            0x9200,
+                        ) * ROCK_FOOTPRINT_INSET_SCALE
+                    },
+                ),
                 scale_m: ((0.42 + random_unit(layout_seed, sample, 79) * 0.38) * biome_scale)
                     .clamp(0.34, 1.10),
                 seed: mixed_seed(layout_seed ^ sample.wrapping_mul(0xc2b2_ae35) ^ 0x9000),
@@ -192,9 +326,18 @@ pub(crate) fn island_ruin_specs(island_index: usize, island: SkyIsland) -> Vec<I
     }
 
     let layout_seed = detail_seed(island_index, island, 0xd47a_6c21);
-    let cluster_angle = random_unit(layout_seed, 0, 89) * std::f32::consts::TAU;
-    let cluster_radius = 0.34 + random_unit(layout_seed, 0, 97) * 0.18;
-    let cluster_center = Vec2::new(cluster_angle.cos(), cluster_angle.sin()) * cluster_radius;
+    let art_direction = authored_island_art_direction(island.name);
+    let cluster_angle = art_direction.map_or_else(
+        || random_unit(layout_seed, 0, 89) * std::f32::consts::TAU,
+        |profile| profile.hero_rotation_degrees as f32 * std::f32::consts::PI / 180.0,
+    );
+    let cluster_center = art_direction.map_or_else(
+        || {
+            let cluster_radius = 0.34 + random_unit(layout_seed, 0, 97) * 0.18;
+            Vec2::new(cluster_angle.cos(), cluster_angle.sin()) * cluster_radius
+        },
+        |profile| Vec2::from_array(profile.ruin_anchor),
+    );
     let base_width = (island.half_extents.x * 0.24).clamp(5.5, 18.0);
     let base_height = (island.thickness * 0.38).clamp(4.8, 12.0);
     let base_depth = (island.half_extents.y * 0.08).clamp(1.2, 3.2);
@@ -268,6 +411,327 @@ fn distributed_offset(
     island_playable_normalized_offset(island, direction * radius + tangent * jitter)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn art_directed_offset(
+    island: SkyIsland,
+    index: usize,
+    count: usize,
+    seed: u32,
+    profile: IslandArtDirection,
+    anchor: Vec2,
+    salt: u32,
+) -> Vec2 {
+    let sample = index as u32;
+    let progress = (index as f32 + 0.5) / count.max(1) as f32;
+    let centered = progress * 2.0 - 1.0;
+    let side = if index.is_multiple_of(2) { -1.0 } else { 1.0 };
+    let ring_angle = progress * std::f32::consts::TAU;
+    let row = index % 3;
+    let column_count = count.div_ceil(3).max(1);
+    let column = index / 3;
+    let column_progress = if column_count <= 1 {
+        0.0
+    } else {
+        column as f32 / (column_count - 1) as f32 * 2.0 - 1.0
+    };
+    let local = match profile.surface_pattern {
+        IslandSurfacePattern::TerracedCourt => {
+            Vec2::new(centered * 0.62, side * (0.23 + 0.07 * (index % 3) as f32))
+        }
+        IslandSurfacePattern::BraidedCauseway => Vec2::new(
+            centered * 0.68,
+            (centered * std::f32::consts::PI * 1.5).sin() * 0.20 + side * 0.09,
+        ),
+        IslandSurfacePattern::RadialGarden => {
+            Vec2::new(ring_angle.cos(), ring_angle.sin()) * (0.38 + 0.10 * (index % 2) as f32)
+        }
+        IslandSurfacePattern::CrownedRidge => {
+            let angle = -1.05 + progress * 2.10;
+            Vec2::new(angle.sin() * 0.66, angle.cos() * 0.31 + 0.27)
+        }
+        IslandSurfacePattern::WindwardRibs => {
+            Vec2::new(centered * 0.66, side * (0.25 + 0.04 * (index % 3) as f32))
+        }
+        IslandSurfacePattern::OrchardRows => Vec2::new(
+            column_progress * 0.62,
+            (row as f32 - 1.0) * 0.23 + side * 0.025,
+        ),
+        IslandSurfacePattern::NeedleHalo => {
+            Vec2::new(ring_angle.cos(), ring_angle.sin()) * (0.48 + 0.06 * (index % 2) as f32)
+        }
+        IslandSurfacePattern::BasinRings => {
+            let radius = if index.is_multiple_of(2) { 0.36 } else { 0.56 };
+            Vec2::new(ring_angle.cos(), ring_angle.sin()) * radius
+        }
+        IslandSurfacePattern::ProcessionalAxis => {
+            Vec2::new(centered * 0.66, side * (0.14 + 0.04 * (index % 2) as f32))
+        }
+        IslandSurfacePattern::PortalCourt => {
+            let angle = -1.18 + progress * 2.36;
+            Vec2::new(side * (0.36 + angle.cos().abs() * 0.14), angle.sin() * 0.48)
+        }
+        IslandSurfacePattern::UnderhangThreshold => {
+            let angle = ring_angle + 0.55;
+            Vec2::new(angle.cos() * 0.58, angle.sin() * 0.42 - 0.10)
+        }
+        IslandSurfacePattern::ThermalSpiral => {
+            let radius = 0.24 + progress * 0.38;
+            let angle = progress * std::f32::consts::TAU * 2.25;
+            Vec2::new(angle.cos(), angle.sin()) * radius
+        }
+        IslandSurfacePattern::CascadeTerraces => Vec2::new(
+            centered * 0.58,
+            0.48 - (index % 4) as f32 * 0.27 + side * 0.035,
+        ),
+        IslandSurfacePattern::PlateauDistricts => {
+            let angle = ring_angle + (index % 3) as f32 * 0.29;
+            Vec2::new(angle.cos() * 0.58, angle.sin() * 0.54)
+        }
+        IslandSurfacePattern::SummitSanctum => {
+            Vec2::new(ring_angle.cos(), ring_angle.sin()) * (0.44 + 0.08 * (index % 2) as f32)
+        }
+    };
+    let rotation =
+        profile.hero_rotation_degrees as f32 * std::f32::consts::PI / 180.0 + salt as f32 * 0.0001;
+    let rotated = Vec2::new(
+        local.x * rotation.cos() - local.y * rotation.sin(),
+        local.x * rotation.sin() + local.y * rotation.cos(),
+    );
+    let jitter = Vec2::new(
+        random_unit(seed ^ salt, sample, 0x31) - 0.5,
+        random_unit(seed ^ salt, sample, 0x47) - 0.5,
+    ) * 0.055;
+    let mut offset = rotated + anchor * 0.30 + jitter;
+    let hero_anchor = Vec2::from_array(profile.hero_anchor);
+    let hero_delta = offset - hero_anchor;
+    if hero_delta.length() < 0.22 {
+        offset = hero_anchor + hero_delta.normalize_or(Vec2::Y) * 0.22;
+    }
+    if offset.x > -0.46 && offset.x < 0.38 && offset.y.abs() < 0.17 {
+        offset.y = side * (0.24 + random_unit(seed ^ salt, sample, 0x59) * 0.08);
+    }
+
+    island_playable_normalized_offset(island, offset * 0.94)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TreeSpeciesPalette {
+    primary: TreeSpecies,
+    secondary: TreeSpecies,
+    accent: TreeSpecies,
+}
+
+fn tree_species_for(island: SkyIsland, tree_index: usize, count: usize, seed: u32) -> TreeSpecies {
+    let palette = tree_species_palette(island);
+    if tree_index == 0 || count <= 1 {
+        return palette.primary;
+    }
+
+    let phase = mixed_seed(seed ^ 0x71c4_8a2d) as usize;
+    let secondary_period = match island.world_tags.scale_class {
+        IslandScaleClass::Tiny => None,
+        IslandScaleClass::Small => Some(5),
+        IslandScaleClass::Medium | IslandScaleClass::Large => Some(4),
+        IslandScaleClass::Vast | IslandScaleClass::HugePlateau => Some(3),
+    };
+    let accent_period = match island.world_tags.scale_class {
+        IslandScaleClass::Large => Some(9),
+        IslandScaleClass::Vast => Some(7),
+        IslandScaleClass::HugePlateau => Some(6),
+        IslandScaleClass::Tiny | IslandScaleClass::Small | IslandScaleClass::Medium => None,
+    };
+
+    if count >= 7
+        && palette.accent != palette.primary
+        && palette.accent != palette.secondary
+        && accent_period
+            .is_some_and(|period| (tree_index + phase) % period == period.saturating_sub(1))
+    {
+        return palette.accent;
+    }
+    if palette.secondary != palette.primary
+        && secondary_period
+            .is_some_and(|period| (tree_index + phase) % period == period.saturating_sub(1))
+    {
+        return palette.secondary;
+    }
+
+    palette.primary
+}
+
+fn tree_species_palette(island: SkyIsland) -> TreeSpeciesPalette {
+    if let Some(profile) = authored_island_art_direction(island.name) {
+        let primary = tree_species_for_palette_family(profile.palette_family);
+        let secondary = profile
+            .flora_kinds
+            .into_iter()
+            .map(tree_species_for_flora)
+            .find(|species| *species != primary)
+            .unwrap_or(primary);
+        let accent = profile
+            .flora_kinds
+            .into_iter()
+            .map(tree_species_for_flora)
+            .find(|species| *species != primary && *species != secondary)
+            .unwrap_or_else(|| tree_accent_species_for_biome(island.world_tags.biome));
+        return TreeSpeciesPalette {
+            primary,
+            secondary,
+            accent,
+        };
+    }
+
+    let motif_species = authored_island_composition(island.name)
+        .map(|composition| tree_species_for_motif(composition.visual_motif));
+    let archetype_species = tree_species_for_archetype(island.terrain_archetype);
+    let water_species =
+        (island.world_tags.water_feature != IslandWaterFeature::Dry).then_some(TreeSpecies::Willow);
+    let biome_primary = tree_species_for_biome(island.world_tags.biome);
+    let biome_accent = tree_accent_species_for_biome(island.world_tags.biome);
+    let primary = match island.world_tags.biome {
+        IslandBiome::Meadow => motif_species.unwrap_or(archetype_species),
+        IslandBiome::Garden => {
+            if motif_species == Some(TreeSpecies::Orchard) {
+                TreeSpecies::Orchard
+            } else {
+                TreeSpecies::BroadCanopy
+            }
+        }
+        IslandBiome::Mist if water_species.is_some() => TreeSpecies::Willow,
+        IslandBiome::Storm
+        | IslandBiome::Orchard
+        | IslandBiome::Lake
+        | IslandBiome::Mist
+        | IslandBiome::Alpine
+        | IslandBiome::Ruin => biome_primary,
+    };
+    let secondary = [
+        water_species,
+        Some(archetype_species),
+        motif_species,
+        Some(biome_accent),
+        Some(TreeSpecies::BroadCanopy),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|species| *species != primary)
+    .unwrap_or(primary);
+    let accent = [
+        motif_species,
+        Some(biome_accent),
+        Some(archetype_species),
+        water_species,
+        Some(TreeSpecies::WindBent),
+        Some(TreeSpecies::Cypress),
+        Some(TreeSpecies::Orchard),
+        Some(TreeSpecies::AlpinePine),
+        Some(TreeSpecies::BroadCanopy),
+        Some(TreeSpecies::Willow),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|species| *species != primary && *species != secondary)
+    .unwrap_or(secondary);
+
+    TreeSpeciesPalette {
+        primary,
+        secondary,
+        accent,
+    }
+}
+
+fn tree_species_for_palette_family(palette: IslandPaletteFamily) -> TreeSpecies {
+    match palette {
+        IslandPaletteFamily::VerdantSun | IslandPaletteFamily::PlateauBloom => {
+            TreeSpecies::BroadCanopy
+        }
+        IslandPaletteFamily::CopperOrchard | IslandPaletteFamily::RuinOchre => TreeSpecies::Orchard,
+        IslandPaletteFamily::StormSlate => TreeSpecies::WindBent,
+        IslandPaletteFamily::MistJade | IslandPaletteFamily::CloudSilver => TreeSpecies::Cypress,
+        IslandPaletteFamily::SapphireWetland => TreeSpecies::Willow,
+        IslandPaletteFamily::AlpineFrost => TreeSpecies::AlpinePine,
+    }
+}
+
+fn tree_species_for_flora(flora: IslandFloraIdentity) -> TreeSpecies {
+    match flora {
+        IslandFloraIdentity::FernGrove | IslandFloraIdentity::MushroomRing => TreeSpecies::Cypress,
+        IslandFloraIdentity::FlowerThicket => TreeSpecies::Orchard,
+        IslandFloraIdentity::ReedBed => TreeSpecies::Willow,
+        IslandFloraIdentity::WindShrub => TreeSpecies::WindBent,
+        IslandFloraIdentity::BroadleafPatch => TreeSpecies::BroadCanopy,
+    }
+}
+
+fn tree_species_for_biome(biome: IslandBiome) -> TreeSpecies {
+    match biome {
+        IslandBiome::Meadow | IslandBiome::Garden => TreeSpecies::BroadCanopy,
+        IslandBiome::Storm => TreeSpecies::WindBent,
+        IslandBiome::Orchard => TreeSpecies::Orchard,
+        IslandBiome::Lake => TreeSpecies::Willow,
+        IslandBiome::Mist | IslandBiome::Ruin => TreeSpecies::Cypress,
+        IslandBiome::Alpine => TreeSpecies::AlpinePine,
+    }
+}
+
+fn tree_accent_species_for_biome(biome: IslandBiome) -> TreeSpecies {
+    match biome {
+        IslandBiome::Meadow => TreeSpecies::WindBent,
+        IslandBiome::Garden => TreeSpecies::Orchard,
+        IslandBiome::Storm => TreeSpecies::AlpinePine,
+        IslandBiome::Orchard => TreeSpecies::BroadCanopy,
+        IslandBiome::Lake => TreeSpecies::Cypress,
+        IslandBiome::Mist => TreeSpecies::Willow,
+        IslandBiome::Alpine | IslandBiome::Ruin => TreeSpecies::WindBent,
+    }
+}
+
+fn tree_species_for_motif(motif: IslandVisualMotif) -> TreeSpecies {
+    match motif {
+        IslandVisualMotif::LaunchBeacon
+        | IslandVisualMotif::CairnShelf
+        | IslandVisualMotif::GardenRing => TreeSpecies::BroadCanopy,
+        IslandVisualMotif::WindRibbon
+        | IslandVisualMotif::StormStone
+        | IslandVisualMotif::ThermalRing => TreeSpecies::WindBent,
+        IslandVisualMotif::OrchardGrove => TreeSpecies::Orchard,
+        IslandVisualMotif::RuinStair
+        | IslandVisualMotif::MistArch
+        | IslandVisualMotif::CaveMouth => TreeSpecies::Cypress,
+        IslandVisualMotif::LakeBasin | IslandVisualMotif::WaterfallMeadow => TreeSpecies::Willow,
+        IslandVisualMotif::NeedleSpire
+        | IslandVisualMotif::PlateauRim
+        | IslandVisualMotif::CrownPerch => TreeSpecies::AlpinePine,
+    }
+}
+
+fn tree_species_for_archetype(archetype: IslandTerrainArchetype) -> TreeSpecies {
+    match archetype {
+        IslandTerrainArchetype::LaunchMesa
+        | IslandTerrainArchetype::Shelf
+        | IslandTerrainArchetype::GardenBasin
+        | IslandTerrainArchetype::RefugeTableland
+        | IslandTerrainArchetype::GardenApron
+        | IslandTerrainArchetype::SkyPlateau => TreeSpecies::BroadCanopy,
+        IslandTerrainArchetype::WindOverlook
+        | IslandTerrainArchetype::StormRavine
+        | IslandTerrainArchetype::LaunchSpur
+        | IslandTerrainArchetype::StormShard => TreeSpecies::WindBent,
+        IslandTerrainArchetype::OrchardBasin | IslandTerrainArchetype::OrchardSpur => {
+            TreeSpecies::Orchard
+        }
+        IslandTerrainArchetype::MistArch
+        | IslandTerrainArchetype::BrokenStair
+        | IslandTerrainArchetype::CloudGate
+        | IslandTerrainArchetype::MistStep => TreeSpecies::Cypress,
+        IslandTerrainArchetype::SapphireBasin => TreeSpecies::Willow,
+        IslandTerrainArchetype::CrownRidge | IslandTerrainArchetype::Needle => {
+            TreeSpecies::AlpinePine
+        }
+        IslandTerrainArchetype::TerracedSpur => TreeSpecies::Cypress,
+    }
+}
+
 fn tree_biome_scales(biome: IslandBiome) -> (f32, f32, f32) {
     match biome {
         IslandBiome::Meadow => (1.0, 1.0, 1.0),
@@ -319,6 +783,7 @@ fn mixed_seed(mut value: u32) -> u32 {
 mod tests {
     use super::*;
     use nau_engine::world::{IslandLandmarkRole, IslandPlateauRegion, SkyRoute};
+    use std::collections::HashSet;
 
     fn test_island(name: &'static str, half_extents: Vec2) -> SkyIsland {
         SkyIsland::new(name, Vec3::ZERO, half_extents, 18.0, false)
@@ -383,12 +848,60 @@ mod tests {
     fn generated_detail_specs_are_deterministic() {
         let island = test_island("high orchard", Vec2::new(72.0, 46.0));
 
-        assert_eq!(island_tree_specs(9, island), island_tree_specs(9, island));
+        let tree_specs = island_tree_specs(9, island);
+        assert_eq!(tree_specs, island_tree_specs(9, island));
+        for tree in tree_specs {
+            assert_eq!(
+                TreeSpecies::from_mesh_seed(tree.trunk_seed),
+                Some(tree.species)
+            );
+            assert_eq!(
+                TreeSpecies::from_mesh_seed(tree.canopy_seed),
+                Some(tree.species)
+            );
+        }
         assert_eq!(island_rock_specs(9, island), island_rock_specs(9, island));
         assert_eq!(
             island_ruin_specs(9, test_island("mist arch", Vec2::new(78.0, 34.0))),
             island_ruin_specs(9, test_island("mist arch", Vec2::new(78.0, 34.0)))
         );
+    }
+
+    #[test]
+    fn route_tree_species_cover_every_silhouette_with_coherent_island_palettes() {
+        let route = SkyRoute::default();
+        let mut route_species = HashSet::new();
+
+        for (island_index, island) in route.islands().iter().copied().enumerate() {
+            let specs = island_tree_specs(island_index, island);
+            let island_species = specs
+                .iter()
+                .map(|tree| tree.species)
+                .collect::<HashSet<_>>();
+            let primary = tree_species_palette(island).primary;
+            let primary_count = specs.iter().filter(|tree| tree.species == primary).count();
+
+            assert_eq!(specs.len(), island_detail_budget(island).tree_count);
+            assert!(
+                island_species.len() <= 3,
+                "{} should keep a coherent tree family mix",
+                island.name
+            );
+            assert!(
+                primary_count * 2 >= specs.len(),
+                "{} should be led by its primary tree family",
+                island.name
+            );
+            route_species.extend(island_species);
+        }
+
+        for species in TreeSpecies::ALL {
+            assert!(
+                route_species.contains(&species),
+                "{} should appear somewhere on the authored route",
+                species.visual_name()
+            );
+        }
     }
 
     #[test]

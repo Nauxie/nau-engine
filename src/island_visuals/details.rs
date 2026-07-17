@@ -9,13 +9,13 @@ use crate::environment_visuals::wind_visual_motion;
 use crate::generated_content::{
     FirstExpeditionSilhouetteKind, GROUND_COVER_BLADES_PER_PATCH, IslandArtifactMaterial,
     IslandDetailBudget, IslandDetailMaterials, IslandRockSpec, IslandRuinSpec, IslandTreeSpec,
-    IslandUnderRouteVisualKind, cliff_tooth_ridge_mesh, first_expedition_silhouette_specs,
-    garden_ring_mesh, island_artifact_visual_specs, island_detail_budget, island_ground_cover_mesh,
-    island_lake_basin_visual_specs, island_playable_normalized_offset, island_rock_specs,
-    island_ruin_specs, island_tree_specs, island_under_route_visual_specs,
-    island_visual_surface_position, island_water_visual_specs, landing_garden_marker_mesh,
-    launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh, ruin_arch_mesh, tree_canopy_mesh,
-    tree_trunk_mesh,
+    IslandUnderRouteVisualKind, TreeSpecies, cliff_tooth_ridge_mesh,
+    first_expedition_silhouette_specs, garden_ring_mesh, island_artifact_visual_specs,
+    island_detail_budget, island_ground_cover_mesh, island_lake_basin_visual_specs,
+    island_playable_normalized_offset, island_rock_specs, island_ruin_specs, island_tree_specs,
+    island_under_route_visual_specs, island_visual_surface_position, island_water_visual_specs,
+    landing_garden_marker_mesh, launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh,
+    ruin_arch_mesh, tree_canopy_mesh_for_species, tree_trunk_mesh_for_species,
 };
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
@@ -67,9 +67,15 @@ pub(super) fn queue_sky_island_details(
         let surface = island_visual_surface_position(island, tree.normalized_offset);
         let trunk_center = surface + Vec3::Y * (tree.trunk_height_m * 0.5);
         let canopy_center = surface + Vec3::Y * (tree.trunk_height_m + tree.canopy_radius_m * 0.68);
-        let trunk_mesh = tree_trunk_mesh(tree.trunk_radius_m, tree.trunk_height_m, tree.trunk_seed);
+        let trunk_mesh = tree_trunk_mesh_for_species(
+            tree.species,
+            tree.trunk_radius_m,
+            tree.trunk_height_m,
+            tree.trunk_seed,
+        );
         content_diagnostics.record_generated_tree_trunk(trunk_mesh.count_vertices());
-        let canopy_mesh = tree_canopy_mesh(tree.canopy_radius_m, tree.canopy_seed);
+        let canopy_mesh =
+            tree_canopy_mesh_for_species(tree.species, tree.canopy_radius_m, tree.canopy_seed);
         content_diagnostics.record_generated_tree_canopy(canopy_mesh.count_vertices());
 
         queue_collidable_wind_island_visual(
@@ -98,7 +104,7 @@ pub(super) fn queue_sky_island_details(
                 WorldCollisionProxyKind::Tree,
             ),
             wind_visual_motion(island_index, tree_index as f32 * 0.61, 0.025, 0.018, 0.9),
-            "island tree trunk",
+            tree.species.trunk_visual_name(),
         );
         queue_wind_island_visual(
             entries,
@@ -119,7 +125,7 @@ pub(super) fn queue_sky_island_details(
                 0.075,
                 1.35,
             ),
-            "island tree canopy",
+            tree.species.canopy_visual_name(),
         );
     }
 
@@ -563,11 +569,21 @@ pub(super) fn queue_sky_island_details(
             launch_tree_surface_y + launch_tree_height + 0.85,
             8.0,
         );
-        let launch_trunk_mesh =
-            tree_trunk_mesh(0.35, launch_tree_height, 7_000 + island_index as u32 * 97);
+        let launch_tree_species = TreeSpecies::BroadCanopy;
+        let launch_trunk_seed = launch_tree_species.mesh_seed(7_000 + island_index as u32 * 97);
+        let launch_canopy_seed = launch_tree_species.mesh_seed(8_000 + island_index as u32 * 101);
+        let launch_trunk_mesh = tree_trunk_mesh_for_species(
+            launch_tree_species,
+            0.35,
+            launch_tree_height,
+            launch_trunk_seed,
+        );
         content_diagnostics.record_generated_tree_trunk(launch_trunk_mesh.count_vertices());
-        let launch_canopy_mesh =
-            tree_canopy_mesh(launch_canopy_radius, 8_000 + island_index as u32 * 101);
+        let launch_canopy_mesh = tree_canopy_mesh_for_species(
+            launch_tree_species,
+            launch_canopy_radius,
+            launch_canopy_seed,
+        );
         content_diagnostics.record_generated_tree_canopy(launch_canopy_mesh.count_vertices());
 
         queue_collidable_wind_island_visual(

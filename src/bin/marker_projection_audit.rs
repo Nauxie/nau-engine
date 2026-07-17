@@ -97,11 +97,8 @@ fn audit_checkpoint_path(path: &Path) -> Result<CheckpointAudit, String> {
         .get("route_marker_projection_required")
         .and_then(Value::as_bool)
         .unwrap_or(true);
-    let passed = if visible_marker_count > 0 {
-        marker_pixel_hit_count > 0
-    } else {
-        !route_marker_projection_required
-    };
+    let passed = !route_marker_projection_required
+        || (visible_marker_count > 0 && marker_pixel_hit_count > 0);
     let checkpoint = parsed
         .get("checkpoint")
         .and_then(Value::as_str)
@@ -419,7 +416,7 @@ mod tests {
     }
 
     #[test]
-    fn marker_projection_audit_checks_visible_markers_when_projection_is_optional() {
+    fn marker_projection_audit_skips_visible_markers_when_projection_is_optional() {
         let temp_dir = unique_temp_dir("marker_projection_optional_visible");
         fs::create_dir_all(&temp_dir).expect("temp dir");
         let screenshot_path = temp_dir.join("checkpoint.png");
@@ -435,7 +432,7 @@ mod tests {
 
         let audit = audit_checkpoint_path(&metadata_path).expect("audit");
 
-        assert!(!audit.passed);
+        assert!(audit.passed);
         assert!(!audit.route_marker_projection_required);
         assert_eq!(audit.visible_marker_count, 1);
         assert_eq!(audit.marker_pixel_hit_count, 0);

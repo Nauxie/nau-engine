@@ -64,13 +64,70 @@ fn island_segment_occlusion_distance(
 }
 
 fn island_blocks_marker_ray(island: SkyIsland, point: Vec3) -> bool {
-    let dx = (point.x - island.center.x) / island.half_extents.x.max(0.001);
-    let dz = (point.z - island.center.z) / island.half_extents.y.max(0.001);
-    if dx * dx + dz * dz > 1.10 {
+    if island.signed_visual_edge_distance(point) > 0.0 {
         return false;
     }
 
     let top_y = island.mesh_top_y_at(point) + 0.9;
     let bottom_y = island.center.y - island.thickness * 1.15;
     point.y >= bottom_y && point.y <= top_y
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::generated_content::island_hero_landmark_spec;
+    use nau_engine::world::SkyRoute;
+
+    #[test]
+    fn at_least_one_generated_copper_arcade_probe_is_unobstructed() {
+        let route = SkyRoute::default();
+        let camera = Vec3::new(42.012_337, 78.273_575, -294.080_38);
+        let (island_index, island) = route
+            .islands()
+            .iter()
+            .copied()
+            .enumerate()
+            .find(|(_, island)| island.name == "copper stair")
+            .expect("copper stair should exist");
+        let hero = island_hero_landmark_spec(island_index, island)
+            .expect("copper stair should have a hero");
+        let probes = hero.semantic_sample_positions().map(|sample| {
+            (
+                sample,
+                marker_occlusion_between(camera, sample, route.islands()),
+            )
+        });
+
+        assert!(
+            probes.iter().any(|(_, occlusion)| occlusion.is_none()),
+            "the visibly exposed Copper Arcade must retain an unobstructed mesh-derived probe; got {probes:?}"
+        );
+    }
+
+    #[test]
+    fn authored_visual_footprint_rejects_points_only_inside_the_coarse_ellipse() {
+        let route = SkyRoute::default();
+        let island = route
+            .island_named("distant crown")
+            .expect("distant crown should exist");
+        let (angle, silhouette_scale) = (0..720)
+            .map(|step| {
+                let angle = step as f32 / 720.0 * std::f32::consts::TAU;
+                (angle, island.visual_silhouette_scale(angle))
+            })
+            .min_by(|(_, left), (_, right)| left.total_cmp(right))
+            .expect("silhouette search should produce a sample");
+        assert!(silhouette_scale < 1.0);
+        let coarse_ellipse_radius = (silhouette_scale + 1.0) * 0.5;
+        let point = Vec3::new(
+            island.center.x + angle.cos() * island.half_extents.x * coarse_ellipse_radius,
+            island.center.y,
+            island.center.z + angle.sin() * island.half_extents.y * coarse_ellipse_radius,
+        );
+
+        assert!(coarse_ellipse_radius < 1.0);
+        assert!(island.signed_visual_edge_distance(point) > 0.0);
+        assert!(!island_blocks_marker_ray(island, point));
+    }
 }

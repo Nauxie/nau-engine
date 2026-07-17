@@ -18,6 +18,7 @@ asset_audit_path="${output_dir}/asset_fixture_audit.json"
 visual_audit_status=0
 marker_projection_audit_status=0
 semantic_scene_audit_status=0
+checkpoint_metadata_status=0
 asset_audit_status=0
 eval_status=0
 
@@ -135,7 +136,10 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
       echo "checkpoint marker semantic audit failed: ${artifact}" >&2
       jq '{passed, frame, checkpoint, semantic_marker_count, expected_objective_marker_count, in_viewport_semantic_marker_count, occluded_semantic_marker_count, visible_semantic_marker_count, current_objective_visible, semantic_scene_sample_count, in_viewport_semantic_scene_sample_count, occluded_semantic_scene_sample_count, visible_semantic_scene_sample_count, visible_semantic_scene_material_count, markers: [.markers[] | {kind, label, current_objective, in_viewport, visibility, occluder, screen}], scene_samples: [.scene_samples[]? | {kind, label, expected_material, in_viewport, visibility, occluder, screen}]}' \
         "${artifact}" >&2 || true
-      exit 1
+      checkpoint_metadata_status=1
+      if [[ "${scenario}" != "island_hero_gallery" ]]; then
+        exit 1
+      fi
     fi
     marker_metadata_artifacts+=("${artifact}")
   done < <(jq -r '.artifacts.checkpoint_marker_metadata[]?' "${summary}")
@@ -159,7 +163,10 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
   if [[ "${visual_audit_requested}" != "0" && "${#screenshot_artifacts[@]}" -gt 0 ]]; then
     visual_audit_args=()
     case "${scenario}" in
-      plateau_arrival_camera|great_sky_plateau_vistas)
+      island_hero_gallery)
+        visual_audit_args+=(--profile island_gallery)
+        ;;
+      plateau_arrival_camera|great_sky_plateau_vistas|island_surface_review)
         visual_audit_args+=(--profile route_marker_optional)
         ;;
       world_collision_contact)
@@ -205,6 +212,11 @@ if (( semantic_scene_audit_status != 0 )); then
       "${semantic_scene_audit_path}" >&2 || true
   fi
   exit "${semantic_scene_audit_status}"
+fi
+
+if (( checkpoint_metadata_status != 0 )); then
+  echo "checkpoint marker semantic audit failed for one or more gallery captures" >&2
+  exit "${checkpoint_metadata_status}"
 fi
 
 if (( asset_audit_status != 0 )); then
