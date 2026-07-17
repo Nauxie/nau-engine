@@ -19,7 +19,7 @@ pub(crate) struct IslandHeroLandmarkSpec {
     pub(crate) label: &'static str,
     pub(crate) translation: Vec3,
     pub(crate) rotation_y: f32,
-    pub(crate) camera_half_extents: Vec3,
+    pub(crate) visual_half_extents: Vec3,
     pub(crate) collision_half_extents: Option<Vec3>,
     scale: f32,
     seed: u32,
@@ -45,16 +45,16 @@ pub(crate) fn island_hero_landmark_spec(
     let normalized_anchor =
         island_playable_normalized_offset(island, Vec2::from_array(art.hero_anchor));
     let scale = art.hero_scale * scale_class_multiplier(island.world_tags.scale_class);
-    let camera_half_extents = hero_camera_half_extents(art.hero_landmark, scale);
+    let visual_half_extents = hero_visual_half_extents(art.hero_landmark, scale);
 
     Some(IslandHeroLandmarkSpec {
         kind: art.hero_landmark,
         label: art.hero_landmark.label(),
         translation: island_visual_surface_position(island, normalized_anchor) + Vec3::Y * 0.04,
         rotation_y: (art.hero_rotation_degrees as f32).to_radians(),
-        camera_half_extents,
-        // Hero landmarks are intentionally camera-solid but player-nonblocking until their
-        // authored footprints have dedicated traversal clearance evidence.
+        visual_half_extents,
+        // Hero landmarks stay player- and camera-nonblocking until a dedicated obstruction
+        // treatment can preserve camera feel without hiding their authored silhouettes.
         collision_half_extents: None,
         scale,
         seed: art.signature_seed ^ (island_index as u32).wrapping_mul(0x9e37_79b9),
@@ -72,7 +72,7 @@ fn scale_class_multiplier(scale_class: IslandScaleClass) -> f32 {
     }
 }
 
-fn hero_camera_half_extents(kind: IslandHeroLandmark, scale: f32) -> Vec3 {
+fn hero_visual_half_extents(kind: IslandHeroLandmark, scale: f32) -> Vec3 {
     let local = match kind {
         IslandHeroLandmark::BeaconCourt => Vec3::new(5.9, 2.9, 5.9),
         IslandHeroLandmark::CairnCauseway => Vec3::new(5.9, 2.1, 5.9),
@@ -1735,7 +1735,7 @@ mod tests {
             assert_eq!(spec.kind, profile.hero_landmark);
             assert_eq!(spec.label, profile.hero_landmark.label());
             assert!(spec.translation.is_finite());
-            assert!(spec.camera_half_extents.min_element() > 0.0);
+            assert!(spec.visual_half_extents.min_element() > 0.0);
             assert!(spec.collision_half_extents.is_none());
         }
     }
@@ -1794,7 +1794,7 @@ mod tests {
     }
 
     #[test]
-    fn every_hero_camera_bound_contains_its_generated_xyz_geometry() {
+    fn every_hero_visual_bound_contains_its_generated_xyz_geometry() {
         let route = SkyRoute::default();
         let mut kinds = HashSet::new();
         let mut failures = Vec::new();
@@ -1819,7 +1819,7 @@ mod tests {
 
             if min_y < -0.001
                 || !required
-                    .cmple(spec.camera_half_extents + Vec3::splat(0.001))
+                    .cmple(spec.visual_half_extents + Vec3::splat(0.001))
                     .all()
             {
                 failures.push(format!(
@@ -1827,7 +1827,7 @@ mod tests {
                     island.name,
                     spec.kind,
                     required / spec.scale,
-                    spec.camera_half_extents / spec.scale,
+                    spec.visual_half_extents / spec.scale,
                 ));
             }
         }
@@ -1835,7 +1835,7 @@ mod tests {
         assert_eq!(kinds.len(), 41);
         assert!(
             failures.is_empty(),
-            "hero camera bounds do not enclose generated geometry:\n{}",
+            "hero visual bounds do not enclose generated geometry:\n{}",
             failures.join("\n")
         );
     }
