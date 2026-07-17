@@ -146,7 +146,7 @@ pub(super) fn audit_image_with_alpha(
         }
         if y >= lower_start {
             lower_pixels += 1;
-            if scene_like {
+            if is_lower_scene_like(r, g, b, luma, sky_like) {
                 lower_scene_pixels += 1;
             }
         }
