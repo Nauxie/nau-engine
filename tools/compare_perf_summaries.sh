@@ -20,7 +20,7 @@ max_p95_frame_time_ms="${NAU_PERF_SUMMARY_MAX_P95_FRAME_TIME_REGRESSION_MS:-4}"
 max_p99_frame_time_ms="${NAU_PERF_SUMMARY_MAX_P99_FRAME_TIME_REGRESSION_MS:-3}"
 max_count_ratio="${NAU_PERF_SUMMARY_MAX_COUNT_REGRESSION_RATIO:-1.10}"
 max_count_abs="${NAU_PERF_SUMMARY_MAX_COUNT_REGRESSION_ABS:-5}"
-camera_mouse_max_hitch_count_ratio="${NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_HITCH_COUNT_REGRESSION_RATIO:-${max_count_ratio}}"
+max_gating_hitch_fraction="${NAU_PERF_SUMMARY_MAX_GATING_HITCH_FRACTION:-0.05}"
 summary_max_avg_frame_time_ms="${NAU_PERF_MAX_AVG_FRAME_TIME_MS:-24}"
 summary_max_p95_frame_time_ms="${NAU_PERF_MAX_P95_FRAME_TIME_MS:-45}"
 summary_max_p99_frame_time_ms="${NAU_PERF_MAX_P99_FRAME_TIME_MS:-80}"
@@ -81,6 +81,30 @@ optional_scenario_metric() {
   local key="$3"
   jq -r --arg scenario "${scenario}" --arg key "${key}" \
     '.scenarios[] | select(.scenario == $scenario) | .[$key] // null' "${summary}"
+}
+
+scenario_runtime_frame_time_sample_count() {
+  local summary="$1"
+  local scenario="$2"
+  local value
+  local raw_summary
+
+  value="$(optional_scenario_metric "${summary}" "${scenario}" "runtime_frame_time_sample_count")"
+  if [[ "${value}" != "null" ]]; then
+    printf '%s\n' "${value}"
+    return
+  fi
+
+  raw_summary="$(dirname "${summary}")/${scenario}/summary.json"
+  if [[ -s "${raw_summary}" ]]; then
+    value="$(jq -r '.metrics.runtime_frame_time_sample_count // null' "${raw_summary}")"
+    if [[ "${value}" != "null" ]]; then
+      printf '%s\n' "${value}"
+      return
+    fi
+  fi
+
+  optional_scenario_metric "${summary}" "${scenario}" "frame_count"
 }
 
 scenario_exists() {
@@ -344,32 +368,84 @@ compare_advisory_metric() {
     "${scenario}" "${key}" "${baseline_value}" "${candidate_value}" "${threshold}" "${within_threshold}"
 }
 
-compare_optional_count_metric() {
+compare_optional_hitch_metric() {
   local scenario="$1"
   local key="$2"
   local ratio="$3"
   local absolute_slack="$4"
-  local baseline_value
-  local candidate_value
-  local threshold
-  local passed
+  local baseline_count
+  local candidate_count
+  local baseline_samples
+  local candidate_samples
+  local baseline_fraction
+  local candidate_fraction
+  local threshold_fraction
+  local gating
+  local within_threshold
 
-  baseline_value="$(optional_scenario_metric "${baseline_summary}" "${scenario}" "${key}")"
-  candidate_value="$(optional_scenario_metric "${candidate_summary}" "${scenario}" "${key}")"
-  if [[ "${baseline_value}" == "null" || "${candidate_value}" == "null" ]]; then
+  baseline_count="$(optional_scenario_metric "${baseline_summary}" "${scenario}" "${key}")"
+  candidate_count="$(optional_scenario_metric "${candidate_summary}" "${scenario}" "${key}")"
+  baseline_samples="$(
+    scenario_runtime_frame_time_sample_count "${baseline_summary}" "${scenario}"
+  )"
+  candidate_samples="$(
+    scenario_runtime_frame_time_sample_count "${candidate_summary}" "${scenario}"
+  )"
+  if [[ "${baseline_count}" == "null" || "${candidate_count}" == "null" ]]; then
     printf '%s\t%s\tbaseline=%s\tcandidate=%s\tpassed=skipped_missing_metric\n' \
-      "${scenario}" "${key}" "${baseline_value}" "${candidate_value}"
+      "${scenario}" "${key}" "${baseline_count}" "${candidate_count}"
+    return
+  fi
+  if [[ "${baseline_samples}" == "null" || "${candidate_samples}" == "null" ]] ||
+    ! awk -v baseline="${baseline_samples}" -v candidate="${candidate_samples}" \
+      'BEGIN { exit !(baseline > 0 && candidate > 0) }'; then
+    printf '%s\t%s\tbaseline_samples=%s\tcandidate_samples=%s\tpassed=invalid_sample_count\n' \
+      "${scenario}" "${key}" "${baseline_samples}" "${candidate_samples}"
+    failed=1
     return
   fi
 
-  threshold="$(allowed_threshold "${baseline_value}" "${ratio}" "${absolute_slack}")"
-  passed="$(passes_threshold "${candidate_value}" "${threshold}")"
+  baseline_fraction="$(
+    awk -v count="${baseline_count}" -v samples="${baseline_samples}" \
+      'BEGIN { printf "%.6f", count / samples }'
+  )"
+  candidate_fraction="$(
+    awk -v count="${candidate_count}" -v samples="${candidate_samples}" \
+      'BEGIN { printf "%.6f", count / samples }'
+  )"
+  threshold_fraction="$(
+    awk \
+      -v count="${baseline_count}" \
+      -v samples="${baseline_samples}" \
+      -v ratio="${ratio}" \
+      -v slack="${absolute_slack}" \
+      'BEGIN {
+        relative = (count / samples) * ratio
+        absolute = (count + slack) / samples
+        printf "%.6f", (relative > absolute ? relative : absolute)
+      }'
+  )"
+  gating="$(
+    awk \
+      -v fraction="${baseline_fraction}" \
+      -v max_fraction="${max_gating_hitch_fraction}" \
+      'BEGIN { print (fraction <= max_fraction ? "true" : "false") }'
+  )"
+  within_threshold="$(passes_threshold "${candidate_fraction}" "${threshold_fraction}")"
 
-  printf '%s\t%s\tbaseline=%s\tcandidate=%s\tmax_allowed=%s\tpassed=%s\n' \
-    "${scenario}" "${key}" "${baseline_value}" "${candidate_value}" "${threshold}" "${passed}"
-
-  if [[ "${passed}" != "true" ]]; then
-    failed=1
+  if [[ "${gating}" == "true" ]]; then
+    printf '%s\t%s\tbaseline=%s/%s\tbaseline_fraction=%s\tcandidate=%s/%s\tcandidate_fraction=%s\tmax_allowed_fraction=%s\tgating=true\tpassed=%s\n' \
+      "${scenario}" "${key}" "${baseline_count}" "${baseline_samples}" "${baseline_fraction}" \
+      "${candidate_count}" "${candidate_samples}" "${candidate_fraction}" \
+      "${threshold_fraction}" "${within_threshold}"
+    if [[ "${within_threshold}" != "true" ]]; then
+      failed=1
+    fi
+  else
+    printf '%s\t%s_advisory\tbaseline=%s/%s\tbaseline_fraction=%s\tcandidate=%s/%s\tcandidate_fraction=%s\tmax_allowed_fraction=%s\twithin_threshold=%s\tgating=false\n' \
+      "${scenario}" "${key}" "${baseline_count}" "${baseline_samples}" "${baseline_fraction}" \
+      "${candidate_count}" "${candidate_samples}" "${candidate_fraction}" \
+      "${threshold_fraction}" "${within_threshold}"
   fi
 }
 
@@ -424,27 +500,24 @@ while IFS= read -r scenario; do
   if [[ "${scenario}" == "camera_mouse_control" ]]; then
     scenario_avg_frame_time_ratio="${camera_mouse_max_avg_frame_time_ratio}"
   fi
-  scenario_hitch_count_ratio="${max_count_ratio}"
-  if [[ "${scenario}" == "camera_mouse_control" ]]; then
-    scenario_hitch_count_ratio="${camera_mouse_max_hitch_count_ratio}"
-  fi
   compare_metric "${scenario}" "avg_frame_time_ms" \
     "${scenario_avg_frame_time_ratio}" "${max_frame_time_ms}"
   compare_metric "${scenario}" "p95_frame_time_ms" \
     "${max_frame_time_ratio}" "${max_p95_frame_time_ms}"
   # Live-window app eval p99 is useful signal, but too sensitive to a few
-  # scheduler/windowing frames for a hard relative gate. Tail regressions are
-  # still gated by absolute p99 plus explicit >33/>50/>100 ms hitch buckets.
+  # scheduler/windowing frames for a hard relative gate. A fixed frame-time
+  # bucket is a hard hitch gate only while it covers at most 5% of the base
+  # runtime; once it represents bulk cadence, p95 is the stable hard signal.
   compare_advisory_metric "${scenario}" "p99_frame_time_ms" \
     "${max_frame_time_ratio}" "${max_p99_frame_time_ms}"
   compare_advisory_metric "${scenario}" "max_frame_time_ms" \
     "${max_frame_time_ratio}" "${max_frame_time_ms}"
-  compare_optional_count_metric "${scenario}" "runtime_frames_over_33_34ms" \
-    "${scenario_hitch_count_ratio}" "${max_count_abs}"
-  compare_optional_count_metric "${scenario}" "runtime_frames_over_50ms" \
-    "${scenario_hitch_count_ratio}" "${max_count_abs}"
-  compare_optional_count_metric "${scenario}" "runtime_frames_over_100ms" \
-    "${scenario_hitch_count_ratio}" "${max_count_abs}"
+  compare_optional_hitch_metric "${scenario}" "runtime_frames_over_33_34ms" \
+    "${max_count_ratio}" "${max_count_abs}"
+  compare_optional_hitch_metric "${scenario}" "runtime_frames_over_50ms" \
+    "${max_count_ratio}" "${max_count_abs}"
+  compare_optional_hitch_metric "${scenario}" "runtime_frames_over_100ms" \
+    "${max_count_ratio}" "${max_count_abs}"
   compare_metric "${scenario}" "max_entity_count" \
     "${max_count_ratio}" "${max_count_abs}"
   compare_metric "${scenario}" "max_mesh_count" \
