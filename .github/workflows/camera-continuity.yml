@@ -43,6 +43,16 @@ jobs:
       - name: World content gate
         run: ./tools/world_content_gate.sh target/eval/world_content_gate/ci
 
+      - name: Upload failed island hero gallery evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: island-hero-gallery-${{ github.run_id }}
+          path: target/eval/world_content_gate/ci/island_hero_gallery
+          if-no-files-found: ignore
+          retention-days: 7
+          compression-level: 0
+
       - name: Development play performance gate
         env:
           NAU_DEV_PLAY_PERF_MAX_AVG_FRAME_TIME_MS: "70"

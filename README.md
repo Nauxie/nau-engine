@@ -19,10 +19,10 @@ The current world combines **41 floating islands** with a streamed playable worl
 - Traverse authored updrafts, crosswind lanes, visible airflow cues, and gust-varied wind that affects both player motion and glider response.
 - Fly a self-authored player/glider fixture with grounded, launch, fall, bank, glide, dive, brake, landing-anticipation, and recovery animation states.
 - Collide with island terrain, cliff bodies, trees, rocks, landmarks, and world-floor terrain; use the central-island reset when a route breaks down.
-- Read distinct island ecologies and histories through species-varied trees, dense flora clusters, ruin precincts, geological formations, and water-linked shoreline and waterfall detail.
+- Read 41 individually authored island identities through unique palettes, hero landmarks, species-varied trees, dense flora clusters, ruin precincts, geological formations, and water-linked shoreline and waterfall detail.
 - Review movement, camera, collision, route progress, streaming, visual readability, fixture integrity, and release performance through measured sim/app evals, screenshot audits, exports, and scripted play profiles.
 
-See the [Showcase](SHOWCASE.md) for gameplay, world scale, UI, and player/glider review captures. The [island-surface content contract](docs/ISLAND_SURFACE_CONTENT.md) documents the generated ecology, ruins, geology, water detail, budgets, and regression coverage. Detailed world-floor acceptance mechanics and evidence live in the [decision record](docs/DECISIONS/0002-world-floor-perf-first.md), [requirements audit](docs/world-floor-requirements-audit.md), and [acceptance report](docs/world-floor-acceptance-report.md).
+See the [Showcase](SHOWCASE.md) for gameplay, world scale, UI, and player/glider review captures. The [island art-direction contract](docs/ISLAND_ART_DIRECTION.md) records all 41 accepted identities and the 123-view review requirement; the [island-surface content contract](docs/ISLAND_SURFACE_CONTENT.md) documents generated ecology, ruins, geology, water detail, budgets, and regression coverage. Detailed world-floor acceptance mechanics and evidence live in the [decision record](docs/DECISIONS/0002-world-floor-perf-first.md), [requirements audit](docs/world-floor-requirements-audit.md), and [acceptance report](docs/world-floor-acceptance-report.md).
 
 ## Run
 
@@ -94,13 +94,17 @@ cargo run -- --eval long_glide_visibility --eval-output target/eval/long_glide_v
 NAU_EVAL_SCREENSHOT=1 NAU_EVAL_ASSET_AUDIT=0 \
   ./tools/eval.sh island_surface_review target/eval/island_surface_review
 ./tools/player_pose_preview.sh target/player_pose_preview
+./tools/island_art_direction_gate.sh target/eval/island_art_direction
+./tools/island_hero_gallery_gate.sh target/eval/island_hero_gallery
 ./tools/world_content_gate.sh target/world_content_gate
 ./tools/terrain_export.sh target/terrain_export
 ./tools/visual_content_export.sh target/visual_content_export
 ./tools/wind_visual_export.sh target/wind_visual_export
 ```
 
-The development-play gate runs the same full-content native scenario in debug and release, enforces frame-time ceilings, and rejects debug builds that drift materially behind release. The camera-continuity gate covers deterministic 30/60/120/144 Hz and hitch contracts plus native mouse, reset, collision, obstruction, and floor-boundary scenarios. Both are required by the macOS CI workflow.
+The island art-direction gate requires accepted full-profile signatures, exact per-island feature and tree/rock budgets, one matching hero landmark per island, unique palette and aggregate signatures, correct water-story presence, and authored-feature coverage. The hero-gallery gate requires near, mid, and traversal captures for all 41 islands, producing 123 screenshot/marker pairs with visual and semantic audits; hero probes come from generated mesh triangles, waterfall framing shares the rendered placement, and the gate is included in the world-content gate.
+
+The development-play gate runs the same full-content native scenario in debug and release, enforces frame-time ceilings, and rejects debug builds that drift materially behind release. The camera-continuity gate covers deterministic 30/60/120/144 Hz and hitch contracts plus native mouse, reset, collision, obstruction, and floor-boundary scenarios. World content, development performance, and camera continuity are required by the macOS CI workflow.
 
 Release comparison and world-floor regression gates remain available through `./tools/perf_baseline.sh`, `./tools/world_floor_full_gate.sh`, and `./tools/world_floor_candidate_gate.sh`. Human release play remains part of acceptance after behavioral changes; the linked acceptance documents define the full contract.
 
@@ -111,6 +115,7 @@ Resolved diagnostic note: a host-specific Apple Silicon presentation hitch was i
 - [Architecture](docs/ARCHITECTURE.md)
 - [Project Status](docs/STATUS.md)
 - [Eval Spec](docs/EVAL_SPEC.md)
+- [Island Art Direction](docs/ISLAND_ART_DIRECTION.md)
 - [Island Surface Content](docs/ISLAND_SURFACE_CONTENT.md)
 - [Flight Mechanics](docs/MECHANICS/flight.md)
 - [Roadmap](docs/ROADMAP.md)

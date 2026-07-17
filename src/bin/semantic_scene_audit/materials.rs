@@ -303,13 +303,21 @@ pub(crate) fn is_rock_or_shadow_like(r: f64, g: f64, b: f64, luma: f64) -> bool 
 }
 
 pub(crate) fn is_water_like(r: f64, g: f64, b: f64, luma: f64) -> bool {
-    if !(38.0..=235.0).contains(&luma) {
+    if !(18.0..=235.0).contains(&luma) {
         return false;
     }
 
+    let shadowed_teal = luma <= 45.0
+        && r <= 35.0
+        && g <= 50.0
+        && b <= 65.0
+        && g >= r + 8.0
+        && b >= r + 12.0
+        && b >= g - 8.0
+        && b <= g + 42.0;
     let deep_blue = r <= 105.0 && g >= 65.0 && b >= 120.0 && g >= r + 35.0 && b >= g + 28.0;
     let bright_cyan = g >= r + 45.0 && b >= g + 8.0 && b <= g + 48.0 && b >= 150.0;
-    deep_blue || bright_cyan
+    shadowed_teal || deep_blue || bright_cyan
 }
 
 pub(crate) fn is_stone_like(r: f64, g: f64, b: f64, luma: f64, sky_like: bool) -> bool {

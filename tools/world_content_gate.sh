@@ -5,10 +5,14 @@ output_root="${1:-target/world_content_gate}"
 
 mkdir -p "${output_root}"
 
+./tools/island_hero_gallery_gate.sh --self-test
 cargo test generated_content::
 cargo test world::tests
 ./tools/terrain_export.sh "${output_root}/terrain"
 ./tools/visual_content_export.sh "${output_root}/visual_content"
+cargo run --quiet --bin island_art_direction_audit -- \
+  "${output_root}/visual_content/manifest.json" \
+  > "${output_root}/visual_content/island_art_direction_audit.json"
 
 for scenario in long_glide_visibility great_sky_plateau_route; do
   NAU_EVAL_SIM_ONLY=1 NAU_EVAL_ASSET_AUDIT=0 \
@@ -23,5 +27,7 @@ NAU_EVAL_SCREENSHOT=1 NAU_EVAL_ASSET_AUDIT=0 \
 
 NAU_EVAL_SCREENSHOT=1 NAU_EVAL_ASSET_AUDIT=0 \
   ./tools/eval.sh island_surface_review "${output_root}/island_surface_review"
+
+./tools/island_hero_gallery_gate.sh "${output_root}/island_hero_gallery"
 
 echo "world content gate: ${output_root}"

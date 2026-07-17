@@ -5,8 +5,8 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use nau_engine::world::{
-    IslandBiome, IslandScaleClass, IslandTerrainArchetype, IslandVisualMotif, SkyIsland,
-    authored_island_composition,
+    IslandBiome, IslandFormationIdentity, IslandScaleClass, SkyIsland,
+    authored_island_art_direction,
 };
 
 const MAX_ROCK_FORMATIONS_PER_ISLAND: usize = 2;
@@ -75,29 +75,46 @@ impl IslandRockFormationSpec {
     pub(crate) fn build_mesh(self) -> Mesh {
         rock_formation_mesh(self.kind, self.scale, self.seed)
     }
+
+    pub(crate) fn semantic_sample_positions(self) -> [Vec3; 4] {
+        let half_extents = self.camera_half_extents.unwrap_or(Vec3::splat(0.5));
+        let rotation = Quat::from_rotation_y(self.rotation_y);
+        [
+            Vec3::new(0.0, half_extents.y.max(0.5), 0.0),
+            Vec3::new(half_extents.x * 0.62, half_extents.y * 0.72, 0.0),
+            Vec3::new(-half_extents.x * 0.62, half_extents.y * 0.72, 0.0),
+            Vec3::new(0.0, half_extents.y * 0.72, half_extents.z * 0.62),
+        ]
+        .map(|offset| self.translation + rotation * offset)
+    }
 }
 
 pub(crate) fn island_rock_formation_specs(
     island_index: usize,
     island: SkyIsland,
 ) -> Vec<IslandRockFormationSpec> {
-    let Some(composition) = authored_island_composition(island.name) else {
+    let Some(art_direction) = authored_island_art_direction(island.name) else {
         return Vec::new();
     };
-    let kinds = rock_formation_kinds(island, composition.visual_motif);
-    let layout_seed = detail_seed(island_index, island, 0xc731_84a9);
+    let formation_count = usize::from(art_direction.formation_count);
+    let authored_anchor = Vec2::from_array(art_direction.formation_anchor);
+    let layout_seed =
+        mixed_seed(detail_seed(island_index, island, 0xc731_84a9) ^ art_direction.signature_seed);
 
-    kinds
+    art_direction
+        .formation_kinds
         .into_iter()
-        .take(MAX_ROCK_FORMATIONS_PER_ISLAND)
+        .take(formation_count.min(MAX_ROCK_FORMATIONS_PER_ISLAND))
+        .map(rock_formation_kind)
         .enumerate()
         .map(|(formation_index, kind)| {
             let sample = formation_index as u32;
             let initial_offset = perimeter_offset(
                 island,
+                authored_anchor,
                 formation_index,
+                formation_count,
                 layout_seed,
-                composition.visual_motif,
             );
             let placement_angle = initial_offset.y.atan2(initial_offset.x);
             let rotation_y = formation_rotation(kind, placement_angle)
@@ -130,97 +147,36 @@ pub(crate) fn island_rock_formation_specs(
         .collect()
 }
 
-fn rock_formation_kinds(island: SkyIsland, motif: IslandVisualMotif) -> Vec<RockFormationKind> {
-    let primary = match motif {
-        IslandVisualMotif::StormStone => Some(RockFormationKind::BasaltCrown),
-        IslandVisualMotif::MistArch | IslandVisualMotif::CaveMouth => {
-            Some(RockFormationKind::WeatheredArch)
-        }
-        IslandVisualMotif::CairnShelf
-        | IslandVisualMotif::WindRibbon
-        | IslandVisualMotif::PlateauRim => Some(RockFormationKind::BoulderSpine),
-        IslandVisualMotif::NeedleSpire
-        | IslandVisualMotif::CrownPerch
-        | IslandVisualMotif::RuinStair => Some(RockFormationKind::StackedMonoliths),
-        IslandVisualMotif::GardenRing
-        | IslandVisualMotif::LakeBasin
-        | IslandVisualMotif::ThermalRing
-        | IslandVisualMotif::WaterfallMeadow => Some(RockFormationKind::CrystalOutcrop),
-        IslandVisualMotif::OrchardGrove => Some(RockFormationKind::BoulderSpine),
-        IslandVisualMotif::LaunchBeacon => match island.terrain_archetype {
-            IslandTerrainArchetype::StormRavine | IslandTerrainArchetype::StormShard => {
-                Some(RockFormationKind::BasaltCrown)
-            }
-            IslandTerrainArchetype::Needle | IslandTerrainArchetype::CrownRidge => {
-                Some(RockFormationKind::StackedMonoliths)
-            }
-            _ => None,
-        },
+fn rock_formation_kind(identity: IslandFormationIdentity) -> RockFormationKind {
+    match identity {
+        IslandFormationIdentity::BasaltCrown => RockFormationKind::BasaltCrown,
+        IslandFormationIdentity::WeatheredArch => RockFormationKind::WeatheredArch,
+        IslandFormationIdentity::BoulderSpine => RockFormationKind::BoulderSpine,
+        IslandFormationIdentity::StackedMonoliths => RockFormationKind::StackedMonoliths,
+        IslandFormationIdentity::CrystalOutcrop => RockFormationKind::CrystalOutcrop,
     }
-    .or(match island.terrain_archetype {
-        IslandTerrainArchetype::StormRavine | IslandTerrainArchetype::StormShard => {
-            Some(RockFormationKind::BasaltCrown)
-        }
-        IslandTerrainArchetype::MistArch | IslandTerrainArchetype::CloudGate => {
-            Some(RockFormationKind::WeatheredArch)
-        }
-        IslandTerrainArchetype::Needle | IslandTerrainArchetype::CrownRidge => {
-            Some(RockFormationKind::StackedMonoliths)
-        }
-        IslandTerrainArchetype::SapphireBasin => Some(RockFormationKind::CrystalOutcrop),
-        IslandTerrainArchetype::BrokenStair | IslandTerrainArchetype::TerracedSpur => {
-            Some(RockFormationKind::BoulderSpine)
-        }
-        _ => match island.world_tags.biome {
-            IslandBiome::Storm => Some(RockFormationKind::BasaltCrown),
-            IslandBiome::Mist => Some(RockFormationKind::WeatheredArch),
-            IslandBiome::Alpine | IslandBiome::Ruin => Some(RockFormationKind::StackedMonoliths),
-            IslandBiome::Lake | IslandBiome::Garden => Some(RockFormationKind::CrystalOutcrop),
-            IslandBiome::Meadow | IslandBiome::Orchard => None,
-        },
-    });
-
-    let Some(primary) = primary else {
-        return Vec::new();
-    };
-    let mut kinds = vec![primary];
-    if matches!(
-        island.world_tags.scale_class,
-        IslandScaleClass::Large | IslandScaleClass::Vast | IslandScaleClass::HugePlateau
-    ) {
-        let secondary = match island.world_tags.biome {
-            IslandBiome::Storm => RockFormationKind::BoulderSpine,
-            IslandBiome::Mist => RockFormationKind::StackedMonoliths,
-            IslandBiome::Alpine => RockFormationKind::CrystalOutcrop,
-            IslandBiome::Lake => RockFormationKind::BoulderSpine,
-            IslandBiome::Ruin => RockFormationKind::WeatheredArch,
-            IslandBiome::Garden | IslandBiome::Orchard => RockFormationKind::CrystalOutcrop,
-            IslandBiome::Meadow
-                if island.terrain_archetype == IslandTerrainArchetype::SkyPlateau =>
-            {
-                RockFormationKind::StackedMonoliths
-            }
-            IslandBiome::Meadow => RockFormationKind::BoulderSpine,
-        };
-        if secondary != primary {
-            kinds.push(secondary);
-        }
-    }
-    kinds
 }
 
 fn perimeter_offset(
     island: SkyIsland,
+    authored_anchor: Vec2,
     formation_index: usize,
+    formation_count: usize,
     seed: u32,
-    motif: IslandVisualMotif,
 ) -> Vec2 {
     let sample = formation_index as u32;
-    let mut angle = random_unit(seed, sample, 0x291) * std::f32::consts::TAU
-        + formation_index as f32 * 2.371
-        + motif as u32 as f32 * 0.137
-        + island.terrain_archetype.index() as f32 * 0.071;
-    let radius = 0.57 + random_unit(seed, sample, 0x29b) * 0.17;
+    let anchor_direction = if authored_anchor.length_squared() > 0.0001 {
+        authored_anchor.normalize()
+    } else {
+        let angle = random_unit(seed, sample, 0x291) * std::f32::consts::TAU;
+        Vec2::new(angle.cos(), angle.sin())
+    };
+    let centered_index = formation_index as f32 - formation_count.saturating_sub(1) as f32 * 0.5;
+    let mut angle = anchor_direction.y.atan2(anchor_direction.x)
+        + centered_index * 0.32
+        + (random_unit(seed, sample, 0x291) - 0.5) * 0.08;
+    let radius =
+        (authored_anchor.length().max(0.57) + random_unit(seed, sample, 0x29b) * 0.08).min(0.74);
     let mut offset = Vec2::new(angle.cos(), angle.sin()) * radius;
 
     if occupies_arrival_lane(offset) {
@@ -924,6 +880,48 @@ mod tests {
     }
 
     #[test]
+    fn every_authored_formation_profile_is_realized_exactly() {
+        let route = SkyRoute::default();
+
+        for (island_index, island) in route.islands().iter().copied().enumerate() {
+            let profile = authored_island_art_direction(island.name)
+                .expect("every route island should have authored art direction");
+            let specs = island_rock_formation_specs(island_index, island);
+            assert_eq!(
+                specs.len(),
+                usize::from(profile.formation_count),
+                "unexpected formation count for {}",
+                island.name
+            );
+            assert!(!specs.is_empty(), "{} needs authored geology", island.name);
+            let expected_kinds = profile
+                .formation_kinds
+                .into_iter()
+                .take(usize::from(profile.formation_count))
+                .map(rock_formation_kind)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                specs.iter().map(|spec| spec.kind).collect::<Vec<_>>(),
+                expected_kinds,
+                "{} should realize its authored formation kinds in order",
+                island.name
+            );
+
+            let anchor = Vec2::from_array(profile.formation_anchor).normalize();
+            let mean_offset = specs
+                .iter()
+                .map(|spec| normalized_offset(island, spec.translation))
+                .sum::<Vec2>()
+                / specs.len() as f32;
+            assert!(
+                mean_offset.normalize().dot(anchor) > 0.85,
+                "{} formations should remain driven by their authored anchor",
+                island.name
+            );
+        }
+    }
+
+    #[test]
     fn formations_stay_playable_perimeter_biased_and_clear_of_arrival_lane() {
         let route = SkyRoute::default();
 
@@ -1008,6 +1006,28 @@ mod tests {
                 .camera_half_extents
                 .expect("rock formations should publish camera bounds");
             assert!(max_y <= camera_half_extents.y * 2.0 + 0.001);
+        }
+    }
+
+    #[test]
+    fn formation_semantic_samples_cover_multiple_exposed_faces() {
+        let route = SkyRoute::default();
+
+        for (island_index, island) in route.islands().iter().copied().enumerate() {
+            for formation in island_rock_formation_specs(island_index, island) {
+                let samples = formation.semantic_sample_positions();
+                assert!(samples.iter().all(|sample| sample.is_finite()));
+                assert!(
+                    samples
+                        .iter()
+                        .all(|sample| sample.y > formation.translation.y)
+                );
+                for left in 0..samples.len() {
+                    for right in left + 1..samples.len() {
+                        assert!(samples[left].distance_squared(samples[right]) > 0.01);
+                    }
+                }
+            }
         }
     }
 

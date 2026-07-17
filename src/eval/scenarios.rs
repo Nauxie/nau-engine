@@ -4,6 +4,7 @@ mod input;
 mod traversal_scenarios;
 
 use super::thresholds::EvalThresholds;
+use crate::world::{ISLAND_REVIEW_VIEWS_PER_ISLAND, SKY_ROUTE_ISLAND_COUNT};
 
 pub use input::{scripted_camera_input, scripted_input, scripted_playtest_reset_requested};
 
@@ -27,9 +28,43 @@ pub const BRANCH_RECOVERY_ROUTE: &str = "branch_recovery_route";
 pub const GREAT_SKY_PLATEAU_ROUTE: &str = "great_sky_plateau_route";
 pub const GREAT_SKY_PLATEAU_VISTAS: &str = "great_sky_plateau_vistas";
 pub const ISLAND_SURFACE_REVIEW: &str = "island_surface_review";
+pub const ISLAND_HERO_GALLERY: &str = "island_hero_gallery";
 pub const RETURN_DESCENT_ROUTE: &str = "return_descent_route";
 pub const PLATEAU_ARRIVAL_CAMERA: &str = "plateau_arrival_camera";
 pub const UNDERBRIDGE_UNDER_ROUTE: &str = "underbridge_under_route";
+pub const ISLAND_HERO_GALLERY_SETTLE_FRAMES: u32 = 32;
+pub const ISLAND_HERO_GALLERY_HOLD_FRAMES: u32 = 4;
+pub const ISLAND_HERO_GALLERY_CAPTURE_FRAME_OFFSET: u32 = ISLAND_HERO_GALLERY_SETTLE_FRAMES;
+pub const ISLAND_HERO_GALLERY_FRAMES_PER_VIEW: u32 =
+    ISLAND_HERO_GALLERY_CAPTURE_FRAME_OFFSET + ISLAND_HERO_GALLERY_HOLD_FRAMES;
+pub const ISLAND_HERO_GALLERY_CAPTURE_COUNT: usize =
+    SKY_ROUTE_ISLAND_COUNT * ISLAND_REVIEW_VIEWS_PER_ISLAND;
+pub const ISLAND_HERO_GALLERY_FRAME_COUNT: u32 =
+    ISLAND_HERO_GALLERY_CAPTURE_COUNT as u32 * ISLAND_HERO_GALLERY_FRAMES_PER_VIEW - 1;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IslandHeroGalleryTiming {
+    pub settle_frames: u32,
+    pub hold_frames: u32,
+    pub frames_per_view: u32,
+    pub capture_count: usize,
+    pub frame_count: u32,
+}
+
+impl IslandHeroGalleryTiming {
+    pub const fn capture_frame(self, capture_index: usize) -> Option<u32> {
+        if capture_index >= self.capture_count {
+            return None;
+        }
+        Some(
+            capture_index as u32 * self.frames_per_view + (self.frames_per_view - self.hold_frames),
+        )
+    }
+
+    pub const fn expected_grounded_samples(self) -> u32 {
+        (self.capture_count / ISLAND_REVIEW_VIEWS_PER_ISLAND) as u32 * self.frames_per_view
+    }
+}
 
 type ScenarioFactory = fn() -> EvalScenario;
 
@@ -41,8 +76,8 @@ struct ScenarioRegistration {
     factory: ScenarioFactory,
 }
 
-const SCENARIO_COUNT: usize = 23;
-const APP_ONLY_SCENARIO_COUNT: usize = 8;
+const SCENARIO_COUNT: usize = 24;
+const APP_ONLY_SCENARIO_COUNT: usize = 9;
 const SCENARIO_REGISTRY: [ScenarioRegistration; SCENARIO_COUNT] = [
     ScenarioRegistration {
         name: BASELINE_ROUTE,
@@ -165,6 +200,12 @@ const SCENARIO_REGISTRY: [ScenarioRegistration; SCENARIO_COUNT] = [
         factory: traversal_scenarios::island_surface_review,
     },
     ScenarioRegistration {
+        name: ISLAND_HERO_GALLERY,
+        aliases: &["hero_gallery", "all_islands"],
+        app_only: true,
+        factory: traversal_scenarios::island_hero_gallery,
+    },
+    ScenarioRegistration {
         name: RETURN_DESCENT_ROUTE,
         aliases: &["return_descent", "descent_route", "long_descent"],
         app_only: true,
@@ -256,6 +297,19 @@ impl EvalScenario {
             .copied()
             .find(|checkpoint| checkpoint.frame == frame)
     }
+
+    pub fn island_hero_gallery_timing(self) -> Option<IslandHeroGalleryTiming> {
+        if self.name != ISLAND_HERO_GALLERY {
+            return None;
+        }
+        Some(IslandHeroGalleryTiming {
+            settle_frames: ISLAND_HERO_GALLERY_SETTLE_FRAMES,
+            hold_frames: ISLAND_HERO_GALLERY_HOLD_FRAMES,
+            frames_per_view: ISLAND_HERO_GALLERY_FRAMES_PER_VIEW,
+            capture_count: ISLAND_HERO_GALLERY_CAPTURE_COUNT,
+            frame_count: ISLAND_HERO_GALLERY_FRAME_COUNT,
+        })
+    }
 }
 
 pub fn scenario_named(name: &str) -> Option<EvalScenario> {
@@ -265,6 +319,9 @@ pub fn scenario_named(name: &str) -> Option<EvalScenario> {
         .map(|registration| {
             let mut scenario = (registration.factory)();
             scenario.thresholds.min_samples = scenario.expected_sample_count();
+            if let Some(timing) = scenario.island_hero_gallery_timing() {
+                scenario.thresholds.min_grounded_samples = timing.expected_grounded_samples();
+            }
             scenario
         })
 }
@@ -408,5 +465,28 @@ mod tests {
         assert!(!scripted_input(scenario, 30).launch);
         assert_eq!(scenario.thresholds.max_camera_obstruction_snap_count, 0);
         assert!(scenario.thresholds.min_grounded_samples >= 12);
+    }
+
+    #[test]
+    fn island_hero_gallery_timing_is_single_source_of_capture_truth() {
+        let scenario = scenario_named(ISLAND_HERO_GALLERY).expect("gallery scenario");
+        let timing = scenario
+            .island_hero_gallery_timing()
+            .expect("gallery timing");
+
+        assert_eq!(timing.settle_frames, 32);
+        assert_eq!(timing.hold_frames, 4);
+        assert_eq!(timing.frames_per_view, 36);
+        assert_eq!(timing.capture_count, 123);
+        assert_eq!(timing.frame_count, scenario.frame_count);
+        assert_eq!(timing.capture_frame(0), Some(32));
+        assert_eq!(timing.capture_frame(1), Some(68));
+        assert_eq!(timing.capture_frame(122), Some(4_424));
+        assert_eq!(timing.capture_frame(123), None);
+        assert_eq!(
+            scenario.thresholds.min_grounded_samples,
+            timing.expected_grounded_samples()
+        );
+        assert_eq!(timing.expected_grounded_samples(), 1_476);
     }
 }

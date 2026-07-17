@@ -1,4 +1,4 @@
-use crate::eval_runtime::EvalRun;
+use crate::eval_runtime::{EvalRun, ISLAND_HERO_GALLERY};
 use crate::play_profile_runtime::PlayProfileRun;
 use crate::{Player, keyboard_flight_input};
 use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
@@ -74,8 +74,8 @@ const ISLAND_SURFACE_REVIEW_CAMERA_POSES: [DirectCameraPose; 3] = [
         target: Vec3::new(-221.2, 695.7, -2629.5),
     },
     DirectCameraPose {
-        position: Vec3::new(15.0, 720.0, -2760.0),
-        target: Vec3::new(-120.0, 690.0, -2560.0),
+        position: Vec3::new(-150.0, 720.0, -2482.0),
+        target: Vec3::new(-225.0, 692.0, -2566.0),
     },
     DirectCameraPose {
         position: Vec3::new(205.0, 725.0, -2482.0),
@@ -441,7 +441,7 @@ pub(crate) fn direct_plateau_vista_camera(
     };
     if !matches!(
         run.scenario.name,
-        GREAT_SKY_PLATEAU_VISTAS | ISLAND_SURFACE_REVIEW
+        GREAT_SKY_PLATEAU_VISTAS | ISLAND_SURFACE_REVIEW | ISLAND_HERO_GALLERY
     ) {
         *previous_pose = None;
         return;
@@ -450,7 +450,15 @@ pub(crate) fn direct_plateau_vista_camera(
         return;
     };
 
-    let (position, rotation) = if run.scenario.name == ISLAND_SURFACE_REVIEW {
+    let (position, rotation) = if run.scenario.name == ISLAND_HERO_GALLERY {
+        let Some(pose) = run.island_review_pose() else {
+            return;
+        };
+        let rotation = Transform::from_translation(pose.camera_position)
+            .looking_at(pose.camera_target, Vec3::Y)
+            .rotation;
+        (pose.camera_position, rotation)
+    } else if run.scenario.name == ISLAND_SURFACE_REVIEW {
         let pose = island_surface_review_camera_pose(run.frame);
         (pose.position, pose.rotation())
     } else {
@@ -640,8 +648,8 @@ mod tests {
             ),
             (
                 180,
-                Vec3::new(15.0, 720.0, -2760.0),
-                Vec3::new(-120.0, 690.0, -2560.0),
+                Vec3::new(-150.0, 720.0, -2482.0),
+                Vec3::new(-225.0, 692.0, -2566.0),
             ),
             (
                 300,

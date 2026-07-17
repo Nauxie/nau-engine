@@ -31,7 +31,9 @@ use debug_readout_runtime::*;
 use debug_visuals::*;
 use environment_visuals::*;
 use eval_app_runtime::*;
-use eval_runtime::{CliAction, EvalMovementBasis, EvalOptions, EvalRun, path_string, usage};
+use eval_runtime::{
+    CliAction, EvalMovementBasis, EvalOptions, EvalRun, ISLAND_HERO_GALLERY, path_string, usage,
+};
 #[cfg(test)]
 use eval_runtime::{RunMode, parse_cli_args, remove_existing_dir};
 use game_ui_runtime::*;
@@ -61,7 +63,10 @@ use player_runtime::{
     reapply_authored_player_pose_nodes,
 };
 use power_up_runtime::*;
-use scene_setup_runtime::{INITIAL_SKY_CLEAR_COLOR, WORLD_RADIUS, setup};
+use scene_setup_runtime::{
+    INITIAL_SKY_CLEAR_COLOR, WORLD_RADIUS, apply_authored_island_material_parity,
+    fix_island_hero_gallery_player, setup,
+};
 #[cfg(test)]
 use std::collections::HashMap;
 #[cfg(test)]
@@ -201,7 +206,10 @@ fn main() -> AppExit {
             )
                 .chain(),
         )
-        .add_systems(Startup, setup)
+        .add_systems(
+            Startup,
+            (setup, apply_authored_island_material_parity).chain(),
+        )
         .add_systems(
             Update,
             (toggle_game_menu, handle_game_menu_buttons, sync_game_ui)
@@ -295,7 +303,12 @@ fn main() -> AppExit {
             .insert_resource(RuntimeAssetCostState::default())
             .add_systems(
                 Update,
-                (eval_reset_player_to_playtest_position, eval_fly_player)
+                (
+                    (eval_reset_player_to_playtest_position, eval_fly_player)
+                        .chain()
+                        .run_if(eval_gameplay_movement_active),
+                    fix_island_hero_gallery_player,
+                )
                     .chain()
                     .in_set(GameSet::Movement),
             )
@@ -339,6 +352,10 @@ fn main() -> AppExit {
     }
 
     app.run()
+}
+
+fn eval_gameplay_movement_active(run: Res<EvalRun>) -> bool {
+    run.scenario.name != ISLAND_HERO_GALLERY
 }
 
 fn primary_window(eval: Option<&EvalOptions>) -> Window {

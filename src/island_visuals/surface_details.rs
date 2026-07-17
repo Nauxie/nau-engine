@@ -1,17 +1,21 @@
 use super::queue::{queue_collidable_island_visual, queue_island_visual, queue_wind_island_visual};
-use super::types::{IslandVisualEntry, IslandVisualLayer};
+use super::types::{IslandStreamState, IslandVisualCatalog, IslandVisualEntry, IslandVisualLayer};
 use crate::camera_runtime::CameraObstacle;
 use crate::content_diagnostics::{GeneratedLandmarkKind, IslandContentDiagnostics};
 use crate::environment_visuals::wind_visual_motion;
 use crate::generated_content::{
-    FloraMaterialRole, IslandDetailMaterials, WaterDetailMaterialRole, island_flora_visual_specs,
-    island_rock_formation_specs, island_ruin_complex_specs, island_water_detail_specs,
-    island_water_visual_specs,
+    FloraMaterialRole, IslandDetailMaterials, TERRAIN_BIOME_PALETTE_COUNT, WaterDetailMaterialRole,
+    allocate_authored_island_detail_materials, island_flora_visual_specs,
+    island_hero_landmark_spec, island_rock_formation_specs, island_ruin_complex_specs,
+    island_water_detail_specs, island_water_visual_specs,
 };
 use crate::world_collision_runtime::{WorldCollisionProxy, WorldCollisionProxyKind};
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
-use nau_engine::world::SkyIsland;
+use nau_engine::world::{SkyIsland, SkyRoute};
+
+type SpawnedMaterialUpdates = Vec<(Entity, Handle<StandardMaterial>)>;
+type IslandStoneMaterials = Vec<(&'static str, Handle<StandardMaterial>)>;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn queue_island_surface_details(
@@ -25,6 +29,27 @@ pub(super) fn queue_island_surface_details(
     island_index: usize,
     island: SkyIsland,
 ) {
+    if let Some(hero) = island_hero_landmark_spec(island_index, island) {
+        let mesh = hero.build_mesh();
+        content_diagnostics.record_generated_landmark(
+            GeneratedLandmarkKind::SurfaceFeature,
+            mesh.count_vertices(),
+        );
+        queue_static_surface_feature(
+            entries,
+            visual_index,
+            island,
+            IslandVisualLayer::Vista,
+            meshes.add(mesh),
+            detail_materials.stone.clone(),
+            hero.translation,
+            hero.rotation_y,
+            Some(hero.camera_half_extents),
+            hero.collision_half_extents,
+            hero.label,
+        );
+    }
+
     for (feature_index, feature) in island_flora_visual_specs(island_index, island)
         .into_iter()
         .enumerate()
@@ -252,4 +277,147 @@ fn rotated_aabb_half_extents(half_extents: Vec3, rotation_y: f32) -> Vec3 {
         half_extents.y,
         sine * half_extents.x + cosine * half_extents.z,
     )
+}
+
+impl IslandVisualCatalog {
+    pub(crate) fn apply_authored_detail_materials(
+        &mut self,
+        route: &SkyRoute,
+        images: &mut Assets<Image>,
+        materials: &mut Assets<StandardMaterial>,
+        stream_state: &IslandStreamState,
+    ) -> (SpawnedMaterialUpdates, IslandStoneMaterials) {
+        let shared_materials = route
+            .islands()
+            .iter()
+            .take(TERRAIN_BIOME_PALETTE_COUNT)
+            .map(|island| {
+                detail_materials_for_island(&self.entries, island.name).unwrap_or_else(|| {
+                    panic!("{} is missing queued runtime detail materials", island.name)
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            shared_materials.len(),
+            TERRAIN_BIOME_PALETTE_COUNT,
+            "runtime detail palettes must cover the shared material set"
+        );
+
+        let authored_materials = allocate_authored_island_detail_materials(
+            images,
+            materials,
+            &shared_materials,
+            route.islands().len(),
+        );
+        let mut spawned_updates = Vec::new();
+
+        for (island_index, island) in route.islands().iter().enumerate() {
+            let source = &shared_materials[island_index % shared_materials.len()];
+            let target = &authored_materials[island_index];
+            for entry in self
+                .entries
+                .iter_mut()
+                .filter(|entry| entry.key.island_name == island.name)
+            {
+                let Some(current) = entry.material.as_ref() else {
+                    continue;
+                };
+                let Some(replacement) = replacement_detail_material(current, source, target) else {
+                    continue;
+                };
+                if &replacement == current {
+                    continue;
+                }
+
+                entry.material = Some(replacement.clone());
+                if stream_state.visual_resident.contains(&entry.key)
+                    && let Some(entity) = stream_state.spawned.get(&entry.key)
+                {
+                    spawned_updates.push((*entity, replacement));
+                }
+            }
+        }
+
+        let obstruction_stones = route
+            .islands()
+            .iter()
+            .enumerate()
+            .map(|(island_index, island)| {
+                (island.name, authored_materials[island_index].stone.clone())
+            })
+            .collect();
+        (spawned_updates, obstruction_stones)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn entry_material_handle(
+        &self,
+        island_name: &'static str,
+        entry_name: &'static str,
+    ) -> Option<Handle<StandardMaterial>> {
+        self.entries
+            .iter()
+            .find(|entry| {
+                entry.key.island_name == island_name
+                    && entry.name == entry_name
+                    && entry.has_visible_mesh()
+            })
+            .and_then(|entry| entry.material.clone())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn spawned_entry_material_handle(
+        world: &World,
+        island_name: &'static str,
+        entry_name: &'static str,
+    ) -> Option<Handle<StandardMaterial>> {
+        let catalog = world.get_resource::<Self>()?;
+        let entry = catalog.entries.iter().find(|entry| {
+            entry.key.island_name == island_name
+                && entry.name == entry_name
+                && entry.has_visible_mesh()
+        })?;
+        let stream_state = world.get_resource::<IslandStreamState>()?;
+        let entity = *stream_state.spawned.get(&entry.key)?;
+        world
+            .get::<MeshMaterial3d<StandardMaterial>>(entity)
+            .map(|material| material.0.clone())
+    }
+}
+
+fn detail_materials_for_island(
+    entries: &[IslandVisualEntry],
+    island_name: &'static str,
+) -> Option<IslandDetailMaterials> {
+    let material_for = |predicate: &dyn Fn(&IslandVisualEntry) -> bool| {
+        entries
+            .iter()
+            .find(|entry| entry.key.island_name == island_name && predicate(entry))
+            .and_then(|entry| entry.material.clone())
+    };
+
+    Some(IslandDetailMaterials {
+        trunk: material_for(&|entry| entry.name.ends_with(" trunk"))?,
+        foliage: material_for(&|entry| entry.name.ends_with(" canopy"))?,
+        ground_cover: material_for(&|entry| entry.name == "island ground cover")?,
+        stone: material_for(&|entry| entry.name == "island stone scatter")?,
+    })
+}
+
+fn replacement_detail_material(
+    current: &Handle<StandardMaterial>,
+    source: &IslandDetailMaterials,
+    target: &IslandDetailMaterials,
+) -> Option<Handle<StandardMaterial>> {
+    if current == &source.trunk {
+        Some(target.trunk.clone())
+    } else if current == &source.foliage {
+        Some(target.foliage.clone())
+    } else if current == &source.ground_cover {
+        Some(target.ground_cover.clone())
+    } else if current == &source.stone {
+        Some(target.stone.clone())
+    } else {
+        None
+    }
 }

@@ -3,6 +3,7 @@ use crate::world_collision_runtime::WorldCollisionProxyKind;
 use bevy::prelude::{Vec2, Vec3};
 use nau_engine::world::{
     SkyRoute, TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND, TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND,
+    island_art_directions,
 };
 
 const TERRAIN_RIM_NAME: &str = "island terrain rim collision";
@@ -287,7 +288,13 @@ pub(crate) fn audit_island_collision_coverage(
         .collect::<Vec<_>>();
     let mut allowlisted_camera_only_counts = CAMERA_ONLY_ALLOWLIST
         .iter()
-        .map(|name| (*name, 0_usize))
+        .copied()
+        .chain(
+            island_art_directions()
+                .iter()
+                .map(|profile| profile.hero_landmark.label()),
+        )
+        .map(|name| (name, 0_usize))
         .collect::<Vec<_>>();
 
     for entry in &catalog.entries {

@@ -3,6 +3,7 @@ mod clouds;
 mod effects;
 mod flora;
 mod formations;
+mod hero_landmarks;
 mod landmarks;
 mod rocks;
 mod ruins;
@@ -34,6 +35,8 @@ pub(crate) use flora::{
 pub(crate) use formations::{
     IslandRockFormationSpec, RockFormationKind, island_rock_formation_specs,
 };
+#[allow(unused_imports)]
+pub(crate) use hero_landmarks::{IslandHeroLandmarkSpec, island_hero_landmark_spec};
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use landmarks::{
@@ -44,9 +47,10 @@ pub(crate) use landmarks::{
     artifact_retaining_wall_mesh, artifact_stair_run_mesh,
 };
 pub(crate) use landmarks::{
-    FirstExpeditionSilhouetteKind, IslandWaterVisualKind, first_expedition_silhouette_specs,
-    garden_ring_mesh, island_lake_basin_visual_specs, island_water_visual_specs,
-    landing_garden_marker_mesh, launch_beacon_mesh, route_cairn_mesh, ruin_arch_mesh,
+    FirstExpeditionSilhouetteKind, IslandWaterFootprint, IslandWaterVisualKind,
+    first_expedition_silhouette_specs, garden_ring_mesh, island_lake_basin_visual_specs,
+    island_water_visual_specs, landing_garden_marker_mesh, launch_beacon_mesh, route_cairn_mesh,
+    ruin_arch_mesh,
 };
 #[cfg(test)]
 pub(crate) use landmarks::{

@@ -1,11 +1,14 @@
 mod collision;
 mod island;
+mod island_art;
+mod island_review;
 mod objectives;
 mod obstruction_spires;
 mod route;
 mod streaming;
 mod surface;
 mod terrain;
+mod water_story;
 
 #[cfg(test)]
 mod tests;
@@ -23,6 +26,16 @@ pub use island::{
     ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT, IslandBiome, IslandFootprintProfile, IslandLandmarkRole,
     IslandPlateauRegion, IslandRouteRole, IslandScaleClass, IslandTerrainArchetype,
     IslandUnderRouteSegment, IslandVerticalProfile, IslandWaterFeature, IslandWorldTags, SkyIsland,
+};
+pub use island_art::{
+    ISLAND_ART_DIRECTIONS, IslandArtDirection, IslandFloraIdentity, IslandFormationIdentity,
+    IslandHeroLandmark, IslandPaletteFamily, IslandRuinIdentity, IslandSurfacePattern,
+    IslandWaterStory, authored_island_art_direction, authored_island_art_direction_at,
+    island_art_directions,
+};
+pub use island_review::{
+    ISLAND_REVIEW_VIEWS_PER_ISLAND, IslandReviewPlan, IslandReviewPose, IslandReviewSpec,
+    IslandReviewView,
 };
 pub use objectives::{RouteObjective, RouteObjectiveKind, is_recovery_branch_island};
 pub use obstruction_spires::{
@@ -42,6 +55,10 @@ pub use surface::GroundSurface;
 pub use terrain::{
     WORLD_TERRAIN_GRID_SPACING_M, WORLD_TERRAIN_GRID_SUBDIVISIONS, WORLD_TERRAIN_TILE_SIZE_M,
     world_terrain_floor_y_at, world_terrain_visual_y_at,
+};
+pub use water_story::{
+    ROUTE_EDGE_WATERFALL_CHANNEL_OUTLET_OFFSET, RouteEdgeWaterfallPlacement,
+    route_edge_waterfall_placement,
 };
 
 pub const PLAYER_STANDING_OFFSET: f32 = 0.24;

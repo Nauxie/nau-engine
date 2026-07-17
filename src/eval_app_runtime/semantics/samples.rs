@@ -6,12 +6,12 @@ use crate::eval_app_runtime::scene::EvalScene;
 use crate::generated_content::{
     FloraMaterialRole, IslandArtifactMaterial, IslandWaterVisualKind, TERRAIN_BIOME_PALETTE_COUNT,
     WaterDetailKind, WaterDetailMaterialRole, island_artifact_visual_specs,
-    island_flora_visual_specs, island_lake_basin_visual_specs, island_playable_normalized_offset,
-    island_rock_formation_specs, island_ruin_complex_specs, island_visual_surface_position,
-    island_water_detail_specs, island_water_visual_specs,
+    island_flora_visual_specs, island_hero_landmark_spec, island_lake_basin_visual_specs,
+    island_playable_normalized_offset, island_rock_formation_specs, island_ruin_complex_specs,
+    island_visual_surface_position, island_water_detail_specs, island_water_visual_specs,
 };
 use bevy::prelude::*;
-use nau_engine::world::{IslandPlateauRegion, SkyIsland};
+use nau_engine::world::{IslandPlateauRegion, LodBand, SkyIsland};
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct SemanticSceneSample {
@@ -36,50 +36,97 @@ const CROSSWIND_RIBBON_SAMPLE_LABELS: [&str; 3] = [
 const MAX_FLORA_CLUSTER_SAMPLES_PER_ISLAND: usize = 4;
 const MAX_RUIN_COMPLEX_SAMPLES_PER_ISLAND: usize = 2;
 const MAX_ROCK_FORMATION_SAMPLES_PER_ISLAND: usize = 2;
+const MAX_WATER_DETAIL_SAMPLES_PER_ISLAND: usize = 6;
 const MAX_PLATEAU_WATER_DETAIL_SAMPLES: usize = 12;
+
+#[derive(Clone, Copy, Debug)]
+struct IslandSemanticResidency {
+    terrain: bool,
+    detail: bool,
+    vista: bool,
+    impostor: bool,
+}
+
+fn island_semantic_residency(island: SkyIsland, player_position: Vec3) -> IslandSemanticResidency {
+    let active = island.stream_activation(player_position).is_active();
+    let lod = island.lod_band(player_position);
+    IslandSemanticResidency {
+        terrain: active && lod != LodBand::Far,
+        detail: active && lod == LodBand::Near,
+        vista: lod != LodBand::Far,
+        impostor: !active || lod == LodBand::Far,
+    }
+}
 
 pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSample> {
     let mut samples = Vec::new();
+    let player_position = scene
+        .player
+        .single()
+        .ok()
+        .map(|(transform, ..)| transform.translation);
 
     for (island_index, island) in scene.route.islands().iter().copied().enumerate() {
-        for world_position in island_terrain_surface_sample_positions(island) {
-            samples.push(SemanticSceneSample {
-                island_name: Some(island.name),
-                kind: "terrain_surface",
-                label: island.name,
-                expected_material: "terrain",
-                material_variant: terrain_material_variant(island_index),
-                world_position,
-            });
-        }
-        samples.push(SemanticSceneSample {
-            island_name: Some(island.name),
-            kind: "distant_island",
-            label: island.name,
-            expected_material: "distant_island",
-            material_variant: "distant_island",
-            world_position: island_visual_surface_position(island, Vec2::new(0.0, 0.0))
-                + Vec3::Y * 1.2,
-        });
-
-        for (sample_index, canopy_position) in tree_canopy_sample_positions(island_index, island)
-            .into_iter()
-            .enumerate()
-        {
-            if sample_index == 1 && island.is_target {
-                continue;
+        let Some(player_position) = player_position else {
+            continue;
+        };
+        let residency = island_semantic_residency(island, player_position);
+        if residency.terrain {
+            for (sample_index, world_position) in island_terrain_surface_sample_positions(island)
+                .into_iter()
+                .enumerate()
+            {
+                samples.push(SemanticSceneSample {
+                    island_name: Some(island.name),
+                    kind: "terrain_surface",
+                    label: island.name,
+                    expected_material: "terrain",
+                    material_variant: if sample_index == 0 {
+                        "terrain_unknown"
+                    } else {
+                        terrain_material_variant(island_index)
+                    },
+                    world_position,
+                });
             }
+        }
+        if residency.impostor {
             samples.push(SemanticSceneSample {
                 island_name: Some(island.name),
-                kind: "tree_canopy",
+                kind: "distant_island",
                 label: island.name,
-                expected_material: "foliage",
-                material_variant: "foliage",
-                world_position: canopy_position,
+                expected_material: "distant_island",
+                material_variant: "distant_island",
+                world_position: island_visual_surface_position(island, Vec2::new(0.0, 0.0))
+                    + Vec3::Y * 1.2,
             });
         }
 
-        samples.extend(generated_content_scene_samples(island_index, island));
+        if residency.detail {
+            for (sample_index, canopy_position) in
+                tree_canopy_sample_positions(island_index, island)
+                    .into_iter()
+                    .enumerate()
+            {
+                if sample_index == 1 && island.is_target {
+                    continue;
+                }
+                samples.push(SemanticSceneSample {
+                    island_name: Some(island.name),
+                    kind: "tree_canopy",
+                    label: island.name,
+                    expected_material: "foliage",
+                    material_variant: "foliage",
+                    world_position: canopy_position,
+                });
+            }
+        }
+
+        samples.extend(generated_content_scene_samples(
+            island_index,
+            island,
+            residency,
+        ));
     }
 
     if let Ok((player_transform, ..)) = scene.player.single()
@@ -206,39 +253,64 @@ pub(super) fn semantic_scene_samples(scene: &EvalScene) -> Vec<SemanticSceneSamp
 fn generated_content_scene_samples(
     island_index: usize,
     island: SkyIsland,
+    residency: IslandSemanticResidency,
 ) -> Vec<SemanticSceneSample> {
     let mut samples = Vec::new();
     let water_features = island_water_visual_specs(island_index, island);
+    let plateau_authored_resident = if island.is_great_plateau_anchor() {
+        residency.vista
+    } else {
+        residency.detail
+    };
 
-    for water_feature in water_features.iter().copied() {
-        samples.push(SemanticSceneSample {
-            island_name: Some(island.name),
-            kind: water_feature_sample_kind(water_feature.kind),
-            label: water_feature.label,
-            expected_material: "water",
-            material_variant: "water",
-            world_position: water_feature.translation,
-        });
+    if residency.vista
+        && let Some(hero) = island_hero_landmark_spec(island_index, island)
+    {
+        for world_position in hero.semantic_sample_positions() {
+            samples.push(SemanticSceneSample {
+                island_name: Some(island.name),
+                kind: "hero_landmark",
+                label: hero.label,
+                expected_material: "stone",
+                material_variant: "stone_ruin",
+                world_position,
+            });
+        }
     }
 
-    for lake_basin in island_lake_basin_visual_specs(island_index, island) {
-        let rim_sample = Quat::from_rotation_y(lake_basin.rotation_y)
-            * Vec3::new(
-                (lake_basin.radius_x - lake_basin.rim_width * 0.35).max(0.1),
-                lake_basin.rim_height * 0.55,
-                0.0,
-            );
-        samples.push(SemanticSceneSample {
-            island_name: Some(island.name),
-            kind: "lake_basin",
-            label: lake_basin.label,
-            expected_material: "stone",
-            material_variant: "stone_ruin",
-            world_position: lake_basin.translation + rim_sample,
-        });
+    if plateau_authored_resident {
+        for water_feature in water_features.iter().copied() {
+            for world_position in water_feature.semantic_surface_sample_positions() {
+                samples.push(SemanticSceneSample {
+                    island_name: Some(island.name),
+                    kind: water_feature_sample_kind(water_feature.kind),
+                    label: water_feature.label,
+                    expected_material: "water",
+                    material_variant: "water",
+                    world_position,
+                });
+            }
+        }
+
+        for lake_basin in island_lake_basin_visual_specs(island_index, island) {
+            let rim_sample = Quat::from_rotation_y(lake_basin.rotation_y)
+                * Vec3::new(
+                    (lake_basin.radius_x - lake_basin.rim_width * 0.35).max(0.1),
+                    lake_basin.rim_height * 0.55,
+                    0.0,
+                );
+            samples.push(SemanticSceneSample {
+                island_name: Some(island.name),
+                kind: "lake_basin",
+                label: lake_basin.label,
+                expected_material: "stone",
+                material_variant: "stone_ruin",
+                world_position: lake_basin.translation + rim_sample,
+            });
+        }
     }
 
-    if island.is_great_plateau_anchor() {
+    if residency.detail {
         for flora in island_flora_visual_specs(island_index, island)
             .into_iter()
             .take(MAX_FLORA_CLUSTER_SAMPLES_PER_ISLAND)
@@ -250,50 +322,76 @@ fn generated_content_scene_samples(
                 label: flora.label,
                 expected_material,
                 material_variant,
-                world_position: flora.translation
-                    + Vec3::Y * flora_sample_vertical_offset(flora.material),
+                world_position: flora.semantic_sample_world_position(),
             });
         }
+    }
 
-        for ruin in island_ruin_complex_specs(island_index, island)
-            .into_iter()
-            .take(MAX_RUIN_COMPLEX_SAMPLES_PER_ISLAND)
+    for ruin in island_ruin_complex_specs(island_index, island)
+        .into_iter()
+        .take(MAX_RUIN_COMPLEX_SAMPLES_PER_ISLAND)
+    {
+        let resident = if island.is_great_plateau_anchor()
+            || ruin
+                .camera_half_extents
+                .is_some_and(|half_extents| half_extents.max_element() >= 5.0)
         {
+            residency.vista
+        } else {
+            residency.detail
+        };
+        if !resident {
+            continue;
+        }
+        for world_position in ruin.semantic_sample_positions() {
             samples.push(SemanticSceneSample {
                 island_name: Some(island.name),
                 kind: "ruin_complex",
                 label: ruin.label,
                 expected_material: "stone",
                 material_variant: "stone_ruin",
-                world_position: elevated_feature_sample_position(
-                    ruin.translation,
-                    ruin.rotation_y,
-                    ruin.camera_half_extents,
-                ),
+                world_position,
             });
         }
+    }
 
-        for formation in island_rock_formation_specs(island_index, island)
-            .into_iter()
-            .take(MAX_ROCK_FORMATION_SAMPLES_PER_ISLAND)
+    for formation in island_rock_formation_specs(island_index, island)
+        .into_iter()
+        .take(MAX_ROCK_FORMATION_SAMPLES_PER_ISLAND)
+    {
+        let resident = if island.is_great_plateau_anchor()
+            || formation
+                .camera_half_extents
+                .is_some_and(|half_extents| half_extents.max_element() >= 5.0)
         {
+            residency.vista
+        } else {
+            residency.detail
+        };
+        if !resident {
+            continue;
+        }
+        for world_position in formation.semantic_sample_positions() {
             samples.push(SemanticSceneSample {
                 island_name: Some(island.name),
                 kind: "rock_formation",
                 label: formation.label,
                 expected_material: "stone",
                 material_variant: "stone_ruin",
-                world_position: elevated_feature_sample_position(
-                    formation.translation,
-                    formation.rotation_y,
-                    formation.camera_half_extents,
-                ),
+                world_position,
             });
         }
+    }
 
+    if plateau_authored_resident {
+        let max_water_detail_samples = if island.is_great_plateau_anchor() {
+            MAX_PLATEAU_WATER_DETAIL_SAMPLES
+        } else {
+            MAX_WATER_DETAIL_SAMPLES_PER_ISLAND
+        };
         for detail in island_water_detail_specs(island_index, island, &water_features)
             .into_iter()
-            .take(MAX_PLATEAU_WATER_DETAIL_SAMPLES)
+            .take(max_water_detail_samples)
         {
             let (expected_material, material_variant) =
                 water_detail_sample_material(detail.material);
@@ -307,22 +405,22 @@ fn generated_content_scene_samples(
                     + Vec3::Y * water_detail_sample_vertical_offset(detail.material),
             });
         }
+
+        for artifact in island_artifact_visual_specs(island_index, island) {
+            let (expected_material, material_variant) = artifact_sample_material(artifact.material);
+            samples.push(SemanticSceneSample {
+                island_name: Some(island.name),
+                kind: "surface_artifact",
+                label: artifact.label,
+                expected_material,
+                material_variant,
+                world_position: artifact.translation
+                    + Vec3::Y * artifact_sample_vertical_offset(artifact.label),
+            });
+        }
     }
 
-    for artifact in island_artifact_visual_specs(island_index, island) {
-        let (expected_material, material_variant) = artifact_sample_material(artifact.material);
-        samples.push(SemanticSceneSample {
-            island_name: Some(island.name),
-            kind: "surface_artifact",
-            label: artifact.label,
-            expected_material,
-            material_variant,
-            world_position: artifact.translation
-                + Vec3::Y * artifact_sample_vertical_offset(artifact.label),
-        });
-    }
-
-    if island.is_great_plateau_anchor() {
+    if island.is_great_plateau_anchor() && residency.vista {
         samples.extend(great_plateau_arrival_scene_samples(island));
     }
 
@@ -347,25 +445,6 @@ fn flora_sample_material(material: FloraMaterialRole) -> (&'static str, &'static
         FloraMaterialRole::Foliage | FloraMaterialRole::GroundCover => ("foliage", "foliage"),
         FloraMaterialRole::Flower => ("flower", "flower"),
     }
-}
-
-fn flora_sample_vertical_offset(material: FloraMaterialRole) -> f32 {
-    match material {
-        FloraMaterialRole::Foliage => 0.65,
-        FloraMaterialRole::GroundCover => 0.35,
-        FloraMaterialRole::Flower => 0.50,
-    }
-}
-
-fn elevated_feature_sample_position(
-    translation: Vec3,
-    rotation_y: f32,
-    camera_half_extents: Option<Vec3>,
-) -> Vec3 {
-    let half_extents = camera_half_extents.unwrap_or(Vec3::splat(0.5));
-    translation
-        + Quat::from_rotation_y(rotation_y)
-            * Vec3::new(half_extents.x * 0.58, half_extents.y.max(0.5), 0.0)
 }
 
 fn water_detail_sample_material(material: WaterDetailMaterialRole) -> (&'static str, &'static str) {
@@ -635,4 +714,101 @@ pub(super) fn tree_canopy_sample_positions(island_index: usize, island: SkyIslan
         surface + Vec3::Y * (trunk_height + 0.72)
     })
     .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nau_engine::world::{IslandReviewPlan, SkyRoute};
+
+    #[test]
+    fn generated_samples_follow_actual_lod_residency() {
+        let route = SkyRoute::default();
+        let plan = IslandReviewPlan::from_route(&route);
+        let review = plan
+            .islands
+            .iter()
+            .find(|review| review.island_name == "cloudfall meadow")
+            .expect("waterfall review");
+        let island = route.islands()[review.island_index];
+
+        let near_residency = island_semantic_residency(island, review.views[0].player_position);
+        assert!(near_residency.terrain);
+        assert!(near_residency.detail);
+        assert!(near_residency.vista);
+        assert!(!near_residency.impostor);
+        let near_samples =
+            generated_content_scene_samples(review.island_index, island, near_residency);
+        assert!(
+            near_samples
+                .iter()
+                .any(|sample| sample.kind == "hero_landmark")
+        );
+        assert!(
+            near_samples
+                .iter()
+                .any(|sample| sample.kind == "flora_cluster")
+        );
+        assert!(
+            near_samples
+                .iter()
+                .any(|sample| sample.kind == "waterfall_water")
+        );
+
+        let mid_residency = island_semantic_residency(island, review.views[1].player_position);
+        assert!(mid_residency.terrain);
+        assert!(!mid_residency.detail);
+        assert!(mid_residency.vista);
+        assert!(!mid_residency.impostor);
+        let mid_samples =
+            generated_content_scene_samples(review.island_index, island, mid_residency);
+        assert!(
+            mid_samples
+                .iter()
+                .any(|sample| sample.kind == "hero_landmark")
+        );
+        assert!(
+            mid_samples
+                .iter()
+                .all(|sample| sample.kind != "flora_cluster")
+        );
+        assert!(
+            mid_samples
+                .iter()
+                .all(|sample| sample.expected_material != "water")
+        );
+
+        let far_residency =
+            island_semantic_residency(island, island.center + Vec3::splat(10_000.0));
+        assert!(!far_residency.terrain);
+        assert!(!far_residency.detail);
+        assert!(!far_residency.vista);
+        assert!(far_residency.impostor);
+        assert!(
+            generated_content_scene_samples(review.island_index, island, far_residency).is_empty()
+        );
+    }
+
+    #[test]
+    fn horizontal_water_features_emit_multiple_surface_samples() {
+        let island = SkyIsland::new(
+            "sapphire basin",
+            Vec3::ZERO,
+            Vec2::new(100.0, 64.0),
+            20.0,
+            false,
+        );
+        let residency = island_semantic_residency(island, island.center);
+        let samples = generated_content_scene_samples(11, island, residency)
+            .into_iter()
+            .filter(|sample| sample.kind == "water_surface" || sample.kind == "river_channel")
+            .collect::<Vec<_>>();
+
+        assert!(samples.len() >= 10);
+        assert!(
+            samples
+                .windows(2)
+                .any(|pair| pair[0].world_position.distance(pair[1].world_position) > 1.0)
+        );
+    }
 }

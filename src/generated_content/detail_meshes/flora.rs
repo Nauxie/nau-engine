@@ -6,8 +6,8 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use nau_engine::world::{
-    IslandBiome, IslandScaleClass, IslandTraversalPurpose, IslandVisualMotif, IslandWaterFeature,
-    SkyIsland, authored_island_composition,
+    IslandFloraIdentity, IslandScaleClass, IslandTraversalPurpose, SkyIsland,
+    authored_island_art_direction, authored_island_composition,
 };
 
 const GOLDEN_ANGLE_RADIANS: f32 = 2.399_963_1;
@@ -24,6 +24,7 @@ pub(crate) enum FloraVisualKind {
 }
 
 impl FloraVisualKind {
+    #[cfg(test)]
     const ALL: [Self; 6] = [
         Self::FernGrove,
         Self::FlowerThicket,
@@ -109,25 +110,38 @@ impl IslandFloraVisualSpec {
             self.seed,
         )
     }
+
+    pub(crate) fn semantic_sample_world_position(self) -> Vec3 {
+        self.translation
+            + Quat::from_rotation_y(self.rotation_y)
+                * flora_semantic_sample_local_position(
+                    self.kind,
+                    self.radius_m,
+                    self.height_m,
+                    self.plant_count,
+                    self.seed,
+                )
+    }
 }
 
 pub(crate) fn island_flora_visual_specs(
     island_index: usize,
     island: SkyIsland,
 ) -> Vec<IslandFloraVisualSpec> {
+    let Some(art_direction) = authored_island_art_direction(island.name) else {
+        return Vec::new();
+    };
     let composition = authored_island_composition(island.name);
-    let cluster_count = flora_cluster_count(island);
-    let base_seed = flora_seed(island_index, island, 0x6d2b_79f5);
-    let kinds = preferred_flora_kinds(
-        cluster_count,
-        composition.map(|value| value.visual_motif),
-        island.world_tags.biome,
-        island.world_tags.water_feature,
-        base_seed,
-    );
+    let cluster_count = usize::from(art_direction.flora_count);
+    let base_seed =
+        mixed_seed(flora_seed(island_index, island, 0x6d2b_79f5) ^ art_direction.signature_seed);
+    let authored_anchor = Vec2::from_array(art_direction.flora_anchor);
 
-    kinds
+    art_direction
+        .flora_kinds
         .into_iter()
+        .take(cluster_count)
+        .map(flora_visual_kind)
         .enumerate()
         .map(|(cluster_index, kind)| {
             let sample = cluster_index as u32;
@@ -141,8 +155,9 @@ pub(crate) fn island_flora_visual_specs(
             let normalized_offset = flora_cluster_offset(
                 island,
                 composition.map(|value| value.traversal_purpose),
-                kind,
+                authored_anchor,
                 cluster_index,
+                cluster_count,
                 seed,
                 radius_m,
             );
@@ -189,98 +204,14 @@ impl FloraVisualKind {
     }
 }
 
-fn flora_cluster_count(island: SkyIsland) -> usize {
-    if island.is_great_plateau_anchor() {
-        return 4;
-    }
-
-    match island.world_tags.scale_class {
-        IslandScaleClass::Tiny | IslandScaleClass::Small => 1,
-        IslandScaleClass::Medium | IslandScaleClass::Large => 2,
-        IslandScaleClass::Vast | IslandScaleClass::HugePlateau => 3,
-    }
-}
-
-fn preferred_flora_kinds(
-    count: usize,
-    motif: Option<IslandVisualMotif>,
-    biome: IslandBiome,
-    water_feature: IslandWaterFeature,
-    seed: u32,
-) -> Vec<FloraVisualKind> {
-    let mut candidates = Vec::with_capacity(FloraVisualKind::ALL.len() + 4);
-
-    if water_feature != IslandWaterFeature::Dry {
-        candidates.push(FloraVisualKind::ReedBed);
-    }
-    if let Some(motif) = motif {
-        candidates.push(motif_flora_kind(motif));
-    }
-    candidates.push(biome_primary_flora_kind(biome));
-    candidates.push(biome_accent_flora_kind(biome));
-
-    let fallback_start = seed as usize % FloraVisualKind::ALL.len();
-    for offset in 0..FloraVisualKind::ALL.len() {
-        candidates
-            .push(FloraVisualKind::ALL[(fallback_start + offset) % FloraVisualKind::ALL.len()]);
-    }
-
-    let mut selected = Vec::with_capacity(count);
-    for candidate in candidates {
-        if !selected.contains(&candidate) {
-            selected.push(candidate);
-        }
-        if selected.len() == count {
-            break;
-        }
-    }
-    selected
-}
-
-fn motif_flora_kind(motif: IslandVisualMotif) -> FloraVisualKind {
-    match motif {
-        IslandVisualMotif::LaunchBeacon => FloraVisualKind::BroadleafPatch,
-        IslandVisualMotif::CairnShelf => FloraVisualKind::FernGrove,
-        IslandVisualMotif::GardenRing | IslandVisualMotif::PlateauRim => {
-            FloraVisualKind::FlowerThicket
-        }
-        IslandVisualMotif::WindRibbon
-        | IslandVisualMotif::StormStone
-        | IslandVisualMotif::NeedleSpire
-        | IslandVisualMotif::ThermalRing
-        | IslandVisualMotif::CrownPerch => FloraVisualKind::WindShrub,
-        IslandVisualMotif::OrchardGrove => FloraVisualKind::BroadleafPatch,
-        IslandVisualMotif::LakeBasin | IslandVisualMotif::WaterfallMeadow => {
-            FloraVisualKind::ReedBed
-        }
-        IslandVisualMotif::RuinStair
-        | IslandVisualMotif::MistArch
-        | IslandVisualMotif::CaveMouth => FloraVisualKind::MushroomRing,
-    }
-}
-
-fn biome_primary_flora_kind(biome: IslandBiome) -> FloraVisualKind {
-    match biome {
-        IslandBiome::Meadow => FloraVisualKind::FernGrove,
-        IslandBiome::Garden => FloraVisualKind::FlowerThicket,
-        IslandBiome::Storm | IslandBiome::Alpine => FloraVisualKind::WindShrub,
-        IslandBiome::Orchard => FloraVisualKind::BroadleafPatch,
-        IslandBiome::Lake => FloraVisualKind::ReedBed,
-        IslandBiome::Mist => FloraVisualKind::MushroomRing,
-        IslandBiome::Ruin => FloraVisualKind::FernGrove,
-    }
-}
-
-fn biome_accent_flora_kind(biome: IslandBiome) -> FloraVisualKind {
-    match biome {
-        IslandBiome::Meadow => FloraVisualKind::BroadleafPatch,
-        IslandBiome::Garden => FloraVisualKind::BroadleafPatch,
-        IslandBiome::Storm => FloraVisualKind::FernGrove,
-        IslandBiome::Orchard => FloraVisualKind::MushroomRing,
-        IslandBiome::Lake => FloraVisualKind::FlowerThicket,
-        IslandBiome::Mist => FloraVisualKind::FernGrove,
-        IslandBiome::Alpine => FloraVisualKind::MushroomRing,
-        IslandBiome::Ruin => FloraVisualKind::MushroomRing,
+fn flora_visual_kind(identity: IslandFloraIdentity) -> FloraVisualKind {
+    match identity {
+        IslandFloraIdentity::FernGrove => FloraVisualKind::FernGrove,
+        IslandFloraIdentity::FlowerThicket => FloraVisualKind::FlowerThicket,
+        IslandFloraIdentity::ReedBed => FloraVisualKind::ReedBed,
+        IslandFloraIdentity::WindShrub => FloraVisualKind::WindShrub,
+        IslandFloraIdentity::BroadleafPatch => FloraVisualKind::BroadleafPatch,
+        IslandFloraIdentity::MushroomRing => FloraVisualKind::MushroomRing,
     }
 }
 
@@ -315,33 +246,81 @@ fn flora_cluster_dimensions(
     )
 }
 
+fn flora_semantic_sample_local_position(
+    kind: FloraVisualKind,
+    radius: f32,
+    height: f32,
+    plant_count: usize,
+    seed: u32,
+) -> Vec3 {
+    match kind {
+        FloraVisualKind::FernGrove => {
+            let base = clustered_point(seed, 0, plant_count, radius * 0.86, 0.08, 311);
+            let plant_height = height * (0.72 + random_unit(seed, 0, 313) * 0.34);
+            let phase = random_unit(seed, 0, 317) * 0.54;
+            let outward = Vec3::new(phase.cos(), 0.0, phase.sin());
+            let frond_scale = 0.82 + random_unit(seed, 0, 331) * 0.30;
+            let t = 0.31;
+            base + Vec3::Y * plant_height * (0.22 + t * 0.20)
+                + outward * plant_height * (0.10 + t * 0.22) * frond_scale
+        }
+        FloraVisualKind::FlowerThicket => {
+            let base = clustered_point(seed, 0, plant_count, radius * 0.88, 0.03, 401);
+            let stem_height = height * (0.66 + random_unit(seed, 0, 409) * 0.36);
+            let lean_phase = random_unit(seed, 0, 419) * std::f32::consts::TAU;
+            let lean = Vec3::new(lean_phase.cos(), 0.0, lean_phase.sin())
+                * stem_height
+                * (0.025 + random_unit(seed, 0, 421) * 0.035);
+            let flower_center = base + Vec3::Y * stem_height + lean;
+            let head_radius = stem_height * (0.13 + random_unit(seed, 0, 431) * 0.045);
+            flower_center + Vec3::Y * head_radius * 0.05
+        }
+        FloraVisualKind::ReedBed => {
+            let reed_count = plant_count * 2;
+            let wind_phase = random_unit(seed, 0, 503) * std::f32::consts::TAU;
+            let wind_direction = Vec3::new(wind_phase.cos(), 0.0, wind_phase.sin());
+            let mut base = clustered_point(seed, 0, reed_count, radius * 0.92, 0.02, 509);
+            base.z *= 0.72;
+            let reed_height = height * (0.58 + random_unit(seed, 0, 521) * 0.46);
+            let lean = wind_direction * reed_height * (0.035 + random_unit(seed, 0, 523) * 0.045);
+            base + Vec3::Y * reed_height * 0.925 + lean
+        }
+        FloraVisualKind::WindShrub => {
+            let shrub_count = (plant_count / 2).max(5);
+            let wind_phase = random_unit(seed, 0, 601) * std::f32::consts::TAU;
+            let wind_direction = Vec3::new(wind_phase.cos(), 0.0, wind_phase.sin());
+            let base = clustered_point(seed, 0, shrub_count, radius * 0.84, 0.04, 607);
+            let shrub_height = height * (0.68 + random_unit(seed, 0, 613) * 0.34);
+            base + Vec3::Y * shrub_height * 0.64 + wind_direction * shrub_height * 0.15
+        }
+        FloraVisualKind::BroadleafPatch => {
+            let base = clustered_point(seed, 0, plant_count, radius * 0.90, 0.02, 701);
+            let plant_height = height * (0.62 + random_unit(seed, 0, 709) * 0.38);
+            base + Vec3::Y * plant_height * 0.66
+        }
+        FloraVisualKind::MushroomRing => {
+            let ring_phase = random_unit(seed, 0, 801) * std::f32::consts::TAU;
+            let phase = ring_phase + (random_unit(seed, 0, 809) - 0.5) * 0.18;
+            let ring_radius = radius * (0.56 + random_unit(seed, 0, 811) * 0.27);
+            let stem_height = height * (0.42 + random_unit(seed, 0, 821) * 0.42);
+            Vec3::new(
+                phase.cos() * ring_radius,
+                stem_height,
+                phase.sin() * ring_radius,
+            )
+        }
+    }
+}
+
 fn flora_cluster_offset(
     island: SkyIsland,
     traversal_purpose: Option<IslandTraversalPurpose>,
-    kind: FloraVisualKind,
+    authored_anchor: Vec2,
     cluster_index: usize,
+    cluster_count: usize,
     seed: u32,
     cluster_radius_m: f32,
 ) -> Vec2 {
-    const LANE_SAFE_OFFSETS: [Vec2; 4] = [
-        Vec2::new(-0.62, 0.34),
-        Vec2::new(0.62, 0.38),
-        Vec2::new(-0.56, -0.52),
-        Vec2::new(0.58, -0.50),
-    ];
-    const PLATEAU_OFFSETS: [Vec2; 4] = [
-        Vec2::new(-0.60, 0.28),
-        Vec2::new(0.48, 0.48),
-        Vec2::new(0.42, -0.52),
-        Vec2::new(-0.30, 0.72),
-    ];
-    const WET_EDGE_OFFSETS: [Vec2; 4] = [
-        Vec2::new(-0.52, 0.34),
-        Vec2::new(0.50, -0.42),
-        Vec2::new(0.56, 0.30),
-        Vec2::new(-0.44, -0.48),
-    ];
-
     let lane_critical = island.is_target
         || matches!(
             traversal_purpose,
@@ -352,25 +331,28 @@ fn flora_cluster_offset(
                     | IslandTraversalPurpose::PlateauHub
             )
         );
-    let mut candidate = if island.is_great_plateau_anchor() {
-        PLATEAU_OFFSETS[cluster_index % PLATEAU_OFFSETS.len()]
-    } else if lane_critical {
-        LANE_SAFE_OFFSETS[cluster_index % LANE_SAFE_OFFSETS.len()]
-    } else if kind == FloraVisualKind::ReedBed
-        && island.world_tags.water_feature != IslandWaterFeature::Dry
-    {
-        WET_EDGE_OFFSETS[cluster_index % WET_EDGE_OFFSETS.len()]
+    let direction = if authored_anchor.length_squared() > 0.0001 {
+        authored_anchor.normalize()
     } else {
-        let phase = random_unit(seed, 0, 211) * std::f32::consts::TAU;
-        let angle = phase + cluster_index as f32 * GOLDEN_ANGLE_RADIANS;
-        let radius = 0.52 + random_unit(seed, cluster_index as u32, 223) * 0.17;
-        Vec2::new(angle.cos(), angle.sin()) * radius
+        let angle = random_unit(seed, 0, 211) * std::f32::consts::TAU;
+        Vec2::new(angle.cos(), angle.sin())
     };
-
-    let direction = candidate.normalize_or_zero();
     let tangent = Vec2::new(-direction.y, direction.x);
-    if direction.length_squared() > 0.0001 {
-        candidate += tangent * ((random_unit(seed, cluster_index as u32, 227) - 0.5) * 0.055);
+    let centered_index = cluster_index as f32 - cluster_count.saturating_sub(1) as f32 * 0.5;
+    let mut candidate = authored_anchor
+        + tangent * centered_index * 0.15
+        + direction * ((random_unit(seed, cluster_index as u32, 223) - 0.5) * 0.055)
+        + tangent * ((random_unit(seed, cluster_index as u32, 227) - 0.5) * 0.035);
+
+    if lane_critical && candidate.x > -0.38 && candidate.x < 0.38 && candidate.y.abs() < 0.25 {
+        let lane_side = if authored_anchor.y.abs() > 0.01 {
+            authored_anchor.y.signum()
+        } else if random_unit(seed, cluster_index as u32, 229) > 0.5 {
+            1.0
+        } else {
+            -1.0
+        };
+        candidate.y = lane_side * (0.28 + cluster_index as f32 * 0.025);
     }
 
     inset_playable_offset(island, candidate, cluster_radius_m)
@@ -944,22 +926,43 @@ mod tests {
     #[test]
     fn flora_specs_and_meshes_are_deterministic() {
         let route = SkyRoute::default();
-        let (island_index, island) = route
-            .islands()
-            .iter()
-            .copied()
-            .enumerate()
-            .find(|(_, island)| island.name == "high orchard")
-            .expect("route should include high orchard");
-        let first = island_flora_visual_specs(island_index, island);
-        let second = island_flora_visual_specs(island_index, island);
+        for (island_index, island) in route.islands().iter().copied().enumerate() {
+            let first = island_flora_visual_specs(island_index, island);
+            let second = island_flora_visual_specs(island_index, island);
 
-        assert_eq!(first, second);
-        for (first_spec, second_spec) in first.into_iter().zip(second) {
-            let first_mesh = first_spec.build_mesh();
-            let second_mesh = second_spec.build_mesh();
-            assert_eq!(positions(&first_mesh), positions(&second_mesh));
-            assert_eq!(u32_indices(&first_mesh), u32_indices(&second_mesh));
+            assert_eq!(first, second, "{} should be deterministic", island.name);
+            for (first_spec, second_spec) in first.into_iter().zip(second) {
+                let first_mesh = first_spec.build_mesh();
+                let second_mesh = second_spec.build_mesh();
+                assert_eq!(positions(&first_mesh), positions(&second_mesh));
+                assert_eq!(u32_indices(&first_mesh), u32_indices(&second_mesh));
+            }
+        }
+    }
+
+    #[test]
+    fn semantic_samples_track_generated_flora_geometry() {
+        let route = SkyRoute::default();
+
+        for (island_index, island) in route.islands().iter().copied().enumerate() {
+            for spec in island_flora_visual_specs(island_index, island) {
+                let mesh = spec.build_mesh();
+                let local_sample = Quat::from_rotation_y(spec.rotation_y).inverse()
+                    * (spec.semantic_sample_world_position() - spec.translation);
+                let nearest_vertex_distance = positions(&mesh)
+                    .iter()
+                    .map(|position| Vec3::from_array(*position).distance(local_sample))
+                    .fold(f32::INFINITY, f32::min);
+                let maximum_distance = (spec.height_m * 0.35).max(0.20);
+
+                assert!(
+                    nearest_vertex_distance <= maximum_distance,
+                    "{} {} semantic sample should remain anchored to generated geometry; \
+                     nearest={nearest_vertex_distance:.3}m maximum={maximum_distance:.3}m",
+                    island.name,
+                    spec.kind.label()
+                );
+            }
         }
     }
 
@@ -994,33 +997,44 @@ mod tests {
     }
 
     #[test]
-    fn flora_cluster_counts_follow_scale_caps_and_avoid_duplicates() {
+    fn every_authored_flora_profile_is_realized_exactly() {
         let route = SkyRoute::default();
 
         for (island_index, island) in route.islands().iter().copied().enumerate() {
+            let profile = authored_island_art_direction(island.name)
+                .expect("every route island should have authored art direction");
             let specs = island_flora_visual_specs(island_index, island);
-            let expected = flora_cluster_count(island);
             assert_eq!(
                 specs.len(),
-                expected,
+                usize::from(profile.flora_count),
                 "unexpected count for {}",
                 island.name
             );
-            if island.is_great_plateau_anchor() {
-                assert!(specs.len() <= 4);
-            } else {
-                assert!((1..=3).contains(&specs.len()));
-            }
-            for (index, spec) in specs.iter().enumerate() {
-                assert!(
-                    !specs[..index]
-                        .iter()
-                        .any(|earlier| earlier.kind == spec.kind),
-                    "{} should not repeat {} clusters",
-                    island.name,
-                    spec.kind.label()
-                );
-            }
+            assert!(!specs.is_empty(), "{} needs authored ecology", island.name);
+            let expected_kinds = profile
+                .flora_kinds
+                .into_iter()
+                .take(usize::from(profile.flora_count))
+                .map(flora_visual_kind)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                specs.iter().map(|spec| spec.kind).collect::<Vec<_>>(),
+                expected_kinds,
+                "{} should realize its authored flora kinds in order",
+                island.name
+            );
+
+            let anchor = Vec2::from_array(profile.flora_anchor).normalize();
+            let mean_offset = specs
+                .iter()
+                .map(|spec| normalized_offset(island, spec.translation))
+                .sum::<Vec2>()
+                / specs.len() as f32;
+            assert!(
+                mean_offset.normalize().dot(anchor) > 0.70,
+                "{} flora should remain driven by its authored anchor",
+                island.name
+            );
         }
     }
 

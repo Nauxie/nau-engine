@@ -1,4 +1,8 @@
 use super::*;
+use crate::eval::scenarios::{
+    ISLAND_HERO_GALLERY_FRAMES_PER_VIEW, ISLAND_HERO_GALLERY_HOLD_FRAMES,
+    ISLAND_HERO_GALLERY_SETTLE_FRAMES,
+};
 use std::collections::BTreeSet;
 
 fn shell_array<'a>(script: &'a str, name: &str) -> Vec<&'a str> {
@@ -494,8 +498,8 @@ fn island_surface_review_is_registered_as_app_only_with_aliases() {
     let scenario =
         scenario_named(ISLAND_SURFACE_REVIEW).expect("island surface review scenario exists");
 
-    assert_eq!(SCENARIO_NAMES.len(), 23);
-    assert_eq!(APP_ONLY_SCENARIO_NAMES.len(), 8);
+    assert_eq!(SCENARIO_NAMES.len(), 24);
+    assert_eq!(APP_ONLY_SCENARIO_NAMES.len(), 9);
     assert!(APP_ONLY_SCENARIO_NAMES.contains(&ISLAND_SURFACE_REVIEW));
     assert_eq!(
         scenario_named("surface_review")
@@ -510,6 +514,42 @@ fn island_surface_review_is_registered_as_app_only_with_aliases() {
         ISLAND_SURFACE_REVIEW
     );
     assert_eq!(scenario.target_island_name, Some("great sky plateau"));
+}
+
+#[test]
+fn island_hero_gallery_is_catalog_driven_app_only_and_transition_lenient() {
+    use crate::world::{ISLAND_REVIEW_VIEWS_PER_ISLAND, IslandReviewPlan, SkyRoute};
+
+    let scenario = scenario_named("island_hero_gallery").expect("hero gallery scenario exists");
+    let alias = scenario_named("all_islands").expect("hero gallery alias exists");
+    let plan = IslandReviewPlan::from_route(&SkyRoute::default());
+    let expected_capture_count = plan.islands.len() * ISLAND_REVIEW_VIEWS_PER_ISLAND;
+
+    assert_eq!(alias.name, scenario.name);
+    assert!(APP_ONLY_SCENARIO_NAMES.contains(&scenario.name));
+    assert_eq!(plan.islands.len(), 41);
+    assert_eq!(expected_capture_count, 123);
+    assert_eq!(ISLAND_HERO_GALLERY_SETTLE_FRAMES, 32);
+    assert_eq!(ISLAND_HERO_GALLERY_HOLD_FRAMES, 4);
+    assert_eq!(ISLAND_HERO_GALLERY_FRAMES_PER_VIEW, 36);
+    assert_eq!(
+        scenario.frame_count,
+        expected_capture_count as u32 * ISLAND_HERO_GALLERY_FRAMES_PER_VIEW - 1
+    );
+    assert_eq!(scenario.thresholds.min_samples, scenario.frame_count + 1);
+    assert!(scenario.checkpoints.is_empty());
+    assert_eq!(scenario.target_island_name, None);
+    assert_eq!(scenario.thresholds.min_horizontal_distance_m, 0.0);
+    assert_eq!(scenario.thresholds.max_camera_step_distance_m, 20_000.0);
+    assert_eq!(scenario.thresholds.max_camera_rotation_delta_degrees, 180.0);
+    assert_eq!(scenario.thresholds.max_camera_player_angle_degrees, 180.0);
+    assert_eq!(
+        scenario.thresholds.max_camera_orbit_alignment_degrees,
+        180.0
+    );
+    assert_eq!(scenario.thresholds.max_visible_island_detail_count, 260);
+    assert_eq!(scenario.thresholds.max_resident_island_visual_count, 430);
+    assert_eq!(scenario.thresholds.max_entity_count, 5_500);
 }
 
 #[test]
@@ -597,8 +637,10 @@ fn scenario_camera_thresholds_guard_follow_distance_and_jitter() {
     for name in SCENARIO_NAMES {
         let scenario = scenario_named(name).expect("scenario exists");
         let mouse_camera = *name == CAMERA_MOUSE_CONTROL;
+        let gallery = *name == "island_hero_gallery";
         let cinematic_vista = matches!(*name, GREAT_SKY_PLATEAU_VISTAS | ISLAND_SURFACE_REVIEW);
         let max_camera_distance_m = match *name {
+            "island_hero_gallery" => 1_000.0,
             ISLAND_SURFACE_REVIEW => 360.0,
             GREAT_SKY_PLATEAU_VISTAS => 220.0,
             _ => 16.5,
@@ -610,13 +652,21 @@ fn scenario_camera_thresholds_guard_follow_distance_and_jitter() {
         );
         assert!(
             scenario.thresholds.max_camera_step_distance_m
-                <= if cinematic_vista { 6.0 } else { 1.15 },
+                <= if gallery {
+                    20_000.0
+                } else if cinematic_vista {
+                    6.0
+                } else {
+                    1.15
+                },
             "{name} should fail large per-frame camera jumps"
         );
         assert!(
             scenario.thresholds.max_camera_player_angle_degrees
                 <= if mouse_camera {
                     6.0
+                } else if gallery {
+                    180.0
                 } else if cinematic_vista {
                     90.0
                 } else {
@@ -628,6 +678,8 @@ fn scenario_camera_thresholds_guard_follow_distance_and_jitter() {
             scenario.thresholds.max_camera_rotation_delta_degrees
                 <= if mouse_camera {
                     1.75
+                } else if gallery {
+                    180.0
                 } else if cinematic_vista {
                     3.5
                 } else {
@@ -636,7 +688,8 @@ fn scenario_camera_thresholds_guard_follow_distance_and_jitter() {
             "{name} should fail camera rotation jitter"
         );
         assert!(
-            scenario.thresholds.max_camera_orbit_alignment_degrees <= 5.0,
+            scenario.thresholds.max_camera_orbit_alignment_degrees
+                <= if gallery { 180.0 } else { 5.0 },
             "{name} should fail broad orbit misalignment"
         );
     }
@@ -647,6 +700,10 @@ fn scenarios_define_non_final_camera_checkpoints() {
     for name in SCENARIO_NAMES {
         let scenario = scenario_named(name).expect("scenario exists");
 
+        if *name == "island_hero_gallery" {
+            assert!(scenario.checkpoints.is_empty());
+            continue;
+        }
         assert!(!scenario.checkpoints.is_empty());
         assert!(
             scenario

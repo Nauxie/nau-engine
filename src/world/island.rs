@@ -1692,13 +1692,9 @@ impl SkyIsland {
         horizontal.length() - contour.distance(Vec2::new(self.center.x, self.center.z))
     }
 
-    pub fn visual_edge_distance(self, position: Vec3) -> f32 {
+    pub fn signed_visual_edge_distance(self, position: Vec3) -> f32 {
         let horizontal = Vec2::new(position.x - self.center.x, position.z - self.center.z);
         let center_distance = horizontal.length();
-        if center_distance <= f32::EPSILON {
-            return 0.0;
-        }
-
         let normalized = Vec2::new(
             horizontal.x / self.half_extents.x.max(0.001),
             horizontal.y / self.half_extents.y.max(0.001),
@@ -1707,7 +1703,11 @@ impl SkyIsland {
         let contour = self.footprint_contour_point(angle, true);
         let contour_offset = contour - Vec2::new(self.center.x, self.center.z);
 
-        (center_distance - contour_offset.length()).max(0.0)
+        center_distance - contour_offset.length()
+    }
+
+    pub fn visual_edge_distance(self, position: Vec3) -> f32 {
+        self.signed_visual_edge_distance(position).max(0.0)
     }
 
     pub fn lod_band(self, position: Vec3) -> LodBand {

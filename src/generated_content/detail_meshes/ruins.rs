@@ -5,8 +5,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use nau_engine::world::{
-    IslandBiome, IslandLandmarkRole, IslandScaleClass, IslandTerrainArchetype, IslandVisualMotif,
-    SkyIsland, authored_island_composition,
+    IslandRuinIdentity, IslandScaleClass, SkyIsland, authored_island_art_direction,
 };
 
 const MAX_RUIN_COMPLEXES_PER_ISLAND: usize = 2;
@@ -75,26 +74,73 @@ impl IslandRuinComplexSpec {
     pub(crate) fn build_mesh(self) -> Mesh {
         ruin_complex_mesh(self.kind, self.scale, self.seed)
     }
+
+    pub(crate) fn semantic_sample_positions(self) -> [Vec3; 4] {
+        let local_positions = match self.kind {
+            RuinComplexKind::Colonnade => [
+                Vec3::new(-2.72, 2.0, -1.36),
+                Vec3::new(0.92, 2.0, -1.36),
+                Vec3::new(2.72, 2.0, 1.36),
+                Vec3::new(-0.92, 3.62, 1.36),
+            ],
+            RuinComplexKind::SunkenSanctum => [
+                Vec3::new(-2.35, 1.6, -2.12),
+                Vec3::new(2.35, 1.6, -2.12),
+                Vec3::new(-2.35, 1.25, 2.12),
+                Vec3::new(0.0, 0.35, -2.75),
+            ],
+            RuinComplexKind::Watchtower => [
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::new(0.0, 2.2, 0.0),
+                Vec3::new(0.0, 3.5, 0.0),
+                Vec3::new(0.72, 4.05, 0.0),
+            ],
+            RuinComplexKind::BrokenAqueduct => [
+                Vec3::new(-3.30, 1.82, 0.0),
+                Vec3::new(-1.10, 1.82, 0.0),
+                Vec3::new(1.10, 1.82, 0.0),
+                Vec3::new(3.30, 1.55, 0.0),
+            ],
+            RuinComplexKind::ProcessionalStairs => [
+                Vec3::new(0.0, 0.42, -1.0),
+                Vec3::new(0.0, 0.68, 1.0),
+                Vec3::new(-1.82, 2.4, 2.78),
+                Vec3::new(1.82, 2.4, 2.78),
+            ],
+        };
+        let rotation = Quat::from_rotation_y(self.rotation_y);
+
+        local_positions.map(|position| self.translation + rotation * (position * self.scale))
+    }
 }
 
 pub(crate) fn island_ruin_complex_specs(
     island_index: usize,
     island: SkyIsland,
 ) -> Vec<IslandRuinComplexSpec> {
-    let Some(composition) = authored_island_composition(island.name) else {
+    let Some(art_direction) = authored_island_art_direction(island.name) else {
         return Vec::new();
     };
-    let kinds = ruin_complex_kinds(island, composition.visual_motif);
-    let layout_seed = detail_seed(island_index, island, 0x9d34_5a71);
+    let ruin_count = usize::from(art_direction.ruin_count);
+    let authored_anchor = Vec2::from_array(art_direction.ruin_anchor);
+    let layout_seed =
+        mixed_seed(detail_seed(island_index, island, 0x9d34_5a71) ^ art_direction.signature_seed);
 
-    kinds
+    art_direction
+        .ruin_kinds
         .into_iter()
-        .take(MAX_RUIN_COMPLEXES_PER_ISLAND)
+        .take(ruin_count.min(MAX_RUIN_COMPLEXES_PER_ISLAND))
+        .map(ruin_complex_kind)
         .enumerate()
         .map(|(complex_index, kind)| {
             let sample = complex_index as u32;
-            let initial_offset =
-                perimeter_offset(island, complex_index, layout_seed, composition.visual_motif);
+            let initial_offset = perimeter_offset(
+                island,
+                authored_anchor,
+                complex_index,
+                ruin_count,
+                layout_seed,
+            );
             let placement_angle = initial_offset.y.atan2(initial_offset.x);
             let rotation_y = kind_rotation(kind, placement_angle)
                 + (random_unit(layout_seed, sample, 0x4b1) - 0.5) * 0.24;
@@ -126,81 +172,36 @@ pub(crate) fn island_ruin_complex_specs(
         .collect()
 }
 
-fn ruin_complex_kinds(island: SkyIsland, motif: IslandVisualMotif) -> Vec<RuinComplexKind> {
-    let scale_class = island.world_tags.scale_class;
-    let primary = match motif {
-        IslandVisualMotif::RuinStair => Some(RuinComplexKind::ProcessionalStairs),
-        IslandVisualMotif::MistArch | IslandVisualMotif::WaterfallMeadow => {
-            Some(RuinComplexKind::BrokenAqueduct)
-        }
-        IslandVisualMotif::PlateauRim => Some(RuinComplexKind::Colonnade),
-        IslandVisualMotif::LakeBasin
-            if matches!(
-                scale_class,
-                IslandScaleClass::Large | IslandScaleClass::Vast | IslandScaleClass::HugePlateau
-            ) =>
-        {
-            Some(RuinComplexKind::SunkenSanctum)
-        }
-        IslandVisualMotif::CrownPerch
-            if !matches!(
-                scale_class,
-                IslandScaleClass::Tiny | IslandScaleClass::Small
-            ) =>
-        {
-            Some(RuinComplexKind::Watchtower)
-        }
-        _ if island.world_tags.landmark_role == IslandLandmarkRole::RuinArch => {
-            Some(match island.terrain_archetype {
-                IslandTerrainArchetype::BrokenStair | IslandTerrainArchetype::TerracedSpur => {
-                    RuinComplexKind::ProcessionalStairs
-                }
-                IslandTerrainArchetype::MistArch | IslandTerrainArchetype::CloudGate => {
-                    RuinComplexKind::BrokenAqueduct
-                }
-                _ => RuinComplexKind::Colonnade,
-            })
-        }
-        _ if island.world_tags.biome == IslandBiome::Ruin => {
-            Some(RuinComplexKind::ProcessionalStairs)
-        }
-        _ if island.terrain_archetype == IslandTerrainArchetype::SkyPlateau => {
-            Some(RuinComplexKind::Colonnade)
-        }
-        _ => None,
-    };
-
-    let Some(primary) = primary else {
-        return Vec::new();
-    };
-    let mut kinds = vec![primary];
-    if matches!(
-        scale_class,
-        IslandScaleClass::Vast | IslandScaleClass::HugePlateau
-    ) {
-        let secondary = match primary {
-            RuinComplexKind::Colonnade => RuinComplexKind::Watchtower,
-            RuinComplexKind::SunkenSanctum => RuinComplexKind::Colonnade,
-            RuinComplexKind::Watchtower => RuinComplexKind::Colonnade,
-            RuinComplexKind::BrokenAqueduct => RuinComplexKind::Watchtower,
-            RuinComplexKind::ProcessionalStairs => RuinComplexKind::Colonnade,
-        };
-        kinds.push(secondary);
+fn ruin_complex_kind(identity: IslandRuinIdentity) -> RuinComplexKind {
+    match identity {
+        IslandRuinIdentity::Colonnade => RuinComplexKind::Colonnade,
+        IslandRuinIdentity::SunkenSanctum => RuinComplexKind::SunkenSanctum,
+        IslandRuinIdentity::Watchtower => RuinComplexKind::Watchtower,
+        IslandRuinIdentity::BrokenAqueduct => RuinComplexKind::BrokenAqueduct,
+        IslandRuinIdentity::ProcessionalStairs => RuinComplexKind::ProcessionalStairs,
     }
-    kinds
 }
 
 fn perimeter_offset(
     island: SkyIsland,
+    authored_anchor: Vec2,
     complex_index: usize,
+    ruin_count: usize,
     seed: u32,
-    motif: IslandVisualMotif,
 ) -> Vec2 {
     let sample = complex_index as u32;
-    let mut angle = random_unit(seed, sample, 0x2a9) * std::f32::consts::TAU
-        + complex_index as f32 * 2.176
-        + motif as u32 as f32 * 0.173;
-    let radius = 0.60 + random_unit(seed, sample, 0x2b7) * 0.13;
+    let anchor_direction = if authored_anchor.length_squared() > 0.0001 {
+        authored_anchor.normalize()
+    } else {
+        let angle = random_unit(seed, sample, 0x2a9) * std::f32::consts::TAU;
+        Vec2::new(angle.cos(), angle.sin())
+    };
+    let centered_index = complex_index as f32 - ruin_count.saturating_sub(1) as f32 * 0.5;
+    let mut angle = anchor_direction.y.atan2(anchor_direction.x)
+        + centered_index * 0.30
+        + (random_unit(seed, sample, 0x2a9) - 0.5) * 0.07;
+    let radius =
+        (authored_anchor.length().max(0.60) + random_unit(seed, sample, 0x2b7) * 0.08).min(0.75);
     let mut offset = Vec2::new(angle.cos(), angle.sin()) * radius;
 
     if occupies_arrival_lane(offset) {
@@ -972,6 +973,49 @@ mod tests {
     }
 
     #[test]
+    fn every_authored_ruin_profile_is_realized_exactly() {
+        let route = SkyRoute::default();
+
+        for (island_index, island) in route.islands().iter().copied().enumerate() {
+            let profile = authored_island_art_direction(island.name)
+                .expect("every route island should have authored art direction");
+            let specs = island_ruin_complex_specs(island_index, island);
+            assert_eq!(
+                specs.len(),
+                usize::from(profile.ruin_count),
+                "unexpected ruin count for {}",
+                island.name
+            );
+            let expected_kinds = profile
+                .ruin_kinds
+                .into_iter()
+                .take(usize::from(profile.ruin_count))
+                .map(ruin_complex_kind)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                specs.iter().map(|spec| spec.kind).collect::<Vec<_>>(),
+                expected_kinds,
+                "{} should realize its authored ruin kinds in order",
+                island.name
+            );
+
+            if !specs.is_empty() {
+                let anchor = Vec2::from_array(profile.ruin_anchor).normalize();
+                let mean_offset = specs
+                    .iter()
+                    .map(|spec| normalized_offset(island, spec.translation))
+                    .sum::<Vec2>()
+                    / specs.len() as f32;
+                assert!(
+                    mean_offset.normalize().dot(anchor) > 0.85,
+                    "{} ruins should remain driven by their authored anchor",
+                    island.name
+                );
+            }
+        }
+    }
+
+    #[test]
     fn ruin_complexes_stay_playable_perimeter_biased_and_clear_of_arrival_lane() {
         let route = SkyRoute::default();
 
@@ -1056,6 +1100,32 @@ mod tests {
                 .camera_half_extents
                 .expect("ruin complexes should publish camera bounds");
             assert!(max_y <= camera_half_extents.y * 2.0 + 0.001);
+        }
+    }
+
+    #[test]
+    fn ruin_semantic_samples_cover_multiple_exposed_solids() {
+        let route = SkyRoute::default();
+
+        for (island_index, island) in route.islands().iter().copied().enumerate() {
+            for spec in island_ruin_complex_specs(island_index, island) {
+                let samples = spec.semantic_sample_positions();
+                assert!(samples.into_iter().all(Vec3::is_finite));
+                assert!(
+                    samples
+                        .into_iter()
+                        .all(|sample| sample.y > spec.translation.y)
+                );
+                for left in 0..samples.len() {
+                    for right in left + 1..samples.len() {
+                        assert!(
+                            samples[left].distance(samples[right]) > spec.scale * 0.35,
+                            "{} semantic samples should cover distinct solids",
+                            spec.label
+                        );
+                    }
+                }
+            }
         }
     }
 

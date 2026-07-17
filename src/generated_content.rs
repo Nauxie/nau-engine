@@ -40,10 +40,11 @@ pub(crate) use detail_meshes::{
 };
 #[allow(unused_imports)]
 pub(crate) use detail_meshes::{
-    FloraMaterialRole, FloraVisualKind, IslandFloraVisualSpec, IslandRockFormationSpec,
-    IslandRuinComplexSpec, IslandWaterDetailSpec, RockFormationKind, RuinComplexKind,
-    WaterDetailKind, WaterDetailMaterialRole, island_flora_visual_specs,
-    island_rock_formation_specs, island_ruin_complex_specs, island_water_detail_specs,
+    FloraMaterialRole, FloraVisualKind, IslandFloraVisualSpec, IslandHeroLandmarkSpec,
+    IslandRockFormationSpec, IslandRuinComplexSpec, IslandWaterDetailSpec, RockFormationKind,
+    RuinComplexKind, WaterDetailKind, WaterDetailMaterialRole, island_flora_visual_specs,
+    island_hero_landmark_spec, island_rock_formation_specs, island_ruin_complex_specs,
+    island_water_detail_specs,
 };
 #[cfg(test)]
 pub(crate) use detail_meshes::{
@@ -75,9 +76,9 @@ pub(crate) use island_meshes::{
     ISLAND_UNDERSIDE_RINGS, island_terrain_vertex_color,
 };
 pub(crate) use materials::{
-    cloud_surface_material, cloud_veil_material, emissive_material, glider_airflow_material,
-    ground_cover_material, terrain_surface_material, textured_material, updraft_column_material,
-    updraft_ribbon_material, water_surface_material,
+    allocate_authored_island_detail_materials, cloud_surface_material, cloud_veil_material,
+    emissive_material, glider_airflow_material, ground_cover_material, terrain_surface_material,
+    textured_material, updraft_column_material, updraft_ribbon_material, water_surface_material,
 };
 pub(crate) use textures::{
     TERRAIN_TEXTURE_SIZE, mix_color, procedural_terrain_surface_texture_data, random_unit,

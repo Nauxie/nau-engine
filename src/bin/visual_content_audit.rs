@@ -8,6 +8,9 @@ use std::{
     process,
 };
 
+const EXPECTED_VISUAL_CONTENT_EXPORT_SCHEMA: &str = "nau_visual_content_export.v2";
+const EXPECTED_PALETTE_COUNT: u64 = nau_engine::world::SKY_ROUTE_ISLAND_COUNT as u64;
+const MIN_PERCEPTUAL_PALETTE_DISTANCE: f64 = 0.004;
 const MIN_GROUND_COVER_COUNT: u64 = 20;
 const MIN_GROUND_COVER_PATCH_TOTAL: u64 = 2_400;
 const MIN_GROUND_COVER_BLADE_TOTAL: u64 = 12_000;
@@ -224,7 +227,7 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
     checks.push(check_eq_str(
         "schema",
         schema,
-        "nau_visual_content_export.v1",
+        EXPECTED_VISUAL_CONTENT_EXPORT_SCHEMA,
         "schema",
     ));
 
@@ -234,6 +237,15 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
     let counts = manifest.get("counts").unwrap_or(&Value::Null);
     let minimums = manifest.get("minimums").unwrap_or(&Value::Null);
     let landmarks = manifest.get("landmarks").and_then(Value::as_array);
+    let landmark_count = landmarks.map_or(0, |entries| entries.len() as u64);
+    let landmark_kind_count = landmarks.map_or(0, |entries| {
+        entries
+            .iter()
+            .filter_map(|entry| entry.get("kind").and_then(Value::as_str))
+            .collect::<HashSet<_>>()
+            .len() as u64
+    });
+    let palette_stats = visual_palette_stats(manifest.get("palettes").and_then(Value::as_array));
     let flora_stats = surface_feature_stats(landmarks, "flora_cluster", root_dir);
     let ruin_stats = surface_feature_stats(landmarks, "ruin_complex", root_dir);
     let formation_stats = surface_feature_stats(landmarks, "rock_formation", root_dir);
@@ -308,6 +320,48 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         value_u64(counts, "landmark_kind_count"),
         MIN_LANDMARK_KIND_COUNT,
         "kinds",
+    ));
+    checks.push(check_eq_u64(
+        "landmark_count_manifest_parity",
+        value_u64(counts, "landmark_count"),
+        landmark_count,
+        "meshes",
+    ));
+    checks.push(check_eq_u64(
+        "landmark_kind_count_manifest_parity",
+        value_u64(counts, "landmark_kind_count"),
+        landmark_kind_count,
+        "kinds",
+    ));
+    checks.push(check_eq_u64(
+        "palette_count",
+        palette_stats.entry_count,
+        EXPECTED_PALETTE_COUNT,
+        "palettes",
+    ));
+    checks.push(check_eq_u64(
+        "palette_count_manifest_parity",
+        value_u64(counts, "palette_count"),
+        palette_stats.entry_count,
+        "palettes",
+    ));
+    checks.push(check_eq_u64(
+        "distinct_palette_count",
+        palette_stats.distinct_palette_count,
+        EXPECTED_PALETTE_COUNT,
+        "palettes",
+    ));
+    checks.push(check_eq_u64(
+        "distinct_palette_count_manifest_parity",
+        value_u64(counts, "distinct_palette_count"),
+        palette_stats.distinct_palette_count,
+        "palettes",
+    ));
+    checks.push(check_eq_u64(
+        "lossless_art_direction_signatures",
+        palette_stats.lossless_signature_count,
+        palette_stats.entry_count,
+        "signatures",
     ));
     checks.push(check_at_least_u64(
         "flora_cluster_count",
@@ -1018,21 +1072,57 @@ fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &str) -> Val
         "bands",
     ));
     checks.push(check_at_least_u64(
-        "terrain_biome_palette_count",
-        value_u64(minimums, "terrain_biome_palette_count"),
+        "coarse_terrain_biome_palette_count",
+        palette_stats.terrain_color_count,
         MIN_TERRAIN_BIOME_PALETTE_COUNT,
         "palettes",
     ));
     checks.push(check_at_least_u64(
-        "foliage_palette_count",
-        value_u64(minimums, "foliage_palette_count"),
+        "coarse_foliage_palette_count",
+        palette_stats.foliage_color_count,
         MIN_FOLIAGE_PALETTE_COUNT,
         "palettes",
     ));
     checks.push(check_at_least_u64(
-        "stone_palette_count",
-        value_u64(minimums, "stone_palette_count"),
+        "coarse_stone_palette_count",
+        palette_stats.stone_color_count,
         MIN_STONE_PALETTE_COUNT,
+        "palettes",
+    ));
+    checks.push(check_eq_u64(
+        "terrain_biome_palette_count_manifest_parity",
+        value_u64(minimums, "terrain_biome_palette_count"),
+        palette_stats.exact_terrain_color_count,
+        "palettes",
+    ));
+    checks.push(check_eq_u64(
+        "foliage_palette_count_manifest_parity",
+        value_u64(minimums, "foliage_palette_count"),
+        palette_stats.exact_foliage_color_count,
+        "palettes",
+    ));
+    checks.push(check_eq_u64(
+        "stone_palette_count_manifest_parity",
+        value_u64(minimums, "stone_palette_count"),
+        palette_stats.exact_stone_color_count,
+        "palettes",
+    ));
+    checks.push(check_eq_u64(
+        "coarse_terrain_biome_palette_count_manifest_parity",
+        value_u64(minimums, "coarse_terrain_biome_palette_count"),
+        palette_stats.terrain_color_count,
+        "palettes",
+    ));
+    checks.push(check_eq_u64(
+        "coarse_foliage_palette_count_manifest_parity",
+        value_u64(minimums, "coarse_foliage_palette_count"),
+        palette_stats.foliage_color_count,
+        "palettes",
+    ));
+    checks.push(check_eq_u64(
+        "coarse_stone_palette_count_manifest_parity",
+        value_u64(minimums, "coarse_stone_palette_count"),
+        palette_stats.stone_color_count,
         "palettes",
     ));
 
@@ -1306,6 +1396,153 @@ fn append_surface_feature_minimum_parity_checks(
     ));
 }
 
+#[derive(Default)]
+struct VisualPaletteStats {
+    entry_count: u64,
+    distinct_palette_count: u64,
+    lossless_signature_count: u64,
+    exact_terrain_color_count: u64,
+    exact_foliage_color_count: u64,
+    exact_stone_color_count: u64,
+    terrain_color_count: u64,
+    foliage_color_count: u64,
+    stone_color_count: u64,
+}
+
+fn visual_palette_stats(entries: Option<&Vec<Value>>) -> VisualPaletteStats {
+    let Some(entries) = entries else {
+        return VisualPaletteStats::default();
+    };
+    let palette_keys = entries
+        .iter()
+        .filter_map(visual_palette_key)
+        .collect::<Vec<_>>();
+
+    VisualPaletteStats {
+        entry_count: entries.len() as u64,
+        distinct_palette_count: distinct_palette_count(&palette_keys),
+        lossless_signature_count: entries
+            .iter()
+            .filter(|entry| {
+                entry
+                    .get("art_direction_signature")
+                    .and_then(Value::as_str)
+                    .is_some_and(|signature| signature.parse::<u64>().is_ok())
+            })
+            .count() as u64,
+        exact_terrain_color_count: exact_color_count(
+            entries
+                .iter()
+                .filter_map(|entry| visual_color_key(entry, "terrain_key")),
+        ),
+        exact_foliage_color_count: exact_color_count(
+            entries
+                .iter()
+                .filter_map(|entry| visual_color_key(entry, "foliage_key")),
+        ),
+        exact_stone_color_count: exact_color_count(
+            entries
+                .iter()
+                .filter_map(|entry| visual_color_key(entry, "stone_key")),
+        ),
+        terrain_color_count: coarse_color_count(
+            entries
+                .iter()
+                .filter_map(|entry| visual_color_key(entry, "terrain_key")),
+        ),
+        foliage_color_count: coarse_color_count(
+            entries
+                .iter()
+                .filter_map(|entry| visual_color_key(entry, "foliage_key")),
+        ),
+        stone_color_count: coarse_color_count(
+            entries
+                .iter()
+                .filter_map(|entry| visual_color_key(entry, "stone_key")),
+        ),
+    }
+}
+
+fn visual_palette_key(entry: &Value) -> Option<[[u8; 3]; 3]> {
+    Some([
+        visual_color_key(entry, "terrain_key")?,
+        visual_color_key(entry, "foliage_key")?,
+        visual_color_key(entry, "stone_key")?,
+    ])
+}
+
+fn visual_color_key(entry: &Value, field: &str) -> Option<[u8; 3]> {
+    let channels = entry.get(field)?.as_array()?;
+    if channels.len() != 3 {
+        return None;
+    }
+    Some([
+        u8::try_from(channels[0].as_u64()?).ok()?,
+        u8::try_from(channels[1].as_u64()?).ok()?,
+        u8::try_from(channels[2].as_u64()?).ok()?,
+    ])
+}
+
+fn exact_color_count(colors: impl Iterator<Item = [u8; 3]>) -> u64 {
+    colors.collect::<HashSet<_>>().len() as u64
+}
+
+fn coarse_color_count(colors: impl Iterator<Item = [u8; 3]>) -> u64 {
+    colors
+        .map(|color| color.map(|channel| channel / 8))
+        .collect::<HashSet<_>>()
+        .len() as u64
+}
+
+fn distinct_palette_count(palettes: &[[[u8; 3]; 3]]) -> u64 {
+    let mut distinct = Vec::<[[u8; 3]; 3]>::new();
+    for palette in palettes {
+        if distinct.iter().all(|other| {
+            visual_palette_distance(*palette, *other) >= MIN_PERCEPTUAL_PALETTE_DISTANCE
+        }) {
+            distinct.push(*palette);
+        }
+    }
+    distinct.len() as u64
+}
+
+fn visual_palette_distance(left: [[u8; 3]; 3], right: [[u8; 3]; 3]) -> f64 {
+    left.into_iter()
+        .zip(right)
+        .map(|(left, right)| {
+            let left = visual_oklab(left);
+            let right = visual_oklab(right);
+            left.into_iter()
+                .zip(right)
+                .map(|(left, right)| (left - right).powi(2))
+                .sum::<f64>()
+                .sqrt()
+        })
+        .fold(0.0, f64::max)
+}
+
+fn visual_oklab(color: [u8; 3]) -> [f64; 3] {
+    let [red, green, blue] = color.map(srgb_channel_to_linear);
+    let light = (0.412_221_46 * red + 0.536_332_55 * green + 0.051_445_995 * blue).cbrt();
+    let medium = (0.211_903_5 * red + 0.680_699_5 * green + 0.107_396_96 * blue).cbrt();
+    let short = (0.088_302_46 * red + 0.281_718_85 * green + 0.629_978_7 * blue).cbrt();
+
+    [
+        0.210_454_26 * light + 0.793_617_8 * medium - 0.004_072_047 * short,
+        1.977_998_5 * light - 2.428_592_2 * medium + 0.450_593_7 * short,
+        0.025_904_037 * light + 0.782_771_77 * medium - 0.808_675_77 * short,
+    ]
+}
+
+fn srgb_channel_to_linear(channel: u8) -> f64 {
+    let channel = f64::from(channel) / 255.0;
+    if channel <= 0.040_45 {
+        channel / 12.92
+    } else {
+        ((channel + 0.055) / 1.055).powf(2.4)
+    }
+}
+
 fn audit_obj_path(path: &Path) -> Result<ObjAudit, String> {
     let text = fs::read_to_string(path)
         .map_err(|error| format!("could not read {}: {error}", path.display()))?;
@@ -1435,6 +1672,7 @@ mod tests {
         assert_eq!(MIN_GROUND_COVER_PATCH_COUNT, 24);
         assert_eq!(MIN_GROUND_COVER_BLADE_COUNT, 120);
         assert_eq!(MIN_GROUND_COVER_MESH_VERTICES, 720);
+        assert_eq!(MIN_GROUND_COVER_BLADE_HEIGHT_RANGE_M, 0.70);
         assert_eq!(MIN_TREE_TRUNK_COUNT, 160);
         assert_eq!(MIN_TREE_CANOPY_COUNT, 160);
         assert_eq!(MIN_ROCK_COUNT, 230);
@@ -1454,9 +1692,113 @@ mod tests {
     }
 
     #[test]
-    fn audit_rejects_low_shape_manifest() {
+    fn audit_requires_v2_schema_and_string_encoded_u64_signatures() {
         let manifest = json!({
             "schema": "nau_visual_content_export.v1",
+            "counts": {
+                "palette_count": 1,
+                "distinct_palette_count": 1
+            },
+            "minimums": {},
+            "landmarks": [],
+            "palettes": [{
+                "art_direction_signature": u64::MAX,
+                "terrain_key": [80, 140, 72],
+                "foliage_key": [68, 124, 64],
+                "stone_key": [122, 112, 98]
+            }]
+        });
+
+        let report = audit_manifest(&manifest, Path::new("."), "manifest.json");
+        let checks = report.get("checks").and_then(Value::as_array).unwrap();
+        for name in ["schema", "lossless_art_direction_signatures"] {
+            assert!(
+                check_named(checks, name).is_some_and(|check| {
+                    !check.get("passed").and_then(Value::as_bool).unwrap()
+                }),
+                "{name} should reject legacy manifest encoding"
+            );
+        }
+    }
+
+    #[test]
+    fn audit_rejects_tampered_landmark_and_palette_counts() {
+        let manifest = json!({
+            "schema": EXPECTED_VISUAL_CONTENT_EXPORT_SCHEMA,
+            "counts": {
+                "landmark_count": 2,
+                "landmark_kind_count": 2,
+                "palette_count": 2,
+                "distinct_palette_count": 2
+            },
+            "minimums": {
+                "terrain_biome_palette_count": 2,
+                "foliage_palette_count": 2,
+                "stone_palette_count": 2
+            },
+            "landmarks": [{"kind": "route_cairn"}],
+            "palettes": [{
+                "art_direction_signature": u64::MAX.to_string(),
+                "terrain_key": [80, 140, 72],
+                "foliage_key": [68, 124, 64],
+                "stone_key": [122, 112, 98]
+            }]
+        });
+
+        let report = audit_manifest(&manifest, Path::new("."), "manifest.json");
+        let checks = report.get("checks").and_then(Value::as_array).unwrap();
+        for name in [
+            "landmark_count_manifest_parity",
+            "landmark_kind_count_manifest_parity",
+            "palette_count_manifest_parity",
+            "distinct_palette_count_manifest_parity",
+            "terrain_biome_palette_count_manifest_parity",
+            "foliage_palette_count_manifest_parity",
+            "stone_palette_count_manifest_parity",
+        ] {
+            assert!(
+                check_named(checks, name).is_some_and(|check| {
+                    !check.get("passed").and_then(Value::as_bool).unwrap()
+                }),
+                "{name} should reject tampered aggregate counts"
+            );
+        }
+    }
+
+    #[test]
+    fn audit_rejects_missing_palette_entries() {
+        let manifest = json!({
+            "schema": EXPECTED_VISUAL_CONTENT_EXPORT_SCHEMA,
+            "counts": {
+                "palette_count": EXPECTED_PALETTE_COUNT,
+                "distinct_palette_count": EXPECTED_PALETTE_COUNT
+            },
+            "minimums": {},
+            "landmarks": [],
+            "palettes": []
+        });
+
+        let report = audit_manifest(&manifest, Path::new("."), "manifest.json");
+        let checks = report.get("checks").and_then(Value::as_array).unwrap();
+        for name in [
+            "palette_count",
+            "palette_count_manifest_parity",
+            "distinct_palette_count",
+            "distinct_palette_count_manifest_parity",
+        ] {
+            assert!(
+                check_named(checks, name).is_some_and(|check| {
+                    !check.get("passed").and_then(Value::as_bool).unwrap()
+                }),
+                "{name} should reject a manifest with missing palettes"
+            );
+        }
+    }
+
+    #[test]
+    fn audit_rejects_low_shape_manifest() {
+        let manifest = json!({
+            "schema": "nau_visual_content_export.v2",
             "mesh_count": 0,
             "total_vertex_count": 0,
             "total_triangle_count": 0,
@@ -1735,7 +2077,7 @@ mod tests {
     #[test]
     fn audit_rejects_missing_surface_feature_fields() {
         let manifest = json!({
-            "schema": "nau_visual_content_export.v1",
+            "schema": "nau_visual_content_export.v2",
             "counts": {},
             "minimums": {},
             "ground_cover": [],
@@ -1798,7 +2140,7 @@ mod tests {
         writeln!(file, "f 1 2 3").unwrap();
 
         let manifest = json!({
-            "schema": "nau_visual_content_export.v1",
+            "schema": "nau_visual_content_export.v2",
             "mesh_count": 1,
             "counts": {},
             "minimums": {},
@@ -1836,7 +2178,7 @@ mod tests {
     #[test]
     fn audit_rejects_surface_feature_claims_without_landmark_entries() {
         let manifest = json!({
-            "schema": "nau_visual_content_export.v1",
+            "schema": "nau_visual_content_export.v2",
             "mesh_count": 0,
             "counts": {
                 "flora_cluster_count": 1,

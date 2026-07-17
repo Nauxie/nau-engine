@@ -134,7 +134,7 @@ pub(crate) fn island_impostor_mesh_diagnostics(
         island_index,
         0.0,
         0.0,
-        0.0,
+        island.mesh_top_y_at(island.center) - island.mesh_top_y(),
     )));
 
     for ring in 1..=ISLAND_IMPOSTOR_TERRAIN_RINGS {

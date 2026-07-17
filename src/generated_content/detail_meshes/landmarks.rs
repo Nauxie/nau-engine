@@ -7,7 +7,8 @@ use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use nau_engine::world::{
     IslandLandmarkRole, IslandPlateauRegion, IslandRouteRole, IslandTerrainArchetype,
-    IslandWaterFeature, SkyIsland,
+    IslandWaterFeature, IslandWaterStory, ROUTE_EDGE_WATERFALL_CHANNEL_OUTLET_OFFSET, SkyIsland,
+    authored_island_art_direction, route_edge_waterfall_placement,
 };
 
 pub(crate) const ROUTE_CAIRN_STONE_COUNT: usize = 5;
@@ -36,6 +37,8 @@ pub(crate) const ARTIFACT_REED_COUNT: usize = 16;
 const LANDMARK_LOBE_LATITUDE_SEGMENTS: usize = 4;
 const LANDMARK_LOBE_LONGITUDE_SEGMENTS: usize = 9;
 const CRYSTAL_RING_SEGMENTS: usize = 6;
+const HORIZONTAL_WATER_TERRAIN_CLEARANCE_M: f32 = 0.14;
+const WATER_FOOTPRINT_GEOMETRY_PADDING_M: f32 = 0.05;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum IslandWaterVisualKind {
@@ -103,6 +106,39 @@ pub(crate) enum IslandWaterVisualMesh {
     },
 }
 
+#[derive(Clone, Copy, Debug)]
+enum IslandWaterFootprintShape {
+    Ellipse { radius_x: f32, radius_z: f32 },
+    Channel { half_length: f32, half_width: f32 },
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct IslandWaterFootprint {
+    center: Vec2,
+    rotation_y: f32,
+    shape: IslandWaterFootprintShape,
+}
+
+impl IslandWaterFootprint {
+    pub(crate) fn contains_world_xz(self, world_xz: Vec2, margin_m: f32) -> bool {
+        let delta = world_xz - self.center;
+        let local = Quat::from_rotation_y(-self.rotation_y) * Vec3::new(delta.x, 0.0, delta.y);
+        let margin_m = margin_m.max(0.0);
+
+        match self.shape {
+            IslandWaterFootprintShape::Ellipse { radius_x, radius_z } => {
+                let normalized_x = local.x / (radius_x + margin_m).max(0.001);
+                let normalized_z = local.z / (radius_z + margin_m).max(0.001);
+                normalized_x * normalized_x + normalized_z * normalized_z <= 1.0
+            }
+            IslandWaterFootprintShape::Channel {
+                half_length,
+                half_width,
+            } => local.x.abs() <= half_width + margin_m && local.z.abs() <= half_length + margin_m,
+        }
+    }
+}
+
 impl IslandWaterVisualMesh {
     pub(crate) fn build(self, seed: u32) -> Mesh {
         match self {
@@ -119,6 +155,96 @@ impl IslandWaterVisualMesh {
                 depth,
             } => waterfall_ribbon_mesh(width, height, depth, seed),
             Self::WaterfallMist { radius, height } => waterfall_mist_mesh(radius, height, seed),
+        }
+    }
+
+    fn horizontal_footprint_shape(self, seed: u32) -> Option<IslandWaterFootprintShape> {
+        let mesh = self;
+        match self {
+            Self::PondSurface { radius_x, radius_z } | Self::LakeSurface { radius_x, radius_z } => {
+                let mut radial_scale = 1.0_f32;
+                mesh.visit_horizontal_surface_positions(seed, |position| {
+                    let normalized = Vec2::new(position.x / radius_x, position.z / radius_z);
+                    radial_scale = radial_scale.max(normalized.length());
+                });
+                Some(IslandWaterFootprintShape::Ellipse {
+                    radius_x: radius_x * radial_scale + WATER_FOOTPRINT_GEOMETRY_PADDING_M,
+                    radius_z: radius_z * radial_scale + WATER_FOOTPRINT_GEOMETRY_PADDING_M,
+                })
+            }
+            Self::RiverChannel { .. } => {
+                let mut half_length = 0.0_f32;
+                let mut half_width = 0.0_f32;
+                mesh.visit_horizontal_surface_positions(seed, |position| {
+                    half_length = half_length.max(position.z.abs());
+                    half_width = half_width.max(position.x.abs());
+                });
+                Some(IslandWaterFootprintShape::Channel {
+                    half_length: half_length + WATER_FOOTPRINT_GEOMETRY_PADDING_M,
+                    half_width: half_width + WATER_FOOTPRINT_GEOMETRY_PADDING_M,
+                })
+            }
+            Self::WaterfallRibbon { .. } | Self::WaterfallMist { .. } => None,
+        }
+    }
+
+    fn semantic_sample_indices(self) -> Option<[usize; 5]> {
+        match self {
+            Self::PondSurface { .. } => Some([
+                0,
+                1,
+                1 + POND_SURFACE_SEGMENTS / 4,
+                1 + POND_SURFACE_SEGMENTS / 2,
+                1 + POND_SURFACE_SEGMENTS * 3 / 4,
+            ]),
+            Self::LakeSurface { .. } => Some([
+                0,
+                1,
+                1 + LAKE_SURFACE_SEGMENTS / 4,
+                1 + LAKE_SURFACE_SEGMENTS / 2,
+                1 + LAKE_SURFACE_SEGMENTS * 3 / 4,
+            ]),
+            Self::RiverChannel { .. } => Some([
+                2 * RIVER_CHANNEL_COLUMNS + 1,
+                5 * RIVER_CHANNEL_COLUMNS + 1,
+                9 * RIVER_CHANNEL_COLUMNS + 1,
+                13 * RIVER_CHANNEL_COLUMNS + 1,
+                16 * RIVER_CHANNEL_COLUMNS + 1,
+            ]),
+            Self::WaterfallRibbon { .. } | Self::WaterfallMist { .. } => None,
+        }
+    }
+
+    fn visit_horizontal_surface_positions(self, seed: u32, visitor: impl FnMut(Vec3)) {
+        match self {
+            Self::PondSurface { radius_x, radius_z } => visit_irregular_water_surface_positions(
+                radius_x,
+                radius_z,
+                seed,
+                POND_SURFACE_SEGMENTS,
+                &[0.48, 1.0],
+                0.15,
+                0.012,
+                visitor,
+            ),
+            Self::LakeSurface { radius_x, radius_z } => visit_irregular_water_surface_positions(
+                radius_x,
+                radius_z,
+                seed,
+                LAKE_SURFACE_SEGMENTS,
+                &[0.34, 0.68, 1.0],
+                0.20,
+                0.030,
+                visitor,
+            ),
+            Self::RiverChannel {
+                length,
+                width,
+                elevation_drop,
+            } => {
+                visit_river_channel_surface_positions(length, width, elevation_drop, seed, visitor)
+            }
+            Self::WaterfallRibbon { .. } | Self::WaterfallMist { .. } => {}
         }
     }
 }
@@ -138,6 +264,31 @@ pub(crate) struct IslandWaterVisualSpec {
 impl IslandWaterVisualSpec {
     pub(crate) fn build_mesh(self) -> Mesh {
         self.mesh.build(self.seed)
+    }
+
+    pub(crate) fn horizontal_footprint(self) -> Option<IslandWaterFootprint> {
+        Some(IslandWaterFootprint {
+            center: self.translation.xz(),
+            rotation_y: self.rotation_y,
+            shape: self.mesh.horizontal_footprint_shape(self.seed)?,
+        })
+    }
+
+    pub(crate) fn semantic_surface_sample_positions(self) -> Vec<Vec3> {
+        let Some(indices) = self.mesh.semantic_sample_indices() else {
+            return vec![self.translation];
+        };
+        let rotation = Quat::from_rotation_y(self.rotation_y);
+        let mut samples = Vec::with_capacity(indices.len());
+        let mut vertex_index = 0;
+        self.mesh
+            .visit_horizontal_surface_positions(self.seed, |position| {
+                if indices.contains(&vertex_index) {
+                    samples.push(self.translation + rotation * position);
+                }
+                vertex_index += 1;
+            });
+        samples
     }
 }
 
@@ -838,6 +989,19 @@ fn artifact_has_wind_cloth(island: SkyIsland) -> bool {
 }
 
 fn artifact_has_reeds(island: SkyIsland) -> bool {
+    if let Some(art) = authored_island_art_direction(island.name) {
+        return matches!(
+            art.water_story,
+            IslandWaterStory::SpringPond
+                | IslandWaterStory::ReflectingBasin
+                | IslandWaterStory::ReedyLake
+                | IslandWaterStory::CascadeRun
+                | IslandWaterStory::WaterfallGarden
+                | IslandWaterStory::MistPool
+                | IslandWaterStory::CaveSeep
+        );
+    }
+
     matches!(
         island.world_tags.water_feature,
         IslandWaterFeature::LakeBasin | IslandWaterFeature::WaterfallSource
@@ -856,26 +1020,49 @@ pub(crate) fn island_water_visual_specs(
     island: SkyIsland,
 ) -> Vec<IslandWaterVisualSpec> {
     let mut specs = Vec::new();
-    if island.world_tags.water_feature == IslandWaterFeature::Pond
-        && !island.is_great_plateau_anchor()
-    {
-        let pond_offset = if island.is_target {
-            Vec2::new(-0.34, 0.18)
-        } else {
-            Vec2::new(0.18, 0.28)
+    let water_story =
+        authored_island_art_direction(island.name).map(|art_direction| art_direction.water_story);
+    let pond_story = matches!(
+        water_story,
+        Some(
+            IslandWaterStory::SpringPond | IslandWaterStory::MistPool | IslandWaterStory::CaveSeep
+        )
+    ) || water_story.is_none()
+        && island.world_tags.water_feature == IslandWaterFeature::Pond;
+    if pond_story && !island.is_great_plateau_anchor() {
+        let (label, pond_offset, radius_x_scale, radius_z_scale, wind_motion_scale) =
+            match water_story {
+                Some(IslandWaterStory::MistPool) => {
+                    ("mist pool", Vec2::new(0.24, -0.18), 0.10, 0.07, 0.72)
+                }
+                Some(IslandWaterStory::CaveSeep) => {
+                    ("cave seep pool", Vec2::new(-0.30, 0.14), 0.18, 0.10, 0.48)
+                }
+                _ if island.is_target => ("spring pond", Vec2::new(-0.34, 0.18), 0.12, 0.08, 1.0),
+                _ => ("spring pond", Vec2::new(0.18, 0.28), 0.12, 0.08, 1.0),
+            };
+        let rotation_y = 0.0;
+        let mesh = IslandWaterVisualMesh::PondSurface {
+            radius_x: island.half_extents.x * radius_x_scale,
+            radius_z: island.half_extents.y * radius_z_scale,
         };
+        let seed = 11_000 + island_index as u32 * 149;
+        let translation = terrain_clear_horizontal_water_translation(
+            island,
+            island_water_surface_position(island, pond_offset),
+            rotation_y,
+            mesh,
+            seed,
+        );
         specs.push(IslandWaterVisualSpec {
             kind: IslandWaterVisualKind::PondSurface,
-            label: "pond surface",
-            translation: island_water_surface_position(island, pond_offset) + Vec3::Y * 0.055,
-            rotation_y: 0.0,
+            label,
+            translation,
+            rotation_y,
             wind_phase: 3.4,
-            wind_motion_scale: 1.0,
-            mesh: IslandWaterVisualMesh::PondSurface {
-                radius_x: island.half_extents.x * 0.12,
-                radius_z: island.half_extents.y * 0.08,
-            },
-            seed: 11_000 + island_index as u32 * 149,
+            wind_motion_scale,
+            mesh,
+            seed,
         });
     }
 
@@ -883,33 +1070,43 @@ pub(crate) fn island_water_visual_specs(
         let broken_edge_lip = plateau_waterfall_lip_offset(island, IslandPlateauRegion::BrokenEdge);
         let north_rim_lip = plateau_waterfall_lip_offset(island, IslandPlateauRegion::CliffRim);
         if let Some(low_basin) = island.plateau_region_position(IslandPlateauRegion::LowBasin) {
+            let rotation_y = 0.22;
+            let mesh = IslandWaterVisualMesh::LakeSurface {
+                radius_x: island.half_extents.x * 0.24,
+                radius_z: island.half_extents.y * 0.17,
+            };
+            let seed = 31_000 + island_index as u32 * 191;
             specs.push(IslandWaterVisualSpec {
                 kind: IslandWaterVisualKind::PlateauLakeSurface,
                 label: "low basin lake",
-                translation: low_basin + Vec3::Y * 0.08,
-                rotation_y: 0.22,
+                translation: terrain_clear_horizontal_water_translation(
+                    island, low_basin, rotation_y, mesh, seed,
+                ),
+                rotation_y,
                 wind_phase: 4.7,
                 wind_motion_scale: 1.45,
-                mesh: IslandWaterVisualMesh::LakeSurface {
-                    radius_x: island.half_extents.x * 0.24,
-                    radius_z: island.half_extents.y * 0.17,
-                },
-                seed: 31_000 + island_index as u32 * 191,
+                mesh,
+                seed,
             });
         }
         if let Some(high_shelf) = island.plateau_region_position(IslandPlateauRegion::HighShelf) {
+            let rotation_y = -0.18;
+            let mesh = IslandWaterVisualMesh::LakeSurface {
+                radius_x: island.half_extents.x * 0.13,
+                radius_z: island.half_extents.y * 0.09,
+            };
+            let seed = 32_000 + island_index as u32 * 193;
             specs.push(IslandWaterVisualSpec {
                 kind: IslandWaterVisualKind::PlateauLakeSurface,
                 label: "high shelf pool",
-                translation: high_shelf + Vec3::Y * 0.08,
-                rotation_y: -0.18,
+                translation: terrain_clear_horizontal_water_translation(
+                    island, high_shelf, rotation_y, mesh, seed,
+                ),
+                rotation_y,
                 wind_phase: 5.2,
                 wind_motion_scale: 1.25,
-                mesh: IslandWaterVisualMesh::LakeSurface {
-                    radius_x: island.half_extents.x * 0.13,
-                    radius_z: island.half_extents.y * 0.09,
-                },
-                seed: 32_000 + island_index as u32 * 193,
+                mesh,
+                seed,
             });
         }
         for channel in [
@@ -964,9 +1161,10 @@ pub(crate) fn island_water_visual_specs(
         }
     }
 
-    if island.world_tags.water_feature == IslandWaterFeature::WaterfallSource
-        && !island.is_great_plateau_anchor()
-    {
+    let waterfall_story = water_story == Some(IslandWaterStory::WaterfallGarden)
+        || water_story.is_none()
+            && island.world_tags.water_feature == IslandWaterFeature::WaterfallSource;
+    if waterfall_story && !island.is_great_plateau_anchor() {
         push_river_channel_spec(
             &mut specs,
             island_index,
@@ -974,16 +1172,19 @@ pub(crate) fn island_water_visual_specs(
             RiverChannelFeatureSpec {
                 label: "waterfall feeder channel",
                 source_offset: Vec2::new(0.04, -0.08),
-                outlet_offset: Vec2::new(-0.42, 0.16),
+                outlet_offset: ROUTE_EDGE_WATERFALL_CHANNEL_OUTLET_OFFSET,
                 width_scale: 0.045,
                 index: 0,
             },
         );
         push_route_edge_waterfall_specs(&mut specs, island_index, island);
     }
-    if island.world_tags.water_feature == IslandWaterFeature::LakeBasin
-        && !island.is_great_plateau_anchor()
-    {
+    let lake_story = matches!(
+        water_story,
+        Some(IslandWaterStory::ReflectingBasin | IslandWaterStory::ReedyLake)
+    ) || water_story.is_none()
+        && island.world_tags.water_feature == IslandWaterFeature::LakeBasin;
+    if lake_story && !island.is_great_plateau_anchor() {
         push_route_lake_surface_specs(&mut specs, island_index, island);
         let lake_offset = route_lake_basin_offset(island);
         let source_offset = if lake_offset.x >= 0.0 {
@@ -1013,12 +1214,19 @@ pub(crate) fn island_lake_basin_visual_specs(
     island: SkyIsland,
 ) -> Vec<IslandLakeBasinVisualSpec> {
     let mut specs = Vec::new();
+    let water_specs = island_water_visual_specs(island_index, island);
 
     if island.is_great_plateau_anchor() {
         if let Some(low_basin) = island.plateau_region_position(IslandPlateauRegion::LowBasin) {
+            let translation = water_specs
+                .iter()
+                .find(|spec| spec.label == "low basin lake")
+                .map_or(low_basin + Vec3::Y * 0.035, |spec| {
+                    spec.translation - Vec3::Y * 0.045
+                });
             specs.push(IslandLakeBasinVisualSpec {
                 label: "low basin lake basin",
-                translation: low_basin + Vec3::Y * 0.035,
+                translation,
                 rotation_y: 0.22,
                 radius_x: island.half_extents.x * 0.255,
                 radius_z: island.half_extents.y * 0.185,
@@ -1028,9 +1236,15 @@ pub(crate) fn island_lake_basin_visual_specs(
             });
         }
         if let Some(high_shelf) = island.plateau_region_position(IslandPlateauRegion::HighShelf) {
+            let translation = water_specs
+                .iter()
+                .find(|spec| spec.label == "high shelf pool")
+                .map_or(high_shelf + Vec3::Y * 0.035, |spec| {
+                    spec.translation - Vec3::Y * 0.045
+                });
             specs.push(IslandLakeBasinVisualSpec {
                 label: "high shelf lake basin",
-                translation: high_shelf + Vec3::Y * 0.035,
+                translation,
                 rotation_y: -0.18,
                 radius_x: island.half_extents.x * 0.145,
                 radius_z: island.half_extents.y * 0.105,
@@ -1041,18 +1255,28 @@ pub(crate) fn island_lake_basin_visual_specs(
         }
     }
 
-    if island.world_tags.water_feature == IslandWaterFeature::LakeBasin
-        && !island.is_great_plateau_anchor()
-    {
+    let lake_story = authored_island_art_direction(island.name).is_some_and(|art_direction| {
+        matches!(
+            art_direction.water_story,
+            IslandWaterStory::ReflectingBasin | IslandWaterStory::ReedyLake
+        )
+    }) || authored_island_art_direction(island.name).is_none()
+        && island.world_tags.water_feature == IslandWaterFeature::LakeBasin;
+    if lake_story && !island.is_great_plateau_anchor() {
         let label = if island.terrain_archetype == IslandTerrainArchetype::SapphireBasin {
             "sapphire lake basin"
         } else {
             "route lake basin"
         };
+        let fallback = island_water_surface_position(island, route_lake_basin_offset(island))
+            + Vec3::Y * 0.035;
+        let translation = water_specs
+            .iter()
+            .find(|spec| spec.kind == IslandWaterVisualKind::RouteLakeSurface)
+            .map_or(fallback, |spec| spec.translation - Vec3::Y * 0.040);
         specs.push(IslandLakeBasinVisualSpec {
             label,
-            translation: island_water_surface_position(island, route_lake_basin_offset(island))
-                + Vec3::Y * 0.035,
+            translation,
             rotation_y: -0.08,
             radius_x: island.half_extents.x * 0.19,
             radius_z: island.half_extents.y * 0.14,
@@ -1637,19 +1861,19 @@ fn irregular_water_surface_mesh(
     for segment in 0..segments {
         indices.extend([
             0,
-            ring_vertex_index(0, segment),
             ring_vertex_index(0, segment + 1),
+            ring_vertex_index(0, segment),
         ]);
     }
     for ring_index in 0..rings.len().saturating_sub(1) {
         for segment in 0..segments {
             indices.extend([
                 ring_vertex_index(ring_index, segment),
-                ring_vertex_index(ring_index + 1, segment),
-                ring_vertex_index(ring_index, segment + 1),
                 ring_vertex_index(ring_index, segment + 1),
                 ring_vertex_index(ring_index + 1, segment),
+                ring_vertex_index(ring_index, segment + 1),
                 ring_vertex_index(ring_index + 1, segment + 1),
+                ring_vertex_index(ring_index + 1, segment),
             ]);
         }
     }
@@ -1675,24 +1899,25 @@ fn push_river_channel_spec(
     let width = (island.half_extents.min_element() * channel.width_scale).clamp(1.2, 5.0);
     let elevation_drop = (source.y - outlet.y).max(width * 0.018).min(length * 0.08);
     let midpoint = (source + outlet) * 0.5;
+    let rotation_y = direction.x.atan2(direction.y);
+    let mesh = IslandWaterVisualMesh::RiverChannel {
+        length,
+        width,
+        elevation_drop,
+    };
+    let seed = 40_000 + island_index as u32 * 227 + channel.index * 521;
 
     specs.push(IslandWaterVisualSpec {
         kind: IslandWaterVisualKind::RiverChannel,
         label: channel.label,
-        translation: Vec3::new(
-            midpoint.x,
-            source.y + 0.08 - elevation_drop * 0.5,
-            midpoint.z,
+        translation: terrain_clear_horizontal_water_translation(
+            island, midpoint, rotation_y, mesh, seed,
         ),
-        rotation_y: direction.x.atan2(direction.y),
+        rotation_y,
         wind_phase: 5.5 + island_index as f32 * 0.029 + channel.index as f32 * 0.43,
         wind_motion_scale: 1.18,
-        mesh: IslandWaterVisualMesh::RiverChannel {
-            length,
-            width,
-            elevation_drop,
-        },
-        seed: 40_000 + island_index as u32 * 227 + channel.index * 521,
+        mesh,
+        seed,
     });
 }
 
@@ -1773,19 +1998,27 @@ fn push_route_lake_surface_specs(
     island_index: usize,
     island: SkyIsland,
 ) {
+    let rotation_y = -0.08;
+    let mesh = IslandWaterVisualMesh::LakeSurface {
+        radius_x: island.half_extents.x * 0.18,
+        radius_z: island.half_extents.y * 0.13,
+    };
+    let seed = 38_000 + island_index as u32 * 219;
     specs.push(IslandWaterVisualSpec {
         kind: IslandWaterVisualKind::RouteLakeSurface,
         label: "route lake surface",
-        translation: island_water_surface_position(island, route_lake_basin_offset(island))
-            + Vec3::Y * 0.075,
-        rotation_y: -0.08,
+        translation: terrain_clear_horizontal_water_translation(
+            island,
+            island_water_surface_position(island, route_lake_basin_offset(island)),
+            rotation_y,
+            mesh,
+            seed,
+        ),
+        rotation_y,
         wind_phase: 5.8 + island_index as f32 * 0.037,
         wind_motion_scale: 1.32,
-        mesh: IslandWaterVisualMesh::LakeSurface {
-            radius_x: island.half_extents.x * 0.18,
-            radius_z: island.half_extents.y * 0.13,
-        },
-        seed: 38_000 + island_index as u32 * 219,
+        mesh,
+        seed,
     });
 }
 
@@ -1794,42 +2027,33 @@ fn push_route_edge_waterfall_specs(
     island_index: usize,
     island: SkyIsland,
 ) {
-    let source_offset = Vec2::new(-0.42, 0.16);
-    let edge_offset = Vec2::new(-0.76, 0.28);
-    let surface = island_water_surface_position(island, edge_offset);
-    let outward = edge_offset.normalize_or_zero();
-    let yaw = outward.x.atan2(outward.y);
-    let outward3 = Vec3::new(outward.x, 0.0, outward.y);
-    let height = (island.thickness * 1.25).clamp(18.0, 34.0);
-    let width = island.half_extents.min_element() * 0.16;
-    let source = island_water_surface_position(island, source_offset);
-    let source_drop = (source.y - surface.y).max(0.0) * 0.12;
+    let placement = route_edge_waterfall_placement(island);
     let seed_base = 39_000 + island_index as u32 * 223;
 
     specs.push(IslandWaterVisualSpec {
         kind: IslandWaterVisualKind::RouteWaterfallRibbon,
         label: "route edge waterfall",
-        translation: surface + outward3 * 4.5 - Vec3::Y * (height * 0.46 + source_drop),
-        rotation_y: yaw,
+        translation: placement.ribbon_translation,
+        rotation_y: placement.rotation_y,
         wind_phase: 7.4,
         wind_motion_scale: 1.65,
         mesh: IslandWaterVisualMesh::WaterfallRibbon {
-            width,
-            height,
-            depth: width * 0.07,
+            width: placement.width,
+            height: placement.height,
+            depth: placement.width * 0.07,
         },
         seed: seed_base,
     });
     specs.push(IslandWaterVisualSpec {
         kind: IslandWaterVisualKind::RouteWaterfallMist,
         label: "route edge mist",
-        translation: surface + outward3 * 7.5 - Vec3::Y * (height * 0.90 + source_drop),
-        rotation_y: yaw,
+        translation: placement.mist_translation,
+        rotation_y: placement.rotation_y,
         wind_phase: 8.1,
         wind_motion_scale: 1.45,
         mesh: IslandWaterVisualMesh::WaterfallMist {
-            radius: width * 0.48,
-            height: height * 0.10,
+            radius: placement.width * 0.48,
+            height: placement.height * 0.10,
         },
         seed: seed_base + 509,
     });
@@ -2143,6 +2367,112 @@ fn island_water_surface_position(island: SkyIsland, normalized_offset: Vec2) -> 
     Vec3::new(x, island.mesh_top_y_at(Vec3::new(x, island.center.y, z)), z)
 }
 
+fn terrain_clear_horizontal_water_translation(
+    island: SkyIsland,
+    center: Vec3,
+    rotation_y: f32,
+    water_mesh: IslandWaterVisualMesh,
+    seed: u32,
+) -> Vec3 {
+    let rotation = Quat::from_rotation_y(rotation_y);
+    let mut required_translation_y = center.y;
+    water_mesh.visit_horizontal_surface_positions(seed, |local| {
+        let rotated = rotation * local;
+        let world_probe = Vec3::new(center.x + rotated.x, island.center.y, center.z + rotated.z);
+        required_translation_y =
+            required_translation_y.max(island.mesh_top_y_at(world_probe) - local.y);
+    });
+
+    Vec3::new(
+        center.x,
+        required_translation_y + HORIZONTAL_WATER_TERRAIN_CLEARANCE_M,
+        center.z,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn visit_irregular_water_surface_positions(
+    radius_x: f32,
+    radius_z: f32,
+    seed: u32,
+    segments: usize,
+    rings: &[f32],
+    edge_noise_scale: f32,
+    ripple_scale: f32,
+    mut visitor: impl FnMut(Vec3),
+) {
+    visitor(Vec3::ZERO);
+    for (ring_index, ring) in rings.iter().copied().enumerate() {
+        for segment in 0..segments {
+            let angle = segment as f32 / segments as f32 * std::f32::consts::TAU;
+            let edge = 1.0
+                + (random_unit(seed, segment as u32 + ring_index as u32 * 31, 907) - 0.5)
+                    * edge_noise_scale
+                    * ring
+                + 0.035 * (angle * 5.0 + seed as f32 * 0.011).sin();
+            let ripple = ((angle * 4.0 + seed as f32 * 0.017).sin()
+                + (angle * 9.0 + ring_index as f32 * 0.71).sin() * 0.35)
+                * ripple_scale
+                * ring;
+            visitor(Vec3::new(
+                angle.cos() * radius_x * ring * edge,
+                ripple,
+                angle.sin() * radius_z * ring * edge,
+            ));
+        }
+    }
+}
+
+fn visit_river_channel_surface_positions(
+    length: f32,
+    width: f32,
+    elevation_drop: f32,
+    seed: u32,
+    mut visitor: impl FnMut(Vec3),
+) {
+    let length = length.max(0.1);
+    let width = width.max(0.05);
+    let elevation_drop = elevation_drop.max(0.0);
+    let bend_sign = if random_unit(seed, 0, 971) < 0.5 {
+        -1.0
+    } else {
+        1.0
+    };
+    let primary_bend = bend_sign * width * (0.48 + random_unit(seed, 1, 977) * 0.34);
+    let wave_phase = random_unit(seed, 2, 983) * std::f32::consts::TAU;
+
+    for segment in 0..=RIVER_CHANNEL_SEGMENTS {
+        let t = segment as f32 / RIVER_CHANNEL_SEGMENTS as f32;
+        let longitudinal = (t - 0.5) * length;
+        let envelope = (t * std::f32::consts::PI).sin();
+        let envelope_derivative = std::f32::consts::PI * (t * std::f32::consts::PI).cos();
+        let wander_phase = t * std::f32::consts::TAU + wave_phase;
+        let center_x = envelope * primary_bend + envelope * wander_phase.sin() * width * 0.16;
+        let center_derivative = envelope_derivative * primary_bend
+            + width
+                * 0.16
+                * (envelope_derivative * wander_phase.sin()
+                    + envelope * std::f32::consts::TAU * wander_phase.cos());
+        let lateral_slope = center_derivative / length;
+        let across = Vec3::new(1.0, 0.0, -lateral_slope).normalize_or_zero();
+        let width_jitter = (random_unit(seed, segment as u32, 991) - 0.5) * 0.10;
+        let local_width = width * (0.84 + envelope * 0.16 + width_jitter);
+        let center_y = elevation_drop * (0.5 - t)
+            + envelope * (t * std::f32::consts::TAU * 3.0 + wave_phase).sin() * width * 0.006;
+
+        for column in 0..RIVER_CHANNEL_COLUMNS {
+            let u = column as f32 / (RIVER_CHANNEL_COLUMNS - 1) as f32;
+            let side = (u - 0.5) * local_width;
+            let cross_ripple = (u * std::f32::consts::PI).sin()
+                * envelope
+                * (wander_phase + u * 1.7).sin()
+                * width
+                * 0.004;
+            visitor(Vec3::new(center_x, center_y + cross_ripple, longitudinal) + across * side);
+        }
+    }
+}
+
 fn append_cairn_stones(
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
@@ -2404,6 +2734,31 @@ mod tests {
         }
     }
 
+    fn rendered_surface_y_at(mesh: &Mesh, world: Vec3) -> Option<f32> {
+        let positions = positions(mesh);
+        let point = world.xz();
+        u32_indices(mesh)
+            .chunks_exact(3)
+            .filter_map(|triangle| {
+                let a = Vec3::from_array(positions[triangle[0] as usize]);
+                let b = Vec3::from_array(positions[triangle[1] as usize]);
+                let c = Vec3::from_array(positions[triangle[2] as usize]);
+                let edge_ab = b.xz() - a.xz();
+                let edge_ac = c.xz() - a.xz();
+                let relative = point - a.xz();
+                let denominator = edge_ab.perp_dot(edge_ac);
+                if denominator.abs() <= 0.000_001 {
+                    return None;
+                }
+                let weight_b = relative.perp_dot(edge_ac) / denominator;
+                let weight_c = edge_ab.perp_dot(relative) / denominator;
+                let weight_a = 1.0 - weight_b - weight_c;
+                (weight_a >= -0.0001 && weight_b >= -0.0001 && weight_c >= -0.0001)
+                    .then_some(weight_a * a.y + weight_b * b.y + weight_c * c.y)
+            })
+            .max_by(f32::total_cmp)
+    }
+
     fn channel_endpoints(spec: IslandWaterVisualSpec) -> (Vec2, Vec2) {
         let mesh = spec.build_mesh();
         let channel_positions = positions(&mesh);
@@ -2551,6 +2906,17 @@ mod tests {
                 .iter()
                 .any(|spec| spec.label == "waterfall feeder channel")
         );
+        let expected_waterfall = route_edge_waterfall_placement(waterfall);
+        let ribbon = waterfall_specs
+            .iter()
+            .find(|spec| spec.kind == IslandWaterVisualKind::RouteWaterfallRibbon)
+            .expect("waterfall story should generate a ribbon");
+        let mist = waterfall_specs
+            .iter()
+            .find(|spec| spec.kind == IslandWaterVisualKind::RouteWaterfallMist)
+            .expect("waterfall story should generate mist");
+        assert_eq!(ribbon.translation, expected_waterfall.ribbon_translation);
+        assert_eq!(mist.translation, expected_waterfall.mist_translation);
 
         let plateau = SkyIsland::new(
             "great sky plateau",
@@ -2659,6 +3025,221 @@ mod tests {
                 (RIVER_CHANNEL_SEGMENTS + 1) * RIVER_CHANNEL_COLUMNS
             );
         }
+    }
+
+    #[test]
+    fn every_authored_water_story_is_realized_or_explicitly_dry() {
+        let route = nau_engine::world::SkyRoute::default();
+
+        for (island_index, island) in route.islands().iter().copied().enumerate() {
+            let profile = authored_island_art_direction(island.name)
+                .expect("every route island should have authored water direction");
+            let water = island_water_visual_specs(island_index, island);
+            let lake_basins = island_lake_basin_visual_specs(island_index, island);
+
+            match profile.water_story {
+                IslandWaterStory::DryWindCarved => {
+                    assert!(
+                        water.is_empty(),
+                        "{} should remain an intentionally dry island",
+                        island.name
+                    );
+                    assert!(lake_basins.is_empty());
+                }
+                IslandWaterStory::SpringPond
+                | IslandWaterStory::MistPool
+                | IslandWaterStory::CaveSeep => {
+                    assert!(
+                        water
+                            .iter()
+                            .any(|spec| spec.kind == IslandWaterVisualKind::PondSurface),
+                        "{} should realize its authored pool",
+                        island.name
+                    );
+                }
+                IslandWaterStory::ReflectingBasin | IslandWaterStory::ReedyLake => {
+                    assert!(
+                        water
+                            .iter()
+                            .any(|spec| spec.kind == IslandWaterVisualKind::RouteLakeSurface),
+                        "{} should realize its authored lake",
+                        island.name
+                    );
+                    assert!(
+                        !lake_basins.is_empty(),
+                        "{} should receive a structural lake basin",
+                        island.name
+                    );
+                }
+                IslandWaterStory::CascadeRun | IslandWaterStory::WaterfallGarden => {
+                    assert!(
+                        water.iter().any(|spec| {
+                            matches!(
+                                spec.kind,
+                                IslandWaterVisualKind::RiverChannel
+                                    | IslandWaterVisualKind::RouteWaterfallRibbon
+                                    | IslandWaterVisualKind::PlateauWaterfallRibbon
+                            )
+                        }),
+                        "{} should realize its authored cascade network",
+                        island.name
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn horizontal_water_footprints_enclose_every_vertex_and_shoreline_margin() {
+        const SHORELINE_MARGIN_M: f32 = 1.35;
+        let route = nau_engine::world::SkyRoute::default();
+
+        for (island_index, island) in route.islands().iter().copied().enumerate() {
+            for spec in island_water_visual_specs(island_index, island) {
+                let Some(footprint) = spec.horizontal_footprint() else {
+                    continue;
+                };
+                let mesh = spec.build_mesh();
+                let rotation = Quat::from_rotation_y(spec.rotation_y);
+
+                for position in positions(&mesh) {
+                    let local = Vec3::from_array(*position);
+                    let world = spec.translation + rotation * local;
+                    assert!(
+                        footprint.contains_world_xz(world.xz(), 0.0),
+                        "{} {} footprint misses water vertex {:?}",
+                        island.name,
+                        spec.label,
+                        local
+                    );
+
+                    let local_xz = local.xz();
+                    let outward = if local_xz.length_squared() > f32::EPSILON {
+                        local_xz.normalize()
+                    } else {
+                        Vec2::X
+                    };
+                    let shoreline_world = world
+                        + rotation
+                            * Vec3::new(
+                                outward.x * SHORELINE_MARGIN_M,
+                                0.0,
+                                outward.y * SHORELINE_MARGIN_M,
+                            );
+                    assert!(
+                        footprint.contains_world_xz(shoreline_world.xz(), SHORELINE_MARGIN_M),
+                        "{} {} footprint misses its {:.2} m shoreline margin at {:?}",
+                        island.name,
+                        spec.label,
+                        SHORELINE_MARGIN_M,
+                        local
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn horizontal_water_vertices_clear_the_authored_terrain() {
+        let route = nau_engine::world::SkyRoute::default();
+
+        for (island_index, island) in route.islands().iter().copied().enumerate() {
+            for spec in island_water_visual_specs(island_index, island)
+                .into_iter()
+                .filter(|spec| spec.horizontal_footprint().is_some())
+            {
+                let mesh = spec.build_mesh();
+                let rotation = Quat::from_rotation_y(spec.rotation_y);
+                for position in positions(&mesh) {
+                    let world = spec.translation + rotation * Vec3::from_array(*position);
+                    let clearance = world.y - island.mesh_top_y_at(world);
+                    assert!(
+                        clearance >= HORIZONTAL_WATER_TERRAIN_CLEARANCE_M - 0.001,
+                        "{} {} water vertex clearance was {:.3} m",
+                        island.name,
+                        spec.label,
+                        clearance
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn horizontal_water_vertices_clear_the_rendered_terrain_mesh() {
+        let route = nau_engine::world::SkyRoute::default();
+
+        for (island_index, island) in route.islands().iter().copied().enumerate() {
+            let terrain_mesh = crate::generated_content::island_terrain_mesh(island_index, island);
+            for spec in island_water_visual_specs(island_index, island)
+                .into_iter()
+                .filter(|spec| spec.horizontal_footprint().is_some())
+            {
+                let mesh = spec.build_mesh();
+                let rotation = Quat::from_rotation_y(spec.rotation_y);
+                for position in positions(&mesh) {
+                    let world = spec.translation + rotation * Vec3::from_array(*position);
+                    let rendered_y = rendered_surface_y_at(&terrain_mesh, world)
+                        .expect("horizontal water should project onto its island terrain mesh");
+                    let clearance = world.y - rendered_y;
+                    assert!(
+                        clearance >= 0.03,
+                        "{} {} water vertex clears analytic terrain but intersects the rendered \
+                         terrain mesh by {:.3} m",
+                        island.name,
+                        spec.label,
+                        -clearance
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn horizontal_water_triangles_face_upward() {
+        for mesh in [
+            pond_surface_mesh(12.0, 8.0, 11_149),
+            lake_surface_mesh(24.0, 15.0, 31_191),
+            river_channel_surface_mesh(30.0, 4.0, 1.2, 41_211),
+        ] {
+            let positions = positions(&mesh);
+            for triangle in u32_indices(&mesh).chunks_exact(3) {
+                let a = Vec3::from_array(positions[triangle[0] as usize]);
+                let b = Vec3::from_array(positions[triangle[1] as usize]);
+                let c = Vec3::from_array(positions[triangle[2] as usize]);
+                assert!(
+                    (b - a).cross(c - a).y > 0.0,
+                    "horizontal water triangle should face upward"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cave_seep_pool_is_player_readable() {
+        let route = nau_engine::world::SkyRoute::default();
+        let (island_index, island) = route
+            .islands()
+            .iter()
+            .copied()
+            .enumerate()
+            .find(|(_, island)| island.name == "underbridge cay")
+            .expect("underbridge cay exists");
+        let pool = island_water_visual_specs(island_index, island)
+            .into_iter()
+            .find(|spec| spec.label == "cave seep pool")
+            .expect("underbridge cay should have a cave seep pool");
+        let IslandWaterVisualMesh::PondSurface { radius_x, radius_z } = pool.mesh else {
+            panic!("cave seep should use a pond surface");
+        };
+
+        assert!(radius_x >= 3.0);
+        assert!(radius_z >= 1.3);
+        assert!(pool.translation.z > island.center.z);
+        assert!(
+            pool.translation.y - island.mesh_top_y_at(pool.translation)
+                >= HORIZONTAL_WATER_TERRAIN_CLEARANCE_M - 0.001
+        );
     }
 
     #[test]

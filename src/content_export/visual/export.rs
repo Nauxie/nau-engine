@@ -16,9 +16,8 @@ use crate::{
     content_export::shared::{terrain_export_slug, write_mesh_obj},
     eval_runtime::remove_existing_dir,
     generated_content::{
-        TERRAIN_BIOME_PALETTE_COUNT, TREE_CANOPY_CARD_COUNT, island_detail_budget,
-        island_ground_cover_mesh, island_rock_specs, island_ruin_specs, rock_scatter_mesh,
-        tree_canopy_mesh, tree_trunk_mesh,
+        TREE_CANOPY_CARD_COUNT, island_detail_budget, island_ground_cover_mesh, island_rock_specs,
+        island_ruin_specs, rock_scatter_mesh, tree_canopy_mesh, tree_trunk_mesh,
     },
 };
 use nau_engine::world::{IslandScaleClass, SkyRoute};
@@ -134,7 +133,7 @@ pub(crate) fn export_visual_content_inspection(
         )?);
     }
 
-    let palettes = (0..TERRAIN_BIOME_PALETTE_COUNT)
+    let palettes = (0..route.islands().len())
         .map(visual_content_palette_summary)
         .collect::<Vec<_>>();
     let terrain_biome_palette_count = palettes

@@ -2,8 +2,9 @@ use super::island_playable_normalized_offset;
 use super::random_unit;
 use bevy::prelude::*;
 use nau_engine::world::{
-    IslandBiome, IslandLandmarkRole, IslandScaleClass, IslandTerrainArchetype, IslandVisualMotif,
-    IslandWaterFeature, SkyIsland, authored_island_composition,
+    IslandArtDirection, IslandBiome, IslandFloraIdentity, IslandLandmarkRole, IslandPaletteFamily,
+    IslandScaleClass, IslandSurfacePattern, IslandTerrainArchetype, IslandVisualMotif,
+    IslandWaterFeature, SkyIsland, authored_island_art_direction, authored_island_composition,
 };
 
 const GOLDEN_ANGLE_RADIANS: f32 = 2.399_963_1;
@@ -212,6 +213,7 @@ pub(crate) fn island_tree_specs(island_index: usize, island: SkyIsland) -> Vec<I
     let count = island_detail_budget(island).tree_count;
     let layout_seed = detail_seed(island_index, island, 0x51a7_3e2d);
     let (height_scale, canopy_scale, trunk_scale) = tree_biome_scales(island.world_tags.biome);
+    let art_direction = authored_island_art_direction(island.name);
 
     (0..count)
         .map(|tree_index| {
@@ -223,13 +225,28 @@ pub(crate) fn island_tree_specs(island_index: usize, island: SkyIsland) -> Vec<I
                     Vec2::from_array(GREAT_PLATEAU_TREE_OFFSETS[tree_index]),
                 )
             } else {
-                distributed_offset(
-                    island,
-                    tree_index,
-                    count,
-                    layout_seed,
-                    if island.is_target { 0.48 } else { 0.30 },
-                    0.82,
+                art_direction.map_or_else(
+                    || {
+                        distributed_offset(
+                            island,
+                            tree_index,
+                            count,
+                            layout_seed,
+                            if island.is_target { 0.48 } else { 0.30 },
+                            0.82,
+                        )
+                    },
+                    |profile| {
+                        art_directed_offset(
+                            island,
+                            tree_index,
+                            count,
+                            layout_seed,
+                            profile,
+                            Vec2::from_array(profile.flora_anchor),
+                            0x7100,
+                        )
+                    },
                 )
             };
             let (plateau_height_scale, plateau_canopy_scale, plateau_trunk_scale) =
@@ -271,19 +288,29 @@ pub(crate) fn island_rock_specs(island_index: usize, island: SkyIsland) -> Vec<I
     let count = island_detail_budget(island).rock_count;
     let layout_seed = detail_seed(island_index, island, 0x8c63_19f5);
     let biome_scale = rock_biome_scale(island.world_tags.biome);
+    let art_direction = authored_island_art_direction(island.name);
 
     (0..count)
         .map(|rock_index| {
             let sample = rock_index as u32;
             IslandRockSpec {
-                normalized_offset: distributed_offset(
-                    island,
-                    rock_index,
-                    count,
-                    layout_seed,
-                    0.48,
-                    0.86,
-                ) * ROCK_FOOTPRINT_INSET_SCALE,
+                normalized_offset: art_direction.map_or_else(
+                    || {
+                        distributed_offset(island, rock_index, count, layout_seed, 0.48, 0.86)
+                            * ROCK_FOOTPRINT_INSET_SCALE
+                    },
+                    |profile| {
+                        art_directed_offset(
+                            island,
+                            rock_index,
+                            count,
+                            layout_seed,
+                            profile,
+                            Vec2::from_array(profile.formation_anchor),
+                            0x9200,
+                        ) * ROCK_FOOTPRINT_INSET_SCALE
+                    },
+                ),
                 scale_m: ((0.42 + random_unit(layout_seed, sample, 79) * 0.38) * biome_scale)
                     .clamp(0.34, 1.10),
                 seed: mixed_seed(layout_seed ^ sample.wrapping_mul(0xc2b2_ae35) ^ 0x9000),
@@ -299,9 +326,18 @@ pub(crate) fn island_ruin_specs(island_index: usize, island: SkyIsland) -> Vec<I
     }
 
     let layout_seed = detail_seed(island_index, island, 0xd47a_6c21);
-    let cluster_angle = random_unit(layout_seed, 0, 89) * std::f32::consts::TAU;
-    let cluster_radius = 0.34 + random_unit(layout_seed, 0, 97) * 0.18;
-    let cluster_center = Vec2::new(cluster_angle.cos(), cluster_angle.sin()) * cluster_radius;
+    let art_direction = authored_island_art_direction(island.name);
+    let cluster_angle = art_direction.map_or_else(
+        || random_unit(layout_seed, 0, 89) * std::f32::consts::TAU,
+        |profile| profile.hero_rotation_degrees as f32 * std::f32::consts::PI / 180.0,
+    );
+    let cluster_center = art_direction.map_or_else(
+        || {
+            let cluster_radius = 0.34 + random_unit(layout_seed, 0, 97) * 0.18;
+            Vec2::new(cluster_angle.cos(), cluster_angle.sin()) * cluster_radius
+        },
+        |profile| Vec2::from_array(profile.ruin_anchor),
+    );
     let base_width = (island.half_extents.x * 0.24).clamp(5.5, 18.0);
     let base_height = (island.thickness * 0.38).clamp(4.8, 12.0);
     let base_depth = (island.half_extents.y * 0.08).clamp(1.2, 3.2);
@@ -375,6 +411,109 @@ fn distributed_offset(
     island_playable_normalized_offset(island, direction * radius + tangent * jitter)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn art_directed_offset(
+    island: SkyIsland,
+    index: usize,
+    count: usize,
+    seed: u32,
+    profile: IslandArtDirection,
+    anchor: Vec2,
+    salt: u32,
+) -> Vec2 {
+    let sample = index as u32;
+    let progress = (index as f32 + 0.5) / count.max(1) as f32;
+    let centered = progress * 2.0 - 1.0;
+    let side = if index.is_multiple_of(2) { -1.0 } else { 1.0 };
+    let ring_angle = progress * std::f32::consts::TAU;
+    let row = index % 3;
+    let column_count = count.div_ceil(3).max(1);
+    let column = index / 3;
+    let column_progress = if column_count <= 1 {
+        0.0
+    } else {
+        column as f32 / (column_count - 1) as f32 * 2.0 - 1.0
+    };
+    let local = match profile.surface_pattern {
+        IslandSurfacePattern::TerracedCourt => {
+            Vec2::new(centered * 0.62, side * (0.23 + 0.07 * (index % 3) as f32))
+        }
+        IslandSurfacePattern::BraidedCauseway => Vec2::new(
+            centered * 0.68,
+            (centered * std::f32::consts::PI * 1.5).sin() * 0.20 + side * 0.09,
+        ),
+        IslandSurfacePattern::RadialGarden => {
+            Vec2::new(ring_angle.cos(), ring_angle.sin()) * (0.38 + 0.10 * (index % 2) as f32)
+        }
+        IslandSurfacePattern::CrownedRidge => {
+            let angle = -1.05 + progress * 2.10;
+            Vec2::new(angle.sin() * 0.66, angle.cos() * 0.31 + 0.27)
+        }
+        IslandSurfacePattern::WindwardRibs => {
+            Vec2::new(centered * 0.66, side * (0.25 + 0.04 * (index % 3) as f32))
+        }
+        IslandSurfacePattern::OrchardRows => Vec2::new(
+            column_progress * 0.62,
+            (row as f32 - 1.0) * 0.23 + side * 0.025,
+        ),
+        IslandSurfacePattern::NeedleHalo => {
+            Vec2::new(ring_angle.cos(), ring_angle.sin()) * (0.48 + 0.06 * (index % 2) as f32)
+        }
+        IslandSurfacePattern::BasinRings => {
+            let radius = if index.is_multiple_of(2) { 0.36 } else { 0.56 };
+            Vec2::new(ring_angle.cos(), ring_angle.sin()) * radius
+        }
+        IslandSurfacePattern::ProcessionalAxis => {
+            Vec2::new(centered * 0.66, side * (0.14 + 0.04 * (index % 2) as f32))
+        }
+        IslandSurfacePattern::PortalCourt => {
+            let angle = -1.18 + progress * 2.36;
+            Vec2::new(side * (0.36 + angle.cos().abs() * 0.14), angle.sin() * 0.48)
+        }
+        IslandSurfacePattern::UnderhangThreshold => {
+            let angle = ring_angle + 0.55;
+            Vec2::new(angle.cos() * 0.58, angle.sin() * 0.42 - 0.10)
+        }
+        IslandSurfacePattern::ThermalSpiral => {
+            let radius = 0.24 + progress * 0.38;
+            let angle = progress * std::f32::consts::TAU * 2.25;
+            Vec2::new(angle.cos(), angle.sin()) * radius
+        }
+        IslandSurfacePattern::CascadeTerraces => Vec2::new(
+            centered * 0.58,
+            0.48 - (index % 4) as f32 * 0.27 + side * 0.035,
+        ),
+        IslandSurfacePattern::PlateauDistricts => {
+            let angle = ring_angle + (index % 3) as f32 * 0.29;
+            Vec2::new(angle.cos() * 0.58, angle.sin() * 0.54)
+        }
+        IslandSurfacePattern::SummitSanctum => {
+            Vec2::new(ring_angle.cos(), ring_angle.sin()) * (0.44 + 0.08 * (index % 2) as f32)
+        }
+    };
+    let rotation =
+        profile.hero_rotation_degrees as f32 * std::f32::consts::PI / 180.0 + salt as f32 * 0.0001;
+    let rotated = Vec2::new(
+        local.x * rotation.cos() - local.y * rotation.sin(),
+        local.x * rotation.sin() + local.y * rotation.cos(),
+    );
+    let jitter = Vec2::new(
+        random_unit(seed ^ salt, sample, 0x31) - 0.5,
+        random_unit(seed ^ salt, sample, 0x47) - 0.5,
+    ) * 0.055;
+    let mut offset = rotated + anchor * 0.30 + jitter;
+    let hero_anchor = Vec2::from_array(profile.hero_anchor);
+    let hero_delta = offset - hero_anchor;
+    if hero_delta.length() < 0.22 {
+        offset = hero_anchor + hero_delta.normalize_or(Vec2::Y) * 0.22;
+    }
+    if offset.x > -0.46 && offset.x < 0.38 && offset.y.abs() < 0.17 {
+        offset.y = side * (0.24 + random_unit(seed ^ salt, sample, 0x59) * 0.08);
+    }
+
+    island_playable_normalized_offset(island, offset * 0.94)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct TreeSpeciesPalette {
     primary: TreeSpecies,
@@ -421,6 +560,27 @@ fn tree_species_for(island: SkyIsland, tree_index: usize, count: usize, seed: u3
 }
 
 fn tree_species_palette(island: SkyIsland) -> TreeSpeciesPalette {
+    if let Some(profile) = authored_island_art_direction(island.name) {
+        let primary = tree_species_for_palette_family(profile.palette_family);
+        let secondary = profile
+            .flora_kinds
+            .into_iter()
+            .map(tree_species_for_flora)
+            .find(|species| *species != primary)
+            .unwrap_or(primary);
+        let accent = profile
+            .flora_kinds
+            .into_iter()
+            .map(tree_species_for_flora)
+            .find(|species| *species != primary && *species != secondary)
+            .unwrap_or_else(|| tree_accent_species_for_biome(island.world_tags.biome));
+        return TreeSpeciesPalette {
+            primary,
+            secondary,
+            accent,
+        };
+    }
+
     let motif_species = authored_island_composition(island.name)
         .map(|composition| tree_species_for_motif(composition.visual_motif));
     let archetype_species = tree_species_for_archetype(island.terrain_archetype);
@@ -477,6 +637,29 @@ fn tree_species_palette(island: SkyIsland) -> TreeSpeciesPalette {
         primary,
         secondary,
         accent,
+    }
+}
+
+fn tree_species_for_palette_family(palette: IslandPaletteFamily) -> TreeSpecies {
+    match palette {
+        IslandPaletteFamily::VerdantSun | IslandPaletteFamily::PlateauBloom => {
+            TreeSpecies::BroadCanopy
+        }
+        IslandPaletteFamily::CopperOrchard | IslandPaletteFamily::RuinOchre => TreeSpecies::Orchard,
+        IslandPaletteFamily::StormSlate => TreeSpecies::WindBent,
+        IslandPaletteFamily::MistJade | IslandPaletteFamily::CloudSilver => TreeSpecies::Cypress,
+        IslandPaletteFamily::SapphireWetland => TreeSpecies::Willow,
+        IslandPaletteFamily::AlpineFrost => TreeSpecies::AlpinePine,
+    }
+}
+
+fn tree_species_for_flora(flora: IslandFloraIdentity) -> TreeSpecies {
+    match flora {
+        IslandFloraIdentity::FernGrove | IslandFloraIdentity::MushroomRing => TreeSpecies::Cypress,
+        IslandFloraIdentity::FlowerThicket => TreeSpecies::Orchard,
+        IslandFloraIdentity::ReedBed => TreeSpecies::Willow,
+        IslandFloraIdentity::WindShrub => TreeSpecies::WindBent,
+        IslandFloraIdentity::BroadleafPatch => TreeSpecies::BroadCanopy,
     }
 }
 

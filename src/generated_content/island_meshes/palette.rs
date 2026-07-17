@@ -1,9 +1,9 @@
 use super::super::{ground_cover_material, textured_material};
-use super::constants::{
-    ISLAND_CLIFF_STRATA_BANDS, TERRAIN_BIOME_PALETTE_COUNT, TERRAIN_UV_TILES_PER_METER,
-};
+use super::constants::{ISLAND_CLIFF_STRATA_BANDS, TERRAIN_UV_TILES_PER_METER};
 use bevy::prelude::*;
-use nau_engine::world::SkyIsland;
+use nau_engine::world::{
+    IslandArtDirection, IslandPaletteFamily, SkyIsland, island_art_directions,
+};
 
 pub(crate) fn color_array(color: Vec3) -> [f32; 4] {
     [
@@ -25,72 +25,160 @@ pub(crate) struct TerrainBiomePalette {
 }
 
 pub(crate) fn terrain_biome_palette(island_index: usize) -> TerrainBiomePalette {
-    match island_index % TERRAIN_BIOME_PALETTE_COUNT {
-        1 => TerrainBiomePalette {
-            grass: Vec3::new(0.44, 0.67, 0.36),
-            moss: Vec3::new(0.28, 0.48, 0.38),
-            meadow: Vec3::new(0.78, 0.68, 0.38),
-            clay: Vec3::new(0.62, 0.48, 0.34),
-            rock: Vec3::new(0.50, 0.50, 0.46),
-            region_tints: [
-                Vec3::new(0.38, 0.62, 0.32),
-                Vec3::new(0.72, 0.62, 0.34),
-                Vec3::new(0.24, 0.44, 0.36),
-                Vec3::new(0.48, 0.44, 0.38),
-            ],
-        },
-        2 => TerrainBiomePalette {
-            grass: Vec3::new(0.50, 0.60, 0.31),
-            moss: Vec3::new(0.34, 0.43, 0.32),
-            meadow: Vec3::new(0.78, 0.56, 0.30),
-            clay: Vec3::new(0.66, 0.39, 0.27),
-            rock: Vec3::new(0.54, 0.45, 0.39),
-            region_tints: [
-                Vec3::new(0.48, 0.56, 0.28),
-                Vec3::new(0.74, 0.51, 0.29),
-                Vec3::new(0.30, 0.39, 0.31),
-                Vec3::new(0.51, 0.38, 0.34),
-            ],
-        },
-        3 => TerrainBiomePalette {
-            grass: Vec3::new(0.29, 0.60, 0.54),
-            moss: Vec3::new(0.18, 0.44, 0.48),
-            meadow: Vec3::new(0.55, 0.66, 0.55),
-            clay: Vec3::new(0.45, 0.46, 0.43),
-            rock: Vec3::new(0.44, 0.52, 0.56),
-            region_tints: [
-                Vec3::new(0.24, 0.54, 0.46),
-                Vec3::new(0.50, 0.62, 0.50),
-                Vec3::new(0.14, 0.38, 0.44),
-                Vec3::new(0.39, 0.48, 0.52),
-            ],
-        },
-        4 => TerrainBiomePalette {
-            grass: Vec3::new(0.56, 0.63, 0.32),
-            moss: Vec3::new(0.39, 0.49, 0.29),
-            meadow: Vec3::new(0.80, 0.68, 0.38),
-            clay: Vec3::new(0.58, 0.47, 0.31),
-            rock: Vec3::new(0.50, 0.47, 0.40),
-            region_tints: [
-                Vec3::new(0.50, 0.58, 0.30),
-                Vec3::new(0.76, 0.63, 0.36),
-                Vec3::new(0.34, 0.44, 0.28),
-                Vec3::new(0.48, 0.42, 0.34),
-            ],
-        },
-        _ => TerrainBiomePalette {
-            grass: Vec3::new(0.36, 0.68, 0.38),
-            moss: Vec3::new(0.22, 0.50, 0.40),
-            meadow: Vec3::new(0.72, 0.66, 0.36),
-            clay: Vec3::new(0.58, 0.44, 0.30),
-            rock: Vec3::new(0.49, 0.48, 0.43),
-            region_tints: [
-                Vec3::new(0.30, 0.62, 0.32),
-                Vec3::new(0.66, 0.60, 0.32),
-                Vec3::new(0.18, 0.44, 0.36),
-                Vec3::new(0.46, 0.40, 0.34),
-            ],
-        },
+    let profiles = island_art_directions();
+    let profile = profiles[island_index % profiles.len()];
+    let base = palette_family_base(profile.palette_family);
+    let grass = apply_palette_direction(base.grass, profile);
+    let moss = apply_palette_direction(base.moss, profile);
+    let meadow = apply_palette_direction(base.meadow, profile);
+    let clay = apply_palette_direction(base.clay, profile);
+    let rock = apply_palette_direction(base.rock, profile);
+
+    TerrainBiomePalette {
+        grass,
+        moss,
+        meadow,
+        clay,
+        rock,
+        region_tints: [
+            grass.lerp(meadow, 0.18),
+            meadow.lerp(clay, 0.14),
+            moss.lerp(rock, 0.16),
+            clay.lerp(rock, 0.34),
+        ],
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PaletteFamilyBase {
+    grass: Vec3,
+    moss: Vec3,
+    meadow: Vec3,
+    clay: Vec3,
+    rock: Vec3,
+}
+
+fn palette_family_base(family: IslandPaletteFamily) -> PaletteFamilyBase {
+    let (grass, moss, meadow, clay, rock) = match family {
+        IslandPaletteFamily::VerdantSun => (
+            (0.34, 0.68, 0.35),
+            (0.20, 0.48, 0.32),
+            (0.73, 0.69, 0.35),
+            (0.59, 0.43, 0.28),
+            (0.48, 0.47, 0.41),
+        ),
+        IslandPaletteFamily::CopperOrchard => (
+            (0.52, 0.62, 0.29),
+            (0.34, 0.45, 0.26),
+            (0.82, 0.60, 0.29),
+            (0.68, 0.39, 0.24),
+            (0.54, 0.44, 0.37),
+        ),
+        IslandPaletteFamily::StormSlate => (
+            (0.31, 0.50, 0.43),
+            (0.20, 0.36, 0.38),
+            (0.52, 0.57, 0.49),
+            (0.43, 0.40, 0.38),
+            (0.36, 0.43, 0.49),
+        ),
+        IslandPaletteFamily::MistJade => (
+            (0.28, 0.60, 0.50),
+            (0.16, 0.43, 0.43),
+            (0.56, 0.68, 0.55),
+            (0.45, 0.46, 0.41),
+            (0.43, 0.51, 0.53),
+        ),
+        IslandPaletteFamily::SapphireWetland => (
+            (0.25, 0.56, 0.48),
+            (0.14, 0.39, 0.43),
+            (0.50, 0.65, 0.57),
+            (0.42, 0.44, 0.40),
+            (0.38, 0.49, 0.57),
+        ),
+        IslandPaletteFamily::AlpineFrost => (
+            (0.43, 0.61, 0.48),
+            (0.29, 0.45, 0.43),
+            (0.68, 0.73, 0.62),
+            (0.50, 0.48, 0.43),
+            (0.51, 0.58, 0.64),
+        ),
+        IslandPaletteFamily::RuinOchre => (
+            (0.52, 0.57, 0.28),
+            (0.35, 0.41, 0.26),
+            (0.78, 0.57, 0.28),
+            (0.67, 0.40, 0.25),
+            (0.55, 0.46, 0.38),
+        ),
+        IslandPaletteFamily::CloudSilver => (
+            (0.43, 0.59, 0.45),
+            (0.30, 0.44, 0.42),
+            (0.66, 0.69, 0.57),
+            (0.51, 0.49, 0.44),
+            (0.52, 0.56, 0.59),
+        ),
+        IslandPaletteFamily::PlateauBloom => (
+            (0.45, 0.67, 0.35),
+            (0.28, 0.48, 0.35),
+            (0.82, 0.67, 0.43),
+            (0.62, 0.45, 0.34),
+            (0.51, 0.49, 0.45),
+        ),
+    };
+
+    PaletteFamilyBase {
+        grass: Vec3::from(grass),
+        moss: Vec3::from(moss),
+        meadow: Vec3::from(meadow),
+        clay: Vec3::from(clay),
+        rock: Vec3::from(rock),
+    }
+}
+
+fn apply_palette_direction(color: Vec3, profile: IslandArtDirection) -> Vec3 {
+    let hue_shifted = shift_rgb_hue(color, f32::from(profile.palette_hue_shift_degrees));
+    let warmth = f32::from(profile.palette_warmth_percent) / 100.0;
+    let warmed = hue_shifted + Vec3::new(0.12, 0.035, -0.10) * warmth;
+    let contrast = f32::from(profile.terrain_contrast_percent) / 100.0;
+
+    (Vec3::splat(0.5) + (warmed - Vec3::splat(0.5)) * contrast)
+        .clamp(Vec3::splat(0.08), Vec3::splat(0.92))
+}
+
+fn shift_rgb_hue(color: Vec3, shift_degrees: f32) -> Vec3 {
+    let max = color.max_element();
+    let min = color.min_element();
+    let delta = max - min;
+    if delta <= f32::EPSILON {
+        return color;
+    }
+
+    let hue_sector = if max == color.x {
+        ((color.y - color.z) / delta).rem_euclid(6.0)
+    } else if max == color.y {
+        (color.z - color.x) / delta + 2.0
+    } else {
+        (color.x - color.y) / delta + 4.0
+    };
+    let hue = (hue_sector / 6.0 + shift_degrees / 360.0).rem_euclid(1.0);
+    let saturation = delta / max;
+    hsv_to_rgb(hue, saturation, max)
+}
+
+fn hsv_to_rgb(hue: f32, saturation: f32, value: f32) -> Vec3 {
+    let sector = hue * 6.0;
+    let index = sector.floor() as u8;
+    let fraction = sector - f32::from(index);
+    let low = value * (1.0 - saturation);
+    let descending = value * (1.0 - fraction * saturation);
+    let ascending = value * (1.0 - (1.0 - fraction) * saturation);
+
+    match index % 6 {
+        0 => Vec3::new(value, ascending, low),
+        1 => Vec3::new(descending, value, low),
+        2 => Vec3::new(low, value, ascending),
+        3 => Vec3::new(low, descending, value),
+        4 => Vec3::new(ascending, low, value),
+        _ => Vec3::new(value, low, descending),
     }
 }
 

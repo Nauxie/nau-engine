@@ -1,6 +1,6 @@
 use crate::Player;
 use crate::content_diagnostics::IslandContentDiagnostics;
-use crate::eval_runtime::EvalRun;
+use crate::eval_runtime::{EvalRun, ISLAND_HERO_GALLERY};
 use crate::generated_content::{
     CLOUD_BANK_LOBES, CLOUD_VEIL_LOBES, cloud_cluster_mesh, cloud_filament_ribbon_detail_count,
     crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh, mesh_y_range, mix_color,
@@ -37,6 +37,7 @@ const PLAYER_AIRFLOW_METRIC_ALPHA_THRESHOLD: f32 = 0.04;
 const PLAYER_AIRFLOW_LENGTH_FADE_FULL_ALPHA: f32 = 0.24;
 const PLAYER_AIRFLOW_PROMINENT_SPEED_START_MPS: f32 = 42.0;
 const PLAYER_AIRFLOW_PROMINENT_SPEED_FULL_MPS: f32 = 68.0;
+const ISLAND_HERO_GALLERY_WEATHER_CYCLE_PHASE: f32 = 0.0;
 
 pub(crate) fn updraft_guide_ring_radius(field_radius: f32) -> f32 {
     (field_radius * 0.5).min(10.0)
@@ -63,6 +64,18 @@ fn eval_wind_visual_elapsed_secs(
     eval_frame_and_dt
         .map(|(frame, fixed_dt)| frame as f32 * fixed_dt)
         .unwrap_or(wall_clock_elapsed_secs)
+}
+
+fn eval_cinematic_weather_elapsed_secs(
+    wall_clock_elapsed_secs: f32,
+    weather_cycle_seconds: f32,
+    eval_scenario_name: Option<&str>,
+) -> f32 {
+    if eval_scenario_name == Some(ISLAND_HERO_GALLERY) {
+        weather_cycle_seconds * ISLAND_HERO_GALLERY_WEATHER_CYCLE_PHASE
+    } else {
+        wall_clock_elapsed_secs
+    }
 }
 
 #[derive(Resource, Clone, Copy, Debug)]
@@ -471,19 +484,10 @@ pub(crate) fn spawn_weather_layers(
     islands: &[SkyIsland],
 ) {
     for (index, island) in islands.iter().enumerate() {
-        let phase = index as f32 * 0.73;
-        let offset = Vec3::new(
-            (phase * 2.1).sin() * island.half_extents.x * 0.75,
-            42.0 + (index % 4) as f32 * 7.0,
-            (phase * 1.7).cos() * island.half_extents.y * 0.85,
-        );
-        let origin = island.center + offset;
+        let (phase, cloud_transform) = weather_cloud_bank_transform(index, *island);
+        let origin = cloud_transform.translation;
         let axis = Vec3::new(0.96, 0.0, 0.28).normalize();
-        let scale = Vec3::new(
-            island.half_extents.x * 0.45 + 18.0,
-            3.8 + (index % 3) as f32 * 0.55,
-            island.half_extents.y * 0.26 + 8.0,
-        );
+        let scale = cloud_transform.scale;
         let cloud_mesh_data = cloud_cluster_mesh(2_000 + index as u32 * 37, CLOUD_BANK_LOBES);
         let cloud_depth_m = mesh_y_range(&cloud_mesh_data) * scale.y;
         content_diagnostics.record_generated_weather_cloud(
@@ -498,11 +502,7 @@ pub(crate) fn spawn_weather_layers(
         commands.spawn((
             Mesh3d(cloud_mesh),
             MeshMaterial3d(cloud_material.clone()),
-            Transform {
-                translation: origin,
-                scale,
-                rotation: Quat::from_rotation_y(phase * 0.35),
-            },
+            cloud_transform,
             WeatherDrift {
                 origin,
                 axis,
@@ -511,7 +511,7 @@ pub(crate) fn spawn_weather_layers(
                 speed: 0.07 + (index % 4) as f32 * 0.012,
                 phase,
                 spin_speed: 0.012 + (index % 4) as f32 * 0.004,
-                base_rotation: Quat::from_rotation_y(phase * 0.35),
+                base_rotation: cloud_transform.rotation,
             },
             Name::new("drifting cloud bank"),
         ));
@@ -576,6 +576,28 @@ pub(crate) fn spawn_weather_layers(
     }
 }
 
+fn weather_cloud_bank_transform(index: usize, island: SkyIsland) -> (f32, Transform) {
+    let phase = index as f32 * 0.73;
+    let offset = Vec3::new(
+        (phase * 2.1).sin() * island.half_extents.x * 0.75,
+        168.0 + (index % 4) as f32 * 9.0,
+        (phase * 1.7).cos() * island.half_extents.y * 0.85,
+    );
+
+    (
+        phase,
+        Transform {
+            translation: island.center + offset,
+            scale: Vec3::new(
+                island.half_extents.x * 0.45 + 18.0,
+                3.8 + (index % 3) as f32 * 0.55,
+                island.half_extents.y * 0.26 + 8.0,
+            ),
+            rotation: Quat::from_rotation_y(phase * 0.35),
+        },
+    )
+}
+
 pub(crate) fn wind_visual_motion(
     island_index: usize,
     phase_offset: f32,
@@ -598,6 +620,7 @@ pub(crate) fn wind_visual_motion(
 
 pub(crate) fn update_cinematic_weather(
     time: Res<Time>,
+    eval_run: Option<Res<EvalRun>>,
     weather: Res<CinematicWeather>,
     mut clear_color: ResMut<ClearColor>,
     mut ambient: ResMut<GlobalAmbientLight>,
@@ -612,9 +635,14 @@ pub(crate) fn update_cinematic_weather(
         With<Camera3d>,
     >,
 ) {
-    let cycle = (time.elapsed_secs() / weather.cycle_seconds * std::f32::consts::TAU).sin();
+    let elapsed = eval_cinematic_weather_elapsed_secs(
+        time.elapsed_secs(),
+        weather.cycle_seconds,
+        eval_run.as_deref().map(|run| run.scenario.name),
+    );
+    let cycle = (elapsed / weather.cycle_seconds * std::f32::consts::TAU).sin();
     let warm = (cycle * 0.5 + 0.5).clamp(0.0, 1.0);
-    let storm = ((time.elapsed_secs() * 0.037).sin() * 0.5 + 0.5).powf(2.2) * 0.34;
+    let storm = ((elapsed * 0.037).sin() * 0.5 + 0.5).powf(2.2) * 0.34;
     let cool_light = Color::srgb(0.78, 0.84, 1.0);
     let warm_light = Color::srgb(1.0, 0.82, 0.55);
     let sky_clear = Color::srgb(0.46, 0.66, 0.92);
@@ -627,7 +655,7 @@ pub(crate) fn update_cinematic_weather(
     );
     clear_color.0 = sky_color;
     ambient.color = mix_color(
-        Color::srgb(0.48, 0.56, 0.72),
+        Color::srgb(0.64, 0.62, 0.64),
         Color::srgb(0.72, 0.68, 0.60),
         warm,
     );
@@ -676,9 +704,10 @@ pub(crate) fn update_cinematic_weather(
 
 pub(crate) fn update_weather_drift(
     time: Res<Time>,
+    eval_run: Option<Res<EvalRun>>,
     mut clouds: Query<(&WeatherDrift, &mut Transform)>,
 ) {
-    let elapsed = time.elapsed_secs();
+    let elapsed = wind_visual_elapsed_secs(&time, eval_run.as_deref());
 
     for (drift, mut transform) in &mut clouds {
         let sway = (elapsed * drift.speed + drift.phase).sin();
@@ -692,9 +721,10 @@ pub(crate) fn update_weather_drift(
 
 pub(crate) fn update_wind_responsive_visuals(
     time: Res<Time>,
+    eval_run: Option<Res<EvalRun>>,
     mut visuals: Query<(&WindResponsiveVisual, &mut Transform)>,
 ) {
-    let elapsed = time.elapsed_secs();
+    let elapsed = wind_visual_elapsed_secs(&time, eval_run.as_deref());
 
     for (visual, mut transform) in &mut visuals {
         let motion = wind_sway_motion(
@@ -2655,12 +2685,109 @@ fn horizontal_or(v: Vec3, fallback: Vec3) -> Vec3 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::mesh::VertexAttributeValues;
+    use nau_engine::world::{IslandReviewPlan, SkyRoute};
+
+    fn mesh_bounds(mesh: &Mesh) -> (Vec3, Vec3) {
+        let Some(VertexAttributeValues::Float32x3(positions)) =
+            mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            panic!("cloud mesh should expose Float32x3 positions");
+        };
+        positions.iter().fold(
+            (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
+            |(min, max), position| {
+                let position = Vec3::from_array(*position);
+                (min.min(position), max.max(position))
+            },
+        )
+    }
+
+    fn segment_intersects_local_bounds(start: Vec3, end: Vec3, min: Vec3, max: Vec3) -> bool {
+        let direction = end - start;
+        let mut enter = 0.0_f32;
+        let mut exit = 1.0_f32;
+        for axis in 0..3 {
+            let origin = start[axis];
+            let delta = direction[axis];
+            if delta.abs() <= 0.000_001 {
+                if origin < min[axis] || origin > max[axis] {
+                    return false;
+                }
+                continue;
+            }
+            let inverse = delta.recip();
+            let mut near = (min[axis] - origin) * inverse;
+            let mut far = (max[axis] - origin) * inverse;
+            if near > far {
+                std::mem::swap(&mut near, &mut far);
+            }
+            enter = enter.max(near);
+            exit = exit.min(far);
+            if enter > exit {
+                return false;
+            }
+        }
+        true
+    }
 
     #[test]
-    fn wind_visual_eval_clock_ignores_wall_clock_elapsed_time() {
-        let elapsed = eval_wind_visual_elapsed_secs(99.0, Some((24, 1.0 / 60.0)));
-        assert!((elapsed - 0.4).abs() < 0.0001);
+    fn island_review_sightlines_clear_weather_cloud_banks() {
+        let route = SkyRoute::default();
+        let plan = IslandReviewPlan::from_route(&route);
+        let mut intersections = Vec::new();
+
+        for (cloud_index, island) in route.islands().iter().copied().enumerate() {
+            let mesh = cloud_cluster_mesh(2_000 + cloud_index as u32 * 37, CLOUD_BANK_LOBES);
+            let (min, max) = mesh_bounds(&mesh);
+            let (_, transform) = weather_cloud_bank_transform(cloud_index, island);
+            let inverse = transform.to_matrix().inverse();
+            let drift_margin = Vec3::new(12.0, 2.0, 12.0) / transform.scale;
+            let min = min - drift_margin;
+            let max = max + drift_margin;
+
+            for review in &plan.islands {
+                for pose in review.views {
+                    let start = inverse.transform_point3(pose.camera_position);
+                    let end = inverse.transform_point3(pose.camera_target);
+                    if segment_intersects_local_bounds(start, end, min, max) {
+                        intersections.push(format!(
+                            "{} {} -> {}",
+                            review.island_name,
+                            pose.view.label(),
+                            island.name
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            intersections.is_empty(),
+            "near review sightline/cloud intersections: {}",
+            intersections.join(", ")
+        );
+    }
+
+    #[test]
+    fn environment_motion_eval_clock_ignores_wall_clock_elapsed_time() {
+        let first = eval_wind_visual_elapsed_secs(1.0, Some((24, 1.0 / 60.0)));
+        let second = eval_wind_visual_elapsed_secs(99.0, Some((24, 1.0 / 60.0)));
+        assert_eq!(first, second);
+        assert!((first - 0.4).abs() < 0.0001);
         assert_eq!(eval_wind_visual_elapsed_secs(2.5, None), 2.5);
+    }
+
+    #[test]
+    fn island_gallery_weather_uses_a_stable_daylight_review_phase() {
+        let gallery_elapsed =
+            eval_cinematic_weather_elapsed_secs(99.0, 96.0, Some(ISLAND_HERO_GALLERY));
+
+        assert_eq!(gallery_elapsed, 0.0);
+        assert_eq!(
+            eval_cinematic_weather_elapsed_secs(2.5, 96.0, Some("baseline_route")),
+            2.5
+        );
+        assert_eq!(eval_cinematic_weather_elapsed_secs(3.5, 96.0, None), 3.5);
     }
 
     fn test_player_airflow_visual(kind: PlayerAirflowVisualKind) -> PlayerAirflowVisual {

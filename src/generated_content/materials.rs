@@ -1,6 +1,7 @@
 use bevy::image::ImageFilterMode;
 use bevy::prelude::*;
 
+use super::island_meshes::{IslandDetailMaterials, biome_detail_materials};
 use super::textures::{
     TERRAIN_TEXTURE_SIZE, procedural_depth_map, procedural_depth_map_with_size,
     procedural_material_map, procedural_material_map_with_size, procedural_occlusion_map,
@@ -125,20 +126,20 @@ pub(crate) fn water_surface_material(
     materials: &mut Assets<StandardMaterial>,
 ) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial {
-        base_color: Color::srgba(0.40, 0.82, 1.0, 0.90),
+        base_color: Color::srgb(0.26, 0.72, 0.94),
         base_color_texture: Some(images.add(procedural_surface_texture(
-            [95, 205, 245, 240],
-            [48, 155, 215, 240],
-            [200, 245, 255, 240],
+            [78, 194, 236, 255],
+            [38, 132, 198, 255],
+            [176, 238, 252, 255],
             79,
         ))),
-        emissive: LinearRgba::rgb(0.35, 1.35, 2.80),
+        emissive: LinearRgba::rgb(0.42, 1.55, 2.95),
         emissive_exposure_weight: 0.08,
         metallic_roughness_texture: Some(images.add(procedural_material_map(1_079, 0.22))),
         depth_map: Some(images.add(procedural_depth_map(1_113, ImageFilterMode::Linear))),
         parallax_depth_scale: 0.018,
         max_parallax_layer_count: 10.0,
-        alpha_mode: AlphaMode::Blend,
+        cull_mode: None,
         double_sided: true,
         perceptual_roughness: 0.18,
         reflectance: 0.82,
@@ -256,4 +257,24 @@ pub(crate) fn ground_cover_material(
         reflectance: 0.2,
         ..default()
     })
+}
+
+pub(crate) fn allocate_authored_island_detail_materials(
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
+    shared_palette_materials: &[IslandDetailMaterials],
+    island_count: usize,
+) -> Vec<IslandDetailMaterials> {
+    assert!(
+        !shared_palette_materials.is_empty(),
+        "runtime island materials require at least one shared palette"
+    );
+
+    let retained_count = shared_palette_materials.len().min(island_count);
+    let mut authored_materials = shared_palette_materials[..retained_count].to_vec();
+    authored_materials.extend(
+        (retained_count..island_count)
+            .map(|island_index| biome_detail_materials(images, materials, island_index)),
+    );
+    authored_materials
 }
