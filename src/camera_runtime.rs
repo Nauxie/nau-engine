@@ -625,6 +625,22 @@ mod tests {
     }
 
     #[test]
+    fn inactive_look_resets_capture_history_before_resume() {
+        let mut active_last_frame = true;
+
+        assert_eq!(
+            manual_camera_input(Vec2::new(18.0, -6.0), false, &mut active_last_frame),
+            CameraInput::default()
+        );
+        assert!(!active_last_frame);
+        assert_eq!(
+            manual_camera_input(Vec2::new(120.0, -45.0), true, &mut active_last_frame),
+            CameraInput::default(),
+            "resume must quarantine mouse motion accumulated while look was inactive"
+        );
+    }
+
+    #[test]
     fn camera_floor_does_not_capture_an_island_from_below() {
         let route = SkyRoute::default();
         let island = route.islands()[0];
