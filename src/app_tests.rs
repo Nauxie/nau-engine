@@ -1101,6 +1101,11 @@ fn live_entity_count(world: &mut World) -> usize {
 }
 
 #[test]
+fn play_window_uses_display_synchronized_presentation() {
+    assert_eq!(primary_window(None).present_mode, PresentMode::AutoVsync);
+}
+
+#[test]
 fn metric_only_eval_window_is_hidden_and_unfocused() {
     let scenario = scenario_named("baseline_route").expect("baseline scenario should exist");
     let options = EvalOptions {
@@ -3678,17 +3683,24 @@ fn biome_detail_color_sets_vary_vegetation_and_stone_hues() {
 }
 
 #[test]
-fn runtime_spawned_island_materials_preserve_all_authored_palette_identities() {
+fn runtime_spawned_island_materials_preserve_bounded_authored_palette_families() {
     let target_island_index = TERRAIN_BIOME_PALETTE_COUNT;
     let (mut app, output_dir) = setup_headless_gallery_runtime_app(target_island_index);
     let mut foliage_ids = HashSet::new();
     let mut stone_ids = HashSet::new();
     let mut hero_ids = HashSet::new();
+    let mut family_material_ids = HashMap::new();
 
     {
         let world = app.world();
         let route = world.resource::<SkyRoute>();
         let catalog = world.resource::<IslandVisualCatalog>();
+        let profiles = nau_engine::world::island_art_directions();
+        let palette_family_count = profiles
+            .iter()
+            .map(|profile| profile.palette_family)
+            .collect::<HashSet<_>>()
+            .len();
         for (island_index, island) in route.islands().iter().copied().enumerate() {
             let canopy_name = island_tree_specs(island_index, island)
                 .first()
@@ -3711,15 +3723,31 @@ fn runtime_spawned_island_materials_preserve_all_authored_palette_identities() {
             foliage_ids.insert(foliage.id());
             stone_ids.insert(stone.id());
             hero_ids.insert(hero.id());
+            let material_ids = (foliage.id(), stone.id(), hero.id());
+            if let Some(expected_ids) =
+                family_material_ids.insert(profiles[island_index].palette_family, material_ids)
+            {
+                assert_eq!(
+                    material_ids, expected_ids,
+                    "{} should reuse its authored palette-family materials",
+                    island.name
+                );
+            }
             assert_eq!(
                 hero, stone,
                 "{} hero should use its island stone",
                 island.name
             );
         }
-        assert_eq!(foliage_ids.len(), route.islands().len());
-        assert_eq!(stone_ids.len(), route.islands().len());
-        assert_eq!(hero_ids.len(), route.islands().len());
+        assert_eq!(family_material_ids.len(), palette_family_count);
+        assert_eq!(foliage_ids.len(), palette_family_count);
+        assert_eq!(stone_ids.len(), palette_family_count);
+        assert_eq!(hero_ids.len(), palette_family_count);
+        assert_eq!(
+            world.resource::<Assets<StandardMaterial>>().len(),
+            59,
+            "headless runtime material growth must remain explicit and budgeted"
+        );
     }
 
     let (target_island, canopy_name, hero_name, catalog_foliage, catalog_stone, catalog_hero) = {
