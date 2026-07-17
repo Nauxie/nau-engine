@@ -20,7 +20,7 @@ use authored_assets::*;
 use bevy::app::AnimationSystems;
 use bevy::light::DirectionalLightShadowMap;
 use bevy::prelude::*;
-use bevy::window::CompositeAlphaMode;
+use bevy::window::{CompositeAlphaMode, PresentMode};
 use camera_runtime::*;
 #[cfg(test)]
 use content_export::mesh_uv0;
@@ -198,7 +198,7 @@ fn main() -> AppExit {
             Update,
             (
                 GameSet::Ui,
-                GameSet::CameraInput.run_if(gameplay_input_active),
+                GameSet::CameraInput,
                 GameSet::Movement.run_if(gameplay_input_active),
                 GameSet::Camera.run_if(gameplay_input_active),
                 GameSet::Diagnostics.run_if(gameplay_input_active),
@@ -218,7 +218,10 @@ fn main() -> AppExit {
         )
         .add_systems(
             Update,
-            (update_mouse_look_capture, update_camera_control)
+            (
+                update_mouse_look_capture.run_if(gameplay_input_active),
+                update_camera_control,
+            )
                 .chain()
                 .in_set(GameSet::CameraInput),
         )
@@ -365,6 +368,7 @@ fn primary_window(eval: Option<&EvalOptions>) -> Window {
     Window {
         title: "The NAU Engine Flight Sandbox".into(),
         resolution: (1280, 720).into(),
+        present_mode: PresentMode::AutoVsync,
         composite_alpha_mode: CompositeAlphaMode::Opaque,
         transparent: false,
         visible: !hidden_metric_eval,
