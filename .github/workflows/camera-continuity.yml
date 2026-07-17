@@ -74,7 +74,7 @@ jobs:
           NAU_PERF_MAX_AVG_FRAME_TIME_MS: "500"
           NAU_PERF_MAX_P95_FRAME_TIME_MS: "500"
           NAU_PERF_MAX_P99_FRAME_TIME_MS: "500"
-          NAU_PERF_SUMMARY_MAX_COUNT_REGRESSION_RATIO: "2.0"
+          NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_AVG_FRAME_TIME_REGRESSION_RATIO: "1.15"
         run: |
           baseline_worktree="${RUNNER_TEMP}/nau-engine-perf-base"
           baseline_target="${RUNNER_TEMP}/nau-engine-perf-base-target"
