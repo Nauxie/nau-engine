@@ -68,9 +68,12 @@ jobs:
         env:
           NAU_PERF_ALLOW_BUSY_HOST: "1"
           NAU_PERF_REQUIRE_QUIET_HOST_AFTER: "0"
-          NAU_PERF_MAX_AVG_FRAME_TIME_MS: "70"
-          NAU_PERF_MAX_P95_FRAME_TIME_MS: "90"
-          NAU_PERF_MAX_P99_FRAME_TIME_MS: "150"
+          # The preceding gate enforces candidate absolute budgets. Keep this
+          # same-host step focused on collecting both revisions and rejecting
+          # branch-relative regressions, even when the shared runner is noisy.
+          NAU_PERF_MAX_AVG_FRAME_TIME_MS: "500"
+          NAU_PERF_MAX_P95_FRAME_TIME_MS: "500"
+          NAU_PERF_MAX_P99_FRAME_TIME_MS: "500"
           NAU_PERF_SUMMARY_MAX_COUNT_REGRESSION_RATIO: "2.0"
         run: |
           baseline_worktree="${RUNNER_TEMP}/nau-engine-perf-base"
