@@ -1,5 +1,6 @@
 use bevy::image::ImageFilterMode;
 use bevy::prelude::*;
+use std::collections::HashMap;
 
 use super::island_meshes::{IslandDetailMaterials, biome_detail_materials};
 use super::textures::{
@@ -263,18 +264,37 @@ pub(crate) fn allocate_authored_island_detail_materials(
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
     shared_palette_materials: &[IslandDetailMaterials],
-    island_count: usize,
 ) -> Vec<IslandDetailMaterials> {
     assert!(
         !shared_palette_materials.is_empty(),
         "runtime island materials require at least one shared palette"
     );
 
-    let retained_count = shared_palette_materials.len().min(island_count);
-    let mut authored_materials = shared_palette_materials[..retained_count].to_vec();
-    authored_materials.extend(
-        (retained_count..island_count)
-            .map(|island_index| biome_detail_materials(images, materials, island_index)),
+    let profiles = nau_engine::world::island_art_directions();
+    assert!(
+        shared_palette_materials.len() <= profiles.len(),
+        "shared runtime palettes cannot exceed the authored island count"
     );
-    authored_materials
+
+    let mut family_materials = HashMap::new();
+    for (island_index, profile) in profiles.iter().enumerate() {
+        family_materials
+            .entry(profile.palette_family)
+            .or_insert_with(|| {
+                shared_palette_materials
+                    .get(island_index)
+                    .cloned()
+                    .unwrap_or_else(|| biome_detail_materials(images, materials, island_index))
+            });
+    }
+
+    profiles
+        .iter()
+        .map(|profile| {
+            family_materials
+                .get(&profile.palette_family)
+                .expect("every authored palette family should have runtime materials")
+                .clone()
+        })
+        .collect()
 }
