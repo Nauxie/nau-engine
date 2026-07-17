@@ -44,7 +44,7 @@ pub(super) fn queue_island_surface_details(
             detail_materials.stone.clone(),
             hero.translation,
             hero.rotation_y,
-            Some(hero.camera_half_extents),
+            None,
             hero.collision_half_extents,
             hero.label,
         );
@@ -303,11 +303,12 @@ impl IslandVisualCatalog {
             "runtime detail palettes must cover the shared material set"
         );
 
-        let authored_materials = allocate_authored_island_detail_materials(
-            images,
-            materials,
-            &shared_materials,
+        let authored_materials =
+            allocate_authored_island_detail_materials(images, materials, &shared_materials);
+        assert_eq!(
+            authored_materials.len(),
             route.islands().len(),
+            "authored material mapping must cover every route island"
         );
         let mut spawned_updates = Vec::new();
 
