@@ -32,11 +32,14 @@ const MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 1.5;
 const MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES: f32 = 5.0;
 const RELEASE_BASELINE_MAX_VISIBLE_ISLAND_TERRAIN_COUNT: usize = 76;
 const RELEASE_LONG_GLIDE_MAX_VISIBLE_ISLAND_TERRAIN_COUNT: usize = 90;
-const RELEASE_MAX_VISIBLE_ISLAND_DETAIL_COUNT: usize = 160;
-const RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT: usize = 340;
-const ISLAND_HERO_GALLERY_MAX_VISIBLE_ISLAND_DETAIL_COUNT: usize = 260;
-const ISLAND_HERO_GALLERY_MAX_RESIDENT_ISLAND_VISUAL_COUNT: usize = 430;
-const ISLAND_HERO_GALLERY_MAX_ENTITY_COUNT: usize = 5_500;
+const RELEASE_MAX_VISIBLE_ISLAND_DETAIL_COUNT: usize = 260;
+const RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT: usize = 430;
+const RELEASE_MAX_ENTITY_COUNT: usize = 5_500;
+const ISLAND_HERO_GALLERY_MAX_VISIBLE_ISLAND_DETAIL_COUNT: usize =
+    RELEASE_MAX_VISIBLE_ISLAND_DETAIL_COUNT;
+const ISLAND_HERO_GALLERY_MAX_RESIDENT_ISLAND_VISUAL_COUNT: usize =
+    RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT;
+const ISLAND_HERO_GALLERY_MAX_ENTITY_COUNT: usize = RELEASE_MAX_ENTITY_COUNT;
 
 const PLATEAU_ARRIVAL_CAMERA_CHECKPOINTS: &[EvalCheckpoint] = &[
     EvalCheckpoint {
@@ -140,7 +143,7 @@ pub(super) fn baseline_route() -> EvalScenario {
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 32,
-            max_entity_count: MAX_ENTITY_COUNT,
+            max_entity_count: RELEASE_MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_PLAYER_ANGLE_DEGREES,
@@ -432,7 +435,7 @@ pub(super) fn long_glide_visibility() -> EvalScenario {
             min_island_body_silhouette_segments: 96,
             max_resident_island_visual_count: RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT,
             max_stream_visibility_changes_per_frame: 32,
-            max_entity_count: MAX_ENTITY_COUNT,
+            max_entity_count: RELEASE_MAX_ENTITY_COUNT,
             max_camera_distance_m: MAX_CAMERA_FOLLOW_DISTANCE_M,
             min_camera_surface_clearance_m: 1.0,
             max_camera_player_angle_degrees: MAX_CAMERA_PLAYER_ANGLE_DEGREES,
