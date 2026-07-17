@@ -14,6 +14,7 @@ fi
 baseline_summary="$1"
 candidate_summary="$2"
 max_frame_time_ratio="${NAU_PERF_SUMMARY_MAX_FRAME_TIME_REGRESSION_RATIO:-1.10}"
+camera_mouse_max_avg_frame_time_ratio="${NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_AVG_FRAME_TIME_REGRESSION_RATIO:-${max_frame_time_ratio}}"
 max_frame_time_ms="${NAU_PERF_SUMMARY_MAX_FRAME_TIME_REGRESSION_MS:-2}"
 max_p95_frame_time_ms="${NAU_PERF_SUMMARY_MAX_P95_FRAME_TIME_REGRESSION_MS:-4}"
 max_p99_frame_time_ms="${NAU_PERF_SUMMARY_MAX_P99_FRAME_TIME_REGRESSION_MS:-3}"
@@ -418,8 +419,12 @@ while IFS= read -r scenario; do
   validate_absolute_metric "candidate_summary" "${candidate_summary}" "${scenario}" \
     "p99_frame_time_ms" "${summary_max_p99_frame_time_ms}"
 
+  scenario_avg_frame_time_ratio="${max_frame_time_ratio}"
+  if [[ "${scenario}" == "camera_mouse_control" ]]; then
+    scenario_avg_frame_time_ratio="${camera_mouse_max_avg_frame_time_ratio}"
+  fi
   compare_metric "${scenario}" "avg_frame_time_ms" \
-    "${max_frame_time_ratio}" "${max_frame_time_ms}"
+    "${scenario_avg_frame_time_ratio}" "${max_frame_time_ms}"
   compare_metric "${scenario}" "p95_frame_time_ms" \
     "${max_frame_time_ratio}" "${max_p95_frame_time_ms}"
   # Live-window app eval p99 is useful signal, but too sensitive to a few
