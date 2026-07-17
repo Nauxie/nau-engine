@@ -148,8 +148,22 @@ fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
     assert!(workflow.contains("camera_mouse_control || candidate_status=$?"));
     assert!(workflow.contains("\"${candidate_output}/perf_summary.json\" || comparison_status=$?"));
     assert!(workflow.contains(
-        "if (( baseline_status != 0 || candidate_status != 0 || comparison_status != 0 )); then"
+        "if (( baseline_status == 0 && candidate_status == 0 && comparison_status != 0 )); then"
     ));
+    assert!(workflow.contains("retry_attempted=1"));
+    assert!(workflow.contains(
+        "if (( retry_candidate_status != 0 || retry_baseline_status != 0 || retry_comparison_status != 0 )); then"
+    ));
+    assert!(workflow.contains(
+        "if (( baseline_status != 0 || candidate_status != 0 || final_comparison_status != 0 )); then"
+    ));
+    let retry_candidate = workflow
+        .find("NAU_PERF_OUTPUT_DIR=\"${retry_candidate_output}\"")
+        .expect("candidate-first retry");
+    let retry_baseline = workflow
+        .find("NAU_PERF_OUTPUT_DIR=\"${retry_baseline_output}\"")
+        .expect("base-second retry");
+    assert!(retry_candidate < retry_baseline);
     assert!(workflow.contains("branches:\n      - main"));
 
     let comparison = include_str!("../../../tools/compare_perf_summaries.sh");
