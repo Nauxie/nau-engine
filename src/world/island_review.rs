@@ -24,7 +24,9 @@ const REVIEW_CAMERA_MIN_FOREIGN_CLEARANCE_M: f32 = 18.0;
 const REVIEW_CAMERA_SIGHTLINE_STEPS: usize = 24;
 const REVIEW_CAMERA_DISTANCE_SCALES: [f32; 3] = [1.0, 1.12, 1.28];
 const REVIEW_CAMERA_HEIGHT_SCALES: [f32; 2] = [1.0, 1.18];
-const REVIEW_CAPTURE_ASPECT_RATIO: f32 = 16.0 / 9.0;
+// The review plan is built before a window exists, so compose for a conservative
+// aspect ratio that also covers CI's 1024x642 software-rendered viewport.
+const REVIEW_CAPTURE_ASPECT_RATIO: f32 = 3.0 / 2.0;
 const REVIEW_CAPTURE_VERTICAL_FOV_RADIANS: f32 = std::f32::consts::FRAC_PI_4;
 const NEAR_REVIEW_AUTHORED_ANCHOR_FRAME_LIMIT: f32 = 0.88;
 const WATERFALL_NEAR_REVIEW_FRAME_LIMIT: f32 = 0.70;
@@ -736,6 +738,12 @@ mod tests {
 
     #[test]
     fn near_reviews_keep_every_required_authored_district_anchor_in_frame() {
+        const {
+            assert!(
+                REVIEW_CAPTURE_ASPECT_RATIO <= 1024.0 / 642.0,
+                "review composition must cover the narrow CI viewport"
+            );
+        }
         let route = SkyRoute::default();
         let plan = IslandReviewPlan::from_route(&route);
 
