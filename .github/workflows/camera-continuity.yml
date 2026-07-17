@@ -87,6 +87,7 @@ jobs:
             "${baseline_worktree}" \
             "${{ github.event.pull_request.base.sha }}"
 
+          baseline_status=0
           (
             cd "${baseline_worktree}"
             CARGO_TARGET_DIR="${baseline_target}" \
@@ -95,20 +96,29 @@ jobs:
                 baseline_route \
                 long_glide_visibility \
                 camera_mouse_control
-          )
+          ) || baseline_status=$?
 
+          candidate_status=0
           NAU_PERF_BUILD_FIRST=0 \
             NAU_PERF_OUTPUT_DIR="${candidate_output}" \
             ./tools/perf_baseline.sh \
               baseline_route \
               long_glide_visibility \
-              camera_mouse_control
+              camera_mouse_control || candidate_status=$?
 
+          comparison_status=0
           ./tools/compare_perf_summaries.sh \
             "${baseline_output}/perf_summary.json" \
-            "${candidate_output}/perf_summary.json"
+            "${candidate_output}/perf_summary.json" || comparison_status=$?
 
           git worktree remove --force "${baseline_worktree}"
+
+          printf 'baseline collection status: %s\n' "${baseline_status}"
+          printf 'candidate collection status: %s\n' "${candidate_status}"
+          printf 'performance comparison status: %s\n' "${comparison_status}"
+          if (( baseline_status != 0 || candidate_status != 0 || comparison_status != 0 )); then
+            exit 1
+          fi
 
       - name: Camera continuity gate
         run: ./tools/camera_continuity_gate.sh target/eval/camera_continuity/ci
