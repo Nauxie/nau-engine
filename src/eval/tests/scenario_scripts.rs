@@ -3,7 +3,13 @@ use crate::eval::scenarios::{
     ISLAND_HERO_GALLERY_FRAMES_PER_VIEW, ISLAND_HERO_GALLERY_HOLD_FRAMES,
     ISLAND_HERO_GALLERY_SETTLE_FRAMES,
 };
-use std::collections::BTreeSet;
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::Path,
+    process::{Command, Output},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 fn shell_array<'a>(script: &'a str, name: &str) -> Vec<&'a str> {
     let marker = format!("{name}=(");
@@ -130,10 +136,8 @@ fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
             "NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_AVG_FRAME_TIME_REGRESSION_RATIO: \"1.15\""
         )
     );
-    assert!(
-        workflow
-            .contains("NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_HITCH_COUNT_REGRESSION_RATIO: \"1.25\"")
-    );
+    assert!(workflow.contains("NAU_PERF_SUMMARY_MAX_GATING_HITCH_FRACTION: \"0.05\""));
+    assert!(!workflow.contains("NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_HITCH_COUNT_REGRESSION_RATIO"));
     assert!(!workflow.contains("NAU_PERF_SUMMARY_MAX_COUNT_REGRESSION_RATIO: \"2.0\""));
     assert!(workflow.contains("Compare PR performance with base"));
     assert!(workflow.contains("github.event.pull_request.base.sha"));
@@ -152,10 +156,12 @@ fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
     assert!(comparison.contains(
         "NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_AVG_FRAME_TIME_REGRESSION_RATIO:-${max_frame_time_ratio}"
     ));
-    assert!(comparison.contains(
-        "NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_HITCH_COUNT_REGRESSION_RATIO:-${max_count_ratio}"
-    ));
+    assert!(comparison.contains("NAU_PERF_SUMMARY_MAX_GATING_HITCH_FRACTION:-0.05"));
     assert!(comparison.contains("if [[ \"${scenario}\" == \"camera_mouse_control\" ]]; then"));
+    assert!(comparison.contains(
+        "scenario_runtime_frame_time_sample_count \"${baseline_summary}\" \"${scenario}\""
+    ));
+    assert!(comparison.contains("fraction <= max_fraction ? \"true\" : \"false\""));
     assert!(comparison.contains(
         "compare_metric \"${scenario}\" \"avg_frame_time_ms\" \\\n    \"${scenario_avg_frame_time_ratio}\""
     ));
@@ -163,11 +169,194 @@ fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
         "compare_metric \"${scenario}\" \"p95_frame_time_ms\" \\\n    \"${max_frame_time_ratio}\""
     ));
     assert!(comparison.contains(
-        "compare_optional_count_metric \"${scenario}\" \"runtime_frames_over_50ms\" \\\n    \"${scenario_hitch_count_ratio}\""
+        "compare_optional_hitch_metric \"${scenario}\" \"runtime_frames_over_50ms\" \\\n    \"${max_count_ratio}\""
     ));
     assert!(comparison.contains(
         "compare_metric \"${scenario}\" \"max_entity_count\" \\\n    \"${max_count_ratio}\""
     ));
+    let baseline = include_str!("../../../tools/perf_baseline.sh");
+    assert!(baseline.contains(
+        "runtime_frame_time_sample_count: (.metrics.runtime_frame_time_sample_count // null)"
+    ));
+}
+
+fn performance_comparison_scenario(
+    name: &str,
+    runtime_samples: u64,
+    avg_frame_time_ms: f64,
+    p95_frame_time_ms: f64,
+    runtime_hitch_counts: [u64; 3],
+    max_visible_island_detail_count: u64,
+) -> serde_json::Value {
+    serde_json::json!({
+        "scenario": name,
+        "eval_status": 0,
+        "passed": true,
+        "frame_count": runtime_samples + 4,
+        "avg_frame_time_ms": avg_frame_time_ms,
+        "p95_frame_time_ms": p95_frame_time_ms,
+        "p99_frame_time_ms": 90.0,
+        "max_frame_time_ms": 120.0,
+        "runtime_frame_time_sample_count": runtime_samples,
+        "runtime_frames_over_33_34ms": runtime_hitch_counts[0],
+        "runtime_frames_over_50ms": runtime_hitch_counts[1],
+        "runtime_frames_over_100ms": runtime_hitch_counts[2],
+        "max_entity_count": 5_005,
+        "max_mesh_count": 2_105,
+        "max_material_count": 116,
+        "max_loaded_mesh_vertices": 1_182_842,
+        "max_loaded_mesh_triangles": 1_251_872,
+        "max_visible_island_terrain_count": 48,
+        "max_visible_island_detail_count": max_visible_island_detail_count,
+        "max_resident_island_visual_count": 368,
+        "max_stream_spawned_visuals_per_frame": 32,
+        "max_stream_despawned_visuals_per_frame": 32
+    })
+}
+
+fn write_performance_comparison_summary(
+    root: &Path,
+    mut scenarios: Vec<serde_json::Value>,
+    aggregate_runtime_sample_count: bool,
+) {
+    fs::create_dir_all(root).expect("create performance comparison fixture directory");
+    for scenario in &mut scenarios {
+        let name = scenario["scenario"]
+            .as_str()
+            .expect("fixture scenario name")
+            .to_string();
+        let runtime_samples = scenario["runtime_frame_time_sample_count"]
+            .as_u64()
+            .expect("fixture runtime sample count");
+        let raw_summary_dir = root.join(&name);
+        fs::create_dir_all(&raw_summary_dir).expect("create raw scenario fixture directory");
+        fs::write(
+            raw_summary_dir.join("summary.json"),
+            serde_json::json!({
+                "metrics": {
+                    "runtime_frame_time_sample_count": runtime_samples
+                }
+            })
+            .to_string(),
+        )
+        .expect("write raw scenario fixture");
+        if !aggregate_runtime_sample_count {
+            scenario
+                .as_object_mut()
+                .expect("fixture scenario object")
+                .remove("runtime_frame_time_sample_count");
+        }
+    }
+
+    fs::write(
+        root.join("perf_summary.json"),
+        serde_json::json!({
+            "mode": "release",
+            "visible_window": true,
+            "capture_screenshot": false,
+            "scenarios": scenarios
+        })
+        .to_string(),
+    )
+    .expect("write performance comparison fixture");
+}
+
+fn run_performance_comparison(baseline: &Path, candidate: &Path) -> Output {
+    Command::new("bash")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tools/compare_perf_summaries.sh"))
+        .arg(baseline.join("perf_summary.json"))
+        .arg(candidate.join("perf_summary.json"))
+        .env("NAU_PERF_ALLOW_MISSING_HOST_SNAPSHOTS", "1")
+        .env("NAU_PERF_REQUIRE_QUIET_HOST_AFTER", "0")
+        .env("NAU_PERF_MAX_AVG_FRAME_TIME_MS", "500")
+        .env("NAU_PERF_MAX_P95_FRAME_TIME_MS", "500")
+        .env("NAU_PERF_MAX_P99_FRAME_TIME_MS", "500")
+        .output()
+        .expect("run performance summary comparison")
+}
+
+#[test]
+fn performance_comparison_distinguishes_bulk_cadence_from_tail_and_structure() {
+    let fixture_id = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock after epoch")
+        .as_nanos();
+    let fixture_root = std::env::temp_dir().join(format!(
+        "nau-perf-comparison-{}-{fixture_id}",
+        std::process::id()
+    ));
+    let baseline_root = fixture_root.join("baseline");
+    let candidate_root = fixture_root.join("candidate");
+    let baseline_scenarios = vec![
+        performance_comparison_scenario(
+            "baseline_route",
+            436,
+            49.2948,
+            67.4392,
+            [390, 186, 5],
+            202,
+        ),
+        performance_comparison_scenario(
+            "long_glide_visibility",
+            716,
+            57.3681,
+            84.2747,
+            [695, 470, 13],
+            251,
+        ),
+    ];
+    let candidate_scenarios = vec![
+        performance_comparison_scenario(
+            "baseline_route",
+            436,
+            53.9088,
+            73.0728,
+            [424, 276, 1],
+            202,
+        ),
+        performance_comparison_scenario(
+            "long_glide_visibility",
+            716,
+            45.5954,
+            61.0184,
+            [636, 237, 0],
+            251,
+        ),
+    ];
+    write_performance_comparison_summary(&baseline_root, baseline_scenarios, false);
+    write_performance_comparison_summary(&candidate_root, candidate_scenarios.clone(), true);
+
+    let noisy_bucket = run_performance_comparison(&baseline_root, &candidate_root);
+    let noisy_bucket_stdout = String::from_utf8_lossy(&noisy_bucket.stdout);
+    assert!(
+        noisy_bucket.status.success(),
+        "bulk cadence must not fail the comparator:\n{noisy_bucket_stdout}\n{}",
+        String::from_utf8_lossy(&noisy_bucket.stderr)
+    );
+    assert!(noisy_bucket_stdout.contains("runtime_frames_over_50ms_advisory"));
+    assert!(noisy_bucket_stdout.contains("runtime_frames_over_100ms"));
+    assert!(noisy_bucket_stdout.contains("gating=true\tpassed=true"));
+
+    let mut severe_hitch_scenarios = candidate_scenarios.clone();
+    severe_hitch_scenarios[0]["runtime_frames_over_100ms"] = serde_json::json!(11);
+    write_performance_comparison_summary(&candidate_root, severe_hitch_scenarios, true);
+    let severe_hitch = run_performance_comparison(&baseline_root, &candidate_root);
+    assert!(!severe_hitch.status.success());
+    assert!(String::from_utf8_lossy(&severe_hitch.stdout).contains("runtime_frames_over_100ms"));
+    assert!(String::from_utf8_lossy(&severe_hitch.stdout).contains("passed=false"));
+
+    let mut structural_regression_scenarios = candidate_scenarios;
+    structural_regression_scenarios[0]["max_visible_island_detail_count"] = serde_json::json!(223);
+    write_performance_comparison_summary(&candidate_root, structural_regression_scenarios, true);
+    let structural_regression = run_performance_comparison(&baseline_root, &candidate_root);
+    assert!(!structural_regression.status.success());
+    assert!(
+        String::from_utf8_lossy(&structural_regression.stdout)
+            .contains("max_visible_island_detail_count")
+    );
+    assert!(String::from_utf8_lossy(&structural_regression.stdout).contains("passed=false"));
+
+    fs::remove_dir_all(fixture_root).expect("remove performance comparison fixture");
 }
 
 #[test]
