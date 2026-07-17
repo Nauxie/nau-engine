@@ -81,6 +81,8 @@ jobs:
           baseline_target="${RUNNER_TEMP}/nau-engine-perf-base-target"
           baseline_output="${GITHUB_WORKSPACE}/target/eval/perf_compare/base"
           candidate_output="${GITHUB_WORKSPACE}/target/eval/perf_compare/candidate"
+          retry_baseline_output="${GITHUB_WORKSPACE}/target/eval/perf_compare/retry_base"
+          retry_candidate_output="${GITHUB_WORKSPACE}/target/eval/perf_compare/retry_candidate"
 
           git fetch --no-tags origin "${{ github.event.pull_request.base.sha }}"
           rm -rf "${baseline_worktree}" "${baseline_target}"
@@ -112,12 +114,59 @@ jobs:
             "${baseline_output}/perf_summary.json" \
             "${candidate_output}/perf_summary.json" || comparison_status=$?
 
+          retry_attempted=0
+          retry_candidate_status=0
+          retry_baseline_status=0
+          retry_comparison_status=0
+          if (( baseline_status == 0 && candidate_status == 0 && comparison_status != 0 )); then
+            retry_attempted=1
+            echo "Initial relative comparison failed; retrying candidate then base to reject runner-order noise."
+
+            NAU_PERF_BUILD_FIRST=0 \
+              NAU_PERF_OUTPUT_DIR="${retry_candidate_output}" \
+              ./tools/perf_baseline.sh \
+                baseline_route \
+                long_glide_visibility \
+                camera_mouse_control || retry_candidate_status=$?
+
+            (
+              cd "${baseline_worktree}"
+              CARGO_TARGET_DIR="${baseline_target}" \
+                NAU_PERF_BUILD_FIRST=0 \
+                NAU_PERF_OUTPUT_DIR="${retry_baseline_output}" \
+                ./tools/perf_baseline.sh \
+                  baseline_route \
+                  long_glide_visibility \
+                  camera_mouse_control
+            ) || retry_baseline_status=$?
+
+            if (( retry_candidate_status == 0 && retry_baseline_status == 0 )); then
+              ./tools/compare_perf_summaries.sh \
+                "${retry_baseline_output}/perf_summary.json" \
+                "${retry_candidate_output}/perf_summary.json" || retry_comparison_status=$?
+            else
+              retry_comparison_status=1
+            fi
+          fi
+
           git worktree remove --force "${baseline_worktree}"
 
           printf 'baseline collection status: %s\n' "${baseline_status}"
           printf 'candidate collection status: %s\n' "${candidate_status}"
           printf 'performance comparison status: %s\n' "${comparison_status}"
-          if (( baseline_status != 0 || candidate_status != 0 || comparison_status != 0 )); then
+          printf 'retry attempted: %s\n' "${retry_attempted}"
+          printf 'retry candidate collection status: %s\n' "${retry_candidate_status}"
+          printf 'retry baseline collection status: %s\n' "${retry_baseline_status}"
+          printf 'retry performance comparison status: %s\n' "${retry_comparison_status}"
+
+          final_comparison_status="${comparison_status}"
+          if (( retry_attempted == 1 )); then
+            final_comparison_status=0
+            if (( retry_candidate_status != 0 || retry_baseline_status != 0 || retry_comparison_status != 0 )); then
+              final_comparison_status=1
+            fi
+          fi
+          if (( baseline_status != 0 || candidate_status != 0 || final_comparison_status != 0 )); then
             exit 1
           fi
 
