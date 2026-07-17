@@ -131,6 +131,12 @@ fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
     assert!(workflow.contains("./tools/perf_baseline.sh"));
     assert!(workflow.contains("camera_mouse_control"));
     assert!(workflow.contains("./tools/compare_perf_summaries.sh"));
+    assert!(workflow.contains(") || baseline_status=$?"));
+    assert!(workflow.contains("camera_mouse_control || candidate_status=$?"));
+    assert!(workflow.contains("\"${candidate_output}/perf_summary.json\" || comparison_status=$?"));
+    assert!(workflow.contains(
+        "if (( baseline_status != 0 || candidate_status != 0 || comparison_status != 0 )); then"
+    ));
     assert!(workflow.contains("branches:\n      - main"));
 }
 
@@ -228,6 +234,17 @@ fn baseline_route_has_scripted_launch_and_glide() {
     assert!(scripted_input(scenario, 60).glide);
     assert!(scripted_input(scenario, 390).glide);
     assert!(scripted_input(scenario, 390).dive);
+}
+
+#[test]
+fn release_traversal_content_budgets_cover_authored_island_density() {
+    for name in [BASELINE_ROUTE, LONG_GLIDE_VISIBILITY] {
+        let scenario = scenario_named(name).expect("release traversal route exists");
+
+        assert_eq!(scenario.thresholds.max_visible_island_detail_count, 260);
+        assert_eq!(scenario.thresholds.max_resident_island_visual_count, 430);
+        assert_eq!(scenario.thresholds.max_entity_count, 5_500);
+    }
 }
 
 #[test]
