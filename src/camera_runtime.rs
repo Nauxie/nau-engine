@@ -470,7 +470,7 @@ pub(crate) fn direct_plateau_vista_camera(
             return;
         };
         let arrival_position = plateau.center + Vec3::new(95.0, 30.0, 100.0);
-        let arrival_target = plateau.center + Vec3::new(-18.0, 1.5, 5.0);
+        let arrival_target = plateau.center + Vec3::new(-18.0, 7.5, 5.0);
         let broken_edge_offset = IslandPlateauRegion::BrokenEdge.sample_offset();
         let broken_edge_angle = broken_edge_offset.y.atan2(broken_edge_offset.x);
         let broken_edge_contour = plateau.footprint_contour_point(broken_edge_angle, false);
