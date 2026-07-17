@@ -2,6 +2,7 @@ use super::{
     USAGE,
     analysis::{audit_image, audit_image_with_alpha},
     parse_args,
+    pixel_rules::{is_lower_scene_like, is_scene_like, is_sky_like},
     report::{
         VisualAuditProfile, audit_report_json_for_profile, json_string, report_checks,
         report_checks_for_profile, report_passed, report_passed_for_profile,
@@ -1047,6 +1048,33 @@ fn audit_rejects_sky_only_frame() {
             .iter()
             .any(|check| check.name == "lower_scene_fraction" && !check.passed)
     );
+}
+
+#[test]
+fn lower_scene_classifier_counts_dark_terrain_without_counting_black_or_sky() {
+    let dark_terrain = (14.0, 16.0, 13.0);
+    let dark_terrain_luma =
+        0.2126 * dark_terrain.0 + 0.7152 * dark_terrain.1 + 0.0722 * dark_terrain.2;
+    assert!(!is_scene_like(
+        dark_terrain.0,
+        dark_terrain.1,
+        dark_terrain.2,
+        dark_terrain_luma,
+        false,
+    ));
+    assert!(is_lower_scene_like(
+        dark_terrain.0,
+        dark_terrain.1,
+        dark_terrain.2,
+        dark_terrain_luma,
+        false,
+    ));
+    assert!(!is_lower_scene_like(0.0, 0.0, 0.0, 0.0, false));
+
+    let sky = (136.0, 170.0, 208.0);
+    let sky_luma = 0.2126 * sky.0 + 0.7152 * sky.1 + 0.0722 * sky.2;
+    assert!(is_sky_like(sky.0, sky.1, sky.2, sky_luma));
+    assert!(!is_lower_scene_like(sky.0, sky.1, sky.2, sky_luma, true,));
 }
 
 #[test]
