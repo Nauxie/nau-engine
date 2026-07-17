@@ -52,6 +52,13 @@ case "${require_quiet_host_after}" in
     ;;
 esac
 
+if ! [[ "${max_gating_hitch_fraction}" =~ ^[0-9]+([.][0-9]+)?$ ]] ||
+  ! awk -v value="${max_gating_hitch_fraction}" \
+    'BEGIN { exit !(value >= 0 && value <= 1) }'; then
+  echo "NAU_PERF_SUMMARY_MAX_GATING_HITCH_FRACTION must be numeric between 0 and 1" >&2
+  exit 2
+fi
+
 for value_name in max_host_process_cpu_percent max_host_total_cpu_percent; do
   value="${!value_name}"
   if ! [[ "${value}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
@@ -104,7 +111,7 @@ scenario_runtime_frame_time_sample_count() {
     fi
   fi
 
-  optional_scenario_metric "${summary}" "${scenario}" "frame_count"
+  printf 'null\n'
 }
 
 scenario_exists() {
