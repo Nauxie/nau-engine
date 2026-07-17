@@ -120,6 +120,11 @@ fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
     assert!(workflow.contains("NAU_DEV_PLAY_PERF_MAX_P95_FRAME_TIME_MS: \"90\""));
     assert!(workflow.contains("NAU_DEV_PLAY_PERF_MAX_MATERIAL_COUNT: \"116\""));
     assert!(workflow.contains("NAU_DEV_PLAY_PERF_RUN_HOST_PREFLIGHT: \"0\""));
+    assert!(workflow.contains(
+        "NAU_PERF_MAX_AVG_FRAME_TIME_MS: \"500\"\n          \
+         NAU_PERF_MAX_P95_FRAME_TIME_MS: \"500\"\n          \
+         NAU_PERF_MAX_P99_FRAME_TIME_MS: \"500\""
+    ));
     assert!(workflow.contains("NAU_PERF_SUMMARY_MAX_COUNT_REGRESSION_RATIO: \"2.0\""));
     assert!(workflow.contains("Compare PR performance with base"));
     assert!(workflow.contains("github.event.pull_request.base.sha"));
