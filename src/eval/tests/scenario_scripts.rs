@@ -61,6 +61,7 @@ fn camera_continuity_gate_covers_the_required_surface_and_timing_contract() {
     assert_eq!(actual, expected);
     assert!(script.contains("requested_refresh_rates=(30 60 120 144)"));
     assert!(script.contains("requested_hitches_ms=(50 100)"));
+    assert!(script.contains("inactive_look_resets_capture_history_before_resume"));
     assert!(script.contains(".metrics.sample_count == $expected_samples"));
     assert!(script.contains(".metrics.max_world_collision_push_m <= $max_push"));
     assert!(script.contains(".metrics.max_terrain_rim_collision_push_m <= $max_push"));
@@ -68,8 +69,9 @@ fn camera_continuity_gate_covers_the_required_surface_and_timing_contract() {
     assert!(
         script.contains("NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ANGULAR_VELOCITY_DEGREES_PER_SEC:-180")
     );
+    assert!(script.contains("NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ACCELERATION_MPS2:-1300"));
     assert!(script.contains(
-        "NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ANGULAR_ACCELERATION_DEGREES_PER_SEC2:-15000"
+        "NAU_CAMERA_CONTINUITY_MAX_RELATIVE_ANGULAR_ACCELERATION_DEGREES_PER_SEC2:-6000"
     ));
     assert!(
         script.contains(".metrics.max_camera_player_relative_angular_velocity_degrees_per_sec")
@@ -103,14 +105,97 @@ fn continuity_and_performance_gates_fail_closed_on_incomplete_or_failed_evidence
 #[test]
 fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
     let performance = include_str!("../../../tools/dev_play_performance_gate.sh");
-    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_AVG_FRAME_TIME_MS:-24"));
-    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_P95_FRAME_TIME_MS:-30"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_VISIBLE_WINDOW:-0"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_AVG_FRAME_TIME_MS:-12"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_P95_FRAME_TIME_MS:-18"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_FRAME_TIME_MS:-35"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_FRAMES_OVER_16_67MS:-24"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_MATERIAL_COUNT:-128"));
     assert!(performance.contains("NAU_DEV_PLAY_PERF_MAX_DEBUG_RELEASE_AVG_RATIO:-1.25"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_RUN_WARMUP:-1"));
+    assert!(performance.contains("NAU_DEV_PLAY_PERF_RUN_HOST_PREFLIGHT:-1"));
 
     let workflow = include_str!("../../../.github/workflows/camera-continuity.yml");
     assert!(workflow.contains("NAU_DEV_PLAY_PERF_MAX_AVG_FRAME_TIME_MS: \"70\""));
     assert!(workflow.contains("NAU_DEV_PLAY_PERF_MAX_P95_FRAME_TIME_MS: \"90\""));
+    assert!(workflow.contains("NAU_DEV_PLAY_PERF_MAX_MATERIAL_COUNT: \"116\""));
+    assert!(workflow.contains("NAU_DEV_PLAY_PERF_RUN_HOST_PREFLIGHT: \"0\""));
+    assert!(workflow.contains("NAU_PERF_SUMMARY_MAX_COUNT_REGRESSION_RATIO: \"2.0\""));
+    assert!(workflow.contains("Compare PR performance with base"));
+    assert!(workflow.contains("github.event.pull_request.base.sha"));
+    assert!(workflow.contains("./tools/perf_baseline.sh"));
+    assert!(workflow.contains("camera_mouse_control"));
+    assert!(workflow.contains("./tools/compare_perf_summaries.sh"));
     assert!(workflow.contains("branches:\n      - main"));
+}
+
+#[test]
+fn development_performance_gate_enforces_camera_feel_budgets_for_both_profiles() {
+    let performance = include_str!("../../../tools/dev_play_performance_gate.sh");
+
+    assert!(performance.contains("max_frame_time_ms \\\n  max_debug_release_avg_ratio"));
+    assert!(
+        performance
+            .contains("if ! [[ \"${max_frames_over_16_67ms}\" =~ ^(0|[1-9][0-9]*)$ ]]; then")
+    );
+    assert!(performance.contains("if ! [[ \"${max_material_count}\" =~ ^[1-9][0-9]*$ ]]; then"));
+    assert!(performance.contains("and (.metrics.max_frame_time_ms | type) == \"number\""));
+    assert!(performance.contains("and (.metrics.frames_over_16_67ms | type) == \"number\""));
+    assert!(performance.contains("and (.metrics.max_material_count | type) == \"number\""));
+    assert!(performance.contains("local warmup_dir=\"${output_root}/${profile}_warmup\""));
+    assert!(performance.contains("./tools/perf_host_preflight.sh"));
+    assert!(performance.contains("warmup_run: ($run_warmup == 1)"));
+    assert!(performance.contains("host_preflight: ($run_host_preflight == 1)"));
+
+    for (profile_field, metric, threshold) in [
+        (
+            "avg_frame_time_ms",
+            "avg_frame_time_ms",
+            "max_avg_frame_time_ms",
+        ),
+        (
+            "p95_frame_time_ms",
+            "p95_frame_time_ms",
+            "max_p95_frame_time_ms",
+        ),
+        (
+            "max_frame_time_ms",
+            "max_frame_time_ms",
+            "max_frame_time_ms",
+        ),
+        (
+            "frames_over_16_67ms",
+            "frames_over_16_67ms",
+            "max_frames_over_16_67ms",
+        ),
+        (
+            "max_material_count",
+            "max_material_count",
+            "max_material_count",
+        ),
+    ] {
+        assert!(performance.contains(&format!("{threshold}: ${threshold}")));
+        for profile in ["debug", "release"] {
+            assert!(performance.contains(&format!(
+                "and ${profile}[0].metrics.{metric} <= ${threshold}"
+            )));
+            assert!(
+                performance.contains(&format!("{profile_field}: ${profile}[0].metrics.{metric}"))
+            );
+        }
+    }
+
+    assert!(performance.contains("and $avg_ratio <= $max_debug_release_avg_ratio"));
+    assert!(performance.contains(
+        "and $debug[0].metrics.max_entity_count == $release[0].metrics.max_entity_count"
+    ));
+    assert!(
+        performance
+            .contains("and $debug[0].metrics.max_mesh_count == $release[0].metrics.max_mesh_count")
+    );
+    assert!(performance.contains(
+        "and $debug[0].metrics.max_loaded_mesh_triangles\n          == $release[0].metrics.max_loaded_mesh_triangles"
+    ));
 }
 
 #[test]
