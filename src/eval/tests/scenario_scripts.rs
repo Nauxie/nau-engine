@@ -148,8 +148,22 @@ fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
     assert!(workflow.contains("camera_mouse_control || candidate_status=$?"));
     assert!(workflow.contains("\"${candidate_output}/perf_summary.json\" || comparison_status=$?"));
     assert!(workflow.contains(
-        "if (( baseline_status != 0 || candidate_status != 0 || comparison_status != 0 )); then"
+        "if (( baseline_status == 0 && candidate_status == 0 && comparison_status != 0 )); then"
     ));
+    assert!(workflow.contains("retry_attempted=1"));
+    assert!(workflow.contains(
+        "if (( retry_candidate_status != 0 || retry_baseline_status != 0 || retry_comparison_status != 0 )); then"
+    ));
+    assert!(workflow.contains(
+        "if (( baseline_status != 0 || candidate_status != 0 || final_comparison_status != 0 )); then"
+    ));
+    let retry_candidate = workflow
+        .find("NAU_PERF_OUTPUT_DIR=\"${retry_candidate_output}\"")
+        .expect("candidate-first retry");
+    let retry_baseline = workflow
+        .find("NAU_PERF_OUTPUT_DIR=\"${retry_baseline_output}\"")
+        .expect("base-second retry");
+    assert!(retry_candidate < retry_baseline);
     assert!(workflow.contains("branches:\n      - main"));
 
     let comparison = include_str!("../../../tools/compare_perf_summaries.sh");
@@ -157,10 +171,15 @@ fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
         "NAU_PERF_SUMMARY_CAMERA_MOUSE_MAX_AVG_FRAME_TIME_REGRESSION_RATIO:-${max_frame_time_ratio}"
     ));
     assert!(comparison.contains("NAU_PERF_SUMMARY_MAX_GATING_HITCH_FRACTION:-0.05"));
+    assert!(
+        comparison
+            .contains("NAU_PERF_SUMMARY_MAX_GATING_HITCH_FRACTION must be numeric between 0 and 1")
+    );
     assert!(comparison.contains("if [[ \"${scenario}\" == \"camera_mouse_control\" ]]; then"));
     assert!(comparison.contains(
         "scenario_runtime_frame_time_sample_count \"${baseline_summary}\" \"${scenario}\""
     ));
+    assert!(comparison.contains("printf 'null\\n'"));
     assert!(comparison.contains("fraction <= max_fraction ? \"true\" : \"false\""));
     assert!(comparison.contains(
         "compare_metric \"${scenario}\" \"avg_frame_time_ms\" \\\n    \"${scenario_avg_frame_time_ratio}\""
@@ -261,8 +280,13 @@ fn write_performance_comparison_summary(
     .expect("write performance comparison fixture");
 }
 
-fn run_performance_comparison(baseline: &Path, candidate: &Path) -> Output {
-    Command::new("bash")
+fn run_performance_comparison(
+    baseline: &Path,
+    candidate: &Path,
+    gating_hitch_fraction: Option<&str>,
+) -> Output {
+    let mut command = Command::new("bash");
+    command
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tools/compare_perf_summaries.sh"))
         .arg(baseline.join("perf_summary.json"))
         .arg(candidate.join("perf_summary.json"))
@@ -270,7 +294,11 @@ fn run_performance_comparison(baseline: &Path, candidate: &Path) -> Output {
         .env("NAU_PERF_REQUIRE_QUIET_HOST_AFTER", "0")
         .env("NAU_PERF_MAX_AVG_FRAME_TIME_MS", "500")
         .env("NAU_PERF_MAX_P95_FRAME_TIME_MS", "500")
-        .env("NAU_PERF_MAX_P99_FRAME_TIME_MS", "500")
+        .env("NAU_PERF_MAX_P99_FRAME_TIME_MS", "500");
+    if let Some(fraction) = gating_hitch_fraction {
+        command.env("NAU_PERF_SUMMARY_MAX_GATING_HITCH_FRACTION", fraction);
+    }
+    command
         .output()
         .expect("run performance summary comparison")
 }
@@ -326,7 +354,7 @@ fn performance_comparison_distinguishes_bulk_cadence_from_tail_and_structure() {
     write_performance_comparison_summary(&baseline_root, baseline_scenarios, false);
     write_performance_comparison_summary(&candidate_root, candidate_scenarios.clone(), true);
 
-    let noisy_bucket = run_performance_comparison(&baseline_root, &candidate_root);
+    let noisy_bucket = run_performance_comparison(&baseline_root, &candidate_root, None);
     let noisy_bucket_stdout = String::from_utf8_lossy(&noisy_bucket.stdout);
     assert!(
         noisy_bucket.status.success(),
@@ -334,27 +362,49 @@ fn performance_comparison_distinguishes_bulk_cadence_from_tail_and_structure() {
         String::from_utf8_lossy(&noisy_bucket.stderr)
     );
     assert!(noisy_bucket_stdout.contains("runtime_frames_over_50ms_advisory"));
-    assert!(noisy_bucket_stdout.contains("runtime_frames_over_100ms"));
-    assert!(noisy_bucket_stdout.contains("gating=true\tpassed=true"));
+    let noisy_tail_line = noisy_bucket_stdout
+        .lines()
+        .find(|line| line.starts_with("baseline_route\truntime_frames_over_100ms\t"))
+        .expect("baseline route severe-hitch result");
+    assert!(noisy_tail_line.contains("baseline=5/436"));
+    assert!(noisy_tail_line.contains("candidate=1/436"));
+    assert!(noisy_tail_line.ends_with("gating=true\tpassed=true"));
+
+    let invalid_fraction =
+        run_performance_comparison(&baseline_root, &candidate_root, Some("-0.1"));
+    assert_eq!(invalid_fraction.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&invalid_fraction.stderr)
+            .contains("must be numeric between 0 and 1")
+    );
 
     let mut severe_hitch_scenarios = candidate_scenarios.clone();
     severe_hitch_scenarios[0]["runtime_frames_over_100ms"] = serde_json::json!(11);
     write_performance_comparison_summary(&candidate_root, severe_hitch_scenarios, true);
-    let severe_hitch = run_performance_comparison(&baseline_root, &candidate_root);
+    let severe_hitch = run_performance_comparison(&baseline_root, &candidate_root, None);
     assert!(!severe_hitch.status.success());
-    assert!(String::from_utf8_lossy(&severe_hitch.stdout).contains("runtime_frames_over_100ms"));
-    assert!(String::from_utf8_lossy(&severe_hitch.stdout).contains("passed=false"));
+    let severe_hitch_stdout = String::from_utf8_lossy(&severe_hitch.stdout);
+    let severe_hitch_line = severe_hitch_stdout
+        .lines()
+        .find(|line| line.starts_with("baseline_route\truntime_frames_over_100ms\t"))
+        .expect("severe-hitch regression result");
+    assert!(severe_hitch_line.contains("baseline=5/436"));
+    assert!(severe_hitch_line.contains("candidate=11/436"));
+    assert!(severe_hitch_line.ends_with("gating=true\tpassed=false"));
 
     let mut structural_regression_scenarios = candidate_scenarios;
     structural_regression_scenarios[0]["max_visible_island_detail_count"] = serde_json::json!(223);
     write_performance_comparison_summary(&candidate_root, structural_regression_scenarios, true);
-    let structural_regression = run_performance_comparison(&baseline_root, &candidate_root);
+    let structural_regression = run_performance_comparison(&baseline_root, &candidate_root, None);
     assert!(!structural_regression.status.success());
-    assert!(
-        String::from_utf8_lossy(&structural_regression.stdout)
-            .contains("max_visible_island_detail_count")
-    );
-    assert!(String::from_utf8_lossy(&structural_regression.stdout).contains("passed=false"));
+    let structural_regression_stdout = String::from_utf8_lossy(&structural_regression.stdout);
+    let structural_regression_line = structural_regression_stdout
+        .lines()
+        .find(|line| line.starts_with("baseline_route\tmax_visible_island_detail_count\t"))
+        .expect("structural regression result");
+    assert!(structural_regression_line.contains("baseline=202"));
+    assert!(structural_regression_line.contains("candidate=223"));
+    assert!(structural_regression_line.ends_with("passed=false"));
 
     fs::remove_dir_all(fixture_root).expect("remove performance comparison fixture");
 }
