@@ -5,10 +5,17 @@ pub(crate) const MIN_HORIZONTAL_WATER_X_SPAN_PX: usize = 9;
 pub(crate) const MIN_HORIZONTAL_WATER_Y_SPAN_PX: usize = 3;
 pub(crate) const MIN_WATERFALL_X_SPAN_PX: usize = 3;
 pub(crate) const MIN_WATERFALL_Y_SPAN_PX: usize = 9;
+pub(crate) const MIN_PLUNGE_POOL_LOCAL_HITS: usize = 3;
+pub(crate) const MIN_PLUNGE_POOL_X_SPAN_PX: usize = 3;
+pub(crate) const MIN_PLUNGE_POOL_Y_SPAN_PX: usize = 2;
 pub(crate) const MIN_WATER_BOUNDING_BOX_FILL_RATIO: f64 = 0.28;
 pub(crate) const MIN_WATER_QUANTIZED_COLOR_BUCKETS: usize = 3;
 pub(crate) const MIN_WATER_LUMA_P95_P5: f64 = 4.0;
 pub(crate) const MIN_WATER_INTERNAL_EDGE_DENSITY: f64 = 0.02;
+pub(crate) const MIN_PLUNGE_POOL_BOUNDING_BOX_FILL_RATIO: f64 = 0.18;
+pub(crate) const MIN_PLUNGE_POOL_QUANTIZED_COLOR_BUCKETS: usize = 2;
+pub(crate) const MIN_PLUNGE_POOL_LUMA_P95_P5: f64 = 2.0;
+pub(crate) const MIN_PLUNGE_POOL_INTERNAL_EDGE_DENSITY: f64 = 0.01;
 pub(crate) const WATER_INTERNAL_EDGE_LUMA_DELTA: f64 = 3.0;
 pub(crate) const MIN_VISIBLE_SAMPLES_PER_CHECKPOINT: usize = 2;
 pub(crate) const MIN_PASSED_SAMPLES_PER_CHECKPOINT: usize = 1;
@@ -57,6 +64,22 @@ pub(crate) fn water_sample_thresholds(
     kind: &str,
     screenshot_scale: (f64, f64),
 ) -> Option<WaterSampleThresholds> {
+    let scale_x = screenshot_scale.0.max(0.1);
+    let scale_y = screenshot_scale.1.max(0.1);
+    if kind == "water_detail_plunge_pool" {
+        return Some(WaterSampleThresholds {
+            min_local_hit_count: ((MIN_PLUNGE_POOL_LOCAL_HITS as f64 * scale_x * scale_y).ceil()
+                as usize)
+                .max(MIN_SAMPLE_PIXEL_HITS),
+            min_x_span: (MIN_PLUNGE_POOL_X_SPAN_PX as f64 * scale_x).ceil() as usize,
+            min_y_span: (MIN_PLUNGE_POOL_Y_SPAN_PX as f64 * scale_y).ceil() as usize,
+            min_bounding_box_fill_ratio: MIN_PLUNGE_POOL_BOUNDING_BOX_FILL_RATIO,
+            min_quantized_color_buckets: MIN_PLUNGE_POOL_QUANTIZED_COLOR_BUCKETS,
+            min_luma_p95_p5: MIN_PLUNGE_POOL_LUMA_P95_P5,
+            min_internal_edge_density: MIN_PLUNGE_POOL_INTERNAL_EDGE_DENSITY,
+        });
+    }
+
     let (base_x_span, base_y_span) = match kind {
         "water_surface" | "river_channel" => (
             MIN_HORIZONTAL_WATER_X_SPAN_PX,
@@ -65,8 +88,6 @@ pub(crate) fn water_sample_thresholds(
         "waterfall_water" => (MIN_WATERFALL_X_SPAN_PX, MIN_WATERFALL_Y_SPAN_PX),
         _ => return None,
     };
-    let scale_x = screenshot_scale.0.max(0.1);
-    let scale_y = screenshot_scale.1.max(0.1);
 
     Some(WaterSampleThresholds {
         min_local_hit_count: ((MIN_SUBSTANTIAL_WATER_LOCAL_HITS as f64 * scale_x * scale_y).ceil()
