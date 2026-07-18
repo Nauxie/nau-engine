@@ -86,6 +86,18 @@ validate_summary() {
       and (.metrics.frames_over_16_67ms | type) == "number"
       and .metrics.frames_over_16_67ms >= 0
       and (.metrics.frames_over_16_67ms | floor) == .metrics.frames_over_16_67ms
+      and (.metrics.runtime_frame_time_sample_count | type) == "number"
+      and .metrics.runtime_frame_time_sample_count >= 120
+      and .metrics.avg_runtime_frame_time_ms > 0
+      and .metrics.p95_runtime_frame_time_ms > 0
+      and (.metrics.p99_runtime_frame_time_ms | type) == "number"
+      and .metrics.p99_runtime_frame_time_ms > 0
+      and (.metrics.max_runtime_frame_time_ms | type) == "number"
+      and .metrics.max_runtime_frame_time_ms > 0
+      and (.metrics.runtime_frames_over_16_67ms | type) == "number"
+      and .metrics.runtime_frames_over_16_67ms >= 0
+      and (.metrics.runtime_frames_over_16_67ms | floor)
+        == .metrics.runtime_frames_over_16_67ms
       and .metrics.max_entity_count > 0
       and .metrics.max_mesh_count > 0
       and (.metrics.max_material_count | type) == "number"
@@ -192,28 +204,29 @@ jq -n \
   --argjson run_warmup "${run_warmup}" \
   --argjson run_host_preflight "${run_host_preflight}" \
   '
-  ($debug[0].metrics.avg_frame_time_ms
-    / $release[0].metrics.avg_frame_time_ms) as $avg_ratio
+  ($debug[0].metrics.avg_runtime_frame_time_ms
+    / $release[0].metrics.avg_runtime_frame_time_ms) as $avg_ratio
   | {
-      schema: "nau_dev_play_performance_gate.v1",
+      schema: "nau_dev_play_performance_gate.v2",
       scenario: $scenario,
       measurement: {
         warmup_run: ($run_warmup == 1),
-        host_preflight: ($run_host_preflight == 1)
+        host_preflight: ($run_host_preflight == 1),
+        frame_time_scope: "runtime_after_startup_warmup"
       },
       passed: (
         $debug_eval_status == 0
         and $release_eval_status == 0
         and $debug[0].passed == true
         and $release[0].passed == true
-        and $debug[0].metrics.avg_frame_time_ms <= $max_avg_frame_time_ms
-        and $release[0].metrics.avg_frame_time_ms <= $max_avg_frame_time_ms
-        and $debug[0].metrics.p95_frame_time_ms <= $max_p95_frame_time_ms
-        and $release[0].metrics.p95_frame_time_ms <= $max_p95_frame_time_ms
-        and $debug[0].metrics.max_frame_time_ms <= $max_frame_time_ms
-        and $release[0].metrics.max_frame_time_ms <= $max_frame_time_ms
-        and $debug[0].metrics.frames_over_16_67ms <= $max_frames_over_16_67ms
-        and $release[0].metrics.frames_over_16_67ms <= $max_frames_over_16_67ms
+        and $debug[0].metrics.avg_runtime_frame_time_ms <= $max_avg_frame_time_ms
+        and $release[0].metrics.avg_runtime_frame_time_ms <= $max_avg_frame_time_ms
+        and $debug[0].metrics.p95_runtime_frame_time_ms <= $max_p95_frame_time_ms
+        and $release[0].metrics.p95_runtime_frame_time_ms <= $max_p95_frame_time_ms
+        and $debug[0].metrics.max_runtime_frame_time_ms <= $max_frame_time_ms
+        and $release[0].metrics.max_runtime_frame_time_ms <= $max_frame_time_ms
+        and $debug[0].metrics.runtime_frames_over_16_67ms <= $max_frames_over_16_67ms
+        and $release[0].metrics.runtime_frames_over_16_67ms <= $max_frames_over_16_67ms
         and $debug[0].metrics.max_material_count <= $max_material_count
         and $release[0].metrics.max_material_count <= $max_material_count
         and $avg_ratio <= $max_debug_release_avg_ratio
@@ -233,12 +246,15 @@ jq -n \
       debug: {
         summary: $debug_summary,
         eval_status: $debug_eval_status,
-        avg_frame_time_ms: $debug[0].metrics.avg_frame_time_ms,
-        p95_frame_time_ms: $debug[0].metrics.p95_frame_time_ms,
-        max_frame_time_ms: $debug[0].metrics.max_frame_time_ms,
-        frames_over_16_67ms: $debug[0].metrics.frames_over_16_67ms,
-        frames_over_33_34ms: $debug[0].metrics.frames_over_33_34ms,
-        frames_over_50ms: $debug[0].metrics.frames_over_50ms,
+        runtime_frame_time_sample_count: $debug[0].metrics.runtime_frame_time_sample_count,
+        avg_runtime_frame_time_ms: $debug[0].metrics.avg_runtime_frame_time_ms,
+        p95_runtime_frame_time_ms: $debug[0].metrics.p95_runtime_frame_time_ms,
+        p99_runtime_frame_time_ms: $debug[0].metrics.p99_runtime_frame_time_ms,
+        max_runtime_frame_time_ms: $debug[0].metrics.max_runtime_frame_time_ms,
+        runtime_frames_over_16_67ms: $debug[0].metrics.runtime_frames_over_16_67ms,
+        runtime_frames_over_33_34ms: $debug[0].metrics.runtime_frames_over_33_34ms,
+        runtime_frames_over_50ms: $debug[0].metrics.runtime_frames_over_50ms,
+        all_frame_max_frame_time_ms: $debug[0].metrics.max_frame_time_ms,
         entity_count: $debug[0].metrics.max_entity_count,
         mesh_count: $debug[0].metrics.max_mesh_count,
         max_material_count: $debug[0].metrics.max_material_count,
@@ -247,12 +263,15 @@ jq -n \
       release: {
         summary: $release_summary,
         eval_status: $release_eval_status,
-        avg_frame_time_ms: $release[0].metrics.avg_frame_time_ms,
-        p95_frame_time_ms: $release[0].metrics.p95_frame_time_ms,
-        max_frame_time_ms: $release[0].metrics.max_frame_time_ms,
-        frames_over_16_67ms: $release[0].metrics.frames_over_16_67ms,
-        frames_over_33_34ms: $release[0].metrics.frames_over_33_34ms,
-        frames_over_50ms: $release[0].metrics.frames_over_50ms,
+        runtime_frame_time_sample_count: $release[0].metrics.runtime_frame_time_sample_count,
+        avg_runtime_frame_time_ms: $release[0].metrics.avg_runtime_frame_time_ms,
+        p95_runtime_frame_time_ms: $release[0].metrics.p95_runtime_frame_time_ms,
+        p99_runtime_frame_time_ms: $release[0].metrics.p99_runtime_frame_time_ms,
+        max_runtime_frame_time_ms: $release[0].metrics.max_runtime_frame_time_ms,
+        runtime_frames_over_16_67ms: $release[0].metrics.runtime_frames_over_16_67ms,
+        runtime_frames_over_33_34ms: $release[0].metrics.runtime_frames_over_33_34ms,
+        runtime_frames_over_50ms: $release[0].metrics.runtime_frames_over_50ms,
+        all_frame_max_frame_time_ms: $release[0].metrics.max_frame_time_ms,
         entity_count: $release[0].metrics.max_entity_count,
         mesh_count: $release[0].metrics.max_mesh_count,
         max_material_count: $release[0].metrics.max_material_count,
