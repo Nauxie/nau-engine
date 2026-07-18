@@ -14,6 +14,7 @@ mod play_profile_runtime;
 mod player_runtime;
 mod power_up_runtime;
 mod scene_setup_runtime;
+mod surface_material;
 mod world_collision_runtime;
 mod world_floor_runtime;
 use authored_assets::*;
@@ -75,6 +76,7 @@ use std::collections::HashSet;
 use std::fs;
 #[cfg(test)]
 use std::path::PathBuf;
+use surface_material::SurfaceMaterial;
 use world_collision_runtime::*;
 use world_floor_runtime::*;
 
@@ -194,6 +196,7 @@ fn main() -> AppExit {
             primary_window: Some(primary_window(eval.as_deref())),
             ..default()
         }))
+        .add_plugins(MaterialPlugin::<SurfaceMaterial>::default())
         .configure_sets(
             Update,
             (
