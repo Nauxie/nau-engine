@@ -1,6 +1,7 @@
 use crate::camera_runtime::CameraObstacle;
 use crate::environment_visuals::WindVisualMotion;
 use crate::generated_content::{island_cliff_mesh, island_terrain_mesh, island_underside_mesh};
+use crate::surface_material::SurfaceMaterial;
 use crate::world_collision_runtime::WorldCollisionProxy;
 use bevy::prelude::*;
 use nau_engine::world::{LodBand, SkyIsland, StreamActivation};
@@ -138,13 +139,49 @@ impl IslandVisualMeshRecipe {
 }
 
 #[derive(Clone)]
+pub(super) enum IslandVisualMaterial {
+    Standard(Handle<StandardMaterial>),
+    Surface(Handle<SurfaceMaterial>),
+    SurfaceNoShadows(Handle<SurfaceMaterial>),
+}
+
+impl IslandVisualMaterial {
+    pub(super) fn surface_without_shadows(material: Handle<SurfaceMaterial>) -> Self {
+        Self::SurfaceNoShadows(material)
+    }
+
+    pub(super) fn casts_shadows(&self) -> bool {
+        !matches!(self, Self::SurfaceNoShadows(_))
+    }
+
+    pub(super) fn standard_handle(&self) -> Option<&Handle<StandardMaterial>> {
+        match self {
+            Self::Standard(material) => Some(material),
+            Self::Surface(_) | Self::SurfaceNoShadows(_) => None,
+        }
+    }
+}
+
+impl From<Handle<StandardMaterial>> for IslandVisualMaterial {
+    fn from(material: Handle<StandardMaterial>) -> Self {
+        Self::Standard(material)
+    }
+}
+
+impl From<Handle<SurfaceMaterial>> for IslandVisualMaterial {
+    fn from(material: Handle<SurfaceMaterial>) -> Self {
+        Self::Surface(material)
+    }
+}
+
+#[derive(Clone)]
 pub(super) struct IslandVisualEntry {
     pub(super) key: IslandVisualKey,
     pub(super) island: SkyIsland,
     pub(super) layer: IslandVisualLayer,
     pub(super) mesh: Option<Handle<Mesh>>,
     pub(super) mesh_recipe: Option<IslandVisualMeshRecipe>,
-    pub(super) material: Option<Handle<StandardMaterial>>,
+    pub(super) material: Option<IslandVisualMaterial>,
     pub(super) transform: Transform,
     pub(super) obstacle: Option<CameraObstacle>,
     pub(super) collision: Option<WorldCollisionProxy>,
