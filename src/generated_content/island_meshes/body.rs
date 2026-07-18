@@ -3,7 +3,10 @@ use super::constants::{
     ISLAND_IMPOSTOR_CLIFF_RINGS, ISLAND_IMPOSTOR_SEGMENTS, ISLAND_IMPOSTOR_TERRAIN_RINGS,
     ISLAND_IMPOSTOR_UNDERSIDE_RINGS, ISLAND_UNDERSIDE_RINGS,
 };
-use super::normals::{smooth_normals_from_triangles, smooth_normals_from_triangles_oriented};
+use super::normals::{
+    smooth_normals_from_triangles, smooth_normals_from_triangles_oriented,
+    world_aligned_tangents_from_positions_and_normals,
+};
 use super::palette::{
     balance_terrain_material_weights, island_rock_vertex_color, island_terrain_material_weights,
     island_terrain_uv, island_terrain_vertex_color,
@@ -351,6 +354,7 @@ pub(crate) fn island_impostor_terrain_mesh(island_index: usize, island: SkyIslan
     }
 
     let normals = smooth_normals_from_triangles(&positions, &indices);
+    let tangents = world_aligned_tangents_from_positions_and_normals(&positions, &normals);
 
     Mesh::new(
         PrimitiveTopology::TriangleList,
@@ -359,6 +363,7 @@ pub(crate) fn island_impostor_terrain_mesh(island_index: usize, island: SkyIslan
     .with_inserted_indices(Indices::U32(indices))
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_TANGENT, tangents)
     .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_1, material_weights)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
