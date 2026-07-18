@@ -426,16 +426,22 @@ pub(crate) fn island_terrain_vertex_color(
         angle,
         relief_m,
     ));
+    let region_value_wash = match region {
+        0 => 0.035,
+        1 => -0.010,
+        2 => 0.055,
+        _ => -0.050,
+    };
     let watercolor_wash = Vec3::new(0.86, 0.74, 0.48) * (inner_meadow * 0.035 + highland * 0.018);
     let color = palette
         .grass
-        .lerp(palette.meadow, inner_meadow * 0.36)
-        .lerp(palette.moss, highland * 0.42)
-        .lerp(palette.clay, exposed_edge * 0.32)
-        .lerp(palette.rock, exposed_edge.powf(1.7) * 0.48)
-        .lerp(palette.region_tints[region as usize], 0.32)
+        .lerp(palette.meadow, inner_meadow * 0.48)
+        .lerp(palette.moss, highland * 0.56)
+        .lerp(palette.clay, exposed_edge * 0.46)
+        .lerp(palette.rock, exposed_edge.powf(1.7) * 0.62)
+        .lerp(palette.region_tints[region as usize], 0.44)
         + watercolor_wash
-        + Vec3::splat(dapple);
+        + Vec3::splat(dapple * 1.40 + region_value_wash);
     color_array(color)
 }
 
@@ -452,6 +458,7 @@ pub(crate) fn island_rock_vertex_color(
     let vertical_stain = (angle * 17.0 + phase + t * 4.0).sin().abs() * 0.07;
     let sun_wash = Vec3::new(0.040, 0.024, -0.014) * (angle * 5.0 + phase).sin();
     let cool_wash = Vec3::new(-0.018, 0.014, 0.034) * (angle * 11.0 - phase * 0.7 + t).cos();
+    let angular_wash = (sun_wash + cool_wash) * 1.25;
     let stratum_wash = Vec3::new(0.026, 0.012, -0.010) * ((band % 4) as f32 / 3.0);
     let base = if underside {
         Vec3::new(0.30, 0.28, 0.25)
@@ -463,8 +470,7 @@ pub(crate) fn island_rock_vertex_color(
     let color = base
         .lerp(warm, band_tint * 0.32)
         .lerp(cool, ((band % 3) as f32 / 2.0) * 0.22)
-        + sun_wash
-        + cool_wash
+        + angular_wash
         + stratum_wash
         - Vec3::splat(vertical_stain + if underside { 0.04 } else { 0.0 });
     color_array(color)
