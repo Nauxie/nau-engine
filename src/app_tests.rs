@@ -1014,6 +1014,7 @@ fn setup_headless_runtime_app(
         .add_plugins((MinimalPlugins, AssetPlugin::default()))
         .init_resource::<Assets<Mesh>>()
         .init_resource::<Assets<StandardMaterial>>()
+        .init_resource::<Assets<SurfaceMaterial>>()
         .init_resource::<Assets<Image>>()
         .init_resource::<Assets<ScatteringMedium>>()
         .init_asset::<Gltf>()
@@ -1061,6 +1062,7 @@ fn setup_headless_gallery_runtime_app(island_index: usize) -> (App, PathBuf) {
         .add_plugins((MinimalPlugins, AssetPlugin::default()))
         .init_resource::<Assets<Mesh>>()
         .init_resource::<Assets<StandardMaterial>>()
+        .init_resource::<Assets<SurfaceMaterial>>()
         .init_resource::<Assets<Image>>()
         .init_resource::<Assets<ScatteringMedium>>()
         .init_asset::<Gltf>()
@@ -1192,6 +1194,30 @@ fn terrain_export_writes_manifest_meshes_and_weight_sidecars() {
     assert!(report.min_terrain_normal_slope_bands >= ISLAND_TERRAIN_NORMAL_SLOPE_BANDS);
     assert!(report.min_terrain_texture_detail_bands >= ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS);
     assert!(report.min_terrain_texture_edge_promille >= ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE);
+    assert!(
+        report.min_terrain_texture_near_detail_energy_promille
+            >= ISLAND_TERRAIN_TEXTURE_NEAR_DETAIL_ENERGY_PROMILLE
+    );
+    assert!(
+        report.min_terrain_texture_mid_detail_energy_promille
+            >= ISLAND_TERRAIN_TEXTURE_MID_DETAIL_ENERGY_PROMILLE
+    );
+    assert!(
+        report.min_terrain_texture_macro_detail_energy_promille
+            >= ISLAND_TERRAIN_TEXTURE_MACRO_DETAIL_ENERGY_PROMILLE
+    );
+    assert!(
+        report.min_terrain_texture_near_to_mid_ratio_promille
+            >= ISLAND_TERRAIN_TEXTURE_MIN_NEAR_TO_MID_RATIO_PROMILLE
+    );
+    assert!(
+        report.max_terrain_texture_near_to_mid_ratio_promille
+            <= ISLAND_TERRAIN_TEXTURE_MAX_NEAR_TO_MID_RATIO_PROMILLE
+    );
+    assert!(
+        report.max_terrain_texture_isolated_edge_promille
+            <= ISLAND_TERRAIN_TEXTURE_MAX_ISOLATED_EDGE_PROMILLE
+    );
     assert!(report.min_terrain_relief_range_m >= 0.8);
     assert!(report.min_cliff_color_bands >= ISLAND_CLIFF_STRATA_BANDS / 2);
     assert!(report.min_impostor_mesh_vertices >= EXPECTED_ISLAND_IMPOSTOR_MESH_VERTICES);
@@ -2499,6 +2525,12 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
     let mut diagnostics = content_diagnostics::IslandContentDiagnostics::default();
     let mut meshes = Assets::<Mesh>::default();
     let material = Handle::<StandardMaterial>::default();
+    let surface_material = Handle::<SurfaceMaterial>::default();
+    let water_materials = WaterSurfaceMaterials {
+        body: surface_material.clone(),
+        foam: surface_material.clone(),
+        mist: material.clone(),
+    };
     let detail_materials = IslandDetailMaterials {
         trunk: material.clone(),
         foliage: material.clone(),
@@ -2511,14 +2543,14 @@ fn spawned_island_visuals_attach_world_collision_proxies() {
             &mut catalog,
             &mut diagnostics,
             &mut meshes,
-            material.clone(),
+            surface_material.clone(),
             material.clone(),
             material.clone(),
             material.clone(),
             material.clone(),
             detail_materials.clone(),
             material.clone(),
-            material.clone(),
+            water_materials.clone(),
             index,
             island,
         );
@@ -2908,14 +2940,25 @@ fn cloud_cluster_mesh_has_painterly_warm_and_cool_color_wash() {
 }
 
 #[test]
-fn water_material_is_visible_from_both_sides() {
+fn water_materials_preserve_readable_physical_contract() {
     let mut images = Assets::<Image>::default();
-    let mut materials = Assets::<StandardMaterial>::default();
-    let handle = water_surface_material(&mut images, &mut materials);
-    let material = materials.get(&handle).expect("water material exists");
+    let mut materials = Assets::<SurfaceMaterial>::default();
+    let mist = Handle::<StandardMaterial>::default();
+    let handles = water_surface_materials(&mut images, &mut materials, mist);
+    let body = materials
+        .get(&handles.body)
+        .expect("water body material exists");
+    let foam = materials
+        .get(&handles.foam)
+        .expect("water foam material exists");
 
-    assert_eq!(material.cull_mode, None);
-    assert!(material.double_sided);
+    assert_eq!(body.base.cull_mode, None);
+    assert!(body.base.double_sided);
+    assert_eq!(body.base.alpha_mode, AlphaMode::Blend);
+    assert!(body.base.reflectance <= 0.4);
+    assert!(body.base.clearcoat <= 0.1);
+    assert_eq!(foam.base.alpha_mode, AlphaMode::Add);
+    assert!(foam.base.unlit);
 }
 
 #[test]
@@ -3445,9 +3488,33 @@ fn terrain_mesh_uses_high_resolution_irregular_silhouette() {
     let max_u = uvs.iter().map(|uv| uv[0]).fold(f32::NEG_INFINITY, f32::max);
     let min_v = uvs.iter().map(|uv| uv[1]).fold(f32::INFINITY, f32::min);
     let max_v = uvs.iter().map(|uv| uv[1]).fold(f32::NEG_INFINITY, f32::max);
+    let min_x = positions
+        .iter()
+        .map(|position| position[0])
+        .fold(f32::INFINITY, f32::min);
+    let max_x = positions
+        .iter()
+        .map(|position| position[0])
+        .fold(f32::NEG_INFINITY, f32::max);
+    let min_z = positions
+        .iter()
+        .map(|position| position[2])
+        .fold(f32::INFINITY, f32::min);
+    let max_z = positions
+        .iter()
+        .map(|position| position[2])
+        .fold(f32::NEG_INFINITY, f32::max);
+    let u_span = max_u - min_u;
+    let v_span = max_v - min_v;
+    let expected_u_span = (max_x - min_x) * TERRAIN_UV_TILES_PER_METER;
+    let expected_v_span = (max_z - min_z) * TERRAIN_UV_TILES_PER_METER;
     assert!(
-        max_u - min_u >= 3.0 && max_v - min_v >= 2.0,
-        "terrain albedo should tile across large islands instead of stretching one texture over the whole surface"
+        (u_span - expected_u_span).abs() < 0.001 && (v_span - expected_v_span).abs() < 0.001,
+        "terrain UVs should preserve the authored world-space texel scale"
+    );
+    assert!(
+        u_span >= 2.0 && v_span >= 1.5,
+        "terrain albedo should repeat across large islands without obvious stretching"
     );
     assert!(
         mesh_y_range(&mesh) >= 0.8,
@@ -3586,7 +3653,7 @@ fn cliff_and_underside_share_their_transition_ring() {
 }
 
 #[test]
-fn terrain_surface_texture_has_sharp_material_detail() {
+fn terrain_surface_texture_has_coherent_multiscale_detail() {
     let data = procedural_terrain_surface_texture_data(
         [54, 128, 70, 255],
         [28, 92, 48, 255],
@@ -3601,11 +3668,33 @@ fn terrain_surface_texture_has_sharp_material_detail() {
     );
     assert!(
         texture_detail_band_count(&data) >= ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS,
-        "terrain texture should carry enough high-frequency color bins to avoid blurry flat fills"
+        "terrain texture should retain enough palette range to avoid flat fills"
+    );
+    let near_detail = texture_detail_energy_promille(&data, TERRAIN_TEXTURE_SIZE, 1);
+    let mid_detail = texture_detail_energy_promille(&data, TERRAIN_TEXTURE_SIZE, 4);
+    let macro_detail = texture_detail_energy_promille(&data, TERRAIN_TEXTURE_SIZE, 16);
+
+    assert!(
+        near_detail >= ISLAND_TERRAIN_TEXTURE_NEAR_DETAIL_ENERGY_PROMILLE,
+        "terrain texture should retain subtle near detail"
     );
     assert!(
-        texture_edge_promille(&data, TERRAIN_TEXTURE_SIZE) >= ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE,
-        "terrain texture should carry enough local edge contrast to avoid smeared low-frequency fills"
+        mid_detail >= ISLAND_TERRAIN_TEXTURE_MID_DETAIL_ENERGY_PROMILLE,
+        "terrain texture should retain readable mid-scale variation"
+    );
+    assert!(
+        macro_detail >= ISLAND_TERRAIN_TEXTURE_MACRO_DETAIL_ENERGY_PROMILLE,
+        "terrain texture should retain broad authored variation"
+    );
+    assert!(
+        near_detail < mid_detail && mid_detail < macro_detail,
+        "terrain detail should remain hierarchical rather than white-noise dominated: \
+         near={near_detail}, mid={mid_detail}, macro={macro_detail}"
+    );
+    assert!(
+        texture_isolated_edge_promille(&data, TERRAIN_TEXTURE_SIZE)
+            <= ISLAND_TERRAIN_TEXTURE_MAX_ISOLATED_EDGE_PROMILLE,
+        "terrain texture should reject isolated salt-and-pepper detail"
     );
 }
 
@@ -3657,6 +3746,27 @@ fn terrain_vertex_colors_use_biome_palette_variation() {
         color_keys.len(),
         profile_count,
         "same-region terrain samples should preserve every authored palette signature"
+    );
+}
+
+#[test]
+fn every_terrain_palette_preserves_broad_vertex_value_separation() {
+    let profile_count = nau_engine::world::island_art_directions().len();
+    let min_luma_span = (0..profile_count)
+        .map(|index| {
+            let mesh = island_terrain_mesh(index, test_island());
+            let mut luma_values = colors(&mesh)
+                .iter()
+                .map(|color| color[0] * 0.2126 + color[1] * 0.7152 + color[2] * 0.0722)
+                .collect::<Vec<_>>();
+            luma_values.sort_by(f32::total_cmp);
+            luma_values[luma_values.len() * 9 / 10] - luma_values[luma_values.len() / 10]
+        })
+        .fold(f32::INFINITY, f32::min);
+
+    assert!(
+        min_luma_span >= 0.10,
+        "every terrain palette should retain readable broad value regions: {min_luma_span}"
     );
 }
 
@@ -3743,9 +3853,13 @@ fn runtime_spawned_island_materials_preserve_bounded_authored_palette_families()
         assert_eq!(foliage_ids.len(), palette_family_count);
         assert_eq!(stone_ids.len(), palette_family_count);
         assert_eq!(hero_ids.len(), palette_family_count);
+        let standard_material_count = world.resource::<Assets<StandardMaterial>>().len();
+        let surface_material_count = world.resource::<Assets<SurfaceMaterial>>().len();
+        assert_eq!(standard_material_count, 51);
+        assert_eq!(surface_material_count, 7);
         assert_eq!(
-            world.resource::<Assets<StandardMaterial>>().len(),
-            59,
+            standard_material_count + surface_material_count,
+            58,
             "headless runtime material growth must remain explicit and budgeted"
         );
     }
