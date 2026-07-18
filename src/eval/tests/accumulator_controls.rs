@@ -62,6 +62,32 @@ fn accumulator_summarizes_frame_time_percentiles() {
 }
 
 #[test]
+fn startup_frame_times_remain_visible_without_polluting_runtime_stats() {
+    let scenario = scenario_named(BASELINE_ROUTE).expect("baseline route exists");
+    let mut accumulator = EvalAccumulator::default();
+    accumulator.observe_startup_frame_time_ms(120.0);
+    accumulator.observe_frame_time_ms(10.0);
+
+    let summary = accumulator.summary(
+        scenario,
+        EvalArtifacts {
+            summary_json: "summary.json".to_string(),
+            samples_ndjson: "samples.ndjson".to_string(),
+            screenshot_png: None,
+            checkpoint_screenshots: Vec::new(),
+            checkpoint_marker_metadata: Vec::new(),
+        },
+    );
+
+    assert_eq!(summary.metrics.avg_frame_time_ms, 65.0);
+    assert_eq!(summary.metrics.max_frame_time_ms, 120.0);
+    assert_eq!(summary.metrics.runtime_frame_time_sample_count, 1);
+    assert_eq!(summary.metrics.avg_runtime_frame_time_ms, 10.0);
+    assert_eq!(summary.metrics.max_runtime_frame_time_ms, 10.0);
+    assert_eq!(summary.metrics.runtime_frames_over_100ms, 0);
+}
+
+#[test]
 fn accumulator_reports_and_gates_launch_speed_caps() {
     let scenario = scenario_named(ISLAND_LAUNCH_TO_LANDING).expect("island route exists");
     let mut accumulator = EvalAccumulator::default();
