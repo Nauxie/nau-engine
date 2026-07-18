@@ -46,7 +46,8 @@ pub(super) const MIN_ISLAND_TERRAIN_COLOR_BANDS: usize = 32;
 pub(super) const MIN_ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS: usize = 24;
 pub(super) const MIN_ISLAND_TERRAIN_MATERIAL_CHANNELS: usize = 3;
 pub(super) const MIN_ISLAND_TERRAIN_MATERIAL_REGIONS: usize = 4;
-pub(super) const MIN_ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS: usize = 50;
+// The runtime gate measures quantized bands in the neutralized generated albedo.
+pub(super) const MIN_ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS: usize = 5;
 pub(super) const MIN_ISLAND_TERRAIN_RELIEF_RANGE_M: f32 = 0.8;
 pub(super) const MIN_ISLAND_TERRAIN_ARCHETYPE_COUNT: usize = IslandTerrainArchetype::COUNT;
 pub(super) const MIN_ISLAND_CLIFF_COLOR_BANDS: usize = 9;
