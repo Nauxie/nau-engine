@@ -17,6 +17,7 @@ use crate::scene_setup_runtime::hud::spawn_debug_readout;
 use crate::scene_setup_runtime::materials::prepare_scene_materials;
 use crate::scene_setup_runtime::player::spawn_player_runtime;
 use crate::scene_setup_runtime::world::spawn_world_runtime;
+use crate::surface_material::SurfaceMaterial;
 use crate::{Player, PlayerDisplacementDiagnostics};
 use nau_engine::animation::{AnimationState, PlayerPoseIntent};
 use nau_engine::asset_pipeline::VisualAssetKind;
@@ -42,6 +43,7 @@ pub(crate) fn setup(
     route: Res<SkyRoute>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut surface_materials: ResMut<Assets<SurfaceMaterial>>,
     mut images: ResMut<Assets<Image>>,
     mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
     asset_server: Res<AssetServer>,
@@ -53,7 +55,8 @@ pub(crate) fn setup(
     let mut visual_asset_registry = prepare_visual_asset_registry(&asset_server);
     let player_scene_handle = visual_asset_registry.scene_handle(VisualAssetKind::PlayerCharacter);
     let glider_scene_handle = visual_asset_registry.scene_handle(VisualAssetKind::Glider);
-    let scene_materials = prepare_scene_materials(&mut images, &mut materials);
+    let scene_materials =
+        prepare_scene_materials(&mut images, &mut materials, &mut surface_materials);
     let screenshot_eval = eval_run
         .as_deref()
         .is_some_and(|run| run.screenshot_path.is_some());
