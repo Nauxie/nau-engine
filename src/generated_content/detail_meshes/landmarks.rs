@@ -19,12 +19,12 @@ pub(crate) const GARDEN_RING_SEGMENTS: usize = 36;
 pub(crate) const GARDEN_RING_BANDS: usize = 4;
 pub(crate) const LAKE_BASIN_RIM_SEGMENTS: usize = 48;
 pub(crate) const LAKE_BASIN_RIM_BANDS: usize = 5;
-pub(crate) const POND_SURFACE_SEGMENTS: usize = 32;
-pub(crate) const LAKE_SURFACE_SEGMENTS: usize = 48;
-pub(crate) const RIVER_CHANNEL_SEGMENTS: usize = 18;
-pub(crate) const RIVER_CHANNEL_COLUMNS: usize = 3;
-pub(crate) const WATERFALL_RIBBON_COLUMNS: usize = 8;
-pub(crate) const WATERFALL_RIBBON_ROWS: usize = 18;
+pub(crate) const POND_SURFACE_SEGMENTS: usize = 72;
+pub(crate) const LAKE_SURFACE_SEGMENTS: usize = 96;
+pub(crate) const RIVER_CHANNEL_SEGMENTS: usize = 32;
+pub(crate) const RIVER_CHANNEL_COLUMNS: usize = 7;
+pub(crate) const WATERFALL_RIBBON_COLUMNS: usize = 13;
+pub(crate) const WATERFALL_RIBBON_ROWS: usize = 28;
 pub(crate) const WATERFALL_MIST_LOBES: usize = 7;
 pub(crate) const ARTIFACT_STAIR_STEP_COUNT: usize = 9;
 pub(crate) const ARTIFACT_RETAINING_WALL_SEGMENTS: usize = 8;
@@ -39,6 +39,16 @@ const LANDMARK_LOBE_LONGITUDE_SEGMENTS: usize = 9;
 const CRYSTAL_RING_SEGMENTS: usize = 6;
 const HORIZONTAL_WATER_TERRAIN_CLEARANCE_M: f32 = 0.14;
 const WATER_FOOTPRINT_GEOMETRY_PADDING_M: f32 = 0.05;
+const POND_SURFACE_RINGS: [f32; 2] = [0.48, 1.0];
+const LAKE_SURFACE_RINGS: [f32; 3] = [0.34, 0.68, 1.0];
+
+#[derive(Clone, Copy, Debug)]
+struct WaterSurfaceVertex {
+    position: Vec3,
+    uv: [f32; 2],
+    foam_mask: f32,
+    flow_class: f32,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum IslandWaterVisualKind {
@@ -204,13 +214,16 @@ impl IslandWaterVisualMesh {
                 1 + LAKE_SURFACE_SEGMENTS / 2,
                 1 + LAKE_SURFACE_SEGMENTS * 3 / 4,
             ]),
-            Self::RiverChannel { .. } => Some([
-                2 * RIVER_CHANNEL_COLUMNS + 1,
-                5 * RIVER_CHANNEL_COLUMNS + 1,
-                9 * RIVER_CHANNEL_COLUMNS + 1,
-                13 * RIVER_CHANNEL_COLUMNS + 1,
-                16 * RIVER_CHANNEL_COLUMNS + 1,
-            ]),
+            Self::RiverChannel { .. } => {
+                let center_column = RIVER_CHANNEL_COLUMNS / 2;
+                Some([
+                    RIVER_CHANNEL_SEGMENTS * 2 / 18 * RIVER_CHANNEL_COLUMNS + center_column,
+                    RIVER_CHANNEL_SEGMENTS * 5 / 18 * RIVER_CHANNEL_COLUMNS + center_column,
+                    RIVER_CHANNEL_SEGMENTS / 2 * RIVER_CHANNEL_COLUMNS + center_column,
+                    RIVER_CHANNEL_SEGMENTS * 13 / 18 * RIVER_CHANNEL_COLUMNS + center_column,
+                    RIVER_CHANNEL_SEGMENTS * 16 / 18 * RIVER_CHANNEL_COLUMNS + center_column,
+                ])
+            }
             Self::WaterfallRibbon { .. } | Self::WaterfallMist { .. } => None,
         }
     }
@@ -222,9 +235,9 @@ impl IslandWaterVisualMesh {
                 radius_z,
                 seed,
                 POND_SURFACE_SEGMENTS,
-                &[0.48, 1.0],
+                &POND_SURFACE_RINGS,
                 0.15,
-                0.012,
+                0.040,
                 visitor,
             ),
             Self::LakeSurface { radius_x, radius_z } => visit_irregular_water_surface_positions(
@@ -232,9 +245,9 @@ impl IslandWaterVisualMesh {
                 radius_z,
                 seed,
                 LAKE_SURFACE_SEGMENTS,
-                &[0.34, 0.68, 1.0],
+                &LAKE_SURFACE_RINGS,
                 0.20,
-                0.030,
+                0.085,
                 visitor,
             ),
             Self::RiverChannel {
@@ -1033,7 +1046,7 @@ pub(crate) fn island_water_visual_specs(
         let (label, pond_offset, radius_x_scale, radius_z_scale, wind_motion_scale) =
             match water_story {
                 Some(IslandWaterStory::MistPool) => {
-                    ("mist pool", Vec2::new(0.24, -0.18), 0.10, 0.07, 0.72)
+                    ("mist pool", Vec2::new(-0.40, -0.28), 0.10, 0.07, 0.72)
                 }
                 Some(IslandWaterStory::CaveSeep) => {
                     ("cave seep pool", Vec2::new(-0.30, 0.14), 0.18, 0.10, 0.48)
@@ -1630,9 +1643,9 @@ pub(crate) fn pond_surface_mesh(radius_x: f32, radius_z: f32, seed: u32) -> Mesh
         radius_z,
         seed,
         POND_SURFACE_SEGMENTS,
-        &[0.48, 1.0],
+        &POND_SURFACE_RINGS,
         0.15,
-        0.012,
+        0.040,
     )
 }
 
@@ -1642,9 +1655,9 @@ pub(crate) fn lake_surface_mesh(radius_x: f32, radius_z: f32, seed: u32) -> Mesh
         radius_z,
         seed,
         LAKE_SURFACE_SEGMENTS,
-        &[0.34, 0.68, 1.0],
+        &LAKE_SURFACE_RINGS,
         0.20,
-        0.030,
+        0.085,
     )
 }
 
@@ -1654,62 +1667,12 @@ pub(crate) fn river_channel_surface_mesh(
     elevation_drop: f32,
     seed: u32,
 ) -> Mesh {
-    let length = length.max(0.1);
-    let width = width.max(0.05);
-    let elevation_drop = elevation_drop.max(0.0);
     let row_count = RIVER_CHANNEL_SEGMENTS + 1;
-    let mut positions = Vec::with_capacity(row_count * RIVER_CHANNEL_COLUMNS);
-    let mut normals = Vec::with_capacity(positions.capacity());
-    let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut vertices = Vec::with_capacity(row_count * RIVER_CHANNEL_COLUMNS);
     let mut indices = Vec::with_capacity(RIVER_CHANNEL_SEGMENTS * (RIVER_CHANNEL_COLUMNS - 1) * 6);
-    let bend_sign = if random_unit(seed, 0, 971) < 0.5 {
-        -1.0
-    } else {
-        1.0
-    };
-    let primary_bend = bend_sign * width * (0.48 + random_unit(seed, 1, 977) * 0.34);
-    let wave_phase = random_unit(seed, 2, 983) * std::f32::consts::TAU;
-
-    for segment in 0..=RIVER_CHANNEL_SEGMENTS {
-        let t = segment as f32 / RIVER_CHANNEL_SEGMENTS as f32;
-        let longitudinal = (t - 0.5) * length;
-        let envelope = (t * std::f32::consts::PI).sin();
-        let envelope_derivative = std::f32::consts::PI * (t * std::f32::consts::PI).cos();
-        let wander_phase = t * std::f32::consts::TAU + wave_phase;
-        let center_x = envelope * primary_bend + envelope * wander_phase.sin() * width * 0.16;
-        let center_derivative = envelope_derivative * primary_bend
-            + width
-                * 0.16
-                * (envelope_derivative * wander_phase.sin()
-                    + envelope * std::f32::consts::TAU * wander_phase.cos());
-        let lateral_slope = center_derivative / length;
-        let tangent = Vec3::new(lateral_slope, -elevation_drop / length, 1.0).normalize_or_zero();
-        let across = Vec3::new(1.0, 0.0, -lateral_slope).normalize_or_zero();
-        let mut normal = tangent.cross(across).normalize_or_zero();
-        if normal.y < 0.0 {
-            normal = -normal;
-        }
-        let width_jitter = (random_unit(seed, segment as u32, 991) - 0.5) * 0.10;
-        let local_width = width * (0.84 + envelope * 0.16 + width_jitter);
-        let center_y = elevation_drop * (0.5 - t)
-            + envelope * (t * std::f32::consts::TAU * 3.0 + wave_phase).sin() * width * 0.006;
-
-        for column in 0..RIVER_CHANNEL_COLUMNS {
-            let u = column as f32 / (RIVER_CHANNEL_COLUMNS - 1) as f32;
-            let side = (u - 0.5) * local_width;
-            let cross_ripple = (u * std::f32::consts::PI).sin()
-                * envelope
-                * (wander_phase + u * 1.7).sin()
-                * width
-                * 0.004;
-            let position =
-                Vec3::new(center_x, center_y + cross_ripple, longitudinal) + across * side;
-
-            positions.push(position.to_array());
-            normals.push(normal.to_array());
-            uvs.push([u, t]);
-        }
-    }
+    visit_river_channel_surface_vertices(length, width, elevation_drop, seed, |vertex| {
+        vertices.push(vertex);
+    });
 
     for segment in 0..RIVER_CHANNEL_SEGMENTS {
         for column in 0..RIVER_CHANNEL_COLUMNS - 1 {
@@ -1721,44 +1684,52 @@ pub(crate) fn river_channel_surface_mesh(
         }
     }
 
-    build_mesh(positions, normals, uvs, indices)
+    build_water_mesh(vertices, indices)
 }
 
 pub(crate) fn waterfall_ribbon_mesh(width: f32, height: f32, depth: f32, seed: u32) -> Mesh {
-    let mut positions = Vec::with_capacity(WATERFALL_RIBBON_COLUMNS * WATERFALL_RIBBON_ROWS);
-    let mut normals = Vec::with_capacity(positions.capacity());
-    let mut uvs = Vec::with_capacity(positions.capacity());
+    let width = width.max(0.1);
+    let height = height.max(0.1);
+    let depth = depth.max(0.01);
+    let mut vertices = Vec::with_capacity(WATERFALL_RIBBON_COLUMNS * WATERFALL_RIBBON_ROWS);
     let mut indices =
         Vec::with_capacity((WATERFALL_RIBBON_COLUMNS - 1) * (WATERFALL_RIBBON_ROWS - 1) * 6);
+    let primary_phase = random_unit(seed, 0, 1_021) * std::f32::consts::TAU;
+    let secondary_phase = random_unit(seed, 1, 1_027) * std::f32::consts::TAU;
 
     for row in 0..WATERFALL_RIBBON_ROWS {
         let v = row as f32 / (WATERFALL_RIBBON_ROWS - 1) as f32;
         let y = height * (0.5 - v);
-        let fall_waver = (v * 18.0 + seed as f32 * 0.019).sin();
         for column in 0..WATERFALL_RIBBON_COLUMNS {
             let u = column as f32 / (WATERFALL_RIBBON_COLUMNS - 1) as f32;
             let centered_u = u - 0.5;
-            let strand_noise = random_unit(seed, column as u32, 1_021) - 0.5;
             let taper = 1.0 - v * 0.18 + (v * std::f32::consts::PI).sin() * 0.10;
+            let sheet_wave = (v * std::f32::consts::TAU * 2.8
+                + u * std::f32::consts::TAU * 0.65
+                + primary_phase)
+                .sin();
+            let cross_wave = (v * std::f32::consts::TAU * 7.2 - u * std::f32::consts::TAU * 1.35
+                + secondary_phase)
+                .sin();
             let x = centered_u * width * taper
-                + (fall_waver + column as f32 * 0.19).sin() * width * 0.018;
-            let z =
-                (fall_waver * 0.55 + centered_u * 2.1).sin() * depth + strand_noise * depth * 0.28;
-            let alpha_lane = (1.0 - centered_u.abs() * 1.35).max(0.0);
-            let normal_lift = 0.05
-                + alpha_lane * 0.34
-                + (v * std::f32::consts::PI).sin() * 0.16
-                + (fall_waver + column as f32 * 0.41).cos().abs() * 0.10;
-            let normal = Vec3::new(
-                (strand_noise * 0.24 + fall_waver * 0.08).clamp(-0.32, 0.32),
-                normal_lift,
-                1.0 + centered_u.abs() * 0.18,
-            )
-            .normalize();
+                + (v * std::f32::consts::TAU * 2.1 + primary_phase).sin() * width * 0.022;
+            let z = depth
+                * (sheet_wave * 0.58
+                    + cross_wave * 0.24
+                    + (centered_u * std::f32::consts::PI).sin() * 0.12);
+            let edge_foam = (centered_u.abs() * 2.0).powf(1.35);
+            let impact_churn = smoothstep(0.68, 1.0, v);
+            let sheet_churn = (0.5 + 0.5 * cross_wave) * (0.18 + impact_churn * 0.24);
+            let foam_mask = edge_foam
+                .max(0.18 + sheet_churn + impact_churn * 0.32)
+                .clamp(0.0, 1.0);
 
-            positions.push([x, y, z]);
-            normals.push(normal.to_array());
-            uvs.push([u, v * (1.0 + alpha_lane * 0.08)]);
+            vertices.push(WaterSurfaceVertex {
+                position: Vec3::new(x, y, z),
+                uv: [u, v],
+                foam_mask,
+                flow_class: 1.0,
+            });
         }
     }
 
@@ -1772,7 +1743,7 @@ pub(crate) fn waterfall_ribbon_mesh(width: f32, height: f32, depth: f32, seed: u
         }
     }
 
-    build_mesh(positions, normals, uvs, indices)
+    build_water_mesh(vertices, indices)
 }
 
 pub(crate) fn waterfall_mist_mesh(radius: f32, height: f32, seed: u32) -> Mesh {
@@ -1821,38 +1792,18 @@ fn irregular_water_surface_mesh(
     edge_noise_scale: f32,
     ripple_scale: f32,
 ) -> Mesh {
-    let mut positions = Vec::with_capacity(1 + segments * rings.len());
-    let mut normals = Vec::with_capacity(positions.capacity());
-    let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut vertices = Vec::with_capacity(1 + segments * rings.len());
     let mut indices = Vec::with_capacity(segments * (3 + rings.len().saturating_sub(1) * 6));
-
-    positions.push([0.0, 0.0, 0.0]);
-    normals.push(Vec3::Y.to_array());
-    uvs.push([0.5, 0.5]);
-
-    for (ring_index, ring) in rings.iter().copied().enumerate() {
-        for segment in 0..segments {
-            let angle = segment as f32 / segments as f32 * std::f32::consts::TAU;
-            let edge = 1.0
-                + (random_unit(seed, segment as u32 + ring_index as u32 * 31, 907) - 0.5)
-                    * edge_noise_scale
-                    * ring
-                + 0.035 * (angle * 5.0 + seed as f32 * 0.011).sin();
-            let ripple = ((angle * 4.0 + seed as f32 * 0.017).sin()
-                + (angle * 9.0 + ring_index as f32 * 0.71).sin() * 0.35)
-                * ripple_scale
-                * ring;
-            let x = angle.cos() * radius_x * ring * edge;
-            let z = angle.sin() * radius_z * ring * edge;
-
-            positions.push([x, ripple, z]);
-            normals.push(Vec3::Y.to_array());
-            uvs.push([
-                0.5 + angle.cos() * ring * 0.5,
-                0.5 + angle.sin() * ring * 0.5,
-            ]);
-        }
-    }
+    visit_irregular_water_surface_vertices(
+        radius_x,
+        radius_z,
+        seed,
+        segments,
+        rings,
+        edge_noise_scale,
+        ripple_scale,
+        |vertex| vertices.push(vertex),
+    );
 
     let ring_vertex_index = |ring_index: usize, segment: usize| -> u32 {
         1 + (ring_index * segments + segment % segments) as u32
@@ -1878,7 +1829,7 @@ fn irregular_water_surface_mesh(
         }
     }
 
-    build_mesh(positions, normals, uvs, indices)
+    build_water_mesh(vertices, indices)
 }
 
 fn push_river_channel_spec(
@@ -2391,6 +2342,56 @@ fn terrain_clear_horizontal_water_translation(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn visit_irregular_water_surface_vertices(
+    radius_x: f32,
+    radius_z: f32,
+    seed: u32,
+    segments: usize,
+    rings: &[f32],
+    edge_noise_scale: f32,
+    ripple_scale: f32,
+    mut visitor: impl FnMut(WaterSurfaceVertex),
+) {
+    visitor(WaterSurfaceVertex {
+        position: Vec3::ZERO,
+        uv: [0.5, 0.5],
+        foam_mask: 0.0,
+        flow_class: 0.0,
+    });
+    for ring in rings.iter().copied() {
+        for segment in 0..segments {
+            let angle = segment as f32 / segments as f32 * std::f32::consts::TAU;
+            let shoreline_noise = (random_unit(seed, segment as u32, 907) - 0.5) * edge_noise_scale
+                + 0.035 * (angle * 5.0 + seed as f32 * 0.011).sin()
+                + 0.018 * (angle * 11.0 + seed as f32 * 0.023).cos();
+            let edge = 1.0 + shoreline_noise * ring * ring;
+            let planar = Vec2::new(
+                angle.cos() * radius_x * ring * edge,
+                angle.sin() * radius_z * ring * edge,
+            );
+            let ripple = coherent_calm_water_relief(planar, seed, ripple_scale);
+            let shore_foam = smoothstep(0.54, 1.0, ring);
+            let crest_foam = (ripple / ripple_scale.max(0.001)).max(0.0) * 0.10 * ring;
+            let foam_mask = if ring >= 0.999 {
+                1.0
+            } else {
+                (shore_foam + crest_foam * (1.0 - shore_foam)).clamp(0.0, 1.0)
+            };
+
+            visitor(WaterSurfaceVertex {
+                position: Vec3::new(planar.x, ripple, planar.y),
+                uv: [
+                    0.5 + angle.cos() * ring * 0.5,
+                    0.5 + angle.sin() * ring * 0.5,
+                ],
+                foam_mask,
+                flow_class: 0.0,
+            });
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn visit_irregular_water_surface_positions(
     radius_x: f32,
     radius_z: f32,
@@ -2401,34 +2402,47 @@ fn visit_irregular_water_surface_positions(
     ripple_scale: f32,
     mut visitor: impl FnMut(Vec3),
 ) {
-    visitor(Vec3::ZERO);
-    for (ring_index, ring) in rings.iter().copied().enumerate() {
-        for segment in 0..segments {
-            let angle = segment as f32 / segments as f32 * std::f32::consts::TAU;
-            let edge = 1.0
-                + (random_unit(seed, segment as u32 + ring_index as u32 * 31, 907) - 0.5)
-                    * edge_noise_scale
-                    * ring
-                + 0.035 * (angle * 5.0 + seed as f32 * 0.011).sin();
-            let ripple = ((angle * 4.0 + seed as f32 * 0.017).sin()
-                + (angle * 9.0 + ring_index as f32 * 0.71).sin() * 0.35)
-                * ripple_scale
-                * ring;
-            visitor(Vec3::new(
-                angle.cos() * radius_x * ring * edge,
-                ripple,
-                angle.sin() * radius_z * ring * edge,
-            ));
-        }
-    }
+    visit_irregular_water_surface_vertices(
+        radius_x,
+        radius_z,
+        seed,
+        segments,
+        rings,
+        edge_noise_scale,
+        ripple_scale,
+        |vertex| visitor(vertex.position),
+    );
 }
 
-fn visit_river_channel_surface_positions(
+fn coherent_calm_water_relief(position: Vec2, seed: u32, amplitude: f32) -> f32 {
+    let primary_angle = random_unit(seed, 0, 931) * std::f32::consts::TAU;
+    let secondary_angle = random_unit(seed, 1, 937) * std::f32::consts::TAU;
+    let crossing_angle = random_unit(seed, 2, 941) * std::f32::consts::TAU;
+    let primary_direction = Vec2::new(primary_angle.cos(), primary_angle.sin());
+    let secondary_direction = Vec2::new(secondary_angle.cos(), secondary_angle.sin());
+    let crossing_direction = Vec2::new(crossing_angle.cos(), crossing_angle.sin());
+    let primary_phase = random_unit(seed, 3, 947) * std::f32::consts::TAU;
+    let secondary_phase = random_unit(seed, 4, 953) * std::f32::consts::TAU;
+    let crossing_phase = random_unit(seed, 5, 967) * std::f32::consts::TAU;
+    let sample = (position.dot(primary_direction) * 1.18 + primary_phase).sin() * 0.56
+        + (position.dot(secondary_direction) * 2.08 + secondary_phase).sin() * 0.29
+        + (position.dot(crossing_direction) * 0.61 + crossing_phase).sin() * 0.15;
+    let origin =
+        primary_phase.sin() * 0.56 + secondary_phase.sin() * 0.29 + crossing_phase.sin() * 0.15;
+    (sample - origin) * amplitude
+}
+
+fn smoothstep(edge_start: f32, edge_end: f32, value: f32) -> f32 {
+    let t = ((value - edge_start) / (edge_end - edge_start)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+fn visit_river_channel_surface_vertices(
     length: f32,
     width: f32,
     elevation_drop: f32,
     seed: u32,
-    mut visitor: impl FnMut(Vec3),
+    mut visitor: impl FnMut(WaterSurfaceVertex),
 ) {
     let length = length.max(0.1);
     let width = width.max(0.05);
@@ -2440,6 +2454,8 @@ fn visit_river_channel_surface_positions(
     };
     let primary_bend = bend_sign * width * (0.48 + random_unit(seed, 1, 977) * 0.34);
     let wave_phase = random_unit(seed, 2, 983) * std::f32::consts::TAU;
+    let secondary_wave_phase = random_unit(seed, 3, 991) * std::f32::consts::TAU;
+    let width_phase = random_unit(seed, 4, 997) * std::f32::consts::TAU;
 
     for segment in 0..=RIVER_CHANNEL_SEGMENTS {
         let t = segment as f32 / RIVER_CHANNEL_SEGMENTS as f32;
@@ -2455,22 +2471,45 @@ fn visit_river_channel_surface_positions(
                     + envelope * std::f32::consts::TAU * wander_phase.cos());
         let lateral_slope = center_derivative / length;
         let across = Vec3::new(1.0, 0.0, -lateral_slope).normalize_or_zero();
-        let width_jitter = (random_unit(seed, segment as u32, 991) - 0.5) * 0.10;
+        let width_jitter = (t * std::f32::consts::TAU * 2.0 + width_phase).sin() * 0.055
+            + (t * std::f32::consts::TAU * 5.0 + secondary_wave_phase).sin() * 0.025;
         let local_width = width * (0.84 + envelope * 0.16 + width_jitter);
-        let center_y = elevation_drop * (0.5 - t)
-            + envelope * (t * std::f32::consts::TAU * 3.0 + wave_phase).sin() * width * 0.006;
 
         for column in 0..RIVER_CHANNEL_COLUMNS {
             let u = column as f32 / (RIVER_CHANNEL_COLUMNS - 1) as f32;
             let side = (u - 0.5) * local_width;
-            let cross_ripple = (u * std::f32::consts::PI).sin()
-                * envelope
-                * (wander_phase + u * 1.7).sin()
-                * width
-                * 0.004;
-            visitor(Vec3::new(center_x, center_y + cross_ripple, longitudinal) + across * side);
+            let primary_wave = (longitudinal * 1.55 + side * 0.78 + wave_phase).sin();
+            let crossing_wave = (longitudinal * 2.70 - side * 1.34 + secondary_wave_phase).sin();
+            let ripple = envelope * width * (primary_wave * 0.009 + crossing_wave * 0.004);
+            let center_y = elevation_drop * (0.5 - t) + ripple;
+            let position = Vec3::new(center_x, center_y, longitudinal) + across * side;
+            let edge_foam = smoothstep(0.76, 1.0, (u - 0.5).abs() * 2.0);
+            let bend_churn = (lateral_slope.abs() * 0.65).min(0.24) * envelope;
+            let wave_churn =
+                ((primary_wave * 0.5 + 0.5) * 0.12 + crossing_wave.abs() * 0.05) * envelope;
+            let interior_churn = (bend_churn + wave_churn) * (0.25 + edge_foam * 0.75);
+            let foam_mask = edge_foam.max(interior_churn).clamp(0.0, 1.0);
+
+            visitor(WaterSurfaceVertex {
+                position,
+                uv: [u, t],
+                foam_mask,
+                flow_class: 0.55,
+            });
         }
     }
+}
+
+fn visit_river_channel_surface_positions(
+    length: f32,
+    width: f32,
+    elevation_drop: f32,
+    seed: u32,
+    mut visitor: impl FnMut(Vec3),
+) {
+    visit_river_channel_surface_vertices(length, width, elevation_drop, seed, |vertex| {
+        visitor(vertex.position);
+    });
 }
 
 fn append_cairn_stones(
@@ -2695,6 +2734,44 @@ fn build_mesh(
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
 }
 
+fn build_water_mesh(vertices: Vec<WaterSurfaceVertex>, indices: Vec<u32>) -> Mesh {
+    let positions = vertices
+        .iter()
+        .map(|vertex| vertex.position.to_array())
+        .collect::<Vec<_>>();
+    let uvs = vertices.iter().map(|vertex| vertex.uv).collect::<Vec<_>>();
+    let colors = vertices
+        .iter()
+        .map(|vertex| water_vertex_color(vertex.foam_mask, vertex.flow_class))
+        .collect::<Vec<_>>();
+    let surface_channels = vertices
+        .iter()
+        .map(|vertex| [vertex.foam_mask, vertex.flow_class])
+        .collect::<Vec<_>>();
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_1, surface_channels);
+    mesh.compute_smooth_normals();
+    mesh.generate_tangents()
+        .expect("water surface UVs should generate valid tangents");
+    mesh
+}
+
+fn water_vertex_color(foam_mask: f32, flow_class: f32) -> [f32; 4] {
+    let foam_mask = foam_mask.clamp(0.0, 1.0);
+    let flow_class = flow_class.clamp(0.0, 1.0);
+    let deep_tint = Vec3::new(0.82, 0.92, 1.0).lerp(Vec3::new(0.86, 0.95, 1.0), flow_class);
+    let shore_tint = Vec3::new(0.95, 1.0, 0.98).lerp(Vec3::new(0.99, 1.0, 1.0), flow_class);
+    let tint = deep_tint.lerp(shore_tint, foam_mask * 0.84);
+    [tint.x, tint.y, tint.z, 1.0]
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::shared::DETAIL_CARD_VERTICES;
@@ -2705,6 +2782,34 @@ mod tests {
         match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
             Some(VertexAttributeValues::Float32x3(values)) => values,
             _ => panic!("mesh should expose Float32x3 positions"),
+        }
+    }
+
+    fn normals(mesh: &Mesh) -> &[[f32; 3]] {
+        match mesh.attribute(Mesh::ATTRIBUTE_NORMAL) {
+            Some(VertexAttributeValues::Float32x3(values)) => values,
+            _ => panic!("mesh should expose Float32x3 normals"),
+        }
+    }
+
+    fn tangents(mesh: &Mesh) -> &[[f32; 4]] {
+        match mesh.attribute(Mesh::ATTRIBUTE_TANGENT) {
+            Some(VertexAttributeValues::Float32x4(values)) => values,
+            _ => panic!("mesh should expose Float32x4 tangents"),
+        }
+    }
+
+    fn colors(mesh: &Mesh) -> &[[f32; 4]] {
+        match mesh.attribute(Mesh::ATTRIBUTE_COLOR) {
+            Some(VertexAttributeValues::Float32x4(values)) => values,
+            _ => panic!("mesh should expose Float32x4 colors"),
+        }
+    }
+
+    fn surface_channels(mesh: &Mesh) -> &[[f32; 2]] {
+        match mesh.attribute(Mesh::ATTRIBUTE_UV_1) {
+            Some(VertexAttributeValues::Float32x2(values)) => values,
+            _ => panic!("mesh should expose Float32x2 secondary UVs"),
         }
     }
 
@@ -2797,6 +2902,10 @@ mod tests {
             RIVER_CHANNEL_SEGMENTS * (RIVER_CHANNEL_COLUMNS - 1) * 6
         );
         assert_eq!(first_positions, positions(&second));
+        assert_eq!(normals(&first), normals(&second));
+        assert_eq!(tangents(&first), tangents(&second));
+        assert_eq!(colors(&first), colors(&second));
+        assert_eq!(surface_channels(&first), surface_channels(&second));
         assert!(axis_range(first_positions, 2) > 29.0);
         assert!(axis_range(first_positions, 1) < 0.75);
 
@@ -2811,6 +2920,167 @@ mod tests {
                 (min.min(x), max.max(x))
             });
         assert!(centerline_range.1 - centerline_range.0 > 1.0);
+    }
+
+    #[test]
+    fn water_mesh_density_is_higher_but_bounded() {
+        let pond = pond_surface_mesh(12.0, 8.0, 11_149);
+        assert_eq!(
+            pond.count_vertices(),
+            1 + POND_SURFACE_SEGMENTS * POND_SURFACE_RINGS.len()
+        );
+        assert_eq!(
+            u32_indices(&pond).len(),
+            POND_SURFACE_SEGMENTS * (3 + (POND_SURFACE_RINGS.len() - 1) * 6)
+        );
+        assert!(pond.count_vertices() > 65);
+        assert!(pond.count_vertices() <= 192);
+
+        let lake = lake_surface_mesh(24.0, 15.0, 31_191);
+        assert_eq!(
+            lake.count_vertices(),
+            1 + LAKE_SURFACE_SEGMENTS * LAKE_SURFACE_RINGS.len()
+        );
+        assert_eq!(
+            u32_indices(&lake).len(),
+            LAKE_SURFACE_SEGMENTS * (3 + (LAKE_SURFACE_RINGS.len() - 1) * 6)
+        );
+        assert!(lake.count_vertices() > 145);
+        assert!(lake.count_vertices() <= 320);
+
+        let river = river_channel_surface_mesh(30.0, 4.0, 1.2, 41_211);
+        assert_eq!(
+            river.count_vertices(),
+            (RIVER_CHANNEL_SEGMENTS + 1) * RIVER_CHANNEL_COLUMNS
+        );
+        assert!(river.count_vertices() > 57);
+        assert!(river.count_vertices() <= 256);
+
+        let waterfall = waterfall_ribbon_mesh(16.0, 60.0, 1.4, 33_789);
+        assert_eq!(
+            waterfall.count_vertices(),
+            WATERFALL_RIBBON_COLUMNS * WATERFALL_RIBBON_ROWS
+        );
+        assert!(waterfall.count_vertices() > 144);
+        assert!(waterfall.count_vertices() <= 384);
+    }
+
+    #[test]
+    fn water_meshes_generate_complete_surface_attributes() {
+        let meshes = [
+            (pond_surface_mesh(12.0, 8.0, 11_149), 0.0),
+            (lake_surface_mesh(24.0, 15.0, 31_191), 0.0),
+            (river_channel_surface_mesh(30.0, 4.0, 1.2, 41_211), 0.55),
+            (waterfall_ribbon_mesh(16.0, 60.0, 1.4, 33_789), 1.0),
+        ];
+
+        for (mesh, expected_flow_class) in &meshes {
+            assert_eq!(normals(mesh).len(), mesh.count_vertices());
+            assert_eq!(tangents(mesh).len(), mesh.count_vertices());
+            assert_eq!(colors(mesh).len(), mesh.count_vertices());
+            assert_eq!(surface_channels(mesh).len(), mesh.count_vertices());
+
+            for normal in normals(mesh) {
+                let normal = Vec3::from_array(*normal);
+                assert!(normal.is_finite());
+                assert!((normal.length() - 1.0).abs() < 0.001);
+            }
+            for tangent in tangents(mesh) {
+                let tangent_direction = Vec3::new(tangent[0], tangent[1], tangent[2]);
+                assert!(tangent.iter().all(|component| component.is_finite()));
+                assert!((tangent_direction.length() - 1.0).abs() < 0.001);
+                assert!((tangent[3].abs() - 1.0).abs() < 0.001);
+            }
+            for color in colors(mesh) {
+                assert!(color.iter().all(|channel| (0.0..=1.0).contains(channel)));
+                assert_eq!(color[3], 1.0);
+            }
+            for channels in surface_channels(mesh) {
+                assert!((0.0..=1.0).contains(&channels[0]));
+                assert_eq!(channels[1], *expected_flow_class);
+            }
+        }
+    }
+
+    #[test]
+    fn water_foam_masks_separate_centers_from_edges_and_churn() {
+        let pond = pond_surface_mesh(12.0, 8.0, 11_149);
+        let pond_channels = surface_channels(&pond);
+        assert_eq!(pond_channels[0], [0.0, 0.0]);
+        let pond_edge_start = 1 + POND_SURFACE_SEGMENTS * (POND_SURFACE_RINGS.len() - 1);
+        assert!(
+            pond_channels[pond_edge_start..]
+                .iter()
+                .all(|channels| channels[0] == 1.0)
+        );
+
+        let lake = lake_surface_mesh(24.0, 15.0, 31_191);
+        let lake_channels = surface_channels(&lake);
+        assert_eq!(lake_channels[0], [0.0, 0.0]);
+        let lake_edge_start = 1 + LAKE_SURFACE_SEGMENTS * (LAKE_SURFACE_RINGS.len() - 1);
+        assert!(
+            lake_channels[lake_edge_start..]
+                .iter()
+                .all(|channels| channels[0] == 1.0)
+        );
+
+        let river = river_channel_surface_mesh(30.0, 4.0, 1.2, 41_211);
+        let river_channels = surface_channels(&river);
+        let river_center_average = (0..=RIVER_CHANNEL_SEGMENTS)
+            .map(|row| river_channels[row * RIVER_CHANNEL_COLUMNS + RIVER_CHANNEL_COLUMNS / 2][0])
+            .sum::<f32>()
+            / (RIVER_CHANNEL_SEGMENTS + 1) as f32;
+        let river_edge_average = (0..=RIVER_CHANNEL_SEGMENTS)
+            .flat_map(|row| {
+                [
+                    river_channels[row * RIVER_CHANNEL_COLUMNS][0],
+                    river_channels[row * RIVER_CHANNEL_COLUMNS + RIVER_CHANNEL_COLUMNS - 1][0],
+                ]
+            })
+            .sum::<f32>()
+            / ((RIVER_CHANNEL_SEGMENTS + 1) * 2) as f32;
+        assert!(river_center_average < 0.20);
+        assert!(river_edge_average > river_center_average + 0.75);
+
+        let waterfall = waterfall_ribbon_mesh(16.0, 60.0, 1.4, 33_789);
+        let waterfall_channels = surface_channels(&waterfall);
+        let waterfall_center_average = (0..WATERFALL_RIBBON_ROWS)
+            .map(|row| {
+                waterfall_channels[row * WATERFALL_RIBBON_COLUMNS + WATERFALL_RIBBON_COLUMNS / 2][0]
+            })
+            .sum::<f32>()
+            / WATERFALL_RIBBON_ROWS as f32;
+        let waterfall_edge_average = (0..WATERFALL_RIBBON_ROWS)
+            .flat_map(|row| {
+                [
+                    waterfall_channels[row * WATERFALL_RIBBON_COLUMNS][0],
+                    waterfall_channels
+                        [row * WATERFALL_RIBBON_COLUMNS + WATERFALL_RIBBON_COLUMNS - 1][0],
+                ]
+            })
+            .sum::<f32>()
+            / (WATERFALL_RIBBON_ROWS * 2) as f32;
+        assert!(waterfall_center_average > 0.20);
+        assert!(waterfall_edge_average > waterfall_center_average + 0.30);
+    }
+
+    #[test]
+    fn water_surface_normals_vary_with_coherent_relief() {
+        for (mesh, minimum_component_range) in [
+            (pond_surface_mesh(12.0, 8.0, 11_149), 0.01),
+            (lake_surface_mesh(24.0, 15.0, 31_191), 0.01),
+            (river_channel_surface_mesh(30.0, 4.0, 1.2, 41_211), 0.02),
+            (waterfall_ribbon_mesh(16.0, 60.0, 1.4, 33_789), 0.04),
+        ] {
+            let component_range = (0..3)
+                .map(|axis| axis_range(normals(&mesh), axis))
+                .fold(0.0_f32, f32::max);
+            assert!(
+                component_range > minimum_component_range,
+                "water surface normal variation {component_range:.4} should exceed \
+                 {minimum_component_range:.4}"
+            );
+        }
     }
 
     #[test]
@@ -3239,6 +3509,36 @@ mod tests {
         assert!(
             pool.translation.y - island.mesh_top_y_at(pool.translation)
                 >= HORIZONTAL_WATER_TERRAIN_CLEARANCE_M - 0.001
+        );
+    }
+
+    #[test]
+    fn mist_pool_clears_the_fog_cairn_visual_footprint() {
+        use super::super::hero_landmarks::island_hero_landmark_spec;
+
+        let route = nau_engine::world::SkyRoute::default();
+        let (island_index, island) = route
+            .islands()
+            .iter()
+            .copied()
+            .enumerate()
+            .find(|(_, island)| island.name == "mist stepping stone")
+            .expect("mist stepping stone exists");
+        let pool = island_water_visual_specs(island_index, island)
+            .into_iter()
+            .find(|spec| spec.label == "mist pool")
+            .expect("mist stepping stone should have a mist pool");
+        let IslandWaterVisualMesh::PondSurface { radius_x, radius_z } = pool.mesh else {
+            panic!("mist pool should use a pond surface");
+        };
+        let hero = island_hero_landmark_spec(island_index, island).expect("fog cairn hero");
+        let separation = (pool.translation - hero.translation).abs();
+        let clearance = 0.25;
+
+        assert!(
+            separation.x >= hero.visual_half_extents.x + radius_x + clearance
+                || separation.z >= hero.visual_half_extents.z + radius_z + clearance,
+            "mist pool should not be hidden beneath the fog cairn footprint"
         );
     }
 
