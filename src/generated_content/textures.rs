@@ -4,6 +4,8 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use std::collections::HashSet;
 
+use super::surface_textures::TerrainSurfaceTextureData;
+
 pub(crate) const PROCEDURAL_TEXTURE_SIZE: u32 = 128;
 pub(crate) const TERRAIN_TEXTURE_SIZE: u32 = 512;
 
@@ -63,85 +65,7 @@ pub(crate) fn procedural_terrain_surface_texture_data(
     seed: u32,
     size: u32,
 ) -> Vec<u8> {
-    let mut data = Vec::with_capacity((size * size * 4) as usize);
-
-    for y in 0..size {
-        for x in 0..size {
-            let fine = texture_noise(x.wrapping_mul(5), y.wrapping_mul(5), seed);
-            let grain = texture_noise(x.wrapping_mul(13), y.wrapping_mul(7), seed.wrapping_add(71));
-            let micro = texture_noise(
-                x.wrapping_mul(31).wrapping_add(y.wrapping_mul(3)),
-                y.wrapping_mul(17).wrapping_add(x.wrapping_mul(5)),
-                seed.wrapping_add(211),
-            );
-            let pitted = texture_noise(
-                x.wrapping_mul(47).wrapping_add(y.wrapping_mul(11)),
-                y.wrapping_mul(41).wrapping_add(x.wrapping_mul(13)),
-                seed.wrapping_add(317),
-            );
-            let broad = smooth_texture_noise(x, y, 22, seed.wrapping_add(19));
-            let streak = smooth_texture_noise(
-                x.wrapping_mul(2).wrapping_add(y / 2),
-                y.wrapping_mul(5).wrapping_add(x / 2),
-                12,
-                seed.wrapping_add(137),
-            );
-            let strata = smooth_texture_noise(
-                x.wrapping_mul(7).wrapping_add(y.wrapping_mul(13)),
-                y.wrapping_mul(11).wrapping_add(x.wrapping_mul(5)),
-                3,
-                seed.wrapping_add(401),
-            );
-            let fissure = smooth_texture_noise(
-                x.wrapping_mul(3).wrapping_add(y),
-                y.wrapping_mul(7).wrapping_add(x.wrapping_mul(2)),
-                5,
-                seed.wrapping_add(241),
-            );
-            let secondary_weight = ((118i16 - broad as i16).max(0) as u16 * 126 / 118)
-                .saturating_add((grain > 192) as u16 * 24)
-                .saturating_add((micro < 28) as u16 * 16)
-                .saturating_add((pitted < 34) as u16 * 22)
-                .min(150);
-            let accent_weight = ((broad as i16 - 164).max(0) as u16 * 142 / 91)
-                .saturating_add((fine > 222 && grain > 142) as u16 * 70)
-                .saturating_add((micro > 226) as u16 * 38)
-                .saturating_add((pitted > 224) as u16 * 30)
-                .min(172);
-            let vein = (x.wrapping_mul(17) + y.wrapping_mul(29) + seed).is_multiple_of(47);
-            let mineral_fleck =
-                (fine > 222 && grain > 142) || (micro > 234 && fissure > 164) || pitted > 242;
-            let mut color = mix_rgba(primary, secondary, secondary_weight);
-            color = mix_rgba(color, accent, accent_weight);
-
-            if vein {
-                color = mix_rgba(color, secondary, 104);
-            }
-            if strata < 36 {
-                color = mix_rgba(color, secondary, 72);
-            }
-            if strata > 220 {
-                color = mix_rgba(color, accent, 76);
-            }
-            if fissure > 218 {
-                color = mix_rgba(color, accent, 58);
-            }
-            if mineral_fleck {
-                color = mix_rgba(color, accent, 96);
-            }
-
-            let shade = fine as i16 / 5
-                + grain as i16 / 8
-                + streak as i16 / 10
-                + micro as i16 / 9
-                + pitted as i16 / 11
-                + strata as i16 / 14
-                - 128;
-            data.extend_from_slice(&shade_rgba(color, shade));
-        }
-    }
-
-    data
+    TerrainSurfaceTextureData::generate(primary, secondary, accent, seed, size).albedo
 }
 
 pub(crate) fn procedural_srgb_texture(
@@ -280,6 +204,66 @@ pub(crate) fn texture_detail_band_count(data: &[u8]) -> usize {
         .len()
 }
 
+pub(crate) fn texture_detail_energy_promille(data: &[u8], size: u32, offset: u32) -> usize {
+    if !has_complete_rgba_level(data, size) {
+        return 0;
+    }
+    let offset = offset % size;
+    if offset == 0 {
+        return 0;
+    }
+
+    let mut total_delta = 0u64;
+    for y in 0..size {
+        for x in 0..size {
+            let luma = texture_pixel_luma(data, size, x, y);
+            total_delta +=
+                u64::from(luma.abs_diff(texture_pixel_luma(data, size, (x + offset) % size, y)));
+            total_delta +=
+                u64::from(luma.abs_diff(texture_pixel_luma(data, size, x, (y + offset) % size)));
+        }
+    }
+
+    let sample_count = u64::from(size) * u64::from(size) * 2;
+    (total_delta * 1000 / (sample_count * 255)) as usize
+}
+
+pub(crate) fn texture_isolated_edge_promille(data: &[u8], size: u32) -> usize {
+    if !has_complete_rgba_level(data, size) {
+        return 0;
+    }
+
+    const HIGH_CONTRAST_DELTA: u8 = 24;
+    let mut isolated = 0usize;
+    for y in 0..size {
+        for x in 0..size {
+            let center = texture_pixel_luma(data, size, x, y);
+            let mut above_all = true;
+            let mut below_all = true;
+            let mut high_contrast = true;
+            for offset_y in -1..=1 {
+                for offset_x in -1..=1 {
+                    if offset_x == 0 && offset_y == 0 {
+                        continue;
+                    }
+                    let neighbor = texture_pixel_luma(
+                        data,
+                        size,
+                        wrapped_texture_coordinate(x, offset_x, size),
+                        wrapped_texture_coordinate(y, offset_y, size),
+                    );
+                    above_all &= center > neighbor;
+                    below_all &= center < neighbor;
+                    high_contrast &= center.abs_diff(neighbor) >= HIGH_CONTRAST_DELTA;
+                }
+            }
+            isolated += usize::from(high_contrast && (above_all || below_all));
+        }
+    }
+
+    isolated * 1000 / (size as usize * size as usize)
+}
+
 pub(crate) fn texture_edge_promille(data: &[u8], size: u32) -> usize {
     if size < 2 {
         return 0;
@@ -312,6 +296,21 @@ pub(crate) fn texture_luma(rgb: &[u8]) -> u8 {
     ((u16::from(rgb[0]) * 77 + u16::from(rgb[1]) * 150 + u16::from(rgb[2]) * 29) / 256) as u8
 }
 
+fn has_complete_rgba_level(data: &[u8], size: u32) -> bool {
+    size > 0
+        && usize::try_from(u64::from(size) * u64::from(size) * 4)
+            .is_ok_and(|expected_len| data.len() >= expected_len)
+}
+
+fn texture_pixel_luma(data: &[u8], size: u32, x: u32, y: u32) -> u8 {
+    let offset = ((y * size + x) * 4) as usize;
+    texture_luma(&data[offset..offset + 3])
+}
+
+fn wrapped_texture_coordinate(value: u32, offset: i32, size: u32) -> u32 {
+    (i64::from(value) + i64::from(offset)).rem_euclid(i64::from(size)) as u32
+}
+
 pub(crate) fn texture_noise(x: u32, y: u32, seed: u32) -> u8 {
     let mut value = x
         .wrapping_mul(374_761_393)
@@ -322,27 +321,6 @@ pub(crate) fn texture_noise(x: u32, y: u32, seed: u32) -> u8 {
     ((value ^ (value >> 16)) & 0xff) as u8
 }
 
-pub(crate) fn smooth_texture_noise(x: u32, y: u32, cell_size: u32, seed: u32) -> u8 {
-    let cell_size = cell_size.max(1);
-    let grid_x = x / cell_size;
-    let grid_y = y / cell_size;
-    let local_x = (x % cell_size) as f32 / cell_size as f32;
-    let local_y = (y % cell_size) as f32 / cell_size as f32;
-    let weight_x = local_x * local_x * (3.0 - 2.0 * local_x);
-    let weight_y = local_y * local_y * (3.0 - 2.0 * local_y);
-
-    let north_west = texture_noise(grid_x, grid_y, seed) as f32;
-    let north_east = texture_noise(grid_x + 1, grid_y, seed) as f32;
-    let south_west = texture_noise(grid_x, grid_y + 1, seed) as f32;
-    let south_east = texture_noise(grid_x + 1, grid_y + 1, seed) as f32;
-    let north = north_west + (north_east - north_west) * weight_x;
-    let south = south_west + (south_east - south_west) * weight_x;
-
-    (north + (south - north) * weight_y)
-        .round()
-        .clamp(0.0, 255.0) as u8
-}
-
 pub(crate) fn mix_rgba(source: [u8; 4], target: [u8; 4], target_weight: u16) -> [u8; 4] {
     let source_weight = 255 - target_weight;
     [
@@ -350,15 +328,6 @@ pub(crate) fn mix_rgba(source: [u8; 4], target: [u8; 4], target_weight: u16) -> 
         ((source[1] as u16 * source_weight + target[1] as u16 * target_weight) / 255) as u8,
         ((source[2] as u16 * source_weight + target[2] as u16 * target_weight) / 255) as u8,
         ((source[3] as u16 * source_weight + target[3] as u16 * target_weight) / 255) as u8,
-    ]
-}
-
-pub(crate) fn shade_rgba(source: [u8; 4], shade: i16) -> [u8; 4] {
-    [
-        (source[0] as i16 + shade).clamp(0, 255) as u8,
-        (source[1] as i16 + shade).clamp(0, 255) as u8,
-        (source[2] as i16 + shade).clamp(0, 255) as u8,
-        source[3],
     ]
 }
 
@@ -396,11 +365,21 @@ mod tests {
     }
 
     #[test]
-    fn terrain_surface_texture_keeps_high_frequency_detail() {
+    fn terrain_surface_texture_delegates_to_coherent_albedo() {
+        let primary = [80, 142, 72, 255];
+        let secondary = [45, 96, 64, 255];
+        let accent = [164, 144, 82, 255];
         let data = procedural_terrain_surface_texture_data(
-            [80, 142, 72, 255],
-            [45, 96, 64, 255],
-            [164, 144, 82, 255],
+            primary,
+            secondary,
+            accent,
+            311,
+            TERRAIN_TEXTURE_SIZE,
+        );
+        let coherent = TerrainSurfaceTextureData::generate(
+            primary,
+            secondary,
+            accent,
             311,
             TERRAIN_TEXTURE_SIZE,
         );
@@ -409,7 +388,45 @@ mod tests {
             data.len(),
             (TERRAIN_TEXTURE_SIZE * TERRAIN_TEXTURE_SIZE * 4) as usize
         );
-        assert!(texture_detail_band_count(&data) >= 56);
-        assert!(texture_edge_promille(&data, TERRAIN_TEXTURE_SIZE) >= 590);
+        assert_eq!(data, coherent.albedo);
+        assert!(texture_detail_band_count(&data) >= 7);
+    }
+
+    #[test]
+    fn detail_energy_uses_wrapped_normalized_luma_deltas() {
+        let size = 8u32;
+        let mut checker = Vec::with_capacity((size * size * 4) as usize);
+        for y in 0..size {
+            for x in 0..size {
+                let value = if (x + y).is_multiple_of(2) { 0 } else { 255 };
+                checker.extend_from_slice(&[value, value, value, 255]);
+            }
+        }
+
+        assert_eq!(texture_detail_energy_promille(&checker, size, 1), 1000);
+        assert_eq!(texture_detail_energy_promille(&checker, size, 2), 0);
+        assert_eq!(texture_detail_energy_promille(&checker, size, size), 0);
+        assert_eq!(texture_detail_energy_promille(&[], size, 1), 0);
+    }
+
+    #[test]
+    fn isolated_edge_metric_counts_sparse_salt_and_pepper_not_regions() {
+        let size = 10u32;
+        let mut data = vec![80; (size * size * 4) as usize];
+        for alpha in data.iter_mut().skip(3).step_by(4) {
+            *alpha = 255;
+        }
+        let isolated_offset = ((4 * size + 4) * 4) as usize;
+        data[isolated_offset..isolated_offset + 3].fill(255);
+
+        assert_eq!(texture_isolated_edge_promille(&data, size), 10);
+
+        for y in 3..=5 {
+            for x in 3..=5 {
+                let offset = ((y * size + x) * 4) as usize;
+                data[offset..offset + 3].fill(255);
+            }
+        }
+        assert_eq!(texture_isolated_edge_promille(&data, size), 0);
     }
 }
