@@ -9,6 +9,17 @@ use crate::{
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 
+fn check_at_most_u64(name: &str, value: u64, threshold: u64, unit: &str) -> Value {
+    json!({
+        "name": name,
+        "passed": value <= threshold,
+        "value": value,
+        "comparator": "<=",
+        "threshold": threshold,
+        "unit": unit,
+    })
+}
+
 #[derive(Clone, Copy, Debug)]
 struct LayoutIsland {
     center: [f64; 3],
@@ -478,9 +489,39 @@ pub(crate) fn audit_manifest(manifest: &Value, root_dir: &Path, manifest_path: &
         "bands",
     ));
     checks.push(check_at_least_u64(
-        "terrain_texture_edge_promille",
-        value_u64(minimums, "terrain_texture_edge_promille"),
-        MIN_TERRAIN_TEXTURE_EDGE_PROMILLE,
+        "terrain_texture_near_detail_energy_promille",
+        value_u64(minimums, "terrain_texture_near_detail_energy_promille"),
+        MIN_TERRAIN_TEXTURE_NEAR_DETAIL_ENERGY_PROMILLE,
+        "promille",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_texture_mid_detail_energy_promille",
+        value_u64(minimums, "terrain_texture_mid_detail_energy_promille"),
+        MIN_TERRAIN_TEXTURE_MID_DETAIL_ENERGY_PROMILLE,
+        "promille",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_texture_macro_detail_energy_promille",
+        value_u64(minimums, "terrain_texture_macro_detail_energy_promille"),
+        MIN_TERRAIN_TEXTURE_MACRO_DETAIL_ENERGY_PROMILLE,
+        "promille",
+    ));
+    checks.push(check_at_least_u64(
+        "terrain_texture_min_near_to_mid_ratio_promille",
+        value_u64(minimums, "terrain_texture_min_near_to_mid_ratio_promille"),
+        MIN_TERRAIN_TEXTURE_NEAR_TO_MID_RATIO_PROMILLE,
+        "promille",
+    ));
+    checks.push(check_at_most_u64(
+        "terrain_texture_max_near_to_mid_ratio_promille",
+        value_u64(minimums, "terrain_texture_max_near_to_mid_ratio_promille"),
+        MAX_TERRAIN_TEXTURE_NEAR_TO_MID_RATIO_PROMILLE,
+        "promille",
+    ));
+    checks.push(check_at_most_u64(
+        "terrain_texture_max_isolated_edge_promille",
+        value_u64(minimums, "terrain_texture_max_isolated_edge_promille"),
+        MAX_TERRAIN_TEXTURE_ISOLATED_EDGE_PROMILLE,
         "promille",
     ));
     checks.push(check_at_least_f64(
