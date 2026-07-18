@@ -1,17 +1,19 @@
 use crate::{
     checkpoint::{audit_checkpoint_path, audit_scene_sample, terrain_material_variant_for_label},
     materials::{
-        material_matches, material_variant_matches, sample_pixel_hits,
+        aggregate_water_metrics, material_matches, material_variant_matches, sample_pixel_hits,
         sample_pixel_hits_with_variant,
     },
     report::{json_number, json_string, report_checks, report_json},
     thresholds::{
         MIN_DISTANT_ISLAND_PIXEL_COVERAGE, MIN_FOLIAGE_PIXEL_COVERAGE,
         MIN_PASSED_TERRAIN_MATERIAL_VARIANTS, MIN_SAMPLE_PIXEL_HITS,
-        MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE, MIN_TERRAIN_PIXEL_COVERAGE,
-        MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS, MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE,
+        MIN_SUBSTANTIAL_WATER_LOCAL_HITS, MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE,
+        MIN_TERRAIN_PIXEL_COVERAGE, MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS,
+        MIN_WATER_INTERNAL_EDGE_DENSITY, MIN_WATER_LUMA_P95_P5, MIN_WATER_QUANTIZED_COLOR_BUCKETS,
+        MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE,
     },
-    types::{CheckpointAudit, SceneSampleAudit},
+    types::{CheckpointAudit, SceneSampleAudit, WaterLocalMetrics},
 };
 use image::{Rgb, RgbImage};
 use nau_engine::world::{IslandWaterStory, island_art_directions};
@@ -289,6 +291,7 @@ fn report_checks_require_visible_material_samples_before_pixel_hits() {
         screen_x: Some(12.0),
         screen_y: Some(12.0),
         semantic_pixel_hits: MIN_SAMPLE_PIXEL_HITS,
+        water_local_metrics: None,
         passed: true,
     };
     let occluded_cloud = SceneSampleAudit {
@@ -302,6 +305,7 @@ fn report_checks_require_visible_material_samples_before_pixel_hits() {
         screen_x: Some(24.0),
         screen_y: Some(24.0),
         semantic_pixel_hits: MIN_SAMPLE_PIXEL_HITS,
+        water_local_metrics: None,
         passed: false,
     };
     let checkpoint = CheckpointAudit {
@@ -436,6 +440,7 @@ fn report_checks_require_wind_pixels_at_each_visible_wind_checkpoint() {
         screen_x: Some(12.0),
         screen_y: Some(12.0),
         semantic_pixel_hits: 0,
+        water_local_metrics: None,
         passed: false,
     };
     let hit_wind = scene_audit_sample(
@@ -533,6 +538,7 @@ fn report_checks_require_scene_pixel_coverage_not_just_hit_counts() {
         screen_x: Some(12.0),
         screen_y: Some(12.0),
         semantic_pixel_hits: MIN_SAMPLE_PIXEL_HITS,
+        water_local_metrics: None,
         passed: true,
     };
     let checkpoint = CheckpointAudit {
@@ -1138,7 +1144,11 @@ fn checkpoint_requires_visible_scene_sample_kind_diversity() {
 #[test]
 fn water_stone_and_plateau_shelf_materials_match_generated_palette_colors() {
     for color in [
+        [20.0, 27.0, 36.0],
+        [37.0, 44.0, 50.0],
         [22.0, 34.0, 39.0],
+        [47.0, 66.0, 69.0],
+        [55.0, 74.0, 85.0],
         [54.0, 154.0, 210.0],
         [22.0, 92.0, 156.0],
         [160.0, 220.0, 244.0],
@@ -1235,6 +1245,363 @@ fn water_variant_accepts_lit_surface_water_without_accepting_sky() {
 }
 
 #[test]
+fn substantial_water_rejects_flat_cyan_patch_after_recording_local_extent() {
+    let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
+    for (x, y, color) in flat_water_region_pixels("water_surface", 32, 32) {
+        image.put_pixel(x, y, color);
+    }
+    let audit = audit_scene_sample(
+        &projected_sample("water_surface", "test lake", "water", 32.0, 32.0),
+        &image,
+        (1.0, 1.0),
+    )
+    .expect("water sample");
+    let metrics = audit.water_local_metrics.as_ref().expect("water metrics");
+
+    assert!(metrics.area_span_passed);
+    assert_eq!(metrics.local_hit_count, 55);
+    assert_eq!((metrics.x_span, metrics.y_span), (11, 5));
+    assert_eq!(metrics.quantized_color_bucket_count, 1);
+    assert_eq!(metrics.luma_p95_p5, 0.0);
+    assert_eq!(metrics.internal_edge_density, 0.0);
+    assert!(!metrics.passed);
+    assert!(!audit.passed);
+    let checks = report_checks(&[checkpoint_with_scene_samples("flat_water", vec![audit])]);
+    let quality = checks
+        .iter()
+        .find(|check| check.name == "water_substantial_semantic_quality_passes")
+        .expect("flat-water quality check");
+    assert_eq!((quality.value, quality.threshold), (0.0, 1.0));
+    assert!(!quality.passed);
+}
+
+#[test]
+fn substantial_water_accepts_coherent_gradient_and_specular_variation() {
+    for (kind, label) in [
+        ("water_surface", "test lake"),
+        ("river_channel", "test channel"),
+        ("waterfall_water", "test waterfall"),
+    ] {
+        for pixels in [
+            semantic_water_region_pixels(kind, 32, 32),
+            rendered_muted_water_region_pixels(kind, 32, 32),
+            low_contrast_muted_water_region_pixels(kind, 32, 32),
+        ] {
+            let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
+            for (x, y, color) in pixels {
+                image.put_pixel(x, y, color);
+            }
+            let audit = audit_scene_sample(
+                &projected_sample(kind, label, "water", 32.0, 32.0),
+                &image,
+                (1.0, 1.0),
+            )
+            .expect("water sample");
+            let metrics = audit.water_local_metrics.as_ref().expect("water metrics");
+
+            assert!(metrics.local_hit_count >= MIN_SUBSTANTIAL_WATER_LOCAL_HITS);
+            assert!(metrics.quantized_color_bucket_count >= MIN_WATER_QUANTIZED_COLOR_BUCKETS);
+            assert!(metrics.luma_p95_p5 >= MIN_WATER_LUMA_P95_P5);
+            assert!(metrics.internal_edge_density >= MIN_WATER_INTERNAL_EDGE_DENSITY);
+            assert!(metrics.passed, "{kind} metrics: {metrics:?}");
+            assert!(audit.passed, "{kind} audit: {audit:?}");
+        }
+    }
+}
+
+#[test]
+fn horizontal_water_accepts_translucent_reflection_palette_without_accepting_sky_blue() {
+    for kind in ["water_surface", "river_channel"] {
+        let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
+        for (x, y, color) in translucent_surface_water_region_pixels(kind, 32, 32) {
+            image.put_pixel(x, y, color);
+        }
+        let audit = audit_scene_sample(
+            &projected_sample(kind, "translucent water", "water", 32.0, 32.0),
+            &image,
+            (1.0, 1.0),
+        )
+        .expect("water sample");
+        let metrics = audit.water_local_metrics.as_ref().expect("water metrics");
+
+        assert!(metrics.passed, "{kind} metrics: {metrics:?}");
+        assert!(audit.passed, "{kind} audit: {audit:?}");
+    }
+
+    let sky_audit = audit_scene_sample(
+        &projected_sample("water_surface", "sky false positive", "water", 32.0, 32.0),
+        &RgbImage::from_pixel(64, 64, Rgb([130, 170, 220])),
+        (1.0, 1.0),
+    )
+    .expect("sky sample");
+    assert_eq!(
+        sky_audit
+            .water_local_metrics
+            .as_ref()
+            .expect("sky water metrics")
+            .local_hit_count,
+        0
+    );
+    assert!(!sky_audit.passed);
+}
+
+#[test]
+fn waterfall_water_accepts_varied_neutral_foam_but_rejects_flat_cloud_color() {
+    let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
+    for (x, y, color) in neutral_waterfall_foam_region_pixels(32, 32) {
+        image.put_pixel(x, y, color);
+    }
+    let audit = audit_scene_sample(
+        &projected_sample("waterfall_water", "foamy waterfall", "water", 32.0, 32.0),
+        &image,
+        (1.0, 1.0),
+    )
+    .expect("waterfall sample");
+    assert!(
+        audit
+            .water_local_metrics
+            .as_ref()
+            .expect("waterfall metrics")
+            .passed
+    );
+    assert!(audit.passed);
+
+    let cloud_audit = audit_scene_sample(
+        &projected_sample(
+            "waterfall_water",
+            "flat cloud false positive",
+            "water",
+            32.0,
+            32.0,
+        ),
+        &RgbImage::from_pixel(64, 64, Rgb([212, 219, 217])),
+        (1.0, 1.0),
+    )
+    .expect("cloud sample");
+    assert!(!cloud_audit.passed);
+}
+
+#[test]
+fn waterfall_water_requires_vertical_local_span() {
+    let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
+    for (x, y, color) in semantic_water_region_pixels("water_surface", 32, 32) {
+        image.put_pixel(x, y, color);
+    }
+    let audit = audit_scene_sample(
+        &projected_sample(
+            "waterfall_water",
+            "horizontal false waterfall",
+            "water",
+            32.0,
+            32.0,
+        ),
+        &image,
+        (1.0, 1.0),
+    )
+    .expect("waterfall sample");
+    let metrics = audit.water_local_metrics.as_ref().expect("water metrics");
+
+    assert_eq!((metrics.x_span, metrics.y_span), (11, 5));
+    assert!(!metrics.area_span_passed);
+    assert!(!audit.passed);
+}
+
+#[test]
+fn tiny_plunge_pool_accent_keeps_lower_legacy_threshold() {
+    let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
+    for (x, y, color) in semantic_material_pixels("water", 32, 32) {
+        image.put_pixel(x, y, color);
+    }
+    let audit = audit_scene_sample(
+        &projected_sample(
+            "water_detail_plunge_pool",
+            "plunge pool ripples",
+            "water",
+            32.0,
+            32.0,
+        ),
+        &image,
+        (1.0, 1.0),
+    )
+    .expect("plunge pool sample");
+    let metrics = audit.water_local_metrics.as_ref().expect("water metrics");
+
+    assert!(!metrics.quality_required);
+    assert_eq!(metrics.local_hit_count, MIN_SAMPLE_PIXEL_HITS);
+    assert!(metrics.passed);
+    assert!(audit.passed);
+
+    let mut foam_image = RgbImage::from_pixel(64, 64, Rgb([155, 168, 177]));
+    for (x, y, color) in additive_plunge_foam_pixels(32, 32) {
+        foam_image.put_pixel(x, y, color);
+    }
+    let foam_audit = audit_scene_sample(
+        &projected_sample(
+            "water_detail_plunge_pool",
+            "plunge pool ripples",
+            "water",
+            32.0,
+            32.0,
+        ),
+        &foam_image,
+        (1.0, 1.0),
+    )
+    .expect("foam sample");
+    assert!(foam_audit.passed, "{foam_audit:?}");
+
+    let sky_audit = audit_scene_sample(
+        &projected_sample(
+            "water_detail_plunge_pool",
+            "sky false positive",
+            "water",
+            10.0,
+            10.0,
+        ),
+        &RgbImage::from_pixel(64, 64, Rgb([155, 168, 177])),
+        (1.0, 1.0),
+    )
+    .expect("sky sample");
+    assert!(!sky_audit.passed);
+
+    let stone_audit = audit_scene_sample(
+        &projected_sample(
+            "water_detail_plunge_pool",
+            "stone false positive",
+            "water",
+            32.0,
+            32.0,
+        ),
+        &RgbImage::from_pixel(64, 64, Rgb([183, 157, 121])),
+        (1.0, 1.0),
+    )
+    .expect("stone sample");
+    assert!(!stone_audit.passed);
+}
+
+#[test]
+fn water_metrics_aggregate_into_checkpoint_material_and_report_checks() {
+    let pixels = semantic_water_region_pixels("water_surface", 280, 150);
+    let (temp_dir, metadata_path) = checkpoint_fixture(
+        "water_metrics_json",
+        true,
+        "default",
+        "test",
+        vec![projected_sample(
+            "water_surface",
+            "low basin lake",
+            "water",
+            280.0,
+            150.0,
+        )],
+        &pixels,
+    );
+    let audit = audit_checkpoint_path(&metadata_path).expect("audit");
+    let checks = report_checks(std::slice::from_ref(&audit));
+    for name in [
+        "water_substantial_local_area_span_passes",
+        "water_substantial_quantized_color_bucket_passes",
+        "water_substantial_luma_p95_p5_passes",
+        "water_substantial_internal_edge_density_passes",
+        "water_substantial_semantic_quality_passes",
+    ] {
+        let check = checks
+            .iter()
+            .find(|check| check.name == name)
+            .unwrap_or_else(|| panic!("missing {name}"));
+        assert!(check.passed, "{name}: {check:?}");
+        assert_eq!((check.value, check.threshold), (1.0, 1.0));
+    }
+
+    let report =
+        serde_json::from_str::<Value>(&report_json(true, &checks, &[audit])).expect("report json");
+    let checkpoint = &report["checkpoints"][0];
+    assert_eq!(
+        checkpoint["water_metrics"]["projected_quality_required_sample_count"],
+        1
+    );
+    assert_eq!(
+        checkpoint["water_metrics"]["quality_passed_sample_count"],
+        1
+    );
+    let water_material = checkpoint["materials"]
+        .as_array()
+        .expect("materials")
+        .iter()
+        .find(|material| material["expected_material"] == "water")
+        .expect("water material");
+    assert_eq!(
+        water_material["water_metrics"]["quality_passed_sample_count"],
+        1
+    );
+    let water_sample = checkpoint["samples"]
+        .as_array()
+        .expect("samples")
+        .iter()
+        .find(|sample| sample["expected_material"] == "water")
+        .expect("water sample");
+    assert!(
+        water_sample["water_local_metrics"]["quantized_color_bucket_count"]
+            .as_u64()
+            .expect("bucket count")
+            >= MIN_WATER_QUANTIZED_COLOR_BUCKETS as u64
+    );
+
+    let _ = fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn water_quality_checks_ignore_projected_misses_when_feature_has_real_evidence() {
+    let hit = scene_audit_sample(
+        "water_surface",
+        "low basin lake",
+        "water",
+        "water",
+        MIN_SAMPLE_PIXEL_HITS,
+    );
+    let mut edge_miss =
+        visible_failed_scene_audit_sample("water_surface", "low basin lake", "water", "water");
+    edge_miss.semantic_pixel_hits = 12;
+    let edge_metrics = edge_miss
+        .water_local_metrics
+        .as_mut()
+        .expect("edge water metrics");
+    edge_metrics.local_hit_count = 12;
+    edge_metrics.x_span = 8;
+    edge_metrics.y_span = 2;
+    edge_metrics.quantized_color_bucket_count = 2;
+    edge_metrics.luma_p95_p5 = 3.0;
+    edge_metrics.internal_edge_density = 0.01;
+    edge_metrics.bounding_box_fill_ratio = 0.75;
+
+    let mut samples = vec![hit, edge_miss];
+    for _ in 0..3 {
+        samples.push(visible_failed_scene_audit_sample(
+            "water_surface",
+            "low basin lake",
+            "water",
+            "water",
+        ));
+    }
+    let checkpoint = checkpoint_with_scene_samples("projected_water_misses", samples);
+    let metrics = aggregate_water_metrics(&checkpoint.samples).expect("water aggregate");
+
+    assert_eq!(metrics.visible_sample_count, 5);
+    assert_eq!(metrics.projected_quality_required_sample_count, 5);
+    assert_eq!(metrics.quality_required_sample_count, 1);
+    assert_eq!(metrics.quality_passed_sample_count, 1);
+    assert!(metrics.passed);
+
+    let checks = report_checks(&[checkpoint]);
+    for check in checks
+        .iter()
+        .filter(|check| check.name.starts_with("water_substantial_"))
+    {
+        assert_eq!((check.value, check.threshold), (1.0, 1.0));
+        assert!(check.passed, "{check:?}");
+    }
+}
+
+#[test]
 fn checkpoint_honors_false_top_level_sidecar_result() {
     let (temp_dir, metadata_path) =
         checkpoint_fixture("sidecar_false", false, "default", "test", Vec::new(), &[]);
@@ -1308,11 +1675,7 @@ fn waterfall_vista_requires_a_pixel_backed_waterfall_sample() {
         280.0,
         150.0,
     );
-    let water_pixels = [
-        (279, 150, Rgb([30, 88, 150])),
-        (280, 150, Rgb([22, 92, 156])),
-        (281, 150, Rgb([40, 94, 160])),
-    ];
+    let water_pixels = semantic_water_region_pixels("waterfall_water", 280, 150);
     let (hit_dir, hit_path) = checkpoint_fixture(
         "waterfall_hit",
         true,
@@ -1336,11 +1699,7 @@ fn waterfall_vista_rejects_sky_colored_pixels_at_projected_sample() {
         280.0,
         150.0,
     );
-    let sky_pixels = [
-        (279, 150, Rgb([54, 154, 210])),
-        (280, 150, Rgb([70, 130, 175])),
-        (281, 150, Rgb([160, 220, 244])),
-    ];
+    let sky_pixels = semantic_sky_region_pixels("waterfall_water", 280, 150);
     let (temp_dir, metadata_path) = checkpoint_fixture(
         "waterfall_sky_false_positive",
         true,
@@ -1663,11 +2022,11 @@ fn island_surface_review_water_checkpoint_requires_every_water_form_and_two_deta
         ),
     ];
     let pixel_groups = [
-        semantic_material_pixels("water", 40, 150),
-        semantic_material_pixels("water", 100, 150),
-        semantic_material_pixels("water", 160, 150),
-        semantic_material_pixels("stone", 220, 150),
-        semantic_material_pixels("water", 280, 150),
+        semantic_water_region_pixels("water_surface", 40, 150),
+        semantic_water_region_pixels("river_channel", 100, 150),
+        semantic_water_region_pixels("waterfall_water", 160, 150),
+        semantic_material_pixels("stone", 220, 150).to_vec(),
+        semantic_material_pixels("water", 280, 150).to_vec(),
     ];
     let all_pixels = pixel_groups.iter().flatten().copied().collect::<Vec<_>>();
     let (pass_dir, pass_path) = checkpoint_fixture(
@@ -2216,6 +2575,225 @@ fn semantic_material_pixels(expected_material: &str, x: u32, y: u32) -> [(u32, u
     ]
 }
 
+fn semantic_water_region_pixels(kind: &str, x: u32, y: u32) -> Vec<(u32, u32, Rgb<u8>)> {
+    water_region_pixels(kind, x, y, false)
+}
+
+fn rendered_muted_water_region_pixels(kind: &str, x: u32, y: u32) -> Vec<(u32, u32, Rgb<u8>)> {
+    let (half_width, half_height) = if kind == "waterfall_water" {
+        (2, 5)
+    } else {
+        (5, 2)
+    };
+    let mut pixels = Vec::new();
+    for offset_y in -half_height..=half_height {
+        for offset_x in -half_width..=half_width {
+            let along = (if kind == "waterfall_water" {
+                offset_y + half_height
+            } else {
+                offset_x + half_width
+            }) as u8;
+            let cross = (if kind == "waterfall_water" {
+                offset_x + half_width
+            } else {
+                offset_y + half_height
+            }) as u8;
+            pixels.push((
+                (x as i32 + offset_x) as u32,
+                (y as i32 + offset_y) as u32,
+                Rgb([
+                    42 + along + cross % 2,
+                    61 + along + cross % 3,
+                    66 + along + cross,
+                ]),
+            ));
+        }
+    }
+    pixels
+}
+
+fn low_contrast_muted_water_region_pixels(kind: &str, x: u32, y: u32) -> Vec<(u32, u32, Rgb<u8>)> {
+    let (half_width, half_height) = if kind == "waterfall_water" {
+        (2, 5)
+    } else {
+        (5, 2)
+    };
+    let mut pixels = Vec::new();
+    for offset_y in -half_height..=half_height {
+        for offset_x in -half_width..=half_width {
+            let along = (if kind == "waterfall_water" {
+                offset_y + half_height
+            } else {
+                offset_x + half_width
+            }) as u8;
+            pixels.push((
+                (x as i32 + offset_x) as u32,
+                (y as i32 + offset_y) as u32,
+                Rgb([47 + along / 3, 63 + along / 2, 70 + along / 2]),
+            ));
+        }
+    }
+    pixels
+}
+
+fn translucent_surface_water_region_pixels(kind: &str, x: u32, y: u32) -> Vec<(u32, u32, Rgb<u8>)> {
+    let (half_width, half_height) = if kind == "waterfall_water" {
+        (2, 5)
+    } else {
+        (5, 2)
+    };
+    let mut pixels = Vec::new();
+    for offset_y in -half_height..=half_height {
+        for offset_x in -half_width..=half_width {
+            let along = (offset_x + half_width) as u8;
+            let cross = (offset_y + half_height) as u8;
+            let r = 108 + along * 5 + cross % 2;
+            let g = r + 32 + cross;
+            let b = g - 3 - along % 3;
+            pixels.push((
+                (x as i32 + offset_x) as u32,
+                (y as i32 + offset_y) as u32,
+                Rgb([r, g, b]),
+            ));
+        }
+    }
+    pixels
+}
+
+fn neutral_waterfall_foam_region_pixels(x: u32, y: u32) -> Vec<(u32, u32, Rgb<u8>)> {
+    let mut pixels = Vec::new();
+    for offset_y in -5..=5 {
+        for offset_x in -2..=2 {
+            let along = (offset_y + 5) as u8;
+            let cross = (offset_x + 2) as u8;
+            let r = 170 + along * 5 + cross % 2;
+            let g = r + 8 + cross % 3;
+            let b = r + 6 + cross % 2;
+            pixels.push((
+                (x as i32 + offset_x) as u32,
+                (y as i32 + offset_y) as u32,
+                Rgb([r, g, b]),
+            ));
+        }
+    }
+    pixels
+}
+
+fn additive_plunge_foam_pixels(x: u32, y: u32) -> Vec<(u32, u32, Rgb<u8>)> {
+    let mut pixels = Vec::new();
+    for offset_y in -1..=1 {
+        for offset_x in -2..=2 {
+            let phase = (offset_x + 2 + offset_y + 1) as u8;
+            let r = 158 + phase;
+            let g = r + 3;
+            let b = g + 2;
+            pixels.push((
+                (x as i32 + offset_x) as u32,
+                (y as i32 + offset_y) as u32,
+                Rgb([r, g, b]),
+            ));
+        }
+    }
+    pixels
+}
+
+fn flat_water_region_pixels(kind: &str, x: u32, y: u32) -> Vec<(u32, u32, Rgb<u8>)> {
+    water_region_pixels(kind, x, y, true)
+}
+
+fn water_region_pixels(kind: &str, x: u32, y: u32, flat: bool) -> Vec<(u32, u32, Rgb<u8>)> {
+    let (half_width, half_height) = if kind == "waterfall_water" {
+        (2, 5)
+    } else {
+        (5, 2)
+    };
+    let mut pixels = Vec::new();
+    for offset_y in -half_height..=half_height {
+        for offset_x in -half_width..=half_width {
+            let color = if flat {
+                Rgb([30, 88, 150])
+            } else {
+                let along = (if kind == "waterfall_water" {
+                    offset_y + half_height
+                } else {
+                    offset_x + half_width
+                }) as u8;
+                let cross = (if kind == "waterfall_water" {
+                    offset_x + half_width
+                } else {
+                    offset_y + half_height
+                }) as u8;
+                let mut r = 22u8 + along + cross % 2;
+                let mut g = 80u8 + along + cross % 3;
+                let mut b = 140u8 + along * 2 + cross;
+                if along == 5 {
+                    r += 12;
+                    g += 4;
+                    b += 8;
+                }
+                Rgb([r, g, b])
+            };
+            pixels.push((
+                (x as i32 + offset_x) as u32,
+                (y as i32 + offset_y) as u32,
+                color,
+            ));
+        }
+    }
+    pixels
+}
+
+fn semantic_sky_region_pixels(kind: &str, x: u32, y: u32) -> Vec<(u32, u32, Rgb<u8>)> {
+    let mut pixels = water_region_pixels(kind, x, y, true);
+    for (pixel_x, pixel_y, color) in &mut pixels {
+        let phase = ((*pixel_x + *pixel_y) % 5) as u8;
+        *color = Rgb([70 + phase, 130 + phase, 175 + phase]);
+    }
+    pixels
+}
+
+fn synthetic_water_local_metrics(
+    kind: &str,
+    expected_material: &str,
+    semantic_pixel_hits: usize,
+    passed: bool,
+) -> Option<WaterLocalMetrics> {
+    if expected_material != "water" {
+        return None;
+    }
+
+    let quality_required = matches!(kind, "water_surface" | "river_channel" | "waterfall_water");
+    let local_hit_count = if !passed {
+        0
+    } else if quality_required {
+        55
+    } else {
+        semantic_pixel_hits.max(MIN_SAMPLE_PIXEL_HITS)
+    };
+    let (x_span, y_span) = match kind {
+        "waterfall_water" => (5, 11),
+        "water_surface" | "river_channel" => (11, 5),
+        _ => (local_hit_count, usize::from(local_hit_count > 0)),
+    };
+    let area_span_passed = passed && local_hit_count >= MIN_SAMPLE_PIXEL_HITS;
+
+    Some(WaterLocalMetrics {
+        local_hit_count,
+        x_span,
+        y_span,
+        quantized_color_bucket_count: if passed { 5 } else { 0 },
+        luma_p95_p5: if passed { 12.0 } else { 0.0 },
+        internal_edge_density: if passed { 0.15 } else { 0.0 },
+        bounding_box_fill_ratio: if passed { 1.0 } else { 0.0 },
+        quality_required,
+        area_span_passed,
+        color_bucket_passed: passed || !quality_required,
+        luma_variation_passed: passed || !quality_required,
+        internal_edge_density_passed: passed || !quality_required,
+        passed: area_span_passed,
+    })
+}
+
 fn unique_temp_dir(name: &str) -> PathBuf {
     env::temp_dir().join(format!(
         "nau_{name}_{}_{}",
@@ -2244,6 +2822,7 @@ fn terrain_audit_sample_with_hits(
         screen_x: Some(12.0),
         screen_y: Some(12.0),
         semantic_pixel_hits,
+        water_local_metrics: None,
         passed: true,
     }
 }
@@ -2255,6 +2834,11 @@ fn scene_audit_sample(
     material_variant: &str,
     semantic_pixel_hits: usize,
 ) -> SceneSampleAudit {
+    let water_local_metrics =
+        synthetic_water_local_metrics(kind, expected_material, semantic_pixel_hits, true);
+    let semantic_pixel_hits = water_local_metrics
+        .as_ref()
+        .map_or(semantic_pixel_hits, |metrics| metrics.local_hit_count);
     SceneSampleAudit {
         island_name: Some("great sky plateau".to_string()),
         kind: kind.to_string(),
@@ -2266,6 +2850,7 @@ fn scene_audit_sample(
         screen_x: Some(12.0),
         screen_y: Some(12.0),
         semantic_pixel_hits,
+        water_local_metrics,
         passed: true,
     }
 }
@@ -2276,6 +2861,7 @@ fn visible_failed_scene_audit_sample(
     expected_material: &str,
     material_variant: &str,
 ) -> SceneSampleAudit {
+    let water_local_metrics = synthetic_water_local_metrics(kind, expected_material, 0, false);
     SceneSampleAudit {
         island_name: Some("great sky plateau".to_string()),
         kind: kind.to_string(),
@@ -2287,6 +2873,7 @@ fn visible_failed_scene_audit_sample(
         screen_x: Some(12.0),
         screen_y: Some(12.0),
         semantic_pixel_hits: 0,
+        water_local_metrics,
         passed: false,
     }
 }
@@ -2509,6 +3096,11 @@ fn gallery_scene_audit_sample(
     label: &str,
     expected_material: &str,
 ) -> SceneSampleAudit {
+    let water_local_metrics =
+        synthetic_water_local_metrics(kind, expected_material, MIN_SAMPLE_PIXEL_HITS, true);
+    let semantic_pixel_hits = water_local_metrics
+        .as_ref()
+        .map_or(MIN_SAMPLE_PIXEL_HITS, |metrics| metrics.local_hit_count);
     SceneSampleAudit {
         island_name: Some(island.to_string()),
         kind: kind.to_string(),
@@ -2519,7 +3111,8 @@ fn gallery_scene_audit_sample(
         visibility: "visible".to_string(),
         screen_x: Some(12.0),
         screen_y: Some(12.0),
-        semantic_pixel_hits: MIN_SAMPLE_PIXEL_HITS,
+        semantic_pixel_hits,
+        water_local_metrics,
         passed: true,
     }
 }
@@ -2631,7 +3224,8 @@ fn gallery_checkpoint_fixture(
         let y = sample["screen"]["y"].as_f64().expect("sample y") as u32;
         let material = sample["expected_material"].as_str().expect("material");
         let label = sample["label"].as_str().expect("label");
-        for (pixel_x, pixel_y, color) in gallery_sample_pixels(material, label, x, y) {
+        let kind = sample["kind"].as_str().expect("kind");
+        for (pixel_x, pixel_y, color) in gallery_sample_pixels(kind, material, label, x, y) {
             image.put_pixel(pixel_x, pixel_y, color);
         }
     }
@@ -2656,13 +3250,21 @@ fn gallery_checkpoint_fixture(
 }
 
 fn gallery_sample_pixels(
+    kind: &str,
     expected_material: &str,
     label: &str,
     x: u32,
     y: u32,
-) -> [(u32, u32, Rgb<u8>); 3] {
+) -> Vec<(u32, u32, Rgb<u8>)> {
+    if expected_material == "water" {
+        return if matches!(kind, "water_surface" | "river_channel" | "waterfall_water") {
+            semantic_water_region_pixels(kind, x, y)
+        } else {
+            semantic_material_pixels(expected_material, x, y).to_vec()
+        };
+    }
     if expected_material != "terrain" {
-        return semantic_material_pixels(expected_material, x, y);
+        return semantic_material_pixels(expected_material, x, y).to_vec();
     }
     let colors = match terrain_material_variant_for_label(label) {
         Some("terrain_lush_meadow") => [Rgb([54, 128, 70]), Rgb([34, 100, 62]), Rgb([70, 150, 94])],
@@ -2684,7 +3286,7 @@ fn gallery_sample_pixels(
         ],
         _ => panic!("missing terrain palette for {label}"),
     };
-    [
+    vec![
         (x - 1, y, colors[0]),
         (x, y, colors[1]),
         (x + 1, y, colors[2]),
@@ -2703,6 +3305,7 @@ fn visible_failed_terrain_audit_sample(label: &str, material_variant: &str) -> S
         screen_x: Some(12.0),
         screen_y: Some(12.0),
         semantic_pixel_hits: 0,
+        water_local_metrics: None,
         passed: false,
     }
 }
