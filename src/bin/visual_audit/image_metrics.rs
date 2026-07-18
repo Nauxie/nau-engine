@@ -59,6 +59,140 @@ pub(super) fn edge_density_in_region(
 }
 
 #[derive(Clone, Copy, Debug, Default)]
+pub(super) struct TerrainSurfaceStats {
+    pub(super) luma_span: f64,
+    pub(super) internal_edge_density: f64,
+    pub(super) isolated_speck_fraction: f64,
+}
+
+pub(super) fn terrain_surface_stats(
+    luma_values: &[f64],
+    terrain_mask: &[bool],
+    width: usize,
+    height: usize,
+) -> TerrainSurfaceStats {
+    let pixel_count = width.saturating_mul(height);
+    if width == 0
+        || height == 0
+        || luma_values.len() != pixel_count
+        || terrain_mask.len() != pixel_count
+    {
+        return TerrainSurfaceStats::default();
+    }
+
+    let mut terrain_luma = terrain_mask
+        .iter()
+        .enumerate()
+        .filter_map(|(index, present)| present.then_some(luma_values[index]))
+        .collect::<Vec<_>>();
+    if terrain_luma.is_empty() {
+        return TerrainSurfaceStats::default();
+    }
+    terrain_luma.sort_by(f64::total_cmp);
+    let low_luma = sorted_percentile(&terrain_luma, TERRAIN_LUMA_SPAN_LOW_PERCENTILE);
+    let high_luma = sorted_percentile(&terrain_luma, TERRAIN_LUMA_SPAN_HIGH_PERCENTILE);
+
+    let mut internal_edge_pairs = 0usize;
+    let mut internal_neighbor_pairs = 0usize;
+    let edge_offsets = [(1isize, 0isize), (0, 1), (1, 1), (-1, 1)];
+    for (index, present) in terrain_mask.iter().enumerate() {
+        if !present {
+            continue;
+        }
+        let x = index % width;
+        let y = index / width;
+        for (x_offset, y_offset) in edge_offsets {
+            let neighbor_x = x as isize + x_offset;
+            let neighbor_y = y as isize + y_offset;
+            if neighbor_x < 0
+                || neighbor_y < 0
+                || neighbor_x >= width as isize
+                || neighbor_y >= height as isize
+            {
+                continue;
+            }
+            let neighbor_index = neighbor_y as usize * width + neighbor_x as usize;
+            if !terrain_mask[neighbor_index] {
+                continue;
+            }
+
+            internal_neighbor_pairs += 1;
+            if (luma_values[index] - luma_values[neighbor_index]).abs()
+                >= TERRAIN_INTERNAL_EDGE_LUMA_DELTA
+            {
+                internal_edge_pairs += 1;
+            }
+        }
+    }
+
+    let mut isolated_specks = 0usize;
+    let mut speck_candidates = 0usize;
+    let speck_offsets = [
+        (-1isize, -1isize),
+        (0, -1),
+        (1, -1),
+        (-1, 0),
+        (1, 0),
+        (-1, 1),
+        (0, 1),
+        (1, 1),
+    ];
+    for (index, present) in terrain_mask.iter().enumerate() {
+        if !present {
+            continue;
+        }
+        let x = index % width;
+        let y = index / width;
+        let mut in_mask_neighbors = 0usize;
+        let mut high_contrast_neighbors = 0usize;
+
+        for (x_offset, y_offset) in speck_offsets {
+            let neighbor_x = x as isize + x_offset;
+            let neighbor_y = y as isize + y_offset;
+            if neighbor_x < 0
+                || neighbor_y < 0
+                || neighbor_x >= width as isize
+                || neighbor_y >= height as isize
+            {
+                continue;
+            }
+            let neighbor_index = neighbor_y as usize * width + neighbor_x as usize;
+            if !terrain_mask[neighbor_index] {
+                continue;
+            }
+
+            in_mask_neighbors += 1;
+            if (luma_values[index] - luma_values[neighbor_index]).abs()
+                >= TERRAIN_ISOLATED_SPECK_LUMA_DELTA
+            {
+                high_contrast_neighbors += 1;
+            }
+        }
+
+        if in_mask_neighbors >= MIN_TERRAIN_ISOLATED_SPECK_NEIGHBORS {
+            speck_candidates += 1;
+            if high_contrast_neighbors == in_mask_neighbors {
+                isolated_specks += 1;
+            }
+        }
+    }
+
+    TerrainSurfaceStats {
+        luma_span: (high_luma - low_luma).max(0.0),
+        internal_edge_density: fraction(internal_edge_pairs, internal_neighbor_pairs),
+        isolated_speck_fraction: fraction(isolated_specks, speck_candidates),
+    }
+}
+
+fn sorted_percentile(sorted_values: &[f64], percentile: f64) -> f64 {
+    if sorted_values.is_empty() {
+        return 0.0;
+    }
+    let index = ((sorted_values.len() - 1) as f64 * percentile.clamp(0.0, 1.0)).floor() as usize;
+    sorted_values[index]
+}
+
+#[derive(Clone, Copy, Debug, Default)]
 pub(super) struct SceneDetailStats {
     pub(super) detail_tile_fraction: f64,
     pub(super) flat_tile_fraction: f64,
