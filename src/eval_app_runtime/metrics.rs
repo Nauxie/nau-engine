@@ -13,6 +13,7 @@ use crate::environment_visuals::{
 };
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
 use crate::player_runtime::AuthoredGliderPose;
+use crate::surface_material::SurfaceMaterial;
 use crate::{grounded_visual_foot_gap_m, movement_facing};
 use bevy::ecs::system::SystemParam;
 use bevy::mesh::Indices;
@@ -48,7 +49,10 @@ use nau_engine::movement::{
 use nau_engine::world::SkyIsland;
 use std::collections::HashMap;
 
-pub(super) const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 5;
+// The first deferred island-stream reconciliation happens around frame 9. Keep
+// startup timings visible in the all-frame evidence, but do not treat asset and
+// pipeline settlement as steady camera-play performance.
+pub(super) const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = 30;
 const BODY_TRAVEL_HEADING_MIN_PLANAR_SPEED_MPS: f32 = 6.0;
 const KEY_POSE_TRANSITION_READABILITY_FLOOR: f32 = 0.65;
 const KEY_POSE_AIR_BRAKE_TO_DIVE_TRANSITION_READABILITY_FLOOR: f32 = 0.55;
@@ -76,6 +80,8 @@ struct RuntimeAssetCosts {
 #[derive(Resource, Default)]
 pub(crate) struct RuntimeAssetCostState {
     initialized: bool,
+    standard_material_count: usize,
+    surface_material_count: usize,
     costs: RuntimeAssetCosts,
 }
 
@@ -91,11 +97,15 @@ impl RuntimeAssetCostState {
         &mut self,
         meshes: &Assets<Mesh>,
         materials: &Assets<StandardMaterial>,
+        surface_materials: &Assets<SurfaceMaterial>,
     ) -> RuntimeAssetCosts {
-        let asset_counts_changed =
-            self.costs.mesh_count != meshes.len() || self.costs.material_count != materials.len();
+        let asset_counts_changed = self.costs.mesh_count != meshes.len()
+            || self.standard_material_count != materials.len()
+            || self.surface_material_count != surface_materials.len();
         if !self.initialized || asset_counts_changed {
-            self.costs = runtime_asset_costs(meshes, materials);
+            self.costs = runtime_asset_costs(meshes, materials, surface_materials);
+            self.standard_material_count = materials.len();
+            self.surface_material_count = surface_materials.len();
             self.initialized = true;
         }
         self.costs
@@ -105,6 +115,7 @@ impl RuntimeAssetCostState {
 fn runtime_asset_costs(
     meshes: &Assets<Mesh>,
     materials: &Assets<StandardMaterial>,
+    surface_materials: &Assets<SurfaceMaterial>,
 ) -> RuntimeAssetCosts {
     let mut loaded_mesh_vertices = 0;
     let mut loaded_mesh_triangles = 0;
@@ -115,7 +126,7 @@ fn runtime_asset_costs(
 
     RuntimeAssetCosts {
         mesh_count: meshes.len(),
-        material_count: materials.len(),
+        material_count: materials.len() + surface_materials.len(),
         loaded_mesh_vertices,
         loaded_mesh_triangles,
     }
@@ -868,9 +879,15 @@ fn nearest_island_edge_metrics(islands: &[SkyIsland], position: Vec3) -> (f32, b
 }
 
 pub(crate) fn collect_eval_frame_time(time: Res<Time>, mut run: ResMut<EvalRun>) {
-    if !run.finalized && run.frame >= EVAL_FRAME_TIME_WARMUP_FRAMES {
-        run.accumulator
-            .observe_frame_time_ms(frame_ms(time.delta_secs()));
+    if run.finalized {
+        return;
+    }
+
+    let frame_time_ms = frame_ms(time.delta_secs());
+    if run.frame < EVAL_FRAME_TIME_WARMUP_FRAMES {
+        run.accumulator.observe_startup_frame_time_ms(frame_time_ms);
+    } else {
+        run.accumulator.observe_frame_time_ms(frame_time_ms);
     }
 }
 
@@ -1013,7 +1030,8 @@ pub(crate) fn collect_eval_metrics(
         authored_animation_sample_metrics(authored_animation_diagnostics.as_deref());
     let authored_glider_metrics = visible_authored_glider_metrics(scene.authored_gliders.iter());
     let content_metrics = *scene.content_diagnostics;
-    let runtime_asset_costs = runtime_asset_cost_state.observe(&scene.meshes, &scene.materials);
+    let runtime_asset_costs =
+        runtime_asset_cost_state.observe(&scene.meshes, &scene.materials, &scene.surface_materials);
     let (environment_motion_visuals, max_environment_motion_offset_m) =
         wind_responsive_visual_metrics(scene.wind_responsive_visuals.iter());
     let player_wind_shear_metrics = player_wind_shear_visual_metrics(
@@ -2241,9 +2259,36 @@ fn key_pose_intent(intent: PlayerPoseIntent) -> bool {
 mod tests {
     use super::*;
     use crate::authored_assets::AuthoredPlayerClip;
+    use crate::surface_material::SurfaceExtension;
     use nau_engine::animation::LANDING_MAX_FOOT_SPLIT_READABILITY_M;
     use nau_engine::movement::{Facing, FlightInput, FlightMode};
     use nau_engine::world::SkyRoute;
+
+    #[test]
+    fn runtime_asset_cost_cache_counts_each_material_collection_once() {
+        let meshes = Assets::<Mesh>::default();
+        let mut materials = Assets::<StandardMaterial>::default();
+        let mut surface_materials = Assets::<SurfaceMaterial>::default();
+        let mut state = RuntimeAssetCostState::default();
+
+        let standard_material = materials.add(StandardMaterial::default());
+        let standard_only = state.observe(&meshes, &materials, &surface_materials);
+        assert_eq!(standard_only.material_count, 1);
+
+        materials.remove(standard_material.id());
+        surface_materials.add(SurfaceMaterial {
+            base: StandardMaterial::default(),
+            extension: SurfaceExtension::terrain(Vec4::ONE, Vec4::ONE, Vec4::ONE, 0.0),
+        });
+        let surface_only = state.observe(&meshes, &materials, &surface_materials);
+        assert_eq!(surface_only.material_count, 1);
+        assert_eq!(state.standard_material_count, 0);
+        assert_eq!(state.surface_material_count, 1);
+
+        materials.add(StandardMaterial::default());
+        let combined = state.observe(&meshes, &materials, &surface_materials);
+        assert_eq!(combined.material_count, 2);
+    }
 
     #[test]
     fn nearest_island_edge_metrics_tracks_signed_boundary_crossing() {
