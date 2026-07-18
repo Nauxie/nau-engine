@@ -2,20 +2,21 @@ use super::queue::{
     queue_collidable_island_visual, queue_collidable_wind_island_visual, queue_island_visual,
     queue_wind_island_visual,
 };
-use super::types::{IslandVisualEntry, IslandVisualLayer};
+use super::types::{IslandVisualEntry, IslandVisualLayer, IslandVisualMaterial};
 use crate::camera_runtime::CameraObstacle;
 use crate::content_diagnostics::{GeneratedLandmarkKind, IslandContentDiagnostics};
 use crate::environment_visuals::wind_visual_motion;
 use crate::generated_content::{
     FirstExpeditionSilhouetteKind, GROUND_COVER_BLADES_PER_PATCH, IslandArtifactMaterial,
     IslandDetailBudget, IslandDetailMaterials, IslandRockSpec, IslandRuinSpec, IslandTreeSpec,
-    IslandUnderRouteVisualKind, TreeSpecies, cliff_tooth_ridge_mesh,
-    first_expedition_silhouette_specs, garden_ring_mesh, island_artifact_visual_specs,
-    island_detail_budget, island_ground_cover_mesh, island_lake_basin_visual_specs,
-    island_playable_normalized_offset, island_rock_specs, island_ruin_specs, island_tree_specs,
-    island_under_route_visual_specs, island_visual_surface_position, island_water_visual_specs,
-    landing_garden_marker_mesh, launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh,
-    ruin_arch_mesh, tree_canopy_mesh_for_species, tree_trunk_mesh_for_species,
+    IslandUnderRouteVisualKind, IslandWaterVisualKind, TreeSpecies, WaterSurfaceMaterials,
+    cliff_tooth_ridge_mesh, first_expedition_silhouette_specs, garden_ring_mesh,
+    island_artifact_visual_specs, island_detail_budget, island_ground_cover_mesh,
+    island_lake_basin_visual_specs, island_playable_normalized_offset, island_rock_specs,
+    island_ruin_specs, island_tree_specs, island_under_route_visual_specs,
+    island_visual_surface_position, island_water_visual_specs, landing_garden_marker_mesh,
+    launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh, ruin_arch_mesh,
+    tree_canopy_mesh_for_species, tree_trunk_mesh_for_species,
 };
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
@@ -31,7 +32,7 @@ pub(super) fn queue_sky_island_details(
     meshes: &mut Assets<Mesh>,
     detail_materials: IslandDetailMaterials,
     flower_material: Handle<StandardMaterial>,
-    water_material: Handle<StandardMaterial>,
+    water_materials: &WaterSurfaceMaterials,
     island_index: usize,
     island: SkyIsland,
 ) {
@@ -198,28 +199,45 @@ pub(super) fn queue_sky_island_details(
         let mesh = water_feature.build_mesh();
         let landmark_kind = GeneratedLandmarkKind::from_water_visual(water_feature.kind);
         content_diagnostics.record_generated_landmark(landmark_kind, mesh.count_vertices());
-        queue_wind_island_visual(
-            entries,
-            visual_index,
-            island,
-            plateau_authored_layer,
-            meshes.add(mesh),
-            water_material.clone(),
-            Transform {
-                translation: water_feature.translation,
-                rotation: Quat::from_rotation_y(water_feature.rotation_y),
-                ..default()
-            },
-            None,
-            wind_visual_motion(
-                island_index,
-                water_feature.wind_phase,
-                0.035 * water_feature.wind_motion_scale,
-                0.018 * water_feature.wind_motion_scale,
-                1.1 * water_feature.wind_motion_scale,
+        let transform = Transform {
+            translation: water_feature.translation,
+            rotation: Quat::from_rotation_y(water_feature.rotation_y),
+            ..default()
+        };
+        match water_feature.kind {
+            IslandWaterVisualKind::PlateauWaterfallMist
+            | IslandWaterVisualKind::RouteWaterfallMist => {
+                queue_wind_island_visual(
+                    entries,
+                    visual_index,
+                    island,
+                    plateau_authored_layer,
+                    meshes.add(mesh),
+                    water_materials.mist.clone(),
+                    transform,
+                    None,
+                    wind_visual_motion(
+                        island_index,
+                        water_feature.wind_phase,
+                        0.035 * water_feature.wind_motion_scale,
+                        0.018 * water_feature.wind_motion_scale,
+                        1.1 * water_feature.wind_motion_scale,
+                    ),
+                    water_feature.kind.visual_name(),
+                );
+            }
+            _ => queue_island_visual(
+                entries,
+                visual_index,
+                island,
+                plateau_authored_layer,
+                meshes.add(mesh),
+                IslandVisualMaterial::surface_without_shadows(water_materials.body.clone()),
+                transform,
+                None,
+                water_feature.kind.visual_name(),
             ),
-            water_feature.kind.visual_name(),
-        );
+        }
     }
 
     for lake_basin in island_lake_basin_visual_specs(island_index, island) {
