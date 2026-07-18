@@ -104,14 +104,27 @@ fn review_spec(route: &SkyRoute, island_index: usize, island: SkyIsland) -> Isla
     let near_focus = authored_near_focus(&near_feature_points);
     let heading = profile.review_heading_degrees as f32 * std::f32::consts::PI / 180.0;
     let authored_outward = Vec3::new(heading.sin(), 0.0, heading.cos()).normalize_or(Vec3::Z);
-    let outward = route_outward_direction(route, island, authored_outward);
+    let outward = if profile.water_story == IslandWaterStory::WaterfallGarden
+        && !island.is_great_plateau_anchor()
+    {
+        let waterfall = route_edge_waterfall_placement(island);
+        Vec3::new(waterfall.rotation_y.sin(), 0.0, waterfall.rotation_y.cos())
+    } else {
+        route_outward_direction(route, island, authored_outward)
+    };
     let near_player = surface_position(island, Vec2::ZERO) + Vec3::Y * PLAYER_STANDING_OFFSET;
-    let near_distance = island_review_camera_distance(
-        island,
-        NEAR_REVIEW_EXTENT_SCALE,
-        near_review_min_distance(island),
-        near_review_max_distance(island),
-    );
+    let near_distance = if profile.water_story == IslandWaterStory::WaterfallGarden
+        && !island.is_great_plateau_anchor()
+    {
+        island_review_camera_distance(island, 1.90, 165.0, 172.0)
+    } else {
+        island_review_camera_distance(
+            island,
+            NEAR_REVIEW_EXTENT_SCALE,
+            near_review_min_distance(island),
+            near_review_max_distance(island),
+        )
+    };
     let near_height = island_review_camera_height(island, 0.32, NEAR_REVIEW_MIN_HEIGHT_M, 60.0);
     let near_camera = select_review_camera(
         route,
@@ -124,7 +137,8 @@ fn review_spec(route: &SkyRoute, island_index: usize, island: SkyIsland) -> Isla
             min_foreign_clearance_m: REVIEW_CAMERA_MIN_FOREIGN_CLEARANCE_M,
             required_frame_points: &near_feature_points,
             required_frame_limit: near_frame_limit,
-            prioritize_clearance: true,
+            prioritize_clearance: profile.water_story != IslandWaterStory::WaterfallGarden
+                || island.is_great_plateau_anchor(),
         },
     );
 
@@ -798,6 +812,20 @@ mod tests {
                 "cloudfall waterfall evidence {point:?} projects outside the frame at {screen:?}"
             );
         }
+
+        let waterfall_outward =
+            Vec3::new(waterfall.rotation_y.sin(), 0.0, waterfall.rotation_y.cos());
+        let camera_outward = (near.camera_position - waterfall.ribbon_translation)
+            .with_y(0.0)
+            .normalize_or_zero();
+        let waterfall_alignment = camera_outward.dot(waterfall_outward);
+        assert!(
+            waterfall_alignment >= 0.85,
+            "cloudfall near review must face the waterfall from its exposed side: \
+             alignment={waterfall_alignment:.3}, camera={:?}, waterfall={:?}",
+            near.camera_position,
+            waterfall.ribbon_translation
+        );
     }
 
     #[test]
