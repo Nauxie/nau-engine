@@ -2,6 +2,7 @@ use crate::authored_assets::VisualAssetDiagnostics;
 use crate::content_diagnostics::IslandContentDiagnostics;
 use crate::island_visuals::{IslandLodVisualCounts, IslandStreamDiagnostics};
 use crate::player_runtime::Player;
+use crate::surface_material::SurfaceMaterial;
 use crate::world_floor_runtime::WorldFloorDiagnostics;
 use bevy::ecs::system::SystemParam;
 use bevy::mesh::Indices;
@@ -506,6 +507,7 @@ pub(crate) fn collect_play_profile_sample(
             profile.observe_assets(RuntimeAssetSnapshot::from_assets(
                 &scene.meshes,
                 &scene.materials,
+                &scene.surface_materials,
                 sampled_at_frame,
             ));
         }
@@ -521,6 +523,7 @@ pub(crate) fn collect_play_profile_sample(
         profile.observe_assets(RuntimeAssetSnapshot::from_assets(
             &scene.meshes,
             &scene.materials,
+            &scene.surface_materials,
             sampled_at_frame,
         ));
         if let Err(error) = profile.write_summary() {
@@ -541,6 +544,7 @@ pub(crate) struct PlayProfileScene<'w, 's> {
     content_diagnostics: Res<'w, IslandContentDiagnostics>,
     meshes: Res<'w, Assets<Mesh>>,
     materials: Res<'w, Assets<StandardMaterial>>,
+    surface_materials: Res<'w, Assets<SurfaceMaterial>>,
     player: Query<'w, 's, (&'static Transform, &'static FlightController), With<Player>>,
     primary_window: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
     monitors: Query<'w, 's, &'static Monitor>,
@@ -935,6 +939,7 @@ impl RuntimeAssetSnapshot {
     fn from_assets(
         meshes: &Assets<Mesh>,
         materials: &Assets<StandardMaterial>,
+        surface_materials: &Assets<SurfaceMaterial>,
         sampled_at_frame: u64,
     ) -> Self {
         let mut loaded_mesh_vertices = 0;
@@ -946,7 +951,7 @@ impl RuntimeAssetSnapshot {
 
         Self {
             mesh_count: meshes.len(),
-            material_count: materials.len(),
+            material_count: materials.len() + surface_materials.len(),
             loaded_mesh_vertices,
             loaded_mesh_triangles,
             sampled_at_frame,
@@ -1351,6 +1356,32 @@ fn path_string(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::surface_material::SurfaceExtension;
+
+    #[test]
+    fn runtime_asset_snapshot_counts_each_material_collection_once() {
+        let meshes = Assets::<Mesh>::default();
+        let mut materials = Assets::<StandardMaterial>::default();
+        let mut surface_materials = Assets::<SurfaceMaterial>::default();
+
+        let standard_material = materials.add(StandardMaterial::default());
+        let standard_only =
+            RuntimeAssetSnapshot::from_assets(&meshes, &materials, &surface_materials, 1);
+        assert_eq!(standard_only.material_count, 1);
+
+        surface_materials.add(SurfaceMaterial {
+            base: StandardMaterial::default(),
+            extension: SurfaceExtension::terrain(Vec4::ONE, Vec4::ONE, Vec4::ONE, 0.0),
+        });
+        let combined =
+            RuntimeAssetSnapshot::from_assets(&meshes, &materials, &surface_materials, 2);
+        assert_eq!(combined.material_count, 2);
+
+        materials.remove(standard_material.id());
+        let surface_only =
+            RuntimeAssetSnapshot::from_assets(&meshes, &materials, &surface_materials, 3);
+        assert_eq!(surface_only.material_count, 1);
+    }
 
     #[test]
     fn frame_stats_match_eval_percentile_convention() {

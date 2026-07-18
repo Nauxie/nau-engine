@@ -395,15 +395,17 @@ fn generated_content_scene_samples(
         {
             let (expected_material, material_variant) =
                 water_detail_sample_material(detail.material);
-            samples.push(SemanticSceneSample {
-                island_name: Some(island.name),
-                kind: water_detail_sample_kind(detail.kind),
-                label: detail.label,
-                expected_material,
-                material_variant,
-                world_position: detail.translation
-                    + Vec3::Y * water_detail_sample_vertical_offset(detail.material),
-            });
+            for world_position in detail.semantic_sample_positions() {
+                samples.push(SemanticSceneSample {
+                    island_name: Some(island.name),
+                    kind: water_detail_sample_kind(detail.kind),
+                    label: detail.label,
+                    expected_material,
+                    material_variant,
+                    world_position: world_position
+                        + Vec3::Y * water_detail_sample_vertical_offset(detail.material),
+                });
+            }
         }
 
         for artifact in island_artifact_visual_specs(island_index, island) {
@@ -809,6 +811,30 @@ mod tests {
             samples
                 .windows(2)
                 .any(|pair| pair[0].world_position.distance(pair[1].world_position) > 1.0)
+        );
+    }
+
+    #[test]
+    fn plunge_pool_details_emit_multiple_geometry_backed_samples() {
+        let route = SkyRoute::default();
+        let (island_index, island) = route
+            .islands()
+            .iter()
+            .copied()
+            .enumerate()
+            .find(|(_, island)| island.is_great_plateau_anchor())
+            .expect("route should include the great plateau");
+        let residency = island_semantic_residency(island, island.center);
+        let samples = generated_content_scene_samples(island_index, island, residency)
+            .into_iter()
+            .filter(|sample| sample.kind == "water_detail_plunge_pool")
+            .collect::<Vec<_>>();
+
+        assert!(samples.len() >= 5);
+        assert!(
+            samples
+                .windows(2)
+                .any(|pair| pair[0].world_position.distance(pair[1].world_position) > 0.5)
         );
     }
 }

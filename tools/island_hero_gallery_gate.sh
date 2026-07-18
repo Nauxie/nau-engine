@@ -24,6 +24,11 @@ semantic_check_names='[
   "min_visible_scene_material_count",
   "checkpoint_scene_sample_kind_hits",
   "min_visible_scene_sample_kind_count",
+  "water_substantial_local_area_span_passes",
+  "water_substantial_quantized_color_bucket_passes",
+  "water_substantial_luma_p95_p5_passes",
+  "water_substantial_internal_edge_density_passes",
+  "water_substantial_semantic_quality_passes",
   "island_hero_gallery_checkpoint_count",
   "island_hero_gallery_passing_checkpoint_count",
   "island_hero_gallery_checkpoint_metadata_count",
@@ -49,6 +54,11 @@ visual_report_check_names='[
   "max_terrain_scene_fraction",
   "max_terrain_scene_tile_count",
   "max_terrain_scene_color_bucket_count",
+  "terrain_quality_qualified_image_count",
+  "p10_terrain_luma_span",
+  "p10_terrain_scene_color_bucket_count",
+  "p10_terrain_internal_edge_density",
+  "max_terrain_isolated_speck_fraction",
   "max_foliage_scene_fraction",
   "max_foliage_scene_tile_count",
   "max_cloud_layer_fraction",
@@ -67,7 +77,6 @@ visual_image_check_names='[
   "edge_density",
   "lower_scene_fraction",
   "center_scene_fraction",
-  "center_edge_density",
   "scene_detail_tile_fraction",
   "scene_candidate_tile_count",
   "flat_scene_tile_fraction",
@@ -75,7 +84,12 @@ visual_image_check_names='[
   "severe_clipping_fraction",
   "transparent_pixel_fraction",
   "foreign_canvas_fraction",
-  "hud_text_fraction"
+  "hud_text_fraction",
+  "terrain_luma_span",
+  "terrain_scene_color_bucket_count",
+  "terrain_internal_edge_density",
+  "terrain_internal_edge_density",
+  "terrain_isolated_speck_fraction"
 ]'
 
 for dependency in cargo jq; do

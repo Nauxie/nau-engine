@@ -43,6 +43,21 @@ Individual islands do not need every family. Their selected objects must reinfor
 motif and remain visually distinguishable from adjacent islands. All 41 accepted terrain,
 foliage, and stone palette tuples are unique.
 
+## Surface Material Contract
+
+- Terrain uses deterministic mipped albedo, tangent-space normal, and occlusion/roughness/metallic
+  maps generated from one coherent periodic height/moisture field.
+- A single Bevy `ExtendedMaterial` shader serves terrain, water, and foam without creating
+  per-island shader variants. Terrain combines authored vertex color, `UV_1` material masks,
+  world-space macro variation, and bounded shadow fill.
+- Water meshes carry stable UVs, tangents, shoreline/foam masks, and flow orientation. The shader
+  layers crossing normal octaves, basin shimmer, directional channel flow, waterfall breakup, and
+  foam while preserving front/back-face orientation.
+- Water and foam remain nonblocking and do not cast opaque shadows. Foam uses an explicit unlit
+  output path so it cannot turn into a dark translucent slab.
+- Runtime and terrain export use the same surface material constructors. Eval material accounting
+  includes both standard and extended material collections.
+
 ## Placement and Gameplay Invariants
 
 - All generated surface placements must remain inside the playable island silhouette.
@@ -105,16 +120,19 @@ NAU_EVAL_SCREENSHOT=1 NAU_EVAL_ASSET_AUDIT=0 \
   ./tools/eval.sh island_surface_review target/eval/island_surface/surface_review
 ```
 
-The hero gallery requires near, mid, and traversal captures for every island: 123 PNGs, 123 marker
-sidecars, an exact review manifest, and passing visual and semantic audits. Near views must prove
-target-scoped authored features; mid and traversal views must preserve readable island identity and
-silhouette. The fixed plateau ruin/geology, dense-flora, and lake/river/waterfall checkpoints add
-focused pixel-backed evidence. Flora semantic probes target deterministic points on generated mesh
-geometry rather than arbitrary cluster centers. Hero-landmark probes likewise come from multiple
-real mesh triangles instead of one coarse camera bound, and semantic island occlusion follows each
-authored visual footprint rather than a generic ellipse. Route-edge waterfall rendering and review
-framing share one placement contract; waterfall-garden near views keep the actual ribbon and mist
-inside a stricter 70% normalized safe frame.
+The hero gallery requires near, mid, and traversal captures for every island: 123 per-view PNGs
+plus the scenario screenshot, 123 marker sidecars, an exact review manifest, and passing visual and
+semantic audits. Near views must prove target-scoped authored features; mid and traversal views
+must preserve readable island identity and silhouette. The fixed plateau ruin/geology, dense-flora,
+and lake/river/waterfall checkpoints add focused pixel-backed evidence. Flora semantic probes target
+deterministic points on generated mesh geometry rather than arbitrary cluster centers.
+Hero-landmark probes likewise come from multiple real mesh triangles instead of one coarse camera
+bound, and semantic island occlusion follows each authored visual footprint rather than a generic
+ellipse. Route-edge waterfall rendering and review framing share one placement contract;
+waterfall-garden near views keep the actual ribbon and mist inside a stricter 70% normalized safe
+frame. Water evidence uses a coherent local connected component and water-kind-specific color/foam
+rules, so scattered blue pixels elsewhere in the image cannot satisfy a pond, channel, or
+waterfall checkpoint.
 
 A passing non-golden image audit is necessary but not sufficient: review the checkpoint images
 directly for foreground density, ruin readability, geological silhouette, shoreline integration,
@@ -136,6 +154,9 @@ cargo clippy --all-targets --all-features -- -D warnings
 ```
 
 The overhaul is complete only when structural audits, screenshot review, camera/mechanics gates,
-and debug-versus-release performance evidence all pass together. The accepted isolated performance
-run records 14.65/17.52 ms debug average/p95 and 16.18/17.37 ms release average/p95, with zero frames
-over 33.34 ms in either build.
+and debug-versus-release performance evidence all pass together. The accepted full-content
+performance run records 8.37/9.29/11.19/19.19 ms debug and 8.36/9.03/9.63/18.66 ms release
+average/p95/p99/max across 171 post-startup runtime frames, with one frame over 16.67 ms and zero
+over 33.34 ms in either build. The same evidence records 4,837 entities, 2,096 meshes, 1,235,510
+loaded triangles, and 115 materials. Startup frames remain visible in the summary but do not
+pollute the steady-play performance budget.

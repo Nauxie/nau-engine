@@ -1,11 +1,14 @@
 use super::queue::{queue_collidable_island_visual, queue_island_visual, queue_wind_island_visual};
-use super::types::{IslandStreamState, IslandVisualCatalog, IslandVisualEntry, IslandVisualLayer};
+use super::types::{
+    IslandStreamState, IslandVisualCatalog, IslandVisualEntry, IslandVisualLayer,
+    IslandVisualMaterial,
+};
 use crate::camera_runtime::CameraObstacle;
 use crate::content_diagnostics::{GeneratedLandmarkKind, IslandContentDiagnostics};
 use crate::environment_visuals::wind_visual_motion;
 use crate::generated_content::{
     FloraMaterialRole, IslandDetailMaterials, TERRAIN_BIOME_PALETTE_COUNT, WaterDetailMaterialRole,
-    allocate_authored_island_detail_materials, island_flora_visual_specs,
+    WaterSurfaceMaterials, allocate_authored_island_detail_materials, island_flora_visual_specs,
     island_hero_landmark_spec, island_rock_formation_specs, island_ruin_complex_specs,
     island_water_detail_specs, island_water_visual_specs,
 };
@@ -25,7 +28,7 @@ pub(super) fn queue_island_surface_details(
     meshes: &mut Assets<Mesh>,
     detail_materials: IslandDetailMaterials,
     flower_material: Handle<StandardMaterial>,
-    water_material: Handle<StandardMaterial>,
+    water_materials: &WaterSurfaceMaterials,
     island_index: usize,
     island: SkyIsland,
 ) {
@@ -143,10 +146,16 @@ pub(super) fn queue_island_surface_details(
         .enumerate()
     {
         let material = match feature.material {
-            WaterDetailMaterialRole::Water => water_material.clone(),
-            WaterDetailMaterialRole::Stone => detail_materials.stone.clone(),
-            WaterDetailMaterialRole::Foliage => detail_materials.foliage.clone(),
-            WaterDetailMaterialRole::Flower => flower_material.clone(),
+            WaterDetailMaterialRole::Water => {
+                IslandVisualMaterial::surface_without_shadows(water_materials.foam.clone())
+            }
+            WaterDetailMaterialRole::Stone => {
+                IslandVisualMaterial::from(detail_materials.stone.clone())
+            }
+            WaterDetailMaterialRole::Foliage => {
+                IslandVisualMaterial::from(detail_materials.foliage.clone())
+            }
+            WaterDetailMaterialRole::Flower => IslandVisualMaterial::from(flower_material.clone()),
         };
         let mesh = feature.build_mesh();
         content_diagnostics.record_generated_landmark(
@@ -216,7 +225,7 @@ fn queue_static_surface_feature(
     island: SkyIsland,
     layer: IslandVisualLayer,
     mesh: Handle<Mesh>,
-    material: Handle<StandardMaterial>,
+    material: impl Into<IslandVisualMaterial>,
     translation: Vec3,
     rotation_y: f32,
     camera_half_extents: Option<Vec3>,
@@ -320,7 +329,11 @@ impl IslandVisualCatalog {
                 .iter_mut()
                 .filter(|entry| entry.key.island_name == island.name)
             {
-                let Some(current) = entry.material.as_ref() else {
+                let Some(current) = entry
+                    .material
+                    .as_ref()
+                    .and_then(IslandVisualMaterial::standard_handle)
+                else {
                     continue;
                 };
                 let Some(replacement) = replacement_detail_material(current, source, target) else {
@@ -330,7 +343,7 @@ impl IslandVisualCatalog {
                     continue;
                 }
 
-                entry.material = Some(replacement.clone());
+                entry.material = Some(replacement.clone().into());
                 if stream_state.visual_resident.contains(&entry.key)
                     && let Some(entity) = stream_state.spawned.get(&entry.key)
                 {
@@ -363,7 +376,9 @@ impl IslandVisualCatalog {
                     && entry.name == entry_name
                     && entry.has_visible_mesh()
             })
-            .and_then(|entry| entry.material.clone())
+            .and_then(|entry| entry.material.as_ref())
+            .and_then(IslandVisualMaterial::standard_handle)
+            .cloned()
     }
 
     #[cfg(test)]
@@ -394,7 +409,9 @@ fn detail_materials_for_island(
         entries
             .iter()
             .find(|entry| entry.key.island_name == island_name && predicate(entry))
-            .and_then(|entry| entry.material.clone())
+            .and_then(|entry| entry.material.as_ref())
+            .and_then(IslandVisualMaterial::standard_handle)
+            .cloned()
     };
 
     Some(IslandDetailMaterials {

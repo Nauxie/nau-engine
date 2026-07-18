@@ -1,7 +1,9 @@
 use super::constants::{
     ISLAND_BODY_SEGMENTS, ISLAND_TERRAIN_EDGE_SKIRT_DEPTH_M, ISLAND_TERRAIN_RINGS,
 };
-use super::normals::smooth_normals_from_triangles;
+use super::normals::{
+    smooth_normals_from_triangles, world_aligned_tangents_from_positions_and_normals,
+};
 use super::palette::{
     balance_terrain_material_weights, island_terrain_material_weights, island_terrain_uv,
     island_terrain_vertex_color,
@@ -142,6 +144,7 @@ pub(crate) fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mes
     }
 
     let normals = smooth_normals_from_triangles(&positions, &indices);
+    let tangents = world_aligned_tangents_from_positions_and_normals(&positions, &normals);
 
     Mesh::new(
         PrimitiveTopology::TriangleList,
@@ -150,6 +153,7 @@ pub(crate) fn island_terrain_mesh(island_index: usize, island: SkyIsland) -> Mes
     .with_inserted_indices(Indices::U32(indices))
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_TANGENT, tangents)
     .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_1, material_weights)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)

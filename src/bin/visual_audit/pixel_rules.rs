@@ -62,17 +62,15 @@ pub(super) fn scene_material_family(
         return None;
     }
 
-    let water = luma <= 170.0
-        && r <= 115.0
-        && g >= 45.0
-        && b >= 40.0
-        && r <= g + 25.0
-        && (g >= r + 8.0 || b >= r + 8.0);
+    let blue_water = b >= r + 30.0 && b + 12.0 >= g;
+    let cyan_water = g >= r + 36.0 && b >= r + 22.0 && b + 24.0 >= g;
+    let water = luma <= 170.0 && r <= 115.0 && g >= 45.0 && b >= 40.0 && (blue_water || cyan_water);
     if water {
         return Some(0);
     }
 
-    let foliage = g >= 60.0 && g >= r * 0.75 && g >= b * 0.65;
+    let channel_spread = r.max(g).max(b) - r.min(g).min(b);
+    let foliage = channel_spread > 55.0 && g >= 60.0 && g >= r + 12.0 && g >= b + 18.0;
     if foliage {
         return Some(1);
     }
@@ -80,6 +78,12 @@ pub(super) fn scene_material_family(
     let earth = r >= 55.0 && g >= 40.0 && r >= b + 10.0 && g >= b * 0.75;
     if earth {
         return Some(2);
+    }
+
+    let muted_ground =
+        (18.0..=150.0).contains(&luma) && (r - g).abs() <= 45.0 && channel_spread <= 55.0;
+    if muted_ground {
+        return Some(3);
     }
 
     let rock_or_shadow = (18.0..=150.0).contains(&luma) && (r - g).abs() <= 45.0;

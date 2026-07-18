@@ -755,7 +755,7 @@ mod tests {
             layer,
             mesh: collision.map(|_| Handle::<Mesh>::default()),
             mesh_recipe: None,
-            material: collision.map(|_| Handle::<StandardMaterial>::default()),
+            material: collision.map(|_| Handle::<StandardMaterial>::default().into()),
             transform: Transform::default(),
             obstacle,
             collision,

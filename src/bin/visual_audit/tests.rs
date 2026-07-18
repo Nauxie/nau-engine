@@ -1,8 +1,9 @@
 use super::{
     USAGE,
     analysis::{audit_image, audit_image_with_alpha},
+    image_metrics::terrain_surface_stats,
     parse_args,
-    pixel_rules::{is_lower_scene_like, is_scene_like, is_sky_like},
+    pixel_rules::{is_lower_scene_like, is_scene_like, is_sky_like, scene_material_family},
     report::{
         VisualAuditProfile, audit_report_json_for_profile, json_string, report_checks,
         report_checks_for_profile, report_passed, report_passed_for_profile,
@@ -228,6 +229,98 @@ fn paint_flat_terrain_scene_patch(image: &mut RgbImage) {
     for y in height * 56 / 100..height * 86 / 100 {
         for x in width * 70 / 100..width * 96 / 100 {
             image.put_pixel(x, y, Rgb([132, 92, 52]));
+        }
+    }
+}
+
+fn paint_coherent_terrain_scene_patch(image: &mut RgbImage) {
+    const PALETTE: [[u8; 3]; 4] = [[96, 64, 32], [128, 82, 42], [156, 98, 50], [176, 116, 62]];
+    let width = image.width();
+    let height = image.height();
+
+    for y in height * 56 / 100..height * 86 / 100 {
+        for x in width * 70 / 100..width * 96 / 100 {
+            let palette_index = ((x / 7 + y / 7) as usize) % PALETTE.len();
+            image.put_pixel(x, y, Rgb(PALETTE[palette_index]));
+        }
+    }
+}
+
+fn paint_coherent_terrain_surface(image: &mut RgbImage) {
+    const PALETTE: [[u8; 3]; 24] = [
+        [80, 48, 20],
+        [80, 48, 40],
+        [112, 48, 20],
+        [112, 48, 40],
+        [112, 72, 20],
+        [112, 72, 40],
+        [112, 72, 68],
+        [144, 48, 20],
+        [144, 48, 40],
+        [144, 80, 20],
+        [144, 80, 40],
+        [144, 80, 68],
+        [144, 104, 20],
+        [144, 104, 40],
+        [144, 104, 68],
+        [176, 48, 20],
+        [176, 48, 40],
+        [176, 80, 20],
+        [176, 80, 40],
+        [176, 80, 68],
+        [176, 104, 20],
+        [176, 104, 40],
+        [176, 104, 68],
+        [176, 128, 20],
+    ];
+
+    for y in 0..image.height() {
+        for x in 0..image.width() {
+            let palette_index = ((x / 11 + (y / 11) * 5) as usize) % PALETTE.len();
+            image.put_pixel(x, y, Rgb(PALETTE[palette_index]));
+        }
+    }
+}
+
+fn paint_coherent_dark_cliff_surface(image: &mut RgbImage) {
+    const PALETTE: [[u8; 3]; 9] = [
+        [18, 18, 18],
+        [28, 28, 28],
+        [50, 46, 40],
+        [40, 50, 32],
+        [40, 32, 50],
+        [52, 28, 20],
+        [28, 44, 20],
+        [28, 20, 44],
+        [52, 52, 28],
+    ];
+
+    for y in 0..image.height() {
+        for x in 0..image.width() {
+            let palette_index = ((x / 13 + (y / 13) * 5) as usize) % PALETTE.len();
+            image.put_pixel(x, y, Rgb(PALETTE[palette_index]));
+        }
+    }
+}
+
+fn paint_flat_terrain_surface(image: &mut RgbImage) {
+    for pixel in image.pixels_mut() {
+        *pixel = Rgb([132, 92, 52]);
+    }
+}
+
+fn paint_salt_pepper_terrain_surface(image: &mut RgbImage) {
+    paint_coherent_terrain_surface(image);
+    for y in (2..image.height()).step_by(4) {
+        for x in (2..image.width()).step_by(4) {
+            let [r, g, b] = image.get_pixel(x, y).0;
+            let luma = 0.2126 * r as f64 + 0.7152 * g as f64 + 0.0722 * b as f64;
+            let noise = if luma >= 110.0 {
+                [58, 42, 22]
+            } else {
+                [188, 140, 90]
+            };
+            image.put_pixel(x, y, Rgb(noise));
         }
     }
 }
@@ -532,6 +625,7 @@ fn report_allows_low_sky_close_frame_when_checkpoint_has_sky() {
         }
     }
     paint_readability_signals(&mut close_image);
+    paint_coherent_terrain_scene_patch(&mut close_image);
 
     let close_audit = audit_image("close.png".to_string(), close_image).expect("audit should load");
     assert!(close_audit.passed, "{close_audit:?}");
@@ -559,6 +653,7 @@ fn report_allows_low_sky_close_frame_when_checkpoint_has_sky() {
     }
     paint_collapsed_cloud_layer_signals(&mut checkpoint_image);
     paint_readability_signals(&mut checkpoint_image);
+    paint_coherent_terrain_scene_patch(&mut checkpoint_image);
 
     let checkpoint_audit =
         audit_image("checkpoint.png".to_string(), checkpoint_image).expect("audit should load");
@@ -691,16 +786,181 @@ fn report_rejects_flat_terrain_material_identity() {
     let audit = audit_image("flat_terrain.png".to_string(), image).expect("audit should load");
     let checks = report_checks(std::slice::from_ref(&audit));
 
-    assert!(audit.passed, "{audit:?}");
+    assert!(!audit.passed, "{audit:?}");
     assert!(audit.terrain_scene_fraction >= MIN_SEQUENCE_TERRAIN_SCENE_FRACTION);
     assert!(audit.terrain_scene_tile_count >= MIN_SEQUENCE_TERRAIN_SCENE_TILES);
     assert!(audit.terrain_scene_color_bucket_count < MIN_SEQUENCE_TERRAIN_SCENE_COLOR_BUCKETS);
+    assert!(audit.terrain_quality_qualified);
+    assert!(
+        audit
+            .checks
+            .iter()
+            .any(|check| { check.name == "terrain_scene_color_bucket_count" && !check.passed })
+    );
     assert!(!report_passed(std::slice::from_ref(&audit), &checks));
     assert!(
         checks
             .iter()
             .any(|check| check.name == "max_terrain_scene_color_bucket_count" && !check.passed)
     );
+}
+
+#[test]
+fn audit_passes_coherent_textured_terrain_surface() {
+    let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    paint_coherent_terrain_surface(&mut image);
+    paint_player_focus(&mut image);
+
+    let audit = audit_image("coherent_terrain.png".to_string(), image).expect("audit should load");
+
+    assert!(audit.terrain_quality_qualified, "{audit:?}");
+    assert!(audit.terrain_luma_span >= MIN_TERRAIN_LUMA_SPAN);
+    assert!(audit.terrain_internal_edge_density >= MIN_TERRAIN_INTERNAL_EDGE_DENSITY);
+    assert!(audit.terrain_internal_edge_density <= MAX_TERRAIN_INTERNAL_EDGE_DENSITY);
+    assert!(audit.terrain_isolated_speck_fraction <= MAX_TERRAIN_ISOLATED_SPECK_FRACTION);
+    assert!(audit.passed, "{audit:?}");
+
+    let report = audit_report_json_for_profile(&[], &[audit], VisualAuditProfile::Default);
+    let report: serde_json::Value =
+        serde_json::from_str(&report).expect("report should be valid json");
+    assert_eq!(report["images"][0]["terrain_quality_qualified"], true);
+    assert!(report["images"][0]["terrain_luma_span"].is_number());
+    assert!(report["images"][0]["terrain_internal_edge_density"].is_number());
+    assert!(report["images"][0]["terrain_isolated_speck_fraction"].is_number());
+}
+
+#[test]
+fn audit_resolves_coherent_dark_cliff_palette() {
+    let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    paint_coherent_dark_cliff_surface(&mut image);
+    paint_player_focus(&mut image);
+
+    let audit = audit_image("dark_cliff.png".to_string(), image).expect("audit should load");
+
+    assert!(
+        audit.terrain_scene_color_bucket_count >= MIN_SEQUENCE_TERRAIN_SCENE_COLOR_BUCKETS,
+        "{audit:?}"
+    );
+    assert!(audit.terrain_luma_span >= MIN_TERRAIN_LUMA_SPAN);
+    assert!(audit.terrain_internal_edge_density >= MIN_TERRAIN_INTERNAL_EDGE_DENSITY);
+    assert!(audit.terrain_isolated_speck_fraction <= MAX_TERRAIN_ISOLATED_SPECK_FRACTION);
+}
+
+#[test]
+fn terrain_surface_metrics_ignore_non_terrain_neighbors() {
+    let width = 5;
+    let height = 5;
+    let mut luma_values = vec![255.0; width * height];
+    let mut terrain_mask = vec![false; width * height];
+    for y in 1..4 {
+        for x in 1..4 {
+            let index = y * width + x;
+            luma_values[index] = 80.0;
+            terrain_mask[index] = true;
+        }
+    }
+
+    let stats = terrain_surface_stats(&luma_values, &terrain_mask, width, height);
+
+    assert_eq!(stats.luma_span, 0.0);
+    assert_eq!(stats.internal_edge_density, 0.0);
+    assert_eq!(stats.isolated_speck_fraction, 0.0);
+}
+
+#[test]
+fn audit_rejects_flat_qualified_terrain_surface() {
+    let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    paint_flat_terrain_surface(&mut image);
+    paint_player_focus(&mut image);
+
+    let audit =
+        audit_image("flat_qualified_terrain.png".to_string(), image).expect("audit should load");
+
+    assert!(audit.terrain_quality_qualified, "{audit:?}");
+    assert!(audit.terrain_luma_span < MIN_TERRAIN_LUMA_SPAN);
+    assert!(audit.terrain_internal_edge_density < MIN_TERRAIN_INTERNAL_EDGE_DENSITY);
+    assert!(!audit.passed);
+    assert!(
+        audit
+            .checks
+            .iter()
+            .any(|check| check.name == "terrain_luma_span" && !check.passed)
+    );
+}
+
+#[test]
+fn audit_rejects_isolated_salt_pepper_terrain_noise() {
+    let mut image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    paint_salt_pepper_terrain_surface(&mut image);
+    paint_player_focus(&mut image);
+
+    let audit =
+        audit_image("salt_pepper_terrain.png".to_string(), image).expect("audit should load");
+
+    assert!(audit.terrain_quality_qualified, "{audit:?}");
+    assert!(
+        audit.terrain_isolated_speck_fraction > MAX_TERRAIN_ISOLATED_SPECK_FRACTION,
+        "{audit:?}"
+    );
+    assert!(!audit.passed);
+    assert!(
+        audit
+            .checks
+            .iter()
+            .any(|check| { check.name == "terrain_isolated_speck_fraction" && !check.passed })
+    );
+    let checks = report_checks(std::slice::from_ref(&audit));
+    assert!(
+        checks
+            .iter()
+            .any(|check| { check.name == "max_terrain_isolated_speck_fraction" && !check.passed })
+    );
+}
+
+#[test]
+fn report_uses_lower_tail_terrain_quality_across_qualified_frames() {
+    let mut rich_image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+    paint_coherent_terrain_surface(&mut rich_image);
+    paint_player_focus(&mut rich_image);
+    let rich_audit =
+        audit_image("rich_terrain.png".to_string(), rich_image).expect("audit should load");
+
+    let mut audits = vec![rich_audit];
+    for frame in 0..5 {
+        let mut flat_image = RgbImage::new(MIN_WIDTH, MIN_HEIGHT);
+        paint_flat_terrain_surface(&mut flat_image);
+        paint_player_focus(&mut flat_image);
+        audits.push(
+            audit_image(format!("flat_terrain_{frame}.png"), flat_image)
+                .expect("audit should load"),
+        );
+    }
+
+    assert!(audits.iter().all(|audit| audit.terrain_quality_qualified));
+    let checks = report_checks(&audits);
+    assert!(
+        checks
+            .iter()
+            .any(|check| { check.name == "max_terrain_scene_color_bucket_count" && check.passed })
+    );
+    assert!(
+        checks
+            .iter()
+            .any(|check| { check.name == "terrain_quality_qualified_image_count" && check.passed })
+    );
+    for lower_tail_check in [
+        "p10_terrain_luma_span",
+        "p10_terrain_scene_color_bucket_count",
+        "p10_terrain_internal_edge_density",
+    ] {
+        assert!(
+            checks
+                .iter()
+                .any(|check| check.name == lower_tail_check && !check.passed),
+            "{lower_tail_check} should reject the bad qualified frames: {checks:?}"
+        );
+    }
+    assert!(!report_passed(&audits, &checks));
 }
 
 #[test]
@@ -817,6 +1077,42 @@ fn route_marker_optional_profile_relaxes_only_route_marker_report_checks() {
 }
 
 #[test]
+fn landscape_vista_profile_relaxes_route_marker_and_foliage_report_checks() {
+    let default_checks = report_checks_for_profile(&[], VisualAuditProfile::Default);
+    let vista_checks = report_checks_for_profile(&[], VisualAuditProfile::LandscapeVista);
+    let relaxed_checks = [
+        "max_route_marker_fraction",
+        "max_route_marker_component_count",
+        "max_route_marker_hue_family_count",
+        "max_foliage_scene_fraction",
+        "max_foliage_scene_tile_count",
+    ];
+
+    assert_eq!(
+        vista_checks.len(),
+        default_checks.len() - relaxed_checks.len()
+    );
+    for default_check in &default_checks {
+        let vista_check = vista_checks
+            .iter()
+            .find(|check| check.name == default_check.name);
+        if relaxed_checks.contains(&default_check.name) {
+            assert!(
+                vista_check.is_none(),
+                "{} should be omitted",
+                default_check.name
+            );
+        } else {
+            assert!(
+                vista_check.is_some(),
+                "{} should be preserved",
+                default_check.name
+            );
+        }
+    }
+}
+
+#[test]
 fn island_gallery_profile_preserves_scene_checks_and_relaxes_route_markers() {
     let default_checks = report_checks_for_profile(&[], VisualAuditProfile::Default);
     let gallery_checks = report_checks_for_profile(&[], VisualAuditProfile::IslandGallery);
@@ -897,7 +1193,8 @@ fn island_gallery_serializes_truthful_profile_adjusted_image_results() {
             "max_route_marker_fraction",
             "max_route_marker_component_count",
             "max_route_marker_hue_family_count",
-            "player_focus_fraction"
+            "player_focus_fraction",
+            "center_edge_density"
         ])
     );
 }
@@ -945,6 +1242,20 @@ fn cli_parses_route_marker_optional_profile_and_documents_it() {
     assert_eq!(profile, VisualAuditProfile::RouteMarkerOptional);
     assert_eq!(paths, [std::path::PathBuf::from("plateau.png")]);
     assert!(USAGE.contains("route_marker_optional"));
+}
+
+#[test]
+fn cli_parses_landscape_vista_profile_and_documents_it() {
+    let (profile, paths) = parse_args([
+        "--profile".to_string(),
+        "landscape_vista".to_string(),
+        "vista.png".to_string(),
+    ])
+    .expect("profile should parse");
+
+    assert_eq!(profile, VisualAuditProfile::LandscapeVista);
+    assert_eq!(paths, [std::path::PathBuf::from("vista.png")]);
+    assert!(USAGE.contains("landscape_vista"));
 }
 
 #[test]
@@ -1075,6 +1386,20 @@ fn lower_scene_classifier_counts_dark_terrain_without_counting_black_or_sky() {
     let sky_luma = 0.2126 * sky.0 + 0.7152 * sky.1 + 0.0722 * sky.2;
     assert!(is_sky_like(sky.0, sky.1, sky.2, sky_luma));
     assert!(!is_lower_scene_like(sky.0, sky.1, sky.2, sky_luma, true,));
+}
+
+#[test]
+fn material_classifier_separates_muted_terrain_from_water_and_foliage() {
+    let family = |rgb: (f64, f64, f64)| {
+        let luma = 0.2126 * rgb.0 + 0.7152 * rgb.1 + 0.0722 * rgb.2;
+        scene_material_family(rgb.0, rgb.1, rgb.2, luma, false)
+    };
+
+    assert_eq!(family((75.0, 106.0, 100.0)), Some(3));
+    assert_eq!(family((87.0, 114.0, 82.0)), Some(3));
+    assert_eq!(family((132.0, 92.0, 52.0)), Some(2));
+    assert_eq!(family((42.0, 126.0, 24.0)), Some(1));
+    assert_eq!(family((23.0, 51.0, 57.0)), Some(0));
 }
 
 #[test]

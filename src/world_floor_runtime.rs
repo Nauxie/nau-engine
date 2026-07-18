@@ -4,7 +4,9 @@ use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use std::collections::{HashMap, HashSet};
 
+use crate::generated_content::world_aligned_tangents_from_positions_and_normals;
 use crate::player_runtime::Player;
+use crate::surface_material::SurfaceMaterial;
 use nau_engine::world::{
     WORLD_TERRAIN_GRID_SUBDIVISIONS, WORLD_TERRAIN_TILE_SIZE_M, world_terrain_visual_y_at,
 };
@@ -22,10 +24,10 @@ const WORLD_FLOOR_GROUND_COVER_BLADES_PER_PATCH: usize = 4;
 
 #[derive(Clone, Debug, Resource)]
 pub(crate) struct WorldFloorMaterials {
-    pub(crate) ocean: Handle<StandardMaterial>,
-    pub(crate) lowland: Handle<StandardMaterial>,
-    pub(crate) ridge: Handle<StandardMaterial>,
-    pub(crate) mountain: Handle<StandardMaterial>,
+    pub(crate) ocean: Handle<SurfaceMaterial>,
+    pub(crate) lowland: Handle<SurfaceMaterial>,
+    pub(crate) ridge: Handle<SurfaceMaterial>,
+    pub(crate) mountain: Handle<SurfaceMaterial>,
     pub(crate) ground_cover: Handle<StandardMaterial>,
 }
 
@@ -543,6 +545,7 @@ fn world_floor_tile_mesh(coord: WorldFloorTileCoord) -> (Mesh, WorldFloorTileSta
     }
 
     let normals = smooth_normals_from_triangles(&positions, &indices);
+    let tangents = world_aligned_tangents_from_positions_and_normals(&positions, &normals);
     let mesh = Mesh::new(
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::default(),
@@ -550,6 +553,7 @@ fn world_floor_tile_mesh(coord: WorldFloorTileCoord) -> (Mesh, WorldFloorTileSta
     .with_inserted_indices(Indices::U32(indices))
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_TANGENT, tangents)
     .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
 

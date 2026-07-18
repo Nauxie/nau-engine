@@ -10,6 +10,7 @@ pub(crate) struct SceneSampleAudit {
     pub(crate) screen_x: Option<f64>,
     pub(crate) screen_y: Option<f64>,
     pub(crate) semantic_pixel_hits: usize,
+    pub(crate) water_local_metrics: Option<WaterLocalMetrics>,
     pub(crate) passed: bool,
 }
 
@@ -43,6 +44,43 @@ pub(crate) struct MaterialAudit {
     pub(crate) sample_pixel_hit_count: usize,
     pub(crate) min_sample_pixel_hit_count: usize,
     pub(crate) hit_ratio: f64,
+    pub(crate) water_metrics: Option<WaterAggregateMetrics>,
+    pub(crate) passed: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct WaterLocalMetrics {
+    pub(crate) local_hit_count: usize,
+    pub(crate) x_span: usize,
+    pub(crate) y_span: usize,
+    pub(crate) quantized_color_bucket_count: usize,
+    pub(crate) luma_p95_p5: f64,
+    pub(crate) internal_edge_density: f64,
+    pub(crate) bounding_box_fill_ratio: f64,
+    pub(crate) quality_required: bool,
+    pub(crate) area_span_passed: bool,
+    pub(crate) color_bucket_passed: bool,
+    pub(crate) luma_variation_passed: bool,
+    pub(crate) internal_edge_density_passed: bool,
+    pub(crate) passed: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct WaterAggregateMetrics {
+    pub(crate) visible_sample_count: usize,
+    pub(crate) projected_quality_required_sample_count: usize,
+    pub(crate) quality_required_sample_count: usize,
+    pub(crate) area_span_passed_sample_count: usize,
+    pub(crate) color_bucket_passed_sample_count: usize,
+    pub(crate) luma_variation_passed_sample_count: usize,
+    pub(crate) internal_edge_density_passed_sample_count: usize,
+    pub(crate) quality_passed_sample_count: usize,
+    pub(crate) total_local_hit_count: usize,
+    pub(crate) max_x_span: usize,
+    pub(crate) max_y_span: usize,
+    pub(crate) max_quantized_color_bucket_count: usize,
+    pub(crate) max_luma_p95_p5: f64,
+    pub(crate) mean_internal_edge_density: f64,
     pub(crate) passed: bool,
 }
 

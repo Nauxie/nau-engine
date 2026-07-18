@@ -190,7 +190,7 @@ fn accumulator_fails_terrain_detail_regression() {
     accumulator.observe(
         content_metric_sample(scenario, 10, 12, 0, 96)
             .with_content_metrics(10, 1200, 2, 0.2, 3, 3, 12, 0, 96, 96.0, 1633, 1633)
-            .with_terrain_material_metrics(4, 2, 2, 16),
+            .with_terrain_material_metrics(4, 2, 2, MIN_ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS - 1),
     );
 
     let summary = accumulator.summary(
@@ -227,7 +227,10 @@ fn accumulator_fails_terrain_detail_regression() {
     assert!(!material_region_check.passed);
     assert_eq!(material_region_check.value, 2.0);
     assert!(!texture_detail_check.passed);
-    assert_eq!(texture_detail_check.value, 16.0);
+    assert_eq!(
+        texture_detail_check.value,
+        (MIN_ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS - 1) as f32
+    );
     assert!(!relief_check.passed);
     assert_eq!(relief_check.value, 0.2);
     assert!(!archetype_check.passed);

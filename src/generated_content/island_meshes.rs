@@ -25,7 +25,13 @@ pub(crate) use constants::{
     ISLAND_TERRAIN_MATERIAL_CHANNELS, ISLAND_TERRAIN_MATERIAL_REGIONS,
     ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS, ISLAND_TERRAIN_NORMAL_SLOPE_BANDS,
     ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS, ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE,
-    ISLAND_UNDERSIDE_RINGS,
+    ISLAND_TERRAIN_TEXTURE_MACRO_DETAIL_ENERGY_PROMILLE,
+    ISLAND_TERRAIN_TEXTURE_MAX_ISOLATED_EDGE_PROMILLE,
+    ISLAND_TERRAIN_TEXTURE_MAX_NEAR_TO_MID_RATIO_PROMILLE,
+    ISLAND_TERRAIN_TEXTURE_MID_DETAIL_ENERGY_PROMILLE,
+    ISLAND_TERRAIN_TEXTURE_MIN_NEAR_TO_MID_RATIO_PROMILLE,
+    ISLAND_TERRAIN_TEXTURE_NEAR_DETAIL_ENERGY_PROMILLE, ISLAND_UNDERSIDE_RINGS,
+    TERRAIN_UV_TILES_PER_METER,
 };
 pub(crate) use diagnostics::{
     island_body_mesh_diagnostics, island_impostor_mesh_diagnostics, island_terrain_mesh_diagnostics,
@@ -36,6 +42,7 @@ pub(crate) use metrics::{
     mesh_terrain_material_region_count, mesh_terrain_material_weight_band_count,
     mesh_vertex_color_band_count, mesh_vertical_band_count, mesh_y_range,
 };
+pub(crate) use normals::world_aligned_tangents_from_positions_and_normals;
 #[cfg(test)]
 pub(crate) use palette::island_terrain_vertex_color;
 pub(crate) use palette::{

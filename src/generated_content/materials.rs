@@ -2,13 +2,21 @@ use bevy::image::ImageFilterMode;
 use bevy::prelude::*;
 use std::collections::HashMap;
 
+use crate::surface_material::{SurfaceExtension, SurfaceMaterial};
+
 use super::island_meshes::{IslandDetailMaterials, biome_detail_materials};
+use super::surface_textures::{TerrainSurfaceTextureSet, procedural_water_normal_texture};
 use super::textures::{
-    TERRAIN_TEXTURE_SIZE, procedural_depth_map, procedural_depth_map_with_size,
-    procedural_material_map, procedural_material_map_with_size, procedural_occlusion_map,
-    procedural_occlusion_map_with_size, procedural_srgb_texture, procedural_surface_texture,
-    procedural_terrain_surface_texture_data, texture_detail_band_count,
+    TERRAIN_TEXTURE_SIZE, procedural_depth_map, procedural_material_map, procedural_occlusion_map,
+    procedural_surface_texture,
 };
+
+#[derive(Clone)]
+pub(crate) struct WaterSurfaceMaterials {
+    pub(crate) body: Handle<SurfaceMaterial>,
+    pub(crate) foam: Handle<SurfaceMaterial>,
+    pub(crate) mist: Handle<StandardMaterial>,
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn textured_material(
@@ -48,53 +56,47 @@ pub(crate) fn textured_material(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn terrain_surface_material(
     images: &mut Assets<Image>,
-    materials: &mut Assets<StandardMaterial>,
+    materials: &mut Assets<SurfaceMaterial>,
     primary: [u8; 4],
     secondary: [u8; 4],
     accent: [u8; 4],
     seed: u32,
     perceptual_roughness: f32,
     reflectance: f32,
-) -> (Handle<StandardMaterial>, usize) {
-    let material_seed = seed.wrapping_add(1_337);
-    let surface_data = procedural_terrain_surface_texture_data(
-        primary,
-        secondary,
-        accent,
+) -> (Handle<SurfaceMaterial>, usize) {
+    let texture_primary = terrain_texture_tint(primary);
+    let texture_secondary = terrain_texture_tint(secondary);
+    let texture_accent = terrain_texture_tint(accent);
+    let surface_set = TerrainSurfaceTextureSet::generate(
+        texture_primary,
+        texture_secondary,
+        texture_accent,
         seed,
         TERRAIN_TEXTURE_SIZE,
     );
-    let detail_bands = texture_detail_band_count(&surface_data);
-    let base_color_texture = procedural_srgb_texture(
-        surface_data,
-        TERRAIN_TEXTURE_SIZE,
-        ImageFilterMode::Linear,
-        16,
-    );
+    let detail_bands = surface_set.detail_bands;
+    let base_color_texture = images.add(surface_set.albedo);
+    let normal_texture = images.add(surface_set.normal);
+    let orm_texture = images.add(surface_set.orm);
 
     (
-        materials.add(StandardMaterial {
-            base_color: Color::WHITE,
-            base_color_texture: Some(images.add(base_color_texture)),
-            metallic_roughness_texture: Some(images.add(procedural_material_map_with_size(
-                material_seed,
-                perceptual_roughness,
-                TERRAIN_TEXTURE_SIZE,
-            ))),
-            occlusion_texture: Some(images.add(procedural_occlusion_map_with_size(
-                material_seed.wrapping_add(23),
-                TERRAIN_TEXTURE_SIZE,
-            ))),
-            depth_map: Some(images.add(procedural_depth_map_with_size(
-                material_seed.wrapping_add(47),
-                ImageFilterMode::Linear,
-                TERRAIN_TEXTURE_SIZE,
-            ))),
-            parallax_depth_scale: 0.018,
-            max_parallax_layer_count: 12.0,
-            perceptual_roughness,
-            reflectance,
-            ..default()
+        materials.add(SurfaceMaterial {
+            base: StandardMaterial {
+                base_color: Color::WHITE,
+                base_color_texture: Some(base_color_texture),
+                metallic_roughness_texture: Some(orm_texture.clone()),
+                occlusion_texture: Some(orm_texture),
+                normal_map_texture: Some(normal_texture),
+                perceptual_roughness: perceptual_roughness.clamp(0.72, 1.0),
+                reflectance,
+                ..default()
+            },
+            extension: SurfaceExtension::terrain(
+                linear_tint(primary),
+                linear_tint(secondary),
+                linear_tint(accent),
+                seed as f32 * 0.0137,
+            ),
         }),
         detail_bands,
     )
@@ -122,36 +124,57 @@ pub(crate) fn emissive_material(
     })
 }
 
-pub(crate) fn water_surface_material(
+pub(crate) fn water_surface_materials(
     images: &mut Assets<Image>,
-    materials: &mut Assets<StandardMaterial>,
-) -> Handle<StandardMaterial> {
-    materials.add(StandardMaterial {
-        base_color: Color::srgb(0.26, 0.72, 0.94),
-        base_color_texture: Some(images.add(procedural_surface_texture(
-            [78, 194, 236, 255],
-            [38, 132, 198, 255],
-            [176, 238, 252, 255],
-            79,
-        ))),
-        emissive: LinearRgba::rgb(0.42, 1.55, 2.95),
-        emissive_exposure_weight: 0.08,
-        metallic_roughness_texture: Some(images.add(procedural_material_map(1_079, 0.22))),
-        depth_map: Some(images.add(procedural_depth_map(1_113, ImageFilterMode::Linear))),
-        parallax_depth_scale: 0.018,
-        max_parallax_layer_count: 10.0,
-        cull_mode: None,
-        double_sided: true,
-        perceptual_roughness: 0.18,
-        reflectance: 0.82,
-        clearcoat: 0.85,
-        clearcoat_perceptual_roughness: 0.06,
-        diffuse_transmission: 0.18,
-        specular_transmission: 0.08,
-        thickness: 0.08,
-        ior: 1.33,
-        ..default()
-    })
+    materials: &mut Assets<SurfaceMaterial>,
+    mist: Handle<StandardMaterial>,
+) -> WaterSurfaceMaterials {
+    let detail_normal = images.add(procedural_water_normal_texture(79, 256));
+    let body = materials.add(SurfaceMaterial {
+        base: StandardMaterial {
+            base_color: Color::srgba(0.09, 0.31, 0.40, 0.88),
+            alpha_mode: AlphaMode::Blend,
+            cull_mode: None,
+            double_sided: true,
+            perceptual_roughness: 0.18,
+            reflectance: 0.35,
+            diffuse_transmission: 0.10,
+            ior: 1.33,
+            ..default()
+        },
+        extension: SurfaceExtension::water(detail_normal.clone(), 0.79),
+    });
+    let foam = materials.add(SurfaceMaterial {
+        base: StandardMaterial {
+            base_color: Color::srgba(0.90, 0.98, 1.0, 0.72),
+            alpha_mode: AlphaMode::Add,
+            cull_mode: None,
+            double_sided: true,
+            unlit: true,
+            perceptual_roughness: 0.58,
+            reflectance: 0.46,
+            ..default()
+        },
+        extension: SurfaceExtension::foam(detail_normal, 1.17),
+    });
+
+    WaterSurfaceMaterials { body, foam, mist }
+}
+
+fn linear_tint(color: [u8; 4]) -> Vec4 {
+    LinearRgba::from(Color::srgba_u8(color[0], color[1], color[2], color[3])).to_vec4()
+}
+
+fn terrain_texture_tint(color: [u8; 4]) -> [u8; 4] {
+    let luma =
+        (u16::from(color[0]) * 77 + u16::from(color[1]) * 150 + u16::from(color[2]) * 29) / 256;
+    let neutral = 166 + luma * 23 / 100;
+    [
+        ((neutral * 64 + u16::from(color[0]) * 36) / 100).min(255) as u8,
+        ((neutral * 64 + u16::from(color[1]) * 36) / 100).min(255) as u8,
+        ((neutral * 64 + u16::from(color[2]) * 36) / 100).min(255) as u8,
+        color[3],
+    ]
 }
 
 pub(crate) fn glider_airflow_material(

@@ -6,16 +6,18 @@ use super::shared::{
 use crate::eval_runtime::{path_string, remove_existing_dir};
 use crate::generated_content::{
     ISLAND_BODY_SEGMENTS, ISLAND_TERRAIN_RINGS, IslandDetailMaterials, TERRAIN_TEXTURE_SIZE,
-    island_cliff_mesh, island_impostor_mesh, island_terrain_mesh, island_underside_mesh,
-    mesh_normal_slope_band_count, mesh_terrain_material_channel_count,
+    WaterSurfaceMaterials, island_cliff_mesh, island_impostor_mesh, island_terrain_mesh,
+    island_underside_mesh, mesh_normal_slope_band_count, mesh_terrain_material_channel_count,
     mesh_terrain_material_region_count, mesh_terrain_material_weight_band_count,
     mesh_vertex_color_band_count, mesh_vertical_band_count, mesh_y_range,
-    procedural_terrain_surface_texture_data, texture_detail_band_count, texture_edge_promille,
+    procedural_terrain_surface_texture_data, terrain_surface_material, texture_detail_band_count,
+    texture_detail_energy_promille, texture_edge_promille, texture_isolated_edge_promille,
 };
 use crate::island_visuals::{
     IslandCollisionCoverageAudit, IslandVisualCatalog, audit_island_collision_coverage,
     queue_sky_island,
 };
+use crate::surface_material::SurfaceMaterial;
 use bevy::prelude::*;
 use image::{Rgba, RgbaImage};
 use nau_engine::world::{
@@ -33,6 +35,9 @@ const TERRAIN_SHAPE_REVIEW_TILE_HEIGHT_PX: u32 = 170;
 const TERRAIN_SHAPE_REVIEW_COLUMNS: u32 = 4;
 const TERRAIN_SHAPE_REVIEW_TILE_GAP_PX: u32 = 10;
 const TERRAIN_SHAPE_REVIEW_PANEL_SIZE_PX: u32 = 88;
+const TERRAIN_TEXTURE_NEAR_DETAIL_OFFSET: u32 = 1;
+const TERRAIN_TEXTURE_MID_DETAIL_OFFSET: u32 = 4;
+const TERRAIN_TEXTURE_MACRO_DETAIL_OFFSET: u32 = 16;
 
 #[derive(Debug)]
 pub(crate) struct TerrainExportReport {
@@ -52,6 +57,12 @@ pub(crate) struct TerrainExportReport {
     pub(crate) min_terrain_normal_slope_bands: usize,
     pub(crate) min_terrain_texture_detail_bands: usize,
     pub(crate) min_terrain_texture_edge_promille: usize,
+    pub(crate) min_terrain_texture_near_detail_energy_promille: usize,
+    pub(crate) min_terrain_texture_mid_detail_energy_promille: usize,
+    pub(crate) min_terrain_texture_macro_detail_energy_promille: usize,
+    pub(crate) min_terrain_texture_near_to_mid_ratio_promille: usize,
+    pub(crate) max_terrain_texture_near_to_mid_ratio_promille: usize,
+    pub(crate) max_terrain_texture_isolated_edge_promille: usize,
     pub(crate) min_terrain_relief_range_m: f32,
     pub(crate) min_cliff_color_bands: usize,
     pub(crate) min_impostor_mesh_vertices: usize,
@@ -61,6 +72,29 @@ pub(crate) struct TerrainExportReport {
     pub(crate) visual_collision_coverage: IslandCollisionCoverageAudit,
     pub(crate) terrain_shape_review: TerrainShapeReviewSummary,
     pub(crate) islands: Vec<TerrainExportIslandSummary>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TerrainExportTextureMetrics {
+    min_detail_bands: usize,
+    min_legacy_edge_promille: usize,
+    min_near_detail_energy_promille: usize,
+    min_mid_detail_energy_promille: usize,
+    min_macro_detail_energy_promille: usize,
+    min_near_to_mid_ratio_promille: usize,
+    max_near_to_mid_ratio_promille: usize,
+    max_isolated_edge_promille: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TerrainTexturePaletteMetrics {
+    detail_bands: usize,
+    legacy_edge_promille: usize,
+    near_detail_energy_promille: usize,
+    mid_detail_energy_promille: usize,
+    macro_detail_energy_promille: usize,
+    near_to_mid_ratio_promille: usize,
+    isolated_edge_promille: usize,
 }
 
 #[derive(Debug)]
@@ -190,6 +224,12 @@ impl TerrainExportReport {
                 "    \"terrain_normal_slope_bands\": {},\n",
                 "    \"terrain_texture_detail_bands\": {},\n",
                 "    \"terrain_texture_edge_promille\": {},\n",
+                "    \"terrain_texture_near_detail_energy_promille\": {},\n",
+                "    \"terrain_texture_mid_detail_energy_promille\": {},\n",
+                "    \"terrain_texture_macro_detail_energy_promille\": {},\n",
+                "    \"terrain_texture_min_near_to_mid_ratio_promille\": {},\n",
+                "    \"terrain_texture_max_near_to_mid_ratio_promille\": {},\n",
+                "    \"terrain_texture_max_isolated_edge_promille\": {},\n",
                 "    \"terrain_relief_range_m\": {},\n",
                 "    \"cliff_color_bands\": {},\n",
                 "    \"impostor_mesh_vertices\": {},\n",
@@ -219,6 +259,12 @@ impl TerrainExportReport {
             self.min_terrain_normal_slope_bands,
             self.min_terrain_texture_detail_bands,
             self.min_terrain_texture_edge_promille,
+            self.min_terrain_texture_near_detail_energy_promille,
+            self.min_terrain_texture_mid_detail_energy_promille,
+            self.min_terrain_texture_macro_detail_energy_promille,
+            self.min_terrain_texture_near_to_mid_ratio_promille,
+            self.max_terrain_texture_near_to_mid_ratio_promille,
+            self.max_terrain_texture_isolated_edge_promille,
             terrain_export_json_number(self.min_terrain_relief_range_m),
             self.min_cliff_color_bands,
             self.min_impostor_mesh_vertices,
@@ -702,8 +748,16 @@ pub(crate) fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<Te
         .map(|island| island.terrain.normal_slope_bands)
         .min()
         .unwrap_or(0);
-    let min_terrain_texture_detail_bands = terrain_export_texture_detail_band_floor();
-    let min_terrain_texture_edge_promille = terrain_export_texture_edge_promille_floor();
+    let TerrainExportTextureMetrics {
+        min_detail_bands: min_terrain_texture_detail_bands,
+        min_legacy_edge_promille: min_terrain_texture_edge_promille,
+        min_near_detail_energy_promille: min_terrain_texture_near_detail_energy_promille,
+        min_mid_detail_energy_promille: min_terrain_texture_mid_detail_energy_promille,
+        min_macro_detail_energy_promille: min_terrain_texture_macro_detail_energy_promille,
+        min_near_to_mid_ratio_promille: min_terrain_texture_near_to_mid_ratio_promille,
+        max_near_to_mid_ratio_promille: max_terrain_texture_near_to_mid_ratio_promille,
+        max_isolated_edge_promille: max_terrain_texture_isolated_edge_promille,
+    } = terrain_export_texture_metrics();
     let min_terrain_relief_range_m = islands
         .iter()
         .map(|island| island.terrain.relief_range_m)
@@ -747,6 +801,12 @@ pub(crate) fn export_terrain_inspection(output_dir: &Path) -> std::io::Result<Te
         min_terrain_normal_slope_bands,
         min_terrain_texture_detail_bands,
         min_terrain_texture_edge_promille,
+        min_terrain_texture_near_detail_energy_promille,
+        min_terrain_texture_mid_detail_energy_promille,
+        min_terrain_texture_macro_detail_energy_promille,
+        min_terrain_texture_near_to_mid_ratio_promille,
+        max_terrain_texture_near_to_mid_ratio_promille,
+        max_terrain_texture_isolated_edge_promille,
         min_terrain_relief_range_m,
         min_cliff_color_bands,
         min_impostor_mesh_vertices,
@@ -1311,6 +1371,12 @@ fn terrain_export_visual_collision_coverage(route: &SkyRoute) -> IslandCollision
     let mut diagnostics = crate::content_diagnostics::IslandContentDiagnostics::default();
     let mut meshes = Assets::<Mesh>::default();
     let material = Handle::<StandardMaterial>::default();
+    let surface_material = Handle::<SurfaceMaterial>::default();
+    let water_materials = WaterSurfaceMaterials {
+        body: surface_material.clone(),
+        foam: surface_material.clone(),
+        mist: material.clone(),
+    };
     let detail_materials = IslandDetailMaterials {
         trunk: material.clone(),
         foliage: material.clone(),
@@ -1323,14 +1389,14 @@ fn terrain_export_visual_collision_coverage(route: &SkyRoute) -> IslandCollision
             &mut catalog,
             &mut diagnostics,
             &mut meshes,
-            material.clone(),
+            surface_material.clone(),
             material.clone(),
             material.clone(),
             material.clone(),
             material.clone(),
             detail_materials.clone(),
             material.clone(),
-            material.clone(),
+            water_materials.clone(),
             index,
             island,
         );
@@ -1456,64 +1522,175 @@ fn terrain_surface_vertex_count() -> usize {
     1 + ISLAND_TERRAIN_RINGS * ISLAND_BODY_SEGMENTS
 }
 
-fn terrain_export_texture_detail_band_floor() -> usize {
-    terrain_export_texture_metric_floor(texture_detail_band_count)
+fn terrain_texture_near_to_mid_ratio_promille(near: usize, mid: usize) -> usize {
+    if near == 0 && mid == 0 {
+        return 1000;
+    }
+    near.saturating_mul(1000) / mid.max(1)
 }
 
-fn terrain_export_texture_edge_promille_floor() -> usize {
-    terrain_export_texture_metric_floor(|data| texture_edge_promille(data, TERRAIN_TEXTURE_SIZE))
-}
-
-fn terrain_export_texture_metric_floor(mut metric: impl FnMut(&[u8]) -> usize) -> usize {
-    [
+fn terrain_export_texture_metrics() -> TerrainExportTextureMetrics {
+    let mut images = Assets::<Image>::default();
+    let mut materials = Assets::<SurfaceMaterial>::default();
+    let palette_metrics = [
         (
             [54, 128, 70, 255],
             [28, 92, 48, 255],
             [128, 174, 78, 255],
             17,
+            0.94,
+            0.2,
         ),
         (
             [96, 138, 70, 255],
             [56, 104, 54, 255],
             [166, 172, 90, 255],
             19,
+            0.92,
+            0.21,
         ),
         (
             [126, 104, 76, 255],
             [80, 70, 60, 255],
             [162, 138, 96, 255],
             23,
+            0.98,
+            0.18,
         ),
         (
             [52, 110, 118, 255],
             [30, 80, 94, 255],
             [142, 176, 164, 255],
             29,
+            0.9,
+            0.22,
         ),
         (
             [132, 132, 92, 255],
             [86, 96, 70, 255],
             [178, 166, 112, 255],
             31,
-        ),
-        (
-            [70, 150, 94, 255],
-            [34, 100, 62, 255],
-            [156, 198, 112, 255],
-            37,
+            0.94,
+            0.2,
         ),
     ]
-    .into_iter()
-    .map(|(primary, secondary, accent, seed)| {
-        let data = procedural_terrain_surface_texture_data(
-            primary,
-            secondary,
-            accent,
-            seed,
-            TERRAIN_TEXTURE_SIZE,
-        );
-        metric(&data)
-    })
-    .min()
-    .unwrap_or(0)
+    .map(
+        |(primary, secondary, accent, seed, perceptual_roughness, reflectance)| {
+            let (material_handle, detail_bands) = terrain_surface_material(
+                &mut images,
+                &mut materials,
+                primary,
+                secondary,
+                accent,
+                seed,
+                perceptual_roughness,
+                reflectance,
+            );
+            let material = materials
+                .get(&material_handle)
+                .expect("runtime terrain material should be allocated");
+            let albedo_handle = material
+                .base
+                .base_color_texture
+                .as_ref()
+                .expect("runtime terrain material should have an albedo texture");
+            let albedo = images
+                .get(albedo_handle)
+                .expect("runtime terrain albedo should be allocated");
+            let data = albedo
+                .data
+                .as_deref()
+                .expect("runtime terrain albedo should contain generated texture data");
+            let base_level_len = (TERRAIN_TEXTURE_SIZE * TERRAIN_TEXTURE_SIZE * 4) as usize;
+            let data = data
+                .get(..base_level_len)
+                .expect("runtime terrain albedo should contain a complete base mip");
+            if seed == 17 {
+                debug_assert_ne!(
+                    data,
+                    procedural_terrain_surface_texture_data(
+                        primary,
+                        secondary,
+                        accent,
+                        seed,
+                        TERRAIN_TEXTURE_SIZE,
+                    ),
+                    "runtime terrain evidence should include material palette neutralization"
+                );
+            }
+            let measured_detail_bands = texture_detail_band_count(data);
+            debug_assert_eq!(detail_bands, measured_detail_bands);
+            let near_detail_energy_promille = texture_detail_energy_promille(
+                data,
+                TERRAIN_TEXTURE_SIZE,
+                TERRAIN_TEXTURE_NEAR_DETAIL_OFFSET,
+            );
+            let mid_detail_energy_promille = texture_detail_energy_promille(
+                data,
+                TERRAIN_TEXTURE_SIZE,
+                TERRAIN_TEXTURE_MID_DETAIL_OFFSET,
+            );
+            let macro_detail_energy_promille = texture_detail_energy_promille(
+                data,
+                TERRAIN_TEXTURE_SIZE,
+                TERRAIN_TEXTURE_MACRO_DETAIL_OFFSET,
+            );
+
+            TerrainTexturePaletteMetrics {
+                detail_bands: measured_detail_bands,
+                legacy_edge_promille: texture_edge_promille(data, TERRAIN_TEXTURE_SIZE),
+                near_detail_energy_promille,
+                mid_detail_energy_promille,
+                macro_detail_energy_promille,
+                near_to_mid_ratio_promille: terrain_texture_near_to_mid_ratio_promille(
+                    near_detail_energy_promille,
+                    mid_detail_energy_promille,
+                ),
+                isolated_edge_promille: texture_isolated_edge_promille(data, TERRAIN_TEXTURE_SIZE),
+            }
+        },
+    );
+
+    TerrainExportTextureMetrics {
+        min_detail_bands: palette_metrics
+            .iter()
+            .map(|metrics| metrics.detail_bands)
+            .min()
+            .unwrap_or(0),
+        min_legacy_edge_promille: palette_metrics
+            .iter()
+            .map(|metrics| metrics.legacy_edge_promille)
+            .min()
+            .unwrap_or(0),
+        min_near_detail_energy_promille: palette_metrics
+            .iter()
+            .map(|metrics| metrics.near_detail_energy_promille)
+            .min()
+            .unwrap_or(0),
+        min_mid_detail_energy_promille: palette_metrics
+            .iter()
+            .map(|metrics| metrics.mid_detail_energy_promille)
+            .min()
+            .unwrap_or(0),
+        min_macro_detail_energy_promille: palette_metrics
+            .iter()
+            .map(|metrics| metrics.macro_detail_energy_promille)
+            .min()
+            .unwrap_or(0),
+        min_near_to_mid_ratio_promille: palette_metrics
+            .iter()
+            .map(|metrics| metrics.near_to_mid_ratio_promille)
+            .min()
+            .unwrap_or(0),
+        max_near_to_mid_ratio_promille: palette_metrics
+            .iter()
+            .map(|metrics| metrics.near_to_mid_ratio_promille)
+            .max()
+            .unwrap_or(0),
+        max_isolated_edge_promille: palette_metrics
+            .iter()
+            .map(|metrics| metrics.isolated_edge_promille)
+            .max()
+            .unwrap_or(0),
+    }
 }

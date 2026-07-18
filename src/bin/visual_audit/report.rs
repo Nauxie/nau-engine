@@ -9,6 +9,7 @@ use super::{
 pub(super) enum VisualAuditProfile {
     Default,
     RouteMarkerOptional,
+    LandscapeVista,
     CloseObstruction,
     IslandGallery,
 }
@@ -18,6 +19,7 @@ impl VisualAuditProfile {
         match name {
             "default" => Some(Self::Default),
             "route_marker_optional" => Some(Self::RouteMarkerOptional),
+            "landscape_vista" => Some(Self::LandscapeVista),
             "close_obstruction" => Some(Self::CloseObstruction),
             "island_gallery" => Some(Self::IslandGallery),
             _ => None,
@@ -28,6 +30,7 @@ impl VisualAuditProfile {
         match self {
             Self::Default => "default",
             Self::RouteMarkerOptional => "route_marker_optional",
+            Self::LandscapeVista => "landscape_vista",
             Self::CloseObstruction => "close_obstruction",
             Self::IslandGallery => "island_gallery",
         }
@@ -41,6 +44,13 @@ impl VisualAuditProfile {
                 "max_route_marker_component_count",
                 "max_route_marker_hue_family_count",
             ],
+            Self::LandscapeVista => &[
+                "max_route_marker_fraction",
+                "max_route_marker_component_count",
+                "max_route_marker_hue_family_count",
+                "max_foliage_scene_fraction",
+                "max_foliage_scene_tile_count",
+            ],
             Self::CloseObstruction => &[
                 "max_top_sky_fraction",
                 "max_route_marker_fraction",
@@ -53,8 +63,11 @@ impl VisualAuditProfile {
 
     fn relaxed_image_checks(self) -> &'static [&'static str] {
         match self {
-            Self::IslandGallery => &["player_focus_fraction"],
-            Self::Default | Self::RouteMarkerOptional | Self::CloseObstruction => &[],
+            Self::IslandGallery => &["player_focus_fraction", "center_edge_density"],
+            Self::Default
+            | Self::RouteMarkerOptional
+            | Self::LandscapeVista
+            | Self::CloseObstruction => &[],
         }
     }
 }
@@ -127,6 +140,35 @@ pub(super) fn report_checks_for_profile(
         .map(|audit| audit.terrain_scene_color_bucket_count)
         .max()
         .unwrap_or_default();
+    let qualified_terrain_audits = audits
+        .iter()
+        .filter(|audit| audit.terrain_quality_qualified)
+        .collect::<Vec<_>>();
+    let terrain_quality_qualified_image_count = qualified_terrain_audits.len();
+    let p10_terrain_luma_span = percentile(
+        qualified_terrain_audits
+            .iter()
+            .map(|audit| audit.terrain_luma_span),
+        0.10,
+    );
+    let p10_terrain_scene_color_bucket_count = percentile(
+        qualified_terrain_audits
+            .iter()
+            .map(|audit| audit.terrain_scene_color_bucket_count as f64),
+        0.10,
+    );
+    let p10_terrain_internal_edge_density = percentile(
+        qualified_terrain_audits
+            .iter()
+            .map(|audit| audit.terrain_internal_edge_density),
+        0.10,
+    );
+    let max_terrain_isolated_speck_fraction = qualified_terrain_audits
+        .iter()
+        .map(|audit| audit.terrain_isolated_speck_fraction)
+        .fold(0.0, f64::max);
+    let required_qualified_terrain_images =
+        MIN_SEQUENCE_TERRAIN_QUALITY_QUALIFIED_IMAGES.min(audits.len().max(1));
     let max_foliage_scene_fraction = audits
         .iter()
         .map(|audit| audit.foliage_scene_fraction)
@@ -232,6 +274,36 @@ pub(super) fn report_checks_for_profile(
             max_terrain_scene_color_bucket_count as f64,
             MIN_SEQUENCE_TERRAIN_SCENE_COLOR_BUCKETS as f64,
             "buckets",
+        ),
+        Check::at_least(
+            "terrain_quality_qualified_image_count",
+            terrain_quality_qualified_image_count as f64,
+            required_qualified_terrain_images as f64,
+            "images",
+        ),
+        Check::at_least(
+            "p10_terrain_luma_span",
+            p10_terrain_luma_span,
+            MIN_TERRAIN_LUMA_SPAN,
+            "luma",
+        ),
+        Check::at_least(
+            "p10_terrain_scene_color_bucket_count",
+            p10_terrain_scene_color_bucket_count,
+            MIN_SEQUENCE_TERRAIN_SCENE_COLOR_BUCKETS as f64,
+            "buckets",
+        ),
+        Check::at_least(
+            "p10_terrain_internal_edge_density",
+            p10_terrain_internal_edge_density,
+            MIN_TERRAIN_INTERNAL_EDGE_DENSITY,
+            "ratio",
+        ),
+        Check::at_most(
+            "max_terrain_isolated_speck_fraction",
+            max_terrain_isolated_speck_fraction,
+            MAX_TERRAIN_ISOLATED_SPECK_FRACTION,
+            "ratio",
         ),
         Check::at_least(
             "max_foliage_scene_fraction",
@@ -351,7 +423,7 @@ fn image_audit_json(audit: &ImageAudit, profile: VisualAuditProfile) -> String {
         .collect::<Vec<_>>()
         .join(",\n      ");
     format!(
-        "{{\n      \"path\": {},\n      \"passed\": {},\n      \"width\": {},\n      \"height\": {},\n      \"mean_luma\": {},\n      \"luma_stddev\": {},\n      \"colorfulness\": {},\n      \"quantized_colors\": {},\n      \"edge_density\": {},\n      \"top_sky_fraction\": {},\n      \"lower_scene_fraction\": {},\n      \"center_scene_fraction\": {},\n      \"center_edge_density\": {},\n      \"scene_detail_tile_fraction\": {},\n      \"flat_scene_tile_fraction\": {},\n      \"dominant_low_detail_scene_component_fraction\": {},\n      \"scene_detail_tile_count\": {},\n      \"flat_scene_tile_count\": {},\n      \"scene_candidate_tile_count\": {},\n      \"player_focus_fraction\": {},\n      \"player_warm_focus_fraction\": {},\n      \"route_marker_fraction\": {},\n      \"route_marker_component_count\": {},\n      \"route_marker_hue_family_count\": {},\n      \"distant_scene_fraction\": {},\n      \"distant_scene_component_count\": {},\n      \"distant_scene_color_bucket_count\": {},\n      \"distant_scene_horizontal_span_fraction\": {},\n      \"distant_scene_vertical_span_fraction\": {},\n      \"scene_material_family_count\": {},\n      \"terrain_scene_fraction\": {},\n      \"terrain_scene_tile_count\": {},\n      \"terrain_scene_color_bucket_count\": {},\n      \"foliage_scene_fraction\": {},\n      \"foliage_scene_tile_count\": {},\n      \"cloud_layer_fraction\": {},\n      \"cloud_layer_component_count\": {},\n      \"cloud_layer_horizontal_span_fraction\": {},\n      \"cloud_layer_vertical_span_fraction\": {},\n      \"severe_clipping_fraction\": {},\n      \"transparent_pixel_fraction\": {},\n      \"foreign_canvas_fraction\": {},\n      \"hud_text_fraction\": {},\n      \"checks\": [\n      {}\n      ]\n    }}",
+        "{{\n      \"path\": {},\n      \"passed\": {},\n      \"width\": {},\n      \"height\": {},\n      \"mean_luma\": {},\n      \"luma_stddev\": {},\n      \"colorfulness\": {},\n      \"quantized_colors\": {},\n      \"edge_density\": {},\n      \"top_sky_fraction\": {},\n      \"lower_scene_fraction\": {},\n      \"center_scene_fraction\": {},\n      \"center_edge_density\": {},\n      \"scene_detail_tile_fraction\": {},\n      \"flat_scene_tile_fraction\": {},\n      \"dominant_low_detail_scene_component_fraction\": {},\n      \"scene_detail_tile_count\": {},\n      \"flat_scene_tile_count\": {},\n      \"scene_candidate_tile_count\": {},\n      \"player_focus_fraction\": {},\n      \"player_warm_focus_fraction\": {},\n      \"route_marker_fraction\": {},\n      \"route_marker_component_count\": {},\n      \"route_marker_hue_family_count\": {},\n      \"distant_scene_fraction\": {},\n      \"distant_scene_component_count\": {},\n      \"distant_scene_color_bucket_count\": {},\n      \"distant_scene_horizontal_span_fraction\": {},\n      \"distant_scene_vertical_span_fraction\": {},\n      \"scene_material_family_count\": {},\n      \"terrain_scene_fraction\": {},\n      \"terrain_scene_tile_count\": {},\n      \"terrain_scene_color_bucket_count\": {},\n      \"terrain_quality_qualified\": {},\n      \"terrain_luma_span\": {},\n      \"terrain_internal_edge_density\": {},\n      \"terrain_isolated_speck_fraction\": {},\n      \"foliage_scene_fraction\": {},\n      \"foliage_scene_tile_count\": {},\n      \"cloud_layer_fraction\": {},\n      \"cloud_layer_component_count\": {},\n      \"cloud_layer_horizontal_span_fraction\": {},\n      \"cloud_layer_vertical_span_fraction\": {},\n      \"severe_clipping_fraction\": {},\n      \"transparent_pixel_fraction\": {},\n      \"foreign_canvas_fraction\": {},\n      \"hud_text_fraction\": {},\n      \"checks\": [\n      {}\n      ]\n    }}",
         json_string(&audit.path),
         image_passed_for_profile(audit, profile),
         audit.width,
@@ -385,6 +457,10 @@ fn image_audit_json(audit: &ImageAudit, profile: VisualAuditProfile) -> String {
         json_number(audit.terrain_scene_fraction),
         audit.terrain_scene_tile_count,
         audit.terrain_scene_color_bucket_count,
+        audit.terrain_quality_qualified,
+        json_number(audit.terrain_luma_span),
+        json_number(audit.terrain_internal_edge_density),
+        json_number(audit.terrain_isolated_speck_fraction),
         json_number(audit.foliage_scene_fraction),
         audit.foliage_scene_tile_count,
         json_number(audit.cloud_layer_fraction),
@@ -397,6 +473,16 @@ fn image_audit_json(audit: &ImageAudit, profile: VisualAuditProfile) -> String {
         json_number(audit.hud_text_fraction),
         checks,
     )
+}
+
+fn percentile(values: impl IntoIterator<Item = f64>, percentile: f64) -> f64 {
+    let mut values = values.into_iter().collect::<Vec<_>>();
+    if values.is_empty() {
+        return 0.0;
+    }
+    values.sort_by(f64::total_cmp);
+    let index = ((values.len() - 1) as f64 * percentile.clamp(0.0, 1.0)).floor() as usize;
+    values[index]
 }
 
 fn check_json(check: &Check) -> String {

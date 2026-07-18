@@ -1,11 +1,12 @@
 use bevy::prelude::*;
 
 use crate::generated_content::{
-    IslandDetailMaterials, TERRAIN_BIOME_PALETTE_COUNT, biome_detail_materials,
-    cloud_surface_material, cloud_veil_material, emissive_material, glider_airflow_material,
-    terrain_surface_material, textured_material, updraft_column_material, updraft_ribbon_material,
-    water_surface_material,
+    IslandDetailMaterials, TERRAIN_BIOME_PALETTE_COUNT, WaterSurfaceMaterials,
+    biome_detail_materials, cloud_surface_material, cloud_veil_material, emissive_material,
+    glider_airflow_material, terrain_surface_material, textured_material, updraft_column_material,
+    updraft_ribbon_material, water_surface_materials,
 };
+use crate::surface_material::SurfaceMaterial;
 use crate::world_floor_runtime::WorldFloorMaterials;
 
 pub(super) struct SceneMaterials {
@@ -14,18 +15,17 @@ pub(super) struct SceneMaterials {
     pub(super) accent: Handle<StandardMaterial>,
     pub(super) glider: Handle<StandardMaterial>,
     pub(super) glider_airflow: Handle<StandardMaterial>,
-    pub(super) island_grass: Handle<StandardMaterial>,
-    pub(super) island_meadow: Handle<StandardMaterial>,
-    pub(super) island_clay: Handle<StandardMaterial>,
-    pub(super) island_alpine: Handle<StandardMaterial>,
-    pub(super) island_highland: Handle<StandardMaterial>,
-    pub(super) target_grass: Handle<StandardMaterial>,
+    pub(super) island_grass: Handle<SurfaceMaterial>,
+    pub(super) island_meadow: Handle<SurfaceMaterial>,
+    pub(super) island_clay: Handle<SurfaceMaterial>,
+    pub(super) island_alpine: Handle<SurfaceMaterial>,
+    pub(super) island_highland: Handle<SurfaceMaterial>,
     pub(super) island_rock: Handle<StandardMaterial>,
     pub(super) island_under: Handle<StandardMaterial>,
     pub(super) target_marker: Handle<StandardMaterial>,
     pub(super) biome_detail_sets: Vec<IslandDetailMaterials>,
     pub(super) flower: Handle<StandardMaterial>,
-    pub(super) water: Handle<StandardMaterial>,
+    pub(super) water: WaterSurfaceMaterials,
     pub(super) world_floor: WorldFloorMaterials,
     pub(super) cloud: Handle<StandardMaterial>,
     pub(super) cloud_veil: Handle<StandardMaterial>,
@@ -39,6 +39,7 @@ pub(super) struct SceneMaterials {
 pub(super) fn prepare_scene_materials(
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
+    surface_materials: &mut Assets<SurfaceMaterial>,
 ) -> SceneMaterials {
     let suit = textured_material(
         images,
@@ -82,7 +83,7 @@ pub(super) fn prepare_scene_materials(
     let glider_airflow = glider_airflow_material(materials);
     let (island_grass, island_grass_texture_detail_bands) = terrain_surface_material(
         images,
-        materials,
+        surface_materials,
         [54, 128, 70, 255],
         [28, 92, 48, 255],
         [128, 174, 78, 255],
@@ -92,7 +93,7 @@ pub(super) fn prepare_scene_materials(
     );
     let (island_meadow, island_meadow_texture_detail_bands) = terrain_surface_material(
         images,
-        materials,
+        surface_materials,
         [96, 138, 70, 255],
         [56, 104, 54, 255],
         [166, 172, 90, 255],
@@ -102,7 +103,7 @@ pub(super) fn prepare_scene_materials(
     );
     let (island_clay, island_clay_texture_detail_bands) = terrain_surface_material(
         images,
-        materials,
+        surface_materials,
         [126, 104, 76, 255],
         [80, 70, 60, 255],
         [162, 138, 96, 255],
@@ -112,7 +113,7 @@ pub(super) fn prepare_scene_materials(
     );
     let (island_alpine, island_alpine_texture_detail_bands) = terrain_surface_material(
         images,
-        materials,
+        surface_materials,
         [52, 110, 118, 255],
         [30, 80, 94, 255],
         [142, 176, 164, 255],
@@ -122,23 +123,13 @@ pub(super) fn prepare_scene_materials(
     );
     let (island_highland, island_highland_texture_detail_bands) = terrain_surface_material(
         images,
-        materials,
+        surface_materials,
         [132, 132, 92, 255],
         [86, 96, 70, 255],
         [178, 166, 112, 255],
         31,
         0.94,
         0.2,
-    );
-    let (target_grass, target_grass_texture_detail_bands) = terrain_surface_material(
-        images,
-        materials,
-        [70, 150, 94, 255],
-        [34, 100, 62, 255],
-        [156, 198, 112, 255],
-        37,
-        0.9,
-        0.24,
     );
     let island_rock = textured_material(
         images,
@@ -181,22 +172,21 @@ pub(super) fn prepare_scene_materials(
         61,
         LinearRgba::rgb(1.2, 0.25, 0.45),
     );
-    let water = water_surface_material(images, materials);
-    let world_floor_base = world_floor_material(images, materials);
+    let cloud = cloud_surface_material(materials);
+    let cloud_veil = cloud_veil_material(materials);
+    let water = water_surface_materials(images, surface_materials, cloud_veil.clone());
     let world_floor_ground_cover = biome_detail_sets
         .first()
         .expect("world floor requires at least one detail material set")
         .ground_cover
         .clone();
     let world_floor = WorldFloorMaterials {
-        ocean: world_floor_base.clone(),
-        lowland: world_floor_base.clone(),
-        ridge: world_floor_base.clone(),
-        mountain: world_floor_base,
+        ocean: island_meadow.clone(),
+        lowland: island_meadow.clone(),
+        ridge: island_clay.clone(),
+        mountain: island_highland.clone(),
         ground_cover: world_floor_ground_cover,
     };
-    let cloud = cloud_surface_material(materials);
-    let cloud_veil = cloud_veil_material(materials);
     let updraft_column = updraft_column_material(materials);
     let updraft_ribbon = updraft_ribbon_material(materials);
     let updraft_marker = emissive_material(
@@ -223,7 +213,6 @@ pub(super) fn prepare_scene_materials(
         island_clay_texture_detail_bands,
         island_alpine_texture_detail_bands,
         island_highland_texture_detail_bands,
-        target_grass_texture_detail_bands,
     ]
     .into_iter()
     .min()
@@ -240,7 +229,6 @@ pub(super) fn prepare_scene_materials(
         island_clay,
         island_alpine,
         island_highland,
-        target_grass,
         island_rock,
         island_under,
         target_marker,
@@ -256,21 +244,4 @@ pub(super) fn prepare_scene_materials(
         power_up,
         terrain_texture_detail_bands,
     }
-}
-
-fn world_floor_material(
-    images: &mut Assets<Image>,
-    materials: &mut Assets<StandardMaterial>,
-) -> Handle<StandardMaterial> {
-    terrain_surface_material(
-        images,
-        materials,
-        [114, 144, 76, 255],
-        [58, 94, 62, 255],
-        [176, 158, 98, 255],
-        97,
-        0.96,
-        0.16,
-    )
-    .0
 }

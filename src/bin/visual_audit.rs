@@ -19,7 +19,7 @@ use report::{
     report_passed_for_profile,
 };
 
-const USAGE: &str = "Usage: cargo run --bin visual_audit -- [--profile default|route_marker_optional|close_obstruction|island_gallery] <png> [<png> ...]";
+const USAGE: &str = "Usage: cargo run --bin visual_audit -- [--profile default|route_marker_optional|landscape_vista|close_obstruction|island_gallery] <png> [<png> ...]";
 
 fn main() {
     let (profile, paths) = match parse_args(env::args().skip(1)) {

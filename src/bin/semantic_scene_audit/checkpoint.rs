@@ -1,5 +1,5 @@
 use crate::{
-    materials::{material_audits, sample_pixel_hits_with_variant},
+    materials::{material_audits, sample_pixel_hits_with_variant, water_local_metrics},
     thresholds::{
         MIN_PASSED_SAMPLES_PER_CHECKPOINT, MIN_SAMPLE_PIXEL_HITS,
         MIN_VISIBLE_MATERIALS_PER_CHECKPOINT, MIN_VISIBLE_SAMPLE_KINDS_PER_CHECKPOINT,
@@ -472,8 +472,21 @@ pub(crate) fn audit_scene_sample(
         .and_then(|screen| screen.get("y"))
         .and_then(Value::as_f64);
     let visible = in_viewport && visibility == "visible";
-    let semantic_pixel_hits = match (visible, screen_x, screen_y) {
-        (true, Some(x), Some(y)) => sample_pixel_hits_with_variant(
+    let water_local_metrics = if visible && expected_material == "water" {
+        Some(water_local_metrics(
+            image,
+            screen_x.unwrap_or(f64::NAN),
+            screen_y.unwrap_or(f64::NAN),
+            &kind,
+            &material_variant,
+            screenshot_scale,
+        ))
+    } else {
+        None
+    };
+    let semantic_pixel_hits = match (water_local_metrics.as_ref(), visible, screen_x, screen_y) {
+        (Some(metrics), _, _, _) => metrics.local_hit_count,
+        (None, true, Some(x), Some(y)) => sample_pixel_hits_with_variant(
             image,
             x,
             y,
@@ -483,6 +496,9 @@ pub(crate) fn audit_scene_sample(
         ),
         _ => 0,
     };
+    let water_quality_passed = water_local_metrics
+        .as_ref()
+        .is_none_or(|metrics| metrics.passed);
 
     Ok(SceneSampleAudit {
         island_name,
@@ -495,7 +511,8 @@ pub(crate) fn audit_scene_sample(
         screen_x,
         screen_y,
         semantic_pixel_hits,
-        passed: visible && semantic_pixel_hits >= MIN_SAMPLE_PIXEL_HITS,
+        water_local_metrics,
+        passed: visible && semantic_pixel_hits >= MIN_SAMPLE_PIXEL_HITS && water_quality_passed,
     })
 }
 

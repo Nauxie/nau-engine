@@ -111,6 +111,9 @@ pub(super) fn audit_image_with_alpha(
         luma_values.push(luma);
 
         let key = ((r as u32 / 32) << 6) | ((g as u32 / 32) << 3) | (b as u32 / 32);
+        let terrain_key = ((r as u32 / TERRAIN_COLOR_BUCKET_WIDTH) << 8)
+            | ((g as u32 / TERRAIN_COLOR_BUCKET_WIDTH) << 4)
+            | (b as u32 / TERRAIN_COLOR_BUCKET_WIDTH);
         quantized_colors.insert(key);
 
         let x = index % width_usize;
@@ -188,7 +191,7 @@ pub(super) fn audit_image_with_alpha(
             scene_material_family_pixels[family] += 1;
             if family == 2 || family == 3 {
                 terrain_scene_pixels += 1;
-                terrain_scene_color_buckets.insert(key);
+                terrain_scene_color_buckets.insert(terrain_key);
                 terrain_scene_mask[index] = true;
             }
             if family == 1 {
@@ -289,6 +292,10 @@ pub(super) fn audit_image_with_alpha(
         MIN_TERRAIN_SCENE_TILE_PIXELS,
     );
     let terrain_scene_color_bucket_count = terrain_scene_color_buckets.len();
+    let terrain_surface =
+        terrain_surface_stats(&luma_values, &terrain_scene_mask, width_usize, height_usize);
+    let terrain_quality_qualified = terrain_scene_fraction >= MIN_SEQUENCE_TERRAIN_SCENE_FRACTION
+        && terrain_scene_tile_count >= MIN_SEQUENCE_TERRAIN_SCENE_TILES;
     let foliage_scene_fraction = fraction(foliage_scene_pixels, scene_material_pixels);
     let foliage_scene_tile_count = mask_tile_count(
         &foliage_scene_mask,
@@ -326,7 +333,7 @@ pub(super) fn audit_image_with_alpha(
         height_usize,
     );
 
-    let checks = vec![
+    let mut checks = vec![
         Check::at_least("width", width as f64, MIN_WIDTH as f64, "px"),
         Check::at_least("height", height as f64, MIN_HEIGHT as f64, "px"),
         Check::at_least("mean_luma", mean_luma, MIN_MEAN_LUMA, "luma"),
@@ -413,6 +420,40 @@ pub(super) fn audit_image_with_alpha(
             "ratio",
         ),
     ];
+    if terrain_quality_qualified {
+        checks.extend([
+            Check::at_least(
+                "terrain_luma_span",
+                terrain_surface.luma_span,
+                MIN_TERRAIN_LUMA_SPAN,
+                "luma",
+            ),
+            Check::at_least(
+                "terrain_scene_color_bucket_count",
+                terrain_scene_color_bucket_count as f64,
+                MIN_SEQUENCE_TERRAIN_SCENE_COLOR_BUCKETS as f64,
+                "buckets",
+            ),
+            Check::at_least(
+                "terrain_internal_edge_density",
+                terrain_surface.internal_edge_density,
+                MIN_TERRAIN_INTERNAL_EDGE_DENSITY,
+                "ratio",
+            ),
+            Check::at_most(
+                "terrain_internal_edge_density",
+                terrain_surface.internal_edge_density,
+                MAX_TERRAIN_INTERNAL_EDGE_DENSITY,
+                "ratio",
+            ),
+            Check::at_most(
+                "terrain_isolated_speck_fraction",
+                terrain_surface.isolated_speck_fraction,
+                MAX_TERRAIN_ISOLATED_SPECK_FRACTION,
+                "ratio",
+            ),
+        ]);
+    }
     let passed = checks.iter().all(|check| check.passed);
 
     Ok(ImageAudit {
@@ -449,6 +490,10 @@ pub(super) fn audit_image_with_alpha(
         terrain_scene_fraction,
         terrain_scene_tile_count,
         terrain_scene_color_bucket_count,
+        terrain_quality_qualified,
+        terrain_luma_span: terrain_surface.luma_span,
+        terrain_internal_edge_density: terrain_surface.internal_edge_density,
+        terrain_isolated_speck_fraction: terrain_surface.isolated_speck_fraction,
         foliage_scene_fraction,
         foliage_scene_tile_count,
         cloud_layer_fraction,
