@@ -11,6 +11,7 @@ use crate::environment_visuals::{
 use crate::island_visuals::IslandStreamDiagnostics;
 use crate::player_runtime::{AuthoredGliderPose, PlayerDisplacementDiagnostics};
 use crate::power_up_runtime::PowerUpCollectionState;
+use crate::surface_material::SurfaceMaterial;
 use crate::world_collision_runtime::WorldCollisionDiagnostics;
 use crate::{Player, RouteObjectiveTracker, WindForceDiagnostics};
 use bevy::ecs::system::SystemParam;
@@ -64,6 +65,7 @@ pub(crate) struct EvalScene<'w, 's> {
     pub(crate) asset_diagnostics: Res<'w, VisualAssetDiagnostics>,
     pub(crate) meshes: Res<'w, Assets<Mesh>>,
     pub(crate) materials: Res<'w, Assets<StandardMaterial>>,
+    pub(crate) surface_materials: Res<'w, Assets<SurfaceMaterial>>,
     pub(crate) route_objectives: Res<'w, RouteObjectiveTracker>,
     pub(crate) power_ups: Res<'w, PowerUpCollectionState>,
     pub(crate) collision_diagnostics: Res<'w, WorldCollisionDiagnostics>,
