@@ -109,6 +109,15 @@ impl IslandWaterDetailSpec {
         );
         mesh
     }
+
+    pub(crate) fn semantic_sample_positions(self) -> Vec<Vec3> {
+        let rotation = Quat::from_rotation_y(self.rotation_y);
+        self.mesh
+            .semantic_sample_local_positions()
+            .into_iter()
+            .map(|local_position| self.translation + rotation * local_position)
+            .collect()
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -194,6 +203,21 @@ impl WaterDetailMesh {
                 lateral_wander,
                 stone_count,
             } => mossy_stepping_stones_mesh(span, lateral_wander, stone_count, seed),
+        }
+    }
+
+    fn semantic_sample_local_positions(self) -> Vec<Vec3> {
+        match self {
+            Self::PlungePoolRipples {
+                radius_x, radius_z, ..
+            } => vec![
+                Vec3::new(0.0, 0.055, 0.0),
+                Vec3::new(radius_x * 0.34, 0.035, 0.0),
+                Vec3::new(-radius_x * 0.34, 0.035, 0.0),
+                Vec3::new(0.0, 0.035, radius_z * 0.34),
+                Vec3::new(0.0, 0.035, -radius_z * 0.34),
+            ],
+            _ => vec![Vec3::ZERO],
         }
     }
 }
@@ -1278,6 +1302,26 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn plunge_pool_semantic_samples_cover_rendered_churn_geometry() {
+        let ripples = route_detail_specs()
+            .into_iter()
+            .find(|detail| detail.kind == WaterDetailKind::PlungePoolRipples)
+            .expect("route should include plunge-pool ripples");
+        let samples = ripples.semantic_sample_positions();
+
+        assert_eq!(samples.len(), 5);
+        assert!(samples.iter().all(|sample| sample.is_finite()));
+        assert!(samples.windows(2).all(|pair| pair[0] != pair[1]));
+        assert!(
+            samples
+                .iter()
+                .skip(1)
+                .all(|sample| sample.distance(ripples.translation) > 0.5),
+            "semantic evidence should cover the rendered churn disk instead of only its center"
+        );
     }
 
     #[test]
