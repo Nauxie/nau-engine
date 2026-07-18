@@ -232,8 +232,14 @@ fn audit_manifest_compares_terrain_band_metrics_to_obj_artifact() {
             "terrain_material_regions": 4,
             "terrain_height_bands": 19,
             "terrain_normal_slope_bands": 10,
-            "terrain_texture_detail_bands": 50,
-            "terrain_texture_edge_promille": 590,
+            "terrain_texture_detail_bands": 5,
+            "terrain_texture_edge_promille": 0,
+            "terrain_texture_near_detail_energy_promille": 1,
+            "terrain_texture_mid_detail_energy_promille": 4,
+            "terrain_texture_macro_detail_energy_promille": 9,
+            "terrain_texture_min_near_to_mid_ratio_promille": 250,
+            "terrain_texture_max_near_to_mid_ratio_promille": 400,
+            "terrain_texture_max_isolated_edge_promille": 0,
             "terrain_relief_range_m": 0.8,
             "cliff_color_bands": 9,
             "impostor_mesh_vertices": 140,
@@ -288,8 +294,14 @@ fn audit_manifest_requires_impostor_entries_and_minimums() {
             "terrain_material_regions": 4,
             "terrain_height_bands": 8,
             "terrain_normal_slope_bands": 3,
-            "terrain_texture_detail_bands": 50,
-            "terrain_texture_edge_promille": 120,
+            "terrain_texture_detail_bands": 5,
+            "terrain_texture_edge_promille": 0,
+            "terrain_texture_near_detail_energy_promille": 1,
+            "terrain_texture_mid_detail_energy_promille": 4,
+            "terrain_texture_macro_detail_energy_promille": 9,
+            "terrain_texture_min_near_to_mid_ratio_promille": 250,
+            "terrain_texture_max_near_to_mid_ratio_promille": 400,
+            "terrain_texture_max_isolated_edge_promille": 0,
             "terrain_relief_range_m": 0.8,
             "cliff_color_bands": 9,
             "impostor_mesh_vertices": 42,
@@ -329,7 +341,7 @@ fn audit_manifest_requires_impostor_entries_and_minimums() {
     assert!(!audit_check_passed(&report, "mesh_count"));
     assert!(!audit_check_passed(&report, "terrain_height_bands"));
     assert!(!audit_check_passed(&report, "terrain_normal_slope_bands"));
-    assert!(!audit_check_passed(
+    assert!(!audit_check_exists(
         &report,
         "terrain_texture_edge_promille"
     ));
@@ -397,6 +409,113 @@ fn audit_manifest_requires_impostor_entries_and_minimums() {
     );
 }
 
+fn audit_texture_minimums(minimums: Value) -> Value {
+    audit_manifest(
+        &json!({
+            "schema": "nau_terrain_export.v1",
+            "minimums": minimums,
+        }),
+        Path::new("."),
+        "manifest.json",
+    )
+}
+
+#[test]
+fn audit_manifest_accepts_coherent_texture_hierarchy_metrics() {
+    let report = audit_texture_minimums(json!({
+        "terrain_texture_detail_bands": 5,
+        "terrain_texture_edge_promille": 0,
+        "terrain_texture_near_detail_energy_promille": 1,
+        "terrain_texture_mid_detail_energy_promille": 4,
+        "terrain_texture_macro_detail_energy_promille": 9,
+        "terrain_texture_min_near_to_mid_ratio_promille": 250,
+        "terrain_texture_max_near_to_mid_ratio_promille": 400,
+        "terrain_texture_max_isolated_edge_promille": 0,
+    }));
+
+    for check in [
+        "terrain_texture_detail_bands",
+        "terrain_texture_near_detail_energy_promille",
+        "terrain_texture_mid_detail_energy_promille",
+        "terrain_texture_macro_detail_energy_promille",
+        "terrain_texture_min_near_to_mid_ratio_promille",
+        "terrain_texture_max_near_to_mid_ratio_promille",
+        "terrain_texture_max_isolated_edge_promille",
+    ] {
+        assert!(audit_check_passed(&report, check), "{check} should pass");
+    }
+    assert!(!audit_check_exists(
+        &report,
+        "terrain_texture_edge_promille"
+    ));
+}
+
+#[test]
+fn audit_manifest_rejects_flat_texture_metrics() {
+    let report = audit_texture_minimums(json!({
+        "terrain_texture_detail_bands": 1,
+        "terrain_texture_edge_promille": 0,
+        "terrain_texture_near_detail_energy_promille": 0,
+        "terrain_texture_mid_detail_energy_promille": 0,
+        "terrain_texture_macro_detail_energy_promille": 0,
+        "terrain_texture_min_near_to_mid_ratio_promille": 1000,
+        "terrain_texture_max_near_to_mid_ratio_promille": 1000,
+        "terrain_texture_max_isolated_edge_promille": 0,
+    }));
+
+    for check in [
+        "terrain_texture_detail_bands",
+        "terrain_texture_near_detail_energy_promille",
+        "terrain_texture_mid_detail_energy_promille",
+        "terrain_texture_macro_detail_energy_promille",
+        "terrain_texture_max_near_to_mid_ratio_promille",
+    ] {
+        assert!(!audit_check_passed(&report, check), "{check} should fail");
+    }
+    for check in [
+        "terrain_texture_min_near_to_mid_ratio_promille",
+        "terrain_texture_max_isolated_edge_promille",
+    ] {
+        assert!(audit_check_passed(&report, check), "{check} should pass");
+    }
+}
+
+#[test]
+fn audit_manifest_rejects_salt_and_pepper_texture_metrics() {
+    let report = audit_texture_minimums(json!({
+        "terrain_texture_detail_bands": 64,
+        "terrain_texture_edge_promille": 1000,
+        "terrain_texture_near_detail_energy_promille": 500,
+        "terrain_texture_mid_detail_energy_promille": 500,
+        "terrain_texture_macro_detail_energy_promille": 500,
+        "terrain_texture_min_near_to_mid_ratio_promille": 1000,
+        "terrain_texture_max_near_to_mid_ratio_promille": 1000,
+        "terrain_texture_max_isolated_edge_promille": 62,
+    }));
+
+    for check in [
+        "terrain_texture_detail_bands",
+        "terrain_texture_near_detail_energy_promille",
+        "terrain_texture_mid_detail_energy_promille",
+        "terrain_texture_macro_detail_energy_promille",
+        "terrain_texture_min_near_to_mid_ratio_promille",
+    ] {
+        assert!(audit_check_passed(&report, check), "{check} should pass");
+    }
+    assert!(!audit_check_passed(
+        &report,
+        "terrain_texture_max_near_to_mid_ratio_promille"
+    ));
+    assert!(!audit_check_passed(
+        &report,
+        "terrain_texture_max_isolated_edge_promille"
+    ));
+    assert!(!audit_check_exists(
+        &report,
+        "terrain_texture_edge_promille"
+    ));
+}
+
 #[test]
 fn audit_manifest_rejects_collision_truth_barriers_and_cliff_gaps() {
     let manifest = json!({
@@ -414,8 +533,14 @@ fn audit_manifest_rejects_collision_truth_barriers_and_cliff_gaps() {
             "terrain_material_regions": 4,
             "terrain_height_bands": 19,
             "terrain_normal_slope_bands": 10,
-            "terrain_texture_detail_bands": 50,
-            "terrain_texture_edge_promille": 590,
+            "terrain_texture_detail_bands": 5,
+            "terrain_texture_edge_promille": 0,
+            "terrain_texture_near_detail_energy_promille": 1,
+            "terrain_texture_mid_detail_energy_promille": 4,
+            "terrain_texture_macro_detail_energy_promille": 9,
+            "terrain_texture_min_near_to_mid_ratio_promille": 250,
+            "terrain_texture_max_near_to_mid_ratio_promille": 400,
+            "terrain_texture_max_isolated_edge_promille": 0,
             "terrain_relief_range_m": 0.8,
             "cliff_color_bands": 9,
             "impostor_mesh_vertices": 140,
@@ -512,8 +637,14 @@ fn audit_manifest_rejects_hollow_terrain_seam_regressions() {
             "terrain_material_regions": 4,
             "terrain_height_bands": 19,
             "terrain_normal_slope_bands": 10,
-            "terrain_texture_detail_bands": 50,
-            "terrain_texture_edge_promille": 590,
+            "terrain_texture_detail_bands": 5,
+            "terrain_texture_edge_promille": 0,
+            "terrain_texture_near_detail_energy_promille": 1,
+            "terrain_texture_mid_detail_energy_promille": 4,
+            "terrain_texture_macro_detail_energy_promille": 9,
+            "terrain_texture_min_near_to_mid_ratio_promille": 250,
+            "terrain_texture_max_near_to_mid_ratio_promille": 400,
+            "terrain_texture_max_isolated_edge_promille": 0,
             "terrain_relief_range_m": 0.8,
             "cliff_color_bands": 9,
             "impostor_mesh_vertices": 140,
@@ -611,8 +742,14 @@ fn audit_manifest_rejects_visual_collision_coverage_regressions() {
             "terrain_material_regions": 4,
             "terrain_height_bands": 19,
             "terrain_normal_slope_bands": 10,
-            "terrain_texture_detail_bands": 50,
-            "terrain_texture_edge_promille": 590,
+            "terrain_texture_detail_bands": 5,
+            "terrain_texture_edge_promille": 0,
+            "terrain_texture_near_detail_energy_promille": 1,
+            "terrain_texture_mid_detail_energy_promille": 4,
+            "terrain_texture_macro_detail_energy_promille": 9,
+            "terrain_texture_min_near_to_mid_ratio_promille": 250,
+            "terrain_texture_max_near_to_mid_ratio_promille": 400,
+            "terrain_texture_max_isolated_edge_promille": 0,
             "terrain_relief_range_m": 0.8,
             "cliff_color_bands": 9,
             "impostor_mesh_vertices": 140,
@@ -974,4 +1111,15 @@ fn audit_check_passed(report: &Value, name: &str) -> bool {
         })
         .and_then(|check| check.get("passed").and_then(Value::as_bool))
         .unwrap_or(false)
+}
+
+fn audit_check_exists(report: &Value, name: &str) -> bool {
+    report
+        .get("checks")
+        .and_then(Value::as_array)
+        .is_some_and(|checks| {
+            checks
+                .iter()
+                .any(|check| check.get("name").and_then(Value::as_str) == Some(name))
+        })
 }
