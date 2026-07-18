@@ -1,9 +1,11 @@
 use super::types::{
     IslandLodVisual, IslandLodVisualCounts, IslandStreamDiagnostics, IslandStreamState,
-    IslandVisualCatalog, IslandVisualEntry,
+    IslandVisualCatalog, IslandVisualEntry, IslandVisualMaterial,
 };
 use crate::Player;
 use crate::environment_visuals::WindResponsiveVisual;
+use crate::surface_material::SurfaceMaterial;
+use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 use nau_engine::world::PLAYTEST_RESET_ISLAND_NAME;
 use std::collections::HashSet;
@@ -94,7 +96,19 @@ fn insert_island_visual_components(
     let mut entity = commands.entity(entity);
 
     if let Some((mesh, material)) = mesh_and_material {
-        entity.insert((Mesh3d(mesh), MeshMaterial3d(material)));
+        let casts_shadows = material.casts_shadows();
+        match material {
+            IslandVisualMaterial::Standard(material) => {
+                entity.insert((Mesh3d(mesh), MeshMaterial3d(material)));
+            }
+            IslandVisualMaterial::Surface(material)
+            | IslandVisualMaterial::SurfaceNoShadows(material) => {
+                entity.insert((Mesh3d(mesh), MeshMaterial3d(material)));
+            }
+        }
+        if !casts_shadows {
+            entity.insert(NotShadowCaster);
+        }
     }
     if let Some(motion) = entry.wind_motion {
         entity.insert(WindResponsiveVisual {
@@ -104,6 +118,26 @@ fn insert_island_visual_components(
             motion,
         });
     }
+}
+
+fn remove_island_visual_components(
+    commands: &mut Commands,
+    entity: Entity,
+    entry: &IslandVisualEntry,
+) {
+    let mut entity = commands.entity(entity);
+    entity.remove::<Mesh3d>();
+    match entry.material.as_ref() {
+        Some(IslandVisualMaterial::Standard(_)) => {
+            entity.remove::<MeshMaterial3d<StandardMaterial>>();
+        }
+        Some(IslandVisualMaterial::Surface(_) | IslandVisualMaterial::SurfaceNoShadows(_)) => {
+            entity.remove::<MeshMaterial3d<SurfaceMaterial>>();
+        }
+        None => {}
+    }
+    entity.remove::<NotShadowCaster>();
+    entity.remove::<WindResponsiveVisual>();
 }
 
 fn mesh_handle_for_entry(
@@ -199,11 +233,7 @@ pub(crate) fn update_island_stream_visibility(
             {
                 let applied_changes = spawned_visuals + despawned_visual_count;
                 if stream_change_budget_allows(diagnostics.initialized, applied_changes) {
-                    commands.entity(entity).remove::<(
-                        Mesh3d,
-                        MeshMaterial3d<StandardMaterial>,
-                        WindResponsiveVisual,
-                    )>();
+                    remove_island_visual_components(&mut commands, entity, entry);
                     stream_state.visual_resident.remove(&entry.key);
                     if diagnostics.initialized {
                         despawned_visual_count += 1;
@@ -367,7 +397,7 @@ mod tests {
                 island_index: 0,
                 island,
             }),
-            material: Some(Handle::default()),
+            material: Some(Handle::<StandardMaterial>::default().into()),
             transform: Transform::from_translation(island.center),
             obstacle: Some(CameraObstacle(CameraObstruction::new(
                 island.center,
@@ -474,5 +504,95 @@ mod tests {
                 .despawned_visuals_this_frame,
             1
         );
+    }
+
+    #[test]
+    fn surface_material_components_use_the_surface_material_type() {
+        let mut entry = resident_entry(0);
+        entry.mesh = Some(Handle::<Mesh>::default());
+        entry.material = Some(Handle::<SurfaceMaterial>::default().into());
+
+        let mut meshes = Assets::<Mesh>::default();
+        let mut stream_state = IslandStreamState::default();
+        let mut world = World::new();
+        let entity = world.spawn_empty().id();
+
+        {
+            let mut commands = world.commands();
+            insert_island_visual_components(
+                &mut commands,
+                &mut meshes,
+                &mut stream_state,
+                entity,
+                &entry,
+            );
+        }
+        world.flush();
+
+        assert!(world.get::<Mesh3d>(entity).is_some());
+        assert!(
+            world
+                .get::<MeshMaterial3d<SurfaceMaterial>>(entity)
+                .is_some()
+        );
+        assert!(
+            world
+                .get::<MeshMaterial3d<StandardMaterial>>(entity)
+                .is_none()
+        );
+        assert!(world.get::<NotShadowCaster>(entity).is_none());
+
+        {
+            let mut commands = world.commands();
+            remove_island_visual_components(&mut commands, entity, &entry);
+        }
+        world.flush();
+
+        assert!(world.get::<Mesh3d>(entity).is_none());
+        assert!(
+            world
+                .get::<MeshMaterial3d<SurfaceMaterial>>(entity)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn no_shadow_surface_material_components_disable_shadow_casting() {
+        let mut entry = resident_entry(0);
+        entry.mesh = Some(Handle::<Mesh>::default());
+        let material = Handle::<SurfaceMaterial>::default();
+        entry.material = Some(IslandVisualMaterial::surface_without_shadows(material));
+
+        let mut meshes = Assets::<Mesh>::default();
+        let mut stream_state = IslandStreamState::default();
+        let mut world = World::new();
+        let entity = world.spawn_empty().id();
+
+        {
+            let mut commands = world.commands();
+            insert_island_visual_components(
+                &mut commands,
+                &mut meshes,
+                &mut stream_state,
+                entity,
+                &entry,
+            );
+        }
+        world.flush();
+
+        assert!(
+            world
+                .get::<MeshMaterial3d<SurfaceMaterial>>(entity)
+                .is_some()
+        );
+        assert!(world.get::<NotShadowCaster>(entity).is_some());
+
+        {
+            let mut commands = world.commands();
+            remove_island_visual_components(&mut commands, entity, &entry);
+        }
+        world.flush();
+
+        assert!(world.get::<NotShadowCaster>(entity).is_none());
     }
 }
