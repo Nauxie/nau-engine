@@ -2,6 +2,7 @@ mod detail_layout;
 mod detail_meshes;
 mod island_meshes;
 mod materials;
+mod surface_textures;
 mod textures;
 
 const _: usize = island_meshes::GROUND_COVER_PATCHES;
@@ -64,6 +65,7 @@ pub(crate) use island_meshes::{
     mesh_terrain_material_channel_count, mesh_terrain_material_region_count,
     mesh_terrain_material_weight_band_count, mesh_vertex_color_band_count,
     mesh_vertical_band_count, mesh_y_range, terrain_biome_palette,
+    world_aligned_tangents_from_positions_and_normals,
 };
 #[cfg(test)]
 pub(crate) use island_meshes::{
@@ -73,14 +75,22 @@ pub(crate) use island_meshes::{
     ISLAND_TERRAIN_HEIGHT_BANDS, ISLAND_TERRAIN_MATERIAL_CHANNELS, ISLAND_TERRAIN_MATERIAL_REGIONS,
     ISLAND_TERRAIN_MATERIAL_WEIGHT_BANDS, ISLAND_TERRAIN_NORMAL_SLOPE_BANDS,
     ISLAND_TERRAIN_TEXTURE_DETAIL_BANDS, ISLAND_TERRAIN_TEXTURE_EDGE_PROMILLE,
-    ISLAND_UNDERSIDE_RINGS, island_terrain_vertex_color,
+    ISLAND_TERRAIN_TEXTURE_MACRO_DETAIL_ENERGY_PROMILLE,
+    ISLAND_TERRAIN_TEXTURE_MAX_ISOLATED_EDGE_PROMILLE,
+    ISLAND_TERRAIN_TEXTURE_MAX_NEAR_TO_MID_RATIO_PROMILLE,
+    ISLAND_TERRAIN_TEXTURE_MID_DETAIL_ENERGY_PROMILLE,
+    ISLAND_TERRAIN_TEXTURE_MIN_NEAR_TO_MID_RATIO_PROMILLE,
+    ISLAND_TERRAIN_TEXTURE_NEAR_DETAIL_ENERGY_PROMILLE, ISLAND_UNDERSIDE_RINGS,
+    TERRAIN_UV_TILES_PER_METER, island_terrain_vertex_color,
 };
 pub(crate) use materials::{
-    allocate_authored_island_detail_materials, cloud_surface_material, cloud_veil_material,
-    emissive_material, glider_airflow_material, ground_cover_material, terrain_surface_material,
-    textured_material, updraft_column_material, updraft_ribbon_material, water_surface_material,
+    WaterSurfaceMaterials, allocate_authored_island_detail_materials, cloud_surface_material,
+    cloud_veil_material, emissive_material, glider_airflow_material, ground_cover_material,
+    terrain_surface_material, textured_material, updraft_column_material, updraft_ribbon_material,
+    water_surface_materials,
 };
 pub(crate) use textures::{
     TERRAIN_TEXTURE_SIZE, mix_color, procedural_terrain_surface_texture_data, random_unit,
-    texture_detail_band_count, texture_edge_promille,
+    texture_detail_band_count, texture_detail_energy_promille, texture_edge_promille,
+    texture_isolated_edge_promille,
 };
