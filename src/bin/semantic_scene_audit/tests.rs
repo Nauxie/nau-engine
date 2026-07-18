@@ -7,10 +7,11 @@ use crate::{
     report::{json_number, json_string, report_checks, report_json},
     thresholds::{
         MIN_DISTANT_ISLAND_PIXEL_COVERAGE, MIN_FOLIAGE_PIXEL_COVERAGE,
-        MIN_PASSED_TERRAIN_MATERIAL_VARIANTS, MIN_SAMPLE_PIXEL_HITS,
-        MIN_SUBSTANTIAL_WATER_LOCAL_HITS, MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE,
-        MIN_TERRAIN_PIXEL_COVERAGE, MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS,
-        MIN_WATER_INTERNAL_EDGE_DENSITY, MIN_WATER_LUMA_P95_P5, MIN_WATER_QUANTIZED_COLOR_BUCKETS,
+        MIN_PASSED_TERRAIN_MATERIAL_VARIANTS, MIN_PLUNGE_POOL_INTERNAL_EDGE_DENSITY,
+        MIN_PLUNGE_POOL_LUMA_P95_P5, MIN_SAMPLE_PIXEL_HITS, MIN_SUBSTANTIAL_WATER_LOCAL_HITS,
+        MIN_TERRAIN_MATERIAL_VARIANT_PIXEL_COVERAGE, MIN_TERRAIN_PIXEL_COVERAGE,
+        MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS, MIN_WATER_INTERNAL_EDGE_DENSITY,
+        MIN_WATER_LUMA_P95_P5, MIN_WATER_QUANTIZED_COLOR_BUCKETS,
         MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE,
     },
     types::{CheckpointAudit, SceneSampleAudit, WaterLocalMetrics},
@@ -1407,7 +1408,7 @@ fn waterfall_water_requires_vertical_local_span() {
 }
 
 #[test]
-fn tiny_plunge_pool_accent_keeps_lower_legacy_threshold() {
+fn plunge_pool_accent_uses_low_but_non_flat_quality_thresholds() {
     let mut image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
     for (x, y, color) in semantic_material_pixels("water", 32, 32) {
         image.put_pixel(x, y, color);
@@ -1426,12 +1427,12 @@ fn tiny_plunge_pool_accent_keeps_lower_legacy_threshold() {
     .expect("plunge pool sample");
     let metrics = audit.water_local_metrics.as_ref().expect("water metrics");
 
-    assert!(!metrics.quality_required);
+    assert!(metrics.quality_required);
     assert_eq!(metrics.local_hit_count, MIN_SAMPLE_PIXEL_HITS);
-    assert!(metrics.passed);
-    assert!(audit.passed);
+    assert!(!metrics.passed);
+    assert!(!audit.passed);
 
-    let mut foam_image = RgbImage::from_pixel(64, 64, Rgb([155, 168, 177]));
+    let mut foam_image = RgbImage::from_pixel(64, 64, Rgb([130, 170, 220]));
     for (x, y, color) in additive_plunge_foam_pixels(32, 32) {
         foam_image.put_pixel(x, y, color);
     }
@@ -1448,6 +1449,14 @@ fn tiny_plunge_pool_accent_keeps_lower_legacy_threshold() {
     )
     .expect("foam sample");
     assert!(foam_audit.passed, "{foam_audit:?}");
+    let foam_metrics = foam_audit
+        .water_local_metrics
+        .as_ref()
+        .expect("foam metrics");
+    assert!(foam_metrics.quality_required);
+    assert!(foam_metrics.quantized_color_bucket_count >= 2);
+    assert!(foam_metrics.luma_p95_p5 >= MIN_PLUNGE_POOL_LUMA_P95_P5);
+    assert!(foam_metrics.internal_edge_density >= MIN_PLUNGE_POOL_INTERNAL_EDGE_DENSITY);
 
     let sky_audit = audit_scene_sample(
         &projected_sample(
@@ -2026,7 +2035,7 @@ fn island_surface_review_water_checkpoint_requires_every_water_form_and_two_deta
         semantic_water_region_pixels("river_channel", 100, 150),
         semantic_water_region_pixels("waterfall_water", 160, 150),
         semantic_material_pixels("stone", 220, 150).to_vec(),
-        semantic_material_pixels("water", 280, 150).to_vec(),
+        additive_plunge_foam_pixels(280, 150),
     ];
     let all_pixels = pixel_groups.iter().flatten().copied().collect::<Vec<_>>();
     let (pass_dir, pass_path) = checkpoint_fixture(
@@ -2684,9 +2693,9 @@ fn additive_plunge_foam_pixels(x: u32, y: u32) -> Vec<(u32, u32, Rgb<u8>)> {
     for offset_y in -1..=1 {
         for offset_x in -2..=2 {
             let phase = (offset_x + 2 + offset_y + 1) as u8;
-            let r = 158 + phase;
-            let g = r + 3;
-            let b = g + 2;
+            let r = 202 + phase * 5;
+            let g = r + 5;
+            let b = g + 4;
             pixels.push((
                 (x as i32 + offset_x) as u32,
                 (y as i32 + offset_y) as u32,
