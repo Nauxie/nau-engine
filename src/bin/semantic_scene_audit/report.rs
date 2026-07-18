@@ -1,6 +1,6 @@
 use crate::{
     checkpoint::{island_water_story_sample_matches, min_terrain_material_variant_hit_count},
-    materials::min_material_sample_pixel_hit_count,
+    materials::{aggregate_water_metrics, min_material_sample_pixel_hit_count},
     thresholds::{
         EXPECTED_MATERIALS, EXPECTED_SCENE_SAMPLE_KINDS, EXPECTED_TERRAIN_MATERIAL_VARIANTS,
         MAX_PLAYER_WIND_SHEAR_PIXEL_COVERAGE_PER_CHECKPOINT,
@@ -10,7 +10,10 @@ use crate::{
         MIN_VISIBLE_TERRAIN_MATERIAL_VARIANTS, MIN_WIND_PIXEL_COVERAGE_PER_VISIBLE_SAMPLE,
         expected_material_pixel_coverage_floor, expected_scene_kind_pixel_coverage_floor,
     },
-    types::{Check, CheckpointAudit, MaterialAudit, SceneSampleAudit},
+    types::{
+        Check, CheckpointAudit, MaterialAudit, SceneSampleAudit, WaterAggregateMetrics,
+        WaterLocalMetrics,
+    },
 };
 use nau_engine::world::{IslandWaterStory, island_art_directions};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -48,6 +51,16 @@ struct AuditProfile {
     require_terrain_material_variants: bool,
     require_all_visible_families: bool,
     audit_visible_wind_samples: bool,
+}
+
+#[derive(Default)]
+struct WaterQualityCheckCounts {
+    required: usize,
+    area_span_passed: usize,
+    color_bucket_passed: usize,
+    luma_variation_passed: usize,
+    internal_edge_density_passed: usize,
+    quality_passed: usize,
 }
 
 pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
@@ -262,6 +275,39 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
         ));
     }
 
+    let water_quality = substantial_water_quality_check_counts(checkpoints);
+    if water_quality.required > 0 {
+        for (name, value) in [
+            (
+                "water_substantial_local_area_span_passes",
+                water_quality.area_span_passed,
+            ),
+            (
+                "water_substantial_quantized_color_bucket_passes",
+                water_quality.color_bucket_passed,
+            ),
+            (
+                "water_substantial_luma_p95_p5_passes",
+                water_quality.luma_variation_passed,
+            ),
+            (
+                "water_substantial_internal_edge_density_passes",
+                water_quality.internal_edge_density_passed,
+            ),
+            (
+                "water_substantial_semantic_quality_passes",
+                water_quality.quality_passed,
+            ),
+        ] {
+            checks.push(Check::at_least(
+                name,
+                value as f64,
+                water_quality.required as f64,
+                "samples",
+            ));
+        }
+    }
+
     for kind in profile.expected_scene_sample_kinds {
         checks.push(Check::at_least(
             format!("scene_kind_{kind}_visible_samples"),
@@ -317,6 +363,24 @@ pub(crate) fn report_checks(checkpoints: &[CheckpointAudit]) -> Vec<Check> {
     }
 
     checks
+}
+
+fn substantial_water_quality_check_counts(
+    checkpoints: &[CheckpointAudit],
+) -> WaterQualityCheckCounts {
+    let mut counts = WaterQualityCheckCounts::default();
+    for checkpoint in checkpoints {
+        let Some(metrics) = aggregate_water_metrics(&checkpoint.samples) else {
+            continue;
+        };
+        counts.required += metrics.quality_required_sample_count;
+        counts.area_span_passed += metrics.area_span_passed_sample_count;
+        counts.color_bucket_passed += metrics.color_bucket_passed_sample_count;
+        counts.luma_variation_passed += metrics.luma_variation_passed_sample_count;
+        counts.internal_edge_density_passed += metrics.internal_edge_density_passed_sample_count;
+        counts.quality_passed += metrics.quality_passed_sample_count;
+    }
+    counts
 }
 
 fn audit_profile(checkpoints: &[CheckpointAudit]) -> AuditProfile {
@@ -1078,8 +1142,12 @@ pub(crate) fn checkpoint_json(checkpoint: &CheckpointAudit) -> String {
         .as_deref()
         .map(json_string)
         .unwrap_or_else(|| "null".to_string());
+    let water_metrics = aggregate_water_metrics(&checkpoint.samples)
+        .as_ref()
+        .map(water_aggregate_metrics_json)
+        .unwrap_or_else(|| "null".to_string());
     format!(
-        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"scenario\": {},\n      \"checkpoint\": {},\n      \"target_island\": {},\n      \"review_view\": {},\n      \"passed\": {},\n      \"in_viewport_scene_sample_count\": {},\n      \"occluded_scene_sample_count\": {},\n      \"visible_scene_sample_count\": {},\n      \"scene_sample_pixel_hit_count\": {},\n      \"visible_scene_material_count\": {},\n      \"scene_material_pixel_hit_count\": {},\n      \"visible_scene_sample_kind_count\": {},\n      \"scene_sample_kind_pixel_hit_count\": {},\n      \"visible_terrain_material_variant_count\": {},\n      \"terrain_material_variant_pixel_hit_count\": {},\n      \"materials\": [\n{}\n      ],\n      \"samples\": [\n{}\n      ]\n    }}",
+        "    {{\n      \"metadata_path\": {},\n      \"screenshot_path\": {},\n      \"scenario\": {},\n      \"checkpoint\": {},\n      \"target_island\": {},\n      \"review_view\": {},\n      \"passed\": {},\n      \"in_viewport_scene_sample_count\": {},\n      \"occluded_scene_sample_count\": {},\n      \"visible_scene_sample_count\": {},\n      \"scene_sample_pixel_hit_count\": {},\n      \"visible_scene_material_count\": {},\n      \"scene_material_pixel_hit_count\": {},\n      \"visible_scene_sample_kind_count\": {},\n      \"scene_sample_kind_pixel_hit_count\": {},\n      \"visible_terrain_material_variant_count\": {},\n      \"terrain_material_variant_pixel_hit_count\": {},\n      \"water_metrics\": {},\n      \"materials\": [\n{}\n      ],\n      \"samples\": [\n{}\n      ]\n    }}",
         json_string(&checkpoint.metadata_path),
         json_string(&checkpoint.screenshot_path),
         json_string(&checkpoint.scenario),
@@ -1097,20 +1165,27 @@ pub(crate) fn checkpoint_json(checkpoint: &CheckpointAudit) -> String {
         checkpoint.scene_sample_kind_pixel_hit_count,
         checkpoint.visible_terrain_material_variant_count,
         checkpoint.terrain_material_variant_pixel_hit_count,
+        water_metrics,
         materials_json,
         samples_json
     )
 }
 
 pub(crate) fn material_json(material: &MaterialAudit) -> String {
+    let water_metrics = material
+        .water_metrics
+        .as_ref()
+        .map(water_aggregate_metrics_json)
+        .unwrap_or_else(|| "null".to_string());
     format!(
-        "        {{\"expected_material\": {}, \"visible_sample_count\": {}, \"sample_pixel_hit_count\": {}, \"min_sample_pixel_hit_count\": {}, \"hit_ratio\": {}, \"passed\": {}}}",
+        "        {{\"expected_material\": {}, \"visible_sample_count\": {}, \"sample_pixel_hit_count\": {}, \"min_sample_pixel_hit_count\": {}, \"hit_ratio\": {}, \"passed\": {}, \"water_metrics\": {}}}",
         json_string(&material.expected_material),
         material.visible_sample_count,
         material.sample_pixel_hit_count,
         material.min_sample_pixel_hit_count,
         json_number(material.hit_ratio),
-        material.passed
+        material.passed,
+        water_metrics
     )
 }
 
@@ -1124,8 +1199,13 @@ pub(crate) fn sample_json(sample: &SceneSampleAudit) -> String {
         (Some(x), Some(y)) => format!("{{\"x\": {}, \"y\": {}}}", json_number(x), json_number(y)),
         _ => "null".to_string(),
     };
+    let water_local_metrics = sample
+        .water_local_metrics
+        .as_ref()
+        .map(water_local_metrics_json)
+        .unwrap_or_else(|| "null".to_string());
     format!(
-        "        {{\"island\": {}, \"kind\": {}, \"label\": {}, \"expected_material\": {}, \"material_variant\": {}, \"in_viewport\": {}, \"visibility\": {}, \"screen\": {}, \"semantic_pixel_hits\": {}, \"passed\": {}}}",
+        "        {{\"island\": {}, \"kind\": {}, \"label\": {}, \"expected_material\": {}, \"material_variant\": {}, \"in_viewport\": {}, \"visibility\": {}, \"screen\": {}, \"semantic_pixel_hits\": {}, \"passed\": {}, \"water_local_metrics\": {}}}",
         island,
         json_string(&sample.kind),
         json_string(&sample.label),
@@ -1135,7 +1215,48 @@ pub(crate) fn sample_json(sample: &SceneSampleAudit) -> String {
         json_string(&sample.visibility),
         screen,
         sample.semantic_pixel_hits,
-        sample.passed
+        sample.passed,
+        water_local_metrics
+    )
+}
+
+fn water_local_metrics_json(metrics: &WaterLocalMetrics) -> String {
+    format!(
+        "{{\"local_hit_count\": {}, \"x_span_px\": {}, \"y_span_px\": {}, \"quantized_color_bucket_count\": {}, \"luma_p95_p5\": {}, \"internal_edge_density\": {}, \"bounding_box_fill_ratio\": {}, \"quality_required\": {}, \"area_span_passed\": {}, \"color_bucket_passed\": {}, \"luma_variation_passed\": {}, \"internal_edge_density_passed\": {}, \"passed\": {}}}",
+        metrics.local_hit_count,
+        metrics.x_span,
+        metrics.y_span,
+        metrics.quantized_color_bucket_count,
+        json_number(metrics.luma_p95_p5),
+        json_number(metrics.internal_edge_density),
+        json_number(metrics.bounding_box_fill_ratio),
+        metrics.quality_required,
+        metrics.area_span_passed,
+        metrics.color_bucket_passed,
+        metrics.luma_variation_passed,
+        metrics.internal_edge_density_passed,
+        metrics.passed
+    )
+}
+
+fn water_aggregate_metrics_json(metrics: &WaterAggregateMetrics) -> String {
+    format!(
+        "{{\"visible_sample_count\": {}, \"projected_quality_required_sample_count\": {}, \"quality_required_sample_count\": {}, \"area_span_passed_sample_count\": {}, \"color_bucket_passed_sample_count\": {}, \"luma_variation_passed_sample_count\": {}, \"internal_edge_density_passed_sample_count\": {}, \"quality_passed_sample_count\": {}, \"total_local_hit_count\": {}, \"max_x_span_px\": {}, \"max_y_span_px\": {}, \"max_quantized_color_bucket_count\": {}, \"max_luma_p95_p5\": {}, \"mean_internal_edge_density\": {}, \"passed\": {}}}",
+        metrics.visible_sample_count,
+        metrics.projected_quality_required_sample_count,
+        metrics.quality_required_sample_count,
+        metrics.area_span_passed_sample_count,
+        metrics.color_bucket_passed_sample_count,
+        metrics.luma_variation_passed_sample_count,
+        metrics.internal_edge_density_passed_sample_count,
+        metrics.quality_passed_sample_count,
+        metrics.total_local_hit_count,
+        metrics.max_x_span,
+        metrics.max_y_span,
+        metrics.max_quantized_color_bucket_count,
+        json_number(metrics.max_luma_p95_p5),
+        json_number(metrics.mean_internal_edge_density),
+        metrics.passed
     )
 }
 
