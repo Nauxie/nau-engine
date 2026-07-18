@@ -166,7 +166,10 @@ if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]]
       island_hero_gallery)
         visual_audit_args+=(--profile island_gallery)
         ;;
-      plateau_arrival_camera|great_sky_plateau_vistas|island_surface_review)
+      great_sky_plateau_vistas|island_surface_review)
+        visual_audit_args+=(--profile landscape_vista)
+        ;;
+      plateau_arrival_camera)
         visual_audit_args+=(--profile route_marker_optional)
         ;;
       world_collision_contact)
