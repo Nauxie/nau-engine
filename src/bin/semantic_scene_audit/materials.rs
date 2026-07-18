@@ -551,7 +551,7 @@ fn is_waterfall_foam_like(r: f64, g: f64, b: f64) -> bool {
 fn is_additive_plunge_foam_like(r: f64, g: f64, b: f64) -> bool {
     let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     let saturation = r.max(g).max(b) - r.min(g).min(b);
-    (150.0..=195.0).contains(&luma) && saturation <= 12.0 && g >= r && b >= g && b <= g + 10.0
+    (145.0..=248.0).contains(&luma) && saturation <= 16.0 && g >= r && b >= g - 4.0 && b <= g + 12.0
 }
 
 pub(crate) fn material_matches(expected_material: &str, r: f64, g: f64, b: f64) -> bool {
