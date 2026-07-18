@@ -70,16 +70,12 @@ fn spawn_island_visuals(
         .record_terrain_material_texture_detail(scene_materials.terrain_texture_detail_bands);
 
     for (index, island) in route.islands().iter().enumerate() {
-        let top_material = if island.is_target {
-            scene_materials.target_grass.clone()
-        } else {
-            match index % TERRAIN_BIOME_PALETTE_COUNT {
-                0 => scene_materials.island_grass.clone(),
-                1 => scene_materials.island_meadow.clone(),
-                2 => scene_materials.island_clay.clone(),
-                3 => scene_materials.island_alpine.clone(),
-                _ => scene_materials.island_highland.clone(),
-            }
+        let top_material = match index % TERRAIN_BIOME_PALETTE_COUNT {
+            0 => scene_materials.island_grass.clone(),
+            1 => scene_materials.island_meadow.clone(),
+            2 => scene_materials.island_clay.clone(),
+            3 => scene_materials.island_alpine.clone(),
+            _ => scene_materials.island_highland.clone(),
         };
 
         queue_sky_island(
@@ -261,6 +257,7 @@ mod tests {
     use super::*;
     use crate::authored_assets::VisualAssetSlot;
     use crate::scene_setup_runtime::prepare_scene_materials;
+    use crate::surface_material::SurfaceMaterial;
     use crate::world_collision_runtime::WorldCollisionProxy;
     use nau_engine::asset_pipeline::{
         VISUAL_ASSET_SPECS, VisualAssetKind, VisualAssetLoadAdmission,
@@ -274,7 +271,9 @@ mod tests {
         let mut meshes = Assets::<Mesh>::default();
         let mut images = Assets::<Image>::default();
         let mut materials = Assets::<StandardMaterial>::default();
-        let scene_materials = prepare_scene_materials(&mut images, &mut materials);
+        let mut surface_materials = Assets::<SurfaceMaterial>::default();
+        let scene_materials =
+            prepare_scene_materials(&mut images, &mut materials, &mut surface_materials);
 
         {
             let mut commands = world.commands();
@@ -302,7 +301,9 @@ mod tests {
         let mut meshes = Assets::<Mesh>::default();
         let mut images = Assets::<Image>::default();
         let mut materials = Assets::<StandardMaterial>::default();
-        let scene_materials = prepare_scene_materials(&mut images, &mut materials);
+        let mut surface_materials = Assets::<SurfaceMaterial>::default();
+        let scene_materials =
+            prepare_scene_materials(&mut images, &mut materials, &mut surface_materials);
 
         {
             let mut commands = world.commands();
