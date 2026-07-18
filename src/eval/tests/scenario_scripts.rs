@@ -419,33 +419,40 @@ fn development_performance_gate_enforces_camera_feel_budgets_for_both_profiles()
             .contains("if ! [[ \"${max_frames_over_16_67ms}\" =~ ^(0|[1-9][0-9]*)$ ]]; then")
     );
     assert!(performance.contains("if ! [[ \"${max_material_count}\" =~ ^[1-9][0-9]*$ ]]; then"));
-    assert!(performance.contains("and (.metrics.max_frame_time_ms | type) == \"number\""));
-    assert!(performance.contains("and (.metrics.frames_over_16_67ms | type) == \"number\""));
+    assert!(
+        performance.contains("and (.metrics.runtime_frame_time_sample_count | type) == \"number\"")
+    );
+    assert!(performance.contains("and .metrics.runtime_frame_time_sample_count >= 120"));
+    assert!(performance.contains("and (.metrics.max_runtime_frame_time_ms | type) == \"number\""));
+    assert!(
+        performance.contains("and (.metrics.runtime_frames_over_16_67ms | type) == \"number\"")
+    );
     assert!(performance.contains("and (.metrics.max_material_count | type) == \"number\""));
     assert!(performance.contains("local warmup_dir=\"${output_root}/${profile}_warmup\""));
     assert!(performance.contains("./tools/perf_host_preflight.sh"));
     assert!(performance.contains("warmup_run: ($run_warmup == 1)"));
     assert!(performance.contains("host_preflight: ($run_host_preflight == 1)"));
+    assert!(performance.contains("frame_time_scope: \"runtime_after_startup_warmup\""));
 
     for (profile_field, metric, threshold) in [
         (
-            "avg_frame_time_ms",
-            "avg_frame_time_ms",
+            "avg_runtime_frame_time_ms",
+            "avg_runtime_frame_time_ms",
             "max_avg_frame_time_ms",
         ),
         (
-            "p95_frame_time_ms",
-            "p95_frame_time_ms",
+            "p95_runtime_frame_time_ms",
+            "p95_runtime_frame_time_ms",
             "max_p95_frame_time_ms",
         ),
         (
-            "max_frame_time_ms",
-            "max_frame_time_ms",
+            "max_runtime_frame_time_ms",
+            "max_runtime_frame_time_ms",
             "max_frame_time_ms",
         ),
         (
-            "frames_over_16_67ms",
-            "frames_over_16_67ms",
+            "runtime_frames_over_16_67ms",
+            "runtime_frames_over_16_67ms",
             "max_frames_over_16_67ms",
         ),
         (
@@ -463,6 +470,12 @@ fn development_performance_gate_enforces_camera_feel_budgets_for_both_profiles()
                 performance.contains(&format!("{profile_field}: ${profile}[0].metrics.{metric}"))
             );
         }
+    }
+
+    for profile in ["debug", "release"] {
+        assert!(performance.contains(&format!(
+            "all_frame_max_frame_time_ms: ${profile}[0].metrics.max_frame_time_ms"
+        )));
     }
 
     assert!(performance.contains("and $avg_ratio <= $max_debug_release_avg_ratio"));
