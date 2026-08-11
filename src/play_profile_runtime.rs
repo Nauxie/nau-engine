@@ -4,10 +4,11 @@ use crate::island_visuals::{IslandLodVisualCounts, IslandStreamDiagnostics};
 use crate::player_runtime::Player;
 use crate::surface_material::SurfaceMaterial;
 use crate::world_floor_runtime::WorldFloorDiagnostics;
-use bevy::ecs::system::SystemParam;
+use bevy::ecs::system::{NonSendMarker, SystemParam};
 use bevy::mesh::Indices;
 use bevy::prelude::*;
-use bevy::window::{Monitor, PresentMode, PrimaryMonitor, PrimaryWindow, Window};
+use bevy::window::{Monitor, PresentMode, PrimaryMonitor, PrimaryWindow, Window, WindowPosition};
+use bevy::winit::WINIT_WINDOWS;
 use nau_engine::{
     asset_pipeline::VisualAssetPipelineMetrics,
     camera::CameraInput,
@@ -32,8 +33,11 @@ const PROFILE_MAX_P95_FRAME_TIME_MS: f64 = 45.0;
 const PROFILE_MAX_P99_FRAME_TIME_MS: f64 = 80.0;
 const PROFILE_MAX_STEADY_50MS_HITCH_COUNT: usize = 3;
 const PROFILE_MAX_STEADY_100MS_HITCH_COUNT: usize = 1;
+const PROFILE_MAX_STEADY_MISSED_REFRESH_RATIO: f64 = 0.002;
 const PROFILE_MIN_FOCUSED_WINDOW_RATIO: f64 = 0.95;
 const PROFILE_HITCH_EVENT_THRESHOLD_MS: f64 = 25.0;
+const PROFILE_MISSED_REFRESH_THRESHOLD_MULTIPLIER: f64 = 1.5;
+const PROFILE_MONITOR_REFRESH_CHANGE_TOLERANCE_HZ: f64 = 0.5;
 const PROFILE_MAX_HITCH_EVENTS: usize = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -91,6 +95,7 @@ pub(crate) struct PlayProfileRun {
     focused_window_secs: f64,
     unfocused_window_secs: f64,
     previous_window_focused: Option<bool>,
+    monitor_refresh: PlayProfileMonitorRefreshStats,
     activity: PlayProfileActivity,
     latest: PlayProfileSnapshot,
     max: PlayProfileMaxima,
@@ -129,6 +134,7 @@ impl PlayProfileRun {
             focused_window_secs: 0.0,
             unfocused_window_secs: 0.0,
             previous_window_focused: None,
+            monitor_refresh: PlayProfileMonitorRefreshStats::default(),
             activity: PlayProfileActivity::default(),
             latest: PlayProfileSnapshot::default(),
             max: PlayProfileMaxima::default(),
@@ -185,6 +191,8 @@ impl PlayProfileRun {
         self.elapsed_secs += delta_secs;
         self.write_accumulator_secs += delta_secs;
         self.frame_times_ms.push(frame_time_ms);
+        self.monitor_refresh
+            .observe(snapshot.window.refresh_rate_hz());
         self.activity.observe_position(snapshot.player_position);
         match snapshot.player_mode {
             Some(FlightMode::Grounded) => self.grounded_samples += 1,
@@ -240,7 +248,20 @@ impl PlayProfileRun {
         let steady_frame_times =
             frame_times_after_warmup(&self.frame_times_ms, PROFILE_WARMUP_EXCLUDED_SECS);
         let steady_frame_stats = PlayProfileFrameStats::from_frame_times(&steady_frame_times);
+        let steady_frame_pacing = PlayProfileFramePacingStats::from_frame_times(
+            &steady_frame_times,
+            self.monitor_refresh.evaluation_refresh_rate_hz(),
+        );
         let mut checks = play_profile_checks(self.elapsed_secs, self.activity, steady_frame_stats);
+        checks.push(play_profile_monitor_refresh_availability_check(
+            self.monitor_refresh,
+        ));
+        checks.push(play_profile_monitor_refresh_stability_check(
+            self.monitor_refresh,
+        ));
+        if let Some(frame_pacing_check) = play_profile_frame_pacing_check(steady_frame_pacing) {
+            checks.push(frame_pacing_check);
+        }
         checks.push(play_profile_window_focus_check(
             self.focused_window_secs,
             self.unfocused_window_secs,
@@ -259,7 +280,7 @@ impl PlayProfileRun {
             .map(PlayProfileHitchEvent::to_json)
             .collect::<Vec<_>>();
         let report = json!({
-            "schema_version": 2,
+            "schema_version": 5,
             "profile_kind": self.profile_kind(),
             "control_source": self.control_source(),
             "script": self.script.map(PlayProfileScript::name),
@@ -297,9 +318,13 @@ impl PlayProfileRun {
                     self.unfocused_window_secs,
                 )),
             },
+            "monitor_refresh": self.monitor_refresh.to_json(),
             "frame_time": frame_stats.to_json(),
             "steady_frame_time": steady_frame_stats.to_json(),
-            "hitch_event_threshold_ms": round3(PROFILE_HITCH_EVENT_THRESHOLD_MS),
+            "steady_frame_pacing": steady_frame_pacing.to_json(),
+            "hitch_event_threshold_ms": round3(hitch_event_threshold_ms(
+                self.monitor_refresh.evaluation_refresh_rate_hz(),
+            )),
             "max_hitch_events": PROFILE_MAX_HITCH_EVENTS,
             "hitch_events": hitch_events,
             "latest": self.latest.to_json(),
@@ -342,6 +367,7 @@ impl PlayProfileRun {
         self.focused_window_secs = 0.0;
         self.unfocused_window_secs = 0.0;
         self.previous_window_focused = None;
+        self.monitor_refresh = PlayProfileMonitorRefreshStats::default();
         self.frame_times_ms.clear();
         self.activity = PlayProfileActivity::default();
         self.max = PlayProfileMaxima::default();
@@ -349,7 +375,8 @@ impl PlayProfileRun {
     }
 
     fn observe_hitch_event(&mut self, frame_time_ms: f64, snapshot: PlayProfileSnapshot) {
-        if frame_time_ms <= PROFILE_HITCH_EVENT_THRESHOLD_MS {
+        let threshold_ms = hitch_event_threshold_ms(snapshot.window.refresh_rate_hz());
+        if frame_time_ms <= threshold_ms {
             return;
         }
 
@@ -442,6 +469,7 @@ pub(crate) fn collect_play_profile_sample(
     time: Res<Time>,
     mut profile: ResMut<PlayProfileRun>,
     scene: PlayProfileScene,
+    _non_send_marker: NonSendMarker,
     mut app_exit: MessageWriter<AppExit>,
 ) {
     let player_state = scene
@@ -459,18 +487,35 @@ pub(crate) fn collect_play_profile_sample(
     let mut monitor_count = 0;
     let mut min_monitor_refresh_rate_hz: Option<f64> = None;
     let mut max_monitor_refresh_rate_hz: Option<f64> = None;
+    let mut current_monitor_refresh_rate_hz =
+        primary_window.and_then(|(entity, _window)| winit_current_monitor_refresh_rate_hz(entity));
+    let mut current_monitor_source =
+        current_monitor_refresh_rate_hz.map(|_refresh_rate_hz| "winit");
+    let mut current_monitor_overlap_area = 0;
     for monitor in &scene.monitors {
         monitor_count += 1;
-        let Some(refresh_rate_millihertz) = monitor.refresh_rate_millihertz else {
-            continue;
-        };
-        let refresh_rate_hz = refresh_rate_millihertz as f64 / 1000.0;
-        min_monitor_refresh_rate_hz = Some(
-            min_monitor_refresh_rate_hz.map_or(refresh_rate_hz, |min| min.min(refresh_rate_hz)),
-        );
-        max_monitor_refresh_rate_hz = Some(
-            max_monitor_refresh_rate_hz.map_or(refresh_rate_hz, |max| max.max(refresh_rate_hz)),
-        );
+        let refresh_rate_hz = monitor
+            .refresh_rate_millihertz
+            .map(|refresh_rate_millihertz| refresh_rate_millihertz as f64 / 1000.0);
+        if let Some(refresh_rate_hz) = refresh_rate_hz {
+            min_monitor_refresh_rate_hz = Some(
+                min_monitor_refresh_rate_hz.map_or(refresh_rate_hz, |min| min.min(refresh_rate_hz)),
+            );
+            max_monitor_refresh_rate_hz = Some(
+                max_monitor_refresh_rate_hz.map_or(refresh_rate_hz, |max| max.max(refresh_rate_hz)),
+            );
+        }
+
+        if current_monitor_refresh_rate_hz.is_none() {
+            let overlap_area = primary_window
+                .map(|(_entity, window)| window_monitor_overlap_area(window, monitor))
+                .unwrap_or(0);
+            if overlap_area > current_monitor_overlap_area {
+                current_monitor_overlap_area = overlap_area;
+                current_monitor_refresh_rate_hz = refresh_rate_hz;
+                current_monitor_source = refresh_rate_hz.map(|_refresh_rate_hz| "window_overlap");
+            }
+        }
     }
     let snapshot = PlayProfileSnapshot {
         frame: 0,
@@ -478,11 +523,13 @@ pub(crate) fn collect_play_profile_sample(
         player_position,
         player_mode: player_state.map(|(_position, mode)| mode),
         window: PlayProfileWindowSnapshot {
-            focused: primary_window.map(|window| window.focused),
-            present_mode: primary_window.map(|window| window.present_mode),
+            focused: primary_window.map(|(_entity, window)| window.focused),
+            present_mode: primary_window.map(|(_entity, window)| window.present_mode),
             monitor_count,
             min_monitor_refresh_rate_hz,
             max_monitor_refresh_rate_hz,
+            current_monitor_refresh_rate_hz,
+            current_monitor_source,
             primary_monitor_refresh_rate_hz: scene
                 .primary_monitor
                 .single()
@@ -546,7 +593,7 @@ pub(crate) struct PlayProfileScene<'w, 's> {
     materials: Res<'w, Assets<StandardMaterial>>,
     surface_materials: Res<'w, Assets<SurfaceMaterial>>,
     player: Query<'w, 's, (&'static Transform, &'static FlightController), With<Player>>,
-    primary_window: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
+    primary_window: Query<'w, 's, (Entity, &'static Window), With<PrimaryWindow>>,
     monitors: Query<'w, 's, &'static Monitor>,
     primary_monitor: Query<'w, 's, &'static Monitor, With<PrimaryMonitor>>,
     all_entities: Query<'w, 's, Entity>,
@@ -559,7 +606,80 @@ struct PlayProfileWindowSnapshot {
     monitor_count: usize,
     min_monitor_refresh_rate_hz: Option<f64>,
     max_monitor_refresh_rate_hz: Option<f64>,
+    current_monitor_refresh_rate_hz: Option<f64>,
+    current_monitor_source: Option<&'static str>,
     primary_monitor_refresh_rate_hz: Option<f64>,
+}
+
+impl PlayProfileWindowSnapshot {
+    fn refresh_rate_hz(self) -> Option<f64> {
+        self.current_monitor_refresh_rate_hz
+            .or(self.primary_monitor_refresh_rate_hz)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct PlayProfileMonitorRefreshStats {
+    first_observed_refresh_rate_hz: Option<f64>,
+    latest_observed_refresh_rate_hz: Option<f64>,
+    min_observed_refresh_rate_hz: Option<f64>,
+    max_observed_refresh_rate_hz: Option<f64>,
+    refresh_rate_change_count: usize,
+}
+
+impl PlayProfileMonitorRefreshStats {
+    fn observe(&mut self, refresh_rate_hz: Option<f64>) {
+        let Some(refresh_rate_hz) = refresh_rate_hz.filter(|rate| rate.is_finite() && *rate > 0.0)
+        else {
+            return;
+        };
+
+        if self
+            .latest_observed_refresh_rate_hz
+            .is_some_and(|previous| {
+                (previous - refresh_rate_hz).abs() > PROFILE_MONITOR_REFRESH_CHANGE_TOLERANCE_HZ
+            })
+        {
+            self.refresh_rate_change_count += 1;
+        }
+        self.first_observed_refresh_rate_hz
+            .get_or_insert(refresh_rate_hz);
+        self.latest_observed_refresh_rate_hz = Some(refresh_rate_hz);
+        self.min_observed_refresh_rate_hz = Some(
+            self.min_observed_refresh_rate_hz
+                .map_or(refresh_rate_hz, |minimum| minimum.min(refresh_rate_hz)),
+        );
+        self.max_observed_refresh_rate_hz = Some(
+            self.max_observed_refresh_rate_hz
+                .map_or(refresh_rate_hz, |maximum| maximum.max(refresh_rate_hz)),
+        );
+    }
+
+    fn evaluation_refresh_rate_hz(self) -> Option<f64> {
+        self.max_observed_refresh_rate_hz
+    }
+
+    fn to_json(self) -> Value {
+        json!({
+            "available": self.first_observed_refresh_rate_hz.is_some(),
+            "stable": self.first_observed_refresh_rate_hz.is_some()
+                && self.refresh_rate_change_count == 0,
+            "first_observed_refresh_rate_hz": self
+                .first_observed_refresh_rate_hz
+                .map(round3),
+            "latest_observed_refresh_rate_hz": self
+                .latest_observed_refresh_rate_hz
+                .map(round3),
+            "min_observed_refresh_rate_hz": self
+                .min_observed_refresh_rate_hz
+                .map(round3),
+            "max_observed_refresh_rate_hz": self
+                .max_observed_refresh_rate_hz
+                .map(round3),
+            "refresh_rate_change_count": self.refresh_rate_change_count,
+            "frame_pacing_refresh_rate_policy": "highest_observed",
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -599,6 +719,11 @@ impl PlayProfileSnapshot {
                     .window
                     .max_monitor_refresh_rate_hz
                     .map(round3),
+                "current_monitor_refresh_rate_hz": self
+                    .window
+                    .current_monitor_refresh_rate_hz
+                    .map(round3),
+                "current_monitor_source": self.window.current_monitor_source,
                 "primary_monitor_refresh_rate_hz": self
                     .window
                     .primary_monitor_refresh_rate_hz
@@ -697,8 +822,10 @@ impl PlayProfileHitchEvent {
             "over_50ms"
         } else if self.frame_time_ms > 33.34 {
             "over_33_34ms"
-        } else {
+        } else if self.frame_time_ms > PROFILE_HITCH_EVENT_THRESHOLD_MS {
             "over_25ms"
+        } else {
+            "missed_refresh"
         }
     }
 }
@@ -959,6 +1086,44 @@ impl RuntimeAssetSnapshot {
     }
 }
 
+fn window_monitor_overlap_area(window: &Window, monitor: &Monitor) -> u64 {
+    let WindowPosition::At(window_position) = window.position else {
+        return 0;
+    };
+    rectangle_overlap_area(
+        window_position,
+        window.physical_size(),
+        monitor.physical_position,
+        monitor.physical_size(),
+    )
+}
+
+fn winit_current_monitor_refresh_rate_hz(window_entity: Entity) -> Option<f64> {
+    WINIT_WINDOWS.with_borrow(|winit_windows| {
+        winit_windows
+            .get_window(window_entity)
+            .and_then(|window| window.current_monitor())
+            .and_then(|monitor| monitor.refresh_rate_millihertz())
+            .map(|refresh_rate_millihertz| refresh_rate_millihertz as f64 / 1000.0)
+    })
+}
+
+fn rectangle_overlap_area(
+    left_position: IVec2,
+    left_size: UVec2,
+    right_position: IVec2,
+    right_size: UVec2,
+) -> u64 {
+    let overlap_width = (i64::from(left_position.x) + i64::from(left_size.x))
+        .min(i64::from(right_position.x) + i64::from(right_size.x))
+        - i64::from(left_position.x.max(right_position.x));
+    let overlap_height = (i64::from(left_position.y) + i64::from(left_size.y))
+        .min(i64::from(right_position.y) + i64::from(right_size.y))
+        - i64::from(left_position.y.max(right_position.y));
+
+    overlap_width.max(0) as u64 * overlap_height.max(0) as u64
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 struct PlayProfileFrameStats {
     sample_count: usize,
@@ -1018,6 +1183,55 @@ impl PlayProfileFrameStats {
             "frames_over_33_34ms": self.frames_over_33ms,
             "frames_over_50ms": self.frames_over_50ms,
             "frames_over_100ms": self.frames_over_100ms,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct PlayProfileFramePacingStats {
+    monitor_refresh_rate_hz: Option<f64>,
+    refresh_interval_ms: Option<f64>,
+    missed_refresh_threshold_ms: Option<f64>,
+    missed_refresh_frames: usize,
+    missed_refresh_ratio: f64,
+}
+
+impl PlayProfileFramePacingStats {
+    fn from_frame_times(frame_times_ms: &[f64], monitor_refresh_rate_hz: Option<f64>) -> Self {
+        let Some(monitor_refresh_rate_hz) = monitor_refresh_rate_hz
+            .filter(|refresh_rate_hz| refresh_rate_hz.is_finite() && *refresh_rate_hz > 0.0)
+        else {
+            return Self::default();
+        };
+        let refresh_interval_ms = 1000.0 / monitor_refresh_rate_hz;
+        let missed_refresh_threshold_ms =
+            refresh_interval_ms * PROFILE_MISSED_REFRESH_THRESHOLD_MULTIPLIER;
+        let missed_refresh_frames = frame_times_ms
+            .iter()
+            .filter(|frame_time_ms| **frame_time_ms > missed_refresh_threshold_ms)
+            .count();
+        let missed_refresh_ratio = if frame_times_ms.is_empty() {
+            0.0
+        } else {
+            missed_refresh_frames as f64 / frame_times_ms.len() as f64
+        };
+
+        Self {
+            monitor_refresh_rate_hz: Some(monitor_refresh_rate_hz),
+            refresh_interval_ms: Some(refresh_interval_ms),
+            missed_refresh_threshold_ms: Some(missed_refresh_threshold_ms),
+            missed_refresh_frames,
+            missed_refresh_ratio,
+        }
+    }
+
+    fn to_json(self) -> Value {
+        json!({
+            "monitor_refresh_rate_hz": self.monitor_refresh_rate_hz.map(round3),
+            "refresh_interval_ms": self.refresh_interval_ms.map(round3),
+            "missed_refresh_threshold_ms": self.missed_refresh_threshold_ms.map(round3),
+            "missed_refresh_frames": self.missed_refresh_frames,
+            "missed_refresh_ratio": round6(self.missed_refresh_ratio),
         })
     }
 }
@@ -1110,6 +1324,53 @@ fn play_profile_window_focus_check(focused_secs: f64, unfocused_secs: f64) -> Pl
         PROFILE_MIN_FOCUSED_WINDOW_RATIO,
         "ratio",
     )
+}
+
+fn play_profile_monitor_refresh_stability_check(
+    monitor_refresh: PlayProfileMonitorRefreshStats,
+) -> PlayProfileCheck {
+    max_check(
+        "play_profile_monitor_refresh_change_count",
+        monitor_refresh.refresh_rate_change_count as f64,
+        0.0,
+        "changes",
+    )
+}
+
+fn play_profile_monitor_refresh_availability_check(
+    monitor_refresh: PlayProfileMonitorRefreshStats,
+) -> PlayProfileCheck {
+    min_check(
+        "play_profile_monitor_refresh_available",
+        if monitor_refresh.first_observed_refresh_rate_hz.is_some() {
+            1.0
+        } else {
+            0.0
+        },
+        1.0,
+        "flag",
+    )
+}
+
+fn play_profile_frame_pacing_check(
+    frame_pacing: PlayProfileFramePacingStats,
+) -> Option<PlayProfileCheck> {
+    frame_pacing.monitor_refresh_rate_hz?;
+    Some(max_check(
+        "play_profile_steady_missed_refresh_ratio",
+        frame_pacing.missed_refresh_ratio,
+        PROFILE_MAX_STEADY_MISSED_REFRESH_RATIO,
+        "ratio",
+    ))
+}
+
+fn hitch_event_threshold_ms(monitor_refresh_rate_hz: Option<f64>) -> f64 {
+    monitor_refresh_rate_hz
+        .filter(|refresh_rate_hz| refresh_rate_hz.is_finite() && *refresh_rate_hz > 0.0)
+        .map(|refresh_rate_hz| {
+            1000.0 / refresh_rate_hz * PROFILE_MISSED_REFRESH_THRESHOLD_MULTIPLIER
+        })
+        .unwrap_or(PROFILE_HITCH_EVENT_THRESHOLD_MS)
 }
 
 fn focused_window_ratio(focused_secs: f64, unfocused_secs: f64) -> f64 {
@@ -1409,6 +1670,158 @@ mod tests {
     }
 
     #[test]
+    fn monitor_overlap_selects_the_display_containing_the_window() {
+        assert_eq!(
+            rectangle_overlap_area(
+                IVec2::new(100, 100),
+                UVec2::new(800, 600),
+                IVec2::ZERO,
+                UVec2::new(1000, 800),
+            ),
+            480_000
+        );
+        assert_eq!(
+            rectangle_overlap_area(
+                IVec2::new(900, 100),
+                UVec2::new(800, 600),
+                IVec2::new(1000, 0),
+                UVec2::new(1200, 900),
+            ),
+            420_000
+        );
+    }
+
+    #[test]
+    fn frame_pacing_uses_the_window_monitor_before_the_primary_monitor() {
+        let window = PlayProfileWindowSnapshot {
+            current_monitor_refresh_rate_hz: Some(100.0),
+            primary_monitor_refresh_rate_hz: Some(120.0),
+            ..default()
+        };
+
+        assert_eq!(window.refresh_rate_hz(), Some(100.0));
+    }
+
+    #[test]
+    fn mixed_monitor_refresh_rates_fail_stability_and_use_the_strictest_rate() {
+        let mut monitor_refresh = PlayProfileMonitorRefreshStats::default();
+        monitor_refresh.observe(Some(120.0));
+        monitor_refresh.observe(Some(120.0));
+        monitor_refresh.observe(Some(60.0));
+
+        assert_eq!(monitor_refresh.first_observed_refresh_rate_hz, Some(120.0));
+        assert_eq!(monitor_refresh.latest_observed_refresh_rate_hz, Some(60.0));
+        assert_eq!(monitor_refresh.min_observed_refresh_rate_hz, Some(60.0));
+        assert_eq!(monitor_refresh.max_observed_refresh_rate_hz, Some(120.0));
+        assert_eq!(monitor_refresh.refresh_rate_change_count, 1);
+        assert_eq!(monitor_refresh.evaluation_refresh_rate_hz(), Some(120.0));
+
+        let check = play_profile_monitor_refresh_stability_check(monitor_refresh);
+        assert!(!check.passed);
+        assert_eq!(check.name, "play_profile_monitor_refresh_change_count");
+    }
+
+    #[test]
+    fn missing_monitor_refresh_fails_closed() {
+        let monitor_refresh = PlayProfileMonitorRefreshStats::default();
+        let availability_check = play_profile_monitor_refresh_availability_check(monitor_refresh);
+        let frame_pacing = PlayProfileFramePacingStats::from_frame_times(&[8.0; 1000], None);
+
+        assert!(!availability_check.passed);
+        assert_eq!(
+            availability_check.name,
+            "play_profile_monitor_refresh_available"
+        );
+        assert!(play_profile_frame_pacing_check(frame_pacing).is_none());
+    }
+
+    #[test]
+    fn mixed_monitor_profile_cannot_pass_even_when_every_frame_is_smooth() {
+        let output_path = std::env::temp_dir().join(format!(
+            "nau_play_profile_report_{}_mixed_refresh.json",
+            std::process::id()
+        ));
+        let _ = fs::remove_file(&output_path);
+        let mut profile = PlayProfileRun::new(output_path.clone(), None, None)
+            .expect("profile output should initialize");
+        let snapshot = |position: Vec3, refresh_rate_hz: f64| PlayProfileSnapshot {
+            player_position: Some(position),
+            window: PlayProfileWindowSnapshot {
+                focused: Some(true),
+                current_monitor_refresh_rate_hz: Some(refresh_rate_hz),
+                current_monitor_source: Some("test"),
+                primary_monitor_refresh_rate_hz: Some(120.0),
+                ..default()
+            },
+            ..default()
+        };
+
+        profile.observe_frame(8.0, snapshot(Vec3::ZERO, 120.0));
+        profile.observe_frame(8.0, snapshot(Vec3::new(2.0, 0.0, 0.0), 120.0));
+        for frame in 1..4000 {
+            let refresh_rate_hz = if frame < 2000 { 120.0 } else { 60.0 };
+            profile.observe_frame(
+                8.0,
+                snapshot(
+                    Vec3::new(2.0 + frame as f32 * 0.025, 0.0, 0.0),
+                    refresh_rate_hz,
+                ),
+            );
+        }
+        profile
+            .write_summary()
+            .expect("mixed-refresh profile report should be written");
+
+        let report: Value = serde_json::from_str(
+            &fs::read_to_string(&output_path).expect("mixed-refresh report should exist"),
+        )
+        .expect("mixed-refresh report should be valid json");
+        assert_eq!(report["passed"], false);
+        assert_eq!(report["monitor_refresh"]["stable"], false);
+        assert_eq!(report["monitor_refresh"]["refresh_rate_change_count"], 1);
+        assert_eq!(
+            report["steady_frame_pacing"]["monitor_refresh_rate_hz"],
+            120.0
+        );
+        let monitor_stability_check = report["checks"]
+            .as_array()
+            .expect("checks should be an array")
+            .iter()
+            .find(|check| {
+                check["name"].as_str() == Some("play_profile_monitor_refresh_change_count")
+            })
+            .expect("monitor stability check should be present");
+        assert_eq!(monitor_stability_check["passed"], false);
+
+        fs::remove_file(output_path).expect("mixed-refresh report should be removable");
+    }
+
+    #[test]
+    fn frame_pacing_stats_detect_single_refresh_misses_at_120hz() {
+        let stats =
+            PlayProfileFramePacingStats::from_frame_times(&[8.2, 8.4, 16.7, 25.1], Some(120.0));
+
+        assert_eq!(stats.monitor_refresh_rate_hz, Some(120.0));
+        assert_eq!(stats.refresh_interval_ms, Some(1000.0 / 120.0));
+        assert_eq!(stats.missed_refresh_threshold_ms, Some(12.5));
+        assert_eq!(stats.missed_refresh_frames, 2);
+        assert_eq!(stats.missed_refresh_ratio, 0.5);
+    }
+
+    #[test]
+    fn frame_pacing_check_rejects_repeated_missed_refreshes() {
+        let mut frame_times = vec![8.3; 1000];
+        frame_times.extend([16.7, 16.7, 16.7]);
+        let stats = PlayProfileFramePacingStats::from_frame_times(&frame_times, Some(120.0));
+        let check = play_profile_frame_pacing_check(stats)
+            .expect("a known monitor refresh rate should produce a frame pacing check");
+
+        assert!(!check.passed);
+        assert_eq!(check.name, "play_profile_steady_missed_refresh_ratio");
+        assert!(check.value > PROFILE_MAX_STEADY_MISSED_REFRESH_RATIO);
+    }
+
+    #[test]
     fn play_profile_checks_pass_for_long_smooth_play() {
         let stats = PlayProfileFrameStats::from_frame_times(&[16.0, 17.0, 18.0, 19.0]);
         let checks = play_profile_checks(45.0, active_play_activity(), stats);
@@ -1497,17 +1910,19 @@ mod tests {
         );
         assert!(!profile.armed);
 
-        for frame in 0..2000 {
+        for frame in 0..4000 {
             profile.observe_frame(
-                16.0,
+                8.0,
                 PlayProfileSnapshot {
-                    player_position: Some(Vec3::new(2.0 + frame as f32 * 0.05, 0.0, 0.0)),
+                    player_position: Some(Vec3::new(2.0 + frame as f32 * 0.025, 0.0, 0.0)),
                     window: PlayProfileWindowSnapshot {
                         focused: Some(true),
                         present_mode: Some(PresentMode::Fifo),
                         monitor_count: 2,
                         min_monitor_refresh_rate_hz: Some(100.0),
                         max_monitor_refresh_rate_hz: Some(120.0),
+                        current_monitor_refresh_rate_hz: Some(120.0),
+                        current_monitor_source: Some("test"),
                         primary_monitor_refresh_rate_hz: Some(120.0),
                     },
                     world_floor: WorldFloorDiagnostics {
@@ -1524,7 +1939,7 @@ mod tests {
             material_count: 2,
             loaded_mesh_vertices: 300,
             loaded_mesh_triangles: 100,
-            sampled_at_frame: 2000,
+            sampled_at_frame: 4000,
         });
         profile
             .write_summary()
@@ -1545,7 +1960,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        assert_eq!(report["schema_version"], 2);
+        assert_eq!(report["schema_version"], 5);
         assert_eq!(report["profile_kind"], "manual_play_foreground");
         assert_eq!(report["control_source"], "manual");
         assert_eq!(report["script"], serde_json::Value::Null);
@@ -1555,17 +1970,50 @@ mod tests {
         assert_eq!(report["passed"], true);
         assert_eq!(report["duration_secs"], 32.0);
         assert_eq!(report["target_duration_secs"], serde_json::Value::Null);
-        assert_eq!(report["activity"]["horizontal_travel_m"], 99.95);
-        assert_eq!(report["activity"]["max_horizontal_displacement_m"], 99.95);
-        assert_eq!(report["window_focus"]["focused_samples"], 2000);
+        assert_eq!(report["activity"]["horizontal_travel_m"], 99.975);
+        assert_eq!(report["activity"]["max_horizontal_displacement_m"], 99.975);
+        assert_eq!(report["window_focus"]["focused_samples"], 4000);
         assert_eq!(report["window_focus"]["unfocused_samples"], 0);
         assert_eq!(report["window_focus"]["focused_secs"], 32.0);
         assert_eq!(report["window_focus"]["unfocused_secs"], 0.0);
         assert_eq!(report["window_focus"]["focused_ratio"], 1.0);
-        assert_eq!(report["frame_time"]["sample_count"], 2000);
-        assert_eq!(report["steady_frame_time"]["avg_ms"], 16.0);
+        assert_eq!(report["monitor_refresh"]["available"], true);
+        assert_eq!(report["monitor_refresh"]["stable"], true);
+        assert_eq!(
+            report["monitor_refresh"]["first_observed_refresh_rate_hz"],
+            120.0
+        );
+        assert_eq!(
+            report["monitor_refresh"]["latest_observed_refresh_rate_hz"],
+            120.0
+        );
+        assert_eq!(
+            report["monitor_refresh"]["min_observed_refresh_rate_hz"],
+            120.0
+        );
+        assert_eq!(
+            report["monitor_refresh"]["max_observed_refresh_rate_hz"],
+            120.0
+        );
+        assert_eq!(report["monitor_refresh"]["refresh_rate_change_count"], 0);
+        assert_eq!(
+            report["monitor_refresh"]["frame_pacing_refresh_rate_policy"],
+            "highest_observed"
+        );
+        assert_eq!(report["frame_time"]["sample_count"], 4000);
+        assert_eq!(report["steady_frame_time"]["avg_ms"], 8.0);
         assert_eq!(report["steady_frame_time"]["frames_over_100ms"], 0);
-        assert_eq!(report["hitch_event_threshold_ms"], 25.0);
+        assert_eq!(
+            report["steady_frame_pacing"]["monitor_refresh_rate_hz"],
+            120.0
+        );
+        assert_eq!(
+            report["steady_frame_pacing"]["missed_refresh_threshold_ms"],
+            12.5
+        );
+        assert_eq!(report["steady_frame_pacing"]["missed_refresh_frames"], 0);
+        assert_eq!(report["steady_frame_pacing"]["missed_refresh_ratio"], 0.0);
+        assert_eq!(report["hitch_event_threshold_ms"], 12.5);
         assert_eq!(report["max_hitch_events"], PROFILE_MAX_HITCH_EVENTS);
         assert_eq!(report["latest"]["window"]["focused"], true);
         assert_eq!(report["latest"]["window"]["present_mode"], "fifo");
@@ -1579,10 +2027,14 @@ mod tests {
             120.0
         );
         assert_eq!(
+            report["latest"]["window"]["current_monitor_refresh_rate_hz"],
+            120.0
+        );
+        assert_eq!(
             report["latest"]["window"]["primary_monitor_refresh_rate_hz"],
             120.0
         );
-        assert_eq!(report["latest"]["runtime_assets"]["sampled_at_frame"], 2000);
+        assert_eq!(report["latest"]["runtime_assets"]["sampled_at_frame"], 4000);
         assert_eq!(report["latest"]["runtime_assets"]["sample_age_frames"], 0);
         assert_eq!(
             report["hitch_events"]
@@ -1602,6 +2054,9 @@ mod tests {
         assert!(check_names.contains(&"play_profile_steady_p99_frame_time_budget"));
         assert!(check_names.contains(&"play_profile_steady_50ms_hitch_count"));
         assert!(check_names.contains(&"play_profile_steady_100ms_hitch_count"));
+        assert!(check_names.contains(&"play_profile_monitor_refresh_available"));
+        assert!(check_names.contains(&"play_profile_monitor_refresh_change_count"));
+        assert!(check_names.contains(&"play_profile_steady_missed_refresh_ratio"));
         assert!(check_names.contains(&"play_profile_window_focused_ratio"));
 
         fs::remove_file(output_path).expect("profile report should be removable");
@@ -1849,6 +2304,8 @@ mod tests {
                     monitor_count: 2,
                     min_monitor_refresh_rate_hz: Some(100.0),
                     max_monitor_refresh_rate_hz: Some(120.0),
+                    current_monitor_refresh_rate_hz: Some(120.0),
+                    current_monitor_source: Some("test"),
                     primary_monitor_refresh_rate_hz: Some(120.0),
                 },
                 ..default()

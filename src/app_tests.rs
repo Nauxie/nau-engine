@@ -1,4 +1,5 @@
 use super::*;
+use bevy::camera::visibility::VisibilityRange;
 use bevy::gltf::Gltf;
 use bevy::mesh::{Indices, VertexAttributeValues};
 use bevy::pbr::ScatteringMedium;
@@ -937,6 +938,13 @@ fn clean_play_mode_starts_world_without_debug_readout_or_gizmos() {
             .prebuilt_mesh_count()
             > route_island_count
     );
+    assert_eq!(
+        world
+            .resource::<IslandVisualCatalog>()
+            .surface_shaded_impostor_count(),
+        0,
+        "distant impostors should not run the full near-terrain surface shader"
+    );
     assert!(content_metrics.generated_launch_beacon_count >= 1);
     assert!(content_metrics.generated_route_cairn_count >= route_island_count);
     assert!(content_metrics.generated_ground_cover_patch_count >= 2_400);
@@ -957,6 +965,24 @@ fn clean_play_mode_starts_world_without_debug_readout_or_gizmos() {
     assert!(component_count::<UpdraftGuide>(world) > 0);
     assert!(component_count::<UpdraftRibbon>(world) > 0);
     assert!(component_count::<CrosswindGuide>(world) > 0);
+    let expected_ranged_environment_visual_count = component_count::<WeatherDrift>(world)
+        + component_count::<UpdraftColumn>(world)
+        + component_count::<UpdraftRibbon>(world)
+        + component_count::<UpdraftGuide>(world)
+        + component_count::<CrosswindRibbon>(world)
+        + component_count::<CrosswindGuide>(world);
+    assert_eq!(
+        ranged_environment_visual_count(world),
+        expected_ranged_environment_visual_count,
+        "every transparent weather and wind visual should have a render visibility range"
+    );
+    let (near_environment_visuals, culled_environment_visuals) =
+        environment_visual_range_partition(world);
+    assert!(near_environment_visuals > 0);
+    assert!(
+        culled_environment_visuals > 0,
+        "the starting view should cull distant transparent environment meshes"
+    );
 }
 
 #[test]
@@ -1097,6 +1123,46 @@ fn component_count<T: Component>(world: &mut World) -> usize {
     query.iter(world).count()
 }
 
+fn ranged_environment_visual_count(world: &mut World) -> usize {
+    let mut query = world.query_filtered::<Entity, (
+        With<VisibilityRange>,
+        Or<(
+            With<WeatherDrift>,
+            With<UpdraftColumn>,
+            With<UpdraftRibbon>,
+            With<UpdraftGuide>,
+            With<CrosswindRibbon>,
+            With<CrosswindGuide>,
+        )>,
+    )>();
+    query.iter(world).count()
+}
+
+fn environment_visual_range_partition(world: &mut World) -> (usize, usize) {
+    let player_position = world
+        .query_filtered::<&Transform, With<Player>>()
+        .single(world)
+        .expect("runtime world should have one player")
+        .translation;
+    let mut query = world.query_filtered::<(&Transform, &VisibilityRange), Or<(
+        With<WeatherDrift>,
+        With<UpdraftColumn>,
+        With<UpdraftRibbon>,
+        With<UpdraftGuide>,
+        With<CrosswindRibbon>,
+        With<CrosswindGuide>,
+    )>>();
+    query
+        .iter(world)
+        .fold((0, 0), |(near_count, culled_count), (transform, range)| {
+            if range.is_culled(transform.translation.distance(player_position)) {
+                (near_count, culled_count + 1)
+            } else {
+                (near_count + 1, culled_count)
+            }
+        })
+}
+
 fn live_entity_count(world: &mut World) -> usize {
     let mut query = world.query::<Entity>();
     query.iter(world).count()
@@ -1104,7 +1170,18 @@ fn live_entity_count(world: &mut World) -> usize {
 
 #[test]
 fn play_window_uses_display_synchronized_presentation() {
-    assert_eq!(primary_window(None).present_mode, PresentMode::AutoVsync);
+    assert_eq!(
+        primary_window(None, false).present_mode,
+        PresentMode::AutoVsync
+    );
+}
+
+#[test]
+fn scripted_profile_window_is_centered_on_the_primary_monitor() {
+    assert_eq!(
+        primary_window(None, true).position,
+        WindowPosition::Centered(MonitorSelection::Primary)
+    );
 }
 
 #[test]
@@ -1117,7 +1194,7 @@ fn metric_only_eval_window_is_hidden_and_unfocused() {
         visible_window: false,
     };
 
-    let window = primary_window(Some(&options));
+    let window = primary_window(Some(&options), false);
 
     assert!(!window.visible);
     assert!(!window.focused);
@@ -1135,7 +1212,7 @@ fn metric_only_profile_eval_window_can_remain_visible_and_focused() {
         visible_window: true,
     };
 
-    let window = primary_window(Some(&options));
+    let window = primary_window(Some(&options), false);
 
     assert!(window.visible);
     assert!(window.focused);
@@ -1153,7 +1230,7 @@ fn screenshot_eval_window_remains_visible_for_capture() {
         visible_window: false,
     };
 
-    let window = primary_window(Some(&options));
+    let window = primary_window(Some(&options), false);
 
     assert!(window.visible);
     assert!(window.focused);

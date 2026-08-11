@@ -1556,6 +1556,11 @@ pub(crate) fn collect_eval_metrics(
         movement_axis,
     })
     .with_movement_camera_heading_error_degrees(movement_camera_heading_error_degrees)
+    .with_camera_obstruction_vertical_correction_step_m(
+        scene
+            .camera_diagnostics
+            .obstruction_vertical_correction_step_m,
+    )
     .with_camera_player_continuity_metrics(
         continuity.camera_player_relative_step_m,
         continuity.camera_player_relative_linear_velocity_mps,

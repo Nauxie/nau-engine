@@ -148,6 +148,7 @@ pub struct EvalSample {
     pub camera_view_yaw_degrees: f32,
     pub camera_world_yaw_degrees: f32,
     pub camera_obstruction_adjustment_m: f32,
+    pub camera_obstruction_vertical_correction_step_m: f32,
     pub camera_obstruction_hits: usize,
     pub visible_wind_fields: usize,
     pub wind_field_count: usize,

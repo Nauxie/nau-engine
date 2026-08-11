@@ -273,6 +273,7 @@ pub(crate) fn queue_sky_island(
     let top_y = island.mesh_top_y();
     let mut visual_index = 0;
     let entries = &mut catalog.entries;
+    let impostor_top_material = detail_materials.ground_cover.clone();
 
     content_diagnostics.record_island_terrain_archetype(island.terrain_archetype);
 
@@ -287,7 +288,7 @@ pub(crate) fn queue_sky_island(
         island,
         IslandVisualLayer::Impostor,
         meshes.add(island_impostor_terrain_mesh(island_index, island)),
-        top_material.clone(),
+        impostor_top_material,
         Transform::default(),
         None,
         "island distant impostor terrain",

@@ -173,6 +173,7 @@ impl EvalSample {
             camera_view_yaw_degrees,
             camera_world_yaw_degrees: 0.0,
             camera_obstruction_adjustment_m,
+            camera_obstruction_vertical_correction_step_m: f32::NAN,
             camera_obstruction_hits,
             visible_wind_fields,
             wind_field_count,
@@ -450,6 +451,11 @@ impl EvalSample {
         } else {
             f32::NAN
         };
+        self
+    }
+
+    pub fn with_camera_obstruction_vertical_correction_step_m(mut self, step_m: f32) -> Self {
+        self.camera_obstruction_vertical_correction_step_m = finite_nonnegative_or_nan(step_m);
         self
     }
 

@@ -113,4 +113,28 @@ mod tests {
         assert!(SURFACE_SHADER.contains("STANDARD_MATERIAL_FLAGS_UNLIT_BIT"));
         assert!(SURFACE_SHADER.contains("out.color = pbr_input.material.base_color;"));
     }
+
+    #[test]
+    fn surface_shader_keeps_per_pixel_terrain_noise_bounded() {
+        let hash_2d = SURFACE_SHADER
+            .split_once("fn hash_2d")
+            .and_then(|(_, tail)| tail.split_once("fn value_noise"))
+            .map(|(body, _)| body)
+            .expect("surface shader should define hash_2d before value_noise");
+        let terrain_fbm = SURFACE_SHADER
+            .split_once("fn terrain_fbm")
+            .and_then(|(_, tail)| tail.split_once("fn tint_at_luma"))
+            .map(|(body, _)| body)
+            .expect("surface shader should define terrain_fbm before tint_at_luma");
+
+        assert!(
+            !hash_2d.contains("sin("),
+            "the full-resolution surface hash must avoid transcendental sine work"
+        );
+        assert_eq!(
+            terrain_fbm.matches("value_noise(").count(),
+            3,
+            "terrain should rely on generated textures instead of rebuilding excessive FBM per pixel"
+        );
+    }
 }

@@ -118,6 +118,7 @@ pub(crate) struct CameraDiagnostics {
     pub(crate) follow_direction_error_degrees: f32,
     pub(crate) obstruction_adjustment_m: f32,
     pub(crate) obstruction_hits: usize,
+    pub(crate) obstruction_vertical_correction_step_m: f32,
     pub(crate) correction_source: CameraCorrectionSource,
     pub(crate) continuity_offset_limited: bool,
     pub(crate) continuity_rotation_limited: bool,
@@ -409,6 +410,10 @@ pub(crate) fn follow_camera(
         .to_degrees();
     scene.camera_diagnostics.obstruction_adjustment_m = obstruction_step.obstruction_adjustment_m;
     scene.camera_diagnostics.obstruction_hits = obstruction_step.obstruction_hits;
+    scene
+        .camera_diagnostics
+        .obstruction_vertical_correction_step_m =
+        obstruction_step.obstruction_vertical_correction_step_m;
     scene.camera_diagnostics.correction_source = if scene.camera_control.input_active {
         CameraCorrectionSource::Input
     } else if obstruction_step.obstruction_hits > 0 {
