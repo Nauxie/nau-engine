@@ -315,8 +315,10 @@ jq '{
   checks,
   activity,
   window_focus,
+  monitor_refresh,
   frame_time,
   steady_frame_time,
+  steady_frame_pacing,
   hitch_event_threshold_ms,
   hitch_events: [
     .hitch_events[]? | {

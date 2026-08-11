@@ -76,6 +76,7 @@ enum WorldFloorBiome {
 pub(crate) struct WorldFloorState {
     active_tiles: HashSet<WorldFloorTileCoord>,
     tiles: HashMap<WorldFloorTileCoord, WorldFloorTileInstance>,
+    settled_center: Option<WorldFloorTileCoord>,
 }
 
 #[derive(Debug)]
@@ -113,6 +114,7 @@ pub(crate) fn spawn_world_floor(
         tile_size_m: WORLD_FLOOR_TILE_SIZE_M,
         ..default()
     };
+    state.settled_center = Some(tile_coord_for_position(player_start));
     let desired_coords = desired_tile_coords(player_start);
     for coord in desired_coords {
         let instance = spawn_tile(commands, meshes, materials, coord);
@@ -145,9 +147,13 @@ pub(crate) fn update_world_floor_streaming(
         .ok()
         .map(|transform| transform.translation)
         .unwrap_or(Vec3::ZERO);
+    let center = tile_coord_for_position(player_position);
+    if state.settled_center == Some(center) {
+        return;
+    }
+
     let desired_coords = desired_tile_coords(player_position);
     let desired_set = desired_coords.iter().copied().collect::<HashSet<_>>();
-    let center = tile_coord_for_position(player_position);
 
     let stale_coords = state
         .active_tiles
@@ -187,6 +193,9 @@ pub(crate) fn update_world_floor_streaming(
     }
 
     evict_distant_pooled_tiles(&mut commands, &mut meshes, &mut state, center);
+    if state.active_tiles == desired_set {
+        state.settled_center = Some(center);
+    }
     diagnostics.max_spawned_tiles_per_frame = diagnostics
         .max_spawned_tiles_per_frame
         .max(diagnostics.spawned_tiles_this_frame);
@@ -741,6 +750,44 @@ mod tests {
         assert_eq!(coords[0], WorldFloorTileCoord { x: 0, z: 0 });
         assert_eq!(WORLD_FLOOR_MAX_RESIDENT_TILES, 25);
         assert!(WORLD_FLOOR_MAX_RESIDENT_TILES >= coords.len());
+    }
+
+    #[test]
+    fn settled_world_floor_window_skips_repeated_streaming_work() {
+        let materials = WorldFloorMaterials {
+            ocean: Handle::default(),
+            lowland: Handle::default(),
+            ridge: Handle::default(),
+            mountain: Handle::default(),
+            ground_cover: Handle::default(),
+        };
+        let mut meshes = Assets::<Mesh>::default();
+        let mut world = World::new();
+        {
+            let mut commands = world.commands();
+            spawn_world_floor(&mut commands, &mut meshes, &materials, Vec3::ZERO);
+        }
+        world.flush();
+        world.insert_resource(meshes);
+        world.spawn((Player, Transform::default()));
+
+        let initial_mesh_count = world.resource::<Assets<Mesh>>().len();
+        let initial_total_spawns = world
+            .resource::<WorldFloorDiagnostics>()
+            .total_spawned_tiles;
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_world_floor_streaming);
+        schedule.run(&mut world);
+
+        let diagnostics = world.resource::<WorldFloorDiagnostics>();
+        assert_eq!(diagnostics.spawned_tiles_this_frame, 0);
+        assert_eq!(diagnostics.despawned_tiles_this_frame, 0);
+        assert_eq!(diagnostics.total_spawned_tiles, initial_total_spawns);
+        assert_eq!(world.resource::<Assets<Mesh>>().len(), initial_mesh_count);
+        assert_eq!(
+            world.resource::<WorldFloorState>().settled_center,
+            Some(WorldFloorTileCoord { x: 0, z: 0 })
+        );
     }
 
     #[test]

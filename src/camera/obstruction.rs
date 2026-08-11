@@ -62,6 +62,7 @@ pub struct CameraObstructionStep {
     pub frame: CameraFrame,
     pub obstruction_adjustment_m: f32,
     pub obstruction_hits: usize,
+    pub obstruction_vertical_correction_step_m: f32,
     pub distance_clamped: bool,
     pub continuity_offset_limited: bool,
     pub continuity_rotation_limited: bool,
@@ -441,14 +442,43 @@ pub fn resolve_camera_obstruction_handoff(
     } else {
         frame
     };
-    let continuity_active =
-        !intentional_camera_motion && (reported_obstruction_hits > 0 || distance_clamped);
-    let (frame, continuity_offset_limited, continuity_rotation_limited) = if continuity_active {
-        enforce_camera_continuity(
-            frame,
+    let (
+        continuity_previous_position,
+        continuity_previous_look_target,
+        continuity_previous_rotation,
+    ) = if intentional_camera_motion {
+        let input_adjusted_previous_offset = state
+            .previous_look_target
+            .zip(state.previous_intent_offset)
+            .map(|(previous_look_target, previous_intent_offset)| {
+                previous_position - previous_look_target + (intent_offset - previous_intent_offset)
+            })
+            .filter(|offset| offset.is_finite())
+            .unwrap_or(intent_offset);
+        let input_adjusted_previous_position = frame.look_target + input_adjusted_previous_offset;
+        let input_adjusted_previous_rotation =
+            Transform::from_translation(input_adjusted_previous_position)
+                .looking_at(frame.look_target, Vec3::Y)
+                .rotation;
+        (
+            input_adjusted_previous_position,
+            Some(frame.look_target),
+            input_adjusted_previous_rotation,
+        )
+    } else {
+        (
             previous_position,
             state.previous_look_target,
             previous_rotation,
+        )
+    };
+    let continuity_active = reported_obstruction_hits > 0 || distance_clamped;
+    let (frame, continuity_offset_limited, continuity_rotation_limited) = if continuity_active {
+        enforce_camera_continuity(
+            frame,
+            continuity_previous_position,
+            continuity_previous_look_target,
+            continuity_previous_rotation,
             dt,
             max_offset_speed_mps,
             max_rotation_speed_degrees_per_second,
@@ -456,6 +486,15 @@ pub fn resolve_camera_obstruction_handoff(
     } else {
         (frame, false, false)
     };
+    let continuity_previous_offset =
+        continuity_previous_position - continuity_previous_look_target.unwrap_or(frame.look_target);
+    let resolved_offset = frame.position - frame.look_target;
+    let obstruction_vertical_correction_step_m =
+        if active_obstruction_hits > 0 || release_smoothing_active {
+            (resolved_offset.y - continuity_previous_offset.y).abs()
+        } else {
+            0.0
+        };
     state.smoothing.sync_resolved_frame(
         frame,
         active_obstruction_hits,
@@ -481,6 +520,7 @@ pub fn resolve_camera_obstruction_handoff(
         frame,
         obstruction_adjustment_m: reported_obstruction_adjustment_m,
         obstruction_hits: reported_obstruction_hits,
+        obstruction_vertical_correction_step_m,
         distance_clamped,
         continuity_offset_limited,
         continuity_rotation_limited,
@@ -1514,6 +1554,83 @@ mod tests {
         );
         assert!(step.continuity_offset_limited);
         assert!(step.continuity_rotation_limited);
+    }
+
+    #[test]
+    fn intentional_yaw_input_does_not_bypass_vertical_obstruction_continuity() {
+        let look_target = Vec3::new(0.0, 2.0, 0.0);
+        let previous_offset = Vec3::Z * 10.0;
+        let blocker = CameraObstruction::new(Vec3::new(0.0, 2.0, 5.0), Vec3::new(2.05, 0.8, 1.0));
+
+        for frame_rate_hz in [30.0, 60.0, 120.0, 144.0] {
+            let dt = 1.0 / frame_rate_hz;
+            let mut previous_position = look_target + previous_offset;
+            let mut previous_rotation = Transform::from_translation(previous_position)
+                .looking_at(look_target, Vec3::Y)
+                .rotation;
+            let mut handoff = CameraObstructionHandoffState {
+                previous_look_target: Some(look_target),
+                previous_intent_offset: Some(previous_offset),
+                ..Default::default()
+            };
+
+            for frame_index in 0..16 {
+                let yaw_degrees: f32 = if frame_index % 2 == 0 { 1.0 } else { -1.0 };
+                let intended_offset =
+                    Quat::from_rotation_y(yaw_degrees.to_radians()) * previous_offset;
+                let intended_position = look_target + intended_offset;
+                let frame = CameraFrame {
+                    position: intended_position,
+                    rotation: Transform::from_translation(intended_position)
+                        .looking_at(look_target, Vec3::Y)
+                        .rotation,
+                    look_target,
+                };
+                handoff.set_intentional_camera_motion(true);
+
+                let step = resolve_camera_obstruction_handoff(
+                    frame,
+                    previous_position,
+                    previous_rotation,
+                    Vec3::ZERO,
+                    [blocker],
+                    0.0,
+                    dt,
+                    &mut handoff,
+                    |frame| frame,
+                );
+
+                let max_vertical_step =
+                    CAMERA_MAX_OBSTRUCTION_OFFSET_SPEED_MPS / frame_rate_hz + 0.001;
+                assert!(step.obstruction_hits > 0);
+                assert!(
+                    step.obstruction_vertical_correction_step_m <= max_vertical_step,
+                    "{frame_rate_hz} Hz intentional yaw allowed a vertical obstruction correction of {}m",
+                    step.obstruction_vertical_correction_step_m
+                );
+                if frame_index == 0 {
+                    let resolved_horizontal = Vec2::new(
+                        step.frame.position.x - look_target.x,
+                        step.frame.position.z - look_target.z,
+                    )
+                    .normalize();
+                    let intended_horizontal =
+                        Vec2::new(intended_offset.x, intended_offset.z).normalize();
+                    let yaw_error_degrees = resolved_horizontal
+                        .dot(intended_horizontal)
+                        .clamp(-1.0, 1.0)
+                        .acos()
+                        .to_degrees();
+                    assert!(
+                        yaw_error_degrees <= 0.01,
+                        "{frame_rate_hz} Hz obstruction continuity delayed commanded yaw by {yaw_error_degrees} degrees"
+                    );
+                    assert!(step.continuity_offset_limited);
+                }
+                previous_position = step.frame.position;
+                previous_rotation = step.frame.rotation;
+            }
+        }
     }
 
     #[test]

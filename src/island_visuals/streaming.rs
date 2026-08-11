@@ -7,8 +7,7 @@ use crate::environment_visuals::WindResponsiveVisual;
 use crate::surface_material::SurfaceMaterial;
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
-use nau_engine::world::PLAYTEST_RESET_ISLAND_NAME;
-use std::collections::HashSet;
+use nau_engine::world::{LodBand, PLAYTEST_RESET_ISLAND_NAME, StreamActivation};
 
 const ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET: usize = 32;
 
@@ -16,9 +15,30 @@ fn stream_change_budget_allows(initialized: bool, applied_changes: usize) -> boo
     !initialized || applied_changes < ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
 }
 
+#[cfg(test)]
 fn island_visual_is_resident(entry: &IslandVisualEntry, player_position: Vec3) -> bool {
     let activation = entry.island.stream_activation(player_position);
     let band = entry.island.lod_band(player_position);
+
+    entry.layer.is_resident_in(activation, band)
+}
+
+fn island_visual_is_resident_cached(
+    entry: &IslandVisualEntry,
+    player_position: Vec3,
+    cache: &mut Option<(&'static str, StreamActivation, LodBand)>,
+) -> bool {
+    let (activation, band) = match *cache {
+        Some((island_name, activation, band)) if island_name == entry.island.name => {
+            (activation, band)
+        }
+        _ => {
+            let activation = entry.island.stream_activation(player_position);
+            let band = entry.island.lod_band(player_position);
+            *cache = Some((entry.island.name, activation, band));
+            (activation, band)
+        }
+    };
 
     entry.layer.is_resident_in(activation, band)
 }
@@ -40,9 +60,11 @@ pub(crate) fn spawn_initial_island_visuals(
     player_position: Vec3,
 ) -> IslandStreamState {
     let mut state = IslandStreamState::default();
+    let mut residency_cache = None;
 
     for entry in &catalog.entries {
-        let visual_resident = island_visual_is_resident(entry, player_position);
+        let visual_resident =
+            island_visual_is_resident_cached(entry, player_position, &mut residency_cache);
         if !visual_resident && !reset_destination_proxy_is_resident(entry) {
             continue;
         }
@@ -172,12 +194,20 @@ pub(crate) fn update_island_stream_visibility(
     };
 
     let mut counts = IslandLodVisualCounts::default();
-    let mut desired_keys = HashSet::new();
+    let mut desired_keys = std::mem::take(&mut stream_state.desired_keys_scratch);
+    desired_keys.clear();
+    let mut stale_visuals = std::mem::take(&mut stream_state.stale_visuals_scratch);
+    stale_visuals.clear();
     let mut spawned_visuals = 0;
     let mut despawned_visual_count = 0;
+    let mut residency_cache = None;
 
     for entry in &catalog.entries {
-        let visual_resident = island_visual_is_resident(entry, player_transform.translation);
+        let visual_resident = island_visual_is_resident_cached(
+            entry,
+            player_transform.translation,
+            &mut residency_cache,
+        );
         let entry_resident = visual_resident || reset_destination_proxy_is_resident(entry);
         counts.record(entry.layer, !visual_resident);
 
@@ -244,13 +274,14 @@ pub(crate) fn update_island_stream_visibility(
         }
     }
 
-    let despawned_visuals = stream_state
-        .spawned
-        .iter()
-        .filter_map(|(key, entity)| (!desired_keys.contains(key)).then_some((*key, *entity)))
-        .collect::<Vec<_>>();
+    stale_visuals.extend(
+        stream_state
+            .spawned
+            .iter()
+            .filter_map(|(key, entity)| (!desired_keys.contains(key)).then_some((*key, *entity))),
+    );
 
-    for (key, entity) in despawned_visuals {
+    for (key, entity) in stale_visuals.iter().copied() {
         let visual_was_resident = stream_state.visual_resident.contains(&key);
         let applied_changes = spawned_visuals + despawned_visual_count;
         if visual_was_resident
@@ -266,6 +297,10 @@ pub(crate) fn update_island_stream_visibility(
             despawned_visual_count += 1;
         }
     }
+
+    stale_visuals.clear();
+    stream_state.desired_keys_scratch = desired_keys;
+    stream_state.stale_visuals_scratch = stale_visuals;
 
     let stream_changes = spawned_visuals + despawned_visual_count;
     diagnostics.counts = counts;

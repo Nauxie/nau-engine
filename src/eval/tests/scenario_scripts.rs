@@ -68,6 +68,9 @@ fn camera_continuity_gate_covers_the_required_surface_and_timing_contract() {
     assert!(script.contains("requested_refresh_rates=(30 60 120 144)"));
     assert!(script.contains("requested_hitches_ms=(50 100)"));
     assert!(script.contains("inactive_look_resets_capture_history_before_resume"));
+    assert!(
+        script.contains("intentional_yaw_input_does_not_bypass_vertical_obstruction_continuity")
+    );
     assert!(script.contains(".metrics.sample_count == $expected_samples"));
     assert!(script.contains(".metrics.max_world_collision_push_m <= $max_push"));
     assert!(script.contains(".metrics.max_terrain_rim_collision_push_m <= $max_push"));
@@ -91,6 +94,24 @@ fn camera_continuity_gate_covers_the_required_surface_and_timing_contract() {
     assert!(script.contains("tests: (if $ran == 1 then ["));
     assert!(script.contains("] else [] end"));
     assert!(script.contains("--argjson fault_injection_proof"));
+}
+
+#[test]
+fn camera_continuity_gate_bounds_obstruction_vertical_correction_during_input() {
+    let script = include_str!("../../../tools/camera_continuity_gate.sh");
+
+    assert!(script.contains("max_obstruction_vertical_correction_step_m=\"0.241\""));
+    assert!(script.contains("validate_obstruction_vertical_correction()"));
+    assert!(script.contains("if [[ \"${mode}\" != \"app\" ]]; then"));
+    assert!(script.contains(".camera_obstruction_vertical_correction_step_m"));
+    assert!(script.contains("if type == \"number\""));
+    assert!(script.contains("then . >= 0 and . <= $max_step"));
+    assert!(script.contains("if $scenario == \"camera_mouse_control\""));
+    assert!(script.contains(".camera_correction_source == \"input\""));
+    assert!(script.contains("and .camera_obstruction_hits > 0"));
+    assert!(script.contains(
+        "validate_obstruction_vertical_correction \\\n    \"${mode}\" \\\n    \"${scenario}\""
+    ));
 }
 
 #[test]

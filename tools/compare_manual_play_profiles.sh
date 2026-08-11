@@ -273,6 +273,49 @@ validate_profile() {
       "${label}"
   fi
 
+  if (( schema_version >= 3 )); then
+    if profile_check_passed "${profile}" "play_profile_steady_missed_refresh_ratio"; then
+      printf '%s_check\tplay_profile_steady_missed_refresh_ratio\tpassed=true\trequired=%s\n' \
+        "${label}" "${require_absolute_checks}"
+    else
+      printf '%s_check\tplay_profile_steady_missed_refresh_ratio\tpassed=false\trequired=%s\n' \
+        "${label}" "${require_absolute_checks}"
+      if [[ "${require_absolute_checks}" == "1" ]]; then
+        failed=1
+      fi
+    fi
+  else
+    printf '%s_check\tplay_profile_steady_missed_refresh_ratio\tpassed=not_available\trequired=false\treason=schema_before_v3\n' \
+      "${label}"
+  fi
+
+  if (( schema_version >= 5 )); then
+    if profile_check_passed "${profile}" "play_profile_monitor_refresh_available"; then
+      printf '%s_check\tplay_profile_monitor_refresh_available\tpassed=true\trequired=%s\n' \
+        "${label}" "${require_absolute_checks}"
+    else
+      printf '%s_check\tplay_profile_monitor_refresh_available\tpassed=false\trequired=%s\n' \
+        "${label}" "${require_absolute_checks}"
+      if [[ "${require_absolute_checks}" == "1" ]]; then
+        failed=1
+      fi
+    fi
+
+    if profile_check_passed "${profile}" "play_profile_monitor_refresh_change_count"; then
+      printf '%s_check\tplay_profile_monitor_refresh_change_count\tpassed=true\trequired=%s\n' \
+        "${label}" "${require_absolute_checks}"
+    else
+      printf '%s_check\tplay_profile_monitor_refresh_change_count\tpassed=false\trequired=%s\n' \
+        "${label}" "${require_absolute_checks}"
+      if [[ "${require_absolute_checks}" == "1" ]]; then
+        failed=1
+      fi
+    fi
+  else
+    printf '%s_check\tplay_profile_monitor_refresh_change_count\tpassed=not_available\trequired=false\treason=schema_before_v5\n' \
+      "${label}"
+  fi
+
   validate_profile_host_snapshots "${label}" "${profile}"
 }
 

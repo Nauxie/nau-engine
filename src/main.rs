@@ -21,7 +21,7 @@ use authored_assets::*;
 use bevy::app::AnimationSystems;
 use bevy::light::DirectionalLightShadowMap;
 use bevy::prelude::*;
-use bevy::window::{CompositeAlphaMode, PresentMode};
+use bevy::window::{CompositeAlphaMode, MonitorSelection, PresentMode, WindowPosition};
 use camera_runtime::*;
 #[cfg(test)]
 use content_export::mesh_uv0;
@@ -193,7 +193,7 @@ fn main() -> AppExit {
         .insert_resource(DebugVisuals::for_run_mode(run_mode, screenshot_eval))
         .insert_resource(SkyRoute::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(primary_window(eval.as_deref())),
+            primary_window: Some(primary_window(eval.as_deref(), scripted_play_profile)),
             ..default()
         }))
         .add_plugins(MaterialPlugin::<SurfaceMaterial>::default())
@@ -364,12 +364,17 @@ fn eval_gameplay_movement_active(run: Res<EvalRun>) -> bool {
     run.scenario.name != ISLAND_HERO_GALLERY
 }
 
-fn primary_window(eval: Option<&EvalOptions>) -> Window {
+fn primary_window(eval: Option<&EvalOptions>, center_on_primary_monitor: bool) -> Window {
     let hidden_metric_eval =
         eval.is_some_and(|options| !options.capture_screenshot && !options.visible_window);
 
     Window {
         title: "The NAU Engine Flight Sandbox".into(),
+        position: if center_on_primary_monitor {
+            WindowPosition::Centered(MonitorSelection::Primary)
+        } else {
+            WindowPosition::default()
+        },
         resolution: (1280, 720).into(),
         present_mode: PresentMode::AutoVsync,
         composite_alpha_mode: CompositeAlphaMode::Opaque,

@@ -38,8 +38,12 @@ var surface_detail_normal: texture_2d<f32>;
 var surface_detail_sampler: sampler;
 
 fn hash_2d(value: vec2<f32>) -> f32 {
-    let projected = dot(value, vec2<f32>(127.1, 311.7));
-    return fract(sin(projected) * 43758.5453123);
+    var mixed = fract(
+        vec3<f32>(value.x, value.y, value.x)
+            * vec3<f32>(0.1031, 0.1030, 0.0973),
+    );
+    mixed += dot(mixed, mixed.yzx + vec3<f32>(33.33));
+    return fract((mixed.x + mixed.y) * mixed.z);
 }
 
 fn value_noise(value: vec2<f32>) -> f32 {
@@ -54,21 +58,18 @@ fn value_noise(value: vec2<f32>) -> f32 {
 }
 
 fn terrain_fbm(position: vec2<f32>, phase: f32) -> vec3<f32> {
-    let warp = vec2<f32>(
-        value_noise(position * 0.61 + vec2<f32>(phase * 0.71, phase * 1.19)),
-        value_noise(position * 0.61 + vec2<f32>(-phase * 1.07, phase * 0.43)),
-    ) - 0.5;
-    let warped = position + warp * 1.35;
     let rotated = vec2<f32>(
-        warped.x * 0.74 + warped.y * 0.67,
-        warped.y * 0.74 - warped.x * 0.67,
+        position.x * 0.74 + position.y * 0.67,
+        position.y * 0.74 - position.x * 0.67,
     );
-    let macro_noise = value_noise(warped * 0.78 + vec2<f32>(phase, phase * 0.37));
+    let macro_noise = value_noise(position * 0.78 + vec2<f32>(phase, phase * 0.37));
     let middle = value_noise(rotated * 2.31 + vec2<f32>(phase * 1.71, -phase));
-    let detail = value_noise(warped * 6.37 - vec2<f32>(phase * 0.43, phase * 1.13));
-    let micro = value_noise(rotated * 15.73 + vec2<f32>(phase * 2.09, phase * 0.61));
-    let detail_mix = detail * 0.68 + micro * 0.32;
-    return vec3<f32>(macro_noise, middle, detail_mix);
+    let warp = vec2<f32>(macro_noise - 0.5, middle - 0.5);
+    let detail = value_noise(
+        (rotated + warp * 0.72) * 6.37
+            - vec2<f32>(phase * 0.43, phase * 1.13),
+    );
+    return vec3<f32>(macro_noise, middle, detail);
 }
 
 fn tint_at_luma(tint: vec3<f32>, target_luma: f32) -> vec3<f32> {

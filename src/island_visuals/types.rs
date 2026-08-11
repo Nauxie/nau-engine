@@ -210,6 +210,23 @@ impl IslandVisualCatalog {
     }
 
     #[cfg(test)]
+    pub(crate) fn surface_shaded_impostor_count(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| {
+                entry.layer == IslandVisualLayer::Impostor
+                    && matches!(
+                        entry.material.as_ref(),
+                        Some(
+                            IslandVisualMaterial::Surface(_)
+                                | IslandVisualMaterial::SurfaceNoShadows(_)
+                        )
+                    )
+            })
+            .count()
+    }
+
+    #[cfg(test)]
     pub(crate) fn prebuilt_mesh_count(&self) -> usize {
         self.entries
             .iter()
@@ -256,6 +273,8 @@ pub(crate) struct IslandStreamState {
     pub(super) spawned: HashMap<IslandVisualKey, Entity>,
     pub(super) visual_resident: HashSet<IslandVisualKey>,
     pub(super) loaded_meshes: HashMap<IslandVisualKey, Handle<Mesh>>,
+    pub(super) desired_keys_scratch: HashSet<IslandVisualKey>,
+    pub(super) stale_visuals_scratch: Vec<(IslandVisualKey, Entity)>,
 }
 
 impl IslandStreamState {

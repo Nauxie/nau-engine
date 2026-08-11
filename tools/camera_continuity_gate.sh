@@ -22,6 +22,7 @@ contract_tests=(
   continuity_contract_matches_substeps_across_hitches
   obstruction_release
   approaching_launch_spire_does_not_oscillate_camera_yaw
+  intentional_yaw_input_does_not_bypass_vertical_obstruction_continuity
   first_mouse_delta_after_look_capture_quarantines_only_implausible_spikes
   inactive_look_resets_capture_history_before_resume
   camera_floor_does_not_capture_an_island_from_below
@@ -61,6 +62,7 @@ max_relative_angular_acceleration_degrees_per_sec2="${NAU_CAMERA_CONTINUITY_MAX_
 max_player_residual_m="${NAU_CAMERA_CONTINUITY_MAX_PLAYER_RESIDUAL_M:-0.02}"
 max_player_world_correction_m="${NAU_CAMERA_CONTINUITY_MAX_PLAYER_WORLD_CORRECTION_M:-0.50}"
 max_player_collision_correction_m="${NAU_CAMERA_CONTINUITY_MAX_PLAYER_COLLISION_CORRECTION_M:-1.0}"
+max_obstruction_vertical_correction_step_m="0.241"
 world_collision_expected_contact_samples="${NAU_CAMERA_CONTINUITY_WORLD_CONTACT_SAMPLES:-90}"
 terrain_rim_expected_contact_samples="${NAU_CAMERA_CONTINUITY_TERRAIN_RIM_CONTACT_SAMPLES:-55}"
 terrain_body_expected_contact_samples="${NAU_CAMERA_CONTINUITY_TERRAIN_BODY_CONTACT_SAMPLES:-120}"
@@ -314,6 +316,74 @@ validate_camera_responsiveness() {
   fi
 }
 
+validate_obstruction_vertical_correction() {
+  local mode="$1"
+  local scenario="$2"
+  local samples="$3"
+  if [[ "${mode}" != "app" ]]; then
+    return
+  fi
+
+  if ! jq -s -e \
+    --arg scenario "${scenario}" \
+    --argjson max_step "${max_obstruction_vertical_correction_step_m}" \
+    '
+      all(.[];
+        (.camera_obstruction_vertical_correction_step_m
+          | if type == "number"
+            then . >= 0 and . <= $max_step
+            else false
+            end)
+      )
+      and (
+        if $scenario == "camera_mouse_control"
+        then any(.[];
+          .camera_correction_source == "input"
+          and .camera_obstruction_hits > 0
+        )
+        else true
+        end
+      )
+    ' "${samples}" >/dev/null; then
+    echo "native obstruction vertical-correction contract failed: ${samples}" >&2
+    jq -s \
+      --arg scenario "${scenario}" \
+      --argjson max_step "${max_obstruction_vertical_correction_step_m}" \
+      '{
+        scenario: $scenario,
+        max_allowed_obstruction_vertical_correction_step_m: $max_step,
+        simultaneous_input_obstruction_frames: [
+          .[]
+          | select(
+              .camera_correction_source == "input"
+              and .camera_obstruction_hits > 0
+            )
+          | .frame
+        ],
+        invalid_obstruction_vertical_correction_frames: [
+          .[]
+          | select(
+              (.camera_obstruction_vertical_correction_step_m | type) != "number"
+              or (
+                (.camera_obstruction_vertical_correction_step_m | type) == "number"
+                and (
+                  .camera_obstruction_vertical_correction_step_m < 0
+                  or .camera_obstruction_vertical_correction_step_m > $max_step
+                )
+              )
+            )
+          | {
+              frame,
+              camera_correction_source,
+              camera_obstruction_hits,
+              camera_obstruction_vertical_correction_step_m
+            }
+        ]
+      }' "${samples}" >&2
+    exit 1
+  fi
+}
+
 validate_obstruction_stability() {
   local mode="$1"
   local scenario="$2"
@@ -460,6 +530,10 @@ run_eval() {
   validate_gate_checks "${summary}"
   validate_continuity_metrics "${mode}" "${summary}"
   validate_camera_responsiveness "${mode}" "${scenario}" "${scenario_output}/samples.ndjson"
+  validate_obstruction_vertical_correction \
+    "${mode}" \
+    "${scenario}" \
+    "${scenario_output}/samples.ndjson"
   validate_obstruction_stability "${mode}" "${scenario}" "${scenario_output}/samples.ndjson"
   validate_collision_bounds "${scenario}" "${summary}"
   if (( eval_status != 0 )); then

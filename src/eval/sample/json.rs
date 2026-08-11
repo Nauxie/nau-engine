@@ -389,6 +389,19 @@ impl EvalSample {
             &camera_player_continuity_metrics,
             1,
         );
+        let camera_obstruction_adjustment_key = format!(
+            "\"camera_obstruction_adjustment_m\":{}",
+            json_number(self.camera_obstruction_adjustment_m)
+        );
+        let camera_obstruction_metrics = format!(
+            "{camera_obstruction_adjustment_key},\"camera_obstruction_vertical_correction_step_m\":{}",
+            json_number(self.camera_obstruction_vertical_correction_step_m)
+        );
+        let json = json.replacen(
+            &camera_obstruction_adjustment_key,
+            &camera_obstruction_metrics,
+            1,
+        );
         let deferred_asset_key = "\"queued_visual_asset_scene_count\"";
         let deferred_asset_metrics = format!(
             "\"deferred_visual_asset_scene_count\":{},{}",

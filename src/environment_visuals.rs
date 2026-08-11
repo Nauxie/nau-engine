@@ -6,6 +6,7 @@ use crate::generated_content::{
     crosswind_flow_ribbon_centerline_offset, crosswind_flow_ribbon_mesh, mesh_y_range, mix_color,
     updraft_ribbon_mesh,
 };
+use bevy::camera::visibility::VisibilityRange;
 use bevy::camera::{CameraOutputMode, ClearColorConfig, Exposure};
 use bevy::light::VolumetricFog;
 use bevy::prelude::*;
@@ -38,6 +39,26 @@ const PLAYER_AIRFLOW_LENGTH_FADE_FULL_ALPHA: f32 = 0.24;
 const PLAYER_AIRFLOW_PROMINENT_SPEED_START_MPS: f32 = 42.0;
 const PLAYER_AIRFLOW_PROMINENT_SPEED_FULL_MPS: f32 = 68.0;
 const ISLAND_HERO_GALLERY_WEATHER_CYCLE_PHASE: f32 = 0.0;
+const WIND_VISUAL_FADE_START_M: f32 = 900.0;
+const WIND_VISUAL_CULL_DISTANCE_M: f32 = 1_200.0;
+const WEATHER_VISUAL_FADE_START_M: f32 = 1_600.0;
+const WEATHER_VISUAL_CULL_DISTANCE_M: f32 = 2_200.0;
+
+fn wind_visual_visibility_range() -> VisibilityRange {
+    VisibilityRange {
+        start_margin: 0.0..0.0,
+        end_margin: WIND_VISUAL_FADE_START_M..WIND_VISUAL_CULL_DISTANCE_M,
+        use_aabb: false,
+    }
+}
+
+fn weather_visual_visibility_range() -> VisibilityRange {
+    VisibilityRange {
+        start_margin: 0.0..0.0,
+        end_margin: WEATHER_VISUAL_FADE_START_M..WEATHER_VISUAL_CULL_DISTANCE_M,
+        use_aabb: false,
+    }
+}
 
 pub(crate) fn updraft_guide_ring_radius(field_radius: f32) -> f32 {
     (field_radius * 0.5).min(10.0)
@@ -348,6 +369,7 @@ pub(crate) fn spawn_updraft_guide(
         Mesh3d(meshes.add(Cylinder::new(radius * 0.34, height))),
         MeshMaterial3d(column_material),
         Transform::from_translation(lift.center),
+        wind_visual_visibility_range(),
         UpdraftColumn {
             field,
             base_translation: lift.center,
@@ -371,6 +393,7 @@ pub(crate) fn spawn_updraft_guide(
                 rotation: base_rotation,
                 ..default()
             },
+            wind_visual_visibility_range(),
             UpdraftRibbon {
                 field,
                 spin_speed: 0.072 + ribbon_index as f32 * 0.018,
@@ -407,6 +430,7 @@ pub(crate) fn spawn_updraft_guide(
                     scale: updraft_guide_scale(&guide, translation, 0.0),
                     ..default()
                 },
+                wind_visual_visibility_range(),
                 guide,
                 Name::new(format!("{} guide mote", lift.name)),
             ));
@@ -443,6 +467,7 @@ pub(crate) fn spawn_crosswind_guide(
                 rotation: base_rotation * Quat::from_rotation_x(phase * std::f32::consts::TAU),
                 ..default()
             },
+            wind_visual_visibility_range(),
             CrosswindRibbon {
                 field,
                 base_translation,
@@ -469,6 +494,7 @@ pub(crate) fn spawn_crosswind_guide(
                 rotation: crosswind_guide_rotation(&guide, translation, 0.0),
                 scale: crosswind_guide_scale(&guide, translation, 0.0),
             },
+            wind_visual_visibility_range(),
             guide,
             Name::new(format!("{label} crosswind guide mote")),
         ));
@@ -503,6 +529,7 @@ pub(crate) fn spawn_weather_layers(
             Mesh3d(cloud_mesh),
             MeshMaterial3d(cloud_material.clone()),
             cloud_transform,
+            weather_visual_visibility_range(),
             WeatherDrift {
                 origin,
                 axis,
@@ -559,6 +586,7 @@ pub(crate) fn spawn_weather_layers(
                         scale: veil_scale,
                         rotation: veil_rotation,
                     },
+                    weather_visual_visibility_range(),
                     WeatherDrift {
                         origin: veil_origin,
                         axis: Vec3::new(0.74, 0.0, -0.18).normalize(),
