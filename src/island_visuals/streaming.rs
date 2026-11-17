@@ -787,6 +787,37 @@ mod tests {
     }
 
     #[test]
+    fn pose_state_descent_preserves_existing_authored_content_within_release_budgets() {
+        use nau_engine::eval::{POSE_STATE_COVERAGE, scenario_named};
+        let route = SkyRoute::default();
+        let scenario = scenario_named(POSE_STATE_COVERAGE).unwrap();
+        let (mut world, player, mut schedule) = real_route_streaming_world(&route);
+        // These steady points and counts were reproduced by the preserved
+        // 1428b83 native binary, before any traversal or streaming fixes.
+        for (position, expected) in [
+            (Vec3::new(-28.5531, 70.9206, -164.4248), [48, 179, 345]),
+            (Vec3::new(-27.2911, 1.1140, -207.6556), [48, 176, 341]),
+        ] {
+            world.get_mut::<Transform>(player).unwrap().translation = position;
+            for _ in 0..32 {
+                schedule.run(&mut world);
+            }
+            assert_streaming_settled(&world, position);
+            assert_eq!(
+                assert_streaming_limits(&mut world, scenario.thresholds),
+                expected
+            );
+            assert_eq!(
+                world
+                    .resource::<IslandStreamDiagnostics>()
+                    .visibility_changes_this_frame,
+                0,
+                "the baseline content demand is steady, not retained transition overlap"
+            );
+        }
+    }
+
+    #[test]
     fn real_gallery_and_resets_preserve_budgets_and_continuous_movement_preserves_shells() {
         use nau_engine::eval::{ISLAND_HERO_GALLERY, PLAYTEST_RESET, scenario_named};
         use nau_engine::world::IslandReviewPlan;
