@@ -158,6 +158,8 @@ Frame-time collection and play-profile schema v6 use Bevy's real clock. Gameplay
 
 Grounded foot-gap evidence comes from the composed boot-sole geometry after visual alignment. A missing or unready sole diagnostic after startup fails the contact budget instead of reporting the controller origin as a successful foot contact. Native stride measurements include the character's visual scale and subtract each hip position, so detached leg-root motion cannot satisfy the stride check.
 
+Streaming retires obsolete detail before admitting new residency. Terrain and distant-island shells swap as complete groups within the existing 32-change frame budget; if a swap will not fit, the previous complete shell stays visible until the following frame. Gallery and interrupted-reset regressions check the applied scene against the existing content ceilings and require convergence within the gallery's 32-frame settling period.
+
 Run the app directly without screenshot capture. This skips PNG capture but still creates the native Bevy window:
 
 ```sh
