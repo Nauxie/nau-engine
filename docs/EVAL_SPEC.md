@@ -156,6 +156,8 @@ The equivalent app option is `--eval-hidden-window`. Hidden captures support vis
 
 Frame-time collection and play-profile schema v6 use Bevy's real clock. Gameplay retains its bounded virtual clock, while diagnostics record the full duration of stalls beyond 250 ms. Play-profile comparisons reject mixed clock types and require a freshly captured baseline after this change. Island streaming diagnostics count applied residency after the per-frame budget, so transition counts describe the entities actually present rather than the requested scene.
 
+Grounded foot-gap evidence comes from the composed boot-sole geometry after visual alignment. A missing or unready sole diagnostic after startup fails the contact budget instead of reporting the controller origin as a successful foot contact. Native stride measurements include the character's visual scale and subtract each hip position, so detached leg-root motion cannot satisfy the stride check.
+
 Run the app directly without screenshot capture. This skips PNG capture but still creates the native Bevy window:
 
 ```sh
