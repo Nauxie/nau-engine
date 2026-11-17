@@ -151,6 +151,9 @@ pub(crate) fn update_world_floor_streaming(
     if state.settled_center == Some(center) {
         return;
     }
+    // A partially reconciled window is no longer settled at the previous center.
+    // Invalidate it before changing tiles so reversals and resets reconcile too.
+    state.settled_center = None;
 
     let desired_coords = desired_tile_coords(player_position);
     let desired_set = desired_coords.iter().copied().collect::<HashSet<_>>();
@@ -788,6 +791,97 @@ mod tests {
             world.resource::<WorldFloorState>().settled_center,
             Some(WorldFloorTileCoord { x: 0, z: 0 })
         );
+    }
+
+    fn streaming_test_world(start: Vec3) -> (World, Entity, Schedule) {
+        let materials = WorldFloorMaterials {
+            ocean: Handle::default(),
+            lowland: Handle::default(),
+            ridge: Handle::default(),
+            mountain: Handle::default(),
+            ground_cover: Handle::default(),
+        };
+        let mut meshes = Assets::<Mesh>::default();
+        let mut world = World::new();
+        // Match VisibilityPlugin's registration without starting a renderer.
+        world.register_required_components::<Mesh3d, Visibility>();
+        spawn_world_floor(&mut world.commands(), &mut meshes, &materials, start);
+        world.flush();
+        world.insert_resource(meshes);
+        let player = world
+            .spawn((Player, Transform::from_translation(start)))
+            .id();
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_world_floor_streaming);
+        (world, player, schedule)
+    }
+
+    fn assert_floor_window_matches_position(world: &World, position: Vec3) {
+        let state = world.resource::<WorldFloorState>();
+        let desired = desired_tile_coords(position).into_iter().collect();
+        assert_eq!(state.active_tiles, desired);
+        assert_eq!(
+            state.settled_center,
+            Some(tile_coord_for_position(position))
+        );
+        for (coord, tile) in &state.tiles {
+            for entity in tile.entities {
+                let visibility = world.get::<Visibility>(entity).unwrap();
+                assert_eq!(
+                    *visibility != Visibility::Hidden,
+                    state.active_tiles.contains(coord),
+                    "tile {coord:?} must render exactly when it belongs to the active window"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn world_floor_restores_window_after_reversing_an_unfinished_boundary_crossing() {
+        let boundary = WORLD_FLOOR_TILE_SIZE_M * 0.5;
+        for axis in [Vec3::X, Vec3::Z] {
+            for sign in [-1.0, 1.0] {
+                for transition_frames in [1, 2] {
+                    let start = axis * sign * (boundary - 0.1);
+                    let across_boundary = axis * sign * (boundary + 0.1);
+                    let (mut world, player, mut schedule) = streaming_test_world(start);
+                    world.get_mut::<Transform>(player).unwrap().translation = across_boundary;
+                    for _ in 0..transition_frames {
+                        schedule.run(&mut world);
+                    }
+                    assert_ne!(
+                        world.resource::<WorldFloorState>().active_tiles,
+                        desired_tile_coords(start).into_iter().collect()
+                    );
+                    world.get_mut::<Transform>(player).unwrap().translation = start;
+                    for _ in 0..3 {
+                        schedule.run(&mut world);
+                    }
+                    assert_floor_window_matches_position(&world, start);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn world_floor_restores_window_when_reset_interrupts_distant_streaming() {
+        let reset = Vec3::new(100.0, 90.0, -100.0);
+        let (mut world, player, mut schedule) = streaming_test_world(reset);
+        world.get_mut::<Transform>(player).unwrap().translation =
+            reset + Vec3::new(5.0, 0.0, -4.0) * WORLD_FLOOR_TILE_SIZE_M;
+        schedule.run(&mut world);
+        assert_eq!(world.resource::<WorldFloorState>().settled_center, None);
+        world.get_mut::<Transform>(player).unwrap().translation = reset;
+        for _ in 0..9 {
+            schedule.run(&mut world);
+        }
+        assert_floor_window_matches_position(&world, reset);
+        let diagnostics = world.resource::<WorldFloorDiagnostics>();
+        assert!(diagnostics.max_spawned_tiles_per_frame <= WORLD_FLOOR_MAX_TILE_SPAWNS_PER_FRAME);
+        assert!(
+            diagnostics.max_despawned_tiles_per_frame <= WORLD_FLOOR_MAX_TILE_DESPAWNS_PER_FRAME
+        );
+        assert!(diagnostics.resident_tile_count <= WORLD_FLOOR_MAX_RESIDENT_TILES);
     }
 
     #[test]
