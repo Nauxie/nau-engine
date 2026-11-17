@@ -760,6 +760,7 @@ mod tests {
             obstacle,
             collision,
             wind_motion: None,
+            visibility_range: None,
             name,
         }
     }

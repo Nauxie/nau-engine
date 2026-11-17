@@ -6,6 +6,7 @@ const WIND_SOFT_EDGE_START: f32 = 0.62;
 const WIND_SOFT_EDGE_END: f32 = 1.0;
 const WIND_GUST_PACKET_WIDTH: f32 = 0.18;
 const WIND_LAYERED_GUST_PACKET_WEIGHT: f32 = 0.58;
+pub const WIND_SWAY_SCALE_PULSE: f32 = 0.018;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WindFieldKind {
@@ -1262,7 +1263,7 @@ pub fn wind_sway_motion(
     };
     let offset = direction * amplitude * strength
         + Vec3::Y * amplitude * flutter * (0.5 + strength.abs() * 0.5);
-    let scale_pulse = 1.0 + strength.abs() * 0.018;
+    let scale_pulse = 1.0 + strength.abs() * WIND_SWAY_SCALE_PULSE;
 
     WindSwayMotion {
         offset,

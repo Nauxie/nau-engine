@@ -140,6 +140,9 @@ fn insert_island_visual_components(
             motion,
         });
     }
+    if let Some(range) = &entry.visibility_range {
+        entity.insert(range.clone());
+    }
 }
 
 fn remove_island_visual_components(
@@ -160,6 +163,7 @@ fn remove_island_visual_components(
     }
     entity.remove::<NotShadowCaster>();
     entity.remove::<WindResponsiveVisual>();
+    entity.remove::<bevy::camera::visibility::VisibilityRange>();
 }
 
 fn mesh_handle_for_entry(
@@ -428,6 +432,7 @@ mod tests {
             obstacle: None,
             collision: None,
             wind_motion: None,
+            visibility_range: None,
             name: "stream-budget-test-visual",
         }
     }
@@ -938,6 +943,11 @@ mod tests {
                 WorldCollisionProxyKind::Landmark,
             )),
             wind_motion: Some(wind_visual_motion(0, 0.0, 0.2, 0.1, 1.0)),
+            visibility_range: Some(bevy::camera::visibility::VisibilityRange {
+                start_margin: 1.0..1.45,
+                end_margin: f32::MAX..f32::MAX,
+                use_aabb: true,
+            }),
             name: "reset-proxy-with-deferred-visual",
         };
         assert!(!island_visual_is_resident(&entry, START_POSITION));
@@ -967,6 +977,11 @@ mod tests {
                 .is_none()
         );
         assert!(world.get::<WindResponsiveVisual>(entity).is_none());
+        assert!(
+            world
+                .get::<bevy::camera::visibility::VisibilityRange>(entity)
+                .is_none()
+        );
 
         world.insert_resource(meshes);
         world.insert_resource(catalog);
@@ -1005,6 +1020,13 @@ mod tests {
         assert!(world.get::<WindResponsiveVisual>(entity).is_some());
         assert_eq!(
             world
+                .get::<bevy::camera::visibility::VisibilityRange>(entity)
+                .unwrap()
+                .start_margin,
+            1.0..1.45
+        );
+        assert_eq!(
+            world
                 .resource::<IslandStreamDiagnostics>()
                 .spawned_visuals_this_frame,
             1
@@ -1027,12 +1049,27 @@ mod tests {
                 .is_none()
         );
         assert!(world.get::<WindResponsiveVisual>(entity).is_none());
+        assert!(
+            world
+                .get::<bevy::camera::visibility::VisibilityRange>(entity)
+                .is_none()
+        );
         assert_eq!(
             world
                 .resource::<IslandStreamDiagnostics>()
                 .despawned_visuals_this_frame,
             1
         );
+        world.get_mut::<Transform>(player).unwrap().translation = island.center;
+        schedule.run(&mut world);
+        assert_eq!(
+            world
+                .get::<bevy::camera::visibility::VisibilityRange>(entity)
+                .unwrap()
+                .start_margin,
+            1.0..1.45
+        );
+        assert_eq!(world.resource::<IslandStreamState>().loaded_mesh_count(), 1);
     }
 
     #[test]

@@ -227,6 +227,7 @@ fn queue_island_visual_with_motion(
         obstacle,
         collision,
         wind_motion,
+        visibility_range: None,
         name,
     });
 }

@@ -224,6 +224,7 @@ pub(super) struct IslandVisualEntry {
     pub(super) obstacle: Option<CameraObstacle>,
     pub(super) collision: Option<WorldCollisionProxy>,
     pub(super) wind_motion: Option<WindVisualMotion>,
+    pub(super) visibility_range: Option<bevy::camera::visibility::VisibilityRange>,
     pub(super) name: &'static str,
 }
 

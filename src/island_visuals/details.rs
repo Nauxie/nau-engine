@@ -18,11 +18,29 @@ use crate::generated_content::{
     launch_beacon_mesh, rock_scatter_mesh, route_cairn_mesh, ruin_arch_mesh,
     tree_canopy_mesh_for_species, tree_trunk_mesh_for_species,
 };
+use bevy::camera::{primitives::MeshAabb, visibility::VisibilityRange};
 use bevy::prelude::*;
 use nau_engine::camera::CameraObstruction;
 use nau_engine::world::{IslandPlateauRegion, IslandTerrainArchetype, SkyIsland};
 
 use crate::world_collision_runtime::{WorldCollisionProxy, WorldCollisionProxyKind};
+
+fn canopy_camera_visibility_range(mesh: &Mesh, scale: Vec3) -> VisibilityRange {
+    let radius = (mesh
+        .compute_aabb()
+        .expect("generated canopies have finite positions")
+        .half_extents
+        * Vec3A::from(scale.abs()))
+    .length()
+        * (1.0 + nau_engine::environment::WIND_SWAY_SCALE_PULSE);
+    VisibilityRange {
+        // Use the actual bounds center, including asymmetric species/lobes.
+        // Inside its bounding sphere, leaf cards must not fill the camera.
+        start_margin: radius..radius + crate::camera_runtime::CAMERA_OBSTRUCTION_CLEARANCE,
+        end_margin: f32::MAX..f32::MAX,
+        use_aabb: true,
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn queue_sky_island_details(
@@ -107,6 +125,9 @@ pub(super) fn queue_sky_island_details(
             wind_visual_motion(island_index, tree_index as f32 * 0.61, 0.025, 0.018, 0.9),
             tree.species.trunk_visual_name(),
         );
+        let canopy_transform = Transform::from_translation(canopy_center);
+        let canopy_range = canopy_camera_visibility_range(&canopy_mesh, canopy_transform.scale);
+        let canopy_entry = entries.len();
         queue_wind_island_visual(
             entries,
             visual_index,
@@ -114,7 +135,7 @@ pub(super) fn queue_sky_island_details(
             IslandVisualLayer::Detail,
             meshes.add(canopy_mesh),
             detail_materials.foliage.clone(),
-            Transform::from_translation(canopy_center),
+            canopy_transform,
             Some(CameraObstacle(CameraObstruction::soft_local_prop(
                 canopy_center,
                 Vec3::splat(tree.canopy_radius_m),
@@ -128,6 +149,7 @@ pub(super) fn queue_sky_island_details(
             ),
             tree.species.canopy_visual_name(),
         );
+        entries[canopy_entry].visibility_range = Some(canopy_range);
     }
 
     let rock_specs: Vec<IslandRockSpec> = island_rock_specs(island_index, island);
@@ -624,6 +646,10 @@ pub(super) fn queue_sky_island_details(
             wind_visual_motion(island_index, 4.2, 0.035, 0.02, 0.9),
             "launch camera tree trunk",
         );
+        let canopy_transform = Transform::from_translation(launch_canopy_center);
+        let canopy_range =
+            canopy_camera_visibility_range(&launch_canopy_mesh, canopy_transform.scale);
+        let canopy_entry = entries.len();
         queue_wind_island_visual(
             entries,
             visual_index,
@@ -631,7 +657,7 @@ pub(super) fn queue_sky_island_details(
             IslandVisualLayer::Detail,
             meshes.add(launch_canopy_mesh),
             detail_materials.foliage,
-            Transform::from_translation(launch_canopy_center),
+            canopy_transform,
             Some(CameraObstacle(CameraObstruction::soft_local_prop(
                 launch_canopy_center,
                 Vec3::splat(launch_canopy_radius),
@@ -639,6 +665,7 @@ pub(super) fn queue_sky_island_details(
             wind_visual_motion(island_index, 5.1, 0.28, 0.09, 1.25),
             "launch camera tree canopy",
         );
+        entries[canopy_entry].visibility_range = Some(canopy_range);
     }
 }
 
@@ -805,4 +832,66 @@ fn is_garden_ring_island(island: SkyIsland) -> bool {
             | IslandTerrainArchetype::OrchardBasin
             | IslandTerrainArchetype::OrchardSpur
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canopy_fade_encloses_actual_mesh_bounds_without_a_far_cutoff() {
+        let mesh = tree_canopy_mesh_for_species(TreeSpecies::BroadCanopy, 1.55, 8_000);
+        let bounds = mesh.compute_aabb().unwrap();
+        let range = canopy_camera_visibility_range(&mesh, Vec3::ONE);
+        let bevy::mesh::VertexAttributeValues::Float32x3(positions) =
+            mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap()
+        else {
+            panic!("canopy must have positions");
+        };
+        for position in positions {
+            assert!(
+                Vec3::from_array(*position).distance(Vec3::from(bounds.center))
+                    <= range.start_margin.start + 0.0001
+            );
+        }
+        for scale in [Vec3::ONE, Vec3::new(2.0, 0.75, 1.3)] {
+            let world_range = canopy_camera_visibility_range(&mesh, scale);
+            for step in 0..64 {
+                let sway = nau_engine::environment::wind_sway_motion(
+                    step as f32 * 0.23,
+                    5.1,
+                    0.28,
+                    0.09,
+                    1.25,
+                    Vec3::X,
+                );
+                let transform = Transform {
+                    translation: Vec3::new(50.0, 20.0, -90.0) + sway.offset,
+                    rotation: Quat::from_rotation_y(0.42) * sway.rotation,
+                    scale: scale * sway.scale,
+                };
+                let center = transform.transform_point(Vec3::from(bounds.center));
+                for position in positions {
+                    assert!(
+                        transform
+                            .transform_point(Vec3::from_array(*position))
+                            .distance(center)
+                            <= world_range.start_margin.start + 0.0001
+                    );
+                }
+            }
+        }
+        assert!(range.use_aabb);
+        assert!(!range.is_abrupt());
+        assert!(!range.is_visible_at_all(range.start_margin.start * 0.5));
+        assert!(range.is_visible_at_all(range.start_margin.end + 0.01));
+        assert!(range.is_visible_at_all(20_000.0));
+        assert!(
+            (range.start_margin.end
+                - range.start_margin.start
+                - crate::camera_runtime::CAMERA_OBSTRUCTION_CLEARANCE)
+                .abs()
+                < 0.0001
+        );
+    }
 }
