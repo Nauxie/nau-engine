@@ -493,15 +493,27 @@ impl WindVisualFrameSnapshot {
 struct VisiblePosePartTransform {
     translation: Vec3,
     global_translation: Vec3,
+    radius_scale: f32,
     base_delta: Vec3,
     rotation: Quat,
 }
 
 impl VisiblePosePartTransform {
-    fn from_part(part: &CharacterPart, transform: &Transform, global_translation: Vec3) -> Self {
+    fn from_part(
+        part: &CharacterPart,
+        transform: &Transform,
+        global_transform: GlobalTransform,
+    ) -> Self {
+        let basis = global_transform.affine().matrix3;
+        let radius_scale = basis
+            .x_axis
+            .length()
+            .max(basis.y_axis.length())
+            .max(basis.z_axis.length());
         Self {
             translation: transform.translation,
-            global_translation,
+            global_translation: global_transform.translation(),
+            radius_scale,
             base_delta: transform.translation - part.base_translation,
             rotation: transform.rotation,
         }
@@ -874,7 +886,11 @@ fn limb_clearance(
     a_radius_m: f32,
     b_radius_m: f32,
 ) -> f32 {
-    a.global_translation.distance(b.global_translation) - a_radius_m - b_radius_m
+    // Centers and the authored proxy radii must share world units. Character
+    // normalization changes both; keeping unscaled radii invents penetration.
+    a.global_translation.distance(b.global_translation)
+        - a_radius_m * a.radius_scale
+        - b_radius_m * b.radius_scale
 }
 
 fn nearest_island_edge_metrics(islands: &[SkyIsland], position: Vec3) -> (f32, bool, bool) {
@@ -1109,7 +1125,7 @@ pub(crate) fn collect_eval_metrics(
                     (
                         node,
                         transform,
-                        global_transform.translation(),
+                        global_transform,
                         visibility,
                         inherited_visibility,
                     )
@@ -1861,7 +1877,8 @@ fn visible_generated_pose_part_set<'a>(
             continue;
         }
 
-        let pose_part = VisiblePosePartTransform::from_part(part, transform, transform.translation);
+        let pose_part =
+            VisiblePosePartTransform::from_part(part, transform, GlobalTransform::from(*transform));
         match part.role {
             CharacterPartRole::Hips => parts_set.hips = Some(pose_part),
             CharacterPartRole::Torso => parts_set.torso = Some(pose_part),
@@ -1896,7 +1913,7 @@ fn visible_authored_pose_readability_metrics<'a>(
         Item = (
             &'a AuthoredPlayerPoseNode,
             &'a Transform,
-            Vec3,
+            GlobalTransform,
             Option<&'a Visibility>,
             Option<&'a InheritedVisibility>,
         ),
@@ -1911,7 +1928,7 @@ fn visible_authored_pose_part_set<'a>(
         Item = (
             &'a AuthoredPlayerPoseNode,
             &'a Transform,
-            Vec3,
+            GlobalTransform,
             Option<&'a Visibility>,
             Option<&'a InheritedVisibility>,
         ),
@@ -1919,12 +1936,12 @@ fn visible_authored_pose_part_set<'a>(
 ) -> VisiblePosePartSet {
     let mut parts_set = VisiblePosePartSet::default();
 
-    for (node, transform, global_translation, visibility, inherited_visibility) in nodes {
+    for (node, transform, global_transform, visibility, inherited_visibility) in nodes {
         if !authored_pose_part_visible(visibility, inherited_visibility) {
             continue;
         }
         let pose_part =
-            VisiblePosePartTransform::from_part(&node.part, transform, global_translation);
+            VisiblePosePartTransform::from_part(&node.part, transform, global_transform);
         match node.part.role {
             CharacterPartRole::Hips => parts_set.hips = Some(pose_part),
             CharacterPartRole::Torso => parts_set.torso = Some(pose_part),
@@ -3210,9 +3227,15 @@ mod tests {
             ),
         ];
         let metrics = visible_authored_pose_readability_metrics(
-            nodes
-                .iter()
-                .map(|(node, transform)| (node, transform, transform.translation, None, None)),
+            nodes.iter().map(|(node, transform)| {
+                (
+                    node,
+                    transform,
+                    GlobalTransform::from(*transform),
+                    None,
+                    None,
+                )
+            }),
             context,
         )
         .expect("visible authored pose metrics");
@@ -3239,7 +3262,7 @@ mod tests {
         let parts = visible_authored_pose_part_set(std::iter::once((
             &node,
             &transform,
-            transform.translation,
+            GlobalTransform::from(transform),
             Some(&visibility),
             Some(&inherited_visibility),
         )));
@@ -4278,6 +4301,7 @@ mod tests {
         overlapping_parts.left_arm = Some(VisiblePosePartTransform {
             translation: Vec3::new(-0.08, 1.08, 0.0),
             global_translation: Vec3::new(-0.08, 1.08, 0.0),
+            radius_scale: 1.0,
             base_delta: Vec3::ZERO,
             rotation: Quat::IDENTITY,
         });
@@ -4300,6 +4324,51 @@ mod tests {
         assert!(readable.min_pose_limb_clearance_m > 0.04);
         assert!(overlapping.min_pose_limb_clearance_m < 0.0);
         assert!(overlapping.max_pose_limb_penetration_m > 0.0);
+    }
+
+    #[test]
+    fn world_clearance_scales_authored_radii_with_actual_hierarchy() {
+        let torso = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+        let leg = CharacterPart::new(
+            CharacterPartRole::Leg(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        for scale in [0.4, crate::player_runtime::AUTHORED_PLAYER_SCALE, 1.0, 1.7] {
+            let parent = GlobalTransform::from(Transform {
+                translation: Vec3::new(10.0, 5.0, -2.0),
+                rotation: Quat::from_rotation_y(0.7) * Quat::from_rotation_z(0.2),
+                scale: Vec3::splat(scale),
+            });
+            let torso_local = Transform::default();
+            let leg_local = Transform::from_xyz(0.0, -0.6, 0.0);
+            let a = VisiblePosePartTransform::from_part(
+                &torso,
+                &torso_local,
+                parent.mul_transform(torso_local),
+            );
+            let b = VisiblePosePartTransform::from_part(
+                &leg,
+                &leg_local,
+                parent.mul_transform(leg_local),
+            );
+            assert!((a.radius_scale - scale).abs() < 0.0001);
+            let clearance = limb_clearance(a, b, 0.26, 0.11);
+            assert!(
+                (clearance - (0.6 - 0.26 - 0.11) * scale).abs() < 0.0001,
+                "scale {scale}: {clearance}"
+            );
+            let intersecting_local = Transform::from_xyz(0.0, -0.2, 0.0);
+            let intersecting = VisiblePosePartTransform::from_part(
+                &leg,
+                &intersecting_local,
+                parent.mul_transform(intersecting_local),
+            );
+            assert!(
+                limb_clearance(a, intersecting, 0.26, 0.11) < 0.0,
+                "scaled real overlap must still fail"
+            );
+        }
     }
 
     #[test]
@@ -4355,36 +4424,42 @@ mod tests {
             torso: Some(VisiblePosePartTransform {
                 translation: Vec3::new(0.0, 1.08, 0.0),
                 global_translation: Vec3::new(0.0, 1.08, 0.0),
+                radius_scale: 1.0,
                 base_delta: Vec3::ZERO,
                 rotation: torso_rotation,
             }),
             head: Some(VisiblePosePartTransform {
                 translation: Vec3::new(0.0, 1.80, -0.02),
                 global_translation: Vec3::new(0.0, 1.80, -0.02),
+                radius_scale: 1.0,
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),
             left_arm: Some(VisiblePosePartTransform {
                 translation: Vec3::new(-0.55, 1.17, 0.0),
                 global_translation: Vec3::new(-0.55, 1.17, 0.0),
+                radius_scale: 1.0,
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),
             right_arm: Some(VisiblePosePartTransform {
                 translation: Vec3::new(0.55, 1.17, 0.0),
                 global_translation: Vec3::new(0.55, 1.17, 0.0),
+                radius_scale: 1.0,
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),
             left_leg: Some(VisiblePosePartTransform {
                 translation: left_leg_base + left_leg_translation,
                 global_translation: left_leg_base + left_leg_translation,
+                radius_scale: 1.0,
                 base_delta: left_leg_translation,
                 rotation: Quat::IDENTITY,
             }),
             right_leg: Some(VisiblePosePartTransform {
                 translation: Vec3::new(0.22, 0.32, 0.02),
                 global_translation: Vec3::new(0.22, 0.32, 0.02),
+                radius_scale: 1.0,
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),
