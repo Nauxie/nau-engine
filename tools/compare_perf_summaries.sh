@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "jq is required to compare perf summaries" >&2
@@ -242,11 +243,8 @@ validate_summary() {
   if [[ "${mode}" != "release" || "${has_scenarios}" != "true" ]]; then
     failed=1
   fi
-  if ! jq -e 'all(.scenarios[];
-      all(.avg_runtime_frame_time_ms, .p95_runtime_frame_time_ms,
-          .p99_runtime_frame_time_ms, .max_runtime_frame_time_ms;
-          type == "number" and . > 0))' "${summary}" >/dev/null; then
-    echo "${label}: missing or invalid required runtime timing metrics" >&2
+  if ! jq -L "${script_dir}" -e 'include "perf_timing"; perf_timing_valid' "${summary}" >/dev/null; then
+    echo "${label}: missing or invalid runtime timing fields, phase, or sample coverage" >&2
     failed=1
   fi
 

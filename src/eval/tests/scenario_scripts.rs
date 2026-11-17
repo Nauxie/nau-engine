@@ -233,7 +233,8 @@ fn performance_comparison_scenario(
         "scenario": name,
         "eval_status": 0,
         "passed": true,
-        "frame_count": runtime_samples + 4,
+        "frame_count": runtime_samples + 29,
+        "eval_artifact_frame_time_sample_count": 0,
         "avg_frame_time_ms": avg_frame_time_ms,
         "p95_frame_time_ms": p95_frame_time_ms,
         "p99_frame_time_ms": 90.0,
@@ -394,7 +395,7 @@ fn performance_comparison_distinguishes_bulk_cadence_from_tail_and_structure() {
             251,
         ),
     ];
-    write_performance_comparison_summary(&baseline_root, baseline_scenarios, false);
+    write_performance_comparison_summary(&baseline_root, baseline_scenarios, true);
     write_performance_comparison_summary(&candidate_root, candidate_scenarios.clone(), true);
 
     let noisy_bucket = run_performance_comparison(&baseline_root, &candidate_root, None);

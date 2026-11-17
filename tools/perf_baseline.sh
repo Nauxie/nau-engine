@@ -280,7 +280,7 @@ if [[ "${#summary_files[@]}" -eq 0 ]]; then
   exit 1
 fi
 
-jq -s \
+jq -L "${script_dir}" -s \
   --arg generated_at "${generated_at}" \
   --arg repo_commit "${repo_commit}" \
   --arg source_state "${source_state}" \
@@ -296,7 +296,8 @@ jq -s \
   --argjson max_avg_frame_time_ms "${max_avg_frame_time_ms}" \
   --argjson max_p95_frame_time_ms "${max_p95_frame_time_ms}" \
   --argjson max_p99_frame_time_ms "${max_p99_frame_time_ms}" \
-  '($status_tsv
+  'include "perf_timing";
+  ($status_tsv
     | split("\n")
     | .[1:]
     | map(select(length > 0) | split("\t") | {key: .[0], value: (.[1] | tonumber)})
@@ -409,7 +410,15 @@ jq -s \
         ))
       }
     ]
-  }' "${summary_files[@]}" > "${summary_json}"
+  }
+  | . as $capture
+  | .scenarios |= map(
+      if ($capture | perf_phase_valid) and perf_scenario_timing_valid then .
+      else .passed = false
+        | .failed_checks += [{name: "runtime_timing_evidence", value: 0,
+            comparator: "==", threshold: 1, unit: "valid"}]
+      end
+    )' "${summary_files[@]}" > "${summary_json}"
 
 if ! jq -e 'all(.scenarios[]; .passed == true)' "${summary_json}" >/dev/null; then
   failed=1

@@ -59,6 +59,26 @@ class PerfMeasurementTests(unittest.TestCase):
             self.assertTrue(all(scenario["eval_passed"] for scenario in summary["scenarios"]))
             valid = run("bash", str(ROOT / "tools/validate_perf_capture.sh"), str(output / "perf_summary.json"), *scenarios)
             self.assertEqual(valid.returncode, 0, valid.stderr)
+            # Exercise both standalone entrypoints, without CI's outer validator.
+            for failure in ("valid", "missing_max", "wrong_count"):
+                with self.subTest(standalone=failure):
+                    capture_env = dict(env, FIXTURE_RAW_FAILURE=failure)
+                    produced = run("bash", str(ROOT / "tools/perf_baseline.sh"), *scenarios, cwd=worktree, env=capture_env)
+                    self.assertEqual(produced.returncode == 0, failure == "valid", produced.stdout + produced.stderr)
+                    aggregate = json.loads((output / "perf_summary.json").read_text())
+                    self.assertTrue(all(row["passed"] == (failure == "valid") for row in aggregate["scenarios"]))
+                    # Explicitly preserve standalone comparison's missing-host opt-in.
+                    aggregate.pop("host_snapshot_before")
+                    aggregate.pop("host_snapshot_after")
+                    # Corruption must fail even if an external writer marks it passed.
+                    for row in aggregate["scenarios"]:
+                        row["passed"] = True
+                    comparison_input = output / "comparison_summary.json"
+                    comparison_input.write_text(json.dumps(aggregate))
+                    compared = run("bash", str(ROOT / "tools/compare_perf_summaries.sh"),
+                                   str(comparison_input), str(comparison_input),
+                                   env=dict(env, NAU_PERF_ALLOW_MISSING_HOST_SNAPSHOTS="1"))
+                    self.assertEqual(compared.returncode == 0, failure == "valid", compared.stdout + compared.stderr)
 
     def test_clock_patch_is_exact_idempotent_and_fail_closed(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -121,7 +141,7 @@ class PerfMeasurementTests(unittest.TestCase):
                 root = Path(directory)
                 tools = root / "tools"
                 tools.mkdir()
-                for name in ("validate_perf_capture.sh", "compare_perf_summaries.sh"):
+                for name in ("validate_perf_capture.sh", "compare_perf_summaries.sh", "perf_timing.jq"):
                     shutil.copy2(ROOT / "tools" / name, tools / name)
                 executable(tools / "perf_baseline.sh", COLLECTOR_FIXTURE)
                 binaries = root / "bin"
@@ -153,7 +173,7 @@ class PerfMeasurementTests(unittest.TestCase):
 COLLECTOR_FIXTURE = '''#!/usr/bin/env python3
 import json, os, pathlib, sys
 root = pathlib.Path(os.environ["NAU_PERF_OUTPUT_DIR"])
-root.mkdir(parents=True)
+root.mkdir(parents=True, exist_ok=True)
 phase = root.name
 failure = os.environ["FIXTURE_FAILURE"]
 failed_candidate = phase == "candidate" or (phase == "retry_candidate" and failure == "budget_always")
@@ -194,12 +214,12 @@ sys.exit(1 if failed_candidate and failure != "startup_only" else 0)
 '''
 
 RAW_CAPTURE_FIXTURE = '''#!/usr/bin/env python3
-import json, pathlib, sys
+import json, os, pathlib, sys
 if sys.argv[1] == "build": sys.exit(0)
 args = sys.argv[2:]
 name = args[args.index("--eval") + 1]
 root = pathlib.Path(args[args.index("--eval-output") + 1])
-root.mkdir(parents=True)
+root.mkdir(parents=True, exist_ok=True)
 metrics = dict(avg_frame_time_ms=100, p95_frame_time_ms=400, p99_frame_time_ms=900, max_frame_time_ms=1500,
         avg_runtime_frame_time_ms=10, p95_runtime_frame_time_ms=12, p99_runtime_frame_time_ms=100, max_runtime_frame_time_ms=120,
     runtime_frame_time_sample_count=200, eval_artifact_frame_time_sample_count=0, runtime_frames_over_33_34ms=0, runtime_frames_over_50ms=0,
@@ -208,6 +228,9 @@ metrics = dict(avg_frame_time_ms=100, p95_frame_time_ms=400, p99_frame_time_ms=9
     max_visible_island_terrain_count=48, max_visible_island_detail_count=202,
     max_resident_island_visual_count=368, max_stream_spawned_visuals_per_frame=32,
     max_stream_despawned_visuals_per_frame=32)
+failure = os.environ.get("FIXTURE_RAW_FAILURE")
+if failure == "missing_max": metrics.pop("max_runtime_frame_time_ms")
+if failure == "wrong_count": metrics["runtime_frame_time_sample_count"] = 199
 (root / "summary.json").write_text(json.dumps(dict(scenario=name, passed=True,
     frame_count=229, duration_secs=3.4, metrics=metrics, checks=[])))
 '''
