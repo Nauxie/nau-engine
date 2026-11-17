@@ -13,7 +13,7 @@ use crate::play_profile_runtime::PlayProfileRun;
 use crate::power_up_runtime::{PowerUpCollectionState, collect_aerial_power_ups};
 use crate::world_collision_runtime::{
     WorldCollisionDiagnostics, WorldCollisionProxy, WorldCollisionProxyKind,
-    resolve_world_collisions,
+    resolve_world_collisions_slice,
 };
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartPose, PartVisibility, PlayerPoseContext,
@@ -188,6 +188,26 @@ pub(crate) struct MovementWorld<'w, 's> {
     displacement_diagnostics: ResMut<'w, PlayerDisplacementDiagnostics>,
 }
 
+#[derive(Default)]
+pub(crate) struct MovementScratch {
+    lift_fields: Vec<LiftField>,
+    visual_wind_fields: Vec<WindField>,
+    collision_proxies: Vec<WorldCollisionProxy>,
+}
+
+impl MovementScratch {
+    fn collect(&mut self, world: &MovementWorld) {
+        self.lift_fields.clear();
+        self.lift_fields.extend(world.lift_fields.iter().copied());
+        self.visual_wind_fields.clear();
+        self.visual_wind_fields
+            .extend(world.visual_wind_fields.iter().copied());
+        self.collision_proxies.clear();
+        self.collision_proxies
+            .extend(world.collision_proxies.iter().copied());
+    }
+}
+
 #[derive(SystemParam)]
 pub(crate) struct MovementCamera<'w, 's> {
     control: Res<'w, CameraControlState>,
@@ -302,6 +322,7 @@ pub(crate) fn fly_player(
     tuning: Res<FlightTuning>,
     camera: MovementCamera,
     mut world: MovementWorld,
+    mut scratch: Local<MovementScratch>,
     mut player: Query<
         (
             &mut Transform,
@@ -319,17 +340,15 @@ pub(crate) fn fly_player(
     let facing = camera.facing(&transform);
     let dt = time.delta_secs();
     let elapsed_secs = time.elapsed_secs();
-    let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
-    let visual_wind_fields = world.visual_wind_fields.iter().copied().collect::<Vec<_>>();
-    let collision_proxies = world.collision_proxies.iter().copied().collect::<Vec<_>>();
+    scratch.collect(&world);
     world.power_ups.begin_frame(dt);
     let mut context = PlayerStepContext {
         tuning: &tuning,
         route: &world.route,
-        lift_fields: &lift_fields,
-        visual_wind_fields: &visual_wind_fields,
+        lift_fields: &scratch.lift_fields,
+        visual_wind_fields: &scratch.visual_wind_fields,
         power_ups: &mut world.power_ups,
-        collision_proxies: &collision_proxies,
+        collision_proxies: &scratch.collision_proxies,
         collision_diagnostics: &mut world.collision_diagnostics,
         wind_diagnostics: &mut world.wind_diagnostics,
     };
@@ -371,6 +390,7 @@ pub(crate) fn scripted_play_profile_fly_player(
     tuning: Res<FlightTuning>,
     camera: MovementCamera,
     mut world: MovementWorld,
+    mut scratch: Local<MovementScratch>,
     mut player: Query<
         (
             &mut Transform,
@@ -391,17 +411,15 @@ pub(crate) fn scripted_play_profile_fly_player(
     let facing = camera.facing(&transform);
     let dt = time.delta_secs();
     let elapsed_secs = time.elapsed_secs();
-    let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
-    let visual_wind_fields = world.visual_wind_fields.iter().copied().collect::<Vec<_>>();
-    let collision_proxies = world.collision_proxies.iter().copied().collect::<Vec<_>>();
+    scratch.collect(&world);
     world.power_ups.begin_frame(dt);
     let mut context = PlayerStepContext {
         tuning: &tuning,
         route: &world.route,
-        lift_fields: &lift_fields,
-        visual_wind_fields: &visual_wind_fields,
+        lift_fields: &scratch.lift_fields,
+        visual_wind_fields: &scratch.visual_wind_fields,
         power_ups: &mut world.power_ups,
-        collision_proxies: &collision_proxies,
+        collision_proxies: &scratch.collision_proxies,
         collision_diagnostics: &mut world.collision_diagnostics,
         wind_diagnostics: &mut world.wind_diagnostics,
     };
@@ -614,6 +632,7 @@ pub(crate) fn eval_fly_player(
     tuning: Res<FlightTuning>,
     camera: MovementCamera,
     mut world: MovementWorld,
+    mut scratch: Local<MovementScratch>,
     mut movement_basis: ResMut<EvalMovementBasis>,
     mut player: Query<
         (
@@ -642,17 +661,15 @@ pub(crate) fn eval_fly_player(
     };
     let dt = run.scenario.fixed_dt;
     let elapsed_secs = run.frame as f32 * dt;
-    let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
-    let visual_wind_fields = world.visual_wind_fields.iter().copied().collect::<Vec<_>>();
-    let collision_proxies = world.collision_proxies.iter().copied().collect::<Vec<_>>();
+    scratch.collect(&world);
     world.power_ups.begin_frame(dt);
     let mut context = PlayerStepContext {
         tuning: &tuning,
         route: &world.route,
-        lift_fields: &lift_fields,
-        visual_wind_fields: &visual_wind_fields,
+        lift_fields: &scratch.lift_fields,
+        visual_wind_fields: &scratch.visual_wind_fields,
         power_ups: &mut world.power_ups,
-        collision_proxies: &collision_proxies,
+        collision_proxies: &scratch.collision_proxies,
         collision_diagnostics: &mut world.collision_diagnostics,
         wind_diagnostics: &mut world.wind_diagnostics,
     };
@@ -753,7 +770,7 @@ fn step_player(
             .route
             .resolve_ground_contact_after_step(next, was_grounded);
         world_correction_m += next.position.distance(pre_ground_position);
-        let collision = resolve_world_collisions(next, context.collision_proxies.iter().copied());
+        let collision = resolve_world_collisions_slice(next, context.collision_proxies);
         collision_correction_m += collision.correction_distance_m;
         resolved_count += collision.hit_count;
         terrain_rim_resolved_count += collision.terrain_rim_hit_count;
@@ -1836,6 +1853,28 @@ mod tests {
                 .abs_diff_eq(node.smoothed_translation, 0.0001)
         );
         assert!((transform.rotation.dot(node.smoothed_rotation).abs() - 1.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn movement_scratch_reuses_capacity_without_retaining_removed_collision_proxies() {
+        let mut world = World::new();
+        world.insert_resource(SkyRoute::default());
+        world.insert_resource(PowerUpCollectionState::default());
+        world.insert_resource(WorldCollisionDiagnostics::default());
+        world.insert_resource(WindForceDiagnostics::default());
+        world.insert_resource(PlayerDisplacementDiagnostics::default());
+        let proxy = WorldCollisionProxy::new(Vec3::ZERO, Vec3::ONE, WorldCollisionProxyKind::Tree);
+        let entity = world.spawn(proxy).id();
+        let mut state = bevy::ecs::system::SystemState::<MovementWorld>::new(&mut world);
+        let mut scratch = MovementScratch::default();
+        scratch.collect(&state.get_mut(&mut world));
+        assert_eq!(scratch.collision_proxies, vec![proxy]);
+        let capacity = scratch.collision_proxies.capacity();
+
+        world.despawn(entity);
+        scratch.collect(&state.get_mut(&mut world));
+        assert!(scratch.collision_proxies.is_empty());
+        assert_eq!(scratch.collision_proxies.capacity(), capacity);
     }
 
     #[test]
