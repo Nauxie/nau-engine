@@ -11,6 +11,7 @@ mod game_ui_runtime;
 mod generated_content;
 mod island_visuals;
 mod play_profile_runtime;
+mod player_grounding_runtime;
 mod player_runtime;
 mod power_up_runtime;
 mod scene_setup_runtime;
@@ -51,9 +52,10 @@ use nau_engine::movement::FlightTuning;
 use nau_engine::world::SkyIsland;
 use nau_engine::world::SkyRoute;
 use play_profile_runtime::{PlayProfileRun, collect_play_profile_sample};
+use player_grounding_runtime::{GroundedFootContactDiagnostics, align_authored_player_grounding};
 pub(crate) use player_runtime::{
     Player, PlayerDisplacementDiagnostics, RouteObjectiveTracker, WindForceDiagnostics,
-    grounded_visual_foot_gap_m, keyboard_flight_input, movement_facing,
+    keyboard_flight_input, movement_facing,
 };
 use player_runtime::{
     animate_character, eval_fly_player, eval_reset_player_to_playtest_position, fly_player,
@@ -185,6 +187,7 @@ fn main() -> AppExit {
         .insert_resource(RouteObjectiveTracker::default())
         .insert_resource(PowerUpCollectionState::default())
         .insert_resource(PlayerDisplacementDiagnostics::default())
+        .insert_resource(GroundedFootContactDiagnostics::default())
         .insert_resource(WorldCollisionDiagnostics::default())
         .insert_resource(WorldFloorDiagnostics::default())
         .insert_resource(WindForceDiagnostics::default())
@@ -237,6 +240,7 @@ fn main() -> AppExit {
                 update_authored_player_animation,
                 apply_authored_player_pose_nodes,
                 apply_authored_glider_pose,
+                align_authored_player_grounding,
                 update_player_airflow_visuals,
                 follow_camera,
                 direct_plateau_vista_camera,

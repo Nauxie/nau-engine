@@ -34,9 +34,15 @@ use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
     face_flight_direction, step_flight,
 };
-use nau_engine::world::{SkyRoute, TERRAIN_VISUAL_FOOTING_OFFSET_M};
+use nau_engine::world::{PLAYER_COLLISION_HEIGHT_M, SkyRoute, TERRAIN_VISUAL_FOOTING_OFFSET_M};
 
 const ATTACHED_PLAYER_VISUAL_OFFSET_Y: f32 = -TERRAIN_VISUAL_FOOTING_OFFSET_M;
+// Bounds of the authored player at rest. The asset audit protects these against
+// fixture changes so the visible body and its collision height share one scale.
+pub(crate) const AUTHORED_PLAYER_REST_MIN_Y: f32 = -0.448_200_05;
+pub(crate) const AUTHORED_PLAYER_REST_HEIGHT_M: f32 = 2.852_848;
+pub(crate) const AUTHORED_PLAYER_SCALE: f32 =
+    PLAYER_COLLISION_HEIGHT_M / AUTHORED_PLAYER_REST_HEIGHT_M;
 const MAX_PLAYER_FRAME_DT_SECS: f32 = 1.0 / 30.0;
 const MAX_PLAYER_FRAME_TRAVEL_M: f32 = 2.0;
 const MAX_PLAYER_SUBSTEP_DT_SECS: f32 = 1.0 / 60.0;
@@ -46,25 +52,20 @@ const MAX_PLAYER_WORLD_CORRECTION_PER_FRAME_M: f32 = 8.0;
 const MAX_PLAYER_COLLISION_CORRECTION_PER_FRAME_M: f32 = 1.0;
 
 pub(crate) fn authored_player_scene_transform() -> Transform {
-    Transform::from_xyz(0.0, ATTACHED_PLAYER_VISUAL_OFFSET_Y, 0.0)
+    Transform::from_xyz(
+        0.0,
+        ATTACHED_PLAYER_VISUAL_OFFSET_Y - AUTHORED_PLAYER_REST_MIN_Y * AUTHORED_PLAYER_SCALE,
+        0.0,
+    )
+    .with_scale(Vec3::splat(AUTHORED_PLAYER_SCALE))
 }
 
 pub(crate) fn authored_glider_scene_transform() -> Transform {
-    Transform::from_xyz(0.0, 1.35 + ATTACHED_PLAYER_VISUAL_OFFSET_Y, -0.45)
-}
-
-pub(crate) fn grounded_visual_foot_gap_m(
-    player_y: f32,
-    ground_floor_y: f32,
-    mode: FlightMode,
-) -> f32 {
-    if mode != FlightMode::Grounded {
-        return 0.0;
-    }
-
-    let visual_foot_y = player_y + authored_player_scene_transform().translation.y;
-    let terrain_visual_y = ground_floor_y - TERRAIN_VISUAL_FOOTING_OFFSET_M;
-    visual_foot_y - terrain_visual_y
+    let player_frame = authored_player_scene_transform();
+    Transform::from_translation(
+        player_frame.translation + Vec3::new(0.0, 1.35, -0.45) * AUTHORED_PLAYER_SCALE,
+    )
+    .with_scale(player_frame.scale)
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -77,6 +78,7 @@ pub(crate) struct AuthoredGliderPose {
     smoothed_scale: Vec3,
     smoothing_initialized: bool,
     last_smoothed_time_secs: Option<f32>,
+    pub(crate) grounding_offset_y: f32,
 }
 
 impl AuthoredGliderPose {
@@ -90,6 +92,7 @@ impl AuthoredGliderPose {
             smoothed_scale: base_transform.scale,
             smoothing_initialized: false,
             last_smoothed_time_secs: None,
+            grounding_offset_y: 0.0,
         }
     }
 
@@ -1211,8 +1214,9 @@ fn apply_authored_glider_pose_smoothing(
     blend: f32,
 ) {
     let deployment = deployment.clamp(0.0, 1.0);
-    let stowed_translation = glider.base_translation + authored_glider_stowed_translation_offset();
-    let deployed_translation = glider.base_translation + translation_offset;
+    let stowed_translation = glider.base_translation
+        + authored_glider_stowed_translation_offset() * AUTHORED_PLAYER_SCALE;
+    let deployed_translation = glider.base_translation + translation_offset * AUTHORED_PLAYER_SCALE;
     let target_translation = stowed_translation.lerp(deployed_translation, deployment);
     let stowed_rotation = glider.base_rotation * authored_glider_stowed_rotation_offset();
     let deployed_rotation = glider.base_rotation * rotation_offset;
@@ -1235,7 +1239,7 @@ fn apply_authored_glider_pose_smoothing(
 }
 
 fn reapply_smoothed_authored_glider_pose(glider: &AuthoredGliderPose, transform: &mut Transform) {
-    transform.translation = glider.smoothed_translation;
+    transform.translation = glider.smoothed_translation + Vec3::Y * glider.grounding_offset_y;
     transform.rotation = glider.smoothed_rotation;
     transform.scale = glider.smoothed_scale;
 }
@@ -1326,17 +1330,26 @@ mod tests {
 
     #[test]
     fn attached_authored_visuals_share_terrain_footing_offset() {
-        assert_eq!(
-            authored_player_scene_transform().translation.y,
-            -TERRAIN_VISUAL_FOOTING_OFFSET_M
+        let player = authored_player_scene_transform();
+        let glider = authored_glider_scene_transform();
+        assert!(
+            (player
+                .transform_point(Vec3::Y * AUTHORED_PLAYER_REST_MIN_Y)
+                .y
+                + TERRAIN_VISUAL_FOOTING_OFFSET_M)
+                .abs()
+                < 0.0001
         );
-        assert_eq!(
-            authored_glider_scene_transform().translation.y,
-            1.35 - TERRAIN_VISUAL_FOOTING_OFFSET_M
+        assert!(
+            (AUTHORED_PLAYER_REST_HEIGHT_M * player.scale.y - PLAYER_COLLISION_HEIGHT_M).abs()
+                < 0.0001
         );
-        assert_eq!(
-            grounded_visual_foot_gap_m(28.0, 28.0, FlightMode::Grounded),
-            0.0
+        assert_eq!(glider.scale, player.scale);
+        assert!(
+            glider
+                .translation
+                .distance(player.transform_point(Vec3::new(0.0, 1.35, -0.45)))
+                < 0.0001
         );
     }
 
@@ -1654,7 +1667,8 @@ mod tests {
         );
         apply_authored_pose_node_smoothing(&mut node, &mut transform, pose, 0.0, 1.0);
 
-        assert!(transform.translation.distance(node.part.base_translation) > 0.04);
+        assert!(transform.translation.distance(node.part.base_translation) <= 0.0151);
+        assert!(transform.rotation.angle_between(node.part.base_rotation) > 0.3);
         assert!(transform.translation.distance(pose.translation) < 0.0001);
         assert!((transform.rotation.dot(pose.rotation).abs() - 1.0).abs() < 0.0001);
     }
@@ -1788,7 +1802,7 @@ mod tests {
                 .abs_diff_eq(once_per_frame_translation, 0.0001)
         );
         assert!((transform.rotation.dot(once_per_frame_rotation).abs() - 1.0).abs() < 0.0001);
-        assert!(transform.scale.abs_diff_eq(Vec3::ONE, 0.0001));
+        assert!(transform.scale.abs_diff_eq(base.scale, 0.0001));
         assert!(glider.response_degrees(&transform) > 10.0);
         assert!(glider.motion_m(&transform) > 0.05);
     }
@@ -1830,9 +1844,9 @@ mod tests {
         assert!(launch_pose.response_degrees() > 8.0);
         assert!(glider.motion_m(&transform) > 0.25);
         assert!(glider.response_degrees(&transform) > 20.0);
-        assert!(transform.scale.x > 0.50);
-        assert!(transform.scale.x < 0.70);
-        assert!(transform.scale.y > 0.85);
+        assert!(transform.scale.x / base.scale.x > 0.50);
+        assert!(transform.scale.x / base.scale.x < 0.70);
+        assert!(transform.scale.y / base.scale.y > 0.85);
     }
 
     #[test]

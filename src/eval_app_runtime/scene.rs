@@ -9,6 +9,7 @@ use crate::environment_visuals::{
     WeatherDrift, WindResponsiveVisual,
 };
 use crate::island_visuals::IslandStreamDiagnostics;
+use crate::player_grounding_runtime::GroundedFootContactDiagnostics;
 use crate::player_runtime::{AuthoredGliderPose, PlayerDisplacementDiagnostics};
 use crate::power_up_runtime::PowerUpCollectionState;
 use crate::surface_material::SurfaceMaterial;
@@ -70,6 +71,7 @@ pub(crate) struct EvalScene<'w, 's> {
     pub(crate) power_ups: Res<'w, PowerUpCollectionState>,
     pub(crate) collision_diagnostics: Res<'w, WorldCollisionDiagnostics>,
     pub(crate) player_displacement_diagnostics: Res<'w, PlayerDisplacementDiagnostics>,
+    pub(crate) foot_contact: Option<Res<'w, GroundedFootContactDiagnostics>>,
     pub(crate) wind_force_diagnostics: Res<'w, WindForceDiagnostics>,
     pub(crate) generated_character_parts: Query<'w, 's, GeneratedCharacterPartQueryItem>,
     pub(crate) authored_player_animations: Query<'w, 's, &'static AuthoredPlayerAnimation>,

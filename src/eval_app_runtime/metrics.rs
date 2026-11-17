@@ -12,9 +12,9 @@ use crate::environment_visuals::{
     wind_responsive_visual_metrics, wind_visual_quality_visible,
 };
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
+use crate::movement_facing;
 use crate::player_runtime::AuthoredGliderPose;
 use crate::surface_material::SurfaceMaterial;
-use crate::{grounded_visual_foot_gap_m, movement_facing};
 use bevy::ecs::system::SystemParam;
 use bevy::mesh::Indices;
 use bevy::prelude::*;
@@ -23,8 +23,8 @@ use nau_engine::animation::{
     CharacterPart, CharacterPartRole, DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
     DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT, MIN_KEY_POSE_READABILITY_SCORE, PlayerPoseContext,
     PlayerPoseIntent, PoseReadabilityMetrics, PoseReadabilityPartTransforms, ScarfSegment, Side,
-    body_local_pose_velocity, key_pose_readability_score, pose_readability_metrics,
-    pose_readability_metrics_from_part_transforms,
+    body_local_pose_velocity, grounded_stride_foot_travel_m, key_pose_readability_score,
+    pose_readability_metrics, pose_readability_metrics_from_part_transforms,
 };
 use nau_engine::camera::{
     CameraControlState, CameraInput, camera_distance, camera_pitch_degrees,
@@ -709,6 +709,18 @@ impl VisiblePosePartTransforms {
             self.left_lower_leg.zip(self.right_lower_leg),
             self.left_foot.zip(self.right_foot),
         );
+        metrics.grounded_stride_foot_travel_m =
+            self.left_foot
+                .zip(self.right_foot)
+                .map_or(0.0, |(left, right)| {
+                    grounded_stride_foot_travel_m(
+                        context.intent(),
+                        self.left_leg.global_translation,
+                        left.global_translation,
+                        self.right_leg.global_translation,
+                        right.global_translation,
+                    )
+                });
         metrics.landing_distal_foot_split_m = distal_split_m;
         let landing_readability_split_m = metrics.landing_foot_split_m.max(distal_split_m);
         if landing_readability_split_m > metrics.landing_foot_split_m {
@@ -1001,12 +1013,17 @@ pub(crate) fn collect_eval_metrics(
         scene.lift_fields.iter().copied(),
         scene.wind_fields.iter().copied(),
     );
-    let player_ground = scene.route.ground_at(transform.translation);
-    let visual_foot_gap_m = grounded_visual_foot_gap_m(
-        transform.translation.y,
-        player_ground.floor_y,
-        controller.mode,
-    );
+    let visual_foot_gap_m = if controller.mode == FlightMode::Grounded {
+        scene
+            .foot_contact
+            .as_ref()
+            .filter(|contact| contact.ready && contact.sole_vertex_count > 0)
+            .map_or(if run.frame >= 30 { 1.0 } else { 0.0 }, |contact| {
+                contact.support_gap_m
+            })
+    } else {
+        0.0
+    };
     let scenario_target = run.scenario.target_island_name;
     let target_distance_m = scene
         .route
