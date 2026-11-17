@@ -77,6 +77,20 @@ pub(crate) fn align_authored_player_grounding(
         return;
     }
 
+    // Clearance is measured in world metres. The character may retain bank or
+    // pitch on landing, or be rotated/teleported by gallery/reset consumers.
+    let world_up_local = player_transform
+        .to_matrix()
+        .inverse()
+        .transform_vector3(Vec3::Y);
+    for (entity, scene) in &scenes {
+        if scene.role == AuthoredVisualSceneRole::PlayerRuntime
+            && let Ok(mut transform) = transforms.p1().get_mut(entity)
+        {
+            transform.translation =
+                authored_player_scene_transform().translation + world_up_local * state.offset_m;
+        }
+    }
     let grounded = controller.mode == FlightMode::Grounded;
     let (min_clearance_m, vertex_count) = if grounded {
         sole_clearance(
@@ -104,12 +118,12 @@ pub(crate) fn align_authored_player_grounding(
         if scene.role == AuthoredVisualSceneRole::PlayerRuntime
             && let Ok(mut transform) = transforms.p1().get_mut(entity)
         {
-            transform.translation.y =
-                authored_player_scene_transform().translation.y + state.offset_m;
+            transform.translation =
+                authored_player_scene_transform().translation + world_up_local * state.offset_m;
         }
     }
     for mut glider in &mut gliders {
-        glider.grounding_offset_y = state.offset_m;
+        glider.grounding_offset = world_up_local * state.offset_m;
     }
     // Reread the corrected visible hierarchy; do not report the requested
     // correction as if it were an independently observed contact.
@@ -402,6 +416,127 @@ mod tests {
     }
 
     #[test]
+    fn actual_gallery_root_rotations_ground_soles_after_each_teleport() {
+        let route = SkyRoute::default();
+        let plan = nau_engine::world::IslandReviewPlan::from_route(&route);
+        let (mut world, player, scene, glider, parts) = fixture_world(Vec3::ZERO);
+        let mut schedule = Schedule::default();
+        schedule.add_systems(
+            (
+                align_authored_player_grounding,
+                reapply_authored_glider_pose,
+            )
+                .chain(),
+        );
+        for island in plan.islands {
+            let mut pose = island.views[0];
+            pose.player_position.y = route.ground_at(pose.player_position).floor_y;
+            *world.get_mut::<Transform>(player).unwrap() =
+                Transform::from_translation(pose.player_position)
+                    .looking_at(pose.camera_target, Vec3::Y);
+            let context = PlayerPoseContext::new(
+                FlightMode::Grounded,
+                Vec3::ZERO,
+                FlightInput::default(),
+                0.0,
+            );
+            for (entity, part) in &parts {
+                let posed = part_pose_with_context(part, context, 0.25);
+                let mut transform = world.get_mut::<Transform>(*entity).unwrap();
+                transform.translation = posed.translation;
+                transform.rotation = posed.rotation;
+            }
+            schedule.run(&mut world);
+            let diagnostic = *world.resource::<GroundedFootContactDiagnostics>();
+            assert!(
+                diagnostic.ready && diagnostic.support_gap_m.abs() < 0.001,
+                "{}: {diagnostic:?}",
+                island.island_name
+            );
+            let actual_clearance = world.run_system_once(actual_sole_vertex_clearance).unwrap();
+            assert!(
+                (-0.003..0.05).contains(&actual_clearance),
+                "{} actual vertices {actual_clearance}",
+                island.island_name
+            );
+            assert_eq!(
+                world.get::<Transform>(player).unwrap().translation,
+                pose.player_position
+            );
+            let frame_offset = world.get::<Transform>(scene).unwrap().translation
+                - authored_player_scene_transform().translation;
+            let glider_offset = world
+                .get::<AuthoredGliderPose>(glider)
+                .unwrap()
+                .grounding_offset;
+            assert!(frame_offset.distance(glider_offset) < 0.0001);
+        }
+    }
+
+    #[test]
+    fn banked_landing_keeps_world_vertical_contact_and_shared_glider_frame() {
+        let route = SkyRoute::default();
+        let position = route.playtest_reset_position();
+        let (mut world, player, scene, glider, parts) = fixture_world(position);
+        let context = PlayerPoseContext::new(
+            FlightMode::Grounded,
+            Vec3::new(0.0, 0.0, -8.0),
+            FlightInput::default(),
+            0.0,
+        )
+        .with_landing_recovery(0.2, 14.0);
+        for (entity, part) in &parts {
+            let posed = part_pose_with_context(part, context, 1.0);
+            let mut transform = world.get_mut::<Transform>(*entity).unwrap();
+            transform.translation = posed.translation;
+            transform.rotation = posed.rotation;
+        }
+        let mut schedule = Schedule::default();
+        schedule.add_systems(
+            (
+                align_authored_player_grounding,
+                reapply_authored_glider_pose,
+            )
+                .chain(),
+        );
+        for (pitch, bank) in [(0.0, 0.5), (0.0, -0.5), (0.35, 0.25), (0.0, 0.0)] {
+            let root = Transform::from_translation(position).with_rotation(
+                Quat::from_rotation_y(0.7)
+                    * Quat::from_rotation_x(pitch)
+                    * Quat::from_rotation_z(bank),
+            );
+            *world.get_mut::<Transform>(player).unwrap() = root;
+            schedule.run(&mut world);
+            let diagnostic = *world.resource::<GroundedFootContactDiagnostics>();
+            assert!(
+                diagnostic.ready && diagnostic.support_gap_m.abs() < 0.001,
+                "pitch {pitch}, bank {bank}: {diagnostic:?}"
+            );
+            let actual_clearance = world.run_system_once(actual_sole_vertex_clearance).unwrap();
+            assert!(
+                (-0.003..0.05).contains(&actual_clearance),
+                "pitch {pitch}, bank {bank}: {actual_clearance}"
+            );
+            assert_eq!(*world.get::<Transform>(player).unwrap(), root);
+            let offset = world.get::<Transform>(scene).unwrap().translation
+                - authored_player_scene_transform().translation;
+            assert!(
+                offset.distance(
+                    world
+                        .get::<AuthoredGliderPose>(glider)
+                        .unwrap()
+                        .grounding_offset
+                ) < 0.0001
+            );
+            let world_offset = root.to_matrix().transform_vector3(offset);
+            assert!(
+                world_offset.x.abs() < 0.0001 && world_offset.z.abs() < 0.0001,
+                "{world_offset}"
+            );
+        }
+    }
+
+    #[test]
     fn landing_recovery_feet_over_edge_keep_authoritative_island_support() {
         let position = Vec3::new(71.642_81, 27.872_957, 0.0);
         let (mut world, player, scene, _, parts) = fixture_world(position);
@@ -508,15 +643,15 @@ mod tests {
                         position,
                         "visual correction must not move physics"
                     );
-                    let frame_offset = world.get::<Transform>(scene).unwrap().translation.y
-                        - authored_player_scene_transform().translation.y;
+                    let frame_offset = world.get::<Transform>(scene).unwrap().translation
+                        - authored_player_scene_transform().translation;
                     assert!(
                         (world
                             .get::<AuthoredGliderPose>(glider)
                             .unwrap()
-                            .grounding_offset_y
+                            .grounding_offset
                             - frame_offset)
-                            .abs()
+                            .length()
                             < 0.0001
                     );
                 }

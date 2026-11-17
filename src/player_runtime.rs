@@ -78,7 +78,7 @@ pub(crate) struct AuthoredGliderPose {
     smoothed_scale: Vec3,
     smoothing_initialized: bool,
     last_smoothed_time_secs: Option<f32>,
-    pub(crate) grounding_offset_y: f32,
+    pub(crate) grounding_offset: Vec3,
 }
 
 impl AuthoredGliderPose {
@@ -92,7 +92,7 @@ impl AuthoredGliderPose {
             smoothed_scale: base_transform.scale,
             smoothing_initialized: false,
             last_smoothed_time_secs: None,
-            grounding_offset_y: 0.0,
+            grounding_offset: Vec3::ZERO,
         }
     }
 
@@ -1239,7 +1239,7 @@ fn apply_authored_glider_pose_smoothing(
 }
 
 fn reapply_smoothed_authored_glider_pose(glider: &AuthoredGliderPose, transform: &mut Transform) {
-    transform.translation = glider.smoothed_translation + Vec3::Y * glider.grounding_offset_y;
+    transform.translation = glider.smoothed_translation + glider.grounding_offset;
     transform.rotation = glider.smoothed_rotation;
     transform.scale = glider.smoothed_scale;
 }
