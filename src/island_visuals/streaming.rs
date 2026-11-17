@@ -181,6 +181,48 @@ fn mesh_handle_for_entry(
     )
 }
 
+fn admit_island_visual_entry(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    state: &mut IslandStreamState,
+    entry: &IslandVisualEntry,
+) {
+    match state.spawned.get(&entry.key).copied() {
+        Some(entity) => insert_island_visual_components(commands, meshes, state, entity, entry),
+        None => {
+            let entity = spawn_island_visual_entry(commands, meshes, state, entry, true);
+            state.spawned.insert(entry.key, entity);
+        }
+    }
+    state.visual_resident.insert(entry.key);
+}
+
+fn retire_island_visual_entry(
+    commands: &mut Commands,
+    state: &mut IslandStreamState,
+    entry: &IslandVisualEntry,
+    entity: Entity,
+) {
+    if reset_destination_proxy_is_resident(entry) {
+        remove_island_visual_components(commands, entity, entry);
+    } else {
+        commands.entity(entity).despawn();
+        state.spawned.remove(&entry.key);
+    }
+    state.visual_resident.remove(&entry.key);
+}
+
+fn replacement_shell_layer(
+    layer: super::types::IslandVisualLayer,
+) -> Option<super::types::IslandVisualLayer> {
+    use super::types::IslandVisualLayer;
+    match layer {
+        IslandVisualLayer::Terrain => Some(IslandVisualLayer::Impostor),
+        IslandVisualLayer::Impostor => Some(IslandVisualLayer::Terrain),
+        _ => None,
+    }
+}
+
 pub(crate) fn update_island_stream_visibility(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -194,124 +236,144 @@ pub(crate) fn update_island_stream_visibility(
     };
 
     let mut counts = IslandLodVisualCounts::default();
-    let mut desired_keys = std::mem::take(&mut stream_state.desired_keys_scratch);
-    desired_keys.clear();
     let mut stale_visuals = std::mem::take(&mut stream_state.stale_visuals_scratch);
     stale_visuals.clear();
+    let mut pending_visuals = std::mem::take(&mut stream_state.pending_visuals_scratch);
+    pending_visuals.clear();
     let mut spawned_visuals = 0;
     let mut despawned_visual_count = 0;
     let mut residency_cache = None;
 
-    for entry in &catalog.entries {
-        let visual_resident = island_visual_is_resident_cached(
+    for (index, entry) in catalog.entries.iter().enumerate() {
+        let desired_visual = island_visual_is_resident_cached(
             entry,
             player_transform.translation,
             &mut residency_cache,
         );
-        let entry_resident = visual_resident || reset_destination_proxy_is_resident(entry);
-
-        if !entry_resident {
-            counts.record(
-                entry.layer,
-                !stream_state.visual_resident.contains(&entry.key),
-            );
-            continue;
-        }
-
-        desired_keys.insert(entry.key);
+        let desired_entity = desired_visual || reset_destination_proxy_is_resident(entry);
+        let actual_visual = stream_state.visual_resident.contains(&entry.key);
         match stream_state.spawned.get(&entry.key).copied() {
-            None => {
-                if visual_resident {
-                    let applied_changes = spawned_visuals + despawned_visual_count;
-                    if !stream_change_budget_allows(diagnostics.initialized, applied_changes) {
-                        counts.record(entry.layer, true);
-                        continue;
-                    }
-                }
-
+            Some(entity) if !desired_entity || (!desired_visual && actual_visual) => {
+                stale_visuals.push((index, entity));
+            }
+            Some(_) if desired_visual && !actual_visual => pending_visuals.push(index),
+            None if desired_visual => pending_visuals.push(index),
+            None if desired_entity => {
                 let entity = spawn_island_visual_entry(
                     &mut commands,
                     &mut meshes,
                     &mut stream_state,
                     entry,
-                    visual_resident,
+                    false,
                 );
                 stream_state.spawned.insert(entry.key, entity);
-                if visual_resident {
-                    stream_state.visual_resident.insert(entry.key);
-                    if diagnostics.initialized {
-                        spawned_visuals += 1;
-                    }
-                }
             }
-            Some(entity)
-                if visual_resident && !stream_state.visual_resident.contains(&entry.key) =>
-            {
-                let applied_changes = spawned_visuals + despawned_visual_count;
-                if stream_change_budget_allows(diagnostics.initialized, applied_changes) {
-                    insert_island_visual_components(
-                        &mut commands,
-                        &mut meshes,
-                        &mut stream_state,
-                        entity,
-                        entry,
-                    );
-                    stream_state.visual_resident.insert(entry.key);
-                    if diagnostics.initialized {
-                        spawned_visuals += 1;
-                    }
-                }
-            }
-            Some(entity)
-                if !visual_resident && stream_state.visual_resident.contains(&entry.key) =>
-            {
-                let applied_changes = spawned_visuals + despawned_visual_count;
-                if stream_change_budget_allows(diagnostics.initialized, applied_changes) {
-                    remove_island_visual_components(&mut commands, entity, entry);
-                    stream_state.visual_resident.remove(&entry.key);
-                    if diagnostics.initialized {
-                        despawned_visual_count += 1;
-                    }
-                }
-            }
-            Some(_) => {}
+            _ => {}
         }
-        counts.record(
-            entry.layer,
-            !stream_state.visual_resident.contains(&entry.key),
-        );
+        counts.record(entry.layer, !actual_visual);
     }
 
-    stale_visuals.extend(
-        stream_state
-            .spawned
+    // Free obsolete detail first. Outgoing terrain then frees terrain residency
+    // before incoming islands replace their impostors with detailed shells.
+    stale_visuals.sort_unstable_by_key(|(index, _)| {
+        use super::types::IslandVisualLayer;
+        let entry = &catalog.entries[*index];
+        let priority = match entry.layer {
+            IslandVisualLayer::Terrain => 1,
+            IslandVisualLayer::Impostor => 2,
+            _ => 0,
+        };
+        (priority, entry.island.name, entry.key.index)
+    });
+    let mut stale_index = 0;
+    while stale_index < stale_visuals.len() {
+        let (entry_index, _) = stale_visuals[stale_index];
+        let entry = &catalog.entries[entry_index];
+        let replacement_layer = replacement_shell_layer(entry.layer);
+        let replacements = pending_visuals.iter().copied().filter(|index| {
+            let pending = &catalog.entries[*index];
+            Some(pending.layer) == replacement_layer && pending.island.name == entry.island.name
+        });
+        let replacement_count = if replacement_layer.is_some() {
+            replacements.clone().count()
+        } else {
+            0
+        };
+        let group_end = if replacement_count > 0 {
+            stale_index
+                + stale_visuals[stale_index..]
+                    .iter()
+                    .take_while(|(index, _)| {
+                        let candidate = &catalog.entries[*index];
+                        candidate.layer == entry.layer && candidate.island.name == entry.island.name
+                    })
+                    .count()
+        } else {
+            stale_index + 1
+        };
+        let retiring_visuals = stale_visuals[stale_index..group_end]
             .iter()
-            .filter_map(|(key, entity)| (!desired_keys.contains(key)).then_some((*key, *entity))),
-    );
-
-    for (key, entity) in stale_visuals.iter().copied() {
-        let visual_was_resident = stream_state.visual_resident.contains(&key);
+            .filter(|(index, _)| {
+                stream_state
+                    .visual_resident
+                    .contains(&catalog.entries[*index].key)
+            })
+            .count();
+        let changes = retiring_visuals + replacement_count;
         let applied_changes = spawned_visuals + despawned_visual_count;
-        if visual_was_resident
-            && !stream_change_budget_allows(diagnostics.initialized, applied_changes)
+        if diagnostics.initialized
+            && applied_changes + changes > ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
         {
             break;
         }
-
-        commands.entity(entity).despawn();
-        stream_state.spawned.remove(&key);
-        stream_state.visual_resident.remove(&key);
-        if visual_was_resident {
-            counts.record_resident_removal(key.layer);
+        // A whole old/new shell pair shares one frame's change budget. Keeping
+        // the old shell until this swap fits prevents holes during LOD handoff.
+        for (index, entity) in stale_visuals[stale_index..group_end].iter().copied() {
+            let retiring = &catalog.entries[index];
+            let was_visual = stream_state.visual_resident.contains(&retiring.key);
+            retire_island_visual_entry(&mut commands, &mut stream_state, retiring, entity);
+            if was_visual {
+                counts.record_resident_removal(retiring.layer);
+                if diagnostics.initialized {
+                    despawned_visual_count += 1;
+                }
+            }
         }
-        if visual_was_resident && diagnostics.initialized {
-            despawned_visual_count += 1;
+        for index in replacements.take(replacement_count) {
+            let incoming = &catalog.entries[index];
+            admit_island_visual_entry(&mut commands, &mut meshes, &mut stream_state, incoming);
+            counts.record_resident_admission(incoming.layer);
+            if diagnostics.initialized {
+                spawned_visuals += 1;
+            }
+        }
+        stale_index = group_end;
+    }
+
+    // Only fill new residency after obsolete residency has drained. Spending the
+    // full budget on additions first lets the previous scene remain indefinitely.
+    if stale_index == stale_visuals.len() {
+        for index in pending_visuals.iter().copied() {
+            let entry = &catalog.entries[index];
+            if stream_state.visual_resident.contains(&entry.key) {
+                continue;
+            }
+            let applied_changes = spawned_visuals + despawned_visual_count;
+            if !stream_change_budget_allows(diagnostics.initialized, applied_changes) {
+                break;
+            }
+            admit_island_visual_entry(&mut commands, &mut meshes, &mut stream_state, entry);
+            counts.record_resident_admission(entry.layer);
+            if diagnostics.initialized {
+                spawned_visuals += 1;
+            }
         }
     }
 
     stale_visuals.clear();
-    stream_state.desired_keys_scratch = desired_keys;
+    pending_visuals.clear();
     stream_state.stale_visuals_scratch = stale_visuals;
+    stream_state.pending_visuals_scratch = pending_visuals;
 
     let stream_changes = spawned_visuals + despawned_visual_count;
     diagnostics.counts = counts;
@@ -477,6 +539,41 @@ mod tests {
         );
     }
 
+    fn assert_every_island_has_one_complete_shell(world: &World) {
+        let mut shells = std::collections::HashMap::<&str, [usize; 4]>::new();
+        let state = world.resource::<IslandStreamState>();
+        for entry in &world.resource::<IslandVisualCatalog>().entries {
+            let offset = match entry.layer {
+                IslandVisualLayer::Terrain => 0,
+                IslandVisualLayer::Impostor => 2,
+                _ => continue,
+            };
+            let shell = shells.entry(entry.island.name).or_default();
+            shell[offset] += 1;
+            if let Some(entity) = state.spawned.get(&entry.key)
+                && world.get::<Mesh3d>(*entity).is_some()
+            {
+                shell[offset + 1] += 1;
+            }
+        }
+        for (
+            island,
+            [
+                terrain_total,
+                terrain_actual,
+                impostor_total,
+                impostor_actual,
+            ],
+        ) in shells
+        {
+            assert!(
+                (terrain_actual == terrain_total && impostor_actual == 0)
+                    || (impostor_actual == impostor_total && terrain_actual == 0),
+                "{island} lost its complete shell during LOD handoff: terrain {terrain_actual}/{terrain_total}, impostor {impostor_actual}/{impostor_total}"
+            );
+        }
+    }
+
     #[test]
     fn residency_telemetry_matches_applied_spawns_and_retained_visuals_during_budgeted_transitions()
     {
@@ -493,6 +590,12 @@ mod tests {
         ] {
             for index in 0..ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET + 3 {
                 let mut entry = resident_entry(index);
+                const ISLAND_NAMES: [&str; 7] = [
+                    "stream-a", "stream-b", "stream-c", "stream-d", "stream-e", "stream-f",
+                    "stream-g",
+                ];
+                entry.island.name = ISLAND_NAMES[index % ISLAND_NAMES.len()];
+                entry.key.island_name = entry.island.name;
                 entry.layer = layer;
                 entry.key.layer = layer;
                 entry.mesh = Some(mesh.clone());
@@ -532,18 +635,25 @@ mod tests {
             .translation = Vec3::splat(100_000.0);
         app.update();
         assert_residency_counts_match_render_components(app.world_mut());
+        assert_every_island_has_one_complete_shell(app.world());
         let counts = app.world().resource::<IslandStreamDiagnostics>().counts;
         assert_eq!(
-            counts.visible_terrain_count,
-            ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET + 3
+            counts.resident_count(),
+            4 * (ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET + 3)
+                - ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
         );
-        assert_eq!(
-            counts.visible_impostor_count,
-            ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
-        );
+        assert_eq!(counts.visible_impostor_count, 0);
         for _ in 0..7 {
             app.update();
             assert_residency_counts_match_render_components(app.world_mut());
+            assert_every_island_has_one_complete_shell(app.world());
+            assert!(
+                app.world()
+                    .resource::<IslandStreamDiagnostics>()
+                    .counts
+                    .resident_count()
+                    <= 4 * (ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET + 3)
+            );
             assert!(
                 app.world()
                     .resource::<IslandStreamDiagnostics>()
@@ -559,6 +669,209 @@ mod tests {
             counts.visible_impostor_count,
             ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET + 3
         );
+        app.world_mut()
+            .get_mut::<Transform>(player)
+            .unwrap()
+            .translation = Vec3::ZERO;
+        for _ in 0..8 {
+            app.update();
+            assert_residency_counts_match_render_components(app.world_mut());
+            assert_every_island_has_one_complete_shell(app.world());
+        }
+        assert_eq!(
+            app.world()
+                .resource::<IslandStreamDiagnostics>()
+                .counts
+                .visible_terrain_count,
+            ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET + 3
+        );
+    }
+
+    fn real_route_streaming_world(route: &SkyRoute) -> (World, Entity, Schedule) {
+        use crate::generated_content::{IslandDetailMaterials, WaterSurfaceMaterials};
+        let material = Handle::<StandardMaterial>::default();
+        let surface = Handle::<SurfaceMaterial>::default();
+        let detail_materials = IslandDetailMaterials {
+            trunk: material.clone(),
+            foliage: material.clone(),
+            ground_cover: material.clone(),
+            stone: material.clone(),
+        };
+        let water_materials = WaterSurfaceMaterials {
+            body: surface.clone(),
+            foam: surface.clone(),
+            mist: material.clone(),
+        };
+        let mut catalog = IslandVisualCatalog::default();
+        let mut content = crate::content_diagnostics::IslandContentDiagnostics::default();
+        let mut meshes = Assets::<Mesh>::default();
+        for (index, island) in route.islands().iter().copied().enumerate() {
+            super::super::queue_sky_island(
+                &mut catalog,
+                &mut content,
+                &mut meshes,
+                surface.clone(),
+                material.clone(),
+                material.clone(),
+                material.clone(),
+                material.clone(),
+                detail_materials.clone(),
+                material.clone(),
+                water_materials.clone(),
+                index,
+                island,
+            );
+        }
+        let mut world = World::new();
+        let state = spawn_initial_island_visuals(
+            &mut world.commands(),
+            &mut meshes,
+            &catalog,
+            START_POSITION,
+        );
+        world.flush();
+        world.insert_resource(meshes);
+        world.insert_resource(catalog);
+        world.insert_resource(state);
+        world.insert_resource(IslandStreamDiagnostics {
+            initialized: true,
+            ..default()
+        });
+        let player = world
+            .spawn((Player, Transform::from_translation(START_POSITION)))
+            .id();
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_island_stream_visibility);
+        (world, player, schedule)
+    }
+
+    fn assert_streaming_limits(
+        world: &mut World,
+        thresholds: nau_engine::eval::EvalThresholds,
+    ) -> [usize; 3] {
+        let actual = assert_streaming_invariants(world);
+        assert!(actual[0] <= thresholds.max_visible_island_terrain_count);
+        assert!(actual[1] <= thresholds.max_visible_island_detail_count);
+        assert!(actual[2] <= thresholds.max_resident_island_visual_count);
+        actual
+    }
+
+    fn assert_streaming_invariants(world: &mut World) -> [usize; 3] {
+        let diagnostics = *world.resource::<IslandStreamDiagnostics>();
+        let counts = diagnostics.counts;
+        let actual_meshes = world.query::<&Mesh3d>().iter(world).count();
+        assert_eq!(counts.resident_count(), actual_meshes);
+        assert_every_island_has_one_complete_shell(world);
+        assert!(
+            diagnostics.visibility_changes_this_frame <= ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
+        );
+        [
+            counts.visible_terrain_count,
+            counts.visible_detail_count,
+            counts.resident_count(),
+        ]
+    }
+
+    fn assert_streaming_settled(world: &World, position: Vec3) {
+        let expected = world
+            .resource::<IslandVisualCatalog>()
+            .entries
+            .iter()
+            .filter(|entry| island_visual_is_resident(entry, position))
+            .map(|entry| entry.key)
+            .collect();
+        assert_eq!(
+            world.resource::<IslandStreamState>().visual_resident,
+            expected
+        );
+    }
+
+    #[test]
+    fn real_gallery_and_resets_preserve_budgets_and_continuous_movement_preserves_shells() {
+        use nau_engine::eval::{ISLAND_HERO_GALLERY, PLAYTEST_RESET, scenario_named};
+        use nau_engine::world::IslandReviewPlan;
+        let route = SkyRoute::default();
+        let gallery = scenario_named(ISLAND_HERO_GALLERY).unwrap();
+        let timing = gallery.island_hero_gallery_timing().unwrap();
+        let plan = IslandReviewPlan::from_route(&route);
+        let (mut world, player, mut schedule) = real_route_streaming_world(&route);
+        let mut gallery_max = [0; 3];
+        for island in &plan.islands {
+            for view in island.views {
+                world.get_mut::<Transform>(player).unwrap().translation = view.player_position;
+                for frame in 0..timing.frames_per_view {
+                    schedule.run(&mut world);
+                    let actual = assert_streaming_limits(&mut world, gallery.thresholds);
+                    gallery_max = std::array::from_fn(|i| gallery_max[i].max(actual[i]));
+                    if frame == timing.settle_frames {
+                        assert_streaming_settled(&world, view.player_position);
+                    }
+                }
+            }
+        }
+        println!("gallery actual terrain/detail/total maxima: {gallery_max:?}");
+
+        // Move continuously through the same full-content route, then reverse
+        // before arrivals settle and reset repeatedly across the archipelago.
+        let reset_position = route.playtest_reset_position();
+        let mut movement_max = [0; 3];
+        let counts = world.resource::<IslandStreamDiagnostics>().counts;
+        let mut previous = [
+            counts.visible_terrain_count,
+            counts.visible_detail_count,
+            counts.resident_count(),
+        ];
+        let mut max_desired_detail = (0, Vec3::ZERO);
+        for frame in 0..2400 {
+            let position = START_POSITION.lerp(reset_position, frame as f32 / 2399.0);
+            world.get_mut::<Transform>(player).unwrap().translation = position;
+            let mut desired = IslandLodVisualCounts::default();
+            for entry in &world.resource::<IslandVisualCatalog>().entries {
+                desired.record(entry.layer, !island_visual_is_resident(entry, position));
+            }
+            let desired_counts = [
+                desired.visible_terrain_count,
+                desired.visible_detail_count,
+                desired.resident_count(),
+            ];
+            if desired.visible_detail_count > max_desired_detail.0 {
+                max_desired_detail = (desired.visible_detail_count, position);
+            }
+            schedule.run(&mut world);
+            let actual = assert_streaming_invariants(&mut world);
+            for i in 0..actual.len() {
+                assert!(
+                    actual[i] <= previous[i].max(desired_counts[i]),
+                    "streaming must not amplify prior residency or current content demand"
+                );
+            }
+            previous = actual;
+            movement_max = std::array::from_fn(|i| movement_max[i].max(actual[i]));
+        }
+        println!(
+            "continuous movement actual terrain/detail/total maxima: {movement_max:?}; largest authored detail demand {max_desired_detail:?}"
+        );
+
+        let (mut world, player, mut schedule) = real_route_streaming_world(&route);
+        let reset_thresholds = scenario_named(PLAYTEST_RESET).unwrap().thresholds;
+        let mut reset_max = [0; 3];
+        for frame in 0..120 {
+            let position = if frame % 12 < 6 {
+                reset_position
+            } else {
+                START_POSITION
+            };
+            world.get_mut::<Transform>(player).unwrap().translation = position;
+            schedule.run(&mut world);
+            let actual = assert_streaming_limits(&mut world, reset_thresholds);
+            reset_max = std::array::from_fn(|i| reset_max[i].max(actual[i]));
+        }
+        for _ in 0..32 {
+            schedule.run(&mut world);
+            assert_streaming_limits(&mut world, reset_thresholds);
+        }
+        assert_streaming_settled(&world, START_POSITION);
+        println!("interrupted resets actual terrain/detail/total maxima: {reset_max:?}");
     }
 
     #[test]

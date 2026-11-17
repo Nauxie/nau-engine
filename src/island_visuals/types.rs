@@ -80,6 +80,25 @@ impl IslandLodVisualCounts {
         }
     }
 
+    pub(super) fn record_resident_admission(&mut self, layer: IslandVisualLayer) {
+        match layer {
+            IslandVisualLayer::Terrain => {
+                self.visible_terrain_count += 1;
+                self.hidden_terrain_count -= 1;
+            }
+            IslandVisualLayer::Detail | IslandVisualLayer::Vista => {
+                self.visible_detail_count += 1;
+                self.hidden_detail_count -= 1;
+            }
+            IslandVisualLayer::Beacon => self.visible_beacon_count += 1,
+            IslandVisualLayer::Impostor => {
+                self.visible_impostor_count += 1;
+                self.hidden_impostor_count -= 1;
+            }
+            IslandVisualLayer::Collision => {}
+        }
+    }
+
     pub(crate) fn resident_count(self) -> usize {
         self.visible_terrain_count
             + self.visible_detail_count
@@ -292,8 +311,8 @@ pub(crate) struct IslandStreamState {
     pub(super) spawned: HashMap<IslandVisualKey, Entity>,
     pub(super) visual_resident: HashSet<IslandVisualKey>,
     pub(super) loaded_meshes: HashMap<IslandVisualKey, Handle<Mesh>>,
-    pub(super) desired_keys_scratch: HashSet<IslandVisualKey>,
-    pub(super) stale_visuals_scratch: Vec<(IslandVisualKey, Entity)>,
+    pub(super) stale_visuals_scratch: Vec<(usize, Entity)>,
+    pub(super) pending_visuals_scratch: Vec<usize>,
 }
 
 impl IslandStreamState {
