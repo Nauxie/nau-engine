@@ -212,6 +212,33 @@ impl MovementScratch {
 }
 
 #[derive(SystemParam)]
+pub(crate) struct ManualFlightControls<'w, 's> {
+    keyboard: Res<'w, ButtonInput<KeyCode>>,
+    glider_deployed: Local<'s, bool>,
+}
+
+impl ManualFlightControls<'_, '_> {
+    fn flight_input(&mut self, controller: &mut FlightController) -> FlightInput {
+        if controller.mode == FlightMode::Grounded || self.keyboard.just_pressed(KeyCode::KeyR) {
+            *self.glider_deployed = false;
+        }
+        if self.keyboard.just_pressed(KeyCode::Space) && !self.keyboard.just_pressed(KeyCode::KeyR)
+        {
+            *self.glider_deployed = !*self.glider_deployed && controller.deploy_glider();
+        }
+        let mut input = keyboard_flight_input(&self.keyboard);
+        input.glide = *self.glider_deployed;
+        input
+    }
+
+    fn clear_on_landing(&mut self, controller: &FlightController) {
+        if controller.mode == FlightMode::Grounded {
+            *self.glider_deployed = false;
+        }
+    }
+}
+
+#[derive(SystemParam)]
 pub(crate) struct MovementCamera<'w, 's> {
     control: Res<'w, CameraControlState>,
     diagnostics: Res<'w, CameraDiagnostics>,
@@ -321,7 +348,7 @@ pub(crate) fn update_route_objectives(
 
 pub(crate) fn fly_player(
     time: Res<Time>,
-    keyboard: Res<ButtonInput<KeyCode>>,
+    mut controls: ManualFlightControls,
     tuning: Res<FlightTuning>,
     camera: MovementCamera,
     mut world: MovementWorld,
@@ -355,7 +382,7 @@ pub(crate) fn fly_player(
         collision_diagnostics: &mut world.collision_diagnostics,
         wind_diagnostics: &mut world.wind_diagnostics,
     };
-    let input = keyboard_flight_input(&keyboard);
+    let input = controls.flight_input(&mut controller);
 
     {
         let mut kinematics = PlayerKinematics {
@@ -373,6 +400,7 @@ pub(crate) fn fly_player(
         );
         *world.displacement_diagnostics = displacement.into();
     }
+    controls.clear_on_landing(&controller);
     record_animation_context(
         &mut animation,
         input,
@@ -624,7 +652,9 @@ pub(crate) fn keyboard_flight_input(keyboard: &ButtonInput<KeyCode>) -> FlightIn
         backward: keyboard.pressed(KeyCode::KeyS),
         left: keyboard.pressed(KeyCode::KeyA),
         right: keyboard.pressed(KeyCode::KeyD),
-        glide: keyboard.pressed(KeyCode::Space),
+        // Deployment is resolved once per frame by ManualFlightControls. The
+        // camera also reads these directional keys without consuming toggles.
+        glide: false,
         dive: keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight),
         launch: keyboard.just_pressed(KeyCode::KeyE),
     }
@@ -1316,6 +1346,343 @@ mod tests {
         PoseReadabilityPartTransforms, Side, pose_readability_metrics_from_part_transforms,
     };
     use std::time::Duration;
+
+    struct ManualInputApp {
+        app: App,
+        player: Entity,
+        window: Entity,
+    }
+
+    impl ManualInputApp {
+        fn new(grounded: bool) -> Self {
+            use crate::game_ui_runtime::{
+                GameUiState, consume_menu_glider_input, gameplay_input_active,
+                handle_game_menu_buttons, sync_game_ui, toggle_game_menu,
+            };
+            let route = SkyRoute::default();
+            let position = if grounded {
+                route.playtest_reset_position()
+            } else {
+                Vec3::new(0.0, 100.0, 0.0)
+            };
+            let mut app = App::new();
+            app.add_plugins((MinimalPlugins, bevy::input::InputPlugin))
+                .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                    Duration::from_secs_f64(1.0 / 60.0),
+                ))
+                .insert_resource(route)
+                .insert_resource(FlightTuning::default())
+                .insert_resource(CameraControlState::default())
+                .insert_resource(CameraDiagnostics::default())
+                .insert_resource(PowerUpCollectionState::default())
+                .insert_resource(PlayerDisplacementDiagnostics::default())
+                .insert_resource(WorldCollisionDiagnostics::default())
+                .insert_resource(WindForceDiagnostics::default())
+                .insert_resource(GameUiState::new(true))
+                .insert_resource(crate::camera_runtime::MouseLookState::default())
+                .configure_sets(
+                    Update,
+                    (
+                        crate::GameSet::Ui,
+                        crate::GameSet::Movement.run_if(gameplay_input_active),
+                    )
+                        .chain(),
+                )
+                .add_systems(
+                    Update,
+                    (
+                        toggle_game_menu,
+                        handle_game_menu_buttons,
+                        sync_game_ui,
+                        consume_menu_glider_input,
+                    )
+                        .chain()
+                        .in_set(crate::GameSet::Ui),
+                )
+                .add_systems(
+                    Update,
+                    (reset_player_to_playtest_position, fly_player)
+                        .chain()
+                        .in_set(crate::GameSet::Movement),
+                );
+            let player = app
+                .world_mut()
+                .spawn((
+                    Player,
+                    Transform::from_translation(position),
+                    Velocity::default(),
+                    FlightController {
+                        mode: if grounded {
+                            FlightMode::Grounded
+                        } else {
+                            FlightMode::Airborne
+                        },
+                        ..default()
+                    },
+                    AnimationState::default(),
+                ))
+                .id();
+            // Real Bevy keyboard messages and the production menu/movement systems;
+            // Window is data only: this test never creates a native window.
+            let window = app
+                .world_mut()
+                .spawn((
+                    Window {
+                        visible: false,
+                        focused: false,
+                        ..default()
+                    },
+                    bevy::window::CursorOptions::default(),
+                    bevy::window::PrimaryWindow,
+                ))
+                .id();
+            app.update();
+            Self {
+                app,
+                player,
+                window,
+            }
+        }
+
+        fn key(&mut self, key_code: KeyCode, state: bevy::input::ButtonState, repeat: bool) {
+            use bevy::input::keyboard::{Key, KeyboardInput};
+            let logical_key = match key_code {
+                KeyCode::Space => Key::Space,
+                KeyCode::Escape => Key::Escape,
+                KeyCode::KeyE => Key::Character("e".into()),
+                KeyCode::KeyR => Key::Character("r".into()),
+                _ => panic!("unsupported test key"),
+            };
+            self.app.world_mut().write_message(KeyboardInput {
+                key_code,
+                logical_key,
+                state,
+                text: None,
+                repeat,
+                window: self.window,
+            });
+        }
+
+        fn press(&mut self, key: KeyCode) {
+            self.key(key, bevy::input::ButtonState::Pressed, false);
+        }
+
+        fn release(&mut self, key: KeyCode) {
+            self.key(key, bevy::input::ButtonState::Released, false);
+        }
+
+        fn step(&mut self) {
+            self.app.update();
+        }
+
+        fn controller(&self) -> FlightController {
+            *self
+                .app
+                .world()
+                .get::<FlightController>(self.player)
+                .unwrap()
+        }
+
+        fn click_menu_button(&mut self, action: crate::game_ui_runtime::GameMenuAction) {
+            let world = self.app.world_mut();
+            let mut buttons = world.query::<(Entity, &crate::game_ui_runtime::GameMenuAction)>();
+            let entity = buttons
+                .iter(world)
+                .find(|(_, candidate)| **candidate == action)
+                .unwrap()
+                .0;
+            *world.get_mut::<Interaction>(entity).unwrap() = Interaction::Pressed;
+        }
+    }
+
+    #[test]
+    fn manual_space_tap_toggles_glider_without_hold_or_key_repeat() {
+        let mut game = ManualInputApp::new(false);
+        game.press(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        for _ in 0..5 {
+            game.key(KeyCode::Space, bevy::input::ButtonState::Pressed, true);
+            game.step();
+            assert_eq!(game.controller().mode, FlightMode::Gliding);
+        }
+        game.release(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        assert!(
+            game.app
+                .world()
+                .get::<AnimationState>(game.player)
+                .unwrap()
+                .last_input
+                .glide
+        );
+        game.press(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Airborne);
+        assert!(
+            !game
+                .app
+                .world()
+                .get::<AnimationState>(game.player)
+                .unwrap()
+                .last_input
+                .glide
+        );
+        game.release(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Airborne);
+    }
+
+    #[test]
+    fn manual_ground_space_does_not_prearm_and_airborne_launch_tap_opens_immediately() {
+        let mut game = ManualInputApp::new(true);
+        game.press(KeyCode::Space);
+        game.press(KeyCode::KeyE);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Launching);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Launching);
+        assert!(game.controller().launch_timer > 0.0);
+        assert!(!game.controller().launch_available);
+        game.release(KeyCode::Space);
+        game.step();
+        game.press(KeyCode::Space);
+        let velocity_before = game.app.world().get::<Velocity>(game.player).unwrap().0;
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        assert_eq!(game.controller().launch_timer, 0.0);
+        assert!(!game.controller().launch_available);
+        assert!(game.app.world().get::<Velocity>(game.player).unwrap().0.y < velocity_before.y);
+    }
+
+    #[test]
+    fn manual_ground_space_held_through_takeoff_never_opens_glider() {
+        let mut game = ManualInputApp::new(true);
+        game.press(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Grounded);
+        game.press(KeyCode::KeyE);
+        game.step();
+        for _ in 0..20 {
+            game.step();
+        }
+        assert_eq!(game.controller().mode, FlightMode::Airborne);
+    }
+
+    #[test]
+    fn manual_landing_clears_glider_before_relaunch_with_space_held() {
+        let mut game = ManualInputApp::new(false);
+        game.press(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        let floor = game
+            .app
+            .world()
+            .resource::<SkyRoute>()
+            .ground_at(Vec3::ZERO)
+            .floor_y;
+        game.app
+            .world_mut()
+            .get_mut::<Transform>(game.player)
+            .unwrap()
+            .translation = Vec3::new(0.0, floor + 0.001, 0.0);
+        game.app
+            .world_mut()
+            .get_mut::<Velocity>(game.player)
+            .unwrap()
+            .0 = Vec3::NEG_Y * 2.0;
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Grounded);
+        game.press(KeyCode::KeyE);
+        game.step();
+        for _ in 0..20 {
+            game.step();
+        }
+        assert_eq!(game.controller().mode, FlightMode::Airborne);
+    }
+
+    #[test]
+    fn manual_reset_with_space_and_launch_held_clears_glider_state() {
+        let mut game = ManualInputApp::new(false);
+        game.press(KeyCode::Space);
+        game.press(KeyCode::KeyE);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        game.press(KeyCode::KeyR);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Grounded);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Grounded);
+        game.release(KeyCode::KeyE);
+        game.step();
+        game.press(KeyCode::KeyE);
+        game.step();
+        for _ in 0..20 {
+            game.step();
+        }
+        assert_eq!(game.controller().mode, FlightMode::Airborne);
+    }
+
+    #[test]
+    fn manual_pause_resume_consumes_menu_space_including_the_resume_frame() {
+        for resume_with_button in [false, true] {
+            let mut game = ManualInputApp::new(false);
+            game.press(KeyCode::Escape);
+            game.step();
+            game.release(KeyCode::Escape);
+            game.step();
+            assert!(game.app.world().resource::<Time<Virtual>>().is_paused());
+            game.press(KeyCode::Space);
+            if resume_with_button {
+                game.click_menu_button(crate::game_ui_runtime::GameMenuAction::Resume);
+            } else {
+                game.press(KeyCode::Escape);
+            }
+            game.step();
+            assert!(!game.app.world().resource::<Time<Virtual>>().is_paused());
+            assert_eq!(game.controller().mode, FlightMode::Airborne);
+            game.step();
+            assert_eq!(game.controller().mode, FlightMode::Airborne);
+            game.release(KeyCode::Space);
+            game.step();
+            game.press(KeyCode::Space);
+            game.step();
+            assert_eq!(game.controller().mode, FlightMode::Gliding);
+        }
+    }
+
+    #[test]
+    fn manual_controls_menu_space_does_not_queue_and_pause_preserves_open_glider() {
+        let mut game = ManualInputApp::new(false);
+        game.press(KeyCode::Space);
+        game.step();
+        game.release(KeyCode::Space);
+        game.press(KeyCode::Escape);
+        game.step();
+        game.release(KeyCode::Escape);
+        game.click_menu_button(crate::game_ui_runtime::GameMenuAction::Controls);
+        game.step();
+        let world = game.app.world_mut();
+        let mut text = world.query::<&Text>();
+        assert!(
+            text.iter(world)
+                .any(|text| text.0 == "SPACE  |  Tap to open / close glider")
+        );
+        game.press(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        game.click_menu_button(crate::game_ui_runtime::GameMenuAction::Back);
+        game.step();
+        game.press(KeyCode::Escape);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        game.release(KeyCode::Space);
+        game.step();
+        game.press(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Airborne);
+    }
 
     #[test]
     fn body_local_pose_velocity_uses_body_local_lateral_axis() {

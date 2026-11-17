@@ -218,7 +218,12 @@ fn main() -> AppExit {
         )
         .add_systems(
             Update,
-            (toggle_game_menu, handle_game_menu_buttons, sync_game_ui)
+            (
+                toggle_game_menu,
+                handle_game_menu_buttons,
+                sync_game_ui,
+                consume_menu_glider_input,
+            )
                 .chain()
                 .in_set(GameSet::Ui),
         )

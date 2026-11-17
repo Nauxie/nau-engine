@@ -22,7 +22,7 @@ The fantasy is:
 - `S`: brake/backward input
 - `A`: steer/strafe left
 - `D`: steer/strafe right
-- `Space`: deploy glider while airborne
+- `Space`: tap to open / close the glider while airborne
 - `E`: launch upward from the ground
 - `Shift`: dive
 
@@ -33,7 +33,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - `Grounded`: player is at or near floor height.
 - `Launching`: short lockout after a valid launch.
 - `Airborne`: falling or moving through air without glider.
-- `Gliding`: glider input is held while airborne and not launching. Holding dive while gliding keeps the glider deployed and enters a high-sink glider-dive pose.
+- `Gliding`: a Space tap opens the glider while airborne; it stays open until the next tap or landing/reset. A ground or menu tap does not arm deployment for later. A tap during the airborne launch phase opens it immediately, ending the remaining launch phase without adding velocity. Holding dive while gliding keeps the glider deployed and enters a high-sink glider-dive pose.
 
 ## Current Rules
 

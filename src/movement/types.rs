@@ -31,6 +31,18 @@ impl Default for FlightController {
 }
 
 impl FlightController {
+    /// Opens the glider after takeoff without adding velocity or restoring launch.
+    /// Explicit deployment ends the remaining launch phase immediately. Scripted
+    /// level inputs can still use their existing launch-to-glide timing.
+    pub fn deploy_glider(&mut self) -> bool {
+        if self.mode == FlightMode::Grounded {
+            return false;
+        }
+        self.launch_timer = 0.0;
+        self.mode = FlightMode::Gliding;
+        true
+    }
+
     pub fn step_landing_recovery(&mut self, dt: f32) {
         self.landing_recovery_timer = (self.landing_recovery_timer - dt.max(0.0)).max(0.0);
         if self.landing_recovery_timer <= f32::EPSILON {

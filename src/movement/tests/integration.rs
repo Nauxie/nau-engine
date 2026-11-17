@@ -29,6 +29,66 @@ fn launch_only_fires_from_ground() {
 }
 
 #[test]
+fn explicit_glider_deployment_during_launch_preserves_impulse_and_cannot_relaunch() {
+    let tuning = FlightTuning::default();
+    let facing = Facing::new(Vec3::Z, Vec3::X);
+    let dt = 1.0 / 60.0;
+    let mut launched = step_flight(
+        default_state(),
+        FlightInput {
+            launch: true,
+            ..default()
+        },
+        facing,
+        &tuning,
+        dt,
+    );
+    let position = launched.position;
+    let velocity = launched.velocity;
+    let launch_cooldown = launched.controller.launch_cooldown_remaining;
+    assert!(launched.controller.launch_timer > 0.0);
+
+    assert!(launched.controller.deploy_glider());
+    assert_eq!(launched.position, position);
+    assert_eq!(launched.velocity, velocity);
+    assert_eq!(launched.controller.mode, FlightMode::Gliding);
+    assert_eq!(launched.controller.launch_timer, 0.0);
+    assert_eq!(
+        launched.controller.launch_cooldown_remaining,
+        launch_cooldown
+    );
+    assert!(!launched.controller.launch_available);
+
+    let gliding = step_flight(
+        launched,
+        FlightInput {
+            glide: true,
+            launch: true,
+            ..default()
+        },
+        facing,
+        &tuning,
+        dt,
+    );
+    let expected_vertical_speed =
+        (velocity.y - tuning.gravity * tuning.glide_gravity_scale * dt) * tuning.drag.powf(dt);
+    assert_eq!(gliding.controller.mode, FlightMode::Gliding);
+    assert!((gliding.velocity.y - expected_vertical_speed).abs() < 0.0001);
+    assert!((gliding.position.y - position.y - expected_vertical_speed * dt).abs() < 0.0001);
+    assert!(gliding.velocity.y < velocity.y);
+    assert!(!gliding.controller.launch_available);
+}
+
+#[test]
+fn explicit_glider_deployment_is_rejected_on_the_ground() {
+    let mut controller = FlightController::default();
+    assert!(!controller.deploy_glider());
+    assert_eq!(controller.mode, FlightMode::Grounded);
+    assert_eq!(controller.launch_timer, 0.0);
+    assert!(controller.launch_available);
+}
+
+#[test]
 fn running_launch_preserves_momentum_without_exceeding_assist_cap() {
     let tuning = FlightTuning::default();
     let facing = Facing::new(Vec3::Z, Vec3::X);

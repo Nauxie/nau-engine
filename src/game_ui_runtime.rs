@@ -88,6 +88,15 @@ pub(crate) fn gameplay_input_active(state: Res<GameUiState>) -> bool {
     !state.enabled || state.screen == GameMenuScreen::Closed
 }
 
+pub(crate) fn consume_menu_glider_input(
+    state: Res<GameUiState>,
+    mut keyboard: ResMut<ButtonInput<KeyCode>>,
+) {
+    if state.enabled && (state.screen != GameMenuScreen::Closed || state.is_changed()) {
+        keyboard.clear_just_pressed(KeyCode::Space);
+    }
+}
+
 pub(crate) fn toggle_game_menu(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut state: ResMut<GameUiState>,
@@ -335,7 +344,7 @@ fn spawn_game_menu_overlay(
                         panel.spawn(control_row("MOUSE", "Look when locked"));
                         panel.spawn(control_row("LEFT CLICK", "Lock cursor"));
                         panel.spawn(control_row("RIGHT MOUSE", "Hold to look"));
-                        panel.spawn(control_row("SPACE", "Deploy glider"));
+                        panel.spawn(control_row("SPACE", "Tap to open / close glider"));
                         panel.spawn(control_row("SHIFT", "Dive"));
                         panel.spawn(control_row("E", "Launch"));
                         panel.spawn(control_row("R", "Reset to main island"));
