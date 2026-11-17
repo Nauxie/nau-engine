@@ -130,7 +130,9 @@ pub(super) const CAMERA_MOUSE_CHECKPOINTS: &[EvalCheckpoint] = &[
         name: "yaw_check",
     },
     EvalCheckpoint {
-        frame: 120,
+        // Capture during pitch input while the horizon markers remain in view.
+        // The full downward sweep is still checked by the scenario's metrics.
+        frame: 100,
         name: "pitch_check",
     },
     EvalCheckpoint {

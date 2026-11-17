@@ -57,7 +57,7 @@ pub(super) fn ground_cover_blade_stats(mesh: &Mesh) -> GroundCoverBladeStats {
     let mut min_height_m = f32::INFINITY;
     let mut max_height_m = 0.0f32;
 
-    for blade in positions.chunks_exact(VERTICES_PER_GROUND_BLADE) {
+    for blade in positions.as_chunks::<VERTICES_PER_GROUND_BLADE>().0.iter() {
         let base_y = blade[0][1].min(blade[1][1]);
         let tip_y = blade[4][1];
         let height = (tip_y - base_y).max(0.0);

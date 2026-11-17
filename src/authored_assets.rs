@@ -27,3 +27,6 @@ pub(crate) use types::{
     AuthoredVisualScene, AuthoredVisualSceneRole, GeneratedPlayerPlaceholder,
     VisibleAuthoredWorldFixture, VisualAssetDiagnostics, VisualAssetRegistry,
 };
+
+#[cfg(test)]
+pub(crate) use animation::authored_player_pose_node_for_name;

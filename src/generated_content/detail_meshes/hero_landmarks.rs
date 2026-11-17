@@ -142,7 +142,9 @@ fn derive_hero_semantic_sample_local_positions(kind: IslandHeroLandmark) -> [Vec
         None => (0..positions.len()).collect::<Vec<_>>(),
     };
     let candidates = indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .filter_map(|triangle| {
             let a = Vec3::from_array(positions[triangle[0]]);
             let b = Vec3::from_array(positions[triangle[1]]);
@@ -1872,7 +1874,7 @@ mod tests {
         let mut mesh = HeroMesh::default();
         mesh.vertical_ring_blocks(Vec3::ZERO, 4.0, 0.2, segments, false);
 
-        for (segment, block_positions) in mesh.positions.chunks_exact(24).enumerate() {
+        for (segment, block_positions) in mesh.positions.as_chunks::<24>().0.iter().enumerate() {
             let angle = segment as f32 / segments as f32 * std::f32::consts::TAU;
             let tangent = Vec3::new(0.0, angle.cos(), -angle.sin());
             let radial = Vec3::new(0.0, angle.sin(), angle.cos());

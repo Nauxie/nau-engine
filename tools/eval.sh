@@ -34,6 +34,10 @@ if [[ "${no_screenshot_requested}" == "1" || "${screenshot_requested}" != "1" ]]
   extra_args+=(--eval-no-screenshot)
 fi
 
+if [[ "${NAU_EVAL_HIDDEN_WINDOW:-0}" == "1" ]]; then
+  extra_args+=(--eval-hidden-window)
+fi
+
 rm -f "${visual_audit_path}" "${marker_projection_audit_path}" "${semantic_scene_audit_path}" "${asset_audit_path}"
 
 if [[ "${no_screenshot_requested}" != "1" && "${screenshot_requested}" == "1" ]] && ! command -v jq >/dev/null 2>&1; then

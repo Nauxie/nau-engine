@@ -29,9 +29,6 @@ summary_tsv="${output_root}/perf_summary.tsv"
 interpretation_md="${output_root}/INTERPRETATION.md"
 host_snapshot_before="${output_root}/host_snapshot_before.txt"
 host_snapshot_after="${output_root}/host_snapshot_after.txt"
-repo_commit="$(nau_source_commit)"
-source_state="$(nau_source_state)"
-source_fingerprint="$(nau_source_fingerprint)"
 failed=0
 max_avg_frame_time_ms="${NAU_PERF_MAX_AVG_FRAME_TIME_MS:-24}"
 max_p95_frame_time_ms="${NAU_PERF_MAX_P95_FRAME_TIME_MS:-45}"
@@ -47,6 +44,17 @@ visible_window="${NAU_PERF_VISIBLE_WINDOW:-1}"
 capture_screenshot="${NAU_PERF_CAPTURE_SCREENSHOT:-0}"
 default_ignore_process_pattern="${NAU_PERF_DEFAULT_IGNORE_PROCESS_PATTERN-}"
 ignore_process_pattern="${NAU_PERF_IGNORE_PROCESS_PATTERN-${default_ignore_process_pattern}}"
+prepare_baseline_clock="${NAU_PERF_PREPARE_BASELINE_CLOCK:-0}"
+
+case "${prepare_baseline_clock}" in
+  0) clock_metadata="$(python3 "${script_dir}/perf_clock.py")" ;;
+  1) clock_metadata="$(python3 "${script_dir}/perf_clock.py" --prepare-baseline)" ;;
+  *) echo "NAU_PERF_PREPARE_BASELINE_CLOCK must be 0 or 1" >&2; exit 2 ;;
+esac
+# Record the actual instrumented source, including its deliberately dirty state.
+repo_commit="$(nau_source_commit)"
+source_state="$(nau_source_state)"
+source_fingerprint="$(nau_source_fingerprint)"
 
 case "${allow_busy_host}" in
   0 | 1) ;;
@@ -272,11 +280,12 @@ if [[ "${#summary_files[@]}" -eq 0 ]]; then
   exit 1
 fi
 
-jq -s \
+jq -L "${script_dir}" -s \
   --arg generated_at "${generated_at}" \
   --arg repo_commit "${repo_commit}" \
   --arg source_state "${source_state}" \
   --arg source_fingerprint "${source_fingerprint}" \
+  --argjson clock_metadata "${clock_metadata}" \
   --arg output_root "${output_root}" \
   --arg eval_command "${eval_command}" \
   --arg host_snapshot_before "${host_snapshot_before}" \
@@ -287,7 +296,8 @@ jq -s \
   --argjson max_avg_frame_time_ms "${max_avg_frame_time_ms}" \
   --argjson max_p95_frame_time_ms "${max_p95_frame_time_ms}" \
   --argjson max_p99_frame_time_ms "${max_p99_frame_time_ms}" \
-  '($status_tsv
+  'include "perf_timing";
+  ($status_tsv
     | split("\n")
     | .[1:]
     | map(select(length > 0) | split("\t") | {key: .[0], value: (.[1] | tonumber)})
@@ -298,6 +308,10 @@ jq -s \
     repo_commit: $repo_commit,
     source_state: $source_state,
     source_fingerprint: $source_fingerprint,
+    frame_time_clock: $clock_metadata.frame_time_clock,
+    frame_time_scope: $clock_metadata.frame_time_scope,
+    startup_warmup_frames: $clock_metadata.startup_warmup_frames,
+    clock_instrumentation: $clock_metadata,
     mode: "release",
     output_root: $output_root,
     eval_command: $eval_command,
@@ -310,25 +324,25 @@ jq -s \
       | . as $summary
       | ([
           {
-            name: "avg_frame_time_budget",
-            passed: (.metrics.avg_frame_time_ms <= $max_avg_frame_time_ms),
-            value: .metrics.avg_frame_time_ms,
+            name: "avg_runtime_frame_time_budget",
+            passed: ((.metrics.avg_runtime_frame_time_ms | type) == "number" and .metrics.avg_runtime_frame_time_ms > 0 and .metrics.avg_runtime_frame_time_ms <= $max_avg_frame_time_ms),
+            value: .metrics.avg_runtime_frame_time_ms,
             comparator: "<=",
             threshold: $max_avg_frame_time_ms,
             unit: "ms"
           },
           {
-            name: "p95_frame_time_budget",
-            passed: (.metrics.p95_frame_time_ms <= $max_p95_frame_time_ms),
-            value: .metrics.p95_frame_time_ms,
+            name: "p95_runtime_frame_time_budget",
+            passed: ((.metrics.p95_runtime_frame_time_ms | type) == "number" and .metrics.p95_runtime_frame_time_ms > 0 and .metrics.p95_runtime_frame_time_ms <= $max_p95_frame_time_ms),
+            value: .metrics.p95_runtime_frame_time_ms,
             comparator: "<=",
             threshold: $max_p95_frame_time_ms,
             unit: "ms"
           },
           {
-            name: "p99_frame_time_budget",
-            passed: (.metrics.p99_frame_time_ms <= $max_p99_frame_time_ms),
-            value: .metrics.p99_frame_time_ms,
+            name: "p99_runtime_frame_time_budget",
+            passed: ((.metrics.p99_runtime_frame_time_ms | type) == "number" and .metrics.p99_runtime_frame_time_ms > 0 and .metrics.p99_runtime_frame_time_ms <= $max_p99_frame_time_ms),
+            value: .metrics.p99_runtime_frame_time_ms,
             comparator: "<=",
             threshold: $max_p99_frame_time_ms,
             unit: "ms"
@@ -338,6 +352,7 @@ jq -s \
       | {
         scenario,
         eval_status: $eval_status,
+        eval_passed: .passed,
         passed: (.passed and all($perf_budget_checks[]; .passed) and ($eval_status == 0)),
         frame_count,
         duration_secs,
@@ -345,6 +360,12 @@ jq -s \
         p95_frame_time_ms: .metrics.p95_frame_time_ms,
         p99_frame_time_ms: .metrics.p99_frame_time_ms,
         max_frame_time_ms: .metrics.max_frame_time_ms,
+        avg_runtime_frame_time_ms: .metrics.avg_runtime_frame_time_ms,
+        p95_runtime_frame_time_ms: .metrics.p95_runtime_frame_time_ms,
+        p99_runtime_frame_time_ms: .metrics.p99_runtime_frame_time_ms,
+        max_runtime_frame_time_ms: .metrics.max_runtime_frame_time_ms,
+        eval_artifact_frame_time_sample_count: .metrics.eval_artifact_frame_time_sample_count,
+        max_eval_artifact_frame_time_ms: .metrics.max_eval_artifact_frame_time_ms,
         frame_time_count_metrics_available: (.metrics | has("runtime_frames_over_33_34ms")),
         frames_over_16_67ms: (.metrics.frames_over_16_67ms // null),
         frames_over_33_34ms: (.metrics.frames_over_33_34ms // null),
@@ -389,7 +410,15 @@ jq -s \
         ))
       }
     ]
-  }' "${summary_files[@]}" > "${summary_json}"
+  }
+  | . as $capture
+  | .scenarios |= map(
+      if ($capture | perf_phase_valid) and perf_scenario_timing_valid then .
+      else .passed = false
+        | .failed_checks += [{name: "runtime_timing_evidence", value: 0,
+            comparator: "==", threshold: 1, unit: "valid"}]
+      end
+    )' "${summary_files[@]}" > "${summary_json}"
 
 if ! jq -e 'all(.scenarios[]; .passed == true)' "${summary_json}" >/dev/null; then
   failed=1
@@ -400,10 +429,14 @@ jq -r '
     "scenario",
     "passed",
     "eval_status",
-    "avg_frame_time_ms",
-    "p95_frame_time_ms",
-    "p99_frame_time_ms",
-    "max_frame_time_ms",
+    "avg_runtime_frame_time_ms",
+    "p95_runtime_frame_time_ms",
+    "p99_runtime_frame_time_ms",
+    "max_runtime_frame_time_ms",
+    "all_frame_avg_frame_time_ms",
+    "all_frame_p95_frame_time_ms",
+    "all_frame_p99_frame_time_ms",
+    "all_frame_max_frame_time_ms",
     "runtime_frame_time_sample_count",
     "runtime_frames_over_33_34ms",
     "runtime_frames_over_50ms",
@@ -424,6 +457,10 @@ jq -r '
       .scenario,
       .passed,
       .eval_status,
+      .avg_runtime_frame_time_ms,
+      .p95_runtime_frame_time_ms,
+      .p99_runtime_frame_time_ms,
+      .max_runtime_frame_time_ms,
       .avg_frame_time_ms,
       .p95_frame_time_ms,
       .p99_frame_time_ms,
@@ -450,7 +487,8 @@ cat > "${interpretation_md}" <<'MARKDOWN'
 
 This is a release-only app-path baseline. Use it to compare broad runtime cost before and after a focused change, not as a production renderer benchmark.
 
-- Use `avg_frame_time_ms` for sustained cost and `p95`/`p99`/`max` for hitch risk.
+- Sustained-play budgets and comparisons use `avg_runtime_frame_time_ms`, `p95_runtime_frame_time_ms`, and `p99_runtime_frame_time_ms` after the existing 30-frame startup warmup. `frame_time_scope` and `startup_warmup_frames` must match; missing runtime fields never fall back to all-frame timing.
+- Existing `avg_frame_time_ms`/`p95_frame_time_ms`/`p99_frame_time_ms`/`max_frame_time_ms` retain all frames, including startup and eval artifacts. They remain visible as advisory comparisons; raw summaries are retained for startup investigation.
 - Default frame-time budgets are avg <= 24ms, p95 <= 45ms, and p99 <= 80ms.
   Override with `NAU_PERF_MAX_AVG_FRAME_TIME_MS`, `NAU_PERF_MAX_P95_FRAME_TIME_MS`, or `NAU_PERF_MAX_P99_FRAME_TIME_MS` only when intentionally gathering non-gating data.
 - `eval_status` must be 0; nonzero process exits after writing a summary still fail the gate.
@@ -464,6 +502,7 @@ This is a release-only app-path baseline. Use it to compare broad runtime cost b
 - Compare release perf summaries:
   `./tools/compare_perf_summaries.sh target/eval/perf_baseline/main/perf_summary.json target/eval/perf_baseline/candidate/perf_summary.json`
 - Compare only summaries captured with matching `visible_window` and `capture_screenshot` settings.
+- Comparisons require matching `frame_time_clock` metadata. CI runs this collector from the candidate checkout for both revisions, and sets `NAU_PERF_PREPARE_BASELINE_CLOCK=1` only in the disposable baseline worktree. That exact measurement-only patch replaces the legacy capped virtual clock with the real clock; `clock_instrumentation` records the original/measured file hashes and patch name, while source identity records the actual dirty worktree.
 - Foreground scripted profile gates:
   `./tools/scripted_play_profile.sh target/eval/play_profile/main_scripted_freeflight.json`
   `./tools/scripted_play_profile.sh target/eval/play_profile/candidate_scripted_freeflight.json`

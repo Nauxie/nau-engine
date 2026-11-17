@@ -12,9 +12,9 @@ use crate::environment_visuals::{
     wind_responsive_visual_metrics, wind_visual_quality_visible,
 };
 use crate::eval_runtime::{EvalMovementBasis, EvalRun};
+use crate::movement_facing;
 use crate::player_runtime::AuthoredGliderPose;
 use crate::surface_material::SurfaceMaterial;
-use crate::{grounded_visual_foot_gap_m, movement_facing};
 use bevy::ecs::system::SystemParam;
 use bevy::mesh::Indices;
 use bevy::prelude::*;
@@ -23,8 +23,8 @@ use nau_engine::animation::{
     CharacterPart, CharacterPartRole, DIVE_MAX_HEAD_GAZE_DOWN_ALIGNMENT,
     DIVE_MIN_HEAD_GAZE_DOWN_ALIGNMENT, MIN_KEY_POSE_READABILITY_SCORE, PlayerPoseContext,
     PlayerPoseIntent, PoseReadabilityMetrics, PoseReadabilityPartTransforms, ScarfSegment, Side,
-    body_local_pose_velocity, key_pose_readability_score, pose_readability_metrics,
-    pose_readability_metrics_from_part_transforms,
+    body_local_pose_velocity, grounded_stride_foot_travel_m, key_pose_readability_score,
+    pose_readability_metrics, pose_readability_metrics_from_part_transforms,
 };
 use nau_engine::camera::{
     CameraControlState, CameraInput, camera_distance, camera_pitch_degrees,
@@ -493,15 +493,27 @@ impl WindVisualFrameSnapshot {
 struct VisiblePosePartTransform {
     translation: Vec3,
     global_translation: Vec3,
+    radius_scale: f32,
     base_delta: Vec3,
     rotation: Quat,
 }
 
 impl VisiblePosePartTransform {
-    fn from_part(part: &CharacterPart, transform: &Transform, global_translation: Vec3) -> Self {
+    fn from_part(
+        part: &CharacterPart,
+        transform: &Transform,
+        global_transform: GlobalTransform,
+    ) -> Self {
+        let basis = global_transform.affine().matrix3;
+        let radius_scale = basis
+            .x_axis
+            .length()
+            .max(basis.y_axis.length())
+            .max(basis.z_axis.length());
         Self {
             translation: transform.translation,
-            global_translation,
+            global_translation: global_transform.translation(),
+            radius_scale,
             base_delta: transform.translation - part.base_translation,
             rotation: transform.rotation,
         }
@@ -709,6 +721,18 @@ impl VisiblePosePartTransforms {
             self.left_lower_leg.zip(self.right_lower_leg),
             self.left_foot.zip(self.right_foot),
         );
+        metrics.grounded_stride_foot_travel_m =
+            self.left_foot
+                .zip(self.right_foot)
+                .map_or(0.0, |(left, right)| {
+                    grounded_stride_foot_travel_m(
+                        context.intent(),
+                        self.left_leg.global_translation,
+                        left.global_translation,
+                        self.right_leg.global_translation,
+                        right.global_translation,
+                    )
+                });
         metrics.landing_distal_foot_split_m = distal_split_m;
         let landing_readability_split_m = metrics.landing_foot_split_m.max(distal_split_m);
         if landing_readability_split_m > metrics.landing_foot_split_m {
@@ -862,7 +886,11 @@ fn limb_clearance(
     a_radius_m: f32,
     b_radius_m: f32,
 ) -> f32 {
-    a.global_translation.distance(b.global_translation) - a_radius_m - b_radius_m
+    // Centers and the authored proxy radii must share world units. Character
+    // normalization changes both; keeping unscaled radii invents penetration.
+    a.global_translation.distance(b.global_translation)
+        - a_radius_m * a.radius_scale
+        - b_radius_m * b.radius_scale
 }
 
 fn nearest_island_edge_metrics(islands: &[SkyIsland], position: Vec3) -> (f32, bool, bool) {
@@ -878,7 +906,7 @@ fn nearest_island_edge_metrics(islands: &[SkyIsland], position: Vec3) -> (f32, b
     )
 }
 
-pub(crate) fn collect_eval_frame_time(time: Res<Time>, mut run: ResMut<EvalRun>) {
+pub(crate) fn collect_eval_frame_time(time: Res<Time<bevy::time::Real>>, mut run: ResMut<EvalRun>) {
     if run.finalized {
         return;
     }
@@ -1001,12 +1029,17 @@ pub(crate) fn collect_eval_metrics(
         scene.lift_fields.iter().copied(),
         scene.wind_fields.iter().copied(),
     );
-    let player_ground = scene.route.ground_at(transform.translation);
-    let visual_foot_gap_m = grounded_visual_foot_gap_m(
-        transform.translation.y,
-        player_ground.floor_y,
-        controller.mode,
-    );
+    let visual_foot_gap_m = if controller.mode == FlightMode::Grounded {
+        scene
+            .foot_contact
+            .as_ref()
+            .filter(|contact| contact.ready && contact.sole_vertex_count > 0)
+            .map_or(if run.frame >= 30 { 1.0 } else { 0.0 }, |contact| {
+                contact.support_gap_m
+            })
+    } else {
+        0.0
+    };
     let scenario_target = run.scenario.target_island_name;
     let target_distance_m = scene
         .route
@@ -1092,7 +1125,7 @@ pub(crate) fn collect_eval_metrics(
                     (
                         node,
                         transform,
-                        global_transform.translation(),
+                        global_transform,
                         visibility,
                         inherited_visibility,
                     )
@@ -1844,7 +1877,8 @@ fn visible_generated_pose_part_set<'a>(
             continue;
         }
 
-        let pose_part = VisiblePosePartTransform::from_part(part, transform, transform.translation);
+        let pose_part =
+            VisiblePosePartTransform::from_part(part, transform, GlobalTransform::from(*transform));
         match part.role {
             CharacterPartRole::Hips => parts_set.hips = Some(pose_part),
             CharacterPartRole::Torso => parts_set.torso = Some(pose_part),
@@ -1879,7 +1913,7 @@ fn visible_authored_pose_readability_metrics<'a>(
         Item = (
             &'a AuthoredPlayerPoseNode,
             &'a Transform,
-            Vec3,
+            GlobalTransform,
             Option<&'a Visibility>,
             Option<&'a InheritedVisibility>,
         ),
@@ -1894,7 +1928,7 @@ fn visible_authored_pose_part_set<'a>(
         Item = (
             &'a AuthoredPlayerPoseNode,
             &'a Transform,
-            Vec3,
+            GlobalTransform,
             Option<&'a Visibility>,
             Option<&'a InheritedVisibility>,
         ),
@@ -1902,12 +1936,12 @@ fn visible_authored_pose_part_set<'a>(
 ) -> VisiblePosePartSet {
     let mut parts_set = VisiblePosePartSet::default();
 
-    for (node, transform, global_translation, visibility, inherited_visibility) in nodes {
+    for (node, transform, global_transform, visibility, inherited_visibility) in nodes {
         if !authored_pose_part_visible(visibility, inherited_visibility) {
             continue;
         }
         let pose_part =
-            VisiblePosePartTransform::from_part(&node.part, transform, global_translation);
+            VisiblePosePartTransform::from_part(&node.part, transform, global_transform);
         match node.part.role {
             CharacterPartRole::Hips => parts_set.hips = Some(pose_part),
             CharacterPartRole::Torso => parts_set.torso = Some(pose_part),
@@ -2268,6 +2302,50 @@ mod tests {
     use nau_engine::animation::LANDING_MAX_FOOT_SPLIT_READABILITY_M;
     use nau_engine::movement::{Facing, FlightInput, FlightMode};
     use nau_engine::world::SkyRoute;
+
+    #[test]
+    fn eval_timing_records_stalls_beyond_the_gameplay_delta_limit() {
+        use crate::eval_runtime::EvalOptions;
+        use bevy::time::{Real, TimePlugin, TimeUpdateStrategy, Virtual};
+        use std::time::Duration;
+
+        let output_dir =
+            std::env::temp_dir().join(format!("nau-real-frame-time-{}", std::process::id()));
+        let mut run = EvalRun::new(EvalOptions {
+            scenario: nau_engine::eval::scenario_named("camera_mouse_control").unwrap(),
+            output_dir: output_dir.clone(),
+            capture_screenshot: false,
+            visible_window: false,
+            hidden_window: true,
+        })
+        .unwrap();
+        run.frame = EVAL_FRAME_TIME_WARMUP_FRAMES;
+        let mut app = App::new();
+        app.add_plugins(TimePlugin)
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
+            .insert_resource(run)
+            .add_systems(Update, collect_eval_frame_time);
+        app.update();
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+            600,
+        )));
+        app.update();
+
+        assert_eq!(
+            app.world().resource::<Time<Real>>().delta(),
+            Duration::from_millis(600)
+        );
+        assert_eq!(
+            app.world().resource::<Time<Virtual>>().delta(),
+            Duration::from_millis(250)
+        );
+        let run = app.world().resource::<EvalRun>();
+        run.write_summary().unwrap();
+        let summary: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&run.summary_path).unwrap()).unwrap();
+        assert_eq!(summary["metrics"]["max_runtime_frame_time_ms"], 600.0);
+        std::fs::remove_dir_all(output_dir).unwrap();
+    }
 
     #[test]
     fn runtime_asset_cost_cache_counts_each_material_collection_once() {
@@ -3149,9 +3227,15 @@ mod tests {
             ),
         ];
         let metrics = visible_authored_pose_readability_metrics(
-            nodes
-                .iter()
-                .map(|(node, transform)| (node, transform, transform.translation, None, None)),
+            nodes.iter().map(|(node, transform)| {
+                (
+                    node,
+                    transform,
+                    GlobalTransform::from(*transform),
+                    None,
+                    None,
+                )
+            }),
             context,
         )
         .expect("visible authored pose metrics");
@@ -3178,7 +3262,7 @@ mod tests {
         let parts = visible_authored_pose_part_set(std::iter::once((
             &node,
             &transform,
-            transform.translation,
+            GlobalTransform::from(transform),
             Some(&visibility),
             Some(&inherited_visibility),
         )));
@@ -4217,6 +4301,7 @@ mod tests {
         overlapping_parts.left_arm = Some(VisiblePosePartTransform {
             translation: Vec3::new(-0.08, 1.08, 0.0),
             global_translation: Vec3::new(-0.08, 1.08, 0.0),
+            radius_scale: 1.0,
             base_delta: Vec3::ZERO,
             rotation: Quat::IDENTITY,
         });
@@ -4239,6 +4324,51 @@ mod tests {
         assert!(readable.min_pose_limb_clearance_m > 0.04);
         assert!(overlapping.min_pose_limb_clearance_m < 0.0);
         assert!(overlapping.max_pose_limb_penetration_m > 0.0);
+    }
+
+    #[test]
+    fn world_clearance_scales_authored_radii_with_actual_hierarchy() {
+        let torso = CharacterPart::new(CharacterPartRole::Torso, Vec3::ZERO, Quat::IDENTITY);
+        let leg = CharacterPart::new(
+            CharacterPartRole::Leg(Side::Left),
+            Vec3::ZERO,
+            Quat::IDENTITY,
+        );
+        for scale in [0.4, crate::player_runtime::AUTHORED_PLAYER_SCALE, 1.0, 1.7] {
+            let parent = GlobalTransform::from(Transform {
+                translation: Vec3::new(10.0, 5.0, -2.0),
+                rotation: Quat::from_rotation_y(0.7) * Quat::from_rotation_z(0.2),
+                scale: Vec3::splat(scale),
+            });
+            let torso_local = Transform::default();
+            let leg_local = Transform::from_xyz(0.0, -0.6, 0.0);
+            let a = VisiblePosePartTransform::from_part(
+                &torso,
+                &torso_local,
+                parent.mul_transform(torso_local),
+            );
+            let b = VisiblePosePartTransform::from_part(
+                &leg,
+                &leg_local,
+                parent.mul_transform(leg_local),
+            );
+            assert!((a.radius_scale - scale).abs() < 0.0001);
+            let clearance = limb_clearance(a, b, 0.26, 0.11);
+            assert!(
+                (clearance - (0.6 - 0.26 - 0.11) * scale).abs() < 0.0001,
+                "scale {scale}: {clearance}"
+            );
+            let intersecting_local = Transform::from_xyz(0.0, -0.2, 0.0);
+            let intersecting = VisiblePosePartTransform::from_part(
+                &leg,
+                &intersecting_local,
+                parent.mul_transform(intersecting_local),
+            );
+            assert!(
+                limb_clearance(a, intersecting, 0.26, 0.11) < 0.0,
+                "scaled real overlap must still fail"
+            );
+        }
     }
 
     #[test]
@@ -4294,36 +4424,42 @@ mod tests {
             torso: Some(VisiblePosePartTransform {
                 translation: Vec3::new(0.0, 1.08, 0.0),
                 global_translation: Vec3::new(0.0, 1.08, 0.0),
+                radius_scale: 1.0,
                 base_delta: Vec3::ZERO,
                 rotation: torso_rotation,
             }),
             head: Some(VisiblePosePartTransform {
                 translation: Vec3::new(0.0, 1.80, -0.02),
                 global_translation: Vec3::new(0.0, 1.80, -0.02),
+                radius_scale: 1.0,
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),
             left_arm: Some(VisiblePosePartTransform {
                 translation: Vec3::new(-0.55, 1.17, 0.0),
                 global_translation: Vec3::new(-0.55, 1.17, 0.0),
+                radius_scale: 1.0,
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),
             right_arm: Some(VisiblePosePartTransform {
                 translation: Vec3::new(0.55, 1.17, 0.0),
                 global_translation: Vec3::new(0.55, 1.17, 0.0),
+                radius_scale: 1.0,
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),
             left_leg: Some(VisiblePosePartTransform {
                 translation: left_leg_base + left_leg_translation,
                 global_translation: left_leg_base + left_leg_translation,
+                radius_scale: 1.0,
                 base_delta: left_leg_translation,
                 rotation: Quat::IDENTITY,
             }),
             right_leg: Some(VisiblePosePartTransform {
                 translation: Vec3::new(0.22, 0.32, 0.02),
                 global_translation: Vec3::new(0.22, 0.32, 0.02),
+                radius_scale: 1.0,
                 base_delta: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }),

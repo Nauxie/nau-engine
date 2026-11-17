@@ -162,21 +162,22 @@ fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
     assert!(!workflow.contains("NAU_PERF_SUMMARY_MAX_COUNT_REGRESSION_RATIO: \"2.0\""));
     assert!(workflow.contains("Compare PR performance with base"));
     assert!(workflow.contains("github.event.pull_request.base.sha"));
-    assert!(workflow.contains("./tools/perf_baseline.sh"));
+    assert!(workflow.contains("${GITHUB_WORKSPACE}/tools/perf_baseline.sh"));
+    assert!(workflow.contains("NAU_PERF_PREPARE_BASELINE_CLOCK=1"));
     assert!(workflow.contains("camera_mouse_control"));
     assert!(workflow.contains("./tools/compare_perf_summaries.sh"));
     assert!(workflow.contains(") || baseline_status=$?"));
-    assert!(workflow.contains("camera_mouse_control || candidate_status=$?"));
+    assert!(workflow.contains("\"${scenarios[@]}\" || candidate_status=$?"));
     assert!(workflow.contains("\"${candidate_output}/perf_summary.json\" || comparison_status=$?"));
     assert!(workflow.contains(
-        "if (( baseline_status == 0 && candidate_status == 0 && comparison_status != 0 )); then"
+        "if (( baseline_status <= 1 && candidate_status <= 1 && baseline_capture_status == 0 && candidate_capture_status == 0 && comparison_status != 0 )); then"
     ));
     assert!(workflow.contains("retry_attempted=1"));
     assert!(workflow.contains(
         "if (( retry_candidate_status != 0 || retry_baseline_status != 0 || retry_comparison_status != 0 )); then"
     ));
     assert!(workflow.contains(
-        "if (( baseline_status != 0 || candidate_status != 0 || final_comparison_status != 0 )); then"
+        "if (( baseline_status > 1 || candidate_status > 1 || baseline_capture_status != 0 || candidate_capture_status != 0 || final_comparison_status != 0 )); then"
     ));
     let retry_candidate = workflow
         .find("NAU_PERF_OUTPUT_DIR=\"${retry_candidate_output}\"")
@@ -203,10 +204,10 @@ fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
     assert!(comparison.contains("printf 'null\\n'"));
     assert!(comparison.contains("fraction <= max_fraction ? \"true\" : \"false\""));
     assert!(comparison.contains(
-        "compare_metric \"${scenario}\" \"avg_frame_time_ms\" \\\n    \"${scenario_avg_frame_time_ratio}\""
+        "compare_metric \"${scenario}\" \"avg_runtime_frame_time_ms\" \\\n    \"${scenario_avg_frame_time_ratio}\""
     ));
     assert!(comparison.contains(
-        "compare_metric \"${scenario}\" \"p95_frame_time_ms\" \\\n    \"${max_frame_time_ratio}\""
+        "compare_metric \"${scenario}\" \"p95_runtime_frame_time_ms\" \\\n    \"${max_frame_time_ratio}\""
     ));
     assert!(comparison.contains(
         "compare_optional_hitch_metric \"${scenario}\" \"runtime_frames_over_50ms\" \\\n    \"${max_count_ratio}\""
@@ -232,11 +233,16 @@ fn performance_comparison_scenario(
         "scenario": name,
         "eval_status": 0,
         "passed": true,
-        "frame_count": runtime_samples + 4,
+        "frame_count": runtime_samples + 29,
+        "eval_artifact_frame_time_sample_count": 0,
         "avg_frame_time_ms": avg_frame_time_ms,
         "p95_frame_time_ms": p95_frame_time_ms,
         "p99_frame_time_ms": 90.0,
         "max_frame_time_ms": 120.0,
+        "avg_runtime_frame_time_ms": avg_frame_time_ms,
+        "p95_runtime_frame_time_ms": p95_frame_time_ms,
+        "p99_runtime_frame_time_ms": 90.0,
+        "max_runtime_frame_time_ms": 120.0,
         "runtime_frame_time_sample_count": runtime_samples,
         "runtime_frames_over_33_34ms": runtime_hitch_counts[0],
         "runtime_frames_over_50ms": runtime_hitch_counts[1],
@@ -292,6 +298,9 @@ fn write_performance_comparison_summary(
         root.join("perf_summary.json"),
         serde_json::json!({
             "mode": "release",
+            "frame_time_clock": "real",
+            "frame_time_scope": "runtime_after_startup_warmup",
+            "startup_warmup_frames": 30,
             "visible_window": true,
             "capture_screenshot": false,
             "scenarios": scenarios
@@ -299,6 +308,20 @@ fn write_performance_comparison_summary(
         .to_string(),
     )
     .expect("write performance comparison fixture");
+}
+
+#[test]
+fn performance_measurement_tools_reject_invalid_evidence_and_preserve_retry_budgets() {
+    let output = Command::new("python3")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tools/tests/perf_measurement_test.py"))
+        .output()
+        .expect("run performance measurement integration fixtures");
+    assert!(
+        output.status.success(),
+        "performance measurement fixtures failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn run_performance_comparison(
@@ -372,7 +395,7 @@ fn performance_comparison_distinguishes_bulk_cadence_from_tail_and_structure() {
             251,
         ),
     ];
-    write_performance_comparison_summary(&baseline_root, baseline_scenarios, false);
+    write_performance_comparison_summary(&baseline_root, baseline_scenarios, true);
     write_performance_comparison_summary(&candidate_root, candidate_scenarios.clone(), true);
 
     let noisy_bucket = run_performance_comparison(&baseline_root, &candidate_root, None);

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 pub(crate) use nau_engine::world::{
-    WorldCollisionProxy, WorldCollisionProxyKind, resolve_world_collisions,
+    WorldCollisionProxy, WorldCollisionProxyKind, resolve_world_collisions_slice,
     terrain_body_collision_proxies, terrain_rim_collision_proxies,
 };
 

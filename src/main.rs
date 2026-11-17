@@ -11,6 +11,7 @@ mod game_ui_runtime;
 mod generated_content;
 mod island_visuals;
 mod play_profile_runtime;
+mod player_grounding_runtime;
 mod player_runtime;
 mod power_up_runtime;
 mod scene_setup_runtime;
@@ -51,9 +52,10 @@ use nau_engine::movement::FlightTuning;
 use nau_engine::world::SkyIsland;
 use nau_engine::world::SkyRoute;
 use play_profile_runtime::{PlayProfileRun, collect_play_profile_sample};
+use player_grounding_runtime::{GroundedFootContactDiagnostics, align_authored_player_grounding};
 pub(crate) use player_runtime::{
     Player, PlayerDisplacementDiagnostics, RouteObjectiveTracker, WindForceDiagnostics,
-    grounded_visual_foot_gap_m, keyboard_flight_input, movement_facing,
+    keyboard_flight_input, movement_facing,
 };
 use player_runtime::{
     animate_character, eval_fly_player, eval_reset_player_to_playtest_position, fly_player,
@@ -185,6 +187,7 @@ fn main() -> AppExit {
         .insert_resource(RouteObjectiveTracker::default())
         .insert_resource(PowerUpCollectionState::default())
         .insert_resource(PlayerDisplacementDiagnostics::default())
+        .insert_resource(GroundedFootContactDiagnostics::default())
         .insert_resource(WorldCollisionDiagnostics::default())
         .insert_resource(WorldFloorDiagnostics::default())
         .insert_resource(WindForceDiagnostics::default())
@@ -215,7 +218,12 @@ fn main() -> AppExit {
         )
         .add_systems(
             Update,
-            (toggle_game_menu, handle_game_menu_buttons, sync_game_ui)
+            (
+                toggle_game_menu,
+                handle_game_menu_buttons,
+                sync_game_ui,
+                consume_menu_glider_input,
+            )
                 .chain()
                 .in_set(GameSet::Ui),
         )
@@ -237,6 +245,7 @@ fn main() -> AppExit {
                 update_authored_player_animation,
                 apply_authored_player_pose_nodes,
                 apply_authored_glider_pose,
+                align_authored_player_grounding,
                 update_player_airflow_visuals,
                 follow_camera,
                 direct_plateau_vista_camera,
@@ -365,8 +374,9 @@ fn eval_gameplay_movement_active(run: Res<EvalRun>) -> bool {
 }
 
 fn primary_window(eval: Option<&EvalOptions>, center_on_primary_monitor: bool) -> Window {
-    let hidden_metric_eval =
-        eval.is_some_and(|options| !options.capture_screenshot && !options.visible_window);
+    let hidden_eval = eval.is_some_and(|options| {
+        options.hidden_window || (!options.capture_screenshot && !options.visible_window)
+    });
 
     Window {
         title: "The NAU Engine Flight Sandbox".into(),
@@ -379,8 +389,8 @@ fn primary_window(eval: Option<&EvalOptions>, center_on_primary_monitor: bool) -
         present_mode: PresentMode::AutoVsync,
         composite_alpha_mode: CompositeAlphaMode::Opaque,
         transparent: false,
-        visible: !hidden_metric_eval,
-        focused: !hidden_metric_eval,
+        visible: !hidden_eval,
+        focused: !hidden_eval,
         ..default()
     }
 }

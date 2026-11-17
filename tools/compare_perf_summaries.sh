@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "jq is required to compare perf summaries" >&2
@@ -242,6 +243,10 @@ validate_summary() {
   if [[ "${mode}" != "release" || "${has_scenarios}" != "true" ]]; then
     failed=1
   fi
+  if ! jq -L "${script_dir}" -e 'include "perf_timing"; perf_timing_valid' "${summary}" >/dev/null; then
+    echo "${label}: missing or invalid runtime timing fields, phase, or sample coverage" >&2
+    failed=1
+  fi
 
   for scenario in "${required_scenarios[@]}"; do
     if scenario_exists "${summary}" "${scenario}"; then
@@ -278,6 +283,35 @@ validate_capture_modes_match() {
     failed=1
   fi
   if [[ "${baseline_capture_screenshot}" != "${candidate_capture_screenshot}" ]]; then
+    failed=1
+  fi
+}
+
+validate_frame_time_clocks_match() {
+  local baseline_clock
+  local candidate_clock
+  baseline_clock="$(summary_string "${baseline_summary}" "frame_time_clock")"
+  candidate_clock="$(summary_string "${candidate_summary}" "frame_time_clock")"
+  printf 'frame_time_clock\tbaseline=%s\tcandidate=%s\n' "${baseline_clock}" "${candidate_clock}"
+  if [[ "${baseline_clock}" != "real" || "${candidate_clock}" != "real" ]]; then
+    echo "perf comparison requires fresh uncapped real-clock captures for both revisions" >&2
+    failed=1
+  fi
+}
+
+validate_frame_time_phases_match() {
+  local baseline_scope
+  local candidate_scope
+  local baseline_warmup
+  local candidate_warmup
+  baseline_scope="$(summary_string "${baseline_summary}" "frame_time_scope")"
+  candidate_scope="$(summary_string "${candidate_summary}" "frame_time_scope")"
+  baseline_warmup="$(jq -r '.startup_warmup_frames // "missing"' "${baseline_summary}")"
+  candidate_warmup="$(jq -r '.startup_warmup_frames // "missing"' "${candidate_summary}")"
+  printf 'frame_time_phase\tbaseline=%s\tcandidate=%s\tbaseline_warmup_frames=%s\tcandidate_warmup_frames=%s\n' \
+    "${baseline_scope}" "${candidate_scope}" "${baseline_warmup}" "${candidate_warmup}"
+  if [[ "${baseline_scope}" != "runtime_after_startup_warmup" || "${candidate_scope}" != "${baseline_scope}" || "${baseline_warmup}" != "30" || "${candidate_warmup}" != "${baseline_warmup}" ]]; then
+    echo "perf comparison requires matching known startup/runtime phases" >&2
     failed=1
   fi
 }
@@ -359,12 +393,13 @@ compare_advisory_metric() {
   local candidate_value
   local threshold
   local within_threshold
+  local display_key="${5:-${key}}"
 
   baseline_value="$(optional_scenario_metric "${baseline_summary}" "${scenario}" "${key}")"
   candidate_value="$(optional_scenario_metric "${candidate_summary}" "${scenario}" "${key}")"
   if [[ "${baseline_value}" == "null" || "${candidate_value}" == "null" ]]; then
     printf '%s\t%s_advisory\tbaseline=%s\tcandidate=%s\tgating=false\tstatus=missing_metric\n' \
-      "${scenario}" "${key}" "${baseline_value}" "${candidate_value}"
+      "${scenario}" "${display_key}" "${baseline_value}" "${candidate_value}"
     return
   fi
 
@@ -372,7 +407,7 @@ compare_advisory_metric() {
   within_threshold="$(passes_threshold "${candidate_value}" "${threshold}")"
 
   printf '%s\t%s_advisory\tbaseline=%s\tcandidate=%s\tmax_allowed=%s\twithin_threshold=%s\tgating=false\n' \
-    "${scenario}" "${key}" "${baseline_value}" "${candidate_value}" "${threshold}" "${within_threshold}"
+    "${scenario}" "${display_key}" "${baseline_value}" "${candidate_value}" "${threshold}" "${within_threshold}"
 }
 
 compare_optional_hitch_metric() {
@@ -459,6 +494,8 @@ compare_optional_hitch_metric() {
 validate_summary "baseline_summary" "${baseline_summary}"
 validate_summary "candidate_summary" "${candidate_summary}"
 validate_capture_modes_match
+validate_frame_time_clocks_match
+validate_frame_time_phases_match
 validate_host_snapshots "baseline_summary" "${baseline_summary}"
 validate_host_snapshots "candidate_summary" "${candidate_summary}"
 
@@ -491,34 +528,43 @@ while IFS= read -r scenario; do
   fi
 
   validate_absolute_metric "baseline_summary" "${baseline_summary}" "${scenario}" \
-    "avg_frame_time_ms" "${summary_max_avg_frame_time_ms}"
+    "avg_runtime_frame_time_ms" "${summary_max_avg_frame_time_ms}"
   validate_absolute_metric "baseline_summary" "${baseline_summary}" "${scenario}" \
-    "p95_frame_time_ms" "${summary_max_p95_frame_time_ms}"
+    "p95_runtime_frame_time_ms" "${summary_max_p95_frame_time_ms}"
   validate_absolute_metric "baseline_summary" "${baseline_summary}" "${scenario}" \
-    "p99_frame_time_ms" "${summary_max_p99_frame_time_ms}"
+    "p99_runtime_frame_time_ms" "${summary_max_p99_frame_time_ms}"
   validate_absolute_metric "candidate_summary" "${candidate_summary}" "${scenario}" \
-    "avg_frame_time_ms" "${summary_max_avg_frame_time_ms}"
+    "avg_runtime_frame_time_ms" "${summary_max_avg_frame_time_ms}"
   validate_absolute_metric "candidate_summary" "${candidate_summary}" "${scenario}" \
-    "p95_frame_time_ms" "${summary_max_p95_frame_time_ms}"
+    "p95_runtime_frame_time_ms" "${summary_max_p95_frame_time_ms}"
   validate_absolute_metric "candidate_summary" "${candidate_summary}" "${scenario}" \
-    "p99_frame_time_ms" "${summary_max_p99_frame_time_ms}"
+    "p99_runtime_frame_time_ms" "${summary_max_p99_frame_time_ms}"
 
   scenario_avg_frame_time_ratio="${max_frame_time_ratio}"
   if [[ "${scenario}" == "camera_mouse_control" ]]; then
     scenario_avg_frame_time_ratio="${camera_mouse_max_avg_frame_time_ratio}"
   fi
-  compare_metric "${scenario}" "avg_frame_time_ms" \
+  compare_metric "${scenario}" "avg_runtime_frame_time_ms" \
     "${scenario_avg_frame_time_ratio}" "${max_frame_time_ms}"
-  compare_metric "${scenario}" "p95_frame_time_ms" \
+  compare_metric "${scenario}" "p95_runtime_frame_time_ms" \
     "${max_frame_time_ratio}" "${max_p95_frame_time_ms}"
   # Live-window app eval p99 is useful signal, but too sensitive to a few
   # scheduler/windowing frames for a hard relative gate. A fixed frame-time
   # bucket is a hard hitch gate only while it covers at most 5% of the base
   # runtime; once it represents bulk cadence, p95 is the stable hard signal.
-  compare_advisory_metric "${scenario}" "p99_frame_time_ms" \
+  compare_advisory_metric "${scenario}" "p99_runtime_frame_time_ms" \
     "${max_frame_time_ratio}" "${max_p99_frame_time_ms}"
-  compare_advisory_metric "${scenario}" "max_frame_time_ms" \
+  compare_advisory_metric "${scenario}" "max_runtime_frame_time_ms" \
     "${max_frame_time_ratio}" "${max_frame_time_ms}"
+  # Preserve startup-inclusive evidence without calling it sustained play.
+  compare_advisory_metric "${scenario}" "avg_frame_time_ms" \
+    "${scenario_avg_frame_time_ratio}" "${max_frame_time_ms}" "all_frame_avg_frame_time_ms"
+  compare_advisory_metric "${scenario}" "p95_frame_time_ms" \
+    "${max_frame_time_ratio}" "${max_p95_frame_time_ms}" "all_frame_p95_frame_time_ms"
+  compare_advisory_metric "${scenario}" "p99_frame_time_ms" \
+    "${max_frame_time_ratio}" "${max_p99_frame_time_ms}" "all_frame_p99_frame_time_ms"
+  compare_advisory_metric "${scenario}" "max_frame_time_ms" \
+    "${max_frame_time_ratio}" "${max_frame_time_ms}" "all_frame_max_frame_time_ms"
   compare_optional_hitch_metric "${scenario}" "runtime_frames_over_33_34ms" \
     "${max_count_ratio}" "${max_count_abs}"
   compare_optional_hitch_metric "${scenario}" "runtime_frames_over_50ms" \

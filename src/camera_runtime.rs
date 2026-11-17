@@ -25,7 +25,7 @@ use nau_engine::movement::Velocity;
 use nau_engine::world::{IslandPlateauRegion, SkyRoute, world_terrain_floor_y_at};
 
 const CAMERA_MIN_SURFACE_CLEARANCE: f32 = 2.2;
-const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
+pub(crate) const CAMERA_OBSTRUCTION_CLEARANCE: f32 = 0.45;
 const CAMERA_CAPTURE_STALE_DELTA_THRESHOLD_PX: f32 = 64.0;
 const PLATEAU_VISTA_TRANSITION_START_FRAME: u32 = 90;
 const PLATEAU_VISTA_TRANSITION_END_FRAME: u32 = 150;

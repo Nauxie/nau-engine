@@ -13,7 +13,7 @@ use crate::play_profile_runtime::PlayProfileRun;
 use crate::power_up_runtime::{PowerUpCollectionState, collect_aerial_power_ups};
 use crate::world_collision_runtime::{
     WorldCollisionDiagnostics, WorldCollisionProxy, WorldCollisionProxyKind,
-    resolve_world_collisions,
+    resolve_world_collisions_slice,
 };
 use nau_engine::animation::{
     AnimationState, CharacterPart, CharacterPartRole, PartPose, PartVisibility, PlayerPoseContext,
@@ -34,9 +34,15 @@ use nau_engine::movement::{
     Facing, FlightController, FlightInput, FlightMode, FlightState, FlightTuning, Velocity,
     face_flight_direction, step_flight,
 };
-use nau_engine::world::{SkyRoute, TERRAIN_VISUAL_FOOTING_OFFSET_M};
+use nau_engine::world::{PLAYER_COLLISION_HEIGHT_M, SkyRoute, TERRAIN_VISUAL_FOOTING_OFFSET_M};
 
 const ATTACHED_PLAYER_VISUAL_OFFSET_Y: f32 = -TERRAIN_VISUAL_FOOTING_OFFSET_M;
+// Bounds of the authored player at rest. The asset audit protects these against
+// fixture changes so the visible body and its collision height share one scale.
+pub(crate) const AUTHORED_PLAYER_REST_MIN_Y: f32 = -0.448_200_05;
+pub(crate) const AUTHORED_PLAYER_REST_HEIGHT_M: f32 = 2.852_848;
+pub(crate) const AUTHORED_PLAYER_SCALE: f32 =
+    PLAYER_COLLISION_HEIGHT_M / AUTHORED_PLAYER_REST_HEIGHT_M;
 const MAX_PLAYER_FRAME_DT_SECS: f32 = 1.0 / 30.0;
 const MAX_PLAYER_FRAME_TRAVEL_M: f32 = 2.0;
 const MAX_PLAYER_SUBSTEP_DT_SECS: f32 = 1.0 / 60.0;
@@ -46,25 +52,20 @@ const MAX_PLAYER_WORLD_CORRECTION_PER_FRAME_M: f32 = 8.0;
 const MAX_PLAYER_COLLISION_CORRECTION_PER_FRAME_M: f32 = 1.0;
 
 pub(crate) fn authored_player_scene_transform() -> Transform {
-    Transform::from_xyz(0.0, ATTACHED_PLAYER_VISUAL_OFFSET_Y, 0.0)
+    Transform::from_xyz(
+        0.0,
+        ATTACHED_PLAYER_VISUAL_OFFSET_Y - AUTHORED_PLAYER_REST_MIN_Y * AUTHORED_PLAYER_SCALE,
+        0.0,
+    )
+    .with_scale(Vec3::splat(AUTHORED_PLAYER_SCALE))
 }
 
 pub(crate) fn authored_glider_scene_transform() -> Transform {
-    Transform::from_xyz(0.0, 1.35 + ATTACHED_PLAYER_VISUAL_OFFSET_Y, -0.45)
-}
-
-pub(crate) fn grounded_visual_foot_gap_m(
-    player_y: f32,
-    ground_floor_y: f32,
-    mode: FlightMode,
-) -> f32 {
-    if mode != FlightMode::Grounded {
-        return 0.0;
-    }
-
-    let visual_foot_y = player_y + authored_player_scene_transform().translation.y;
-    let terrain_visual_y = ground_floor_y - TERRAIN_VISUAL_FOOTING_OFFSET_M;
-    visual_foot_y - terrain_visual_y
+    let player_frame = authored_player_scene_transform();
+    Transform::from_translation(
+        player_frame.translation + Vec3::new(0.0, 1.35, -0.45) * AUTHORED_PLAYER_SCALE,
+    )
+    .with_scale(player_frame.scale)
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -77,6 +78,7 @@ pub(crate) struct AuthoredGliderPose {
     smoothed_scale: Vec3,
     smoothing_initialized: bool,
     last_smoothed_time_secs: Option<f32>,
+    pub(crate) grounding_offset: Vec3,
 }
 
 impl AuthoredGliderPose {
@@ -90,6 +92,7 @@ impl AuthoredGliderPose {
             smoothed_scale: base_transform.scale,
             smoothing_initialized: false,
             last_smoothed_time_secs: None,
+            grounding_offset: Vec3::ZERO,
         }
     }
 
@@ -186,6 +189,53 @@ pub(crate) struct MovementWorld<'w, 's> {
     collision_diagnostics: ResMut<'w, WorldCollisionDiagnostics>,
     wind_diagnostics: ResMut<'w, WindForceDiagnostics>,
     displacement_diagnostics: ResMut<'w, PlayerDisplacementDiagnostics>,
+}
+
+#[derive(Default)]
+pub(crate) struct MovementScratch {
+    lift_fields: Vec<LiftField>,
+    visual_wind_fields: Vec<WindField>,
+    collision_proxies: Vec<WorldCollisionProxy>,
+}
+
+impl MovementScratch {
+    fn collect(&mut self, world: &MovementWorld) {
+        self.lift_fields.clear();
+        self.lift_fields.extend(world.lift_fields.iter().copied());
+        self.visual_wind_fields.clear();
+        self.visual_wind_fields
+            .extend(world.visual_wind_fields.iter().copied());
+        self.collision_proxies.clear();
+        self.collision_proxies
+            .extend(world.collision_proxies.iter().copied());
+    }
+}
+
+#[derive(SystemParam)]
+pub(crate) struct ManualFlightControls<'w, 's> {
+    keyboard: Res<'w, ButtonInput<KeyCode>>,
+    glider_deployed: Local<'s, bool>,
+}
+
+impl ManualFlightControls<'_, '_> {
+    fn flight_input(&mut self, controller: &mut FlightController) -> FlightInput {
+        if controller.mode == FlightMode::Grounded || self.keyboard.just_pressed(KeyCode::KeyR) {
+            *self.glider_deployed = false;
+        }
+        if self.keyboard.just_pressed(KeyCode::Space) && !self.keyboard.just_pressed(KeyCode::KeyR)
+        {
+            *self.glider_deployed = !*self.glider_deployed && controller.deploy_glider();
+        }
+        let mut input = keyboard_flight_input(&self.keyboard);
+        input.glide = *self.glider_deployed;
+        input
+    }
+
+    fn clear_on_landing(&mut self, controller: &FlightController) {
+        if controller.mode == FlightMode::Grounded {
+            *self.glider_deployed = false;
+        }
+    }
 }
 
 #[derive(SystemParam)]
@@ -298,10 +348,11 @@ pub(crate) fn update_route_objectives(
 
 pub(crate) fn fly_player(
     time: Res<Time>,
-    keyboard: Res<ButtonInput<KeyCode>>,
+    mut controls: ManualFlightControls,
     tuning: Res<FlightTuning>,
     camera: MovementCamera,
     mut world: MovementWorld,
+    mut scratch: Local<MovementScratch>,
     mut player: Query<
         (
             &mut Transform,
@@ -319,21 +370,19 @@ pub(crate) fn fly_player(
     let facing = camera.facing(&transform);
     let dt = time.delta_secs();
     let elapsed_secs = time.elapsed_secs();
-    let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
-    let visual_wind_fields = world.visual_wind_fields.iter().copied().collect::<Vec<_>>();
-    let collision_proxies = world.collision_proxies.iter().copied().collect::<Vec<_>>();
+    scratch.collect(&world);
     world.power_ups.begin_frame(dt);
     let mut context = PlayerStepContext {
         tuning: &tuning,
         route: &world.route,
-        lift_fields: &lift_fields,
-        visual_wind_fields: &visual_wind_fields,
+        lift_fields: &scratch.lift_fields,
+        visual_wind_fields: &scratch.visual_wind_fields,
         power_ups: &mut world.power_ups,
-        collision_proxies: &collision_proxies,
+        collision_proxies: &scratch.collision_proxies,
         collision_diagnostics: &mut world.collision_diagnostics,
         wind_diagnostics: &mut world.wind_diagnostics,
     };
-    let input = keyboard_flight_input(&keyboard);
+    let input = controls.flight_input(&mut controller);
 
     {
         let mut kinematics = PlayerKinematics {
@@ -351,6 +400,7 @@ pub(crate) fn fly_player(
         );
         *world.displacement_diagnostics = displacement.into();
     }
+    controls.clear_on_landing(&controller);
     record_animation_context(
         &mut animation,
         input,
@@ -371,6 +421,7 @@ pub(crate) fn scripted_play_profile_fly_player(
     tuning: Res<FlightTuning>,
     camera: MovementCamera,
     mut world: MovementWorld,
+    mut scratch: Local<MovementScratch>,
     mut player: Query<
         (
             &mut Transform,
@@ -391,17 +442,15 @@ pub(crate) fn scripted_play_profile_fly_player(
     let facing = camera.facing(&transform);
     let dt = time.delta_secs();
     let elapsed_secs = time.elapsed_secs();
-    let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
-    let visual_wind_fields = world.visual_wind_fields.iter().copied().collect::<Vec<_>>();
-    let collision_proxies = world.collision_proxies.iter().copied().collect::<Vec<_>>();
+    scratch.collect(&world);
     world.power_ups.begin_frame(dt);
     let mut context = PlayerStepContext {
         tuning: &tuning,
         route: &world.route,
-        lift_fields: &lift_fields,
-        visual_wind_fields: &visual_wind_fields,
+        lift_fields: &scratch.lift_fields,
+        visual_wind_fields: &scratch.visual_wind_fields,
         power_ups: &mut world.power_ups,
-        collision_proxies: &collision_proxies,
+        collision_proxies: &scratch.collision_proxies,
         collision_diagnostics: &mut world.collision_diagnostics,
         wind_diagnostics: &mut world.wind_diagnostics,
     };
@@ -603,7 +652,9 @@ pub(crate) fn keyboard_flight_input(keyboard: &ButtonInput<KeyCode>) -> FlightIn
         backward: keyboard.pressed(KeyCode::KeyS),
         left: keyboard.pressed(KeyCode::KeyA),
         right: keyboard.pressed(KeyCode::KeyD),
-        glide: keyboard.pressed(KeyCode::Space),
+        // Deployment is resolved once per frame by ManualFlightControls. The
+        // camera also reads these directional keys without consuming toggles.
+        glide: false,
         dive: keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight),
         launch: keyboard.just_pressed(KeyCode::KeyE),
     }
@@ -614,6 +665,7 @@ pub(crate) fn eval_fly_player(
     tuning: Res<FlightTuning>,
     camera: MovementCamera,
     mut world: MovementWorld,
+    mut scratch: Local<MovementScratch>,
     mut movement_basis: ResMut<EvalMovementBasis>,
     mut player: Query<
         (
@@ -642,17 +694,15 @@ pub(crate) fn eval_fly_player(
     };
     let dt = run.scenario.fixed_dt;
     let elapsed_secs = run.frame as f32 * dt;
-    let lift_fields = world.lift_fields.iter().copied().collect::<Vec<_>>();
-    let visual_wind_fields = world.visual_wind_fields.iter().copied().collect::<Vec<_>>();
-    let collision_proxies = world.collision_proxies.iter().copied().collect::<Vec<_>>();
+    scratch.collect(&world);
     world.power_ups.begin_frame(dt);
     let mut context = PlayerStepContext {
         tuning: &tuning,
         route: &world.route,
-        lift_fields: &lift_fields,
-        visual_wind_fields: &visual_wind_fields,
+        lift_fields: &scratch.lift_fields,
+        visual_wind_fields: &scratch.visual_wind_fields,
         power_ups: &mut world.power_ups,
-        collision_proxies: &collision_proxies,
+        collision_proxies: &scratch.collision_proxies,
         collision_diagnostics: &mut world.collision_diagnostics,
         wind_diagnostics: &mut world.wind_diagnostics,
     };
@@ -753,7 +803,7 @@ fn step_player(
             .route
             .resolve_ground_contact_after_step(next, was_grounded);
         world_correction_m += next.position.distance(pre_ground_position);
-        let collision = resolve_world_collisions(next, context.collision_proxies.iter().copied());
+        let collision = resolve_world_collisions_slice(next, context.collision_proxies);
         collision_correction_m += collision.correction_distance_m;
         resolved_count += collision.hit_count;
         terrain_rim_resolved_count += collision.terrain_rim_hit_count;
@@ -1194,8 +1244,9 @@ fn apply_authored_glider_pose_smoothing(
     blend: f32,
 ) {
     let deployment = deployment.clamp(0.0, 1.0);
-    let stowed_translation = glider.base_translation + authored_glider_stowed_translation_offset();
-    let deployed_translation = glider.base_translation + translation_offset;
+    let stowed_translation = glider.base_translation
+        + authored_glider_stowed_translation_offset() * AUTHORED_PLAYER_SCALE;
+    let deployed_translation = glider.base_translation + translation_offset * AUTHORED_PLAYER_SCALE;
     let target_translation = stowed_translation.lerp(deployed_translation, deployment);
     let stowed_rotation = glider.base_rotation * authored_glider_stowed_rotation_offset();
     let deployed_rotation = glider.base_rotation * rotation_offset;
@@ -1218,7 +1269,7 @@ fn apply_authored_glider_pose_smoothing(
 }
 
 fn reapply_smoothed_authored_glider_pose(glider: &AuthoredGliderPose, transform: &mut Transform) {
-    transform.translation = glider.smoothed_translation;
+    transform.translation = glider.smoothed_translation + glider.grounding_offset;
     transform.rotation = glider.smoothed_rotation;
     transform.scale = glider.smoothed_scale;
 }
@@ -1296,6 +1347,343 @@ mod tests {
     };
     use std::time::Duration;
 
+    struct ManualInputApp {
+        app: App,
+        player: Entity,
+        window: Entity,
+    }
+
+    impl ManualInputApp {
+        fn new(grounded: bool) -> Self {
+            use crate::game_ui_runtime::{
+                GameUiState, consume_menu_glider_input, gameplay_input_active,
+                handle_game_menu_buttons, sync_game_ui, toggle_game_menu,
+            };
+            let route = SkyRoute::default();
+            let position = if grounded {
+                route.playtest_reset_position()
+            } else {
+                Vec3::new(0.0, 100.0, 0.0)
+            };
+            let mut app = App::new();
+            app.add_plugins((MinimalPlugins, bevy::input::InputPlugin))
+                .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                    Duration::from_secs_f64(1.0 / 60.0),
+                ))
+                .insert_resource(route)
+                .insert_resource(FlightTuning::default())
+                .insert_resource(CameraControlState::default())
+                .insert_resource(CameraDiagnostics::default())
+                .insert_resource(PowerUpCollectionState::default())
+                .insert_resource(PlayerDisplacementDiagnostics::default())
+                .insert_resource(WorldCollisionDiagnostics::default())
+                .insert_resource(WindForceDiagnostics::default())
+                .insert_resource(GameUiState::new(true))
+                .insert_resource(crate::camera_runtime::MouseLookState::default())
+                .configure_sets(
+                    Update,
+                    (
+                        crate::GameSet::Ui,
+                        crate::GameSet::Movement.run_if(gameplay_input_active),
+                    )
+                        .chain(),
+                )
+                .add_systems(
+                    Update,
+                    (
+                        toggle_game_menu,
+                        handle_game_menu_buttons,
+                        sync_game_ui,
+                        consume_menu_glider_input,
+                    )
+                        .chain()
+                        .in_set(crate::GameSet::Ui),
+                )
+                .add_systems(
+                    Update,
+                    (reset_player_to_playtest_position, fly_player)
+                        .chain()
+                        .in_set(crate::GameSet::Movement),
+                );
+            let player = app
+                .world_mut()
+                .spawn((
+                    Player,
+                    Transform::from_translation(position),
+                    Velocity::default(),
+                    FlightController {
+                        mode: if grounded {
+                            FlightMode::Grounded
+                        } else {
+                            FlightMode::Airborne
+                        },
+                        ..default()
+                    },
+                    AnimationState::default(),
+                ))
+                .id();
+            // Real Bevy keyboard messages and the production menu/movement systems;
+            // Window is data only: this test never creates a native window.
+            let window = app
+                .world_mut()
+                .spawn((
+                    Window {
+                        visible: false,
+                        focused: false,
+                        ..default()
+                    },
+                    bevy::window::CursorOptions::default(),
+                    bevy::window::PrimaryWindow,
+                ))
+                .id();
+            app.update();
+            Self {
+                app,
+                player,
+                window,
+            }
+        }
+
+        fn key(&mut self, key_code: KeyCode, state: bevy::input::ButtonState, repeat: bool) {
+            use bevy::input::keyboard::{Key, KeyboardInput};
+            let logical_key = match key_code {
+                KeyCode::Space => Key::Space,
+                KeyCode::Escape => Key::Escape,
+                KeyCode::KeyE => Key::Character("e".into()),
+                KeyCode::KeyR => Key::Character("r".into()),
+                _ => panic!("unsupported test key"),
+            };
+            self.app.world_mut().write_message(KeyboardInput {
+                key_code,
+                logical_key,
+                state,
+                text: None,
+                repeat,
+                window: self.window,
+            });
+        }
+
+        fn press(&mut self, key: KeyCode) {
+            self.key(key, bevy::input::ButtonState::Pressed, false);
+        }
+
+        fn release(&mut self, key: KeyCode) {
+            self.key(key, bevy::input::ButtonState::Released, false);
+        }
+
+        fn step(&mut self) {
+            self.app.update();
+        }
+
+        fn controller(&self) -> FlightController {
+            *self
+                .app
+                .world()
+                .get::<FlightController>(self.player)
+                .unwrap()
+        }
+
+        fn click_menu_button(&mut self, action: crate::game_ui_runtime::GameMenuAction) {
+            let world = self.app.world_mut();
+            let mut buttons = world.query::<(Entity, &crate::game_ui_runtime::GameMenuAction)>();
+            let entity = buttons
+                .iter(world)
+                .find(|(_, candidate)| **candidate == action)
+                .unwrap()
+                .0;
+            *world.get_mut::<Interaction>(entity).unwrap() = Interaction::Pressed;
+        }
+    }
+
+    #[test]
+    fn manual_space_tap_toggles_glider_without_hold_or_key_repeat() {
+        let mut game = ManualInputApp::new(false);
+        game.press(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        for _ in 0..5 {
+            game.key(KeyCode::Space, bevy::input::ButtonState::Pressed, true);
+            game.step();
+            assert_eq!(game.controller().mode, FlightMode::Gliding);
+        }
+        game.release(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        assert!(
+            game.app
+                .world()
+                .get::<AnimationState>(game.player)
+                .unwrap()
+                .last_input
+                .glide
+        );
+        game.press(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Airborne);
+        assert!(
+            !game
+                .app
+                .world()
+                .get::<AnimationState>(game.player)
+                .unwrap()
+                .last_input
+                .glide
+        );
+        game.release(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Airborne);
+    }
+
+    #[test]
+    fn manual_ground_space_does_not_prearm_and_airborne_launch_tap_opens_immediately() {
+        let mut game = ManualInputApp::new(true);
+        game.press(KeyCode::Space);
+        game.press(KeyCode::KeyE);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Launching);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Launching);
+        assert!(game.controller().launch_timer > 0.0);
+        assert!(!game.controller().launch_available);
+        game.release(KeyCode::Space);
+        game.step();
+        game.press(KeyCode::Space);
+        let velocity_before = game.app.world().get::<Velocity>(game.player).unwrap().0;
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        assert_eq!(game.controller().launch_timer, 0.0);
+        assert!(!game.controller().launch_available);
+        assert!(game.app.world().get::<Velocity>(game.player).unwrap().0.y < velocity_before.y);
+    }
+
+    #[test]
+    fn manual_ground_space_held_through_takeoff_never_opens_glider() {
+        let mut game = ManualInputApp::new(true);
+        game.press(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Grounded);
+        game.press(KeyCode::KeyE);
+        game.step();
+        for _ in 0..20 {
+            game.step();
+        }
+        assert_eq!(game.controller().mode, FlightMode::Airborne);
+    }
+
+    #[test]
+    fn manual_landing_clears_glider_before_relaunch_with_space_held() {
+        let mut game = ManualInputApp::new(false);
+        game.press(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        let floor = game
+            .app
+            .world()
+            .resource::<SkyRoute>()
+            .ground_at(Vec3::ZERO)
+            .floor_y;
+        game.app
+            .world_mut()
+            .get_mut::<Transform>(game.player)
+            .unwrap()
+            .translation = Vec3::new(0.0, floor + 0.001, 0.0);
+        game.app
+            .world_mut()
+            .get_mut::<Velocity>(game.player)
+            .unwrap()
+            .0 = Vec3::NEG_Y * 2.0;
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Grounded);
+        game.press(KeyCode::KeyE);
+        game.step();
+        for _ in 0..20 {
+            game.step();
+        }
+        assert_eq!(game.controller().mode, FlightMode::Airborne);
+    }
+
+    #[test]
+    fn manual_reset_with_space_and_launch_held_clears_glider_state() {
+        let mut game = ManualInputApp::new(false);
+        game.press(KeyCode::Space);
+        game.press(KeyCode::KeyE);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        game.press(KeyCode::KeyR);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Grounded);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Grounded);
+        game.release(KeyCode::KeyE);
+        game.step();
+        game.press(KeyCode::KeyE);
+        game.step();
+        for _ in 0..20 {
+            game.step();
+        }
+        assert_eq!(game.controller().mode, FlightMode::Airborne);
+    }
+
+    #[test]
+    fn manual_pause_resume_consumes_menu_space_including_the_resume_frame() {
+        for resume_with_button in [false, true] {
+            let mut game = ManualInputApp::new(false);
+            game.press(KeyCode::Escape);
+            game.step();
+            game.release(KeyCode::Escape);
+            game.step();
+            assert!(game.app.world().resource::<Time<Virtual>>().is_paused());
+            game.press(KeyCode::Space);
+            if resume_with_button {
+                game.click_menu_button(crate::game_ui_runtime::GameMenuAction::Resume);
+            } else {
+                game.press(KeyCode::Escape);
+            }
+            game.step();
+            assert!(!game.app.world().resource::<Time<Virtual>>().is_paused());
+            assert_eq!(game.controller().mode, FlightMode::Airborne);
+            game.step();
+            assert_eq!(game.controller().mode, FlightMode::Airborne);
+            game.release(KeyCode::Space);
+            game.step();
+            game.press(KeyCode::Space);
+            game.step();
+            assert_eq!(game.controller().mode, FlightMode::Gliding);
+        }
+    }
+
+    #[test]
+    fn manual_controls_menu_space_does_not_queue_and_pause_preserves_open_glider() {
+        let mut game = ManualInputApp::new(false);
+        game.press(KeyCode::Space);
+        game.step();
+        game.release(KeyCode::Space);
+        game.press(KeyCode::Escape);
+        game.step();
+        game.release(KeyCode::Escape);
+        game.click_menu_button(crate::game_ui_runtime::GameMenuAction::Controls);
+        game.step();
+        let world = game.app.world_mut();
+        let mut text = world.query::<&Text>();
+        assert!(
+            text.iter(world)
+                .any(|text| text.0 == "SPACE  |  Tap to open / close glider")
+        );
+        game.press(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        game.click_menu_button(crate::game_ui_runtime::GameMenuAction::Back);
+        game.step();
+        game.press(KeyCode::Escape);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Gliding);
+        game.release(KeyCode::Space);
+        game.step();
+        game.press(KeyCode::Space);
+        game.step();
+        assert_eq!(game.controller().mode, FlightMode::Airborne);
+    }
+
     #[test]
     fn body_local_pose_velocity_uses_body_local_lateral_axis() {
         let rotation = Transform::from_translation(Vec3::ZERO)
@@ -1309,17 +1697,26 @@ mod tests {
 
     #[test]
     fn attached_authored_visuals_share_terrain_footing_offset() {
-        assert_eq!(
-            authored_player_scene_transform().translation.y,
-            -TERRAIN_VISUAL_FOOTING_OFFSET_M
+        let player = authored_player_scene_transform();
+        let glider = authored_glider_scene_transform();
+        assert!(
+            (player
+                .transform_point(Vec3::Y * AUTHORED_PLAYER_REST_MIN_Y)
+                .y
+                + TERRAIN_VISUAL_FOOTING_OFFSET_M)
+                .abs()
+                < 0.0001
         );
-        assert_eq!(
-            authored_glider_scene_transform().translation.y,
-            1.35 - TERRAIN_VISUAL_FOOTING_OFFSET_M
+        assert!(
+            (AUTHORED_PLAYER_REST_HEIGHT_M * player.scale.y - PLAYER_COLLISION_HEIGHT_M).abs()
+                < 0.0001
         );
-        assert_eq!(
-            grounded_visual_foot_gap_m(28.0, 28.0, FlightMode::Grounded),
-            0.0
+        assert_eq!(glider.scale, player.scale);
+        assert!(
+            glider
+                .translation
+                .distance(player.transform_point(Vec3::new(0.0, 1.35, -0.45)))
+                < 0.0001
         );
     }
 
@@ -1637,7 +2034,8 @@ mod tests {
         );
         apply_authored_pose_node_smoothing(&mut node, &mut transform, pose, 0.0, 1.0);
 
-        assert!(transform.translation.distance(node.part.base_translation) > 0.04);
+        assert!(transform.translation.distance(node.part.base_translation) <= 0.0151);
+        assert!(transform.rotation.angle_between(node.part.base_rotation) > 0.3);
         assert!(transform.translation.distance(pose.translation) < 0.0001);
         assert!((transform.rotation.dot(pose.rotation).abs() - 1.0).abs() < 0.0001);
     }
@@ -1771,7 +2169,7 @@ mod tests {
                 .abs_diff_eq(once_per_frame_translation, 0.0001)
         );
         assert!((transform.rotation.dot(once_per_frame_rotation).abs() - 1.0).abs() < 0.0001);
-        assert!(transform.scale.abs_diff_eq(Vec3::ONE, 0.0001));
+        assert!(transform.scale.abs_diff_eq(base.scale, 0.0001));
         assert!(glider.response_degrees(&transform) > 10.0);
         assert!(glider.motion_m(&transform) > 0.05);
     }
@@ -1813,9 +2211,9 @@ mod tests {
         assert!(launch_pose.response_degrees() > 8.0);
         assert!(glider.motion_m(&transform) > 0.25);
         assert!(glider.response_degrees(&transform) > 20.0);
-        assert!(transform.scale.x > 0.50);
-        assert!(transform.scale.x < 0.70);
-        assert!(transform.scale.y > 0.85);
+        assert!(transform.scale.x / base.scale.x > 0.50);
+        assert!(transform.scale.x / base.scale.x < 0.70);
+        assert!(transform.scale.y / base.scale.y > 0.85);
     }
 
     #[test]
@@ -1836,6 +2234,28 @@ mod tests {
                 .abs_diff_eq(node.smoothed_translation, 0.0001)
         );
         assert!((transform.rotation.dot(node.smoothed_rotation).abs() - 1.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn movement_scratch_reuses_capacity_without_retaining_removed_collision_proxies() {
+        let mut world = World::new();
+        world.insert_resource(SkyRoute::default());
+        world.insert_resource(PowerUpCollectionState::default());
+        world.insert_resource(WorldCollisionDiagnostics::default());
+        world.insert_resource(WindForceDiagnostics::default());
+        world.insert_resource(PlayerDisplacementDiagnostics::default());
+        let proxy = WorldCollisionProxy::new(Vec3::ZERO, Vec3::ONE, WorldCollisionProxyKind::Tree);
+        let entity = world.spawn(proxy).id();
+        let mut state = bevy::ecs::system::SystemState::<MovementWorld>::new(&mut world);
+        let mut scratch = MovementScratch::default();
+        scratch.collect(&state.get_mut(&mut world));
+        assert_eq!(scratch.collision_proxies, vec![proxy]);
+        let capacity = scratch.collision_proxies.capacity();
+
+        world.despawn(entity);
+        scratch.collect(&state.get_mut(&mut world));
+        assert!(scratch.collision_proxies.is_empty());
+        assert_eq!(scratch.collision_proxies.capacity(), capacity);
     }
 
     #[test]

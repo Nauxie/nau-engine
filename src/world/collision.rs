@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use super::{ISLAND_FOOTPRINT_CONTOUR_SAMPLE_COUNT, SkyIsland, TERRAIN_MAX_RISE_M};
 
 const PLAYER_COLLISION_RADIUS_M: f32 = 0.42;
-const PLAYER_COLLISION_HEIGHT_M: f32 = 1.85;
+pub const PLAYER_COLLISION_HEIGHT_M: f32 = 1.85;
 const MAX_COLLISION_CORRECTION_PER_STEP_M: f32 = 0.5;
 const BASE_COLLISION_SKIN_M: f32 = 0.002;
 const TERRAIN_SIDE_COLLISION_RADIUS_M: f32 = 0.24;
@@ -474,12 +474,20 @@ fn terrain_truth_probe_position(
 }
 
 pub fn resolve_world_collisions(
-    mut state: FlightState,
+    state: FlightState,
     proxies: impl IntoIterator<Item = WorldCollisionProxy>,
 ) -> WorldCollisionResolution {
-    let mut proxies = proxies.into_iter().collect::<Vec<_>>();
-    proxies.sort_by_key(|proxy| collision_resolution_priority(proxy.kind));
+    let proxies = proxies.into_iter().collect::<Vec<_>>();
+    resolve_world_collisions_slice(state, &proxies)
+}
 
+/// Borrows the proxy set so movement substeps do not collect or sort it.
+/// Solids retain their input order and resolve before terrain rims, matching the
+/// stable priority ordering of the iterator entry point.
+pub fn resolve_world_collisions_slice(
+    mut state: FlightState,
+    proxies: &[WorldCollisionProxy],
+) -> WorldCollisionResolution {
     let mut hit_count = 0;
     let mut terrain_rim_hit_count = 0;
     let mut terrain_body_hit_count = 0;
@@ -490,7 +498,15 @@ pub fn resolve_world_collisions(
     let mut resolved_terrain_side_islands = Vec::new();
     let mut remaining_correction_m = MAX_COLLISION_CORRECTION_PER_STEP_M;
 
-    for proxy in proxies {
+    let ordered_proxies = proxies
+        .iter()
+        .filter(|proxy| proxy.kind != WorldCollisionProxyKind::TerrainRim)
+        .chain(
+            proxies
+                .iter()
+                .filter(|proxy| proxy.kind == WorldCollisionProxyKind::TerrainRim),
+        );
+    for &proxy in ordered_proxies {
         if remaining_correction_m <= f32::EPSILON {
             break;
         }
@@ -547,16 +563,6 @@ pub fn resolve_world_collisions(
     }
 }
 
-fn collision_resolution_priority(kind: WorldCollisionProxyKind) -> u8 {
-    match kind {
-        WorldCollisionProxyKind::TerrainBody
-        | WorldCollisionProxyKind::Tree
-        | WorldCollisionProxyKind::Rock
-        | WorldCollisionProxyKind::Landmark => 0,
-        WorldCollisionProxyKind::TerrainRim => 1,
-    }
-}
-
 fn skips_landing_recovery_collision(
     kind: WorldCollisionProxyKind,
     landing_recovery_timer: f32,
@@ -576,10 +582,6 @@ fn player_proxy_push_out(position: Vec3, proxy: WorldCollisionProxy) -> Option<(
     if player_max_y < proxy_min.y || player_min_y > proxy_max.y {
         return None;
     }
-    if skips_terrain_side_collision(position, proxy) {
-        return None;
-    }
-
     let min_x = proxy_min.x - PLAYER_COLLISION_RADIUS_M;
     let max_x = proxy_max.x + PLAYER_COLLISION_RADIUS_M;
     let min_z = proxy_min.z - PLAYER_COLLISION_RADIUS_M;
@@ -613,29 +615,16 @@ fn collision_skin_m(kind: WorldCollisionProxyKind) -> f32 {
     }
 }
 
-fn skips_terrain_side_collision(position: Vec3, proxy: WorldCollisionProxy) -> bool {
-    if !matches!(
-        proxy.kind,
-        WorldCollisionProxyKind::TerrainRim | WorldCollisionProxyKind::TerrainBody
-    ) {
-        return false;
-    }
-
-    let Some(island) = proxy.terrain_side_clip else {
-        return false;
-    };
-
-    let surface_y = island.terrain_surface_y_at(position);
-    if position.y >= surface_y - TERRAIN_SIDE_SURFACE_CLEARANCE_M {
-        return true;
-    }
-
-    distance_to_playable_contour_m(island, position) > TERRAIN_SIDE_COLLISION_BAND_M
-}
-
 fn terrain_side_push_out(position: Vec3, proxy: WorldCollisionProxy) -> Option<(Vec3, f32)> {
     let island = proxy.terrain_side_clip?;
+    if position.y >= island.terrain_surface_y_at(position) - TERRAIN_SIDE_SURFACE_CLEARANCE_M {
+        return None;
+    }
+
     let projection = playable_contour_projection(island, position)?;
+    if projection.distance_m > TERRAIN_SIDE_COLLISION_BAND_M {
+        return None;
+    }
     let signed_offset_from_contour = signed_offset_from_projection(position, projection);
     if !signed_offset_from_contour.is_finite() {
         return None;
@@ -748,6 +737,37 @@ mod tests {
         assert!(resolution.max_push_m > 0.0);
         assert!(resolution.state.position.x >= 0.25 + PLAYER_COLLISION_RADIUS_M);
         assert_eq!(resolution.state.velocity.x, 0.0);
+    }
+
+    #[test]
+    fn borrowed_collision_resolution_preserves_solid_priority_and_input_order() {
+        let state = FlightState::new(Vec3::ZERO, Vec3::ZERO, FlightController::default());
+        let rim = WorldCollisionProxy::new(
+            Vec3::new(0.0, 0.9, 0.0),
+            Vec3::new(0.2, 0.9, 0.2),
+            WorldCollisionProxyKind::TerrainRim,
+        );
+        let left_tree = WorldCollisionProxy::new(
+            Vec3::new(-0.25, 0.9, 0.0),
+            Vec3::new(0.25, 0.9, 0.25),
+            WorldCollisionProxyKind::Tree,
+        );
+        let right_rock = WorldCollisionProxy::new(
+            Vec3::new(0.5, 0.9, 0.0),
+            Vec3::new(0.25, 0.9, 0.25),
+            WorldCollisionProxyKind::Rock,
+        );
+
+        let solid_first = resolve_world_collisions_slice(state, &[rim, left_tree]);
+        assert_eq!(solid_first.hit_count, 2);
+        assert!((solid_first.state.position.x - 0.5).abs() < 0.0001);
+
+        let left_first = resolve_world_collisions_slice(state, &[left_tree, right_rock]);
+        let right_first = resolve_world_collisions_slice(state, &[right_rock, left_tree]);
+        assert!((left_first.state.position.x - 0.344).abs() < 0.0001);
+        assert!((right_first.state.position.x - 0.156).abs() < 0.0001);
+        assert_eq!(left_first.hit_count, 2);
+        assert_eq!(right_first.hit_count, 2);
     }
 
     #[test]

@@ -32,8 +32,8 @@ const MAX_CAMERA_ROTATION_DELTA_DEGREES: f32 = 1.5;
 const MAX_CAMERA_ORBIT_ALIGNMENT_DEGREES: f32 = 5.0;
 const RELEASE_BASELINE_MAX_VISIBLE_ISLAND_TERRAIN_COUNT: usize = 76;
 const RELEASE_LONG_GLIDE_MAX_VISIBLE_ISLAND_TERRAIN_COUNT: usize = 90;
-const RELEASE_MAX_VISIBLE_ISLAND_DETAIL_COUNT: usize = 260;
-const RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT: usize = 430;
+pub(super) const RELEASE_MAX_VISIBLE_ISLAND_DETAIL_COUNT: usize = 260;
+pub(super) const RELEASE_MAX_RESIDENT_ISLAND_VISUAL_COUNT: usize = 430;
 const RELEASE_MAX_ENTITY_COUNT: usize = 5_500;
 const ISLAND_HERO_GALLERY_MAX_VISIBLE_ISLAND_DETAIL_COUNT: usize =
     RELEASE_MAX_VISIBLE_ISLAND_DETAIL_COUNT;
@@ -481,7 +481,6 @@ pub(super) fn great_sky_plateau_route() -> EvalScenario {
     scenario.thresholds.min_lifted_samples = 8;
     scenario.thresholds.min_visible_route_beacon_count = 14;
     scenario.thresholds.max_visible_island_terrain_count = 62;
-    scenario.thresholds.max_entity_count = MAX_ENTITY_COUNT;
     scenario.thresholds.max_abs_camera_view_yaw_degrees = 15.0;
     scenario.thresholds.min_objective_total_count = 10;
     scenario.thresholds.min_completed_objective_count = 3;

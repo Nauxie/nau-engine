@@ -1184,11 +1184,9 @@ pub fn pose_readability_metrics_from_part_transforms(
             | PlayerPoseIntent::GroundedWalk
             | PlayerPoseIntent::GroundedRun
     );
-    let grounded_stride_foot_travel_m = if grounded_stride_pose {
-        (parts.left_leg_translation.z - parts.right_leg_translation.z).abs()
-    } else {
-        0.0
-    };
+    // Hip-joint translation cannot establish foot travel. Callers with the
+    // distal foot transforms supply this after measuring the complete chain.
+    let grounded_stride_foot_travel_m = 0.0;
     let grounded_stride_leg_opposition_degrees = if grounded_stride_pose {
         parts
             .left_leg_rotation
@@ -1333,6 +1331,39 @@ pub fn pose_readability_metrics(context: PlayerPoseContext, phase: f32) -> PoseR
             right_leg_translation: right_leg_pose.translation,
         },
     );
+    let ankles = [Side::Left, Side::Right].map(|side| {
+        let thigh = part_pose_with_context(
+            &CharacterPart::new(CharacterPartRole::Leg(side), Vec3::ZERO, Quat::IDENTITY),
+            context,
+            phase,
+        );
+        let shin = part_pose_with_context(
+            &CharacterPart::new(
+                CharacterPartRole::LowerLeg(side),
+                Vec3::new(0.0, -0.43, 0.01),
+                Quat::IDENTITY,
+            ),
+            context,
+            phase,
+        );
+        let foot = part_pose_with_context(
+            &CharacterPart::new(
+                CharacterPartRole::Foot(side),
+                Vec3::new(0.0, -0.405, -0.012),
+                Quat::IDENTITY,
+            ),
+            context,
+            phase,
+        );
+        thigh.rotation * (shin.translation + shin.rotation * foot.translation)
+    });
+    metrics.grounded_stride_foot_travel_m = grounded_stride_foot_travel_m(
+        context.intent(),
+        Vec3::ZERO,
+        ankles[0],
+        Vec3::ZERO,
+        ankles[1],
+    );
     metrics.signed_lateral_lean_degrees = pose_lateral_lean_radians(context).to_degrees();
     metrics.lateral_lean_degrees = metrics.signed_lateral_lean_degrees.abs();
     metrics.scarf_stream_m = scarf_tail_pose.translation.z.max(0.0);
@@ -1342,6 +1373,27 @@ pub fn pose_readability_metrics(context: PlayerPoseContext, phase: f32) -> PoseR
         .angle_between(scarf_anchor_pose.rotation)
         .to_degrees();
     metrics
+}
+
+/// Opposed ankle excursion relative to each hip, independent of world yaw and
+/// stance width. Sliding an entire leg out of its socket does not count.
+pub fn grounded_stride_foot_travel_m(
+    intent: PlayerPoseIntent,
+    left_hip: Vec3,
+    left_ankle: Vec3,
+    right_hip: Vec3,
+    right_ankle: Vec3,
+) -> f32 {
+    if !matches!(
+        intent,
+        PlayerPoseIntent::GroundedStride
+            | PlayerPoseIntent::GroundedWalk
+            | PlayerPoseIntent::GroundedRun
+    ) {
+        return 0.0;
+    }
+    let excursion = (left_ankle - left_hip) - (right_ankle - right_hip);
+    Vec2::new(excursion.x, excursion.z).length()
 }
 
 pub fn part_pose(part: &CharacterPart, mode: FlightMode, velocity: Vec3, phase: f32) -> PartPose {
@@ -2020,7 +2072,7 @@ pub fn part_pose_with_context(
 
 fn connected_limb_translation_limit_m(
     role: CharacterPartRole,
-    intent: PlayerPoseIntent,
+    _intent: PlayerPoseIntent,
 ) -> Option<f32> {
     if !matches!(
         role,
@@ -2035,21 +2087,7 @@ fn connected_limb_translation_limit_m(
         return None;
     }
 
-    if matches!(
-        intent,
-        PlayerPoseIntent::Launching
-            | PlayerPoseIntent::Falling
-            | PlayerPoseIntent::Gliding
-            | PlayerPoseIntent::AirTurn
-            | PlayerPoseIntent::Diving
-            | PlayerPoseIntent::AirBrake
-            | PlayerPoseIntent::LandingAnticipation
-            | PlayerPoseIntent::LandingRecovery
-    ) {
-        Some(CONNECTED_LIMB_MAX_TRANSLATION_M)
-    } else {
-        None
-    }
+    Some(CONNECTED_LIMB_MAX_TRANSLATION_M)
 }
 
 #[cfg(test)]
@@ -2675,8 +2713,15 @@ mod tests {
             TAU * 0.25,
         );
 
-        assert!(left_pose.translation.z > 0.1);
-        assert!(right_pose.translation.z < -0.1);
+        assert!(left_pose.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
+        assert!(right_pose.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
+        assert!(
+            left_pose
+                .rotation
+                .angle_between(right_pose.rotation)
+                .to_degrees()
+                > 70.0
+        );
     }
 
     #[test]
@@ -2721,8 +2766,8 @@ mod tests {
             TAU * 0.25,
         );
 
-        assert!(run.translation.z > walk.translation.z + 0.08);
-        assert!(run.translation.y > walk.translation.y + 0.03);
+        assert!(run.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
+        assert!(walk.translation.length() <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.001);
         assert!(
             run.rotation.angle_between(Quat::IDENTITY)
                 > walk.rotation.angle_between(Quat::IDENTITY)
@@ -2769,6 +2814,67 @@ mod tests {
             run_metrics.grounded_stride_leg_opposition_degrees
                 > walk_metrics.grounded_stride_leg_opposition_degrees
         );
+    }
+
+    #[test]
+    fn grounded_gait_keeps_limb_joints_connected_through_complete_cycles() {
+        for speed in [0.0, 4.5, 10.0] {
+            let context = PlayerPoseContext::new(
+                FlightMode::Grounded,
+                Vec3::new(0.0, 0.0, -speed),
+                FlightInput::default(),
+                0.0,
+            );
+            for side in [Side::Left, Side::Right] {
+                for role in [
+                    CharacterPartRole::Arm(side),
+                    CharacterPartRole::Forearm(side),
+                    CharacterPartRole::Hand(side),
+                    CharacterPartRole::Leg(side),
+                    CharacterPartRole::LowerLeg(side),
+                    CharacterPartRole::Foot(side),
+                ] {
+                    let part = CharacterPart::new(role, Vec3::new(0.2, -0.4, 0.02), Quat::IDENTITY);
+                    for sample in 0..120 {
+                        let pose =
+                            part_pose_with_context(&part, context, sample as f32 * TAU / 120.0);
+                        assert!(
+                            pose.translation.distance(part.base_translation)
+                                <= CONNECTED_LIMB_MAX_TRANSLATION_M + 0.0001,
+                            "{role:?}, speed {speed}, sample {sample}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn stride_travel_rejects_sliding_whole_legs_and_measures_actual_ankles() {
+        let left_hip = Vec3::new(-0.3, 0.8, 0.2);
+        let right_hip = Vec3::new(0.3, 0.8, -0.2);
+        let down = Vec3::new(0.0, -0.8, 0.0);
+        assert_eq!(
+            grounded_stride_foot_travel_m(
+                PlayerPoseIntent::GroundedRun,
+                left_hip,
+                left_hip + down,
+                right_hip,
+                right_hip + down,
+            ),
+            0.0
+        );
+        for yaw in [0.0, 0.7, 1.57, 3.1] {
+            let rotation = Quat::from_rotation_y(yaw);
+            let travel = grounded_stride_foot_travel_m(
+                PlayerPoseIntent::GroundedRun,
+                rotation * left_hip,
+                rotation * (left_hip + down + Vec3::Z * 0.2),
+                rotation * right_hip,
+                rotation * (right_hip + down - Vec3::Z * 0.2),
+            );
+            assert!((travel - 0.4).abs() < 0.0001);
+        }
     }
 
     #[test]

@@ -60,7 +60,7 @@ cargo naux
 |Left click|Lock and hide the mouse cursor|
 |Right mouse|Temporarily enable mouse look|
 |`Esc`|Open the pause menu; return from controls|
-|`Space`|Deploy the glider while airborne|
+|`Space`|Tap to open / close the glider while airborne|
 |`E`|Launch upward from the ground|
 |`Shift`|Dive|
 |`R`|Reset to the central playtest island|

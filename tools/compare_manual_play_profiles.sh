@@ -95,6 +95,13 @@ for profile in "${baseline_profile}" "${candidate_profile}"; do
   fi
 done
 
+baseline_clock="$(jq -r '.frame_time_clock // "virtual"' "${baseline_profile}")"
+candidate_clock="$(jq -r '.frame_time_clock // "virtual"' "${candidate_profile}")"
+if [[ "${baseline_clock}" != "${candidate_clock}" ]]; then
+  echo "play profiles use different frame-time clocks; recapture the baseline with the current profiler" >&2
+  exit 1
+fi
+
 metric_value() {
   local profile="$1"
   local path="$2"

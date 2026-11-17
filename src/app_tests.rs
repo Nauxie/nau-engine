@@ -270,6 +270,7 @@ fn island_hero_gallery_forces_matching_controller_and_animation_pose_for_every_v
         output_dir: output_dir.clone(),
         capture_screenshot: false,
         visible_window: false,
+        hidden_window: false,
     })
     .expect("gallery run should initialize");
     let frames_per_view = run
@@ -698,12 +699,46 @@ fn parse_cli_args_rejects_eval_only_flags_without_eval() {
         vec!["--eval-output", "target/eval/baseline_route"],
         vec!["--eval-no-screenshot"],
         vec!["--eval-visible-window"],
+        vec!["--eval-hidden-window"],
     ] {
         let error = parse_cli_args(args.into_iter().map(str::to_string))
             .expect_err("eval-only flag should require --eval");
 
         assert!(error.contains("eval options require --eval"));
     }
+}
+
+#[test]
+fn screenshot_eval_can_capture_without_showing_or_focusing_a_window() {
+    let action = parse_cli_args(
+        ["--eval", "baseline_route", "--eval-hidden-window"]
+            .into_iter()
+            .map(str::to_string),
+    )
+    .expect("background screenshot args should parse");
+    let CliAction::Run {
+        eval: Some(eval), ..
+    } = action
+    else {
+        panic!("expected eval run");
+    };
+    assert!(eval.capture_screenshot);
+    let window = primary_window(Some(&eval), false);
+    assert!(!window.visible);
+    assert!(!window.focused);
+
+    let error = parse_cli_args(
+        [
+            "--eval",
+            "baseline_route",
+            "--eval-hidden-window",
+            "--eval-visible-window",
+        ]
+        .into_iter()
+        .map(str::to_string),
+    )
+    .expect_err("conflicting window modes should fail");
+    assert!(error.contains("cannot be combined"));
 }
 
 #[test]
@@ -1068,6 +1103,7 @@ fn setup_headless_gallery_runtime_app(island_index: usize) -> (App, PathBuf) {
         output_dir: output_dir.clone(),
         capture_screenshot: false,
         visible_window: false,
+        hidden_window: false,
     })
     .expect("gallery run should initialize");
     let frames_per_view = run
@@ -1115,7 +1151,7 @@ fn material_texture_contains_color(
         .resource::<Assets<Image>>()
         .get(&texture)
         .and_then(|image| image.data.as_deref())
-        .is_some_and(|data| data.chunks_exact(4).any(|pixel| pixel == expected))
+        .is_some_and(|data| data.as_chunks::<4>().0.contains(&expected))
 }
 
 fn component_count<T: Component>(world: &mut World) -> usize {
@@ -1192,6 +1228,7 @@ fn metric_only_eval_window_is_hidden_and_unfocused() {
         output_dir: PathBuf::from("target/eval/test_hidden_window"),
         capture_screenshot: false,
         visible_window: false,
+        hidden_window: false,
     };
 
     let window = primary_window(Some(&options), false);
@@ -1210,6 +1247,7 @@ fn metric_only_profile_eval_window_can_remain_visible_and_focused() {
         output_dir: PathBuf::from("target/eval/test_visible_metric_window"),
         capture_screenshot: false,
         visible_window: true,
+        hidden_window: false,
     };
 
     let window = primary_window(Some(&options), false);
@@ -1228,6 +1266,7 @@ fn screenshot_eval_window_remains_visible_for_capture() {
         output_dir: PathBuf::from("target/eval/test_visible_window"),
         capture_screenshot: true,
         visible_window: false,
+        hidden_window: false,
     };
 
     let window = primary_window(Some(&options), false);
@@ -3066,7 +3105,9 @@ fn ground_cover_mesh_uses_dense_curved_blades() {
         "ground cover should have enough varied height to read as dense vegetation"
     );
     for (blade_index, blade) in positions
-        .chunks_exact(VERTICES_PER_GROUND_BLADE)
+        .as_chunks::<VERTICES_PER_GROUND_BLADE>()
+        .0
+        .iter()
         .enumerate()
     {
         let base_center = (Vec3::from_array(blade[0]) + Vec3::from_array(blade[1])) * 0.5;

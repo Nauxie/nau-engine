@@ -22,7 +22,7 @@ The fantasy is:
 - `S`: brake/backward input
 - `A`: steer/strafe left
 - `D`: steer/strafe right
-- `Space`: deploy glider while airborne
+- `Space`: tap to open / close the glider while airborne
 - `E`: launch upward from the ground
 - `Shift`: dive
 
@@ -33,7 +33,7 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - `Grounded`: player is at or near floor height.
 - `Launching`: short lockout after a valid launch.
 - `Airborne`: falling or moving through air without glider.
-- `Gliding`: glider input is held while airborne and not launching. Holding dive while gliding keeps the glider deployed and enters a high-sink glider-dive pose.
+- `Gliding`: a Space tap opens the glider while airborne; it stays open until the next tap or landing/reset. A ground or menu tap does not arm deployment for later. A tap during the airborne launch phase opens it immediately, ending the remaining launch phase without adding velocity. Holding dive while gliding keeps the glider deployed and enters a high-sink glider-dive pose.
 
 ## Current Rules
 
@@ -62,6 +62,10 @@ Input mapping is still prototype-level. In the long run, glider controls should 
 - Mouse-look deltas are consumed as direct current-frame orbit intent; they are not multiplied by delta time or delayed through response smoothing.
 - Follow, obstruction, floor-clearance, collision, streaming, and reset corrections use the shared bounded continuity contract and must report an explicit correction source.
 - Surface-obstruction vertical correction is measured separately from intentional orbit input and is limited to `0.241 m` per 60 Hz frame, including frames where mouse input and obstruction overlap.
+- Tree trunks and canopies fade near the camera using their actual geometry bounds, spawn scale, and maximum visual wind pulse. Camera motion and tree collision remain authoritative; the fade clears foliage and branches that would otherwise cover the standing or launching character.
+- The authored character's visible rest height matches the 1.85 m collision height. Character and glider share that visual frame, preserving their attachment relationship.
+- Grounded animation keeps limb attachment translations within 15 mm. Stride evidence measures ankle movement relative to each hip through the actual composed, scaled hierarchy.
+- Grounded sole alignment uses the rendered boot geometry and the player's authoritative supporting surface. Feet extending beyond an island edge must not pull the visual body toward terrain below it. Visual correction leaves the movement/collision root unchanged and releases continuously after launch.
 
 ## Forbidden Behaviors
 

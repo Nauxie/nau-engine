@@ -1,10 +1,12 @@
 # Project Status
 
-Last updated: 2026-07-16
+Last updated: 2026-11-17
 
 ## Current Milestone
 
 Playable traversal baseline.
+
+The November recovery candidate fixes interrupted world-floor transitions, reports applied island residency, removes repeated collision-substep work, restores connected grounded joints, and aligns the visible character's height and soles with collision and terrain. Native screenshot evals can now run without showing or focusing a window, and frame-time diagnostics use uncapped real time. The character remains a rigid jointed prototype. Focused release play and the user's traversal-feel review remain required before accepting this candidate or declaring the residual microstutter resolved.
 
 NAU is a working Mac-first Bevy sandbox, not a general-purpose engine or a production game. The current priority is to preserve the enjoyable launch/glide/dive/land loop while adding clearer route purpose, stronger authored presentation, and only the infrastructure that those improvements require.
 

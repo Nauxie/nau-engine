@@ -83,6 +83,11 @@ jobs:
           candidate_output="${GITHUB_WORKSPACE}/target/eval/perf_compare/candidate"
           retry_baseline_output="${GITHUB_WORKSPACE}/target/eval/perf_compare/retry_base"
           retry_candidate_output="${GITHUB_WORKSPACE}/target/eval/perf_compare/retry_candidate"
+          # Use one collector for both revisions. Only the disposable base gets
+          # the recorded measurement-only clock patch, before its release build.
+          collector="${GITHUB_WORKSPACE}/tools/perf_baseline.sh"
+          validate_capture="${GITHUB_WORKSPACE}/tools/validate_perf_capture.sh"
+          scenarios=(baseline_route long_glide_visibility camera_mouse_control)
 
           git fetch --no-tags origin "${{ github.event.pull_request.base.sha }}"
           rm -rf "${baseline_worktree}" "${baseline_target}"
@@ -94,20 +99,20 @@ jobs:
           (
             cd "${baseline_worktree}"
             CARGO_TARGET_DIR="${baseline_target}" \
+              NAU_PERF_PREPARE_BASELINE_CLOCK=1 \
               NAU_PERF_OUTPUT_DIR="${baseline_output}" \
-              ./tools/perf_baseline.sh \
-                baseline_route \
-                long_glide_visibility \
-                camera_mouse_control
+              "${collector}" "${scenarios[@]}"
           ) || baseline_status=$?
 
           candidate_status=0
           NAU_PERF_BUILD_FIRST=0 \
             NAU_PERF_OUTPUT_DIR="${candidate_output}" \
-            ./tools/perf_baseline.sh \
-              baseline_route \
-              long_glide_visibility \
-              camera_mouse_control || candidate_status=$?
+            "${collector}" "${scenarios[@]}" || candidate_status=$?
+
+          baseline_capture_status=0
+          "${validate_capture}" "${baseline_output}/perf_summary.json" "${scenarios[@]}" || baseline_capture_status=$?
+          candidate_capture_status=0
+          "${validate_capture}" "${candidate_output}/perf_summary.json" "${scenarios[@]}" || candidate_capture_status=$?
 
           comparison_status=0
           ./tools/compare_perf_summaries.sh \
@@ -118,29 +123,26 @@ jobs:
           retry_candidate_status=0
           retry_baseline_status=0
           retry_comparison_status=0
-          if (( baseline_status == 0 && candidate_status == 0 && comparison_status != 0 )); then
+          if (( baseline_status <= 1 && candidate_status <= 1 && baseline_capture_status == 0 && candidate_capture_status == 0 && comparison_status != 0 )); then
             retry_attempted=1
-            echo "Initial relative comparison failed; retrying candidate then base to reject runner-order noise."
+            echo "Initial comparison failed with complete captures; retrying candidate then base to reject runner-order noise."
 
             NAU_PERF_BUILD_FIRST=0 \
               NAU_PERF_OUTPUT_DIR="${retry_candidate_output}" \
-              ./tools/perf_baseline.sh \
-                baseline_route \
-                long_glide_visibility \
-                camera_mouse_control || retry_candidate_status=$?
+              "${collector}" "${scenarios[@]}" || retry_candidate_status=$?
 
             (
               cd "${baseline_worktree}"
               CARGO_TARGET_DIR="${baseline_target}" \
                 NAU_PERF_BUILD_FIRST=0 \
+                NAU_PERF_PREPARE_BASELINE_CLOCK=1 \
                 NAU_PERF_OUTPUT_DIR="${retry_baseline_output}" \
-                ./tools/perf_baseline.sh \
-                  baseline_route \
-                  long_glide_visibility \
-                  camera_mouse_control
+                "${collector}" "${scenarios[@]}"
             ) || retry_baseline_status=$?
 
-            if (( retry_candidate_status == 0 && retry_baseline_status == 0 )); then
+            if (( retry_candidate_status <= 1 && retry_baseline_status <= 1 )) &&
+              "${validate_capture}" "${retry_candidate_output}/perf_summary.json" "${scenarios[@]}" &&
+              "${validate_capture}" "${retry_baseline_output}/perf_summary.json" "${scenarios[@]}"; then
               ./tools/compare_perf_summaries.sh \
                 "${retry_baseline_output}/perf_summary.json" \
                 "${retry_candidate_output}/perf_summary.json" || retry_comparison_status=$?
@@ -153,6 +155,8 @@ jobs:
 
           printf 'baseline collection status: %s\n' "${baseline_status}"
           printf 'candidate collection status: %s\n' "${candidate_status}"
+          printf 'baseline capture validity status: %s\n' "${baseline_capture_status}"
+          printf 'candidate capture validity status: %s\n' "${candidate_capture_status}"
           printf 'performance comparison status: %s\n' "${comparison_status}"
           printf 'retry attempted: %s\n' "${retry_attempted}"
           printf 'retry candidate collection status: %s\n' "${retry_candidate_status}"
@@ -166,9 +170,19 @@ jobs:
               final_comparison_status=1
             fi
           fi
-          if (( baseline_status != 0 || candidate_status != 0 || final_comparison_status != 0 )); then
+          if (( baseline_status > 1 || candidate_status > 1 || baseline_capture_status != 0 || candidate_capture_status != 0 || final_comparison_status != 0 )); then
             exit 1
           fi
+
+      - name: Upload performance comparison evidence
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-comparison-${{ github.run_id }}
+          path: target/eval/perf_compare
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 0
 
       - name: Camera continuity gate
         run: ./tools/camera_continuity_gate.sh target/eval/camera_continuity/ci

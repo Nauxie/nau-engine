@@ -84,10 +84,23 @@ pub(super) fn append_ellipsoid_lobe(
         let sin_theta = theta.sin();
         let cos_theta = theta.cos();
         for lon in 0..=longitude_segments {
-            let phi = lon as f32 / longitude_segments as f32 * std::f32::consts::TAU;
-            let unit = Vec3::new(sin_theta * phi.cos(), cos_theta, sin_theta * phi.sin());
-            let noise =
-                (random_unit(seed, lat as u32 * 31 + lon as u32, 83) - 0.5) * noise_strength;
+            // The UV seam has two vertices, but they must share geometry and
+            // noise. Likewise every longitude meets at one coincident pole.
+            let geometry_lon = if lat == 0 || lat == latitude_segments {
+                0
+            } else {
+                lon % longitude_segments
+            };
+            let phi = geometry_lon as f32 / longitude_segments as f32 * std::f32::consts::TAU;
+            let unit = if lat == 0 {
+                Vec3::Y
+            } else if lat == latitude_segments {
+                Vec3::NEG_Y
+            } else {
+                Vec3::new(sin_theta * phi.cos(), cos_theta, sin_theta * phi.sin())
+            };
+            let noise = (random_unit(seed, lat as u32 * 31 + geometry_lon as u32, 83) - 0.5)
+                * noise_strength;
             let position = center + unit * radii * (1.0 + noise);
             let normal =
                 Vec3::new(unit.x / radii.x, unit.y / radii.y, unit.z / radii.z).normalize_or_zero();
@@ -107,7 +120,75 @@ pub(super) fn append_ellipsoid_lobe(
             let b = start + (lat * stride + lon + 1) as u32;
             let c = start + ((lat + 1) * stride + lon) as u32;
             let d = start + ((lat + 1) * stride + lon + 1) as u32;
-            indices.extend([a, c, b, b, c, d]);
+            // Latitude runs from the top down. Keep geometric face normals
+            // pointing outward, matching the vertex normals and back-face culling.
+            indices.extend([a, b, c, b, d, c]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ellipsoid_lobes_wind_outward_for_backface_culling() {
+        for noise in [0.0, 0.12, 0.32] {
+            let mut positions = Vec::new();
+            let mut normals = Vec::new();
+            let mut uvs = Vec::new();
+            let mut indices = Vec::new();
+            let center = Vec3::new(3.0, -2.0, 5.0);
+            append_ellipsoid_lobe(
+                &mut positions,
+                &mut normals,
+                &mut uvs,
+                &mut indices,
+                center,
+                Vec3::new(1.55, 1.1, 1.8),
+                6,
+                12,
+                8_000,
+                noise,
+            );
+            assert_eq!(positions.len(), 7 * 13);
+            assert_eq!(indices.len(), 6 * 12 * 6);
+            for lat in 0..=6 {
+                let first = lat * 13;
+                let last = first + 12;
+                assert_eq!(positions[first], positions[last], "open seam at row {lat}");
+                assert_eq!(normals[first], normals[last]);
+                assert_eq!(uvs[first][0], 0.0);
+                assert_eq!(uvs[last][0], 1.0);
+            }
+            for lon in 1..=12 {
+                assert_eq!(positions[0], positions[lon], "split north pole");
+                assert_eq!(
+                    positions[6 * 13],
+                    positions[6 * 13 + lon],
+                    "split south pole"
+                );
+            }
+            let mut facing_faces = 0;
+            for [a, b, c] in indices.as_chunks::<3>().0 {
+                let points = [*a, *b, *c].map(|i| Vec3::from_array(positions[i as usize]));
+                let face = (points[1] - points[0]).cross(points[2] - points[0]);
+                let normal = [*a, *b, *c]
+                    .map(|i| Vec3::from_array(normals[i as usize]))
+                    .into_iter()
+                    .sum::<Vec3>();
+                let alignment = face.dot(normal);
+                // Pole vertices coincide for smooth lobes. Noisy poles can
+                // form grazing triangles whose normal alignment is zero.
+                if alignment.abs() <= 0.00001 {
+                    continue;
+                }
+                assert!(alignment > 0.0, "inward lobe face at noise {noise}");
+                let triangle_center = (points[0] + points[1] + points[2]) / 3.0;
+                assert!(face.dot(triangle_center - center) > 0.0);
+                facing_faces += 1;
+            }
+            assert!(facing_faces >= 120);
         }
     }
 }

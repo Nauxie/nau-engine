@@ -2843,7 +2843,9 @@ mod tests {
         let positions = positions(mesh);
         let point = world.xz();
         u32_indices(mesh)
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter_map(|triangle| {
                 let a = Vec3::from_array(positions[triangle[0] as usize]);
                 let b = Vec3::from_array(positions[triangle[1] as usize]);
@@ -3473,7 +3475,7 @@ mod tests {
             river_channel_surface_mesh(30.0, 4.0, 1.2, 41_211),
         ] {
             let positions = positions(&mesh);
-            for triangle in u32_indices(&mesh).chunks_exact(3) {
+            for triangle in u32_indices(&mesh).as_chunks::<3>().0.iter() {
                 let a = Vec3::from_array(positions[triangle[0] as usize]);
                 let b = Vec3::from_array(positions[triangle[1] as usize]);
                 let c = Vec3::from_array(positions[triangle[2] as usize]);

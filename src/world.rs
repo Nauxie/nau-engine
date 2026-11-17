@@ -16,9 +16,10 @@ mod tests;
 use bevy::prelude::Vec3;
 
 pub use collision::{
-    TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND, TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND,
-    TerrainCollisionTruthReport, WorldCollisionProxy, WorldCollisionProxyKind,
-    WorldCollisionResolution, resolve_world_collisions, terrain_body_collision_proxies,
+    PLAYER_COLLISION_HEIGHT_M, TERRAIN_BODY_COLLISION_PROXIES_PER_ISLAND,
+    TERRAIN_RIM_COLLISION_PROXIES_PER_ISLAND, TerrainCollisionTruthReport, WorldCollisionProxy,
+    WorldCollisionProxyKind, WorldCollisionResolution, resolve_world_collisions,
+    resolve_world_collisions_slice, terrain_body_collision_proxies,
     terrain_collision_contact_probe_position, terrain_collision_truth_report,
     terrain_rim_collision_proxies,
 };
