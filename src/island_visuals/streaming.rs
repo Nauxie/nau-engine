@@ -946,7 +946,7 @@ mod tests {
             visibility_range: Some(bevy::camera::visibility::VisibilityRange {
                 start_margin: 1.0..1.45,
                 end_margin: f32::MAX..f32::MAX,
-                use_aabb: true,
+                use_aabb: false,
             }),
             name: "reset-proxy-with-deferred-visual",
         };
