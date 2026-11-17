@@ -29,9 +29,6 @@ summary_tsv="${output_root}/perf_summary.tsv"
 interpretation_md="${output_root}/INTERPRETATION.md"
 host_snapshot_before="${output_root}/host_snapshot_before.txt"
 host_snapshot_after="${output_root}/host_snapshot_after.txt"
-repo_commit="$(nau_source_commit)"
-source_state="$(nau_source_state)"
-source_fingerprint="$(nau_source_fingerprint)"
 failed=0
 max_avg_frame_time_ms="${NAU_PERF_MAX_AVG_FRAME_TIME_MS:-24}"
 max_p95_frame_time_ms="${NAU_PERF_MAX_P95_FRAME_TIME_MS:-45}"
@@ -47,6 +44,17 @@ visible_window="${NAU_PERF_VISIBLE_WINDOW:-1}"
 capture_screenshot="${NAU_PERF_CAPTURE_SCREENSHOT:-0}"
 default_ignore_process_pattern="${NAU_PERF_DEFAULT_IGNORE_PROCESS_PATTERN-}"
 ignore_process_pattern="${NAU_PERF_IGNORE_PROCESS_PATTERN-${default_ignore_process_pattern}}"
+prepare_baseline_clock="${NAU_PERF_PREPARE_BASELINE_CLOCK:-0}"
+
+case "${prepare_baseline_clock}" in
+  0) clock_metadata="$(python3 "${script_dir}/perf_clock.py")" ;;
+  1) clock_metadata="$(python3 "${script_dir}/perf_clock.py" --prepare-baseline)" ;;
+  *) echo "NAU_PERF_PREPARE_BASELINE_CLOCK must be 0 or 1" >&2; exit 2 ;;
+esac
+# Record the actual instrumented source, including its deliberately dirty state.
+repo_commit="$(nau_source_commit)"
+source_state="$(nau_source_state)"
+source_fingerprint="$(nau_source_fingerprint)"
 
 case "${allow_busy_host}" in
   0 | 1) ;;
@@ -277,6 +285,7 @@ jq -s \
   --arg repo_commit "${repo_commit}" \
   --arg source_state "${source_state}" \
   --arg source_fingerprint "${source_fingerprint}" \
+  --argjson clock_metadata "${clock_metadata}" \
   --arg output_root "${output_root}" \
   --arg eval_command "${eval_command}" \
   --arg host_snapshot_before "${host_snapshot_before}" \
@@ -298,6 +307,8 @@ jq -s \
     repo_commit: $repo_commit,
     source_state: $source_state,
     source_fingerprint: $source_fingerprint,
+    frame_time_clock: $clock_metadata.frame_time_clock,
+    clock_instrumentation: $clock_metadata,
     mode: "release",
     output_root: $output_root,
     eval_command: $eval_command,
@@ -338,6 +349,7 @@ jq -s \
       | {
         scenario,
         eval_status: $eval_status,
+        eval_passed: .passed,
         passed: (.passed and all($perf_budget_checks[]; .passed) and ($eval_status == 0)),
         frame_count,
         duration_secs,
@@ -464,6 +476,7 @@ This is a release-only app-path baseline. Use it to compare broad runtime cost b
 - Compare release perf summaries:
   `./tools/compare_perf_summaries.sh target/eval/perf_baseline/main/perf_summary.json target/eval/perf_baseline/candidate/perf_summary.json`
 - Compare only summaries captured with matching `visible_window` and `capture_screenshot` settings.
+- Comparisons require matching `frame_time_clock` metadata. CI runs this collector from the candidate checkout for both revisions, and sets `NAU_PERF_PREPARE_BASELINE_CLOCK=1` only in the disposable baseline worktree. That exact measurement-only patch replaces the legacy capped virtual clock with the real clock; `clock_instrumentation` records the original/measured file hashes and patch name, while source identity records the actual dirty worktree.
 - Foreground scripted profile gates:
   `./tools/scripted_play_profile.sh target/eval/play_profile/main_scripted_freeflight.json`
   `./tools/scripted_play_profile.sh target/eval/play_profile/candidate_scripted_freeflight.json`

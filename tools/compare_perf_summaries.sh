@@ -282,6 +282,18 @@ validate_capture_modes_match() {
   fi
 }
 
+validate_frame_time_clocks_match() {
+  local baseline_clock
+  local candidate_clock
+  baseline_clock="$(summary_string "${baseline_summary}" "frame_time_clock")"
+  candidate_clock="$(summary_string "${candidate_summary}" "frame_time_clock")"
+  printf 'frame_time_clock\tbaseline=%s\tcandidate=%s\n' "${baseline_clock}" "${candidate_clock}"
+  if [[ "${baseline_clock}" != "real" || "${candidate_clock}" != "real" ]]; then
+    echo "perf comparison requires fresh uncapped real-clock captures for both revisions" >&2
+    failed=1
+  fi
+}
+
 allowed_threshold() {
   local baseline_value="$1"
   local ratio="$2"
@@ -459,6 +471,7 @@ compare_optional_hitch_metric() {
 validate_summary "baseline_summary" "${baseline_summary}"
 validate_summary "candidate_summary" "${candidate_summary}"
 validate_capture_modes_match
+validate_frame_time_clocks_match
 validate_host_snapshots "baseline_summary" "${baseline_summary}"
 validate_host_snapshots "candidate_summary" "${candidate_summary}"
 
