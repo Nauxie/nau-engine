@@ -204,10 +204,10 @@ fn development_performance_gate_keeps_local_and_ci_budgets_explicit() {
     assert!(comparison.contains("printf 'null\\n'"));
     assert!(comparison.contains("fraction <= max_fraction ? \"true\" : \"false\""));
     assert!(comparison.contains(
-        "compare_metric \"${scenario}\" \"avg_frame_time_ms\" \\\n    \"${scenario_avg_frame_time_ratio}\""
+        "compare_metric \"${scenario}\" \"avg_runtime_frame_time_ms\" \\\n    \"${scenario_avg_frame_time_ratio}\""
     ));
     assert!(comparison.contains(
-        "compare_metric \"${scenario}\" \"p95_frame_time_ms\" \\\n    \"${max_frame_time_ratio}\""
+        "compare_metric \"${scenario}\" \"p95_runtime_frame_time_ms\" \\\n    \"${max_frame_time_ratio}\""
     ));
     assert!(comparison.contains(
         "compare_optional_hitch_metric \"${scenario}\" \"runtime_frames_over_50ms\" \\\n    \"${max_count_ratio}\""
@@ -238,6 +238,10 @@ fn performance_comparison_scenario(
         "p95_frame_time_ms": p95_frame_time_ms,
         "p99_frame_time_ms": 90.0,
         "max_frame_time_ms": 120.0,
+        "avg_runtime_frame_time_ms": avg_frame_time_ms,
+        "p95_runtime_frame_time_ms": p95_frame_time_ms,
+        "p99_runtime_frame_time_ms": 90.0,
+        "max_runtime_frame_time_ms": 120.0,
         "runtime_frame_time_sample_count": runtime_samples,
         "runtime_frames_over_33_34ms": runtime_hitch_counts[0],
         "runtime_frames_over_50ms": runtime_hitch_counts[1],
@@ -294,6 +298,8 @@ fn write_performance_comparison_summary(
         serde_json::json!({
             "mode": "release",
             "frame_time_clock": "real",
+            "frame_time_scope": "runtime_after_startup_warmup",
+            "startup_warmup_frames": 30,
             "visible_window": true,
             "capture_screenshot": false,
             "scenarios": scenarios

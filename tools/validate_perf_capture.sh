@@ -14,6 +14,8 @@ expected_scenarios="$(printf '%s\n' "$@" | jq -Rsc 'split("\n") | map(select(len
 jq -e --argjson expected "${expected_scenarios}" '
   .mode == "release"
   and .frame_time_clock == "real"
+  and .frame_time_scope == "runtime_after_startup_warmup"
+  and .startup_warmup_frames == 30
   and (.source_fingerprint | type == "string" and length > 0)
   and ([.scenarios[].scenario] | sort) == $expected
   and all(.scenarios[];
@@ -22,6 +24,9 @@ jq -e --argjson expected "${expected_scenarios}" '
     and all(
       .avg_frame_time_ms, .p95_frame_time_ms, .p99_frame_time_ms,
       .max_frame_time_ms, .runtime_frame_time_sample_count,
+      .avg_runtime_frame_time_ms, .p95_runtime_frame_time_ms,
+      .p99_runtime_frame_time_ms, .max_runtime_frame_time_ms,
+      .eval_artifact_frame_time_sample_count,
       .runtime_frames_over_33_34ms, .runtime_frames_over_50ms,
       .runtime_frames_over_100ms, .max_entity_count, .max_mesh_count,
       .max_material_count, .max_loaded_mesh_vertices, .max_loaded_mesh_triangles,
@@ -31,6 +36,8 @@ jq -e --argjson expected "${expected_scenarios}" '
       type == "number" and . >= 0
     )
     and .runtime_frame_time_sample_count > 0
+    and (.runtime_frame_time_sample_count + .eval_artifact_frame_time_sample_count)
+      == (.frame_count + 1 - 30)
   )
 ' "${summary}" >/dev/null
 

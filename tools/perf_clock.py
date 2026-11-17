@@ -4,6 +4,7 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -21,6 +22,9 @@ def main():
     real = legacy.replace(b"Res<Time>", b"Res<Time<bevy::time::Real>>")
     head = git("show", f"HEAD:{path}")
     current = Path(path).read_bytes()
+    warmup = re.findall(rb"pub\(super\) const EVAL_FRAME_TIME_WARMUP_FRAMES: u32 = ([0-9]+);", current)
+    if warmup != [b"30"]:
+        raise ValueError("unknown eval startup/runtime phase; expected the existing 30-frame warmup")
 
     def clock(source):
         if source.count(real) == 1 and source.count(legacy) == 0:
@@ -48,6 +52,8 @@ def main():
 
     print(json.dumps({
         "frame_time_clock": measured_clock,
+        "frame_time_scope": "runtime_after_startup_warmup",
+        "startup_warmup_frames": 30,
         "measurement_patch": "eval_real_clock_v1" if current == expected and current != head else None,
         "source_file": path,
         "source_head_sha256": hashlib.sha256(head).hexdigest(),
