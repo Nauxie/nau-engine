@@ -160,6 +160,8 @@ Grounded foot-gap evidence comes from the composed boot-sole geometry after visu
 
 Streaming retires obsolete detail before admitting new residency. Terrain and distant-island shells swap as complete groups within the existing 32-change frame budget; if a swap will not fit, the previous complete shell stays visible until the following frame. Gallery and interrupted-reset regressions check the applied scene against the existing content ceilings and require convergence within the gallery's 32-frame settling period.
 
+Release comparisons run the current collector for both revisions. `tools/perf_clock.py` applies only the exact wall-clock collector annotation to a legacy baseline before building it, records the original and measured file hashes plus actual source identity, and leaves already-correct baselines unchanged. Unknown clocks or unrelated baseline changes fail closed. Complete, successful gameplay captures may receive the existing reverse-order retry after a timing-budget failure; missing evidence and failed gameplay cannot. Absolute and relative acceptance budgets are unchanged.
+
 Run the app directly without screenshot capture. This skips PNG capture but still creates the native Bevy window:
 
 ```sh
