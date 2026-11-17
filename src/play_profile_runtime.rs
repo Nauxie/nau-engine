@@ -280,7 +280,8 @@ impl PlayProfileRun {
             .map(PlayProfileHitchEvent::to_json)
             .collect::<Vec<_>>();
         let report = json!({
-            "schema_version": 5,
+            "schema_version": 6,
+            "frame_time_clock": "real",
             "profile_kind": self.profile_kind(),
             "control_source": self.control_source(),
             "script": self.script.map(PlayProfileScript::name),
@@ -466,7 +467,7 @@ fn scripted_profile_camera_input(script: PlayProfileScript, t: f64, dt: f32) -> 
 }
 
 pub(crate) fn collect_play_profile_sample(
-    time: Res<Time>,
+    time: Res<Time<bevy::time::Real>>,
     mut profile: ResMut<PlayProfileRun>,
     scene: PlayProfileScene,
     _non_send_marker: NonSendMarker,
@@ -1960,7 +1961,8 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        assert_eq!(report["schema_version"], 5);
+        assert_eq!(report["schema_version"], 6);
+        assert_eq!(report["frame_time_clock"], "real");
         assert_eq!(report["profile_kind"], "manual_play_foreground");
         assert_eq!(report["control_source"], "manual");
         assert_eq!(report["script"], serde_json::Value::Null);
@@ -2058,6 +2060,28 @@ mod tests {
         assert!(check_names.contains(&"play_profile_monitor_refresh_change_count"));
         assert!(check_names.contains(&"play_profile_steady_missed_refresh_ratio"));
         assert!(check_names.contains(&"play_profile_window_focused_ratio"));
+
+        let legacy_path = output_path.with_extension("legacy.json");
+        let mut legacy_report = report.clone();
+        legacy_report["schema_version"] = json!(5);
+        legacy_report
+            .as_object_mut()
+            .unwrap()
+            .remove("frame_time_clock");
+        fs::write(&legacy_path, serde_json::to_string(&legacy_report).unwrap()).unwrap();
+        let comparison = std::process::Command::new("bash")
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("tools/compare_manual_play_profiles.sh"),
+            )
+            .arg(&legacy_path)
+            .arg(&output_path)
+            .output()
+            .expect("run play-profile comparison");
+        assert!(!comparison.status.success());
+        assert!(
+            String::from_utf8_lossy(&comparison.stderr).contains("different frame-time clocks")
+        );
+        fs::remove_file(legacy_path).unwrap();
 
         fs::remove_file(output_path).expect("profile report should be removable");
     }

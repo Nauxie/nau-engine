@@ -146,6 +146,16 @@ Run the app directly with screenshot capture:
 cargo run -- --eval baseline_route --eval-output target/eval/baseline_route
 ```
 
+Capture the actual game render without showing or focusing its window:
+
+```sh
+NAU_EVAL_SCREENSHOT=1 NAU_EVAL_HIDDEN_WINDOW=1 ./tools/eval.sh camera_mouse_control target/eval/camera_background
+```
+
+The equivalent app option is `--eval-hidden-window`. Hidden captures support visual inspection without taking foreground control; they do not establish focused presentation performance or manual feel.
+
+Frame-time collection and play-profile schema v6 use Bevy's real clock. Gameplay retains its bounded virtual clock, while diagnostics record the full duration of stalls beyond 250 ms. Play-profile comparisons reject mixed clock types and require a freshly captured baseline after this change. Island streaming diagnostics count applied residency after the per-frame budget, so transition counts describe the entities actually present rather than the requested scene.
+
 Run the app directly without screenshot capture. This skips PNG capture but still creates the native Bevy window:
 
 ```sh

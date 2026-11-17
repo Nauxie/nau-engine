@@ -24,6 +24,7 @@ pub(crate) struct EvalOptions {
     pub(crate) output_dir: PathBuf,
     pub(crate) capture_screenshot: bool,
     pub(crate) visible_window: bool,
+    pub(crate) hidden_window: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -422,6 +423,7 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
     let mut play_profile_script = None;
     let mut capture_screenshot = true;
     let mut visible_window = false;
+    let mut hidden_window = false;
     let mut saw_eval = false;
     let mut saw_eval_option = false;
     let mut requested_run_mode = None;
@@ -458,6 +460,9 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
         } else if arg == "--eval-visible-window" {
             saw_eval_option = true;
             visible_window = true;
+        } else if arg == "--eval-hidden-window" {
+            saw_eval_option = true;
+            hidden_window = true;
         } else if arg == "--play-profile" {
             play_profile_output =
                 Some(PathBuf::from(args.next().ok_or_else(|| {
@@ -520,6 +525,11 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
     if saw_eval_option && !saw_eval {
         return Err("eval options require --eval".to_string());
     }
+    if visible_window && hidden_window {
+        return Err(
+            "--eval-visible-window and --eval-hidden-window cannot be combined".to_string(),
+        );
+    }
     if play_profile_duration_secs.is_some() && play_profile_output.is_none() {
         return Err("--play-profile-duration requires --play-profile".to_string());
     }
@@ -570,6 +580,7 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
             output_dir,
             capture_screenshot,
             visible_window,
+            hidden_window,
         }))
     } else {
         None
@@ -588,7 +599,7 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> Result<C
 
 pub(crate) fn usage() -> String {
     format!(
-        "Usage:\n  cargo run\n  cargo run -- --debug\n  cargo run -- --play\n  cargo run --release -- --play --play-profile <file> [--play-profile-duration <seconds>] [--play-profile-script <freeflight|ground_traversal>]\n  cargo run -- --eval <scenario> [--eval-output <dir>] [--eval-no-screenshot] [--eval-visible-window] [--debug]\n  cargo run -- --export-terrain <dir>\n  cargo run -- --export-visual-content <dir>\n  cargo run -- --export-wind-visuals <dir>\n\nScenarios: {}",
+        "Usage:\n  cargo run\n  cargo run -- --debug\n  cargo run -- --play\n  cargo run --release -- --play --play-profile <file> [--play-profile-duration <seconds>] [--play-profile-script <freeflight|ground_traversal>]\n  cargo run -- --eval <scenario> [--eval-output <dir>] [--eval-no-screenshot] [--eval-visible-window | --eval-hidden-window] [--debug]\n  cargo run -- --export-terrain <dir>\n  cargo run -- --export-visual-content <dir>\n  cargo run -- --export-wind-visuals <dir>\n\nScenarios: {}",
         SCENARIO_NAMES.join(", ")
     )
 }
@@ -668,6 +679,7 @@ mod tests {
             output_dir: output_dir.clone(),
             capture_screenshot: true,
             visible_window: false,
+            hidden_window: false,
         })
         .expect("gallery run");
         let plan = run.island_review_plan.as_ref().expect("review plan");
@@ -792,6 +804,7 @@ mod tests {
             output_dir: output_dir.clone(),
             capture_screenshot: true,
             visible_window: false,
+            hidden_window: false,
         })
         .expect("baseline run");
 
@@ -824,6 +837,7 @@ mod tests {
             output_dir: output_dir.clone(),
             capture_screenshot: false,
             visible_window: false,
+            hidden_window: false,
         })
         .expect("gallery run without screenshots");
 
@@ -844,6 +858,7 @@ mod tests {
             output_dir: output_dir.clone(),
             capture_screenshot: false,
             visible_window: false,
+            hidden_window: false,
         })
         .expect("baseline run without screenshots");
         assert!(!manifest_path.exists());
@@ -860,6 +875,7 @@ mod tests {
             output_dir: output_dir.clone(),
             capture_screenshot: true,
             visible_window: false,
+            hidden_window: false,
         })
         .expect("baseline run");
         run.frame = run.checkpoint_captures[0].frame;

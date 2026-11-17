@@ -878,7 +878,7 @@ fn nearest_island_edge_metrics(islands: &[SkyIsland], position: Vec3) -> (f32, b
     )
 }
 
-pub(crate) fn collect_eval_frame_time(time: Res<Time>, mut run: ResMut<EvalRun>) {
+pub(crate) fn collect_eval_frame_time(time: Res<Time<bevy::time::Real>>, mut run: ResMut<EvalRun>) {
     if run.finalized {
         return;
     }
@@ -2268,6 +2268,50 @@ mod tests {
     use nau_engine::animation::LANDING_MAX_FOOT_SPLIT_READABILITY_M;
     use nau_engine::movement::{Facing, FlightInput, FlightMode};
     use nau_engine::world::SkyRoute;
+
+    #[test]
+    fn eval_timing_records_stalls_beyond_the_gameplay_delta_limit() {
+        use crate::eval_runtime::EvalOptions;
+        use bevy::time::{Real, TimePlugin, TimeUpdateStrategy, Virtual};
+        use std::time::Duration;
+
+        let output_dir =
+            std::env::temp_dir().join(format!("nau-real-frame-time-{}", std::process::id()));
+        let mut run = EvalRun::new(EvalOptions {
+            scenario: nau_engine::eval::scenario_named("camera_mouse_control").unwrap(),
+            output_dir: output_dir.clone(),
+            capture_screenshot: false,
+            visible_window: false,
+            hidden_window: true,
+        })
+        .unwrap();
+        run.frame = EVAL_FRAME_TIME_WARMUP_FRAMES;
+        let mut app = App::new();
+        app.add_plugins(TimePlugin)
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
+            .insert_resource(run)
+            .add_systems(Update, collect_eval_frame_time);
+        app.update();
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+            600,
+        )));
+        app.update();
+
+        assert_eq!(
+            app.world().resource::<Time<Real>>().delta(),
+            Duration::from_millis(600)
+        );
+        assert_eq!(
+            app.world().resource::<Time<Virtual>>().delta(),
+            Duration::from_millis(250)
+        );
+        let run = app.world().resource::<EvalRun>();
+        run.write_summary().unwrap();
+        let summary: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&run.summary_path).unwrap()).unwrap();
+        assert_eq!(summary["metrics"]["max_runtime_frame_time_ms"], 600.0);
+        std::fs::remove_dir_all(output_dir).unwrap();
+    }
 
     #[test]
     fn runtime_asset_cost_cache_counts_each_material_collection_once() {

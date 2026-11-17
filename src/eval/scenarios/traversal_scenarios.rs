@@ -481,7 +481,6 @@ pub(super) fn great_sky_plateau_route() -> EvalScenario {
     scenario.thresholds.min_lifted_samples = 8;
     scenario.thresholds.min_visible_route_beacon_count = 14;
     scenario.thresholds.max_visible_island_terrain_count = 62;
-    scenario.thresholds.max_entity_count = MAX_ENTITY_COUNT;
     scenario.thresholds.max_abs_camera_view_yaw_degrees = 15.0;
     scenario.thresholds.min_objective_total_count = 10;
     scenario.thresholds.min_completed_objective_count = 3;

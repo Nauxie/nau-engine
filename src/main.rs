@@ -365,8 +365,9 @@ fn eval_gameplay_movement_active(run: Res<EvalRun>) -> bool {
 }
 
 fn primary_window(eval: Option<&EvalOptions>, center_on_primary_monitor: bool) -> Window {
-    let hidden_metric_eval =
-        eval.is_some_and(|options| !options.capture_screenshot && !options.visible_window);
+    let hidden_eval = eval.is_some_and(|options| {
+        options.hidden_window || (!options.capture_screenshot && !options.visible_window)
+    });
 
     Window {
         title: "The NAU Engine Flight Sandbox".into(),
@@ -379,8 +380,8 @@ fn primary_window(eval: Option<&EvalOptions>, center_on_primary_monitor: bool) -
         present_mode: PresentMode::AutoVsync,
         composite_alpha_mode: CompositeAlphaMode::Opaque,
         transparent: false,
-        visible: !hidden_metric_eval,
-        focused: !hidden_metric_eval,
+        visible: !hidden_eval,
+        focused: !hidden_eval,
         ..default()
     }
 }
