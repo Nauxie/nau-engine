@@ -209,9 +209,12 @@ pub(crate) fn update_island_stream_visibility(
             &mut residency_cache,
         );
         let entry_resident = visual_resident || reset_destination_proxy_is_resident(entry);
-        counts.record(entry.layer, !visual_resident);
 
         if !entry_resident {
+            counts.record(
+                entry.layer,
+                !stream_state.visual_resident.contains(&entry.key),
+            );
             continue;
         }
 
@@ -221,6 +224,7 @@ pub(crate) fn update_island_stream_visibility(
                 if visual_resident {
                     let applied_changes = spawned_visuals + despawned_visual_count;
                     if !stream_change_budget_allows(diagnostics.initialized, applied_changes) {
+                        counts.record(entry.layer, true);
                         continue;
                     }
                 }
@@ -272,6 +276,10 @@ pub(crate) fn update_island_stream_visibility(
             }
             Some(_) => {}
         }
+        counts.record(
+            entry.layer,
+            !stream_state.visual_resident.contains(&entry.key),
+        );
     }
 
     stale_visuals.extend(
@@ -293,6 +301,9 @@ pub(crate) fn update_island_stream_visibility(
         commands.entity(entity).despawn();
         stream_state.spawned.remove(&key);
         stream_state.visual_resident.remove(&key);
+        if visual_was_resident {
+            counts.record_resident_removal(key.layer);
+        }
         if visual_was_resident && diagnostics.initialized {
             despawned_visual_count += 1;
         }
@@ -407,6 +418,145 @@ mod tests {
         );
         assert_eq!(
             app.world().resource::<IslandStreamState>().spawned.len(),
+            ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET + 3
+        );
+    }
+
+    fn assert_residency_counts_match_render_components(world: &mut World) {
+        let state = world.resource::<IslandStreamState>();
+        let catalog = world.resource::<IslandVisualCatalog>();
+        let counts = world.resource::<IslandStreamDiagnostics>().counts;
+        let rendered_count = |layer| {
+            state
+                .spawned
+                .iter()
+                .filter(|(key, entity)| {
+                    key.layer == layer && world.get::<Mesh3d>(**entity).is_some()
+                })
+                .count()
+        };
+        let catalog_count = |layer| {
+            catalog
+                .entries
+                .iter()
+                .filter(|entry| entry.layer == layer)
+                .count()
+        };
+        assert_eq!(
+            counts.visible_terrain_count,
+            rendered_count(IslandVisualLayer::Terrain)
+        );
+        assert_eq!(
+            counts.hidden_terrain_count,
+            catalog_count(IslandVisualLayer::Terrain) - counts.visible_terrain_count
+        );
+        assert_eq!(
+            counts.visible_detail_count,
+            rendered_count(IslandVisualLayer::Detail) + rendered_count(IslandVisualLayer::Vista)
+        );
+        assert_eq!(
+            counts.hidden_detail_count,
+            catalog_count(IslandVisualLayer::Detail) + catalog_count(IslandVisualLayer::Vista)
+                - counts.visible_detail_count
+        );
+        assert_eq!(
+            counts.visible_beacon_count,
+            rendered_count(IslandVisualLayer::Beacon)
+        );
+        assert_eq!(
+            counts.visible_impostor_count,
+            rendered_count(IslandVisualLayer::Impostor)
+        );
+        assert_eq!(
+            counts.hidden_impostor_count,
+            catalog_count(IslandVisualLayer::Impostor) - counts.visible_impostor_count
+        );
+        assert_eq!(
+            counts.resident_count(),
+            world.query::<&Mesh3d>().iter(world).count()
+        );
+    }
+
+    #[test]
+    fn residency_telemetry_matches_applied_spawns_and_retained_visuals_during_budgeted_transitions()
+    {
+        let mut app = App::new();
+        let mut meshes = Assets::<Mesh>::default();
+        let mesh = meshes.add(Cuboid::default());
+        let mut entries = Vec::new();
+        for layer in [
+            IslandVisualLayer::Terrain,
+            IslandVisualLayer::Detail,
+            IslandVisualLayer::Vista,
+            IslandVisualLayer::Beacon,
+            IslandVisualLayer::Impostor,
+        ] {
+            for index in 0..ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET + 3 {
+                let mut entry = resident_entry(index);
+                entry.layer = layer;
+                entry.key.layer = layer;
+                entry.mesh = Some(mesh.clone());
+                entry.material = Some(Handle::<StandardMaterial>::default().into());
+                entries.push(entry);
+            }
+        }
+        app.insert_resource(meshes);
+        app.insert_resource(IslandVisualCatalog { entries });
+        app.insert_resource(IslandStreamState::default());
+        app.insert_resource(IslandStreamDiagnostics {
+            initialized: true,
+            ..default()
+        });
+        let player = app
+            .world_mut()
+            .spawn((crate::Player, Transform::default()))
+            .id();
+        app.add_systems(Update, update_island_stream_visibility);
+
+        app.update();
+        assert_residency_counts_match_render_components(app.world_mut());
+        let counts = app.world().resource::<IslandStreamDiagnostics>().counts;
+        assert_eq!(
+            counts.visible_terrain_count,
+            ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
+        );
+        assert_eq!(counts.hidden_terrain_count, 3);
+        for _ in 0..5 {
+            app.update();
+            assert_residency_counts_match_render_components(app.world_mut());
+        }
+
+        app.world_mut()
+            .get_mut::<Transform>(player)
+            .unwrap()
+            .translation = Vec3::splat(100_000.0);
+        app.update();
+        assert_residency_counts_match_render_components(app.world_mut());
+        let counts = app.world().resource::<IslandStreamDiagnostics>().counts;
+        assert_eq!(
+            counts.visible_terrain_count,
+            ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET + 3
+        );
+        assert_eq!(
+            counts.visible_impostor_count,
+            ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
+        );
+        for _ in 0..7 {
+            app.update();
+            assert_residency_counts_match_render_components(app.world_mut());
+            assert!(
+                app.world()
+                    .resource::<IslandStreamDiagnostics>()
+                    .visibility_changes_this_frame
+                    <= ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET
+            );
+        }
+        let counts = app.world().resource::<IslandStreamDiagnostics>().counts;
+        assert_eq!(counts.visible_terrain_count, 0);
+        assert_eq!(counts.visible_detail_count, 0);
+        assert_eq!(counts.visible_beacon_count, 0);
+        assert_eq!(
+            counts.visible_impostor_count,
             ISLAND_STREAM_CHANGES_PER_FRAME_BUDGET + 3
         );
     }

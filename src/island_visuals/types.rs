@@ -61,6 +61,25 @@ impl IslandLodVisualCounts {
         }
     }
 
+    pub(super) fn record_resident_removal(&mut self, layer: IslandVisualLayer) {
+        match layer {
+            IslandVisualLayer::Terrain => {
+                self.visible_terrain_count -= 1;
+                self.hidden_terrain_count += 1;
+            }
+            IslandVisualLayer::Detail | IslandVisualLayer::Vista => {
+                self.visible_detail_count -= 1;
+                self.hidden_detail_count += 1;
+            }
+            IslandVisualLayer::Beacon => self.visible_beacon_count -= 1,
+            IslandVisualLayer::Impostor => {
+                self.visible_impostor_count -= 1;
+                self.hidden_impostor_count += 1;
+            }
+            IslandVisualLayer::Collision => {}
+        }
+    }
+
     pub(crate) fn resident_count(self) -> usize {
         self.visible_terrain_count
             + self.visible_detail_count
