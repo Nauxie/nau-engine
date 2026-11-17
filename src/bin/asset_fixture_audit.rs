@@ -3462,7 +3462,7 @@ fn mesh_local_geometry(
             .and_then(Value::as_u64)
             .and_then(|index| read_index_accessor(gltf, index as usize, buffers))
         {
-            for triangle in indices.chunks_exact(3) {
+            for triangle in indices.as_chunks::<3>().0.iter() {
                 let Some(a) = local_vertices.get(triangle[0]).copied() else {
                     continue;
                 };

@@ -45,7 +45,7 @@ pub(super) fn write_mesh_obj(path: &Path, mesh: &Mesh, object_name: &str) -> std
 
     let has_uvs = uvs.is_some();
     let has_normals = normals.is_some();
-    for triangle in indices.chunks_exact(3) {
+    for triangle in indices.as_chunks::<3>().0.iter() {
         writeln!(
             file,
             "f {} {} {}",

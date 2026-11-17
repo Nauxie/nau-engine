@@ -198,7 +198,9 @@ pub(crate) fn procedural_data_texture_with_size(
 }
 
 pub(crate) fn texture_detail_band_count(data: &[u8]) -> usize {
-    data.chunks_exact(4)
+    data.as_chunks::<4>()
+        .0
+        .iter()
         .map(|pixel| [pixel[0] / 16, pixel[1] / 16, pixel[2] / 16])
         .collect::<HashSet<_>>()
         .len()

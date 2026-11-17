@@ -359,7 +359,7 @@ mod tests {
             };
             let mut min_height_m = f32::INFINITY;
             let mut max_height_m = f32::NEG_INFINITY;
-            for blade in positions.chunks_exact(VERTICES_PER_GROUND_BLADE) {
+            for blade in positions.as_chunks::<VERTICES_PER_GROUND_BLADE>().0.iter() {
                 let base_y = blade[0][1].min(blade[1][1]);
                 let height_m = blade[4][1] - base_y;
                 min_height_m = min_height_m.min(height_m);
@@ -394,7 +394,7 @@ mod tests {
                 panic!("ground cover should expose Float32x3 positions");
             };
 
-            for blade in positions.chunks_exact(VERTICES_PER_GROUND_BLADE) {
+            for blade in positions.as_chunks::<VERTICES_PER_GROUND_BLADE>().0.iter() {
                 let origin = (Vec3::from_array(blade[0]) + Vec3::from_array(blade[1])) * 0.5;
                 assert!(
                     footprints

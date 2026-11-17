@@ -692,7 +692,7 @@ fn quantized_color_band(color: [f32; 4]) -> u16 {
 
 fn smooth_normals_from_triangles(positions: &[[f32; 3]], indices: &[u32]) -> Vec<[f32; 3]> {
     let mut normals = vec![Vec3::ZERO; positions.len()];
-    for triangle in indices.chunks_exact(3) {
+    for triangle in indices.as_chunks::<3>().0.iter() {
         let a = vec3_from_array(positions[triangle[0] as usize]);
         let b = vec3_from_array(positions[triangle[1] as usize]);
         let c = vec3_from_array(positions[triangle[2] as usize]);
@@ -1009,7 +1009,7 @@ mod tests {
         );
         assert_eq!(triangle_count * 3, mesh.indices().unwrap().len());
 
-        for quad in positions.chunks_exact(4) {
+        for quad in positions.as_chunks::<4>().0.iter() {
             for [x, y, z] in &quad[..2] {
                 let expected = world_terrain_visual_y_at(Vec3::new(*x, 0.0, *z)) + 0.04;
                 assert!(

@@ -536,7 +536,9 @@ fn rgba_pixel(data: &[u8], size: u32, x: u32, y: u32) -> [u8; 4] {
 }
 
 fn detail_band_count(data: &[u8]) -> usize {
-    data.chunks_exact(4)
+    data.as_chunks::<4>()
+        .0
+        .iter()
         .map(|pixel| [pixel[0] / 16, pixel[1] / 16, pixel[2] / 16])
         .collect::<HashSet<_>>()
         .len()
@@ -764,7 +766,15 @@ mod tests {
     fn tangent_normals_remain_valid_through_every_mip() {
         let generated =
             TerrainSurfaceTextureSet::generate(PRIMARY, SECONDARY, ACCENT, 521, TEST_SIZE);
-        for pixel in generated.normal.data.as_ref().unwrap().chunks_exact(4) {
+        for pixel in generated
+            .normal
+            .data
+            .as_ref()
+            .unwrap()
+            .as_chunks::<4>()
+            .0
+            .iter()
+        {
             let normal = decode_normal(pixel);
             assert!((normal.length() - 1.0).abs() < 0.025);
             assert!(normal.z > 0.35);
@@ -803,13 +813,13 @@ mod tests {
         let mut min_normal = Vec2::splat(f32::INFINITY);
         let mut max_normal = Vec2::splat(f32::NEG_INFINITY);
 
-        for pixel in data.chunks_exact(4) {
+        for pixel in data.as_chunks::<4>().0.iter() {
             let normal = decode_normal(pixel);
             assert!((normal.length() - 1.0).abs() < 0.025);
             assert!(normal.z > 0.52);
             assert_eq!(pixel[3], 255);
         }
-        for pixel in base_level.chunks_exact(4) {
+        for pixel in base_level.as_chunks::<4>().0.iter() {
             let normal = decode_normal(pixel);
             min_normal = min_normal.min(normal.xy());
             max_normal = max_normal.max(normal.xy());
@@ -857,7 +867,13 @@ mod tests {
         assert!(mean(&high_accent) > mean(&low_accent) + 0.28);
         assert!(mean(&dry_secondary) > mean(&wet_secondary) + 0.18);
         assert!(reconstruction_error / ((data.material_weights.len() * 3) as f32) < 13.0);
-        assert!(data.orm.chunks_exact(4).all(|pixel| pixel[2] == 0));
+        assert!(
+            data.orm
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| pixel[2] == 0)
+        );
     }
 
     #[test]

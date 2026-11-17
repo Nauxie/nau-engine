@@ -21,7 +21,7 @@ pub(crate) fn smooth_normals_from_triangles_oriented(
         fallback
     };
 
-    for triangle in indices.chunks_exact(3) {
+    for triangle in indices.as_chunks::<3>().0.iter() {
         let a_index = triangle[0] as usize;
         let b_index = triangle[1] as usize;
         let c_index = triangle[2] as usize;
