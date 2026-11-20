@@ -221,6 +221,10 @@ pub fn camera_obstruction_is_active(
     obstruction_hits > 0 && obstruction_adjustment_m >= CAMERA_OBSTRUCTION_MIN_ACTIVE_ADJUSTMENT_M
 }
 
+fn camera_obstruction_needs_correction(resolution: &CameraObstructionResolution) -> bool {
+    resolution.hit_count > 0 && resolution.adjusted_distance_m > 0.0001
+}
+
 pub fn smooth_camera_obstruction(
     mut frame: CameraFrame,
     state: &mut CameraObstructionSmoothingState,
@@ -351,23 +355,17 @@ pub fn resolve_camera_obstruction_handoff(
             state.preferred_side = correction_side.signum();
         }
     }
-    let active_obstruction_hits = if active_obstruction {
-        obstruction.hit_count
-    } else {
-        0
-    };
-    let active_obstruction_adjustment_m = if active_obstruction {
+    // Small contacts still constrain the camera. The significance threshold above
+    // only controls fallback preferences and recovery; ignoring the
+    // geometry lets follow extend into the obstacle and repeatedly pull back.
+    let contact = camera_obstruction_needs_correction(&obstruction);
+    let active_obstruction_hits = if contact { obstruction.hit_count } else { 0 };
+    let active_obstruction_adjustment_m = if contact {
         obstruction.adjusted_distance_m
     } else {
         0.0
     };
-    let obstruction_frame = if active_obstruction {
-        obstruction.frame
-    } else {
-        frame
-    };
-
-    let frame = lift_frame(obstruction_frame);
+    let frame = lift_frame(obstruction.frame);
     let pre_smoothing_frame = frame;
     let frame = smooth_camera_obstruction(
         frame,
@@ -385,10 +383,7 @@ pub fn resolve_camera_obstruction_handoff(
         (state.preferred_side.abs() > CAMERA_OBSTRUCTION_SIDE_PREFERENCE_MIN_M)
             .then_some(state.preferred_side),
     );
-    let revalidated_active = camera_obstruction_is_active(
-        revalidated_obstruction.hit_count,
-        revalidated_obstruction.adjusted_distance_m,
-    );
+    let revalidated_active = camera_obstruction_needs_correction(&revalidated_obstruction);
     let (frame, active_obstruction_hits, active_obstruction_adjustment_m) = if revalidated_active {
         (
             lift_frame(revalidated_obstruction.frame),
@@ -427,7 +422,11 @@ pub fn resolve_camera_obstruction_handoff(
     } else {
         CAMERA_MAX_RELATIVE_OFFSET_SPEED_MPS
     };
-    let max_rotation_speed_degrees_per_second = if reported_obstruction_hits > 0 {
+    let max_rotation_speed_degrees_per_second = if camera_obstruction_is_active(
+        reported_obstruction_hits,
+        reported_obstruction_adjustment_m,
+    ) || state.release_handoff_remaining_secs > 0.0
+    {
         CAMERA_MAX_OBSTRUCTION_ROTATION_SPEED_DEGREES_PER_SECOND
     } else {
         CAMERA_MAX_ROTATION_SPEED_DEGREES_PER_SECOND
@@ -446,7 +445,18 @@ pub fn resolve_camera_obstruction_handoff(
         continuity_previous_position,
         continuity_previous_look_target,
         continuity_previous_rotation,
-    ) = if intentional_camera_motion {
+    ) = if intentional_camera_motion
+        || (active_obstruction_hits > 0
+            && !camera_obstruction_is_active(
+                active_obstruction_hits,
+                active_obstruction_adjustment_m,
+            )
+            && preferred_obstruction_offset.is_none()
+            && state.release_handoff_remaining_secs <= 0.0)
+    {
+        // A small geometric constraint must not turn normal follow movement
+        // (including the rest of a mouse response) into fallback recovery.
+        // Limit the environmental correction relative to that moving intent.
         let input_adjusted_previous_offset = state
             .previous_look_target
             .zip(state.previous_intent_offset)
@@ -501,7 +511,9 @@ pub fn resolve_camera_obstruction_handoff(
         active_obstruction_adjustment_m,
     );
     let dt = if dt.is_finite() { dt.max(0.0) } else { 0.0 };
-    if active_obstruction_hits > 0 || release_smoothing_active {
+    if camera_obstruction_is_active(active_obstruction_hits, active_obstruction_adjustment_m)
+        || release_smoothing_active
+    {
         state.release_handoff_remaining_secs = CAMERA_OBSTRUCTION_RELEASE_HANDOFF_SECS;
     } else {
         state.release_handoff_remaining_secs = (state.release_handoff_remaining_secs - dt).max(0.0);
@@ -608,7 +620,11 @@ fn avoid_camera_obstructions_with_distance_policy(
     }
 
     let direction = segment / segment_length;
-    let mut nearest_hit_distance = segment_length;
+    // Reserve the front setback before crossing the obstacle. Probing only to
+    // the camera endpoint repeatedly releases and re-applies that setback at
+    // shallow contacts, even after insignificant corrections are preserved.
+    let probe_length = segment_length + CAMERA_OBSTRUCTION_FRONT_CLEARANCE_M;
+    let mut nearest_hit_distance = probe_length;
     let mut hit_count = 0;
 
     for obstruction in obstructions.iter().copied() {
@@ -620,7 +636,7 @@ fn avoid_camera_obstructions_with_distance_policy(
             continue;
         }
         let Some(hit_distance) =
-            segment_aabb_hit_distance(frame.look_target, direction, segment_length, obstruction)
+            segment_aabb_hit_distance(frame.look_target, direction, probe_length, obstruction)
         else {
             continue;
         };
@@ -630,7 +646,7 @@ fn avoid_camera_obstructions_with_distance_policy(
         }
     }
 
-    if hit_count == 0 || nearest_hit_distance >= segment_length {
+    if hit_count == 0 || nearest_hit_distance >= probe_length {
         return CameraObstructionResolution {
             frame,
             adjusted_distance_m: 0.0,
@@ -643,6 +659,13 @@ fn avoid_camera_obstructions_with_distance_policy(
     } else {
         nearest_hit_distance * 0.5
     };
+    if adjusted_distance >= segment_length {
+        return CameraObstructionResolution {
+            frame,
+            adjusted_distance_m: 0.0,
+            hit_count,
+        };
+    }
     let adjusted = obstruction_shortened_frame(frame, direction, adjusted_distance);
 
     let minimum_centered_distance = match distance_policy {
@@ -719,30 +742,14 @@ fn revalidate_camera_obstruction_with_distance_policy(
     distance_policy: CameraObstructionDistancePolicy,
     preferred_side: Option<f32>,
 ) -> CameraObstructionResolution {
-    let Some(preferred_offset) = preferred_offset else {
-        return CameraObstructionResolution {
-            frame,
-            adjusted_distance_m: 0.0,
-            hit_count: 0,
-        };
-    };
-    let resolution = avoid_camera_obstructions_with_distance_policy(
+    avoid_camera_obstructions_with_distance_policy(
         frame,
         obstructions,
         clearance,
-        Some(preferred_offset),
+        preferred_offset,
         distance_policy,
         preferred_side,
-    );
-    if camera_obstruction_is_active(resolution.hit_count, resolution.adjusted_distance_m) {
-        resolution
-    } else {
-        CameraObstructionResolution {
-            frame,
-            adjusted_distance_m: 0.0,
-            hit_count: 0,
-        }
-    }
+    )
 }
 
 fn camera_obstruction_blocks_boom(obstruction: CameraObstruction) -> bool {
@@ -954,6 +961,208 @@ fn update_slab_interval(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stationary_camera_converges_at_launch_spire_across_frame_rates() {
+        use crate::camera::{CameraOrbit, FollowCamera, step_camera_with_direction_and_input};
+        use crate::world::{SkyRoute, route_obstruction_spire};
+
+        let route = SkyRoute::default();
+        let spire = route_obstruction_spire(0, route.islands()[0]);
+        let blocker = CameraObstruction::new(spire.center, spire.half_extents);
+        let clearance = 0.45;
+        let follow = FollowCamera::default();
+        let mut terminal_spans = Vec::new();
+
+        for (hz, front_distance) in [30, 60, 120, 144]
+            .into_iter()
+            .flat_map(|hz| [11.7, 11.99].map(|front| (hz, front)))
+        {
+            let player = Vec3::new(
+                spire.center.x,
+                spire.base_position.y,
+                spire.center.z - spire.half_extents.z - clearance - front_distance,
+            );
+            let target = player + Vec3::Y * follow.look_height + Vec3::NEG_Z * follow.look_ahead;
+            let dt = 1.0 / hz as f32;
+            let mut position = player + Vec3::Y * follow.height + Vec3::Z * follow.distance;
+            let mut rotation = Transform::from_translation(position)
+                .looking_at(target, Vec3::Y)
+                .rotation;
+            let mut state = CameraObstructionHandoffState::default();
+            let mut terminal_anchor = None;
+            let mut terminal_span = 0.0_f32;
+
+            for frame_index in 0..hz * 5 {
+                let intended = step_camera_with_direction_and_input(
+                    position,
+                    rotation,
+                    player,
+                    Vec3::NEG_Z,
+                    &follow,
+                    CameraOrbit::default(),
+                    false,
+                    dt,
+                );
+                state.set_intentional_camera_motion(frame_index == 0);
+                let resolved = resolve_camera_obstruction_handoff(
+                    intended,
+                    position,
+                    rotation,
+                    player,
+                    [blocker],
+                    clearance,
+                    dt,
+                    &mut state,
+                    |frame| frame,
+                );
+                position = resolved.frame.position;
+                rotation = resolved.frame.rotation;
+                if frame_index >= hz * 4 {
+                    let anchor = *terminal_anchor.get_or_insert(position);
+                    terminal_span = terminal_span.max(position.distance(anchor));
+                    assert!(!camera_segment_is_blocked(
+                        resolved.frame,
+                        [blocker],
+                        clearance
+                    ));
+                    assert!(
+                        resolved.obstruction_hits > 0,
+                        "geometric contact must be reported"
+                    );
+                    assert!(
+                        state.smoothing.readable_offset().is_none(),
+                        "small settled contacts must not hold smoothing memory"
+                    );
+                }
+            }
+            terminal_spans.push((hz, front_distance, terminal_span));
+
+            for _ in 0..hz * 2 {
+                let intended = step_camera_with_direction_and_input(
+                    position,
+                    rotation,
+                    player,
+                    Vec3::NEG_Z,
+                    &follow,
+                    CameraOrbit::default(),
+                    false,
+                    dt,
+                );
+                let resolved = resolve_camera_obstruction_handoff(
+                    intended,
+                    position,
+                    rotation,
+                    player,
+                    [],
+                    clearance,
+                    dt,
+                    &mut state,
+                    |frame| frame,
+                );
+                position = resolved.frame.position;
+                rotation = resolved.frame.rotation;
+            }
+            let clear_position = player + Vec3::Y * follow.height + Vec3::Z * follow.distance;
+            assert!(
+                position.distance(clear_position) <= 0.001,
+                "removing the blocker must restore the full camera boom"
+            );
+        }
+
+        assert!(
+            terminal_spans.iter().all(|(_, _, span)| *span <= 0.001),
+            "a fixed player and fixed input must settle beside the actual launch spire; terminal camera spans: {terminal_spans:?}"
+        );
+    }
+
+    #[test]
+    fn small_contacts_are_revalidated_and_reported_without_sticky_memory() {
+        let player = Vec3::new(0.0, 10.0, 0.0);
+        let position = player + Vec3::new(0.0, 5.0, 12.0);
+        let look_target = player + Vec3::new(0.0, 1.4, -0.5);
+        let frame = CameraFrame {
+            position,
+            rotation: Transform::from_translation(position)
+                .looking_at(look_target, Vec3::Y)
+                .rotation,
+            look_target,
+        };
+        let blocker = CameraObstruction::new(
+            player + Vec3::new(0.0, 5.0, 12.98),
+            Vec3::new(20.0, 20.0, 0.5),
+        );
+        let revalidated = revalidate_camera_obstruction(frame, [blocker], 0.45, None);
+        assert_eq!(revalidated.hit_count, 1);
+        assert!(revalidated.adjusted_distance_m > 0.0);
+        assert!(revalidated.adjusted_distance_m < CAMERA_OBSTRUCTION_MIN_ACTIVE_ADJUSTMENT_M);
+        assert!(revalidated.frame.position.z < position.z);
+
+        let mut state = CameraObstructionHandoffState::default();
+        let resolved = resolve_camera_obstruction_handoff(
+            frame,
+            position,
+            frame.rotation,
+            player,
+            [blocker],
+            0.45,
+            1.0 / 120.0,
+            &mut state,
+            |frame| frame,
+        );
+        assert_eq!(resolved.obstruction_hits, 1);
+        assert!(resolved.obstruction_adjustment_m > 0.0);
+        assert!(resolved.obstruction_adjustment_m < CAMERA_OBSTRUCTION_MIN_ACTIVE_ADJUSTMENT_M);
+        assert!(state.smoothing.readable_offset().is_none());
+        assert_eq!(state.release_handoff_remaining_secs, 0.0);
+        assert_eq!(
+            state.distance_policy,
+            CameraObstructionDistancePolicy::Undecided
+        );
+    }
+
+    #[test]
+    fn small_contact_preserves_pending_release_rotation_debt() {
+        let target = Vec3::new(0.0, 2.0, 0.0);
+        let position = target + Vec3::Z * 14.0;
+        let aligned = Transform::from_translation(position)
+            .looking_at(target, Vec3::Y)
+            .rotation;
+        let previous_rotation = aligned * Quat::from_rotation_y(4.15_f32.to_radians());
+        let mut state = CameraObstructionHandoffState {
+            previous_look_target: Some(target),
+            previous_intent_offset: Some(position - target),
+            release_handoff_remaining_secs: CAMERA_OBSTRUCTION_RELEASE_HANDOFF_SECS,
+            ..default()
+        };
+        let dt = 1.0 / 60.0;
+        let resolved = resolve_camera_obstruction_handoff(
+            CameraFrame {
+                position,
+                rotation: aligned,
+                look_target: target,
+            },
+            position,
+            previous_rotation,
+            Vec3::ZERO,
+            [CameraObstruction::new(
+                target + Vec3::new(0.0, 0.0, 14.98),
+                Vec3::new(20.0, 20.0, 0.5),
+            )],
+            0.45,
+            dt,
+            &mut state,
+            |frame| frame,
+        );
+        let rotation_step = previous_rotation
+            .angle_between(resolved.frame.rotation)
+            .to_degrees();
+        assert!(rotation_step > 0.0);
+        assert!(
+            rotation_step <= CAMERA_MAX_OBSTRUCTION_ROTATION_SPEED_DEGREES_PER_SECOND * dt + 0.001
+        );
+        assert!(resolved.continuity_rotation_limited);
+    }
 
     #[test]
     fn obstruction_release_eases_large_clear_frame_and_expires_preference() {
