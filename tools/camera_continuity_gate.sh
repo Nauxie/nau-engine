@@ -18,6 +18,11 @@ contract_tests=(
   clear_camera_static_yaw_step_meets_response_contract_across_frame_rates
   clear_camera_static_pitch_step_meets_response_contract_across_frame_rates
   clear_camera_yaw_reversal_responds_without_wrong_way_motion_across_frame_rates
+  stationary_camera_converges_at_launch_spire_across_frame_rates
+  small_contacts_are_revalidated_and_reported_without_sticky_memory
+  small_contact_preserves_pending_release_rotation_debt
+  shallow_contact_yaw_step_meets_response_contract_across_frame_rates
+  shallow_contact_pitch_step_meets_response_contract_across_frame_rates
   environmental_continuity_contract_is_frame_rate_independent
   continuity_contract_matches_substeps_across_hitches
   obstruction_release
@@ -576,6 +581,7 @@ requested_hitches_json="$(jq -cn '$ARGS.positional | map(tonumber)' --args "${re
 jq -s \
   --argjson requested_refresh_hz "${requested_refresh_json}" \
   --argjson requested_hitch_ms "${requested_hitches_json}" \
+  --argjson run_app "${run_app}" \
   --argjson fault_injection_proof "${fault_injection_proof_json}" \
   '
   {
@@ -586,7 +592,7 @@ jq -s \
     runtime_timing: {
       requested_refresh_hz: $requested_refresh_hz,
       deterministic_contract_exercised_refresh_hz: $requested_refresh_hz,
-      native_app_exercised_refresh_hz: [60],
+      native_app_exercised_refresh_hz: (if $run_app == 1 then [60] else [] end),
       requested_hitch_ms: $requested_hitch_ms,
       deterministic_contract_exercised_hitch_ms: $requested_hitch_ms
     },

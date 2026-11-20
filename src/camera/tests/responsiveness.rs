@@ -2,8 +2,9 @@ use bevy::prelude::*;
 
 use super::super::{
     CameraControlState, CameraControlTuning, CameraInput, CameraObstruction,
-    CameraObstructionHandoffState, FollowCamera, camera_pitch_degrees, camera_view_yaw_degrees,
-    resolve_camera_obstruction_handoff, step_camera_control, step_camera_with_direction_and_input,
+    CameraObstructionHandoffState, CameraObstructionStep, FollowCamera, camera_pitch_degrees,
+    camera_view_yaw_degrees, resolve_camera_obstruction_handoff, step_camera_control,
+    step_camera_with_direction_and_input,
 };
 
 const FRAME_RATES_HZ: [f32; 4] = [30.0, 60.0, 120.0, 144.0];
@@ -91,6 +92,20 @@ impl ClearCameraHarness {
     }
 
     fn step(&mut self, input: CameraInput) -> RenderedAngles {
+        let step = self.step_with_obstructions(input, &[], 0.0);
+        assert_eq!(
+            step.obstruction_hits, 0,
+            "clear-camera response harness unexpectedly entered obstruction handoff"
+        );
+        self.rendered_angles()
+    }
+
+    fn step_with_obstructions(
+        &mut self,
+        input: CameraInput,
+        obstacles: &[CameraObstruction],
+        clearance: f32,
+    ) -> CameraObstructionStep {
         step_camera_control(&mut self.control, input, &self.tuning, self.dt);
         let frame = step_camera_with_direction_and_input(
             self.camera_position,
@@ -109,31 +124,37 @@ impl ClearCameraHarness {
             self.camera_position,
             self.camera_rotation,
             self.player_position,
-            std::iter::empty::<CameraObstruction>(),
-            0.0,
+            obstacles.iter().copied(),
+            clearance,
             self.dt,
             &mut self.obstruction,
             |frame| frame,
         );
 
-        assert_eq!(
-            obstruction_step.obstruction_hits, 0,
-            "clear-camera response harness unexpectedly entered obstruction handoff"
-        );
         self.camera_position = obstruction_step.frame.position;
         self.camera_rotation = obstruction_step.frame.rotation;
-        self.rendered_angles()
+        obstruction_step
     }
 }
 
 #[test]
 fn clear_camera_static_yaw_step_meets_response_contract_across_frame_rates() {
-    assert_static_response_contract(ResponseAxis::Yaw);
+    assert_static_response_contract(ResponseAxis::Yaw, false);
 }
 
 #[test]
 fn clear_camera_static_pitch_step_meets_response_contract_across_frame_rates() {
-    assert_static_response_contract(ResponseAxis::Pitch);
+    assert_static_response_contract(ResponseAxis::Pitch, false);
+}
+
+#[test]
+fn shallow_contact_yaw_step_meets_response_contract_across_frame_rates() {
+    assert_static_response_contract(ResponseAxis::Yaw, true);
+}
+
+#[test]
+fn shallow_contact_pitch_step_meets_response_contract_across_frame_rates() {
+    assert_static_response_contract(ResponseAxis::Pitch, true);
 }
 
 #[test]
@@ -193,9 +214,25 @@ fn clear_camera_yaw_reversal_responds_without_wrong_way_motion_across_frame_rate
     }
 }
 
-fn assert_static_response_contract(axis: ResponseAxis) {
+fn assert_static_response_contract(axis: ResponseAxis, with_contact: bool) {
     for frame_rate_hz in FRAME_RATES_HZ {
         let mut harness = ClearCameraHarness::new(frame_rate_hz);
+        let obstacles = if with_contact {
+            vec![CameraObstruction::new(
+                harness.player_position + Vec3::new(0.0, 4.0, 12.94),
+                Vec3::new(20.0, 20.0, 0.5),
+            )]
+        } else {
+            Vec::new()
+        };
+        if with_contact {
+            for _ in 0..(frame_rate_hz as usize * 5) {
+                let settled =
+                    harness.step_with_obstructions(CameraInput::default(), &obstacles, 0.45);
+                assert!(settled.obstruction_hits > 0);
+                assert!(settled.obstruction_adjustment_m < 0.35);
+            }
+        }
         let baseline = harness.rendered_angles();
         let step_input = harness.input_for_orbit_delta(axis, STEP_DEGREES);
         let frame_count = (RESPONSE_WINDOW_SECS * frame_rate_hz).ceil() as usize;
@@ -207,7 +244,12 @@ fn assert_static_response_contract(axis: ResponseAxis) {
             } else {
                 CameraInput::default()
             };
-            let rendered = harness.step(input);
+            let rendered = if with_contact {
+                harness.step_with_obstructions(input, &obstacles, 0.45);
+                harness.rendered_angles()
+            } else {
+                harness.step(input)
+            };
             samples.push((
                 frame_index as f32 / frame_rate_hz,
                 rendered_progress_degrees(axis, baseline, rendered),
